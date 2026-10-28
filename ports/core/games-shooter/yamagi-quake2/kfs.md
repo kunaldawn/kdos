@@ -24,8 +24,9 @@ not shipped: a player copies `baseq2/pak0.pak` and the rest of their own Quake I
 - `WITH_XDG=yes` — keep the user's configuration and saves under the XDG base directories.
   Upstream's default, named.
 - `WITH_SYSTEMWIDE=yes` — with `WITH_SYSTEMDIR=/usr/share/games/quake2`: also search a
-  system-wide directory for game data, and compile that directory in. Upstream's default is no
-  system-wide directory at all.
+  system-wide directory for game data and `game.so`, and compile that directory in. Upstream's
+  default is no system-wide directory at all; `/usr/share/games/quake2` is the directory the engine
+  falls back to when `SYSTEMWIDE` is on and no `SYSTEMDIR` is given, so `WITH_SYSTEMDIR` names it.
 
 ## Notes
 

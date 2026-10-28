@@ -9,7 +9,7 @@ link it.
 trees, and both are configured `--with-system-zlib` to link this port instead, so `20_selfhost`
 builds zlib before either of them. The assembler and the linker read and write zlib-compressed
 debug sections through it, and the compiler compresses its link-time-optimisation bytecode with
-it, because it is built without zstd. A large part of the rest of the tree names it in `depends`.
+it, because it is built without zstd. Several hundred other ports name it in `depends`.
 
 zlib's `configure` is a shell script of its own, not one autoconf generated. It takes `--prefix`
 and reads `CC`, `CFLAGS` and `LDFLAGS` from the environment, so the exported

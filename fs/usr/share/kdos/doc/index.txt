@@ -13,6 +13,7 @@ The desktop
   [[doc:connect]]      a folder on another machine, over SMB
   [[doc:backup]]       what is in the restic repository, and adding to it
   [[doc:rec]]          recording, the level meter, and transcription
+  [[doc:res]]          the resource monitor, its pages and its keys
 
 The keys
 

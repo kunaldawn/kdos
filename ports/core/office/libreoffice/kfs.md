@@ -5,7 +5,7 @@ runtime under `/usr/lib/libreoffice`. It is an application, so it is one of the 
 desktop's no-toolkit rule leaves free to use one, and this build carries two front ends: the GTK 3
 plugin and the Qt 6 plugin. It is built from three sources: its own, a separate help tarball,
 and a vendor bundle of the libraries it builds itself. See
-[Toolkits are for applications](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#toolkits-are-for-applications-not-the-desktop).
+[Toolkits are for applications](../../../../docs/kdos/01-philosophy/principles.md#toolkits-are-for-applications-not-the-desktop).
 
 ## Flags
 
@@ -90,14 +90,14 @@ and a vendor bundle of the libraries it builds itself. See
   both to every library it compiles itself. With `_LARGEFILE64_SOURCE`, musl's headers define
   `stat64`, `fstat64` and `lseek64` as the plain calls, which the Linux configuration of the
   bundled CLucene names; without it the search library of the help indexer does not compile. See
-  [Build troubleshooting](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/build-troubleshooting.md).
+  [A glibc-only call on musl](../../../../docs/kdos/05-developer/build-troubleshooting.md#a-glibc-only-call-on-musl).
 
 ## Patches
 
 - `musl-libintl.patch` — adds `-lintl` to the libraries of `unotools`. The `libintl.h` of [gettext](#port-gettext) renames `bindtextdomain` to `libintl_bindtextdomain`, which musl does not define, so `unotools`, which calls it, does not link without the library.
 - `musl-stacksize.patch` — replaces the platform test in `sal/osl/unx/thread.cxx` with `#if 1`, so `sal` sets the stack size of every thread it creates, 1 MiB in an optimised build. Upstream does that on Linux only in builds without runtime optimisations; otherwise a thread gets the C library's default, which on musl is 128 KiB, and the parser and layout threads overflow it.
 - `sfinae-probe-cxxflags.patch` — corrects the `-Wsfinae-incomplete` probe in `configure`, which saves `$CFLAGS` and restores it as `$CXXFLAGS`. Without the patch every later C++ probe passes the tree's `-std=gnu11` to `g++` and, under `-Werror`, fails, and the C++20 probe stops configure.
-- `externals-ldflags.patch` — adds gbuild's external-project link flags, which begin with `$(LDFLAGS)`, to the link of six bundled libraries: to the `LDFLAGS` that the build recipes of libetonyek, liblangtag, raptor, rasqal and redland set to little more than the `$ORIGIN` run path, and to the `CC` that lp_solve's recipe passes its build script. Without the patch the six are linked without the tree's link flags, among them `-z now`, whose absence the [package lint](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/packaging.md#the-package-lint) reports.
+- `externals-ldflags.patch` — adds gbuild's external-project link flags, which begin with `$(LDFLAGS)`, to the link of six bundled libraries: to the `LDFLAGS` that the build recipes of libetonyek, liblangtag, raptor, rasqal and redland set to little more than the `$ORIGIN` run path, and to the `CC` that lp_solve's recipe passes its build script. Without the patch the six are linked without the tree's link flags, among them `-z now`, whose absence the [package lint](../../../../docs/kdos/03-architecture/packaging.md#the-package-lint) reports.
 
 ## Notes
 
@@ -109,7 +109,7 @@ other needs no new source. No tool writes this bundle: on a version bump it is r
 the new `download.lst`, each `*_TARBALL` (or `*_JAR`, `*_TTF`) with its `*_SHA256SUM`, fetched from
 `dev-www.libreoffice.org/src` or `/extern`, checked against its sum, placed under `externals/`
 and packed with the vendor tar flags of `ports/fetch` plus `--mode=go-w`. See
-[A bundle no tool writes](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#a-bundle-no-tool-writes).
+[A bundle no tool writes](../../../../docs/kdos/05-developer/writing-ports.md#a-bundle-no-tool-writes).
 
 `sfinae-probe-cxxflags.patch` changes the generated `configure` and not `configure.ac`. A
 `configure.ac` newer than the configuration makes the build rerun `autogen.sh`, which would

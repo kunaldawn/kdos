@@ -14,7 +14,7 @@ nothing but the supervisor's log without it. It passes `supervise --stop-grace 1
 has time to end its per-client children and close their open files before the supervisor's
 `SIGKILL`; five seconds is the default. Other machines reach the server after
 the firewall's `smb` name is opened (see
-[Services](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md#services)).
+[Opening a service](../../../../docs/kdos/02-user-guide/administration.md#opening-a-service)).
 
 ## Flags
 
@@ -42,13 +42,13 @@ the firewall's `smb` name is opened (see
   build root must not switch them on.
 - `--without-winbind` — Build no `winbindd`. `ntlm_auth` still installs, but it signs on only from
   winbindd's cached credentials, so libsoup's attempt with it fails and libsoup answers NTLM
-  itself (see [Networking](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md#networking)).
+  itself (see [Networking](../../../../docs/kdos/02-user-guide/administration.md#networking)).
 - `--without-pam` — Build without PAM: no `pam_winbind` module (winbind is not built either) and
   no PAM account and session checks in `smbd`, whose `obey pam restrictions` setting then has
   nothing to call. SMB clients are still checked against Samba's own password database, which
   `smbpasswd` writes.
 - `--without-systemd` — No systemd notification or units; KDOS has no systemd (see
-  [No systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd)).
+  [No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)).
 - `--with-acl-support` — POSIX ACL support, through [acl](#port-acl). Without it a Windows client
   cannot change a file's permissions, and its security tab is read-only.
 - `--without-quotas` — No disk quota support.
@@ -84,7 +84,7 @@ the firewall's `smb` name is opened (see
 
 ## Patches
 
-- `musl-netlink.patch` — In `source3/wscript`, the two compile tests for Linux netlink and rtnetlink include `<sys/socket.h>` instead of `<bits/sockaddr.h>`. `<bits/sockaddr.h>` is a glibc header that musl does not have, so on musl both tests fail and Samba builds without `HAVE_LINUX_RTNETLINK_H`, which `source3/lib/addrchange.c` needs to follow changes to the machine's addresses over netlink.
+- `musl-netlink.patch` — In `source3/wscript`, the two compile tests for Linux netlink and rtnetlink include `<sys/socket.h>` instead of `<bits/sockaddr.h>`, and each supplies its own `main()` with `addmain=False`, so the headers are included at file scope rather than inside the `main()` waf otherwise wraps around the test. `<bits/sockaddr.h>` is a glibc header that musl does not have, so on musl both unpatched tests fail and Samba builds without `HAVE_LINUX_RTNETLINK_H`, which `source3/lib/addrchange.c` needs to follow changes to the machine's addresses over netlink.
 
 ## Notes
 

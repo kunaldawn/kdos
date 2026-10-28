@@ -2,8 +2,8 @@
 [WebKitGTK]{.idx} is the GTK port of the WebKit web engine, with JavaScriptCore. This port builds
 it for GTK 3 against [libsoup3](#port-libsoup3), which is the `webkit2gtk-4.1` and
 `javascriptcoregtk-4.1` API, and it installs `WebKitWebDriver`. GTK 3 programs with a web view use
-it: [wxwidgets](#port-wxwidgets)'s `wxWebView`, and through it KiCad, PrusaSlicer and OrcaSlicer,
-and GnuCash. The same source tarball builds the GTK 4 API, `webkitgtk-6.0`, as
+it: [wxwidgets](#port-wxwidgets)'s `wxWebView`, and through it KiCad and PrusaSlicer; OrcaSlicer,
+through the static wxWidgets it builds for itself; and GnuCash. The same source tarball builds the GTK 4 API, `webkitgtk-6.0`, as
 [webkitgtk6](#port-webkitgtk6).
 
 ## Flags
@@ -39,8 +39,9 @@ and GnuCash. The same source tarball builds the GTK 4 API, `webkitgtk-6.0`, as
 - `-DUSE_GBM=ON` — with `-DUSE_LIBDRM=ON`, `-DUSE_LIBHYPHEN=ON`, `-DUSE_LIBSECRET=ON`,
   `-DUSE_AVIF=ON`, `-DUSE_JPEGXL=ON`, `-DUSE_LCMS=ON` and `-DENABLE_SPELLCHECK=ON`: buffers shared
   with the GPU through GBM and libdrm, hyphenation, password storage through libsecret, AVIF and
-  JPEG XL images, colour management, and spell checking through enchant, each named so a missing
-  library stops configure.
+  JPEG XL images, colour management, and spell checking through enchant. Each is on by upstream's
+  default and stops configure when its library is missing; naming it keeps the feature from
+  following a changed default.
 - `-DENABLE_MINIBROWSER=OFF` — with `-DENABLE_API_TESTS=OFF` and `-DENABLE_DOCUMENTATION=OFF`:
   no MiniBrowser test program, API tests or gi-docgen reference.
 - `-DCMAKE_SKIP_RPATH=ON` — no run path in the libraries and programs; everything they link is in

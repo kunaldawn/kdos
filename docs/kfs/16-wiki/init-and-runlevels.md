@@ -199,9 +199,13 @@ the desktop does not come up, press `Ctrl+Alt+F2` (`Alt+F2` at a text console) a
   `/usr/local`, where the `kdos` commands live. `rcS` and `rcK` set a longer one for the services,
   but an entry of your own in `/etc/inittab` gets init's: name a program under `/usr/local` by its
   full path.
-- Each console's `kdos-getty` writes its messages to `/run/kdos-getty.<tty>.log`, such as
-  `/run/kdos-getty.tty1.log`. The file exists for `tty1` and `tty2` on every boot and is empty
-  when the font, the colours and the keymap loaded without a complaint.
+- Each console's `kdos-getty` appends its messages to `/run/kdos-getty.<tty>.log`, such as
+  `/run/kdos-getty.tty1.log`. The file exists for `tty1` and `tty2` on every boot. A line such
+  as `kdos-getty: tty1 winsize -> <columns>x<rows>` is written when it sets the terminal's size
+  to the grid the console font produced, and is not an error. A line saying
+  `cannot exec … — falling back` means the program the entry names could not be run and a plain
+  `agetty` took its place. The font, palette and keymap tools' own errors are discarded, so a
+  console with the wrong font can still have a clean log.
 - A script in `/etc/init.d` without the `NN_` prefix, such as `serial-getty`, is never run by `rcS`
   or `rcK`. That is the place for a helper an `inittab` entry calls.
 

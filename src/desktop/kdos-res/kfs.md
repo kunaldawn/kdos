@@ -23,8 +23,9 @@ renices directly. The argument for its safety is in
   figures. Nothing is linked against NVIDIA at build time, and a stock KDOS has no such library.
   musl keeps both functions in the C library and installs `libdl.a` as an empty archive, so here
   the flag resolves and adds nothing.
-- `-Dm4755` — Install `kdos-resctl` owned by root with the setuid bit, as a mode bit, which
-  survives the package archive where a file capability would not; see
+- `-Dm4755` — Install `kdos-resctl` with mode 4755, the setuid bit set, so the root-owned file
+  runs as root whoever starts it. It is a mode bit, which survives the package archive where a
+  file capability would not; see
   [setuid binaries](../../../docs/kdos/03-architecture/security-model.md#setuid-binaries). When the
   helper is missing or has lost the bit, `kdos-res` disables the actions that need it and says why
   on the button, and `kdos doctor` reports the bit.

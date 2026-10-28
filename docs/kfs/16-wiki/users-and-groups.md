@@ -25,7 +25,7 @@ port's page says why. The account files themselves are not from a port: [`/etc/p
 [`/etc/init.d/15_userdirs.sh`]{.idx}, also from `fs/`, makes each account's runtime directory at boot. It
 is enabled on the image, on the live medium and on an installed system.
 
-On the live medium the desktop account is [`kdos`]{.idx term="kdos (command)"} with the password `kdos`, and `root` has the same
+On the live medium the desktop account is [`kdos`]{.idx term="kdos (account)"} with the password `kdos`, and `root` has the same
 password. The installer asks for the account's name and password, renames `kdos` to the name given,
 and locks `root` unless told otherwise; see
 [6. Accounts](../../kdos/02-user-guide/installation.md#6-accounts).
@@ -105,7 +105,9 @@ still has it.
    ```
 
    For an account that runs the desktop but does not administer the machine, leave `wheel` out of
-   the list. `seat` is what lets it suspend, power off, reboot and mount removable media.
+   the list. Keep `seat`: `seatd` hands the display and the input devices only to members of
+   `seat`, so without it the desktop cannot start, and it is also what lets the account suspend,
+   power off, reboot and mount removable media.
 
 2. Give it a password:
 
@@ -122,13 +124,23 @@ still has it.
    The first account added after `kdos` gets `alice:265536:65536` in both, the range after
    `root`'s. If either file has no line for it, see [Troubleshooting](#troubleshooting).
 
-4. Make its runtime directory, which `15_userdirs` otherwise makes only at the next boot:
+4. Make the empty directories the desktop's programs expect. `useradd -m` copies `/etc/skel`,
+   which carries only `Desktop` of these; the image build makes the rest in the `kdos` home alone.
+   The mail programs need `~/Mail`, and the calendar and address book need their stores under
+   `~/.local/share`; none of them creates its directory:
+
+   ```bash
+   sudo -u alice mkdir -p /home/alice/{Desktop,Downloads,Documents,Music,Videos,Public,Templates} \
+       /home/alice/{Mail,Pictures/Screenshots,.local/bin,.local/share/calendars,.local/share/contacts/personal}
+   ```
+
+5. Make its runtime directory, which `15_userdirs` otherwise makes only at the next boot:
 
    ```bash
    sudo service start userdirs
    ```
 
-5. Check what the root daemons will let it do:
+6. Check what the root daemons will let it do:
 
    ```bash
    kdos-powerd --explain alice
@@ -171,8 +183,9 @@ sudo gpasswd -d alice wheel
    ```
 
 The change applies the next time `tty1`'s login starts: at the next boot, or after ending the
-desktop session and then the shell it leaves on `tty1` (`exit`). Both refuse an account that
-cannot log in. [Login and autologin](login-and-autologin.md) has the rest of the login path.
+desktop session and then the shell it leaves on `tty1` (`exit`). The window lists only accounts
+that can log in, and the command refuses any other. [Login and autologin](login-and-autologin.md)
+has the rest of the login path.
 
 ### Locking and removing an account
 
@@ -184,9 +197,10 @@ cannot log in. [Login and autologin](login-and-autologin.md) has the rest of the
    ```
 
 2. Remove it with its home directory. If `login.conf` names it, point the automatic login
-   elsewhere first. End its processes before `userdel`: every login of an account starts an
-   `ssh-agent` from `/etc/profile.d/50-ssh-agent.sh` that outlives the login, and `userdel` refuses
-   an account with a running process (`user alice is currently used by process <pid>`, exit 8):
+   elsewhere first. End its processes before `userdel`: the account's first login starts an
+   `ssh-agent`, from openssh's `/etc/profile.d/50-ssh-agent.sh`, that outlives the login, and
+   `userdel` refuses an account with a running process (`user alice is currently used by process
+   <pid>`, exit 8):
 
    ```bash
    sudo pkill -u alice
@@ -240,10 +254,12 @@ sudo service start userdirs
 
 **Boxed applications do not start for one account.** `kdos doctor`, run as that account, warns
 `no /etc/subuid entry` in its Containers section. Give it a range that overlaps no other line of
-`/etc/subuid` or `/etc/subgid`, here 300000 to 365535:
+`/etc/subuid` or `/etc/subgid`: read both files, and start past the end (first id plus count) of
+the highest range in either. With only the shipped lines, that is 265536:
 
 ```bash
-sudo usermod --add-subuids 300000-365535 --add-subgids 300000-365535 alice
+cat /etc/subuid /etc/subgid
+sudo usermod --add-subuids 265536-331071 --add-subgids 265536-331071 alice
 ```
 
 **The lock screen refuses the right password.** `kdos-checkpass` has lost its setuid bit, or the
@@ -273,9 +289,9 @@ sudo userdel -r alice
 ```
 
 **`kdos-power autologin` prints `err no such account`.** No account has that name; check the
-spelling against `getent passwd`. **It prints `err not an account that can log in`.** The account
-exists, but it is root, a system account or one whose shell is `/sbin/nologin`, and tty1 could
-never complete its login.
+spelling against `getent passwd`. **It prints `err not an account that can log in (a system
+account, or no login shell)`.** The account exists, but it is root, a system account (a uid below
+1000) or one whose shell is `nologin` or `false`, and tty1 could never complete its login.
 
 **`sudo` says the account is not in the sudoers file.** It is not in `wheel`; see
 [sudo, PAM and polkit](sudo-pam-polkit.md).

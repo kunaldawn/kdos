@@ -40,8 +40,8 @@ the separate `opencv_contrib` tarball.
   JavaScript bindings.
 - `-DBUILD_ZLIB=OFF`, `-DBUILD_JPEG=OFF`, `-DBUILD_PNG=OFF`, `-DBUILD_TIFF=OFF`,
   `-DBUILD_WEBP=OFF`, `-DBUILD_OPENJPEG=OFF`, `-DBUILD_OPENEXR=OFF`, `-DBUILD_JASPER=OFF`,
-  `-DBUILD_TBB=OFF` — Never compile the copies under `3rdparty/`; every codec and TBB is the port
-  in `depends`.
+  `-DBUILD_TBB=OFF` — Never compile the copies under `3rdparty/`; every codec that is enabled, and
+  TBB, comes from its port in `depends`.
 - `-DBUILD_IPP_IW=OFF`, `-DWITH_IPP=OFF`, `-DBUILD_ITT=OFF`, `-DWITH_ITT=OFF` — Intel's IPP
   primitives, a prebuilt binary OpenCV downloads at configure, and the ITT tracing hooks.
 - `-DBUILD_PROTOBUF=ON`, `-DPROTOBUF_UPDATE_FILES=OFF`, `-DWITH_PROTOBUF=ON` — The DNN module's
@@ -86,8 +86,9 @@ the separate `opencv_contrib` tarball.
   fallback.
 - `-DWITH_EIGEN=ON`, `-DWITH_LAPACK=ON` — [eigen](#port-eigen) for some solvers, and LAPACK
   through [openblas](#port-openblas).
-- `-DWITH_KLEIDICV=OFF`, `-DWITH_FASTCV=OFF` — Arm's KleidiCV and Qualcomm's FastCV, prebuilt Arm
-  libraries fetched at configure time.
+- `-DWITH_KLEIDICV=OFF`, `-DWITH_FASTCV=OFF` — Arm's KleidiCV, whose source OpenCV downloads at
+  configure time, and Qualcomm's FastCV, a prebuilt library it downloads; both are Arm-only HAL
+  backends.
 - `-DWITH_HALIDE=OFF`, `-DWITH_OPENVINO=OFF`, `-DWITH_ONNX=OFF`, `-DWITH_TIMVX=OFF`,
   `-DWITH_CANN=OFF` — Further DNN backends: Halide, OpenVINO, ONNX Runtime, TIM-VX and Huawei
   CANN. [onnxruntime](#port-onnxruntime) is a port but not in `depends`; the rest are not ports.

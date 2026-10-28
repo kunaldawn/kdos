@@ -26,7 +26,7 @@ PipeWire.
   `depends`.
 
 ## Patches
-- `select.patch` — adds `#include <sys/select.h>` to the FFmpeg plugin's `qv4l2camera_p.h`, which holds a `timeval` member; the patch's own note says the include is there for `struct timeval`.
+- `select.patch` — adds `#include <sys/select.h>` to the FFmpeg plugin's `qv4l2camera_p.h`, for the `struct timeval` of its `m_firstFrameTime` member.
 
 ## Notes
 Like every Qt 6 module but `qt6-qtbase`, it passes no install paths of its own (see [How Qt 6 is built](../../../../docs/kdos/05-developer/writing-ports.md#how-qt-6-is-built)).

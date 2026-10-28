@@ -3,7 +3,7 @@
 [Neverball]{.idx} is a 3D game in which the player tilts the floor to roll a ball through an
 obstacle course, collecting coins against the clock. Neverputt, a hot-seat minigolf game for up
 to four players, is built from the same source on the same engine, and `mapc` compiles the levels
-of both. All three draw with OpenGL through SDL2.
+of both. The two games draw with OpenGL through SDL2.
 
 ## Flags
 

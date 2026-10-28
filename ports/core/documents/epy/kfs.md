@@ -18,9 +18,9 @@ from the desktop can open in epy in a terminal.
   isolated environment that takes `poetry-core` from there (`--no-index --find-links=vendor`), so
   nothing is downloaded and nothing is installed into the build root. `--no-deps` installs epy and
   nothing else into the package; why every `pip install --root` also passes `--ignore-installed` is
-  in [The three Python
-  keys](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
+  in
+  [The three Python keys](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
 - **The desktop entry is a handler.** `epy.desktop` claims the EPUB, MOBI and FictionBook types,
   runs `epy %f` with `Terminal=true`, and is `NoDisplay=true`, so it is not listed in Start or the
-  launcher; see [Desktop entries belong to the
-  port](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#desktop-entries-belong-to-the-port).
+  launcher; see
+  [Desktop entries belong to the port](../../../../docs/kdos/05-developer/writing-ports.md#desktop-entries-belong-to-the-port).

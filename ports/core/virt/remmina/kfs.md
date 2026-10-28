@@ -5,8 +5,11 @@ SPICE through [spice-gtk](#port-spice-gtk), and SSH and SFTP through [libssh](#p
 with a [VTE](#port-vte3) terminal. Saved passwords go through libsecret.
 
 ## Flags
-- `-lintl` — Added to `LDFLAGS`. Remmina calls gettext, which musl leaves to libintl, and its
-  link lines never name the library.
+- `-lintl` — Added to `LDFLAGS`. Remmina compiles against the GNU `libintl.h` the gettext port
+  installs, which renames each gettext call to `libintl_gettext` and its relatives; musl's libc
+  does not define those names, only [libintl](#port-libintl) does, and Remmina's link lines never
+  name the library (see
+  [Gettext on musl](../../../../docs/kdos/05-developer/build-troubleshooting.md#gettext-on-musl)).
 - `-D WITH_FREERDP3=ON` — Build the RDP plugin against FreeRDP 3, the major version of the port.
   Upstream's default is FreeRDP 2.
 - `-D WITH_NEWS=OFF` — With `-D WITH_STATS=OFF` and `-D WITH_TIP=OFF`: no news check, no usage
@@ -23,8 +26,10 @@ with a [VTE](#port-vte3) terminal. Saved passwords go through libsecret.
 - `-D WITH_KIOSK_SESSION=OFF` — Install no kiosk session files: an X session entry under
   `xsessions` and a GNOME session that run Remmina alone. Upstream's default, named; no display
   manager or GNOME session runs here.
-- `-D WITH_ICON_CACHE=OFF` — With `-D WITH_UPDATE_DESKTOP_DB=OFF`: do not write the icon cache and
-  the desktop database into the package; kpkg regenerates both on install.
+- `-D WITH_ICON_CACHE=OFF` — With `-D WITH_UPDATE_DESKTOP_DB=OFF`: refresh no cache during
+  `cmake --install`. The desktop-database step runs `update-desktop-database` on the build root's
+  own `/usr/share/applications`, ignoring `DESTDIR`, and the icon-cache step does nothing under
+  `DESTDIR`; kpkg's triggers regenerate both on the installed system.
 - `-D HAVE_LIBAPPINDICATOR=ON` — The tray icon, an Ayatana AppIndicator through
   [libayatana-appindicator](#port-libayatana-appindicator), which the panel's tray hosts as a
   StatusNotifierItem. Upstream's default, named; Remmina searches for the library as required.

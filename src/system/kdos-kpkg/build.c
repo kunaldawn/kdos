@@ -185,8 +185,8 @@ static int verify_source(const Recipe *r, const char *file)
  * EVERY `sha256 =` ENTRY IS CHECKED, not only the ones a `source =` names.
  * A vendor bundle — `<name>-vendor-<version>.tar.xz` beside the recipe, which
  * `build.sh` unpacks itself — is declared with a hash and named by no source
- * entry, so a walk over `source =` alone would build 114 ports out of bytes
- * nothing ever looked at.
+ * entry, so a walk over `source =` alone would build every port with a vendor
+ * bundle out of bytes nothing ever looked at.
  *
  * An entry whose file is in neither the port directory nor $SOURCE_DIR is
  * skipped: a source that must be there is caught by extract_sources(), and
@@ -652,9 +652,8 @@ static int build_here(char *pkgout, size_t cap)
 		kp_err("'release' is not set");
 		return 1;
 	}
-	/* WORK_DIR is validated before anything under it is removed. The shell
-	 * version ran `rm -rf "$WORK_DIR/$name"` first and asked questions
-	 * afterwards, which with an empty WORK_DIR is `rm -rf /<name>`. */
+	/* WORK_DIR is validated before anything under it is removed: with an
+	 * empty WORK_DIR, removing "$WORK_DIR/$name" is `rm -rf /<name>`. */
 	if (!c.work_dir[0] || c.work_dir[0] != '/' || !strcmp(c.work_dir, "/")) {
 		kp_err("WORK_DIR is not an absolute path: '%s'", c.work_dir);
 		return 1;

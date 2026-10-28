@@ -37,7 +37,7 @@ Plan for the cost before you start:
 | | |
 |---|---|
 | Wall time, first build | Many hours; budget a day or more. Every package is compiled, including GCC several times over and the kernel. The build container uses every thread the host leaves idle; `make build KDOS_JOBS=N` caps it |
-| Disk | About 41.5 GB (38.6 GiB) of upstream source archives, fetched by `make fetch`. The build tree under `build/` needs room of its own, and a complete set of phase snapshots gigabytes more, the tree compressed once plus a layer per phase; its size is not yet measured. Snapshots are optional |
+| Disk | About 42.2 GB (39.3 GiB) of upstream source archives, fetched by `make fetch`. The build tree under `build/` needs room of its own, and a complete set of phase snapshots gigabytes more, the tree compressed once plus a layer per phase; its size is not yet measured. Snapshots are optional |
 | Network | Needed to clone, to run `make fetch`, and for the first `make build` on a machine, which builds its container image from Alpine Linux packages. The compile itself runs with networking switched off |
 | Software on your machine | Docker, plus a few small tools listed in the next section. Every compiler runs inside a container |
 
@@ -78,13 +78,13 @@ reads nothing but what the fetch left in the port directories and runs offline.
 ### Fetching the sources
 
 A clone carries the recipes, not the upstream source archives. Each recipe (also called a *port*: a
-directory holding a declarative `kpkgbuild` file and a `build.sh`; about 2,000 live under
+directory holding a declarative `kpkgbuild` file and a `build.sh`; about 2,100 live under
 `ports/core/`, each on one of 102 subject shelves as `ports/core/<shelf>/<name>/`, and about two
 dozen under `src/`; see the [glossary](../06-reference/glossary.md#port)) names its source files with a
 `sha256 =` line, and `make fetch` downloads every such file that git does not carry.
-Measured across the tree, that is 2,487 file names in 1,993 ports; a further 39 named files, such
+Measured across the tree, that is 2,577 file names in 2,076 ports; a further 44 named files, such
 as bash's upstream patches, are committed beside their recipes. Several ports share one archive, so
-they are 2,448 distinct files and about 41.5 GB (38.6 GiB); the LLVM tarball alone serves eight
+they are 2,528 distinct files and about 42.2 GB (39.3 GiB); the LLVM tarball alone serves eight
 ports. [The ports catalogue](../06-reference/ports-catalogue.md) lists every port by shelf, with the phase that builds it.
 
 For each file, `make fetch` takes the first copy it finds whose hash matches the recipe: the
@@ -128,7 +128,7 @@ A few variables change what the build produces:
 | Variable | Effect |
 |---|---|
 | `BUILD_ARGS="…"` | Flags for the orchestrator, such as `--fresh`, `--snapshot`, `--continue-from <phase>` or `--rebuild <port>`. See [The build system](../05-developer/build-system.md) |
-| `KDOS_ISO_SOURCES=1` | Copies the ports tree with its fetched sources, `src/`, `script/` and `fs/` onto the ISO under `sources/`, together with a `SOURCES` stamp that `kdos rebuild` prints. No rebuild from such a medium has been run through every phase; see [KDOS can build KDOS](../01-philosophy/why-kdos.md#kdos-can-build-kdos) |
+| `KDOS_ISO_SOURCES=1` | Copies the ports tree with its fetched sources, `src/`, `script/`, `fs/`, the `Makefile` and the `Dockerfile` onto the ISO under `sources/`, together with a `SOURCES` stamp that `kdos rebuild` prints. No rebuild from such a medium has been run through every phase; see [KDOS can build KDOS](../01-philosophy/why-kdos.md#kdos-can-build-kdos) |
 | `KDOS_PACK_KDOS=1` | Also packs the finished system as a base pack named `kdos`, written to `build/kdos-base/kdos.kpack` and carried on the medium under `packs/` |
 
 The graphical applications KDOS ports natively, from Firefox ESR and LibreOffice to KiCad and

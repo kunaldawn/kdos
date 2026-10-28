@@ -18,7 +18,7 @@ Fedora distributes as hfsplus-tools, installed under the names `fsck(8)` and
   through. glibc's `<sys/cdefs.h>` provides it; the `<sys/cdefs.h>` this build finds is libbsd's,
   which does not. The single quotes keep the parentheses intact through the shell make runs each
   compile in.
-- `-DVERSION` — The version string the tools print, set to upstream's own spelling of the
+- `-DVERSION` — The version string `fsck.hfsplus -v` prints, set to upstream's own spelling of the
   version, which the recipe's `_upver` helper rebuilds from `version`.
 - `-D_FILE_OFFSET_BITS=64`, `-DDEBUG_BUILD=0` — Upstream's own makefile flags, repeated because
   the command line replaces the makefile's `CFLAGS` whole.

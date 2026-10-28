@@ -25,7 +25,7 @@ is in [The kernel](../14-kernel/intro.md). Every command on this page runs on a 
   `/etc/modprobe.d/kdos-regdom.conf`, the Wi-Fi country.
 
 Every service involved is enabled on every image. On the live medium a file added under `/etc` is
-kept only when a persistence store exists (`kdos persist`).
+kept only when a persistence store exists (`kdos persist`; see [Live persistence](live-persistence.md)).
 
 ## Configuration
 
@@ -64,7 +64,11 @@ their own:
 
 The installer's file is written from the time zone's country:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=1746-1754 pin=5a0dbdc98892 -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=1751-1759 pin=5a0dbdc98892 -->
+
+`kdos-power timezone` writes the same `options cfg80211` line when the zone changes, and removes
+the file for a zone with no country, such as `UTC`. What the country changes is on
+[Wireless regulatory domain](wireless-regulatory-domain.md).
 
 ### Udev and coldplug
 
@@ -125,9 +129,10 @@ the compressed swap device is active, and back to the kernel's default when it s
    sudo /etc/init.d/02_modules.sh start
    ```
 
-   It prints a line for every name in every file, such as `[KDOS]   loaded: snd-aloop`, and
-   `[KDOS]   skip:   nct6775 (no matching hardware)` for one that did not load. Running it again
-   is harmless: a module already loaded is reported `loaded:` once more.
+   It prints a line for every name in every file, such as `[KDOS]   loaded: snd-aloop`, and for
+   one that did not load a `skip:` line carrying the first line of `modprobe`'s own error, such
+   as `[KDOS]   skip:   nct6775 (modprobe: ERROR: could not insert 'nct6775': No such device)`.
+   Running it again is harmless: a module already loaded is reported `loaded:` once more.
 
 ### Passing a module options
 
@@ -155,8 +160,9 @@ the compressed swap device is active, and back to the kernel's default when it s
 A module the initramfs loads, such as a filesystem or a disk controller driver, loads before the
 root filesystem is mounted, and the initramfs carries no `/etc/modprobe.d`. Such a module takes its
 options from the [kernel command line]{.idx} instead, as `<module>.<parameter>=<value>`; `modprobe` reads
-those from `/proc/cmdline` too. How to add a word to the command line is in
-[Limine and the kernel command line](../../kdos/03-architecture/boot-and-init.md#limine-and-the-kernel-command-line).
+those from `/proc/cmdline` too. How to add a word to the command line, for one boot or for every
+boot, is on
+[Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md#adding-a-parameter-for-one-boot).
 
 ### Keeping a module from loading
 
@@ -169,7 +175,8 @@ those from `/proc/cmdline` too. How to add a word to the command line is in
    This stops the module loading for a device; `modprobe <module>` by name still loads it.
 
 2. For one boot, add `modprobe.blacklist=<module>` to the kernel command line in the boot menu's
-   entry editor (`E` on an entry).
+   entry editor (`E` on an entry; see
+   [Adding a parameter for one boot](boot-menu-and-kernel-parameters.md#adding-a-parameter-for-one-boot)).
 
 ### Reading and setting a kernel parameter
 
@@ -200,9 +207,11 @@ those from `/proc/cmdline` too. How to add a word to the command line is in
 - `kdos why /etc/sysctl.conf` reports that no package owns the file. It comes from the base
   filesystem, so no package upgrade replaces an edit to it.
 - `kdos explain coldplug` prints why `01_udev.sh` replays devices with `--action=add`.
-- `02_modules.sh` discards `modprobe`'s error and prints `skip: <name> (no matching hardware)` for
-  every failure. When a listed module should have loaded, run `sudo modprobe -v <name>` to see the
-  real error.
+- `02_modules.sh` prints `skip: <name> (<reason>)` for every module that fails to load, where the
+  reason is the first line of `modprobe`'s own error, or `modprobe failed` when it printed none.
+  Absent hardware, a misspelt name, a module this kernel does not carry and a refused option all
+  fail alike, and only the reason tells them apart; `sudo modprobe -v <name>` shows the rest of
+  the message.
 - The kernel's modules are compressed with zstd; `modinfo` and `modprobe` read them as they are.
 - Every key is a file under `/proc/sys`, with the dots as slashes: `sysctl -w vm.swappiness=20` is
   the same as writing `20` to `/proc/sys/vm/swappiness`.

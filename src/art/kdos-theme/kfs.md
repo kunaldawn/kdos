@@ -10,9 +10,9 @@ It runs at two different times. At build time the three theme ports,
 [kdos-gtk-theme](#port-kdos-gtk-theme), depend on it and run it from their `build.sh` to make the
 system copies under `/usr/share`. On the running system `kdos theme`, and the `kdos-style` picker
 through it, runs it on every accent switch to rewrite the copies in your home directory, which is
-why it is a package and not a build tool; the phase-list comment says it is what keeps python3 out
-of the shipped system. Its commands and defaults are in
-[How the theme is generated](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/theming.md#how-the-theme-is-generated).
+why it is a package and not a build tool: written in C, it lets the shipped system regenerate its
+themes without python3. Its commands and defaults are in
+[How the theme is generated](../../../docs/kdos/02-user-guide/theming.md#how-the-theme-is-generated).
 
 ## Flags
 - `-std=gnu11`, `-D_GNU_SOURCE` — The C dialect, and the macro that exposes the C library's GNU and
@@ -23,7 +23,7 @@ of the shipped system. Its commands and defaults are in
   directory.
 - `"$LIBS"/libkbase/*.c`, `"$LIBS"/libkcolor/*.c` — Compile both libraries into the binary. A
   `libk*` library is a directory of sources, never an installed archive; see
-  [How the libraries are built](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/c-libraries.md#how-the-libraries-are-built).
+  [How the libraries are built](../../../docs/kdos/05-developer/c-libraries.md#how-the-libraries-are-built).
   The palette and the hue mapping come from libkcolor, so a theme generated here and the colours
   the desktop draws in are the same numbers.
 - `-O2`, `-Wall`, `-Wextra` — The tree's optimisation level, named again, and the compiler's

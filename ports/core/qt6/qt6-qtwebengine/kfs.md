@@ -2,8 +2,8 @@
 [Qt WebEngine]{.idx} is Chromium's web engine wrapped as Qt 6 modules: QtWebEngineCore, the
 `QWebEngineView` widget and the `WebEngineView` Qt Quick type, with the `QtWebEngineProcess`
 helper that runs each page's renderer. The same build produces [Qt PDF]{.idx}, Chromium's PDF
-renderer as the QtPdf and QtPdfWidgets libraries. Qt applications that show web content, help
-pages or PDFs link it, and the Python bindings are
+renderer as the QtPdf and QtPdfWidgets libraries and their Qt Quick types. Qt applications that
+show web content, help pages or PDFs link it, and the Python bindings are
 [python3-pyqt6-webengine](#port-python3-pyqt6-webengine).
 
 The Chromium source is bundled inside the Qt release archive, under `src/3rdparty/chromium`, and
@@ -19,8 +19,9 @@ this port follows Qt WebEngine's own release schedule and is built against which
   such as `__DATE__` or `__TIME__`.
 - `-Wno-deprecated-declarations` — silence the warning for every use of a declaration marked
   deprecated.
-- `NINJAFLAGS="$MAKEFLAGS"` — the job limit of the Chromium ninja run inside Qt's build. It reads
-  no other; unset, it starts a job per core, each taking 2 to 3 GB of memory.
+- `NINJAFLAGS="$MAKEFLAGS"` — the job limit of the Chromium ninja run inside Qt's build, which
+  passes this variable's words to that ninja and reads no other; unset, ninja starts its own
+  default of two more jobs than there are processors, each taking 2 to 3 GB of memory.
 - `NODEJS_EXECUTABLE=/usr/bin/node` — the Node.js the build runs its JavaScript tools with, among
   them the DevTools front end's build scripts. Chromium's `node.py` refuses to run without the
   variable, and Qt's ninja step also sets it, to the `node` its configure found;
@@ -34,8 +35,9 @@ this port follows Qt WebEngine's own release schedule and is built against which
 - `-DFEATURE_webengine_rust_build=OFF` — leave out the parts of Chromium written in Rust, which
   need a Rust toolchain with bindgen and libclang. Upstream's default, named.
 - `-DFEATURE_webengine_jumbo_build=8` — compile Chromium's sources in jumbo units, up to 8 files
-  merged into each, which shortens the build. A number in place of `ON` sets the merge limit; 8 is
-  the limit upstream assumes, and jumbo units are off by upstream's default.
+  merged into each, which shortens the build. A number in place of `ON` sets the merge limit. 8 is
+  upstream's default limit, named; at 8 or below, Qt leaves Chromium's `browser` sources out of
+  the jumbo units.
 - `-DFEATURE_webengine_developer_build=OFF` — with `-DFEATURE_webengine_full_debug_info=OFF`,
   `-DFEATURE_webengine_embedded_build=OFF` and `-DFEATURE_webenginedriver=OFF`: no developer
   configuration, no full debug information for Blink and V8, no embedded-device configuration and
@@ -63,8 +65,9 @@ this port follows Qt WebEngine's own release schedule and is built against which
 - `-DFEATURE_webengine_system_icu=ON` — and the other `system_` switches set on: link the tree's
   ICU, GLib, zlib, minizip, libpng, libjpeg-turbo, libtiff, libwebp, OpenJPEG, Opus, Little CMS,
   HarfBuzz, FreeType, pciutils' libpci and libudev rather than Chromium's bundled copies.
-- `-DFEATURE_webengine_system_ffmpeg=OFF` — Chromium's bundled FFmpeg: the [ffmpeg](#port-ffmpeg)
-  port is a newer major version than Chromium's media code accepts.
+- `-DFEATURE_webengine_system_ffmpeg=OFF` — Chromium's bundled FFmpeg. Upstream's configure test
+  for a system FFmpeg calls `av_stream_get_first_dts()`, which the [ffmpeg](#port-ffmpeg) port's
+  libavformat does not have, so the switch cannot be on with this tree's FFmpeg.
 - `-DFEATURE_webengine_system_libvpx=OFF` — Chromium's bundled libvpx: upstream builds VA-API only
   without a system libvpx.
 - `-DFEATURE_webengine_system_libxml=OFF` — Chromium's bundled libxml2 and libxslt: Blink's XSLT

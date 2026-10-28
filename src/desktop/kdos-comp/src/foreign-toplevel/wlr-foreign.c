@@ -146,9 +146,9 @@ handle_maximized(struct wl_listener *listener, void *data)
 }
 
 /*
- * KDOS: a view on another workspace is reported MINIMIZED. The pre-fork
- * compositor did, and kdos-shell's workspace-occupancy derivation and
- * window-list dimming are both built on it — ext-workspace-v1 has no
+ * KDOS: a view on another workspace is reported MINIMIZED.
+ * kdos-shell's workspace-occupancy derivation and window-list dimming
+ * are both built on it — ext-workspace-v1 has no
  * "there are windows here" state, so the panel derives occupancy from
  * exactly this. Omnipresent views are on every workspace by definition.
  */

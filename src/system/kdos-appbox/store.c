@@ -202,9 +202,12 @@ int store_containerfile(const CatPack *p, const CatPack *parent,
 	    !addf(out, n, "dpkg --add-architecture i386 && "))
 		return -1;
 
-	/* NOT EVERY APPLICATION IS IN DEBIAN. A `deb` row fetches the newest
-	 * asset matching its pattern and lets apt resolve its dependencies,
-	 * which is why the fetch is part of the same RUN. */
+	/* NOT EVERY APPLICATION IS IN DEBIAN. A `deb` row asks its release URL
+	 * (a `releases/latest` answer names the newest release), takes the
+	 * first asset whose download URL matches its pattern, and lets apt
+	 * resolve its dependencies, which is why the fetch is part of the same
+	 * RUN. A pattern that matches two assets gets whichever is listed
+	 * first. */
 	have_deb = cat_deb(p->id, url, sizeof(url), pat, sizeof(pat)) == 0;
 	if (have_deb &&
 	    !addf(out, n,
@@ -362,8 +365,11 @@ static int extract_entries(const char *id, const char *root)
 }
 
 /*
- * Regenerate the user's launchers from every store box that exists. Called
- * after an install and after an uninstall, because both change the set.
+ * Regenerate the user's launchers from every store box that exists AND every
+ * installed app pack. Called after an install, an uninstall and an import,
+ * and by `genlaunchers --packs --user`: the user tree is written whole, so a
+ * regeneration from either source alone deletes the other's launchers. With
+ * no catalogue or no podman answer it is the pack walk alone.
  */
 int store_launchers(void)
 {
@@ -374,8 +380,10 @@ int store_launchers(void)
 	char err[256];
 	int n = 0;
 
-	if (!cat_count() && cat_load(NULL, err, sizeof(err)) != 0)
-		return -1;
+	if (!cat_count() && cat_load(NULL, err, sizeof(err)) != 0) {
+		cmd_genlaunchers(NULL, NULL, 1, 0);
+		return 0;
+	}
 
 	kb_argv_add(&a, "podman");
 	kb_argv_add(&a, "ps");
@@ -383,8 +391,10 @@ int store_launchers(void)
 	kb_argv_add(&a, "--format");
 	kb_argv_add(&a, "{{.Names}}");
 	kb_argv_end(&a);
-	if (kb_run_capture(&a, boxes, sizeof(boxes)) != 0)
-		return -1;
+	if (kb_run_capture(&a, boxes, sizeof(boxes)) != 0) {
+		cmd_genlaunchers(NULL, NULL, 1, 0);
+		return 0;
+	}
 
 	snprintf(root, sizeof(root), "%s/kdos-launchers-%u",
 		 kb_runtime_dir(), (unsigned)getpid());
@@ -399,8 +409,16 @@ int store_launchers(void)
 		 * desktop's business. */
 		if (!p || strcmp(p->kind, "app"))
 			continue;
-		if (extract_entries(line, root) == 0)
-			n++;
+		/* A command-only row has no applications directory to copy
+		 * and is still a box with commands: extract_entries made its
+		 * directory, and genlaunchers takes its `cmd` rows. */
+		{
+			char cmds[1][64];
+
+			if (extract_entries(line, root) == 0 ||
+			    cat_cmds(line, cmds, 1) > 0)
+				n++;
+		}
 	}
 	if (n)
 		cmd_genlaunchers(root, NULL, 1, 1);
@@ -632,10 +650,12 @@ int store_uninstall_many(const char *const *ids, int n)
  * A SET, AS SIGNED PACKS IN ONE FILE.
  *
  * WHY PACKS AND NOT `podman save`. A store install is unsigned content from
- * somebody else's registry; a pack is hashed and signature-checked by
- * kdos-packd WHERE IT MOUNTS IT. Exporting as packs is what makes an imported
- * application verified where a store-installed one is not, and it is the only
- * route to software on a machine with no network.
+ * somebody else's registry; a pack is installed through kdos-packd, which
+ * hashes its payload against the pack's own footer and checks a signature
+ * block when the pack carries one. The packs built here carry none, so the
+ * footer hash catches a damaged file and not a tampered one: whoever can
+ * rewrite the payload can rewrite the footer. It is the only route to
+ * software on a machine with no network.
  *
  * `podman export` AND NOT THE OVERLAY STORE. An image's own content is spread
  * across its layers and only the export flattens them — the same reason the
@@ -793,20 +813,57 @@ static int flatten(const char *id, const char *dir)
 	return rc;
 }
 
+/*
+ * THE CATALOGUE'S ROWS TRAVEL WITH THE PACK. An exported pack is a flattened
+ * stack read by the pack lane, which asks the pack's own metadata and never
+ * the catalogue: the stack's `env` rows are what pack_env() exports at a
+ * launch, a data row's `graft`/`boxgraft` are what kdos-packd lands, and
+ * `needs` and `cmd` are recorded for `kdos-pack info` to print. Written
+ * only where kpk_meta_valid() allows them — grafts on a data pack, commands
+ * never on one — or kdos-pack refuses the build.
+ */
 static int write_meta(const CatPack *p, const char *path)
 {
 	KbBuf m = {0};
+	int data = !strcmp(p->kind, "data");
 	int rc;
 
 	kb_buf_printf(&m, "id          = %s\n", p->id);
 	kb_buf_printf(&m, "kind        = %s\n", p->kind);
 	kb_buf_printf(&m, "version     = %ld\n", (long)time(NULL));
 	kb_buf_printf(&m, "release     = 1\n");
-	/* `name` must not be the id — kpk_meta_valid refuses that. */
+	/* `name` is written only when it differs from the id: the id already
+	 * names the pack, and a `name` that repeats it says nothing more. */
 	if (strcmp(p->name, p->id))
 		kb_buf_printf(&m, "name        = %s\n", p->name);
 	if (p->tagline[0])
 		kb_buf_printf(&m, "summary     = %s\n", p->tagline);
+	if (data) {
+		char from[16][256], to[16][256];
+		int ng;
+
+		ng = cat_grafts(p->id, 0, from, to, 16);
+		for (int i = 0; i < ng; i++)
+			kb_buf_printf(&m, "graft       = %s %s\n", from[i],
+				      to[i]);
+		ng = cat_grafts(p->id, 1, from, to, 16);
+		for (int i = 0; i < ng; i++)
+			kb_buf_printf(&m, "boxgraft    = %s %s\n", from[i],
+				      to[i]);
+	} else {
+		char env[PACK_ENV_MAX][256], cmds[16][64];
+		char needs[8][CAT_ID_MAX];
+		int ne = cat_env(p->id, env, PACK_ENV_MAX);
+		int nc = cat_cmds(p->id, cmds, 16);
+		int nn = cat_needs(p->id, needs, 8);
+
+		for (int i = 0; i < ne; i++)
+			kb_buf_printf(&m, "env         = %s\n", env[i]);
+		for (int i = 0; i < nc; i++)
+			kb_buf_printf(&m, "command     = %s\n", cmds[i]);
+		for (int i = 0; i < nn; i++)
+			kb_buf_printf(&m, "needs       = %s\n", needs[i]);
+	}
 	rc = kb_write_all(path, m.p, m.n);
 	kb_buf_free(&m);
 	return rc;
@@ -899,9 +956,11 @@ int store_export(const char *out, const char *const *ids, int n)
 
 	/*
 	 * `kdos-pack index --sign` when a key is readable, and WITHOUT one
-	 * otherwise — plainly said. An unsigned archive still imports and
-	 * kdos-packd still checks every hash against the index, but nobody may
-	 * be left thinking it was signed when it was not.
+	 * otherwise — plainly said, so nobody is left thinking it was signed
+	 * when it was not. Import stages a signed index beside the packs, and
+	 * kdos-packd accepts a pack whose hash a signed index it trusts lists;
+	 * an unsigned index is not staged, and a pack built here carries no
+	 * signature block, so it is installed as unsigned and logged so.
 	 */
 	kb_argv_add(&a, "kdos-pack");
 	kb_argv_add(&a, "index");
@@ -913,8 +972,8 @@ int store_export(const char *out, const char *const *ids, int n)
 			kb_argv_add(&a, key);
 		} else {
 			printf("==> no signing key (KDOS_PACK_KEY) — the index "
-			       "is UNSIGNED; every hash is still checked at the "
-			       "mount\n");
+			       "is UNSIGNED, and an import treats these packs "
+			       "as unsigned\n");
 		}
 	}
 	kb_argv_end(&a);
@@ -952,10 +1011,14 @@ int store_export(const char *out, const char *const *ids, int n)
 /* ── import ────────────────────────────────────────────────────────────── */
 
 /*
- * AN IMPORTED APPLICATION IS VERIFIED WHERE A STORE-INSTALLED ONE IS NOT.
- * Every pack goes through kdos-packd, which hashes it against its own footer
- * and checks the signature AT THE MOUNT — so a tampered pack produces a mount
- * that fails rather than an application that runs.
+ * EVERY PACK GOES THROUGH kdos-packd's `install`, which hashes its payload
+ * against its own footer and checks a signature block when the pack carries
+ * one — so a damaged pack is refused rather than installed. The packs
+ * `export` builds carry no signature block of their own: a set exported with
+ * a key is covered by its signed index, which store_import stages beside
+ * them, and a set exported without one has only the footer hash, which does
+ * not catch a pack whose payload and footer were rewritten together. A pack
+ * in the store is not hashed again at mount.
  *
  * THE DAEMON IS HANDED A FILENAME IN ITS OWN STAGING DIRECTORY AND NEVER A
  * PATH. That is the rule the whole daemon is built on and it is what keeps
@@ -965,7 +1028,8 @@ int store_export(const char *out, const char *const *ids, int n)
  * still imports: one bad member is not a reason to refuse software that
  * verified perfectly.
  */
-static int stage_and_install(const char *file, char *idout, size_t idn)
+static int stage_and_install(const char *file, const char *index,
+			     char *idout, size_t idn)
 {
 	char *staging, *dst;
 	char req[512], msg[512] = "";
@@ -983,7 +1047,10 @@ static int stage_and_install(const char *file, char *idout, size_t idn)
 		free(dst);
 		return -1;
 	}
-	snprintf(req, sizeof(req), "install %s", base);
+	if (index)
+		snprintf(req, sizeof(req), "install %s %s", base, index);
+	else
+		snprintf(req, sizeof(req), "install %s", base);
 	rc = packd_ask(req, msg, sizeof(msg));
 	if (rc != 0) {
 		unlink(dst);
@@ -999,14 +1066,116 @@ static int stage_and_install(const char *file, char *idout, size_t idn)
 	return 0;
 }
 
+/*
+ * A DATA PACK IS GRAFTED, NOT BOXED. kdos-packd refuses to compose one into a
+ * root filesystem, so a box made over it would never start; what makes it
+ * reach a program is its `graft`/`boxgraft` lines, which the daemon lands on
+ * `graft <id>`. The kind is read back from `info` rather than from the
+ * catalogue, because the pack is what was installed and the catalogue may not
+ * be the one it was exported from. Answers 1 for a data pack (grafted or
+ * not), 0 for any other.
+ */
+static int graft_if_data(const char *id)
+{
+	char req[256], info[8192], msg[512];
+	char *line, *save;
+	int data = 0;
+
+	snprintf(req, sizeof(req), "info %s", id);
+	if (packd_ask(req, info, sizeof(info)) != 0)
+		return 0;
+	for (line = strtok_r(info, "\n", &save); line;
+	     line = strtok_r(NULL, "\n", &save)) {
+		if (!strncmp(line, "kind", 4) && strstr(line, "= data")) {
+			data = 1;
+			break;
+		}
+	}
+	if (!data)
+		return 0;
+	snprintf(req, sizeof(req), "graft %s", id);
+	if (packd_ask(req, msg, sizeof(msg)) == 0)
+		printf("  %s\n", msg);
+	else
+		fprintf(stderr, "  %s: installed, not grafted: %s\n", id,
+			msg[0] ? msg : "kdos-packd is not running");
+	return 1;
+}
+
+/*
+ * THE SET'S INDEX GOES INTO STAGING WITH ITS PACKS, under a name this import
+ * owns. A pack whose hash a signed index lists is accepted on that signature,
+ * and staged alone every pack of a signed set would be installed as unsigned,
+ * so each `install` names the index (`PACKAGES.<pid>`, its signature beside
+ * it as `PACKAGES.<pid>.sig`). The daemon reads only an index a request
+ * names: another import, or a single `kdos-box import`, running meanwhile is
+ * judged on its own index or none. Only a signed index is staged — an
+ * unsigned one vouches for nothing — and it is taken away when the import
+ * ends.
+ */
+static const char *const index_files[2] = { "PACKAGES", "PACKAGES.sig" };
+
+static void index_name(char *out, size_t n, int sig)
+{
+	snprintf(out, n, "PACKAGES.%u%s", (unsigned)getpid(), sig ? ".sig" : "");
+}
+
+static void unstage_index(void)
+{
+	char *staging = kb_path_join(pack_store(), "staging");
+
+	for (int i = 0; i < 2; i++) {
+		char name[64], *p;
+
+		index_name(name, sizeof(name), i);
+		p = kb_path_join(staging, name);
+		unlink(p);
+		free(p);
+	}
+	free(staging);
+}
+
+/* Answers 1 with `name` set to the staged index, or 0 with none staged. */
+static int stage_index(const char *root, char *name, size_t n)
+{
+	char *staging;
+	int ok = 1;
+
+	for (int i = 0; i < 2 && ok; i++) {
+		char *src = kb_path_join(root, index_files[i]);
+		ok = kb_path_exists(src);
+		free(src);
+	}
+	if (!ok)
+		return 0;
+	staging = kb_path_join(pack_store(), "staging");
+	for (int i = 0; i < 2 && ok; i++) {
+		char dname[64], *src, *dst;
+
+		index_name(dname, sizeof(dname), i);
+		src = kb_path_join(root, index_files[i]);
+		dst = kb_path_join(staging, dname);
+		ok = kb_copy_file(src, dst) == 0;
+		free(src);
+		free(dst);
+	}
+	free(staging);
+	if (!ok) {
+		unstage_index();
+		return 0;
+	}
+	index_name(name, n, 0);
+	return 1;
+}
+
 int store_import(const char *archive, const char *const *ids, int n)
 {
-	char root[MAX_LINE], selp[MAX_LINE + 32];
+	char root[MAX_LINE], selp[MAX_LINE + 32], index[64] = "";
 	char want[CAT_MAX_PACKS][CAT_ID_MAX];
 	char *sel;
 	size_t sn = 0;
 	KbArgv t = {0};
-	int nw = 0, done = 0, failed = 0;
+	int nw = 0, done = 0, failed = 0, staged_index;
 
 	setvbuf(stdout, NULL, _IOLBF, 0);
 	if (!kb_path_exists(archive)) {
@@ -1044,6 +1213,7 @@ int store_import(const char *archive, const char *const *ids, int n)
 		free(sel);
 	}
 
+	staged_index = stage_index(root, index, sizeof(index));
 	for (int i = 0; i < nw; i++) {
 		char id[CAT_ID_MAX], kpack[MAX_LINE + CAT_ID_MAX + 32];
 		char got[CAT_ID_MAX] = "";
@@ -1057,8 +1227,13 @@ int store_import(const char *archive, const char *const *ids, int n)
 			continue;
 		}
 		printf("==> %s\n", id);
-		if (stage_and_install(kpack, got, sizeof(got)) != 0) {
+		if (stage_and_install(kpack, staged_index ? index : NULL, got,
+				      sizeof(got)) != 0) {
 			failed++;
+			continue;
+		}
+		if (graft_if_data(got[0] ? got : id)) {
+			done++;
 			continue;
 		}
 		kb_argv_add(&c, "kdos-box");
@@ -1074,6 +1249,8 @@ int store_import(const char *archive, const char *const *ids, int n)
 		}
 		done++;
 	}
+	if (staged_index)
+		unstage_index();
 
 	if (done)
 		store_launchers();

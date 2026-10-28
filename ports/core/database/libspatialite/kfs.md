@@ -8,14 +8,14 @@ are built on it.
 ## Flags
 - `--enable-mathsql`, `--enable-proj`, `--enable-iconv`, `--enable-freexl=yes`, `--enable-epsg`,
   `--enable-geos`, `--enable-gcp`, `--enable-geosadvanced`, `--enable-geosreentrant`,
-  `--enable-rttopo`, `--enable-libxml2`, `--enable-minizip`, `--enable-geopackage` — Every
-  feature, each upstream's default written out: SQL math functions, coordinate transformations with
-  [proj](#port-proj), character set conversion, reading spreadsheets with [freexl](#port-freexl),
-  the full EPSG dataset of coordinate systems, geometry operations with [geos](#port-geos),
-  with its advanced functions and its thread-safe interface, ground control points from GRASS GIS, topology with
-  [librttopo](#port-librttopo), XML documents with [libxml2](#port-libxml2), zip archives with
-  [minizip](#port-minizip), and GeoPackage support. Each library is required once its feature is
-  on: configure stops when it is missing.
+  `--enable-rttopo`, `--enable-libxml2`, `--enable-minizip`, `--enable-geopackage` — Features
+  that are on by upstream's default, written out: SQL math functions, coordinate transformations
+  with [proj](#port-proj), character set conversion, reading spreadsheets with
+  [freexl](#port-freexl), the full EPSG dataset of coordinate systems, geometry operations with
+  [geos](#port-geos), with its advanced functions and its thread-safe interface, ground control
+  points from GRASS GIS, topology with [librttopo](#port-librttopo), XML documents with
+  [libxml2](#port-libxml2), zip archives with [minizip](#port-minizip), and GeoPackage support.
+  Each library is required once its feature is on: configure stops when it is missing.
 - `--enable-examples=no` — Build none of the example programs.
 
 ## Patches

@@ -1,11 +1,11 @@
 ## About
 NSS, Mozilla's Network Security Services, is the TLS, PKCS #11 and certificate library of the
-Mozilla programs and of Chromium: [firefox-esr](#port-firefox-esr), [librewolf](#port-librewolf),
-[thunderbird](#port-thunderbird), [chromium](#port-chromium) and
-[qt6-qtwebengine](#port-qt6-qtwebengine) build on it, and so do
-[libreoffice](#port-libreoffice)'s signing, [volume_key](#port-volume_key) and
-[libcacard](#port-libcacard). It runs on [nspr](#port-nspr) and keeps certificate databases in
-SQLite. The port installs the libraries, the headers, `nss.pc` and `nss-config`, and the tools
+Mozilla programs: [firefox-esr](#port-firefox-esr), [librewolf](#port-librewolf) and
+[thunderbird](#port-thunderbird) build on it. [chromium](#port-chromium) and
+[qt6-qtwebengine](#port-qt6-qtwebengine), whose TLS is BoringSSL, use it for the user's
+certificate and key database and for PKCS #11 tokens, and [libreoffice](#port-libreoffice)'s
+signing, [volume_key](#port-volume_key) and [libcacard](#port-libcacard) build on it too. It runs
+on [nspr](#port-nspr) and keeps certificate databases in SQLite. The port installs the libraries, the headers, `nss.pc` and `nss-config`, and the tools
 `certutil`, `cmsutil`, `crlutil`, `modutil`, `pk12util`, `signtool`, `signver` and `ssltap`.
 
 ## Flags

@@ -2,8 +2,9 @@
 
 Most of this book is package pages, one for every port in the tree, generated from the port's
 recipe each time the book is rendered. This chapter walks through one section by section, says
-where each part of it comes from, and explains the three tiers of page: the full page for a port the book is built around, the
-full page for a port with something unusual about it, and the compact card.
+where each part of it comes from, and explains the three tiers of page: the full page for a port
+the book is built around, the full page for a port with something unusual about it, and the
+compact card.
 
 ## Where a page sits
 
@@ -38,11 +39,10 @@ its *About*, its flag explanations and its *Notes* from a hand-written note besi
 
 **Tier B** is a full page too, for a port that has something unusual about it: its recipe carries a
 patch, it vendors its dependencies, its `build.sh` is longer than 30 lines, or 20 or more ports
-depend on it. Such a port carries the same note, and its page says which of the four reasons
-applies. Every Tier A and Tier B port in the tree has its note; a port that gains a Tier B reason
-without one renders with a line saying the note is missing, and
-[`kfscheck.py`](../../kdos/05-developer/testing.md#kfscheckpy) refuses it when the port is new or
-changed.
+depend on it. Such a port carries the same note, with an *About* or a *Notes* section saying
+why it is unusual. A Tier B port without one renders with a box naming its reasons and saying the
+note is missing, and [`kfscheck.py`](../../kdos/05-developer/testing.md#kfscheckpy) refuses it
+when the port is new or changed.
 
 **Tier C** is a compact card, for every other port. A card holds the same facts as a full page in
 less space, and instead of spelling out the five steps kpkg takes, it links to
@@ -80,16 +80,21 @@ A table of facts follows:
 
 A port that builds from the same source before kpkg exists, in a script of `00_cross` or
 `10_bootstrap`, has a box further down headed *Differs from the bootstrap build*. It links to the
-chapter on that script and lists the switches only the bootstrap build uses and those only the
-port's `build.sh` uses. gcc, binutils, musl and the GNU userland have one, because the bootstrap
-builds them first with the cross compiler and the package phases build them again as ports.
+chapter on that script and lists the switches only the bootstrap build hands to its configure,
+cmake or meson or sets in a `*FLAGS` variable, and those only the port's `build.sh` does. gcc, binutils, musl, linux, and the
+userland the bootstrap compiles (ncurses, xz, readline, bash, make and the GNU tools) have one,
+because the bootstrap builds them first with the cross compiler and the package phases build them
+again as ports. gcc has three, for the cross compiler, libstdc++ and the native compiler.
 
 ## About, and why it is in KDOS
 
 *About* is the sidecar note's own section. *Why it is in KDOS* is the comment written above the
 port's name in the list of the phase that installs it, quoted as it stands, with a link to the list
-file. A comment above a run of several names is shown on each of their pages, and says how many
-names it covers. A port with no comment above it in its phase list has no such section.
+file. A comment above a run of several names is shown on each of their pages, and names the run it
+covers. When a hand-written chapter already quotes that comment, the section links to the chapter
+instead of repeating it. A port with no comment above it in its phase list has no such section, and
+neither does one whose comment is a single phrase of five words or fewer, which says less than the
+description under the heading.
 
 ## Sources
 
@@ -112,8 +117,8 @@ after what it needs.
 feature whose library is itself a port in this tree, such as a `--without-` or `-DENABLE_...=OFF`
 for something KDOS builds, as found by `testing/optdeps.py`. The page cannot say whether each one
 is deliberate, or a feature switched off when the port was written because its dependency did not
-exist yet; it shows them so that someone can find out. A switch the page's own notes explain is
-marked as explained below.
+exist yet; it shows them so that someone can find out. A switch the note's *Flags* section explains
+is marked as explained with the switches below.
 
 ## Patches
 
@@ -141,20 +146,23 @@ yourself in the chroot, with the port's own file names and paths filled in:
 
 1. **Verify** every file a `sha256 =` line names against its hash, before anything is unpacked.
 2. **Unpack** the first source into `$SRC`, with its top directory stripped, and any further
-   tarball beside it in `$SRC_ROOT`, after emptying the port's work directory. Old copies of
-   `config.guess` and `config.sub` are then replaced with automake's.
+   tarball beside it in `$SRC_ROOT`, after emptying the port's work directory; a source that is not
+   a tarball is copied into `$SRC`. Old copies of `config.guess` and `config.sub` are then replaced
+   with automake's.
 3. **Build**: the port's `build.sh`, shown verbatim, run under `set -e` from `$SRC`. On a Tier A
    or Tier B page whose note has a *Flags* section, the explanation of each switch follows the
    listing. The common switches of each build system are explained in the
-   [Flag glossary](../17-appendices/flag-glossary.md), which the step links. A `postinstall.sh`, when the port has one, is shown here too, with a line saying it runs
-   on the installed system after the package is adopted.
+   [Flag glossary](../17-appendices/flag-glossary.md), which the step links. A `postinstall.sh`,
+   when the port has one, is shown here too, with a line saying it runs on the installed system
+   after the package is adopted.
 4. **Package**: what kpkg removes from and adds to the staged tree in `$PKG`, and the `tar` command
    that rolls it into `<name>-<version>-<release>.tar.xz`. The command shown carries the
    compressor settings of a package that is kept, `xz -9`; a package deleted again as soon as it is
    installed, which is every package of an ordinary `make build`, is compressed with `xz -0`, which
    gives the same contents in a larger file.
-5. **Adopt**: kpkgadd places the files over the root, refusing a path another package owns, and
-   records the package in the database under `/var/lib/kpkg/db`.
+5. **Adopt**: kpkgadd places the files over the root, refusing a path another package owns,
+   records the package in the database under `/var/lib/kpkg/db`, and runs the triggers its paths
+   call for.
 
 Every one of these steps, and what each refuses, is explained once with a real port in
 [Anatomy of a kpkg install](../04-chroot/kpkg-install.md).
@@ -165,13 +173,14 @@ desktop entry, a line after the steps names them.
 ## Contents
 
 What the package installed, as recorded by the build-state snapshot: its programs, the files under
-a `bin` or `sbin` directory; its libraries, the shared and static ones under `/usr/lib`; and its
-directories, the topmost directories no other package shares. *Short descriptions* gives the
-one-line `NAME` description of each program that has a manual page in section 1, 6 or 8, and the
-`Description:` line of each `.pc` file the package installs.
+a `bin` or `sbin` directory; its libraries, the shared and static ones directly in `/usr/lib` or
+`/lib`; and its directories, the topmost directories no other package shares. *Short descriptions*
+gives the one-line `NAME` description of each program that has a manual page in section 1, 6 or 8,
+and the `Description:` line of each `.pc` file the package installs.
 
 The HTML edition then lists every file the package installed, read from the package database of
-the tree the book was rendered with. The PDF leaves the list out.
+the built tree the book was rendered with. The PDF leaves the list out, and so does an HTML edition
+rendered without a built tree, as the one on the project's pages is.
 
 A port that no phase installs, or that the snapshot's tree had not reached, says so in place of its
 contents.
@@ -187,8 +196,11 @@ changes, an ordering constraint with another port, a trap someone has already fa
 version and release, the licence, the build time when there is one, the installed size and file
 count, the phase and the port's place in its order, and a link to the port directory. Then come the
 homepage, *why it is in KDOS* when its phase list has a comment for it, the dependencies, the source
-files with their sizes, and the one install command. Its `build.sh` follows verbatim, then the
-programs, libraries and directories it installed, and in the HTML edition its full file list.
+files with their sizes, the *Differs from the bootstrap build* box and the *Optional, off in KDOS*
+list when they apply, and the one install command. Its `build.sh` follows verbatim, then the
+programs, libraries and directories it installed, and in the HTML edition its full file list. A Tier C port
+may still carry a `kfs.md`; its *About* then follows *why it is in KDOS*, its *Flags* follow the
+`build.sh`, and its *Notes* close the card.
 
 Everything that a full page spells out step by step, the verification, the unpacking, the
 packaging and the adoption, applies to a card's port in exactly the same way. The card links to

@@ -17,13 +17,14 @@
  *      style custom properties in :root, and the stray hex in helper classes,
  *      so nothing anywhere stays blue.
  *
- *   2. The ~48 semantic names (window/view/headerbar/sidebar/card/popover/
+ *   2. The 50 semantic names (window/view/headerbar/sidebar/card/popover/
  *      dialog/accent/destructive/success/warning/error) are then overwritten
  *      outright. These are what a widget actually resolves, so this is where
  *      the KDOS look is decided, and it is deliberately not left to a hue
  *      rotation of somebody else's grey.
  *
- * Fill colours use the DIM accent, never the full-intensity one: a 100%-filled
+ * Fill colours (accent_bg, success_bg, theme_selected_bg) use the scheme's
+ * DARK accent, `pdark`, never the full-intensity primary: a 100%-filled
  * GIMP opacity slider painted #39ff14 is an unreadable neon block.
  * ---------------------------------
  */
@@ -174,8 +175,10 @@ static int is_space(char c)
  * The end of a `\s*$` in MULTILINE. `$` matches at end of input or just
  * before a newline, and `\s*` is GREEDY — so a definition sitting at the end
  * of the file swallows the file's final newline, and one followed by a blank
- * line swallows that newline too. Reproducing that is not pedantry: without
- * it every generated stylesheet differs from the python one by a byte.
+ * line swallows that newline too. Reproducing that is not pedantry: a
+ * rewritten definition replaces the whole match, so the swallowed newline is
+ * dropped from the output, and a match that stopped short would keep it and
+ * change every generated stylesheet by a byte.
  *
  * Returns the end of the match, or (size_t)-1 if `\s*$` cannot succeed here.
  */
@@ -376,8 +379,8 @@ static int copy_assets(const char *src, const char *out, const char *sub)
  *
  * A NAME THAT DOES NOT CHANGE IS A THEME GTK DOES NOT RELOAD: the cascade is
  * rebuilt when the `gtk-theme-name` setting moves and at no other time, so an
- * accent switch that rewrote one fixed directory reached the next launch of an
- * application and never the one already on the screen.
+ * accent switch that rewrote one fixed directory would reach the next launch
+ * of an application and never the one already on the screen.
  */
 static const char INDEX_FMT[] =
 	"[Desktop Entry]\n"

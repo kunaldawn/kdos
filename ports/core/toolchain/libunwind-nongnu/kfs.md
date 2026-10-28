@@ -8,7 +8,7 @@ and `libunwind-coredump` that of a core file. [htop](#port-htop)'s backtrace scr
 It is distinct from LLVM's libunwind, the C++ unwinder of the same name, which the tree keeps
 under a private prefix; `/usr/include/libunwind.h`, `libunwind.so` and the `libunwind*.pc` files
 are this port's. See
-[A second version beside the first](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#a-second-version-beside-the-first).
+[A second version beside the first](../../../../docs/kdos/05-developer/writing-ports.md#a-second-version-beside-the-first).
 
 ## Flags
 - `--disable-unwind-header` — Do not install libunwind's `unwind.h`. GCC and clang each

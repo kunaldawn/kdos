@@ -16,10 +16,11 @@ replace each link with the installed automake's copy before `configure` runs.
 - `--remove-destination` — Remove each symbolic link before copying over it, so the copy lands in
   the source directory instead of following the link to a directory that does not exist.
 - `docdir=/usr/share/doc` — `configure.in` sets `docdir` to `$(prefix)/doc` and offers no switch
-  for it, so it is overridden on the `make install` line. The HTML manual goes under
-  `/usr/share/doc/sgml-common-<version>/html` instead of `/usr/doc`, where kpkg's prune removes it,
-  as it removes HTML manuals from every package; of the documentation, only the
-  `install-catalog(8)` manual page ships.
+  for it, so it is overridden on the `make install` line. The HTML manual then goes under
+  `/usr/share/doc/sgml-common-<version>/html` instead of `/usr/doc/…`, a directory kpkg's prune
+  never looks in. Under `/usr/share/doc` the prune removes the `html` directory, as it removes HTML
+  manuals from every package, so of the documentation only the `install-catalog(8)` manual page
+  ships.
 
 ## Notes
 

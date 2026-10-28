@@ -17,15 +17,16 @@
  *
  * Two reasons, and both are structural rather than stylistic:
  *
- *   - `kdos-appbox run` EXECS distrobox. The process is replaced, so it cannot
+ *   - `kdos-appbox run` EXECS podman. The process is replaced, so it cannot
  *     hold anything for the box's lifetime — and close_fd's whole contract is
  *     that the sandbox lives exactly as long as the fd stays open. Somebody has
  *     to outlive the launch.
- *   - kdos-appbox links libkbase, libktui and libkcolor and nothing else. That
- *     is a documented property of the program, not an accident. Speaking a
- *     Wayland protocol means libwayland-client and generated protocol code;
- *     putting that in kdos-appbox would cost it that property for a job that is
- *     ~200 lines and belongs to the desktop rather than to the box manager.
+ *   - kdos-appbox links libkbase, libktui, libkcolor and libkxdg and nothing
+ *     else. That is a documented property of the program, not an accident.
+ *     Speaking a Wayland protocol means libwayland-client and generated
+ *     protocol code; putting that in kdos-appbox would cost it that property
+ *     for a job that is ~200 lines and belongs to the desktop rather than to
+ *     the box manager.
  *
  * So kdos-appbox execs this, detached, and sets WAYLAND_DISPLAY for the box to
  * the socket this created. No fd is passed between them and no protocol runs
@@ -41,8 +42,8 @@
  */
 
 /* Guarded: libkbase needs -D_GNU_SOURCE on the command line, and an
- * unconditional define here collides with it under -Werror — which is what kept
- * this file out of testing/selftest.sh's compile gate. */
+ * unconditional define here collides with it under -Werror and fails
+ * testing/selftest.sh's compile gate. */
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
@@ -157,7 +158,7 @@ static int listen_socket(const char *path)
  * path would be the FIRST launch's compositor for ever after:
  * the second launch of the same application finds the file already there,
  * connects to it, and its window opens inside the first launch's window.
- * kdos-boxsock derives the same component from the same variable, which is
+ * kdos-appbox derives the same component from the same variable, which is
  * what keeps the two in step with nothing passed between them.
  *
  * Twelve characters, because the whole path has to fit a sockaddr_un's 108 and

@@ -303,9 +303,9 @@ sound_thread (void *unused)
 
 /*
  * Answers whether the caller must fall back to the timer. A pthread_create
- * that fails must leave the mixer pumped by SOMETHING — reporting the failure
- * only through `sound_threaded` was a hole: play() had already chosen the
- * thread branch by then, so the timer was never created and nothing fed the
+ * that fails must leave the mixer pumped by SOMETHING, and play() creates
+ * the timer on this return alone: a failure reported only through
+ * `sound_threaded` would leave the timer uncreated and nothing feeding the
  * card at all.
  */
 static int

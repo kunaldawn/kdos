@@ -2,7 +2,7 @@
 skalibs is skarnet.org's general-purpose C library, `libskarnet`, the base every other skarnet
 program is written on. In KDOS it is there for [utmps](#port-utmps), the login-records service that
 `who`, `last`, `login` and the rest read and write through (see
-[Login records](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/boot-and-init.md#login-records)),
+[Login records](../../../../docs/kdos/03-architecture/boot-and-init.md#login-records)),
 and for [execline](#port-execline) and [s6](#port-s6), whose `s6-ipcserver`, `s6-setuidgid` and
 `execline-cd` run utmps' two daemons. Every program built against utmps also
 links libskarnet: [coreutils](#port-coreutils) passes `LIBS="-lutmps -lskarnet"`.
@@ -18,7 +18,7 @@ own options and defaults.
 - `--disable-rpath` — Do not embed an `RPATH` naming the library directory in the shared library,
   which upstream does by default. With `--prefix=/usr` that entry would be `/usr/lib`, a directory
   the loader searches anyway, and the package lint warns about such an entry (see
-  [The package lint](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/packaging.md#the-package-lint)).
+  [The package lint](../../../../docs/kdos/03-architecture/packaging.md#the-package-lint)).
 
 ## Notes
 The package installs `/usr/lib/skalibs/sysdeps`, the record of what configure found on this system.

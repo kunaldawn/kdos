@@ -2,10 +2,11 @@
 
 GdkPixbuf is GNOME's image-loading library: it decodes an image file into a `GdkPixbuf`, an
 in-memory RGB or RGBA image, through a set of loaders, one per format, and scales and composites
-the result. GTK 3 and GTK 4 load every icon and picture through it, as do
-[libnotify](#port-libnotify), [librsvg](#port-librsvg) (whose SVG loader plugs into it) and the
-many other ports that name it. Its commands include `gdk-pixbuf-query-loaders`, which writes the cache of
-installed loaders, and `gdk-pixbuf-thumbnailer`.
+the result. GTK 3 loads its icons and pictures through it, and GTK 4 every format it does not
+decode itself; [libnotify](#port-libnotify), [librsvg](#port-librsvg) (whose SVG loader plugs into
+it) and the many other ports that name it load images through it too. Its commands include
+`gdk-pixbuf-query-loaders`, which writes the cache of installed loaders, and
+`gdk-pixbuf-thumbnailer`.
 
 ## Flags
 
@@ -28,5 +29,9 @@ installed loaders, and `gdk-pixbuf-thumbnailer`.
   and librsvg's own introspection data include it, so their GIRs cannot be generated without it. It
   is generated against the GLib GIR files that [glib-introspection](#port-glib-introspection)
   installs, which is why that port is in `depends`.
-- `-D installed_tests=false` — Install none of the test programs, which upstream installs by
-  default.
+- `-D man=true` — Build the manual pages of the commands with `rst2man`, from
+  [python3-docutils](#port-python3-docutils). It is upstream's default, and with it a missing
+  `rst2man` stops the configuration instead of leaving the pages out.
+- `-D tests=false`, `-D installed_tests=false` — Build no test suite. Upstream builds and installs
+  the test programs by default; `installed_tests` takes effect only while `tests` is on, and is
+  named so that turning the tests on does not also put them in the package.

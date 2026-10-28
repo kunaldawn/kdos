@@ -85,18 +85,21 @@ five layers, from language modules through the system, the graphics stack and th
 applications (`40_lang` to `44_apps`), then the desktop (`50_desktop`), then the kernel
 (`60_kernel`), and finally packs the result into an ISO (`70_image`). The two scripts run in
 `10_bootstrap`: `120_kpkg.sh` compiles `kpkg` from `src/system/kdos-kpkg`, and `130_kinstall.sh`
-compiles `kinstall` from `src/system/kdos-installer`, because nothing can be installed as a package
-until `kpkg` exists. The finished system has no base image beneath it and no binary archive to fall
-back on: the container the build runs in, an Alpine 3.23 image with a host compiler, supplies the
-tools that build the cross toolchain and the first userland, and nothing from it is installed. Every
-recipe that a phase list (`script/phases/*/packages.txt` or `packages.d/`) names is installed on the
+compiles `kinstall` from `src/system/kdos-installer`. `kpkg` is built this way because nothing can
+be installed as a package until it exists, and `kinstall` because it links nothing but the C
+library, so it can be cross-compiled that early and is on every tree from the first bootable one.
+The finished system has no base image beneath it and no binary archive to fall back on: the
+container the build runs in, an Alpine 3.23 image with a host compiler, supplies the tools that
+build the cross toolchain and the first userland, and nothing from it is installed. Every recipe
+that a phase list (`script/phases/*/packages.txt` or `packages.d/`) names is installed on the
 finished system, together with everything those recipes depend on. That reaches every upstream
-recipe: none stays in the tree unbuilt. A *phase* is defined in the
-[Glossary](../06-reference/glossary.md). [How KDOS is built](../05-developer/how-kdos-is-built.md)
-follows the build from `git clone` to a bootable ISO, [The build
-system](../05-developer/build-system.md) describes the orchestrator that runs the phases, and [The
-ports catalogue](../06-reference/ports-catalogue.md) lists every recipe by shelf, the subject
-directory it is filed under in `ports/core`, with its phase.
+recipe but one: `texlive-doc`, the TeX Live manuals, is named in `ports/unbuilt`, keeps its recipe
+for a machine that wants to build it with `kpkg install`, and is left off the image. A *phase* is
+defined in the [Glossary](../06-reference/glossary.md#phase). [How KDOS is
+built](../05-developer/how-kdos-is-built.md) follows the build from `git clone` to a bootable ISO,
+[The build system](../05-developer/build-system.md) describes the orchestrator that runs the phases,
+and [The ports catalogue](../06-reference/ports-catalogue.md) lists every recipe by shelf, the
+subject directory it is filed under in `ports/core`, with its phase.
 
 The claim has exceptions, and they are [listed in full](#what-is-not-built-from-source) at the end
 of this chapter. Five classes are exempt from building from source: firmware and code for other
@@ -111,13 +114,14 @@ because nothing in it runs on the host. The rule and its exempt classes are stat
 ## KDOS can build KDOS
 
 The build's third phase, `20_selfhost`, is a self-hosting pass. Inside the build chroot (the
-isolated root filesystem the build runs in), the system rebuilds `tar`, `musl`, `zlib`, `binutils`,
-`diffutils`, `m4`, `gawk` and `gcc`, together with the libraries those depend on (`xxhash`, `gmp`,
-`mpfr`, `mpc`, `readline` and the `ncurses` under it), using the toolchain that `10_bootstrap`
-built. The chain behind that toolchain has three links. The Alpine 3.23 compilers of the build
-image, the only C compilers in it that KDOS did not produce, build the `00_cross` cross toolchain;
-the cross toolchain builds the native `gcc` and `binutils` of `10_bootstrap`; and in `20_selfhost`
-that native `gcc` compiles a new `gcc`, with a new `musl` beneath it. Everything from
+isolated root filesystem the build runs in), the system first installs `fortify-headers`, the
+hardening headers every later port is compiled against, and then rebuilds `tar`, `musl`, `zlib`,
+`binutils`, `diffutils`, `m4`, `gawk` and `gcc`, together with the libraries those depend on
+(`xxhash`, `gmp`, `mpfr`, `mpc`, `readline` and the `ncurses` under it), using the toolchain that
+`10_bootstrap` built. The chain behind that toolchain has three links. The Alpine 3.23 compilers of
+the build image, the only C compilers in it that KDOS did not produce, build the `00_cross` cross
+toolchain; the cross toolchain builds the native `gcc` and `binutils` of `10_bootstrap`; and in
+`20_selfhost` that native `gcc` compiles a new `gcc`, with a new `musl` beneath it. Everything from
 `30_foundation` onwards is built by the `20_selfhost` compiler, which KDOS produced with a compiler
 of its own.
 
@@ -130,10 +134,11 @@ brings every package that is behind its recipe up to date, downloading its sourc
 on the machine. [How KDOS differs](how-kdos-differs.md#self-hosting) compares this with other
 distributions.
 
-A full rebuild of the system needs a build machine. [`kdos
-rebuild`](../04-programs/kdos-command.md#kdos-rebuild) is the command that drives the whole build
-from a booted medium, with no network at any point, and no rebuild from a medium has been run
-through every phase:
+A full rebuild, every phase from the cross toolchain to the ISO, is driven by [`kdos
+rebuild`](../04-programs/kdos-command.md#kdos-rebuild) from a booted medium, with no network at any
+point. It runs the same orchestrator and phase scripts as `make build`, in a work directory that
+must be on a real disk with at least 25 GB free. No rebuild from a medium has been run through
+every phase:
 
 ```sh
 kdos rebuild /mnt/disk/rebuild             # every phase
@@ -141,11 +146,13 @@ kdos rebuild --iso-only /mnt/disk/rebuild  # the image phase (70_image) only
 kdos rebuild --dry-run /mnt/disk/rebuild   # report the plan and stop
 ```
 
-The default ISO carries no source tree. A developer medium carries part of one with an empty
-`ports/`, and `kdos rebuild` finds no ports there and stops before copying anything. A complete
-tree can be named with `KDOS_SOURCES`: the command copies it somewhere writable and names the copy
-in `KDOS_WORKSPACE`, which the phase environments use in place of the build container's
-`/workspace`. [The kdos command](../04-programs/kdos-command.md#kdos-rebuild) says
+Every image carries the recipe tree at `/ports`, but not the upstream sources or the build
+scripts, so on the default ISO `kdos rebuild` finds no tree and stops. A developer medium, made
+with `make build KDOS_ISO_SOURCES=1`, carries the whole tree, every fetched source beside its
+recipe, under `/sources` on the medium, which the live system shows at `/mnt/iso/sources`.
+Elsewhere, `KDOS_SOURCES` names a checkout. The command copies the tree into the work directory
+and names the copy in `KDOS_WORKSPACE`, which the phase environments use in place of the build
+container's `/workspace`. [The kdos command](../04-programs/kdos-command.md#kdos-rebuild) says
 where the command looks for the tree and what it checks before it starts.
 
 ## The repository builds offline
@@ -167,15 +174,16 @@ make fetch-check  # offline: what is missing or corrupt
 make build        # no network
 ```
 
-A recipe's `sha256 =` line is what verifies a source file, wherever the file came from; [Writing
-ports](../05-developer/writing-ports.md#sources-and-what-each-one-becomes) says where `make fetch`
-looks for each one. The recipes name 2,487 distinct files, about 38.6 GiB in all. The 39 small ones
-that git carries itself stay in the repository. The source archive holds the rest, one release per
-shelf, each file under its own name and located through the committed index `ports/sources.idx`; a
-file the index does not name comes from its upstream URL until `ports/publish` adds it. Nothing in
-the archive is replaced, so a recipe whose sources it holds keeps building after its upstream URL
-disappears. Why the sources are held this way, and what it costs, is in
-[Decisions](decisions.md#upstream-archives-are-hash-checked-release-assets).
+A recipe's `sha256 =` line is what verifies a source file, wherever the file came from; [How KDOS
+is built](../05-developer/how-kdos-is-built.md#fetching-the-only-step-that-uses-the-network) says
+where `make fetch` looks for each one. The `ports/core` recipes name 2,572 distinct files. The 44
+small ones that git carries itself, such as bash's upstream patches, stay in the repository. The
+other 2,528, about 39.3 GiB, are held in the KDOS source archive: four numbered GitHub releases,
+`sources-1` to `sources-4`, each holding the shelves `ports/shelves` assigns to it, with every file
+located through the committed index `ports/sources.idx`. A file the index does not name comes from
+its upstream URL until `ports/publish` adds it. Nothing in the archive is replaced, so a recipe
+whose sources it holds keeps building after its upstream URL disappears. Why the sources are
+held this way, and what it costs, is in [Decisions](decisions.md#upstream-archives-are-hash-checked-release-assets).
 
 ## Native applications, and boxes for the rest
 
@@ -197,8 +205,8 @@ the machine that asks for it, storing each runtime once however many application
 installed application runs in its own rootless container and behaves like ordinary system
 software: it appears in the launcher, registers as a handler for its file types, takes the
 desktop's GTK theme, icons and cursors, and can be started from a terminal by name. A Qt
-application built by the store draws in Qt's defaults; see
-[Theming](../02-user-guide/theming.md#theming-applications-inside-boxes).
+application follows the accent too, through the platform theme its runtime declares in the
+catalogue; see [Theming](../02-user-guide/theming.md#theming-applications-inside-boxes).
 
 Some catalogue entries are commands rather than windows. Twenty-five `cmd` rows across 16
 applications expose solvers, converters, emulators and toolchains to be run from a prompt. They
@@ -256,7 +264,7 @@ Each of these is a decision with an argument behind it. The arguments are in
 | A first-boot wizard | The installer asks its questions once, then the system is yours |
 | A vendor app store | `kdos-store` lists the catalogue held in this repository and builds from it; there is no account and nothing to sign up to |
 | Telemetry | No KDOS program sends usage data; boxed applications behave as their Debian packages do |
-| A binary package archive | Ports built here, and every update built on the machine from a signed recipe tree; `kpkg` can install from a signed [binhost](../06-reference/glossary.md) (a package server) you run yourself, by hand |
+| A binary package archive | Ports built here, and every update built on the machine from a signed recipe tree; `kpkg` can install from a signed [binhost](../06-reference/glossary.md#binhost) (a package server) you run yourself, by hand |
 
 ## The system in numbers
 
@@ -270,7 +278,7 @@ counts are kept in [Status](../06-reference/status.md#scale) and
 | Port recipes in `ports/core` | about 2,000 |
 | Port recipes under `src/` for KDOS's own software | about two dozen, in `src/system`, `src/art`, `src/desktop` and `src/daemons` |
 | Shelves the upstream recipes are filed on | 102 |
-| Upstream recipes that no phase list or dependency reaches, and so are not built | none; `testing/bookcounts.py` refuses one |
+| Upstream recipes that no phase list or dependency reaches, and so are not built | 1, `texlive-doc`, named in `ports/unbuilt`; `testing/bookcounts.py` refuses any other |
 | C libraries written for this system, under `src/libs` | 17, one of them (`libkvt`) a fork of libtsm |
 | Kernel | Linux 7.2.11 |
 | Applications in the catalogue | 73 |
@@ -279,7 +287,7 @@ counts are kept in [Status](../06-reference/status.md#scale) and
 | Catalogue data sets | 2 |
 | Catalogue groups offered by the installer and the store | 7 |
 | Boxed commands with no graphical launcher | 25 rows across 16 applications |
-| Distinct source files the recipes name | 2,487, about 38.6 GiB (39 carried in git, 2,448 fetched from the source archive or upstream) |
+| Distinct source files the recipes name | 2,572 (44 carried in git; 2,528, about 39.3 GiB, fetched from the source archive or upstream) |
 
 ## What is not built from source
 
@@ -405,7 +413,7 @@ face is built by nanoemoji, which is not a port.
 
 The console font is a separate port and is built from source: `terminus-font` (4.49.1) goes from
 BDF through `configure` and `make` into the PSF that
-[`kdos-getty`](../03-architecture/boot-and-init.md) loads.
+[`kdos-getty`](../03-architecture/boot-and-init.md#the-console) loads.
 
 ### Data with no other source form
 

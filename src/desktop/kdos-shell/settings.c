@@ -78,7 +78,7 @@ static const char *const CAT_NAMES[NCAT] = {
 /*
  * THE HOME SCREEN IS A GRID OF ICONS, and it is the front door.
  *
- * A sidebar of seven words is a fine way to move between pages once you know
+ * A sidebar of nine words is a fine way to move between pages once you know
  * what is on them and a poor way to find anything the first time — which is
  * why every control panel worth the name, from System 7's through XP's, opens
  * on a field of labelled pictures rather than on a list. This does the same:
@@ -198,7 +198,6 @@ static const char *const TASKLAB[] = { "auto", "yes", "no" };
 static const char *const CPUPCT[] = { "core", "machine" };
 static const char *const UNITS[] = { "1024", "1000" };
 static const char *const TEMPU[] = { "c", "f" };
-static const char *const MEMACCT[] = { "rss", "pss" };
 
 
 static struct row rows[] = {
@@ -277,7 +276,7 @@ static struct row rows[] = {
 	  "what closing the laptop lid does; in a VM the default is off",
 	  "suspend", "suspend" },
 	/* ── Panel ──────────────────────────────────────────────────── */
-	{ CAT_PANEL, FT_HEAD, ST_NONE, SC_NONE, NULL, "The bar · panel.conf",
+	{ CAT_PANEL, FT_HEAD, ST_NONE, SC_NONE, NULL, "The bar · comp.conf",
 	  NULL, 0, 0, 0, 0, "", "", "" },
 	{ CAT_PANEL, FT_CHOICE, ST_COMP, SC_LOGIN, "panel", "panel",
 	  PANELS, 3, 0, 0, 0,
@@ -286,7 +285,7 @@ static struct row rows[] = {
 	{ CAT_PANEL, FT_INT, ST_COMP, SC_LOGIN, "panel_cells", "panel_cells",
 	  NULL, 0, 1, 4, 1,
 	  "its thickness in CELLS. Two is what makes a task button's icon "
-	  "square on a 16x32 cell",
+	  "square on the default 10x20 cell",
 	  "2", "2" },
 	{ CAT_PANEL, FT_CHOICE, ST_COMP, SC_LOGIN, "panel_autohide",
 	  "panel_autohide", YESNO, 2, 0, 0, 0,
@@ -299,8 +298,9 @@ static struct row rows[] = {
 	  "%H:%M", "%H:%M" },
 	{ CAT_PANEL, FT_TEXT, ST_COMP, SC_LOGIN, "panel_font", "panel_font",
 	  NULL, 0, 0, 0, 0,
-	  "the bar's own face, as a PIXEL size. Empty follows `chrome_font`",
-	  "", "" },
+	  "the bar's own face, as a PIXEL size. An empty value is ignored "
+	  "and the bar keeps Terminus at 20",
+	  "Terminus:pixelsize=20", "Terminus:pixelsize=20" },
 	{ CAT_PANEL, FT_INT, ST_COMP, SC_LOGIN, "panel_margin", "panel_margin",
 	  NULL, 0, 0, 64, 2,
 	  "pixels of gap between the bar and the edge of the screen",
@@ -312,6 +312,9 @@ static struct row rows[] = {
 	  "takes the pointer",
 	  "80", "80" },
 	/* ── panel.conf, the bar's own file ──────────────────────────── */
+	{ CAT_PANEL, FT_HEAD, ST_NONE, SC_NONE, NULL,
+	  "What the bar carries · panel.conf",
+	  NULL, 0, 0, 0, 0, "", "", "" },
 	{ CAT_PANEL, FT_TEXT, ST_PANEL, SC_LIVE, "overflow", "overflow",
 	  NULL, 0, 0, 0, 0,
 	  "widgets that live behind the chevron instead of on the bar, so the "
@@ -330,8 +333,8 @@ static struct row rows[] = {
 	{ CAT_PANEL, FT_CHOICE, ST_PANEL, SC_LIVE, "task_labels", "task_labels",
 	  TASKLAB, 3, 0, 0, 0,
 	  "whether a window button carries its name. `auto` is the bar "
-	  "deciding; `no` is a dock",
-	  "auto", "auto" },
+	  "deciding; `no`, the default, is a dock",
+	  "no", "no" },
 	{ CAT_PANEL, FT_CHOICE, ST_PANEL, SC_LIVE, "start_label", "start_label",
 	  YESNO, 2, 0, 0, 0,
 	  "whether the Start button carries the word as well as the mark",
@@ -381,28 +384,19 @@ static struct row rows[] = {
 	  YESNO, 2, 0, 0, 0,
 	  "show loopback, bridges and container interfaces on the Network page",
 	  "no", "no" },
-	{ CAT_HARDWARE, FT_CHOICE, ST_RES, SC_LIVE, "memory", "memory",
-	  MEMACCT, 2, 0, 0, 0,
-	  "`rss` counts a shared page against every process holding it; `pss` "
-	  "divides it between them, which is the number that adds up",
-	  "rss", "rss" },
 	{ CAT_HARDWARE, FT_CHOICE, ST_RES, SC_LIVE, "icons", "icons",
 	  YESNO, 2, 0, 0, 0,
 	  "draw the page's icon in the header and the charts as antialiased "
 	  "pictures. `no` is the glyph tier, which is what a dump and a plain "
 	  "tty get anyway",
 	  "yes", "yes" },
-	{ CAT_HARDWARE, FT_TEXT, ST_RES, SC_LIVE, "sort", "sort",
+	{ CAT_HARDWARE, FT_TEXT, ST_RES, SC_LOGIN, "sort", "sort",
 	  NULL, 0, 0, 0, 0,
 	  "which column each page sorts on, by that page's own identifier — one "
-	  "spelling, from the monitor's registry. A name a page has no column "
-	  "for leaves that page on its own default",
+	  "spelling, from the monitor's registry. Read when the monitor starts, "
+	  "so an open one keeps its order. A name a page has no column for "
+	  "leaves that page on its own default",
 	  "cpu", "cpu" },
-	{ CAT_HARDWARE, FT_TEXT, ST_RES, SC_LIVE, "columns", "columns",
-	  NULL, 0, 0, 0, 0,
-	  "which columns a page draws, by the same identifiers. Empty is every "
-	  "column that page has",
-	  "", "" },
 
 	{ CAT_PANEL, FT_HEAD, ST_NONE, SC_NONE, NULL,
 	  "The Start menu · menu.conf",
@@ -526,8 +520,7 @@ static struct row rows[] = {
 	  NULL, 0, 0, 0, 0, "", "", "" },
 	{ CAT_HARDWARE, FT_TOOL, ST_NONE, SC_NONE, "kdos-net",
 	  "Network…", NULL, 0, 0, 0, 0,
-	  "wifi, wired and VPN over NetworkManager — what `foot -e nmtui` used "
-	  "to be",
+	  "wifi, wired and VPN over NetworkManager",
 	  "", "" },
 	{ CAT_HARDWARE, FT_TOOL, ST_NONE, SC_NONE, "kdos-bt",
 	  "Bluetooth…", NULL, 0, 0, 0, 0,
@@ -593,10 +586,9 @@ static struct row rows[] = {
 	 * CAT_HARDWARE's rows do: a summary drawn in this window would be a
 	 * second thing to keep in agreement with the thing itself.
 	 *
-	 * THE CATEGORY SHIPS WITH WHAT EXISTS AND SAYS WHAT DOES NOT. Disks,
-	 * printing, backup and services are not written; a row that opened
-	 * nothing would be worse than no row, and no category at all would
-	 * teach that the machine is not reachable from here.
+	 * THE CATEGORY SHIPS WITH WHAT EXISTS AND SAYS WHAT DOES NOT. The
+	 * service list is not written, and the closing note says so: a row
+	 * that opened nothing would be worse than no row.
 	 */
 	{ CAT_SYSTEM, FT_HEAD, ST_NONE, SC_NONE, NULL, "The machine",
 	  NULL, 0, 0, 0, 0, "", "", "" },
@@ -640,8 +632,9 @@ static struct row rows[] = {
 	  "verb, because /etc/localtime is root's",
 	  "", "" },
 	{ CAT_SYSTEM, FT_TOOL, ST_NONE, SC_NONE, "kdos-connect",
-	  "Sync…", NULL, 0, 0, 0, 0,
-	  "calendars and address books, through vdirsyncer",
+	  "Connect to server…", NULL, 0, 0, 0, 0,
+	  "mount an SMB share on another machine, by password or by a Kerberos "
+	  "ticket; kdos-mountd does the mounting",
 	  "", "" },
 	{ CAT_SYSTEM, FT_HEAD, ST_NONE, SC_NONE, NULL, "Security and updates",
 	  NULL, 0, 0, 0, 0, "", "", "" },
@@ -664,7 +657,7 @@ static struct row rows[] = {
 	{ CAT_SYSTEM, FT_NOTE, ST_NONE, SC_NONE, NULL, "what is not here",
 	  NULL, 0, 0, 0, 0,
 	  "the service list is not written; `kdos doctor` and `kdos pkg` do that "
-	  "work today. /etc/kdos/zram.conf, packd.conf and the timers are root's "
+	  "work. /etc/kdos/zram.conf, packd.conf and the timers are root's "
 	  "and are edited there",
 	  "", "" },
 };
@@ -756,8 +749,8 @@ static const char *const EXPORTS[] = { "manual", "auto" };
 /*
  * EVERY SCHEME libkcolor CARRIES, EXPANDED RATHER THAN LISTED. A hand-written
  * list is a list that stops at whichever accents existed when somebody typed
- * it — this one named four of the seven, so a box could not be told to wear
- * norton, borland or perfect at all, and nothing said so. `session` is first
+ * it, and a scheme it missed is one a box cannot be told to wear, with
+ * nothing to say so. `session` is first
  * because it is not a scheme: it means "whatever the session is wearing".
  */
 #define SH_ACCENT_NAME(id, lbl, tname, p, dm, sec, urg, dp, txt, var, pd, bd) \
@@ -1459,9 +1452,9 @@ static int write_kv(const char *path, int store)
 
 /*
  * The signal `kdos theme` already sends, for the same reason and by the same
- * route: pkill -x, exact, because `kdos-comp` must not also match
- * `kdos-desktop-start` — an unhandled SIGHUP kills a shell, and those two
- * /bin/sh scripts own the session.
+ * route: pkill -x, exact, because a pattern match signals every process
+ * whose name contains the one asked for — `kdos-res` would also reach
+ * `kdos-resctl` — and a process with no SIGHUP handler dies of it.
  */
 static void sighup(const char *name)
 {
@@ -1515,9 +1508,9 @@ static void apply(void)
 	int launch = dirty_count(ST_LAUNCH);
 	int term = dirty_count(ST_TERM), menu = dirty_count(ST_MENU);
 	int live = 0, login = 0, failed = 0;
-	/* `pkill -x` is EXACT and that is load-bearing: `kdos-comp` is a
-	 * substring of `kdos-desktop-start`, which is a /bin/sh script that
-	 * owns the session and dies on an unhandled SIGHUP. */
+	/* Signalled through sighup(), whose `pkill -x` is EXACT: the name
+	 * must reach the compositor's own process and nothing whose name
+	 * merely contains it. */
 	static const char kdos_comp[] = "kdos-comp";
 
 	for (int i = 0; i < NROWS; i++) {
@@ -1585,10 +1578,9 @@ static void apply(void)
 	}
 	if (launch) {
 		/*
-		 * NO SIGNAL EITHER, and for a different reason: the launcher
-		 * is started by its chord and reads this file as it comes up,
-		 * so the next time it is opened it has the answer. There is no
-		 * long-lived process holding a stale one.
+		 * NO SIGNAL EITHER, and for a different reason: no program
+		 * reads this file. `kdos-launcher` and `kdos-palette` ignore
+		 * its `files` key, so there is no process to tell.
 		 */
 		cfg_path("launcher.conf", path, sizeof(path));
 		if (write_kv(path, ST_LAUNCH) != 0)

@@ -16,9 +16,16 @@ case "$1" in
                 mod="${mod%%#*}"
                 mod="${mod//[[:space:]]/}"
                 [ -z "$mod" ] && continue
-                modprobe "$mod" 2>/dev/null && \
-                    echo "[KDOS]   loaded: $mod" || \
-                    echo "[KDOS]   skip:   $mod (no matching hardware)"
+                # modprobe's own message is the reason: absent hardware,
+                # a misspelt name, a module this kernel does not carry
+                # and a refused option all fail here, and only the
+                # message tells them apart.
+                if _err=$(modprobe "$mod" 2>&1); then
+                    echo "[KDOS]   loaded: $mod"
+                else
+                    _err="${_err%%$'\n'*}"
+                    echo "[KDOS]   skip:   $mod (${_err:-modprobe failed})"
+                fi
             done < "$f"
         done
         ;;

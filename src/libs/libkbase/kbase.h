@@ -7,9 +7,8 @@
  * ---------------------------------
  *   libkbase — the pieces every KDOS program had written for itself
  *
- * Links nothing but libc. Everything here existed twice before: once in the
- * installer and once in kdos-appbox, with `read_file` meaning two different
- * things depending on which one you were looking at.
+ * Links nothing but libc. A program that writes its own copy of one of these
+ * gets a `read_file` that means something different from everyone else's.
  * ---------------------------------
  */
 

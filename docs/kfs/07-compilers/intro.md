@@ -15,13 +15,15 @@ own order, and within a shelf in the order [kpkgdepends]{.idx} builds them.
 
 The list's header gives the rule:
 
-<!-- kfs:include script/phases/31_compilers/packages.txt lines=12-20 pin=eb5a3b6d42fb -->
+<!-- kfs:include script/phases/31_compilers/packages.txt lines=12-21 pin=8636daec8159 -->
 
 A port belongs here when its dependency closure reaches one of the large compilers, and nothing in
 [Part VI](../06-foundation/intro.md) does. The split is about time. These ports take most of the
-hours between the chroot and `40_lang`, and `30_foundation`'s snapshot sits in front of them, so a
-failure here restores that snapshot instead of building the foundation again (see
-[The foundation and the compilers](../../kdos/05-developer/how-kdos-is-built.md#the-foundation-and-the-compilers-30_foundation-and-31_compilers)).
+hours between the chroot and `40_lang`. In a run that writes snapshots, `30_foundation`'s snapshot
+sits in front of them, so a failure here restores that snapshot instead of building the
+foundation again (see
+[The foundation and the compilers](../../kdos/05-developer/how-kdos-is-built.md#the-foundation-and-the-compilers-30_foundation-and-31_compilers),
+and [Snapshots](../../kdos/05-developer/build-system.md#snapshots) for when one is written).
 
 The phase's environment is the same as `30_foundation`'s: its `phase.env` sets `CHROOT=1` and the
 same `LD_LIBRARY_PATH`, and sources `chroot.env`. Two lines of `chroot.env` matter more here than
@@ -32,8 +34,8 @@ anywhere before:
   search; without the two variables, every such port would change compiler from this point on.
 - **No `-sys` crate switches yet.** The variables that make Rust's [`-sys` crates]{.idx} link the system
   library are exported from `40_lang` on, never in `20_selfhost` to `31_compilers`. A recipe here
-  that wants one sets it itself: `rust`'s `build.sh` sets [`LIBGIT2_NO_VENDOR=1`]{.idx term="LIBGIT2_NO_VENDOR"} and
-  `LIBSSH2_SYS_USE_PKG_CONFIG=1`.
+  that wants one sets it itself: the `build.sh` of `rust` and of `cargo-c` each set
+  [`LIBGIT2_NO_VENDOR=1`]{.idx term="LIBGIT2_NO_VENDOR"} and `LIBSSH2_SYS_USE_PKG_CONFIG=1`.
 
 ## How the ports depend on one another
 

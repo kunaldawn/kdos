@@ -1,8 +1,8 @@
 ## About
 [Ledger]{.idx} is double-entry accounting on a plain-text journal. Transactions are lines typed
 into a text file, which can live under version control, and `ledger` only reads that file and
-prints balances, registers and reports from it; nothing is stored anywhere else. A bare `ledger`
-opens an interactive prompt.
+prints balances, registers and reports from it; nothing is stored anywhere else. Given a journal
+(`-f`, `LEDGER_FILE` or `~/.ledger`) and no command, `ledger` opens an interactive prompt.
 
 ## Flags
 - `-I$SRC/lib/utfcpp/v4/source` — added to `CXXFLAGS`: the copy of utfcpp, the UTF-8 header
@@ -29,7 +29,7 @@ opens an interactive prompt.
 
 ## Notes
 The line editor is probed, not chosen by an option: the configure takes libedit when it finds it
-and readline otherwise, so the prompt a bare `ledger` opens would depend on what the build root
+and readline otherwise, so the line editing of the interactive prompt would depend on what the build root
 happened to hold. `build.sh` checks the generated `system.hh` for `HAVE_EDIT` and stops when
 [libedit](#port-libedit) was not found.
 

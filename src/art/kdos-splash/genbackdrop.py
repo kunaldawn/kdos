@@ -123,8 +123,8 @@ def build() -> Image.Image:
     # The largest channel, floored at the border's own level and stretched to
     # the peak. int32, NOT int16: the stretch multiplies by HERO_PEAK before
     # dividing, and 191 * 235 overflows a signed 16-bit lane into negative
-    # values that come back as garbage through the uint8 cast — the peak lands
-    # at 181 instead of 245 and the whole banner is dim.
+    # values that come back as garbage through the uint8 cast — the peak
+    # lands well short of HERO_PEAK and the whole banner is dim.
     a = np.array(src).max(axis=2).astype(np.int32)
     a = np.clip(a - BLACK_POINT, 0, None)
     a = (a * HERO_PEAK) // (255 - BLACK_POINT)

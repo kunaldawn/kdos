@@ -33,7 +33,7 @@ application-first switcher); upstream files carry only small, marked hooks into 
 | Upstream configuration | `~/.config/kdos-comp/rc.xml` and `menu.xml`, both copied from `/etc/skel` for a new user; `/etc/xdg/kdos-comp/` is also searched, and nothing ships there |
 | Generated theme | `~/.config/kdos-comp/themerc-override`, written by `kdos theme` |
 | KDOS configuration | `~/.config/kdos/comp.conf` (`$XDG_CONFIG_HOME/kdos/comp.conf`) |
-| Started by | `kdos-desktop-start`, with no options — see [The session](../03-architecture/session.md) |
+| Started by | `kdos-desktop-start`, with no options — see [The session](../03-architecture/session.md#what-kdos-desktop-start-does) |
 | Log | `$XDG_RUNTIME_DIR/kdos-comp.log`; the previous session's is kept as `kdos-comp.log.old` |
 | Command socket | `$XDG_RUNTIME_DIR/kdos-cmd.sock` |
 | Frame-timing socket | `$XDG_RUNTIME_DIR/kdos-frames.sock` |
@@ -161,7 +161,7 @@ reload entry.
 | `window_memory` | `yes` | yes/no | Whether an application opens where its window last was |
 | `motion` | `yes` | yes/no | The desktop's reduce-motion switch; `no` makes every compositor fade a single frame. See [Motion](#motion) |
 | `window_motion` | `no` | yes/no | [Window transitions](#window-transitions); only with `motion = yes` |
-| `max_render_time` | `off` | 1–100 ms, or `off` | [Render-late scheduling](#render-late-scheduling): how long before the vertical blank each frame is composited |
+| `max_render_time` | `off` | 1–100 ms; `0` or `off` turns it off | [Render-late scheduling](#render-late-scheduling): how long before the vertical blank each frame is composited |
 | `sticky_keys` | `no` | yes/no | [Sticky keys](#the-keyboard-aids) |
 | `slow_keys` | `no` | yes/no | [Slow keys](#the-keyboard-aids) |
 | `slow_keys_delay` | `300` | 100–5000 ms | How long a key must be held before slow keys accepts it |
@@ -179,8 +179,8 @@ the compositor starts:
 - If `crt` is `0` at login, or the renderer cannot run the pass, the pass is never set up. Raising
   `crt` afterwards takes effect at the next login, and the reload logs that. Lowering it to `0`
   takes effect at once: frames go out unprocessed, and a fullscreen window may scan out.
-- A non-zero `crt_curve` at login switches the session to a software cursor, because the hardware
-  cursor plane is drawn after the shader and would not follow the distortion. Turning curvature on
+- A non-zero `crt_curve` at login, with `crt` above `0`, switches the session to a software cursor,
+  because the hardware cursor plane is drawn after the shader and would not follow the distortion. Turning curvature on
   during a session leaves the hardware cursor in place, and the pointer drifts away from what it
   points at towards the screen's edges until the next login.
 
@@ -300,11 +300,13 @@ beside labwc's magnifier actions:
 | `ToggleMagnify` (labwc's) | `Super+=` | The magnifier on or off |
 | `ZoomIn`, `ZoomOut` (labwc's) | `Super+Alt+=`, `Super+Alt+-` | Magnify more or less |
 
-Each of the six switches posts a notification saying which way it went, such as `Sticky keys on`. A
-keyboard aid switched on by accident otherwise leaves a keyboard that misbehaves with nothing on the
-screen to say why. A switch lasts for the session. A reload changes it only when the value
-`comp.conf` gives it has changed since the last load, because every `kdos theme` is a reload and an
-accent switch must not undo a keyboard aid somebody has just switched on.
+Sticky keys, slow keys, bounce keys, dwell click and the large pointer each post a notification
+saying which way they went, such as `Sticky keys on` or `Large pointer off`. A keyboard aid switched on by accident otherwise leaves a
+keyboard that misbehaves with nothing on the screen to say why. `ToggleOnScreenKeyboard` posts one
+only with `osk = off`, to say the keyboard is not running. A switch lasts for the session. A reload
+changes it only when the value `comp.conf` gives it has changed since the last load, because every
+`kdos theme` is a reload and an accent switch must not undo a keyboard aid somebody has just
+switched on.
 
 The other three are for [window groups](#window-groups-and-window-memory): `AddToTabGroup`,
 `RemoveFromTabGroup` and `NextInTabGroup`. The shipped `rc.xml` does not bind them. To reach them,
@@ -408,6 +410,10 @@ desktop costs almost nothing. The one timer in the loop is optional:
 [render-late scheduling](#render-late-scheduling) moves the composite later within the same
 refresh, and never adds a frame.
 
+Nothing is composited at all while the session is not in front: after a switch to another virtual
+terminal (`Ctrl+Alt+F2`, for example), every output's frames are skipped until the session's
+terminal is active again.
+
 Two rate limits exist, and neither holds the frame rate back. Interactive resizing sends a window
 at most one new size per refresh interval of its output (250 per second when the output reports no
 refresh rate). The shutdown animation steps every 16 ms, after the event loop has already stopped.
@@ -454,7 +460,10 @@ wlroots still refuses a frame it cannot scan out, and composites it as usual:
 - anything else visible over the window, such as a notification or the on-screen keyboard;
 - a buffer whose rotation, colour description or format the display cannot take, or a test commit
   that fails;
-- night light on an output that has no hardware gamma table, since the correction is then drawn.
+- a gamma correction on an output that has no hardware gamma table, since the correction is then
+  drawn. Only a program that sets gamma through the wlr gamma-control protocol makes one, and none
+  ships with KDOS; the desktop's own night light warms the palette instead (see
+  [Theming](../02-user-guide/theming.md#what-repaints-at-once-and-what-waits)).
 
 The shipped `rc.xml` sets two upstream options in `<core>` for fullscreen windows:
 
@@ -513,8 +522,9 @@ holding. The key is read on every frame, so a reload applies it at once.
 
 ### When an output appears
 
-Each new output gets its own panel, desktop icons and dockapp column
-(see [Supervised children](#supervised-children)), and the compositor runs
+Every output, both those present when the session starts and each one plugged in later, gets its
+own panel, desktop icons and dockapp column (see [Supervised children](#supervised-children)), and
+the compositor runs
 `kdos-display --apply`, which re-applies the layout saved in `~/.config/kdos/displays.conf`. The
 apply is delayed by one second and restarted by each further output, so a dock that brings up three
 screens causes one apply, not three.
@@ -535,7 +545,9 @@ The pass needs the GLES2 renderer on a GPU. It is switched off at startup, and t
 on the pixman renderer and on a GLES2 renderer whose `GL_RENDERER` names `llvmpipe`, `softpipe` or
 `swrast`: Mesa's software drivers, which wlroots accepts when EGL falls back to `kms_swrast` and on
 which the shader would run on the CPU over every pixel of every frame. A virtual machine with plain
-graphics is one of these.
+graphics is one of these. When wlroots refuses a render node outright because it reports itself as
+software, `kdos-desktop-start` runs the compositor again on pixman (see
+[The session](../03-architecture/session.md#what-kdos-desktop-start-does)).
 
 Two short animations belong to the pass and run only when it is active and `motion` is on (see
 [Motion](#motion)):
@@ -609,9 +621,10 @@ Five constraints shape it:
   magnified frame would lose the inset whenever the scene redrew and keep it whenever it did not,
   flickering between two pictures. The pass stands aside while the magnifier is on, which is also
   right for its own sake: an accessibility zoom is harder to read through scanlines.
-- **Night light survives the pass.** The scene applies the gamma-control protocol as a colour
-  transform in the state it builds, and the pass carries that transform onto its own commit.
-  Dropping it would make night light do nothing while the pass is on.
+- **A gamma correction survives the pass.** The scene applies the wlr gamma-control protocol as a
+  colour transform in the state it builds, and the pass carries that transform onto its own commit.
+  Dropping it would make a gamma-control client, such as a colour-temperature tool, do nothing
+  while the pass is on. KDOS's own night light does not use this route.
 
 The curvature is normalised by how far the corners move, so no setting crops the desktop.
 
@@ -784,8 +797,11 @@ The socket protects the compositor and the machine:
 - It never blocks the frame loop. A client that connects and says nothing, or asks and never reads
   the answer, is dropped after 5 seconds idle, and at most 8 clients are connected at once.
 - The peer's user id is checked, because the socket runs actions. This separates users, not boxes:
-  a box runs as the same user and shares the runtime directory, so what a box may do is decided by
-  the [sandbox allowlist](../03-architecture/session.md#granting-a-box-more-than-the-allowlist).
+  a box runs as the same user and shares the runtime directory, so a program in a box can use this
+  socket exactly as a host program can. The
+  [sandbox allowlist](../03-architecture/session.md#granting-a-box-more-than-the-allowlist) limits
+  the Wayland interfaces a box binds, not this socket; see
+  [What is not protected](../03-architecture/security-model.md#what-is-not-protected).
 - A request line over 4096 bytes is refused rather than buffered.
 - `thumb` always writes to `$XDG_RUNTIME_DIR/kdos-thumb.ppm`, overwritten each time; the path is
   never taken from the request, so the socket cannot be used to write files elsewhere.
@@ -835,13 +851,20 @@ next opens, the record is applied. The file keeps the 200 most recently used app
 written to a temporary file, flushed, and renamed into place so that a crash cannot leave it half
 written. The record applies only where the compositor would otherwise have chosen the position:
 
-- a window that positions itself, is placed by a window rule, or opens maximised, tiled or
-  fullscreen is left alone;
+- a window that positions itself, carries the `fixedPosition` window rule, or opens maximised,
+  tiled or fullscreen is left alone;
 - dialogs and other windows with a parent are neither saved nor restored;
 - a second window of an application already open at the remembered position on the same workspace
-  is left to the ordinary cascade, rather than opened exactly on top of the first;
-- a restored rectangle is clamped into the output's usable area, so a window never comes back
-  off-screen or under the panel.
+  keeps the place the compositor's
+  [placement search](../03-architecture/window-model.md#placement-is-a-search-not-a-cascade) chose
+  for it, rather than opening exactly on top of the first;
+- a restored rectangle is first shrunk to fit the usable area of the output nearest to it and then
+  moved inside it. The clamp applies to the window's contents, not its frame, so a window that is
+  shrunk to the usable area's full height, or moved down to its top edge, comes back with its title
+  bar above the usable area.
+
+[Window memory](../03-architecture/window-model.md#window-memory) in the window model has the
+full rules, including how window rules and the record interact.
 
 ## Box identity
 
@@ -878,8 +901,8 @@ A client from a box may bind only a fixed allowlist of Wayland interfaces. A `gr
 same profile adds named interfaces, such as `screencopy` for a screen recorder in its own box. The
 grantable names are listed in [The
 session](../03-architecture/session.md#granting-a-box-more-than-the-allowlist). A box's grants are
-read once, on its first request, and re-read after a reload; a client that is already running keeps
-what it bound.
+read once, on its first request, and read again after a reload or once more than eight boxes have
+been asked about since; a client that is already running keeps what it bound.
 
 ## Accessibility
 
@@ -896,8 +919,8 @@ in it (`kdos-a11y.c`), and so does the interface a screen reader uses to hear th
 | Slow keys | `slow_keys`, `slow_keys_delay` | A key counts only once it has been held for the delay. Released sooner, it never happened |
 | Bounce keys | `bounce_keys`, `bounce_keys_delay` | A second press of the same key within the delay after its release is dropped, with its release |
 
-All three start off, take a changed value on a reload, and are flipped for the session by
-[their actions](#kdos-actions). They share three rules:
+All three start as `comp.conf` sets them (off by default), take a changed value on a reload, and
+are flipped for the session by [their actions](#kdos-actions). They share three rules:
 
 - **They act on physical keyboards only.** A virtual keyboard (the on-screen keyboard, the input
   method re-sending a key it did not use, a remote-desktop server) is a program typing on purpose,
@@ -983,7 +1006,7 @@ it leaves the bus, because a reader that crashed never calls `UngrabKeyboard`.
 Only a caller that owns one of the allowed well-known names may call; anything else is answered
 `org.freedesktop.DBus.Error.AccessDenied`. The one allowed name is `org.gnome.Orca.KeyboardMonitor`,
 which the client library requests for Orca before its first call. Boxes share the session bus (see
-[The security model](../03-architecture/security-model.md)), and a program in a box could request
+[What is not protected](../03-architecture/security-model.md#what-is-not-protected)), and a program in a box could request
 the same name while no reader holds it. The name check keeps an ordinary program from subscribing
 to keystrokes by accident; it does not stop a hostile one. While the session is locked nothing is
 sent and nothing is grabbed, because a password is typed there.
@@ -1200,7 +1223,9 @@ Several additions are too small for a section of their own:
 this order:
 
 1. the command socket, so no `kdos hey run` can act on a session that is ending;
-2. the keyboard monitor's bus connection and the accessibility timers;
+2. the keyboard monitor's bus connection, the `org.freedesktop.ScreenSaver` service (its bus
+   connection closes and every idle-inhibit cookie still held is released) and the accessibility
+   timers;
 3. the render-late timers, so none fires inside the power-down animation;
 4. the power-down animation (see [The phosphor pass](#the-phosphor-pass)), limited to 600 ms and
    skipped with `motion = no`;
@@ -1212,8 +1237,9 @@ this order:
 and then the server itself. The panel and the notification daemon notice the compositor has gone
 and exit on their own.
 
-When the compositor exits with a non-zero status, `kdos-desktop-start` prints the last 20 lines of
-the log and offers to restart the session. At the third crash within 60 seconds it stops offering
+When the compositor exits with a non-zero status,
+[`kdos-desktop-start`](../03-architecture/session.md#what-kdos-desktop-start-does) prints the last
+20 lines of the log and offers to restart the session. At the third crash within 60 seconds it stops offering
 and returns you to the text console. A clean exit is a logout.
 
 ## Debugging
@@ -1275,7 +1301,7 @@ The fastest-first mode selection (see [Choosing the mode](#choosing-the-mode)) i
 | `kdos-boxchip.c` | [The box colour chip](#box-identity) on a title bar |
 | `kdos-grant.c` | Per-box grants beyond the sandbox allowlist |
 | `kdos-group.c` | [Window groups](#window-groups-and-window-memory) (tabbed stacks) |
-| `kdos-layerfocus.c` | Closing menus and other on-demand surfaces when you click elsewhere |
+| `kdos-layerfocus.c` | Closing menus and other on-demand surfaces when you click elsewhere, and closing `kdos-saver` on the first key, button or touch |
 | `kdos-winpos.c` | [Window memory](#window-groups-and-window-memory): reopening windows where they were |
 | `kdos-a11y.c` | [Accessibility](#accessibility): the keyboard aids, dwell click, the pointer size and the on-screen keyboard |
 | `kdos-a11ymon.c` | [The keyboard monitor](#the-keyboard-monitor) on the session bus, and the toggle notifications |
@@ -1322,8 +1348,8 @@ Six checks cover it without a full build:
   where the host has pkg-config entries for `wlroots-0.20`, GLES2, EGL, wayland-server, pixman,
   libdrm, libpng, libxml2, cairo, pango, glib and basu; elsewhere it reports the step as skipped.
 - `testing/selftest.sh` also runs `testing/fixtures/crt/scopecheck.c` wherever EGL, GLES2, pixman
-  and wayland-server are installed, which includes the development container (software GL is
-  enough). It draws a scripted run of damage through the pass's own shader and region code and
+  and wayland-server are installed and the `wlroots` source tarball has been fetched into its port
+  directory, which includes the development container (software GL is enough). It draws a scripted run of damage through the pass's own shader and region code and
   wlroots' own damage ring over three output buffers, and compares every frame with a whole-output
   draw. It also runs itself with the reach and with the buffer age switched off, and fails unless
   both of those runs fail.

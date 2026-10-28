@@ -46,7 +46,7 @@ the EFI system [partition]{.idx}, and the initramfs reads both.
 `cryptdevice=` option naming the container beside the `root=` option naming the filesystem inside
 it, from `src/system/kdos-installer/install.c`:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=2117-2135 pin=e0a09f9a5198 -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=2123-2141 pin=e0a09f9a5198 -->
 
 The two UUIDs are different. `cryptdevice=UUID=<container>:kdosroot` is the LUKS container on the
 partition, and `root=UUID=<filesystem>` is the filesystem that appears only once the container is
@@ -58,15 +58,16 @@ and how to change a kernel option is on
 **The boot state**, `/boot/efi/EFI/kdos/bootstate`, records the container again as `crypt_a`, beside
 slot A's filesystem, from the same file:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=2367-2380 pin=ab8cb81addd9 -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=2373-2386 pin=ab8cb81addd9 -->
 
 The initramfs asks `kdos-bootctl crypt` for the container of the slot it chose, and uses
 `cryptdevice=` only when the slot records none; see
 [A slot knows its own container](../../kdos/03-architecture/boot-and-init.md#a-slot-knows-its-own-container).
 
-**The unlock in the initramfs.** The generated init runs this block when the command line carries a
-`cryptdevice=`, from `script/phases/70_image/090_initramfs.sh` (the `\$` is the escape of the
-heredoc the init is written from):
+**The unlock in the initramfs.** The generated init runs this block when a container has been
+named, by the chosen slot's `crypt_` entry or by `cryptdevice=`, from
+`script/phases/70_image/090_initramfs.sh` (the `\$` is the escape of the heredoc the init is
+written from):
 
 <!-- kfs:include script/phases/70_image/090_initramfs.sh lines=865-880 pin=093a88f36da4 -->
 
@@ -88,13 +89,15 @@ everything on the disk. The installer does not encrypt an existing installation 
 3. Type the passphrase in both fields. They must match.
 4. Optionally tick `Put the root on LVM` as well; the volume group is then made inside the
    container, so one passphrase opens it; see [LVM and RAID](lvm-and-raid.md).
-5. Check the Summary page and install.
+5. Check the Summary page and install. The Summary names the encryption only when LVM is on, in
+   its `root` line as `LVM inside LUKS2`; without LVM it shows no encryption line.
 
 The installer runs `cryptsetup luksFormat --type luks2` on the root partition and opens it as
 `/dev/mapper/kdosroot`, with the passphrase on standard input both times; see
 [An encrypted root](../../kdos/04-programs/kinstall.md#an-encrypted-root). The tick stays set if
-you switch to the reuse plan afterwards, where it still encrypts the chosen root; read
-[Encryption](../../kdos/02-user-guide/installation.md#encryption) before switching plans.
+you then switch to the reuse plan or to *Partition it myself*, and the root you choose there is
+encrypted. The reuse plan shows no checkbox and the Summary no encryption line, so untick it on the
+erase plan before switching; see [Encryption](../../kdos/02-user-guide/installation.md#encryption).
 
 ### Unlocking at boot
 
@@ -170,11 +173,11 @@ sudo cryptsetup luksHeaderBackup /dev/<part> --header-backup-file kdosroot-heade
 ```
 
 The file is the size of the container's header area, 16 MiB for the installer's LUKS2 container,
-and is made readable by root alone. `cryptsetup luksHeaderRestore /dev/<part>
+and is made readable by root alone. `sudo cryptsetup luksHeaderRestore /dev/<part>
 --header-backup-file kdosroot-header.img` writes it back.
 A header backup opens the container with any passphrase that was valid when the copy was taken,
-even one removed since: `cryptsetup open --test-passphrase --header kdosroot-header.img /dev/<part>`
-accepts it. Keep the file as safe as the passphrase itself (`cryptsetup-luksHeaderBackup(8)`).
+even one removed since: `sudo cryptsetup open --test-passphrase --header kdosroot-header.img
+/dev/<part>` accepts it. Keep the file as safe as the passphrase itself (`cryptsetup-luksHeaderBackup(8)`).
 
 ### Opening the root from the live medium
 
@@ -187,8 +190,9 @@ To repair or copy an installed system that will not boot:
    sudo cryptsetup open /dev/<part> kdosroot
    ```
 
-3. If the install used [LVM]{.idx}, activate the volume group inside the container. The live boot's own
-   `03_lvm` ran before the container was open, so it did not see it:
+3. If the install used [LVM]{.idx}, activate the volume group inside the container. The live boot
+   activated its volume groups (`/etc/init.d/03_lvm.sh`) before the container was open, so it did
+   not see this one:
 
    ```bash
    sudo vgchange -aay
@@ -196,18 +200,23 @@ To repair or copy an installed system that will not boot:
 
    The root is then `/dev/kdos/root_a`; without LVM it is `/dev/mapper/kdosroot`.
 
-4. Check an ext4 root before mounting it, then mount it. With LVM, use `/dev/kdos/root_a` in
-   place of `/dev/mapper/kdosroot`:
+4. Check an ext4 root before mounting it, then mount it on a directory of its own. `/mnt` itself
+   would hide the live session's boot medium at `/mnt/iso` and its persistence store at
+   `/mnt/persist`. With LVM, use `/dev/kdos/root_a` in place of `/dev/mapper/kdosroot`:
 
    ```bash
    sudo e2fsck -f /dev/mapper/kdosroot
-   sudo mount /dev/mapper/kdosroot /mnt
+   sudo mkdir -p /mnt/target
+   sudo mount /dev/mapper/kdosroot /mnt/target
    ```
+
+   [Repairing from the live medium](recovering-an-unbootable-system.md#repairing-from-the-live-medium) goes on from here: the
+   logs to read, and how to reach the installed system's EFI system partition.
 
 5. When done, undo the steps in reverse:
 
    ```bash
-   sudo umount /mnt
+   sudo umount /mnt/target
    sudo vgchange -an kdos          # only with LVM
    sudo cryptsetup close kdosroot
    ```
@@ -262,10 +271,10 @@ blkid
 ```
 
 A disk that is not connected, or a container recreated since the install, gives this. Boot the
-live medium, mount the installed machine's EFI system partition with
-`sudo mount /dev/<esp> /mnt`, and correct the `cryptdevice=` option in the entries of
-`/mnt/limine.conf`, and `crypt_a` in `/mnt/EFI/kdos/bootstate`, to the UUID that
-`sudo blkid -t TYPE=crypto_LUKS` reports.
+live medium, mount the installed machine's EFI system partition on a directory of its own with
+`sudo mkdir -p /mnt/esp` and `sudo mount /dev/<esp> /mnt/esp`, and correct the `cryptdevice=`
+option in the entries of `/mnt/esp/limine.conf`, and `crypt_a` in `/mnt/esp/EFI/kdos/bootstate`,
+to the UUID that `sudo blkid -t TYPE=crypto_LUKS` reports. Unmount it with `sudo umount /mnt/esp`.
 
 **`cryptdevice: this initramfs has no cryptsetup`.** The image was built without cryptsetup, so its
 initramfs cannot open a container. The step's `Note:` line is in the `70_image` build log; build
@@ -274,8 +283,9 @@ the image with the [cryptsetup](#port-cryptsetup) port installed.
 **`cryptdevice: cannot parse '…'`.** The option is neither `UUID=<uuid>:<name>` nor
 `/dev/<node>:<name>`. Correct it in `limine.conf` from the live medium, as above.
 
-**`UNLOCKED`, then the boot stops at `ROOT DEVICE` with the root not found.** The container opened
-but no filesystem with the `root=` UUID appeared inside it. In the rescue shell, `blkid` lists
+**`UNLOCKED`, then the boot stops at `ROOT DEVICE` with `Disk boot failed: no root at UUID=… with
+/sbin/init on it`.** The container opened but no filesystem with the `root=` UUID appeared inside
+it. In the rescue shell, `blkid` lists
 `/dev/mapper/kdosroot` with the UUID it carries. On an LVM install the splash shows whether the
 `VOLUME GROUPS` stage after the unlock failed; see [LVM and RAID](lvm-and-raid.md).
 

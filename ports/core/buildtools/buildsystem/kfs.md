@@ -1,7 +1,8 @@
 ## About
-The NetSurf project's shared build framework: no program, only the makefile fragments
-(`Makefile.top`, `Makefile.tools`, `Makefile.pkgconfig` and the per-compiler ones) and a test
-runner that each NetSurf library's own `Makefile` includes. [libnsgif](#port-libnsgif),
+The NetSurf project's shared build framework: no program, only the makefile fragments that each
+NetSurf library's own `Makefile` includes (`Makefile.top`, `Makefile.tools`, `Makefile.subdir`,
+`Makefile.pkgconfig` and the per-compiler ones), the `testrunner.pl` test runner and upstream's
+CI script, `jenkins-build.sh`. [libnsgif](#port-libnsgif),
 [libcss](#port-libcss), [libdom](#port-libdom), [libhubbub](#port-libhubbub) and the other NetSurf
 libraries build with it.
 

@@ -40,11 +40,11 @@ device found.* `kdos-net` offers its `h` key only for a radio that reports the c
 The shipped firewall drops incoming and forwarded traffic by default. These lines of
 [`/etc/nftables.conf`]{.idx}, from `fs/`, let a hotspot's clients get an address and a resolver:
 
-<!-- kfs:include fs/etc/nftables.conf lines=88-101 pin=fe5a9ae7c603 -->
+<!-- kfs:include fs/etc/nftables.conf lines=89-102 pin=fe5a9ae7c603 -->
 
 and let their traffic through the machine:
 
-<!-- kfs:include fs/etc/nftables.conf lines=115-129 pin=648bdf43390b -->
+<!-- kfs:include fs/etc/nftables.conf lines=116-130 pin=648bdf43390b -->
 
 Both are scoped to `10.42.0.0/16`, the range NetworkManager gives shared connections. A network of
 your own made with `hostapd` gets none of this; see
@@ -73,7 +73,8 @@ example beside that path, from its `build.sh`:
 
 <!-- kfs:include ports/core/network/hostapd/build.sh lines=64-68 pin=989c47c3d1b0 -->
 
-Every key is described in [`/etc/hostapd/hostapd.conf.example`]{.idx} itself and in `hostapd(8)`.
+Every key is described in [`/etc/hostapd/hostapd.conf.example`]{.idx} itself; `hostapd(8)` and
+`hostapd_cli(1)` cover the two commands.
 
 ## Usage
 
@@ -132,24 +133,25 @@ This is the long way, for a machine that is the network. The procedure follows
    unmanaged-devices=interface-name:<interface>
    ```
 
-   then restart NetworkManager as
-   [Restarting the daemon](networkmanager.md#restarting-the-daemon) shows: a plain
-   `service restart` in a desktop session leaves the old daemon, which still manages the card.
+   then restart NetworkManager with `sudo service restart networkmanager`
+   ([Restarting the daemon](networkmanager.md#restarting-the-daemon)).
    `NetworkManager --print-config` shows the `[keyfile]` line, and `nmcli device status` lists
    the card as `unmanaged`. NetworkManager leaves an address and a route the card already had in
    place; `sudo ip addr flush dev <interface>` removes them.
 
 3. Give the interface an address, and run a `dnsmasq` of your own on it for DHCP and DNS, from an
-   init script of your own in `/etc/init.d`. `46_hostapd.sh` is a model for one. Its `dnsmasq`
+   init script of your own in `/etc/init.d` ([Writing a service](writing-a-service.md)).
+   `46_hostapd.sh` is a model for one. Its `dnsmasq`
    needs `interface=<interface>`, `bind-interfaces` and a `dhcp-range=` line, and
    `--keep-in-foreground` on the command line so the supervisor watches it. Without
    `bind-interfaces` it collides with NetworkManager's resolver on port 53 and serves no clients.
 
-4. Let the clients through the firewall: a file of your own in [`/etc/nftables.d`]{.idx} accepting
+4. Let the clients through the firewall: a file of your own in [`/etc/nftables.d`]{.idx}, with a
+   name ending in `.nft` (the only files `/etc/nftables.conf` includes), accepting
    `udp dport { 53, 67 }` and `tcp dport 53` with `iifname "<interface>"` in the `input` chain,
    and, if they should reach anything beyond this machine, accepting forwarding from that
-   interface. See
-   [Adding your own rules](../../kdos/02-user-guide/administration.md#adding-your-own-rules).
+   interface. See [Adding a rule of your own](firewall.md#adding-a-rule-of-your-own) for the
+   file's shape and how to load it.
 
 5. Start it, or reboot:
 
@@ -163,7 +165,7 @@ and no procedure for routing the clients' traffic to an uplink.
 ### On the live medium and on an installed system
 
 Both ways are available on the live medium. A `hostapd` network made there lasts until the next reboot
-unless the medium has a persistence store; on an installed system `46_hostapd` starts it at every
+unless the medium has a [persistence store](live-persistence.md); on an installed system `46_hostapd` starts it at every
 boot.
 
 ## Tips
@@ -188,7 +190,8 @@ No wireless device reported the access-point capability. `iw list` shows whether
 The firewall dropped its DHCP request. For a hotspot, `sudo nft list ruleset | grep 10.42` should
 show the shipped lines above. They are missing only when `/etc/nftables.conf` did not load at boot
 even without `/etc/nftables.d`, and the boot fell back to its minimal policy. For
-`hostapd`, check your own file in `/etc/nftables.d` and that your `dnsmasq` is running. In both
+`hostapd`, check that your own `.nft` file in `/etc/nftables.d` is in `sudo nft list ruleset`
+and that your `dnsmasq` is running. In both
 cases `/run/kdos-init.nftables.log` holds the firewall's boot output.
 
 **A client has an address and reaches nothing beyond this machine.**

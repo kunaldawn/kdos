@@ -9,9 +9,9 @@ It is on the ISO, not only on an installed system, for two reasons. `kinstall` c
 container for an encrypted install, and `script/phases/70_image/090_initramfs.sh` copies
 `cryptsetup` and its libraries into the initramfs, where the boot unlocks an encrypted root
 before it looks for a filesystem; see
-[Unlocking an encrypted root](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/boot-and-init.md#unlocking-an-encrypted-root).
+[Unlocking an encrypted root](../../../../docs/kdos/03-architecture/boot-and-init.md#unlocking-an-encrypted-root).
 The mount daemon runs `/usr/sbin/cryptsetup` to unlock an encrypted volume for the desktop; see
-[Encrypted volumes](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/daemons.md#encrypted-volumes).
+[Encrypted volumes](../../../../docs/kdos/04-programs/daemons.md#encrypted-volumes).
 [libblockdev](#port-libblockdev), [volume_key](#port-volume_key) and [gparted](#port-gparted)
 depend on it.
 
@@ -33,7 +33,7 @@ depend on it.
 - `--disable-rpath` — Turns off the run path that gettext's library search macros in configure
   add for the libraries they find, an entry of `/usr/lib`. The tree's package lint warns on such
   an entry, since `/usr/lib` is the default search path; see
-  [What the package lint refuses](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#what-the-package-lint-refuses).
+  [What the package lint refuses](../../../../docs/kdos/05-developer/writing-ports.md#what-the-package-lint-refuses).
 - `--disable-ssh-token` — Builds no LUKS2 SSH token plugin, which unlocks a container with a key
   fetched over SSH through libssh.
 
@@ -48,4 +48,4 @@ cannot be unlocked at boot.
 
 `--disable-nls` builds no translations, which the package prune would remove anyway, and it means
 the build needs no libintl; see
-[Gettext on musl](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/build-troubleshooting.md#gettext-on-musl).
+[Gettext on musl](../../../../docs/kdos/05-developer/build-troubleshooting.md#gettext-on-musl).

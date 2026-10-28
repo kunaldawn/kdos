@@ -11,7 +11,7 @@ module.
   advance. boost.m4 otherwise adds `-Wl,-R/usr/lib` to every link against a Boost library,
   which writes `/usr/lib` into the library's `RPATH`; with `-L` the flag becomes a second
   `-L/usr/lib` and no `RPATH` is written. The
-  [package lint](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#what-the-package-lint-refuses)
+  [package lint](../../../../docs/kdos/05-developer/writing-ports.md#what-the-package-lint-refuses)
   warns on a `/usr/lib` entry. [liborcus](#port-liborcus) passes the same answer.
 - `--enable-threads` — Calculate formula cells on several threads. It is configure's default.
 - `--enable-python` — Build the `ixion` Python module, which installs into site-packages beside
@@ -21,7 +21,7 @@ module.
   default.
 
 ## Patches
-- `boost-1.89.patch` — In `m4/boost.m4`, look only for the header `boost/system/error_code.hpp` when Boost is 1.70 or newer, instead of linking a `boost_system` library: Boost.System is header-only there, and Boost 1.89 installs no library for configure to find.
+- `boost-1.89.patch` — In `m4/boost.m4`, look only for the header `boost/system/error_code.hpp` when Boost is 1.70 or newer, instead of linking a `boost_system` library: Boost.System is header-only there, and Boost 1.89 and later install no library for configure to find.
 
 ## Notes
 The patch changes an m4 macro, so `build.sh` runs `autoreconf -fi` after it to regenerate

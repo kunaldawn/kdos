@@ -7,10 +7,11 @@ what a build time given in SBU means.
 ## Commands and output
 
 A command is set in a box of its own, with no prompt in front of it, so that it can be copied as it
-stands:
+stands. This one, like every `kpkg` command outside System administration, runs in the chroot
+described below:
 
 ```bash
-make fetch
+kpkg info pv
 ```
 
 What a command prints, when the book shows it, is in a separate box directly after the command, so
@@ -28,7 +29,7 @@ File names, commands, variables and switches in running text are set in a fixed-
 
 ## Where a command runs
 
-Every command in this book runs in one of three places, and the sentence before the box always
+Every command in this book runs in one of four places, and the sentence before the box always
 says which:
 
 On **your machine**, the host, from the top of your clone of the repository. Nothing in this book
@@ -41,10 +42,15 @@ here.
 
 In **the chroot**: the root filesystem the build is assembling, `build/fs`, entered as `/` with
 `script/chroot/exec.sh` from inside the container. Every phase from `20_selfhost` on runs here, and
-every `kpkg` command in this book means a `kpkg` running inside the chroot, as root, from the
-directory `/kdos`. [Entering the chroot](../04-chroot/entering.md) shows how to get there by hand.
+every `kpkg` command outside System administration means a `kpkg` running inside the chroot, as
+root, from the directory `/kdos`. [Entering the chroot](../04-chroot/entering.md) shows how to get
+there by hand.
 
-The same file has a different path in each of the three. The book writes a path the way the place
+On **a KDOS machine**, a system installed or booted from the finished image. Every command in
+[System administration](../16-wiki/intro.md) is typed there, and the page says which of them need
+root, usually by setting `sudo` in front.
+
+The same file has a different path in each of the first three. The book writes a path the way the place
 running the command sees it, and this table translates between them:
 
 | On your machine | In the container | In the chroot |
@@ -77,9 +83,9 @@ you would type `--phases 41_system,70_image --rebuild pv`.
 Most of the commands in this book are not copied into it. They are read from the script or recipe
 that runs them each time the book is rendered, and set as a listing with a caption under it naming
 the file, and the line range when the listing is part of a file. The caption links to the file. A
-listing of a whole file leaves out the banner, the comment block every file in the tree opens with
-that draws the KDOS logo in box characters, and nothing else. A listing is always the text the build
-runs; the prose around it is what explains it.
+listing of a whole file leaves out its `#!` line and its banner, the comment block that draws the
+KDOS logo in box characters at the top of the tree's scripts and recipes, and nothing else. A
+listing is always the text the build runs; the prose around it is what explains it.
 
 ## Names and links
 
@@ -88,15 +94,18 @@ shelf: `pv`, not `cli/pv`. KDOS finds a port by that name wherever it is filed. 
 running text links to its package page, as in [pv](#port-pv) or [zlib](#port-zlib).
 
 A link into [the KDOS book](../../kdos/README.md) leads to the chapter that explains a mechanism.
-This book follows such a link with no more than a sentence of its own about the same subject.
+This book follows such a link with no more than a sentence of its own about the same subject. In
+the rendered book, such a link, and a link to a file of the tree, opens the file on GitHub.
 
 ## Notes
 
-Two kinds of note are set in a box on a package page. One says that the build-state snapshot was
+Three kinds of note are set in a box on a package page. One says that the build-state snapshot was
 taken from a different version of the port from the recipe shown, so that the size, the time and
-the contents on that page describe the earlier build. The other appears on the page of a package
+the contents on that page describe the earlier build. Another appears on the page of a package
 that is also built before kpkg exists, by a script of `00_cross` or `10_bootstrap`, and compares the
 switches the two builds use; see [Reading a package page](reading-a-package-page.md#the-header).
+The third appears on a full page whose port has no hand-written note to explain what makes it
+unusual; see [The three tiers](reading-a-package-page.md#the-three-tiers).
 
 ## Sizes
 
@@ -109,17 +118,18 @@ A source's download size is the size of the file in the source cache.
 Build times are given in **SBUs**, standard build units, the way the *Linux From Scratch* book gives
 them, because a time in seconds is only true of the machine that measured it. One SBU is the time
 the first step of the whole build took: the cross binutils, `00_cross/binutils`. Every other figure
-is that step's time divided into its own, so a port shown as `2.5 SBU` took two and a half times as
+is a step's own time divided by that one, so a port shown as `2.5 SBU` took two and a half times as
 long as the cross binutils did on the same machine.
 
 The figures come from `build/snapshots/timings.json`, where kdosbuild records the seconds each step
 took when it did work, keyed by phase and step: `00_cross/binutils`, `10_bootstrap/gcc`,
-`41_system/pv`; see [Step timings](../../kdos/05-developer/build-system.md#step-timings). `make book-data` divides each by the SBU and writes the result into the snapshot.
-The snapshot's stamp names the commit and the date of the tree it was taken from, how many packages
-that tree had installed, and, as `sbu-seconds`, how long one SBU was. `sbu-machine` is the machine
-that measured it, as kdosbuild recorded it beside the figure, and each `machine-<n>` line describes
-one machine a figure names: its processor, the CPUs the build could run on, its memory and the
-`KDOS_JOBS` it was given, then, as `machine-<n>-ports`, how many port figures it measured.
+`41_system/pv`; see [Step timings](../../kdos/05-developer/build-system.md#step-timings).
+`make book-data` divides each by the SBU and writes the result into the snapshot. The snapshot's
+stamp names the commit the checkout stood at when the snapshot was taken, the date of the newest
+package in the built tree, how many packages that tree had installed, and, as `sbu-seconds`, how
+long one SBU was. `sbu-machine` is the machine that measured it, as kdosbuild recorded it beside
+the figure, and each `machine-<n>` line describes one machine a figure names: its processor, the
+CPUs the build could run on, its memory and the `KDOS_JOBS` it was given, then, as `machine-<n>-ports`, how many port figures it measured.
 `unrecorded-ports` counts the figures that name no machine, recorded by a kdosbuild that filed
 none, and `-` for `sbu-machine` means the SBU is one of those. `measured-phases` and
 `unmeasured-phases` divide the package phases by whether any of their ports has a figure.

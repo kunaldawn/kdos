@@ -45,7 +45,9 @@ What KDOS changed
    stays red and an audio file stays amber — while folders, devices and places
    become phosphor.
 
-7. index.theme is replaced: the theme is named KDOS and inherits hicolor, so
-   the alien apps' icons still resolve.
+7. index.theme is replaced: the theme is named KDOS and inherits breeze-dark
+   (or breeze, whichever suits the colour scheme's ground), Adwaita and then
+   hicolor, so KDE and GNOME applications find the names Papirus lacks and
+   the alien apps' own icons still resolve.
 
 No upstream path, geometry or shape is otherwise altered.

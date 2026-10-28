@@ -2,8 +2,10 @@
 
 libmpeg2 decodes MPEG-1 and MPEG-2 video streams, the video of DVDs and of DVB and ATSC
 broadcasts. The phase list names it for GStreamer: the `mpeg2dec` element of
-[gst-plugins-ugly](#port-gst-plugins-ugly) wraps it. VLC, ScummVM and Amiberry link it as well. The package also installs `mpeg2dec`, the
-demonstration decoder, which here can only write its output to files.
+[gst-plugins-ugly](#port-gst-plugins-ugly) wraps it. VLC, ScummVM and Amiberry link it as well.
+The package also installs three programs: `mpeg2dec`, the demonstration decoder, which here can
+only write its output to files; `extract_mpeg2`, which pulls the MPEG video out of a program or transport stream; and
+`corrupt_mpeg2`, which damages a stream on purpose, for testing a decoder.
 
 ## Flags
 

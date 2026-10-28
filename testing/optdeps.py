@@ -28,9 +28,10 @@
 #
 #   python3 testing/optdeps.py            every match, one line each
 #   python3 testing/optdeps.py --count    the number of matches only
-#   python3 testing/optdeps.py --claims   comment lines that say something is
-#                                         not a port, each name in them that
-#                                         is one marked with a *
+#   python3 testing/optdeps.py --claims   kfs.md lines (and build.sh comment
+#                                         lines) that say something is not a
+#                                         port, each name in them that is one
+#                                         marked with a *
 #
 # The name a switch carries is upstream's, not the port's: `--without-numa`
 # finds `numactl` only through ALIAS. An upstream spelling that maps to no port
@@ -365,23 +366,32 @@ def main():
                     matches.append((d, no, sw, p))
                     break
         if mode == "--claims":
-            with open(b, errors="replace") as f:
-                for no, line in enumerate(f, 1):
-                    if line.lstrip().startswith("#") and CLAIM.search(line):
-                        words = re.findall(r"[A-Za-z][A-Za-z0-9_.+-]*[A-Za-z0-9]",
-                                           line)
+            # The reasons are in kfs.md, where every line is prose; a build.sh
+            # carries none, so only its comment lines can be one.
+            for fn, prose in (("kfs.md", True), ("build.sh", False)):
+                path = os.path.join(d, fn)
+                if not os.path.isfile(path):
+                    continue
+                with open(path, errors="replace") as f:
+                    for no, line in enumerate(f, 1):
+                        if not prose and not line.lstrip().startswith("#"):
+                            continue
+                        if not CLAIM.search(line):
+                            continue
+                        words = re.findall(
+                            r"[A-Za-z][A-Za-z0-9_.+-]*[A-Za-z0-9]", line)
                         hit = sorted({resolve(w, names, lower, False)
                                       for w in words if len(w) > 2
                                       and w.lower() not in CLAIM_STOP}
                                      - {None, n})
-                        claims.append((d, no, line.strip(), hit))
+                        claims.append((d, fn, no, line.strip(), hit))
     if mode == "--count":
         print(len(matches))
         return 0
     if mode == "--claims":
-        for d, no, text, hit in sorted(claims):
+        for d, fn, no, text, hit in sorted(claims):
             mark = (" *" + ",".join(hit)) if hit else ""
-            print("%s/build.sh:%d: %s%s" % (d, no, text, mark))
+            print("%s/%s:%d: %s%s" % (d, fn, no, text, mark))
         return 0
     for d, no, sw, p in sorted(matches):
         print("%s/build.sh:%d: %s -> %s" % (d, no, sw, p))

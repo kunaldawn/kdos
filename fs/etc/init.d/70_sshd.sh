@@ -20,8 +20,9 @@ case "$1" in
         # -D = don't detach (foreground for supervision). PidFile=none:
         # sshd's own default, /var/run/sshd.pid, is the supervisor's
         # /run/sshd.pid. Written there, it replaces the supervisor's id, so
-        # `service stop` signals the daemon alone and it is restarted, and
-        # sshd removes it on exit, so `status` reports the service down.
+        # `service stop` finds no supervisor at that pid, drops the file as
+        # stale and signals nothing, leaving the daemon running; and sshd
+        # removes it on exit, so `status` reports the service down.
         supervise "$NAME" "$DAEMON" -D -o PidFile=none
         ;;
     stop)

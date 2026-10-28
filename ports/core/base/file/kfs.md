@@ -3,9 +3,10 @@
 `/usr/share/misc/magic.mgc`; `libmagic` is the same engine as a library.
 
 It is one of the first ports `30_foundation` installs, ahead of every shelf, because builds run it
-without naming it: libtool's configure calls `file` to tell a shared library from a static one.
-On the finished system it is what the `less` input filter asks what a file is (`file -L -s -b --mime`, see
-[Shell environment](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/06-reference/configuration.md#shell-environment)),
+without naming it: on x86-64, libtool's configure runs `file` on a test object to learn whether
+the compiler produces 32-bit or 64-bit code, and picks the linker emulation from the answer.
+On the finished system it is what the `less` input filter asks what a file is
+(`file -L -s -b --mime`, see [Shell environment](../../../../docs/kdos/06-reference/configuration.md#shell-environment)),
 and [nano](#port-nano), [yazi](#port-yazi), [recoll](#port-recoll) and
 [e2fsprogs](#port-e2fsprogs) are among the ports that depend on it.
 

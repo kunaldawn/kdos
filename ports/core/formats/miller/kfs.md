@@ -11,4 +11,4 @@ regression test. The manual page is upstream's pre-generated `man/mlr.1`, instal
 
 The Go modules come from the vendor bundle, `miller-vendor-<version>.tar.xz`, made by
 `go mod vendor` and pinned by its own `sha256 =` line (see
-[Vendoring](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#vendoring)).
+[Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring)).

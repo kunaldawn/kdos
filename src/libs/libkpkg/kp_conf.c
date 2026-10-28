@@ -866,9 +866,9 @@ int kp_db_drop_paths(const KpConf *c, const char *pkg, char *const *paths,
 /*
  * `depends = a b c`.
  *
- * Split on SPACES only. The shell pipeline this replaced ended in `tr ' '`, so
- * a TAB inside the list stayed part of its token — every recipe in the tree
- * uses single spaces, and reproducing the quirk costs nothing.
+ * Split on SPACES only: a TAB inside the list stays part of its token. Every
+ * recipe in the tree uses single spaces, so a recipe that separated two names
+ * with a tab would depend on one port whose name holds the tab.
  */
 int kp_depends(const char *portdir, char out[][128], int max)
 {

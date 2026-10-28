@@ -16,8 +16,8 @@
 # Host-built recipe reader (src_kpkg_ensure in ports/srclib.sh compiles it
 # for ports/fetch and ports/publish to read kpkgbuild files, which are not
 # shell and cannot be sourced). Its basename must be
-# literally "kpkg" for kdos-kpkg's own basename dispatch to resolve it, hence
-# the dedicated directory rather than a bare ports/.kpkg-meta file.
+# literally "kpkg" for kdos-kpkg's own basename dispatch to resolve it, so it
+# is ports/.kpkgbin/kpkg, in a directory of its own.
 ports/.kpkg-meta
 ports/.kpkgbin/
 # Host-built port updater (ports/update's own compile-on-demand block) and

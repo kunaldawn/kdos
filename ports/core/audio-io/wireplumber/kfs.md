@@ -6,7 +6,7 @@ policy is written in Lua scripts run by an embedded Lua interpreter. [pipewire](
 built with no session manager of its own, and its daemon routes nothing without one, so on KDOS
 WirePlumber is what makes sound work at all. The session starts it right after `pipewire` and
 before `pipewire-pulse`; see
-[Audio](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/session.md#audio).
+[Audio](../../../../docs/kdos/03-architecture/session.md#audio).
 
 ## Flags
 - `-Dsystem-lua=true` — Link the tree's [lua](#port-lua) instead of building the copy of Lua

@@ -6,7 +6,8 @@ for `sdl2`. It is built as a thin layer that answers every SDL 2 call through [s
 It loads `libSDL3.so.0` at run time, so an SDL 2 program gets SDL 3's drivers: the Wayland video
 driver, PipeWire audio and the controller support. It is the SDL 2 every SDL 2 port in KDOS links,
 and the base of the SDL 2 satellites ([sdl2-image](#port-sdl2-image), [sdl2-ttf](#port-sdl2-ttf),
-[sdl2-mixer](#port-sdl2-mixer)) and of `sdl12-compat`, which serves SDL 1.2 programs through it.
+[sdl2-mixer](#port-sdl2-mixer)) and of [sdl12-compat](#port-sdl12-compat), which serves SDL 1.2
+programs through it.
 
 ## Flags
 

@@ -17,8 +17,10 @@ shows in its *Licence* row, and what `kpkg info` prints as `License:`.
 
 The texts themselves are installed with the packages. kpkg copies every file at the top of the
 source whose name starts with `LICENSE`, `LICENCE`, `COPYING`, `COPYRIGHT` or `NOTICE`, in any
-case, into `/usr/share/licenses/<name>/`, which the size policy never prunes; a licence kept
-elsewhere in the source is installed there by the port's `build.sh`. See
+case, into `/usr/share/licenses/<name>/`, which the size policy never prunes, along with the files
+of a top-level directory so named, such as REUSE's `LICENSES/`. A source file that only starts like
+one, `license.c` or `COPYING.in`, is not copied, and a licence kept elsewhere in the source is
+installed there by the port's `build.sh`. See
 [What kpkg does around build.sh](../../kdos/05-developer/writing-ports.md#what-kpkg-does-around-buildsh).
 
 ## Every licence

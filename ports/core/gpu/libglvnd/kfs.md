@@ -6,8 +6,8 @@ program's calls on to the vendor library that owns the current context. In KDOS 
 Mesa, built `-D glvnd=enabled`, which installs `libEGL_mesa` and `libGLX_mesa` behind these.
 libglvnd also installs the `gl.pc`, `glx.pc`, `egl.pc` and `glesv2.pc` files the rest of the tree
 builds against. How a Wayland client and an X11 client under Xwayland each reach Mesa through it is
-in [Desktop GL and
-GLX](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/testing.md#desktop-gl-and-glx).
+in
+[Desktop GL and GLX](../../../../docs/kdos/05-developer/testing.md#desktop-gl-and-glx).
 
 ## Flags
 

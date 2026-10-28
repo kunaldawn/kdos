@@ -19,9 +19,9 @@
  * alternative deadlocks on musl. That reason lives in a commit message, an
  * issue thread, or nowhere.
  *
- * KDOS already writes that corpus — CLAUDE.md, where nearly every rule is a
- * recorded debug cycle. This makes it queryable from the machine it is about,
- * offline, with no network and no wiki.
+ * KDOS keeps that corpus as one text file per reason in reasons/ beside this
+ * source, installed to /usr/share/kdos/reasons. This makes it queryable from
+ * the machine it is about, offline, with no network and no wiki.
  *
  * ── The failure mode this must not have ────────────────────────────────
  *

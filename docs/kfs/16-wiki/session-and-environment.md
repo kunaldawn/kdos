@@ -49,7 +49,8 @@ The first script stops when the compositor is not installed:
 <!-- kfs:include fs/usr/local/bin/kdos-desktop lines=7-11 pin=382d0335a0d6 -->
 
 On a virtio GPU it turns the hardware cursor off (`WLR_NO_HARDWARE_CURSORS=1`), and when that GPU
-has no 3D support it puts the compositor on software rendering (`WLR_RENDERER=pixman`); see
+has no 3D support it puts the compositor on software rendering (`WLR_RENDERER=pixman`). A display
+device with no render node in `/dev/dri` gets software rendering too; see
 [Virtual machines](virtual-machines.md#running-kdos-as-a-guest). It then sets up the runtime
 directory, the keyboard layout, the box warm-up and the session bus, and hands over to the second
 script:
@@ -58,15 +59,19 @@ script:
 
 ### /usr/local/bin/kdos-desktop-start
 
-The second starts audio, the portals and the input method, then runs the compositor with its
-standard error kept in a log, and once more on the software renderer if it refused a GPU with no
-hardware GL:
+The second starts audio, the portals, the input method and Déjà Dup's backup scheduler when they
+are installed, and queues the steps that run once the display exists: the login sound, the
+shortcut card, mpd when it has a configuration, the offer of pending applications, the per-user
+timers and the session restore (see
+[What runs once, after the display exists](../../kdos/03-architecture/session.md#what-runs-once-after-the-display-exists)).
+Then it runs the compositor with its standard error kept in a log, and once more on the software
+renderer if it refused a GPU with no hardware GL:
 
-<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=163-188 pin=6d5a742e6bd9 -->
+<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=167-192 pin=6d5a742e6bd9 -->
 
 What it does when the compositor exits:
 
-<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=198-226 pin=550e5678fa39 -->
+<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=202-230 pin=550e5678fa39 -->
 
 ### /etc/profile.d/10-wayland.sh
 
@@ -77,7 +82,7 @@ It points a shell that the session did not start at the session's bus:
 
 and it chooses each toolkit's back end:
 
-<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=78-102 pin=b852ff9235db -->
+<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=78-103 pin=f911d6393ed7 -->
 
 Every variable it sets is tabulated in
 [Shell environment](../../kdos/06-reference/configuration.md#shell-environment). A box receives
@@ -116,32 +121,36 @@ compositor's size limit the line is refused. The rules are in
 |---|---|---|
 | `~/.config/kdos/session-restore` | At login, relaunch the boxed applications listed in `~/.local/state/kdos/session` | At login |
 | `~/.config/kdos/first-run` | Its absence shows the keyboard shortcut card at login; `kdos-keys` writes it once the card has been seen | At login |
-| `~/.config/kdos/apps-offered` | Its absence repeats the offer to install the applications chosen during installation | At login |
+| `~/.config/kdos/apps-offered` | While `/var/lib/kdos/apps-pending` lists applications chosen during installation, its absence repeats the offer to install them; the session writes it once the offer has been sent | At login |
 
 ## Usage
 
 ### Starting the desktop by hand
 
-When `tty1` shows a shell prompt instead of the desktop, after a logout or with [autologin]{.idx} off:
+A login on `tty1` starts the desktop by itself, with or without [autologin]{.idx}. When `tty1`
+shows a shell prompt instead, after a logout or after a crash you did not restart, run at that
+prompt:
 
-1. Log in on `tty1`.
-2. Run:
+```bash
+kdos-desktop
+```
 
-   ```bash
-   kdos-desktop
-   ```
-
-   The compositor's log scrolls on the console while it starts.
+The compositor's log scrolls on the console while it starts.
 
 ### Ending the session
 
-There are three ways out. Only the first writes the list of open applications that
+There are four ways out. Only the first writes the list of open applications that
 [Reopening applications at login](#reopening-applications-at-login) reads.
 
-- **From the desktop:** press `Super+Escape` and answer **Yes**. The compositor's root menu has
-  **Log Out**, **Restart** and **Shut Down** rows that do the same, but a right click on the
-  wallpaper opens that menu only with `desktop_icons = no` in `comp.conf`; with desktop icons on,
-  the wallpaper's menu is the desktop's own, and it has none of those rows.
+- **With the keyboard:** press `Super+Escape` and answer **Yes**. The compositor's root menu has a
+  **Log Out** row that does the same, beside **Restart** and **Shut Down**, which ask and then
+  restart or power off the machine. A right click on the wallpaper opens that menu only with
+  `desktop_icons = no` in `comp.conf`; with desktop icons on, the wallpaper's menu is the
+  desktop's own, and it has none of those rows.
+- **From the panel:** **Log Off** in the Start menu's row of power buttons asks
+  `Log out of this session?`, and **Log Out** in the System menu (a right click on the Start
+  button) asks `End the KDOS session? Unsaved work will be lost.`. Both then send the compositor
+  `SIGTERM`.
 - **From a terminal the compositor started:** this exits at once, with no prompt:
 
   ```bash
@@ -158,10 +167,13 @@ There are three ways out. Only the first writes the list of open applications th
 
 Each of these is a clean exit, and it leaves a shell prompt on `tty1`, still logged in. Type
 `exit` there to end the login; with autologin on, `tty1` logs in again and starts a new session.
-fcitx5, `kdos-ime` and the capture portal end with the compositor. The session bus, PipeWire,
-WirePlumber, the portal front end and the KDOS portal backend are left running, and so are the
-loop that stops idle boxes and the per-user timers; a session started again on the same boot
-reuses the bus and PipeWire instead of starting second copies.
+`kdos-ime` and the capture portal end with the compositor. PipeWire, WirePlumber and
+`pipewire-pulse`, mpd and its `kdos-mpctl watch` watcher, the loop that stops idle boxes and the
+per-user timers keep running at the prompt and end with the login. The session bus runs until
+shutdown, and with it the portal front end and the KDOS portal backend. A session started again
+on the same boot reuses the bus, PipeWire and a running mpd instead of starting second copies,
+and replaces the per-user timer loops. What the compositor does as it exits is in
+[Ending a session](../../kdos/03-architecture/session.md#ending-a-session).
 
 ### Restarting after a crash
 
@@ -196,8 +208,9 @@ and start the desktop by hand.
    it restarts, has the new value, with `~` already expanded.
 
 For every account and every login shell, including text consoles and SSH, put the export in a file
-of your own under [`/etc/profile.d/`]{.idx term="/etc/profile.d"} instead, named so that it sorts after `10-wayland.sh`, and log
-in again. A file of your own keeps the change apart from `10-wayland.sh`, which is the image's.
+of your own under [`/etc/profile.d/`]{.idx term="/etc/profile.d"} instead, ending in `.sh`
+(`/etc/profile` reads no other name) and named so that it sorts after `10-wayland.sh`, and log in
+again. A file of your own keeps the change apart from `10-wayland.sh`, which is the image's.
 
 ### Reaching a running session from tty2 or SSH
 
@@ -233,10 +246,11 @@ A login shell on another terminal already has `XDG_RUNTIME_DIR` and, while the s
    ```
 
 2. End sessions with `Super+Escape`, or with **Log Out**, **Restart** or **Shut Down** in the
-   compositor's root menu; those are the routes that write the list.
+   compositor's root menu; those are the routes that write the list. The panel's **Log Off** and
+   **Log Out** rows, `kdos-comp -e` and `pkill` do not.
 
 At the next login each boxed application on the list is started again, two seconds apart.
-Programs that are not boxed are written to the list and not restarted. Remove the file to stop.
+Programs that are not boxed are not restarted. Remove the file to stop.
 
 ### Changing the keyboard layout for the session
 
@@ -284,9 +298,10 @@ kdos doctor
 ```
 
 `kdos doctor`'s Session section checks the compositor's socket, the runtime directory, and that
-`kdos-comp`, `kdos-shell` and `xdg-desktop-portal-wlr` are running. The compositor takes the
-display through `seatd`; `service status seatd` shows whether it is up, and what its script printed
-at boot is in `/run/kdos-init.seatd.log`.
+`kdos-comp`, `kdos-shell` and `xdg-desktop-portal-wlr` are running. Run from `tty2`, it warns
+`no WAYLAND_DISPLAY — not inside a desktop session` instead of checking the socket; that warning
+is expected there. The compositor takes the display through `seatd`; `service status seatd` shows
+whether it is up, and what its script printed at boot is in `/run/kdos-init.seatd.log`.
 
 **The session's keyboard layout is US although `/etc/keymap` names another.** `kdos-desktop`
 printed `keymap '<name>' has no XKB layout '<layout>' — leaving the default` on `tty1`. Set the
@@ -306,7 +321,9 @@ display.** That shell has no `WAYLAND_DISPLAY` or `DISPLAY`; follow
 [Reaching a running session from tty2 or SSH](#reaching-a-running-session-from-tty2-or-ssh).
 
 **A boxed application has no sound, no notifications or never opens a window, while host programs
-work.** The box meets the host through `$XDG_RUNTIME_DIR`; see
+work.** The box reaches the session bus, the compositor and PipeWire through the host's
+`$XDG_RUNTIME_DIR`, shared into it at the same path; see
+[What is shared into a box](../../kdos/03-architecture/session.md#what-is-shared-into-a-box) and
 [The session message bus](../../kdos/03-architecture/session.md#the-session-message-bus) for what
 breaks without it.
 
@@ -314,6 +331,7 @@ breaks without it.
 
 - [There is no graphical login screen (greeter)](../../kdos/06-reference/known-gaps.md#there-is-no-graphical-login-screen-greeter)
 - [Only two ways of ending the session save the list of open windows](../../kdos/06-reference/known-gaps.md#only-two-ways-of-ending-the-session-save-the-list-of-open-windows)
+- [Log Out ends the desktop, not the login](../../kdos/06-reference/known-gaps.md#log-out-ends-the-desktop-not-the-login)
 - [The power button and the sleep key work only inside a graphical session](../../kdos/06-reference/known-gaps.md#the-power-button-and-the-sleep-key-work-only-inside-a-graphical-session)
 - [A live session cannot create a persistent box](../../kdos/06-reference/known-gaps.md#a-live-session-cannot-create-a-persistent-box)
 - The live image's automatic login and default password: see

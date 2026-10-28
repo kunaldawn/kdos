@@ -5,11 +5,11 @@ e2fsprogs is the toolkit for the ext2, ext3 and [ext4]{.idx} filesystems: `mke2f
 libraries `libext2fs`, `libe2p`, `libcom_err` and `libss`. ext4 is the default filesystem
 `kinstall` formats an installed root with, and the one `kdos persist` makes a persistence store
 on, so `mkfs.ext4` must be present on the ISO; see
-[The filesystem table](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/kinstall.md#the-filesystem-table).
+[The filesystem table](../../../../docs/kdos/04-programs/kinstall.md#the-filesystem-table).
 `script/phases/70_image/090_initramfs.sh` copies `e2fsck` and its three libraries into the
 initramfs, which checks an ext2, ext3 or ext4 root with `e2fsck -p` before mounting it
 read-write; see
-[Checking the root](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/boot-and-init.md#checking-the-root).
+[Checking the root](../../../../docs/kdos/03-architecture/boot-and-init.md#checking-the-root).
 
 ## Flags
 

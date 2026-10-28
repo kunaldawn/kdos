@@ -25,7 +25,7 @@ Terms used throughout:
 |---|---|
 | ESP | The EFI system partition: a small FAT partition the firmware reads. On an installed KDOS machine it holds the boot loader, the kernels, the boot menu and the A/B boot state, and the running system mounts it at `/boot/efi`. |
 | initramfs | The small archive the kernel unpacks into memory and runs first. Its `init` script finds, unlocks and mounts the real root, then hands over to it. |
-| Root slot | One of two root partitions, `a` and `b`, on a machine set up for A/B updates. One is the *active* slot, known to work; the other can hold an update on *trial*. Not the same thing as a colour [slot](../06-reference/glossary.md). |
+| Root slot | One of two root partitions, `a` and `b`, on a machine set up for A/B updates. One is the *active* slot, known to work; the other can hold an update on *trial*. Not the same thing as a colour [slot](../06-reference/glossary.md#slot). |
 | Live medium | The KDOS ISO, booted from a USB stick or optical disc, running from a compressed image with an in-memory (or persistent) overlay on top. |
 | Splash | `kdos-splash`, the program that draws the boot animation and the stage list on the framebuffer from the initramfs until the login prompt. |
 | Runlevel | The state sysvinit's `init` keeps the machine in, named in `/etc/inittab`: `3` is the running system, `S` single-user, `0` power-off and `6` reboot. Each `inittab` entry lists the runlevels it runs in, and `telinit` moves between them. |
@@ -50,7 +50,7 @@ Terms used throughout:
 | 14 | The numbered service scripts ([boot order](../02-user-guide/administration.md#services)) | `rcS` |
 | 15 | `kdos-bootctl mark-good` | `rcS`, last |
 | 16 | The splash quits | `rcS` |
-| 17 | `kdos-getty` on tty1 and tty2; `serial-getty` (`agetty`) on `ttyS0` | init, as `respawn` entries of runlevel 3 |
+| 17 | `kdos-getty` on tty1 and tty2; `serial-getty` (`agetty`) on `ttyS0` | init, as `respawn` entries of runlevels 2 to 5 |
 | 18 | `kdos-login`, which hands tty1 to `agetty` | `kdos-getty` on tty1 |
 | 19 | The desktop | `~/.bash_profile` (or `~/.zprofile` for a zsh login), on tty1 only |
 
@@ -187,7 +187,7 @@ The memtest86+ payload is an EFI binary, so its entry carries `if_fw_type: UEFI`
 a BIOS boot, where it could not start. The entry is left out when the payload
 (`/usr/share/kdos/memtest86plus/memtest.efi`) is not installed.
 
-The menu is drawn as a character grid in the [accent](../06-reference/glossary.md) in force (the
+The menu is drawn as a character grid in the [accent](../06-reference/glossary.md#accent) in force (the
 colour scheme the machine is set to), in Terminus `ter-i16n` (an 8x16 face in the CP437 encoding
 Limine indexes by), over a dimmed full-screen backdrop. The console's own face, `ter-kdos32n`, is
 not usable here: Limine reads only 8-dot-wide fonts, and only Terminus's `-i` faces are CP437, so
@@ -237,11 +237,16 @@ shell on `tty1` as well as on `/dev/console` ([The rescue shell](#the-rescue-she
 
 `kdos-bootctl theme <accent>` rewrites the look of the boot menu and the text consoles in place:
 
-- In `limine.conf` it touches only the keys the theme owns and leaves every entry, `cmdline`,
+- In `limine.conf` it touches only the keys the theme owns: `interface_branding`,
+  `interface_branding_colour`, `interface_help_hidden`, `interface_help_colour`,
+  `interface_help_colour_bright`, `backdrop`, `term_background`, `term_foreground`,
+  `term_background_bright`, `term_foreground_bright`, `term_palette`, `term_palette_bright`,
+  `term_margin`, `term_margin_gradient`, `wallpaper_style` and `term_font_scale` (a `_color`
+  spelling of any `_colour` key counts as the same key). It leaves every entry, `cmdline`,
   `timeout`, `default_entry`, `wallpaper`, `term_font` and the A/B state alone. A restamp that
   rewrote the file from a template would discard a slot somebody is in the middle of rolling back.
-  `wallpaper_style` and `term_font_scale` are among the keys it owns, so a restamp also sets the
-  menu's layout. The new block lands where the first owned line was, or, in a file with none,
+  Because `wallpaper_style` and `term_font_scale` are among the keys it owns, a restamp also sets
+  the menu's layout. The new block lands where the first owned line was, or, in a file with none,
   immediately before the first entry, which is the only position both firmwares' parsers accept
   a global in.
 - It writes the accent's sixteen console colours to `/etc/vtrgb`, which `kdos-getty` loads onto
@@ -251,7 +256,7 @@ Both writes are temporary file, `fsync`, rename, `fsync` the directory. The ESP 
 journal, and a zero-length `limine.conf` is a machine that shows no menu. An accent name that is
 not one of the compiled-in schemes is refused with exit status 2.
 
-`kdos theme` reaches this through `kdos-powerd accent`, which also writes `/etc/kdos/accent` for
+[`kdos theme`](../04-programs/kdos-command.md#kdos-theme) reaches this through `kdos-powerd accent`, which also writes `/etc/kdos/accent` for
 the splash. A machine with no `limine.conf` at the default path (the live medium, for instance)
 retints its consoles, reports that the boot menu is unchanged and exits 0; the desktop still
 retints.
@@ -614,9 +619,12 @@ bootnext = yes              tried through UEFI BootNext, or empty
 
 `kinstall` writes the first version whenever the install has an ESP: `slot_a` and `crypt_a`
 filled in, `active = a`, no candidate. Slot B is described later with
-`kdos-bootctl set-slot b <uuid> [<luks-uuid>]`, and `kdos update apply` installs into it, deploys
-its kernel and calls `try`. Nothing in KDOS creates or first populates slot B's partition; see
-[Known gaps](../06-reference/known-gaps.md#boot-and-updates).
+`kdos-bootctl set-slot b <uuid> [<luks-uuid>]`, and
+[`kdos update apply`](../04-programs/kdos-command.md#kdos-update) installs into it, deploys its
+kernel and calls `try`. Nothing in KDOS creates or first populates slot B's partition: the steps
+to make one by hand are in [Installation](../02-user-guide/installation.md#ab-root-slots), and
+what has not been tested is in
+[Known gaps](../06-reference/known-gaps.md#nothing-creates-or-first-fills-the-second-root-slot).
 
 In the initramfs, when the command line names `bootstate=UUID=`, the init loads `vfat`, waits up
 to ten seconds for that ESP to appear, mounts it at `/esp`, and asks `kdos-bootctl select` which
@@ -847,8 +855,8 @@ Who deploys depends on the root the package went into:
   whose entries boot the flat pair.
 
 In every root, the postinstall keeps the module tree of every kernel on the ESP (it reads each
-version out of the header of the kernel image file, the bzImage) as well as the running kernel's,
-and removes the rest. Until a root's own kernel is deployed, the next boot of that root runs one of
+version out of the header of the kernel image file, the bzImage), keeps the running kernel's when
+the root is the running system, and removes the rest. Until a root's own kernel is deployed, the next boot of that root runs one of
 those kernels, and a root stripped of their modules would boot with no GPU, network or sound driver.
 
 ### One boot through BootNext
@@ -885,10 +893,13 @@ a fixed shape: the ESP's partition entry, read from the GPT itself (or from a pr
 and a path `kdos-bootctl` chose. Its number is the lowest one no `Boot####` uses, or the one
 already carrying the description.
 
-Where the request cannot be made (no firmware variables, which is every BIOS boot; no per-slot
-directory to build a trial menu from; or a firmware that refuses the write), `try` says so and
-falls back to the menu-led trial. There, a kernel that dies before its initramfs is recovered by
-hand, by picking the confirmed slot's `/KDOS (slot <x>)` entry.
+Where there are no firmware variables, which is every BIOS boot, or no ESP is found, `try` never
+asks for `BootNext` and goes straight to the menu-led trial; its one line of output says `will boot
+slot <x> up to <n> time(s)`. Where the variables exist but the request still cannot be made (no
+per-slot directory to build a trial menu from, or a firmware that refuses the write), `try` prints
+`no UEFI BootNext — slot <x> is led by the menu instead` and falls back the same way. In the
+menu-led trial, a kernel that dies before its initramfs is recovered by hand, by picking the
+confirmed slot's `/KDOS (slot <x>)` entry.
 
 ## Activating volume groups
 
@@ -983,7 +994,7 @@ pass reports each device it tried; a hundred repetitions of the same two lines w
 message that explains a failed boot.
 
 When the root, the medium or `/sbin/init` on it cannot be found, the init marks the stage failed on
-the splash and starts a shell on `/dev/console`. Before `switch_root` it moves `/dev`, `/proc` and
+the splash and opens [the rescue shell](#the-rescue-shell). Before `switch_root` it moves `/dev`, `/proc` and
 `/sys` into the new root. The live path also stops the initramfs's `udevd` before `switch_root`;
 the installed path does not, and `01_udev` starts a `udevd` from the real root either way.
 
@@ -1001,7 +1012,8 @@ libvirt's) never make theirs at all, and a claimed directory that is absent fail
 The overlay's writable upper layer decides whether the session survives a power-off:
 
 - A filesystem labelled `KDOS_PERSIST` is used as the upper layer when one is present, in `upper/`
-  and `work/` directories on it. `kdos persist` creates such a store, as an ext4 partition in the
+  and `work/` directories on it. [`kdos persist`](../04-programs/kdos-command.md#kdos-persist)
+  creates such a store, as an ext4 partition in the
   free space after the image. The label is looked up right after the medium is found, and again
   every tenth of a second while USB storage is still arriving: a hub port holds a device that is
   not yet configured, or a mass-storage interface has no disk beneath it yet (usb-storage waits
@@ -1066,8 +1078,8 @@ GNU package. A stand-in passes every build step and fails only at boot, so the c
 makes the failure loud.
 
 The installed root has one implementation behind each of these names. `/usr/sbin` holds
-util-linux's `blkid`, `switch_root` and `losetup`, and a second copy under `/usr/bin`, which
-`$PATH` searches first, would shadow it everywhere but the initramfs, which copies by full path.
+util-linux's `blkid`, `switch_root` and `losetup`, and a second copy under `/usr/bin`, which a
+login shell's `$PATH` searches first, would shadow it everywhere but the initramfs, which copies by full path.
 
 ### `blkid`
 
@@ -1095,7 +1107,7 @@ makes the new root the *mount namespace's* root. The namespace root then stays t
 emptied initramfs, with the real root parked at `/newroot`, and anything that **joins** a mount
 namespace (entering a container, `nsenter -m`) gets that empty root as `/`, so every path fails to
 exist. Every process on the machine is also left chrooted, and the kernel refuses to create a user
-namespace for a chrooted caller, so no [box](../06-reference/glossary.md) (the rootless container
+namespace for a chrooted caller, so no [box](../06-reference/glossary.md#box) (the rootless container
 an application runs in) can start. The machine boots perfectly either way, which is why the check
 exists.
 
@@ -1124,9 +1136,8 @@ field is free of shell metacharacters, so init executes each one directly rather
    root](#checking-the-root)), then mounts everything in `fstab`, mounts `efivarfs` on a UEFI boot,
    creates `/run/lock` with mode `1777`, brings the loopback interface up, runs `chmod 1777 /tmp`
    and `swapon -a`, and links `/etc/localtime` to UTC when nothing is there. The `tzdata` package
-   does not own `/etc/localtime`, so a `tzdata` upgrade leaves a chosen time zone alone. A machine
-   whose installed `tzdata` manifest still lists the link loses it once, on the next upgrade; see
-   [Known gaps](../06-reference/known-gaps.md#a-tzdata-upgrade-can-reset-the-time-zone-to-utc-once).
+   does not own `/etc/localtime`, so a `tzdata` upgrade leaves a chosen time zone alone, and a
+   link that is already there, dangling or not, is left as it is.
 5. Makes the root mount recursively shared (`mount --make-rshared /`), which rootless containers
    need for mount propagation.
 6. Runs each executable `/etc/init.d/NN_name.sh` with `start`, in numeric order, skipping any with a
@@ -1215,7 +1226,7 @@ for it to serve; a data pack or a mounted library medium supplies it, and the ne
 | `87_kolibri` | Kolibri, with `KOLIBRI_HOME=/var/lib/kolibri` | `http://127.0.0.1:8081` | A channel database is in `/var/lib/kolibri/content/databases`, and the `kolibri` account exists (the `kolibri` package's `postinstall.sh` makes it) | `kolibri` |
 | `88_llama-server` | Every `.gguf` model under `/usr/share/llama.cpp/models`, through llama-server's router: a model is loaded on the first request that names it, one at a time | `http://127.0.0.1:8082`, an OpenAI-compatible API | At least one `.gguf` file is there | `nobody`, in `render` so the Vulkan backend can reach a GPU |
 
-`8080` is also the port the `kiwix` [firewall](../04-programs/daemons.md) name opens and the port
+`8080` is also the port the `kiwix` [firewall](../04-programs/daemons.md#firewall) name opens and the port
 the shipped Caddyfile proxies, so serving the library to the network is Caddy's route, not a
 change to this script. Each is disabled like any other service, with a marker named `kiwix-serve`,
 `kolibri` or `llama-server`.
@@ -1481,7 +1492,8 @@ it does, in order:
   `fbcon: Taking over console`, then loads the font and retries, up to ten times, until
   `showconsolefont` confirms the size is 16x32.
 - The font is `ter-kdos32n`, built in the `terminus-font` port: Terminus's 512-glyph face with six
-  spacing diacritics replaced by the double box-drawing glyphs the block logo needs. It keeps λ,
+  rarely used characters (`¤ ¦ ¨ ¸ ¯ ˝`) replaced by the six double box-drawing glyphs the
+  block logo needs (`═ ║ ╔ ╗ ╚ ╝`). It keeps λ,
   which the shell prompt and the message of the day print.
 - It loads the palette from `/etc/vtrgb` (the accent's sixteen console colours, written by
   `kdos-bootctl theme`) **before** the final clear, or the screen ends up half pure black and half
@@ -1577,7 +1589,8 @@ the prompt below it, or the banner prints plainly instead of animating.
   and supervised scripts compared with the init systems of other distributions
 - [Architecture overview](overview.md): where boot sits in the running system
 - [Getting started](../02-user-guide/getting-started.md): the same path from the user's side
-- [Installation](../02-user-guide/installation.md): what the installer writes to the ESP
+- [Installation](../02-user-guide/installation.md#the-esp-and-the-bootloader): what the installer
+  writes to the ESP
 - [Theming](../02-user-guide/theming.md): the boot menu, splash and console colours
 - [The session](session.md): everything after the login prompt
 - [The daemons](../04-programs/daemons.md): the services `rcS` starts

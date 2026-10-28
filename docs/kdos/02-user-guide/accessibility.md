@@ -17,7 +17,8 @@ to, and [The desktop](desktop.md) explains the desktop's keyboard routes.
 | Larger text | A font size for the desktop's chrome, per-window sizes in the terminals, a larger pointer | [Larger text](#larger-text) |
 | Typing with limited movement | Sticky, slow and bounce keys | [Keyboard aids](#keyboard-aids) |
 | Clicking with limited movement | Dwell click: resting the pointer clicks | [Dwell click](#dwell-click) |
-| Pointing without a mouse | Keyboard Pointer (`wl-kbptr`) in the menu: labelled screen regions, typed to move and click; `wl-kbptr -o modes=floating,click -o mode_floating.source=detect` finds the clickable regions itself | [Applications](applications.md#accessibility) |
+| Pointing without a mouse | Keyboard Pointer (`wl-kbptr`) in the menu: labelled screen regions, typed to move the pointer and click | [Pointing from the keyboard](#pointing-from-the-keyboard) |
+| Writing with a pointer or a switch | Dasher, which types letters chosen by steering | [Writing with Dasher](#writing-with-dasher) |
 | Typing without a keyboard | An on-screen keyboard, shown by key or whenever a text field has the focus | [The on-screen keyboard](#the-on-screen-keyboard) |
 | A screen reader hearing the keyboard | The compositor's keyboard monitor, the interface a reader such as Orca uses on Wayland | [The keyboard monitor](#the-keyboard-monitor) |
 | Contrast | Eight colour schemes held to fixed contrast floors, one of them light | [Colour and contrast](#colour-and-contrast) |
@@ -65,7 +66,8 @@ in the foreground. That covers:
 - the login prompt on `tty1` of an installed system, before the desktop starts;
 - `tty2`, a plain login prompt on every KDOS system, which you reach from the desktop with
   `Ctrl+Alt+F2` and leave with `Alt+F1`;
-- the installer, `kinstall`, when it runs on a text console (see [Installation](installation.md)).
+- the installer, `kinstall`, when it runs on a text console of its own, such as `tty3` (see
+  [Running the installer](installation.md#running-the-installer)).
 
 Once the desktop is running on `tty1`, `/dev/vcsa` holds nothing BRLTTY can use. For a spoken or
 braille shell on a machine that runs the desktop, log in on `tty2`. Speech there shares the sound
@@ -96,6 +98,8 @@ Driver codes are two letters: `bm` is Baum, `ht` HandyTech, `fs` Freedom Scienti
 HumanWare and so on, `auto` probes for a display, `en` is eSpeak-NG and `sd` is
 Speech Dispatcher. Every braille driver BRLTTY registers is built, as a loadable module under
 `/usr/lib/brltty`, and BRLTTY loads only the driver the file names, or the one `auto` finds.
+eSpeak-NG is linked into `brltty` itself; the other speech drivers, `sd` among them, are modules
+in the same directory.
 BRLTTY's own manual lists every driver code and every directive the file accepts.
 
 Then start the service, or reboot:
@@ -116,18 +120,21 @@ at a time. While a desktop session's PipeWire holds the card, the console voice 
 while the console voice is speaking, the desktop has no sound. Braille output does not use the
 sound card and is not affected.
 
-In a terminal inside the desktop, the synthesiser is reachable directly through PipeWire:
-`espeak-ng "text"` speaks a line, and `spd-say "text"` does the same through Speech Dispatcher.
-Speech Dispatcher is built with ALSA output and `espeak-ng` as its only synthesiser. Its Python
-module, `speechd`, is installed with it, and so is `spd-conf`, which writes a per-user
+In a terminal inside the desktop, speech plays through ALSA's default device, which in a session
+is PipeWire: `espeak-ng "text"` speaks a line, and `spd-say "text"` does the same through Speech
+Dispatcher. Speech Dispatcher is built with ALSA output and `espeak-ng` as its only synthesiser.
+Its Python module, `speechd`, is installed with it, and so is `spd-conf`, which writes a per-user
 configuration and runs Speech Dispatcher's own diagnostics.
+
+`piper`, a neural speech synthesiser, is on the image as well and speaks through PipeWire. It
+ships no voice: a voice is a model file passed with `-m`. Speech Dispatcher and BRLTTY do not use
+it (see [Local AI, speech and translation](applications.md#local-ai-speech-and-translation)).
 
 ### Contracted braille
 
-BRLTTY is built with liblouis, which installs 323 translation tables (the `.ctb`, `.utb` and `.tbl`
-files that its `tables/Makefile.am` installs) covering literary and computer braille for many
-languages. They are installed under `/usr/share/liblouis/tables`. Name a liblouis table with a
-`louis:` prefix. For Unified English Braille grade 2, put this line in `/etc/brltty.conf`:
+BRLTTY is built with liblouis, which installs 323 translation tables (`.ctb`, `.utb` and `.tbl`
+files) covering literary and computer braille for many languages. They are installed under
+`/usr/share/liblouis/tables`. Name a liblouis table with a `louis:` prefix. For Unified English Braille grade 2, put this line in `/etc/brltty.conf`:
 
 ```ini
 contraction-table louis:en-ueb-g2.ctb
@@ -180,9 +187,9 @@ The shipped `~/.config/kdos-comp/rc.xml` binds them:
 | `Super+Alt+=` | `ZoomIn` |
 | `Super+Alt+-` | `ZoomOut` |
 
-An account's `rc.xml` is copied from `/etc/skel` once, when the account is created, and is not
-updated afterwards. If an account's file lacks these bindings, add the same lines to its
-`<keyboard>` section, after the `<default />` line:
+An account's `rc.xml` is copied from `/etc/skel` when the account is created, and from then on it
+is the account's own file. A file written by hand without these bindings has no magnifier keys; add
+the same lines to its `<keyboard>` section, after the `<default />` line:
 
 ```xml
 <keybind key="W-equal"><action name="ToggleMagnify"/></keybind>
@@ -197,7 +204,8 @@ are in [Changing the bindings](desktop.md#changing-the-bindings). To load the ed
 compositor's root menu has one, and it answers the wallpaper only with `desktop_icons = no` (see
 [Pointer bindings](desktop.md#pointer-bindings)).
 
-A `<magnifier>` block in the same file sets how it behaves:
+A `<magnifier>` block at the top level of the same file sets how it behaves. The shipped file has
+none, so the defaults below apply:
 
 ```xml
 <magnifier>
@@ -217,13 +225,19 @@ A `<magnifier>` block in the same file sets how it behaves:
 | `increment` | `0.2` | How much `ZoomIn` and `ZoomOut` change it; negative values are raised to 0 |
 | `useFilter` | `yes` | Smooth the magnified pixels. `no` keeps them square, which suits a bitmap font |
 
-The inset has a border, one pixel wide and red by default. Two theme keys change it, in
-`~/.config/kdos-comp/themerc-override`:
+The inset has a border, one pixel wide and red by default. Two window-frame theme keys change it.
+`kdos theme` rewrites `~/.config/kdos-comp/themerc-override` whole on every accent switch, so the
+keys go in a style file, whose dotted keys are kept and added after the generated theme each time
+(see [Style files](theming.md#style-files)):
 
 ```ini
+# magnifier.kdos
 magnifier.border.width: 2
 magnifier.border.color: #ffb000
 ```
+
+Apply it with `kdos theme style magnifier.kdos`. A style replaces every dotted key an earlier
+style saved, so put these lines in the style you already use, if you use one.
 
 The magnifier draws on the output nearest the pointer. While it is on, the phosphor pass, the
 CRT-style effect KDOS draws over the desktop, is switched off for the whole screen, because
@@ -277,10 +291,16 @@ The compositor draws the pointer from the `KDOS-cursors` theme, which holds each
 notification says which is on. Two keys in `~/.config/kdos/comp.conf` set the sizes:
 
 ```ini
-cursor_size = 32          # the ordinary pointer; 0 keeps the session's XCURSOR_SIZE, 24 as shipped
-large_cursor_size = 64    # what Super+Alt+C switches to; 48 unless set
-large_cursor = yes        # start every session with the large one
+cursor_size = 32
+large_cursor_size = 64
+large_cursor = yes
 ```
+
+`cursor_size` is the ordinary pointer; `0`, the default, keeps the session's `XCURSOR_SIZE`, which
+is 24 as shipped. `large_cursor_size` is what `Super+Alt+C` switches to, 48 unless set.
+`large_cursor = yes` starts every session with the large one. A `#` starts a comment only at the
+beginning of a line in `comp.conf`; one after a value is read as part of the value, so a number or
+a `yes` with a comment after it is rejected.
 
 Both apply as soon as the compositor reloads (`kdos-comp -r`). The compositor also sets
 `XCURSOR_SIZE` to the size it draws, so a program started afterwards draws its own pointer at the
@@ -311,10 +331,12 @@ To have them on from the start of every session, or to change the delays, set th
 ```ini
 sticky_keys = yes
 slow_keys = yes
-slow_keys_delay = 500       # milliseconds, 100 to 5000
+slow_keys_delay = 500
 bounce_keys = yes
-bounce_keys_delay = 400     # milliseconds, 100 to 5000
+bounce_keys_delay = 400
 ```
+
+Both delays are in milliseconds, from 100 to 5000.
 
 A change there applies when the compositor reloads. A reload takes a switch from the file only when
 its line has changed, so the reload every colour-scheme change sends does not undo a switch made by
@@ -336,13 +358,45 @@ pointer but not press a button reliably. `Super+Alt+D` switches it on and off, o
 
 ```ini
 dwell_click = yes
-dwell_click_delay = 1200    # milliseconds of rest before the click, 100 to 5000
+dwell_click_delay = 1200
 ```
+
+The delay is the milliseconds of rest before the click, from 100 to 5000; 1200 is the default.
 
 A pointer that moves by less than 4 pixels counts as resting. After a click, the pointer has to
 move 16 pixels before it can click again, so leaving it still clicks once rather than repeatedly.
 Pressing a real button cancels a pending dwell click. There is no countdown on the screen, and dwell
 click gives no right click, double click or drag.
+
+## Pointing from the keyboard
+
+Keyboard Pointer, `wl-kbptr` in the menu, moves the pointer and clicks with no mouse at all. It
+covers the screen with a grid of tiles, each with a short label; typing a label picks that tile,
+which is then split into labelled quarters, and typing one of those labels narrows in again, as
+many times as it takes to reach the spot. `Enter` or `Space` moves the
+pointer there, and `g`, `h` and `b` (by their position on a QWERTY keyboard, whatever the layout)
+click the left, right or middle button there. `Backspace` steps back one choice.
+
+It can also find the clickable regions itself, by looking at a picture of the screen, and label
+each one:
+
+```sh
+wl-kbptr -o modes=floating,click -o mode_floating.source=detect
+```
+
+Typing a label then clicks in the middle of that region. Bind either command to a key in `rc.xml`
+to reach it without the menu (see [Changing the bindings](desktop.md#changing-the-bindings)).
+
+## Writing with Dasher
+
+Dasher writes text without a keyboard. Letters stream towards the pointer in boxes sized by how
+likely each one is to come next, and steering into a box writes its letter, so a mouse, a head
+pointer, an eye tracker that moves the pointer or a single switch is enough. It can speak what has
+been written through Speech Dispatcher. Dasher runs under Xwayland, because it reads the pointer
+through X11, and its direct mode, which types into another application, reaches only other X11
+windows; for a Wayland window, write in Dasher's own text box and paste.
+
+For a script, `wtype` types a given string into the window that has the focus.
 
 ## The on-screen keyboard
 
@@ -373,7 +427,9 @@ shortcuts so the window with the focus never receives them. When the reader's ow
 Three limits apply:
 
 - **Only a reader that has claimed the name `org.gnome.Orca.KeyboardMonitor` may use it.** Orca's
-  client library claims it before its first call.
+  client library claims it before its first call. A boxed program shares the session bus and could
+  claim the same name while no reader holds it, so the check keeps an ordinary program from
+  listening by accident; it does not stop one that sets out to.
 - **Nothing is sent while the screen is locked**, because a password is typed there.
 - **Keys typed on the on-screen keyboard are not passed on**, only those of a physical keyboard.
 
@@ -381,7 +437,7 @@ Three limits apply:
 
 KDOS has eight colour schemes, called accents: `phosphor`, `amber`, `ice`, `bone` (the default),
 `norton`, `borland`, `perfect` and `paper`. `paper` is the only light one, dark text on a pale
-ground. Switch with the picker, `kdos-style`, or from a terminal:
+ground. Switch with the picker, `kdos-style` (`Super+Ctrl+Shift+Space`), or from a terminal:
 
 ```sh
 kdos theme paper
@@ -432,7 +488,7 @@ rule every animation follows.
 ## A containerised application can be read
 
 Inside a *box*, the container a graphical application from the catalogue runs in (see the
-[glossary](../06-reference/glossary.md)), the ordinary Linux accessibility stack applies. An
+[glossary](../06-reference/glossary.md#box)), the ordinary Linux accessibility stack applies. An
 application's toolkit publishes its tree of accessible objects on the accessibility bus, and a
 screen reader connected to that bus reads it. The catalogue ships no screen reader, BRLTTY or
 `espeak-ng`; to run a reader inside a box, install it there yourself. `kdos-box enter <box>` opens
@@ -479,19 +535,20 @@ anyone who would build on it:
 - A password field announces that it is one, with the value `hidden`, and never its contents.
 - A list or a table takes its rows from the calling program, so it states the position and leaves
   the name to the program that has it.
-- The record holds at most 16 entries (`KTUI_A11Y_MAX`) and is cleared at the start of every
-  frame. A control that says nothing leaves nothing behind, so a reader is never handed the name
-  of a control from an earlier frame.
+- The record holds at most 16 entries (`KTUI_A11Y_MAX`); a frame with more to say drops the
+  rest. It is cleared at the start of every frame. A control that says nothing leaves nothing
+  behind, so a reader is never handed the name of a control from an earlier frame.
 
 Nothing on the system reads that record except the library's own self-test
 (`src/libs/selftest.c`). The programming interface is described in
-[The C libraries](../05-developer/c-libraries.md#libktui).
+[The C libraries](../05-developer/c-libraries.md#announcements).
 
 The record does not leave the program that made it: there is no socket, bus interface or bridge
-to AT-SPI that carries it, and no reader program that would receive it. Any such channel has a
-security constraint: a reader that could also type into other windows would be indistinguishable
-from a keylogger, so the channel must grant less than the interface a window manager uses. The
-gap is recorded in [Known gaps](../06-reference/known-gaps.md).
+to AT-SPI that carries it, and no reader program that would receive it. Any such channel would
+have a security constraint: a reader that could also type into other windows would be
+indistinguishable from a keylogger, so the channel must grant less than the interface a window
+manager uses. The gap is recorded in
+[Known gaps](../06-reference/known-gaps.md#a-screen-reader-reads-the-applications-not-the-desktops-own-windows).
 
 ## See also
 
@@ -499,10 +556,10 @@ gap is recorded in [Known gaps](../06-reference/known-gaps.md).
 - [Configuration](../06-reference/configuration.md#configkdoscompconf) — every accessibility key in `comp.conf`
 - [kdos-comp](../04-programs/kdos-comp.md#accessibility) — how the keyboard aids, dwell click, the
   on-screen keyboard and the keyboard monitor are built
-- [kdos-appbox](../04-programs/kdos-appbox.md) — how a box's environment is built
-- [The C libraries](../05-developer/c-libraries.md#libktui) — `ktui_announce()`, and what a widget says
-- [Administration](administration.md#services) — starting, stopping and disabling `65_brltty`
-- [Known gaps](../06-reference/known-gaps.md) — the missing desktop screen reader, stated as a gap
+- [kdos-appbox](../04-programs/kdos-appbox.md#the-environment-a-box-gets) — how a box's environment is built
+- [The C libraries](../05-developer/c-libraries.md#announcements) — `ktui_announce()`, and what a widget says
+- [Administration](administration.md#services) — starting, stopping and disabling the `brltty` service
+- [Known gaps](../06-reference/known-gaps.md#a-screen-reader-reads-the-applications-not-the-desktops-own-windows) — the missing desktop screen reader, stated as a gap
 - [The desktop](desktop.md) — the keyboard route to every surface
 - [Theming](theming.md) — fonts, accents and the phosphor pass
 - [The ports catalogue](../06-reference/ports-catalogue.md) — `brltty`, `liblouis`, `espeak-ng` and `speech-dispatcher` among the other ports

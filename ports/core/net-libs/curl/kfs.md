@@ -27,8 +27,8 @@ configure.
 - `--with-ca-bundle=/etc/ssl/certs/ca-certificates.crt` — the CA bundle compiled in as the default
   for verifying servers. The path is a link to `/etc/ssl/cert.pem`, the file
   `update-ca-certificates` writes from the Mozilla roots and any local ones, so curl trusts what
-  every other OpenSSL program on the system trusts; see [TLS trust
-  anchors](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#tls-trust-anchors).
+  every other OpenSSL program on the system trusts; see
+  [TLS trust anchors](../../../../docs/kdos/03-architecture/security-model.md#tls-trust-anchors).
 - `--with-nghttp2` — HTTP/2, through [nghttp2](#port-nghttp2).
 - `--with-ngtcp2` — with `--with-nghttp3`, HTTP/3 over QUIC: [ngtcp2](#port-ngtcp2) is the QUIC
   transport and [nghttp3](#port-nghttp3) the HTTP/3 layer. Configure stops if either is missing, or

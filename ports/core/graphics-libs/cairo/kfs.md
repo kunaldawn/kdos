@@ -10,13 +10,14 @@ carries its image, PDF, PS, SVG and script surfaces, the FreeType and fontconfig
 
 - `-frandom-seed=cairo` — With LTO, fixes the name GCC gives each object's `.gnu.lto_*` sections,
   which is otherwise random on every build. cairo is one of the hot libraries the tree builds with
-  link-time optimisation, and every one of them carries the seed (see [Every
-  port](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#every-port)).
+  link-time optimisation, and every one of them carries the seed (see
+  [Every port](../../../../docs/kdos/05-developer/writing-ports.md#every-port)).
 - `-D b_lto=true` — Link-time optimisation, through meson's own switch.
 - `-D fontconfig=enabled`, `-D freetype=enabled` — The FreeType font backend (`cairo-ft`), with
   fontconfig to find fonts; pango and every GTK program render their text through it.
-- `-D png=enabled`, `-D zlib=enabled` — The PNG and SVG surfaces, and the script, PostScript, PDF
-  and XML surfaces, which compress with zlib.
+- `-D png=enabled`, `-D zlib=enabled` — libpng gives the PNG functions and the SVG surface; zlib
+  gives the script, PostScript and PDF surfaces, which compress their output with it, and the
+  cairo-script interpreter.
 - `-D lzo=enabled` — Lets the cairo-script interpreter compress and expand the string data of a
   script trace with LZO, through [lzo](#port-lzo).
 - `-D glib=enabled` — Builds `cairo-gobject`, the GObject types for cairo's structures that pango,
@@ -33,7 +34,8 @@ carries its image, PDF, PS, SVG and script surfaces, the FreeType and fontconfig
   PostScript output for comparison; with the tests off, the switch spares the probe and nothing
   else.
 - `-D symbol-lookup=disabled` — On `auto`, configure finds binutils' `libbfd` in the root and links
-  it into `libcairo` itself, for symbol names in the debugging utilities' backtraces.
+  it into `libcairo` itself, for symbol names in the backtraces `cairo-trace` records; every
+  program that draws with cairo would then load libbfd.
 - `-D gtk2-utils=disabled` — Builds no GTK 2 debugging utilities; GTK 2 is not a port.
 - `-D gtk_doc=false`, `-D tests=disabled` — No API reference and no test suite.
 - `XML_CATALOG_FILES` — Points libxml2 at `/etc/xml/catalog`. With `gtk_doc=false` no step of this

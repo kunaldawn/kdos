@@ -1395,6 +1395,15 @@ static void paste_pump(void)
 	K.paste_len = 0;
 }
 
+/* Whether the clipboard chord is Ctrl+Shift+V rather than any Ctrl+V. See
+ * kwl_paste_needs_shift. */
+static int paste_shift;
+
+void kwl_paste_needs_shift(int on)
+{
+	paste_shift = on;
+}
+
 static void paste_start(int primary)
 {
 	int rank;
@@ -2356,7 +2365,7 @@ static int own_diff(KwlBuffer *b, const KtuiCell *cur, int w, int h,
 
 /*
  * Paint `cur` into a buffer and commit it. Two different diffs, against two
- * different baselines, and keeping them apart is the whole of S1:
+ * different baselines, and they must be kept apart:
  *
  * The DAMAGE is the diff against `K.screen` — what the compositor is showing —
  * because damage describes what changed ON SCREEN. It is also what keeps the
@@ -3583,12 +3592,13 @@ static void kb_key(void *d, struct wl_keyboard *k, uint32_t serial,
 	ev.key = kwl_keysym_to_ktui(sym, K.xkb_state, kc);
 	if (!ev.key)
 		return;			/* a bare modifier: nothing to repeat */
-	/* Ctrl+V starts receiving the clipboard. The chord is the letter plus
-	 * the modifier, which is the one vocabulary every backend delivers.
-	 * The key is still delivered: with nothing on the clipboard the
-	 * consumer sees exactly what it always saw. */
+	/* Ctrl+V starts receiving the clipboard — Ctrl+Shift+V alone once the
+	 * consumer has said kwl_paste_needs_shift(1). The chord is the letter
+	 * plus the modifier, which is the one vocabulary every backend
+	 * delivers. The key is still delivered: with nothing on the clipboard
+	 * the consumer sees exactly what it always saw. */
 	if ((ev.mods & KT_MOD_CTRL) && (ev.key == 'v' || ev.key == 'V') &&
-	    K.data_dev)
+	    (!paste_shift || (ev.mods & KT_MOD_SHIFT)) && K.data_dev)
 		paste_start(0);
 	push_event(&ev);
 

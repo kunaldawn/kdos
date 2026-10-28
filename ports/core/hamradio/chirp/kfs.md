@@ -19,8 +19,8 @@ and the command-line `chirpc`, built from a dated snapshot of upstream's tree.
 
 The vendor bundle is the `pypackages` closure: the two distributions CHIRP needs that no port
 provides, `yattag` and `suds-community`, as source distributions. `pypackages` is the closure
-itself, so `ports/fetch` downloads exactly those two without resolving their dependencies. pyserial, requests, lark and wxPython come
-from their `python3-*` ports in `depends`. The `pip3 install` line names both bundled
+itself, so `ports/fetch` downloads exactly those two without resolving their dependencies.
+pyserial, requests, lark and wxPython come from their `python3-*` ports in `depends`. The `pip3 install` line names both bundled
 distributions and the program itself, installed `--no-deps` from `vendor/` with no index (see
 [The three Python keys](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys)).
 

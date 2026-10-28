@@ -6,8 +6,10 @@ identifies a release from file metadata, an AcoustID fingerprint computed with
 Everything except tag editing and renaming needs the MusicBrainz server. It is a PyQt6 program.
 
 ## Flags
-- `PICARD_DISABLE_AUTOUPDATE=1` — read by Picard's `setup.py` when it generates `tagger.py`: the
-  update check is compiled out and its setting hidden. The program is updated as a package.
+- `PICARD_DISABLE_AUTOUPDATE=1` — read by the build step of Picard's `setup.py`, which writes
+  `autoupdate=False` into the `picard` launcher it generates from `scripts/picard.in`: Picard never
+  checks for a new release, and its update-check setting is hidden. The program is updated as a
+  package.
 - `--no-index` — with `--find-links=vendor`: pip installs only from the unpacked vendor bundle and
   never reaches the network.
 - `--no-deps` — pip installs exactly the names on the line, `mutagen discid pyjwt` and Picard
@@ -21,11 +23,11 @@ Everything except tag editing and renaming needs the MusicBrainz server. It is a
   [The three Python keys](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
 
 ## Notes
-The bundle, `picard-vendor-<version>.tar.xz`, holds source distributions only, among them the
-recipe's `pypackages = mutagen discid pyjwt`, downloaded by `ports/fetch` without resolving their
-dependencies, and setuptools, the build backend; see
+The bundle, `picard-vendor-<version>.tar.xz`, holds source distributions only: the recipe's
+`pypackages = mutagen discid pyjwt`, which `ports/fetch` downloads without resolving their
+dependencies; setuptools, the build backend; and Markdown, which `build.sh` does not install. See
 [The three Python keys](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
-Those three are the part of Picard's runtime that no other port imports: mutagen reads and writes
+mutagen, discid and PyJWT are the part of Picard's runtime that no other port imports: mutagen reads and writes
 the tags, discid is the ctypes binding to libdiscid behind "Lookup CD", and PyJWT signs the tokens of
 the "add release" path, which hands a cluster of files to the MusicBrainz release editor in the
 browser. PyQt6, PyYAML, charset-normalizer, tomlkit and Markdown come

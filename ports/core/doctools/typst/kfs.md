@@ -28,4 +28,4 @@ import.
 `openssl-sys` takes `libcrypto.a`, whose compression code calls zlib, and a static archive
 records no dependency of its own, so the link fails on zlib's symbols. Linked dynamically,
 `libcrypto.so` names `libz` itself. See
-[rust](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#rust).
+[rust](../../../../docs/kdos/05-developer/writing-ports.md#rust).

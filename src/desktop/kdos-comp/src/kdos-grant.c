@@ -3,21 +3,24 @@
  * KDOS: per-box grants on the sandbox allowlist.
  *
  * labwc's `allow_for_sandbox()` is a fixed list: a client tagged through
- * kdos-boxsock gets surfaces, seat, dmabuf, text-input, primary selection and
- * nothing else — so a boxed application can never bind screencopy,
- * data-control, or an input method. That is the right DEFAULT, and it was
- * also the only answer: a screen recorder in a box of its own could not be
- * given the screen back, however deliberately.
+ * kdos-boxsock gets what an ordinary window needs — surfaces, seat, data
+ * device and primary selection, outputs, dmabuf, text-input, activation,
+ * tablets, colour management and the like — and none of the globals that
+ * reach past its own windows, so a boxed application cannot bind
+ * screencopy, data-control or an input method. That is the right DEFAULT,
+ * and without this file it would be the only answer: a screen recorder in
+ * a box of its own could not be given the screen, however deliberately.
  *
  * `grant = screencopy, data-control` in `~/.config/kdos/boxes/<name>.conf`
  * names the globals a box may bind beyond the allowlist. The names are
  * SHORT — what a person would write — and map onto both generations of each
  * protocol, because granting the old screencopy and not the new one strands
- * every client written after 2024. `input-method` is deliberately the one
- * grant that has to be spelled out in full: it is a keylogger by design.
+ * every client written after 2024. `input-method` also unlocks the virtual
+ * keyboard: it reads and types every key, a keylogger by design, so it
+ * belongs only on the box of an actual input method.
  *
- * Read ONCE PER CLIENT, at the first bind that reaches it, and cached on the
- * app_id: the filter runs on every global for every client, and a profile
+ * Read ONCE PER BOX, at the first bind that reaches it, and cached on the
+ * box name: the filter runs on every global for every client, and a profile
  * parse per bind would be a file read in the compositor's hot path.
  * `kdos_grant_reload()` drops the cache on SIGHUP with the rest of the
  * config, so editing a profile takes effect on the next client — a running

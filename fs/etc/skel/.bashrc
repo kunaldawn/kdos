@@ -22,7 +22,10 @@ fi
 
 # ls/grep colours, generated per accent by `kdos theme` (it exports
 # LS_COLORS). Guarded: a home the generator has not reached yet keeps the
-# tools' defaults rather than printing an error per shell.
-[ -r "$HOME/.config/kdos/ls-colors" ] && . "$HOME/.config/kdos/ls-colors"
+# tools' defaults rather than printing an error per shell. Under
+# $XDG_CONFIG_HOME, because that is where `kdos theme` writes it.
+_kdos_lsc="${XDG_CONFIG_HOME:-$HOME/.config}/kdos/ls-colors"
+[ -r "$_kdos_lsc" ] && . "$_kdos_lsc"
+unset _kdos_lsc
 
 # Your own aliases and prompt overrides go below.

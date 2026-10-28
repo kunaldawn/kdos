@@ -4,7 +4,7 @@ libxml2 is GNOME's XML library: a parser with DTD and schema validation, XPath, 
 catalogues and an HTML parser, with `xmllint` and `xmlcatalog` as its command-line tools. Many of
 the desktop's applications read XML through it, and so does the compositor:
 [kdos-comp](#port-kdos-comp) is a fork of labwc and reads `rc.xml` and `menu.xml` with it (see
-[Configuration](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/kdos-comp.md#configuration)).
+[Configuration](../../../../docs/kdos/04-programs/kdos-comp.md#configuration)).
 [libxslt](#port-libxslt), and with it every manual page rendered from DocBook, is built on it.
 
 Its catalogue support is what lets the documentation builds run with no network. libxml2 reads
@@ -13,7 +13,7 @@ and stylesheet address through it to a local file.
 
 libxml2 has no HTTP client, so a program that hands it an `http://` address gets an error rather
 than a download; see
-[SpatiaLite cannot load a WFS layer from a URL](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/06-reference/known-gaps.md#spatialite-cannot-load-a-wfs-layer-from-a-url).
+[SpatiaLite cannot load a WFS layer from a URL](../../../../docs/kdos/06-reference/known-gaps.md#spatialite-cannot-load-a-wfs-layer-from-a-url).
 
 ## Flags
 
@@ -38,10 +38,10 @@ than a download; see
 ## Notes
 
 The three manual pages are installed by hand. Upstream installs them only with `--with-docs`, the
-switch that also renders the API documentation, which needs `xsltproc` and the DocBook
-stylesheets. Those are libxslt and docbook-xsl, and both depend on libxml2, so the pages are
-taken as the release tarball ships them: `doc/xml2-config.1`, `dist-doc/xmllint.1` and
-`dist-doc/xmlcatalog.1`.
+switch that also renders `xmllint.1` and `xmlcatalog.1` again from their DocBook sources, which
+needs `xsltproc` and the DocBook stylesheets. Those are libxslt and docbook-xsl, and both depend
+on libxml2, so the pages are taken as the release tarball ships them: `doc/xml2-config.1`,
+`dist-doc/xmllint.1` and `dist-doc/xmlcatalog.1`.
 
 [gettext](#port-gettext) builds its own copy of libxml2's parser rather than linking this one,
 because libxml2's dependency on doxygen reaches back to gettext through bison.

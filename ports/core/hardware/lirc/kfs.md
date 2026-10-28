@@ -7,7 +7,7 @@ and serves them on the socket `/run/lirc/lircd`, which Kodi, VLC and every other
 program read. `irexec` runs commands on buttons, `irw` prints what arrives, and `lircd-uinput`
 turns buttons into ordinary input events. The port also installs the Python bindings. How the
 service starts is in
-[Services](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md#services).
+[Services](../../../../docs/kdos/02-user-guide/administration.md#services).
 
 ## Flags
 
@@ -20,20 +20,22 @@ service starts is in
 - `--with-lockdir=/run/lock` — The directory for the old-style device lock files. configure's
   default is `/var/lock/lockdev` or `/var/lock`, again chosen from the build host; `/var/lock` is
   only a link to `/run/lock`.
-- `--with-systemdsystemunitdir=no` — Installs no systemd units. KDOS has no systemd (see [No
-  systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd)).
+- `--with-systemdsystemunitdir=no` — Installs no systemd units. KDOS has no systemd (see
+  [No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)).
 - `--without-x` — Builds neither `irxevent` nor `xmode2`, which drive an X server.
 
 ## Patches
 
 - `0008-fix-event-time-on-32bit.patch` — From Alpine's package. In the `devinput` plugin's trace message, reads an input event's time through the kernel's `input_event_sec` and `input_event_usec` names instead of `event.time.tv_sec` and `tv_usec`, which are not members of `struct input_event` where the kernel headers use its y2038-safe layout (a 32-bit target with a 64-bit `time_t`).
 - `0010-lirc-add-include-for-major.patch` — From Alpine's package. Includes `<sys/sysmacros.h>` in `lib/drv_enum.c` and `plugins/default.c`, which call `major()` and `minor()`; musl does not provide them through `<sys/types.h>`.
-- `musl-gcc14.patch` — From Alpine's package. Removes the `-1` initialiser of the `mplay` plugin's `pthread_t` listener field, and the test of the field against `-1` in `mplayfamily_deinit()`, which then cancels and joins the listener thread directly. `pthread_t` is a pointer type on musl, and GCC 14 and later reject an integer initialiser for it.
+- `musl-gcc14.patch` — From Alpine's package. Removes the `-1` initialiser of the `mplay` plugin's `pthread_t` listener field, and, in `mplayfamily_deinit()`, the test of the field against `-1` and its reset to `-1`, so the function cancels and joins the listener thread directly. `pthread_t` is a pointer type on musl, and GCC 14 and later reject an integer initialiser for it.
 
 ## Notes
 
-The receiver plugins for HID, FTDI, ALSA and PortAudio devices are built only when configure finds
-their libraries, with no switch for any of them, so every library they need is in `depends`.
+The receiver plugins for libusb, FTDI, ALSA and PortAudio devices are built only when configure
+finds their libraries, with no switch for any of them, so every library they need is in `depends`:
+the libusb plugins use the libusb-0.1 API of [libusb-compat](#port-libusb-compat), and the FTDI
+one needs [libftdi](#port-libftdi) and [libusb](#port-libusb) together.
 `build.sh` checks for `atilibusb.so`, one of the libusb plugins, after the install, so a build in
 which the probe failed stops there.
 

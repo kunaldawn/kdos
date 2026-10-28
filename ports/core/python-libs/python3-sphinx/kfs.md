@@ -8,17 +8,17 @@ In KDOS it is a manual-page generator. [llvm](#port-llvm), [clang](#port-clang),
 [lldb](#port-lldb), [cmake](#port-cmake), [mpd](#port-mpd), [flashrom](#port-flashrom),
 [btrfs-progs](#port-btrfs-progs), [ghc](#port-ghc), [notmuch](#port-notmuch), [khal](#port-khal)
 and others build their manual pages with Sphinx's man builder, and a Sphinx recipe ships that
-builder's output alone; see [Manual pages](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#manual-pages).
+builder's output alone; see [Manual pages](../../../../docs/kdos/05-developer/writing-ports.md#manual-pages).
 
 The port is unusual in where it installs. Sphinx needs a closure of Python packages that are
 not ports (the default theme alabaster, Babel, the `sphinxcontrib-*` builders, `myst-parser` and
 `sphinx-argparse`, among others), and some it needs, such as requests and urllib3, are ports
 already, installed in `site-packages` by a later phase. Two packages owning one path is a
-conflict kpkg refuses ([Who owns a file](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/packaging.md#who-owns-a-file)),
+conflict kpkg refuses ([Who owns a file](../../../../docs/kdos/03-architecture/packaging.md#who-owns-a-file)),
 so Sphinx and that whole closure go into a prefix of their own, `/usr/lib/python3-sphinx`, and
 the commands in `/usr/bin` are a small launcher that puts the prefix on `PYTHONPATH`. The
 closure is the recipe's `pypackages` list, vendored as source distributions (see
-[The three Python keys](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-three-python-keys)).
+[The three Python keys](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys)).
 
 ## Flags
 - `--find-links=vendor` — Look for distributions in the unpacked `vendor` directory, the only

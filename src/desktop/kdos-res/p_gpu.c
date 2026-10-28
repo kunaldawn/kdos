@@ -26,7 +26,6 @@
 
 static KprGpu *g_gpu;
 static int g_ngpu;
-static int g_sel;
 
 void res_gpu_prepare(void)
 {
@@ -58,15 +57,28 @@ static unsigned long long engine_delta(void)
 	return now > before ? now - before : 0;
 }
 
+/*
+ * THE DEVICE THE BAND DESCRIBES is the first one whose driver reports a busy
+ * share, and the first device listed only where none does. The page has no
+ * selection, so picking the first listed would put "engine time only" in the
+ * band of a machine whose second device reports a measured percentage.
+ */
+static const KprGpu *gpu_lead(void)
+{
+	for (int i = 0; i < g_ngpu; i++)
+		if (g_gpu[i].busy_percent >= 0)
+			return &g_gpu[i];
+	return g_ngpu ? &g_gpu[0] : NULL;
+}
+
 /* Only a driver that reports its busy share has a figure: engine time
  * alone is a set of counters, not one number. */
 const char *res_gpu_figure(void)
 {
 	static char s[16];
-	if (!g_ngpu)
-		return NULL;
-	const KprGpu *g = &g_gpu[g_sel < g_ngpu ? g_sel : 0];
-	if (g->busy_percent < 0)
+	const KprGpu *g = gpu_lead();
+
+	if (!g || g->busy_percent < 0)
 		return NULL;
 	snprintf(s, sizeof(s), "%d%%", g->busy_percent);
 	return s;
@@ -75,9 +87,10 @@ const char *res_gpu_figure(void)
 const char *res_gpu_headline(void)
 {
 	static char s[96];
-	if (!g_ngpu)
+	const KprGpu *g = gpu_lead();
+
+	if (!g)
 		return "no GPU found";
-	const KprGpu *g = &g_gpu[g_sel < g_ngpu ? g_sel : 0];
 	if (g->busy_percent >= 0)
 		snprintf(s, sizeof(s), "%s %d%% busy", g->driver,
 			 g->busy_percent);
@@ -97,6 +110,15 @@ void res_draw_gpu(int x, int y, int w, int h)
 			       KT_MID, KT_BG, 0);
 		return;
 	}
+
+	/* Engine time is summed over every process's DRM descriptors and is
+	 * not split by device, so with two devices that lack a counter the
+	 * line says the figure is theirs together rather than printing the
+	 * same total as each one's own. */
+	int nengine = 0;
+	for (int i = 0; i < g_ngpu; i++)
+		if (g_gpu[i].busy_percent < 0)
+			nengine++;
 
 	for (int i = 0; i < g_ngpu && row < bottom - 2; i++) {
 		const KprGpu *g = &g_gpu[i];
@@ -119,10 +141,17 @@ void res_draw_gpu(int x, int y, int w, int h)
 			 * exists for those drivers.
 			 */
 			unsigned long long ns = engine_delta();
-			snprintf(line, sizeof(line),
-				 "engine time  %.1f ms/s  (this driver "
-				 "publishes no utilisation)",
-				 (double)ns / 1e6);
+			if (nengine > 1)
+				snprintf(line, sizeof(line),
+					 "engine time  %.1f ms/s  (all %d "
+					 "devices without utilisation "
+					 "together)", (double)ns / 1e6,
+					 nengine);
+			else
+				snprintf(line, sizeof(line),
+					 "engine time  %.1f ms/s  (this driver "
+					 "publishes no utilisation)",
+					 (double)ns / 1e6);
 			ktui_draw_text(x + 1, row++, w - 2, line, KT_TEXT,
 				       KT_BG, 0);
 		}

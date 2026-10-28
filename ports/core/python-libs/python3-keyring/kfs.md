@@ -4,7 +4,7 @@ reading secrets in the system's password store. On Linux its backend is the free
 Service, reached through SecretStorage over jeepney's pure-Python D-Bus client: it stores into
 whichever program owns `org.freedesktop.secrets` on the session bus. On KDOS that is
 [keepassxc](#port-keepassxc), when it is running with its Secret Service integration turned on;
-see [A saved login needs KeePassXC running](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/06-reference/known-gaps.md#a-saved-login-needs-keepassxc-running).
+see [A saved login needs KeePassXC running](../../../../docs/kdos/06-reference/known-gaps.md#a-saved-login-needs-keepassxc-running).
 [cura](#port-cura) and [spyder](#port-spyder) depend on it.
 
 ## Notes
@@ -21,5 +21,5 @@ root or the package.
 The bundle is unpacked into `$SRC_ROOT/vendor`, outside the source tree. keyring keeps its
 package at the top of the tree and lists no packages, so setuptools would take a `vendor`
 directory there for a second top-level package and stop; see
-[Where the bundle goes](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#where-the-bundle-goes). `test -x "$PKG/usr/bin/keyring"` checks that
+[Where the bundle goes](../../../../docs/kdos/05-developer/writing-ports.md#where-the-bundle-goes). `test -x "$PKG/usr/bin/keyring"` checks that
 the command was installed.

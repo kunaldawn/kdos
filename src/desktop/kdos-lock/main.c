@@ -112,8 +112,8 @@ static void pass_clear(void)
 
 /*
  * The SGR runs are parsed rather than stripped: the WHOLE sequence is
- * consumed either way, or `[1;32m` stays visible as text, but the code it
- * carries now picks the slot the run is drawn in. See lk_run.
+ * consumed either way, or `[1;32m` stays visible as text, and the code it
+ * carries picks the slot the run is drawn in. See lk_run.
  */
 
 /*
@@ -225,9 +225,8 @@ static void draw(const char *user, const char *host)
 	/*
 	 * The logo above the prompt, when the whole stack fits — taller than
 	 * the surface means NO logo, never a scrolled one (the kdos-banner
-	 * rule). Drawn run by run in the colours genlogo.py put in the file;
-	 * the four-second breathe went with the monochrome it was compensating
-	 * for.
+	 * rule). Drawn run by run in the colours genlogo.py put in the file,
+	 * and drawn still: nothing on this surface animates.
 	 */
 	if (!cramped && logo_n && logo_w <= w &&
 	    logo_n + 1 + LK_BOX_H <= h) {
@@ -466,9 +465,9 @@ int main(int argc, char **argv)
 		case KT_K_BACKSPACE:
 			if (npass) {
 				/* The whole final UTF-8 sequence, lead byte
-				 * and continuations together — a backspace
-				 * that ate one byte of a two-byte character
-				 * left a password nobody typed. */
+				 * and continuations together: removing one
+				 * byte of a multi-byte character would leave
+				 * a password nobody typed. */
 				int i = npass - 1;
 				while (i > 0 &&
 				       ((unsigned char)pass[i] & 0xc0) == 0x80)

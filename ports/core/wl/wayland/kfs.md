@@ -8,7 +8,7 @@ The compositor, [kdos-comp](#port-kdos-comp), and the [wlroots](#port-wlroots) l
 are the server; the panel, the terminal, the resource monitor and the lock screen are clients, and
 so is every toolkit's Wayland backend (GTK 3 and 4, Qt 5 and 6, SDL 3, GLFW), Mesa's Wayland
 platform and [Xwayland](#port-xwayland). How the desktop is put together on top of it is in
-[The session](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/session.md).
+[The session](../../../../docs/kdos/03-architecture/session.md).
 
 The build is upstream's meson build with the documentation and the test suite left out, and with
 the scanner's DTD check kept.

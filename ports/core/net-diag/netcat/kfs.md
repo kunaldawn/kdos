@@ -17,7 +17,9 @@ build against musl.
   `debian/rules` sets it from the package version, and here it is `$version-$debrev`.
 
 ## Patches
-- `b64.patch` — Declare `b64_ntop()` at the top of `socks.c`, because musl's `<resolv.h>` has no prototype for it and a call to an undeclared function is an error in C23.
+- `b64.patch` — Declare `b64_ntop()` beside the other prototypes near the top of `socks.c`,
+  because musl's `<resolv.h>` has no prototype for it and GCC rejects a call to an undeclared
+  function.
 
 ## Notes
 `build.sh` applies every patch in `debian/patches/series`, in order, and then Alpine's

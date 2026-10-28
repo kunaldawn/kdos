@@ -3,21 +3,26 @@
 The GStreamer "bad" plugin set: plugins upstream considers less mature or less reviewed, and the
 libraries other GStreamer components build on, among them `gstreamer-play`, the VA-API, Vulkan
 and Wayland video libraries, WebRTC (`webrtcbin`), and the HLS and DASH elements. [gtk4](#port-gtk4)
-plays video through its `gstreamer-play` library, and the WebKitGTK ports, Nheko, Dino, Kamoso and
-Strawberry depend on it.
+plays video through its `gstreamer-play` library, and the WebKitGTK ports, Qt 5 Multimedia,
+wxWidgets, Nheko, Dino, Kamoso and Strawberry depend on it.
 
 ## Flags
 
 Every plugin that links an outside library is named, `enabled` or `disabled`, never left at
 meson's `auto`: an `enabled` library that goes missing fails the configure instead of giving a
-thinner package, and a `disabled` one stays off whatever else is installed first.
+thinner package, and a `disabled` one stays off whatever else is installed first. The vendor GPU
+plugins `nvcodec`, `qsv` and `hip` stay at `auto` and are built: they link no library beyond
+GLib and GStreamer's own (`qsv` compiles Intel's dispatcher from the copy in the source and reaches
+the GPU through the VA library built here), and load NVIDIA's, Intel's or AMD's runtime only when
+they run.
 
 - `-Dintrospection=enabled` — Generate the GIR files for the libraries, such as `GstPlay-1.0`
   and `GstWebRTC-1.0`. They include the `Gst-1.0` and `GstBase` GIRs, so
   [gstreamer](#port-gstreamer) and [gst-plugins-base](#port-gst-plugins-base) are built with
   introspection too.
-- `-Dx11=disabled`, `-Dgtk3=disabled` — No X11 support in the Vulkan, GL and RFB plugins, and no
-  `gtkwaylandsink`, the GTK 3 Wayland video sink. [gst-plugins-good](#port-gst-plugins-good)
+- `-Dx11=disabled`, `-Dgtk3=disabled` — No X11 support in the RFB (VNC) source, and no
+  `gtkwaylandsink`, the GTK 3 Wayland video sink. The Vulkan library's X11 window system is
+  governed by `-Dvulkan-windowing` instead. [gst-plugins-good](#port-gst-plugins-good)
   builds the GTK 3 `gtksink`.
 - `-Dorc=enabled`, `-Dorc-compiler=disabled` — Use [orc](#port-orc) for the SIMD kernels, from the
   pre-generated C files in the source.
@@ -82,6 +87,6 @@ thinner package, and a `disabled` one stays off whatever else is installed first
 - `-Davtp=disabled` through `-Daja=disabled` — The remaining plugins that link an outside library,
   each pinned off: AVTP, bs2b, dc1394, DirectFB, DTS, FAAC, Flite, GME, Ghostscript, GSM, IQA, iSAC,
   LADSPA, LCEVC, LV2, microdns, modplug, mpeg2enc, MPEG-H, mplex, Intel Media SDK, Musepack, neon,
-  the NVIDIA plugins, ONNX, OpenAL, OpenCV, OpenH264, OpenNI2, RTMP, SoundTouch, spandsp, the SVT
+  nvCOMP, the NVIDIA DeepStream wrapper, ONNX, OpenAL, OpenCV, OpenH264, OpenNI2, RTMP, SoundTouch, spandsp, the SVT
   HEVC and JPEG XS encoders, teletext, TensorFlow Lite, tinyalsa, VMAF, the VisualOn encoders,
   WildMIDI, WPE, ZXing and AJA.

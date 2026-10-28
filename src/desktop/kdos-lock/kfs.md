@@ -19,9 +19,9 @@ in [kdos-checkpass](../../../docs/kdos/03-architecture/security-model.md#kdos-ch
   password with. On musl, `crypt()` is in the C library and `libcrypt.a` is an empty archive musl
   installs, so the flag resolves and adds nothing; on a glibc host, where `testing/selftest.sh`
   compiles the same file with the same flag, it is the library `crypt()` lives in.
-- `-Dm4755` — Install `kdos-checkpass` owned by root with the setuid bit. The bit is a mode bit,
-  not a file capability, because a mode bit survives the package archive and an extended
-  attribute does not; see [setuid binaries](../../../docs/kdos/03-architecture/security-model.md#setuid-binaries).
+- `-Dm4755` — Install `kdos-checkpass` with mode 4755, the setuid bit set, so the root-owned file
+  runs as root whoever starts it. The bit is a mode bit, not a file capability, because a mode bit
+  survives the package archive and an extended attribute does not; see [setuid binaries](../../../docs/kdos/03-architecture/security-model.md#setuid-binaries).
   Without it the checker cannot read `/etc/shadow`, answers 2 ("could not tell") to every attempt,
   and the lock screen refuses every password. `kdos doctor` checks the bit and prints the repair.
 

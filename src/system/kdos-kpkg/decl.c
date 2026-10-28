@@ -70,8 +70,8 @@ struct KpDecl {
 	char pypackages[512];
 	/* The Alpine package name this port maps onto, for `kdos cve`. Declared
 	 * only when it differs — the kernel is `linux` here and `linux-lts`
-	 * there — and it is a KEY rather than a helper so it is not expanded and
-	 * not carried into the build environment. */
+	 * there — and it is a KEY rather than a helper so it is not expanded;
+	 * kp_decl_prelude() hands it to build.sh as a quoted literal. */
 	char secdb[128];
 	/* The packages whose paths this one may take; add.c reads it from the
 	 * recipe. A key rather than a helper so it never reaches the build
@@ -79,7 +79,8 @@ struct KpDecl {
 	char replaces[512];
 	/* How `kdos march` measures this port: a setup line that is run once and
 	 * not timed, and the line that IS timed. Keys rather than helpers so
-	 * they are not expanded and never reach the build environment. */
+	 * they are not expanded: kp_decl_prelude() hands them to build.sh as
+	 * quoted literals, and march reads them from the recipe itself. */
 	char bench[512];
 	char bench_setup[512];
 	/* The SPDX expression of the port's licence. `kpkg info` reads it
@@ -473,8 +474,8 @@ static void quote_into(KbBuf *b, const char *s)
 	kb_buf_str(b, "'");
 }
 
-/* The variables a build.sh expects, as shell assignments. The recipe no
- * longer sources itself, so kpkg injects what it parsed — and every value is
+/* The variables a build.sh expects, as shell assignments. The recipe is
+ * parsed, never sourced, so kpkg injects what it parsed — and every value is
  * quoted, so nothing in a recipe can become syntax on the way through. */
 void kp_decl_prelude(const KpDecl *d, KbBuf *b)
 {

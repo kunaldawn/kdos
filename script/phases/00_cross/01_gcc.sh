@@ -64,7 +64,7 @@ cd ..
 cat gcc/limitx.h gcc/glimits.h gcc/limity.h > \
   `dirname $($KDOS_TARGET-gcc -print-libgcc-file-name)`/include/limits.h
 
-ln -sv "$CROSS_SYSROOT/bin/$KDOS_TARGET-gcc" "$CROSS_SYSROOT/bin/$KDOS_TARGET-cc"
+ln -sfv "$CROSS_SYSROOT/bin/$KDOS_TARGET-gcc" "$CROSS_SYSROOT/bin/$KDOS_TARGET-cc"
 
 rm -rf "$GCC_SRC" "$GMP_SRC" "$MPFR_SRC" "$MPC_SRC"
 touch "$MARK/gcc"

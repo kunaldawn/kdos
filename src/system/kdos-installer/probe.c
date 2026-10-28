@@ -167,6 +167,27 @@ static void sniff_fs(const char *path, Part *p)
 		trim_label(p->label);
 	}
 
+	/* f2fs: the superblock is at 1 KiB, magic 0xF2F52010 little-endian at
+	 * +0, uuid at +0x6c and a UTF-16LE volume name at +0x7c. Without it
+	 * an f2fs root reads back with no UUID, and do_config cannot write
+	 * fstab or the boot entry's root=. */
+	if (!p->fstype[0] &&
+	    pread(fd, sb, 1024, 1024) == 1024 &&
+	    sb[0] == 0x10 && sb[1] == 0x20 && sb[2] == 0xf5 && sb[3] == 0xf2) {
+		kb_strlcpy(p->fstype, "f2fs", sizeof(p->fstype));
+		uuid_fmt(p->uuid, sb + 0x6c);
+		size_t n = 0;
+		for (int k = 0; k < 64 && n < sizeof(p->label) - 1; k++) {
+			unsigned c = (unsigned)sb[0x7c + 2 * k] |
+				     ((unsigned)sb[0x7c + 2 * k + 1] << 8);
+			if (!c)
+				break;
+			p->label[n++] = c < 0x80 ? (char)c : '?';
+		}
+		p->label[n] = 0;
+		trim_label(p->label);
+	}
+
 	if (!p->fstype[0] && pread(fd, sb, 4096, 0x10000) == 4096 &&
 	    !memcmp(sb + 0x40, "_BHRfS_M", 8)) {
 		kb_strlcpy(p->fstype, "btrfs", sizeof(p->fstype));
@@ -887,10 +908,10 @@ void probe_system(void)
 
 	/*
 	 * The count comes from /sys, not from counting "processor" in
-	 * /proc/cpuinfo — which reported 1 on every machine and was found by
-	 * looking at `--dump probe`. Two reasons it could not work: the model
+	 * /proc/cpuinfo, which would report 1 on every machine: the model
 	 * name parse above NUL-terminates the buffer at the end of the first
-	 * block, so there is nothing left to count, and cpuinfo on a 16-thread
+	 * model name line, so only the first "processor" line is left to
+	 * count, and cpuinfo on a 16-thread
 	 * part is 26 KB against an 8 KB buffer anyway. `present` is one short
 	 * line in the documented "0-3,8-11" form.
 	 */
@@ -974,8 +995,10 @@ static const char *catalogue_path(void)
  * removable filesystem wins, and it is the only one offered — a second medium
  * carrying a different set is not reachable from the page.
  *
- * It is looked for ONCE, at probe time. Walking every mount on every draw
- * would put a filesystem scan inside the paint path.
+ * It is looked for when the Applications page is entered (probe_apps), never
+ * from the draw: walking every mount on every draw would put a filesystem
+ * scan inside the paint path. A medium mounted while the page is open is seen
+ * on the next visit.
  */
 static void find_archive(void)
 {

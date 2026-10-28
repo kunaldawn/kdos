@@ -2,9 +2,10 @@
 Protocol Buffers is Google's language-neutral format for structured data: a message type is
 declared once in a `.proto` file, and `protoc` generates the code that encodes and decodes it. This
 port installs `protoc`, the C++ runtime (`libprotobuf`, `libprotobuf-lite`), the compiler library
-`libprotoc` that code-generator plugins link, and the upb generators. [mosh](#port-mosh),
-[mumble](#port-mumble), [kicad](#port-kicad), [android-tools](#port-android-tools) and
-[protobuf-c](#port-protobuf-c) are among the ports that build against it.
+`libprotoc` that code-generator plugins link, and the upb runtime `libupb` with its generators.
+[mosh](#port-mosh), [mumble](#port-mumble), [kicad](#port-kicad),
+[android-tools](#port-android-tools) and [protobuf-c](#port-protobuf-c) are among the ports that
+build against it.
 
 ## Flags
 - `-Dprotobuf_BUILD_TESTS=OFF` — Build no test suite. Off is upstream's default; the tests would also

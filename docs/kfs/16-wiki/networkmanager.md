@@ -47,7 +47,10 @@ disabled, so only one of the two runs. Nothing else starts NetworkManager: the i
 <!-- kfs:include fs/etc/init.d/42_networkmanager.sh -->
 
 `--no-daemon` keeps NetworkManager in the foreground, so that `ksvc` supervises the daemon itself
-and restarts it five seconds after it exits. The service's name for `service` is
+and restarts it five seconds after it exits. `--restart-with dbus` ties it to the system bus:
+NetworkManager does not exit when its bus connection closes, so whenever the bus's daemon is
+restarted the supervisor stops NetworkManager and starts it again a second after the bus is back,
+so that it takes its name on the new bus. The service's name for `service` is
 [`networkmanager`]{.idx}, the file name without its number and `.sh`; its boot output goes to
 `/run/kdos-init.networkmanager.log`.
 
@@ -83,8 +86,9 @@ sudo service restart networkmanager
 The restart works the same in a desktop session as outside one. `kdos-netagent` calls
 NetworkManager's bus name within moments of the daemon leaving the bus, and while the name has no
 owner the bus refuses the call, because nothing lets it start NetworkManager itself (see
-[D-Bus activation](#d-bus-activation)); the agent tries again every five seconds and registers
-with the supervised daemon once that has the name. `pgrep -a NetworkManager` then shows one
+[D-Bus activation](#d-bus-activation)); the agent tries again every five seconds, and at once
+when the name gains an owner, so it registers with the supervised daemon as soon as that has the
+name. `pgrep -a NetworkManager` then shows one
 process, `/usr/sbin/NetworkManager --no-daemon`.
 
 ### Connection profiles
@@ -171,14 +175,15 @@ terminal.
 
 ### Joining a wireless network from the desktop
 
-1. Open `kdos-net` with `Super+F4`, or right-click the network readout on the panel.
+1. Open `kdos-net` with `Super+F4`, or click the network readout on the panel.
 2. Select the network and press `Enter`.
 3. Type the passphrase and press `Enter`. It is written into the new profile.
 
 The window's bottom row holds buttons for the commonest actions (*Connect*, *Forget*, *Rescan*,
-*Wi-Fi Off*, *Close*), and each action has a key as well: `f` forgets the selected network, `a`
-turns the Wi-Fi radio off and on, and `h` starts or stops a [hotspot](access-point.md), offered
-only for a radio that can be an access point. Every later
+*Wi-Fi Off*, *Close*), and each action has a key as well: `f` forgets the selected network, `r`
+rescans, `a` turns the Wi-Fi radio off and on, `c` copies the selected network's name to the
+clipboard, and `h` starts or stops a [hotspot](access-point.md), offered only for a radio that can
+be an access point. Every later
 question for a secret, such as a changed passphrase, comes from `kdos-netagent` in a dialog of
 its own; see [kdos-netagent](../../kdos/04-programs/kdos-shell.md#kdos-netagent).
 
@@ -272,7 +277,7 @@ On a machine that should use plain DHCP, such as a server:
 
 3. Reboot. A stopped NetworkManager leaves its address, its default route, its `dnsmasq` and its
    `resolvconf` entry in place, so until the next boot `ip route` shows two `default` routes, one
-   NetworkManager's at metric 100 and one `dhcpcd`'s.
+   NetworkManager's and one `dhcpcd`'s.
 
 To bring NetworkManager back, run `sudo service enable networkmanager` and reboot.
 
@@ -332,7 +337,7 @@ status` reports `WIFI-HW missing`, and the other `nmcli device wifi` commands an
 Wi-Fi device found.* Run `nmcli radio wifi`; if it says `disabled`, run `nmcli radio wifi on`. `rfkill list` shows a
 radio blocked by a switch or a key (`Hard blocked: yes` is the switch). `iw dev` lists the
 wireless interfaces the kernel has; with none, the driver or its firmware did not load, and
-`dmesg` says which. If the networks are there but no 5 GHz ones are, see
+`sudo dmesg` says which. If the networks are there but no 5 GHz ones are, see
 [Wireless regulatory domain](wireless-regulatory-domain.md).
 
 **A connection fails at once with no question asked.**

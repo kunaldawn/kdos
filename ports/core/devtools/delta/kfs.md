@@ -15,8 +15,8 @@ library and bat's compiled syntax and theme sets.
   the same sets. Cargo checks every vendored file against the crate's `.cargo-checksum.json`, so
   `build.sh` also rewrites the three entries there with the new files' sha256; the rest of the crate
   is still verified. Why the sets are built by the `bat` port, and how its asset bundle is made, is
-  in [A bundle no tool
-  writes](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#a-bundle-no-tool-writes).
+  in
+  [A bundle no tool writes](../../../../docs/kdos/05-developer/writing-ports.md#a-bundle-no-tool-writes).
 - **The vendored bat must be the installed bat.** The sets are bincode dumps of syntect's types with
   no version tag, so a set from another bat may not load. `build.sh` reads the version of the
   vendored crate from `vendor/bat/Cargo.toml` and stops unless `bat --version` reports the same one.
@@ -24,7 +24,7 @@ library and bat's compiled syntax and theme sets.
   have to move together.
 - **libgit2 and oniguruma are the system's.** The tree's environment sets `LIBGIT2_NO_VENDOR=1` and
   `RUSTONIG_SYSTEM_LIBONIG=1` for every Rust build from `40_lang` on (see
-  [rust](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#rust)),
+  [rust](../../../../docs/kdos/05-developer/writing-ports.md#rust)),
   so the `-sys` crates link [libgit2](#port-libgit2) and [oniguruma](#port-oniguruma) instead of
   compiling their own copies. The two `readelf -d` lines after `cargo build` make that a condition
   of the build: the binary must NEED the libgit2 and oniguruma sonames they spell out in full, so a

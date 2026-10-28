@@ -47,7 +47,7 @@ subcommands always use the home directory.
 | `keys/packs/` | Trusted keys for application packs | yes, one key: `kdos-packs.pub` |
 | `keys/tree/` | Trusted keys for the ports tree `kdos update fetch` installs | yes: a `README`, and `kdos-release.pub` when the build had a release key |
 | `mountd.conf` | Removable-media options, including `format = yes` and `write = yes`, without which the media daemon refuses to format a device or write an image over one | no: create it |
-| `update.conf` | Where `kdos update fetch` takes a newer ports tree from (`tree =`) | no: create it |
+| `update.conf` | Where `kdos update fetch` takes a newer ports tree from (`tree =`); without it, the latest KDOS release | no: create it |
 | `accent` | The accent name, so the boot splash can repaint in it before anyone logs in | no: written by `kdos-powerd` when `kdos theme` runs |
 
 The host package manager's own configuration is `/etc/kpkg.conf`; see
@@ -57,9 +57,9 @@ The host package manager's own configuration is `/etc/kpkg.conf`; see
 
 | Path | Holds | Written by |
 |---|---|---|
-| `packs/` | Installed application packs, `<id>.kpack` | The pack daemon, as root |
+| `packs/` | Installed application packs, `<id>.kpack`, owned by root, mode 0644 | The pack daemon, as root |
 | `packs/mnt/` | Mount points for packs | The pack daemon |
-| `packs/staging/` | The one place an unprivileged download may land, mode 01777 | Any user, and the application store |
+| `packs/staging/` | The one place an unprivileged download may land, mode 01777; a staged pack is removed once it is installed, and an import's signed index sits there as `PACKAGES.<pid>` with `PACKAGES.<pid>.sig` while that import runs | Any user, and the application store |
 | `pack-manifest` | Every graft made, so removing one is exact | The pack daemon |
 | `fs-manifest` | Every path the build's static tree (`fs/`) provided | The build |
 | `march.ledger` | Measured per-machine optimisation results | `kdos march` |
@@ -73,7 +73,7 @@ The host package manager's own configuration is `/etc/kpkg.conf`; see
 
 | Path | Holds |
 |---|---|
-| `appstore/catalogue` | Every application the store can build, one row per image layer: `<kind> <id> <parent> <apt packages…>` |
+| `appstore/catalogue` | Every application the store can build, one row per image layer, `<kind> <id> <parent> <apt packages…>`, with further rows (`meta`, `group`, `env` and others) that name, group and configure them |
 | `alien-apps` | Application name to the command line that runs it in its box |
 | `icons/atlas.kia` | The pre-rendered icon atlas |
 | `icons/art/`, `icons/marks/` | The vendored icon source and the KDOS marks |
@@ -127,10 +127,11 @@ The state and caches of `kpkg`, the host package manager. Every directory is a d
 
 The ports tree `kpkg` builds from is named by `PORT_REPO`: a space-separated list of recipe
 directories, each searched for a port at `<name>/` and one shelf down at `<shelf>/<name>/`. Its
-default is the tree every image carries at `/ports`, recipes only: `/ports/core`, and
-`/ports/src/system`, `art`, `desktop` and `daemons` for KDOS's own programs, beside
+default is the tree every image carries at `/ports`, recipes without their sources: `/ports/core`,
+and `/ports/src/system`, `art`, `desktop` and `daemons` for KDOS's own programs, beside
 `/ports/shelves`, `/ports/sources.idx` and `/ports/TREE`, which names the commit the tree is and
-that commit's time. `kdos update fetch` replaces the whole of `/ports` with a newer signed tree. Every port is listed in
+that commit's time. The two books are there too, under `/ports/docs`, for the programs that
+render them. `kdos update fetch` replaces the whole of `/ports` with a newer signed tree. Every port is listed in
 [The ports catalogue](ports-catalogue.md). No source archive is on the image and `/var/cache` is
 not carried into the installed system, so a build on the machine needs each source it names
 fetched over the network; a medium made
@@ -148,9 +149,8 @@ the target's ESP at `/mnt/kinstall/boot/efi`.
 | Path | Is |
 |---|---|
 | `/mnt/iso/system.sfs` | The root filesystem image |
-| `/mnt/iso/packs/` | Packs available on the medium; the pack daemon lists them as `available` without copying them |
-| `/mnt/iso/packs/PACKAGES` | The pack index the medium carries |
-| `/mnt/iso/appstore/catalogue` | The installer's fallback copy of the application catalogue |
+| `/mnt/iso/packs/` | Packs available on the medium; the pack daemon lists them as `available` without copying them. Only a medium built with `KDOS_PACK_KDOS=1` has one, holding the base pack `kdos.kpack` |
+| `/mnt/iso/appstore/catalogue` | Where the installer looks for the application catalogue when `/usr/share/kdos/appstore/catalogue` is missing; the build puts none there |
 | `/mnt/iso/sources/` | The KDOS tree that built the image, present only on a medium built with `KDOS_ISO_SOURCES=1`; `kdos rebuild` reads it |
 
 ### `/run/` — system runtime
@@ -162,7 +162,7 @@ Emptied at every boot.
 | `kdos-powerd.sock`, `kdos-energyd.sock`, `kdos-oomd.sock`, `kdos-mountd.sock`, `kdos-packd.sock` | The root daemons' sockets; see [Sockets](#sockets) |
 | `<name>.pid` | The process ID of the `ksvc` supervisor running service `<name>`. The supervisor leads its own process group, so stopping the service kills the daemon under it too |
 | `kdos-svc.<name>.log` | A supervised service's output, capped at 64 KiB with one `.old`. Every line also goes to syslog |
-| `kdos-svc.<name>.state` | The supervisor's one line about its daemon: `up` or `wait`, the daemon's pid, since when, its failing exits in a row and its last exit status. `service status` reads it to report a crash loop as `[FAIL]`; see [ksvc and service](../04-programs/kdos-command.md#ksvc-and-service) |
+| `kdos-svc.<name>.state` | The supervisor's one line about its daemon: `up` or `wait`, the daemon's pid, since when (seconds since boot), its failing exits in a row, its last exit status and the stop grace the supervisor was started with. `service status` reads it to report a crash loop as `[FAIL]`; see [ksvc and service](../04-programs/kdos-command.md#ksvc-and-service) |
 | `kdos-svc.<name>.stopping` | Empty; exists while `service stop <name>` runs, so the supervisor does not pass the group a second `SIGTERM` |
 | `kdos-init.<name>.log` | What a service's start script printed at boot |
 | `kdos-getty.<tty>.log` | `kdos-getty`'s messages for that terminal |
@@ -201,7 +201,9 @@ the end of a successful boot; otherwise the next boot returns to the active slot
 | `~/.config/kdos/screensaver.txt` | Your own screensaver grid, in place of the shipped one |
 | `~/.config/kdos/session-restore` | Present means the next login relaunches the boxed applications the last session left running |
 | `~/.config/kdos/a11y` | Present means boxed applications start with the accessibility stack |
-| `~/.local/share/kdos/alien-apps` | Your own launcher table; its entries win over the system one |
+| `~/.config/kdos/first-run` | Written by `kdos-keys` once its first-login card has been shown; while it is absent, each login opens the card. Delete it to see the card again |
+| `~/.config/kdos/apps-offered` | Written once the login has sent the notification offering the applications in `/var/lib/kdos/apps-pending`; delete it to be offered them again |
+| `$XDG_DATA_HOME/kdos/alien-apps` | Your own launcher table (`~/.local/share/kdos/alien-apps` when `XDG_DATA_HOME` is unset); its entries win over the system one |
 | `~/.local/share/kdos/boxes/<name>/` | A box's writable layer (`upper`, `work`), its `snapshots/<tag>/`, and its home when the profile says `home = private` |
 | `~/.local/share/kdos/packs/` | Where a data pack's contents are grafted for boxed applications |
 | `~/.local/share/kdos/doc/` | Your own help pages, searched beside `/usr/share/kdos/doc` |
@@ -216,7 +218,7 @@ the end of a successful boot; otherwise the next boot returns to the active slot
 | `~/.local/state/kdos/session` | What was running when the session ended: `app <name>` per boxed application, `native <app_id>` per host program. Written by `kdos-session-save` |
 | `~/.local/state/kdos/winpos` | Where the compositor last saw each application's window |
 | `~/.local/state/kdos/diskwarn` | `<step> <mountpoint>` per line: which disk-full warnings the panel has already shown |
-| `~/.local/state/kdos/update.json` | What `kdos update check --json` found, when you ran it yourself |
+| `~/.local/state/kdos/update.json` | What `kdos update check --out` wrote when you named this path, for a machine whose update timer is off. Nothing writes it otherwise; the panel's update badge reads it only when `/var/lib/kdos/update.json` is missing |
 | `~/.cache/kdos/theme` | One word: the accent name. The whole theme state the desktop reads |
 | `~/.cache/kdos/wallpaper.png` | The accent-coloured wallpaper, which the compositor draws in preference to the configured one |
 | `~/.cache/kdos/plocate.db` | This account's file index, rebuilt nightly from `$HOME` by `kdos-updatedb`; `LOCATE_PATH` names it |
@@ -227,7 +229,9 @@ the end of a successful boot; otherwise the next boot returns to the active slot
 
 Each `winpos` line is `app_id x y w h workspace shaded`, in pixels, most recent first, at most 200
 lines. It is read when a window opens and written when it closes, only while `comp.conf`'s
-`window_memory` is on. A window with a parent, such as a file chooser, is neither recorded nor
+`window_memory` is on. Only a window the compositor would place itself is restored: one that
+positioned itself, one a window rule placed, and one that opens maximised, tiled or fullscreen is
+left where it asked to be. A window with a parent, such as a file chooser, is neither recorded nor
 restored.
 
 Only the `app` lines of `session` are relaunched, and only when `session-restore` exists. Where each
@@ -263,13 +267,16 @@ directory with the session.
 | `podman/podman.sock` | The rootless Podman API, while `podman system service` runs; `kdos-podman-api` starts it on demand |
 | `kdos-panel.overflow` | What the panel has placed behind its chevron |
 | `kdos-comp.log` | The compositor's output |
+| `kdos-comp.log.old` | The previous session's compositor output; `kdos-desktop-start` renames the old log to this before each start |
 | `kdos-thumb.ppm` | The last window picture the compositor's `thumb` request wrote |
 | `kdos-osd.lock`, `kdos-osd.what` | The on-screen volume and brightness display: the process ID of the one on screen, and what the next key press asks it to show |
 | `kdos-appbox.trace` | Stage timings for the most recent boxed launches |
 | `kdos-appbox.warmup.lock`, `kdos-appbox.create.lock` | Serialise the login warm-up and box creation, so two launches do not build one box twice |
 | `kdos-sfx.route` | Which player the sound effects use, cached; only `pw-cat` is cached |
+| `kdos-appbox.label.<label>` | Whether the box image carries that label, cached so `kdos-appbox` asks `podman image inspect` once a boot rather than at every launch |
+| `pipewire-0`, `pulse/native` | PipeWire's socket and the `pipewire-pulse` socket. Boxes reach the host's audio through them, because they share this directory; see [Reaching the graph from inside a box](../03-architecture/session.md#reaching-the-graph-from-inside-a-box) |
 | `kdos/boxes/<box>/root` | The merged root of a box composed from packs |
-| `kdos/boxes/<box>/upper`, `work` | A composed box's writable layer when `$HOME` cannot hold one (a live session, whose home is itself on an overlay); lost at logout, and the launcher says so |
+| `kdos/boxes/<box>/upper`, `work` | A composed box's writable layer when `$HOME` cannot hold one (a live session, whose home is itself on an overlay); lost at logout. The launch prints nothing about it: `kdos-appbox status` marks such a box `ephemeral`, and `kdos-box freeze` warns before freezing one |
 | `kdos/timers.pid` | The process IDs of this session's timer loops, one per line |
 | `kdos/nowplaying` | One line naming what is playing, written by `kdos-mpctl watch` and read by the panel |
 | `kdos/screencast.pid` | The process ID of the running `kdos-record`, while it runs |
@@ -284,7 +291,8 @@ The five root daemons share one shape:
   which.
 - **One request per connection:** a short line in, a reply out, then the socket closes. There is no
   session state. The exceptions are `kdos-mountd`'s `subscribe`, which keeps the connection open,
-  and the three mountd verbs that carry a secret as a second frame after the request line.
+  the four mountd verbs that carry a secret or a confirmation as a second frame after the request
+  line, and its `write`, which also keeps the connection open for progress lines.
 - **Replies** are `ok`, optionally followed by data, or `err <reason>`. A caller who is not allowed
   gets `err not permitted`, and a verb the daemon does not know gets `err unknown command`.
 - **Each verb takes a fixed number of words**, with two exceptions: `compose` on `kdos-packd`
@@ -340,7 +348,9 @@ so any verb added later is an administrator's by default.
 before the screen is locked.
 
 The firewall takes names, never ports: a client that can only name `ssh` can open exactly what the
-daemon's table says `ssh` is.
+daemon's table says `ssh` is. `ssh` is a daemon as well as a port: `firewall ssh on` also removes
+`/etc/service.disabled/sshd` and starts `sshd`, and `off` puts the marker back and stops it, so a
+closed port never hides a listening daemon.
 
 ### `/run/kdos-energyd.sock`
 
@@ -458,7 +468,7 @@ members of `wheel`. Thirteen verbs.
 | `unmount` | A pack ID | |
 | `compose` | A box name, then one or more pack IDs | The merged root of those packs, for that box |
 | `decompose` | A box name | |
-| `install` | A file name in the staging directory | |
+| `install` | A file name in the staging directory, and optionally a second one naming a signed index (its signature staged as `<index>.sig`); the pack is copied into the store, not renamed, and removed once the install succeeds, and the index is left for the caller to remove | |
 | `remove` | A pack ID | |
 | `rollback` | A pack ID | |
 | `graft` | A data pack ID | |
@@ -471,8 +481,10 @@ does not have to work either out.
 
 Every ID comes from `list`. The single exception is `install`, which names a file in the daemon's
 own staging directory, `/var/lib/kdos/packs/staging`, the one place an unprivileged user may
-write. Relative traversal and absolute paths are both refused. Installing is a rename out of that
-directory after the pack is verified. Signatures are checked at install and at mount against
+write. Relative traversal and absolute paths are both refused. Installing copies the staged file, and
+the index the request names with its `.sig` when it names one, into private root-owned files in the store;
+the daemon verifies the copy, renames it into place as `<id>.kpack`, mode 0644, and then removes
+the staged file. A staged symbolic link or anything that is not a regular file is refused. Signatures are checked at install and at mount against
 `/etc/kdos/keys/packs/`; see [Packs and boxes](../03-architecture/packs-and-boxes.md).
 
 A composed box's merged root is `$XDG_RUNTIME_DIR/kdos/boxes/<box>/root`, and its writable layer
@@ -574,10 +586,10 @@ Neither configuration nor storage: these files are how one program tells another
 | `$XDG_RUNTIME_DIR/kdos/nowplaying` | `kdos-mpctl watch` | The panel |
 | `/usr/share/kdos/alien-apps` | The build (`kdos-appbox genlaunchers`) | Every shim, and the launcher dispatcher |
 | `/usr/local/bin/<name>`, `~/.local/bin/<name>` | The build, one symbolic link to `kdos-appbox` per application in a pack the medium carries (none on the default medium); `kdos app install` for an application you install | You, as an ordinary command; `kdos-appbox` dispatches on the name it was called by |
-| `~/.local/share/kdos/alien-apps` | `kdos-appbox genlaunchers --user` | The same, winning over the system table |
+| `$XDG_DATA_HOME/kdos/alien-apps` (`~/.local/share/kdos/alien-apps` when unset) | `kdos-appbox genlaunchers --packs --user`, and `kdos-appbox install`, `uninstall` and `import`; every one of them regenerates the whole table from the installed packs and the store's boxes together | The same, winning over the system table |
 | `~/.local/share/kdos/observed-app-ids` | The compositor, once for each new application ID a window presents | `kdos appid` |
 | `/var/lib/kdos/pack-manifest` | The pack daemon | Itself, so ungrafting removes exactly what was added |
-| `/var/lib/kdos/update.json` | The update-check timer, and `kdos update fetch` and `apply` when they finish | The panel's update badge, which falls back to `~/.local/state/kdos/update.json` |
+| `/var/lib/kdos/update.json` | The update-check timer, and `kdos update fetch` and `apply` when they finish | The panel's update badge, which reads `~/.local/state/kdos/update.json` instead when this file is missing |
 | `/etc/os-release` | `fs/etc/os-release`, with `BUILD_ID` and `KDOS_BUILD_DATE` appended by `70_image/045_identity.sh` | `kdos-about`, and anything else that identifies the system |
 | `/etc/kdos/accent` | `kdos-powerd`'s `accent` verb | The boot scripts, which tell the running splash to repaint in it |
 | `/boot/initramfs.modules` | The initramfs build step, one module per line | The `linux` package's post-install, which carries a new kernel's copies of that set into `/boot/initramfs-kdos.cpio.gz` |
@@ -618,6 +630,7 @@ set only between KDOS's own programs are left out.
 | Variable | Effect |
 |---|---|
 | `KDOS_A11Y` | `1` starts one boxed launch with the accessibility stack, `0` starts it without; unset, `~/.config/kdos/a11y` decides |
+| `KDOS_ALSA_DEFAULT=<pcm>` | The device ALSA's `default` opens. Unset, it is `kdos_pipewire`, the sound server; `kdos_card` sends the program straight to the sound card, which it then holds to itself. The BRLTTY service sets `kdos_card`, since no sound server runs at boot. See [Reaching the graph from a plain ALSA program on the host](../03-architecture/session.md#reaching-the-graph-from-a-plain-alsa-program-on-the-host) |
 | `KDOS_BOX` | Set inside every box to its name. It is what identifies which box an X11 window came from |
 | `KDOS_REQUIRE_SIG=1` | `kdos-packd` refuses to `install` a pack with no signature, and `kdos-pack verify` fails on one. An unsigned pack already on the boot medium still mounts |
 | `KDOS_PACK_KEY=<file>` | The private key the application store signs exported pack indexes with; without it the index is unsigned and says so |
@@ -678,14 +691,14 @@ Read by `make build` and the build scripts on the build machine; see
 
 | Variable | Effect |
 |---|---|
-| `KDOS_ISO_SOURCES=1` | Copy `src/`, `script/`, `fs/` and `ports/` (every fetched source beside its recipe, without the source cache and the host helpers) onto the boot medium as `/sources`, with a `SOURCES` stamp; a live session sees it at `/mnt/iso/sources`. The `Makefile` and the `Dockerfile` are not on the medium |
+| `KDOS_ISO_SOURCES=1` | Copy `src/`, `script/`, `fs/`, `ports/` (every fetched source beside its recipe, without the source cache and the host helpers), the `Makefile` and the `Dockerfile` onto the boot medium as `/sources`, with a `SOURCES` stamp, and the binary host in `build/binhost/` as `/sources/binhost` when the same build sets `KDOS_MAKE_BINHOST=1`; a live session sees it at `/mnt/iso/sources` |
 | `KDOS_MAKE_BINHOST=1` | Keep every package the chroot phases build, and have `70_image` write a signed binary host of them to `build/binhost/` |
 | `KDOS_ISO_COMP=` | The codec of `system.sfs`: `xz` or `zstd:<1-22>`; empty is `zstd:15`, the release setting. `zstd:3` is a faster developer image about 10% larger. Any other value stops the image step |
 | `KDOS_CCACHE=0` | Turn off the compiler cache, default `1`, which CMake ports in the chroot compile through into `build/ccache`; a cached object is byte-identical to a compiled one |
 | `KDOS_PKG_STORE=1` | Install a port from the package store `build/pkgstore` when its recipe, environment and dependencies' bytes match a stored package, and store every package built; `check` builds every hit anyway and logs differences to `build/logs/pkgstore-check.log`; default `0`, off. See [The package store](../03-architecture/packaging.md#the-package-store) |
 | `KDOS_PKG_STORE_MAX=SIZE` | The size `70_image` evicts the package store down to, least recently used first; default `60G` |
 | `KPKG_STORE`, `KPKG_STORE_CHECK`, `KPKG_STORE_SALT` | Set by the build from `KDOS_PKG_STORE`, never by hand: the store directory inside the chroot, check mode, and kdosbuild's hash of the bootstrap phases. `KPKG_STORE_BASE`, from `script/env/chroot.env`, names the ports every store key depends on |
-| `KDOS_PACK_KDOS=1` | Also pack this root filesystem as a base pack named `kdos`, written to `build/kdos-base` |
+| `KDOS_PACK_KDOS=1` | Also pack this root filesystem as a base pack named `kdos`, written to `build/kdos-base` and carried on the boot medium as `packs/kdos.kpack` |
 | `KDOS_JOBS=N` | The job count every phase uses: `MAKEFLAGS=-jN`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS`, and a `--cpus` cap on the build container no higher than the host's thread count. Unset or empty, `script/env/common.env` computes it: the thread count, clamped to one job per 2 GiB of memory, at least 1. Under `kdosbuild --port-jobs` it is the size of the jobserver at `build/jobserver` the ports of a level share |
 | `KDOS_CPU_SHARES=N` | The build container's CPU weight, a `make build` variable only; default `256`. A weight, not a cap |
 | `KDOS_REPLAY=1` | A build step's "already done" guard stands down. Set for steps a build plan named explicitly |
@@ -729,11 +742,14 @@ resolves a source and when the pre-push hook refuses a push are in
 | `KDOS_REPO` | `kunaldawn/kdos` | The repository whose release `<tag>` `ports/publish --freeze <tag>` attaches `sources.sha256` to, and `ports/publish --release <tag>` fills |
 | `KDOS_RELEASE_KEY` | `build/keys/kdos-release.key` | The secret key `ports/publish --release` signs `SHA256SUMS` with, when `--key` is not given; the `.pub` beside it is uploaded as `kdos-release.pub` |
 | `KDOS_PUBLISH_DELAY` | `8` | Seconds between uploads |
+| `KDOS_PUBLISH_JOBS` | `16` | Archive `HEAD`s `ports/publish` runs at once to check presence |
 | `KDOS_LFS_STORE` | the clone's `lfs/objects` | Where `ports/publish --history` reads Git LFS (Large File Storage) objects that earlier commits' recipes name, to archive them under their hashes |
 | `KDOS_GITHUB_API`, `KDOS_GITHUB_UPLOADS` | `https://api.github.com`, `https://uploads.github.com` | Replace the API and upload endpoints, for testing against a local stand-in |
 | `KDOS_ALLOW_UNVERIFIED=1` | unset | Let `kpkg` build from a source file whose recipe has no `sha256`, and quiet `ports/fetch`'s warning about it. Without it such a file is refused. `ports/fetch`, and `kpkg install` or `kpkgbuild` run by hand, read it; a `make build` step in the chroot does not see it (see [Build](#build)) |
-| `KDOS_SKIP_PUBLISH_CHECK=1` | unset | Skip the pre-push hook's check that every source a pushed recipe names is archived. The layout check still runs |
+| `KDOS_SKIP_PUBLISH_CHECK=1` | unset | Skip the pre-push hook's check that every source a pushed recipe names is archived. The layout, patch and book checks still run |
 | `KDOS_SKIP_LAYOUT_CHECK=1` | unset | Skip the pre-push hook's offline check of the ports layout: every recipe one listed shelf down, one name per port, no reserved or port-named shelf |
+| `KDOS_SKIP_PATCH_CHECK=1` | unset | Skip the pre-push hook's check that every new or changed patch has a `Subject:` line |
+| `KDOS_SKIP_BOOK_CHECK=1` | unset | Skip the pre-push hook's run of `testing/docscheck.sh` and `testing/kfscheck.py` over both books |
 
 ## See also
 

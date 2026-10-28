@@ -30,8 +30,10 @@ decide which of them exist.
 
 ## Notes
 The VP9, H.264, Media SDK and VA-API switches only compile in a codec and the names of the
-GStreamer elements that handle it; the elements themselves come from the GStreamer plugin ports at run time, and Dino checks each one
-(`is_element_supported` in `plugins/rtp/src/codec_util.vala`) before it offers the codec.
+GStreamer elements that handle it; the elements themselves come from the GStreamer plugin ports at
+run time, and Dino checks each one (`is_element_supported` in `plugins/rtp/src/codec_util.vala`)
+before it offers the codec.
 
-`build.sh` renders the scalable icon to PNGs at four sizes with `rsvg-convert` and writes the
-desktop entry, which also registers Dino for `xmpp:` links.
+`build.sh` renders the scalable icon to PNGs at four sizes with `rsvg-convert` and writes its own
+`im.dino.Dino.desktop` over the one upstream installs; like upstream's, it registers Dino for
+`xmpp:` links.

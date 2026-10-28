@@ -17,17 +17,18 @@ Pillow and Tux Paint link.
   (rayon) and nothing else. `threads` is what the default features amount to; naming it keeps the
   feature set in the recipe.
 - `--library-type cdylib` — Build only the shared library; the crate also declares a static one.
+- `-C target-feature=-crt-static` — Link against musl dynamically. Rust's musl target links the C
+  library statically by default, and a `cdylib` cannot be built that way.
 
 ## Notes
 
 The Rust crates come from the vendor bundle, `libimagequant-vendor-<version>.tar.xz`, which
 `ports/fetch` writes with `cargo vendor` and pins with its own `sha256 =` line (see
-[Vendoring](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#vendoring)).
+[Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring)).
 `build.sh` unpacks it at the top of the tree and runs cargo from there: cargo finds the bundle's
 configuration by walking up from the current directory, so it must stand where the bundle was
 unpacked and reach the C crate through `--manifest-path`, or every crate resolves as missing (see
-[Where the bundle
-goes](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#where-the-bundle-goes)).
+[Where the bundle goes](../../../../docs/kdos/05-developer/writing-ports.md#where-the-bundle-goes)).
 
 The C library carries its own version, `[package.metadata.capi.library]` in
 `imagequant-sys/Cargo.toml`, and its soname comes from that, not from the release number: cargo-c

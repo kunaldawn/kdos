@@ -5,7 +5,7 @@ certificates over its own API and over ACME, so that any ACME client, [caddy](#p
 them, can obtain and renew certificates from it on a network with no route to a public CA. It is
 set up and driven with [step-cli](#port-step-cli)'s `step` command, and the package adds a service
 script, `89_step-ca`, that runs it as root from `/etc/step-ca`; the
-[Services](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md#services) table says how to set
+[Services](../../../../docs/kdos/02-user-guide/administration.md#services) table says how to set
 it up.
 
 ## Flags
@@ -23,7 +23,7 @@ it up.
 The Go modules come from the vendor bundle, `step-ca-vendor-<version>.tar.xz`, which `ports/fetch`
 makes with `go mod vendor` because the recipe says `vendoring = go`; `build.sh` unpacks it and
 builds with `-mod=vendor`, offline. See
-[Vendoring](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#vendoring).
+[Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring).
 
 `build.sh` writes `/etc/init.d/89_step-ca.sh`. It sets `STEPPATH=/etc/step-ca` and skips itself,
 with a `[SKIP]` line, until both `config/ca.json` and `password.txt` exist there: the first is
@@ -31,4 +31,4 @@ what `sudo STEPPATH=/etc/step-ca step ca init` writes, and the second holds the 
 which step-ca reads with `--password-file` instead of asking for it at a console. Once both exist
 it starts the CA under the service supervisor, so a crashed CA is restarted. Other machines reach
 it only after the firewall's `https` name is opened, when the CA listens on 443 (see
-[Opening a service](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md#opening-a-service)).
+[Opening a service](../../../../docs/kdos/02-user-guide/administration.md#opening-a-service)).

@@ -12,8 +12,9 @@
  * the host it is running on: it creates the user, fixes up sudo, links host
  * paths and finally prints `container_setup_done`, which is the marker
  * `box_wait_ready()` polls for. A pack box needs a small, specific part of
- * that, because most of what distrobox-init reconciles is decided at bake time
- * here rather than found at run time.
+ * that, because most of what distrobox-init reconciles is either fixed by the
+ * flags the launcher creates the box with or has no use in a box nobody logs
+ * in to.
  *
  * WHAT IT DOES, and each line of it is something the launch path already
  * depends on:
@@ -67,7 +68,10 @@ static const char *env_or(const char *name, const char *dflt)
 
 /*
  * Put a record into a colon-separated database, REPLACING one that is already
- * there for the same name or id rather than leaving it alone.
+ * there for the same name or id rather than leaving it alone. A NULL id
+ * matches by name alone: /etc/shadow's third field is the last-change date,
+ * not an id, and comparing the uid against it would replace another user's
+ * record whose date happens to read the same.
  *
  * A pack may carry its own entry for this user, and a WRONG one is worse than
  * none: the base pack ships `kdos:*:1000:1000:KDOS Test:/:/bin/sh`, whose home
@@ -121,7 +125,7 @@ static int ensure_record(const char *path, const char *name, const char *id,
 			*colon = 0;
 			if (!strcmp(probe, name)) {
 				match = 1;
-			} else {
+			} else if (id) {
 				/* name:x:<id>: — the third field */
 				second = strchr(colon + 1, ':');
 				if (second) {
@@ -159,10 +163,12 @@ static int ensure_record(const char *path, const char *name, const char *id,
  * a document — all through xdg-open, which inside a Debian rootfs walks a list
  * of browsers the box does not carry and gives up. The session bus is shared
  * (`/run/user/<uid>/bus`), so the OpenURI portal on the host is one method
- * call away, and `xdg-desktop-portal-kdos` answers it with `kdos-appbox
- * open`. A file path is made absolute and passed as file://: $HOME and /tmp
- * are the same directories on both sides, which is where an application's
- * own files are.
+ * call away. xdg-desktop-portal launches the host's handler for the type,
+ * chosen through `xdg-desktop-portal-kdos`, and only when the host has no
+ * handler does the back end open the item itself, through `kdos-appbox open`
+ * for a path and `xdg-open` for a scheme. A file path is made absolute and
+ * passed as file://: $HOME and /tmp are the same directories on both sides,
+ * which is where an application's own files are.
  *
  * gdbus carries the call (`libglib2.0-bin` in the base pack); a base without
  * it — alpine — gets a script that says so rather than one that fails inside
@@ -297,7 +303,7 @@ int main(int argc, char **argv)
 	 * surface with no purpose.
 	 */
 	snprintf(line, sizeof(line), "%s:!:20000:0:99999:7:::\n", user);
-	ensure_record("/etc/shadow", user, uid, line);
+	ensure_record("/etc/shadow", user, NULL, line);
 
 	/* The home is bind-mounted from the host and already exists; making it
 	 * covers the private-home case, where the profile pointed somewhere

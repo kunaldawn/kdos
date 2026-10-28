@@ -21,7 +21,7 @@ which is why [clang](#port-clang) is in `depends`.
   binary's `NEEDED` entries are `libgcc_s.so.1` and `libc.so` alone.
 - `-C target-feature=-crt-static` — Links against musl dynamically. Rust's musl target links
   statically by default, and a static program cannot load `libclang.so` at run time; see
-  [rust](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#rust).
+  [rust](../../../../docs/kdos/05-developer/writing-ports.md#rust).
 - `-p bindgen-cli` — Builds the command-line package of the workspace, not the library alone.
 - `--no-default-features` — Drops the package's default features, so the next switch alone
   decides them.

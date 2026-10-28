@@ -115,7 +115,7 @@ $endif$
   #v(1fr)
   #line(length: 100%, stroke: 0.6pt + kfs-rule)
   #text(font: "DejaVu Sans Mono", size: 9.5pt)[
-    KDOS $kfs-version$ · development edition \
+    KDOS $kfs-version$ · $kfs-edition$ \
     commit $kfs-commit$ · $kfs-date$ \
     build-state snapshot $kfs-snapshot$
   ]

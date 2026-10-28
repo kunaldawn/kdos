@@ -70,6 +70,7 @@ through PySide6, drawing its 3D view with [Coin](#port-coin) and modelling with
 
 ## Patches
 - `UnlimitedUnsigned.h-cstdint.patch` — adds `#include <cstdint>` to `src/Base/UnlimitedUnsigned.h`, which uses `int32_t` without including the header that declares it. It compiles only where some other included header happens to pull `<cstdint>` in.
+- `pyside612-pyobjectwrapper.patch` — adds `#include <pyobjectwrapper.h>` to `src/Gui/PythonWrapper.cpp`. The PySide6 the tree carries declares `PySide::PyObjectWrapper` in that header, and `signalmanager.h`, the PySide header the file already includes, does not pull it in. The file registers a converter from `PyObjectWrapper` to `Base::Quantity`, which does not compile without the declaration.
 
 ## Notes
 The source is the release tarball rather than the tag archive, because only the tarball carries

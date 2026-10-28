@@ -10,8 +10,14 @@ is the whole reference; nothing is invented here. There is no `--help`.
 looking one second from now, so a slot already past is simply the same slot
 next time round, whatever the slack says. `-t FILE` is what changes that: it
 starts looking from that file's modification time, and the slack then covers
-the gap. `-s 4h -t ~/.config/kdos/timers.d/mine.timer` means "if the machine
-was off at the slot, run it once when I log in, up to four hours late".
+the gap. The file must be one the job's own program writes after every run:
+a file nothing touches, such as a .timer table, leaves each restart of the
+loop finding the same slot inside the slack and running the job again until
+the slack has passed. Write its path out in full, since a row never goes
+through a shell and `~` or `$HOME` reach snooze as those characters. With the
+job writing /home/you/.cache/mine.stamp, `-s 4h -t /home/you/.cache/mine.stamp`
+means "if the machine was off at the slot, run it once when I log in, up to
+four hours late".
 
 THE COMMAND IS AN ARGUMENT VECTOR. No pipe, no redirection, no `&&`: a program
 that writes a file takes a flag naming it. That is what lets this file be

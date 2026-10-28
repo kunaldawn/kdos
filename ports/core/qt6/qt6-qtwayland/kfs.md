@@ -12,8 +12,9 @@ this desktop, are in [qt6-qtbase](#port-qt6-qtbase).
   answer in advance, so CMake does not run it. Run in this tree, the test fails whatever the
   headers say, and the dma-buf integration would be dropped (the
   [ports catalogue](../../../../docs/kdos/06-reference/ports-catalogue.md#qt6) records it). The
-  test only checks that the EGL headers define `EGL_LINUX_DMA_BUF_EXT` and
-  `EGL_EXT_image_dma_buf_import_modifiers`, which [mesa](#port-mesa)'s do.
+  test only includes the EGL and [libdrm](#port-libdrm) headers and checks that EGL's define
+  `EGL_LINUX_DMA_BUF_EXT` and `EGL_EXT_image_dma_buf_import_modifiers`, which [mesa](#port-mesa)'s
+  do.
 - `-DFEATURE_wayland_dmabuf_client_buffer=ON` — the compositor's hardware integration that takes
   a client's dma-buf buffers through EGL, which that test gates.
 - `-DFEATURE_wayland_decoration_adwaita=ON` — the GNOME-style client-side decoration plugin, which

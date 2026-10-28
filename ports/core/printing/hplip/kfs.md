@@ -46,8 +46,8 @@ carry it.
 - `use-correct-macro.patch` — uses `DBG` instead of the undefined `_DBG` in `orblite.c`.
 - `hplip-no-urlopener.patch` — the opener classes in `base/device.py` derive from `urllib.request.URLopener`; the patch makes them plain classes and calls their `open_hp` method directly. The standard library of the tree's Python has no `URLopener`, so without the patch the module fails at import.
 
-The header, prototype, type, cast and `void`-return patches correct C that GCC rejects as an
-error by default.
+The header, prototype, type, cast, macro and `void`-return patches correct C that GCC rejects as
+an error by default.
 
 ## Notes
 

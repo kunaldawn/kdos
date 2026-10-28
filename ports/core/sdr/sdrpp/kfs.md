@@ -54,9 +54,9 @@ Upstream releases SDR++ on a rolling model, as a nightly build, so the recipe fo
 the main branch, named by `_commit` in `kpkgbuild`.
 
 The file pickers and the frequency manager's import and export use the bundled
-portable-file-dialogs, which draws no window of its own: it runs `zenity`, `kdialog`, `matedialog`
-or `qarma`, whichever it finds. [zenity](#port-zenity) is in `depends` for that. The GLFW back end
-sets the Wayland app id to `sdrpp`, which the recipe's desktop entry repeats in `StartupWMClass`.
+portable-file-dialogs, which draws no window of its own: it runs the first of `zenity`,
+`matedialog`, `qarma` and `kdialog` it finds. [zenity](#port-zenity) is in `depends` for that.
+The GLFW back end sets the Wayland app id to `sdrpp`, which the recipe's desktop entry repeats in `StartupWMClass`.
 The recipe writes that entry over upstream's, which names its icon by an absolute path under
 `/usr/share/sdrpp/icons`, and installs the PNG icon into the hicolor theme under the name `sdrpp`.
 `build.sh` ends by checking that the RTL-SDR source plugin was installed.

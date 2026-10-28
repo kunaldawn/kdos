@@ -25,8 +25,8 @@ tracepoints.
 - `EXTRA_CFLAGS` — perf's `Makefile.config` sets `CFLAGS` from `EXTRA_CFLAGS` instead of adding to
   the environment's, so this is where the tree's `$CFLAGS` go. `$LDFLAGS` go there as well, because
   the rule that links the `dlfilters` shared objects reads `EXTRA_CFLAGS` and not `LDFLAGS`; without
-  them those objects would be linked without `-z now`. See [The release
-  flags](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-release-flags).
+  them those objects would be linked without `-z now`. See
+  [The release flags](../../../../docs/kdos/05-developer/writing-ports.md#the-release-flags).
 - `LIBBPF_DYNAMIC=1` — Links the shared `libbpf` from the [libbpf](#port-libbpf) port, instead of
   building the copy in `tools/lib/bpf` and linking it statically.
 - `BUILD_BPF_SKEL=1` — Builds the BPF skeletons behind `perf lock contention`, `perf record

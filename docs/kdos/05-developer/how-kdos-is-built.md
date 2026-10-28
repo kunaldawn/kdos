@@ -123,20 +123,22 @@ any copy that hashes to it is the right file, wherever it came from. For each fi
    every port directory that names it.
 3. **The KDOS source archive**: numbered GitHub pre-releases, the volumes `sources-<N>`, each
    holding the shelves `ports/shelves` maps to it, each asset named `<shelf>--<file>`. The committed
-   file `ports/sources.idx` says which volume and which asset hold which hash, one line per file; a file over GitHub's 2 GiB asset limit is held in parts,
-   joined and checked as a whole.
+   file `ports/sources.idx` says which volume and which asset hold which hash, one line per file. A
+   file too large for one GitHub asset, which must stay under 2 GiB, is held in parts, joined and
+   checked as a whole.
 4. **Upstream**, the URL on the recipe's `source =` line.
 5. **Regeneration**, for a port's own vendor bundle only (below).
 
 The archive is asked before upstream because it cannot disappear when an upstream host does. Nothing
-in it is replaced, and nothing is removed except by the maintainer's explicit `--rehome` and
-`--prune=yes-delete` runs of `ports/publish`, which spare every file a recipe at a `v*` tag names.
+in it is replaced. The maintainer's `ports/publish --rehome` only moves a file within the archive,
+and `ports/publish --orphans --prune=yes-delete`, the one run that removes files, spares every file
+a recipe at a `v*` tag names or a frozen release list holds.
 So it can hold what older recipes named as well: `ports/publish --history` seeds it with the files
 old commits' recipes point at, a file no current port names kept as `attic--<file>` in the highest
 volume, so a checkout written against an older version can still be built. `ports/sources.idx` is
 read only in its format 2, whose first line is `# kdos-sources-index 2`; a hash it does not name
-comes from upstream. The current recipes name 2,487 distinct files; 39 of them are carried in
-git, and 2,448 are fetched. A complete cache holds those 2,448 files; its size is in
+comes from upstream. The current recipes name 2,572 distinct files; 44 of them are carried in
+git, and 2,528 are fetched. A complete cache holds those 2,528 files; its size is in
 [What a build costs](#what-a-build-costs).
 
 **Vendor bundles.** Rust, Go, Python, Haskell and Node software usually downloads its own dependencies
@@ -146,7 +148,7 @@ language's own package manager and held to its own `sha256 =` line like any othe
 recipes in `ports/core` declare one with a `vendoring =` key: 75 Rust, 39 Go, 42 Python, 4 Haskell
 and 1 Node. Five more name a vendor bundle with no `vendoring =` key (`python3-lsp-ruff` through its
 `pypackages` line, and the hand-made bundles of `pdfium`, `libreoffice`, `librepcb` and `surfer`),
-so 164 ports carry one in all. A bundle is normally fetched from the archive like everything else.
+so 166 ports carry one in all. A bundle is normally fetched from the archive like everything else.
 When none of the first four locations has it, `ports/fetch` generates it inside a separate
 container, `kdos-fetch`, whose toolchains are pinned to the versions this tree compiles with, and
 builds the tarball reproducibly so the result matches its recipe hash. How to write such a recipe is
@@ -189,8 +191,11 @@ A phase holds either numbered scripts, which run in sorted order, or a list of p
 `packages.txt`, or a `packages.d/` directory of lists, one per shelf, read in order as one. For a
 list, kdosbuild asks `kpkgdepends` for the install order of every named port and its whole
 dependency closure, then turns each port into its own step, `kpkg install <port>`, run one at a
-time. Every list names exactly the ports its phase installs, and preflight checks it: a port cannot
-drift into another phase because a dependency changed, without a failed check saying so.
+time. From `30_foundation` on, every list names exactly the ports its phase installs, apart from
+ports of earlier phases named again in its pinned run so that a changed recipe is rebuilt there,
+and preflight checks it: a port cannot drift into another phase because a dependency changed
+without a failed check saying so. The check is in
+[Every phase installs exactly its list](build-system.md#every-phase-installs-exactly-its-list).
 
 With `BUILD_ARGS="--port-jobs N"`, a package phase runs by dependency level instead: the ports
 whose same-phase dependencies sit on lower levels build side by side with `kpkg install
@@ -232,11 +237,13 @@ it sits, and install into `build/cross`:
 | Step | Builds |
 |---|---|
 | `00_binutils.sh` | The assembler and linker (binutils 2.47) for the target, with `build/fs` as their system root |
-| `01_gcc.sh` | GCC 16.2.0, with GMP, MPFR and MPC compiled into it, for C and C++, built without the info manuals |
+| `01_gcc.sh` | GCC 16.2.0, with GMP, MPFR and MPC compiled into it, for C and C++; its info manuals are installed as the release tarball ships them, not regenerated (`BUILD_INFO=no-info`) |
 
 The cross GCC is deliberately incomplete. There is no C library for the target yet, so it is
 configured `--without-headers`, with no shared libraries, no threads and no C++ standard library.
-It is enough to compile a C library and nothing more. Because its system root is `build/fs`, it
+It is enough to compile a C library, and once `10_bootstrap` has installed musl into `build/fs` it
+compiles the rest of that phase as well, the C++ standard library, the native GCC and `kpkg`
+among it. Because its system root is `build/fs`, it
 never looks in the container's own directories: every header and library it finds is one the
 build put there. A complete `build/cross` is about 291 MB (277 MiB).
 
@@ -261,7 +268,7 @@ thing it builds. Its twenty-two scripts run in this order:
 | `050_xz.sh`, `060_gzip.sh`, `061_tar.sh` | The tools that unpack source archives | Inside the chroot, every build begins by extracting a `.tar.xz` or `.tar.gz` |
 | `062_coreutils.sh` to `068_sed.sh` | GNU coreutils, diffutils, findutils, gawk, grep, patch and sed, each with NLS off and no optional library: coreutils without ACLs, xattrs, libcap, GMP or OpenSSL, grep without `-P`, gawk without readline or MPFR. findutils' `locate` and `updatedb` are deleted again, since they are `plocate`'s | Every `build.sh` in `20_selfhost` runs under them, and `30_foundation` replaces each with its full port, which installs the same names |
 | `070_readline.sh`, `080_bash.sh` | readline and bash 5.3, with `sh` linked to `bash` | Every recipe's `build.sh` is a bash script |
-| `090_binutils.sh`, `100_gcc.sh` | A native binutils and GCC: built by the cross compiler, but running on KDOS and producing programs for KDOS. The GCC is built without the info manuals, with libgcc at `-g0` and with the `gcc` port's `t-linux64-lib.patch`, and installs to the package's own paths (`--libexecdir=/usr/lib`), so `20_selfhost`'s `gcc` package replaces the files it installed under the shared names. What both install under their target name, `x86_64-kdos-linux-musl`, the native compiler never writes: the `gcc` package's install hook removes it. Both delete the libtool archives (`.la`) they install, as `050_xz.sh` does liblzma's: no package owns them, and libtool would copy their build-directory `-L` and runtime RPATH into every library linked through them | Inside the chroot there is no container compiler to fall back on |
+| `090_binutils.sh`, `100_gcc.sh` | A native binutils and GCC: built by the cross compiler, but running on KDOS and producing programs for KDOS. The GCC installs the info manuals its release tarball ships rather than regenerating them, builds libgcc at `-g0`, applies the `gcc` port's `t-linux64-lib.patch`, and installs to the package's own paths (`--libexecdir=/usr/lib`), so `20_selfhost`'s `gcc` package replaces the files it installed under the shared names. What both install under their target name, `x86_64-kdos-linux-musl`, the native compiler never writes: the `gcc` package's install hook removes it. Both delete the libtool archives (`.la`) they install, as `050_xz.sh` does liblzma's: no package owns them, and libtool would copy their build-directory `-L` and runtime RPATH into every library linked through them | Inside the chroot there is no container compiler to fall back on |
 | `110_make.sh` | GNU make | Almost every upstream build runs it |
 | `120_kpkg.sh` | `kpkg`, compiled from `src/system/kdos-kpkg` with `libkbase`, `libkpkg` and `libksig`, installed as `/usr/bin/kpkg` with four more names linked to it | Nothing can read a recipe before `kpkg` exists |
 | `130_kinstall.sh` | The installer, `kinstall`, from `src/system/kdos-installer` | It links nothing beyond musl, so it exists on every tree from this phase onwards |
@@ -270,10 +277,16 @@ thing it builds. Its twenty-two scripts run in this order:
 tree's hardening themselves (stack protector, stack-clash probes, `-z now`, packed relative
 relocations and a build ID); every other step keeps the plain flags of `script/env/host.env`.
 
-Every autotools step from `040_ncurses.sh` on is configured with `--host=x86_64-kdos-linux-musl`, and
-`060_gzip.sh` to `068_sed.sh` with `--build` from the source's own `config.guess`, so the cross
-compiler builds them and configure never runs a test program it compiled. `20_selfhost` rebuilds
-`tar`, `diffutils` and `gawk` with KDOS's own compiler, and `30_foundation` the rest.
+Every autotools step from `030_libstdc++.sh` on is configured with
+`--host=x86_64-kdos-linux-musl`, so the cross compiler builds it. `030_libstdc++.sh`,
+`040_ncurses.sh` and `060_gzip.sh` to `068_sed.sh` also pass `--build` from the source's own
+`config.guess`, which tells configure it is cross-compiling, so it never runs a test program it
+compiled. `050_xz.sh`, `070_readline.sh`, `080_bash.sh` and `110_make.sh` give `--host` alone
+and leave configure to decide: the loader their test programs name, `/lib/ld-musl-x86_64.so.1`,
+also exists in the Alpine container, so a test program runs there and configure concludes it is
+not cross-compiling. `090_binutils.sh` and `100_gcc.sh` give `--host` alone too, and their
+configure scripts conclude they are cross-compiling. `20_selfhost` rebuilds `tar`, `diffutils` and
+`gawk` with KDOS's own compiler, and `30_foundation` the rest.
 
 The copy of `fs/` in `000_file_system.sh` is more careful than a plain copy, because the build tree
 is incremental: it deletes files that `fs/` has stopped providing, merges `/etc/passwd`,
@@ -336,9 +349,10 @@ A cached object is byte-identical to the one a compile would write, and three se
 - **No masquerade directory on `PATH`.** CMake would record `/usr/lib/ccache/gcc` as the compiler,
   and that path is written into CMake and pkg-config files the packages ship.
 
-With the cache off, `CCACHE_DISABLE=1` is set instead, because meson and several projects use ccache
-whenever they find it and would fill `.cache/ccache` under the build's `HOME` inside `build/fs`. `testing/preflight.sh`
-fails when any of these settings changes.
+With the cache off, `CCACHE_DISABLE=1` is set instead, because meson and several projects use
+ccache whenever they find it and would fill `.cache/ccache` under the build's `HOME` inside
+`build/fs`. `testing/preflight.sh` fails when one of the three settings above changes, and when the
+`Makefile` passes `KDOS_CCACHE` but `script/chroot/exec.sh` does not name it.
 
 ### The package store
 
@@ -373,11 +387,11 @@ source      = https://codeberg.org/ivarch/pv/releases/download/v$version/$name-$
 sha256      = 31fdbdb449c7143cd2968567bef7599e9f031950e6158ee7bb76e40aebf6ffb8  pv-1.12.0.tar.gz
 description = Pipe viewer — progress, throughput and ETA for any stream
 homepage    = https://www.ivarch.com/programs/pv.shtml
+license     = GPL-3.0-or-later
 depends     = ncurses
 ```
 
-and its `build.sh`, less the banner and a comment explaining the choice of tarball and flags, is
-three lines:
+and its `build.sh`, less the banner, is three lines:
 
 ```sh
 ./configure --prefix=/usr --disable-static --with-ncurses --disable-nls
@@ -395,7 +409,7 @@ and `$version` itself. Only `build.sh` is bash. This is what installing it invol
    `script/phases/41_system/phase.env` sourced first.
 2. **Deciding.** `kpkg` resolves `pv`'s dependencies against the real database. `ncurses` was
    installed earlier from an unchanged recipe (`20_selfhost` installs it for `gawk`, and
-   `40_lang`'s list names it again near its top), so it is dropped. `pv` is either not installed,
+   `30_foundation`'s list names it again near its top), so it is dropped. `pv` is either not installed,
    or installed from a recipe whose hash differs from the one recorded, so it is built. A `pv`
    installed from this exact recipe would be skipped, which is what makes re-running a phase cheap.
 3. **Verifying.** `kpkg` hashes `pv-1.12.0.tar.gz` in the port directory and refuses to go on if
@@ -446,8 +460,8 @@ assembler, linker and compiler into packages with manifests. Second, it makes KD
 **self-hosting**: after this phase, the C library and the compiler are themselves compiled by a
 compiler running on KDOS, inside KDOS, and depend on nothing the container produced. `m4`, `gawk`
 and `diffutils` are tools the GMP and GCC builds run. `tar` is rebuilt for the same two reasons as
-the toolchain, and early, because kpkg unpacks every later source with it. The native compiler's target is `x86_64-pc-linux-musl`, not
-`10_bootstrap`'s `x86_64-kdos-linux-musl`, so the bootstrap compiler's target-named trees (about
+the toolchain, and early, because kpkg unpacks every later source with it. The native compiler's
+target is `x86_64-pc-linux-musl`, not `10_bootstrap`'s `x86_64-kdos-linux-musl`, so the bootstrap compiler's target-named trees (about
 195 MB) are files no package replaces; the `gcc` package's install hook deletes them once the native
 compiler is in place.
 
@@ -456,45 +470,48 @@ compiler is in place.
 These two phases install everything needed to rebuild KDOS from KDOS. They are split by one
 question: does a port need one of the big compilers?
 
-`30_foundation` names 134 ports and installs 124; the other ten were installed by `20_selfhost` and
-are named again so that a changed recipe is rebuilt here. The list opens with a pinned run: the 18
-build tools recipes use without naming them in `depends` (`musl`, `gcc`, `binutils`, `make`,
-`file`, `muon`, `pkgconf`, the autotools, `m4`, `bison`, `flex`, `cmake`, `meson`, `ninja`, `python3` and `perl`),
+`30_foundation` names 138 ports and installs 127; the other 11 were installed by `20_selfhost` and
+are named again so that a changed recipe is rebuilt here. The list opens with a pinned run:
+`fortify-headers`, then the 18 build tools recipes use without naming them in `depends` (`musl`,
+`gcc`, `binutils`, `make`, `file`, `muon`, `pkgconf`, the autotools, `m4`, `bison`, `flex`,
+`cmake`, `meson`, `ninja`, `python3` and `perl`),
 then `bash` and the GNU userland every `build.sh` runs in (`coreutils`, `grep`, `which` and
 `musl-utils`, which carries `getconf`, `getent` and `iconv`), then `tar`, `diffutils`, `gawk`,
 `ncurses`, `readline` and `zlib`, the
 rest of `20_selfhost`'s list and the libraries `gawk` links, so each is current before anything in
 the phase uses it. The other names sit under a heading for each shelf. Here the build gains
 CMake, Meson and Ninja; Python, Perl and Lua; GNU `sed`, `findutils` and `patch` as packages;
-`curl`, `git` and OpenSSL; `sysvinit`, with `utmps` and `skalibs`, which it, `util-linux` and
-`coreutils` build against; `util-linux`, `eudev` and `shadow`; and ccache, the compiler cache every later CMake build uses. `bash`, which only `10_bootstrap` built, is built here as a package for the
-first time and adopts the files that phase left.
+`curl`, `git` and OpenSSL; `sysvinit`, with `utmps` and `skalibs`, which it, `util-linux`,
+`shadow` and `coreutils` build against; `util-linux`, `eudev` and `shadow`; and ccache, the
+compiler cache every later CMake build uses. `bash`, which only `10_bootstrap` built, is built here
+as a package for the first time and adopts the files that phase left.
 
 `31_compilers` names 22 ports and installs all 22: LLVM, clang, lld, compiler-rt, libunwind and
 openmp, with the pinned 21 series some ports build against; Rust, cargo-c, bindgen and cbindgen; Go; GHC and
 cabal-install; Zig; Node.js; Ruby; pandoc and asciidoctor; and `ccache-manual`, ccache's manual page, which needs
 asciidoctor. On the last measured build
 these 22 took about 7.6 of the 8.7 hours the two phases spend, which is why they are a phase of
-their own: a failure among them restores `30_foundation` and loses minutes, not the hour of
-foundation work before them.
+their own: in a run that writes snapshots, a failure among them restores `30_foundation` and loses
+minutes, not the hour of foundation work before them.
 
-From `20_selfhost` onwards, the shared environment names the compiler outright (`CC=gcc`,
-`CXX=g++`); `20_selfhost` itself unsets it, since it is building that compiler. Once clang is
+The environment every chroot phase shares, `script/env/chroot.env`, names the compiler outright
+(`CC=gcc`, `CXX=g++`), so from `30_foundation` onwards it is never discovered; `20_selfhost`'s own
+environment unsets it, since that phase is building the compiler. Once clang is
 installed, some configure scripts would otherwise prefer it, and the toolchain would change
 depending on which ports happened to be installed.
 
 ## The userland: `40_lang` to `44_apps`
 
-The bulk of the system is five phases, 1,842 ports between them, split by what each port's
+The bulk of the system is five phases, 1,919 ports between them, split by what each port's
 dependencies reach. Every port's dependencies are in its own phase or an earlier one:
 
 | Phase | Installs | Holds | Largest shelves |
 |---|---|---|---|
-| `40_lang` | 169 | Language modules and developer tools whose dependencies need nothing past the compilers: the `python3-*` and `perl-*` modules, build, documentation and debugging tools, version control | `python-libs`, `devtools`, `python`, `python-net` |
-| `41_system` | 967 | Everything with no graphics and no toolkit among its dependencies: services, networking, storage, the command line, codecs, firmware, fonts, science and hardware libraries | `image-libs`, `devlibs`, `formats`, `network`, `audio-codecs` |
-| `42_graphics` | 186 | What reaches Wayland, the X11 libraries, Mesa, cairo, pango, GStreamer, FFmpeg or PipeWire but no toolkit: the graphics and media stacks, Xwayland, `foot` | `x11`, `gpu`, `wl`, `game-libs`, `graphics-libs` |
-| `43_toolkits` | 243 | GTK, Qt 5 and 6, KDE Frameworks, wxWidgets, FLTK and WebKitGTK, and the libraries and services built on them | `kf6`, `qt6`, `qt-extra`, `gtk`, `qt5` |
-| `44_apps` | 280 | The natively ported graphical applications | `graphics`, `emulators`, `games-board`, `studio`, `hamradio` |
+| `40_lang` | 177 | Language modules and developer tools whose dependencies need nothing past the compilers: the `python3-*` and `perl-*` modules, build, documentation and debugging tools, version control | `python-libs`, `devtools`, `python-net`, `python` |
+| `41_system` | 1,014 | Everything with no graphics and no toolkit among its dependencies: services, networking, storage, the command line, codecs, firmware, fonts, science and hardware libraries | `image-libs`, `devlibs`, `formats`, `embedded`, `network` |
+| `42_graphics` | 194 | What reaches Wayland, the X11 libraries, Mesa, cairo, pango, GStreamer, FFmpeg or PipeWire but no toolkit: the graphics and media stacks, Xwayland, `foot` | `x11`, `gpu`, `wl`, `game-libs`, `graphics-libs` |
+| `43_toolkits` | 250 | GTK, Qt 5 and 6, KDE Frameworks, wxWidgets, FLTK and WebKitGTK, and the libraries and services built on them | `kf6`, `qt6`, `qt-extra`, `gtk`, `qt5` |
+| `44_apps` | 284 | The natively ported graphical applications | `graphics`, `emulators`, `games-board`, `studio`, `hamradio` |
 
 Their environment adds `src/system` and `src/art` to the repositories `kpkg` searches, so KDOS's
 own tools, theme, icons, cursors, splash, pack tools, box launcher and `kdos-bb` are built here as
@@ -515,9 +532,10 @@ Each of the five phases keeps its list as a directory, `packages.d/`, with one f
 named `src-system.txt` or `src-art.txt` holds KDOS's own ports from that `src/` area. The files are
 read in sorted order as one list, and `kpkgdepends` installs a name written earlier before one
 written later unless a dependency says otherwise, so where order matters it is written down:
-`00-order.txt` sorts first and holds the runs a comment pins; only `41_system` has one. Every file, with its ports, is
-in [The ports catalogue](../06-reference/ports-catalogue.md). A new port is named in its shelf's
-file of the phase its subject and its dependencies place it in; the rule is in
+`00-order.txt` sorts first and holds any run whose order a comment pins; only `41_system` has one,
+and it names no port. Every file, with its ports, is in
+[The ports catalogue](../06-reference/ports-catalogue.md). A new port is named in its shelf's file
+of the phase its subject and its dependencies place it in; the rule is in
 [Package lists](build-system.md#package-lists).
 
 Shelves are distinct from the `group =` key a recipe may carry, which only the upstream version
@@ -526,7 +544,7 @@ checker reads, to offer related version bumps together; see
 
 ## The desktop: `50_desktop`
 
-`50_desktop` names and installs 22 ports, with an order of 376 once dependencies are followed,
+`50_desktop` names and installs 22 ports, with an order of 414 once dependencies are followed,
 all but those 22 installed and skipped by this point. Its environment adds `src/desktop` and
 `src/daemons` to the repositories, because that is where the compositor, the shell and the root
 daemons live, and no earlier phase can build them. It installs wlroots; the compositor `kdos-comp`;
@@ -551,7 +569,7 @@ current tree. The programs themselves are described in
 
 `60_kernel` names two ports, `dwarves` and `linux` (Linux 7.2.11), and is the last port phase before
 the image. The kernel's recipe depends on `bc`, `bison`, `flex`, `perl`, `openssl`, `elfutils`,
-`zstd`, `kmod`, `dwarves`, `rust`, `bindgen` and `clang`. All of them except `dwarves` are installed
+`zstd`, `kmod`, `dwarves`, `rust`, `bindgen`, `clang` and `cpio`. All of them except `dwarves` are installed
 by this point, so the phase builds `dwarves` (the `pahole` tool that generates BTF, the kernel's
 compact description of its own types, which the kernel configuration enables) and then the kernel.
 The kernel lands in `/boot/vmlinuz-kdos` with its modules under `/lib/modules`, which the
@@ -631,7 +649,7 @@ Its sixteen scripts run inside the chroot in the order their numbers give:
 | `015_pkgstore.sh` | With the package store on, evicts `build/pkgstore` down to `KDOS_PKG_STORE_MAX`, least recently used first; otherwise does nothing |
 | `020_cleanup.sh` | Removes build-only files: the build user's caches, the kpkg work and package caches, podman's stores, and Python bytecode no package owns, then fails if a packaged Python module has no bytecode (each package carries its own, compiled by `kpkg` as hash-checked bytecode); removes the translations and HTML manuals no package owns, which the packages themselves never carry; resets `/root` to what `fs/root` holds, mode 0700 |
 | `030_launchers.sh` | Reconciles the generated application launchers in `/etc/skel` with the packs the image carries; with none, it removes every one |
-| `040_orphans.sh` | Removes every installed package that has no recipe in the tree |
+| `040_orphans.sh` | Removes every installed package that has no recipe in the tree, or whose port `ports/unbuilt` lists |
 | `045_identity.sh` | Stamps `/etc/os-release` with the commit the image was built from (`BUILD_ID`) and that commit's date (`KDOS_BUILD_DATE`), which `kdos-about` shows |
 | `050_theme.sh` | Seeds the default theme into `/etc/skel`, after checking that the accent the phase names is the one compiled into `libkcolor` |
 | `060_udev_hwdb.sh` | Compiles the udev hardware database, `/etc/udev/hwdb.bin` |
@@ -671,7 +689,7 @@ which reach them through links in their port directories; a link left dangling w
 the port's recipe hash, and the machine would take the installed book for stale. `kdos-kfs` still
 builds only in a checkout, because its renderer reads `ports/core` and `script/phases`, and `/ports`
 has neither. The tree is about 100 MB unsquashed; the fetched sources it leaves out are
-about 39 GB. `/etc/kpkg.conf`'s default `PORT_REPO` names `/ports/core` and the four areas of
+about 42 GB. `/etc/kpkg.conf`'s default `PORT_REPO` names `/ports/core` and the four areas of
 `/ports/src` that hold ports. `/ports/TREE` names the commit and its time (`kdos-tree 1`, then
 `commit` and `time` lines), which is how `kdos update fetch` tells a newer published tree from an
 older one, and `build/keys/kdos-release.pub`, when it exists, goes into `/etc/kdos/keys/tree` as the
@@ -792,7 +810,7 @@ These figures come from the chapters that measure them:
 
 | Cost | Figure | Source |
 |---|---|---|
-| Upstream sources, fetched once | About 41.5 GB (38.6 GiB), each file held once in `ports/.srccache` | [Developing](developing.md#what-a-development-machine-needs) |
+| Upstream sources, fetched once | About 42.2 GB (39.3 GiB), each file held once in `ports/.srccache` | [Developing](developing.md#what-a-development-machine-needs) |
 | A build from nothing | Most of a day | [Building from scratch](developing.md#building-from-scratch) |
 | A complete set of phase snapshots | Not yet measured for the eleven phases that take one. On a synthetic ten-phase tree of about 4.4 GB, layers took 1.86 GB against 7.99 GB for full snapshots, 23% | [Snapshots](build-system.md#layers-and-full-snapshots), [Developing](developing.md#what-a-development-machine-needs) |
 | One program rebuilt, with packaging | Not yet measured with the zstd image; most of it is writing the ISO, and `KDOS_ISO_COMP=zstd:3` shortens that part | [The fast loop](testing.md#the-fast-loop) |

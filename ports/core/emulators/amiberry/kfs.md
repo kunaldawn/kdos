@@ -58,7 +58,7 @@ Its Wayland code is generated from the xdg-foreign protocol in another submodule
 
 The AROS Kickstart ROMs and the WHDLoad boot binaries the package installs are 68k code for the
 emulated machine, one of the payloads the tree does not compile (see
-[What is built from source](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#what-is-built-from-source)).
+[What is built from source](../../../../docs/kdos/05-developer/writing-ports.md#what-is-built-from-source)).
 
 Upstream's desktop entry is replaced by one without `application/x-cue`: a cue sheet is any CD
 image, and its default player should not be an Amiga emulator.

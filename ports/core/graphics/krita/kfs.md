@@ -67,17 +67,19 @@ configure instead (see
 
 ## Patches
 
+- `uic-assistants-class-name.patch` — Removes the leading space from the class name `" QWidget"` of `showDockerOptionsPanel` in `plugins/assistants/Assistants/AssistantsToolOptions.ui`. The tree's `uic` checks every widget class name and stops with `Invalid class name` on one that does not open with a letter or an underscore.
 - `sip-abi.patch` — Makes `cmake/modules/SIPMacros.cmake` give the Qt 6 Python bindings the sip ABI version `13` in place of `13.0`, so sip uses the newest minor version of ABI 13, as PyQt6 itself does. PyQt6 declares a minimum ABI above 13.0, and sip refuses to generate the `krita` module against a pinned 13.0.
 
 ## Notes
 
 WebP and libjpeg-turbo cannot be required the same way. A requirement also applies to the
 config-package search each of Krita's find modules makes first, and both fail it with the library
-present: [libwebp](#port-libwebp) installs no `WebPConfig.cmake`, and
-[libjpeg-turbo](#port-libjpeg-turbo)'s config file rejects the `turbojpeg` component the module
-asks for, which the module never marks found (see
-[A requirement a find module misreads](../../../../docs/kdos/05-developer/build-troubleshooting.md#a-requirement-a-find-module-misreads)).
-The two `grep` lines after configure check for them in the generated build instead: the WebP
+present: the config files of [libwebp](#port-libwebp) and [libjpeg-turbo](#port-libjpeg-turbo)
+reject the components the module asks for (`demux` and `mux`; `turbojpeg`), which they define no
+result for and which the module marks found only after the search has returned. Unrequired, that
+search fails quietly and the module finds the library another way. As in
+[A requirement a find module misreads](../../../../docs/kdos/05-developer/build-troubleshooting.md#a-requirement-a-find-module-misreads),
+the two `grep` lines after configure check for them in the generated build instead: the WebP
 import filter's target in `build.ninja`, and `HAVE_JPEG_TURBO` in `config-jpeg.h`.
 
 `0001-fftw-use-pkgconfig.patch` is needed because the FFTW autotools install writes an

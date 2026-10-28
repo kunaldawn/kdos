@@ -18,7 +18,11 @@ and `pango-segmentation` tools with their manual pages.
   Thai is written with no spaces between words, and without libthai a paragraph wraps in the middle
   of a word.
 - `-Dcairo=enabled`, `-Dfontconfig=enabled`, `-Dfreetype=enabled` — `pangocairo`, font discovery
-  through fontconfig, and `pangoft2`. `enabled` makes each a requirement rather than a probe.
+  through fontconfig, and `pangoft2`. On Linux none of the three changes what is built: `cairo` is
+  `enabled` by upstream's default, fontconfig is required on every platform but Windows and macOS
+  whatever the switch says, and pango's `meson.build` looks FreeType up as optional even when the
+  switch is `enabled`. A missing FreeType therefore drops `pangoft2` and `pangoxft` without an
+  error.
 - `-Dsysprof=disabled` — Builds no Sysprof tracing marks; Sysprof is not a port. This is upstream's
   default, named here.
 - `-Dbuild-testsuite=false`, `-Dbuild-examples=false` — Builds neither the test suite nor the

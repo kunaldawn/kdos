@@ -18,13 +18,20 @@ case "$1" in
         # watches a process that has already forked away.
         # -P moves syslogd's own pid file off /run/syslogd.pid, which is the
         # supervisor's: written there, it replaces the supervisor's id, so
-        # `service stop` signals the daemon alone and it is restarted, and
-        # syslogd removes it on exit, so `status` reports the service down.
+        # `service stop` finds no supervisor at that pid, drops the file as
+        # stale and signals nothing, leaving the daemon running; and syslogd
+        # removes it on exit, so `status` reports the service down.
         # -8 writes bytes 0x80-0x9F as they arrive. Without it syslogd
         # rewrites each as `M-^x`, and those bytes are the continuation bytes
         # of most UTF-8 punctuation, so one em dash leaves a lone lead byte
         # in the file and grep calls /var/log/messages binary. ASCII control
         # characters are still escaped as `^x`.
+        # syslogd creates a missing log file 0644 and keeps the mode of an
+        # existing one across rotation, so auth.log is made root-only here:
+        # left to syslogd, every account could read who ran sudo and which
+        # logins failed.
+        [ -e /var/log/auth.log ] || : > /var/log/auth.log
+        chmod 600 /var/log/auth.log
         mkdir -p /run/syslogd
         supervise "$NAME" "$DAEMON" -F -8 -P /run/syslogd/syslogd.pid
         ;;

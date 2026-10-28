@@ -29,9 +29,10 @@
  * a pid and a small enum, so there is no path to traverse and no string to
  * quote. Any other argv is a usage error and exit 2.
  *
- * THE CALLER MUST BE IN `wheel`, BY REAL UID — the same gate kdos-powerd and
- * kdos-energyd apply, and the same group that already has polkit admin and
- * sudo on this distro.
+ * THE CALLER MUST BE IN `wheel`, BY REAL UID — the gate kdos-energyd applies
+ * and kdos-powerd applies to its configuration verbs (it also lets `seat` ask
+ * for the four power words), and the same group that already has polkit admin
+ * and sudo on this distro.
  *
  * Exit codes: 0 done · 1 refused · 2 usage · 3 the operation itself failed.
  */

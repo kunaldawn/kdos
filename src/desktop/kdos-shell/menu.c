@@ -546,10 +546,10 @@ static void draw(const struct view *v)
 			kch_px_row_anim(0, idx, 1, 1 + r, w - 2, KCH_T_ACTIVE);
 	/*
 	 * AND THE CELL FORM OF THE SAME FACT WHERE THERE IS NO PIXEL LAYER.
-	 * The plate is the whole highlight, so in a dump
-	 * the selected row was indistinguishable from every other row — a
-	 * menu with no visible cursor, on a display where the cursor is the
-	 * only thing saying what Enter will do. The selection fill from
+	 * The plate is the whole highlight, so without a cell fill a dump
+	 * shows the selected row exactly like every other row — a menu with
+	 * no visible cursor, on a display where the cursor is the only thing
+	 * saying what Enter will do. The selection fill from
 	 * ktui_sel_slots() is what a character grid has, and its fg is what
 	 * the row's mark is coloured with.
 	 */
@@ -1025,11 +1025,8 @@ static int windows_rows(const char *app, int ctrl, struct wrow *rows,
 		 * A JUMP LIST, which is what a right click on a taskbar button
 		 * opens on every desktop that has one.
 		 *
-		 * NEW WINDOW is here rather than on middle-click, and that is a
-		 * deliberate departure from the plan this came from. Middle on
-		 * this bar already means "close politely", which is documented
-		 * and which people use; a second meaning for the same button
-		 * would be a coin toss. A row in a menu is also the only one of
+		 * NEW WINDOW is here as well as on a middle click on the chip
+		 * (see chip_click in panel.c): a row in a menu is the one of
 		 * the two that says what it does.
 		 */
 		if (pin_id[0]) {

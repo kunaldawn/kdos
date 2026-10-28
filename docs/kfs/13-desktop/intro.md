@@ -51,7 +51,10 @@ and the image (see
 The list is one file, `script/phases/50_desktop/packages.txt`. A heading of the form
 `# <shelf> — <description>` opens each shelf's ports: `input`, `wl` and `xdg` for the upstream
 ports, then `src-desktop` and `src-daemons` for KDOS's own. No name comes before the first heading,
-so the list has no [pinned run]{.idx}, and under [`kdosbuild --port-jobs`]{.idx term="--port-jobs"} no [serial prefix]{.idx}. The chapters
+so the list has no [pinned run]{.idx} (see
+[Package lists](../../kdos/05-developer/build-system.md#package-lists)), and under
+[`kdosbuild --port-jobs`]{.idx term="--port-jobs"} no [serial prefix]{.idx} (see
+[Building a package phase by level](../../kdos/05-developer/build-system.md#building-a-package-phase-by-level)). The chapters
 below follow the same shelves, with the two `src-` chapters after the upstream ones, `src-daemons`
 first.
 
@@ -145,8 +148,9 @@ What each program does once it runs is in *The KDOS book*:
 [kdos-comp](../../kdos/04-programs/kdos-comp.md), [kdos-shell](../../kdos/04-programs/kdos-shell.md),
 [kdos-term](../../kdos/04-programs/kdos-term.md), [kdos-res](../../kdos/04-programs/kdos-res.md),
 [kdos-lock](../../kdos/04-programs/daemons.md#kdos-lock),
-[kdos-boxsock](../../kdos/04-programs/daemons.md#kdos-boxsock) and
-[Recording](../../kdos/03-architecture/session.md#recording).
+[kdos-boxsock](../../kdos/04-programs/daemons.md#kdos-boxsock),
+[xdg-desktop-portal-kdos](../../kdos/04-programs/daemons.md#xdg-desktop-portal-kdos) and, for
+kdos-record, [Recording](../../kdos/03-architecture/session.md#recording).
 
 ### The root daemons
 

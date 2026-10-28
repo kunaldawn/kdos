@@ -26,7 +26,7 @@ the patterns, magic files, encodings and constants the editor ships with, from i
   submodules.
 - `-DIMHEX_USE_GTK_FILE_PICKER=OFF` — Open files through the FileChooser portal
   (`NFD_PORTAL`), not a GTK dialog. It is upstream's default; on KDOS the portal is
-  [xdg-desktop-portal-kdos](../../../../docs/kdos/03-architecture/session.md).
+  [xdg-desktop-portal-kdos](../../../../docs/kdos/03-architecture/session.md#portals).
 - `-DIMHEX_STRICT_WARNINGS=OFF` — Do not turn on ImHex's warnings-as-errors set, which is on by
   default.
 - `-DIMHEX_STRIP_RELEASE=OFF`, `-DIMHEX_COMPRESS_DEBUG_INFO=OFF` — Leave stripping to kpkg (the
@@ -55,7 +55,7 @@ the patterns, magic files, encodings and constants the editor ships with, from i
 
 ## Patches
 - `fix-lfs64.patch` — Calls `fopen` and `lseek` where miniaudio and the disk provider call `fopen64` and `lseek64` on Linux. musl has no `*64` variants; its `off_t` is 64-bit.
-- `no-update.patch` — Drops the `updater` subdirectory from `main/CMakeLists.txt`. The updater is a separate program that downloads release builds; its header notes it is only available on aarch64 and x86_64.
+- `no-update.patch` — Drops the `updater` subdirectory from `main/CMakeLists.txt`, so `imhex-updater` is not built. That program downloads one of upstream's release packages (an AppImage, Flatpak, Snap, `.deb`, `.rpm` or Arch package) and installs it with the matching package manager (`apt`, `rpm`, `pacman`, `flatpak` or `snap`, or a copy over the AppImage), run through `sudo` with a password read by `zenity`. Its source also stops with `#error` on any processor but x86_64 and aarch64.
 - `no-werror.patch` — Removes `-Werror` from the pattern language library's compile options.
 - `no-network.patch` — Removes the startup task that checks for updates and posts telemetry, and the background task that uploads the crash log after a crash, so the program does not contact its server on its own.
 

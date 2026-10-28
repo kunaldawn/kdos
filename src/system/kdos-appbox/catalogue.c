@@ -12,11 +12,12 @@
  * The catalogue: every application this system knows how to build, as a parent
  * chain of apt packages.
  *
- * ONE PASS, AND THE ORDER OF THE FILE IS THE ORDER OF THE ARRAY. A parent must
- * appear above its children, which is what lets a chain be walked upward with
- * no second pass and no cycle check: a row can only name something already
- * read. Reorder the file and cat_chain() returns -1 naming the missing parent
- * rather than looping.
+ * ROWS MAY STAND IN ANY ORDER. The whole file is loaded before any chain is
+ * walked, and cat_chain() looks each parent up across the full array. A chain
+ * that names a parent not in the file, or runs past CAT_CHAIN_MAX rows (which
+ * is also where a cycle ends), returns -1 rather than looping. `meta` is the
+ * one order-dependent row: it is applied as it is read, so one placed above
+ * the pack it describes is dropped.
  *
  * A CHAIN IS RETURNED BASE-FIRST because that is the BUILD order — podman
  * builds a runtime FROM its base, so handing the caller the other order names
@@ -33,8 +34,8 @@
  * a package name it cannot find.
  *
  * THE RAW TEXT IS KEPT AND RESCANNED for env, cmd, needs, deb and graft. These
- * are asked once per install over a two-hundred-row file; an index would be a
- * second structure to keep in step with the first.
+ * are asked once per install over a file of a few hundred lines; an index
+ * would be a second structure to keep in step with the first.
  */
 
 #define _POSIX_C_SOURCE 200809L

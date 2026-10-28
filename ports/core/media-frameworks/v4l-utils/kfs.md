@@ -9,8 +9,8 @@ sane-backends link it.
 ## Flags
 
 - `-D_LARGEFILE64_SOURCE` — In `CFLAGS` and `CXXFLAGS`: musl declares `open64` and `mmap64`, which
-  `v4l2-tracer`'s preload library wraps and its retrace calls, only under this macro; see [A glibc-only call on
-  musl](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/build-troubleshooting.md#a-glibc-only-call-on-musl).
+  `v4l2-tracer`'s preload library wraps and its retrace calls, only under this macro; see
+  [A glibc-only call on musl](../../../../docs/kdos/05-developer/build-troubleshooting.md#a-glibc-only-call-on-musl).
 - `-Dudevdir=/lib/udev` — Install the udev rules and `ir-keytable`'s remote-control keymaps where
   eudev reads them; `/lib` is `/usr/lib` on KDOS.
 - `-Dbpf=enabled` — Build `ir-keytable`'s BPF protocol decoders, compiled with clang for the BPF

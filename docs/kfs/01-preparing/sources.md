@@ -4,12 +4,12 @@ A clone of the repository carries the recipes, the patches and KDOS's own code, 
 upstream source archives the recipes build from. This chapter shows how a recipe names its sources,
 how `make fetch` puts every one of them in place and verifies it, where the copies are kept, and
 how to check a tree offline before a build. `make fetch` is the only step that downloads sources.
-`make build` uses the network only to build the `os-dev` image when the `Dockerfile` has changed
-(see [the image](host-container.md#the-image)), and the build itself runs with no network at all.
+`make build` uses the network only to build the `os-dev` image, the first time and whenever the
+`Dockerfile` has changed (see [the image](host-container.md#the-image)), and the build itself runs with no network at all.
 
 ## How a recipe names a source
 
-Every port's `kpkgbuild` names its upstream files on `source =` lines, and gives the SHA-256 of each
+A port's `kpkgbuild` names its upstream files on `source =` lines, and gives the SHA-256 of each
 file on a `sha256 =` line. The recipe of [pv](#port-pv), a small command-line tool, less its banner:
 
 <!-- kfs:include ports/core/cli/pv/kpkgbuild -->
@@ -20,12 +20,14 @@ with a file name, and the hash is what matters. Any copy of `pv-1.12.0.tar.gz` t
 `31fdbdb4…` is the file the recipe means, wherever it came from, and a copy that does not is
 refused, whatever its name says.
 
-The first source of a recipe is always saved under the name `<name>-<version>.<extension>`,
-whatever the URL ends in, so that a project that publishes `v1.12.0.tar.gz` still arrives as
-`pv-1.12.0.tar.gz`. The `sha256 =` line names it that way. A later source keeps the last part of its
-URL as its name, unless the line spells a name out as `<file>::<url>`. The full rules for both keys
-are in [kpkgbuild](../../kdos/05-developer/writing-ports.md#kpkgbuild) and
-[Checksums](../../kdos/05-developer/writing-ports.md#checksums).
+The first source of a recipe, when it is a URL ending in a recognised archive extension (`.tar.gz`,
+`.tgz`, `.tar.bz2`, `.tbz2`, `.tar.xz`, `.txz`, `.tar.zst` or `.zip`), is saved under the name
+`<name>-<version>.<extension>`, whatever the rest of the URL says, so that a project that publishes
+`v1.12.0.tar.gz` still arrives as `pv-1.12.0.tar.gz`. The `sha256 =` line names it that way. Any
+other source keeps the last part of its URL as its name. A line that spells a name out as
+`<file>::<url>` is saved under that name, first or not. The full rules for both keys are in
+[Sources, and what each one becomes](../../kdos/05-developer/writing-ports.md#sources-and-what-each-one-becomes)
+and [Checksums](../../kdos/05-developer/writing-ports.md#checksums).
 
 ## Fetching every source
 
@@ -50,6 +52,10 @@ A copy that fails its hash or is empty is deleted and the next place is tried. A
 written to `<file>.part` and renamed into place only when it verifies, and an interrupted one is
 resumed on the next run. The archive is asked before upstream because it does not disappear when an
 upstream host does.
+
+`ports/fetch` reads each recipe with kpkg's own parser, which it compiles on your machine from the
+tree, so it wants a C compiler there (`$CC`, default `cc`). Without one, `make fetch` runs the
+whole fetch in the `kdos-fetch` container described under [Vendor bundles](#vendor-bundles).
 
 `make fetch FETCH_JOBS=4` works on four ports at once instead of one. Run `make fetch` again after
 every pull or branch switch: it downloads only files no earlier fetch has placed, so on a tree
@@ -89,20 +95,22 @@ lists it.
 
 The KDOS source archive is a set of releases on the project's GitHub repository, numbered volumes
 tagged `sources-1`, `sources-2` and so on, marked as pre-releases so that the repository's latest
-release is always a system release. Each [shelf]{.idx} of `ports/shelves` is kept in the volume its line
-names in the second field, and each file is stored under the asset name `<shelf>--<file>`. A file
-that several ports name is stored once, under the shelf of the first port that names it, so a
-package page can show an archive copy whose name carries another port's shelf and file name: the
-hash is what identifies it. Files are only ever added to the archive, except by
-`ports/publish --rehome`, which moves a file into its shelf's volume, and
-`ports/publish --orphans --prune=yes-delete`, which deletes the unprotected files no current recipe names; so an
-older checkout can still fetch the exact bytes its recipes were written against after upstream has
-moved on.
+release is always a system release. The files of each [shelf]{.idx} are kept in the volume that
+the second field of the shelf's line in `ports/shelves` names, or in the lowest-numbered volume with
+room when that one is full, and each file is stored under the asset name `<shelf>--<file>`, made longer when
+that name is already taken. A file that several ports name is stored once, under the shelf of the
+first port that names it, so a package page can show an archive copy whose name carries another
+port's shelf and file name: the hash is what identifies it. Files are only ever added to the
+archive, with two deliberate exceptions: `ports/publish --rehome` moves a file into its shelf's
+volume, and `ports/publish --orphans --prune=yes-delete` deletes the files that neither a current
+recipe nor the recipes of any released version (any `v*` tag) name. A checkout of any released
+version can therefore still fetch the exact bytes its recipes were written against after upstream
+has moved on.
 
 `ports/sources.idx`, committed beside the recipes, says where each file is. Its header describes
 the format:
 
-<!-- kfs:include ports/sources.idx lines=1-16 pin=21a21deb5109 -->
+<!-- kfs:include ports/sources.idx lines=1-17 pin=7c09ddeb67a1 -->
 
 `pv`'s line, found by its hash:
 
@@ -115,8 +123,8 @@ grep ^31fdbdb4 ports/sources.idx
 ```
 
 so its archive copy is the asset `cli--pv-1.12.0.tar.gz` of the release `sources-1`, at
-`https://github.com/kunaldawn/kdos/releases/download/sources-1/cli--pv-1.12.0.tar.gz`. The package
-page of every port lists this address beside the upstream one. The hash GitHub computes for an
+`https://github.com/kunaldawn/kdos/releases/download/sources-1/cli--pv-1.12.0.tar.gz`. A port's
+package page lists this address beside the upstream one. The hash GitHub computes for an
 asset is the recipe's hash, so the copy is verified the same way as one from upstream. The exact
 addressing rules, including names GitHub rewrote and files too large for one asset, are in
 [Where sources come from](../../kdos/05-developer/developing.md#where-sources-come-from).
@@ -145,7 +153,8 @@ archived source is present and intact:
 make fetch-check
 ```
 
-This runs `ports/fetch --check` and uses no network. It hashes every file a `sha256 =` line names,
+This runs `ports/fetch --check` and uses no network, though it still compiles the recipe reader
+and so needs the C compiler. It hashes every file a `sha256 =` line names that git does not carry,
 prints one line for each that is absent or wrong,
 
 ```text
@@ -168,7 +177,8 @@ The other half of fetching belongs to whoever changes a recipe. A recipe whose `
 file the archive does not hold builds on the machine that wrote it and nowhere else, so the new file
 is uploaded with `ports/publish <port>`, which also writes its line into `ports/sources.idx`, and
 that line is committed with the recipe. A `pre-push` hook in `script/hooks/` refuses a push whose
-recipes name a hash the archive lacks. It is enabled once per clone:
+recipes name a hash the archive lacks, among its other checks of the ports layout, patch headers
+and books. It is enabled once per clone:
 
 ```bash
 git config core.hooksPath script/hooks

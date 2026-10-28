@@ -59,7 +59,7 @@ format is in `wg-quick(8)` and `wg(8)`. A WireGuard profile made in NetworkManag
 `--with-vpnc-script` compiles in the path of the script `openconnect` runs on every connect and
 disconnect. `--without-stoken` leaves out RSA SecurID software tokens (`--token-mode=rsa`), and
 `openconnect --help` says so under `--token-secret`; the TOTP, HOTP and YubiKey OATH token modes
-are there, and the first line of the help lists them among the *Features present*.
+are there, and the *Features present* line at the top of the help lists them.
 `--with-external-browser` names the program a single sign-on login opens.
 
 [`vpnc-script`]{.idx} picks the first resolver manager it finds. On KDOS `/sbin` is a link to `/usr/sbin`,
@@ -72,7 +72,7 @@ disconnect:
 
 <!-- kfs:include ports/core/network/vpnc-script/vpnc-script lines=814-829 pin=4d927636d216 -->
 
-The script also runs every file in `/etc/vpnc/<hook>.d/` (such as `connect.d` and
+The script also sources every file in `/etc/vpnc/<hook>.d/` (such as `connect.d` and
 `disconnect.d`) when that directory exists; none is shipped.
 
 ## Usage
@@ -140,8 +140,8 @@ tunnel's servers about every name; with domains named, it asks them about those.
 
 A `DNS=` line is handed to `resolvconf` as the tunnel's only servers (`resolvconf -a wg0 -m 0
 -x`), so while the tunnel is up `/etc/resolv.conf` names them alone and every name is asked of
-them; `wg-quick down` hands the file back. `nmcli device status` lists the tunnel as `connected
-(externally)`, and `kdos-net` shows it as a *wireguard* row: NetworkManager reports it and does
+them; `wg-quick down` removes them, and the file names the servers it named before.
+`nmcli device status` lists the tunnel as `connected (externally)`, and `kdos-net` shows it as a *wireguard* row: NetworkManager reports it and does
 not manage it, so take it down with `wg-quick down`.
 
 ### A corporate VPN with `openconnect`
@@ -174,19 +174,35 @@ secondary of the connection it should ride on, and it comes up each time that co
 nmcli connection modify "<Wi-Fi or wired profile>" +connection.secondaries "<OpenVPN profile>"
 ```
 
+`nmcli` splits the value at spaces and commas and turns each name into the profile's UUID, so a
+VPN profile whose name has a space in it is given by its UUID, from `nmcli connection show`. Only a
+VPN profile can be a secondary; `nmcli` refuses a WireGuard one.
+
 ### Opening a port for a WireGuard server
 
 A machine that other WireGuard peers connect to must accept their UDP port, which none of the
-firewall's names opens. Add a rule in a file of your own under `/etc/nftables.d`, as
-[Adding your own rules](../../kdos/02-user-guide/administration.md#adding-your-own-rules)
-describes, for the port the configuration's `ListenPort =` names. A client needs no rule: replies
-to a tunnel this machine opened are accepted.
+firewall's names opens. Put a rule for the port the configuration's `ListenPort =` names in a
+`.nft` file of your own under `/etc/nftables.d`, such as `/etc/nftables.d/60-wireguard.nft` for
+port 51820:
+
+```text
+table inet filter {
+    chain input {
+        udp dport 51820 accept
+    }
+}
+```
+
+Check it with `sudo nft -c -f /etc/nftables.conf` and apply it with `sudo service start nftables`,
+as [Adding a rule of your own](firewall.md#adding-a-rule-of-your-own) describes. A client needs no
+rule: replies to a tunnel this machine opened are accepted.
 
 ### On the live medium and on an installed system
 
 The two behave the same. On the live medium an imported profile and a file under
-[`/etc/wireguard`]{.idx} last until the next reboot unless the medium has a persistence store, and the
-installer copies both to the disk with the rest of the live tree.
+[`/etc/wireguard`]{.idx} last until the next reboot unless the medium has a
+[persistence store](live-persistence.md), and the installer copies both to the disk with the rest
+of the live tree.
 
 ## Tips
 

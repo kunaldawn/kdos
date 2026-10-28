@@ -125,14 +125,16 @@ drives over raw USB rather than through CUPS, go to `lpadmin` instead, in
 2. Press `Right` for the *Discovered* page, which lists the device URIs `lpinfo -v` reports. URIs
    of the `file` and `serial` kinds are left out, and so are the bare backend names `lpinfo -v`
    prints for each backend that found no device (`network socket`, `direct hp`).
-3. Select the printer and press `Enter`. The queue is named after its URI.
+3. Select the printer and press `Enter`. The queue is named after its URI: the scheme is dropped,
+   and each run of characters other than letters and digits becomes one underscore, so
+   `ipp://printer.local/ipp/print` becomes `printer_local_ipp_print`.
 4. Back on *Printers*, `d` makes the selected queue the default and `x` removes it. `r` reads both
    lists again.
 
 `kdos-print` sets a printer up only as IPP Everywhere (`lpadmin -m everywhere`), the [driverless]{.idx term="driverless printing"}
 protocol a printer advertises and CUPS configures with no PPD file. When `lpadmin` refuses, the
 window shows its message. For a printer that needs a vendor driver, use the terminal procedure
-below, or system-config-printer from the Start menu.
+below, or system-config-printer, *Print Settings* in the Start menu.
 
 ### Adding a printer from a terminal
 
@@ -196,13 +198,14 @@ the authority CUPS checks. `lpoptions -d` sets your own default, which `lpstat -
    `Password for <user> on localhost?` and takes your own login password. `cupsctl | grep share`
    then shows `_share_printers=1`.
 
-2. Open the firewall name, which needs membership of `wheel`:
+2. Open the `ipp` service in the firewall, which needs membership of `wheel`:
 
    ```bash
    kdos-power firewall ipp on
    ```
 
-   `ipp` opens TCP 631.
+   `ipp` opens TCP 631. The other named services, and how to close one again, are on
+   [Firewall](firewall.md#opening-a-named-service).
 
 ### Scanning
 
@@ -253,7 +256,7 @@ chosen at install time. See [Turning CUPS on](#turning-cups-on-installed-system)
 
 ```bash
 cat /run/kdos-init.cups.log
-tail -n 40 /run/kdos-svc.cupsd.log
+sudo tail -n 40 /run/kdos-svc.cupsd.log
 ```
 
 A running service reports `[ OK ] cupsd  (pid N)` to `service status cups`.

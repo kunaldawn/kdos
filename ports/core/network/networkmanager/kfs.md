@@ -11,14 +11,14 @@ supervisor with `--no-daemon`, after polkit and ModemManager.
 What sets the KDOS build apart is what is missing around it. There is no systemd and no logind,
 so the build names no unit directory, no journal and no session tracker, and NetworkManager runs
 with no idea which users are logged in. The consequences of that for who may change a connection
-are in [Why `settings.modify.system` is granted](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#why-settingsmodifysystem-is-granted).
+are in [Why `settings.modify.system` is granted](../../../../docs/kdos/03-architecture/security-model.md#why-settingsmodifysystem-is-granted).
 Every helper program it runs (`dnsmasq`, `pppd`, `dhcpcd`, `nft`, `resolvconf`, `modprobe`) is
 named by absolute path at configure time, so the paths compiled into the binary are the ones the
 image installs.
 
 `build.sh` adds two files of its own. `/usr/lib/NetworkManager/conf.d/10-kdos-dns.conf` sets
 `dns=dnsmasq`, so NetworkManager starts a caching [dnsmasq](#port-dnsmasq) on `127.0.0.1` and
-`::1` and feeds it each connection's servers ([Networking](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md#networking)
+`::1` and feeds it each connection's servers ([Networking](../../../../docs/kdos/02-user-guide/administration.md#networking)
 describes the result). `nmtui.desktop` gives `nmtui` a menu entry as *Network*, run in a terminal.
 
 ## Flags
@@ -36,7 +36,7 @@ describes the result). `nmtui.desktop` gives `nmtui` a menu entry as *Network*, 
   this build does not make.
 - `-Dtests=no` — Build none of upstream's test programs.
 - `-Dsystemd_journal=false` — Log without `libsystemd`'s journal API. KDOS has no systemd
-  ([No systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd)),
+  ([No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)),
   and upstream's default needs it.
 - `-Dsystemdsystemunitdir=no`, `-Dsystemdsystemgeneratordir=no` — Install no systemd unit files
   and no generator. Left empty, each is looked up through systemd's pkg-config file and the
@@ -45,13 +45,13 @@ describes the result). `nmtui.desktop` gives `nmtui` a menu entry as *Network*, 
   `elogind` and `no`). Neither logind exists here, so NetworkManager treats every user as having
   no session. A profile that names an owner in its `permissions` list is then invisible and never
   connects on its own, which is why `kdos-net` creates every profile as a system connection; see
-  [Why `settings.modify.system` is granted](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#why-settingsmodifysystem-is-granted).
+  [Why `settings.modify.system` is granted](../../../../docs/kdos/03-architecture/security-model.md#why-settingsmodifysystem-is-granted).
 - `-Dsession_tracking_consolekit=false` — Build no ConsoleKit session tracker either. ConsoleKit
   is not in the tree, and with it on NetworkManager would watch ConsoleKit's database for sessions
   that never appear.
 - `-Dpolkit=true` — Ask polkit before every privileged request a client makes. The actions
   `wheel` is granted, and those it is not, are listed in
-  [polkit, and why the desktop has no authentication agent](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#polkit-and-why-the-desktop-has-no-authentication-agent).
+  [polkit, and why the desktop has no authentication agent](../../../../docs/kdos/03-architecture/security-model.md#polkit-and-why-the-desktop-has-no-authentication-agent).
 - `-Dpolkit_agent_helper_1=/usr/lib/polkit-1/polkit-agent-helper-1` — The setuid helper `nmcli`
   runs when it acts as a polkit authentication agent itself (`nmcli agent polkit`). The path is
   where the [polkit](#port-polkit) port installs it, compiled in rather than searched for.
@@ -60,7 +60,7 @@ describes the result). `nmtui.desktop` gives `nmtui` a menu entry as *Network*, 
   D-Bus name `org.freedesktop.ConsoleKit`, which nothing on KDOS owns. It is the only backend that
   builds without those libraries, and it hears nothing. Suspend reaches NetworkManager instead from `kdos-powerd`,
   which calls its `Sleep(true)` before the kernel suspends and `Sleep(false)` after; see
-  [What happens around a suspend](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/daemons.md#what-happens-around-a-suspend).
+  [What happens around a suspend](../../../../docs/kdos/04-programs/daemons.md#what-happens-around-a-suspend).
 - `-Dmodem_manager=true` — Drive mobile broadband modems through
   [modemmanager](#port-modemmanager)'s D-Bus interface, with
   [mobile-broadband-provider-info](#port-mobile-broadband-provider-info) for a carrier's APN.
@@ -72,9 +72,10 @@ describes the result). `nmtui.desktop` gives `nmtui` a menu entry as *Network*, 
   the tree.
 - `-Dovs=false` — Build no Open vSwitch support. Open vSwitch is not in the tree.
 - `-Dclat=true` — Build CLAT (464XLAT), which lets an IPv4-only program reach the IPv4 internet
-  over an IPv6-only network. It is a BPF program loaded into the kernel, built with
-  [libbpf](#port-libbpf) and [bpftool](#port-bpftool), and is off in every connection until its
-  `ipv4.clat` property turns it on.
+  over an IPv6-only network through that network's NAT64 gateway. It is a BPF program loaded into
+  the kernel, built with [libbpf](#port-libbpf) and [bpftool](#port-bpftool), and is off in every
+  connection until its `ipv4.clat` property, or an `ipv4.clat` default in `NetworkManager.conf`,
+  turns it on.
 - `-Dbpf-compiler=clang` — Compile that BPF program with `clang -target bpf`. Upstream's other
   choice is a `bpf-gcc` cross compiler, which is not in the tree; [clang](#port-clang) is a
   dependency of this port for this one program.
@@ -120,7 +121,7 @@ describes the result). `nmtui.desktop` gives `nmtui` a menu entry as *Network*, 
 - `-Dconfig_dhcp_default=internal` — Make NetworkManager's built-in DHCP client the default. A
   second client on the same link would take a second lease, so `/etc/init.d/30_network.sh` keeps `dhcpcd` down
   while NetworkManager runs; see
-  [One DHCP client on the link](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/boot-and-init.md#one-dhcp-client-on-the-link).
+  [One DHCP client on the link](../../../../docs/kdos/03-architecture/boot-and-init.md#one-dhcp-client-on-the-link).
 - `-Dconfig_logging_backend_default=syslog` — Log to syslog by default, where KDOS's logs are
   kept. It is also what upstream picks when the journal is off.
 - `-Dcrypto=gnutls` — Read certificates and private keys (for 802.1X profiles) with
@@ -140,14 +141,14 @@ the marker alone keeps NetworkManager off. With systemd off the build installs n
 file for `org.freedesktop.NetworkManager`, and the image adds none, so the system bus never starts
 NetworkManager: the call `kdos-netagent` makes in every session while the name has no owner is
 refused rather than answered by a second, unsupervised NetworkManager; see
-[`/etc/service.disabled/<name>`](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/06-reference/configuration.md#etcservicedisabledname).
+[`/etc/service.disabled/<name>`](../../../../docs/kdos/06-reference/configuration.md#etcservicedisabledname).
 
 ModemManager has to be on the bus first. `42_modemmanager.sh` sorts before
 `42_networkmanager.sh` and returns once ModemManager holds its name: NetworkManager's WWAN and
 Bluetooth DUN devices are ModemManager's modems, and NetworkManager calls the name as it starts.
 The call can start nothing, because the modemmanager port deletes the activation file its build
 installs; see
-[How polkit and ModemManager are started](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#how-polkit-and-modemmanager-are-started).
+[How polkit and ModemManager are started](../../../../docs/kdos/03-architecture/security-model.md#how-polkit-and-modemmanager-are-started).
 
 A file of the same name in `/etc/NetworkManager/conf.d` overrides `10-kdos-dns.conf`, which is
 how a machine opts out of the local resolver without editing a packaged file.

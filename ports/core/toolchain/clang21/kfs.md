@@ -4,7 +4,7 @@ Clang of the 21 series, installed under `/usr/lib/llvm21` beside [llvm21](#port-
 the same series, so the slot needs a clang as well as an LLVM. Nothing under the prefix is on
 `PATH`, so `clang` on the command line is still the system [clang](#port-clang). How the slot is
 kept apart from the system copy is in
-[A second version beside the first](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#a-second-version-beside-the-first).
+[A second version beside the first](../../../../docs/kdos/05-developer/writing-ports.md#a-second-version-beside-the-first).
 
 The 21 series is published as one tarball per component. This port carries clang's and the
 shared `cmake` tarball, and builds standalone against llvm21's CMake package.
@@ -23,7 +23,8 @@ shared `cmake` tarball, and builds standalone against llvm21's CMake package.
   `find_package`; this makes a missing one a configure error rather than a `c-index-test` built
   without it.
 - `CLANG_BUILD_EXAMPLES=OFF` — No example plugins.
-- `CLANG_INCLUDE_DOCS=OFF` — No documentation targets; the slot installs no manual pages.
+- `CLANG_INCLUDE_DOCS=OFF` — No documentation targets, so no manual page is generated; the one page
+  under the prefix is `scan-build.1`, which the static analyzer installs as a plain file.
 - `CLANG_INCLUDE_TESTS=OFF` — No test targets; with `LLVM_INCLUDE_TESTS=OFF`, no tests at all.
 - `CLANG_LINK_CLANG_DYLIB=OFF` — Links the clang tools against clang's component libraries, not
   `libclang-cpp.so`, which is built and installed all the same.

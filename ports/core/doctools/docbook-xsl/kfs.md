@@ -11,7 +11,7 @@ releases, the *nons* stylesheets written for DocBook 4 input and the namespaced 
 DocBook 5, because ports ask for both. And it owns the system's root XML catalogue,
 `/etc/xml/catalog`, which maps every web address a project names a stylesheet by onto the copy
 installed here. The build has no network (see
-[A build that reaches the network](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/build-troubleshooting.md#a-build-that-reaches-the-network)),
+[A build that reaches the network](../../../../docs/kdos/05-developer/build-troubleshooting.md#a-build-that-reaches-the-network)),
 so a stylesheet address the catalogue does not map is a failed build, not a slow one.
 
 ## Flags
@@ -20,7 +20,7 @@ so a stylesheet address the catalogue does not map is a failed build, not a slow
   its top directory stripped. The namespaced tarball's top directory is `docbook-xsl-$version`,
   which is the name of `$SRC` itself, so kpkg's own unpacking of the second source lays it over the
   first, file by file, and the working directory holds neither release whole (see
-  [Sources, and what each one becomes](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#sources-and-what-each-one-becomes)).
+  [Sources, and what each one becomes](../../../../docs/kdos/05-developer/writing-ports.md#sources-and-what-each-one-becomes)).
 - `--create` — `xmlcatalog --create` writes an empty catalogue at `$PKG/etc/xml/catalog`. Every
   `--add` after it adds one entry to that file.
 - `delegatePublic` — Two entries hand every lookup of a DocBook XML public identifier, the
@@ -40,20 +40,21 @@ so a stylesheet address the catalogue does not map is a failed build, not a slow
 
 ## Patches
 
-- `string-subst.patch` — Applied to both trees: it declares the EXSLT strings namespace in `lib/lib.xsl` and gives the `string.subst` template a first branch that calls `str:replace` when the processor provides it (libxslt's libexslt does). The stock template recurses once per match, so a long page, such as git's `git-config.1`, passes `xsltproc`'s default limit on nested template calls and the build fails; see [Data with no other source form](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/why-kdos.md#data-with-no-other-source-form).
+- `string-subst.patch` — Applied to both trees: it declares the EXSLT strings namespace in `lib/lib.xsl` and gives the `string.subst` template a first branch that calls `str:replace` when the processor provides it (libxslt's libexslt does). The stock template recurses once per match, so a long page, such as git's `git-config.1`, passes `xsltproc`'s default limit on nested template calls and the build fails; see [Data with no other source form](../../../../docs/kdos/01-philosophy/why-kdos.md#data-with-no-other-source-form).
 
 ## Notes
 
 `build.sh` copies a named list of directories from each tree rather than the whole release. It
 leaves out `extensions/` and `tools/`, which hold prebuilt Java jars for Saxon, Xalan and the
-webhelp indexer, and webhelp's `template/`, `docs/` and build files, keeping `webhelp/xsl`.
+webhelp indexer; `docsrc/`, the sources of the stylesheets' reference documentation; and
+everything under `webhelp/` but `webhelp/xsl`.
 `xsltproc` reads none of what is left out. A stylesheet directory a new release adds is not
 installed until it is added to the list.
 
 `/etc/xml/catalog` belongs to this package alone. A port that needs its own entries in the root
 catalogue cannot add them to this file without the two packages claiming one path, which kpkg
 refuses (see
-[Who owns a file](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/packaging.md#who-owns-a-file));
+[Who owns a file](../../../../docs/kdos/03-architecture/packaging.md#who-owns-a-file));
 such a port writes a catalogue of its own, as docbook-xml does, and this one delegates to
 it.
 

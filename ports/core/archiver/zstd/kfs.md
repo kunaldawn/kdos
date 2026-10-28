@@ -43,6 +43,6 @@ collected in the `zstd_vars` array and passed to both `make` lines.
 - `HAVE_PTHREAD=1` — build the multithreaded compressor, `zstd -T`, without the makefile's probe
   compile.
 - `HAVE_ZLIB=1`, `HAVE_LZMA=1`, `HAVE_LZ4=1` — build the `--format=gzip`, `--format=xz`,
-  `--format=lzma` and `--format=lz4` support of the `zstd` command. Each skips the makefile's probe, which compiles a test
-  program and quietly drops the format when it fails. Set outright, a missing zlib, xz or lz4 is a
-  link error instead of a `zstd` that reads fewer formats.
+  `--format=lzma` and `--format=lz4` support of the `zstd` command. Each skips the makefile's
+  probe, which compiles a test program and quietly drops the format when it fails. Set outright, a
+  missing zlib, xz or lz4 is a link error instead of a `zstd` that reads fewer formats.

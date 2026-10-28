@@ -283,8 +283,11 @@ static void serve_client(int c)
 		(void)!write(c, "ok\n", 3);
 	} else if (!strcmp(buf, "raise")) {
 		/*
-		 * THE LAST ONE DISMISSED, BACK ON THE SCREEN — the undo for a
-		 * chord pressed a moment too early.
+		 * THE NEWEST ENTRY IN THE HISTORY, BACK ON THE SCREEN — the
+		 * undo for a chord pressed a moment too early. A toast files
+		 * an entry whatever takes it off the screen (a dismissal, an
+		 * expiry, a CloseNotification), and so does one Do not disturb
+		 * keeps from showing, so this brings back the latest of those.
 		 *
 		 * TAKEN OUT OF THE HISTORY, not copied from it: a notification
 		 * is on the screen or it is in the centre and never both, or

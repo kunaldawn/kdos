@@ -4,7 +4,7 @@ GLU is the OpenGL Utility library, `libGLU` and `GL/glu.h`: a helper layer over 
 building, quadrics (spheres, cylinders, disks), NURBS surfaces, polygon tessellation and the
 `gluPerspective` and `gluLookAt` camera calls. The Mesa project releases it as a tarball of its
 own, apart from Mesa. Games, emulators and other programs written against the fixed-function OpenGL
-API link it, and so does [glew](#port-glew).
+API link it, and the `glew.pc` that [glew](#port-glew) installs requires it.
 
 ## Flags
 

@@ -1,7 +1,7 @@
 ## About
 [Open CASCADE Technology]{.idx} (OCCT) is a boundary-representation geometry kernel: solid
-modelling, Boolean operations, meshing, and data exchange through STEP, IGES, glTF, OBJ and PLY.
-In KDOS it is there for other programs: [FreeCAD](#port-freecad), [KiCad](#port-kicad),
+modelling, Boolean operations, meshing, and data exchange through STEP, IGES, glTF, OBJ, PLY,
+STL and VRML. In KDOS it is there for other programs: [FreeCAD](#port-freecad), [KiCad](#port-kicad),
 [netgen](#port-netgen), [gmsh](#port-gmsh), [IfcOpenShell](#port-ifcopenshell),
 [LibrePCB](#port-librepcb), [Horizon EDA](#port-horizon-eda) and
 [PrusaSlicer](#port-prusaslicer) link it, for their geometry and their STEP import and export.
@@ -28,8 +28,9 @@ In KDOS it is there for other programs: [FreeCAD](#port-freecad), [KiCad](#port-
   among them; built with Xlib it is GLX and X11 only.
 - `-DUSE_OPENGL=ON`, `-DUSE_GLES2=OFF` — Build the visualization module against desktop OpenGL
   through [libglvnd](#port-libglvnd), not OpenGL ES 2.0.
-- `-DUSE_FREETYPE=ON` — Render text from font files with [FreeType](#port-freetype2), found
-  through [fontconfig](#port-fontconfig).
+- `-DUSE_FREETYPE=ON` — Render text with [FreeType](#port-freetype2), from the font directories
+  `Font_FontMgr` asks [fontconfig](#port-fontconfig) for; the switch is also what links
+  `libfontconfig`.
 - `-DUSE_RAPIDJSON=ON`, `-DUSE_DRACO=ON` — Read and write glTF: [RapidJSON](#port-rapidjson)
   parses the JSON of a glTF file, and [Draco](#port-draco) decodes meshes compressed with the
   `KHR_draco_mesh_compression` extension. Both are off by default.

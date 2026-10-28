@@ -7,6 +7,9 @@ computes in fixed-point arithmetic. [sox](#port-sox), [cmus](#port-cmus),
 The source is the fork maintained by the Tenacity project on Codeberg, which builds with CMake.
 
 ## Flags
+- `-D CMAKE_POLICY_VERSION_MINIMUM=3.5` — the `CMakeLists.txt` declares
+  `cmake_minimum_required(VERSION 3.1.0)`, and the tree's CMake 4 refuses a floor below 3.5 (see
+  [An old CMake policy floor](../../../../docs/kdos/05-developer/build-troubleshooting.md#an-old-cmake-policy-floor)).
 - `-D BUILD_SHARED_LIBS=True` — build `libmad.so`, upstream's default, named.
 - `-D FPM_64BIT=ON` — fixed-point arithmetic on 64-bit integers. On a 64-bit target the
   `CMakeLists.txt` chooses it by itself; named, it is the recipe's own choice.

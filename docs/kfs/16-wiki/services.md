@@ -32,7 +32,7 @@ Which services start at boot differs between the live medium and an installed sy
 | | Live medium | Installed system |
 |:--|:--|:--|
 | Markers in `/etc/service.disabled` | `sshd`, from the image | The [live session]{.idx term="live system"}'s markers, copied with the rest of the root, after which the installer writes or removes one for each of its five service choices. CUPS and the SSH server are off unless chosen |
-| Where a change is kept | In memory, gone at power-off, unless a persistence store exists (`kdos persist`) | On the root filesystem |
+| Where a change is kept | In memory, gone at power-off, unless a persistence store exists; see [Live persistence](live-persistence.md) | On the root filesystem |
 
 The installer's five choices, and the `services` key of an answer file, are in
 [Answer files](../../kdos/04-programs/kinstall.md#answer-files).
@@ -94,7 +94,8 @@ and supervises `dhcpcd`.
    script's own `status` printed, cut to the terminal's width. A script that prints more —
    `utmps` a line for each of `utmpd` and `wtmpd`, `timers` one per job, `tlp` its whole status
    report — gets ` (+N more: service status <name>)` after that line, and `service status <name>`
-   shows the rest. A script whose `status` prints nothing (`modules`, `lvm`, `userdirs`) shows `—`.
+   shows the rest. A script whose `status` prints nothing shows `—`: `modules` and `userdirs`
+   always, and `lvm` on a machine with no logical volumes.
 
 2. Ask about one service:
 
@@ -197,7 +198,8 @@ same holds for every daemon a service script supervises; see the configuration r
 
 - `ksvc check <name>` asks the supervisor directly about the name a script passed to `supervise`:
   `ksvc check chronyd`, not `chrony`. Given the service's name instead it finds no pid file and
-  answers `[DOWN] chrony` while the daemon runs. It is also how one periodic job is checked.
+  answers `[DOWN] chrony` while the daemon runs. It is also how one periodic job is checked, under
+  the name `kdos-timer-<job>`.
 - A supervised daemon's output is in `/run/kdos-svc.<name>.log`, under the supervisor's name, and
   in the system log tagged with that name. What its script printed at boot is in
   `/run/kdos-init.<service>.log`, under the service name. See [Logs](logs.md).
@@ -208,8 +210,8 @@ same holds for every daemon a service script supervises; see the configuration r
 - `kdos doctor` checks that `kdos-powerd`, `kdos-energyd` and `kdos-oomd` are running, by their
   sockets, and warns about each one that is not with the `service start` command that starts it.
   On a machine with no RAPL energy counters, most virtual machines among them, it reports
-  `[skip] no RAPL energy domain on this machine` instead of a stopped `kdos-energyd`, whose script
-  skips it there.
+  `[skip] no RAPL energy domain on this machine — per-app energy cannot be measured here at all`
+  instead of a stopped `kdos-energyd`, whose script skips it there.
 - `kdos restarts` lists the processes still running files that an upgrade replaced. Restart a
   daemon among them with `sudo service restart <service>`, using the service's name, not the
   process's.
@@ -239,9 +241,13 @@ themselves on unsuitable hardware are listed in
 [Services that skip themselves](../../kdos/02-user-guide/administration.md#services-that-skip-themselves).
 
 **The daemon keeps restarting.** The supervisor restarts it five seconds after every exit, and
-`service status` answers `[FAIL] <name>  (exited with code N; restarting)` between the starts and
-`[FAIL] <name>  (crash loop: M failed starts in a row, …)` while a daemon that failed twice in a
-row is running again and has not yet lasted a minute. The supervisor keeps that state in
+`service status` answers `[FAIL] <name>  (exited with code N; restarting)` between the starts,
+`[FAIL] <name>  (exited with code N, M failed starts in a row; restarting)` once it has failed
+more than once in a row, and `[FAIL] <name>  (crash loop: M failed starts in a row, …)` while a
+daemon that failed twice in a row is running again and has not yet lasted a minute. An exit with a
+non-zero status counts as a failed start, and so does an exit with status 0 within five seconds of
+the start. A failure after a minute or more of running starts the count again at one, and an exit
+with status 0 after five seconds clears it. The supervisor keeps that state in
 `/run/kdos-svc.<name>.state`. Its log shows each exit and the daemon's own last words:
 
 ```bash
@@ -271,6 +277,16 @@ ps -o pid,pgid,args -p "$(cat /run/<name>.pid)"
 
 The supervisor's command line starts `ksvc supervise`. The cure belongs in the script; see
 [Writing a service](writing-a-service.md#tips).
+
+**`[FAIL] <name>  (supervisor gone; daemon pid N still running)`.** The supervisor was killed and
+its daemon was left running. `service start` will not start a second copy beside it: it waits
+for that daemon for the stop grace and then refuses with `[FAIL]`. Stop it, then start the
+service again:
+
+```bash
+sudo service stop <service>
+sudo service start <service>
+```
 
 **`Error: Unknown command '<word>'`.** The words are in the wrong order. `service` takes the verb
 first and the service name second, the name from the script's file name and not the daemon's:

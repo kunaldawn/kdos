@@ -15,8 +15,8 @@ There is no configure step. The top-level `Makefile` pipes `Makefile.m4` through
 [m4](#port-m4), with the operating system's name from `uname -s`, into a second `make` that
 builds the programs, so `m4` is in `depends`. [perl](#port-perl) is the interpreter of
 `genasctable.pl`, the rule that regenerates `asctable.h` from `keys.txt`. The tarball's
-`asctable.h` is a second newer than `keys.txt`, so the rule runs only when `keys.txt` changes. The Linux section of `Makefile.m4` sets `CC = gcc` and `CXX = g++`
-outright and appends its flags to `CFLAGS` and `CXXFLAGS`, so the build takes the tree's
+`asctable.h` is a second newer than `keys.txt`, so the rule runs only when `keys.txt` changes.
+The Linux section of `Makefile.m4` sets `CC = gcc` and `CXX = g++` outright and appends its flags to `CFLAGS` and `CXXFLAGS`, so the build takes the tree's
 compiler flags but not a different compiler named in `$CC`.
 
 The upstream `install` target has no `DESTDIR` and copies straight into `$(prefix)`, so

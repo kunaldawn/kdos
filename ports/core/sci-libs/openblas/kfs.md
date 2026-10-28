@@ -3,8 +3,8 @@
 OpenBLAS is an optimised implementation of BLAS, the basic dense linear algebra routines, with
 LAPACK built on top of it in the same library. It is the one BLAS and LAPACK in KDOS: there is no
 reference `lapack`, `blas` or `cblas` port, so [numpy](#port-numpy), [scipy](#port-scipy),
-[octave](#port-octave), [R](#port-R), [gsl](#port-gsl), [qrupdate](#port-qrupdate) and the rest of the
-numerical ports all land their matrix work here.
+[octave](#port-octave), [R](#port-R), [gsl](#port-gsl), [qrupdate](#port-qrupdate) and the rest
+of the numerical ports all land their matrix work here.
 
 ## Flags
 
@@ -12,8 +12,8 @@ numerical ports all land their matrix work here.
   (Prescott, Core2, Nehalem, Haswell, Zen, SkylakeX, Sapphire Rapids and the rest) into the one
   library, and choose among them by `cpuid` when it is loaded. This is the run-time dispatch the
   tree's rule asks for wherever upstream offers it; a build for one processor would be a
-  [machine-specific build](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#every-port), which
-  is [`kdos march`](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/kdos-command.md#kdos-march)'s choice and not
+  [machine-specific build](../../../../docs/kdos/05-developer/writing-ports.md#every-port), which
+  is [`kdos march`](../../../../docs/kdos/04-programs/kdos-command.md#kdos-march)'s choice and not
   the recipe's.
 - `TARGET=CORE2` — The processor assumed for the code outside the per-family kernels. Upstream
   advises setting it with `DYNAMIC_ARCH=1` to the oldest model expected: left out, the common code
@@ -36,10 +36,11 @@ numerical ports all land their matrix work here.
 ## Notes
 
 The five links `build.sh` makes after the install, `libblas.so`, `libblas.so.3`, `liblapack.so`,
-`liblapack.so.3` and `libcblas.so`, all point at `libopenblas.so`. Consumers look the libraries up by
-those names: without the links a configure script that tests `-lblas` or `-llapack` reports no
-BLAS, and a binary that asks the loader for `libblas.so.3` or `liblapack.so.3` does not start. They are owned by this package, so no other port may install a reference BLAS or
-LAPACK under those names.
+`liblapack.so.3` and `libcblas.so`, all point at `libopenblas.so`. Consumers look the libraries up
+by those names: without the links a configure script that tests `-lblas` or `-llapack` reports no
+BLAS, and a binary that asks the loader for `libblas.so.3` or `liblapack.so.3` does not start.
+They are owned by this package, so no other port may install a reference BLAS or LAPACK under
+those names.
 
 Both `make` lines carry the same variables. `make install` reads `Makefile.system` again and
 decides from them what to copy (`NO_STATIC=1` is what keeps `libopenblas.a` out of the package),

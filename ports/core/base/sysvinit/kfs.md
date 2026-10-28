@@ -5,13 +5,13 @@ with their manual pages and those of `inittab(5)` and `initctl(5)`. `init` reads
 runs `/etc/init.d/rcS` at boot and `rcK` at shutdown, and respawns the console logins, each of
 which ends in `agetty`; services are kept running by `ksvc`, not by init. Why sysvinit was chosen, and the one way to ask it for a
 runlevel, are in
-[sysvinit as PID 1](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/decisions.md#sysvinit-as-pid-1);
+[sysvinit as PID 1](../../../../docs/kdos/01-philosophy/decisions.md#sysvinit-as-pid-1);
 the boot it drives is in
-[rcS and the service scripts](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/boot-and-init.md#rcs-and-the-service-scripts).
+[rcS and the service scripts](../../../../docs/kdos/03-architecture/boot-and-init.md#rcs-and-the-service-scripts).
 
 `init` and `halt` also write the boot, runlevel and shutdown records that `who -b`, `who -r` and
 `last` read, so the build is against [utmps](#port-utmps), like every other reader and writer of
-those records ([Login records](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/boot-and-init.md#login-records)).
+those records ([Login records](../../../../docs/kdos/03-architecture/boot-and-init.md#login-records)).
 `init` writes a record into `/run/utmps/utmp` only if that file already exists and is writable,
 and skips it without a word otherwise, which is why `06_utmps.sh` creates the file empty before
 `utmpd` starts rather than leaving it to `utmpd`'s first request.
@@ -28,8 +28,8 @@ and skips it without a word otherwise, which is why `06_utmps.sh` creates the fi
 ## Notes
 `build.sh` names its five targets and installs them by hand; it does not run `make install`.
 Upstream's install would also put down `last`, `mesg`, `wall`, `utmpdump`, `sulogin`,
-`bootlogd`, `logsave`, `fstab-decode`, `readbootlog` and a `pidof` link. Several of
-those names belong to other packages here (`last`, `mesg`, `wall`, `utmpdump` and `sulogin` to
+`bootlogd`, `logsave`, `fstab-decode`, `readbootlog`, a `lastb` link and a `pidof` link. Several of
+those names belong to other packages here (`last`, `lastb`, `mesg`, `wall`, `utmpdump` and `sulogin` to
 [util-linux](#port-util-linux), `logsave` to [e2fsprogs](#port-e2fsprogs), `pidof`
 to [procps-ng](#port-procps-ng)), and kpkg refuses a path a second package claims.
 

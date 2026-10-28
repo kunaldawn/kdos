@@ -21,7 +21,7 @@ AMF reader and the glTF and other mesh readers of `TrimeshReader`, and zeroconf 
 named, at their versions, in `pypackages` in `kpkgbuild`, so `ports/fetch` downloads exactly those
 source distributions (with the build requirements it follows from them) into
 `cura-vendor-<version>.tar.xz`, which `kpkgbuild` pins by its `sha256` like any other source (see
-[Vendoring](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#vendoring)).
+[Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring)).
 Every other module Cura imports is a port in `depends`, the account token store [python3-keyring](#port-python3-keyring)
 among them.
 

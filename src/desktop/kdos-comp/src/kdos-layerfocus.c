@@ -30,10 +30,15 @@
  * file is fixing, pointed the other way.
  */
 
+#include <string.h>
 #include <wlr/types/wlr_layer_shell_v1.h>
 
 #include "kdos.h"
 #include "labwc.h"
+#include "layers.h"
+#include "node.h"
+#include "output.h"
+#include "session-lock.h"
 
 void
 kdos_layer_release_on_demand(struct seat *seat,
@@ -56,4 +61,40 @@ kdos_layer_release_on_demand(struct seat *seat,
 	 * event it is waiting for.
 	 */
 	seat_set_focus_layer(seat, NULL);
+}
+
+/*
+ * The saver goes on the first key, button or touch, and that event is spent
+ * on it. kdos-saver takes no keyboard and claims no pointer region, so
+ * without this the press would land on whatever window it hides — a click
+ * the user cannot see the target of. Closing the layer surface sends
+ * `closed`, on which libkwl ends kdos-saver's loop.
+ *
+ * A LOCKED SESSION STILL CLOSES IT BUT KEEPS THE EVENT. The lock screen is
+ * above the saver and holds the keyboard, so the key belongs to the password
+ * field; spending it here would drop the password's first character.
+ */
+bool
+kdos_saver_dismiss(void)
+{
+	bool any = false;
+	struct output *output;
+	wl_list_for_each(output, &server.outputs, link) {
+		struct wlr_scene_tree *tree =
+			output->layer_tree[ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY];
+		struct wlr_scene_node *node, *tmp;
+		wl_list_for_each_safe(node, tmp, &tree->children, link) {
+			struct lab_layer_surface *layer =
+				node_layer_surface_from_node(node);
+			struct wlr_layer_surface_v1 *ls =
+				layer->scene_layer_surface->layer_surface;
+			if (!ls->surface->mapped || !ls->namespace
+					|| strcmp(ls->namespace, "kdos-saver")) {
+				continue;
+			}
+			wlr_layer_surface_v1_destroy(ls);
+			any = true;
+		}
+	}
+	return any && !server.session_lock_manager->locked;
 }

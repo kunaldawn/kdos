@@ -56,12 +56,10 @@ static const char *context_of(const char *dir)
  *                         the ALIEN apps' icons into that same directory, and
  *                         a phosphor Firefox logo is vandalism, not theming.
  *
- * Swept across EVERY size directory, not just scalable/. That rule was learned
- * against COSMIC, whose own icons were SVGs filed under fixed sizes and
- * nowhere else, so a scalable-only pass left exactly the dock buttons the user
- * looks at unthemed. It still holds for anything that ships an SVG under a
- * numeric directory. The largest variant of each name wins and is written to
- * scalable/apps, since they are all SVG anyway.
+ * Swept across EVERY size directory, not just scalable/: a port may file its
+ * SVGs under fixed sizes and nowhere else, and a scalable-only pass leaves
+ * exactly those icons unthemed. The largest variant of each name wins and is
+ * written to scalable/apps, since they are all SVG anyway.
  */
 static const struct {
 	const char *root;
@@ -416,8 +414,7 @@ static int write_index(const char *out, const KcolScheme *sc)
 	kb_buf_add(&full, body.p ? body.p : "", body.n);
 
 	/* Blocks are separated by a blank line, but the file ends with exactly
-	 * one newline — the line list was joined with "\n" and terminated by a
-	 * single empty string, so the last block contributes no blank line. */
+	 * one newline: the last block contributes no blank line. */
 	while (full.n && full.p[full.n - 1] == '\n')
 		full.n--;
 	full.p[full.n] = 0;

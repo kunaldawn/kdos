@@ -125,8 +125,10 @@ whole tree; the others are local to their step:
 | `080_whatis.sh` | No manual root exists, or no `mandoc.db` was written |
 | `085_fontcache.sh` | `/usr/share/fonts` is missing, no cache file was written, or fontconfig rejects it |
 | `087_gates.sh` | `testing/linkcheck.py` or `testing/entrycheck.py` reports a finding, or `testing/unowned.py` finds a file no package owns under `/usr/share/locale`, `man`, `doc` or `info` |
+| `090_initramfs.sh` | No `readelf` reads a program's libraries; a program the initramfs carries, or a library one of them links, is installed nowhere or missing from the archive; a program that must be util-linux's or GNU's is another userland's; lvm2 is installed without `lvm`, `dmsetup`, `thin_check` or `cache_check`, or its udev rules run them from outside `/usr/sbin`; a udev rule a root needs is left out or runs a program the initramfs lacks; installed microcode left an empty or missing bundle; or `/lib/modules` is empty |
 | `100_packs.sh` | With `KDOS_PACK_KDOS=1`: `mkfs.erofs` does not honour the excludes |
 | `105_ports.sh` | `ports/shelves`, `ports/sources.idx`, a recipe under `/ports/core` or one of the book directories is missing, a file over 16 MB is in the recipe tree, or no installed package's source is in `sources.idx` |
+| `110_iso.sh` | `KDOS_ISO_COMP` names no known codec, the kernel, the initramfs, the staged recipe tree or Limine is missing, `/ports` is not at its path in `system.sfs` after the append, or the finished image has no EFI partition, no MBR signature or no BIOS boot code |
 
 A step whose tool is not installed at all (`kdos-appbox`, `udevadm`, `makewhatis`, `fc-cache`)
 prints a line saying so and exits 0, so a tree built without that package still makes an image.
@@ -139,10 +141,10 @@ where its step's output lands. Outside the root, under `build/`:
 | Path | Written by |
 |:--|:--|
 | `build/binhost/`, `build/binhost-key/` | `010_binhost.sh`, with `KDOS_MAKE_BINHOST=1` |
-| `build/initramfs/`, `build/initramfs.cpio.gz` | `090_initramfs.sh` |
+| `build/initramfs/`, `build/initramfs.cpio.gz`, `build/ucode/`, `build/ucode.cpio` | `090_initramfs.sh` |
 | `build/kdos-base/kdos.kpack` | `100_packs.sh`, with `KDOS_PACK_KDOS=1` |
 | `build/image-ports/` | `105_ports.sh` |
-| `build/iso-build/kdos.iso` | `110_iso.sh` |
+| `build/sfs-var.pseudo`, `build/iso_root/`, `build/iso-build/kdos.iso` | `110_iso.sh` |
 
 ## See also
 

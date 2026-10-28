@@ -15,8 +15,8 @@ shows the commands of `script/phases/10_bootstrap/010_linux_headers.sh` and expl
 <!-- kfs:include script/phases/10_bootstrap/010_linux_headers.sh lines=23-27 pin=a801b2404770 -->
 
 The whole kernel source is unpacked to install its headers. Nothing is configured and nothing is
-compiled for the target; the only program built is [`unifdef`]{.idx}, the helper the header install runs,
-with the container's compiler.
+compiled for the target. The only programs built are [`unifdef`]{.idx}, the helper the header install
+runs, and `fixdep`, the kernel build's own dependency tool, both with the container's compiler.
 
 ### The meaning of the make options
 
@@ -36,8 +36,8 @@ with the container's compiler.
 
 ## Contents
 
-**Installed headers:** `/usr/include/{asm,asm-generic,drm,linux,misc,mtd,rdma,regulator,scsi,sound,video,xen}/*.h`
-and the other subsystem directories the kernel exports.
+**Installed headers:** `/usr/include/{asm,asm-generic,cxl,drm,fwctl,linux,misc,mtd,rdma,regulator,scsi,sound,video,xen}/*.h`,
+with `asm` holding the x86 headers and the system call numbers generated for it.
 
 ## Built again later
 

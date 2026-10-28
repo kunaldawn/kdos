@@ -150,13 +150,11 @@ typedef struct {
 	int units_1024;
 	int fahrenheit;
 	int cpu_of_machine;	/* percent of the machine, not of a core */
-	int memory_pss;
 	int kernel_threads;
 	int virtual_drives;
 	int virtual_net;
 	int icons;
 	char sort[24];
-	char columns[128];
 } ResConf;
 
 extern ResConf RC;
@@ -195,7 +193,7 @@ void res_sample(void);
 /* ── small shared helpers ────────────────────────────────────────────── */
 const char *res_size(unsigned long long bytes);	/* honours units_1024   */
 const char *res_temp(double celsius);		/* honours fahrenheit    */
-/* An unreadable counter renders as an em dash, never as 0. */
+/* An unreadable counter renders as res_none()'s ASCII dash, never as 0. */
 const char *res_counter(unsigned long long v);
 const char *res_none(void);
 const char *res_cpu_headline(void);
@@ -241,6 +239,9 @@ void res_net_motion(int mx, int my);
 void res_dev_sample(void);
 int  res_act_signal(const KprProc *p, int sig);
 int  res_act_renice(const KprProc *p, int nice);
+/* The privileged helper, run by argv for the task verbs and the Memory
+ * page's per-slot table. */
+#define RES_RESCTL "/usr/bin/kdos-resctl"
 const char *res_act_helper_why(void);
 const char *res_act_why_disabled(const KprProc *p);
 void res_energy_prepare(void);
@@ -321,7 +322,7 @@ void res_confirm(const char *title, const char *msg, const char *yes,
 void res_draw_mem(int x, int y, int w, int h);
 
 /*
- * Boxes (p_box.c). The tenth page, and it needs no new subsystem: libkproc's
+ * Boxes (p_box.c). The eleventh page, and it needs no new subsystem: libkproc's
  * conmon walk already turns a pid into a box name and this is a rollup keyed
  * on that rather than on the application. The ENERGY column is kdos-energyd's
  * answer, asked for rather than recomputed — and a `-` when it is not running,

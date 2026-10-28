@@ -9,13 +9,15 @@ through [hamlib](#port-hamlib).
 
 - `-DCMAKE_POLICY_DEFAULT_CMP0167=NEW` — Find Boost through the `BoostConfig.cmake` file that
   [boost](#port-boost) installs, instead of CMake's own FindBoost module, which policy CMP0167
-  retires.
+  retires. The top-level `CMakeLists.txt`, the only one the build reads, already sets this
+  policy to NEW whenever the running CMake knows it, so the preset repeats what the project
+  asks for.
 - `-DGIT_EXECUTABLE=GIT_EXECUTABLE-NOTFOUND` — Preset the cache entry that
-  `find_program(GIT_EXECUTABLE git)` fills to a not-found value. When git is not found, the
-  configure sets the build's revision string to `nogit`; when it is found, it runs
-  `git rev-parse --short HEAD` in the source directory, and the release archive has no `.git`.
-  `find_program` searches again for a variable whose value ends in `-NOTFOUND`, so this preset
-  does not hide a `git` that is on `PATH`.
+  `find_program(GIT_EXECUTABLE git)` fills to a not-found value. The preset does not hide a
+  `git` that is on `PATH`: `find_program` searches again for a variable whose value ends in
+  `-NOTFOUND`. With no git found, the configure sets the build's revision string to `nogit`;
+  with git found, it runs `git rev-parse --short HEAD` in the source directory, which fails
+  because the release archive has no `.git`, and the revision string is left empty.
 
 ## Patches
 
@@ -23,8 +25,9 @@ through [hamlib](#port-hamlib).
 
 ## Notes
 
-Upstream's CMake installs nothing but a changelog and a copyright file on Linux, so `build.sh`
-runs no install step: it installs the `JS8Call` binary by hand as lower-case `js8call`, the icon
+Upstream's CMake has no install rules (the changelog and copyright rules in `resources/debian`
+belong to a directory the top-level `CMakeLists.txt` never adds), so `build.sh` runs no install
+step: it installs the `JS8Call` binary by hand as lower-case `js8call`, the icon
 PNG, two icon sizes rasterised from the SVG artwork, and a desktop entry. Qt's Wayland app id is
 the executable's name when no organisation domain or desktop file name is set, so the entry's
 `StartupWMClass` is `js8call`.

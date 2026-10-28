@@ -1719,8 +1719,8 @@ static void spawn_tray_menu(const struct sh_tray_item *it, int cx)
  *
  * LEFT keeps the semantics every taskbar has had since Windows 95: it toggles
  * a single window (minimise the one you are in, restore the one you are not)
- * and opens the member list for a group. MIDDLE closes politely, so an editor
- * with unsaved work still gets to ask.
+ * and opens the member list for a group. MIDDLE starts a new instance (see
+ * below); closing is on the window menu.
  *
  * RIGHT OPENS THE WINDOW MENU, and nothing else may be bound there: a right
  * button that minimised would be a second way to do what left already does, on
@@ -1776,7 +1776,7 @@ static void chip_click(struct sh_state *sh, int ci, int btn)
 	 * Every taskbar of this lineage since Windows 7 opens a second window
 	 * on a middle click, and it is the wrong button for a destructive verb
 	 * on a row of 40-pixel squares: middle is the button a hand hits by
-	 * accident on a wheel, and the thing it was closing had no
+	 * accident on a wheel, and a close bound there would have no
 	 * confirmation and, on an icons-only bar, no name on it either.
 	 * Closing is on the window menu — Close and Close all, over the
 	 * window's own title, which is where a verb that loses work belongs.
@@ -2553,13 +2553,12 @@ static const char *const WIDGET_NAMES[W_N] = {
  * layout runs right to left and the clock is the thing that must not move. */
 /*
  * `more` sits immediately RIGHT of the tray, which is where every desktop that
- * has one puts it — and here it is also arithmetic. The chevron is a
- * TRAY-SHAPED cell: two columns, no gap of its own, so it abuts the tray items
- * the way they abut each other. That is what makes it free: hiding fcitx5's
- * item gave two columns back and the chevron takes exactly those two. An
- * ordinary applet tile would have cost four, and four is the NET chart on an
- * eighty-column bar with one window open — measured, and the reason this is not
- * `applet_tile`.
+ * has one puts it — and here it is also arithmetic. The chevron is two
+ * columns with no gap of its own, so it abuts the tray items the way they
+ * abut each other, and it costs less than the three-column tray item
+ * (TRAY_W) that fcitx5's hiding takes off the bar. An ordinary applet tile
+ * would cost four, and four is the NET chart on an eighty-column bar with one
+ * window open, which is why this is not `applet_tile`.
  */
 static const int WIDGETS_SHIPPED[W_N] = { W_PAGER, W_TRAY, W_MORE, W_MEDIA,
 					  W_PRIVACY, W_MPRIS, W_CLIP, W_CPU,
@@ -2579,12 +2578,9 @@ static int nwidgets = W_N;
  * clipboard depth and the removable-media count each appear when they have
  * something to say and vanish when they do not — and every appearance is four
  * columns, so the wing changes width, the meters strip beside it slides, and
- * the whole bar reads as though it jerks. Reported exactly that way: "the
- * orange icon always comes with many warnings, and when it disappears it
- * shrinks the bar".
+ * the whole bar reads as though it jerks.
  *
- * The fix is the one Windows has shipped since XP and every phone since: the
- * occasional items live behind ONE cell of fixed width, which is present
+ * So the occasional items live behind ONE cell of fixed width, which is present
  * whether or not anything is in it. The wing stops moving because nothing in
  * it comes and goes, and the chevron says how many things are hiding — a
  * NUMBER, so a glance still answers "is anything wrong" without the popup.
@@ -2592,9 +2588,8 @@ static int nwidgets = W_N;
  * `overflow = stutter restart clipboard` in panel.conf is the list, and it is
  * a list of the SAME widget names the `right =` line uses: a widget is either
  * on the bar or behind the chevron, and moving one is moving a word from one
- * line to the other. `tray_hide = <ids>` does the same for tray items, which
- * is the only answer this desktop has for an item whose menu it cannot draw
- * (see the fcitx5 note in draw_tray).
+ * line to the other. `tray_hide = <ids>` does the same for tray items (see the
+ * fcitx5 note in load_widgets).
  */
 #define OV_MAX 24
 
@@ -2662,14 +2657,12 @@ static void load_widgets(void)
 	 * file at all: the three diagnostics go behind the chevron, and
 	 * fcitx5's tray item goes with them.
 	 *
-	 * FCITX5 IS THE ONE ITEM EVERY KDOS SESSION HAS AND IT CANNOT BE
-	 * CLICKED. It publishes `ItemIsMenu`, so its Activate means "show my
-	 * menu" and the menu is com.canonical.dbusmenu, which this tray does
-	 * not render (a stated gap, not an oversight — it is a second protocol
-	 * with a nested-variant layout tree). A keyboard picture beside the
-	 * clock that answers nothing at all is chrome nobody can use, so it
-	 * goes behind the chevron, where the popup can at least SAY what it
-	 * is; `tray_hide =` in panel.conf brings it back out.
+	 * FCITX5 IS THE ONE ITEM EVERY KDOS SESSION HAS, AND IT STARTS BEHIND
+	 * THE CHEVRON. It publishes `ItemIsMenu`, so its Activate means "show
+	 * my menu", and that menu is a com.canonical.dbusmenu tree, which a
+	 * click on the item opens through kdos-traymenu. The overflow popup
+	 * lists it with what a click does; `tray_hide =` in panel.conf brings
+	 * it back out onto the bar.
 	 */
 	memcpy(widgets, WIDGETS_SHIPPED, sizeof(widgets));
 	nwidgets = W_N;
@@ -2766,8 +2759,7 @@ static void load_widgets(void)
 		/*
 		 * `tray_hide = fcitx5 …` — StatusNotifierItem ids that are not
 		 * drawn on the bar. They are listed in the overflow popup
-		 * instead, which is the only thing this desktop can honestly
-		 * offer an item whose menu it cannot draw.
+		 * instead. The line replaces the default list.
 		 */
 		if (!strncmp(p, "tray_hide", 9)) {
 			ntray_hide = 0;
@@ -2804,9 +2796,8 @@ static void load_widgets(void)
 
 		/*
 		 * `task_labels = auto | yes | no` — whether a window button
-		 * carries its name. `auto` is the bar deciding for itself and
-		 * is what it has always done; the other two are somebody who
-		 * knows what they want.
+		 * carries its name. `no` is the default; `auto` is the bar
+		 * deciding for itself; `yes` labels every button.
 		 */
 		/*
 		 * `start_label = yes|no` — whether the Start button carries
@@ -2849,7 +2840,7 @@ static void load_widgets(void)
 /*
  * How many things are on the clipboard, or -1 when nothing is keeping them.
  *
- * ONE local socket round trip every two seconds. A unix socket in the session's
+ * ONE local socket round trip a second at most. A unix socket in the session's
  * own runtime directory answers in microseconds — there is no name to resolve
  * and no network — and the timeout is set so that a wedged daemon costs a tenth
  * of a second once rather than a frame every time. The alternative, a
@@ -2905,14 +2896,15 @@ static void notify_poll(void)
 }
 
 /*
- * ── THE STUTTER CHIP, and nothing else on any desktop has one ──────────────
+ * ── THE STUTTER CHIP ──────────────────────────────────────────────────────
  *
  * kdos-comp reports every late frame on `$XDG_RUNTIME_DIR/kdos-frames.sock` —
  * one NDJSON object per miss, carrying how many frames were dropped and what
  * the compositor's own render cost was. `kdos stutter` joins that to PSI and
  * /proc and names who was busy; it is the one thing on this machine that can
- * answer "why did that jerk", and until now it was reachable only by knowing
- * the subcommand's name and typing it AFTER the moment had passed.
+ * answer "why did that jerk", and without a cell on the bar it is reachable
+ * only by knowing the subcommand's name and typing it AFTER the moment has
+ * passed.
  *
  * So the panel holds the socket open and counts. The cell appears when the
  * desktop has actually missed frames in the last ten seconds and goes away
@@ -2926,7 +2918,7 @@ static void notify_poll(void)
  * the protocol is designed for.
  *
  * There is no JSON parser in this binary and this does not add one: the field
- * is written by kdos-frames.c three lines from here in the same repository,
+ * is written by src/desktop/kdos-comp/src/kdos-frames.c in this repository,
  * and `"dropped":` is scanned for literally.
  */
 #define FR_WINDOW_MS 10000
@@ -3839,10 +3831,11 @@ static void meters_sample(void)
 			busy = 0;
 		if (busy > 100)
 			busy = 100;
-		/* 0.2 at two samples a second is the same time constant 0.35
-		 * had at one — fast enough that a build shows up at once, slow
-		 * enough that the digits are readable while it runs. The CHART
-		 * plots the raw samples; only the number is averaged. */
+		/* 0.2 at two samples a second: fast enough that a build shows
+		 * up at once, slow enough that the digits are readable while
+		 * it runs. This average is the NUMBER's; the history stays raw
+		 * and each chart picks its own smoothing (see the note above
+		 * MET_MS). */
 		meter_push(&met_cpu, busy, 0.2);
 	} else {
 		meter_hold(&met_cpu);
@@ -3961,12 +3954,13 @@ static int cpu_percent(void)
  * edge is equally cheap and is where a menu bar goes; this desktop has no
  * global menu bar and is not getting one.
  *
- * `panel = bottom | top | off` and `panel_cells = 1 | 2` in comp.conf keep a
+ * `panel = bottom | top | off` and `panel_cells = 1..4` in comp.conf keep a
  * top-anchored single row reachable: `panel = top` is this same code with a
- * different anchor. Two rows is the default because that is what makes an icon
- * square — a cell is 16x32, so two cells across two rows is 32x64 and libkicon
- * centres a 32x32 picture in it. At one row the bar is labels and glyphs, and
- * nothing on it REQUIRES a picture.
+ * different anchor. Two rows is the default because that is what gives an
+ * icon its height — at the shipped `panel_font` (Terminus 20) a cell is 10x20,
+ * so two rows are 40 pixels and libkicon centres the picture in the cells it
+ * is given. At one row the bar is labels and glyphs, and nothing on it
+ * REQUIRES a picture.
  *
  * The layout is still right to left after the left wing, and that is still
  * load-bearing: the right wing has a fixed width and the window list is what
@@ -3994,7 +3988,7 @@ static int cpu_percent(void)
  *
  * REST IS THE TONE EVERY OTHER BUTTON ON THIS ROW WEARS. The accent belongs to
  * hover and to the menu being open. At full strength and forty pixels tall it
- * was the loudest object on the screen and read as an error state, on the one
+ * is the loudest object on the screen and reads as an error state, on the one
  * control that is never the thing being looked at — and the penguin carries
  * the brand perfectly well without it. Three states, three pictures: quiet,
  * accent under the pointer, warn while the menu is up.
@@ -4103,9 +4097,14 @@ static int draw_start(struct sh_state *sh, int compact)
 	/*
 	 * KT_SURFACE IS NOT "NO PLATE": it is the slot the backdrop OWNS, so
 	 * the plate start_plate() records shows through the cells instead of
-	 * being filled over.
+	 * being filled over. Without the pixel layer (`--dump`) nothing is
+	 * recorded, so a lit button's plate is a cell slot of its own — the
+	 * one start_plate() paints, the warning tone while the menu is up and
+	 * the accent under the pointer — or the KT_SURFACE ink is drawn on
+	 * KT_SURFACE and the button goes blank.
 	 */
-	int plate = KT_SURFACE;
+	int plate = !lit || px_live ? KT_SURFACE
+				    : start_menu_open() ? KT_WARN : KT_ACCENT;
 
 	if (w > ktui_w / 3) {
 		lw = 0;
@@ -4734,7 +4733,7 @@ static int draw_tray(struct sh_state *sh, int right_x, int x_min, int h)
 
 /* ── the meters, as a picture ──────────────────────────────────────────────
  *
- * FIVE METERS, EACH A DESCRIPTOR, so the set is data rather than five copies
+ * SIX METERS, EACH A DESCRIPTOR, so the set is data rather than six copies
  * of a drawing routine. `panel.conf`'s `meters = cpu ram net` names them and
  * the ladder drops them from the RIGHT when the bar is narrow — the order in
  * the file is the order of importance, which is the same promise the widget
@@ -5392,12 +5391,12 @@ static int draw_meters(struct sh_state *sh, int wing_x, int row_x, int x_min,
 }
 
 /*
- * The recording lamps, and they are CONTROLS now.
+ * The recording lamps, and they are CONTROLS as well as indicators.
  *
- * The panel already knew which application was holding the microphone; what it
- * could not do was anything about it, and an indicator that cannot be acted on
- * is one people learn not to look at. A click on ●MIC mutes every capture
- * device on the machine and a second click puts back what was there.
+ * An indicator that cannot be acted on is one people learn not to look at. A
+ * click on ●MIC flips the capture switch sh_mic_toggle() owns (the default
+ * mixer's `Capture` element, or `Mic`) and a second click flips it back; ●CAM
+ * and ●SCR open kdos-devices.
  *
  * The microphone takes the secondary colour; the camera and a screen share
  * take the fill as well — being seen and being watched outrank being heard.
@@ -5671,11 +5670,12 @@ static void write_overflow(void)
  * the whole point of it. A cell that came and went would be the same movement
  * the widgets it replaced were causing.
  *
- * TWO COLUMNS AND NO GAP, exactly like a tray item, which is what it is next
- * to. An applet tile would be four with its gap, and four columns is the NET
- * chart on an eighty-column bar the moment a window is open — measured on the
- * booted ISO: the strip needs fifteen and had thirteen. Two is precisely what
- * hiding fcitx5's tray item gave back, so the wing is the width it always was.
+ * TWO COLUMNS AND NO GAP, abutting the tray items it is next to the way they
+ * abut each other. An applet tile would be four with its gap, and four columns
+ * is the NET chart on an eighty-column bar the moment a window is open: the
+ * strip needs fifteen and there are thirteen. A tray item is three (TRAY_W),
+ * so hiding fcitx5's item by default leaves the wing a column narrower than
+ * with that item on the bar and no chevron.
  *
  * NO COUNT UNDER IT. A digit is one cell wide and the box is two, so it would
  * sit half a cell left of the picture above it — which is the misalignment the
@@ -5715,22 +5715,21 @@ static int draw_more(struct sh_state *sh, int right_x, int x_min, int h)
 	 * CHROME: it belongs to this bar and has to wear its accent. Papirus's
 	 * `pan-up` is a near-grey and the atlas leaves near-greys faintly
 	 * tinted by design, so the sprite came out at (221,225,223) — a white
-	 * triangle in a row of phosphor, measured on the booted ISO. And a
-	 * GLYPH is one cell tall, so it sits on the top row while the tray
-	 * items and the applets beside it are centred on both: the same three
-	 * baselines in one wing this arc already removed once.
+	 * triangle in a row of phosphor. And a GLYPH is one cell tall, so it
+	 * sits on the top row while the tray items and the applets beside it
+	 * are centred on both: three baselines in one wing.
 	 *
-	 * Four stacked rows is a triangle, in the palette, centred on the
-	 * wing's full height. The glyph stays as the fallback, because the
-	 * pixel layer is absent on a terminal and in every golden frame.
+	 * Five stacked pixel rows (rows_t) is a triangle, in the palette,
+	 * centred on the wing's full height. The glyph stays as the fallback,
+	 * because the pixel layer is absent on a terminal and in every golden
+	 * frame.
 	 */
 	if (px_live) {
 		int cw = kdisp_cell_w(), chh = kdisp_cell_h();
 		int bh = irows * chh;
 		/* SIZED FROM THE WIDTH. The box is two cells and the height is
 		 * two rows, so a triangle derived from the height overflows
-		 * the box sideways — it came out fifty pixels across a twenty
-		 * pixel cell pair and ran into the separator beside it. */
+		 * the box sideways and runs into the separator beside it. */
 		int bw = 2 * cw - 6;
 		int rows_t = 5;
 		int cx = x * cw + cw;		/* the 2-cell box's centre */
@@ -6421,9 +6420,9 @@ static void handle_motion(struct sh_state *sh, int cx, int cy)
 		drag_moved = 1;
 		drag_over = hover_fav;
 	}
-	/* The strip opens kdos-res, so it is a control and has to look like one
-	 * under the hand. Its own rows, for the same reason the click test
-	 * needs them. */
+	/* The strip opens btop and two popups, so it is a control and has to
+	 * look like one under the hand. Its own rows, for the same reason the
+	 * click test needs them. */
 	hover_meters = meter_row0 >= 0 && cy >= meter_row0 &&
 		       cy < meter_row0 + meter_rows &&
 		       in_span(cx, sh->meter_hit_x, sh->meter_hit_end);
@@ -7244,14 +7243,13 @@ static void handle_click(struct sh_state *sh, int cx, int cy, int btn)
 	    in_span(cx, sh->meter_hit_x, sh->meter_hit_end)) {
 		/*
 		 * THREE QUESTIONS A METER RAISES AND CANNOT ANSWER, one per
-		 * button. Left is `kdos-res` — which process, and which
-		 * APPLICATION. MIDDLE is
-		 * `kdos stutter`, which is the only thing on this machine that
-		 * can say why a frame was late and who was busy when it was;
-		 * it had no surface at all and was reachable only by knowing
-		 * the subcommand's name. RIGHT is `kdos-energy`, the same for
-		 * the per-app energy share. Both of those are real features of
-		 * this distro that the desktop never pointed at.
+		 * button. LEFT is btop in a terminal — which process.
+		 * MIDDLE is kdos-status's stutter popup, the `kdos stutter`
+		 * answer, which is the only thing on this machine that can
+		 * say why a frame was late and who was busy when it was.
+		 * RIGHT is kdos-status's energy popup, the per-app energy
+		 * share. Without these clicks both are reachable only by
+		 * knowing the subcommand's name.
 		 */
 		char mx[16], my[16];
 
@@ -7540,9 +7538,10 @@ int panel_main(int argc, char **argv)
 			 * panel_at_flag(). */
 			panel_top = 1;
 		}
-		/* comp.conf's `panel_cells`. Two rows is the default because
-		 * that is what makes a task button's icon square on a 16x32
-		 * cell; one row is the pre-icon bar and still works. */
+		/* comp.conf's `panel_cells`, 1 to 4. Two rows is the default
+		 * because that is what gives a task button's icon its height
+		 * (see the note above the Start button); one row is a bar of
+		 * labels and glyphs and still works. */
 		else if (!strcmp(argv[i], "--cells") && i + 1 < argc) {
 			tb_rows = atoi(argv[++i]);
 			if (tb_rows < 1)

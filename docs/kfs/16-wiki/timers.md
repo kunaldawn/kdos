@@ -59,15 +59,21 @@ The one a port adds, from the [fwupd](#port-fwupd) port's `build.sh`:
 ### /etc/init.d/18_timers.sh
 
 How a line becomes a supervised job. A command that is not installed is skipped with a `[SKIP]`
-line; everything else is handed to `supervise` as the service `kdos-timer-NAME`:
+line; everything else is handed to `supervise` as the service `kdos-timer-NAME`. A status
+query fails when any one job is down, not only the last one read:
 
-<!-- kfs:include fs/etc/init.d/18_timers.sh lines=85-101 pin=18d555adae06 -->
+<!-- kfs:include fs/etc/init.d/18_timers.sh lines=85-105 pin=643feb896825 -->
 
 ### ~/.config/kdos/timers.d/
 
 The user table's description, from the skeleton:
 
 <!-- kfs:include fs/etc/skel/.config/kdos/timers.d/README -->
+
+The `-t` path in that example does not work as written. A row is never given to a shell, so `~`
+and `$HOME` reach `snooze` as those characters, and a `-t` path has to be written out in full.
+The file it names must also be one the job touches after each run, which a `.timer` file is not;
+see [Tips](#tips).
 
 The two jobs in the skeleton. The backup job is commented out:
 
@@ -88,7 +94,8 @@ The two jobs in the skeleton. The backup job is commented out:
    Each job prints `[ OK ] kdos-timer-NAME  (pid N)` or `[DOWN] kdos-timer-NAME`. For the five
    seconds after a run whose command failed, before `snooze` starts again, it prints
    `[FAIL] kdos-timer-NAME  (exited with code N; restarting)`; a run that succeeded leaves it
-   `[ OK ]`.
+   `[ OK ]`. The command exits 0 only when every job is `[ OK ]`; one `[DOWN]` or `[FAIL]` job
+   anywhere in the list makes it exit 1, so a script can test it with `if service status timers`.
 
 2. Ask about one system job:
 
@@ -165,10 +172,11 @@ every boot, `sudo service disable timers`.
    command -v <the command's first word>
    ```
 
-3. Log out, type `exit` at the `tty1` prompt Log Out leaves, and log in again (with autologin on,
-   the login after `exit` is automatic). The session reads the table only when it starts. Log Out
-   alone stops no loop; the end of the login ends them, and a session started again within one
-   login stops the loops the previous start left before starting its own.
+3. Log out, and at the `tty1` prompt Log Out leaves either type `kdos-desktop` to start the
+   desktop again, or type `exit` and log in again (with autologin on, the login after `exit` is
+   automatic). The session reads the table only when it starts. Log Out alone stops no loop; the
+   end of the login ends them, and a session started again within one login stops the loops the
+   previous start left before starting its own.
 
 A reminder needs none of this: `kdos remind in 20m tea` writes a row of its own and also starts a
 `snooze` for it at once; see [kdos remind](../../kdos/04-programs/kdos-command.md#kdos-remind).
@@ -177,7 +185,13 @@ A reminder needs none of this: `kdos remind in 20m tea` writes a row of its own 
 
 - **A job that must run even when the machine was off across its slot** needs `-t FILE` as well as
   `-s`. `snooze` then counts from the file's modification time, and the job must update that file
-  itself, since `snooze` never touches it.
+  itself, since `snooze` never touches it. A command on the line cannot run `touch` as well, so
+  such a job is a script that does its work and then touches the file. If nothing touches it,
+  every restart of `snooze` finds the slot just run still inside the slack and runs the job again,
+  until the slack has passed.
+- **No `~` and no `$HOME`.** Nothing on a line is expanded, so a path in a timespec or a command
+  is written in full, `/home/you/...`; a program that needs the home directory finds it itself,
+  as `kdos-updatedb` does.
 - **Give each job a minute of its own.** A laptop that wakes after several slots have passed runs
   every job whose slack covers the gap at the same moment.
 - **`*` is safe in a timespec.** `18_timers.sh` and the session both split the line with pathname
@@ -206,7 +220,8 @@ Each complaint names the file and the line:
 
 `bad timer name` means the name holds a character other than letters, digits, `_` and `-`; a line
 ending `skipped` has no `--` or nothing after it; the `[SKIP]` line means the command's first word
-is not installed, and that job is then listed `[DOWN]` by `service status timers`, which exits 1.
+is not installed, and that job is then listed `[DOWN]` by `service status timers`, which
+therefore exits 1 until the line is corrected or removed.
 Correct the line and run `sudo service restart timers`. The file holds the boot's output only: a
 restart prints the same lines to the terminal and leaves the file as the boot wrote it.
 
@@ -230,6 +245,8 @@ should write one itself.
 
 - Nothing installs updates on a timer: the update-check job only fetches the ports tree and reports
   what is behind. See [Security](../../kdos/06-reference/known-gaps.md#security).
+- The user table's loops outlive Log Out and end only with the login; see
+  [Log Out ends the desktop, not the login](../../kdos/06-reference/known-gaps.md#log-out-ends-the-desktop-not-the-login).
 
 ## See also
 

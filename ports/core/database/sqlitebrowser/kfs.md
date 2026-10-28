@@ -16,7 +16,7 @@ against the system [sqlite](#port-sqlite).
   `-DFORCE_INTERNAL_QHEXEDIT=ON` the bundled QHexEdit, the hex editor for binary cells. Neither is a
   port; both are upstream's defaults, named.
 - `-Dsqlcipher=OFF` — link plain SQLite rather than SQLCipher, the encrypting fork, which the tree
-  does not carry. It is upstream's default, so encrypted databases cannot be opened.
+  does not carry; upstream's default, named. A database encrypted with SQLCipher cannot be opened.
 
 ## Notes
 `build.sh` installs the MIME type for DB4S project files (`.sqbpro`) from `distri/mime`, which the

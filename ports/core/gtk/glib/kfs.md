@@ -14,7 +14,7 @@ GLib is built twice from the same tarball. This port builds it with introspectio
 [glib-introspection](#port-glib-introspection) builds the same source again, once both are
 installed, and packages only the GIR and typelib files. The split, and why its two versions must
 stay equal, is in
-[A second build of the same source](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#a-second-build-of-the-same-source).
+[A second build of the same source](../../../../docs/kdos/05-developer/writing-ports.md#a-second-build-of-the-same-source).
 
 ## Flags
 
@@ -36,7 +36,7 @@ stay equal, is in
   tracing hooks. None of the three tracers is in the tree.
 - `-D nls=disabled` — Build no message catalogues. The image ships English only, and the package
   policy would remove the catalogues anyway (see
-  [Size and language policy](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
+  [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
 - `-D documentation=false` — Build no API reference, which needs gi-docgen, not a port. The manual
   pages are built (`-D man-pages=enabled`).
 

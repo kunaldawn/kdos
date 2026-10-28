@@ -13,8 +13,9 @@ Cura's framework, depends on it too.
   [polyclipping](#port-polyclipping) library as `clipper::clipper`, a target name only Conan's
   recipe makes; the shim's `clipper-config.cmake` defines it from polyclipping's pkg-config file.
   Nothing of the shim reaches the package.
-- `-DCMAKE_CXX_STANDARD=20` — The C++ standard the project is written in. Conan's toolchain sets
-  it upstream, and without it the compiler's default applies.
+- `-DCMAKE_CXX_STANDARD=20` — The C++ standard the project is written in, and the lowest its
+  Conan recipe accepts. Upstream, Conan's toolchain sets it; without the flag the compiler's
+  default applies.
 - `-DCMAKE_POSITION_INDEPENDENT_CODE=ON` — Compile the static `libuvula` as position-independent
   code, so it can be linked into the shared Python module.
 - `-DUVULA_VERSION` — The library's version, which configure stops without; `-DPYUVULA_VERSION`

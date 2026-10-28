@@ -34,4 +34,4 @@ No program on the image is given a file capability by its package. A capability 
 attribute, and the package archive is written without `--xattrs`, so it would not survive; KDOS
 uses setuid bits instead. `setcap` sets one by hand on a running system, as the security model
 suggests for packet capture tools (see
-[setuid binaries](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#setuid-binaries)).
+[setuid binaries](../../../../docs/kdos/03-architecture/security-model.md#setuid-binaries)).

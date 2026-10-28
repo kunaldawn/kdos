@@ -4,11 +4,12 @@ boot stages under a progress bar, until `rcS` quits it just before the login pro
 covers the whole boot. The initramfs starts it, it survives `switch_root`, and later stages reach
 it through the FIFO `/dev/.kdos-splash`. What it draws, the commands it takes and the three facts
 about the framebuffer that constrain it are in
-[The splash](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/boot-and-init.md#the-splash).
+[The splash](../../../docs/kdos/03-architecture/boot-and-init.md#the-splash).
 
-The build compiles one C file and installs one font. `build.sh` compiles `kdos-splash.c` to a static binary and
-decompresses Terminus' 16-pixel console font from [terminus-font](#port-terminus-font) to
-`/usr/share/kdos/splash.psf`, the file the program loads its glyphs from. The image step
+The build compiles one C file and installs one font. `build.sh` compiles `kdos-splash.c` to a
+static binary and decompresses Terminus' 16-pixel console font from
+[terminus-font](#port-terminus-font) to `/usr/share/kdos/splash.psf`, the file the program loads
+its glyphs from. The image step
 `script/phases/70_image/090_initramfs.sh` copies both into the initramfs; when the binary is
 missing the build warns and the machine boots with no splash.
 
@@ -29,8 +30,9 @@ the static binary carries no decompressor. It falls back to
 failure path in the program does, so a missing font costs the splash and never the boot.
 
 The three Python scripts beside the C file run on a development host, never in the build
-(`genbanner.py` needs Pillow, and `genbackdrop.py` Pillow and NumPy): `genlogo.py` writes the terminal banner `fs/usr/share/kdos/logo.txt` from `penguin.h`,
-`genbanner.py` restamps the two caption lines of the boot menu's banner,
-`fs/usr/share/kdos/boot/kdos-banner.png`, and `genbackdrop.py` draws the menu's backdrop,
-`fs/usr/share/kdos/boot/kdos-backdrop.png`, from that banner. Their output is committed, so changing the mascot or a
-caption means running the script and committing what it writes.
+(`genbanner.py` needs Pillow, and `genbackdrop.py` Pillow and NumPy): `genlogo.py` writes the
+terminal banner `fs/usr/share/kdos/logo.txt` from `penguin.h`, `genbanner.py` restamps the two
+caption lines of the boot menu's banner, `fs/usr/share/kdos/boot/kdos-banner.png`, and
+`genbackdrop.py` draws the menu's backdrop, `fs/usr/share/kdos/boot/kdos-backdrop.png`, from that
+banner. Their output is committed, so changing the mascot or a caption means running the script
+and committing what it writes.

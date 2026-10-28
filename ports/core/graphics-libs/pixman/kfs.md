@@ -7,7 +7,7 @@ paths chosen at run time for the processor it finds. Besides cairo, the ports th
 [fcft](#port-fcft).
 
 It is one of the hot libraries the tree builds with link-time optimisation (see
-[Every port](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#every-port), "LTO only for the
+[Every port](../../../../docs/kdos/05-developer/writing-ports.md#every-port), "LTO only for the
 hot libraries").
 
 ## Flags

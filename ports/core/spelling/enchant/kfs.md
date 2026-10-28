@@ -4,9 +4,9 @@ Enchant is the spell-checking library applications call instead of a particular 
 a provider module for each spelling engine and picks a dictionary by language. The ports that
 link it include [gspell](#port-gspell), [libspelling](#port-libspelling) and
 [qtspell](#port-qtspell), the spell-checking layers GTK and Qt applications use, the WebKitGTK
-engines, and fcitx5, AbiWord, WeeChat and Profanity. This build has two providers, Hunspell and
-Aspell, and the English dictionaries of both are in `depends`, so a check in English works on a
-fresh system.
+engines, and fcitx5, AbiWord, gImageReader, WeeChat and Profanity. This build has two providers,
+Hunspell and Aspell, and the English dictionaries of both are in `depends`, so a check in English
+works on a fresh system.
 
 ## Flags
 

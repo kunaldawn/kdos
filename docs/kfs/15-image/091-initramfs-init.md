@@ -37,7 +37,7 @@ Each section below is named after the stage it covers, the label in the table's 
 | `RAID` | `/bin/mdadm` is carried | ignored: assembling nothing is the ordinary case |
 | `FILESYSTEM MODULES` | always | a line per module that would not load; the boot goes on |
 | `BOOT SLOT` | the command line has `bootstate=UUID=` and `/bin/kdos-bootctl` is carried | the `root=` of the command line is kept; the stage closes as passed |
-| `VOLUME GROUPS` | `root=UUID=` or `cryptdevice=` is given and `blkid` reports physical volumes not yet activated | the stage is marked failed and the boot goes on |
+| `VOLUME GROUPS` | `root=UUID=` or `cryptdevice=` is given, `lvm` is carried, and `blkid` reports physical volumes not yet activated | the stage is marked failed and the boot goes on |
 | `UNLOCKING` | `cryptdevice=` is set | rescue shell: `Failed to unlock …` |
 | `ROOT DEVICE` | `root=UUID=` is set | rescue shell: `Disk boot failed: no root at UUID=… with /sbin/init on it` |
 | `MOUNTING ROOT` | the root was found | the same rescue shell, when `/sbin/init` is not on what was mounted |
@@ -170,7 +170,8 @@ loads `vfat`, waits up to ten seconds for that ESP, and mounts it at `/esp`. Two
 to `kdos-bootctl`, both against `/esp/EFI/kdos/bootstate`:
 
 1. `select`, given the entry's `kdos_slot=` when it has one, prints the filesystem UUID to boot and
-   counts the attempt in the state file. Its messages go to the console.
+   counts the attempt in the state file. When its decision moves the next boot, it also rewrites
+   the boot menu on the ESP. Its messages go to the console.
 2. `crypt <uuid>` prints the LUKS container that filesystem is inside, if it is in one.
 
 The ESP is unmounted at once. A UUID from `select` replaces `ROOT_UUID`, and a container from
@@ -223,8 +224,8 @@ has settled already, and on most machines it succeeds.
 
 <!-- kfs:include script/phases/70_image/090_initramfs.sh lines=903-949 pin=33b3fa389272 -->
 
-The filesystem type is read with `blkid -o value -s TYPE`. An ext2, ext3 or ext4 root is checked
-with `e2fsck -p`, which repairs what is safe to repair without asking. An exit status of 4 or more
+The filesystem type is read with `blkid -o value -s TYPE`. When the initramfs carries `e2fsck`, an
+ext2, ext3 or ext4 root is checked with `e2fsck -p`, which repairs what is safe to repair without asking. An exit status of 4 or more
 means errors were left; the script prints the status, shows
 `ROOT FILESYSTEM HAS ERRORS - RUN e2fsck` on the splash and mounts the root anyway. The reasons are
 in [Checking the root](../../kdos/03-architecture/boot-and-init.md#checking-the-root).

@@ -11,10 +11,14 @@ library `libnghttp2`. The upstream project also ships programs built on it, the 
 ## Flags
 
 - `--enable-lib-only` — upstream's shorthand for `--disable-app --disable-examples
-  --disable-hpack-tools`: build `libnghttp2` and nothing else. Upstream's configure builds the
-  programs only when it finds zlib, OpenSSL, libev and c-ares together; libev is not a port in this
-  tree, so without the switch they would be skipped anyway, and with it the result does not depend
-  on what configure happens to find.
+  --disable-hpack-tools`: build `libnghttp2` and nothing else, and look for none of the libraries
+  the programs need. Without it, configure builds each group of programs when it finds that
+  group's libraries: `nghttp`, `nghttpd`, `nghttpx` and `h2load` need zlib, OpenSSL, libev and
+  c-ares together, the HPACK tools `inflatehd` and `deflatehd` need [jansson](#port-jansson), and
+  the examples, which are never installed, need OpenSSL and [libevent](#port-libevent). libev is
+  not a port, so the four programs would be skipped anyway; jansson and libevent are ports of
+  `41_system`, a later phase, so a rebuild on a finished tree would install the two HPACK tools.
+  With the switch the package is the same whatever configure would find.
 
 ## Notes
 

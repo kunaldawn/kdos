@@ -6,7 +6,7 @@ C64 DTV, the C128, the VIC-20, the Plus/4, the PET and the CBM-II, each as its o
 [sdl2-compat](#port-sdl2-compat) on SDL 3's Wayland driver, whose menus are drawn inside the
 emulated screen. The machines' ROMs are installed with the emulators; they are one of the
 exemptions in
-[What is built from source](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#what-is-built-from-source).
+[What is built from source](../../../../docs/kdos/05-developer/writing-ports.md#what-is-built-from-source).
 
 ## Flags
 
@@ -18,15 +18,16 @@ exemptions in
   would put an X11 child window under its OpenGL view.
 - `--with-sdlsound` — This switch and `--with-alsa`, `--with-pulse`, `--with-flac`, `--with-vorbis`,
   `--with-mpg123`, `--with-lame`, `--with-png`, `--with-gif`, `--with-resid` and `--with-fastsid`
-  name every sound path and codec. Some, FLAC among them, are off unless named, and configure
-  leaves out any it cannot find without an error. Between them they are sound through SDL, ALSA
-  or PulseAudio (served by pipewire-pulse), FLAC, Ogg Vorbis and mpg123 for the sampler and tape
-  formats, LAME for MP3 recording, PNG and GIF screenshots, and the reSID and FastSID sound chip
-  engines.
+  name every sound path and codec. Some, FLAC among them, are off unless named, and a named
+  library configure cannot find stops it with an error. Between them they are sound through SDL,
+  ALSA or PulseAudio (served by pipewire-pulse), FLAC and Ogg Vorbis for recording sound and, with
+  mpg123, for the audio files the sampler reads, LAME for MP3 recording, PNG and GIF screenshots,
+  and the reSID and FastSID sound chip engines.
 - `--without-oss` — No OSS sound. OSS is not on this system.
-- `--without-libcurl` — libcurl serves only the WIC64, a cartridge that reaches the internet.
-- `--without-portaudio` — PortAudio is a second route to the capture device that ALSA already
-  reaches.
+- `--without-libcurl` — libcurl serves only the WIC64, a userport Wi-Fi module that reaches the
+  internet. configure's default is on, and stops with an error when libcurl is missing.
+- `--without-portaudio` — No PortAudio, the sampler's only live input from the host's capture
+  device; the sampler reads audio files only. VICE's ALSA driver is sound output alone.
 - `--enable-midi` — MIDI through the ALSA sequencer.
 - `--disable-realdevice` — No access to real Commodore peripherals through OpenCBM, which needs a
   device this image does not carry.

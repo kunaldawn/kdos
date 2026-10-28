@@ -19,8 +19,8 @@ toolkit is linked.
   any compositor.
 - `-DUSE_FFMPEG=ON` — With `-DUSE_SYSTEM_FFMPEG=ON`: the decoding behind the PSP's video
   playback (`MediaEngine`), through the [ffmpeg](#port-ffmpeg) port. Without `USE_SYSTEM_FFMPEG`,
-  upstream links the libraries under its `ffmpeg/<platform>/lib`, which its own scripts in `ffmpeg/` build from an FFmpeg copy in the
-  archive and which the release archive leaves empty.
+  upstream links the libraries under its `ffmpeg/<platform>/lib`, which its own scripts in
+  `ffmpeg/` build from an FFmpeg copy in the archive and which the release archive leaves empty.
 - `-DUSE_SYSTEM_LIBSDL2=ON` — With `-DUSE_SYSTEM_LIBPNG=ON`, `-DUSE_SYSTEM_LIBZIP=ON`,
   `-DUSE_SYSTEM_ZSTD=ON`, `-DUSE_SYSTEM_RAPIDJSON=ON` and `-DUSE_SYSTEM_FREETYPE=ON`: links the
   tree's SDL, libpng, libzip, zstd, RapidJSON and FreeType. All but SDL have a copy under `ext/`
@@ -49,7 +49,7 @@ so no header of a library compiled from `ext/` can reach the package beside the 
 
 `build.sh` deletes every interface translation in `/usr/share/ppsspp/assets/lang` but `en_US.ini`.
 These `.ini` files are not message catalogs, so the package-wide English-only rule (see
-[Size and language policy](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#size-and-language-policy))
+[Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy))
 does not reach them; PPSSPP falls back to `en_US` for every string.
 
 Upstream's desktop entry is replaced. Its `StartupWMClass` names an identifier the SDL front end

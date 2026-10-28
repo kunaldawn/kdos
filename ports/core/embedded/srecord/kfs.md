@@ -16,14 +16,15 @@ linker's output and what a programmer or bootloader accepts.
   libgcrypt digest filters (MD5, RIPEMD-160, the SHA family and Whirlpool); set outright, they turn
   a missing libgcrypt into a compile error instead of an `srec_cat` without those filters.
 - `make srec_cat srec_cmp srec_info srecord` — The three programs by name instead of `all`. The
-  `doc` directory is part of every build, and its targets, which `all` includes, run groff, a2ps and
-  a TeX chain to make HTML and PDF manuals; none of those tools is in this port's `depends`.
+  `doc` directory is part of every build, and its targets, which `all` includes, run groff and
+  ps2pdf to make HTML pages and PDF manuals; neither groff nor Ghostscript is in this port's
+  `depends`. `all` also holds the library's `doxygen` target, which runs Doxygen over its headers.
   `srecord` matches no target: make takes it for the build tree's `srecord` directory and does
   nothing for it.
 
 ## Patches
 
-- `build-fixes.patch` — Two changes. In `etc/configure.cmake`, `find_package(Doxygen REQUIRED doxygen dot)` loses its `dot` component, so graphviz is not required; it would only draw call and collaboration graphs into the API documentation, which is installed under a `website` component the port does not install. (Doxygen itself stays required, which is why [doxygen](#port-doxygen) is in `depends`.) In `srecord/input/file/hp64k.h`, it adds `#include <cstdint>`, because the header uses `uint16_t` without including anything that declares it, which the tree's GCC rejects.
+- `build-fixes.patch` — Two changes. In `etc/configure.cmake`, `find_package(Doxygen REQUIRED doxygen dot)` loses its `dot` component, so graphviz is not required; it would only draw call and collaboration graphs into the API documentation, which upstream installs under its `website` component and `build.sh` neither builds nor installs. (Doxygen itself stays required by configure, which is why [doxygen](#port-doxygen) is in `depends`.) In `srecord/input/file/hp64k.h`, it adds `#include <cstdint>`, because the header uses `uint16_t` without including anything that declares it, which the tree's GCC rejects.
 
 ## Notes
 

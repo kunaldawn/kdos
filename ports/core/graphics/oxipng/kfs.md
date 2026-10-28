@@ -21,9 +21,9 @@ nobody has to judge an acceptable loss of quality, as with the lossy
 
 The crates are not downloaded at build time. `ports/fetch` runs `cargo vendor` against the release
 and packs the result into `oxipng-vendor-<version>.tar.xz`, held by its `sha256 =` line like any
-other source (see [Vendoring](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#vendoring)).
-`xtask` is a crate of its own beside the main one and resolves against its own lock file, so the recipe's
-`vendorsync = xtask/Cargo.toml` makes `ports/fetch` pass that manifest to `cargo vendor --sync`
+other source (see [Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring)).
+`xtask` is a crate of its own beside the main one and resolves against its own lock file, so the
+recipe's `vendorsync = xtask/Cargo.toml` makes `ports/fetch` pass that manifest to `cargo vendor --sync`
 too, and the one bundle serves both `cargo` runs. Without it the offline `cargo run` fails on the
 first crate only the xtask needs. oxipng is the example the vendoring section uses for
-[`vendorsync`](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#where-the-bundle-goes).
+[`vendorsync`](../../../../docs/kdos/05-developer/writing-ports.md#where-the-bundle-goes).

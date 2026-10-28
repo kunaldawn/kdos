@@ -8,6 +8,10 @@ Many programs on the host that open a sound file go through it, among them
 `sndfile-convert`, `sndfile-play` and the rest.
 
 ## Flags
+- `-DCMAKE_POLICY_VERSION_MINIMUM=3.5` — the `CMakeLists.txt` declares
+  `cmake_minimum_required (VERSION 3.1..3.18)`. Two dots are not CMake's `...` range, so the floor
+  it reads is 3.1, which the tree's CMake 4 refuses (see
+  [An old CMake policy floor](../../../../docs/kdos/05-developer/build-troubleshooting.md#an-old-cmake-policy-floor)).
 - `-DENABLE_EXTERNAL_LIBS=ON` — FLAC, Ogg, Vorbis and Opus. Off, libsndfile compiles all four
   out, whatever is installed, and keeps only the formats and codecs built into it. It is upstream's default, named.
 - `-DENABLE_MPEG=ON` — MP3, read through [mpg123](#port-mpg123) and written through

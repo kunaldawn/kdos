@@ -1430,12 +1430,15 @@ int ktui_list(KRect r, KtuiList *st, int count, KtuiListRow row, void *user,
  *
  * Measured against the palette, `KT_TEXT` on `KT_DIM` is 8.30:1 in the worst
  * scheme and 10.22:1 in the best, so the label clears the 7:1 floor in every
- * accent; the marker clears 4.5:1 in every accent. The fill is quiet because
- * it is a fill, and the accent is spent on one cell that says where the caret
- * is.
+ * accent. KT_ACCENT on KT_DIM clears 4.5:1 in every scheme but `paper`, where
+ * it measures 3.68:1, so the focused marker is drawn in KT_TEXT wherever the
+ * live accent falls below 4.5:1 on the fill; ktui_sel_row() measures it on
+ * each draw. The fill is quiet because it is a fill, and the accent is spent
+ * on one cell that says where the caret is.
  *
- * THE MUTED COLOUR IS NOT LEGIBLE ON THE FILL — 2.18:1 to 3.43:1 measured
- * against the live palette, below any reading floor. A row with a secondary
+ * THE SECONDARY COLOURS ARE NOT LEGIBLE ON THE FILL — measured against the
+ * live palette, KT_MID on KT_DIM is 2.19:1 to 4.21:1 and kcol_muted() on it
+ * 2.77:1 to 3.38:1, below any reading floor. A row with a secondary
  * column in it (a tag, a two-letter code, a units suffix) must lift that
  * column when the row is selected; leaving it muted makes the right-hand half
  * of the row disappear exactly when somebody is looking at it. ktui_sel_dim()
@@ -1449,8 +1452,8 @@ int ktui_list(KRect r, KtuiList *st, int count, KtuiListRow row, void *user,
 void ktui_sel_slots(int selected, int pane_focused, int page, int *fg,
 		    int *bg);
 
-/* The colour a SECONDARY column takes on a row in that state — muted on a
- * page, KT_TEXT on the fill, because muted on the fill cannot be read. */
+/* The colour a SECONDARY column takes on a row in that state — KT_MID on a
+ * page, KT_TEXT on the fill, because KT_MID on the fill cannot be read. */
 int ktui_sel_dim(int selected, int pane_focused);
 
 /*
@@ -1469,7 +1472,7 @@ int ktui_check(int x, int y, int w, const char *label, int *val);
 int ktui_radio(int x, int y, int w, const char *label, int *val, int on);
 /* ── A VALUE ON A TRACK ──────────────────────────────────────────────
  *
- *     ◀ ███████░░░░░░  55 ▶
+ *     ◄ ██████■▒▒▒▒▒▒ ►  55
  *
  * DRAW / KEY / HIT, AND ONE FRAME CONTROL ON TOP OF THEM — the shape
  * ktui_dropdown_* has, and for its reason: a surface that runs an event loop
@@ -1502,7 +1505,7 @@ int ktui_slider(KRect r, int *val, int min, int max, int step,
  * FOR A SURFACE THAT RUNS ITS OWN EVENT LOOP AND DRAWS ITS OWN ROWS — a glyph
  * grid, a colour swatch, a file size. What such a surface is missing is not a
  * widget to draw but an answer to "which row is that, and what did they mean
- * by it", and eleven of them answered it by dropping every pointer event.
+ * by it", and a surface without one drops every pointer event.
  *
  * ONE RULE, AND IT IS `kdos-pick`'S: a press MOVES the caret, a press on the
  * row the caret is already on PICKS, the wheel walks, and the right button is

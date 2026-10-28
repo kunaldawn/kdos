@@ -235,7 +235,6 @@ cp /usr/lib/libzstd.so.1 lib/libzstd.so.1
 # a library.
 BOOTCTL=""
 [ -x /usr/bin/kdos-bootctl ] && BOOTCTL=/usr/bin/kdos-bootctl
-[ -z "$BOOTCTL" ] && [ -x /usr/bin/kdos-tools ] && BOOTCTL=/usr/bin/kdos-tools
 if [ -z "$BOOTCTL" ]; then
     echo "Note: kdos-bootctl not installed — no A/B slot selection at boot"
 elif [ ! -f /usr/lib/libpng16.so.16 ]; then
@@ -308,8 +307,9 @@ if [ -f /var/lib/kpkg/db/lvm2 ] || [ -f /usr/lib/udev/rules.d/95-dm-notify.rules
 
     # AND thin_check AND cache_check, for a root on a thin or a cached
     # volume. lvm runs the one that matches before it activates a thin pool
-    # or a cache and refuses the volume when it cannot, and lvm2 depends on
-    # thin-provisioning-tools, so a missing one is a broken install and stops
+    # or a cache and refuses the volume when it cannot, and 41_system's disk
+    # list installs thin-provisioning-tools beside lvm2 (it depends on lvm2,
+    # not the other way round), so a missing one is a broken install and stops
     # the build like a missing lvm does. Both names are argv[0] links to one
     # binary, pdata_tools, which is copied once with its libraries.
     #

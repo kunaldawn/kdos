@@ -22,7 +22,7 @@ source-file types.
   schemes, the help pages and the plugins with `go:embed`), then `build-quick`, which is `go build
   -trimpath -ldflags "-s -w …" ./cmd/micro`. The makefile passes `-s -w` itself, which the tree
   requires of every Go build (see
-  [go](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#go)). It
+  [go](../../../../docs/kdos/05-developer/writing-ports.md#go)). It
   names no `-mod=vendor`: Go uses the `vendor/` directory the bundle unpacks on its own, because
   `go.mod` declares a Go version from 1.14 on.
 - **The build date is the source date.** The makefile's `DATE` comes from `tools/build-date.go`,

@@ -5,10 +5,11 @@ system script directory, it replaces the built-in controller for every user of
 [mpv](#port-mpv); its `main.lua` sets `osc=no` itself.
 
 ## Notes
-- **ziggy is built here.** uosc's helper binary, `ziggy`, does the clipboard, the subtitle
-  search and download, HTTP requests and opening a path for the script. Upstream's release archive carries it prebuilt for
-  three systems; this port builds it from `src/ziggy` against the Go vendor bundle instead, and
-  does not build `src/tools`, upstream's packaging helper. Its clipboard code runs `wl-copy` and
+- **ziggy is built here.** uosc's helper binary, `ziggy`, does this work for the script: the
+  clipboard, the OpenSubtitles search and download, file downloads and other HTTP requests, and
+  opening a path or address in its default program. Upstream's release archive carries it
+  prebuilt for three systems; this port builds it from `src/ziggy` against the Go vendor bundle
+  instead, and does not build `src/tools`, upstream's packaging helper. Its clipboard code runs `wl-copy` and
   `wl-paste` when `WAYLAND_DISPLAY` is set, which is why [wl-clipboard](#port-wl-clipboard) is in
   `depends`.
 - **Where the files go.** The script tree goes to `/etc/mpv/scripts/uosc`, mpv's system script

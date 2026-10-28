@@ -7,9 +7,9 @@
  * ---------------------------------
  *   kdos-theme — the generators, in C
  *
- * These were gengtk.py, genicons.py and gencursors.py. They ran at build time
- * AND at runtime from `kdos theme`, which is what made python3 a dependency of
- * the shipped system for exactly two files.
+ * They run at build time AND at runtime from `kdos theme`, so they are C: a
+ * generator in any interpreted language makes that interpreter a dependency
+ * of the shipped system.
  *
  * Every one of them is the same shape: read vendored artwork, rewrite the
  * colours through libkcolor, write a theme. None of them parses SVG, CSS or

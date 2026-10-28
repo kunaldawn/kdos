@@ -13,7 +13,7 @@
  * The page registry, the sidebar, and what the frame does when it is narrow.
  *
  * DEGRADATION IS BY WIDTH AND NOTHING VANISHES WITHOUT A WAY BACK. The
- * sidebar is the first thing to go and `[`/`]` still cycle; below that F1
+ * sidebar is the first thing to go and `[`/`]` still cycle; below that F10
  * lists the pages as a modal. A control that disappears with no replacement
  * is how a narrow window becomes a window with no way out of the page it
  * opened on.
@@ -303,7 +303,7 @@ static int sidebar_width(int w)
 }
 
 /*
- * ONE TAB TABLE, BUILT FROM THE PAGE REGISTRY. The sidebar and the F1 modal
+ * ONE TAB TABLE, BUILT FROM THE PAGE REGISTRY. The sidebar and the F10 modal
  * are the same strip drawn in two places, and a second copy of the names is a
  * second answer to how many pages there are.
  */
@@ -327,7 +327,7 @@ static void draw_sidebar(int w, int top, int h)
 		       RP_NPAGES, g_page, g_hover, 1);
 }
 
-/* The F1 modal: the page list, for the band with no sidebar. */
+/* The F10 modal: the page list, for the band with no sidebar. */
 static void draw_modal(int w, int h)
 {
 	int mw = 28, mh = RP_NPAGES + 2;
@@ -351,12 +351,11 @@ static void draw_modal(int w, int h)
  * THE FRAME IS THE SAME BOX EVERY OTHER KDOS SURFACE DRAWS.
  *
  * kdos-net, kdos-start, kdos-settings, the launcher and the chooser all put a
- * double-line box round themselves and hang their title on its top edge; this
- * program drew a header band floating on bare background with a one-column
- * margin either side, which is what `kch_header` leaves ROOM for — it starts
- * at column 1 precisely because it expects a frame there. So kdos-res was the
- * one KDOS window with the gap and nothing in it, and beside every other
- * surface on the desktop it read as somebody else's program.
+ * double-line box round themselves and hang their title on its top edge, and
+ * `kch_header` starts at column 1 precisely because it expects a frame there.
+ * Without the box the header band floats on bare background with an empty
+ * column either side, and beside every other surface on the desktop the
+ * window reads as somebody else's program.
  *
  * The box takes column 0, column w-1 and row h-1; the header band already
  * fits between them, and the body gives up its last row to the bottom edge.
@@ -705,9 +704,8 @@ int res_frame_click(int mx, int my, int btn)
 	 * own row 0 is the column header, so handing it a screen row means
 	 * each page subtracting an origin the frame already knows — five
 	 * copies of one arithmetic, four of which are wrong the day the frame
-	 * grows a border. Which is exactly what happened: `res_procs_click`
-	 * tested `my <= 0` for the header row on a page whose first row was
-	 * four.
+	 * grows a border: a page testing `my <= 0` for its header row would
+	 * miss every header click on a body that starts at row four.
 	 */
 	if (RES_PAGES[g_page].click)
 		RES_PAGES[g_page].click(mx - g_body_x, my - g_body_y, btn);

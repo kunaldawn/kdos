@@ -27,8 +27,12 @@ gzip is configured in its source directory, as its own build expects.
 ## Contents of gzip
 
 **Installed programs:** [`gzip`]{.idx}, [`gunzip`]{.idx}, [`zcat`]{.idx}, [`uncompress`]{.idx}, [`gzexe`]{.idx}, [`zcmp`]{.idx}, [`zdiff`]{.idx},
-[`zegrep`]{.idx}, [`zfgrep`]{.idx}, [`zforce`]{.idx}, [`zgrep`]{.idx}, [`zless`]{.idx}, [`zmore`]{.idx} and [`znew`]{.idx}. Most of them are shell scripts
+[`zegrep`]{.idx}, [`zfgrep`]{.idx}, [`zforce`]{.idx}, [`zgrep`]{.idx}, [`zmore`]{.idx} and [`znew`]{.idx}. Most of them are shell scripts
 around `gzip`.
+
+`zless` and `zmore` are installed only when configure finds `less` and `more` on the `PATH` it runs
+with. Here that is the container's, whose busybox provides both, so `make install` puts both in
+the root. The step then deletes `/usr/bin/zless` and its manual page `zless.1`, and keeps `zmore`.
 
 The [gzip](#port-gzip) port's page describes each program.
 
@@ -36,7 +40,11 @@ The [gzip](#port-gzip) port's page describes each program.
 
 The [gzip](#port-gzip) port, in `30_foundation`, rebuilds it natively with `--prefix=/usr` alone,
 and kpkg adopts the files this step installed. Apart from the two switches of the cross build, the
-two builds are the same.
+two builds differ only where configure looks for `less` and `more`: the port's configure looks in
+the chroot, and installs `zless` or `zmore` only if that program is installed there when gzip is
+built. `less` is not, so the package carries no `zless`, and a `zless` left by this step would be
+adopted by no package (see [What the bootstrap leaves behind](intro.md#what-the-bootstrap-leaves-behind)).
+That is why the step deletes it. `zmore` is the one of the two left for the port to adopt.
 
 ## See also
 

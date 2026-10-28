@@ -21,4 +21,4 @@ for [freecad](#port-freecad), whose workbenches build and change the 3D view thr
 
 ## Patches
 
-- `swig-4.4-init.patch` — SWIG 4.4 generates a multi-phase module initialisation, whose exec function returns an `int`. The `%init` block in `interfaces/soqt.i` returns `NULL`, the failure value of a single-phase init, when the file emulator fails to start, and that code lands inside the `int` function. The patch gives it the `SWIG_VERSION` switch `coin.i` already has, returning `-1`, an exec function's failure value, under SWIG 4.4 and later. (`coin.i` returns `0` in the same place.)
+- `swig-4.4-init.patch` — SWIG 4.4 generates a multi-phase module initialisation, whose exec function returns an `int`. The `%init` block in `interfaces/soqt.i` returns `NULL`, the failure value of a single-phase init, when the file emulator fails to start, and that code lands inside the `int` function. The patch gives it the `SWIG_VERSION` switch `coin.i` already has, returning `-1`, an exec function's failure value, under SWIG 4.4 and later. Under SWIG 4.4 `coin.i`'s own switch returns `0`, an exec function's success value, in the same place; the patch leaves `coin.i` as it is.

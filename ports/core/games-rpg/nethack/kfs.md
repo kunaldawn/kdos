@@ -8,7 +8,8 @@ and no score file shared between players.
 NetHack has no `configure`. `sys/unix/setup.sh` splices a hints file into each generated
 `Makefile`, so the hints file that `build.sh` writes to `sys/unix/hints/kdos` is the port's whole
 configuration. Assignments in its `#-PRE` segment land before the stock Makefile body and lose to
-anything the body assigns, which is why `LIBS` is set in the `#-POST` segment instead.
+anything the body assigns; `util/Makefile`'s body sets `LIBS` empty, which is why `LIBS` is set in
+the `#-POST` segment instead.
 
 ## Flags
 
@@ -40,8 +41,10 @@ anything the body assigns, which is why `LIBS` is set in the `#-POST` segment in
 - `-DCONFIG_ERROR_SECURE=FALSE` — Report every error in a configuration file, with line numbers
   and context. The default, `TRUE`, shows only the first error when `NETHACKOPTIONS` points the
   game at a file.
-- `-DNOCRASHREPORT` — Build no crash reporter. On Linux `config.h` otherwise compiles in
-  `/usr/bin/xdg-open` as the helper that opens a browser on a panic, and the image does not ship it.
+- `-DNOCRASHREPORT` — Build no crash reporter. On Linux `config.h` otherwise compiles one in that,
+  on a panic, runs `/usr/bin/xdg-open` to open a browser on the bug-report page `sysconf` names in
+  `CRASHREPORTURL`, and turns on `NOSTATICFN`, which drops `static` from the game's internal
+  functions. The shipped `sysconf` names no such page, so the reporter would never open one.
 - `-DSELF_RECOVER` — Let the game itself offer to recover an interrupted game when it finds that
   character's lock and level files. Without it the player is told only to destroy the old game or
   quit, and `nethack-recover` is the one way back.
@@ -50,7 +53,8 @@ anything the body assigns, which is why `LIBS` is set in the `#-POST` segment in
 - `LUA_VERSION` — Passed to both `make` lines, so the directory the Makefiles look under,
   `lib/lua-<version>`, and the Lua release the recipe pins are the same version.
 - `WINLIB` — `-lncursesw` alone. The [ncurses](#port-ncurses) port is built wide-character and
-  without `--with-termlib`, so there is no `libtinfo` to link and no narrow `libncurses`.
+  without `--with-termlib`, so there is no `libtinfo` to link, and its `libncurses.so` is only a
+  link to `libncursesw.so`.
 - `CHOWN`, `CHGRP` — `true`, so the install changes no owner or group: the game runs as the player,
   and every file it writes belongs to the player.
 
@@ -60,9 +64,9 @@ The game is linked against a static Lua built from `lib/lua-<version>/src`, a tr
 archive does not carry (upstream's `make fetch-lua` downloads it). The recipe's second source is
 that Lua release, and `build.sh` copies it into `lib/` before the build.
 
-`hacklib.a` is built first, on its own: `src/` and `util/` both archive it, and under a parallel
-make the two runs of `ar` can meet and leave an archive with no index, which fails the link of
-`makedefs`. `make install` then builds Lua, the game, `recover`, the data files and the DLB
+`hacklib.a` is built first, on its own: `src/Makefile` builds it, and so does `util/Makefile`, by
+running a second `make hacklib.a` in `src/`. Under a parallel make the two runs of `ar` can meet
+and leave an archive with no index, which fails the link of `makedefs`. `make install` then builds Lua, the game, `recover`, the data files and the DLB
 archive; `make all` is not run because it also builds the Guidebook, which needs `nroff`, `tbl`
 and `col`.
 
@@ -77,8 +81,8 @@ game locks but opens without `O_CREAT`, links `nhdat`, `license` and `symbols` f
 `recover` from the same directory.
 
 For the same reason the binaries move out of `HACKDIR` into `/usr/libexec/nethack`, and the score
-file, logs and lock that `make install` seeds there are deleted: they are per-player state, and
-shipped in a read-only directory they would be files nobody may write.
+file, logs, lock and empty `save/` that `make install` seeds there are deleted: they are
+per-player state, and shipped in a read-only directory they would be files nobody may write.
 
 The shipped `sysconf` sets `WIZARDS=*` and `EXPLORERS=*`, opening debug and explore mode to every
 player: with no shared playground and no privileged binary, such a game can only rewrite files

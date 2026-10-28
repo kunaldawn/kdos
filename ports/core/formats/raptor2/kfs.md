@@ -5,8 +5,9 @@ and other syntaxes, and installs the `rapper` command-line converter. It is in t
 [lrdf](#port-lrdf), the library audio programs use to read the RDF descriptions of LADSPA plugins.
 
 ## Flags
-- `--with-www=none` — Build with no WWW library, so Raptor never fetches a URI itself and parses
-  only what its caller hands it. Upstream's default is libcurl.
+- `--with-www=none` — Build with no WWW library, so Raptor reads only `file:` URIs itself; a
+  document at any other address has to be fetched by its caller and handed over. Upstream's
+  default is libcurl.
 - `--enable-parsers="rdfxml ntriples turtle trig guess rss-tag-soup rdfa nquads json"` — Build these
   parsers: every one upstream offers except GRDDL, which needs libxslt. Named as a list, the set
   does not change with what happens to be installed: left at its default, configure adds GRDDL

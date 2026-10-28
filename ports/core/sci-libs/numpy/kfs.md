@@ -12,7 +12,7 @@ goes to [openblas](#port-openblas).
 - `export CFLAGS="${CFLAGS/-O2/-O3}" CXXFLAGS="${CXXFLAGS/-O2/-O3}"` — Compile at `-O3`. meson's
   release optimisation is `-O3`, but meson puts the exported `CFLAGS` after its own, so the tree's
   `-O2` would win; this is the form
-  [Every port](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#every-port) gives for a hot
+  [Every port](../../../../docs/kdos/05-developer/writing-ports.md#every-port) gives for a hot
   port.
 - `--no-build-isolation` — Build with the meson-python, Cython and setuptools already in the build
   root rather than ones pip would fetch into a temporary environment; the build has no network.
@@ -21,7 +21,7 @@ goes to [openblas](#port-openblas).
   import on an older processor. The faster code paths are not lost: `cpu-dispatch` stays at its
   default `max`, so NumPy still compiles its SIMD kernels for every newer level and picks among
   them at run time. This is the rule in
-  [Every port](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#every-port).
+  [Every port](../../../../docs/kdos/05-developer/writing-ports.md#every-port).
 - `-Csetup-args=-Dblas=openblas`, `-Csetup-args=-Dlapack=openblas` — Link
   [openblas](#port-openblas) for BLAS and LAPACK by name, instead of taking whichever library
   NumPy's search order finds first.

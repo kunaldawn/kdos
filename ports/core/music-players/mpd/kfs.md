@@ -5,7 +5,7 @@ queue and drives the sound card, and separate client programs such as [rmpc](#po
 to its socket to control it. The port ships no configuration file. The login session starts mpd
 only when a configuration exists in one of the places mpd itself reads, and then starts the
 panel's now-playing watcher beside it; the media keys reach it through `kdos-mpctl`, described in
-[kdos-mpctl](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/kdos-command.md#kdos-mpctl).
+[kdos-mpctl](../../../../docs/kdos/04-programs/kdos-command.md#kdos-mpctl).
 
 Every feature option is named on or off. A meson feature option left at its default is `auto`, which
 builds the plugin when its library happens to be in the build root, so naming each one keeps the
@@ -13,13 +13,17 @@ plugin set the same on every build and turns a missing library into a failed con
 
 ## Flags
 
+- `--wrap-mode=nofallback` — never build a dependency from the wrap files in `subprojects/`
+  (fmt, curl, expat, SQLite and others), which would download its source. A library missing from
+  the build root fails the configure instead.
 - `-Dpipewire=enabled` — The PipeWire output plugin, the sound server of the session.
 - `-Dalsa=enabled` — The ALSA output plugin, for a configuration that writes to a card directly.
 - `-Djack=enabled` — The JACK output plugin. No JACK port exists; it builds against the
   `libjack` and `jack.pc` that [pipewire](#port-pipewire) installs with `-Dpipewire-jack=enabled`
   and `-Djack-devel=true`, so its output goes to PipeWire's JACK graph.
-- `-Dpulse=disabled` — The PulseAudio output plugin. PulseAudio is not a port; PipeWire is reached
-  through its own plugin.
+- `-Dpulse=disabled` — The PulseAudio output plugin. Its client library, [libpulse](#port-libpulse),
+  is a port but not in `depends`; the PulseAudio server on KDOS is PipeWire's, which the PipeWire
+  plugin reaches directly.
 - `-Dsndio=disabled`, `-Doss=disabled`, `-Dsolaris_output=disabled` — Output plugins for sndio,
   which is not a port, for OSS, and for Solaris `/dev/audio`.
 - `-Dao=disabled`, `-Dopenal=disabled` — The libao and OpenAL output plugins. Both libraries are
@@ -56,6 +60,9 @@ plugin set the same on every build and turns a missing library into a failed con
 - `-Diconv=disabled` — The `iconv()` conversion path. mpd's build reads this option only when ICU
   is absent, so with ICU enabled it has no effect.
 - `-Dpcre=enabled` — Regular expressions in filter expressions, through [pcre2](#port-pcre2).
+- `-Dexpat=enabled` — XML parsing through [expat](#port-expat), which the XSPF, ASX and RSS
+  playlist plugins need.
+- `-Dzlib=enabled` — Gzip compression of the database file, through [zlib](#port-zlib).
 - `-Dbzip2=disabled`, `-Dzzip=disabled` — The bzip2 and ZIP archive plugins, which read music from
   inside an archive. Both libraries are ports but not in `depends`.
 - `-Diso9660=enabled`, `-Dcdio_paranoia=enabled` — Reading music from ISO 9660 images and audio
@@ -72,10 +79,11 @@ plugin set the same on every build and turns a missing library into a failed con
   that needs. The daemon talks to no bus.
 - `-Dzeroconf=disabled` — Announcing the daemon on the network over Avahi or Bonjour.
 - `-Dio_uring=enabled` — Read files through io_uring, with [liburing](#port-liburing).
-- `-Dsyslog=enabled` — Logging to syslog, chosen by `log_file "syslog"` in `mpd.conf` and taken
-  when the file names no `log_file` at all.
+- `-Dsyslog=enabled` — Logging to syslog, chosen by `log_file "syslog"` in `mpd.conf`. A
+  configuration with no `log_file` line does not log to syslog: mpd writes its log to standard
+  error, and points that at `/dev/null` once it has started, unless it runs with `--stderr`.
 - `-Dsystemd=disabled` — No systemd unit files and no socket activation; KDOS has no systemd
-  ([principles](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd)).
+  ([principles](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)).
 - `-Ddocumentation=enabled` — Build the documentation with Sphinx, from
   [python3-sphinx](#port-python3-sphinx) in `depends`. As `enabled` rather than `auto`, a missing
   `sphinx-build` fails the configure instead of silently dropping the manual pages.

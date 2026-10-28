@@ -6,7 +6,7 @@ devices; seatd opens them on behalf of an unprivileged compositor and takes them
 session switches away. On other distributions systemd-logind does this. KDOS has no logind or
 elogind, so the compositor, `kdos-comp`, reaches the display through libseat and seatd: the
 [wlroots](#port-wlroots) port depends on this one. See
-[What kdos-desktop does](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/session.md#what-kdos-desktop-does).
+[What kdos-desktop does](../../../../docs/kdos/03-architecture/session.md#what-kdos-desktop-does).
 
 `/etc/init.d/45_seatd.sh` starts it at boot under the supervisor as `seatd -g seat`, so members of
 the `seat` group can take the seat without root. The installer keeps the desktop account in that

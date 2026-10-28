@@ -42,7 +42,10 @@ out:
 
 `repo`, `include`, `exclude` and `password-file` are the keys, described in
 [`~/.config/kdos/backup.conf`](../../kdos/06-reference/configuration.md#configkdosbackupconf).
-The paths become separate arguments, so a directory with a space in its name is one path.
+The paths become separate arguments, so a directory with a space in its name is one path. No
+shell reads them either, so `~` and `$HOME` are not expanded: write each path in full. `#` starts
+a comment anywhere on a line, so a path containing one is cut short there. `include` and `exclude`
+may each appear eight times; a ninth line of either is ignored without a message.
 
 **`~/.config/kdos/backup.pass`** is not shipped. It holds the repository's password and nothing
 else, and must be mode 0600: `kdos-backup` refuses to run while any group or other permission bit
@@ -57,14 +60,15 @@ is set on it. A different file can be named with `password-file`.
 **What `--once` runs**, from `src/desktop/kdos-shell/backup.c`. It reads the two files, refuses
 before starting restic if either is missing or unsafe, and waits for restic to finish:
 
-<!-- kfs:include src/desktop/kdos-shell/backup.c lines=936-983 pin=166d90508f24 -->
+<!-- kfs:include src/desktop/kdos-shell/backup.c lines=951-998 pin=5ef77426b44c -->
 
-It exits 0 when restic succeeded and 1 for any failure, including a missing `repo` or `include`.
-The checks run in that order: `repo`, then the password file, then `include`. A refusal before
-restic starts is printed. restic runs with `kdos-backup`'s own standard output and standard error,
-so its summary and its errors are printed where `--once` was run, and a failure inside restic adds
-`kdos-backup: restic exited N` with restic's status: 10 for a repository that does not exist, 12
-for a wrong password, 3 for a snapshot made with some files unread.
+It exits 0 when restic succeeded, 2 for an option it does not know, and 1 for any other failure,
+including a missing `repo` or `include`. The checks run in that order: that `backup.conf` exists,
+then `repo`, then the password file, then `include`. A refusal before restic starts is printed.
+restic runs with `kdos-backup`'s own standard output and standard error, so its summary and its errors are printed where `--once` was run, and a failure inside restic adds
+`kdos-backup: restic exited N` with restic's status: 10 for a repository that does not exist, 11
+for a repository another restic has locked, 12 for a wrong password, 3 for a snapshot made with
+some files unread.
 
 ## Usage
 
@@ -74,9 +78,14 @@ the repository on another disk. See [`kdos persist`](../../kdos/04-programs/kdos
 
 ### Setting up kdos-backup
 
-1. Create the repository. restic asks for a new password twice and stores it nowhere:
+1. Create the repository in a directory you can write. A repository on the disk it protects is
+   lost with that disk, so keep it on another one where you can; see
+   [Backing up to a USB disk](#backing-up-to-a-usb-disk). This example uses `/srv/backup`; the
+   image has no `/srv` and only root may create one, so the first command makes the directory as
+   root and gives it to you. restic asks for a new password twice and stores it nowhere:
 
    ```bash
+   sudo install -d -o "$USER" /srv/backup
    restic -r /srv/backup/restic init
    ```
 
@@ -118,7 +127,8 @@ what changed.
    kdos-mount mount 0
    ```
 
-   It is mounted at `/media/<user>/backup`.
+   `list` numbers the disks in its first column; give `mount` the disk's number. It is mounted at
+   `/media/<user>/backup`, and the filesystem's top directory is made yours.
 
 3. Create the repository there with `restic -r /media/$USER/backup/restic init` and set `repo` in
    `backup.conf` to that path.
@@ -176,9 +186,9 @@ restic $R forget --keep-daily 7 --keep-weekly 5 --keep-monthly 12 --prune
 
 ### Backing up the system's own files
 
-`kdos-backup` runs as you and reads what you can read, which leaves out most of `/etc` and every
-other account's files. A backup of the system's own files runs as root, from the system's timer
-table. The image ships no such job; this is an example of one. Make the repository and its
+`kdos-backup` runs as you and reads what you can read, which leaves out the files in `/etc` that
+only root may read, such as `/etc/shadow` and `/etc/sudoers`, and every other account's files. A
+backup of the system's own files runs as root, from the system's timer table. The image ships no such job; this is an example of one. Make the repository and its
 password file first, as root, then add a file such as [`/etc/kdos/timers.d/40-etc-backup.timer`]{.idx}:
 
 ```text
@@ -189,7 +199,7 @@ The line is a list of words, not a shell command; `--no-cache` keeps restic from
 directory for its cache. Start it with `sudo service restart timers`; it runs as the service
 `kdos-timer-etc-backup`, which `ksvc check kdos-timer-etc-backup` reports on
 (`[ OK ] kdos-timer-etc-backup  (pid …)` while `snooze` waits for the slot). The format of the
-line is on [Timers](timers.md).
+line is in [The line](timers.md#the-line).
 
 ### Imaging a whole filesystem
 
@@ -212,14 +222,17 @@ rest. The root cannot be imaged while it is mounted; boot the live medium to ima
   it, the repository cannot be read.
 - On an encrypted root, keep a copy of the LUKS header too; see
   [Encrypted root](encrypted-root.md#keeping-a-copy-of-the-header).
-- restic reads the `include` and `exclude` paths as given. Exclude large caches and the container
-  store, as the commented lines in `backup.conf` show, or the first backup copies them.
+- Exclude large caches and the container store, as the commented lines in `backup.conf` show, or
+  the first backup copies them.
 - A second root slot lets an update be rolled back; it is not a copy of your files. See
   [A/B slots and rollback](ab-slots-and-rollback.md).
 - `kdos clone` copies the live medium itself to another stick; see
   [`kdos clone`](../../kdos/04-programs/kdos-command.md#kdos-clone).
 
 ## Troubleshooting
+
+**`no ~/.config/kdos/backup.conf — name a repository and what goes in it`** (with your home
+written out). The file is missing or empty; copy it back from `/etc/skel/.config/kdos/backup.conf`.
 
 **`kdos-backup` says ``backup.conf names no `repo` ``, or `--once` prints `backup.conf names no repo`.**
 `repo` is still commented out in `~/.config/kdos/backup.conf`. Uncomment it.
@@ -231,14 +244,27 @@ password file first, so this message appears only once the password file is righ
 or carries a group or other permission bit. Create it, or run `chmod 600 ~/.config/kdos/backup.pass`,
 and check that the file named by `password-file`, if set, is the one you mean.
 
-**`restic answered nothing — is <repo> a repository?`, or restic says there is no repository at the
-location, or `--once` prints `restic exited 10`.** The path in `repo` is not a restic repository:
-a USB disk that is not mounted, a mistyped path, or a repository never made with `restic init`.
-restic's own line, which `--once` prints above its status, is `Fatal: repository does not exist:
-unable to open config file`.
+**The window shows a line from restic instead of the snapshot list.** When restic refuses to list
+the snapshots, the window shows the first line restic wrote to its error output, such as
+`Fatal: repository does not exist: unable to open config file` or `Fatal: wrong password or no
+key found`. Look for that line in the entries below; `kdos-backup --once` in a terminal prints the
+same message with restic's exit code.
 
-**restic reports `Fatal: wrong password or no key found`.** The password file does not hold the
-repository's password. The file must hold the password and nothing else.
+**The window says `restic answered nothing — is <repo> a repository?`.** restic printed nothing at
+all, neither a snapshot list nor an error. Check that `restic` is installed and that `repo` names
+the path you mean, then run `kdos-backup --once` in a terminal to see how restic exits.
+
+**`--once` prints `restic exited 10`, after restic's `Fatal: repository does not exist: unable to
+open config file`.** The path in `repo` is not a restic repository: a USB disk that is not
+mounted, a mistyped path, or a repository never made with `restic init`.
+
+**`--once` prints `restic exited 12`, after restic's `Fatal: wrong password or no key found`.** The
+password file does not hold the repository's password. The file must hold the password and nothing
+else.
+
+**`--once` prints `restic exited 11`.** Another restic holds the repository's lock: a backup or
+restore still running, or one that was killed. When none is running, `restic -r <repo>
+--password-file ~/.config/kdos/backup.pass unlock` removes a stale lock.
 
 **The nightly backup never seems to run.** Check that the line in
 `~/.config/kdos/timers.d/10-backup.timer` is uncommented, that you have logged in since the machine
@@ -251,6 +277,8 @@ See [Timers](timers.md).
   Déjà Dup among them
 - [Features whose library has no port](../../kdos/06-reference/known-gaps.md#features-whose-library-has-no-port):
   Déjà Dup cannot restore a Duplicity backup
+- [A saved login needs KeePassXC running](../../kdos/06-reference/known-gaps.md#a-saved-login-needs-keepassxc-running):
+  Déjà Dup keeps its passphrase through the Secret Service
 
 ## See also
 

@@ -17,9 +17,10 @@ runs it:
 `OUT` is where the program goes, `build/.kdosbuild` unless `KDOSBUILD_BIN` says otherwise. `LIBS`
 are the five libraries it is built from, each compiled in with its sources rather than linked as a
 library, so the program needs nothing but the C library to run. `libkpkg` is among them because
-kdosbuild asks kpkg's own code, on the host side, whether a port is installed and current.
+kdosbuild uses kpkg's own code, on the host side, to find ports by name and to ask whether a port is
+installed and current.
 
-<!-- kfs:include script/kdosbuild.sh lines=70-90 pin=5d7f28d44218 -->
+<!-- kfs:include script/kdosbuild.sh lines=71-91 pin=5d7f28d44218 -->
 
 The hash in `SUM` covers the compiler's name, the flags, the compiler's target and version, and every
 `.c` and `.h` file of the program and its libraries. The program is compiled again only when that
@@ -66,7 +67,8 @@ A phase holds one of two things, and that decides how it runs:
 phase.
 
 **A package phase** holds a list of ports, either one [`packages.txt`]{.idx} or a directory `packages.d/`
-of lists, one per shelf. kdosbuild hands the whole list to `kpkgdepends` inside the chroot, which
+of lists, a file for each shelf, read in sorted order as one list; see
+[Package lists](../../kdos/05-developer/build-system.md#package-lists). kdosbuild hands the whole list to `kpkgdepends` inside the chroot, which
 prints the install order of every named port together with everything it depends on, and makes
 each port in that order a step:
 
@@ -103,11 +105,13 @@ the right, and graphs of processor, memory and output above the keys.
 [The build screen](../../kdos/05-developer/build-system.md#the-build-screen) explains each part.
 
 Without a terminal there is no picker and no screen: kdosbuild prints one plain line per event, so
-a build can be sent to a file. Name the starting point on the command line, because nothing can
-ask:
+a build can be sent to a file. `make build` gives the container a terminal whenever its own
+standard input is one, so redirecting only the output from an interactive shell would still draw
+the full screen into the file. Ask for plain lines with `--plain`, and name the starting point on
+the command line, because nothing can ask:
 
 ```bash
-make build BUILD_ARGS=--fresh > build.log 2>&1
+make build BUILD_ARGS="--fresh --plain" > build.log 2>&1
 ```
 
 `--fresh` skips the picker and runs every phase on the existing tree. It does not empty the tree:
@@ -221,7 +225,9 @@ order before the next level starts; see
 ## When a step fails
 
 A step that exits with a non-zero status stops the build, and the screen opens a failure panel on
-it. The step's full log is at `build/logs/<phase>/<NNNN>_<name>.log`. With the fix made, the
+it. The step's full log is at `build/logs/<phase>/<NNNN>_<name>.log`, where `<name>` is a script's
+file name or a port's name followed by `.install`, as in `0000_binutils.sh.log`; see
+[logs](build-tree.md#logs-one-file-per-step). With the fix made, the
 failure panel can run the failed phase again in the same run; see
 [Retrying a failed phase](../../kdos/05-developer/build-system.md#retrying-a-failed-phase). From the
 command line, and without a terminal, the same is `--continue-from` with the failed phase. What

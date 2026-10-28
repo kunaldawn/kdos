@@ -12,6 +12,10 @@ poppler, imagemagick, gimp, gdk-pixbuf and Qt's image-format plugins link it.
   missing. Every codec option defaults to whether its library was found, and even set to `ON` it
   takes effect only when the search succeeded. The requirements turn a missing library into an
   error instead of a libtiff that quietly reads fewer kinds of file.
+- `-DCMAKE_C_FLAGS_RELEASE="$CFLAGS -DNDEBUG"` — Replace CMake's Release flags, `-O3 -DNDEBUG`,
+  with the tree's `CFLAGS` and `-DNDEBUG`; `-DCMAKE_CXX_FLAGS_RELEASE` does the same from
+  `CXXFLAGS` for the C++ library, `libtiffxx`. CMake puts the Release flags after `CFLAGS` on every
+  compile, so its `-O3` would otherwise override the tree's `-O2`.
 - `-Dzlib=ON` — Deflate (ZIP) compression, through zlib.
 - `-Dpixarlog=ON` — Pixar's log-encoded compression, which also needs zlib.
 - `-Dlibdeflate=ON` — Use [libdeflate](#port-libdeflate) for faster Deflate coding; zlib is still

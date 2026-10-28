@@ -7,7 +7,7 @@
  * ---------------------------------
  *   kdos update — a newer recipe tree, and the packages it pins, built here
  *
- *   kdos update check     what is installed, against what the ports tree pins
+ *   kdos update check     installed packages older than their recipe
  *   kdos update fetch     replace /ports with the newest signed recipe tree
  *   kdos update apply     build what is behind from source; A/B aware
  *   kdos update theme     re-run the generators for $HOME after an art upgrade
@@ -16,18 +16,21 @@
  *
  * A recipe pins its version, so what is newer arrives with the PORTS TREE and
  * nowhere else. Every image carries the recipe-only tree at /ports — each
- * `kpkgbuild`, `build.sh` and patch, `shelves`, `sources.idx` and our own
- * programs under `src/`, and no source tarball. So an update is two steps:
+ * `kpkgbuild`, `build.sh` and patch, `shelves`, `sources.idx`, our own
+ * programs under `src/`, the two books under `docs/` and their renderer
+ * under `script/book`, and no source tarball. So an update is two steps:
  *
  *   fetch   a newer tree arrives over the network as one signed tarball, is
  *           verified against /etc/kdos/keys/tree, and replaces /ports whole
  *   apply   every package whose recipe now pins something newer is BUILT ON
- *           THIS MACHINE; kpkg downloads each source as it goes (the
- *           sources-<N> archive first, then upstream) and checks it against
- *           the recipe's sha256
+ *           THIS MACHINE; kpkg fetches every behind package's source before
+ *           the first build (the sources-<N> archive first, then upstream)
+ *           and checks it against the recipe's sha256, and a dependency the
+ *           new tree adds has its source fetched when the build reaches it
  *
- * There is no binary package host. An update needs the network for the tree
- * and the sources, and compiles on the machine — for hours, on a large set.
+ * `kdos update` reads no binary package host. An update needs the network for
+ * the tree and the sources, and compiles on the machine — for hours, on a
+ * large set.
  *
  * WHAT CAN GO WRONG IS RECORDED, so a panel badge can say it: no tree on the
  * machine, no network, a fetch that failed (a download, a signature, a tree
@@ -46,6 +49,8 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/mount.h>
+#include <sys/stat.h>
 #include <sys/syscall.h>
 
 #include "kdos-tools.h"
@@ -1038,9 +1043,81 @@ static int tree_into_slot(const char *root, const char *mnt)
 
 /* ── apply ─────────────────────────────────────────────────────────────── */
 
+/*
+ * AN A/B BUILD RUNS INSIDE THE SLOT. `kpkg install` with KPKG_ROOT set
+ * installs into the root it names but compiles against the one it runs in,
+ * so a package built after its dependency was upgraded in the slot would link
+ * the running root's old copy, and nothing would rebuild it. chroot()ing into
+ * the slot puts the slot's own compiler, headers and libraries under every
+ * build.
+ *
+ * What the slot cannot supply is bound in: the kernel's filesystems, the
+ * ports tree that names what to build (the slot holds the tree it was last
+ * built from until tree_into_slot replaces it), the source cache the fetch
+ * just filled, and resolv.conf for a dependency whose source is fetched on
+ * the way. Each mount is undone, in reverse, before the slot is checked.
+ */
+#define AB_MAXBIND 8
+static char ab_bound[AB_MAXBIND][768];
+static int ab_nbound;
+
+static int ab_bind(const char *mnt, const char *src, const char *fstype,
+		   int file)
+{
+	char dst[768];
+
+	if (ab_nbound == AB_MAXBIND)
+		return -1;
+	snprintf(dst, sizeof(dst), "%s%s", mnt, src);
+	if (file) {
+		/* A regular file in the slot, never a link: a mount follows a
+		 * symlink, and the slot's absolute link would be resolved on
+		 * the running root. */
+		struct stat st;
+		if (!kb_path_exists(src) || lstat(dst, &st) != 0 ||
+		    !S_ISREG(st.st_mode))
+			return 0;
+	} else {
+		kb_mkdir_p(dst);
+	}
+	if (fstype ? mount(fstype, dst, fstype, 0, NULL)
+		   : mount(src, dst, NULL, MS_BIND | MS_REC, NULL)) {
+		fprintf(stderr, "kdos update: cannot mount %s on %s: %s\n",
+			src, dst, strerror(errno));
+		return -1;
+	}
+	kb_strlcpy(ab_bound[ab_nbound++], dst, sizeof(ab_bound[0]));
+	return 0;
+}
+
+static void ab_unbind(void)
+{
+	while (ab_nbound > 0)
+		umount2(ab_bound[--ab_nbound], MNT_DETACH);
+}
+
+static int ab_enter(const char *mnt, const char *tree, const KpConf *c)
+{
+	if (ab_bind(mnt, "/proc", "proc", 0) || ab_bind(mnt, "/sys", NULL, 0) ||
+	    ab_bind(mnt, "/dev", NULL, 0) || ab_bind(mnt, tree, NULL, 0) ||
+	    ab_bind(mnt, c->source_dir, NULL, 0) ||
+	    ab_bind(mnt, "/etc/resolv.conf", NULL, 1)) {
+		ab_unbind();
+		return -1;
+	}
+	return 0;
+}
+
+/* The slot a build chroot()s into, or NULL to build in the running root. */
+static const char *ab_chroot;
+
 static int run_kpkg(const char *verb, const char *pkg)
 {
 	KbArgv a = {0};
+	if (ab_chroot) {
+		kb_argv_add(&a, "chroot");
+		kb_argv_add(&a, ab_chroot);
+	}
 	kb_argv_add(&a, "kpkg");
 	kb_argv_add(&a, verb);
 	if (!strcmp(verb, "install"))
@@ -1157,9 +1234,16 @@ static int cmd_apply(const KpConf *c, int argc, char **argv)
 	Behind *v = NULL;
 	int orphans = 0;
 	int n = survey(c, &v, &orphans);
-	if (n <= 0) {
+	if (n < 0) {
+		char *db = kp_db_dir(c);
+		fprintf(stderr, "kdos update: no package database at %s\n",
+			db);
+		free(db);
+	} else if (n == 0) {
 		printf("nothing to take: everything installed matches the "
 		       "ports tree\n");
+	}
+	if (n <= 0) {
 		if (n == 0 && !dry)
 			state_set("apply", "ok", "nothing behind");
 		free(v);
@@ -1223,6 +1307,57 @@ static int cmd_apply(const KpConf *c, int argc, char **argv)
 	 * KPKG_FETCH=1 has kpkg fetch ITS sources as it reaches it. */
 	setenv("KPKG_FETCH", "1", 1);
 
+	/*
+	 * DEPENDENCIES FIRST. The database lists names alphabetically, and a
+	 * package built before a dependency that is behind with it compiles
+	 * against the old one; kp_resolve puts every name after what it
+	 * depends on. A name the solver does not emit keeps its place at the
+	 * end.
+	 */
+	{
+		char **names = kb_calloc((size_t)n, sizeof(*names));
+		KpOrder *ord = kb_calloc(1, sizeof(*ord));
+		Behind *sorted = kb_calloc((size_t)n, sizeof(*sorted));
+		char *taken = kb_calloc((size_t)n, 1);
+		int m = 0;
+
+		for (int i = 0; i < n; i++)
+			names[i] = v[i].name;
+		kp_resolve(c, names, n, ord);
+		for (int k = 0; k < ord->n; k++)
+			for (int i = 0; i < n; i++)
+				if (!taken[i] && !strcmp(ord->order[k], v[i].name)) {
+					sorted[m++] = v[i];
+					taken[i] = 1;
+				}
+		for (int i = 0; i < n; i++)
+			if (!taken[i])
+				sorted[m++] = v[i];
+		memcpy(v, sorted, (size_t)n * sizeof(*v));
+		free(taken);
+		free(sorted);
+		free(ord);
+		free(names);
+	}
+
+	if (ab) {
+		if (ab_enter(mnt, tree, c) != 0) {
+			state_set("apply", "build-failed", "the slot could not "
+				  "be prepared for building");
+			badge_refresh();
+			free(bad);
+			free(v);
+			free(mnt);
+			close(lock);
+			return 1;
+		}
+		/* Inside the chroot the slot IS the root; the source cache is
+		 * named, because the slot's own kpkg.conf may say otherwise. */
+		ab_chroot = mnt;
+		unsetenv("KPKG_ROOT");
+		setenv("SOURCE_DIR", c->source_dir, 1);
+	}
+
 	int done = 0;
 	for (int i = 0; i < n; i++) {
 		printf("\n%s==>%s %s %s → %s\n", A, O, v[i].name, v[i].have,
@@ -1233,6 +1368,11 @@ static int cmd_apply(const KpConf *c, int argc, char **argv)
 			bad[nbad++] = v[i].name;
 	}
 	printf("\n%d of %d built and installed, %d failed\n", done, n, nbad);
+	if (ab) {
+		ab_chroot = NULL;
+		ab_unbind();
+		setenv("KPKG_ROOT", mnt, 1);
+	}
 
 	char why[256] = "";
 	if (nbad) {
@@ -1381,8 +1521,8 @@ int kdt_update(int argc, char **argv, int (*theme)(int, char **))
 		return cmd_apply(&c, rest, restv);
 
 	fprintf(stderr, "usage: kdos update {check|fetch|apply|theme}\n"
-			"  check   what the ports tree pins that is not "
-			"installed, and what went wrong;\n"
+			"  check   installed packages older than their "
+			"recipe, and what went wrong;\n"
 			"          --json for a surface, --out PATH to write "
 			"that document atomically,\n"
 			"          --fetch to fetch the newest tree first\n"

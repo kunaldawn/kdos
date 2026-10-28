@@ -43,11 +43,11 @@ KDOS_YRES = $(word 2,$(subst x, ,$(KDOS_RES)))
 #   make cleandisk KDOS_DISK=128G
 KDOS_DISK ?= 96G
 
-# The only networked step: every port's sources from the archive, the cache or
-# upstream, verified against the recipe. `make build` never downloads, so run
-# this once after a clone and after any recipe change. fetch-check is offline
-# and exits 1 naming each archived source missing or corrupt. FETCH_JOBS=N
-# works on N ports at once; the default, 1, is one after the other.
+# Every port's sources from the archive, the cache or upstream, verified
+# against the recipe. `make build` downloads no source, only the builder
+# image's packages when that image is first built, so run this once after a
+# clone and after any recipe change. fetch-check is offline and exits 1 naming
+# each archived source missing or corrupt. FETCH_JOBS=N works on N ports at once.
 FETCH_JOBS ?= 1
 
 fetch: ## download every source a recipe names (networked)
@@ -69,13 +69,14 @@ fetch-check: ## offline: which archived sources are missing or corrupt
 # for freeze and the release targets.
 #   make publish-dry
 #   make publish PORTS="zstd lz4"
+#   make publish-check PUBLISH_ARGS=--all
 #   make publish-retire PUBLISH_ARGS=--dry-run
 #   make release TAG=v0.2
 PORTS ?=
 PUBLISH_ARGS ?=
 TAG ?=
 
-publish: ## upload every unarchived source into its shelf's sources-N volume
+publish: ## upload unarchived sources new against upstream (or unindexed); PUBLISH_ARGS=--all for every one
 	bash ports/publish $(PUBLISH_ARGS) $(PORTS)
 
 publish-dry: ## offline: what publish would upload, and where
@@ -137,11 +138,11 @@ check-iso-free:
 		test -n "$(ALLOW_ISO_IN_USE)" || exit 1; \
 	fi
 
-# A TTY is asked for only when there is one: with no terminal, docker refuses
-# `-it` with "cannot attach stdin to a TTY-enabled container", and no terminal
-# is exactly the case kdosbuild's headless mode exists for (a non-tty stdout
-# gets plain lines instead of the TUI). So a build can be logged to a file or
-# run from CI.
+# A TTY is asked for only when stdin is one: without it docker refuses `-it`
+# with "cannot attach stdin to a TTY-enabled container". With `-it` the
+# container's stdout is a terminal even when make's is a file, so kdosbuild
+# draws its TUI into it; a log or a CI run gets plain lines with no terminal
+# on stdin (`make build </dev/null >build.log`) or with BUILD_ARGS=--plain.
 DOCKER_TTY := $(shell test -t 0 && echo -it)
 
 # HOW MUCH OF THE HOST THE BUILD TAKES. --cpu-shares is a weight, not a cap:
@@ -223,8 +224,8 @@ debug-boot: ## boot the kernel and initramfs directly, serial console
 		-append "root=/dev/ram0 rw console=tty0 console=ttyS0 quiet loglevel=3"
 
 # HW-accelerated run via a containerized QEMU 10 (virgl+blob on the host GPU).
-# The host's packaged QEMU is 8.2.2 (no blob+virgl) so `run`/`rundisk` above stay
-# software-GL for the desktop; these render kdos-comp on the real GPU. GPU and
+# `run`/`rundisk` above use the host's QEMU with software GL, which needs neither
+# blob nor virgl support; these render kdos-comp on the real GPU. GPU and
 # display flags (including gl=es — gl=on blanks the window) live in
 # testing/qemu-hw/run.sh. Needs Docker + NVIDIA Container Toolkit.
 run-hw: check-hw ## boot the ISO with GPU acceleration (containerised QEMU)
@@ -246,24 +247,26 @@ cleandisk: ## recreate an empty build/kdos.qcow2, sparse, 96G unless KDOS_DISK s
 # the next build. build/.snap-lineage goes with the tree it indexes, so the
 # next snapshot is full.
 #
-# build/keys survives BOTH of these, and that is deliberate: the pack signing
-# key lives there and a key is not a build artefact. Lose it and every later
-# bake is unsigned while every medium already written keeps trusting a key you
-# can no longer sign with — libksig has no revocation and no expiry. Set
-# KDOS_PACK_KEY to keep it outside the tree entirely. The kernel's
-# module-signing key, linux-module-signing.pem, lives there too: lose it and
-# the next kernel carries a new certificate, so modules from earlier builds
-# load only as tainted under it.
-cleanbuild: ## wipe build/ except snapshots, ccache, pkgstore and keys
+# build/keys and build/binhost-key survive BOTH of these: a key is not a build
+# artefact. Every image built beside kdos-release.key trusts its
+# kdos-release.pub, and the key signs each `ports/publish --release`; lose it
+# and no later release verifies there. linux-module-signing.pem signs the
+# kernel's modules: lose it and the next kernel carries a new certificate, so
+# modules from earlier builds load only as tainted. kdos-binhost.key in
+# build/binhost-key signs the binhost's index and 010_binhost.sh makes it only
+# when it is missing; lose it and the next KDOS_MAKE_BINHOST=1 build signs with
+# a new key, which every machine holding the old kdos-binhost.pub refuses.
+cleanbuild: ## wipe build/ except snapshots, ccache, pkgstore, keys and binhost-key
 	test -d build && find build -mindepth 1 -maxdepth 1 \
-		! -name snapshots ! -name keys ! -name ccache ! -name pkgstore \
+		! -name snapshots ! -name keys ! -name binhost-key \
+		! -name ccache ! -name pkgstore \
 		-exec rm -rf {} + || true
 
 # Removes build/snapshots, build/ccache and build/pkgstore along with everything
-# else. Not build/keys.
-clean: ## wipe build/ except keys
+# else. Not build/keys or build/binhost-key.
+clean: ## wipe build/ except keys and binhost-key
 	test -d build && find build -mindepth 1 -maxdepth 1 \
-		! -name keys -exec rm -rf {} + || true
+		! -name keys ! -name binhost-key -exec rm -rf {} + || true
 
 # The checks that stand in for a build. check runs the seven that need no built
 # tree; depdrift, debuginfo, unowned, linkcheck and entrycheck read build/fs,

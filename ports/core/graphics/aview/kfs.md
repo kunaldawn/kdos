@@ -18,7 +18,7 @@ programs, converts any other format to a grey PGM before handing it over.
 
 ## Patches
 
-- `imagemagick7.patch` — Makes `asciiview` try `magick <file> -colorspace gray pgm:-` first, before upstream's `anytopnm` and `convert`. [imagemagick](#port-imagemagick) 7 installs the `convert` name only when configured with `--enable-legacy-support`, which the tree's recipe does not pass, so `magick` is the converter the script can reach with only `depends` installed.
+- `imagemagick7.patch` — Makes `asciiview` try `magick "<file>" -colorspace gray pgm:-` first, before upstream's `anytopnm` and `convert`, and names all three in the failure message. `magick` is [imagemagick](#port-imagemagick) 7's own command and is in `depends`; the `convert` it installs is a compatibility link to `magick`, and `anytopnm` is netpbm's, which is not in `depends`.
 
 ## Notes
 

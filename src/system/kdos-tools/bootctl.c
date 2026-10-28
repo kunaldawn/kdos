@@ -59,8 +59,7 @@
  *
  * `crypt_a`/`crypt_b` EMPTY IS THE UNENCRYPTED MACHINE and is the common
  * case. The initramfs falls back to the command line's `cryptdevice=` when a
- * slot names none, so a machine installed before slots carried containers
- * boots exactly as it did.
+ * slot names none, so a single-container machine needs no per-slot entry.
  *
  * EACH SLOT BOOTS ITS OWN KERNEL. A slot's kernel and initramfs live in
  * EFI/kdos/<slot>/ on the ESP, put there by `deploy` from that root's /boot, and
@@ -186,9 +185,9 @@ static int state_load(BootState *st)
 			kb_strlcpy(st->slot[0], v, sizeof(st->slot[0]));
 		else if (!strcmp(k, "slot_b"))
 			kb_strlcpy(st->slot[1], v, sizeof(st->slot[1]));
-		/* An UNKNOWN key is skipped by the loop's own default, so a
-		 * state file written before these two existed parses as a
-		 * machine with no containers — which is what it is. */
+		/* An UNKNOWN key is skipped by the loop's own default, and a
+		 * state file with no crypt_a/crypt_b parses as a machine with
+		 * no containers. */
 		else if (!strcmp(k, "crypt_a"))
 			kb_strlcpy(st->crypt[0], v, sizeof(st->crypt[0]));
 		else if (!strcmp(k, "crypt_b"))
@@ -872,9 +871,9 @@ static int menu_sync(const BootState *st)
 		   "Every kernel message on the console", dir[next], next,
 		   st->slot[next], base.p, "loglevel=7");
 	kb_buf_str(&block, "\n");
-	menu_entry(&block, "KDOS (single user)", "A root shell, no session",
-		   dir[next], next, st->slot[next], base.p,
-		   "loglevel=7 single");
+	menu_entry(&block, "KDOS (single user)",
+		   "A root shell for root's password, no desktop", dir[next],
+		   next, st->slot[next], base.p, "loglevel=7 single");
 	if (dir[other]) {
 		char t[32];
 		int panics = !strncmp(base.p, "panic=", 6) ||
@@ -1964,10 +1963,12 @@ static int cmd_select(BootState *st, int have, int entry)
 				fprintf(stderr, "bootctl: last attempt at slot "
 						"%s\n", slot_name(st->trying));
 		} else {
-			fprintf(stderr, "bootctl: slot %s failed %d times — "
-					"rolling back to %s\n",
-				slot_name(st->trying), TRY_ATTEMPTS,
-				slot_name(st->active));
+			/* The state keeps only the attempts left, not how many
+			 * `try` granted, so the message names no count. */
+			fprintf(stderr, "bootctl: slot %s spent its attempts "
+					"without being marked good — rolling "
+					"back to %s\n",
+				slot_name(st->trying), slot_name(st->active));
 			st->trying = -1;
 			st->attempts = 0;
 		}
@@ -2000,9 +2001,8 @@ static int cmd_select(BootState *st, int have, int entry)
  */
 /*
  * The slot of the kernel running this, from the kdos_slot= its menu entry
- * carries; -1 when the command line names none, as an entry written before
- * menus carried it does. KDOS_CMDLINE stands in for /proc/cmdline; a state
- * file other than the real one reads no command line without it, so a
+ * carries; -1 when the command line names none. KDOS_CMDLINE stands in for
+ * /proc/cmdline; a state file other than the real one reads no command line without it, so a
  * fixture run on a KDOS machine is not judged by that machine's own slot.
  */
 static int running_slot(void)

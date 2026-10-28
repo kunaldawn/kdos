@@ -24,8 +24,9 @@
  * app's pack, and one that cannot is refused by name rather than composed. */
 #define DEFAULT_BOX   "kdos-apps"
 #define APP_TABLE     "/usr/share/kdos/alien-apps"
-/* The security-context-v1 engine. Absent on a tree built before M2.5, which is
- * why every use of it is guarded rather than assumed. */
+/* The security-context-v1 engine. It is a 50_desktop port and this one is
+ * 44_apps, so a tree built short of the desktop has none, which is why every
+ * use of it is guarded rather than assumed. */
 #define KDOS_BOXSOCK  "/usr/bin/kdos-boxsock"
 
 #define MAX_LINE   4096
@@ -130,8 +131,9 @@ int  profile_render_gpu(const Profile *p);
 int  box_exists(const char *box);
 int  box_state(const char *box, char *buf, size_t n);
 /* Wait a `stopping` container out, then force it back to a startable state.
- * Answers 0 (it was not stuck), 1 (it settled on its own), 2 (killed) or
- * 3 (removed, so the caller must create it again). */
+ * Answers 0 (it was not stuck), 1 (it settled on its own), 2 (killed),
+ * 3 (a pack box, removed, so the caller must create it again) or 4 (any
+ * other box, still stuck and kept, because its writes are in the container). */
 int  box_unstick(const char *box, char *state, size_t n);
 int  box_create(const Profile *p);
 int  box_list(void);
@@ -300,10 +302,11 @@ int store_uninstall(const char *id);
  * printed as it happens and nothing rolls back. */
 int store_install_many(const char *const *ids, int n, int dry);
 int store_uninstall_many(const char *const *ids, int n);
-/* Regenerate the user's launchers, shims and mime cache from every store box.
- * The pack walk cannot see one: a store box is an IMAGE and kdos-packd has
- * never heard of it, so an application installed here would have no Start menu
- * entry, no $PATH shim and no "Open with" row. Returns how many were read. */
+/* Regenerate the user's launchers, shims and mime cache from every store box
+ * and every installed app pack. The pack walk cannot see a store box: it is an
+ * IMAGE and kdos-packd has never heard of it, so an application installed here
+ * would have no Start menu entry, no $PATH shim and no "Open with" row.
+ * Returns how many store boxes were read. */
 int store_launchers(void);
 
 /* A set, as signed packs in one file. Packs and not `podman save`: kdos-packd

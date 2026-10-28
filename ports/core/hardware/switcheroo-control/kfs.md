@@ -11,8 +11,8 @@ in `41_system`.
 ## Flags
 
 - `-Dsystemdsystemunitdir=/usr/lib/systemd/system` — Where upstream installs its systemd unit. Left
-  empty, meson asks `systemd.pc` for the directory and stops, since KDOS has no systemd (see [No
-  systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd));
+  empty, meson asks `systemd.pc` for the directory and stops, since KDOS has no systemd (see
+  [No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd));
   the unit is installed into the named directory and `build.sh` deletes it from the package.
 - `-Dhwdbdir=/usr/lib/udev/hwdb.d`, `-Drulesdir=/usr/lib/udev/rules.d` — Where the
   hardware-database file (`30-pci-intel-gpu.hwdb`) and the rule (`30-discrete-gpu.rules`) go, named
@@ -28,5 +28,5 @@ in `41_system`.
 `/etc/init.d/44_switcheroo-control.sh` starts the daemon under the supervisor only on a machine
 with two or more GPUs: it counts the `card*` entries under `/sys/class/drm` that have a `device`,
 skipping the connector entries, whose names contain a dash. With one GPU there is nothing to choose
-between, and the service skips (see [Services that skip
-themselves](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md#services-that-skip-themselves)).
+between, and the service skips (see
+[Services that skip themselves](../../../../docs/kdos/02-user-guide/administration.md#services-that-skip-themselves)).

@@ -7,7 +7,7 @@ is a build-time dependency of many of the tree's Python packages with C code:
 It is a port, not a member of each consumer's vendor bundle. Each consumer builds with
 `--no-build-isolation` against the installed Cython; with isolation, pip would fetch Cython and
 the rest of the backend chain from PyPI into a temporary environment for every build. See
-[The three Python keys](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
+[The three Python keys](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
 
 ## Notes
 The Cython release here decides what the consumers' `.pyx` sources must accept.

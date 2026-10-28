@@ -5,7 +5,7 @@ The Chinese engines for [fcitx5](#port-fcitx5): pinyin, shuangpin and the table-
 them: simplified-to-traditional conversion, the pinyin and stroke helpers that show how a
 character is typed, and punctuation. It is the Chinese engine among the language engines KDOS
 builds; the input method as a whole is described in
-[Input methods](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/session.md#input-methods).
+[Input methods](../../../../docs/kdos/03-architecture/session.md#input-methods).
 
 Two of upstream's features are left out: the Qt configuration tool, and cloud pinyin.
 
@@ -18,13 +18,14 @@ Two of upstream's features are left out: the Qt configuration tool, and cloud pi
 - `-D ENABLE_CLOUDPINYIN=Off` — Builds no cloud pinyin addon, which sends the pinyin being typed
   to an online service and offers what comes back as a candidate: off, what is typed never leaves
   the machine. With it on, configure also requires [curl](#port-curl)'s `libcurl`.
-- `-D ENABLE_OPENCC=On` — Builds the `chttrans` module's conversion between simplified and
-  traditional characters through [opencc](#port-opencc). Once on, OpenCC and
+- `-D ENABLE_OPENCC=On` — Adds [opencc](#port-opencc) as a second backend to the `chttrans`
+  module, which converts between simplified and traditional characters; without it the module
+  has only its built-in character table, `gbks2t.tab`. Once on, OpenCC and
   [nlohmann-json](#port-nlohmann-json) are required at configure time.
 - `-D ENABLE_DATA=On` — Compiles the pinyin engine's `chaizi.dict`, the dictionary of characters
   by their components, with libime's `libime_pinyindict`.
-- `-D ENABLE_TOOLS=On` — Builds and installs `scel2org5`, which converts a `.scel` word list
-  into a dictionary file libime reads.
+- `-D ENABLE_TOOLS=On` — Builds and installs `scel2org5`, which converts a Sogou `.scel` word
+  list into libime's text dictionary format, the input `libime_pinyindict` compiles.
 - `-D CMAKE_DISABLE_FIND_PACKAGE_Fcitx5ModuleLuaAddonLoader=ON` — Makes CMake skip the search for
   fcitx5's Lua addon loader. Upstream looks for it with a `find_package` that no option controls,
   and links the pinyin engine against it when it is found. There is no fcitx5-lua
@@ -38,7 +39,7 @@ table and the stroke table, and the build runs with no network. As for
 is already where it would write it, so `build.sh` copies both archives, still packed, into
 `modules/pinyinhelper/`. These two are prebuilt `.mb` tables that the module extracts and
 installs as they are; they are among the data files
-[What is built from source](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#what-is-built-from-source)
+[What is built from source](../../../../docs/kdos/05-developer/writing-ports.md#what-is-built-from-source)
 exempts, as they have no other source form. kpkg does not unpack a `.tar.zst`, so `build.sh`
 unpacks the source archive itself.
 

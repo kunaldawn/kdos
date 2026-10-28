@@ -100,7 +100,13 @@ case "$1" in
     stop)
         if grep -q "^$DEV " /proc/swaps 2>/dev/null; then
             echo "[KDOS] Stopping $NAME..."
-            swapoff "$DEV" 2>/dev/null
+            # A swapoff that fails leaves zram as swap, so nothing after it
+            # may run: a reset is refused on a device in use, and zswap and
+            # read-ahead turned back on would sit in front of zram.
+            swapoff "$DEV" || {
+                echo "[FAIL] $NAME: swapoff $DEV — it is still swap"
+                exit 1
+            }
         fi
         [ -w "$SYS/reset" ] && echo 1 > "$SYS/reset" 2>/dev/null
         # With zram gone, any disk swap left is what zswap and read-ahead

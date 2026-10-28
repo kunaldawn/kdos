@@ -24,9 +24,10 @@ anything [SoapySDR](#port-soapysdr) supports.
   decimation rate whenever the input device string contains `airspy`, and
   [gr-osmosdr](#port-gr-osmosdr)'s Airspy source answers by loading one of its built-in IQ
   conversion filter kernels into the radio. Off, the radio keeps its own filter.
-- `-DCCACHE=OFF` — gqrx's configure looks for a `ccache` program and, when it finds one, puts it in
-  front of every compiler call. Setting the cache variable to `OFF` stops that search, so the build
-  is compiled by the tree's compiler directly whether or not [ccache](#port-ccache) is installed.
+- `-DCCACHE=OFF` — gqrx's configure looks for a `ccache` program and, when it finds one, sets it as
+  the compiler launcher itself. Presetting the cache variable to `OFF` stops that search, so whether
+  a compile goes through [ccache](#port-ccache) is left to the `CMAKE_C_COMPILER_LAUNCHER` and
+  `CMAKE_CXX_COMPILER_LAUNCHER` the build environment sets.
 
 ## Notes
 

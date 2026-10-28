@@ -6,15 +6,16 @@ the base userland depends on it: [coreutils](#port-coreutils) (`cp -a`, `mv` acr
 systems), [sed](#port-sed) and [patch](#port-patch) call them so that a file they copy or rewrite
 keeps its attributes, and [acl](#port-acl)'s configure requires its `attr/error_context.h`. The
 bootstrap's builds of those programs have no libattr; see
-[The base userland](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/packaging.md#the-base-userland).
+[A minimal KDOS: `10_bootstrap`](../../../../docs/kdos/05-developer/how-kdos-is-built.md#a-minimal-kdos-10_bootstrap).
 
 ## Flags
 - `--bindir=/bin` — Install the tools in `/bin`, which is a link to `/usr/bin`; the package
   records them as `./bin/...`, and kpkg folds that link when it compares ownership.
 - `--sysconfdir=/etc` — The directory compiled into libattr as `SYSCONFDIR`, from which
   `attr_copy_file` and `attr_copy_fd` read `/etc/xattr.conf`, and into which the package installs
-  that file. The tree's `config.site` gives a `/usr` prefix the same default; a library built
-  with `/usr/etc` would never read the file KDOS ships.
+  that file. The tree's `config.site` already turns a `/usr` prefix's `${prefix}/etc` into `/etc`, so
+  the switch names that choice; without either, both the file and the path libattr reads would be
+  `/usr/etc/xattr.conf`, outside `/etc`, where the system's configuration is kept.
 
 ## Notes
 `/etc/xattr.conf` decides what every caller of the copy functions carries over. Each line names an

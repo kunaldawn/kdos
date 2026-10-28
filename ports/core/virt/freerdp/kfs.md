@@ -22,7 +22,8 @@ are the RDP engine of [remmina](#port-remmina). No server is built.
   libraries at all, so nothing in the build links them even where a component would take them
   when found.
 - `-DWITH_WAYLAND=OFF` — Skips `uwac` and `wlfreerdp`, the native Wayland client, which upstream
-  builds only while its deprecated 3.x interfaces are built (`WITHOUT_FREERDP_3x_DEPRECATED` off). The SDL client is the Wayland client here.
+  builds only while its deprecated 3.x interfaces are built (`WITHOUT_FREERDP_3x_DEPRECATED`
+  off). The SDL client is the Wayland client here.
 - `-DWITH_CHANNELS=ON` — Build the virtual-channel plugins: clipboard, sound, drive, printer,
   smart-card and USB redirection, and the graphics pipeline.
 - `-DWITH_MANPAGES=ON` — Generate the manual pages.
@@ -61,12 +62,14 @@ are the RDP engine of [remmina](#port-remmina). No server is built.
 - `-DWITH_URIPARSER=ON` — Validate, escape and unescape URLs in WinPR's string helpers
   with [uriparser](#port-uriparser) rather than WinPR's own fallback code.
 - `-DWITH_SYSTEMD=OFF` — No export of FreeRDP's log to the systemd journal; KDOS has no systemd
-  ([principles](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd)).
+  ([principles](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)).
 - `-DWITH_INSTALL_CLIENT_DESKTOP_FILES=OFF` — Install no `.desktop` file for `sdl-freerdp`, which
   takes the server and its options on the command line; it gets no menu entry. This is
   upstream's default.
-- `-DWITH_BINARY_VERSIONING=OFF` — Keep the library and plugin names without a version suffix;
-  this is upstream's default.
+- `-DWITH_BINARY_VERSIONING=OFF` — Install the programs (`sdl-freerdp`, `winpr-hash`,
+  `winpr-makecert`), the manual pages and the SDL client's resource directory without the
+  major version in the name (`sdl-freerdp`, not `sdl-freerdp3`); the library names do not depend
+  on it. This is upstream's default.
 - `-DWITH_CCACHE=OFF`, `-DWITH_CLANG_FORMAT=OFF` — Do not use ccache, and do not probe for
   `clang-format`, both of which upstream turns on when found.
 - `-DUSE_VERSION_FROM_GIT_TAG=OFF` — Take the version from the release's own `CMakeLists.txt`,

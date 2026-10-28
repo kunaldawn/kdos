@@ -10,8 +10,10 @@ it is a lookup table, not an explanation, and assumes you have met the vocabular
 Software built from `ports/core/` (bash, foot, podman, mpv and the rest) is upstream's, and
 upstream's manual pages describe it; [the ports catalogue](ports-catalogue.md) lists every port by
 shelf, with its phase. This index lists what this repository writes: the programs under `src/`,
-the scripts under `fs/`, and the handful of wrapper scripts that a port recipe writes into its
-package. Each entry below matches the source that installs it. The one exception is
+the scripts under `fs/`, and the few commands a port recipe adds to its package under a name of
+its own. A recipe that installs a wrapper under the upstream program's own name, such as
+`chromium`, is left out, because upstream's documentation still describes that command. Each entry
+below matches the source that installs it. The one exception is
 [the upstream commands the boot path and the book name](#upstream-commands-the-boot-path-and-the-book-name),
 which init and the service scripts run by name.
 
@@ -67,13 +69,14 @@ carries no packs, so it ships none. An application you install gets its shim in 
 ## The `kdos` command
 
 `kdos` is the single entry point to the system's own tools. It has 30 subcommands, plus `help`,
-which prints them grouped by the question each answers. It is installed as
+which prints a cheat sheet of where software lives, the everyday commands and the default
+keys. It is installed as
 `/usr/local/bin/kdos`, a name of the `ksvc` binary. Each subcommand below links to its section of
 [The kdos command](../04-programs/kdos-command.md).
 
 | Subcommand | Does |
 |---|---|
-| [`kdos help`](../04-programs/kdos-command.md#kdos-help) | Every command, grouped by the question it answers; also `-h` and `--help` |
+| [`kdos help`](../04-programs/kdos-command.md#kdos-help) | The cheat sheet: where software lives, the everyday commands and the default keys; `--pager` pages it; also `-h` and `--help` |
 | [`kdos version`](../04-programs/kdos-command.md#kdos-version) | Kernel, C library, userland, session and accent; also `-V` |
 | [`kdos status`](../04-programs/kdos-command.md#kdos-status) | What this machine is and what it is running |
 | [`kdos doctor`](../04-programs/kdos-command.md#kdos-doctor) | Check for the faults known to occur on KDOS, each reported as `ok`, `warn` or `skip`; `--json`, `--cve` |
@@ -100,9 +103,9 @@ which prints them grouped by the question each answers. It is installed as
 | [`kdos stutter`](../04-programs/kdos-command.md#kdos-stutter) | Why a frame was late, and which process was busy |
 | [`kdos march`](../04-programs/kdos-command.md#kdos-march) | Measure per-machine optimisation (`probe`, `run PORT…`) and read the recorded verdicts (`report`) |
 | [`kdos cve`](../04-programs/kdos-command.md#kdos-cve) | Which pinned versions carry known vulnerabilities, from an offline database |
-| [`kdos update`](../04-programs/kdos-command.md#kdos-update) | `check` (`--json` writes the panel's badge, `--fetch` fetches first), `fetch` (the newest signed ports tree into `/ports`), `apply` (fetch the sources and build what is behind), and `theme` for the per-user artwork |
+| [`kdos update`](../04-programs/kdos-command.md#kdos-update) | `check` (`--json` prints it as JSON, `--out PATH` writes that document to a file, which is how the nightly timer feeds the panel's badge, and `--fetch` fetches first), `fetch` (the newest signed ports tree into `/ports`), `apply` (fetch the sources and build what is behind), and `theme` for the per-user artwork |
 | [`kdos rebuild WORKDIR`](../04-programs/kdos-command.md#kdos-rebuild) | Rebuild the image from the sources on the medium; `--dry-run`, `--iso-only` |
-| [`kdos clone [DEV]`](../04-programs/kdos-command.md#kdos-clone) | Copy this medium to another device, verified by read-back |
+| [`kdos clone [DEV]`](../04-programs/kdos-command.md#kdos-clone) | Copy this medium to another device, verified by read-back; with no device, list the devices it may write to |
 | [`kdos persist`](../04-programs/kdos-command.md#kdos-persist) | Report the live session's persistence store; `create [DEV]` makes one |
 
 ## Desktop surfaces
@@ -211,15 +214,18 @@ Every surface except `kdos-ascii`, `kdos-ime`, `kdos-mediad` and `kdos-netagent`
 | `kdos-shot` | `/usr/local/bin` | Screenshots through `grim` and `slurp`: `region` (the default), `screen` (also `full`), `qr` | [The kdos command](../04-programs/kdos-command.md#kdos-shot) |
 | `kdos-updatedb` | `/usr/local/bin` | Rebuild this user's own `plocate` index, scoped to `$HOME` | [Configuration](configuration.md#etckdostimersd-and-configkdostimersd) |
 
-While `kdos-record` runs, its process id is in `$XDG_RUNTIME_DIR/kdos/screencast.pid`; the next
+`kdos-record [FILE.mkv]` writes the recording to the file it is given, or to
+`~/Videos/<date>-<time>.mkv`. While it runs, its process id is in
+`$XDG_RUNTIME_DIR/kdos/screencast.pid`; the next
 invocation reads that file to stop the recording. The panel's `SCR` privacy lamp does not read the
 file: it counts PipeWire ScreenCast nodes, so it lights for any screen share. The binding is
 `Alt+Print` in the shipped `rc.xml`.
 
-`kdos-shot` saves to `~/Pictures/Screenshots` (or under `$XDG_PICTURES_DIR`) and copies the
-picture to the clipboard. `window` is accepted and behaves as `region`. `kdos-shot qr` captures to
-the runtime directory, decodes a QR code in the picture onto the clipboard and deletes the
-picture, so a pairing token never reaches the disk.
+`kdos-shot` saves to `~/Pictures/Screenshots` (`$XDG_PICTURES_DIR/Screenshots` when that variable
+is set) and copies the picture to the clipboard. The shipped `rc.xml` binds `Print` to
+`kdos-shot screen` and `Shift+Print` to `kdos-shot region`. `window` is accepted and behaves as
+`region`. `kdos-shot qr` captures to the runtime directory, decodes a QR code in the picture onto
+the clipboard and deletes the picture, so a pairing token never reaches the disk.
 
 ## Daemons
 
@@ -248,22 +254,24 @@ kdos-power firewall list|SERVICE on|off
 kdos-power accent SCHEME
 ```
 
-`kdos-mount` takes nine verbs:
+`kdos-mount` takes ten verbs:
 
 | Verb | Does |
 |---|---|
 | `list` | The devices the daemon offers, one numbered row each |
 | `mount N`, `unmount N`, `smart N` | Act on row `N` of `list` |
+| `write N IMAGE DISK` | Write `IMAGE` over the whole disk row `N` is on and read it back to compare; `DISK` is that disk's name typed back (`sdb` for a row on `sdb1`). Refused unless `/etc/kdos/mountd.conf` says `write = yes`; see [Writing an image](../04-programs/daemons.md#writing-an-image) |
 | `shares` | The network shares that are connected |
 | `browse` | The hosts that answer an mDNS and a NetBIOS broadcast sent for this call, as `name<TAB>address` rows |
 | `krb5 SERVER SHARE USER DOMAIN` | Mount a share with the Kerberos ticket `kinit` already obtained; `-` means no user or no domain |
 | `ping` | Whether the daemon is answering |
 | `subscribe` | Print `changed` whenever the list changes; never exits |
 
-No form takes a device or a mount point: the daemon decides both. The daemon's socket answers
-fifteen verbs, the nine above plus `eject`, `close`, `unlock`, `format`, `cifs` and `disconnect`,
-which `kdos-disks` and `kdos-connect` send. The full protocol is in
-[Filesystem and IPC](filesystem-and-ipc.md#sockets).
+No form names the device to act on or a mount point: the daemon decides both, and `write`'s
+`DISK` is a confirmation checked against the row, not a choice. The daemon's socket answers
+sixteen verbs, the ten above plus `eject`, `close`, `unlock`, `format`, `cifs` and `disconnect`,
+which `kdos-disks`, `kdos-connect` and `kdos-mediad` send. The full protocol is in
+[Filesystem and IPC](filesystem-and-ipc.md#runkdos-mountdsock).
 
 ## Applications and boxes
 
@@ -303,8 +311,9 @@ All five names are one binary in `/usr/bin`.
 
 `kpkg` takes `install` (also `i`), `remove` (also `r`), `list` (also `l`, with `--json`), `info`
 (with `--json`), `check` (packages by name, or `--all`), `meta`, `fetch` (the sources a port lacks, from the archive and then upstream), `verify` (and `verify --repro`), `keygen`, `sign FILE KEY`, `index` (with `--sign KEY`),
-`verify-index`, `verify-pkg`, `delta`, `apply-delta`, `binhost`, `store gc DIR MAX-SIZE` and
-`help`, and the options
+`verify-index`, `verify-pkg`, `delta`, `apply-delta` (with `--expect SHA256`, which deletes the
+reconstructed package unless its checksum matches; see [Deltas](../03-architecture/packaging.md#deltas)),
+`binhost`, `store gc DIR MAX-SIZE` and `help`, and the options
 `--root PATH`, `--keep-cache` and `-f`/`--force`. `install` also takes
 `--build-only`, which builds exactly the named ports into the package cache and installs nothing,
 and `--commit`, which installs what `--build-only` built; see
@@ -313,8 +322,13 @@ and `--commit`, which installs what `--build-only` built; see
 recently used first, until the store fits `MAX-SIZE` (bytes, or a `K`, `M`, `G` or `T` suffix).
 `kpkg help` describes each.
 
-`kpkg help` also lists `update`, which `kpkg` does not implement: `kpkg update` prints the usage
-text and exits 1. `kdos update` is the command that updates the system; see
+The other four names take few options. `kpkgadd [-f|--force] [--root PATH] FILE` installs one
+package file, `kpkgdel [--root PATH] PACKAGE…` removes packages, and
+`kpkgdepends [--root PATH] PORT…` prints the install order on one line. `kpkgbuild` takes no
+arguments: it builds the port in the current directory.
+
+`kpkg` has no `update` subcommand: `kpkg update` prints the usage text and exits 1. `kdos update`
+is the command that updates the system; see
 [Updating a machine](../03-architecture/packaging.md#updating-a-machine).
 
 ## Boot, console and services
@@ -330,7 +344,7 @@ text and exits 1. `kdos update` is the command that updates the system; see
 | `service` | `/usr/sbin` | The same supervisor, under the conventional name | [ksvc and service](../04-programs/kdos-command.md#ksvc-and-service) |
 | `kinstall` | `/usr/bin` | The installer | [kinstall](../04-programs/kinstall.md) |
 
-`/etc/inittab` runs `kdos-getty tty1 kdos-login tty1` on the first console and
+`/etc/inittab` runs `kdos-getty tty1 /usr/local/sbin/kdos-login tty1` on the first console and
 `kdos-getty tty2 /sbin/agetty --noclear tty2 38400 linux` on the second.
 
 `ksvc` (and `service`) takes `list`, `status NAME`, `start NAME`, `stop NAME`, `restart NAME`,
@@ -366,15 +380,15 @@ procedures call them by name. `/sbin` is a link to `/usr/sbin`.
 | `shutdown` | `/sbin` | `sysvinit` | Power off or reboot, now or at a time, through init | [Boot and init](../03-architecture/boot-and-init.md#shutdown) |
 | `halt`, `poweroff`, `reboot` | `/sbin` | `sysvinit` | Change to runlevel 0 or 6, or with `-f` stop the machine at once | [Boot and init](../03-architecture/boot-and-init.md#shutdown) |
 | `killall5` | `/sbin` | `sysvinit` | Signal every process outside the caller's session | [Boot and init](../03-architecture/boot-and-init.md#shutdown) |
-| `sulogin` | `/sbin` | `util-linux` | Ask for root's password on the console and give a shell, for single-user mode | [Boot and init](../03-architecture/boot-and-init.md#rcs-and-the-service-scripts) |
+| `sulogin` | `/sbin` | `util-linux` | Ask for root's password on the console and give a shell, for single-user mode | [Boot and init](../03-architecture/boot-and-init.md#single-user-and-emergency-mode) |
 | `getent` | `/usr/bin` | `musl-utils` | Look an entry up in `passwd`, `group`, `hosts` and the other name databases | [Packaging](../03-architecture/packaging.md#the-base-userland) |
 | `getconf` | `/usr/bin` | `musl-utils` | Print a system configuration value, such as `_NPROCESSORS_ONLN` | [Packaging](../03-architecture/packaging.md#the-base-userland) |
 | `iconv` | `/usr/bin` | `musl-utils` | Convert text between character encodings | [Packaging](../03-architecture/packaging.md#the-base-userland) |
 | `cpio` | `/usr/bin` | `cpio` | Write and read cpio archives; the initramfs is one | [Boot and init](../03-architecture/boot-and-init.md#the-initramfs) |
 | `which` | `/usr/bin` | `which` | Print the full path of a command | [Packaging](../03-architecture/packaging.md#the-base-userland) |
-| `xxd` | `/usr/bin` | `tinyxxd` | Hex dump a file, or turn a dump back into bytes with `-r` | [Packaging](../03-architecture/packaging.md#the-base-userland) |
-| `ping` | `/usr/bin` | `iputils` | Send ICMP echo requests, as any user and with no setuid bit, through the ICMP sockets `net.ipv4.ping_group_range` opens | [The security model](../03-architecture/security-model.md) |
-| `arping` | `/usr/bin` | `iputils` | Send ARP requests on a link; needs root | [Packaging](../03-architecture/packaging.md#the-base-userland) |
+| `xxd` | `/usr/bin` | `tinyxxd` | Hex dump a file, or turn a dump back into bytes with `-r` | [The ports catalogue](ports-catalogue.md#devtools) |
+| `ping` | `/usr/bin` | `iputils` | Send ICMP echo requests, as any user and with no setuid bit, through the ICMP sockets `net.ipv4.ping_group_range` opens | [The security model](../03-architecture/security-model.md#setuid-binaries) |
+| `arping` | `/usr/bin` | `iputils` | Send ARP requests on a link; needs root | [The security model](../03-architecture/security-model.md#setuid-binaries) |
 | `mkpasswd` | `/usr/bin` | `whois` | Hash a password for `/etc/shadow` or `useradd -p`; name the method, `-m sha512crypt`, because with musl's `crypt` the default is DES | [Packaging](../03-architecture/packaging.md#the-base-userland) |
 | `tracepath` | `/usr/bin` | `iputils` | Trace the path to a host and the MTU along it, with no privilege | [Packaging](../03-architecture/packaging.md#the-base-userland) |
 
@@ -393,20 +407,24 @@ procedures call them by name. `/sbin` is a link to `/usr/sbin`.
 | `kdos-fetch-static` | `/usr/local/bin` | Fetch one static binary and verify it: `kdos-fetch-static NAME URL SHA256` | [The kdos command](../04-programs/kdos-command.md#kdos-fetch-app-and-kdos-fetch-static) |
 | `kdos-syncthing` | `/usr/bin` | Syncthing, given a LAN-only configuration the first time it runs | [Administration](../02-user-guide/administration.md#syncing-and-serving-on-the-network) |
 | `update-ca-certificates` | `/usr/bin` | Rewrite `/etc/ssl/cert.pem` from the Mozilla bundle and the local roots in `/etc/ca-certificates/trust-source/anchors/`; `--root DIR` | [Security model](../03-architecture/security-model.md#tls-trust-anchors) |
-| `sfeed-read` | `/usr/bin` | Open `sfeed_curses` on every feed under `~/.sfeed/feeds`, or say how to fetch some when there are none | The `sfeed` port's `build.sh` |
-| `ldconfig` | `/usr/sbin` | Exits 0 and changes nothing: musl's loader keeps no cache, so there is nothing to rebuild; it answers makefiles and install scripts that run it | [Configuration](configuration.md) |
+| `sfeed-read` | `/usr/bin` | Open `sfeed_curses` on every feed under `~/.sfeed/feeds`, or say how to fetch some when there are none | [The `sfeed` port's notes](../../../ports/core/mail/sfeed/kfs.md) |
+| `rnodeconf-local` | `/usr/bin` | Run `rnodeconf` against the RNode firmware images the `rnode-firmware` package carries, so flashing and updating a LoRa radio reach no network | [The `rnode-firmware` port's notes](../../../ports/core/hamradio/rnode-firmware/kfs.md) |
+| `ldconfig` | `/usr/sbin` | Exits 0 and changes nothing: musl's loader keeps no cache, so there is nothing to rebuild; it answers makefiles and install scripts that run it | [Configuration](configuration.md#other-machine-files) |
 
-`kdos-syncthing`, `update-ca-certificates`, `sfeed-read`, `ldconfig` and `kdos-podman-api` are
-shell scripts that a port recipe writes into its package (the `syncthing`, `ca-certificates`,
-`sfeed`, `musl` and `podman` ports), not programs under `src/`.
+`kdos-syncthing`, `update-ca-certificates`, `sfeed-read`, `rnodeconf-local`, `ldconfig` and
+`kdos-podman-api` are shell scripts that a port puts in its package (the `syncthing`,
+`ca-certificates`, `sfeed`, `rnode-firmware`, `musl` and `podman` ports), not programs under
+`src/`. Each recipe writes its script from `build.sh`, except `musl`'s, which installs the
+`ldconfig` file kept beside the recipe.
 
-`kdos-term` takes `-e` (also `--exec`), `--title`, `--app-id`, `--font`, `--size WxH`, `--float`,
-`-D DIR` (also `--working-directory`), `--tty` and `--dump WxH`. Everything after `--` is the
-command to run. Its configuration is `~/.config/kdos/term.conf`.
+`kdos-term` takes `-e` (also `--exec`), `--title`, `--app-id`, `--font`, `--size COLSxROWS`,
+`--float`, `-D DIR` (also `--working-directory`), `--tty` and `--dump COLSxROWS`. Everything after
+`-e` or `--` is the command to run; with neither, it runs the `shell` that `term.conf` names, then
+`$SHELL`, then `/bin/sh`. Its configuration is `~/.config/kdos/term.conf`.
 
 `kdos-mpctl watch` writes `$XDG_RUNTIME_DIR/kdos/nowplaying` and waits in mpd's `idle`; it
-reconnects when mpd restarts. The session starts one per login once an mpd configuration file
-exists.
+reconnects when mpd restarts. The session starts one per login when `mpd` is installed and an mpd
+configuration file exists.
 
 ## Privileged helpers
 
@@ -429,7 +447,7 @@ uses them, from `make fetch` to a bootable ISO.
 
 | Target | What it does | Documented in |
 |---|---|---|
-| `make fetch` | Download and verify every recipe's sources; after it, `make build` needs no network | [Developing](../05-developer/developing.md#where-sources-come-from) |
+| `make fetch` | Download and verify every recipe's sources; after it, `make build` needs no network. `FETCH_JOBS=N` works on `N` ports at once | [Developing](../05-developer/developing.md#where-sources-come-from) |
 | `make fetch-check` | Check offline that every source is present and matches its hash | [Developing](../05-developer/developing.md#where-sources-come-from) |
 | `make build` | The whole build, in the container; `BUILD_ARGS` reaches the orchestrator | [Developing](../05-developer/developing.md#make-targets) |
 | `make snapshots` | List the phase snapshots | [Developing](../05-developer/developing.md#make-targets) |
@@ -437,43 +455,46 @@ uses them, from `make fetch` to a bootable ISO.
 | `make run`, `make rundisk` | Boot the ISO, or `build/kdos.qcow2`, in a virtual machine with plain graphics | [Developing](../05-developer/developing.md#running-the-result) |
 | `make run-hw`, `make rundisk-hw` | The same with hardware-accelerated graphics, through `testing/qemu-hw/` | [Developing](../05-developer/developing.md#running-the-result) |
 | `make debug-boot` | Boot the built kernel and initramfs directly, with the serial console on the terminal | [Developing](../05-developer/developing.md#running-the-result) |
-| `make cleandisk`, `make cleanbuild`, `make clean` | Replace the test disk; empty `build/` except `snapshots`, `ccache`, `pkgstore` and `keys`; empty it except `keys` | [Developing](../05-developer/developing.md#make-targets) |
+| `make cleandisk`, `make cleanbuild`, `make clean` | Replace the test disk; empty `build/` except `snapshots`, `ccache`, `pkgstore`, `keys` and `binhost-key`; empty it except `keys` and `binhost-key` | [Developing](../05-developer/developing.md#make-targets) |
 | `make help` | List every target with a one-line description | [Developing](../05-developer/developing.md#make-targets) |
 | `make publish`, `publish-dry`, `publish-check`, `publish-plan`, `publish-describe`, `publish-rehome`, `publish-retire`, `publish-orphans` | `ports/publish` and its modes over the source archive's `sources-<N>` volumes; `PORTS` and `PUBLISH_ARGS` narrow them | [Developing](../05-developer/developing.md#make-targets) |
 | `make freeze`, `make release`, `make release-publish` | The system release for `TAG`: `sources.sha256`, a draft with the ISO and signed `SHA256SUMS`, then public and Latest | [Developing](../05-developer/developing.md#make-targets) |
 | `make check`, `preflight`, `selftest`, `selftest-asan`, `docscheck`, `anchorcheck`, `booknav`, `booknav-write`, `kfscheck`, `phaseclosure` | The checks that stand in for a build; `check` runs the seven that need no built tree; `booknav-write` rewrites the footers `booknav` checks | [Developing](../05-developer/developing.md#make-targets) |
 | `make depdrift`, `make debuginfo`, `make unowned`, `make linkcheck`, `make entrycheck` | Audit `build/fs` for undeclared same-phase link dependencies, shipped DWARF, unowned files, run-time references that do not resolve, or dangling links and dead entries | [Developing](../05-developer/developing.md#make-targets) |
 | `make book`, `make book-data`, `make book-stamp` | Render *KDOS from Scratch* into `build/kfs` (HTML, `kfs.pdf`, `kfs-html.tar.zst`); rewrite its committed snapshot `docs/kfs/data` from a built tree; rewrite its recipe stamp alone, from the checkout. `BUILDFS` names the tree, `KFS_PANDOC` and `KFS_TYPST` the renderers | [Developing](../05-developer/developing.md#make-targets) |
-| `make quick`, `make rig-image`, `make devdeps-image` | The fast loop, and the containers it and the rig run in | [Testing](../05-developer/testing.md#the-fast-loop) |
+| `make quick`, `make rig-image`, `make devdeps-image` | Rebuild the ports `QUICK` names and patch them into a booted ISO (`QUICK_ARGS` reaches the rig); build the rig's container, `kdos-qemu-py`; build the development image, `kdos-devdeps`, and run the self-test in it | [Testing](../05-developer/testing.md#the-fast-loop) |
 
 `KDOS_RES` (default `1920x1080`) sets the virtual screen for `make run`, `rundisk`,
-`run-hw` and `rundisk-hw`.
+`run-hw` and `rundisk-hw`. `KDOS_DISK` (default `96G`) is the size of the sparse
+`build/kdos.qcow2` that `make run` creates when it is missing and `make cleandisk` creates afresh.
 
 ### Scripts and programs
 
 | Command | What it does | Documented in |
 |---|---|---|
 | `ports/fetch [--check] [--tree DIR] [PORT…]` | What `make fetch` runs: each source from the port directory, the cache, the sources archive or upstream, generating a vendor bundle where one must be made. A port is named by its bare name on any shelf, and a name that is no port fails the run | [Developing](../05-developer/developing.md#where-sources-come-from) |
-| `ports/publish [--dry-run \| --check] [--history] [PORT…]` | Upload sources the archive lacks into the volume `sources-<N>` that `ports/shelves` gives the shelf that owns them, as `<shelf>--<file>` (in parts past 1,900 MiB), spilling into another volume when that one is full, and write their lines into `ports/sources.idx`. `--plan` gives every shelf without a volume one; `--describe` rewrites the releases' titles and notes; `--rehome [PORT…]` moves files into the volume and name of the shelf their port now sits on and, once the index is pushed, deletes the old copies; `--retire` deletes the emptied `src-<shelf>` releases of the older layout and their tags; `--orphans` lists index lines no recipe names, and `--orphans --prune=yes-delete` deletes the unprotected ones; `--freeze TAG` attaches a release's hash list. Ports are named as for `ports/fetch` | [Writing ports](../05-developer/writing-ports.md#portspublish) |
+| `ports/publish [--dry-run \| --check] [--history] [--all \| PORT…]` | Upload sources the archive lacks (with no port named, those new against the upstream branch or unindexed; `--all`, every recipe's) into the volume `sources-<N>` that `ports/shelves` gives the shelf that owns them, as `<shelf>--<file>` (in parts past 1,900 MiB), spilling into another volume when that one is full, and write their lines into `ports/sources.idx`. `--plan` gives every shelf without a volume one; `--describe` rewrites the releases' titles and notes; `--rehome [PORT…]` moves files into the volume and name of the shelf their port sits on and, once the index is pushed, deletes the old copies; `--retire` deletes every `src-<shelf>` release that holds no asset, and its tag; `--orphans` lists index lines no recipe names, and `--orphans --prune=yes-delete` deletes the unprotected ones; `--freeze TAG` attaches a release's hash list. Ports are named as for `ports/fetch` | [Writing ports](../05-developer/writing-ports.md#portspublish) |
 | `ports/publish --release TAG [--iso PATH] [--key PATH \| --unsigned] [--publish] [--dry-run]` | Put the system release `TAG` on `kunaldawn/kdos`: the ISO (in parts from 1,900 MiB), `sources.sha256`, the recipe tree `kdos-ports.tar.xz` with its signature, a signed `SHA256SUMS` and the public key, as a draft until `--publish` makes it public and Latest | [Developing](../05-developer/developing.md#cutting-a-release) |
 | `script/hooks/pre-push` | Refuse a push that breaks the ports layout, adds or changes a patch with no `Subject:` line, fails `docscheck.sh` or `kfscheck.py`, or names a source the archive lacks; enabled with `git config core.hooksPath script/hooks` | [Writing ports](../05-developer/writing-ports.md#the-pre-push-hook) |
-| `kdosbuild [--fresh] [--restore PHASE] [--continue-from PHASE] [--phases LIST] [--steps LIST] [--rebuild LIST] [--plan] [--snapshot] [--full-snapshots] [--port-jobs N] [--plain] [--json] [--list] [--delete PHASE]` | The build orchestrator, compiled from `src/devtools/kdosbuild/` by `script/kdosbuild.sh`, which `make build` runs with `BUILD_ARGS`. `--port-jobs N` builds up to `N` ports of a package phase at once, by dependency level | [The build system](../05-developer/build-system.md#flags) |
+| `kdosbuild [--fresh] [--restore PHASE] [--continue-from PHASE] [--phases LIST] [--steps LIST] [--rebuild LIST] [--plan] [--snapshot] [--full-snapshots] [--port-jobs N] [--plain] [--json] [--list] [--delete PHASE]` | The build orchestrator, compiled from `src/devtools/kdosbuild/` by `script/kdosbuild.sh`, which `make build` runs with `BUILD_ARGS`. `--port-jobs N` builds up to `N` ports of a package phase at once, by dependency level (1 to 8; the default, 1, builds one at a time) | [The build system](../05-developer/build-system.md#flags) |
 | `script/chroot/enter.sh` | A root shell, or one command, inside a built tree, for inspection by hand | [The build system](../05-developer/build-system.md#the-chroot) |
 | `ports/update` | Check ports for newer upstream releases; compiles and runs `kdos-portup` | [Writing ports](../05-developer/writing-ports.md#checking-for-new-versions) |
 | `kdos-portup` | The version checker `ports/update` runs, from `src/devtools/kdos-portup/`, compiled to `ports/.portup` | [Writing ports](../05-developer/writing-ports.md#checking-for-new-versions) |
 | `ports/hackage-vendor` | The Hackage downloader `ports/fetch` runs to make a Haskell port's vendor bundle | [Writing ports](../05-developer/writing-ports.md#the-haskell-bundle) |
-| `testing/preflight.sh` | 55 checks over the wiring of the tree | [Testing](../05-developer/testing.md#preflightsh) |
+| `testing/preflight.sh` | 70 checks over the wiring of the tree | [Testing](../05-developer/testing.md#preflightsh) |
+| `testing/depdrift.py [--root ROOT] [--repo REPO] [--strict]` | Name every package of a built root that links against, or whose `.pc` file requires, a package outside its `depends`; a `DRIFT` line is an owner from the package's own phase, which a build with `--port-jobs` may not have installed yet | [Testing](../05-developer/testing.md#undeclared-link-dependencies) |
 | `testing/debuginfo.py [--root ROOT] [--threshold BYTES] [--files]` | Sum the `.debug_*` and `.zdebug*` sections of every ELF file under a built root's `usr/` by owning package, and fail above the threshold (1 MiB) outside the ghc `-debug` runtimes | [Testing](../05-developer/testing.md#debug-information-in-the-built-tree) |
-| `testing/unowned.py [--root ROOT] [--fs DIR] [--all]` | List the files of a built root no package and no `fs/` path provides | [Testing](../05-developer/testing.md#files-nothing-owns) |
+| `testing/unowned.py [--root ROOT] [--fs DIR] [--all] [--fail-under DIR]…` | List the files of a built root no package and no `fs/` path provides; `--fail-under` fails only on a finding under that directory | [Testing](../05-developer/testing.md#files-nothing-owns) |
 | `testing/linkcheck.py [--root ROOT] [--all]` | Fail on a `DT_NEEDED` owned outside the consumer's `depends`, an interpreter that does not resolve, or OpenSSL 3 and 4 in one process; warn on a bare `python` shebang | [Testing](../05-developer/testing.md#run-time-references) |
 | `testing/entrycheck.py [--root ROOT]` | Fail on a dangling symlink, a desktop or D-Bus `Exec=` that does not resolve, a visible `Icon=` with no icon, or a udev program that does not exist | [Testing](../05-developer/testing.md#links-launchers-and-rules) |
 | `testing/bookcounts.py` | Recompute the port counts on the three pages that state them and check every ports-catalogue row against its recipe; `docscheck.sh` runs it | [Testing](../05-developer/testing.md#docschecksh) |
+| `testing/recipemeta.py`, `testing/optdeps.py` | Check every recipe's `description`, `homepage`, `license` and first source, and its catalogue row; list every build switch that turns off a feature whose library is a port. Preflight runs both | [Testing](../05-developer/testing.md#recipe-metadata-and-switched-off-features) |
 | `testing/phaseclosure.py` | Check that every package phase installs exactly the ports its list names, and that each port of `41_system` to `44_apps` is in the phase the phase table gives its closure; preflight runs it | [Writing ports](../05-developer/writing-ports.md#which-phase-lists-a-port) |
 | `testing/selftest.sh` | The library and consumer suite, with the goldens | [Testing](../05-developer/testing.md#selftestsh) |
 | `testing/docscheck.sh [--book docs/kdos\|docs/kfs]… [PAGE…]` | Both books: dead links, historical phrasing, each book's page contract and *KDOS from Scratch*'s wiki skeleton, and through `testing/bookcounts.py` the port counts | [Testing](../05-developer/testing.md#docschecksh) |
 | `testing/anchorcheck.py [--book DIR]… [PAGE…]` | Every `#fragment` link in both books and `README.md` lands on a heading, by GitHub's id rule | [Testing](../05-developer/testing.md#anchorcheckpy) |
 | `testing/booknav.py [--book DIR]… [--write]` | Check, or with `--write` rewrite, every chapter footer of both books and the contents of *KDOS from Scratch* | [Testing](../05-developer/testing.md#booknavpy) |
-| `testing/kfscheck.py [--base REF] [--strict] [--only CHECK,…]`, `kfscheck.py --repin` | *KDOS from Scratch* against the tree: sidecar drift, notes and patch headers on new or changed ports, the snapshot and recipe stamp, pinned includes, and a full render; `--repin` moves include ranges whose lines moved and pins unpinned ones | [Testing](../05-developer/testing.md#kfscheckpy) |
+| `testing/kfscheck.py [--base REF] [--strict] [--only CHECK,…]`, `kfscheck.py --repin` | *KDOS from Scratch* against the tree: sidecar drift, notes and patch headers on new or changed ports, the snapshot and recipe stamp, pinned includes, the kernel option tables against the `linux` port's `kdos.config`, and a full render; `--repin` moves include ranges whose lines moved and pins unpinned ones | [Testing](../05-developer/testing.md#kfscheckpy) |
 | `script/book/kfsgen.py`, `kfsrender.py`, `make_data.py` | *KDOS from Scratch*'s renderer: generate the book's Markdown from the tree into `build/kfs/src`; render it to HTML, PDF and a tarball with pandoc and typst; write the `docs/kfs/data` snapshot, or its recipe stamp alone with `--stamp-only`. `make book`, `make book-data` and `make book-stamp` run them | [Developing](../05-developer/developing.md#make-targets) |
 | `testing/devdeps-image.sh` | Build the `kdos-devdeps` image and run the self-test in it, with nothing skipped | [Testing](../05-developer/testing.md#the-machine-where-nothing-is-skipped) |
 | `testing/rig-image.sh` | Build the `kdos-qemu-py` rig image | [Testing](../05-developer/testing.md#the-host-may-not-have-an-emulator) |
@@ -489,7 +510,7 @@ uses them, from `make fetch` to a bootable ISO.
 | `testing/appbox-smoke.sh` | Check that every boxed application's launcher starts something | [Testing](../05-developer/testing.md#the-other-harnesses) |
 | `testing/hostcheck.sh` | Check that the binary a caller resolves by name is the one that can do the job | [Testing](../05-developer/testing.md#the-other-harnesses) |
 | `testing/oomd-fire.sh` | Put a booted machine under real memory pressure and read `kdos-oomd`'s kill count | [Testing](../05-developer/testing.md#the-other-harnesses) |
-| `testing/prepare_base.py`, `testing/test_runner.py` | Build a minimal root filesystem image and build single ports against it; `report_gen.py` summarises the results | [Testing](../05-developer/testing.md#the-other-harnesses) |
+| `testing/prepare_base.py`, `testing/test_runner.py` | Build a minimal base image, through `mini_build.py`, and build single ports against it, each in a fresh container; `report_gen.py` summarises the results | [Testing](../05-developer/testing.md#the-other-harnesses) |
 | `testing/bootcheck/` | Scripted boots with no display: start QEMU, run a command on the serial console, type | [Testing](../05-developer/testing.md#the-other-harnesses) |
 | `testing/qemu-hw/` | The containerised QEMU with accelerated graphics behind `make run-hw` | [Testing](../05-developer/testing.md#the-other-harnesses) |
 

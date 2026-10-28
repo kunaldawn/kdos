@@ -63,8 +63,8 @@
  */
 #define XDG_OPEN_PROG "/usr/bin/xdg-open"
 
-/* The "open with" chooser, a kdos-shell front end. Absent on a tree built
- * before it landed, which is why every use of it is guarded. */
+/* The "open with" chooser, a kdos-shell front end. A tree without
+ * kdos-shell has no such program, so every use of it is guarded. */
 #define OPENWITH_PROG "kdos-openwith"
 
 /* ── path -> MIME ──────────────────────────────────────────────────────── */
@@ -72,11 +72,11 @@
 /* ── what an argument is ───────────────────────────────────────────────── */
 
 /*
- * libkxdg ANSWERS THIS, and this binary already compiles it. A second copy
- * here resolved a path the same way and a URL not at all: `mailto:a@b.c` has a
- * basename that matches the `*.c` glob, so a mail address was offered to an
- * editor. kxdg_mime_for_arg also hands back the path a `file:` URL names,
- * which is what the handler must be given.
+ * libkxdg ANSWERS THIS, and this binary already compiles it. Do not resolve
+ * here by basename alone: `mailto:a@b.c` has a basename that matches the `*.c`
+ * glob, so a URL would be offered to an editor. kxdg_mime_for_arg tells a URL
+ * from a path, and hands back the path a `file:` URL names, which is what the
+ * handler must be given.
  */
 
 /* ── MIME -> entry ─────────────────────────────────────────────────────── */
@@ -84,10 +84,10 @@
 /*
  * kxdg_handlers ANSWERS THIS, and the Settings window's Apps page asks the
  * same function, so the handler it shows is the one this starts. `defaulted`
- * is the whole of G7: a default, or a single candidate, means the answer is
- * known and nothing may interrupt; two or more candidates and no default means
- * nobody has decided yet, and picking the first silently is how a machine ends
- * up opening PDFs in an image viewer for a year.
+ * decides whether the chooser appears: a default, or a single candidate,
+ * means the answer is known and nothing may interrupt; two or more candidates
+ * and no default means nobody has decided yet, and picking the first silently
+ * is how a machine ends up opening PDFs in an image viewer for a year.
  */
 
 /* ── entry -> argv ─────────────────────────────────────────────────────── */
@@ -133,8 +133,7 @@ static void exec_to_argv(const char *exec, char *const *files, int nfiles,
 	 * STATIC, and that is not laziness: kb_argv_add stores the POINTER it
 	 * is given and does not copy, so every word handed to it has to
 	 * outlive the exec. A stack buffer here would be freed at the return
-	 * and the argv would be `foot -e ' ;'`-shaped garbage — the same
-	 * defect CLAUDE.md already records against kdosbuild. `open` is a
+	 * and the argv would be `foot -e ' ;'`-shaped garbage. `open` is a
 	 * one-shot command, so one buffer is all there ever is.
 	 *
 	 * The store is sized for the line plus a path per document, because a
@@ -272,9 +271,9 @@ int cmd_open(int argc, char **argv)
 
 	/*
 	 * MORE THAN ONE ANSWER AND NOBODY HAS CHOSEN — ask. Exactly one
-	 * candidate, or a configured default, keeps today's behaviour and opens
-	 * the file: the dialog exists for the case where the machine genuinely
-	 * does not know, and for no other.
+	 * candidate, or a configured default, opens the file with no question:
+	 * the dialog exists for the case where the machine genuinely does not
+	 * know, and for no other.
 	 *
 	 * A tree without the chooser falls through to the first candidate
 	 * rather than failing. Losing a dialog is a worse desktop; losing the

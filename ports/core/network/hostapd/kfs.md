@@ -3,9 +3,10 @@ hostapd turns a wireless card into an access point, and carries an EAP and RADIU
 802.1X networks. On KDOS it makes a machine the access point of a network of its own, one that
 stays up across reboots, with [dnsmasq](#port-dnsmasq) beside it for addresses and names;
 `kdos-net`'s hotspot, through NetworkManager, is the quicker way to share a connection. The package installs
-`hostapd`, `hostapd_cli` and `/etc/hostapd/hostapd.conf.example`, and `/etc/init.d/46_hostapd.sh`
-starts the daemon only once `/etc/hostapd/hostapd.conf` exists; setting one up is
-[An access point with hostapd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md#an-access-point-with-hostapd).
+`hostapd`, `hostapd_cli`, their manual pages and `/etc/hostapd/hostapd.conf.example`.
+`/etc/init.d/46_hostapd.sh`, which the base filesystem ships rather than this package, starts the
+daemon only once `/etc/hostapd/hostapd.conf` exists; setting one up is
+[An access point with hostapd](../../../../docs/kdos/02-user-guide/administration.md#an-access-point-with-hostapd).
 
 ## Flags
 - `CONFIG_DRIVER_NL80211=y` — Drive the card through nl80211 with [libnl](#port-libnl) 3
@@ -17,7 +18,8 @@ starts the daemon only once `/etc/hostapd/hostapd.conf` exists; setting one up i
   802.11 features on the list are the same kind of switch: `CONFIG_WPS=y`, `CONFIG_DPP=y` with
   `CONFIG_DPP2=y` (Easy Connect), `CONFIG_RSN_PREAUTH=y`, `CONFIG_WNM=y`, `CONFIG_MBO=y`,
   `CONFIG_OCV=y` and `CONFIG_PASN=y`.
-- `CONFIG_SAE=y` — WPA3-Personal, with `CONFIG_SAE_PK=y` and `CONFIG_OWE=y` for encrypted open
+- `CONFIG_SAE=y` — WPA3-Personal. `CONFIG_SAE_PK=y` adds SAE-PK, with which a client checks the
+  access point's public key, and `CONFIG_OWE=y` adds Opportunistic Wireless Encryption for open
   networks.
 - `CONFIG_FULL_DYNAMIC_VLAN=y` — Let hostapd create the VLAN and bridge interfaces a per-station
   VLAN assignment needs, and with `CONFIG_VLAN_NETLINK=y` do it through netlink instead of
@@ -39,7 +41,8 @@ starts the daemon only once `/etc/hostapd/hostapd.conf` exists; setting one up i
 - `CONFIG_ELOOP=eloop` — hostapd's own event loop, on `epoll` (`CONFIG_ELOOP_EPOLL=y`).
 - `CONFIG_DEBUG_SYSLOG=y` — Allow `-s` to send the log to syslog, which is how the init script
   runs it, supervised in the foreground with no terminal to log to.
-- `CONFIG_WPA_CLI_EDIT=y` — Line editing and history in `hostapd_cli` without GNU readline.
+- `CONFIG_WPA_CLI_EDIT=y` — Line editing and history in `hostapd_cli`, through hostapd's own
+  small line editor; without it `hostapd_cli` reads plain lines.
 
 ## Notes
 `build.sh` writes the whole `.config`, so upstream's `defconfig` does not apply and anything not

@@ -1,7 +1,7 @@
-# Written by `kdos-firewall` through kdos-powerd. Edit by hand if you like —
-# the surface rewrites the whole file from the rules it finds here, so a rule
-# it does not recognise is DROPPED on the next toggle. Put anything hand-made
-# in a file of your own beside this one; every *.nft here is included.
+# Written by `kdos-firewall` through kdos-powerd. Do not edit it by hand:
+# kdos-powerd rewrites the whole file on every toggle from the named services
+# it recognises here, so a rule it does not recognise is DROPPED. Put anything
+# hand-made in a file of your own beside this one; every *.nft here is included.
 #
 # NAMED SERVICES ONLY, and the names live in kdos-powerd rather than here: a
 # client that could name a port could open any port, and the point of the

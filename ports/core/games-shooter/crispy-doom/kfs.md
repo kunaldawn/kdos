@@ -20,9 +20,10 @@ and Strife too, and it installs `crispy-doom`, `crispy-heretic`, `crispy-hexen`,
 - `--enable-doc` — with `--enable-bash-completion`: build the manual pages and the Bash
   completions, which upstream generates with Python. Each is on by default and quietly turned off,
   with only a warning, when `python3` is missing.
-- `--enable-fonts` — with `--enable-icons`: regenerate the setup program's fonts and the programs'
-  icons from their PNG sources, with Python and [python3-pillow](#port-python3-pillow). The same
-  quiet fallback applies.
+- `--enable-fonts` — with `--enable-icons`: regenerate, from their PNG sources, the fonts of the
+  text-mode screens (the setup program, the ENDOOM screen, the network game's waiting screen) and
+  the window icons compiled into each program, with Python and
+  [python3-pillow](#port-python3-pillow). The same quiet fallback applies.
 - `--with-libsamplerate` — with `--with-libpng` and `--with-fluidsynth`: resample sound effects
   with [libsamplerate](#port-libsamplerate), write screenshots as PNG, and play MIDI music through
   [fluidsynth](#port-fluidsynth). Each defaults to `check`, which builds without the library when

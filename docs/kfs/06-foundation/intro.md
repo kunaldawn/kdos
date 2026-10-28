@@ -29,7 +29,7 @@ phase installs (see
 ## The environment
 
 The phase's environment is `chroot.env` with one line added before it, in
-`script/phases/30_foundation/phase.env`:
+`script/phases/30_foundation/phase.env`, after the `CHROOT=1` every chroot phase sets:
 
 <!-- kfs:include script/phases/30_foundation/phase.env lines=23-27 pin=8a104b58a662 -->
 
@@ -44,11 +44,11 @@ and `/usr/local/lib64` to search, followed by whatever the variable already held
 The list opens with names written ahead of the first shelf heading. They are the phase's
 [pinned run]{.idx}:
 
-<!-- kfs:include script/phases/30_foundation/packages.txt lines=22-69 pin=7f079ad1f2db -->
+<!-- kfs:include script/phases/30_foundation/packages.txt lines=22-69 pin=f8262cba4212 -->
 
 They come first because recipes use them without naming them in `depends`. A configure script calls
 `pkg-config` through `PKG_CHECK_MODULES`; a `build.sh` runs `autoreconf`, `meson` or `cmake`;
-libtool's configure runs `file` to tell a shared library from a static one; and every `build.sh`
+libtool's configure runs `file` on a test object to learn its ABI; and every `build.sh`
 runs in bash with the GNU userland. A port further down the list that needs one of them finds it
 installed, whatever its `depends` line says.
 
@@ -142,8 +142,8 @@ The `base` and `auth` shelves hold the system's foundation:
 
 - [sysvinit](#port-sysvinit), PID 1 and the commands that talk to it;
 - [skalibs](#port-skalibs) and [utmps](#port-utmps), the utmp and wtmp service over musl;
-  coreutils, sysvinit and util-linux are built against utmps, which the pinned run installs ahead
-  of all three;
+  coreutils, sysvinit, util-linux and shadow are built against utmps, which the pinned run installs
+  ahead of all four;
 - [util-linux](#port-util-linux), [kmod](#port-kmod) and [eudev](#port-eudev), the device manager,
   which depends on both;
 - [shadow](#port-shadow), the account tools, configured `--with-acl` and linked against utmps;
@@ -162,8 +162,8 @@ and why utmps is required of every reader and writer of the login records is in
 ### The rest of the bootstrap's userland
 
 [coreutils](#port-coreutils), [grep](#port-grep), [patch](#port-patch),
-[findutils](#port-findutils), [sed](#port-sed) and [gzip](#port-gzip), together with bash, make and
-xz above, are the programs the bootstrap installed by hand. Each port installs over the
+[findutils](#port-findutils), [sed](#port-sed) and [gzip](#port-gzip), together with bash and make
+from the pinned run and xz from the `archiver` shelf, are the programs the bootstrap installed by hand. Each port installs over the
 bootstrap's files and adopts them, and several gain what the bootstrap build left out: coreutils
 is built against ACLs, extended attributes, libcap and utmps, and grep with `--enable-perl-regexp`
 against PCRE2. [which](#port-which), [less](#port-less) and [bc](#port-bc) join them as new
@@ -206,9 +206,11 @@ How two versions of one library live side by side, as `openssl3` and `lua54` do,
 By this point every bootstrap step's program has been built again as a port, except the two no phase
 rebuilds, kpkg and kinstall; the Linux API headers wait for the `linux` port of `60_kernel`. The tree can configure, compile and document a project of any of the common build
 systems with the C, C++ and Fortran compilers of `20_selfhost`. It has no LLVM, no Rust, no Go and
-no Haskell yet; [Part VII](../07-compilers/intro.md) adds them. The phase's [snapshot]{.idx} is the restore
-point in front of that part, so a failure among the compilers restores this tree instead of
-building this phase again (see [Snapshots](../../kdos/05-developer/build-system.md#snapshots)).
+no Haskell yet; [Part VII](../07-compilers/intro.md) adds them. In a run that writes snapshots
+(`--snapshot`, or S in the startup picker), the phase's [snapshot]{.idx} is the restore point in
+front of that part, so a failure among the compilers restores this tree instead of building this
+phase again; a run writes none otherwise (see
+[Snapshots](../../kdos/05-developer/build-system.md#snapshots)).
 
 ## See also
 

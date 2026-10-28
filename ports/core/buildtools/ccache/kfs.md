@@ -36,9 +36,9 @@ port, [ccache-manual](#port-ccache-manual), built once asciidoctor is installed.
   BLAKE3, cpp-httplib and tl-expected, which the tree carries no port of, so a library installed
   later under the same name never changes what ccache links.
 - `-DCCACHE_DEV_MODE=OFF` — Dev mode is on whenever a `CI` variable is in the environment or the
-  source came from git. It adds `-Werror` to every compile and makes the build probe for a faster
-  linker (lld or gold) and link with whichever it finds, so the result would follow what the chroot
-  happens to hold.
+  source came from git. It adds `-Werror` to the compile of ccache's own code and makes the build
+  probe for a faster linker (lld or gold) and link with whichever it finds, so the result would
+  follow what the chroot happens to hold.
 - `-DHTTP_STORAGE_BACKEND=ON` — Build the HTTP remote-storage backend, which lets a cache be shared
   through a web server. It is upstream's default; it is what needs cpp-httplib.
 - `-DREDIS_STORAGE_BACKEND=OFF` — Build no Redis remote-storage backend. It needs hiredis, which

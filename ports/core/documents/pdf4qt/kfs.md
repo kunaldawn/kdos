@@ -16,7 +16,7 @@ and reads text aloud through Qt Speech.
   on only for a vcpkg build.
 
 ## Patches
-- `openssl4.patch` — ports the certificate and signature code in `Pdf4QtLibCore` to OpenSSL 4. Pointers to `X509_NAME`, `X509_NAME_ENTRY`, `ASN1_STRING`, `ASN1_TYPE` and `X509_PUBKEY` that OpenSSL 4's accessors return as `const` are declared `const`; an `ASN1_STRING`'s bytes and length are read through `ASN1_STRING_get0_data()` and `ASN1_STRING_length()` instead of its `data` and `length` fields; and a new self-signed certificate builds its name in a fresh `X509_NAME` and sets it with `X509_set_subject_name()`, because under OpenSSL 4 the subject that `X509_get_subject_name()` returns is `const` and cannot be written to. PDF4QT is a Qt 6 program, so it links the tree's [openssl](#port-openssl), which is OpenSSL 4.
+- `openssl4.patch` — ports the certificate and signature code in `Pdf4QtLibCore` to OpenSSL 4. Pointers to `X509_NAME`, `X509_NAME_ENTRY`, `ASN1_STRING`, `ASN1_TYPE` and `X509_PUBKEY` that OpenSSL 4's accessors return as `const` are declared `const`; an `ASN1_STRING`'s bytes and length are read through `ASN1_STRING_get0_data()` and `ASN1_STRING_length()` instead of its `data` and `length` fields; and a new self-signed certificate builds its name in a fresh `X509_NAME` and sets it with `X509_set_subject_name()`, because under OpenSSL 4 the subject that `X509_get_subject_name()` returns is `const` and cannot be written to. Without it the build fails against the tree's [openssl](#port-openssl), which is OpenSSL 4.
 
 ## Notes
 Upstream installs a desktop entry for each program. `build.sh` writes its own over them, adding

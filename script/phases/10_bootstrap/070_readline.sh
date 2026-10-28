@@ -20,7 +20,7 @@ fi
 
 echo ">>> Building readline..."
 
-# Extract readline and dependencies from ports
+# Unpack the readline port's source tarball alone; its patches are not applied
 READLINE_SRC=$(extract_port_source readline)
 
 cd "$READLINE_SRC"

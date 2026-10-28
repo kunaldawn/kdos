@@ -9,7 +9,7 @@ file format, with its `fastjsonschema` validator, `nbclient`, which runs a noteb
 - `nbclient` — The six PyPI packages named before `.` on the `pip3 install` line (`nbclient`,
   `nbformat`, `fastjsonschema`, `mistune`, `bleach`, `pandocfilters`) are the recipe's pinned
   `pypackages`, installed from its
-  [Python vendor bundle](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-three-python-keys)
+  [Python vendor bundle](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys)
   into this package. Modules other programs import as well, such as `jsonschema`, Beautiful Soup
   and `defusedxml`, are `python3-*` ports in `depends` instead, because two packages cannot own
   one path in `site-packages`.
@@ -21,5 +21,6 @@ the files, and the hook skips any file it finds, so the offline build needs no n
 `test -e` on `templates/lab/static/index.css` after the install stops the build if the CSS ever
 fails to reach the package.
 
-The PDF exporter runs `xelatex` from [texlive](#port-texlive). The web-PDF exporter needs
+The PDF exporter runs `xelatex` from [texlive](#port-texlive), which is not in `depends`, so
+`--to pdf` works only where texlive is installed. The web-PDF exporter needs
 Playwright, which has no port, so `--to webpdf` does not work.

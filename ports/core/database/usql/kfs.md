@@ -9,12 +9,12 @@ copy query results between databases with `\copy`.
   library.
 - `-tags "no_base postgres sqlite3 libsqlite3 mysql csvq duckdb duckdb_use_lib"` — Choose the
   drivers. `no_base` drops upstream's base set (PostgreSQL, MySQL, SQLite, Microsoft SQL Server,
-  Oracle and CSVQ), and the tags after it add back PostgreSQL, SQLite, MySQL, CSVQ (CSV, TSV and
-  JSON files queried as tables) and DuckDB. `libsqlite3` makes `go-sqlite3` link the system
-  [sqlite](#port-sqlite) instead of compiling the SQLite amalgamation it carries, and
-  `duckdb_use_lib` makes DuckDB's Go bindings link the system `libduckdb` from
-  [duckdb](#port-duckdb) instead of the prebuilt static archives the bindings carry in
-  `lib/linux-amd64`.
+  Oracle, ClickHouse and CSVQ); the tags after it add back PostgreSQL, SQLite, MySQL and CSVQ (CSV,
+  TSV and JSON files queried as tables), and add DuckDB, which is not in the base set.
+  `libsqlite3` makes `go-sqlite3` link the system [sqlite](#port-sqlite) instead of compiling the
+  SQLite amalgamation it carries, and `duckdb_use_lib` makes DuckDB's Go bindings link the system
+  `libduckdb` from [duckdb](#port-duckdb) instead of the prebuilt static archives the bindings
+  carry in `lib/linux-amd64`.
 
 ## Notes
 usql is built from a vendor bundle, `usql-vendor-<version>.tar.xz`, made by `ports/fetch` with

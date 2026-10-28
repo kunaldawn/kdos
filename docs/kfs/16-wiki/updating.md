@@ -37,7 +37,9 @@ pointing at a stick is one line:
 tree = /media/stick
 ```
 
-`$KDOS_UPDATE_TREE` overrides the file, and `kdos update fetch --from` overrides both. See
+`$KDOS_UPDATE_TREE` overrides the file, and `kdos update fetch --from` overrides both. `sudo`
+clears the environment, so the variable reaches the command only when it is set behind `sudo`:
+`sudo env KDOS_UPDATE_TREE=/media/stick kdos update fetch`. See
 [/etc/kdos/update.conf](../../kdos/06-reference/configuration.md#etckdosupdateconf).
 
 ### /etc/kdos/keys/tree/
@@ -50,7 +52,7 @@ Its description, from `fs/etc/kdos/keys/tree/README`:
 The image step that fills it. An image built without the release key ships the ring empty, and
 then refuses every fetched tree:
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=132-141 pin=68e72034c604 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=133-142 pin=68e72034c604 -->
 
 ### /ports/TREE
 
@@ -58,7 +60,7 @@ The stamp naming the commit `/ports` was made from and when. `kdos update fetch`
 fetched tree's own stamp and refuses an older tree; a `/ports` with no stamp, from an image built
 without a commit, accepts any signed tree. The same step writes it:
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=122-131 pin=91e34053e828 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=123-132 pin=91e34053e828 -->
 
 On a booted image it reads, with the image's own commit and time:
 
@@ -86,8 +88,10 @@ directory above the first repository it names. See [kpkg](kpkg.md#etckpkgconf).
 | [`/var/lib/kdos/update.state.sig`]{.idx} | `fetch` | The signature of the tree last installed |
 | [`/var/lib/kdos/update.json`]{.idx} | The nightly check, `fetch`, `apply` | What `check --json` found; the panel's update badge reads it |
 
-A freshly booted image has none of them: the first `fetch` writes `update.state` and its lock, and
-`update.json` appears at the nightly check's first run.
+A freshly booted image has none of them. The first `fetch` or `apply` writes `update.state` and its
+lock, and `update.json` appears at the nightly check's first run, or sooner when a `fetch` or an
+`apply` is run as root. `update.state.sig` appears only once a fetch has installed a tree, or has
+found the published tree to be the one already installed.
 
 The full list is in [Filesystem and IPC](../../kdos/06-reference/filesystem-and-ipc.md).
 
@@ -128,6 +132,8 @@ there has been no newer signed tree to take. See [Known gaps](#known-gaps).
    kdos update check --json
    kdos update check --out ~/update.json
    ```
+
+   On a machine with nothing behind and no recorded problem:
 
    ```text
    {"behind":0,"orphans":0,"tree":"<commit>","problem":null,"detail":"","packages":[]}
@@ -177,8 +183,9 @@ can stand in for the network for the tree:
 3. To make the stick the usual source, write `tree = /media/stick` into `/etc/kdos/update.conf`.
 
 The sources an update builds from still come from the network, from the KDOS source archive and
-then upstream. `KDOS_SOURCES_BASE` names a directory laid out as the archive is,
-`<tag>/<asset>`, in its place; see
+then upstream. `KDOS_SOURCES_BASE`, set to an absolute path, names a directory laid out as the
+archive is, `<tag>/<asset>`, in its place, and like any variable it has to be set behind `sudo`:
+`sudo env KDOS_SOURCES_BASE=/media/archive kdos update apply`. See
 [Fetching sources on a machine](../../kdos/03-architecture/packaging.md#fetching-sources-on-a-machine).
 
 ### Applying an update
@@ -208,8 +215,9 @@ then upstream. `KDOS_SOURCES_BASE` names a directory laid out as the archive is,
 
    It downloads every source of every package that is behind before it compiles anything, so a
    machine that is offline, or a source neither the archive nor upstream has, stops the run in
-   minutes. It then builds and installs each package with `kpkg install -f`, with `KPKG_FETCH=1`
-   so that a dependency the new tree adds fetches its own sources.
+   minutes. It then builds and installs each package with `kpkg install -f`, dependencies first,
+   with `KPKG_FETCH=1` so that a dependency the new tree adds fetches its own sources. On a machine
+   with two slots each build runs in a chroot of the inactive slot, against that slot's libraries.
 
 4. On a machine with two slots, `apply` then runs `kpkg check --all` on the slot it installed into,
    copies `/ports` into it, puts its kernel on the EFI system partition with `kdos-bootctl deploy`,
@@ -220,20 +228,26 @@ then upstream. `KDOS_SOURCES_BASE` names a directory laid out as the archive is,
    and updates the running root. On a machine with two slots whose inactive slot is not mounted,
    `--in-place` updates the running root instead of refusing, and gives up the rollback.
 
-`--root DIR` installs into `DIR` instead of choosing a root. A machine installed by `kinstall` has
-slot A only, so until slot B is made and recorded with `kdos-bootctl set-slot`, it updates in
-place.
+`--root DIR` installs into `DIR` instead of choosing a root: it reads the package database under
+`DIR` and builds every package there that is older than its recipe in `/ports`. It does nothing
+about slots, even when `DIR` is the inactive slot: no `kpkg check`, no copy of `/ports`, no
+`kdos-bootctl deploy` and no `try`, so a slot updated this way is never booted as a candidate.
+Mount the slot and run `apply` without `--root` for that. A machine installed by `kinstall` has slot A
+only, so until slot B is made and recorded with `kdos-bootctl set-slot`, it updates in place.
 
 ### After an update
 
 1. List the running processes that still use code the update replaced; each keeps the old code
-   until it restarts:
+   until it restarts. Run it as root to include the services: an ordinary user cannot read another
+   account's processes, and `kdos restarts` skips them, so without root its answer covers only
+   your own:
 
    ```bash
-   kdos restarts
+   sudo kdos restarts
    ```
 
-   With nothing replaced it prints `Nothing is running deleted code.`
+   With nothing replaced it prints `Nothing is running deleted code.` and exits 0; it exits 1 when
+   something needs restarting.
 
 2. Restart those services (`sudo service restart <name>`; see [Services](services.md)), or log out
    and back in for the desktop's own programs. A new kernel runs from the next boot.
@@ -290,9 +304,9 @@ live medium has no slot state, so `apply` updates the running root.
 
 ## Tips
 
-- The panel's update badge counts the packages behind. It turns to the warning colour, or shows `!`
-  when nothing is behind, when the last fetch or apply failed or the machine has no tree; hovering
-  it says which.
+- The panel's update badge counts the packages behind, and is absent when nothing is behind and
+  nothing failed. It turns to the warning colour, or shows `!` when nothing is behind, when the
+  last fetch or apply failed or the machine has no tree; hovering it says which.
 - `kdos update check` answers against whatever tree is in `/ports`, so it works offline; only
   `--fetch` reaches the network.
 - An update compiles on the machine, and a large set takes hours.
@@ -328,6 +342,17 @@ The badge shows `!`, or `kdos update check` reports a problem
   `curl: (22) The requested URL returned error: 404` and exits 1. See
   [Known gaps](#known-gaps).
 
+`fetch-failed` after the tree downloaded
+: The sentence in `/var/lib/kdos/update.state` names the cause, such as a signature that does not
+  verify against `/etc/kdos/keys/tree/`, a published tree older than the one installed, or an
+  archive that is not a ports tree. In each of these `/ports` keeps the tree it had.
+
+`fetch-failed` or `no-network` after `apply`
+: `apply` fetches every source before building anything, and stopped there: it prints
+  `nothing was built`, and `update.state` lists the packages whose sources neither the archive nor
+  upstream had, or says the network could not be reached. Fetch one by hand to see why:
+  `sudo kpkg fetch <port>`.
+
 `fetch` exits 2
 : It needs root (`kdos update fetch replaces the ports tree and needs root`), another `fetch` or
   `apply` holds the lock, or `/ports` is inside a git checkout, which belongs to git and is never
@@ -338,23 +363,22 @@ The badge shows `!`, or `kdos update check` reports a problem
   from a stick with `--from`.
 
 `build-failed`
-: One package did not build. Its output is in the terminal `apply` ran in; rebuild that port alone
-  with `sudo env KPKG_FETCH=1 kpkg install -f <port>` to see it again (see [kpkg](kpkg.md)).
+: A package did not build, or, on a machine with two slots, the slot failed its `kpkg check`, the
+  copy of `/ports`, the kernel deploy or the `try`; the sentence in `update.state` says which. A
+  slot that failed any of these is not marked to be tried. A package's output is in the terminal
+  `apply` ran in; rebuild that port alone with `sudo env KPKG_FETCH=1 kpkg install -f <port>` to see
+  it again (see [kpkg](kpkg.md)).
 
 `apply` refuses: the inactive slot is not mounted
 : Mount it and run `apply` again, or pass `--in-place`. See
   [A/B slots and rollback](ab-slots-and-rollback.md).
 
-The time zone is UTC after an update
-: Set it again with `kdos-power timezone <Area/City>`; see
-  [Known gaps](#known-gaps).
-
 ## Known gaps
 
 - [The update path has not been run against a published tree](../../kdos/06-reference/known-gaps.md#the-update-path-has-not-been-run-against-a-published-tree)
 - [Nothing creates or first fills the second root slot](../../kdos/06-reference/known-gaps.md#nothing-creates-or-first-fills-the-second-root-slot)
+- [An update with --root compiles against the running system](../../kdos/06-reference/known-gaps.md#an-update-with---root-compiles-against-the-running-system)
 - [Per-slot kernels have been booted on virtual firmware only](../../kdos/06-reference/known-gaps.md#per-slot-kernels-have-been-booted-on-virtual-firmware-only)
-- [A tzdata upgrade can reset the time zone to UTC, once](../../kdos/06-reference/known-gaps.md#a-tzdata-upgrade-can-reset-the-time-zone-to-utc-once)
 - [There is no public binary host](../../kdos/06-reference/known-gaps.md#there-is-no-public-binary-host)
 - [A catalogue change reaches an installed application only when it is rebuilt](../../kdos/06-reference/known-gaps.md#a-catalogue-change-reaches-an-installed-application-only-when-it-is-rebuilt)
 

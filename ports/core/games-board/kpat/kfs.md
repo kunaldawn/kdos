@@ -17,7 +17,7 @@ draws its cards from the decks [libkdegames](#port-libkdegames) installs under
 - `-D CMAKE_REQUIRE_FIND_PACKAGE_KF6DocTools=ON` — make the KF6DocTools lookup required at the
   `find_package` call itself, so a build root without kdoctools stops the configure there.
 - `-D WITH_BH_SOLVER=ON` — use [black-hole-solver](#port-black-hole-solver) to solve Golf, which
-  upstream then requires. The FreeCell and Simple Simon solver,
+  upstream then requires. The solver for FreeCell, Simple Simon, Baker's Dozen and Castle,
   [freecell-solver](#port-freecell-solver), is required whatever this switch says. Upstream's
   default, named, so Golf cannot be left without its solver.
 
@@ -33,5 +33,6 @@ English copies.
 `build.sh` writes its own `org.kde.kpat.desktop` over upstream's to add
 `StartupWMClass=org.kde.kpat`: KDE's `KAboutData` sets the desktop file name, so the window's
 Wayland app id is `org.kde.kpat`. The entry keeps upstream's `Exec`, MIME type for saved games and
-handbook path, but not the per-game actions upstream lists for starting one game directly, nor its
-translations; its keywords are a list of its own. The hicolor icons it names are upstream's.
+handbook path, and adds a `TryExec=kpat` upstream's lacks. It drops the per-game actions upstream
+lists for starting one game directly, and the translations; its keywords are a list of its own. The
+hicolor icons it names are upstream's.

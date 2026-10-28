@@ -11,7 +11,7 @@ and the interface is then opened at `http://localhost:8000`.
   resolves its tree with Yarn and pins a peer that npm's strict check refuses. The same word is the
   recipe's `npmflags`, the flags of the `npm install` that writes the vendor bundle, and every
   offline `npm` call in `build.sh` must repeat it, or npm resolves a tree different from the
-  bundle's (see [Vendoring](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#vendoring)).
+  bundle's (see [Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring)).
 - `--omit=dev` — `npm prune` removes every development dependency (Babel, webpack and the rest of
   the build toolchain) from `node_modules` once the build is done, leaving what the server loads at
   run time.
@@ -40,7 +40,7 @@ Windows and Android: the `@serialport/bindings-cpp` prebuilds, the glibc builds 
 `@parcel/watcher` and of the `@unrs` resolver, and the executables in `app-builder-bin`,
 `7zip-bin` and `term-size/vendor`. `build.sh` deletes them
 all before building, because nothing on the host may run a binary it did not compile (see
-[What is built from source](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#what-is-built-from-source)).
+[What is built from source](../../../../docs/kdos/05-developer/writing-ports.md#what-is-built-from-source)).
 The serial-port module is then compiled from its source by `node-gyp`; without it the server cannot
 open a machine's port.
 

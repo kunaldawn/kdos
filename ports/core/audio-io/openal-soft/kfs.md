@@ -15,7 +15,7 @@ that is built into the library.
   and `sofa-info`. Upstream's install rule installs only the first two, so `build.sh` copies the
   other three into `/usr/bin` after the install.
 - `-DALSOFT_NO_CONFIG_UTIL=ON` — Leave out `alsoft-config`, a Qt program. Its settings are plain
-  text in `~/.alsoftrc`.
+  text, read from `~/.alsoftrc` and `~/.config/alsoft.conf`.
 - `-DALSOFT_EXAMPLES=OFF`, `-DALSOFT_TESTS=OFF`, `-DALSOFT_INSTALL_EXAMPLES=OFF` — No example
   players and no tests.
 - `-DALSOFT_EMBED_HRTF_DATA=ON` — Compile the default HRTF data sets into the library, so binaural

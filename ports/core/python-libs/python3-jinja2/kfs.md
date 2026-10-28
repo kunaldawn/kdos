@@ -3,10 +3,11 @@ Jinja is a template engine for Python: templates with variables, loops, conditio
 inheritance, compiled to Python code, with HTML escaping through
 [python3-markupsafe](#port-python3-markupsafe).
 
-KDOS needs it mostly at build time. Every file under libplacebo's `src/shaders/` is generated
-from a Jinja template during the build, and libplacebo's own copy of Jinja is an empty
-submodule in its release archive, so [libplacebo](#port-libplacebo), and through it mpv, needs
-this port. [libcamera](#port-libcamera), [fwupd](#port-fwupd) and [libei](#port-libei) generate
+KDOS needs it mostly at build time. libplacebo passes every C file under its `src/shaders/`,
+and its `renderer.c` and `shaders.c`, through `tools/glsl_preproc`, a Python preprocessor that
+renders their GLSL blocks into C from Jinja templates. Its own copy of Jinja, `3rdparty/jinja`,
+is an empty submodule in its release archive, so [libplacebo](#port-libplacebo), and through it
+mpv, needs this port. [libcamera](#port-libcamera), [fwupd](#port-fwupd) and [libei](#port-libei) generate
 code or manual pages with it as well, and [python3-sphinx](#port-python3-sphinx), [python3-flask](#port-python3-flask),
 [qutebrowser](#port-qutebrowser) and [jupyterlab](#port-jupyterlab) use it at run time.
 

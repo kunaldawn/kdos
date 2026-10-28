@@ -16,12 +16,11 @@ PipeWire, PulseAudio and JACK, the last three all served by [pipewire](#port-pip
 - `-DSDL_RPATH=OFF` — Upstream's default on Linux is on, and it writes `-Wl,-rpath,${libdir}` into
   the `Libs:` line of `sdl3.pc`, so every program linked through pkg-config would carry a run path
   of `/usr/lib`. That is the default search path, where `libSDL3.so.0` already is, and the package
-  lint warns on such an entry (see [What the package lint
-  refuses](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#what-the-package-lint-refuses)).
+  lint warns on such an entry (see
+  [What the package lint refuses](../../../../docs/kdos/05-developer/writing-ports.md#what-the-package-lint-refuses)).
 - `-DSDL_X11=OFF` — Builds no X11 video driver. Every SDL program has the Wayland path, so SDL
-  never needs Xwayland, which serves only programs with no Wayland path at all (see [No Xorg
-  server, and one
-  carve-out](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-xorg-server-and-one-carve-out)).
+  never needs Xwayland, which serves only programs with no Wayland path at all (see
+  [No Xorg server, and one carve-out](../../../../docs/kdos/01-philosophy/principles.md#no-xorg-server-and-one-carve-out)).
   A program that forces `SDL_VIDEODRIVER=x11` fails to open a window. With the driver off, SDL's
   Fribidi and libthai support, which upstream ties to the X11 driver, is off too.
 - `-DSDL_KMSDRM=OFF` — Builds no KMS/DRM video driver, the one that draws straight to the display
@@ -35,28 +34,28 @@ PipeWire, PulseAudio and JACK, the last three all served by [pipewire](#port-pip
   PulseAudio audio drivers. SDL tries PipeWire first, then PulseAudio, then ALSA. In a KDOS session
   the PulseAudio server is `pipewire-pulse`, so the PulseAudio driver, for a program that asks for
   `SDL_AUDIO_DRIVER=pulseaudio`, reaches the same graph (see
-  [Audio](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/session.md#audio));
+  [Audio](../../../../docs/kdos/03-architecture/session.md#audio));
   ALSA is the floor, for a machine where the session's sound server is not running.
 - `-DSDL_JACK=ON` — The JACK audio driver. There is no JACK server: [pipewire](#port-pipewire)
   installs its own `libjack.so.0` and `jack.pc`, and once `jack.pc` exists a port that leaves JACK
   on auto-detection gains it or not by build order, so every port that can link JACK names it (see
-  [JACK programs on the
-  host](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/session.md#jack-programs-on-the-host)).
+  [JACK programs on the host](../../../../docs/kdos/03-architecture/session.md#jack-programs-on-the-host)).
   `pipewire` is in `depends` for this reason.
 - `-DSDL_SNDIO=OFF` — Builds no sndio driver; sndio, OpenBSD's sound server, is not a port.
 - `-DSDL_OSS=OFF` — Builds no OSS driver. Upstream's default is already off on Linux; named here.
 - `-DSDL_DBUS=ON` — D-Bus support, which SDL uses for screensaver inhibition, the desktop's
   settings portal and the fcitx input-method frontend; fcitx needs nothing but D-Bus.
 - `-DSDL_IBUS=OFF` — Builds no IBus frontend. IBus is not a port; the input method in KDOS is
-  [fcitx5](#port-fcitx5) (see [Input
-  methods](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/session.md#input-methods)).
+  [fcitx5](#port-fcitx5) (see
+  [Input methods](../../../../docs/kdos/03-architecture/session.md#input-methods)).
 - `-DSDL_LIBUDEV=ON` — Finds joysticks and other input devices, and their hot-plugging, through
   libudev from [eudev](#port-eudev).
 - `-DSDL_HIDAPI_LIBUSB=ON` — Lets SDL's HIDAPI controller drivers talk to devices over libusb as
   well as over hidraw. libusb reaches the pads that have no usable hidraw node, the GameCube
-  adapter and the Switch 2 controllers; every other pad's HIDAPI driver opens `/dev/hidraw*`, which
-  `fs/etc/udev/rules.d/70-kdos-gamepad.rules` grants to the `input` group. The switch only permits
-  a probe, and configure carries on without the feature when libusb is missing, so
+  adapter and the Switch 2 controllers; every other pad's HIDAPI driver opens `/dev/hidraw*`.
+  `fs/etc/udev/rules.d/70-kdos-gamepad.rules` grants both to the `input` group: the hidraw nodes of
+  the ten controller vendors it names, and the USB nodes of the libusb devices. The switch only
+  permits a probe, and configure carries on without the feature when libusb is missing, so
   [libusb](#port-libusb) is named in `depends`.
 - `-DSDL_LIBURING=ON` — Builds SDL's asynchronous file I/O on io_uring, through `liburing-ffi`;
   without it the same API runs on SDL's generic thread pool. Like the libusb switch it only permits
@@ -71,9 +70,9 @@ PipeWire, PulseAudio and JACK, the last three all served by [pipewire](#port-pip
 
 SDL loads most of what it can use with `dlopen` at run time, by soname, rather than linking it:
 upstream's `SDL_DEPS_SHARED` is left on, so ALSA, PipeWire, PulseAudio, JACK, Wayland, libdecor and
-libusb are each looked up when SDL starts. The libraries must be present when the port builds, for
-their headers and for the probes, and each is in `depends` for that; a library missing at run time
-removes only that one driver.
+libusb are each looked up when SDL initialises the driver that uses it. The libraries must be
+present when the port builds, for their headers and for the probes, and each is in `depends` for
+that; a library missing at run time removes only the driver or feature built on it.
 
 `SDL_Init(SDL_INIT_AUDIO)` opens no window and needs no video device, so a program that uses SDL
 for sound alone, such as whisper.cpp's streaming transcription, runs in a terminal with no

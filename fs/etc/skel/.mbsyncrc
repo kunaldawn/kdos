@@ -25,9 +25,11 @@
 # is one outright. `notmuch new` runs `mbsync -a` from its pre-new hook, so
 # once a Channel below is live, fetching is something you never type.
 #
-# NO XOAUTH2. isync reaches it only through cyrus-sasl, which this image does
-# not carry, so an account whose provider has withdrawn application passwords
-# cannot be synchronised by this binary at all.
+# XOAUTH2 IS THE CYRUS-SASL PLUGIN, and it sends PassCmd's output as the
+# bearer token. An account whose provider has withdrawn application passwords
+# takes `AuthMechs XOAUTH2` beside `PassCmd "pizauth show <account>"`, with
+# that account set up in pizauth. OAUTHBEARER has no plugin here, so a
+# provider that offers only that mechanism cannot be synchronised.
 
 # Defaults for every Channel that does not say otherwise. Expunge None keeps a
 # deletion local until you ask for it; Create Both lets either side make a

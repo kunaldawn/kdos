@@ -1,8 +1,8 @@
 # Accessibility
 
 This page covers the accessibility aids a KDOS machine has and how to turn each one on: [braille]{.idx} and
-speech at a text console, the compositor's [magnifier]{.idx}, the keyboard and pointer aids, the on-screen
-keyboard, reduced motion, and the [screen reader]{.idx} for native applications. It also states plainly
+speech at a text console, the compositor's [magnifier]{.idx}, the keyboard and pointer aids, Dasher, the
+on-screen keyboard, reduced motion, and the [screen reader]{.idx} for native applications. It also states plainly
 what is missing: the desktop's own windows are not read by any screen reader. The
 [Accessibility](../../kdos/02-user-guide/accessibility.md) chapter of the KDOS book describes each
 aid in full; this page gives the files and the procedures.
@@ -46,7 +46,8 @@ at boot; see [Speech and the sound card](../../kdos/02-user-guide/accessibility.
 
 Not shipped. You write it, naming a braille driver, a speech driver, or both. `brltty(1)` and
 BRLTTY's own documentation list every driver code and directive; the drivers KDOS builds are in
-[Braille and speech at a text console](../../kdos/02-user-guide/accessibility.md#braille-and-speech-at-a-text-console).
+[Turning BRLTTY on](../../kdos/02-user-guide/accessibility.md#turning-brltty-on), and its screen
+drivers in [Which screens BRLTTY reads](../../kdos/02-user-guide/accessibility.md#which-screens-brltty-reads).
 
 ### The brlapi group and its polkit rule
 
@@ -61,7 +62,7 @@ group. The port's install hook creates the group and adds the `kdos` account the
 Every aid the compositor provides starts off, and is set per account, from
 `fs/etc/skel/.config/kdos/comp.conf`:
 
-<!-- kfs:include fs/etc/skel/.config/kdos/comp.conf lines=281-325 pin=936a36e1017b -->
+<!-- kfs:include fs/etc/skel/.config/kdos/comp.conf lines=281-327 pin=84053e7a4e1f -->
 
 The reduce-motion switch is in the same file:
 
@@ -75,7 +76,7 @@ at login.
 
 The keys that switch each aid for the session, from `fs/etc/skel/.config/kdos-comp/rc.xml`:
 
-<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=453-466 pin=a64c07c654eb -->
+<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=452-467 pin=636a1a99602f -->
 
 The shipped file has no `<magnifier>` block, so the magnifier runs with its defaults. The block and
 its five settings are in [The magnifier](../../kdos/02-user-guide/accessibility.md#the-magnifier).
@@ -86,7 +87,7 @@ An empty file whose existence lets every boxed application publish to an accessi
 `kdos-appbox` reads it, and `KDOS_A11Y` overrides it for one launch. From
 `src/system/kdos-appbox/main.c`:
 
-<!-- kfs:include src/system/kdos-appbox/main.c lines=134-156 pin=748b425f7c15 -->
+<!-- kfs:include src/system/kdos-appbox/main.c lines=134-156 pin=4bbfad7df825 -->
 
 ### Orca's launcher
 
@@ -124,10 +125,10 @@ clicking and the on-screen keyboard have not.
    service status brltty
    ```
 
-4. Read what BRLTTY printed if nothing happens:
+4. Read what BRLTTY printed if nothing happens. The log is readable by root only:
 
    ```bash
-   cat /run/kdos-svc.brltty.log
+   sudo cat /run/kdos-svc.brltty.log
    ```
 
 BRLTTY's log starts with `BRLTTY 6.9.1`, the screen driver (`lx [Linux]`) and the speech driver
@@ -189,6 +190,11 @@ The phosphor pass and direct scanout stay off while it is on. To change its size
 3. Apply the file with `kdos-comp -r` from a terminal inside the session. A reload takes a switch
    from the file only when its line has changed, so it does not undo one made by key.
 
+What each aid does, and its limits, are in
+[Keyboard aids](../../kdos/02-user-guide/accessibility.md#keyboard-aids),
+[Dwell click](../../kdos/02-user-guide/accessibility.md#dwell-click) and
+[The pointer size](../../kdos/02-user-guide/accessibility.md#the-pointer-size).
+
 ### The on-screen keyboard
 
 1. Set `osk = manual` or `osk = auto` in `~/.config/kdos/comp.conf`.
@@ -207,7 +213,15 @@ and Qt 5 applications do not raise it; use Super+Alt+K.
 Open **Keyboard Pointer** from the Start menu, or run `wl-kbptr`, then type the label of the
 region to move to. `wl-kbptr -o modes=floating,click -o mode_floating.source=detect` finds the
 clickable regions itself. Its example configuration is in
-`/usr/share/doc/wl-kbptr/config.example`.
+`/usr/share/doc/wl-kbptr/config.example`. The keys that narrow the choice and click are in
+[Pointing from the keyboard](../../kdos/02-user-guide/accessibility.md#pointing-from-the-keyboard).
+
+### Writing with Dasher
+
+Open **Dasher** from the Start menu, or run `dasher`, and steer the pointer into the letters as
+they stream towards it. Dasher always runs under Xwayland, and its direct mode types only into
+other X11 windows; for a Wayland window, write in Dasher's own text box and paste. See
+[Writing with Dasher](../../kdos/02-user-guide/accessibility.md#writing-with-dasher).
 
 ### Reducing motion
 
@@ -243,19 +257,22 @@ Orca starts on the live medium; it has not been heard reading an application.
 3. Install a screen reader inside the box if you want one there; `kdos-box enter <box>` opens a
    shell in it. The catalogue ships none.
 
-The setting is read when the application starts.
+`KDOS_A11Y=0` turns it off for one launch even when the file exists. The setting is read when the
+application starts, so one already running keeps what it started with.
 
 ## Tips
 
-- Every accent meets the same contrast floors, and `paper` is the one light scheme:
-  `kdos theme paper`. See [Fonts and theming](fonts-and-theming.md).
+- Every accent meets the same contrast floors, and `paper` is the one light accent:
+  `kdos theme paper`. See [Changing the accent](fonts-and-theming.md#changing-the-accent) and
+  [Colour and contrast](../../kdos/02-user-guide/accessibility.md#colour-and-contrast).
 - Larger text and a larger pointer are separate settings: `chrome_font` and `panel_font` in
   `comp.conf` set the size of the desktop's text, `cursor_size` and `large_cursor_size` the
-  pointer's. See [Displays and scaling](displays-and-scaling.md).
+  pointer's. See [The size of the desktop's text](displays-and-scaling.md#the-size-of-the-desktops-text).
 - `foot` and `kdos-term` change their text size per window with Ctrl+=, Ctrl+- and Ctrl+0.
 - A keyboard that misbehaves for no visible reason may have an aid switched on by accident. The
-  same Super+Alt key switches it off again; with slow keys on, every key of that chord has to be
-  held for `slow_keys_delay` (300 ms by default) before it counts, so a quick press does nothing.
+  same Super+Alt key switches it off again. Slow keys leaves Super and Alt alone, but with it on
+  the letter of that chord has to be held for `slow_keys_delay` (300 ms by default) before it
+  counts, so a quick press does nothing.
   Each switch logs `a11y: Sticky keys on` and the like in `$XDG_RUNTIME_DIR/kdos-comp.log`.
 - The desktop's keyboard shortcuts are listed in
   [Keyboard shortcuts](../../kdos/02-user-guide/desktop.md#keyboard-shortcuts).
@@ -273,7 +290,9 @@ Drop the `speech-driver` line for braille only, or stop the service with
 `sudo service stop brltty`.
 
 **`service status brltty` answers `[FAIL] brltty  (exited with code 134; restarting)`.**
-BRLTTY aborts and the supervisor starts it again every five seconds. Read its last words with
+BRLTTY aborts and the supervisor starts it again every five seconds; after the second failed start
+in a row the line reads `[FAIL] brltty  (exited with code 134, 2 failed starts in a row;
+restarting)`, counting up. Read its last words with
 `sudo tail /run/kdos-svc.brltty.log`. `Assertion failed: !snd_interval_empty(i)` there means the
 voice's sound device is a `plug` stacked on another `plug`: check that `kdos_card` in
 `/etc/alsa/conf.d/99-kdos-pipewire.conf` is `type empty`, as shipped, and that

@@ -17,8 +17,8 @@ the `direnv` binary, its manual pages and upstream's fish hook in
   [go](../../../../docs/kdos/05-developer/writing-ports.md#go)).
 - `GO_LDFLAGS="-s -w"` — The variable upstream's `GNUmakefile` turns into the `-ldflags` of its
   `go build`. `-s -w` leave out the symbol table and the DWARF data, which kpkg does not strip from
-  a Go binary. It is passed to the `install` run as well, because upstream's `install` target
-  depends on `all`, which builds the binary.
+  a Go binary. It is passed to the `install` run as well: upstream's `install` target depends on
+  `all`, so a binary make rebuilds there is built with the same flags.
 - `PREFIX=/usr` — Upstream's makefile installs under `/usr/local` unless told otherwise.
 
 ## Notes

@@ -36,7 +36,7 @@ cd "$GAWK_SRC"
 make
 make DESTDIR=$SYSROOT install
 
-# The gawk port installs gawk.sh and its helpers in /etc/profile.d and
+# The gawk port installs only gawk.sh in /etc/profile.d and
 # leaves out gawk.csh and gawknotes.info; this copy matches it, so nothing
 # here outlives the port's install over it.
 rm -f $SYSROOT/etc/profile.d/gawk.csh $SYSROOT/usr/share/info/gawknotes.info

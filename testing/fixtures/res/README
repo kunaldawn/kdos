@@ -40,7 +40,7 @@ THE TRAPS, AND WHAT EACH ONE CATCHES
   pid 300 `sshd` has no io   The file is deliberately absent, which is what
                              EACCES looks like from an unprivileged reader.
                              Both counters must come back KPR_UNREADABLE and
-                             render as an em dash. Zero would be a claim that
+                             render as a dash ('-'). Zero would be a claim that
                              root's sshd has done no disk io.
 
   conmon 900 -n kdos-apps    pid 950 (firefox-esr) and 951 (Web Content) are

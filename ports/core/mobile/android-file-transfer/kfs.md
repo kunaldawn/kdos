@@ -9,8 +9,8 @@ address files only by numeric id.
 ## Flags
 - `-DBUILD_QT_UI=ON` — build the `android-file-transfer` window. It is upstream's default, named.
 - `-DDESIRED_QT_VERSION=6` — look for Qt 6 alone. Left unset, the build takes Qt 6, Qt 5 or Qt 4,
-  whichever it finds first, and with none of them builds no window and prints only a status line;
-  the check after the install turns that into a failure.
+  in that order, and with none of them builds no window and prints only a warning; the check after
+  the install turns that into a failure.
 - `-DBUILD_FUSE=ON` — build `aft-mtp-mount` against [fuse](#port-fuse). It is upstream's default.
 - `-DBUILD_MTPZ=OFF` — no MTPZ, the authentication handshake of Microsoft's Zune players. Upstream
   builds it against OpenSSL and fetches the key data it needs at run time from a URL compiled into

@@ -3,7 +3,7 @@
 WSJT-X is the weak-signal digital-mode program for amateur radio: FT8, FT4, JT65, JT9, Q65, MSK144,
 FST4 and WSPR, for HF contacts, meteor scatter and moonbounce. It is built against Qt 5 with
 Fortran decoders, and it controls the radio through [hamlib](#port-hamlib). The user guide is
-built as HTML and opened from the Help menu.
+built as HTML and opened by the Help menu's Local User Guide entry.
 
 ## Flags
 
@@ -14,9 +14,9 @@ built as HTML and opened from the Help menu.
   [What the package lint refuses](../../../../docs/kdos/05-developer/writing-ports.md#what-the-package-lint-refuses)).
 - `-DCMAKE_CXX_FLAGS_RELEASE="-O3 -DNDEBUG -Wno-error"` — Upstream appends `-Werror` to
   `CMAKE_CXX_FLAGS` after the environment's `CXXFLAGS`, and GCC warns that members of the HRD
-  transceiver's message struct may be used uninitialised; upstream demotes that warning on Windows
-  only. The release flags come last on the compiler
-  line, so `-Wno-error` there turns the warnings back into warnings (see
+  transceiver's message struct may be used uninitialised; upstream demotes that warning only on
+  Windows with GCC 16 or later. The release flags come last on the compiler line, so `-Wno-error`
+  there turns the warnings back into warnings (see
   [An upstream -Werror](../../../../docs/kdos/05-developer/build-troubleshooting.md#an-upstream--werror)).
 - `-DCMAKE_POLICY_DEFAULT_CMP0167=NEW` — Find Boost through the config file
   [boost](#port-boost) installs, instead of CMake's retired FindBoost module.
@@ -37,7 +37,8 @@ Upstream copies hamlib's `rigctl`, `rigctld` and `rigctlcom` into the package un
 names. `build.sh` replaces each copy with a symbolic link to the program the hamlib port owns, so
 there is one binary of each.
 
-Upstream's two desktop entries carry no window class and name their icon under `pixmaps`.
+Upstream's two desktop entries carry no window class and name the icon `wsjtx_icon`, which
+upstream installs under `pixmaps`.
 `build.sh` replaces both, installs the icon into hicolor, and sets `StartupWMClass` to the
 executable's name, which is Qt's Wayland app id when no organisation domain is set. The HTML user
 guide in `/usr/share/doc/wsjtx` is exempt from the manual prune, because the Help menu opens it

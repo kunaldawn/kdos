@@ -8,8 +8,9 @@ window link it, and [kparts](#port-kparts) is built on it.
 ## Flags
 
 - `-D FORCE_DISABLE_KGLOBALACCEL=OFF` — Keep global shortcut support, through
-  [kglobalaccel](#port-kglobalaccel). It is upstream's default; on, the configure requires
-  `KF6GlobalAccel`, so a missing kglobalaccel is an error.
+  [kglobalaccel](#port-kglobalaccel). It is upstream's default; with it off, the configure requires
+  `KF6GlobalAccel`, so a missing kglobalaccel is an error rather than a build without global
+  shortcuts.
 - `-D BUILD_PYTHON_BINDINGS=OFF` — Build no Python bindings. Upstream's default is on, and the
   configure then requires Shiboken6 and PySide6, which this port's `depends` does not name.
 - `-D BUILD_DESIGNERPLUGIN=OFF` — Build no Qt Designer plugin for the widgets, which upstream

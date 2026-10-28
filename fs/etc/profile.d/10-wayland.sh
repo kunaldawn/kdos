@@ -75,8 +75,9 @@ esac
 export XCURSOR_THEME=KDOS-cursors
 export XCURSOR_SIZE=24
 
-# Toolkit back ends. Every toolkit on the host that has a Wayland back end is
-# built with it and its X11 one, and Wayland comes first; Tk has only X11.
+# Toolkit back ends. GTK and Qt are built with their Wayland and X11 back ends,
+# and Wayland comes first; SDL is built with Wayland alone, so its driver
+# names no fallback; Tk and Motif have only X11 and run under Xwayland.
 # Qt takes a list and falls back to xcb (Xwayland) only when the Wayland
 # plugin cannot start. GDK_BACKEND is
 # left unset: GDK already tries Wayland first, and a value here would override

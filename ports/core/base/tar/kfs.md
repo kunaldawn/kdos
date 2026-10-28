@@ -16,8 +16,9 @@ the phase rebuilds the bootstrap's programs as packages are in
 - `FORCE_UNSAFE_CONFIGURE=1` — tar's configure stops with `you should not run configure as root`
   unless this is set. kpkg builds every port as root inside the chroot.
 - `--disable-acl` — skip gnulib's check for an ACL library (`sys/acl.h` and `acl_get_file` in
-  libacl). tar's source compiles its ACL code only when that check succeeded, so this alone leaves
-  `--acls` out. The [acl](#port-acl) port is built in `30_foundation`, after this one.
+  libacl). tar's source compiles its ACL code only when that check succeeded, so this alone builds
+  a tar whose `--acls` only warns that POSIX ACL support is not available. The [acl](#port-acl)
+  port is built in `30_foundation`, after this one.
 - `--without-posix-acls` — skip tar's own check for the POSIX.1e ACL functions, which `--acls`
   uses to store and restore access control lists in the archive. With both checks off, the program
   does not depend on whether acl happens to be installed when the recipe is next rebuilt.

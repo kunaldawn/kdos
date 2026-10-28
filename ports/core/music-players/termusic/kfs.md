@@ -24,14 +24,14 @@ meet. The recipe writes a terminal desktop entry for it, named Music.
 
 The crates come from the vendor bundle, `termusic-vendor-<version>.tar.xz`, pinned with its own
 `sha256 =` line and unpacked at the top of the tree; cargo builds `--frozen --offline` from it (see
-[Vendoring](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#vendoring)).
+[Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring)).
 
 The workspace asks for rusqlite's `bundled` SQLite. The chroot exports
 `LIBSQLITE3_SYS_USE_PKG_CONFIG=1`, which makes libsqlite3-sys link the system library anyway (see
-[rust](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#rust)),
+[rust](../../../../docs/kdos/05-developer/writing-ports.md#rust)),
 and `build.sh` checks with `readelf` that both binaries NEED `libsqlite3.so.0`, so a build that fell
 back to the bundled copy stops instead of shipping it.
 
 Its network code uses rustls with the default AWS-LC provider, compiled in by `aws-lc-sys`; the copy
-is listed in `/usr/share/kdos/bundled.txt` for `kdos cve`, see [Bundled
-copies](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/packaging.md#bundled-copies).
+is listed in `/usr/share/kdos/bundled.txt` for `kdos cve`, see
+[Bundled copies](../../../../docs/kdos/03-architecture/packaging.md#bundled-copies).

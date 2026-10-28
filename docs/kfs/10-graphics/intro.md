@@ -64,10 +64,10 @@ list, with no order file. The chapters that carry the phase are these:
 
 Smaller chapters
 : `input` holds [libxkbcommon](#port-libxkbcommon), whose closure reaches Wayland, with `libei`
-  and the on-screen keyboard `wvkbd`; `shells` holds `foot`; `xdg` holds `xdg-desktop-portal` and
-  AppStream; `lang` holds OpenJDK, Tk and R; and the subject shelves from `3d` to `ai` hold the
-  libraries and tools of their fields that draw without a toolkit, such as VTK, MuPDF and
-  KOReader.
+  and the on-screen keyboard `wvkbd`; `base` holds `kbd`, the console key tables and utilities;
+  `shells` holds `foot`; `xdg` holds `xdg-desktop-portal` and AppStream; `lang` holds OpenJDK,
+  Tk and R; and the subject shelves from `3d` to `ai` hold the libraries and tools of their fields
+  that draw without a toolkit, such as VTK, MuPDF and KOReader.
 
 `src-system`
 : [kdos-tools](#port-kdos-tools), one binary installed under many names: the service supervisor

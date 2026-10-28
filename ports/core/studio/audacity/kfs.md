@@ -20,8 +20,8 @@ host, but no build file compiles it. FFmpeg import and export loads the librarie
   mpg123, WavPack and libsndfile codecs, PortAudio, libpng, zlib, FreeType, HarfBuzz, pugixml and
   wxWidgets' base library, each in `depends`. The sources the engine has no system path for are
   compiled into the program from the tarball's copies: SQLite, soxr, SoundTouch, SBSMS, twolame,
-  the LV2 host stack, Nyquist, pffft, the VST3 SDK the framework always compiles, and a few
-  header-only libraries.
+  the LV2 host stack, Nyquist, pffft, the VST3 SDK the framework always compiles, the
+  loop-tempo-estimator and tft libraries, and the header-only RapidJSON and picojson.
 - `-D EXTDEPS_OVERRIDE_UTFCPP=REBUILD` — a per-dependency override, which wins over the `_ALL` one:
   utf8cpp is header-only and is rebuilt from the tarball's copy, where `SYSTEM` would swap it for
   the CMake package of the [utfcpp](#port-utfcpp) port.
@@ -66,6 +66,7 @@ host, but no build file compiles it. FFmpeg import and export loads the librarie
 - `beats-formatter-pow10.patch` — Renames the file-local `pow10()` in `src/uicomponents/components/internal/numeric/beatsformatter.cpp` to `powerOf10()`. musl's `<math.h>` declares the GNU extension `double pow10(double)` under `_GNU_SOURCE`, which g++ always defines, and every call with a `size_t` argument is then ambiguous between the two (see [a project function named like a C library extension](../../../../docs/kdos/05-developer/build-troubleshooting.md#a-project-function-named-like-a-c-library-extension)).
 - `vst-stub-include.patch` — In `src/stubs/vst/vsteffectsstubmodule.cpp`, includes the stub's own header, `vsteffectsstubmodule.h`, instead of the real module's `vsteffectsmodule.h`. With `AU_MODULE_EFFECTS_VST=OFF` the stub is compiled, and the real module's header is not on its include path; the stub's header declares the same class (see [a stub that includes the real module's header](../../../../docs/kdos/05-developer/build-troubleshooting.md#a-stub-that-includes-the-real-modules-header)).
 - `wayland-platform.patch` — Removes the block of `src/app/main.cpp` that, on Linux, sets `QT_QPA_PLATFORMTHEME=gtk3` (unless `AU_QT_QPA_PLATFORM` is `offscreen`) and, unless `AU_QT_QPA_PLATFORM` is set, `QT_QPA_PLATFORM=xcb`. Unpatched, Audacity is always an Xwayland window with the GTK 3 platform theme; patched, Qt follows the session's `QT_QPA_PLATFORM` and `QT_QPA_PLATFORMTHEME` (see [a graphical application](../../../../docs/kdos/05-developer/writing-ports.md#a-graphical-application)), so the window is a native Wayland one in the desktop's colours.
+- `muse-extensions-qml-no-unity.patch` — Sets `UNITY_BUILD OFF` on one target, `muse_extensions_qml`, the QML module of the framework's extensions, in `muse/framework/extensions/qml/Muse/Extensions/CMakeLists.txt`. `MUSE_COMPILE_USE_UNITY` is on by default and merges a module's sources, twelve at a time, into one translation unit; this module's sources do not compile merged, and with the patch each compiles on its own. No other target's unity setting changes.
 
 ## Notes
 

@@ -35,8 +35,9 @@ make
 make DESTDIR=$SYSROOT install
 
 # locate and updatedb are plocate's. The findutils port leaves its own pair
-# out of the package, so a copy installed here would be owned by nothing,
-# never replaced, and found on $PATH ahead of /usr/sbin/updatedb.
+# out of the package, so updatedb, frcode and the manual pages installed here
+# would be owned by nothing and never replaced, and this updatedb would be
+# found on $PATH ahead of /usr/sbin/updatedb.
 rm -f $SYSROOT/usr/bin/locate $SYSROOT/usr/bin/updatedb $SYSROOT/usr/libexec/frcode \
     $SYSROOT/usr/share/man/man1/locate.1 $SYSROOT/usr/share/man/man1/updatedb.1 \
     $SYSROOT/usr/share/man/man5/locatedb.5

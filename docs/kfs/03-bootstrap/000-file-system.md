@@ -3,9 +3,9 @@
 The first step of the bootstrap compiles nothing. `script/phases/10_bootstrap/000_file_system.sh`
 lays out the directories of the new root in `build/fs`, makes `/bin`, `/sbin`, `/lib` and `/lib64`
 links into `/usr`, makes `/var/run` and `/var/lock` links into `/run`, and copies the repository's
-`fs/` overlay over the result. Unlike every other step it has no mark and runs on every build, so
-the copy is written to be repeated on a tree that already has packages in it. This page goes
-through the script in order and says what each part guarantees.
+`fs/` overlay over the result. Unlike every other step it has no mark and runs every time the
+bootstrap phase runs, so the copy is written to be repeated on a tree that already has packages in
+it. This page goes through the script in order and says what each part guarantees.
 
 **Approximate build time:** less than 0.1 SBU
 
@@ -25,10 +25,10 @@ because rootless podman and skopeo stage pulled image layers in it.
 
 ## /var/run and /var/lock
 
-<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=41-50 pin=071a99762a4a -->
+<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=37-46 pin=071a99762a4a -->
 
-`/var/run` is a link to `../run`, and `/var/lock` to `../run/lock`. Many libraries still have the
-older path compiled in: libdbus and basu, the sd-bus library KDOS uses, both default to
+`/var/run` is a link to `../run`, and `/var/lock` to `../run/lock`. Libraries built with upstream's
+defaults still have the older path compiled in: basu, the sd-bus library KDOS uses, defaults to
 `/var/run/dbus/system_bus_socket`, while `dbus-daemon` listens on `/run/dbus/system_bus_socket`.
 With the link, both names reach the same socket, and every client of the system bus finds it. Were
 `/var/run` a real directory, every such client would report the bus unreachable while the daemon
@@ -42,7 +42,7 @@ that.
 
 The script changes into `build/fs` for these four links, so each target is relative to the root:
 
-<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=61-64 pin=9eb925b3be84 -->
+<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=57-60 pin=9eb925b3be84 -->
 
 The four top-level names are links into `/usr`, so there is one `bin`, one `sbin` and one library
 directory, and a path such as `/bin/sh` or `/lib/ld-musl-x86_64.so.1` resolves to the file under
@@ -51,7 +51,8 @@ directory, and a path such as `/bin/sh` or `/lib/ld-musl-x86_64.so.1` resolves t
 The `-T` on each `ln` matters on the second run. Without it, `ln` dereferences the link that is
 already there and creates the new one inside its target, as `/usr/bin/bin` or `/usr/lib/lib`. Such a
 link dangles, no package owns it, and the orphan sweep, which works from kpkg's database, steps
-over it, so it would ship. A second run is ordinary: every build runs this step.
+over it, so it would ship. A second run is ordinary: every pass of the bootstrap phase runs this
+step, and a narrow build runs it alone to bring a change under `fs/` into the tree.
 
 ## Copying fs/
 
@@ -63,17 +64,17 @@ surrounded by the work below, in the order the script does it.
 
 ### Accounts survive the copy
 
-<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=76-86 pin=202e46a424dd -->
+<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=72-82 pin=202e46a424dd -->
 
-Install hooks of the package phases add service accounts, such as `messagebus`, `polkitd` and
-`sshd`, to `/etc/passwd`, `/etc/group` and `/etc/shadow` long after this step first runs. Copying
-`fs/` over them would delete those accounts. Before the copy, `awk` saves every line of the tree's
-file whose name is not in `fs/`'s file, and the lines are appended back after it. Entries in `fs/`
-win; entries that exist only in the tree survive.
+Install hooks of the package phases add service accounts, such as `polkitd` and `geoclue`, to
+`/etc/passwd`, `/etc/group` and `/etc/shadow` long after this step first runs. Copying `fs/` over
+them would delete those accounts. Before the copy, `awk` saves every line of the tree's file whose
+name is not in `fs/`'s file, and the lines are appended back after it. Entries in `fs/` win;
+entries that exist only in the tree survive.
 
 ### Files gone from fs/ are removed
 
-<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=98-108 pin=ccd12b012d65 -->
+<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=94-104 pin=ccd12b012d65 -->
 
 A copy overwrites but never deletes, so a file removed from `fs/` would stay in the tree for good.
 The step keeps a [manifest]{.idx} of what `fs/` provided, in `/var/lib/kdos/fs-manifest`, and on the next
@@ -85,16 +86,18 @@ provided even when its target resolves to nothing inside `fs/`, as `etc/mtab`'s,
 
 ### The copy
 
-<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=114-121 pin=77680c6ebbee -->
+<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=112-119 pin=77680c6ebbee -->
 
 `fs/usr/lib64` is a link to `lib`. `cp` cannot replace a real directory with a link, so on a tree
-whose `usr/lib64` is still a directory that one path fails to copy. The step reports it, lets that
-single failure pass, and the link reaches the tree when it is next built from empty. Any other copy
-failure stops the build.
+whose `usr/lib64` is still a directory that one path fails to copy. The step reports the directory
+before the copy and lets the copy fail without stopping, and the link reaches the tree when it is
+next built from empty. That allowance covers the whole `cp`, so on such a tree any other copy
+failure passes too. On a tree where `usr/lib64` is already the link, any copy failure stops the
+build.
 
 ### Modes follow fs/
 
-<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=130-138 pin=c16a1118216e -->
+<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=128-136 pin=c16a1118216e -->
 
 `cp` keeps the mode of a file that already exists at the destination, so without this loop a file
 made executable in `fs/` would stay non-executable in a tree synced before. That breaks things
@@ -104,7 +107,7 @@ what `cp` gives a new file under this build's umask, so a first copy and a later
 
 ### Modes and owners git cannot carry
 
-<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=173-195 pin=ad17f2fc6f55 -->
+<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=171-193 pin=ad17f2fc6f55 -->
 
 git records whether a file is executable and nothing else: no narrower mode and no owner. The loop
 above therefore gives every non-executable file 644, and a file in the tree belongs to whoever ran
@@ -125,7 +128,7 @@ A path in the list that the tree does not have is reported rather than skipped s
 
 ### The manifest and the accounts are written
 
-<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=197-213 pin=e4300e9cfca0 -->
+<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=195-211 pin=e4300e9cfca0 -->
 
 The manifest lists every file and link in `fs/`, sorted. It is built with POSIX `find` and `sed`
 because the step runs on the container's userland, not the tree's. The saved account lines are

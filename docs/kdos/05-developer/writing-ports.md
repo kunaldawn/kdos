@@ -2,7 +2,7 @@
 
 This chapter is the reference for the recipe format: how a piece of upstream software is described
 so that KDOS can fetch it, verify it, build it offline and package it. A
-[port](../06-reference/glossary.md) is the recipe for one host package. The tree holds about 2,000 of them
+[port](../06-reference/glossary.md#port) is the recipe for one host package. The tree holds about 2,000 of them
 under `ports/core`, filed on 102 shelves by subject, and the ports of KDOS's own under `src/` are
 written in the same format. The chapter is for anyone adding a port, changing one, or bumping one to a new
 upstream release. Read [How KDOS is built](how-kdos-is-built.md) for where ports sit in the build,
@@ -36,7 +36,8 @@ ports/core/games-rpg/frotz/
 written in C (`src/system/kdos-kpkg/decl.c`), so a tool that reads a recipe starts no shell and
 cannot run anything by accident. `build.sh` is a real script, so syntax checking, linting,
 highlighting and diffing all work on it; `testing/preflight.sh` runs `bash -n` on every one. The
-reasoning behind the two-file split is in [Decisions](../01-philosophy/decisions.md), and
+reasoning behind the two-file split is in
+[Decisions](../01-philosophy/decisions.md#the-build-shell-lives-beside-the-recipe), and
 [How KDOS differs](../01-philosophy/how-kdos-differs.md#packages-and-recipes) sets it beside other
 distributions' recipe formats.
 
@@ -46,16 +47,17 @@ upstream (see [Where sources come from](developing.md#where-sources-come-from)).
 change a source, [publish it](#publishing-sources) so other checkouts can fetch it.
 
 A few ports keep other files in git beside the recipe. Leaving out `kpkgbuild`, `build.sh`,
-`postinstall.sh` and `*.patch`, git tracks 42 files under `ports/core`. Thirty-five of them are named
-by a `sha256 =` line: small inputs that are part of the source, such as `bash`'s and `readline`'s
-upstream patch-level files and the IANA registries under `iana-etc`. A named file cannot change
-without its `sha256 =` line changing, so an edit to it changes the recipe and rebuilds the port.
+`postinstall.sh`, `*.patch` and `kfs.md`, git tracks 46 files under `ports/core`. Thirty-eight of
+them are named by a `sha256 =` line: small inputs that are part of the source, such as `bash`'s and
+`readline`'s upstream patch-level files and the IANA registries under `iana-etc`. A named file
+cannot change without its `sha256 =` line changing, so an edit to it changes the recipe and
+rebuilds the port.
 
 Every other file beside the recipe is hashed into the
-[recipe hash](../06-reference/glossary.md) itself, subdirectories included, so an edit to it
-rebuilds the port too. The seven such files in git are `linux/kdos.config`,
-`linux/kdos-logo-mono.pbm`, `linux/x509.genkey` and `epy/epy.desktop`, which `build.sh` reads
-from `$PORT_SRC`;
+[recipe hash](../06-reference/glossary.md#recipe-hash) itself, subdirectories included, so an edit
+to it rebuilds the port too. The eight such files in git are `linux/kdos.config`,
+`linux/kdos-logo-mono.pbm`, `linux/x509.genkey`, `epy/epy.desktop` and `musl/ldconfig`, which
+`build.sh` reads from `$PORT_SRC`;
 `pandoc/cabal.project.freeze`, which `ports/fetch` reads when it generates the vendor bundle; and
 `linux/genlogo-mono.py` and `ffmpeg/LICENSE.notice`, which no build reads. A stray file beside a
 recipe, such as an editor backup or a `kpkgbuild.new`, also changes the hash and rebuilds the port.
@@ -68,7 +70,9 @@ book, which is never hashed: editing it rebuilds nothing (see
 The `games-rpg` in the path is the port's **shelf**: the subject directory it is filed under. The
 shelves are a closed list, `ports/shelves`, one line per shelf giving its id, the source-archive
 volume that keeps its files, and what belongs on it;
-[Choosing a shelf](#choosing-a-shelf) is how a new port is placed. A port's identity is its bare
+[Choosing a shelf](#choosing-a-shelf) is how a new port is placed, and
+[Decisions](../01-philosophy/decisions.md#ports-are-shelved-by-subject-identity-is-the-bare-name)
+says why the tree is shelved this way. A port's identity is its bare
 name, never its shelf. `name =` equals the directory's name, one name is one port across every
 shelf and every `src/` area, and nothing that names a port (a `depends` line, a package list,
 `kpkg`, `ports/fetch`, `ports/publish`) spells the shelf. Moving a port to another shelf is one
@@ -108,7 +112,7 @@ KDOS's own programs are ports whose sources live in git beside the recipe, each 
 `src/art`, `src/desktop` and `src/daemons` has a `source =` line. With no
 source there is nothing to fetch or hash, `$SRC` is created empty, and `build.sh` compiles out of
 `$PORT_SRC`. `src/art/kdos-theme` is the smallest; its `kpkgbuild`, after the banner, is
-five lines:
+six lines:
 
 ```ini
 name        = kdos-theme
@@ -116,6 +120,7 @@ version     = 1.0.0
 release     = 2
 description = KDOS theme generators — GTK stylesheet, icons, cursors
 homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
 ```
 
 and its `build.sh` compiles the program together with the two shared libraries it uses, straight
@@ -134,10 +139,11 @@ gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 install -Dm755 kdos-theme "$PKG/usr/bin/kdos-theme"
 ```
 
-For such a port the [recipe hash](../06-reference/glossary.md) covers the whole port directory,
-subdirectories included, and the whole of `src/libs`, because nothing else records what the
-program was built from. Any edit under the directory rebuilds the port, and an edit to any
-library rebuilds every port of KDOS's own, not only the ones that use it. How to write the program
+For such a port the [recipe hash](../06-reference/glossary.md#recipe-hash) covers the whole port
+directory, subdirectories included, and the whole of `src/libs`, because nothing else records what
+the program was built from. Any edit under the directory rebuilds the port, and an edit to any
+library rebuilds every port of KDOS's own, not only the ones that use it (see
+[Decisions](../01-philosophy/decisions.md#a-library-edit-rebuilds-every-in-tree-port)). How to write the program
 itself is in [Writing desktop software](writing-desktop-software.md) and
 [The C libraries](c-libraries.md).
 
@@ -227,7 +233,7 @@ them to `build.sh`), but another tool gives each a defined meaning:
 
 Any key that is not one of `kpkg`'s own is a helper: `_tag`, `_commit`, `_date`, `debrev`, `vrsn`
 and the rest. Helpers reach `build.sh` as shell variables. A recipe holds at most 32 helpers, and
-the longest in the tree has 19.
+the longest in the tree, `josm`'s, has 25.
 
 Declare them between `release` and `source`. Each value is expanded as it is read, so a helper can
 use `$version` and any helper above it, and `source` can use the helpers above it; declared in any
@@ -360,11 +366,12 @@ turn: the reproducibility settings, the job count and `KPKG_STRICT_RECIPE=1`. `2
 `CC` and `CXX` again, and a phase.env adds only what is its own, such as `PORT_REPO`. The flags
 from `20_selfhost` on are listed in [The release flags](#the-release-flags), and no phase adds
 `-Werror`. Extend the flags rather than replace them: `export CFLAGS="$CFLAGS -Wno-error"`. Ninja
-takes the job count without being told: once ninja is installed, `chroot.env` puts
-`script/bin/ninja` first on `PATH`, and it adds `-j$KDOS_JOBS` to every `ninja` call that names no
-job count before running `/usr/bin/ninja`, so a bare `ninja`, `meson compile`, `meson install` and a
-CMake Ninja build all follow `KDOS_JOBS`; a call that passes its own `-j`, a tool (`-t`) or
-`--version` goes through unchanged. A recipe that has to pass a job count explicitly, to a build
+takes the job count without being told: once ninja is installed, `chroot.env` puts `script/bin`
+first on `PATH`, and its `ninja` adds `-j$KDOS_JOBS` to every `ninja` call that names no job count
+before running `/usr/bin/ninja`, so a bare `ninja`, `meson compile`, `meson install` and a CMake
+Ninja build all follow `KDOS_JOBS`; a call that passes its own `-j`, a tool (`-t`) or `--version`
+goes through unchanged. The same directory holds a `meson` wrapper, described under
+[meson](#meson). A recipe that has to pass a job count explicitly, to a build
 system of its own, reads `$KDOS_JOBS`, never `nproc` and never a parse of `MAKEFLAGS`: `nproc`
 ignores both a lowered `KDOS_JOBS` and the memory clamp. Under `kdosbuild --port-jobs` the port
 also has `KDOS_JOBSERVER`, the FIFO make, ninja and cargo take their job slots from (see
@@ -390,7 +397,11 @@ The build command, `kpkgbuild`, wraps the script in a fixed sequence:
 1. Set the umask to `022`, before anything below, so `$SRC`, `$PKG` and every file the build
    creates without an explicit mode, including what `make install` writes, have the same mode on
    every builder.
-2. Check every declared `sha256 =` entry, before the work directory is touched.
+2. Check every declared `sha256 =` entry, before the work directory is touched. With
+   `KPKG_FETCH=1` in the environment, a source in neither the port directory nor `kpkg`'s source
+   directory is downloaded first (see
+   [Fetching sources on a machine](../03-architecture/packaging.md#fetching-sources-on-a-machine));
+   the tree's own build never sets it.
 3. Remove `$SRC_ROOT`, create `$SRC` and `$PKG`, and unpack or copy the sources. Each source
    must have a `sha256 =` entry; its bytes are not hashed again, having been checked at step 2.
    `tar` runs with `--no-same-permissions`, so the umask masks every mode the archive carries and
@@ -407,7 +418,8 @@ The build command, `kpkgbuild`, wraps the script in a fixed sequence:
    recipe's keys and helpers as shell assignments.
 7. Delete every libtool `.la` file under `$PKG`: each names build-time paths that do not exist on
    the target and would put them on every consumer's link line.
-8. Delete `usr/share/info/dir` and every `usr/share/fonts/*/fonts.dir`. Each is a shared index that
+8. Delete `usr/share/info/dir`, `usr/share/applications/mimeinfo.cache` and every
+   `usr/share/fonts/*/fonts.dir`. Each is a shared index that
    `kpkg` regenerates on install (see [Shared indexes](#shared-indexes)); shipped in two packages,
    one would conflict with the other.
 9. Copy the licence texts: every regular file at the top of `$SRC` whose name starts with
@@ -466,8 +478,8 @@ executables, which keeps `.symtab` (`zls`, and the native tools `ocaml` builds w
 
 Each build system has one shape that works on this tree. Start from it and change only what the
 project needs; most of the failures in [Build troubleshooting](build-troubleshooting.md) come from
-leaving one of these flags out. Of the recipes under `ports/core`, about 580 run a `configure`
-script, 600 run CMake, 240 run meson and 57 run `cargo build`.
+leaving one of these flags out. Of the recipes under `ports/core`, about 610 run a `configure`
+script, 620 run CMake, 250 run meson and 58 run `cargo build`.
 
 Every shape below builds a release: optimised, with no debug information, with assertions compiled
 out where the build system's release mode does that, and with upstream's SIMD and assembly on. How
@@ -706,8 +718,8 @@ Check each of these against the recipe, whichever build system it uses:
 - **SIMD and assembly on, with the assembler in `depends`.** `nasm` for ffmpeg, x264, x265, dav1d,
   libvpx (`--as=nasm`), libjpeg-turbo (`-DWITH_SIMD=ON`) and libass (`--enable-asm`); openssl never
   configured with `no-asm`. SIMD options above SSE2 stay off, since the baseline is x86-64 v1
-  (kodi's `ENABLE_SSE3=OFF` and its siblings), and lame keeps `--enable-nasm=no` as upstream
-  advises.
+  (kodi's `ENABLE_SSE3=OFF` and its siblings). lame's assembly routines are written for i386
+  alone, so on x86-64 its configure leaves them out whatever `--enable-nasm` says.
 - **`-O3` for a hot port by pattern.** Where upstream's own default is `-O3` and the exported
   `CFLAGS` replaces it, as for zstd, lz4, xxhash, openssl and sqlite in Alpine, raise the level in
   `build.sh`:
@@ -778,9 +790,11 @@ fails the setup with the subproject's name, instead of meson trying to clone it 
 recipe that wants the system library or nothing passes `--wrap-mode=nofallback`, which the wrapper
 leaves alone.
 
-Every meson setup needs `--prefix=/usr --libdir=lib`. meson's default library directory is not on
-the runtime linker's search path, and the symptom is a shared library that cannot be loaded at run
-time, long after a clean build and install.
+Every meson setup needs `--prefix=/usr --libdir=lib`. Without `--libdir`, meson picks the library
+directory from the machine it runs on: `lib64` wherever `/usr/lib64` is a real directory, `lib`
+where it is a link, as it is in the build tree. Naming `lib` keeps the payload the same wherever
+the setup runs, and a `usr/lib64` path in a package is refused (see
+[What the package lint refuses](#what-the-package-lint-refuses)).
 
 Every meson setup also names its buildtype, `--buildtype=release` or `-Dbuildtype=release`.
 meson's default is `debug`, which compiles `-g -O0` into every object, and `kpkg` strips no debug
@@ -1096,7 +1110,7 @@ A few habits recur in the tree's application recipes, and a new one should follo
 - **Pin every optional dependency.** An option left on auto turns a feature on or off according to
   whatever happens to be installed when the port builds. A meson recipe sets each feature option
   explicitly; a CMake recipe names what it wants with `CMAKE_REQUIRE_FIND_PACKAGE_<Name>=ON` and
-  what it must not pick up with `CMAKE_DISABLE_FIND_PACKAGE_<Name>=ON` (127 build scripts use one
+  what it must not pick up with `CMAKE_DISABLE_FIND_PACKAGE_<Name>=ON` (128 build scripts use one
   or both). The requirement also applies to any config-package search a find module makes under
   the same name, so a module that first asks for a config file the library does not install stops
   the configure. Requiring curl takes `-DCURL_NO_CURL_CMAKE=ON` as well: CMake's FindCURL first
@@ -1347,7 +1361,7 @@ line saying what belongs on each. Apply these rules in order; the first that mat
 
 A new shelf is a new line in `ports/shelves`, `<id> - <description>`, and a new directory; `make
 publish-plan` then replaces the `-` with the shelf's source-archive volume (see [Volumes and
-shelves](#publishing-sources)), and preflight fails the line until it has one. Its id is
+shelves](#portspublish)), and preflight fails the line until it has one. Its id is
 lowercase letters, digits and `-`; it is never `libs`, because a source-less port hashes `<portdir>/../../libs` and a
 shelf by that name would be hashed into those ports; never `core`; and never the name of a port,
 which could not be told from a loose port. Preflight and the [pre-push hook](#the-pre-push-hook)
@@ -1439,7 +1453,7 @@ checked by `testing/preflight.sh`.
 | No explanatory comments in a recipe, `kpkgbuild` or `build.sh`: the banner header, then the metadata keys or the commands, nothing else | The recipe is data and commands. Why a flag is passed or a patch applied, and a trap a future editor must not fall into, goes in the port's [`kfs.md`](#the-ports-note-kfsmd), which *KDOS from Scratch* prints beside the commands; mechanism shared by many ports belongs in this book, and a constraint that holds for a whole shelf in its Notes in [the ports catalogue](../06-reference/ports-catalogue.md) |
 | No source edits with stream editors (`sed -i` and the like) | Use a build flag. Patch only where no flag exists, and then ship a real `.patch` beside the recipe (see [Patches](#patches)), so the change is reviewable and covered by the recipe hash |
 | Every optional feature explicit, and every library it needs in `depends` | Many build systems answer a missing library by quietly disabling the feature. Dropping a dependency then gives a build that succeeds and is narrower than its recipe claims, and the library is absent from the host with nothing to say so. `python3 testing/optdeps.py` lists every `--without-`, `--disable-`, `-D…=OFF` and `-D…=disabled` switch whose feature a port provides, so a feature switched off on the belief that its library is not a port is found; the features whose library really has no port are in [known gaps](../06-reference/known-gaps.md#features-whose-library-has-no-port) |
-| A `description`, a `homepage` and a `license` in every `kpkgbuild` | `kpkg info` and the version checker read the first two from the recipe, the licence is known from nothing else, and no other file carries them. Preflight refuses a recipe that lacks one, and a `license` that is not an SPDX expression |
+| A `description`, a `homepage` and a `license` in every `kpkgbuild` | `kpkg info` reads the description and the licence from the recipe, and the version checker the homepage; no other file carries them, and the licence is known from nothing else. Preflight refuses a recipe that lacks one, and a `license` that is not an SPDX expression |
 | Every recipe named in a phase list (or in `ports/unbuilt`) and given one row in the catalogue | A recipe no phase installs is never built, and the counts and rows in [the ports catalogue](../06-reference/ports-catalogue.md), [Status](../06-reference/status.md) and [Packaging](../03-architecture/packaging.md) are recomputed from the tree: `testing/bookcounts.py`, which `testing/docscheck.sh` runs, fails on an unlisted recipe, a missing or duplicated row, a row whose version or phase differs from the tree, and a count the new port changes |
 | The `description` is the catalogue's wording, exactly | The recipe is the source of truth and [the ports catalogue](../06-reference/ports-catalogue.md) repeats it, so the two cannot drift: preflight fails while any port's row says something else |
 | The first `source` spells the version as `$version` | A literal version is a URL that still names the old release after a bump: the fetch takes the old tarball, and the bump's new hash refuses it. Preflight flags a first source that carries the version's literal text; `docbook-xml`, which fetches several DTD versions on purpose, is the exception |
@@ -1462,7 +1476,7 @@ font.
 ## Patches
 
 A patch is the last resort after a build flag, and it is a file, never an edit made in place: a
-unified diff kept beside the recipe as `<topic>.patch`, where it can be read and reviewed. 619 of
+unified diff kept beside the recipe as `<topic>.patch`, where it can be read and reviewed. 620 of
 them sit in port directories under `ports/core`. `kpkg` does not apply them. `build.sh` does, from
 the unpacked source it starts in, normally before it configures:
 
@@ -1474,7 +1488,7 @@ Write the diff with paths one directory deep (`a/src/…`, `b/src/…`), as `git
 `diff -ru old new` does, so `-p1` strips that directory and the paths resolve against `$SRC`;
 `patch -p1 -i "$PORT_SRC/<file>.patch"` is the form nearly every port uses.
 
-Name a patch `*.patch`. The [recipe hash](../06-reference/glossary.md) covers every file beside the
+Name a patch `*.patch`. The [recipe hash](../06-reference/glossary.md#recipe-hash) covers every file beside the
 recipe that no `sha256 =` names, so a `*.diff` rebuilds the port when edited too, but `.patch` is
 what the hash takes first and by name, and what a port of KDOS's own is read for. A patch is
 tracked by git with the recipe and is not published to the source archive.
@@ -1544,7 +1558,9 @@ heading of any level but `##`; a `## ` line inside a fenced block is code and st
 A link is written relative to `kfs.md` itself, so it works on GitHub: the
 renderer turns a link to a page of `docs/kfs` into that page's anchor in the book and any other
 into the file's GitHub URL, and leaves a `#port-<name>` link, or a link to a page's own anchor in
-the rendered book, as it is.
+the rendered book, as it is. Links are mapped a paragraph at a time, in a note and in a
+hand-written page of `docs/kfs` alike, so a link whose text wraps onto the next line is mapped like
+any other; a link inside a fenced block is code and stays as written.
 
 The file is kept honest by `testing/kfscheck.py`'s `sidecars` check. Each `## Flags` bullet opens
 with the flag in backquotes, and the port's `build.sh` must still name that flag whole, so a note
@@ -1624,8 +1640,8 @@ the program it names.
 The entries under `fs/usr/share/applications/` are all `NoDisplay=true`.
 `kdos-openarchive.desktop` is a handler that exists for its `MimeType=` line and names a script
 that is itself under `fs/` (`fs/usr/local/bin/kdos-openarchive`), so entry and program have the
-same lifetime. The rest, one per window-opening front end from `kdos-peek.desktop` to
-`kdos-users.desktop`, name front ends that the `kdos-shell` port installs as links to
+same lifetime. The other twenty-four, one per window-opening front end from `kdos-audio.desktop`
+to `kdos-verify.desktop`, name front ends that the `kdos-shell` port installs as links to
 `kdos-shell`, and give each window its name and picture on the taskbar; `kdos-peek`, `kdos-pix`
 and `kdos-burn` also carry a `MimeType=` line. They are the exception to this rule, and without
 `kdos-shell` they would name programs that are not there.
@@ -1742,7 +1758,7 @@ records it either.
 |---|---|
 | Static archives | Every `.a` a build installs ships, `libpython3.14.a` and the archives nothing in the tree links included |
 | Symbol tables | `.symtab` and `.strtab` are removed from every ELF executable and shared object over 32 MiB, with `objcopy --strip-all --keep-section=.debug_*`: that removes the two sections and nothing a loader, a debugger's link or a build ID reads (`.dynsym`, `.gnu_debuglink` and the notes stay). This catches Chromium's `chromium` and the `libxul.so` of LibreWolf, Firefox ESR and Thunderbird. Everything smaller keeps its symbols, so a backtrace names its functions. Relocatable objects, kernel modules and static archives are never touched: their symbol table is what a link reads. Nor is a file with bytes after its last section and its section header table, which is a program carrying an appended payload that `objcopy` would drop. A port whose upstream strips on install keeps that switched off (`--disable-strip`, `--disable-install-strip`) |
-| Manuals | HTML and PDF manuals are removed under `usr/share/doc` and `usr/share/texmf-dist/doc`: every `*.html`, `*.htm` and `*.pdf`, and every directory named `html`. Manual pages and info pages ship. Exempt is the HTML a program opens itself, where the prune would break a feature rather than drop a manual: `usr/share/doc/mednafen`, whose manual upstream writes only in HTML; `usr/share/doc/kdos`, this book; `usr/share/doc/kfs`, *KDOS from Scratch* in HTML and its PDF; `usr/share/doc/R/html`, the index of R's `help.start()` and the `R.css` every page of its dynamic help links; the manuals behind a Help menu, `usr/share/doc/geany/html`, `usr/share/doc/gimagereader`, `usr/share/doc/texstudio`, `usr/share/doc/wsjtx`, `usr/share/doc/wireshark` (Help > Manual Pages) and `usr/share/doc/hatari`; and the pages an About dialog shows, `usr/share/doc/freecad` and `usr/share/doc/packages/smplayer`. The list is `DOC_KEEP` in `src/system/kdos-kpkg/prune.c`; a port whose program opens HTML from another path adds that path there. TeX Live's package manuals are the `texlive-doc` port, which no phase builds and whose PDFs this prune would remove, so `texdoc` finds nothing |
+| Manuals | HTML and PDF manuals are removed under `usr/share/doc` and `usr/share/texmf-dist/doc`: every `*.html`, `*.htm` and `*.pdf`, and every directory named `html`. Manual pages and info pages ship, and so do the API references gtk-doc installs under `usr/share/gtk-doc/html`, which is outside both trees. Exempt is the HTML a program opens itself, where the prune would break a feature rather than drop a manual: `usr/share/doc/mednafen`, whose manual upstream writes only in HTML; `usr/share/doc/kdos`, this book; `usr/share/doc/kfs`, *KDOS from Scratch* in HTML and its PDF; `usr/share/doc/R/html`, the index of R's `help.start()` and the `R.css` every page of its dynamic help links; the manuals behind a Help menu, `usr/share/doc/geany/html`, `usr/share/doc/gimagereader`, `usr/share/doc/texstudio`, `usr/share/doc/wsjtx`, `usr/share/doc/wireshark` (Help > Manual Pages) and `usr/share/doc/hatari`; and the pages an About dialog shows, `usr/share/doc/freecad` and `usr/share/doc/packages/smplayer`. The list is `DOC_KEEP` in `src/system/kdos-kpkg/prune.c`; a port whose program opens HTML from another path adds that path there. TeX Live's package manuals are the `texlive-doc` port, which no phase builds and whose PDFs this prune would remove, so `texdoc` finds nothing |
 | Languages | English only. Removed: every message catalog (`.mo`, `.gmo`, `.qm`) in a `<lang>/LC_MESSAGES/` directory, whatever holds it (`usr/share/locale`, `usr/lib/locale`, R's `po/` and `translations/`, a Python package's `locales/`); any `.mo`, `.gmo` or `.qm` elsewhere, Qt's and `usr/share/<program>/translations/` among them, whose file name ends in a language tag (`de.mo`, `app_pt_BR.qm`), while one with no tag (`app.qm`, the source language) stays; every translated KDE handbook (`usr/share/doc/HTML/<lang>/`); and every directory in `usr/share/man` that is not a `man<section>` one, which removes translated manual pages and empty `cat*` directories alike. A tag is a language, then optionally a region, script or UN area, a codeset after a region and a variant (`pt_BR`, `zh_Hant`, `es_419`, `zh_TW.Big5`, `sr@latin`). A tag that is `en`, or starts with `en_`, `en-` or `en@`, is English and stays: some programs keep their English plural forms in their catalog |
 | What the language rule keeps | Input-method engines and dictionaries, fonts for every script, keyboard layouts, X11's compose tables, `locale.alias`, and any data a program reads that is not a catalog (TeX's babel files, gnucash's tax tables) |
 | Licences | `usr/share/licenses` is never pruned |
@@ -1840,7 +1856,7 @@ sections (2, 3, 4, 5, 7) and leaves out every page another port installs.
 Some ports install a small script of KDOS's own beside the upstream program, such as a filter for
 `aerc`. Where you keep that script matters.
 
-The [recipe hash](../06-reference/glossary.md), which decides whether a port needs rebuilding,
+The [recipe hash](../06-reference/glossary.md#recipe-hash), which decides whether a port needs rebuilding,
 covers `kpkgbuild`, `build.sh`, `postinstall.sh`, every `.patch` and every other file in the port's
 directory that no `sha256 =` line names, except the book's `kfs.md` (see [Anatomy of a port](#anatomy-of-a-port)). Every
 phase sets `KPKG_STRICT_RECIPE=1`, under which an installed package whose recipe hash has changed
@@ -1892,7 +1908,7 @@ read `$name` and `$version`. Twenty-seven ports have one:
 - `linux` removes the module trees of other kernels. It keeps the running kernel's and those of
   every kernel on the ESP, runs `depmod`, and builds the new kernel's initramfs into the root as
   `/boot/initramfs-kdos.cpio.gz`. Installing into the running system, it then puts both into the
-  running [root slot](../06-reference/glossary.md)'s ESP directory with `kdos-bootctl deploy /`;
+  running [root slot](../06-reference/glossary.md#root-slot)'s ESP directory with `kdos-bootctl deploy /`;
   `kdos update` deploys the inactive slot itself
   ([A new kernel](../03-architecture/boot-and-init.md#a-new-kernel)).
 - `dbus` gives `dbus-daemon-launch-helper` back its group, `messagebus`, and its mode `4110`: the
@@ -1980,7 +1996,8 @@ A missing tool is skipped: the index is written when the package carrying the to
 because that package's own files touch a watched directory. fontconfig installs no font, so the
 font cache also watches `/etc/fonts/`; without it, a system whose fonts all came before fontconfig
 would have no cache. A failing tool is a warning, not a failed install. The build step drops
-`usr/share/info/dir` and every `usr/share/fonts/*/fonts.dir` from every package (see
+`usr/share/info/dir`, `usr/share/applications/mimeinfo.cache` and every
+`usr/share/fonts/*/fonts.dir` from every package (see
 [What kpkg does around build.sh](#what-kpkg-does-around-buildsh)): each is the index, and two
 packages each shipping one conflict, as `font-misc-misc` and `font-cursor-misc` would, both
 installing into `misc/`. A font directory left with no bitmap face loses its `fonts.dir`, and with
@@ -2065,9 +2082,10 @@ build. `python3-keyring` is the example; a `src/` layout, or a `packages` list i
 configuration, is safe with `vendor/` in the tree.
 
 `vendordir` is the other half: it says where the vendoring tool must run, which is beside the
-manifest. The two directories are not always the same place. Five ports set it: `gopls`
-(`gopls`), `lnav` (`src/third-party/lnav-rs-ext`), `python3-bcrypt` (`src/_bcrypt`),
-`python3-cryptography` (`src/rust`) and `ghc` (`hadrian/bootstrap`).
+manifest. The two directories are not always the same place. Seven ports set it: `chromium`
+(`tools/crates/gnrt`), `gopls` (`gopls`), `libdovi` (`dolby_vision`), `lnav`
+(`src/third-party/lnav-rs-ext`), `python3-bcrypt` (`src/_bcrypt`), `python3-cryptography`
+(`src/rust`) and `ghc` (`hadrian/bootstrap`).
 
 `vendorsync` names every other Cargo manifest the build runs, space-separated and relative to
 `vendordir`. A helper crate outside the workspace, such as an `xtask` that generates a manual page,
@@ -2121,10 +2139,10 @@ refuses a `pip install` that names `--root` without it.
 
 `python3` marks its `site-packages` as externally managed (PEP 668). The marker does not affect
 `pip install --root="$PKG"`, `--prefix` or `--target`, so a port's install into its package needs
-no flag for it. A build backend that is not a port and that only the bundle's own build needs,
-such as the two `vdirsyncer` installs before its own build (`expandvars` and
-`hatch-fancy-pypi-readme`), goes into a directory of the build's own and onto `PYTHONPATH`, never
-into the build root, where every file it wrote would be one no package owns:
+no flag for it. A build-time package that is not a port, such as `expandvars`, which
+`frozenlist`, `propcache` and `yarl` in `vdirsyncer`'s bundle need to build, goes into a directory
+of the build's own and onto `PYTHONPATH`, never into the build root, where every file it wrote
+would be one no package owns. `vdirsyncer` installs it there with `hatch-fancy-pypi-readme`:
 
 ```bash
 _back="$SRC_ROOT/backends"
@@ -2472,10 +2490,9 @@ it is the same question asked of two archives.
 The version checker reports which ports have an upstream release newer than their pin, the version
 the recipe currently names, and can apply the bump for you. It is `kdos-portup` (source in
 `src/devtools/kdos-portup`), run through `ports/update`, which compiles it into `ports/.portup` the
-first time and whenever a `.c` file under `src/devtools/kdos-portup` is newer than the binary. A
-changed header, or a change to a `libk*` library it links, does not trigger that; delete
-`ports/.portup` to force a rebuild. It needs network access, `curl` and `git`, and it never runs
-version control on your tree.
+first time and whenever a `.c` or `.h` file under `src/devtools/kdos-portup` or one of the three
+libraries it links (`libkbase`, `libkpkg` and `libkbuild` under `src/libs`) is newer than the
+binary. It needs network access, `curl` and `git`, and it never runs version control on your tree.
 
 ```sh
 make updates                                   # the whole tree, interactively
@@ -2816,9 +2833,14 @@ ports/update <port>                 # accept the bump: version and sha256 lines 
 make build BUILD_ARGS="--phases <phase>,70_image --rebuild <port>"   # the phase whose list names it
 ports/publish <port>                # upload what the archive lacks and write its lines into ports/sources.idx
                                     # (maintainer token; else --check and say so in the PR)
-git commit ports/core/<shelf>/<port> ports/sources.idx   # the recipe and the index; the archive itself is gitignored
-git push                            # the pre-push hook checks the layout and that every new hash is archived
+make book-data                      # the book's recipe stamp and package data; make book-stamp without a built tree
+git commit ports/core/<shelf>/<port> ports/sources.idx docs/kfs/data   # the archive itself is gitignored
+git push                            # the pre-push hook checks the layout, patches, books and archive
 ```
+
+The recipe edit makes *KDOS from Scratch*'s recipe stamp stale, and `kfscheck.py` and the
+pre-push hook refuse the push until `make book-data` or `make book-stamp` has rewritten it (see
+[kfscheck.py](testing.md#kfscheckpy)).
 
 After `ports/update --no-fetch`, or after a group bump, the `sha256 =` lines still name the old
 files. Run `ports/fetch <port>` to bring the new files down from upstream (it warns that each has
@@ -2828,7 +2850,7 @@ refuses the unhashed archive and `ports/publish` has nothing to publish.
 ### `ports/publish`
 
 ```text
-ports/publish [--dry-run | --check] [--history] [port…]
+ports/publish [--dry-run | --check] [--history] [--all | port…]
 ports/publish --plan [--dry-run]
 ports/publish --describe [--dry-run]
 ports/publish --rehome [--dry-run] [port…]
@@ -2838,8 +2860,14 @@ ports/publish --freeze <kdos-tag> [--dry-run | --check]
 ports/publish --release <kdos-tag> [--iso <path>] [--key <path> | --unsigned] [--publish] [--dry-run]
 ```
 
-`ports/publish` uploads every file a `sha256 =` line names, under all of `ports/core` or only the
-named ports, that git does not carry and the archive does not hold yet. A port is named by its
+`ports/publish` uploads every file a `sha256 =` line names that git does not carry and the archive
+does not hold yet. Which lines it reads depends on what it is given: the named ports' recipes;
+with `--all`, every recipe under `ports/core`; and with neither, every hash a recipe under
+`ports/core` names that the upstream's recipes do not, or that `ports/sources.idx` does not. The
+upstream is the branch's `@{upstream}`, or every `refs/remotes/*` tip when it has none; without a
+remote every hash is wanted. A hash the upstream already names was let through by its pre-push
+hook only once archived, so a plain run checks only the handful a change adds, in seconds, and
+`--all` is the full sweep, about two and a half minutes over some 2,500 files. A port is named by its
 bare name, on whatever shelf it sits, and a named port that does not exist fails the run, with
 `--check` as without it. A path git tracks as a Git LFS pointer is not carried: the pointer names
 the file and is not the file. The bytes come from the port directory, the cache, or the local LFS
@@ -2847,7 +2875,9 @@ store, and are hashed again immediately before each upload, because an asset who
 the hash its index line names would poison every checkout that asks for it.
 
 A file is present when `ports/sources.idx` names its hash and an anonymous `HEAD` on the asset's
-download URL (on every part's, for a file in parts) answers 200; the `HEAD` costs no API quota. A
+download URL (on every part's, for a file in parts) answers 200; the `HEAD` costs no API quota,
+and `KDOS_PUBLISH_JOBS` (16) of them run at once, since each spends most of a second waiting on
+GitHub's redirect. A
 hash the index does not name is missing without asking. A rerun therefore uploads only what is
 still missing, and an interrupted run is resumed by running it again. Only a 404 counts as
 missing. A 5xx or a dropped connection is asked again after 10, 30 and 60 seconds, since GitHub's
@@ -2912,6 +2942,7 @@ each part), size and SHA-256; a file sits under the shelf its asset name starts 
 |---|---|
 | `--dry-run` | List what would be uploaded: the target volume, the predicted asset name (resolved against the index and the rest of the plan, not against GitHub), the part count and the size. Makes no network call and needs no token, takes every indexed file as present, and takes the index's count of each volume for its assets, so a spill is predicted as it would happen. With `--plan`, `--rehome` or `--retire`, lists what that mode would do |
 | `--check` | Presence only: list what is missing from the archive, as `not in ports/sources.idx` or `indexed in <tag> as <asset> but absent`; exit 1 if anything is |
+| `--all` | Want every recipe hash under `ports/core`, not only those new against the upstream or unindexed. Not with named ports |
 | `--history` | Add every LFS object under `ports/core` that any ref's history names (`git lfs ls-files --all`), to seed the archive with what old commits' recipes point at. Each is labelled `<port>/<file>` from its old path and goes to its port's shelf today, or, when no port of that name exists today, to the highest volume as `attic--<file>`. Objects the local LFS store and the cache do not hold are counted on one line and skipped without failing the run. Without git-lfs no object can be labelled, so none is uploaded, and the count says to install it |
 | `--plan` | Give every shelf `ports/shelves` lists without a volume one, and rewrite those lines; see below. No network, no token |
 | `--describe` | Rewrite the title and notes of every release the index names, uploading nothing. Needs the token |
@@ -2997,6 +3028,7 @@ retries. An upload that meets a 5xx or a dropped connection is retried twice; th
 |---|---|---|
 | `KDOS_SOURCES_TOKEN` | `~/.config/kdos/sources-token` | The upload token |
 | `KDOS_PUBLISH_DELAY` | `8` | Seconds between creating, changing and deleting calls |
+| `KDOS_PUBLISH_JOBS` | `16` | Presence `HEAD`s run at once |
 | `KDOS_SOURCES_INDEX` | `ports/sources.idx` | The index read and written |
 | `KDOS_RELEASE_CAP` | `1000` | Assets per archive release, parts counted; a file whose volume would pass it spills into another volume. GitHub's limit is 1000 |
 | `KDOS_VOLUME_FILL` | `650` | The planned assets per volume that `--plan` packs shelves to |
@@ -3064,12 +3096,14 @@ recipes name that the remote side's recipes do not (the remote's current commit 
 every `refs/remotes/*` tip for a new branch) and drops any whose file git carries at that commit.
 It reads `ports/sources.idx` as it stands in the pushed commit: a hash that index does not name is
 missing without asking, and the rest are `HEAD`-checked against the archive. Any missing hash
-refuses the push, listing each as `port/file (hash)` and naming the command to run,
+refuses the push, listing each as `port/file`, why it is missing (`not in ports/sources.idx`, or
+indexed but absent) and its hash, and naming the command to run,
 `ports/publish <ports> && git commit ports/sources.idx`. Deleting a ref passes.
 
 Only a 404 counts as missing. The hook also refuses the push when it cannot reach the archive
 (`cannot reach the source archive at <base> (curl exit N)`), when the archive answers any status but
-200 or 404 (`source archive unreachable at <base> (HTTP N)`), and when `KDOS_SOURCES_BASE` is empty.
+200 or 404 (`source archive unreachable at <base> (HTTP N)`), and when `KDOS_SOURCES_BASE` is empty
+or names a local directory, which holds a copy of the archive rather than the published one.
 Offline or during an outage, absence cannot be ruled out, and passing silently would let through
 exactly the push the hook exists to stop. `KDOS_SKIP_PUBLISH_CHECK=1 git push …` bypasses the
 archive check and not the layout check.
@@ -3085,7 +3119,7 @@ archive check and not the layout check.
 - [The ports catalogue](../06-reference/ports-catalogue.md): every port, by shelf
 - [KDOS from Scratch](../../kfs/README.md): the book that prints every recipe, its patches and its
   `kfs.md` as a page
-- [Decisions](../01-philosophy/decisions.md): why a recipe is two files
+- [Decisions](../01-philosophy/decisions.md#the-build-shell-lives-beside-the-recipe): why a recipe is two files
 - [How KDOS differs](../01-philosophy/how-kdos-differs.md#packages-and-recipes): this recipe format
   beside Debian's, Arch's, Gentoo's and Nix's
 - [Why KDOS](../01-philosophy/why-kdos.md#what-is-not-built-from-source): every payload not built

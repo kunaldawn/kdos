@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Supervised chrome children, ported from the pre-fork kdos-comp.
+ * Supervised chrome children.
  *
  * labwc's spawn_async_no_shell() double-forks so the compositor never
  * reaps — right for a terminal a keybinding opened, wrong for the SHELL:
@@ -517,7 +517,7 @@ kdos_child_reap(pid_t pid, int status)
 				char msg[256];
 				snprintf(msg, sizeof(msg), "%s crashed "
 					"repeatedly and was given up on — "
-					"Reconfigure (W-Escape menu) retries",
+					"run kdos-comp -r to retry",
 					child_label(c));
 				const char *argv[] = { "kdos-prompt",
 					"--message", msg, NULL };

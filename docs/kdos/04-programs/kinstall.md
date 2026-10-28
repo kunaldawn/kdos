@@ -15,14 +15,14 @@ Three terms recur. The **ESP** is the EFI system partition, the FAT32 partition 
 the bootloader read. The **point of no return** is the Summary page's install button: nothing is
 written to any disk before it. A **plan** is how the chosen disk is used: `wipe` (erase and
 repartition it), `reuse` (keep its partitions and format only the root), or `manual` (partition
-it in `cfdisk` first, then reuse).
+it in `cfdisk` first, then reuse; a dry run does not open `cfdisk`).
 
 ## How the installer works
 
 The wizard's pages only fill in a configuration: the keymap, the time zone, the disk and plan, the
-accounts, the services and the applications. None of them writes to a disk. The one exception is
-the Layout page's `cfdisk`, which writes whatever partition table is saved in it. Everything else
-waits for the Summary page's **BEGIN INSTALL** button, the point of no return; see [Nothing is
+accounts, the services and the applications. None of them writes to a disk. The one exception, on
+a real run, is the Layout page's `cfdisk`, which writes whatever partition table is saved in it;
+a dry run does not open it. Everything else waits for the Summary page's **BEGIN INSTALL** button, the point of no return; see [Nothing is
 written before the summary](#nothing-is-written-before-the-summary).
 
 The install itself is eleven steps run in a forked child process. The child reports to the wizard
@@ -68,7 +68,7 @@ Then switch to that console with Ctrl+Alt+F3.
 A full-screen program redraws the whole terminal constantly, so whatever terminal it is given, a
 spare VT or a serial line, carries nothing else for the whole install. The disk-install harness,
 `testing/install-to-disk.sh`, runs its unattended install on `/dev/tty3` this way; see
-[Testing](../05-developer/testing.md).
+[The other harnesses](../05-developer/testing.md#the-other-harnesses).
 
 ## Synopsis
 
@@ -79,15 +79,15 @@ kinstall [options]
 | Option | Does |
 |---|---|
 | `--config FILE` | Read answers from `FILE`. Options later on the command line still apply |
-| `--save FILE` | Write the current answers (defaults plus any `--config`) to `FILE` and exit |
+| `--save FILE` | Write the current answers (the defaults, any `--config` file and any `--theme`) to `FILE` and exit |
 | `--unattended` | Skip the wizard and install from the answers |
-| `--dry-run` | Log every command and execute none. The header shows **DRY RUN** |
+| `--dry-run` | Log every install command and execute none. The header shows **DRY RUN**, and the Layout page's **Open cfdisk** is disabled: see [Trying it without installing](#trying-it-without-installing) |
 | `--dump probe` | Print what the installer sees on this machine, and exit |
 | `--dump plan` | Print the steps these answers would run, and exit |
 | `--json` | Print `--dump` as JSON instead of text |
-| `--theme NAME` | The accent: `phosphor`, `amber`, `ice`, `bone`, `norton`, `borland`, `perfect` or `paper`. The default is `bone`. An unknown name draws the installer in `bone` |
+| `--theme NAME` | The accent: `phosphor`, `amber`, `ice`, `bone`, `norton`, `borland`, `perfect` or `paper`. The default is `bone`. An unknown name draws the installer in `bone` and is still handed to the install: see the `theme` key under [Answer files](#answer-files) |
 | `--no-mouse` | Keyboard only |
-| `--ascii` | Draw boxes with `-`, `\|` and `+`, for terminals without line-drawing characters. It sets `KDOS_ASCII=1`, the lowest glyph tier of [libktui](../05-developer/c-libraries.md) |
+| `--ascii` | Draw boxes with `-`, `\|` and `+`, for terminals without line-drawing characters. It sets `KDOS_ASCII=1`, the lowest glyph tier of [libktui](../05-developer/c-libraries.md#libktui) |
 | `--version` | Print `kinstall` followed by its version (`KI_VERSION` in `kinstall.h`) and exit |
 | `--help`, `-h` | Print the usage and exit |
 
@@ -96,7 +96,8 @@ after it overrides the file; `--save` and `--dump` act only after the whole comm
 An option that needs an argument and is last on the line counts as unknown.
 
 The log of a run is `/var/log/kinstall.log`, opened for appending with mode `0600`. Each line
-carries an `[HH:MM:SS]` stamp. On the Install page, `L` shows it in full.
+carries an `[HH:MM:SS]` stamp. On the Install page `L` shows it in full, and on the Done page `L`
+opens it in the same pager as **View log**.
 
 Only `--dump`, `--save`, `--help` and `--version` work without root. The wizard, `--dry-run`
 included, stops on its first page with "kinstall must run as root — try: sudo kinstall" until it
@@ -120,7 +121,7 @@ fails with "kinstall must run as root" instead.
 | Esc | Back a page, or close the help |
 | PgUp, PgDn | Scroll a page taller than the screen; in the full log, scroll ten lines |
 | F1 | Show or hide the key help |
-| L | The full log, on the Install page |
+| L | The full log: drawn in the page on the Install page, in `less` (or `more`) on the Done page |
 | Ctrl+U | Clear a text field |
 | Ctrl+W, Ctrl+Backspace | Delete the word before the caret; Ctrl+Left and Ctrl+Right move by word |
 | Ctrl+Q, Ctrl+C | Quit the installer. It asks first, and while an install is running it warns that stopping leaves the target half written |
@@ -168,12 +169,12 @@ install size, and the firmware (`UEFI` or `legacy BIOS`, with "32-bit firmware" 
 enabled" added when they apply). A preflight list marks each item that fails:
 
 - running as root;
-- at least one disk found (the line reads "at least one writable disk");
+- at least one disk that is not read-only (the line reads "at least one writable disk");
 - `rsync` present;
 - `mkfs.ext4` and `mkfs.vfat` present;
 - the Limine payload, `/usr/share/limine`, present.
 
-The page refuses to continue without root or without a disk. Neither firmware is refused or
+The page refuses to continue without root or without a disk that is not read-only. Neither firmware is refused or
 warned about: a disk the installer partitions starts on both (see [Both
 firmwares](#both-firmwares)).
 
@@ -189,8 +190,11 @@ hardware clock is left as it is. An image with no zone table offers `UTC` alone.
 devices, with its size, transport (`sata`, `nvme`, `usb`, `virtio` or `mmc`) and model, and draws
 its current partition table. It preselects the first disk that is neither the boot medium nor
 read-only. It refuses the medium KDOS is running from, a read-only disk, and a disk smaller than
-the install size plus 768 MiB. The install size is what the live root holds, about 53 GB, since
-every package is on the medium; a target needs about 56 GB.
+the install size plus 768 MiB. Its **install needs** line is drawn in the error colour exactly when the
+selected disk is that small, so a disk drawn in the plain colour passes this check. The install size is what the live root holds, about 53 GB, since
+every package is on the medium, less the container library when **Install the alien app library**
+is unticked. That box is on the System page, after this one, so unticking it lowers the requirement
+only when the Disk page is passed again.
 
 **Layout.** Offers the three plans:
 
@@ -207,15 +211,21 @@ every package is on the medium; a target needs about 56 GB.
   a dos table's MBR, or nowhere ("no BIOS boot partition: this disk will start on UEFI only").
 - **Partition it myself first (cfdisk)** (`manual`): an **Open cfdisk** button runs `cfdisk` on
   the chosen disk. When `cfdisk` exits, the installer re-reads the disks and switches to `reuse`.
-  The page asks for an EFI System partition, a Linux partition and, for legacy BIOS, a 1 MiB BIOS
+  Under `--dry-run` the button is disabled, and the page says that `cfdisk` would write a real
+  partition table and points to **Use partitions that already exist** to rehearse with the table
+  as it is. The page asks for an EFI System partition, a Linux partition and, for legacy BIOS, a 1 MiB BIOS
   boot partition.
+
+The reuse plan shows the filesystem but no swap controls, and the swap choice made on the erase
+plan still applies: a swap file of the chosen size (4096 MiB by default) on the reused root, or no
+swap at all when a swap partition was chosen, because the reuse plan makes no partitions.
 
 The encryption checkbox is drawn on the erase plan only, but its value is not cleared when the plan
 changes. A tick made on the erase plan and followed by a switch to `reuse` (directly, or through
-`cfdisk`) encrypts the reused root, with no checkbox on the page to show it. The Summary mentions
-LUKS2 only in the erase plan's LVM line, so on the reuse plan, or on the erase plan without LVM,
-it does not show that encryption is on. Untick the box before leaving the erase plan if the reused
-root is to stay unencrypted.
+`cfdisk`) encrypts the reused root, with no checkbox on the page to show it. The Summary names
+LUKS2 on every plan, in the erase plan's LVM line or else in an **encryption** line, so it is the
+place to check. Untick the box before leaving the erase plan if the reused root is to stay
+unencrypted.
 
 The page refuses an empty or mismatched passphrase, encryption on an image without `cryptsetup`,
 LVM on an image without `lvm`, a swap size of zero, the `manual` plan before `cfdisk` has run, an
@@ -227,9 +237,10 @@ mode, a reuse plan on a GPT disk with no BIOS boot partition, which could not st
 **Accounts.** Hostname (letters, digits and `-`), full name, user name (lowercase letters,
 digits, `-` and `_`, not starting with a digit), and the password twice, with a strength meter.
 **Administrator** (membership of `wheel`) is ticked by default. **Lock the root account** is
-ticked by default; unticked, a root password is asked for twice. The page refuses an empty
-password, and it refuses a non-administrator while root is locked ("root is locked and <user> is
-not an administrator — nobody could ever gain privileges").
+ticked by default; unticked, a root password is asked for twice. The page refuses a malformed
+hostname or user name, an empty or mismatched password, an empty or mismatched root password while
+root is unlocked, and a non-administrator while root is locked ("root is locked and <user> is not
+an administrator — nobody could ever gain privileges").
 
 **System.** The accent, as eight radio buttons with a swatch each; choosing one repaints the
 installer in it. **Install the alien app library** (the live user's container storage, with its
@@ -255,10 +266,10 @@ WARNINGS** when there were any, a reminder to remove the boot medium, and three 
 now** (after a confirmation), **Back to the live desktop** (quit), and **View log** (in `less`, or
 `more` where `less` is missing).
 
-The Summary's install button and the Install page's Continue button move to a page by its
-identifier, `install` and `done`, as an unattended run opens the Install page: a position is right
-only until a page is added in front of it. The Install page has no way back, so the Summary and its
-button are not reached again while the child runs. An unattended run stays on the Install page and
+The Summary's install button, the Install page's Continue button and an unattended run all find
+their page by its identifier (`install`, `done`) rather than by its position, so adding a page in
+front of them sends none of them to the wrong screen. The Install page has no way back, so the
+Summary and its button are not reached again while the child runs. An unattended run stays on the Install page and
 ends from there five seconds after the last step (see [Fallbacks, and how an unattended run
 ends](#fallbacks-and-how-an-unattended-run-ends)).
 
@@ -313,29 +324,38 @@ root](#an-encrypted-root)), makes the root filesystem with the label `KDOS`, for
 rsync -aHAX -x --numeric-ids --info=progress2 --no-inc-recursive <excludes> / /mnt/kinstall/
 ```
 
-The excludes are the contents of `/dev`, `/proc`, `/sys`, `/tmp`, `/run`, `/mnt` and `/media`;
-`/lost+found`; every file under `/var/log` and `/var/cache`, the run's own log among them, keeping
-the directories (packages own them, and `kpkg check` reports one that is missing), so the installed
-system's log and `last` begin at its own first boot; the live accounts' history, `.bash_history`
-and `.local/share/atuin` in `/root` and `/home/kdos`; root's `.cache`, and everything in
-`/home/kdos/.cache` except `kdos` (the theme name and the rendered wallpaper, which the Theme step
-rewrites only for an accent other than `bone`) and `bat` (its syntax cache), the two the image
-builds into the live account; and what must be unique to each machine,
-`/var/lib/dbus/machine-id` and `/etc/ssh/ssh_host_*`, which the installed system generates on
-its first boot; and the account files' backup copies, `/etc/passwd-`, `/etc/group-`,
-`/etc/shadow-` and `/etc/gshadow-`, which shadow's tools write beside each file they change and in
-which a password set in the live session would be carried over. The image itself ships none of
-them: `70_image` removes them. Without the boxed-application library (`alien_apps = 0`), the live user's
-container storage under `/home/kdos/.local/share/containers` is left out as well. `rsync` exit
-status 24 ("some files vanished") is accepted, since files come and go on a running live system.
-The excluded directories are then created empty, `/tmp` with mode `01777`. The copy streams the
-tree through the page cache and can fire `kdos-oomd`'s pressure trigger on a machine with little
-memory; the daemon kills nothing while most of memory is still available, and it never picks the
-copy: when an install starts, the wizard sets its own `oom_score_adj` to -900, which the install
-child and every program it runs (`rsync`, `cryptsetup`, `mkfs`) inherit, and the daemon passes over
-any process at or below -500 (see [kdos-oomd](daemons.md#how-it-decides)). -900 is above the
-kernel's "never kill", so the kernel's own OOM killer can still end the install when memory is
-truly gone.
+The copy leaves out:
+
+- the contents of `/dev`, `/proc`, `/sys`, `/tmp`, `/run`, `/mnt` and `/media`, and `/lost+found`;
+- every file under `/var/log` and `/var/cache`, this run's own log among them, so the installed
+  system's log and `last` begin at its own first boot. The directories are kept: packages own them,
+  and `kpkg check` reports one that is missing;
+- the live accounts' history, `.bash_history` and `.local/share/atuin` in `/root` and
+  `/home/kdos`;
+- root's `.cache`, and everything in `/home/kdos/.cache` except the two the image builds into the
+  live account: `kdos` (the theme name and the rendered wallpaper, which the Theme step rewrites
+  only for an accent other than `bone`) and `bat` (its syntax cache);
+- what must be unique to each machine, `/var/lib/dbus/machine-id` and `/etc/ssh/ssh_host_*`, which
+  the installed system generates on its first boot;
+- the account files' backup copies, `/etc/passwd-`, `/etc/group-`, `/etc/shadow-` and
+  `/etc/gshadow-`, which shadow's tools write beside each file they change and which would carry
+  over a password set in the live session. The image itself ships none of them: `70_image` removes
+  them;
+- without the boxed-application library (`alien_apps = 0`), the live user's container storage
+  under `/home/kdos/.local/share/containers`.
+
+`rsync` exit status 24 ("some files vanished") is accepted, since files come and go on a running
+live system. The excluded directories are then created empty, `/tmp` with mode `01777`, and the
+**Install KDOS** entry is removed from the copied `/etc/skel` and live home (see [Starting the
+installer](#starting-the-installer)).
+
+The copy streams the tree through the page cache and can fire `kdos-oomd`'s pressure trigger on a
+machine with little memory. The daemon kills nothing while most of memory is still available, and
+it never picks the copy: when an install starts (other than a dry run), the wizard sets its own
+`oom_score_adj` to -900, which the install child and every program it runs (`rsync`,
+`cryptsetup`, `mkfs`) inherit, and the daemon passes over any process at or below -500 (see
+[kdos-oomd](daemons.md#how-it-decides)). -900 is above the kernel's "never kill", so the kernel's
+own OOM killer can still end the install when memory is truly gone.
 
 **Configure** writes the files listed in [What the rest of the tree
 provides](#what-the-rest-of-the-tree-provides), copies the live `/etc/resolv.conf`, and makes the
@@ -359,6 +379,8 @@ system: neither the image nor the copy carries the `-` backups of these files.
 target: the two trees carry the same programs, and this way the generators need no `/proc`, `/dev`
 or bind mounts.
 Without `kdos` on the `PATH` the step logs that and leaves the accent the image was seeded with.
+The installer does not check the accent name: an unknown one (from `--theme` or an answer file)
+still runs the step, `kdos theme` refuses it, and the log records only `kdos theme exited <n>`.
 
 **Bootloader** is described in [What the bootloader step writes](#what-the-bootloader-step-writes).
 
@@ -389,7 +411,7 @@ kinstall --config answers.conf --unattended       # do it
 | `root` | A partition or logical-volume device | none | The root, for `reuse` |
 | `format_esp` | `1` or `0` | `1` | Format the ESP as FAT32. It applies on every plan; with `wipe` the new ESP has no filesystem until it is formatted, so leave it at `1` |
 | `fstype` | `ext4`, `btrfs`, `xfs` or `f2fs` | `ext4` | An unknown name falls back to `ext4` |
-| `swap` | `file`, `partition` or `none` | `file` | **Any other value means `none`**. A swap partition is made only on the `wipe` plan |
+| `swap` | `file`, `partition` or `none` | `file` | **Any other value means `none`**. A swap partition is made only on the `wipe` plan; on `reuse`, `partition` means no swap at all |
 | `swap_mb` | Megabytes | `4096` | |
 | `luks` | `1` or `0` | `0` | Encrypt the root with LUKS2. The wizard offers it only on the `wipe` plan; an answer file applies it to whichever root the plan names |
 | `luks_passphrase` | Text | none | Never written by `--save` |
@@ -400,9 +422,9 @@ kinstall --config answers.conf --unattended       # do it
 | `password` | Text | none | The user's password. Never written by `--save`. **See the warning below** |
 | `root_password` | Text | none | Used only when `root_locked = 0`. Never written by `--save` |
 | `root_locked` | `1` or `0` | `1` | A locked root has no password and cannot log in. With `root_locked = 0` and no `root_password`, root is locked anyway |
-| `theme` | An accent name | `bone` | |
+| `theme` | An accent name | `bone` | Not checked. An unknown name draws the installer in `bone`, fails the Theme step's `kdos theme` (logged, not fatal), and gives the installed boot menu the default scheme's colours |
 | `alien_apps` | `1` or `0` | `1` | Copy the boxed-application container library |
-| `apps` | Space-separated group ids | `essential` | See [The applications step](#the-applications-step) |
+| `apps` | Space-separated group ids | `essential` | Empty or absent means `essential`. See [The applications step](#the-applications-step) |
 | `autologin` | `yes` or `1` for on; anything else is off | `no` | See [autologin](#autologin) |
 | `reboot` | `1` or `0` | `1` | Reboot when an unattended install ends |
 | `services` | Space-separated service names | `networkmanager bluetooth alsa` | A listed service is on when its name appears anywhere in the value; every other listed service is disabled |
@@ -421,8 +443,8 @@ Each name matches an init script `/etc/init.d/NN_<name>.sh`. A disabled service 
 `/etc/service.disabled/<name>` on the installed system, which `rcS` skips; removing the file
 turns the service back on. The live image ships `sshd`'s marker, and choosing the SSH server here
 is what removes it on the installed system; port 22 stays closed in the firewall until `ssh` is
-opened there. Other services (udev, D-Bus, seatd and the rest) are not choices and
-cannot be turned off here.
+opened there (see [firewall](daemons.md#firewall)). Other services (udev, D-Bus, seatd and the
+rest) are not choices and cannot be turned off here.
 
 Whether the user is an administrator has no key. An answer-file install always keeps the user
 in `wheel`; only the Accounts page can make a non-administrator.
@@ -452,10 +474,12 @@ replacing the file, because the file is mostly an explanation of what the key do
 - on writes `autologin = <username>`;
 - off writes `#autologin = <username>`.
 
-Off is a commented line, not an empty value. `kdos-login` hands `agetty --autologin` whatever
-name follows the key, so an empty value would read as a setting and behave as none. A file with no
-such line gains one only when autologin is on. The key is also the only place the desktop account
-is named for tty1 (`/etc/inittab` runs `kdos-getty tty1 kdos-login tty1` and names no account),
+Off is a commented line rather than a removed one, so the account's name stays in the file for
+whoever turns autologin back on. `kdos-login` reads the last uncommented `autologin =` line and
+runs `agetty --autologin` only when its value is not empty; a commented line, an empty value and a
+missing key all leave tty1 asking for a password. A file with no such line gains one only when
+autologin is on. On the installed system, `kdos-powerd`'s [`autologin`](daemons.md#autologin) verb
+changes the same line. The key is also the only place the desktop account is named for tty1 (`/etc/inittab` runs `kdos-getty tty1 kdos-login tty1` and names no account),
 so this line is what carries a renamed user to the login.
 
 The same step makes the serial console ask for a login. The image's `/etc/inittab` runs
@@ -477,8 +501,11 @@ return, and refusing there would leave nothing installed over a spelling mistake
   `--dump plan` before running unattended.
 
 **An unattended run skips every check the wizard's pages make.** Nothing refuses the boot medium,
-a read-only or too-small disk, a physical volume as the root, a volume-group clash, or a missing
-passphrase; only the Prepare step's checks run. Read `--dump probe` and `--dump plan` first.
+a read-only or too-small disk, a malformed hostname or user name, a physical volume as the root, a
+volume-group clash, or a missing passphrase; only the Prepare step's checks run. Read
+`--dump probe` and `--dump plan` first, or load the file into the wizard with `--config` alone and
+step through the pages, which runs their checks. See [Known
+gaps](../06-reference/known-gaps.md#an-unattended-install-skips-every-check-the-pages-make).
 
 An unattended run ends by itself whichever way it went. When the install finishes or fails, the
 last screen stays up for five seconds, then:
@@ -499,12 +526,12 @@ kinstall --dump plan  [--json]
 
 Neither needs a terminal, neither writes to a disk, and both print to standard output only.
 
-- **`probe`** is the machine as the installer sees it: firmware (with its width when it is 32-bit,
-  and Secure Boot), processor, memory, whether the session is live, the size of the system it
-  would copy and of the container library within it, the disks and their partitions (with
-  filesystem, label, and whether each is an ESP, a BIOS boot partition, mounted, removable,
-  read-only or the boot medium), and the logical volumes. It is what to paste into a bug report. Run as root it first
-  activates every LVM volume group, as the wizard does, so the logical volumes it lists are the
+- **`probe`** is the machine as the installer sees it: firmware (with Secure Boot, and in the text
+  form its width when it is 32-bit), processor, memory, whether the session is live, the size of
+  the system it would copy and of the container library within it, the disks (whether each is
+  removable, read-only or the boot medium) and their partitions (filesystem, label, and whether
+  each is an ESP, a BIOS boot partition or mounted), and the logical volumes. It is what to paste
+  into a bug report. Run as root it first activates every LVM volume group, as the wizard does, so the logical volumes it lists are the
   ones the reuse plan would offer; run as an ordinary user it lists only those already active. It
   measures the live system by walking the root filesystem, so the test suite does not run it.
 - **`plan`** runs the same planner the wizard does, so the steps and their skips are the real
@@ -518,7 +545,9 @@ Neither needs a terminal, neither writes to a disk, and both print to standard o
   group (-l 100%FREE)` with the `-l` that `lvcreate` will be given; a disk it cannot see leaves the
   measurement out and reads as all of the group.
 
-The JSON form is a rendering of the same data in the same pass, not a second walk. **No password
+The JSON form is a rendering of the same data in the same pass, not a second walk. Its
+`"firmware_bits"` is the firmware's width, `32` or `64`, and `0` when the machine booted in legacy
+BIOS or its kernel does not report the width. **No password
 appears in either form**: the plan says whether root is locked and whether the root is encrypted,
 never a password or passphrase. `testing/selftest.sh` checks this with a sentinel value, and
 checks that `--save` never writes one either.
@@ -533,8 +562,10 @@ kinstall --no-mouse                                 # keyboard only
 ```
 
 A dry run still needs root: the Welcome page and the Prepare step both refuse without it. It
-walks every step, logs each command with "(dry run: not executed)", and writes no file on any
-disk; `/var/log/kinstall.log` is still appended to.
+walks every step, logs each command with "(dry run: not executed)", and its install steps write
+no file on any disk; `/var/log/kinstall.log` is still appended to. The Layout page's **Open
+cfdisk** button is disabled, because `cfdisk` writes its table itself, outside every command the
+rehearsal holds back; the reuse plan rehearses with the disk's table as it is.
 
 An unattended rehearsal ends as an unattended install does: with `reboot = 1`, the default, it
 reboots the machine five seconds after its last step. Put `reboot = 0` in the answer file to
@@ -603,6 +634,9 @@ the whole group (`-l 100%FREE`). The swap file counts because it is written onto
 after the copy. `ki_lvm_half()` makes that decision, and the Layout page, the Summary, `--dump
 plan` and the Format step all call it, so the size shown is the size created. The other half is left unallocated: the
 installer makes no `root_b`, because an empty volume is not a slot anything can boot or update.
+Making and filling the second slot by hand is in [A/B root
+slots](../02-user-guide/installation.md#ab-root-slots), and what nothing in KDOS does for it is in
+[Known gaps](../06-reference/known-gaps.md#nothing-creates-or-first-fills-the-second-root-slot).
 
 ### Volume-group name clashes
 
@@ -621,9 +655,10 @@ plan, Prepare walks the `holders` of the disk and each partition in `/sys`, top 
 volume's whole group is deactivated, a LUKS container is closed, any other device-mapper device is
 removed, and anything mounted is unmounted by device number. A holder that is not a device-mapper
 device, such as an MD array, is named in the log and left. The Format step does the same again, so
-a retried Format meets nothing a failed one left open. It then wipes the old physical-volume label
-from the new partition, because the erase writes the same layout at the same offsets and `pvcreate`
-would find the previous install's label there.
+a retried Format meets nothing a failed one left open. On an unencrypted root it then wipes the old
+physical-volume label from the new partition, because the erase writes the same layout at the same
+offsets and `pvcreate` would find the previous install's label there; an encrypted root needs no
+wipe, since `luksFormat` has just written over the partition.
 
 ### Listing volumes for the reuse plan
 
@@ -638,9 +673,9 @@ a disk with the ESP. The activation that makes them visible (`lvm vgchange -aay`
 settle`) runs once per process and only as root, so `--dump probe` run as a user does not fail on
 it.
 
-A physical volume, and any partition or volume that something holds, is refused as the root. `mkfs`
-would fail on a held device after the point of no return, and on a physical volume it did not fail
-on it would destroy a volume group.
+The Layout page refuses a physical volume, and any partition or volume that something holds, as the
+root. `mkfs` would fail on a held device after the point of no return, and on a physical volume it
+did not fail on it would destroy a volume group.
 
 ## An encrypted root
 
@@ -674,7 +709,8 @@ With no catalogue, the page says that nothing can be chosen and the Packs step i
 
 **It lists groups, not applications.** Seven named bundles is something to read during an
 install; the shipped catalogue's 73 applications is not. The catalogue
-(`src/system/kdos-appbox/catalogue`) defines these groups:
+(`src/system/kdos-appbox/catalogue`, described in [The
+catalogue](../03-architecture/packs-and-boxes.md#the-catalogue)) defines these groups:
 
 | Group | Description |
 |---|---|
@@ -697,8 +733,8 @@ could only produce applications that cannot start.
 
 In an answer file, `apps` names group ids. An application id such as `app.scribus` matches no group
 and is ignored, and if nothing on the line matches, the selection is `essential`. With no `apps`
-key the selection is `essential`. The page's selection logic runs before planning on every path
-that plans without walking the wizard (`--dump plan` and `--unattended`), because the selection is
+key, or an empty one, the selection is `essential`. The page's selection logic runs before planning
+on every path that plans without walking the wizard (`--dump plan` and `--unattended`), because the selection is
 what the plan is about.
 
 The catalogue is read by compiling `kdos-appbox`'s `catalogue.c` into the installer rather than by
@@ -712,16 +748,17 @@ before anything is written, so nobody discovers at first boot that nothing was i
 
 | Route | Chosen when | What happens |
 |---|---|---|
-| **import** | An exported set (a `.ktar` file) is on a mounted device | `kdos-appbox import <file>`. `kdos-packd` verifies each pack where it mounts it. Offline, and the only route on a machine with no network. It imports the archive's whole selection (its own `SELECTION` file), whichever groups were ticked |
+| **import** | An exported set (a `.ktar` file, see [export and import](kdos-appbox.md#export-and-import)) is on a mounted device | `kdos-appbox import <file>`. `kdos-packd` verifies each pack where it mounts it. Offline, and the only route on a machine with no network. It imports the archive's whole selection (its own `SELECTION` file), whichever groups were ticked |
 | **network** | There is a default route | `kdos-appbox install <group>…` builds the ticked groups during the install. This can take a long time |
-| **pending** | Neither | The group ids are written to `/var/lib/kdos/apps-pending` on the installed system; the first session offers them, and `kdos app install --pending` builds them |
+| **pending** | Neither | The group ids are written to `/var/lib/kdos/apps-pending` on the installed system; the first session offers them ([Applications chosen during installation](../03-architecture/session.md#applications-chosen-during-installation)), and [`kdos app install --pending`](kdos-command.md#kdos-app) builds them |
 
 **The import and network routes run on the live system, not inside the target.** The Packs step
 comes after the copy and runs `kdos-appbox` as the live system's own program, with no change of
 root: it asks the live `kdos-packd` on `/run/kdos-packd.sock`, and what it imports or builds goes
 into the live system's store, not onto the installed disk. The installed system receives the empty
 store directories (below) and, when the step falls back, the pending list. The **pending** route is
-therefore the one that reliably carries a selection to the installed machine.
+therefore the one that reliably carries a selection to the installed machine; see [Known
+gaps](../06-reference/known-gaps.md#applications-imported-or-built-during-an-install-stay-in-the-live-session).
 
 The archive is searched for each time the Applications page is entered, and once for `--dump plan`
 and for `--unattended`: the first `*.ktar` directly inside any directory one level under `/mnt`,
@@ -789,7 +826,9 @@ root=UUID=<root>`. When the memtest86+ payload is present a fourth entry, **Memo
 the only way to reach the verbose entry and the memory test, which a machine that will not boot
 needs. Any key cancels the countdown. The `KDOS (single user)` entry passes `single`, which the
 initramfs hands on to init: the services start and `sulogin` asks for root's password on the
-console, with no desktop; see
+console, with no desktop. With root locked, the installer's default, `sulogin` gives no shell and
+the boot carries on to the normal system, so that entry is useful only once a root password is
+set; see
 [Single-user and emergency mode](../03-architecture/boot-and-init.md#single-user-and-emergency-mode).
 
 The boot state file records the machine as slot A with nothing to roll back to:
@@ -805,15 +844,18 @@ attempts = 0
 ```
 
 It is written directly rather than through `kdos-bootctl`, because the tool's default path is the
-running system's ESP and this runs against a target at `/mnt/kinstall`. `kdos-bootctl` maintains
-the file and regenerates the `KDOS` entries from then on; see [A new
-kernel](../03-architecture/boot-and-init.md#a-new-kernel).
+running system's ESP and this runs against a target at `/mnt/kinstall`. From then on
+`kdos-bootctl` maintains the file (see [A/B slot
+selection](../03-architecture/boot-and-init.md#ab-slot-selection)) and regenerates the `KDOS`
+entries on every change of state (see [One kernel per
+slot](../03-architecture/boot-and-init.md#one-kernel-per-slot)).
 
 ### Room for a second slot
 
 The kernel and initramfs go into slot A's directory, `EFI/kdos/a/`, and later kernels reach the
-ESP through `kdos-bootctl deploy`. Every A/B update needs room for a second slot's kernel and
-initramfs beside the first, so the installer checks that the ESP has that much free plus 1 MiB. The
+ESP through `kdos-bootctl deploy` (see [A new
+kernel](../03-architecture/boot-and-init.md#a-new-kernel)). Every A/B update needs room for a
+second slot's kernel and initramfs beside the first, so the installer checks that the ESP has that much free plus 1 MiB. The
 512 MiB ESP the erase plan makes has plenty; a reused 100 MiB one may not. The free space and the
 need are logged, and when the room is short a warning says so on the Install and Done pages.
 
@@ -851,8 +893,8 @@ path is complete and each of these is a warning on the Install and Done pages; L
 `error:` lines are in `kinstall.log`.
 
 A disk laid out by the erase plan, with `limine bios-install <disk> 2` run on it, has started
-Limine (`Limine 12.9.0 (x86-64, BIOS)`) and then its kernel on SeaBIOS in the rig. A whole
-installed system has not yet been booted on legacy BIOS.
+Limine (`Limine 12.9.0 (x86-64, BIOS)`) and then its kernel on SeaBIOS in the rig. No whole
+installed system has been booted on legacy BIOS.
 
 ### The NVRAM boot entry
 
@@ -866,8 +908,9 @@ logged and ignored.
 The entry names the partition the ESP is actually on, read from
 `/sys/class/block/<node>/partition` rather than guessed from the device name: only the erase plan
 puts the ESP at index 1, and a reuse install takes whichever partition was picked. Where the index
-cannot be read no entry is created, and nothing says so; the removable-media fallback still starts
-the disk, whereas a guessed index would be a boot option the firmware cannot load.
+cannot be read no entry is created, and a warning on the Install and Done pages says so; the
+removable-media fallback still starts the disk, whereas a guessed index would be a boot option the
+firmware cannot load.
 
 ### No ownership-preserving copies
 
@@ -906,9 +949,9 @@ The installed system depends on these, and each exists because of the installer:
   `kdos`.
 - The time zone writes `/etc/profile.d/20-timezone.sh`, links `/etc/localtime`, and writes the
   Wi-Fi country from `zone.tab` to `/etc/modprobe.d/kdos-regdom.conf` as
-  `options cfg80211 ieee80211_regdom=<CC>`, as `kdos-powerd`'s `timezone` verb does later. A zone
-  the target does not carry is logged and leaves the machine on UTC; a zone with no country (UTC)
-  writes no regulatory file.
+  `options cfg80211 ieee80211_regdom=<CC>`, as `kdos-powerd`'s
+  [`timezone`](daemons.md#timezone) verb does later. A zone the image does not carry is logged and
+  leaves the machine on UTC; a zone with no country (UTC) writes no regulatory file.
 
 ## How it is built
 
@@ -935,9 +978,13 @@ directory by glob, plus `kdos-appbox`'s `catalogue.c`, so the bootstrap installe
 one are always the same program.
 
 The bootstrap step skips itself when its marker `build/mark/bootstrap/kinstall` exists, and
-`--rebuild` does not reach it because it is not a port. `testing/preflight.sh` checks that the
-installer in `build/fs/usr/bin/kinstall` carries a string `install.c` owns (the Limine path), and
-when it does not, says to remove the marker and rebuild the bootstrap phase.
+`--rebuild` does not reach it because it is not a port. Removing the marker, or naming the step
+with `--steps 10_bootstrap:130_kinstall.sh`, runs it again; see [Known
+gaps](../06-reference/known-gaps.md#the-images-installer-is-rebuilt-only-when-its-mark-is-gone).
+`testing/preflight.sh` checks that the installer in `build/fs/usr/bin/kinstall` carries a string
+`install.c` owns (the Limine path), and when it does not, says to remove the marker and rebuild the
+bootstrap phase. The check proves only that the binary names that path: one built from an earlier
+edit of the same sources passes it.
 
 ### The file split
 
@@ -951,21 +998,22 @@ when it does not, says to remove the marker and rebuild the bootstrap phase.
 | `main.c` | The header, sidebar and navigation, the event loop, the command line |
 | `kinstall.h` | The shared types and the version, `KI_VERSION` |
 
-The superblock reader recognises LUKS, NTFS, FAT, xfs, squashfs, ext2/3/4, btrfs, swap and LVM
+The superblock reader recognises LUKS, NTFS, FAT, xfs, f2fs, squashfs, ext2/3/4, btrfs, swap and LVM
 physical volumes itself rather than parsing `blkid` or `lsblk` output, so the installer does not
 inherit another program's output format or exit codes. An ESP is identified by its GPT type GUID,
 not by looking like FAT.
 
 The terminal handling, cell buffer, input layer, widgets, dialogs and palette belong to
-[libktui](../05-developer/c-libraries.md).
+[libktui](../05-developer/c-libraries.md#libktui).
 
 ## Design decisions
 
 ### Nothing is written before the summary
 
 Every page fills in the configuration and does nothing else. The install is the single point of no
-return, which is what makes **Back** safe to press on any page before it. The one exception is
-`cfdisk` on the Layout page, which writes whatever partition table you save in it; the Keyboard
+return, which is what makes **Back** safe to press on any page before it. The one exception, on a
+real run, is `cfdisk` on the Layout page, which writes whatever partition table you save in it; a
+dry run disables it, so a rehearsal writes nothing at all. The Keyboard
 page's `loadkeys` changes only the live console.
 
 ### The whole interface is eight colours
@@ -1045,7 +1093,7 @@ fields in the order they are drawn.
 - [Installation](../02-user-guide/installation.md): using the installer, page by page
 - [Boot and init](../03-architecture/boot-and-init.md): what it writes, and what boots it
 - [The daemons](daemons.md): what `wheel` and `seat` membership grant on the installed system
-- [Packs and boxes](../03-architecture/packs-and-boxes.md): the catalogue the applications page reads
+- [Packs and boxes](../03-architecture/packs-and-boxes.md#the-catalogue): the catalogue the applications page reads, and [what an install carries](../03-architecture/packs-and-boxes.md#what-an-install-carries)
 - [The C libraries](../05-developer/c-libraries.md): the three it links
 - [Testing](../05-developer/testing.md): the dumps and the disk-install harness
 - [How KDOS is built](../05-developer/how-kdos-is-built.md): the build that produces the live system the installer copies

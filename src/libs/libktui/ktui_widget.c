@@ -13,6 +13,7 @@
 #include <string.h>
 
 #include "kbase.h"
+#include "kcolor.h"
 #include "ktui.h"
 
 /* Frame state. Private, and reached only through the calls below: a field an
@@ -660,10 +661,24 @@ void ktui_sel_slots(int selected, int pane_focused, int page, int *fg, int *bg)
 
 int ktui_sel_dim(int selected, int pane_focused)
 {
-	/* KT_MID off the fill and KT_TEXT on it. The derived muted colour
-	 * measures 2.84-3.38:1 against KT_DIM, so a tag left muted on a
-	 * selected row is a tag nobody can read. */
+	/* KT_MID off the fill and KT_TEXT on it. KT_MID measures 2.19-4.21:1
+	 * against KT_DIM and the derived muted colour 2.44-3.38:1, so a tag
+	 * left muted on a selected row is a tag nobody can read. */
 	return (selected && pane_focused) ? KT_TEXT : KT_MID;
+}
+
+/* The slot the focused caret's marker takes: KT_ACCENT where it clears 4.5:1
+ * on KT_DIM, KT_TEXT where it does not. Measured on the live palette, so the
+ * warmed copy night light installs is judged as drawn; a fixed scheme list
+ * would go stale with the next palette edit. */
+static int sel_marker_slot(void)
+{
+	const KRgb *a = &ktui_theme->slot[KT_ACCENT];
+	const KRgb *d = &ktui_theme->slot[KT_DIM];
+	uint32_t ac = (uint32_t)a->r << 16 | (uint32_t)a->g << 8 | a->b;
+	uint32_t dc = (uint32_t)d->r << 16 | (uint32_t)d->g << 8 | d->b;
+
+	return kcol_contrast(ac, dc) >= 450 ? KT_ACCENT : KT_TEXT;
 }
 
 void ktui_sel_row(KRect r, int selected, int pane_focused, int page_bg,
@@ -673,12 +688,13 @@ void ktui_sel_row(KRect r, int selected, int pane_focused, int page_bg,
 
 	ktui_sel_slots(selected, pane_focused, page_bg, &f, &b);
 	ktui_draw_fill(r, b);
-	/* The marker, and it is the only thing wearing the accent. On a cold
-	 * pane it is KT_MID, which is what distinguishes "this is where the
-	 * caret is" from "this is the pane you are typing into". */
+	/* The marker, and it is the only thing wearing the accent where the
+	 * accent can be read on the fill. On a cold pane it is KT_MID, which
+	 * is what distinguishes "this is where the caret is" from "this is
+	 * the pane you are typing into". */
 	if (selected && r.w > 1)
 		ktui_draw_text(r.x, r.y, 1, ktui_glyph[KT_G_ARROW_R],
-			       pane_focused ? KT_ACCENT : KT_MID, b,
+			       pane_focused ? sel_marker_slot() : KT_MID, b,
 			       KT_A_NONE);
 	*fg = f;
 	*bg = b;

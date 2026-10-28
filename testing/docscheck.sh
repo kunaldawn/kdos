@@ -139,8 +139,10 @@ if [ "$whole" = 1 ]; then
     done
 fi
 
-# The port counts: exact figures live only on status.md, ports-catalogue.md and
-# packaging.md, and testing/bookcounts.py recomputes every one from the tree.
+# The port counts: exact recipe, shelf and package-list figures live only on
+# status.md, ports-catalogue.md and packaging.md, and testing/bookcounts.py
+# recomputes every one from the tree. The vendoring counts on other pages are
+# not recomputed.
 if [ "$whole" = 1 ] && printf '%s\n' "${books[@]}" | grep -qx docs/kdos; then
     python3 testing/bookcounts.py || rc=1
 fi

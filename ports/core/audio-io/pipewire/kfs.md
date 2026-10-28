@@ -5,7 +5,7 @@ in for JACK, so PulseAudio, JACK and plain ALSA programs all land in the same gr
 carries video, which is how a screencast reaches a recorder: `kdos-record` asks the ScreenCast
 portal for a node and reads it through PipeWire's GStreamer element. The session starts
 `pipewire`, then [wireplumber](#port-wireplumber), then `pipewire-pulse`, once per user; see
-[Audio](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/session.md#audio).
+[Audio](../../../../docs/kdos/03-architecture/session.md#audio).
 Many ports depend on it, from [kdos-shell](#port-kdos-shell) and the portals to the
 browsers and the music software.
 
@@ -18,8 +18,8 @@ libraries.
 
 ## Flags
 - `-frandom-seed=pipewire` — Fix the number GCC names each object's link-time optimisation
-  sections with, which is otherwise random, so an object built twice comes out the same. Every port
-  built with LTO adds it; see the LTO rule in [Every port](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#every-port).
+  sections with, which is otherwise random, so an object built twice comes out the same. Each of the
+  media and drawing libraries built with LTO adds it; see the LTO rule in [Every port](../../../../docs/kdos/05-developer/writing-ports.md#every-port).
 - `-Db_lto=true` — Build with link-time optimisation. PipeWire is one of the few hot libraries the
   tree gives LTO to, because the desktop spends much of its time in it.
 - `-Ddocs=disabled`, `-Dman=enabled` — Build the manual pages and not the HTML API reference.
@@ -35,7 +35,7 @@ libraries.
 - `-Dpipewire-alsa=enabled` — The ALSA plugin that lets a plain ALSA program play into PipeWire.
   PipeWire installs its configuration drop-ins where alsa-lib does not look, so KDOS reaches it
   through `/etc/alsa/conf.d/99-kdos-pipewire.conf`; see
-  [Reaching the graph from a plain ALSA program on the host](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/session.md#reaching-the-graph-from-a-plain-alsa-program-on-the-host).
+  [Reaching the graph from a plain ALSA program on the host](../../../../docs/kdos/03-architecture/session.md#reaching-the-graph-from-a-plain-alsa-program-on-the-host).
 - `-Dcompress-offload=enabled` — The ALSA compress-offload sink, which hands compressed audio to a
   sound card's own decoder where the hardware has one.
 - `-Dudev=enabled` — Find sound cards and cameras through [eudev](#port-eudev).
@@ -78,7 +78,7 @@ libraries.
 - `-Dpipewire-jack=enabled`, `-Djack-devel=true`, `-Dlibjack-path=/usr/lib` — Build PipeWire's own
   `libjack.so.0` and install it, with JACK's headers and `jack.pc`, in `/usr/lib`, so a JACK
   program loads it from the default search path and needs no `pw-jack`; see
-  [JACK programs on the host](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/session.md#jack-programs-on-the-host).
+  [JACK programs on the host](../../../../docs/kdos/03-architecture/session.md#jack-programs-on-the-host).
 - `-Dpipewire-v4l2=disabled` — No `pw-v4l2` shim. It is an `LD_PRELOAD` library that looks up
   `openat64` and `mmap64` with `dlsym`; musl exports no such large-file aliases, so both lookups
   return NULL, the shim calls them anyway, and every process started under it crashes on its first
@@ -92,9 +92,12 @@ libraries.
 - `-Dlv2=enabled` — Let a filter chain host LV2 plugins through [lilv](#port-lilv).
 - `-Dsndfile=enabled`, `-Dpw-cat=enabled` — Build `pw-cat`, `pw-play` and `pw-record`, which need
   [libsndfile](#port-libsndfile), and `spa-resample`, which resamples a sound file with
-  PipeWire's own resampler.
-- `-Davahi=enabled` — Publish and discover PipeWire and PulseAudio servers and AirPlay receivers on
-  the local network with [avahi](#port-avahi).
+  PipeWire's own resampler. The filter chain also reads its convolver's impulse-response files
+  through libsndfile.
+- `-Davahi=enabled` — Local-network announcement and discovery through [avahi](#port-avahi):
+  `pipewire-pulse` publishes its sinks and sources as a PulseAudio server does, the RTP session
+  module announces its own sessions and finds its peers, and further modules find PulseAudio
+  servers, AirPlay receivers and Snapcast servers to play to.
 - `-Draop=enabled` — The RAOP sink, which plays to an AirPlay receiver; its encryption comes from
   [openssl](#port-openssl).
 - `-Decho-cancel-webrtc=enabled` — The echo canceller for calls, built on
@@ -109,7 +112,8 @@ libraries.
 - `-Dlibsystemd=disabled`, `-Dlogind=disabled`, `-Dsystemd-system-service=disabled`,
   `-Dsystemd-user-service=disabled` — No systemd code and no unit files. KDOS has no systemd, and
   the session starts PipeWire itself.
-- `-Dsdl2=disabled` — SDL 2 is used only by the examples, which are off.
+- `-Dsdl2=disabled` — SDL 2 is used only by example video players. `-Dexamples=disabled` leaves
+  out all of them but `pipewire-jack`'s `video-dsp-play`, which is built whenever SDL 2 is found, so this switch is what keeps SDL 2 out of the build.
 - `-Dx11=disabled`, `-Dx11-xfixes=disabled`, `-Dlibcanberra=disabled` — No X11 bell module and
   nothing else that serves an X session. The desktop is Wayland, and libcanberra feeds only that
   X11 bell.
@@ -122,7 +126,7 @@ libraries.
   is built without PAM, and the file's rule matches a group, `@pipewire`, that does not exist.
   The real-time limits PipeWire needs are raised by `kdos-getty` instead, before the login, and
   every process of the session inherits them; see
-  [The console](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/boot-and-init.md#the-console).
+  [The console](../../../../docs/kdos/03-architecture/boot-and-init.md#the-console).
 - `"-Dsession-managers=[]"` — Build no session manager as a meson subproject. Upstream's default,
   `['wireplumber']`, builds WirePlumber from a git checkout inside this build, which an offline
   build cannot fetch; KDOS builds it as its own port, [wireplumber](#port-wireplumber).
@@ -132,7 +136,7 @@ Once `jack.pc` is installed, any port that leaves JACK support on auto-detection
 according to whether it happens to build after this one. Every port that can link JACK therefore
 names it on or off, and a port this one depends on, such as ffmpeg, cannot have it at all. The
 list is in
-[JACK programs on the host](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/session.md#jack-programs-on-the-host).
+[JACK programs on the host](../../../../docs/kdos/03-architecture/session.md#jack-programs-on-the-host).
 
 The daemon routes nothing by itself. Without WirePlumber running, devices are not discovered and
 no stream reaches a sink.

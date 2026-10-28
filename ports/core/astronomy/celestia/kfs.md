@@ -35,8 +35,9 @@ textures and models it draws come from [celestia-content](#port-celestia-content
 
 GitHub's archive of a commit carries no git submodules, and `thirdparty/imgui` and
 `thirdparty/miniaudio` are submodules. The recipe fetches each at the commit in `_imgui` and
-`_miniaudio`, and `build.sh` copies them into place before the configure. A bump of Celestia's
-commit moves those two with it.
+`_miniaudio`, and `build.sh` copies them into place before the configure. Those two must be the
+commits the Celestia tree at `_commit` pins for its submodules, so a bump of `_commit` moves them
+to whatever the new tree pins.
 
 After the install, `build.sh`:
 
@@ -49,9 +50,10 @@ After the install, `build.sh`:
 - scales `celestia-logo.png` to a 128-pixel icon in `hicolor/128x128/apps` with ImageMagick.
   Upstream installs the logo only as `/usr/share/pixmaps/celestia.png`, at its own size;
 - installs `kdos-celestia.xml`, which defines `application/x-celestia-script` for `*.cel` and
-  `*.celx`. Upstream's Qt entry claims that type, and without a definition in the shared MIME
-  database the claim resolves to nothing (see
+  `*.celx`. Upstream's desktop entries claim that type, and without a definition in the shared
+  MIME database the claim resolves to nothing (see
   [desktop entries](../../../../docs/kdos/05-developer/writing-ports.md#desktop-entries-belong-to-the-port));
 - writes both desktop entries in place of upstream's, under upstream's file names, with
-  `TryExec`, `StartupWMClass` and search keywords. The Qt one is named plain `Celestia` and the
-  SDL one `Celestia (SDL)`.
+  `TryExec`, `StartupWMClass` and search keywords. The Qt one is named plain `Celestia` and
+  keeps the script type with `Exec=celestia-qt6 %f`. The SDL one, `Celestia (SDL)`, claims no
+  type and passes no file, because `celestia-sdl` reads no command-line argument.

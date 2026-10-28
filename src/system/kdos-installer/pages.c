@@ -97,12 +97,19 @@ static void welcome_draw(KRect b)
 	ktui_section(b.x, y, b.w, "PREFLIGHT");
 	y++;
 
+	/* probe_disks lists read-only disks too, so the count of visible
+	 * disks is not the count of disks an install can write. */
+	int nwritable = 0;
+	for (int i = 0; i < ki_ndisk; i++)
+		if (!ki_disk[i].readonly)
+			nwritable++;
+
 	struct {
 		int ok;
 		const char *msg;
 	} checks[] = {
 		{ geteuid() == 0, "running as root" },
-		{ ki_ndisk > 0, "at least one writable disk" },
+		{ nwritable > 0, "at least one writable disk" },
 		{ kb_have_prog("rsync"), "rsync present" },
 		{ kb_have_prog("mkfs.ext4") && kb_have_prog("mkfs.vfat"),
 		  "mkfs.ext4 and mkfs.vfat present" },
@@ -614,6 +621,11 @@ static void draw_parttable(KRect r, Disk *d)
 	}
 }
 
+/* The headroom a disk must have beyond the payload. The page's colour and
+ * disk_validate both read it: two margins would draw a disk as fitting that
+ * Next then refuses. */
+#define DISK_MARGIN (768ULL << 20)
+
 static void disk_draw(KRect b)
 {
 	int y = b.y;
@@ -670,7 +682,7 @@ static void disk_draw(KRect b)
 		char v[64];
 		snprintf(v, sizeof(v), "%s", kb_human_size(need));
 		ktui_kv(b.x, y++, b.w, "install needs", v,
-		      have > need + (512ULL << 20) ? KT_TEXT : KT_ERR);
+		      have >= need + DISK_MARGIN ? KT_TEXT : KT_ERR);
 	}
 
 	if (d->is_boot_media)
@@ -704,10 +716,10 @@ static int disk_validate(char *err, size_t n)
 					     : ki_sys.payload_kb - ki_sys.appbox_kb) *
 		1024;
 	unsigned long long have = d->sectors * (unsigned long long)d->sector_size;
-	if (have < need + (768ULL << 20)) {
+	if (have < need + DISK_MARGIN) {
 		snprintf(err, n, "%s holds %s; the install needs at least %s",
 			 d->name, kb_human_size(have),
-			 kb_human_size(need + (768ULL << 20)));
+			 kb_human_size(need + DISK_MARGIN));
 		return 1;
 	}
 	return 0;
@@ -845,13 +857,24 @@ static void layout_draw(KRect b)
 	y++;
 
 	if (cfg.plan == PLAN_MANUAL) {
-		if (ktui_button(krect(b.x + 4, y, 26, 1), "Open cfdisk", 1, 0)) {
+		/* cfdisk writes the table itself, outside every command the
+		 * dry run holds back, so a rehearsal cannot open it. */
+		if (ktui_button(krect(b.x + 4, y, 26, 1), "Open cfdisk",
+				!cfg.dry_run, 0)) {
 			char *a[] = { "cfdisk", cfg.disk, NULL };
 			ktui_run_console(a);
 			probe_disks();
 			cfg.plan = PLAN_REUSE;
 		}
 		y += 2;
+		if (cfg.dry_run) {
+			ktui_para(b.x, y, b.w,
+			     "DRY RUN: cfdisk would write a real partition "
+			     "table, so it is not opened. Choose \"Use "
+			     "partitions that already exist\" to rehearse "
+			     "with the table as it is.", KT_WARN);
+			return;
+		}
 		ktui_para(b.x, y, b.w,
 		     "cfdisk takes over the screen. Make an EFI System partition "
 		     "and a Linux partition, and a 1 MiB BIOS boot partition "
@@ -1448,9 +1471,10 @@ static void system_draw(KRect b)
 		 kb_human_size((unsigned long long)ki_sys.appbox_kb * 1024));
 	ktui_check(b.x, y++, b.w, lbl, &cfg.with_appbox);
 	y += ktui_para(b.x + 4, y, b.w - 4,
-		  "The pre-baked Debian container behind every GUI app — "
-		  "browser, office, GIMP, the lot. Leaving it out installs a "
-		  "much smaller system that can still fetch it later.", KT_MID);
+		  "The live session's Podman store: the container images "
+		  "this session has pulled or built, often none — the medium "
+		  "ships no prebuilt images. Leaving it out does not stop "
+		  "applications being installed later.", KT_MID);
 	y++;
 
 	ktui_section(b.x, y, b.w, "SERVICES AT BOOT");
@@ -1491,8 +1515,9 @@ static Page page_system = {
  * step, after the summary, which is this program's first design decision.
  *
  * THE UNIT IS A GROUP, not an application. Seven named bundles is a thing to
- * read during an install; 182 rows is not. An answer file may still name an
- * application by id — `cat_expand` takes either.
+ * read during an install; a row per application is not. An answer file names
+ * groups too: ki_apps_enter() matches group ids only, and a line naming none
+ * falls back to `essential`.
  *
  * AND THE PAGE SAYS HOW THEY WILL ARRIVE. An exported set on a stick is
  * offline and verified and wins; a network during the install is next; with
@@ -1651,9 +1676,13 @@ static void apps_draw(KRect b)
 	 * boot that offers them, and finding that out here rather than then is
 	 * the whole point of putting it on the screen.
 	 */
+	int nchosen = 0;
+	for (int i = 0; i < ki_ngroup; i++)
+		if (ki_group[i].chosen)
+			nchosen++;
 	snprintf(v, sizeof(v), "%s in %d group%s (an estimate)",
 		 kb_human_size(ki_apps_bytes()),
-		 ki_ngroup, ki_ngroup == 1 ? "" : "s");
+		 nchosen, nchosen == 1 ? "" : "s");
 	ktui_kv(b.x, y + 1, b.w, "selected", v, KT_TEXT);
 	ktui_kv(b.x, y + 2, b.w, "how", ROUTE[ki_apps_route()],
 		ki_apps_route() == APPS_PENDING ? KT_WARN : KT_TEXT);
@@ -1739,6 +1768,11 @@ static void summary_draw(KRect b)
 			 cfg.luks ? " inside LUKS2" : "", KI_VG, KI_LV_A,
 			 ki_lvm_half() ? "half" : "all", KI_VG);
 		ktui_kv(b.x, y++, b.w, "root", v, KT_TEXT);
+	} else if (cfg.luks) {
+		/* install_plan honours cfg.luks on every plan, so the review
+		 * names the container wherever the LVM line does not. */
+		ktui_kv(b.x, y++, b.w, "encryption", "root inside LUKS2",
+			KT_TEXT);
 	}
 	if (cfg.plan == PLAN_REUSE) {
 		ktui_kv(b.x, y++, b.w, "ESP", cfg.part_esp, KT_TEXT);
@@ -2005,6 +2039,14 @@ static void reboot_now(void)
 	_exit(0);
 }
 
+static void done_view_log(void)
+{
+	char *a[] = { "less", "/var/log/kinstall.log", NULL };
+	if (!kb_have_prog("less"))
+		a[0] = "more";
+	ktui_run_console(a);
+}
+
 static void done_draw(KRect b)
 {
 	int y = b.y;
@@ -2050,20 +2092,24 @@ static void done_draw(KRect b)
 			      "Wait", reboot_now);
 	if (ktui_button(krect(b.x + 22, y, 20, 1), "Back to the live desktop", 1, 0))
 		ki_quit = 1;
-	if (ktui_button(krect(b.x + 44, y, 14, 1), "View log", 1, 0)) {
-		char *a[] = { "less", "/var/log/kinstall.log", NULL };
-		if (!kb_have_prog("less")) {
-			a[0] = "more";
-			ktui_run_console(a);
-		} else {
-			ktui_run_console(a);
-		}
+	if (ktui_button(krect(b.x + 44, y, 14, 1), "View log", 1, 0))
+		done_view_log();
+}
+
+/* L opens the same pager as "View log": the hint bar names L on every page
+ * that hides the navigation, and this is one of them. */
+static int done_event(KtuiEvent *ev)
+{
+	if (ev->type == KT_EVT_KEY && (ev->key == 'l' || ev->key == 'L')) {
+		done_view_log();
+		return 1;
 	}
+	return 0;
 }
 
 static Page page_done = {
 	"done", "Done", "reboot into KDOS",
-	NULL, done_draw, NULL, NULL, 1
+	NULL, done_draw, NULL, done_event, 1
 };
 
 /* ──────────────────────────────────────────────────────────────────────── */

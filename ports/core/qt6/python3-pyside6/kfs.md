@@ -34,19 +34,22 @@ against it.
   rather than searched for, so the modules are built for the tree's Python.
 
 ## Patches
-- `pc-dirs.patch` — in `pyside6.pc.in`, makes `libdir` absolute (`@LIB_INSTALL_DIR@` is the relative `lib`) and points `includedir` at `/usr/include/PySide6`, where `fix-header-install-dir.patch` puts the headers, instead of upstream's `/usr/PySide6/include`.
+- `pc-dirs.patch` — in `pyside6.pc.in`, makes `libdir` absolute (`@LIB_INSTALL_DIR@` is the relative `lib`) and points `includedir` at `/usr/include/PySide6`, where the install step puts `libpyside`'s headers, instead of `/usr/PySide6/include`, which does not exist.
 - `pyi-build-tree-shiboken.patch` — adds the build tree's `sources` directory to the `--sys-path` of the step that writes each module's `.pyi` stub. That step imports the module just built, and the module imports `shiboken6`, which upstream looks for in the installed site-packages; in a build of both packages from one tree, `shiboken6` is in the build tree's `sources` directory and is not installed yet.
 
 ## Notes
-`LLVM_INSTALL_DIR=/usr` is read from the environment by shiboken's CMake to find libclang, which
-the generator parses Qt's headers with. `ninja` runs with `PYTHONPATH` set to the build tree's
+`LLVM_INSTALL_DIR=/usr` is read from the environment by the `shiboken6_generator` CMake project,
+which puts it first on `CMAKE_PREFIX_PATH` to find libclang, the parser the generator reads Qt's
+headers with. `ninja` runs with `PYTHONPATH` set to the build tree's
 `sources` directory for the same reason as the `.pyi` patch: the build imports the `shiboken6`
 package it has just built.
 
-The install step writes a `PySide6Config.abi3.cmake` that names the build tree's typesystem and
-glue directories. `build.sh` installs the build tree's own copy over it, which names the installed
-ones, so that a CMake project using `find_package(PySide6)` (Falkon is one) finds the typesystems
-under `/usr/share/PySide6`.
+The install step puts a `PySide6Config.abi3.cmake` in `/usr/lib/cmake/PySide6` that computes the
+`PySide6` package, typesystem and glue directories relative to its own location. `build.sh`
+installs the copy configured in the build tree over it, which spells the same three directories as
+absolute paths under `/usr`. A CMake project using `find_package(PySide6)` (Falkon is one) reads
+`PYSIDE_TYPESYSTEMS` and `PYSIDE_GLUE` from this file to find the typesystems under
+`/usr/share/PySide6`.
 
 pyside-tools installs its deployment scripts, `deploy.py`, `project.py` and the rest, with their
 `_lib` directories, straight into `/usr/bin`. `build.sh` moves them into the `scripts` directory of

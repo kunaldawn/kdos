@@ -64,9 +64,9 @@ kdos_session_keymap() {
 		esac
 		# A layout xkbcommon cannot compile does not fall back loudly: kdos-comp
 		# logs the failure and sets XKB_DEFAULT_LAYOUT=us for the whole session,
-		# lock prompt included — the exact bug this block exists to fix, arriving
-		# silently. So a DERIVED name is only exported when xkeyboard-config
-		# really carries it. The check is skipped where that data is absent,
+		# lock prompt included, so a non-US user gets US QWERTY with nothing on
+		# screen to say why. A DERIVED name is therefore only exported when
+		# xkeyboard-config really carries it. The check is skipped where that data is absent,
 		# because then nothing here can be verified either way.
 		_xkb=/usr/share/X11/xkb/symbols
 		if [ -n "$_layout" ] && [ -d "$_xkb" ] && [ ! -f "$_xkb/$_layout" ]; then
@@ -83,8 +83,9 @@ kdos_session_keymap() {
 }
 
 kdos_session_boxes() {
-	# Pre-create and start the alien-app box while the desktop is coming up, so
-	# the first launcher click doesn't pay for container init. nice 10, not 19:
+	# Pre-create and start the boxes behind the pinned favourites while the
+	# desktop is coming up, one box per application, so the first click on
+	# each doesn't pay for container init. nice 10, not 19:
 	# at 19 the warmup loses every CPU slice to the starting desktop and stays
 	# mid-init for minutes, and a launch that lands in that window has to wait
 	# for it to finish.
@@ -96,17 +97,33 @@ kdos_session_boxes() {
 	# Ten minutes, from the session rather than from a root service, because
 	# the boxes are the user's and so is the question the compositor is asked
 	# before any is stopped.
-	(while sleep 600; do nice -n 10 /usr/local/bin/kdos-box gc >/dev/null 2>&1; done &)
+	#
+	# ONE LOOP PER LOGIN, found again by its pidfile in the runtime directory:
+	# every session start inside one login runs this, and without the check
+	# each would add another loop. The pid is only trusted while its command
+	# line still names kdos-box, so a reused pid does not stand in for it.
+	_gpid="$XDG_RUNTIME_DIR/kdos/box-gc.pid"
+	mkdir -p "${_gpid%/*}" 2>/dev/null
+	_gp=$(cat "$_gpid" 2>/dev/null)
+	case "$_gp" in ''|*[!0-9]*) _gp=0 ;; esac
+	if [ "$_gp" = 0 ] || ! grep -qa kdos-box "/proc/$_gp/cmdline" 2>/dev/null; then
+		(sh -c 'echo $$ > "$1" 2>/dev/null
+			while sleep 600; do
+				nice -n 10 /usr/local/bin/kdos-box gc >/dev/null 2>&1
+			done' kdos-box-gc "$_gpid" >/dev/null 2>&1 &)
+	fi
+	unset _gpid _gp
 }
 
 kdos_session_bus() {
 	# ONE session bus per user, at a fixed runtime path — not dbus-run-session.
-	# dbus-run-session listens on unix:tmpdir=/tmp: a pathname socket in the
-	# host's /tmp, which the appbox does NOT share — alien apps then see a
-	# dangling DBUS_SESSION_BUS_ADDRESS: GApplication single-instance breaks
-	# (every impatient re-click spawns another full instance), dconf/a11y probe
-	# and stall, notifications go nowhere. $XDG_RUNTIME_DIR *is* shared with the
-	# box, so this one address is valid on both sides. The daemon is reused
+	# kdos-appbox hands every box DBUS_SESSION_BUS_ADDRESS=unix:path=
+	# /run/user/<uid>/bus, a path every box binds; dbus-run-session listens at
+	# an address of its own choosing under unix:tmpdir=/tmp, so alien apps
+	# would be pointed at a socket nobody answers: GApplication single-instance
+	# breaks (every impatient re-click spawns another full instance), dconf/a11y
+	# probe and stall, notifications go nowhere. With the daemon at that same
+	# path the one address is valid on both sides. The daemon is reused
 	# across session restarts; the address carries no guid on purpose — a later
 	# session re-binding the socket would otherwise kill zbus clients with
 	# "D-Bus handshake failed: Server GUID mismatch" (the session aborts).
@@ -136,7 +153,9 @@ kdos_session_bus() {
 
 # THE AUDIO STACK, once per user and not once per session. pgrep-guarded
 # because a session restart must not start a second pipewire: two of them
-# fight over the same devices and the loser's clients get silence.
+# fight over the same devices and the loser's clients get silence. The guard
+# is this user's pipewire only — another account's running daemon serves that
+# account's runtime directory, and taking it for ours leaves this login silent.
 #
 # Not the compositor's — a login sound and a boxed application's audio are the
 # same stack, and neither goes through it.
@@ -151,7 +170,7 @@ kdos_session_bus() {
 # daemon's socket, and the PulseAudio shim announces sinks that do not exist
 # until something has created them.
 kdos_session_audio() {
-	if command -v pipewire >/dev/null 2>&1 && ! pgrep -f '^pipewire$' >/dev/null 2>&1; then
+	if command -v pipewire >/dev/null 2>&1 && ! pgrep -u "$(id -u)" -f '^pipewire$' >/dev/null 2>&1; then
 		pipewire >/dev/null 2>&1 &
 		sleep 0.3
 		command -v wireplumber >/dev/null 2>&1 && \
@@ -276,14 +295,6 @@ kdos_session_once() {
 			) &
 		fi
 
-		# Session restore, opt-in: ~/.config/kdos/session-restore has to
-		# exist, because relaunching half a dozen containerised
-		# applications at login is a decision, not a default. Only the
-		# `app` lines are relaunched — a native program costs no container
-		# start, and where every window comes back is the desktop's window
-		# memory rather than this list. Staggered, because six
-		# `kdos-appbox run` at once contend for the same box the login
-		# warmup is still building.
 		# THE PER-USER TIMERS, as this session's own loops.
 		#
 		# `ksvc supervise` writes its pidfile into /run, which an
@@ -378,9 +389,17 @@ kdos_session_once() {
 					# speed of `fork` — one second is far
 					# below any schedule and far above a
 					# spin.
+					#
+					# A REMOVED FILE ENDS ITS ROWS' LOOPS —
+					# `kdos remind fire`, `kdos remind
+					# clear` or a person deleting it. A
+					# snooze restarted with its -t timefile
+					# gone searches from one slack before
+					# now and re-runs the job about once a
+					# second for the whole slack.
 					# shellcheck disable=SC2086
 					(
-						while :; do
+						while [ -e "$_tf" ]; do
 							_t0=$(date +%s)
 							snooze $_spec "$@" \
 								>/dev/null 2>&1
@@ -394,6 +413,14 @@ kdos_session_once() {
 			done
 		fi
 
+		# Session restore, opt-in: ~/.config/kdos/session-restore has to
+		# exist, because relaunching half a dozen containerised
+		# applications at login is a decision, not a default. Only the
+		# `app` lines are relaunched — a native program costs no container
+		# start, and where every window comes back is the desktop's window
+		# memory rather than this list. Staggered, because six
+		# `kdos-appbox run` at once contend with the boxes the login
+		# warmup is still building.
 		_sess="${XDG_STATE_HOME:-$HOME/.local/state}/kdos/session"
 		if [ -e "$_cfg/kdos/session-restore" ] && [ -r "$_sess" ] && \
 		   command -v kdos-appbox >/dev/null 2>&1; then

@@ -42,9 +42,12 @@
  * AND `Enter` ON THE FONT PAGE IS A FILE. Each surface on this desktop is its
  * own process with its own face, so a font this window loaded reaches this
  * window and nothing else; keeping one writes the family into comp.conf's
- * `chrome_font` and `panel_font`, which every other surface reads once, at
- * startup. The desktop agrees at the next login and not before — the accent
- * half of this window is the one that repaints the screen as you arrow.
+ * `chrome_font` and `panel_font`, which kdos-comp hands to the children it
+ * supervises as `--font` when it starts them. The menus, popups and windows
+ * opened from the panel or a key binding get no `--font` and keep libkwl's
+ * built-in Terminus. The desktop agrees at the next login and not before —
+ * the accent half of this window is the one that repaints the screen as you
+ * arrow.
  *
  * THE SWATCHES ARE LITERAL COLOURS, AND THIS IS THE ONLY SURFACE ON THE
  * DESKTOP THAT MAY SET ONE. Chrome draws in slots so that one word repaints

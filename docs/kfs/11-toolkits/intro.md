@@ -38,22 +38,27 @@ fails on any GTK, GDK, libadwaita, WebKitGTK, Qt, KDE Frameworks, wxWidgets, FLT
 among them, and on any X11 client library (`libX…`). `libxcb` is allowed: the compositor speaks
 XCB to Xwayland.
 
-Each toolkit that has a Wayland backend is built with it and with its X11 backend, so a program
-that has only an X11 path still runs, under [Xwayland]{.idx}. Which one an application uses at run time is
+GTK and Qt are built with their Wayland backend and with their X11 backend, so a program that
+has only an X11 path still runs, under [Xwayland]{.idx}; SDL is built with Wayland alone, and Tk
+and Motif have only X11. Which one an application uses at run time is
 not decided by its recipe. The login profile sets the preference, in
 [`fs/etc/profile.d/10-wayland.sh`]{.idx term="/etc/profile.d/10-wayland.sh"}:
 
-<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=78-90 pin=bdaffc9a9711 -->
+<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=78-91 pin=7ff578216c09 -->
 
-What each line means for each toolkit, and how they take the desktop's colours, is in
+What each line means for each toolkit is in
 [Toolkits, Wayland and X11](../../kdos/02-user-guide/applications.md#toolkits-wayland-and-x11);
+how GTK and Qt applications take the desktop's colours, through two more variables of the same
+file, is in
+[Theming native applications](../../kdos/02-user-guide/theming.md#theming-native-applications);
 how the Qt 6 modules are configured to match is in
 [How Qt 6 is built](../../kdos/05-developer/writing-ports.md#how-qt-6-is-built).
 
 ## The list, by shelf
 
 The list is `script/phases/43_toolkits/packages.d/`, one file per shelf, read in byte order as one
-list, with no order file. The chapters that carry the phase are these:
+list, with no order file (see
+[Package lists](../../kdos/05-developer/build-system.md#package-lists)). The chapters that carry the phase are these:
 
 `gtk`
 : GTK 3 and GTK 4 with their C++ bindings, libadwaita and libhandy, VTE, GtkSourceView, gvfs,

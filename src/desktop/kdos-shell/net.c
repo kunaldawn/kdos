@@ -1963,8 +1963,8 @@ int net_main(int argc, char **argv)
 		/*
 		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
 		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
-		 * move and no resize in the protocol at all, so every native
-		 * app on this desktop was a rectangle nailed to the screen
+		 * move and no resize in the protocol at all, so a native app
+		 * drawn as one would be a rectangle nailed to the screen
 		 * while every boxed one could be dragged and pulled about. A
 		 * toplevel also gets the compositor's own frame, which is the
 		 * other half of it: the decoration then MATCHES an alien app's

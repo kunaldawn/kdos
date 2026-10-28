@@ -18,8 +18,9 @@ the engine uses for its player IDs. The game's maps, models, sounds and textures
   have (see [the release flags](../../../../docs/kdos/05-developer/writing-ports.md#the-release-flags)).
 - `SDL_CONFIG='pkg-config sdl2'` — the command the makefile runs for SDL2's flags. Its default is
   `sdl2-config`, which [sdl2-compat](#port-sdl2-compat) does not install.
-- `SDLCONFIG_UNIXLIBS_X11=` — empty, so the SDL client does not link `libX11`. Built on SDL2, only DarkPlaces' GLX
-  client calls Xlib, but the makefile adds the X11 libraries to the SDL client's link as well.
+- `SDLCONFIG_UNIXLIBS_X11=` — empty, so the SDL client does not link `libX11`. Built on SDL2 it
+  calls no Xlib function (its X11 code is for SDL 1.2, and the GLX client is a separate target), but
+  the makefile adds `-lX11` to the SDL client's link all the same.
 - `DP_FS_BASEDIR=/usr/share/xonotic` — compile in the base directory where the engine looks for
   the game data, the directory [xonotic-data](#port-xonotic-data) installs.
 - `sdl-release` — with `sv-release`: the two DarkPlaces targets built, the SDL client and the

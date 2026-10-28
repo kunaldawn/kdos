@@ -18,9 +18,10 @@ Every file of the phase's list opens with the rule:
 <!-- kfs:include script/phases/44_apps/packages.d/3d.txt lines=16-17 pin=5b0d56824dd0 -->
 
 Every port here is a leaf, with nothing in the tree depending on it. An application another port
-depends on belongs in Part XI instead, as `konsole`, `vlc` and `gpsman`, which `xastir` uses, do,
-and a library an application here links sits where its own closure puts it, as `libdovi`, which
-`handbrake` uses, sits in Part IX. [`testing/phaseclosure.py`]{.idx term="phaseclosure.py"} refuses a port of this phase that
+depends on is listed in an earlier phase instead: in Part XI when its closure reaches a toolkit,
+as `konsole`, `vlc` and `gpsman` (which `xastir` uses) are, and in [Part X](../10-graphics/intro.md)
+when it reaches only the graphics stack. A library an application here links sits where its own
+closure puts it: `libdovi`, which `handbrake` uses, is in Part IX. [`testing/phaseclosure.py`]{.idx term="phaseclosure.py"} refuses a port of this phase that
 something depends on or whose closure does not qualify it. The full table of phases is under
 [Which phase lists a port](../../kdos/05-developer/writing-ports.md#which-phase-lists-a-port).
 
@@ -39,7 +40,9 @@ built here only because of that shelf.
 ## The list, by shelf
 
 The list is `script/phases/44_apps/packages.d/`, one file per shelf, read in byte order as one list,
-with no order file. The chapters fall into a few groups:
+with no order file (see
+[Package lists](../../kdos/05-developer/build-system.md#package-lists)). Most of the chapters fall
+into a few groups:
 
 Making and viewing
 : `graphics` (GIMP, Krita, Inkscape, darktable, digiKam and the image viewers), `3d`, `cad`,
@@ -64,6 +67,10 @@ Work and study
 The system's own tools
 : `files`, `disk`, `sysmon`, `containers`, `virt`, `security` and `printing`, where the graphical
   front ends to Part IX's machinery are: Dolphin, GParted, virt-manager and the like.
+
+The other shelves
+: `accessibility`, `pim`, `optical`, `vcs`, `themes` and the rest hold a few ports each:
+  applications, and the fonts, themes and libraries that nothing else depends on.
 
 `src-system`
 : [kdos-appbox](#port-kdos-appbox), which starts and manages [boxed applications]{.idx term="box"} and writes their

@@ -12,10 +12,15 @@ device. `SoapySDRUtil --find` and `--probe` list what it sees.
 
 ## Flags
 
+- `-DCMAKE_INSTALL_LIBDIR=lib` — Install into `/usr/lib`. The library compiles
+  `<prefix>/<libdir>/SoapySDR/modules<ABI version>` into its module search path, and every module
+  port installs there under `/usr/lib`; `GNUInstallDirs` would otherwise choose `lib64` on a
+  64-bit host, and the library would look for its modules where none are.
 - `-DENABLE_PYTHON=OFF`, `-DENABLE_PYTHON3=OFF` — Build neither of the two Python binding
   directories: `python/`, for whichever interpreter CMake's `FindPythonInterp` finds, and
-  `python3/`, for Python 3. Both are generated with SWIG and are on by default whenever SWIG and
-  a Python interpreter with its headers are found.
+  `python3/`, a second module for Python 3 that is configured when `python/` found Python 2 or no
+  complete Python at all. Both are generated with SWIG, and each is on by default whenever SWIG
+  and its interpreter and headers are found.
 - `-DENABLE_TESTS=OFF` — Build no unit tests.
 - `-DENABLE_DOCS=OFF` — Generate no Doxygen documentation, which upstream builds whenever doxygen
   is found.

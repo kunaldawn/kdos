@@ -6,15 +6,16 @@ complex scripts such as Arabic, Devanagari and Thai. pango (and through it GTK a
 window titles), Qt, LibreOffice, Chromium, libass, SDL_ttf and FreeType's autohinter, which loads
 it at run time, all shape through it. Besides `libharfbuzz` this build installs `libharfbuzz-icu`,
 `libharfbuzz-gobject`, `libharfbuzz-cairo`, the subsetter, the raster, vector and GPU glyph
-libraries, the `hb-view`, `hb-shape` and `hb-subset` tools, and the introspection data.
+libraries, the `hb-view`, `hb-shape`, `hb-info`, `hb-subset`, `hb-raster` and `hb-vector`
+tools, and the introspection data.
 
 ## Flags
 
 - `-frandom-seed=harfbuzz` — With LTO, fixes the name GCC gives each object's `.gnu.lto_*`
   sections, which is otherwise random on every build. HarfBuzz is one of the hot libraries the tree
   builds with link-time optimisation, and every one of them carries the seed in `CFLAGS` and, for
-  C++, `CXXFLAGS` (see [Every
-  port](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#every-port)).
+  C++, `CXXFLAGS` (see
+  [Every port](../../../../docs/kdos/05-developer/writing-ports.md#every-port)).
 - `-D b_lto=true` — Link-time optimisation, through meson's own switch.
 - `-D glib=enabled`, `-D gobject=enabled` — GLib's Unicode functions as a Unicode backend, and
   `libharfbuzz-gobject`, the GObject types introspection is generated from.

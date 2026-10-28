@@ -20,4 +20,4 @@ When a hunk applies only at an offset or with fuzz, or fails, `patch` keeps the 
 `<file>.orig` beside the patched file. A recipe whose `make install` copies a whole source directory then ships that `.orig`, and
 the package lint refuses it; such a recipe applies its patch with
 `patch -p1 --no-backup-if-mismatch`, as [cmake](#port-cmake) does (see
-[What the package lint refuses](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#what-the-package-lint-refuses)).
+[What the package lint refuses](../../../../docs/kdos/05-developer/writing-ports.md#what-the-package-lint-refuses)).

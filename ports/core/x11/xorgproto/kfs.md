@@ -15,5 +15,5 @@ with a pkg-config file for each. It installs no code. Every X client library bui
 
 ## Notes
 
-meson's `legacy` option stays at its default, off, so the headers of the obsolete extensions that
-upstream keeps only under that option are not installed.
+meson's `legacy` option stays at its default, off, so the headers and pkg-config files of the
+obsolete extensions that upstream keeps only under that option are not installed.

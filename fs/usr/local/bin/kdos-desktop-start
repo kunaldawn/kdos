@@ -131,8 +131,11 @@ fi
 # Déjà Dup's scheduler. Upstream starts it from /etc/xdg/autostart, which
 # nothing here reads, and without it "Back up automatically" never backs up.
 # The monitor does nothing unless periodic backups are enabled, and a missing
-# binary is silence.
-if [ -x /usr/libexec/deja-dup/deja-dup-monitor ]; then
+# binary is silence. One per user: it outlives the compositor, so a session
+# restart finds the last one still running and must not add a second.
+if [ -x /usr/libexec/deja-dup/deja-dup-monitor ] && \
+   ! pgrep -u "$(id -u)" -f '^/usr/libexec/deja-dup/deja-dup-monitor' \
+	>/dev/null 2>&1; then
 	(
 		_wait_wayland || exit 0
 		exec /usr/libexec/deja-dup/deja-dup-monitor >/dev/null 2>&1
@@ -155,8 +158,9 @@ kdos_session_once _wait_wayland
 # rootless podman's `conmon`, which lives for the whole life of an alien app's
 # container, or anything else spawn_async_no_shell() left behind — would hold
 # `tee` open forever, and this script would never reach the restart prompt or
-# give the tty back. That is the same shape as the `flock 7>&-` trap above: a
-# tty that sits there with no compositor, no error and nothing in a log.
+# give the tty back. That is the same shape as the `flock 7>&-` trap in
+# kdos_session_bus (session-common.sh): a tty that sits there with no
+# compositor, no error and nothing in a log.
 #
 # The follower is killed once the compositor is reaped; the failure path below
 # re-prints the log's tail, so nothing is lost to whatever it had not polled.

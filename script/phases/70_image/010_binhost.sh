@@ -22,9 +22,12 @@
 # THE DIRECTORY ACCUMULATES. 020_cleanup.sh empties the package cache on every
 # 70_image run, and an incremental build makes only the packages it rebuilt,
 # so each run adds what it built and keeps what earlier runs added. A package
-# older runs left is indexed beside its successor and matches no machine whose
-# recipe moved on, because the index's `E:` is the recipe hash. A complete
-# binhost therefore needs one `--fresh` build with the flag set.
+# older runs left is indexed beside its successor, and only the file of the
+# version and release the ports tree's recipe makes gets that recipe's hash as
+# its `E:`; a superseded one gets an empty `E:`, which no client's equality
+# test accepts, so it is listed and never installed. Nothing here empties
+# build/binhost; a binhost holding only this tree's packages needs its
+# *.tar.xz removed before a build that installs every port with the flag set.
 #
 # THE SIGNING KEY IS build/binhost-key/kdos-binhost.key, made on the first run
 # and never replaced; it stays under build/ and never enters the image. A

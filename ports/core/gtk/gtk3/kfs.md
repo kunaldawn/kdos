@@ -5,7 +5,7 @@ them [gimp](#port-gimp), [inkscape](#port-inkscape), [firefox-esr](#port-firefox
 [libreoffice](#port-libreoffice) and [virt-manager](#port-virt-manager). It installs beside
 [gtk4](#port-gtk4); each has its own library, its own series and its own bindings. Like every
 toolkit in the tree it is for applications only, and no part of the KDOS desktop links it (see
-[Toolkits are for applications](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#toolkits-are-for-applications-not-the-desktop)).
+[Toolkits are for applications](../../../../docs/kdos/01-philosophy/principles.md#toolkits-are-for-applications-not-the-desktop)).
 
 ## Flags
 
@@ -19,7 +19,7 @@ toolkit in the tree it is for applications only, and no part of the KDOS desktop
 - `-Dwayland_backend=true`, `-Dx11_backend=true` — Build both GDK backends, upstream's defaults on
   Linux. `GDK_BACKEND` is left unset in the session, so an application tries Wayland first and the
   X11 backend serves the ones that force it, under Xwayland (see
-  [A graphical application](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#a-graphical-application)).
+  [A graphical application](../../../../docs/kdos/05-developer/writing-ports.md#a-graphical-application)).
   GTK 3's AT-SPI accessibility bridge is compiled only beside its X11 backend, so turning X11 off
   would also take away accessibility from every GTK 3 program.
 - `-Dbroadway_backend=false` — Build no Broadway backend, which draws a GTK program into a web

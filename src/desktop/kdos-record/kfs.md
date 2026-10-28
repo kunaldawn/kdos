@@ -18,9 +18,10 @@ its deadlines and its traps are in
 
 - **It links only `basu`.** GStreamer is a dependency at run time and not at build time: the
   pipeline is a `gst-launch-1.0` child process, so a program that only reads one PipeWire node
-  does not take on GStreamer's initialisation as well. The elements come from the ports in `depends`: `pipewiresrc` from `pipewire`
-  (built with its GStreamer plugin), `videoconvert` from `gst-plugins-base`, `vp8enc` and
-  `matroskamux` from `gst-plugins-good`, and `x264enc` from `gst-plugins-ugly`.
+  does not take on GStreamer's initialisation as well. The elements come from the ports in
+  `depends`: `pipewiresrc` from `pipewire` (built with its GStreamer plugin), `videoconvert` from
+  `gst-plugins-base`, `vp8enc` and `matroskamux` from `gst-plugins-good`, and `x264enc` from
+  `gst-plugins-ugly`.
 - **The screen is chosen by a person**, through the ScreenCast backend `xdg-desktop-portal-wlr`
   and the chooser its per-user configuration names, so `SelectSources` is given minutes, not
   seconds, before the program gives up.

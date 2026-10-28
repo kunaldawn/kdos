@@ -7,8 +7,8 @@ events it marks.
 
 ## Flags
 - `icalendar` — The three PyPI packages named before `.` on the `pip3 install` line, `icalendar`,
-  `tzdata` and `tzlocal`, are the recipe's `pypackages`: the members of khal's
-  [Python vendor bundle](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-three-python-keys),
+  `tzdata` and `tzlocal`, are the recipe's `pypackages`: the runtime members of khal's
+  [Python vendor bundle](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys),
   installed into the package beside khal itself. Every other module khal imports is a
   `python3-*` port in `depends`.
 - `-D` — Overrides `extensions` in khal's Sphinx `conf.py` for the manual page build, to

@@ -13,15 +13,18 @@
  * image is up, costing nothing until mounted, which is the whole reason the
  * packs sit on ISO9660 beside `system.sfs` rather than inside it.
  *
- * INSTALLING IS A RENAME. A pack is verified in the staging directory and then
- * moved into the store; there is no unpack step to interrupt and no half-
- * installed state to recover from. The previous version is not deleted — it is
+ * INSTALLING IS A RENAME. A pack is copied out of the staging directory into a
+ * private, root-owned file in the store, verified there and renamed into
+ * place; there is no unpack step to interrupt and no half-installed state to
+ * recover from. The previous version is not deleted — it is
  * what `rollback` renames back, and per-app rollback is the property this
  * whole format exists for.
  */
 
 #include <ctype.h>
 #include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -94,15 +97,18 @@ int kd_retain(void)
 	const char *env = getenv("KDOS_PACK_RETAIN");
 	char buf[4096];
 
-	if (env && *env)
-		return atoi(env);
+	/* Clamped like the file's value, so a negative count means `0`
+	 * whichever of the two said it. */
+	if (env && *env) {
+		int v = atoi(env);
+		return v < 0 ? 0 : v;
+	}
 	if (cached >= 0)
 		return cached;
 	cached = 1;
 	/* `> 0`, not `== 0`: kb_read_file answers the BYTE COUNT, so `== 0`
-	 * parses the file only when it is empty — `retain =` was read from a
-	 * zero-byte packd.conf and from nothing else, and rollback silently
-	 * kept the default on every machine that had configured it. */
+	 * would parse the file only when it is empty, and every configured
+	 * `retain =` would be ignored in favour of the default. */
 	if (kb_read_file("/etc/kdos/packd.conf", buf, sizeof(buf)) > 0) {
 		char *line, *save;
 		for (line = strtok_r(buf, "\n", &save); line;
@@ -346,36 +352,168 @@ int kd_find(const char *id)
 /* ── install ───────────────────────────────────────────────────────────── */
 
 /*
- * `staged` is a FILENAME in the staging directory and nothing else — not a
- * path, not something with a slash in it. That is rule 3: a daemon reachable
- * from `wheel` that takes a path is `mount /dev/sda2 /etc` from any shell, and
- * the staging directory is the one place an unprivileged download may land.
+ * A PRIVATE COPY of a file in the staging directory, made by this daemon and
+ * owned by it, mode 0644. Everything after it reads the copy: the staged file
+ * belongs to whoever put it there, in a directory every user may write, so a
+ * check on it proves nothing about the bytes a later read or a rename would
+ * find — its owner can rewrite it, or hold it open for writing, after the
+ * verification passed. `O_NOFOLLOW` and the regular-file test keep a staged
+ * symlink or device from being read as root.
  */
-int kd_install(const char *staged, char *msg, size_t n)
+static int take_private(const char *from, const char *to)
 {
-	char src[KD_PATH * 2], dst[KD_PATH * 2], old[KD_PATH * 2];
-	KpkPack p;
-	KsigRing ring = {0};
-	char who[KSIG_ID_HEX], err[256];
-	KpkSigState sig;
-	KpkIndex ix = {0};
-	char idxpath[KD_PATH * 2];
+	char buf[65536];
+	struct stat st;
+	int in, out, rc = -1;
 
+	in = open(from, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+	if (in < 0)
+		return -1;
+	if (fstat(in, &st) != 0 || !S_ISREG(st.st_mode)) {
+		close(in);
+		return -1;
+	}
+	unlink(to);
+	out = open(to, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,
+		   0644);
+	if (out < 0) {
+		close(in);
+		return -1;
+	}
+	for (;;) {
+		ssize_t r = read(in, buf, sizeof(buf));
+		if (r == 0) {
+			rc = 0;
+			break;
+		}
+		if (r < 0) {
+			if (errno == EINTR)
+				continue;
+			break;
+		}
+		ssize_t off = 0;
+		while (off < r) {
+			ssize_t w = write(out, buf + off, (size_t)(r - off));
+			if (w < 0 && errno == EINTR)
+				continue;
+			if (w <= 0)
+				break;
+			off += w;
+		}
+		if (off < r)
+			break;
+	}
+	close(in);
+	if (fchmod(out, 0644) != 0)
+		rc = -1;
+	if (close(out) != 0)
+		rc = -1;
+	if (rc != 0)
+		unlink(to);
+	return rc;
+}
+
+static int install_private(const char *src, const char *idxpath,
+			   const char *staged, char *msg, size_t n);
+
+/* A staged name is a FILENAME in the staging directory: no slash, no `..`,
+ * nothing outside [A-Za-z0-9._-]. */
+static int staged_name_ok(const char *staged, char *msg, size_t n)
+{
 	if (strchr(staged, '/') || !strcmp(staged, "..") || !*staged) {
 		snprintf(msg, n, "a staged name is a filename, not a path");
-		return -1;
+		return 0;
 	}
 	for (const char *c = staged; *c; c++)
 		if (!isalnum((unsigned char)*c) && *c != '.' && *c != '_' &&
 		    *c != '-') {
 			snprintf(msg, n, "a staged name is [A-Za-z0-9._-]");
-			return -1;
+			return 0;
 		}
-	snprintf(src, sizeof(src), "%s/%s", kd_staging_dir(), staged);
-	if (!kb_path_exists(src)) {
+	return 1;
+}
+
+/*
+ * `staged` is a FILENAME in the staging directory and nothing else — not a
+ * path, not something with a slash in it. That is rule 3: a daemon reachable
+ * from `wheel` that takes a path is `mount /dev/sda2 /etc` from any shell, and
+ * the staging directory is the one place an unprivileged download may land.
+ *
+ * `index`, when not NULL, is a second staged filename: a signed set's index,
+ * with its signature staged beside it as `<index>.sig`. THE INDEX IS NAMED BY
+ * THE REQUEST, NEVER FOUND. One fixed name in a directory every user writes to
+ * would be state shared across every install while it sat there: an import's
+ * index would refuse another caller's install of a different build of a pack
+ * it lists, and a stale one would outlive the import that staged it.
+ *
+ * The pack, and the index and its signature when named, are verified as
+ * private copies in the store (take_private), and the pack copy is what is
+ * renamed into place. The staged pack is removed only once that has worked;
+ * the index is the caller's to remove, since one index covers many installs.
+ */
+int kd_install(const char *staged, const char *index, char *msg, size_t n)
+{
+	char from[KD_PATH * 2], src[KD_PATH * 2];
+	char sidx[KD_PATH * 2], idxpath[KD_PATH * 2];
+	char ssig[KD_PATH * 2 + 4], idxsig[KD_PATH * 2 + 4];
+	const char *idx = NULL;
+	int rc;
+
+	if (!staged_name_ok(staged, msg, n))
+		return -1;
+	if (index && !staged_name_ok(index, msg, n))
+		return -1;
+	snprintf(from, sizeof(from), "%s/%s", kd_staging_dir(), staged);
+	if (!kb_path_exists(from)) {
 		snprintf(msg, n, "%s is not in the staging directory", staged);
 		return -1;
 	}
+	kb_mkdir_p(kd_store_dir());
+	/* Not `.kpack`, so a scan never lists a copy that is half written. */
+	snprintf(src, sizeof(src), "%s/.install.part", kd_store_dir());
+	if (take_private(from, src) != 0) {
+		snprintf(msg, n, "cannot read %s from the staging directory",
+			 staged);
+		return -1;
+	}
+	snprintf(sidx, sizeof(sidx), "%s/%s", kd_staging_dir(),
+		 index ? index : "");
+	snprintf(idxpath, sizeof(idxpath), "%s/.install-index.part",
+		 kd_store_dir());
+	/* kpk_index_verify reads the signature from `<index>.sig`, so the
+	 * copy of the index needs a copy of the staged signature beside it
+	 * under the matching name; without it the signed-index route never
+	 * answers GOOD and a pack the index contradicts would not be
+	 * refused. */
+	snprintf(ssig, sizeof(ssig), "%s.sig", sidx);
+	snprintf(idxsig, sizeof(idxsig), "%s.sig", idxpath);
+	unlink(idxsig);
+	if (index && kb_path_exists(sidx) && take_private(sidx, idxpath) == 0) {
+		idx = idxpath;
+		if (kb_path_exists(ssig))
+			take_private(ssig, idxsig);
+	}
+	rc = install_private(src, idx, staged, msg, n);
+	if (idx)
+		unlink(idxpath);
+	unlink(idxsig);
+	if (rc != 0)
+		unlink(src);
+	else
+		unlink(from);
+	return rc;
+}
+
+static int install_private(const char *src, const char *idxpath,
+			   const char *staged, char *msg, size_t n)
+{
+	char dst[KD_PATH * 2], old[KD_PATH * 2];
+	KpkPack p;
+	KsigRing ring = {0};
+	char who[KSIG_ID_HEX], err[256];
+	KpkSigState sig;
+	KpkIndex ix = {0};
+
 	if (kpk_open(src, &p) != 0) {
 		snprintf(msg, n, "%s is not a pack", staged);
 		return -1;
@@ -396,8 +534,7 @@ int kd_install(const char *staged, char *msg, size_t n)
 	 * travels on a stick with no index beside it.
 	 */
 	ksig_ring_load(&ring, KD_KEYS);
-	snprintf(idxpath, sizeof(idxpath), "%s/PACKAGES", kd_staging_dir());
-	if (kb_path_exists(idxpath) &&
+	if (idxpath &&
 	    kpk_index_verify(idxpath, &ring, who) == KPK_SIG_GOOD &&
 	    kpk_index_load(&ix, idxpath) > 0) {
 		const KpkIndexEnt *e = kpk_index_find(&ix, p.meta.id);
@@ -421,19 +558,19 @@ int kd_install(const char *staged, char *msg, size_t n)
 		break;
 	case KPK_SIG_NONE:
 		/*
-		 * Allowed, and SAID. The medium's own index IS signed and the
-		 * public half of that key ships in /etc/kdos/keys, so a pack
-		 * that came off the medium takes the branch above and never
-		 * reaches here. What reaches here is a pack from somewhere
-		 * else — an imported set, a `kdos-box freeze` — and refusing
-		 * those outright would refuse the artefact this system can
-		 * make for itself.
+		 * Allowed, and SAID. A pack reaches here when it carries no
+		 * signature block and no signed index beside it vouches for it
+		 * — an imported set, a `kdos-box freeze` — and refusing those
+		 * outright would refuse the artefact this system can make for
+		 * itself. A pack mounted straight off the medium does not
+		 * pass through here; kd_mount checks it.
 		 *
-		 * SHIPPING A KEY IS A CLAIM ABOUT WHO BAKED THE MEDIUM, not
-		 * about who wrote KDOS: it says the packs beside it came from
-		 * the same bake. Replace it and re-sign to make it say
-		 * something about you. KDOS_REQUIRE_SIG is the stricter rule
-		 * for a machine that installs only what it can attribute.
+		 * THE KEY IN KD_KEYS SIGNS NOTHING THE BUILD MAKES: the build
+		 * does not hold its secret half, so on a fresh system it
+		 * attributes nothing. Add the `.pub` of a key from `kdos-pack
+		 * keygen` to make a signature say something about you.
+		 * KDOS_REQUIRE_SIG is the stricter rule for a machine that
+		 * installs only what it can attribute.
 		 */
 		if (getenv("KDOS_REQUIRE_SIG")) {
 			snprintf(msg, n, "%s is unsigned and KDOS_REQUIRE_SIG is set",
@@ -452,12 +589,11 @@ accepted:
 	 * A MOUNTED SUPERSEDED VERSION MUST NOT OUTLIVE THE INSTALL. The mount
 	 * table is keyed by id and survives the rescan, so leaving the
 	 * superseded version mounted puts every later compose's NEW app diff
-	 * over the OLD runtime's bytes — after an update of rt-gtx that is
-	 * kicad dying on `libSM.so.6: cannot open`, a library the new runtime
-	 * carries and the mounted one does not. Idle, the stale mount is
-	 * dropped here so the next mount reads the new file; composed into a
-	 * box, the install is refused by the same rule `remove` applies, and
-	 * `kdos app update` has already named the boxes to stop.
+	 * over the OLD runtime's bytes, and an app then fails to load a
+	 * library the new runtime carries and the mounted one does not. Idle,
+	 * the stale mount is dropped here so the next mount reads the new
+	 * file; composed into a box, the install is refused by the same rule
+	 * `remove` applies, and the refusal says how many boxes to stop.
 	 */
 	{
 		int cur = kd_find(p.meta.id);
@@ -473,7 +609,6 @@ accepted:
 				return -1;
 		}
 	}
-	kb_mkdir_p(kd_store_dir());
 	snprintf(dst, sizeof(dst), "%s/%s.kpack", kd_store_dir(), p.meta.id);
 
 	/*
@@ -492,14 +627,11 @@ accepted:
 		}
 	}
 
+	/* The private copy is already in the store directory, so this is
+	 * a rename on one filesystem and cannot be half done. */
 	if (rename(src, dst) != 0) {
-		/* A cross-device rename fails, and the staging directory is
-		 * inside the store precisely so that it does not. */
-		if (kb_copy_file(src, dst) != 0) {
-			snprintf(msg, n, "cannot move %s into the store", staged);
-			return -1;
-		}
-		unlink(src);
+		snprintf(msg, n, "cannot move %s into the store", staged);
+		return -1;
 	}
 	kd_sweep(p.meta.id);
 	snprintf(msg, n, "%s %s", p.meta.id, p.meta.version);

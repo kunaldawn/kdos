@@ -23,3 +23,5 @@ make
 cmake -DOPENEXR_INSTALL_DOCS=ON .
 make
 make DESTDIR=$PKG install
+
+rm "$PKG/usr/share/man/man1/exrcheck.1"

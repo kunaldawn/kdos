@@ -6,7 +6,7 @@ for the Rust toolchain: `cargo`, which the `rust` port builds in `31_compilers`,
 link it through the `git2` crate, as do Rust programs such as `delta`, `eza` and `bat`. Each of
 them would otherwise compile the copy of libgit2 that `libgit2-sys` carries. How a Rust port is
 made to take the system library is in
-[Writing ports](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#rust). `kicad` and
+[Writing ports](../../../../docs/kdos/05-developer/writing-ports.md#rust). `kicad` and
 `horizon-eda` link it directly.
 
 Only the shared library, its headers, `libgit2.pc` and the CMake package files are installed;

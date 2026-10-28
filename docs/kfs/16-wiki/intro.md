@@ -80,7 +80,7 @@ Connections, name resolution, tunnels, modems, a hotspot, the radio's country, s
 
 ## Hardware
 
-Devices and the groups that open them, sound, printers, displays, graphics, power and firmware.
+Devices and the groups that open them, Bluetooth, sound, printers and scanners, displays, graphics, power and firmware.
 
 - [udev and device groups](udev-and-device-groups.md)
 - [Bluetooth](bluetooth.md)

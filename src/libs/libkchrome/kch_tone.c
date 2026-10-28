@@ -9,11 +9,10 @@
  *
  * The eight VT slots say what a CELL is. They cannot say what a raised button
  * is, because the palette's dark end is compressed to nothing: measured,
- * `variant` against `backdrop` is 1.00:1 in phosphor and no better than 1.05:1
+ * `variant` against `backdrop` is 1.00:1 in phosphor and no better than 1.19:1
  * in any accent, so a panel painted in its own background colour is the same
- * colour as the desktop behind it. That is why every control on the bar used
- * to be drawn at full accent — 14:1 — with nothing in between, and why six
- * different things were shouting at once.
+ * colour as the desktop behind it. Without a middle tone every control on the
+ * bar is drawn at full accent — 14:1 — and every one of them shouts at once.
  *
  * These are DERIVED from the same nine scheme colours, mixed, and they are the
  * missing middle. One table, read by the taskbar and the Start menu both, so
@@ -36,11 +35,11 @@
  * A POPUP IS READ; THE BAR IS GLANCED AT, and that is the whole reason these
  * are two numbers.
  *
- * At the bar's 80% the Start menu over a file manager had the panes, the file
- * listing and the status line of the window BEHIND it legible through every
- * row of it — photographed, and the menu was the harder of the two to read.
- * The bar survives that because a taskbar is a row of pictures and it has the
- * adaptive-opacity switch besides; a menu is thirty rows of text and a person
+ * At the bar's 80% a Start menu over a file manager shows the panes, the file
+ * listing and the status line of the window BEHIND it through every row of
+ * it, and the menu is the harder of the two to read. The bar survives that
+ * because a taskbar is a row of pictures and it has the adaptive-opacity
+ * switch besides; a menu is thirty rows of text and a person
  * is looking straight at it. 95% still shows the desktop moving underneath and
  * costs nothing that matters.
  */
@@ -72,14 +71,14 @@ static const void *tone_for;		/* the theme the cache was built from */
  * to say which window you are in, and stay dark enough that the label on it
  * reads. Mixing further toward `pdark` does the first and undoes the second,
  * and no single percentage serves all eight accents — measured, 68% gives
- * 3.95:1 for text on bone and 50% still only gives 4.83:1.
+ * 3.94:1 for text on bone and 50% still only gives 4.88:1.
  *
  * So walk down from 68% and stop at the first mix whose label clears 7:1,
  * measured against the plate as it will actually be composited: over the bar's
- * body, over the desktop backdrop. Bone reaches the 30% floor without ever
- * clearing it and lands at 6.17:1 — which is why the 2px accent underline is
- * not decoration. On bone it carries more of the focused state than the plate
- * does.
+ * body, over the desktop backdrop. Bone never clears it: the walk settles at
+ * 29%, the lowest mix that still separates, and lands at 6.21:1 — which is
+ * why the 2px accent underline is not decoration. On bone it carries more of
+ * the focused state than the plate does.
  */
 /*
  * TWO FLOORS, AND THEY PULL AGAINST EACH OTHER. The plate has to stand off the
@@ -88,10 +87,10 @@ static const void *tone_for;		/* the theme the cache was built from */
  * lowest mix that still separates, and stops early the moment one also clears
  * the label floor.
  *
- * THE RANGE IS THE WHOLE ONE, not its top half. A light scheme's answer is
- * below where a search bounded at 30 stopped looking, so it fell out of the
- * loop and returned a plate whose label read at 6.4:1 — and the failure looks
- * like a badly chosen palette rather than a search that gave up early.
+ * THE RANGE IS THE WHOLE ONE, not its top half. A scheme's answer can sit
+ * below 30% — bone's is 29% — and a search bounded at 30 returns a plate
+ * whose label reads lower than the scheme's best, a failure that looks like a
+ * badly chosen palette rather than a search that gave up early.
  */
 static uint32_t solve_active(const KcolScheme *s, uint32_t body_ref, int floor)
 {

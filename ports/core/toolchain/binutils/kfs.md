@@ -14,15 +14,14 @@ rebuilt before the rest of that phase. It replaces the binutils
 chroot's own triple, so it installs every tool under its plain name. The reasons are in
 [The toolchain rebuilt as packages](../../../../docs/kdos/05-developer/how-kdos-is-built.md#the-toolchain-rebuilt-as-packages-20_selfhost).
 
-The source is configured and built in a `build` directory of its own inside the tree, as binutils'
-`README` recommends.
+The source is configured and built in a `build` directory of its own inside the tree, as
+`binutils/README` recommends.
 
 ## Flags
 
 - `--disable-werror` — do not turn compiler warnings into errors. configure adds `-Werror` under
-  GCC whenever `bfd/development.sh` sets `development=true`, as a development snapshot's does; with
-  the switch, a warning a newer compiler raises never stops the build, whichever kind of source
-  the recipe names.
+  GCC whenever `bfd/development.sh` sets `development=true`, and this release's tarball sets it;
+  without the switch, any warning a newer compiler raises in binutils' own code stops the build.
 - `--enable-64-bit-bfd` — build `libbfd` with 64-bit addresses. On an x86-64 host this is already
   the case; the switch states it.
 - `--enable-deterministic-archives` — make `ar` and `ranlib` behave as with `D` by default: zero
@@ -67,6 +66,7 @@ from the source's `doc` directories, where the release carries them already form
 package's `man1`. The `rm` line then deletes the pages of `dlltool`, `windres` and `windmc`,
 which document Windows-target tools this build does not install.
 
-The shared libraries carry the full version in their file name and soname
-(`libbfd-<version>.so`), so a program linked against `libbfd` or `libopcodes` must be rebuilt
-whenever binutils changes version.
+`libbfd` and `libopcodes` carry the full version in their file name and soname
+(`libbfd-<version>.so`, where `<version>` is `2.47.20260726` for this tarball), so a program linked
+against either must be rebuilt whenever binutils changes version. `libctf` and `libsframe` have
+ordinary numbered sonames.

@@ -7,6 +7,9 @@ which `bc` does without complaint. It is an interactive shell and a one-shot com
 
 ## Flags
 
+- `-C target-feature=-crt-static` — link the program against musl dynamically. Rust's musl target
+  links statically unless told otherwise; every cargo build in the tree sets the flag, and preflight
+  fails one that does not (see [rust](../../../../docs/kdos/05-developer/writing-ports.md#rust)).
 - `--bin numbat` — Build only the `numbat` program from the workspace, whose other members are the
   language library and the exchange-rate crate it links.
 
@@ -14,7 +17,7 @@ which `bc` does without complaint. It is an interactive shell and a one-shot com
 
 The crates come from the vendor bundle, `numbat-vendor-<version>.tar.xz`, pinned with its own
 `sha256 =` line and unpacked at the top of the tree; cargo builds `--frozen --offline` from it (see
-[Vendoring](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#vendoring)).
+[Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring)).
 
 The unit, constant and function definitions are Numbat source files, the `modules` tree. The library
 compiles a copy into the binary, and the program also looks for modules on disk:

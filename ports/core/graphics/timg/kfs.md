@@ -2,9 +2,9 @@
 
 timg shows images, animations, PDF pages and video in a terminal. It draws with the kitty or
 iTerm2 graphics protocols or sixel where the terminal speaks one, and with coloured Unicode block
-characters everywhere else. Its desktop entry opens pictures in [kdos-term](#port-kdos-term),
-which draws them as pictures, and it keeps the GIF, BMP and TIFF files that `kdos-pix` does not
-open (see
+characters everywhere else. Its desktop entry opens PNG, JPEG, GIF, WebP, BMP and TIFF in
+[kdos-term](#port-kdos-term), which draws them as pictures; GIF, BMP and TIFF are the three of
+those that `kdos-pix` does not open (see
 [`kdos-pix`](../../../../docs/kdos/04-programs/kdos-shell.md#kdos-pix)).
 
 ## Flags
@@ -16,8 +16,8 @@ open (see
   [graphicsmagick](#port-graphicsmagick)'s Magick++, which opens most formats the specific
   loaders below do not.
 - `-DWITH_STB_IMAGE=On`, `-DWITH_QOI_IMAGE=On` — The self-contained STB loader, the fallback for
-  common formats, using the copy in `third_party/` when no system STB is found; and the QOI
-  format.
+  common formats, and the QOI format. Neither has a port: each uses its header from
+  `third_party/` when no system copy is found.
 - `-DWITH_TURBOJPEG=On` — Fast JPEG loading through [libjpeg-turbo](#port-libjpeg-turbo). The
   same branch requires [libexif](#port-libexif), which reads the orientation tag, so a photo taken
   sideways is turned upright.
@@ -27,15 +27,16 @@ open (see
 - `-DWITH_LIBSIXEL=On` — Sixel output through [libsixel](#port-libsixel), for terminals that speak
   neither graphics protocol.
 - `-DWITH_VIDEO_DECODING=On` — Video and animated formats through [ffmpeg](#port-ffmpeg)'s
-  libraries.
+  libraries. With it on, every image is also scaled through libswscale instead of STB's
+  resizer.
 - `-DWITH_VIDEO_DEVICE=On` — Reading from video devices through libavdevice, which makes
   `timg /dev/video0` a live camera preview in the terminal.
 - `-DWITH_OPENSLIDE_SUPPORT=Off` — No whole-slide microscopy formats; OpenSlide is not a port.
   Upstream's default, named.
 
-Every `On` here is upstream's default, named. Each loader that is on finds its libraries with a
-required `pkg_check_modules`, so a missing one stops configure rather than building a timg that
-cannot open that format.
+Every `On` here is upstream's default, named. Each option that is on and needs a library finds it
+with a required `pkg_check_modules`, so a missing one stops configure rather than building a timg
+that cannot open that format; STB and QOI need none.
 
 ## Notes
 

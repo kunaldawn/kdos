@@ -123,6 +123,13 @@ int kwl_overlay_show(int cols, int rows);
  */
 int kwl_copy(const char *text, size_t len, int primary);
 
+/* PASTE ON CTRL+SHIFT+V ONLY. By default any Ctrl+V starts receiving the
+ * clipboard, which is the chord a text field pastes on. A consumer whose bare
+ * Ctrl+V means something else calls this with 1 — a terminal, where ^V is the
+ * child's (vim's visual block, a shell's quoted insert) and a receive started
+ * on it would write the clipboard into the child alongside the key. */
+void kwl_paste_needs_shift(int on);
+
 /* Begin a drag carrying `data` as `mime`. The payload is copied. Needs a
  * recent input event: the compositor checks the serial a drag starts from. */
 int kwl_drag_start(const char *mime, const char *data, size_t len);

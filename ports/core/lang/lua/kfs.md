@@ -3,7 +3,7 @@
 Lua is a small embeddable scripting language. This port is the system Lua: the `lua` interpreter,
 `luac`, and `liblua.so` with its headers directly in `/usr/include`. On the desktop's own path,
 [wireplumber](#port-wireplumber), PipeWire's session manager, runs its policy scripts in it (see
-[Audio](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/session.md#audio));
+[Audio](../../../../docs/kdos/03-architecture/session.md#audio));
 wireshark, weechat, gnuplot, sc-im, tio and celestia embed it too.
 
 Software that cannot move to this series uses [lua54](#port-lua54), installed beside it under
@@ -62,4 +62,4 @@ consumer that tries versioned names before plain `lua` would otherwise settle on
 
 Lua's headers in `/usr/include` are this series'. A program that bundles its own Lua, or a 5.4
 module, must put its own include directory first; see
-[A bundled header shadowed by the system's](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/build-troubleshooting.md#a-bundled-header-shadowed-by-the-systems).
+[A bundled header shadowed by the system's](../../../../docs/kdos/05-developer/build-troubleshooting.md#a-bundled-header-shadowed-by-the-systems).

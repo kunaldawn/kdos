@@ -7,9 +7,11 @@ PyQt6 program, built from one vendor bundle holding the Python packages that onl
 
 ## Flags
 
-- `SPYDER_QT_BINDING=pyqt6` — Make `setup.py` require PyQt6 and its WebEngine binding, the ones
-  [python3-pyqt6](#port-python3-pyqt6) and [python3-pyqt6-webengine](#port-python3-pyqt6-webengine)
-  provide. Unset, it requires PyQt5, which is not installed.
+- `SPYDER_QT_BINDING=pyqt6` — Make `setup.py` declare PyQt6 and its WebEngine binding as Spyder's
+  Qt requirements, the ones [python3-pyqt6](#port-python3-pyqt6) and
+  [python3-pyqt6-webengine](#port-python3-pyqt6-webengine) provide. Unset, it declares PyQt5 and
+  PyQtWebEngine 5.15, which are not in `depends`. pip installs `--no-deps`, so the variable decides
+  only the requirements written into the installed package's metadata.
 - `SODIUM_INSTALL=system` — Build PyNaCl against the [libsodium](#port-libsodium) port instead of
   the copy of libsodium in its source.
 
@@ -20,7 +22,7 @@ PyQt6 program, built from one vendor bundle holding the Python packages that onl
 ## Notes
 
 The bundle comes from `vendoring = python` with an explicit `pypackages` list (see
-[The three Python keys](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-three-python-keys)). The
+[The three Python keys](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys)). The
 build backends that are not ports go into `$SRC_ROOT/backends`, on `PYTHONPATH` for this build
 only: `expandvars`, `coherent-licensed`, `dunamai` and `uv-dynamic-versioning` from the bundle, and
 pbr, the recipe's second source. qstylizer's `setup.py` is pbr's
@@ -48,3 +50,8 @@ interpreter.
 
 The translation directories under `spyder/locale` are removed, but the `locale` directory
 itself stays, because Spyder lists it to offer languages.
+
+`setup.py`'s data files (a menu entry, a PNG icon and AppStream metadata) are installed under the
+`/usr/lib/spyder` prefix, in `share`, where no desktop search path reaches; `build.sh` removes that
+directory and writes its own `spyder.desktop` and PNG icons rasterised from
+`spyder/images/spyder.svg` under `/usr/share`.

@@ -1,8 +1,25 @@
+Subject: Replace pkg_resources with importlib.metadata in deluge and its plugins
+
+The python3-setuptools port installs no pkg_resources module, and
+deluge/ui/ui_entry.py, deluge/pluginmanagerbase.py and the common.py of
+every plugin under deluge/plugins/ import it at the top, so unpatched
+neither the deluge command, the plugin manager nor any plugin can be
+imported.
+
+deluge/common.py loses its pkg_resources fallback for the version lookup.
+ui_entry.py reads the deluge.ui entry points through importlib.metadata.
+The plugin manager walks the plugin directories itself, reads each .egg
+directory, .egg-info or .dist-info it finds with Distribution.at(), and
+loads the plugin from its entry points; it reads no zipped .egg file, so
+a plugin installed as one into ~/.config/deluge/plugins is not found.
+Each plugin's common.py takes resource_filename from deluge.common, which
+has the same (package, path) arguments.
+
 diff --git a/deluge/common.py b/deluge/common.py
-index 7b76d245c..4631a6a93 100644
+index 7b76d24..4631a6a 100644
 --- a/deluge/common.py
 +++ b/deluge/common.py
-@@ -33,10 +33,7 @@
+@@ -33,10 +33,7 @@ from urllib.request import pathname2url
  from deluge.decorators import deprecated
  from deluge.error import InvalidPathError
  
@@ -15,7 +32,7 @@ index 7b76d245c..4631a6a93 100644
  
  try:
 diff --git a/deluge/pluginmanagerbase.py b/deluge/pluginmanagerbase.py
-index 52dae615b..77985715d 100644
+index 52dae61..7798571 100644
 --- a/deluge/pluginmanagerbase.py
 +++ b/deluge/pluginmanagerbase.py
 @@ -11,9 +11,10 @@
@@ -31,7 +48,7 @@ index 52dae615b..77985715d 100644
  from twisted.internet import defer
  from twisted.python.failure import Failure
  
-@@ -102,21 +103,40 @@ def scan_for_plugins(self):
+@@ -102,21 +103,40 @@ class PluginManagerBase:
          ]
          plugin_dirs = [base_dir, user_dir] + base_subdir
  
@@ -86,7 +103,7 @@ index 52dae615b..77985715d 100644
  
      def enable_plugin(self, plugin_name):
          """Enable a plugin.
-@@ -138,28 +158,27 @@ def enable_plugin(self, plugin_name):
+@@ -138,28 +158,27 @@ class PluginManagerBase:
              return defer.succeed(True)
  
          plugin_name = plugin_name.replace(' ', '-')
@@ -121,7 +138,7 @@ index 52dae615b..77985715d 100644
                  log.exception(ex)
                  return_d = defer.fail(False)
  
-@@ -167,7 +186,7 @@ def enable_plugin(self, plugin_name):
+@@ -167,7 +186,7 @@ class PluginManagerBase:
                  import warnings
  
                  warnings.warn_explicit(
@@ -130,7 +147,7 @@ index 52dae615b..77985715d 100644
                      DeprecationWarning,
                      instance.__module__,
                      0,
-@@ -257,14 +276,14 @@ def on_disabled(result):
+@@ -257,14 +276,14 @@ class PluginManagerBase:
      def get_plugin_info(self, name):
          """Returns a dictionary of plugin info from the metadata"""
  
@@ -148,11 +165,141 @@ index 52dae615b..77985715d 100644
  
      @staticmethod
      def parse_pkg_info(pkg_info):
+diff --git a/deluge/plugins/AutoAdd/deluge_autoadd/common.py b/deluge/plugins/AutoAdd/deluge_autoadd/common.py
+index 6a790cb..38ba943 100644
+--- a/deluge/plugins/AutoAdd/deluge_autoadd/common.py
++++ b/deluge/plugins/AutoAdd/deluge_autoadd/common.py
+@@ -13,7 +13,7 @@
+ 
+ import os.path
+ 
+-from pkg_resources import resource_filename
++from deluge.common import resource_filename
+ 
+ 
+ def get_resource(filename, subdir=False):
+diff --git a/deluge/plugins/Blocklist/deluge_blocklist/common.py b/deluge/plugins/Blocklist/deluge_blocklist/common.py
+index f105941..fd21eb4 100644
+--- a/deluge/plugins/Blocklist/deluge_blocklist/common.py
++++ b/deluge/plugins/Blocklist/deluge_blocklist/common.py
+@@ -15,7 +15,7 @@ import os.path
+ from functools import wraps
+ from sys import exc_info
+ 
+-from pkg_resources import resource_filename
++from deluge.common import resource_filename
+ 
+ 
+ def get_resource(filename):
+diff --git a/deluge/plugins/Execute/deluge_execute/common.py b/deluge/plugins/Execute/deluge_execute/common.py
+index eb47f13..25438dd 100644
+--- a/deluge/plugins/Execute/deluge_execute/common.py
++++ b/deluge/plugins/Execute/deluge_execute/common.py
+@@ -13,7 +13,7 @@
+ 
+ import os.path
+ 
+-from pkg_resources import resource_filename
++from deluge.common import resource_filename
+ 
+ 
+ def get_resource(filename):
+diff --git a/deluge/plugins/Extractor/deluge_extractor/common.py b/deluge/plugins/Extractor/deluge_extractor/common.py
+index eb47f13..25438dd 100644
+--- a/deluge/plugins/Extractor/deluge_extractor/common.py
++++ b/deluge/plugins/Extractor/deluge_extractor/common.py
+@@ -13,7 +13,7 @@
+ 
+ import os.path
+ 
+-from pkg_resources import resource_filename
++from deluge.common import resource_filename
+ 
+ 
+ def get_resource(filename):
+diff --git a/deluge/plugins/Label/deluge_label/common.py b/deluge/plugins/Label/deluge_label/common.py
+index eb47f13..25438dd 100644
+--- a/deluge/plugins/Label/deluge_label/common.py
++++ b/deluge/plugins/Label/deluge_label/common.py
+@@ -13,7 +13,7 @@
+ 
+ import os.path
+ 
+-from pkg_resources import resource_filename
++from deluge.common import resource_filename
+ 
+ 
+ def get_resource(filename):
+diff --git a/deluge/plugins/Notifications/deluge_notifications/common.py b/deluge/plugins/Notifications/deluge_notifications/common.py
+index 9993f5c..57c1fb0 100644
+--- a/deluge/plugins/Notifications/deluge_notifications/common.py
++++ b/deluge/plugins/Notifications/deluge_notifications/common.py
+@@ -14,7 +14,7 @@
+ import logging
+ import os.path
+ 
+-from pkg_resources import resource_filename
++from deluge.common import resource_filename
+ from twisted.internet import defer
+ 
+ from deluge import component
+diff --git a/deluge/plugins/Scheduler/deluge_scheduler/common.py b/deluge/plugins/Scheduler/deluge_scheduler/common.py
+index eb47f13..25438dd 100644
+--- a/deluge/plugins/Scheduler/deluge_scheduler/common.py
++++ b/deluge/plugins/Scheduler/deluge_scheduler/common.py
+@@ -13,7 +13,7 @@
+ 
+ import os.path
+ 
+-from pkg_resources import resource_filename
++from deluge.common import resource_filename
+ 
+ 
+ def get_resource(filename):
+diff --git a/deluge/plugins/Stats/deluge_stats/common.py b/deluge/plugins/Stats/deluge_stats/common.py
+index eb47f13..25438dd 100644
+--- a/deluge/plugins/Stats/deluge_stats/common.py
++++ b/deluge/plugins/Stats/deluge_stats/common.py
+@@ -13,7 +13,7 @@
+ 
+ import os.path
+ 
+-from pkg_resources import resource_filename
++from deluge.common import resource_filename
+ 
+ 
+ def get_resource(filename):
+diff --git a/deluge/plugins/Toggle/deluge_toggle/common.py b/deluge/plugins/Toggle/deluge_toggle/common.py
+index eb47f13..25438dd 100644
+--- a/deluge/plugins/Toggle/deluge_toggle/common.py
++++ b/deluge/plugins/Toggle/deluge_toggle/common.py
+@@ -13,7 +13,7 @@
+ 
+ import os.path
+ 
+-from pkg_resources import resource_filename
++from deluge.common import resource_filename
+ 
+ 
+ def get_resource(filename):
+diff --git a/deluge/plugins/WebUi/deluge_webui/common.py b/deluge/plugins/WebUi/deluge_webui/common.py
+index eb47f13..25438dd 100644
+--- a/deluge/plugins/WebUi/deluge_webui/common.py
++++ b/deluge/plugins/WebUi/deluge_webui/common.py
+@@ -13,7 +13,7 @@
+ 
+ import os.path
+ 
+-from pkg_resources import resource_filename
++from deluge.common import resource_filename
+ 
+ 
+ def get_resource(filename):
 diff --git a/deluge/ui/ui_entry.py b/deluge/ui/ui_entry.py
-index f0a983106..2cf7e4b4e 100644
+index f0a9831..2cf7e4b 100644
 --- a/deluge/ui/ui_entry.py
 +++ b/deluge/ui/ui_entry.py
-@@ -16,8 +16,7 @@
+@@ -16,8 +16,7 @@ import argparse
  import logging
  import os
  import sys

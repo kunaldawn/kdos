@@ -12,15 +12,17 @@ GTK, and the Python tools that talk D-Bus through GLib, depend on it.
   default.
 - `-Dpycairo=enabled` — Build `gi._gi_cairo`, the converter between cairo's GObject types and
   [python3-cairo](#port-python3-cairo)'s Python objects, which a GTK drawing callback written in
-  Python needs. The option's default is `auto`, which drops the module when cairo or pycairo is not
-  found; `enabled` turns that into a failed configure.
-- `--wrap-mode=nofallback` — The source ships wraps for `glib`, `libffi`, `gobject-introspection`
-  and `pycairo`; with this mode none of them is downloaded and built in place of the port.
+  Python needs. The option's default is `auto`, under which a missing cairo leaves the module out
+  and a missing pycairo is not caught at configure; `enabled` makes a missing cairo, cairo-gobject
+  or pycairo stop the configure.
+- `--wrap-mode=nofallback` — The source ships fallback wraps for `glib`, `libffi`,
+  `gobject-introspection` and `pycairo`; with this mode none of them is downloaded and built in
+  place of the port, and a missing dependency stops the configure.
 
 ## Notes
 
-The second `test` line stops the build unless `_gi_cairo.*.so` is in the package, so a pycairo
-that meson found but could not use cannot ship a PyGObject without cairo support.
+The two `test` lines after the install stop the build unless the package holds both compiled
+modules, `_gi.*.so` and `_gi_cairo.*.so`, so no PyGObject without cairo support can ship.
 
 `pythoncapi-compat`, a header-only compatibility layer for the CPython C API, is built from the
 copy upstream includes under `subprojects/` in the release tarball. It is the one subproject the

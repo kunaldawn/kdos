@@ -110,9 +110,10 @@ enum kdisp_role {
 	 *
 	 * It is not a LOCK either, and the difference is the whole safety
 	 * story: this surface takes NO keyboard and claims NO pointer region,
-	 * so every keystroke and every click goes to whatever is underneath and
-	 * the display's own idle policy sees the activity. A saver that
-	 * swallowed input would be a lock screen with no password.
+	 * and the display closes it on the first key, button or touch, spending
+	 * that event on it. A saver that held the keyboard itself would be a
+	 * lock screen with no password; one that let the event through would
+	 * hand a click to a window nobody can see.
 	 */
 	KDISP_ROLE_SAVER,
 };

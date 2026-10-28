@@ -10,17 +10,21 @@ them; the page beside it is the one in front of you.
   Esc       steps back one level: out of a detail view to its list, out of
             the page list to the page, off a chart's sample, and only then
             out of the program.
-  q         leaves, from anywhere except a question.
+  q         leaves, except while a question or the F10 page list is up; in
+            a question it refuses.
 
 Pages
 
-  Processes, Applications and Boxes each list something running, newest
-  measurement first. Enter opens the detail view for the selected row, which
-  is the whole frame: one subject, with the page list put away, because a
-  list beside it would be offering to leave without saying so.
+  Processes, Applications and Boxes each list something running, sorted by
+  CPU unless res.conf's `sort` names another column; a click on a column
+  heading sorts by it. Enter opens the detail view for the selected row,
+  which is the whole frame: one subject, with the page list put away,
+  because a list beside it would be offering to leave without saying so.
 
-  CPU, Memory, GPU, Drives, Network, Batteries and Energy are measurements.
-  They sample on a timer and the charts are the last two minutes.
+  CPU, Memory, GPU, Drives, Network, Batteries, Energy and Sensors are
+  measurements. They sample on a timer, once a second unless res.conf's
+  `interval` says otherwise. A chart keeps the last 256 samples and draws
+  one per column, so a narrow chart shows fewer of them.
 
   On CPU and Memory a chart reads one sample at a time: rest the pointer
   on it, or press Left, and the reading top right says how long ago that
@@ -30,7 +34,7 @@ Pages
 Questions
 
   Ending a process asks first, and the question owns the keyboard while it is
-  up. `y` confirms, `n` and Escape refuse. Neither leaves the program: a
+  up. `y` confirms, `n`, `q` and Escape refuse. Neither leaves the program: a
   dialog whose cancel key also quits is one that loses the answer.
 
   [[doc:index]]

@@ -4,15 +4,15 @@ Lua 5.4, installed beside the system [lua](#port-lua) rather than in place of it
 software that runs on 5.4 and not on the newer series: [prosody](#port-prosody), the XMPP server,
 together with the four modules it needs, [lua54-luasocket](#port-lua54-luasocket),
 [lua54-luasec](#port-lua54-luasec), [lua54-luaexpat](#port-lua54-luaexpat) and
-lua54-luafilesystem. libinput, vlc, darktable, fastfetch, lite-xl, grafx2 and crawl-tiles build
-against it as well. The recipe's `series = 5.4` keeps the version checker from offering a release past 5.4.
+[lua54-luafilesystem](#port-lua54-luafilesystem). libinput, vlc, darktable, fastfetch, lite-xl,
+grafx2 and crawl-tiles build against it as well. The recipe's `series = 5.4` keeps the version checker from offering a release past 5.4.
 
 The two installs are kept apart by name. Every path this one writes carries the version: the
 programs are `lua5.4` and `luac5.4`, the headers are in `/usr/include/lua5.4`, the libraries are
 `liblua5.4.so` and `liblua5.4.a`, the pkg-config file is `lua5.4.pc`, and the manual pages are
 `lua5.4.1` and `luac5.4.1`. Nothing here writes a path the lua port writes, so kpkg sees no
 conflict and neither package shadows the other; see
-[A second version beside the first](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#a-second-version-beside-the-first).
+[A second version beside the first](../../../../docs/kdos/05-developer/writing-ports.md#a-second-version-beside-the-first).
 
 ## Flags
 
@@ -50,4 +50,4 @@ first expands only `V` and `R`, and the second, quoted, keeps every `${prefix}`,
 `${V}` for pkg-config to expand. Its `Cflags` name `/usr/include/lua5.4` and its `Libs` name
 `-llua5.4`. A consumer that takes the headers from `/usr/include` instead gets the lua port's
 newer ones; see
-[A bundled header shadowed by the system's](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/build-troubleshooting.md#a-bundled-header-shadowed-by-the-systems).
+[A bundled header shadowed by the system's](../../../../docs/kdos/05-developer/build-troubleshooting.md#a-bundled-header-shadowed-by-the-systems).

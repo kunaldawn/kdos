@@ -32,9 +32,9 @@ measurement arrives within seconds. `driftfile` is where chronyd keeps the rate 
 machine's clock between boots. `makestep 1.0 3` lets it step the clock instead of slewing it when
 it is more than one second out, during its first three updates only. `rtcsync` leaves the hardware
 clock to the kernel, which copies the system time to it every eleven minutes once the clock is
-synchronised (the kernel's `RTC_SYSTOHC` option, on by default and not turned off in
-`kdos.config`); no init script runs `hwclock`. No `allow` line is present, so chronyd serves time to no other machine. Every directive
-is in `chrony.conf(5)`.
+synchronised (the kernel's `RTC_SYSTOHC` option, on by default and not turned off in the kernel
+port's `ports/core/boot/linux/kdos.config`); no init script runs `hwclock`. No `allow` line is
+present, so chronyd serves time to no other machine. Every directive is in `chrony.conf(5)`.
 
 The file belongs to the package: an upgrade of chrony installs it again over an edited copy, and
 `kpkg check chrony` lists the edit as `chrony: config ./etc/chrony/chrony.conf` (see
@@ -54,7 +54,7 @@ nothing is there at boot, as on every boot of the live medium, `rcS` links UTC, 
 installer writes it, and `kdos-powerd` writes it on every zone change, so the live medium has none
 until the first `kdos-power timezone`. The text, from `src/daemons/kdos-powerd/main.c`:
 
-<!-- kfs:include src/daemons/kdos-powerd/main.c lines=868-874 pin=6d1b532e0eee -->
+<!-- kfs:include src/daemons/kdos-powerd/main.c lines=900-906 pin=6d1b532e0eee -->
 
 **`/etc/modprobe.d/kdos-regdom.conf`** is the wireless regulatory country, written from the zone
 by the same verb; see
@@ -175,11 +175,11 @@ Keep a copy of the edited file, because an upgrade of the chrony package puts th
 ```bash
 service status chrony
 cat /run/kdos-init.chrony.log
-cat /run/kdos-svc.chronyd.log
+sudo cat /run/kdos-svc.chronyd.log
 ```
 
-The first log is the boot script's output, the second chronyd's own messages, which also go to
-`/var/log/messages` tagged `chronyd`; see
+The first log is the boot script's output, the second chronyd's own messages, readable by root
+only, which also go to `/var/log/messages` tagged `chronyd`; see
 [Supervision and logging](../../kdos/04-programs/daemons.md#supervision-and-logging). Start it with
 `sudo service start chrony`.
 
@@ -199,14 +199,15 @@ reaches no server. Check that the machine is online, and that the names in `chro
 `getent hosts pool.ntp.org`. The firewall lets every outgoing packet through, and the answers back
 with it.
 
-**`date` shows UTC on an installed machine after an upgrade.** A `tzdata` upgrade can remove
-`/etc/localtime`, and `rcS` then links UTC. Set the zone again with `kdos-power timezone`; see
-[Known gaps](#known-gaps).
+**`date` shows UTC on an installed machine.** `rcS` links UTC at boot when nothing is at
+`/etc/localtime`, and a link to a zone file that is not there reads as UTC too.
+`ls -l /etc/localtime` shows which; set the zone again with `kdos-power timezone`.
 
 **`kdos-power timezone` prints `kdos-power: err no such zone` or `err not a zone name`.** The name
-must be a file under `/usr/share/zoneinfo`, written with letters, digits, `+`, `-`, `_` and `/`
-only, and must not start or end with `/`. `kdos-power: err not permitted` means the account is not
-in `wheel`; `kdos-powerd --explain <user>` says which of the daemon's groups an account is in.
+must be a file under `/usr/share/zoneinfo`, at most 64 characters of letters, digits, `+`, `-`,
+`_` and `/`, with no leading, trailing or doubled `/`. `kdos-power: err not permitted` means the
+account is not in `wheel`; `kdos-powerd --explain <user>` says which of the daemon's groups an
+account is in.
 
 **`kdos-power` prints `no kdos-powerd`.** The daemon is down. Start it with the command the message
 names, `sudo service start powerd`; see [The client](../../kdos/04-programs/daemons.md#the-client).
@@ -216,7 +217,7 @@ and in again.
 
 ## Known gaps
 
-- [A `tzdata` upgrade can reset the time zone to UTC, once](../../kdos/06-reference/known-gaps.md#a-tzdata-upgrade-can-reset-the-time-zone-to-utc-once)
+[Known gaps](../../kdos/06-reference/known-gaps.md) lists nothing for this topic.
 
 ## See also
 

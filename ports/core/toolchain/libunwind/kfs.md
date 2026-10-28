@@ -13,7 +13,7 @@ called libunwind, which unwinds another process through `libunwind-ptrace` and w
 as `htop`, GStreamer, libcamera and samba link. Both projects use the same file names, so this one
 stays off every default search path, and no port names it in `depends`. Why the prefix, and how
 the LLVM ports share one source, is in
-[A second version beside the first](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#a-second-version-beside-the-first).
+[A second version beside the first](../../../../docs/kdos/05-developer/writing-ports.md#a-second-version-beside-the-first).
 
 ## Flags
 
@@ -22,14 +22,14 @@ the LLVM ports share one source, is in
   C++ only and silently drops the assembly sources; the library then lacks the routines written in
   assembly, and every static link against it fails on unwinder symbols. `runtimes/` declares
   `project(Runtimes C CXX ASM)`. See
-  [A CMake file with no project declaration](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/build-troubleshooting.md#a-cmake-file-with-no-project-declaration).
+  [A CMake file with no project declaration](../../../../docs/kdos/05-developer/build-troubleshooting.md#a-cmake-file-with-no-project-declaration).
 - `CMAKE_INSTALL_PREFIX=$_prefix` — Installs into `/usr/lib/llvm-libunwind`, the `_prefix` helper
   the `kpkgbuild` sets, instead of `/usr`, for the file-name clash described above.
 - `CMAKE_C_FLAGS_RELEASE`, `CMAKE_CXX_FLAGS_RELEASE` — Replace CMake's Release flags, `-O3
   -DNDEBUG`, with the tree's `$CFLAGS` and `$CXXFLAGS` followed by `-DNDEBUG`. The optimisation
   level is then the tree's `-O2`, and `-DNDEBUG` stays, as the CMake conventions ask of a recipe
   that sets these variables itself (see
-  [cmake](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#cmake)).
+  [cmake](../../../../docs/kdos/05-developer/writing-ports.md#cmake)).
 - `LLVM_ENABLE_RUNTIMES="libunwind"` — Selects which runtimes the `runtimes/` build configures;
   naming only libunwind builds nothing else from the tarball.
 - `LLVM_ENABLE_PER_TARGET_RUNTIME_DIR=OFF` — With it on, the library would go into a

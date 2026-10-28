@@ -20,9 +20,10 @@ are this tree's ports wherever VTK can use one, and its own bundled copy otherwi
 - `-DVTK_USE_MPI=OFF`, `-DVTK_GROUP_ENABLE_MPI=NO` — No MPI, and none of the parallel modules
   that need it.
 - `-DVTK_USE_CUDA=OFF` — No CUDA.
-- `-DVTK_USE_X=ON`, `-DVTK_OPENGL_HAS_EGL=ON` — Build both the X11 and the EGL render windows;
-  VTK chooses between them at run time, so a program gets an X11 window under Xwayland and an EGL
-  context when it renders off screen.
+- `-DVTK_USE_X=ON`, `-DVTK_OPENGL_HAS_EGL=ON` — Build both the X11 (GLX) and the EGL render
+  windows. VTK chooses at run time: the X11 window when a GLX context can be made, which on KDOS is
+  through Xwayland, and the EGL window otherwise, so a program with no display still renders off
+  screen. `VTK_DEFAULT_OPENGL_WINDOW` in the environment forces one.
 - `-DVTK_OPENGL_USE_GLES=OFF` — Desktop OpenGL, not OpenGL ES.
 - `-DVTK_WRAP_PYTHON=ON`, `-DPython3_EXECUTABLE=/usr/bin/python3` — Build the Python bindings,
   against the system Python. FreeCAD's FEM post-processing is built without its VTK filters when
@@ -33,8 +34,8 @@ are this tree's ports wherever VTK can use one, and its own bundled copy otherwi
   that reads and writes video through FFmpeg and the reader for STEP and IGES files through
   OpenCASCADE.
 - `-DVTK_MODULE_USE_EXTERNAL_VTK_doubleconversion=ON` — This switch and every other
-  `VTK_MODULE_USE_EXTERNAL_VTK_` switch set to `ON` (`eigen`, `expat`, `freetype`, `jpeg`, `jsoncpp`, `libproj`, `libxml2`, `lz4`, `lzma`,
-  `netcdf`, `nlohmannjson`, `ogg`, `png`, `pugixml`, `sqlite`, `theora`, `tiff`, `zlib`) build
+  `VTK_MODULE_USE_EXTERNAL_VTK_` switch set to `ON` (`eigen`, `expat`, `freetype`, `jpeg`,
+  `jsoncpp`, `libproj`, `libxml2`, `lz4`, `lzma`, `netcdf`, `nlohmannjson`, `ogg`, `png`, `pugixml`, `sqlite`, `theora`, `tiff`, `zlib`) build
   against this tree's port of each library instead of VTK's bundled copy. Every one of those ports
   is in `depends`.
 - `-DVTK_MODULE_USE_EXTERNAL_VTK_hdf5=OFF` — Keep VTK's bundled HDF5, whose symbols VTK renames

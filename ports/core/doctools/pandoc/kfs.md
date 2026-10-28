@@ -11,7 +11,7 @@ manual pages; the converter itself is the `pandoc` library, and the Lua engine a
 are `pandoc-lua-engine` and `pandoc-server`. Those, and every other Haskell package they need,
 come from the vendor bundle `pandoc-vendor-<version>.tar.xz`, which `build.sh` serves to cabal as
 a local repository; see
-[The Haskell bundle](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-haskell-bundle).
+[The Haskell bundle](../../../../docs/kdos/05-developer/writing-ports.md#the-haskell-bundle).
 
 ## Flags
 

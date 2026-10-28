@@ -17,11 +17,11 @@ that a mismatch reports syntax errors in correct code.
 - `-Doptimize=ReleaseSafe`, `-Dcpu=baseline` — An optimised build with the safety checks kept,
   and code for the baseline x86-64 rather than the build machine's processor, which every zig
   port names; see
-  [zig](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#zig).
+  [zig](../../../../docs/kdos/05-developer/writing-ports.md#zig).
 - `-Dpie=true` — ZLS's own option for a position-independent build. Upstream applies it only to
   the modules' `pic` setting; with `pie.patch` it makes the executable a PIE as well, like
   every other program in the tree (see
-  [The release flags](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-release-flags)).
+  [The release flags](../../../../docs/kdos/05-developer/writing-ports.md#the-release-flags)).
 - `--strip-debug` — On the installed `zls`: remove the DWARF zig writes into the executable and
   keep its symbol table.
 

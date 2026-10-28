@@ -130,24 +130,26 @@ a note, `init` finds no `/bin/e2fsck`, and an ext root is mounted unchecked. `e2
 <!-- kfs:include script/phases/70_image/090_initramfs.sh lines=212-219 pin=c82a6ed7ed75 -->
 
 `udevd` and `udevadm` come from [eudev](#port-eudev). They name `libkmod`, which names `liblzma`,
-`libz` and `libzstd`, and `libblkid`, which `blkid` has already brought. `libudev` is for [`mdadm`]{.idx}.
+`libz` and `libzstd`, and `libblkid`, which `blkid` has already brought. Neither names `libudev`;
+it is copied for the programs built on it: [`mdadm`]{.idx}, lvm2's programs, `pdata_tools` and udev
+helpers such as `hid2hci`.
 This list, too, is written out by hand, and the closure check holds it to what the binaries name.
 
 ## kdos-bootctl
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=221-246 pin=5789c9f57049 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=221-245 pin=9febb02bf42e -->
 
 [`kdos-bootctl`]{.idx} decides which root slot to boot when a machine has two; see
 [A/B slot selection](../../kdos/03-architecture/boot-and-init.md#ab-slot-selection). It is one name
 of the multi-call `ksvc` binary from [kdos-tools](#port-kdos-tools), and `cp` copies the binary
-through the link, so the initramfs gets all of it, and with it its `libpng16`. The script looks for
-`/usr/bin/kdos-bootctl` and then for `/usr/bin/kdos-tools`. Either the binary and libpng are both
+through the link, so the initramfs gets all of it, and with it its `libpng16`. The script looks only
+for `/usr/bin/kdos-bootctl`, the link the port installs. Either the binary and libpng are both
 copied, or neither is and the step prints a note; with no `kdos-bootctl`, `init` skips the
 `BOOT SLOT` stage and boots the `root=` on the command line.
 
 ## cryptsetup
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=248-266 pin=d9663ad1fab1 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=247-265 pin=d9663ad1fab1 -->
 
 [cryptsetup](#port-cryptsetup) unlocks an encrypted root. When it is installed it is copied with the
 libraries in the list; each library is copied when it exists and skipped quietly when it does not,
@@ -158,7 +160,7 @@ is not installed, `init` still parses `cryptdevice=`, and the unlock fails with
 
 ## lvm2
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=268-307 pin=d275004527c8 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=267-306 pin=d275004527c8 -->
 
 The test for [lvm2](#port-lvm2) is its package database entry or its [device-mapper]{.idx term="device mapper"} udev rule; on any
 image where either is present, the step either carries [LVM]{.idx} or stops. `lvm` and [`dmsetup`]{.idx} must both
@@ -169,12 +171,14 @@ that does not start with `/usr/sbin/`; any such path, or a `95-dm-notify.rules` 
 their closures to `usr/sbin/`, the path the rules name, with links from `bin/` so that `PATH=/bin`
 finds them too.
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=309-344 pin=8375cc419aef -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=308-343 pin=ce328c168448 -->
 
 [`thin_check`]{.idx} and [`cache_check`]{.idx} are installed by
 [thin-provisioning-tools](#port-thin-provisioning-tools) as links to one program. `readlink -f`
 finds it, `copy_closure` copies it once under its own name, and the two names are made links to it
-again. The generated `lvm.conf` names those two paths and nothing else. Activation itself is in
+again. On an image with lvm2, a missing `thin_check` or `cache_check` stops the step, as a missing
+`lvm` does: lvm runs the matching one before it activates a thin pool or a cache, and refuses the
+volume when it cannot. The generated `lvm.conf` names those two paths and nothing else. Activation itself is in
 [Activating volume groups](../../kdos/03-architecture/boot-and-init.md#activating-volume-groups).
 
 ## The udev rules and kmod
@@ -212,8 +216,8 @@ that kernel has no `modules.dep`, the index [`modinfo`]{.idx} uses to turn a mod
 `copy_module NAME` does for one module what `copy_closure` does for a program:
 
 1. A name listed in `modules.builtin` is part of the kernel image and has nothing to copy.
-2. `modinfo -k <version> -n` prints the module's file. When `modinfo` gives nothing, [`find`]{.idx} looks
-   for `NAME.ko*` instead.
+2. `modinfo -k <version> -n` prints the module's file. When `modinfo` gives nothing, or answers
+   `(builtin)`, [`find`]{.idx} looks for `NAME.ko*` instead.
 3. A module not found at all is a warning, and the list goes on.
 4. The file keeps its path relative to `/lib/modules/<version>`. A `.ko.zst` is decompressed on the
    way in and stored as `.ko`; anything else is copied as it is.
@@ -227,14 +231,17 @@ that kernel has no `modules.dep`, the index [`modinfo`]{.idx} uses to turn a mod
 The list grows in groups: the live medium's needs (`overlay`, `squashfs`, `isofs`, the CD drive and
 `loop`) with the common storage controllers and USB storage, the disk transports the installer can
 install to, `vfat` and its two code pages for the ESP, the root filesystems the installer offers
-beyond the built-in [ext4]{.idx} and btrfs, device-mapper and the LUKS ciphers, software RAID, and the
-device-mapper targets an LVM root can use. Why each group is there is in
+beyond [ext4]{.idx} and btrfs (`xfs` and `f2fs`), device-mapper and the LUKS ciphers, software RAID,
+and the device-mapper targets an LVM root can use. This kernel builds ext4, btrfs and xfs in and
+f2fs as a module, so of the two only `f2fs` is copied; `xfs` stays in the list so that a kernel
+with xfs as a module still boots an xfs root. Why each group is there is in
 [The initramfs](../../kdos/03-architecture/boot-and-init.md#the-initramfs).
 
 A name in the list that is built into the kernel costs nothing, so the list names what a boot needs
 rather than what this kernel happens to build as modules. Two other parts of the tree have to agree
 with it. Every root filesystem `ki_filesystems[]` in the installer offers must be in it, and
-`testing/preflight.sh` checks that, ext4 and btrfs excepted because they are built in. And
+`testing/preflight.sh` checks that, with ext4 and btrfs exempt; xfs is held to the list although
+this kernel builds it in. And
 `modprobe` in `init` loads modules by these names, so a module `init` asks for must be in the list
 to be in the tree at all.
 

@@ -9,8 +9,8 @@ of the desktop links it.
 - `-D CMAKE_REQUIRE_FIND_PACKAGE_KF6Baloo=ON` — With
   `-D CMAKE_REQUIRE_FIND_PACKAGE_KF6BalooWidgets=ON`: [baloo](#port-baloo) and
   [baloo-widgets](#port-baloo-widgets) are optional to upstream, and without both Dolphin drops
-  the information panel, the metadata columns and the tag places with only a warning at
-  configure time. Required, a missing one stops the configure.
+  the information panel, the metadata tooltips, the metadata columns and indexed search with only
+  a warning at configure time. Required, a missing one stops the configure.
 - `-D CMAKE_REQUIRE_FIND_PACKAGE_KF6DocTools=ON` — The handbook, through
   [kdoctools](#port-kdoctools), which upstream looks for as an optional component.
 - `-D CMAKE_DISABLE_FIND_PACKAGE_KF6UserFeedback=ON` — No KUserFeedback, which Dolphin uses to
@@ -20,7 +20,7 @@ of the desktop links it.
   menu installer uses to install software. PackageKit is not a port either.
 - `-D KF_SKIP_PO_PROCESSING=ON` — Skips building the interface translations, which the
   package-wide English-only rule would remove anyway (see
-  [Size and language policy](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
+  [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
 
 ## Patches
 
@@ -37,13 +37,16 @@ the Places panel come from Solid over [udisks2](#port-udisks2).
 
 The install puts a systemd user unit, `plasma-dolphin.service`, under `/usr/lib/systemd`;
 `build.sh` removes the directory, since KDOS has no systemd (see
-[No systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd)). `kdoctools_install()`
-builds every translated manual page too, and `build.sh` removes every directory under
-`/usr/share/man` that is not a `man<section>` one.
+[No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)).
+`KF_SKIP_PO_PROCESSING` stops only `ki18n_install()`: `kdoctools_install()` still builds the
+handbook in every translated language, and kpkg's language rule removes
+`/usr/share/doc/HTML/<lang>/` from the package. Dolphin installs no manual page, translated or
+not, so the loop in `build.sh` that removes every directory under `/usr/share/man` that is not a
+`man<section>` one finds nothing to remove.
 
 The desktop entry names the icon `org.kde.dolphin`. Upstream installs it as an SVG only, in
 `hicolor/scalable`; the PNGs in its source become the macOS and Windows application icons. The
 session reads no SVG icon (see
-[Desktop entries belong to the port](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#desktop-entries-belong-to-the-port)),
+[Desktop entries belong to the port](../../../../docs/kdos/05-developer/writing-ports.md#desktop-entries-belong-to-the-port)),
 so `build.sh` renders Breeze's `system-file-manager` SVG with `rsvg-convert` from
 [librsvg](#port-librsvg) into PNGs named `org.kde.dolphin` in three hicolor sizes.

@@ -22,6 +22,6 @@ The Go modules come from the vendor bundle, `step-cli-vendor-<version>.tar.xz`, 
 makes with `go mod vendor` because the recipe says `vendoring = go`. `build.sh` unpacks it into the
 source tree and builds with `-mod=vendor`, offline. The bundle carries its own `sha256 =` line in
 the recipe, so a regenerated bundle that resolves differently is refused; see
-[Vendoring](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#vendoring).
+[Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring).
 
 The bash and zsh completions are installed from upstream's `autocomplete/` directory.

@@ -53,9 +53,11 @@ would drop the hardening and the reproducibility flags at once; see
 [The release flags](../../kdos/05-developer/writing-ports.md#the-release-flags).
 
 After the script returns, kpkg tidies the staging tree the same way for every shape: it deletes
-libtool's `.la` files and the info and font index files that it rebuilds at install, copies the top-level licence files, removes HTML
-and PDF manuals and every non-English catalogue, compiles Python bytecode, runs the package lint
-and rolls the package. No shape does any of that itself. The steps are listed in
+libtool's `.la` files and the shared index files it rebuilds at install (the info `dir`, the MIME
+cache and each font directory's `fonts.dir`), copies the top-level licence files, removes the HTML
+and PDF manuals under `/usr/share/doc` and every non-English catalogue, takes the symbol table out
+of any program or library over 32 MiB, compiles Python bytecode,
+runs the package lint and rolls the package. No shape does any of that itself. The steps are listed in
 [What kpkg does around build.sh](../../kdos/05-developer/writing-ports.md#what-kpkg-does-around-buildsh).
 
 ## autotools
@@ -63,7 +65,7 @@ and rolls the package. No shape does any of that itself. The steps are listed in
 A `configure` script, then make. [pv](#port-pv) and [acl](#port-acl) are built with this shape,
 each with its own switches in place of some of these:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=747-749 pin=1455cb9a0681 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=759-761 pin=1455cb9a0681 lang=bash -->
 
 configure takes the exported flags by itself. In the chroot phases it also reads the site file
 `script/env/config.site`, which `CONFIG_SITE` names, and which places `sysconfdir`,
@@ -75,10 +77,12 @@ read the site file. See [autotools](../../kdos/05-developer/writing-ports.md#aut
 
 meson configures into a build directory and ninja builds it:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=769-772 pin=f119190e4a66 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=781-784 pin=f119190e4a66 lang=bash -->
 
-Three things are not optional here. `--libdir=lib`, because meson's own default library directory
-is not one the runtime loader searches. A named buildtype, because meson's default, `debug`, builds
+Three things in it are deliberate. `--libdir=lib`, because meson picks its default library
+directory from the machine it runs on: `lib64` wherever `/usr/lib64` is a real directory, and the
+package lint refuses a package that installs there. In the chroot `/usr/lib64` is a link to `lib`,
+so the default is already `lib`; naming it keeps the result the same in any root. A named buildtype, because meson's default, `debug`, builds
 `-g -O0`, and `testing/preflight.sh` fails a `meson setup` that names none. And every `-D` option
 spelt as the project's `meson_options.txt` or `meson.options` spells it, because meson stops at
 setup on an option it does not know.
@@ -93,7 +97,7 @@ no wrap mode, so a missing subproject fails by name instead of being fetched, an
 
 The reference shape uses make as CMake's generator:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=831-836 pin=d390ab3f3189 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=845-850 pin=d390ab3f3189 lang=bash -->
 
 The tree's commonest form uses Ninja instead, with CMake's own build and install commands. The KDE
 Frameworks are built this way, here [karchive](#port-karchive):
@@ -113,7 +117,7 @@ picks `lib64` by itself, apart from the tree's `GNUInstallDirs` default. See
 
 A Rust program builds from its vendor bundle, with no network:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=866-872 pin=56bff5f813e7 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=880-886 pin=56bff5f813e7 lang=bash -->
 
 The bundle, `<name>-vendor-<version>.tar.xz`, holds every crate the program needs and the cargo
 configuration that points cargo at them; [Sources and the archive](../01-preparing/sources.md#vendor-bundles)
@@ -127,7 +131,7 @@ into `$PKG` by hand, since `cargo build` installs nothing. See
 
 A Go program builds from its module vendor tree, also offline:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=924-927 pin=945a281da9a7 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=938-941 pin=945a281da9a7 lang=bash -->
 
 `-ldflags "-s -w"` is required, because the Go linker otherwise writes DWARF and a symbol table that
 kpkg does not strip; `testing/preflight.sh` fails a `go build` without both. `-trimpath`,
@@ -160,7 +164,7 @@ without uninstalling the copy the build root holds. kpkg compiles the bytecode a
 
 A Qt project that ships a `.pro` file:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=975-978 pin=3c09c3145853 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=989-992 pin=3c09c3145853 lang=bash -->
 
 qmake reads no flags from the environment, so the three `QMAKE_*_RELEASE` variables hand it the
 exported ones, and `CONFIG+=release` keeps a debug build out. The install goes to `INSTALL_ROOT`,
@@ -175,17 +179,17 @@ script exactly, here [perl-authen-sasl](#port-perl-authen-sasl)'s:
 
 `INSTALLDIRS=vendor` installs the module into perl's vendor directories, `/usr/share/perl5/vendor_perl`
 and `/usr/lib/perl5/vendor_perl`, rather than the `site_perl` ones, which by Perl's convention are
-for modules installed locally. The three `find` lines remove what MakeMaker writes for a local
+for modules installed locally. The first two `find` lines remove what MakeMaker writes for a local
 install: `.packlist`, the list of files the install wrote, and `perllocal.pod`, one file every
 module's install appends to, which two packages would both claim, and which kpkgadd would refuse as
-a conflict. An XS module takes perl's own recorded compiler settings, so the recipe adds no flags.
+a conflict. The third removes the directories those deletions leave empty. An XS module takes perl's own recorded compiler settings, so the recipe adds no flags.
 See [Python, Perl, Haskell, Node and OCaml modules](../../kdos/05-developer/writing-ports.md#python-perl-haskell-node-and-ocaml-modules).
 
 ## Plain make
 
 A project with only a makefile:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=1056-1058 pin=88831e0ba377 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=1070-1072 pin=88831e0ba377 lang=bash -->
 
 The flags are exported, not passed as make arguments. A variable on the make command line overrides
 the makefile's own assignment of it, so passing `CFLAGS=...` there would discard whatever the

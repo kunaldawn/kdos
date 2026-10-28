@@ -15,12 +15,12 @@
  *   │ ENTER apply    ESC cancel                          │
  *   └────────────────────────────────────────────────────┘
  *
- * KDOS had NO way to configure a screen. Not a small one, not a text one —
- * none: labwc takes its output configuration over wlr-output-management-v1
- * like every wlroots compositor, no client for it was ported (wlr-randr,
- * kanshi), and nothing in this tree spoke the protocol. A second monitor came
- * up at whatever mode the kernel picked, in whatever position the compositor
- * defaulted to, and a 4K panel stayed at scale 1 with 32-pixel cells on it.
+ * THIS IS THE ONLY CLIENT OF wlr-output-management-v1 ON THE SYSTEM. kdos-comp
+ * takes its output configuration over that protocol like every wlroots
+ * compositor, and no other client for it (wlr-randr, kanshi) is ported.
+ * Without it a second monitor comes up at whatever mode the kernel picked, in
+ * whatever position the compositor defaults to, and a 4K panel stays at scale
+ * 1 with 32-pixel cells on it.
  *
  * THE POSITIONS ARE COMPUTED, NOT TYPED. A protocol that takes pixel
  * coordinates invites a configuration where two screens overlap or one sits in
@@ -562,8 +562,8 @@ static int conf_path(char *out, size_t n)
  *   output <name> off
  * A screen switched OFF and kept needs its own row: --apply leaves a head the
  * file does not name exactly as it found it, and at session start that is the
- * enabled state the compositor brought it up in — so recording only the enabled
- * heads made `off` survive until the next login and no further.
+ * enabled state the compositor brought it up in, so a file that named only the
+ * enabled heads would turn a kept `off` back on at the next login.
  * Written temp+rename: a session killed mid-write must not leave half a file
  * that --apply then replays onto every screen at the next login.
  */
@@ -785,9 +785,9 @@ static int apply_saved(struct wl_display *dpy)
  * would have nothing to draw on and this dialog would go with it, leaving a
  * machine that is running and cannot be seen.
  *
- * It is a function rather than a case now because the pointer reaches the same
- * verb through a button, and two copies of this rule is one copy that stops
- * being true.
+ * A function rather than a case because the key and the pointer's button both
+ * reach this verb, and two copies of this rule is one copy that stops being
+ * true.
  */
 static void toggle_enabled(struct head *h)
 {

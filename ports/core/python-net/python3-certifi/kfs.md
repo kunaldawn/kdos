@@ -8,7 +8,7 @@ KDOS ships no copy of certifi's bundle. After the install, `build.sh` replaces
 `certifi/cacert.pem` with a symbolic link to `/etc/ssl/cert.pem`, the file
 [ca-certificates](#port-ca-certificates) writes, so Python code trusts exactly the roots
 OpenSSL does, local roots included; see
-[TLS trust anchors](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#tls-trust-anchors).
+[TLS trust anchors](../../../../docs/kdos/03-architecture/security-model.md#tls-trust-anchors).
 
 ## Flags
 - `--no-build-isolation` — Build with the setuptools already installed in the build root

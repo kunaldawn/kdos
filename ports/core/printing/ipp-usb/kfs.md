@@ -7,14 +7,15 @@ finds the printer driverless, the same way it finds one on the network.
 device as it is plugged in.
 
 ## Flags
-- `CGO_ENABLED=1` — Build with cgo, because ipp-usb's libusb and Avahi bindings are C. The Go
-  default in this tree is cgo off; see
-  [go](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#go).
+- `CGO_ENABLED=1` — Build with cgo, because ipp-usb's libusb and Avahi bindings are C. The
+  tree's Go toolchain defaults to cgo on, and most Go ports turn it off with `CGO_ENABLED=0`; this
+  one states the setting it depends on. See
+  [go](../../../../docs/kdos/05-developer/writing-ports.md#go).
 
 ## Notes
 Upstream's `make install` also installs a udev rule and a systemd unit that start ipp-usb per
 device. `build.sh` installs the program, `ipp-usb.conf`, the device quirk files and the manual
 page itself and leaves both out: there is
-[no systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd),
+[no systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd),
 and the init script's `standalone` mode replaces the per-device start. Announcing on localhost
 needs Avahi 0.8.0 or newer.

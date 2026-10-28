@@ -1,15 +1,18 @@
-diff --git a/nspr/pr/include/md/_unixos.h b/nspr/pr/include/md/_unixos.h
-index 7d444cd..40ec47e 100644
---- a/nspr/pr/include/md/_unixos.h
-+++ b/nspr/pr/include/md/_unixos.h
-@@ -588,8 +588,8 @@ typedef struct stat64 _MDStat64;
- typedef off64_t _MDOff64_t;
- 
- #elif defined(_PR_HAVE_OFF64_T)
--typedef struct stat64 _MDStat64;
--typedef off64_t _MDOff64_t;
-+typedef struct stat _MDStat64;
-+typedef off_t _MDOff64_t;
- #elif defined(_PR_HAVE_LARGE_OFF_T)
- typedef struct stat _MDStat64;
- typedef off_t _MDOff64_t;
+Subject: Use the plain 64-bit file calls on a Linux C library other than glibc
+
+musl has a 64-bit off_t on every architecture and declares no *64 file
+calls without _LARGEFILE64_SOURCE, so it takes the _PR_HAVE_LARGE_OFF_T
+path the BSDs use instead of _PR_NO_LARGE_FILES, which caps PR_Seek64 at
+2 GiB.
+
+--- a/nspr/pr/include/md/_linux.h
++++ b/nspr/pr/include/md/_linux.h
+@@ -336,6 +336,8 @@
+ #elif (__GLIBC__ > 2) || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 1) || \
+     defined(ANDROID)
+ #define _PR_HAVE_OFF64_T
++#elif !defined(__GLIBC__)
++#define _PR_HAVE_LARGE_OFF_T
+ #else
+ #define _PR_NO_LARGE_FILES
+ #endif

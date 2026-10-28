@@ -8,7 +8,7 @@ in the book's command index, and for each command of ours named without the pref
 `xdg-terminal-exec`), whose DESCRIPTION is the section of the book that command's row links
 to. So `man kdos-appbox` and the book say the same thing, in the same words. How a reader finds
 them is in
-[Manual pages and the book](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/kdos-command.md#manual-pages-and-the-book).
+[Manual pages and the book](../../../docs/kdos/04-programs/kdos-command.md#manual-pages-and-the-book).
 
 The port name is not a program: `kdos-doc` the documentation viewer is a surface of
 [kdos-shell](#port-kdos-shell), and this package installs only documents.
@@ -27,7 +27,7 @@ chroot sees `docs/` read-only at `/kdos/docs`. The image carries `docs/kdos` and
 `docs/screenshots` under `/ports/docs` so that the links resolve on an installed machine as well:
 a dangling link drops out of the recipe hash, and the machine would then take the installed book
 for stale. See
-[Rebuilding one thing](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/developing.md#rebuilding-one-thing).
+[Rebuilding one thing](../../../docs/kdos/05-developer/developing.md#rebuilding-one-thing).
 
 The build fails when a row of the command index links a section the book does not have, so a
 renamed heading is caught here rather than shipped as a manual page with no body.

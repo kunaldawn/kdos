@@ -2778,9 +2778,9 @@ static void do_csi(struct kvt_vte *vte, uint32_t data)
 		/*
 		 * TWO SEQUENCES, AND THE PRIVATE MARKER IS THE WHOLE
 		 * DIFFERENCE. `CSI Ps S` scrolls up; `CSI ? Pi;Pa;Pv S` is
-		 * XTSMGRAPHICS and asks about pictures. Answering the second
-		 * by scrolling is what this did, so a program probing for
-		 * sixel support scrolled the screen and learned nothing.
+		 * XTSMGRAPHICS and asks about pictures. Answer the second by
+		 * scrolling and a program probing for sixel support scrolls
+		 * the screen and learns nothing.
 		 */
 		if (vte->csi_flags & CSI_WHAT) {
 			csi_graphics_attr(vte);

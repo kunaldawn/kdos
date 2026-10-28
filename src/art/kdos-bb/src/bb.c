@@ -410,7 +410,7 @@ int bbinit(int argc, char **argv)
 	    bbnosound = 1;
 	else if (!strcmp(argv[i], "-mixer"))
 	    bbmixer = 1;
-	else if (argv[i][0] > '0' && argv[i][0] <= '8' && !argv[i][1])
+	else if (argv[i][0] >= '1' && argv[i][0] <= '3' && !argv[i][1])
 	    stage = atol(argv[i]);
 	else {
 	    printf("Usage: kdos-bb [aaoptions] [-loop] [-nosound] [-mixer] [number]\n\n");

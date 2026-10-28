@@ -6,9 +6,9 @@ owns `org.freedesktop.secrets`. The package also carries `secret-tool`, the same
 shell. It holds no Secret Service itself; in KDOS the provider is [keepassxc](#port-keepassxc)
 with its Secret Service integration turned on, and while it is not running every lookup fails and
 the program asks again (see
-[A saved login needs KeePassXC running](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/06-reference/known-gaps.md#a-saved-login-needs-keepassxc-running)).
+[A saved login needs KeePassXC running](../../../../docs/kdos/06-reference/known-gaps.md#a-saved-login-needs-keepassxc-running)).
 [chromium](#port-chromium), [webkitgtk](#port-webkitgtk), [qtkeychain](#port-qtkeychain),
-[kwallet](#port-kwallet), [gvfs](#port-gvfs), [remmina](#port-remmina) and many other GTK programs
+[kwallet](#port-kwallet), [gvfs](#port-gvfs), [remmina](#port-remmina) and many other programs
 link it.
 
 ## Flags

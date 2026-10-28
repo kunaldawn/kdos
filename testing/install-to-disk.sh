@@ -29,7 +29,7 @@ set -u
 DISK=${INSTALL_DISK:-/dev/vda}
 ANSWERS=/tmp/kdos-answers
 APPS=${INSTALL_APPS:-essential}
-CAP=${INSTALL_CAP:-5400}   # kinstall in a VM is slow; 40 minutes was not enough
+CAP=${INSTALL_CAP:-5400}   # kinstall in a VM is slow and can run past 40 minutes; a tighter cap kills a healthy install
 # AN ENCRYPTED INSTALL IS THE SAME RUN WITH ONE KEY CHANGED, which is the
 # whole reason it is a knob here rather than a second script: what an
 # encrypted install must prove is that the boot state records the CONTAINER

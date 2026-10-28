@@ -11,7 +11,7 @@ semantic names (window, view, headerbar, accent and the rest) set to KDOS values
 The desktop itself never reads this theme: KDOS's own programs draw cells and link no toolkit.
 The vendored stylesheet is installed again under `/usr/share/kdos/gtk-theme/theme`, because
 `kdos theme <accent>` regenerates the theme into each home directory from it; see
-[How the theme is generated](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/theming.md#how-the-theme-is-generated).
+[How the theme is generated](../../../docs/kdos/02-user-guide/theming.md#how-the-theme-is-generated).
 
 ## Flags
 - `phosphor` — The accent the system copy is generated in. The copy a user's applications load
@@ -27,7 +27,7 @@ names from it.
 The assets (slider marks, selection handles) are installed as upstream ships them. Each is neutral
 grey or a symbolic mask that GTK tints itself, so none carries a colour to remap.
 
-Unlike [kdos-cursors](#port-kdos-cursors), this port puts nothing in `/etc/skel`. The image step
+Like [kdos-cursors](#port-kdos-cursors), this port puts nothing in `/etc/skel`. The image step
 `script/phases/70_image/050_theme.sh` runs `kdos theme` against `/etc/skel` in the default accent,
 which writes the theme a new account starts with.
 

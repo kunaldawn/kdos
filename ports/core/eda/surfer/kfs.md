@@ -18,10 +18,10 @@ Wayland and X11 backends.
   [A bundle no tool writes](../../../../docs/kdos/05-developer/writing-ports.md#a-bundle-no-tool-writes).
   The build itself is the canonical [Rust shape](../../../../docs/kdos/05-developer/writing-ports.md#rust),
   with `-p surfer -p surver` selecting the two binaries.
-- **zstd is the system's.** The tree's build environment sets `ZSTD_SYS_USE_PKG_CONFIG=1` in every
-  phase after the compilers, so `zstd-sys` links [zstd](#port-zstd) instead of compiling its own copy. The `readelf`
-  line after `cargo build` makes that a condition of the build: `surfer` must NEED
-  `libzstd.so.1`.
+- **zstd is the system's.** The tree's build environment sets `ZSTD_SYS_USE_PKG_CONFIG=1` in
+  every phase after the compilers, so `zstd-sys` links [zstd](#port-zstd) instead of compiling its
+  own copy. The `readelf` line after `cargo build` makes that a condition of the build: `surfer`
+  must NEED `libzstd.so.1`.
 - **The menu entry is KDOS's own.** Surfer sets its window's app_id to
   `org.surfer-project.surfer` in `main.rs`, which the entry names as `StartupWMClass`. Upstream's
   entry claims `application/vnd.gtkwave-vcd`, `-fst` and `-ghw`, GTKWave's own MIME types, which

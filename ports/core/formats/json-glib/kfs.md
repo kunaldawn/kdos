@@ -12,10 +12,10 @@ GLib's types and main loop, and a serializer between JSON and GObject properties
   [gobject-introspection](#port-gobject-introspection) and
   [glib-introspection](#port-glib-introspection) are in `depends`, because the GIR includes GLib's
   and GObject's (see
-  [A second build of the same source](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#a-second-build-of-the-same-source)).
+  [A second build of the same source](../../../../docs/kdos/05-developer/writing-ports.md#a-second-build-of-the-same-source)).
 - `-Dnls=enabled` — Build and install the message catalogs; named `enabled`, a missing `xgettext`
   is a configure error. kpkg removes every catalog but the English ones (see the
-  [size and language policy](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#size-and-language-policy)),
+  [size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)),
   so the package carries only `en_GB`.
 - `-Ddocumentation=disabled` — Build no API reference; it needs gi-docgen.
 - `-Dgtk_doc=disabled` — The deprecated name meson maps onto `documentation`, set to the same

@@ -14,7 +14,7 @@ and what to do instead where there is something. Some entries are known defects:
 code has today that contradicts its own documentation or usage text. They are listed so that a
 reader who meets one knows it is known. The sections follow the shape of the system: the desktop,
 applications and boxes, hardware, installation, boot and updates, security, ports built without a
-feature, upgrades, building, sources and publishing, testing, and this book. Every entry describes the tree
+feature, building, sources and publishing, testing, and this book. Every entry describes the tree
 as it stands; a gap that closes is removed rather than marked as closed (see
 [Principles](../01-philosophy/principles.md#documentation-describes-the-present)).
 
@@ -181,24 +181,17 @@ KDOS installs no configuration, draws none by default. To turn them back on, con
 programs one at a time, knowing the same shell on `tty1` will show holes. Nothing patches the
 console font, so on `tty1` the icons cannot be restored.
 
-### Two shipped chords and two routes show nothing
+### Two menu routes show nothing
 
-The shipped `~/.config/kdos-comp/rc.xml` binds `W-C-v` to bare `kdos-clip`. Without an argument
-that program is the clipboard-history daemon, not the picker, so the chord opens no window; the
-second daemon unlinks and rebinds the history socket and takes the history over from the copy the
-compositor supervises. Binding the chord to `kdos-clip --pick` in your own `rc.xml` opens the
-picker. `W-C-p` runs `kdos-energy`, the per-application energy report, which prints to standard
-output and has no window, so the key shows nothing; a right-click on the panel's meters strip opens
-the same report in a popup.
-
-Two of the routes in `/etc/kdos/menu.conf` fail the same way. `system.power` runs the same
-windowless `kdos-energy`. `setup.tui` runs `kdos app tui` with no subcommand, which prints a usage
-message to standard error and exits with status 2. The Start menu and `kdos-palette` start a route
-with no terminal attached, so choosing either route, from those surfaces or through
-`kdos menu summon`, shows nothing. Adding a terminal program as an application takes
-`kdos app tui add` run in a terminal. See
-[Keyboard shortcuts](../02-user-guide/desktop.md#keyboard-shortcuts),
-[The clipboard](../02-user-guide/desktop.md#the-clipboard) and the route table under
+Two of the routes in `/etc/kdos/menu.conf` start a program that opens no window. `system.power`
+runs `kdos-energy`, the per-application energy report's command-line client, which prints to
+standard output and exits; the same report is the Energy page of `kdos-res`, which `W-C-p` opens,
+and a popup from a right-click on the panel's meters strip. `setup.tui` runs `kdos app tui` with
+no subcommand, which prints a usage message to standard error and exits with status 2. The Start
+menu and `kdos-palette` start a route with no terminal attached, so choosing either route, from
+those surfaces or through `kdos menu summon`, shows nothing. Adding a terminal program as an
+application takes `kdos app tui add` run in a terminal. See
+[Keyboard shortcuts](../02-user-guide/desktop.md#keyboard-shortcuts) and the route table under
 [`/etc/kdos/menu.conf`](configuration.md#etckdosmenuconf-merged-under-configkdosmenuconf).
 
 ### Only two ways of ending the session save the list of open windows
@@ -217,19 +210,6 @@ front end, mpd and its watcher, the per-user timer loops and the `kdos-box gc` l
 when the login does, with `exit` at that prompt; with autologin on, a new login and desktop start
 at once. Measured on the live medium. See
 [What `kdos-desktop-start` does](../03-architecture/session.md#what-kdos-desktop-start-does).
-
-### The control centre's *Sync…* row opens the network-share window
-
-On the System page of `kdos-settings`, the row *Sync…* is described as calendars and address
-books through `vdirsyncer`, and runs `kdos-connect`, which mounts a share on another machine. No
-surface configures `vdirsyncer`; it is set up through its own configuration file. See
-[kdos-settings](../04-programs/kdos-shell.md#kdos-settings).
-
-### `kdos-audio` refuses the `--no-icons` its usage line offers
-
-The usage text lists `[--font NAME] [--no-icons] [--dump]`, and the argument loop accepts only
-`--at-bottom`, `--font` and `--dump`, so `kdos-audio --no-icons` prints the usage and exits 2.
-Nothing shipped passes the flag. See [kdos-audio](../04-programs/kdos-shell.md#kdos-audio).
 
 ### `kdos-res` draws its selected row in the accent colour
 
@@ -251,8 +231,8 @@ the session sets `QT_QPA_PLATFORMTHEME=kde`, or in a box on the `rt-kde` runtime
 platform theme and reads `~/.config/kdeglobals`, which KDE re-reads only
 on its own global-settings signal, and there is no KDE daemon here to send it. Both pick up the new
 palette the next time they start. libadwaita 1.6 and later follow the portal's `accent-color` on
-their own, which changes the accent and not the rest of the palette. A Qt application on the
-`rt-qt` runtime uses the GTK3 platform theme instead, and takes its palette from GTK.
+their own, which changes the accent and not the rest of the palette. A Qt application in a box
+on the `rt-qt` runtime uses the GTK3 platform theme instead, and takes its palette from GTK.
 
 ### A box can be granted only the eight named groups of Wayland globals
 
@@ -298,15 +278,6 @@ lives, not as a failure. `kdos-box create <name> base=pack:<id>` asks podman for
 top of that composition, and when podman refuses on a live session it says that a persistent box
 needs an installed system, takes the composition down, and leaves the profile it wrote, which
 `kdos-box remove <name>` deletes.
-
-### `kdos-box create` with a `box:` base never finishes
-
-`kdos-box create <name> base=box:<other>` copies the other box's base into the new profile and
-calls itself again with the same arguments, which set the base back to `box:<other>`, so it
-recurses until the program crashes. Naming the other box's own base instead (`base=pack:<id>` or
-`base=image:<ref>`, as `kdos-box profile <other>` prints it) gives the same box. `kdos-box clone
-<src> <dst>` does not take this path, and copies the other box's writable layer as well. See
-[create with a box base](../04-programs/kdos-appbox.md#create-with-a-box-base).
 
 ### The *Containers* menu entries have not been opened on a built image
 
@@ -435,15 +406,12 @@ model, and `base.en` ships.
 ### The native applications have not been run
 
 The browsers, office suites, editors, games and the rest of the graphical applications are recipes
-under `ports/core`, named in the lists of the userland phases, `40_lang` to `44_apps`, with every
-source fetched and hashed. Every one of them has been through a build: the build tree holds every
-port of `42_graphics`, `43_toolkits` and `44_apps`, and the image it made carries them (see
-[Build times and snapshots are measured for the early phases
-only](#build-times-and-snapshots-are-measured-for-the-early-phases-only)). No application has
-been started on a KDOS image, so what is written here and in [the ports
-catalogue](ports-catalogue.md) about how any of them behaves describes its recipe. The published source archive holds almost
-none of their sources, so `make fetch` on another clone takes them from upstream. See
-[The source archive has one public location](#the-source-archive-has-one-public-location).
+under `ports/core`, named in the lists of the userland phases, `40_lang` to `44_apps`, each with
+its sources pinned by hash. No application has been started on a
+KDOS image, so what is written here and in [the ports catalogue](ports-catalogue.md) about how any
+of them behaves describes its recipe. How much of a build of them has been measured is under
+[Build times and snapshot sizes are measured for part of the build
+only](#build-times-and-snapshot-sizes-are-measured-for-part-of-the-build-only).
 
 ### Five applications have no port
 
@@ -605,8 +573,8 @@ root, answers.
 ### The power button and the sleep key work only inside a graphical session
 
 They arrive as keys, which the compositor's `rc.xml` binds. There is no acpid, and nothing below the
-session listens for them, so at a text login or on the console desktop the power button does
-nothing. Neither binding has been pressed on real hardware.
+session listens for them, so at a text login the power button does nothing. Neither binding has
+been pressed on real hardware.
 
 ### A USB modem that first appears as a storage device is not switched into a modem
 
@@ -738,6 +706,15 @@ selects a slot, unlocks that slot's own encrypted container and counts attempts;
 reaches the end of initialisation confirms the slot. A second *encrypted* slot has never been
 booted. What is measured is on the build host: rolling back from slot B to A hands back A's
 container and not B's, which is the failure the mechanism exists to prevent.
+
+### An update with --root compiles against the running system
+
+`kdos update apply --root DIR` installs into `DIR` by pointing `KPKG_ROOT` at it, which moves the
+installs and the package database and nothing else: every package is still built on the running
+root, with its compiler, headers and libraries. When one run upgrades a library and a package that
+links it, the package is compiled against the running root's older copy, not the one just
+installed into `DIR`. An A/B apply does not have this problem, because it builds inside a chroot
+of the slot. See [Updating a machine](../03-architecture/packaging.md#updating-a-machine).
 
 ### The update path has not been run against a published tree
 
@@ -921,7 +898,7 @@ reason. Each one below was weighed the same way and left out, for the reason in 
 - **rule**: it belongs to something KDOS excludes, such as systemd or SELinux (see
   [Principles](../01-philosophy/principles.md)).
 
-`python3 testing/optdeps.py --claims` lists every recipe line that says a dependency is not a port,
+`python3 testing/optdeps.py --claims` lists every `kfs.md` line that says a dependency is not a port,
 and `python3 testing/optdeps.py` lists every switch that turns off a feature a port does provide;
 see [Testing](../05-developer/testing.md).
 
@@ -1057,29 +1034,20 @@ see [Testing](../05-developer/testing.md).
 | `yosys` | `show` without `-viewer` | xdot | one feature |
 | `zint` | The GS1 Syntax Engine | libgs1encoders | one feature; zint checks GS1 data with its own rules |
 
-## Upgrades
-
-### A `tzdata` upgrade can reset the time zone to UTC, once
-
-The `tzdata` port does not own `/etc/localtime`, so upgrading `tzdata` on a machine whose installed
-`tzdata` manifest lists the link removes it as an orphan. `rcS` then links UTC on the next boot, and
-`TZ=':/etc/localtime'` follows it. kpkg has no rule that keeps a file a package does not own, so run
-`kdos-power timezone <Area/City>` to set the zone again. Later upgrades leave it alone.
-
 ## Building
 
-### Build times and snapshots are measured for the early phases only
+### Build times and snapshot sizes are measured for part of the build only
 
 The thirteen phases under `script/phases/` and the ports tree filed on shelves pass preflight,
-`testing/phaseclosure.py` and the self-test. A build has run every phase from `00_cross` to
-`70_image` on these lists and written `build/iso-build/kdos.iso`; its tree holds every port the
-lists name but `kdos-kfs` of `41_system` (see the ports tree under [Host and packaging](status.md#host-and-packaging) in Status).
-A phase's progress is the names in its `packages.d/*.txt` that `ls build/fs/var/lib/kpkg/db` also
-shows. `build/snapshots/timings.json` holds step times for `00_cross` to `31_compilers` only,
-because that build's figures for the later phases were not recorded, and nothing else it left
-measures a port's build: see [Build times](../../kfs/17-appendices/sbu.md). Only `30_foundation`
-has a measured snapshot, 412 MiB whole. Layered snapshots have been measured
-only on a synthetic ten-phase tree, where they came to 23% of full ones. A run writes snapshots
+`testing/phaseclosure.py` and the self-test (see the ports tree under
+[Host and packaging](status.md#host-and-packaging) in Status). A phase's progress is the names in
+its lists (`packages.d/*.txt`, or `packages.txt`) that `ls build/fs/var/lib/kpkg/db` also shows.
+`build/snapshots/timings.json`, the only record of how long a port took to build, holds step times
+for every phase from `00_cross` to `43_toolkits` and for part of `44_apps`; `50_desktop`,
+`60_kernel` and `70_image` have no figures in it. See [Build times](../../kfs/17-appendices/sbu.md).
+How much disk a complete set of snapshots takes has not been measured.
+Layered snapshots have been measured only on a synthetic ten-phase tree, where they came to 23% of
+full ones. A run writes snapshots
 only when given `--snapshot` or the picker's `S`; then every phase up to `50_desktop` takes one,
 the first of each path whole and the rest as layers, and `60_kernel` and `70_image` leave
 `KDOS_SNAPSHOT_PATHS` empty in their `phase.env` and are re-run instead of restored.
@@ -1173,28 +1141,43 @@ image or a medium that is sold must leave both out.
 ### A clone does not check what it pushes unless you enable the hook
 
 `script/hooks/pre-push` runs only after `git config core.hooksPath script/hooks`. It refuses a push
-that breaks the ports layout (a recipe not exactly one listed shelf down, a name held by two ports,
-a reserved or port-named shelf), and a push naming a source hash the archive does not hold. Without
-it, a push can carry a layout no build resolves, or name a source nobody has published, and every
+that:
+
+- breaks the ports layout (a recipe not exactly one listed shelf down, a name held by two ports,
+  a reserved or port-named shelf);
+- adds or changes a `.patch` or `.diff` under `ports/` or `src/` that has no `Subject:` line saying
+  what it changes;
+- leaves either book failing `testing/docscheck.sh` or `testing/kfscheck.py`, a stale recipe stamp
+  included, which `make book-stamp` or `make book-data` refreshes;
+- names a source hash the archive does not hold.
+
+Without it, a push can carry a layout no build resolves, a patch *KDOS from Scratch* cannot
+describe, a book that does not match the tree, or a source nobody has published, and every
 other clone's `make fetch` then depends on upstream still serving that file. Setting
 `core.hooksPath` replaces `.git/hooks` as a whole, so git-lfs's hooks, or any other installed
 there, stop running in that clone.
 
 The layout check reads the tree of each pushed ref's commit, not of every commit between it and the
 remote, so a commit in the middle of a push that breaks the layout passes when a later one repairs
-it; preflight is what checks the working tree. With the hook on, a push that introduces a new
-source hash is also refused when the archive cannot be reached or answers anything but 200 or 404,
-because the missing source cannot then be ruled out; such a push made offline needs the bypass.
-Every push is refused while `KDOS_SOURCES_BASE` is empty. `KDOS_SKIP_PUBLISH_CHECK=1 git push …`
-skips the archive check for one push and leaves the layout check in force;
-`KDOS_SKIP_LAYOUT_CHECK=1` skips the layout check.
+it; preflight is what checks the working tree. The book checks are the opposite: they read the
+working copy, not the pushed commit, so they answer for the pushed commit only when that is what is
+checked out. With the hook on, a push that introduces a new source hash is also refused when the
+archive cannot be reached or answers anything but 200 or 404, because the missing source cannot
+then be ruled out; such a push made offline needs the archive bypass. Unless that bypass is set, every push is refused while
+`KDOS_SOURCES_BASE` is empty or names a local directory, since neither can confirm that a source
+is published. Each check has its own bypass for one push, leaving the others in force:
+`KDOS_SKIP_LAYOUT_CHECK=1`, `KDOS_SKIP_PATCH_CHECK=1`, `KDOS_SKIP_BOOK_CHECK=1` and
+`KDOS_SKIP_PUBLISH_CHECK=1`, set in front of `git push`.
 
 ### An offline `kdos rebuild` from the medium has not been run to the end
 
 A stick built with `KDOS_ISO_SOURCES=1` carries, under `sources/`, the ports tree (`/ports`
-without its dot-directories, so every fetched source beside its recipe), `src/`, `script/` and
-`fs/`, and `sources/binhost` when the build wrote one.
-`kdos rebuild` refuses a tree without `fs/etc`, copies the tree somewhere writable and runs the
+without its dot-directories, so every fetched source beside its recipe), `src/`, `script/`,
+`fs/`, the top-level `Makefile` and `Dockerfile`, and `sources/binhost` when the build wrote one.
+A `sources/SOURCES` stamp records the number of ports, the size and the build time, and
+`kdos rebuild` prints it before it starts. `kdos rebuild` refuses a tree that lacks
+`script/kdosbuild.sh`, `ports/core`, `fs/etc` or the orchestrator's sources under
+`src/devtools/kdosbuild`, copies the tree somewhere writable and runs the
 orchestrator there with `KDOS_WORKSPACE` naming the copy, which `script/env/host.env`, the
 environment of `00_cross` and `10_bootstrap`, uses in place of `/workspace`. No rebuild from a medium has been run through every
 phase. See [kdos rebuild](../04-programs/kdos-command.md#kdos-rebuild) and, for the build it runs,

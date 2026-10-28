@@ -27,9 +27,10 @@ si::sysinit:/etc/init.d/rcS
 #
 # kdos-getty stays in the chain and stays FIRST: it loads the console font
 # and palette after fbcon's deferred take-over, and doing that in rcS is
-# futile because the take-over resets every VT's font. It also falls back
-# to the plain autologin getty if the program named here is missing, so a
-# broken login path still gives a console.
+# futile because the take-over resets every VT's font. If the program named
+# here is missing it falls back to a bare agetty — with `--autologin` for the
+# account login.conf names, otherwise at a password prompt — so a broken
+# login path still gives a console.
 1:2345:respawn:/usr/local/sbin/kdos-getty tty1 /usr/local/sbin/kdos-login tty1
 
 # Second console, a login prompt for any account. THE RECOVERY CONSOLE: it

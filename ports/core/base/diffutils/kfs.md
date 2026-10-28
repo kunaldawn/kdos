@@ -2,8 +2,10 @@
 
 GNU diffutils is `diff`, `cmp`, `diff3` and `sdiff`: the programs that compare files line by line
 or byte by byte. KDOS builds them early because other builds run them. An autoconf configure
-script runs `diff` while it picks a `grep` and a `sed`, and again before it rewrites `config.h`, and the self-tests some builds run as part of `make` compare their output with `cmp`: [bzip2](#port-bzip2)'s default target checks its own output with `cmp`, so
-without diffutils its build stops. `20_selfhost` rebuilds the bootstrap's copy as a package, with
+script runs `diff` while it picks a `grep` and a `sed`, and again before it rewrites `config.h`,
+and the self-tests some builds run as part of `make` compare their output with `cmp`:
+[bzip2](#port-bzip2)'s default target checks its own output with `cmp`, so without diffutils its
+build stops. `20_selfhost` rebuilds the bootstrap's copy as a package, with
 `m4` and `gawk`, because the GMP and GCC builds of that phase run these tools (see
 [The toolchain rebuilt as packages](../../../../docs/kdos/05-developer/how-kdos-is-built.md#the-toolchain-rebuilt-as-packages-20_selfhost)).
 

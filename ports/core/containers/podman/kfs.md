@@ -7,14 +7,14 @@ image, `podman create --rootfs` for a pack), starts with `podman start` and ente
 `podman exec`, and the catalogue's images are built with `podman build` on the machine that
 installs them. [distrobox](#port-distrobox), [podman-tui](#port-podman-tui) and
 [lazydocker](#port-lazydocker) sit on top of it. The launch path is in
-[kdos-appbox](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/kdos-appbox.md#the-launch-path).
+[kdos-appbox](../../../../docs/kdos/04-programs/kdos-appbox.md#the-launch-path).
 
 The port builds upstream's Go makefile with a set of build tags of its own, installs the targets one by
 one instead of upstream's `install`, which would add systemd units, and removes what systemd alone
 reads. Its configuration in `/etc/containers` belongs to
 [containers-common](#port-containers-common), not to this package, because buildah and skopeo
 read it too; the settings are in
-[Containers](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/06-reference/configuration.md#containers).
+[Containers](../../../../docs/kdos/06-reference/configuration.md#containers).
 
 ## Flags
 
@@ -34,7 +34,7 @@ read it too; the settings are in
   installed.
 - `GOFLAGS="$GOFLAGS \"-ldflags=-s -w\""` — Extends the tree's exported `GOFLAGS` with `-s -w`,
   which drop the symbol table and DWARF, for any binary the makefile builds without an
-  `-ldflags` of its own. See [go](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#go).
+  `-ldflags` of its own. See [go](../../../../docs/kdos/05-developer/writing-ports.md#go).
 - `EXTRA_LDFLAGS="-s -w"` — The same two flags for the binaries the makefile does link with its
   own `-ldflags`, which a `GOFLAGS` `-ldflags` cannot reach; upstream appends `EXTRA_LDFLAGS` to
   that string.
@@ -72,4 +72,4 @@ and one that held the lock would block every later launch until it exited.
 
 Rootless Podman puts a container's cgroup beside the session's, and a `--memory` or `--cpus` limit
 does nothing without a delegated subtree; how KDOS provides one is in
-[Principles](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd).
+[Principles](../../../../docs/kdos/01-philosophy/principles.md#no-systemd).

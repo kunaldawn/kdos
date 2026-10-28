@@ -2,8 +2,8 @@
 [Thunderbird]{.idx} is Mozilla's mail, calendar, address-book, chat and feed client, built from
 its extended-support release on the same Gecko engine as [firefox-esr](#port-firefox-esr). It is
 the graphical mail client of KDOS and the default handler for `mailto:` links, `message/rfc822`
-and `text/calendar` in `/etc/xdg/kdos-mimeapps.list`. Everything it does works offline once an
-account is set up by hand. The paths that reach the network on their own (update checks,
+and `text/calendar` in `/etc/xdg/kdos-mimeapps.list`. It reaches the network for the accounts,
+calendars and feeds it is given. The paths that reach the network on their own (update checks,
 telemetry, add-on updates, the start page, captive-portal and connectivity probes, safe-browsing
 lists) are off, by build switch where one exists and by default prefs and policies where none does.
 
@@ -11,8 +11,8 @@ lists) are off, by build switch where one exists and by default prefs and polici
 - `CC=clang` — with `CXX=clang++`, `AR=llvm-ar`, `NM=llvm-nm`, `RANLIB=llvm-ranlib` and
   `--enable-linker=lld`: Gecko is compiled with [clang](#port-clang) and linked with
   [lld](#port-lld) rather than the phase's gcc. Its Rust bindings are generated through libclang,
-  and its C++ is tested only with clang. The phase's `-std=gnu11` is cut out of `CFLAGS`, because
-  mozbuild sets each C file's standard itself.
+  and Mozilla builds its own Linux releases with clang. The phase's `-std=gnu11` is cut out of
+  `CFLAGS`, because mozbuild sets each C file's standard itself.
 - `--gcc-triple=$(gcc -dumpmachine)` — added to `CFLAGS`, `CXXFLAGS` and `LDFLAGS`. Rust's `cc`
   crate hands clang `--target=x86_64-unknown-linux-musl`, and clang then looks for gcc's headers
   and libstdc++ under that triple; naming gcc's own triple finds them. Without it the build stops
@@ -33,6 +33,9 @@ lists) are off, by build switch where one exists and by default prefs and polici
 - `MACH_BUILD_PYTHON_NATIVE_PACKAGE_SOURCE=none` — mach builds its virtualenv from the packages
   vendored under `third_party/python` and installs nothing more into it, so no pip reaches the
   network. `MOZBUILD_STATE_PATH` keeps mach's state directory inside the build tree.
+- `MOZ_NOSPAM=1` — skip the desktop notification mach sends through `notify-send` when a build
+  finishes. The build chroot has no desktop session to show one on, and a notification that
+  cannot be sent ends the build log with a `Notification center failed` warning.
 - `MOZ_BUILD_DATE` — the build ID, a timestamp compiled into the binary and written into every
   profile's `compatibility.ini`. Taking it from `SOURCE_DATE_EPOCH` makes two builds of the recipe
   agree.

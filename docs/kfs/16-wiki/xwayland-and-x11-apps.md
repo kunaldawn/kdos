@@ -54,15 +54,16 @@ ship, is run with `sh` each time Xwayland becomes ready.
 
 ### Which toolkits choose X11
 
-Every login shell exports the toolkits' back ends, and [Wayland]{.idx} comes first in each:
+Every login shell exports the toolkits' back ends, and [Wayland]{.idx} comes first in each that has one:
 
-<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=78-90 pin=bdaffc9a9711 -->
+<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=78-91 pin=7ff578216c09 -->
 
 - **GTK** tries Wayland first on its own; `GDK_BACKEND` is left unset, so a program that sets
   `GDK_BACKEND=x11` for itself gets Xwayland.
 - **Qt** takes the list `wayland;xcb` and uses X11 only when its Wayland plugin cannot start.
-- **SDL**, **Clutter** and **Firefox** are told to use Wayland.
-- **Tk** has only an X11 back end, so every Tk program runs on Xwayland.
+- **SDL** is built with its Wayland driver alone, so `SDL_VIDEODRIVER` names no fallback.
+- **Clutter** and **Firefox** are told to use Wayland.
+- **Tk** and **Motif** have only an X11 back end, so every Tk or Motif program runs on Xwayland.
 - **Java** Swing and AWT run on Xwayland; `_JAVA_AWT_WM_NONREPARENTING=1` is what makes them draw.
   The compositor sets the same default for the programs it starts.
 
@@ -76,13 +77,13 @@ recipe does:
 A box receives no profile environment. [`kdos-appbox`]{.idx} gives it `DISPLAY` itself, from its own
 environment or from the first socket in `/tmp/.X11-unix`, which the box shares with the host:
 
-<!-- kfs:include src/system/kdos-appbox/main.c lines=429-443 pin=5b518a0f07ce -->
+<!-- kfs:include src/system/kdos-appbox/main.c lines=428-442 pin=5b518a0f07ce -->
 
 When `kdos-appbox` writes launchers for a boxed application, it removes from the entry's `Exec`
 line the assignments that would force X11, so an application whose distribution entry asks for
 X11 runs on Wayland:
 
-<!-- kfs:include src/system/kdos-appbox/launchers.c lines=262-266 pin=9b7f3a80babb -->
+<!-- kfs:include src/system/kdos-appbox/launchers.c lines=265-269 pin=9b7f3a80babb -->
 
 ## Usage
 
@@ -178,7 +179,8 @@ the box's own Mesa: an X11 client in a box draws with its box's libraries. Compa
   client's process rather than from a Wayland security context. See
   [Box identity](../../kdos/04-programs/kdos-comp.md#box-identity).
 - The on-screen keyboard in `osk = auto` mode never rises for an X11 window, which does not speak
-  the text-input protocol; show it with `Super+Alt+K`.
+  the text-input protocol; show it with `Super+Alt+K`. The mode is set in
+  `~/.config/kdos/comp.conf`; see [The on-screen keyboard](accessibility.md#the-on-screen-keyboard).
 - `kdos why /usr/bin/Xwayland` names the package and recipe it came from.
 
 ## Troubleshooting
@@ -196,12 +198,13 @@ Look in its log:
 grep -i xwayland "$XDG_RUNTIME_DIR/kdos-comp.log"
 ```
 
-A session that created the display logs
+The first session after a boot creates `/tmp/.X11-unix` and logs
 `Created /tmp/.X11-unix ourselves -- other users will be unable to create X11 UNIX sockets of their own`
-once, at start-up.
+at start-up; a later session finds the directory there and says nothing about it.
 `failed to create xwayland server, continuing without` means the session runs with no X11 at
-all. Check that the package is installed with `kpkg info xwayland`; the display is created when
-the compositor starts, so log in again after installing it.
+all; when it follows `Cannot find Xwayland binary "/usr/bin/Xwayland"`, the package is missing.
+Check that it is installed with `kpkg info xwayland`; the display is created when the compositor
+starts, so log in again after installing it.
 
 **An X11 program starts and exits at once with a GLX error, or says no GLX extension is
 present.** Run `glxinfo` from the box above. When it lists no `GLX` extension, the X server is the

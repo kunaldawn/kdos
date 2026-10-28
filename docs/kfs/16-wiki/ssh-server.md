@@ -63,7 +63,7 @@ boot. It is the one marker the image ships; see
 `kdos-powerd` treats `ssh` as both a port and a daemon. The comment above the code that does it,
 from `src/daemons/kdos-powerd/main.c`:
 
-<!-- kfs:include src/daemons/kdos-powerd/main.c lines=428-436 pin=9d44e95d2ac3 -->
+<!-- kfs:include src/daemons/kdos-powerd/main.c lines=463-471 pin=9d44e95d2ac3 -->
 
 The rule it writes goes into [`/etc/nftables.d/50-kdos-services.nft`]{.idx}; see [Firewall](firewall.md).
 
@@ -114,7 +114,7 @@ Needs membership of `wheel`.
 4. From another machine: `ssh kdos@<address>`. The first connection shows the host key's
    fingerprint. Compare it with the fingerprint the KDOS machine itself prints for
    `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`, a line of the form
-   `256 SHA256:<hash> root@kdos (ED25519)`, before answering `yes`.
+   `256 SHA256:<hash> root@<hostname> (ED25519)`, before answering `yes`.
 
 The first start makes an RSA, an ECDSA, an Ed25519 and an ML-DSA-44/Ed25519 host key in
 `/etc/ssh/`.
@@ -150,8 +150,8 @@ boot. `sudo service stop sshd` alone stops it for this boot only.
 
    It appends the key to `~/.ssh/authorized_keys` on the server.
 
-3. Log in with `ssh kdos@<address>`; no password is asked. `/var/log/auth.log` on the server
-   records it as `Accepted publickey for kdos from <address> port <n> ssh2: ED25519 SHA256:<hash>`.
+3. Log in with `ssh kdos@<address>`; no password is asked. `/var/log/auth.log` on the server,
+   which only root can read (`sudo tail /var/log/auth.log`), records it as `Accepted publickey for kdos from <address> port <n> ssh2: ED25519 SHA256:<hash>`.
 
 ### Refusing password logins
 
@@ -197,7 +197,8 @@ Do this only after a key login works, from a second connection kept open while y
   opening port 22 on an installed machine whose answer file set no password.
 - A login shell reached over SSH finds the desktop's session bus when the desktop is running: the
   profile points `DBUS_SESSION_BUS_ADDRESS` at `$XDG_RUNTIME_DIR/bus` when that socket exists, and
-  `SSH_AUTH_SOCK` at the account's shared agent. A command given on the `ssh` line runs without
+  `SSH_AUTH_SOCK` at the account's shared agent, unless the client forwarded its own agent with
+  `ssh -A`, which the profile then leaves in place. A command given on the `ssh` line runs without
   the login profile and gets neither.
 - `sftp` and `scp` work as soon as `ssh` does; the `sftp` subsystem is in the shipped file.
 - `service status ssh` finds `sshd` too, but `service enable` and `disable` need the exact name
@@ -232,14 +233,15 @@ line.
 `kdos-power firewall ssh on`, which also opens the port.
 
 **`Permission denied` with the right password.**
-Read `/var/log/auth.log`, where `sshd` logs every attempt. Root is refused a password login by
+Read `/var/log/auth.log`, where `sshd` logs every attempt. Only root can read it, so use
+`sudo tail /var/log/auth.log`. Root is refused a password login by
 `PermitRootLogin prohibit-password`; log in as your own account and use `sudo`. An account
 whose shadow entry is locked has no password to give.
 
 **A key is refused and the password is asked for.**
 `sshd` ignores `authorized_keys` that others can write, and logs
 `Authentication refused: bad ownership or modes for file /home/<user>/.ssh/authorized_keys` to
-`/var/log/auth.log`. On the server:
+`/var/log/auth.log`, which needs `sudo` to read. On the server:
 `chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys`, and make sure the home directory is not
 group- or world-writable.
 

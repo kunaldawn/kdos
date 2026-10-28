@@ -5,7 +5,7 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   kdos-packd — the sixth root daemon
+ *   kdos-packd — the root daemon that mounts packs
  *
  *     $ printf 'list\n' | nc -U /run/kdos-packd.sock
  *     base       1.0    base     mounted    620.0M  store
@@ -13,17 +13,17 @@
  *     app.gimp   3.0.4  app      installed   92.0M  store
  *     app.krita  5.2.6  app      available  180.0M  medium
  *
- * kdos-powerd's shape exactly, for the fifth time: foreground under `ksvc`,
- * one socket in /run, gated by SO_PEERCRED to root and `wheel`, one line per
- * connection. It links libkbase, libksig and libkpack — every library it
- * links is code running as root, which is why libkpack was written to link
- * nothing else.
+ * kdos-powerd's shape exactly, the one every root daemon here takes:
+ * foreground under `ksvc`, one socket in /run, gated by SO_PEERCRED to root
+ * and `wheel`, one line per connection. It links libkbase, libksig, libkpkg
+ * (for kp_vercmp) and libkpack — every library it links is code running as
+ * root, which is why libkpack was written to link nothing else.
  *
  * THREE RULES, and each is a way a mounting daemon usually goes wrong:
  *
  *   - THE CLIENT NEVER NAMES A PATH. Every verb takes an ID out of a list this
  *     daemon itself published; `install` takes a FILENAME in a staging
- *     directory the daemon owns. kdos-mountd established this and the reason
+ *     directory the daemon owns, and a second one for a signed index. kdos-mountd established this and the reason
  *     has not changed: a daemon reachable from `wheel` that takes a path is
  *     `mount /dev/sda2 /etc` from any shell.
  *   - VERIFICATION HAPPENS WHERE THE MOUNT HAPPENS. A client that verifies and
@@ -225,8 +225,9 @@ static void handle(int c, char *line, uid_t uid)
 			dprintf(c, "ok %s\n", msg);
 		else
 			dprintf(c, "err %s\n", msg);
-	} else if (!strcmp(tok[0], "install") && ntok == 2) {
-		if (kd_install(tok[1], msg, sizeof(msg)) == 0)
+	} else if (!strcmp(tok[0], "install") && (ntok == 2 || ntok == 3)) {
+		if (kd_install(tok[1], ntok == 3 ? tok[2] : NULL, msg,
+			       sizeof(msg)) == 0)
 			dprintf(c, "ok %s\n", msg);
 		else
 			dprintf(c, "err %s\n", msg);

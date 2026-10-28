@@ -23,8 +23,8 @@ a shell, `darktable-chart` for building colour lookup tables from a chart, and
   [libgphoto2](#port-libgphoto2).
 - `-D USE_COLORD=OFF` — No display profile from colord, which is not a port.
 - `-D USE_MAP=OFF` — No map view: it draws online tiles through osm-gps-map, which is not a port.
-- `-D USE_AI=OFF` — No AI modules, which run on ONNX Runtime and download their models from a
-  repository at run time.
+- `-D USE_AI=OFF` — No AI modules, which run on [onnxruntime](#port-onnxruntime) and download
+  their models from a repository at run time; upstream's default, named.
 - `-D USE_KWALLET=OFF`, `-D USE_LIBSECRET=OFF` — No password-store back end. darktable keeps only
   the credentials of its web export targets there, and both are on by default.
 - `-D USE_UNITY=OFF` — No progress on a Unity launcher icon; upstream's default, named.
@@ -53,8 +53,8 @@ a shell, `darktable-chart` for building colour lookup tables from a chart, and
 - `-D USE_OPENJPEG=ON`, `-D USE_JXL=ON`, `-D USE_WEBP=ON`, `-D USE_AVIF=ON`, `-D USE_HEIF=ON`,
   `-D USE_XCF=ON`, `-D USE_ISOBMFF=ON`, `-D USE_OPENEXR=ON`, `-D USE_ICU=ON` — Upstream's
   defaults, named: JPEG 2000, JPEG XL, WebP, AVIF and HEIF, GIMP's XCF format, metadata of
-  ISO base media files (CR3, AVIF, HEIF) through [exiv2](#port-exiv2) when it is built with that
-  support, OpenEXR, and ICU.
+  ISO base media files (CR3, AVIF, HEIF) through [exiv2](#port-exiv2), which the tree builds
+  with `-DEXIV2_ENABLE_BMFF=ON`, OpenEXR, and ICU.
 - `-D BUILD_PRINT=ON` — The print view, through [cups](#port-cups); upstream's default, named.
 - `-D BUILD_CMSTEST=OFF` — Leaves out `darktable-cmstest`, which reads display profiles through
   X11 and XRandR and has nothing to report on a Wayland session.
@@ -62,8 +62,8 @@ a shell, `darktable-chart` for building colour lookup tables from a chart, and
   of a raw file; upstream's default, named.
 - `-D VALIDATE_APPDATA_FILE=OFF` — Does not run `appstream-util` over the AppData file;
   upstream's default, named.
-- `-Wl,--strip-debug` — darktable adds `-g` to `CMAKE_C_FLAGS` for every build type, after the
-  tree's flags, so the debug information is dropped at the link (see
+- `-Wl,--strip-debug` — darktable adds `-g` to `CMAKE_C_FLAGS` and `CMAKE_CXX_FLAGS` for every
+  build type, after the tree's flags, so the debug information is dropped at the link (see
   [What kpkg does around build.sh](../../../../docs/kdos/05-developer/writing-ports.md#what-kpkg-does-around-buildsh)).
 
 ## Patches
@@ -80,4 +80,4 @@ the same directories (see
 darktable calls `g_set_prgname("org.darktable.darktable")`, which makes that its Wayland app_id.
 Upstream's desktop entry names `StartupWMClass=darktable` and an absolute `Exec` path, so it is
 replaced by one with `StartupWMClass=org.darktable.darktable` and a bare `Exec=darktable %U`.
-The hicolor PNG icons it names are upstream's.
+The hicolor icons it names are upstream's.

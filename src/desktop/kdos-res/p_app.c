@@ -19,10 +19,12 @@
  *
  * GROUPING, first match wins:
  *   1. the conmon box
- *   2. the executable's basename against the desktop-entry index
- *   3. nothing. An unmatched process is NOT invented into an application: it
- *      stays in Processes and the footer says how much CPU is outside the
- *      rollup, the way kdos-energy names its short-lived residue.
+ *   2. the process's own comm, for every host process but init and the
+ *      kernel threads. No desktop entry is consulted, so a host row is named
+ *      for what the kernel calls the program.
+ *   3. nothing, for init and once the table is full. Such a process stays in
+ *      Processes and the footer says how much CPU is outside the rollup, the
+ *      way kdos-energy names its short-lived residue.
  *
  * IDENTITY DOES NOT COME FROM WAYLAND. Binding wlr-foreign-toplevel would name
  * windows beautifully and would make the TTY and the window two different
@@ -62,11 +64,10 @@ static int g_dragbar;		/* a press landed on the scrollbar */
  * WHOSE MOVE THE LAST ONE WAS, and it is the load-bearing half of the wheel
  * rule. `kch_list_clamp` pulls the SELECTION into view when it is told the
  * selection is what moved — and a draw that tells it that unconditionally
- * undoes a viewport scroll on the very next frame. This table passed a hard 1,
- * so the wheel appeared to do nothing at all and the scrollbar drag that came
- * later did nothing either: both moved `g_top`, and the next draw put it back.
- * Set by everything that moves the CURSOR, cleared by everything that moves
- * the PAGE.
+ * undoes a viewport scroll on the very next frame. A hard 1 here would make the
+ * wheel and the scrollbar drag do nothing: both move `g_top`, and the next
+ * draw would put it back. Set by everything that moves the CURSOR, cleared by
+ * everything that moves the PAGE.
  */
 static int g_follow = 1;
 /*
@@ -82,11 +83,11 @@ static int g_width;		/* the width the last draw had     */
 
 /*
  * THE COLUMN HEADER IS THE SORT CONTROL, on the page whose whole question is
- * "which of these is the busiest". It was CPU and nothing else, so the answer
- * to "what is eating the disk" was to read forty rows. The order is the
- * columns' own, so the header a pointer lands on IS the key it sets — and a
- * second click on the same one reverses it, which is what every table on every
- * desktop has done since the eighties.
+ * "which of these is the busiest": a CPU-only order would answer "what is
+ * eating the disk" with forty rows to read. The order is the columns' own, so
+ * the header a pointer lands on IS the key it sets — and a second click on the
+ * same one reverses it, which is what every table on every desktop has done
+ * since the eighties.
  */
 enum { AS_NAME = 0, AS_CPU, AS_MEM, AS_DISK, AS_PROCS, AS_N };
 static const char *AS_NAMES[AS_N] = { "name", "cpu", "memory", "disk",

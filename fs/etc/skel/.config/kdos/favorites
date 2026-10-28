@@ -15,8 +15,8 @@
 # pinned column above the rule. Two lists of favourites would be two things to
 # keep in agreement, and one of them always loses.
 #
-# An id with no entry is skipped in silence: an alien app that is not in this
-# image's appbox bake must not leave a launcher that opens nothing.
+# An id with no entry is skipped in silence: an alien app whose pack is not
+# installed must not leave a launcher that opens nothing.
 #
 # SHIP A LIST, not an empty file. The quick-launch row and the pinned column
 # both read this, and both of them look broken on a freshly booted machine

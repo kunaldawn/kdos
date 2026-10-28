@@ -1,10 +1,12 @@
 # Firewall
 
 The KDOS [firewall]{.idx} is one nftables ruleset, loaded at boot before the network starts. It
-drops every connection that arrives unasked, forwards nothing but a [hotspot]{.idx}'s and the containers'
-traffic, and lets everything out. This page covers the files that make up the ruleset, opening a
-named service from the desktop or the command line, adding rules of your own, checking what is
-loaded, and what to do when the ruleset does not load.
+drops what arrives unasked, apart from the few things a workstation has to receive: ICMP, mDNS,
+DHCPv6, NetBIOS name replies, and a [hotspot]{.idx}'s DHCP and DNS requests. It forwards nothing
+but the traffic of a hotspot, rootful containers and libvirt guests, and lets everything out. This
+page covers the files that make up the ruleset, opening a named service from the desktop or the
+command line, adding rules of your own, checking what is loaded, and what to do when the ruleset
+does not load.
 
 ## Installation
 
@@ -43,9 +45,9 @@ Every `*.nft` file here is included at the end of `nftables.conf`, and must add 
 
 | File | Written by | Opens |
 |:--|:--|:--|
-| `40-podman.nft` | `fs/etc/nftables.d/` | Forwarding and DNS for rootful podman's `podman*` bridges |
+| `40-podman.nft` | The base filesystem, `fs/etc/nftables.d/` | Forwarding and DNS for rootful podman's `podman*` bridges |
 | `40-libvirt.nft` | The [libvirt](#port-libvirt) package | Forwarding, DHCP and DNS for libvirt's `virbr*` bridges |
-| `50-kdos-services.nft` | `fs/etc/nftables.d/`, empty; rewritten whole by [`kdos-powerd`]{.idx} | The named services that are on |
+| `50-kdos-services.nft` | The base filesystem, empty; rewritten whole by [`kdos-powerd`]{.idx} | The named services that are on |
 
 The shipped `50-kdos-services.nft`:
 
@@ -99,7 +101,8 @@ The names, and the ports each one opens, are compiled into `kdos-powerd`; the ta
 [firewall](../../kdos/04-programs/daemons.md#firewall). Turning one on or off needs `wheel`.
 
 1. With the desktop: open Settings, go to **System**, and choose **Firewall…** under *Security and
-   updates*. Switch the service's row.
+   updates*. Select the service's row and press Enter or Space, or click **Open** (**Close** for
+   one that is open). The *STATE* column shows `open` or `closed`.
 
 2. From a shell:
 
@@ -170,16 +173,20 @@ For a port no name covers.
 
 2. At every boot, with `sudo service disable nftables`, which writes
    [`/etc/service.disabled/nftables`]{.idx} and prints `Service 'nftables' disabled.`
-   `sudo service enable nftables` removes it.
+   `sudo service enable nftables` removes it; the marker is described in
+   [Choosing what starts at boot](services.md#choosing-what-starts-at-boot).
 
-On the live medium both last until power-off, unless a persistence store exists.
+On the live medium the `disable` marker is lost at power-off unless a
+[persistence store](live-persistence.md) exists.
 
 ## Tips
 
 - `sudo nft monitor` prints every change to the ruleset as it happens, which shows whether a
   toggle reached the kernel.
-- To log what the input chain drops while you debug, add `log prefix "nft-drop: " drop` as the
-  last rule of a file of your own; the kernel log, `dmesg`, shows each packet. Remove it afterwards.
+- To log what the input chain drops while you debug, add `log prefix "nft-drop: " drop` to the
+  `input` chain in a file that sorts after every other drop-in, such as `99-log.nft`; the drop-ins
+  are read in name order, so a rule in a later file would never be reached. `sudo dmesg` shows each
+  packet (the kernel log is root's). Remove the file afterwards.
 - `iptables` on KDOS is the nftables-backed `xtables-nft-multi`, and its rules go into tables of
   their own, which `nftables.conf` neither loads nor removes and nothing restores at boot. An
   `accept` there does not let in a packet this ruleset drops: a drop in any base chain on a hook is
@@ -212,15 +219,23 @@ and a `policy` on that line replaces the chain's own; leave both out of a drop-i
 
 **`kdos-power firewall <name> on` prints `err the ruleset would not load; nothing changed`.**
 A hand-written drop-in is broken, so the whole ruleset fails its check. The kernel keeps the rules
-it had, but the rewritten `50-kdos-services.nft` stays on disk, so `firewall list` shows the
-requested state and the next boot loads it. Run `sudo nft -c -f /etc/nftables.conf`, fix the file it
-names, and repeat the toggle.
+it had, and the daemon puts the previous `50-kdos-services.nft` back, so `firewall list` and the
+next boot keep the previous state. Run `sudo nft -c -f /etc/nftables.conf`, fix the file it names,
+and repeat the toggle. `err the ruleset did not apply` is the same refusal from the kernel after the
+check passed, and leaves the same previous state.
+
+**`kdos-power firewall <name> on` prints `err cannot read the current rules`.**
+`50-kdos-services.nft` exists but the daemon cannot read it, so it could not put the file back if
+the new ruleset were refused, and it changes nothing. Check the file with
+`ls -l /etc/nftables.d/50-kdos-services.nft`; it belongs to root and is readable by its owner.
+If it is damaged, delete it and repeat the toggle: the daemon writes the file whole, and with no
+file every service starts from off, so turn the others back on afterwards.
 
 **`kdos-power firewall` prints `err no service called that`.**
 The name is not in the daemon's table. Run `kdos-power firewall list` for the names, or write a
 drop-in.
 
-**`kdos-power firewall` prints `kdos-power: no kdos-powerd`, or `err not permitted`.**
+**`kdos-power firewall` prints ``kdos-power: no kdos-powerd — `service start powerd` ``, or `err not permitted`.**
 Start the daemon with `sudo service start powerd`, or run the command as a member of `wheel`.
 
 **A hotspot's clients join and get no address.**

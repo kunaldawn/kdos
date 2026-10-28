@@ -27,7 +27,7 @@ kdos-bb
 # Boot splash. Lives in src/art rather than ports/core because the source is
 # ours, not an upstream tarball. Draws the CRT power-on animation straight to
 # /dev/fb0 from the initramfs and keeps running until rcS hands the console to
-# agetty.
+# kdos-getty.
 kdos-splash
 
 # The GTK/icon/cursor generators (src/art, ours). Build-time step for
@@ -38,7 +38,7 @@ kdos-theme
 # KDOS phosphor icon theme (src/art, ours) — recolored Papirus.
 kdos-icons
 
-# KDOS phosphor pixel-art cursor theme (src/art, ours) — generated Xcursor.
+# KDOS phosphor cursor theme (src/art, ours) — recolored Bibata Modern Ice.
 kdos-cursors
 
 # KDOS phosphor GTK theme (src/art, ours) — recolored adw-gtk3.

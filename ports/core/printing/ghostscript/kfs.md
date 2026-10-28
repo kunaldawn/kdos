@@ -28,7 +28,7 @@ as a shared library, `libgs`, with `gs` as a small program that loads it.
 - `CC="gcc -std=gnu11"` — Ghostscript's build adds `CFLAGS` to its C++ compiles too, so the C
   standard is moved out of `CFLAGS` (`CFLAGS="${CFLAGS/-std=gnu11/}"`) into `CC`, which only the
   C compiler runs as; see
-  [C flags handed to the C++ compiler](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/build-troubleshooting.md#c-flags-handed-to-the-c-compiler).
+  [C flags handed to the C++ compiler](../../../../docs/kdos/05-developer/build-troubleshooting.md#c-flags-handed-to-the-c-compiler).
 
 ## Patches
 - `sprintf-guard.patch` — Add `#undef sprintf` after the includes of `base/mkromfs.c` and `cups/gdevcups.c`. Both `#define sprintf sprintf` before their includes so that Ghostscript's `stdio_.h` leaves `sprintf` alone instead of turning it into the poison name `DO_NOT_USE_SPRINTF`; the fortified `<stdio.h>` this tree compiles against, which `stdio_.h` includes before that check, `#undef`s `sprintf`, so the guard is gone and the files' own `sprintf()` calls would reach the poison name.

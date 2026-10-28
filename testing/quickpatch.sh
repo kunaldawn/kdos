@@ -14,17 +14,17 @@
 # device.
 #
 # THIS EXISTS BECAUSE THE ISO STEP IS SIX MINUTES AND A BINARY IS TWO HUNDRED
-# KILOBYTES. Rebuilding the image to look at a changed program made every
-# iteration twelve minutes, nearly all of it repacking 32 GB that did not
-# change. The live medium's root is an overlay in RAM, so untarring over it is
-# both allowed and thrown away at the next boot — which is the property that
+# KILOBYTES. Rebuilding the image to look at a changed program spends nearly
+# all of an iteration repacking 32 GB that did not change. The live medium's
+# root is an overlay in RAM, so untarring over it is both allowed and thrown
+# away at the next boot — which is the property that
 # makes this safe rather than a way to corrupt a test image.
 #
 # THE SESSION IS RESTARTED, NOT THE MACHINE. Rebooting would lose the patch —
 # it lives only in the RAM overlay — so the chain is ended and started again.
 #
-# A RESTARTED SESSION IS NOT A BOOTED ONE, and one difference is measured and
-# has cost hours: anything that owns a D-BUS NAME does not come back cleanly.
+# A RESTARTED SESSION IS NOT A BOOTED ONE, and one difference is measured:
+# anything that owns a D-BUS NAME does not come back cleanly.
 # `kdos-notifyd` is killed here for that reason, and even so a notification
 # raised in a restarted session has never been seen to draw, while the same
 # call on a booted ISO does. **Verify anything involving the bus on a real
@@ -141,10 +141,10 @@ rm -f /run/user/1000/wayland-[0-9] /run/user/1000/wayland-[0-9].lock
 
 # ── AND START IT AGAIN BY HAND ──────────────────────────────────────────
 #
-# NOT by waiting for init. `/etc/inittab` respawns tty1, and it does not come
-# back here: ending the chain takes the getty with it and init leaves it down —
-# measured, twice, with nothing but `getty` on tty2 left running. Rather than
-# guess at a respawn policy, this starts what the login shell's profile would.
+# NOT by waiting for init. `/etc/inittab` respawns tty1 only when its entry
+# exits, and the login shell above is still running, so init sees nothing to
+# restart and no session comes back on its own. This starts what the login
+# shell's profile would.
 #
 # On tty1's own descriptors, because the compositor opens the seat for that
 # terminal and a process with no controlling terminal there gets no input.

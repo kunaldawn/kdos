@@ -5,7 +5,7 @@ installed as a gem. In KDOS its use is at build time: ports whose manual pages a
 AsciiDoc generate them with it, and the ports that name it in `depends` include `perf`,
 `bpftrace`, `wireshark`, `weechat`, `newsboat`, `git-lfs`, `keepassxc` and `ccache-manual`. A
 build that looks for `asciidoctor` on `PATH` uses it whenever it is there, so
-[Manual pages](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#manual-pages) has every port
+[Manual pages](../../../../docs/kdos/05-developer/writing-ports.md#manual-pages) has every port
 whose pages come from it name it in `depends`.
 
 ## Flags

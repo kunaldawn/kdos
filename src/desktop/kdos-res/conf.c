@@ -28,13 +28,11 @@ ResConf RC = {
 	.units_1024 = 1,
 	.fahrenheit = 0,
 	.cpu_of_machine = 0,
-	.memory_pss = 0,
 	.kernel_threads = 0,
 	.virtual_drives = 0,
 	.virtual_net = 0,
 	.icons = 1,
 	.sort = "cpu",
-	.columns = "",
 };
 
 const char *res_conf_path(void)
@@ -104,8 +102,6 @@ void res_conf_load(void)
 			RC.fahrenheit = (*v == 'f' || *v == 'F');
 		} else if (!strcmp(k, "cpu_percent")) {
 			RC.cpu_of_machine = !strcmp(v, "machine");
-		} else if (!strcmp(k, "memory")) {
-			RC.memory_pss = !strcmp(v, "pss");
 		} else if (!strcmp(k, "kernel_threads")) {
 			RC.kernel_threads = yes(v);
 		} else if (!strcmp(k, "virtual_drives")) {
@@ -116,8 +112,6 @@ void res_conf_load(void)
 			RC.icons = yes(v);
 		} else if (!strcmp(k, "sort")) {
 			kb_strlcpy(RC.sort, v, sizeof(RC.sort));
-		} else if (!strcmp(k, "columns")) {
-			kb_strlcpy(RC.columns, v, sizeof(RC.columns));
 		} else {
 			fprintf(stderr, "kdos-res: %s: unknown key '%s'\n",
 				path, k);

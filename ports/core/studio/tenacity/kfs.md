@@ -2,9 +2,11 @@
 
 Tenacity is a multitrack audio editor and recorder on wxWidgets, a fork of the Audacity 3 code
 base with Audacity's network features removed. KDOS carries it beside [Audacity](#port-audacity),
-which is the Qt 6 Audacity 4. Its formats and effects come from libraries in `depends`: libsndfile,
-libmad and libid3tag for MP3 import, LAME for MP3 export, twolame, Ogg, Vorbis and FLAC, Matroska,
-SoundTouch and SBSMS for pitch and tempo, and the LV2, LADSPA, VST2 and Vamp plugin hosts.
+which is the Qt 6 Audacity 4. Its formats and effects come from libraries in `depends`: libsndfile
+for uncompressed formats, libmad for MP3 import and libid3tag for MP3 tags, LAME for MP3 export,
+twolame for MP2 export, Ogg, Vorbis, FLAC and Matroska, SoundTouch and SBSMS for pitch and tempo,
+and the LV2 and Vamp plugin hosts. The LADSPA and VST2 hosts are compiled from Tenacity's own
+tree and need no library.
 
 ## Flags
 

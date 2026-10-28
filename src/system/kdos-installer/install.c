@@ -1501,10 +1501,12 @@ static void do_copy(void)
  * has already SAID which — a person must not discover at first boot that
  * nothing was installed.
  *
- *   import   an exported set on a mounted device: staged through kdos-packd in
- *            the target, which verifies each pack where it mounts it. Offline,
- *            and the only route on a machine with no network.
- *   network  built during the install, over the network.
+ *   import   an exported set on a mounted device, run through the live
+ *            session's `kdos-appbox import` with no target root: the packs
+ *            land in the live store and end with it, and the target gets
+ *            only the empty store below. Offline.
+ *   network  `kdos-appbox install` in the live session, with no target root:
+ *            what it builds lands in the live store, as with import.
  *   pending  recorded in /var/lib/kdos/apps-pending; the first session offers
  *            them. Building is podman and apt and can be most of an hour, and
  *            an installer that did that silently is an installer that appears
@@ -1615,10 +1617,11 @@ static void do_config(void)
 		fail("cannot read a UUID back from %s", part_root);
 	logf_("root UUID %s", root_uuid);
 
-	/* fstab is APPENDED to, never replaced. The shipped file carries the
+	/* fstab is never replaced: the installer's root, ESP and swap lines go
+	 * first and the shipped file follows them. The shipped file carries the
 	 * proc/sys/dev lines and the tmpfs /tmp with mode=1777 — dropping
-	 * those locks every non-root user out of /tmp, which surfaces later as
-	 * "GIMP does not start" and costs an afternoon to trace back here. */
+	 * those locks every non-root user out of /tmp, and a program that
+	 * needs a temporary file there fails. */
 	emit('N', "fstab");
 	const Filesystem *rfs = ki_fs(cfg.fstype);
 	char fst[8192] = "";
@@ -1710,10 +1713,12 @@ static void do_config(void)
 			if (symlink(zi, TARGET "/etc/localtime") == 0)
 				logf_("linked /etc/localtime -> %s", zi);
 		} else if (!kb_path_exists(zi)) {
-			/* A zone the picker offered and the target does not
-			 * carry leaves `TZ` pointing at a symlink that is not
-			 * there, and musl answers UTC with no error. Said
-			 * here, where the log is read. */
+			/* The check reads the live root's zoneinfo tree, the
+			 * one the target is installed from. A zone the picker
+			 * offered and that tree does not carry leaves `TZ`
+			 * pointing at a symlink that is not there, and musl
+			 * answers UTC with no error. Said here, where the log
+			 * is read. */
 			logf_("no zone file for %s; the machine will keep UTC",
 			      cfg.tz_label);
 		}
@@ -1773,11 +1778,12 @@ static void do_config(void)
 	 * one about whether the key is commented, and leave the file with two
 	 * `autologin` lines — of which kdos-login honours the last.
 	 *
-	 * OFF IS A COMMENTED LINE AND NOT AN EMPTY VALUE. kdos-login reads the
-	 * key and asks when it finds none, and `autologin =` with nothing after
-	 * it would be a key naming an account called "", which agetty would be
-	 * handed. A file that has no line at all gains one only when autologin
-	 * was asked for.
+	 * OFF IS A COMMENTED LINE AND NOT AN EMPTY VALUE. kdos-login asks for a
+	 * password when the key is missing or empty, so either form turns
+	 * autologin off; the commented line still names the installed account,
+	 * so uncommenting it turns autologin on for that account without
+	 * anyone supplying the name. A file that has no line at all gains one
+	 * only when autologin was asked for.
 	 */
 	{
 		char cc[8192];
@@ -2333,7 +2339,7 @@ static void do_boot(void)
 	   "    cmdline: kdos_slot=a %s%sroot=UUID=%s rw console=tty0 loglevel=7\n"
 	   "\n"
 	   "/KDOS (single user)\n"
-	   "    comment: A root shell, no session\n"
+	   "    comment: A root shell for root's password, no desktop\n"
 	   "    protocol: linux\n"
 	   "    path: boot():/EFI/kdos/a/vmlinuz\n"
 	   "    module_path: boot():/EFI/kdos/a/initramfs.cpio.gz\n"

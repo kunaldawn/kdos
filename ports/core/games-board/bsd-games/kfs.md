@@ -40,7 +40,7 @@ there without asking. `build.sh` therefore writes the whole of `config.params` a
 
 ## Patches
 
-- `adventure-linkdata-bounds.patch` — In `adventure/init.c`, the loop in `linkdata()` ran `for (i = 1; i <= LOCSIZ; i++)` over `ltext`, `travel` and `cond`, which are arrays of `LOCSIZ` elements, so its last pass read `ltext` and `travel` one element past their end and could write `cond` one past its end. The patch stops the loop at `i < LOCSIZ`.
+- `adventure-linkdata-bounds.patch` — In `adventure/init.c`, upstream's loop in `linkdata()` runs `for (i = 1; i <= LOCSIZ; i++)` over `ltext`, `travel` and `cond`, which are arrays of `LOCSIZ` elements, so its last pass reads `ltext` and `travel` one element past their end and can write `cond` one past its end. The patch stops the loop at `i < LOCSIZ`.
 
 ## Notes
 

@@ -11,7 +11,7 @@ URLs. [libgit2](#port-libgit2) uses it for SSH remotes, and through libgit2 and 
 [gst-plugins-bad](#port-gst-plugins-bad) depend on it as well. The `libssh2-sys` crate asks `pkg-config` for
 this library only when `LIBSSH2_SYS_USE_PKG_CONFIG=1` is set, which both of those `build.sh` files
 export, and compiles a copy of its own in silence when it finds none; see
-[rust](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#rust).
+[rust](../../../../docs/kdos/05-developer/writing-ports.md#rust).
 
 ## Flags
 
@@ -29,5 +29,5 @@ export, and compiles a copy of its own in silence when it finds none; see
 - `--disable-rpath` — a switch of gnulib's library-search macros, which configure uses to find
   OpenSSL and zlib: with it, they hard-code no directory they found a library in as a run path in
   `libssh2.so`. Every library it links is in `/usr/lib`, the loader's default path, and the package
-  lint warns on such an entry (see [What the package lint
-  refuses](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#what-the-package-lint-refuses)).
+  lint warns on such an entry (see
+  [What the package lint refuses](../../../../docs/kdos/05-developer/writing-ports.md#what-the-package-lint-refuses)).

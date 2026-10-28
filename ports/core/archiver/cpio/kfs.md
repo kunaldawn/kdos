@@ -1,7 +1,7 @@
 ## About
 
 GNU cpio copies files into and out of cpio and tar archives. KDOS needs it because the
-[initramfs](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/boot-and-init.md#the-initramfs)
+[initramfs](../../../../docs/kdos/03-architecture/boot-and-init.md#the-initramfs)
 is a cpio archive in the `newc` format. `script/phases/70_image/090_initramfs.sh` writes it with
 `cpio -o -H newc --reproducible`, together with the uncompressed microcode archive that has to
 come first in the file, and the [linux](#port-linux) port's `postinstall.sh` lists and rewrites it

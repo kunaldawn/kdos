@@ -5,9 +5,9 @@ filesystem and starts its processes in new namespaces and cgroups, with the capa
 filter and mounts the configuration asks for. [podman](#port-podman) and [buildah](#port-buildah)
 depend on it, and the shipped `/etc/containers/containers.conf` names it as the runtime, with
 `cgroupfs` as the cgroup manager because there is no systemd to delegate one (see
-[Containers](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/06-reference/configuration.md#containers)).
+[Containers](../../../../docs/kdos/06-reference/configuration.md#containers)).
 A KDOS box is a rootless Podman container (see
-[kdos-appbox](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/kdos-appbox.md)), so
+[kdos-appbox](../../../../docs/kdos/04-programs/kdos-appbox.md)), so
 every boxed application starts through crun.
 
 The package is the `crun` program and its manual page, with `libcrun.a`, the static library the
@@ -27,7 +27,12 @@ program is linked from. No shared `libcrun` is built.
   of linking libblake3, which is not a port. On `auto` configure would choose the same, but only
   after looking for the library.
 - `--disable-criu` — Builds no checkpoint and restore. That needs CRIU, which is not a port; see
-  [Features whose library has no port](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/06-reference/known-gaps.md#features-whose-library-has-no-port).
+  [Features whose library has no port](../../../../docs/kdos/06-reference/known-gaps.md#features-whose-library-has-no-port).
 - `--disable-shared`, `--enable-static` — Build `libcrun` as a static library only and link it
   into `crun`. This is the default of crun's configure (`LT_INIT([disable-shared])`), named
   here.
+
+## Notes
+crun parses its command line with `argp`, which glibc provides and musl does not; configure stops
+with `argp functions not found` unless a library supplies `argp_parse`, which is why
+[argp-standalone](#port-argp-standalone) is in `depends`.

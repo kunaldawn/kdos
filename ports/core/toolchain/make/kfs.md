@@ -16,6 +16,6 @@ files the step installed. It is one of the build tools that recipes use without 
   [guile](#port-guile) port, built in `41_system`, so naming the switch keeps a later rebuild
   of make from linking it.
 - `-std=gnu99` — Compile make as GNU C99. It comes after the chroot's `CFLAGS`, whose standard
-  is `-std=gnu11` (see [The release flags](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-release-flags)), and the last `-std` on a
+  is `-std=gnu11` (see [The release flags](../../../../docs/kdos/05-developer/writing-ports.md#the-release-flags)), and the last `-std` on a
   GCC command line is the one that applies. The bootstrap build compiles make as `gnu99` too,
   the standard `script/env/host.env` sets.

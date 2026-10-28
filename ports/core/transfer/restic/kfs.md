@@ -1,8 +1,9 @@
 ## About
 
 restic makes deduplicated, encrypted backups into a repository, on a local disk or one of the
-remote backends it speaks, such as SFTP or its own REST server, and restores from it. `restic mount` shows the snapshots as a filesystem through FUSE,
-running fuse's setuid `fusermount` to mount, which is why [fuse](#port-fuse) is in `depends`.
+remote backends it speaks, such as SFTP or its own REST server, and restores from it.
+`restic mount` shows the snapshots as a filesystem through FUSE, running fuse's setuid
+`fusermount` to mount, which is why [fuse](#port-fuse) is in `depends`.
 
 ## Flags
 
@@ -22,6 +23,6 @@ from it alone (see
 [Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring)).
 
 The manual pages and the completions are written by the binary just built, `restic generate`, so
-they always describe the commands of the version installed. `generate` writes the file it is given
-but does not create the directory above it, which is why `build.sh` makes all four directories
-first.
+they always describe the commands of the version installed. `generate` creates neither the
+directory `--man` writes into nor the one above a completion file, which is why `build.sh` makes
+all four directories first.

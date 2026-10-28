@@ -40,8 +40,8 @@ is on the root filesystem.
 
 `kdos-mountd` mounts every share it connects with `nosuid`, `nodev` and `noexec`. The image ships
 no `mountd.conf`; a line `exec = yes` in it drops `noexec` from removable media and network shares
-alike. The daemon finds the text anywhere in the file, comments included, so delete the line to
-turn the setting off. The three settings are in
+alike. Only a line that is exactly `exec = yes`, with the blanks around `=` optional, turns it on;
+a commented-out `# exec = yes` leaves the setting off. The three settings are in
 [/etc/kdos/mountd.conf](../../kdos/04-programs/daemons.md#etckdosmountdconf).
 
 ### /etc/request-key.d/cifs.spnego.conf
@@ -63,13 +63,13 @@ password database under `/var/lib/samba/private` and the logs under [`/var/log/s
 
 <!-- kfs:include ports/core/servers/samba/build.sh lines=16-24 pin=087bd4fbb30a -->
 
-`smbd` creates neither `/var/log/samba` nor `/var/cache/samba`. Both are directories the package
-claims, and the image carries every such directory under `/var/log` and `/var/cache`, empty
-([110_iso](../15-image/110-iso.md)), so both exist on the live medium and on an installed system,
-and the service script creates both again each time it starts `smbd`, so emptying `/var/log` does
-not cost the server its log. Without them `testparm` reports `ERROR: cache directory /var/cache/samba does not exist`, and the
-log lines go to the supervisor's `/run/kdos-svc.samba.log`, with *Unable to open new log file
-'/var/log/samba/log.smbd'* among them.
+`smbd` creates neither `/var/log/samba` nor `/var/cache/samba`. Both exist on the live medium and
+on an installed system, because the package claims them and the image carries every directory a
+package claims under `/var/log` and `/var/cache`, empty ([110_iso](../15-image/110-iso.md)). The
+service script also creates both before each start, so emptying `/var/log` does not cost the
+server its log. Without them, `testparm` reports `ERROR: cache directory /var/cache/samba does
+not exist`, and the server's log lines go only to the supervisor's `/run/kdos-svc.samba.log`,
+among them *Unable to open new log file '/var/log/samba/log.smbd'*.
 
 ### /etc/exports and the NFS scripts
 
@@ -102,19 +102,22 @@ is none:
 `kdos share` hands the transfer to `croc`, and `/usr/bin/croc` is a wrapper that keeps every
 transfer on the local network. `croc-relay` is the same program with upstream's default relay:
 
-<!-- kfs:include ports/core/transfer/croc/build.sh lines=21-26 pin=316ed867bd46 -->
+<!-- kfs:include ports/core/transfer/croc/build.sh lines=23-28 pin=316ed867bd46 -->
 
 ## Usage
 
 ### Mounting an SMB share from the desktop
 
-1. Open `kdos-connect`: type its name at a prompt, or choose the row *Sync…* on the System page
+1. Open `kdos-connect`: type its name at a prompt, or choose the row *Connect to server…* on the System page
    of Settings. The window lists the shares you have connected. `F1` opens its help page, which is
    also `kdos-doc connect`.
 2. Press `b` to list the machines that answered a broadcast, and `Enter` on one to put its name in
-   the Server field. To type the server yourself, press `Enter` on the list instead.
-3. Fill in Share, User and Domain, moving between fields with `Tab`. User is your account on the
-   server; leave Domain empty where there is none. `Enter` in any field sends the form.
+   the Server field; `Esc` goes back to the list of connected shares. To type the server
+   yourself, press `Enter` on the list of connected shares instead.
+3. Fill in Share, User and Domain. `Tab` or `Down` moves to the next field, `Shift+Tab` or `Up` to
+   the one before. A server chosen from the broadcast list opens the form on the Password row, so
+   move back up to Share first. User is your account on the server; leave Domain empty where
+   there is none. `Enter` in any field sends the form.
 4. On *Sign in*, `Space` chooses between a password and the Kerberos ticket [`kinit`]{.idx} left in your
    credential cache. Type the password if one is asked for, then press `Enter` to connect.
 5. The share is mounted at `/media/<user>/<server>-<share>`, owned by you, with files at mode
@@ -125,7 +128,7 @@ transfer on the local network. `croc-relay` is the same program with upstream's 
 
 [`kdos-mount`]{.idx} reaches the same daemon. The verbs that carry a password are reached from
 `kdos-connect` only, so a password never appears on a command line; a Kerberos mount carries none
-and has a verb here.
+and has a verb here. There is no verb that disconnects a share; do that in `kdos-connect`.
 
 1. List the file servers that answer a broadcast:
 
@@ -157,26 +160,48 @@ Every member of `seat` or `wheel` may use these verbs. As root, `mount.cifs` wor
 any Linux system:
 
 ```bash
-sudo mount -t cifs //fileserver/projects /mnt -o username=you,uid=$(id -u),gid=$(id -g)
+sudo mkdir -p /mnt/share
+sudo mount -t cifs //fileserver/projects /mnt/share -o username=you,uid=$(id -u),gid=$(id -g)
 ```
+
+Mount on a directory of its own rather than on `/mnt`: on the live medium `/mnt` holds the boot
+medium at `/mnt/iso` and the persistence store at `/mnt/persist`, and a mount over `/mnt` hides
+both until it is undone.
 
 ### Mounting an NFS export
 
-1. Mount it as root, naming version 4:
+1. Mount it as root, naming version 4, on a directory of its own:
 
    ```bash
-   sudo mount -t nfs4 fileserver:/srv/share /mnt
+   sudo mkdir -p /mnt/share
+   sudo mount -t nfs4 fileserver:/srv/share /mnt/share
    ```
 
-   `mount.nfs4` returns once the mount is made, and `sudo umount /mnt` undoes it. `/etc/mtab` is a
+   `mount.nfs4` returns once the mount is made, and `sudo umount /mnt/share` undoes it. `/etc/mtab` is a
    link to the kernel's own list, `/proc/self/mounts`, so the helper keeps no table of its own.
 
 2. An NFSv3 server needs `-o nolock` on the client, which keeps locks on this machine (not tried
    against an NFSv3 server; this machine's own server speaks NFSv4 only):
 
    ```bash
-   sudo mount -t nfs -o vers=3,nolock fileserver:/srv/share /mnt
+   sudo mount -t nfs -o vers=3,nolock fileserver:/srv/share /mnt/share
    ```
+
+3. To let an ordinary account mount the export, list it in `/etc/fstab` with the `user` option
+   and `noauto`, so the boot does not try it:
+
+   ```
+   fileserver:/srv/share  /mnt/share  nfs4  user,noauto  0 0
+   ```
+
+   The account then runs `mount /mnt/share` without `sudo`. Of the `fstab` lines an ordinary
+   account might mount, only an NFS one works this way: util-linux's `mount` is not setuid, but
+   it hands the line to `mount.nfs`, which is setuid root and checks the `user` option itself (see
+   [setuid binaries](../../kdos/03-architecture/security-model.md#setuid-binaries) and
+   [Adding a disk to fstab](filesystems-and-fstab.md#adding-a-disk-to-fstab)). Unmounting still
+   takes `sudo umount /mnt/share`: an ordinary account may unmount only a mount recorded as its
+   own, and nothing records it, because `/etc/mtab` is the kernel's list and keeps no owner.
+   Neither half has been tried on a booted image.
 
 ### Serving a folder over SMB
 
@@ -228,8 +253,9 @@ sudo mount -t cifs //fileserver/projects /mnt -o username=you,uid=$(id -u),gid=$
 
    `smb` opens TCP 445 only.
 
-On the live medium, the directories of step 2 last until the next reboot, like the rest of `/var`,
-unless the medium has a persistence store.
+On the live medium, `smb.conf`, the shared folder of step 2 and the Samba password under
+`/var/lib/samba/private` are all held in memory and are gone at the next reboot, unless the medium
+has a persistence store ([Live persistence](live-persistence.md)).
 
 ### Serving a folder over NFS
 
@@ -259,12 +285,13 @@ or directory*, whatever filesystem the export is on. An export of a filesystem o
 a mounted disk, made the server's root with `fsid=0`, is mounted as `<server>:/`:
 
 ```bash
+sudo mkdir -p /srv/nfs
 sudo mount /dev/sdb1 /srv/nfs
 echo '/srv/nfs 192.168.1.0/24(rw,sync,no_subtree_check,fsid=0)' | sudo tee /etc/exports
 sudo service start nfsd
 ```
 
-and on the client, `sudo mount -t nfs4 <server>:/ /mnt`. Mounted from this machine itself,
+and on the client, `sudo mount -t nfs4 <server>:/ /mnt/share`. Mounted from this machine itself,
 such an export is writable by the account that owns its top directory.
 
 An export below `/` on an installed system, whose root is a real filesystem, has not been tried.
@@ -369,7 +396,6 @@ both must be on the same network: global discovery and relays are off in the con
 - [An NFSv3 mount needs `-o nolock`](../../kdos/06-reference/known-gaps.md#an-nfsv3-mount-needs--o-nolock)
 - [Kerberos is built and has never been given a ticket](../../kdos/06-reference/known-gaps.md#kerberos-is-built-and-has-never-been-given-a-ticket):
   `kdos-mount krb5` and `63_gssd` have not been used against a real domain
-- [The control centre's *Sync…* row opens the network-share window](../../kdos/06-reference/known-gaps.md#the-control-centres-sync-row-opens-the-network-share-window)
 - An NFS export below `/` cannot be mounted from a live session; see
   [Serving a folder over NFS](#serving-a-folder-over-nfs)
 - Not run on a booted image: the `kdos-connect` window, a `kdos share` transfer, and Syncthing

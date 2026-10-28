@@ -30,7 +30,7 @@
  * boundary of the box.
  *
  * The walk is bounded: a corrupted or hostile ppid chain must not spin, and
- * eight hops is deeper than any real container nesting here.
+ * KPR_BOX_HOPS (16) is deeper than any real container nesting here.
  */
 /*
  * conmon's argv carries `-n <name>`. The parse exists once because three

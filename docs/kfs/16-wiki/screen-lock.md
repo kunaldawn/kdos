@@ -48,7 +48,7 @@ compositor's `rc.xml`, from `fs/etc/skel/.config/kdos-comp/rc.xml`:
 
 <!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=132-133 pin=84ab2c338155 -->
 
-<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=319-321 pin=b8a46f76234d -->
+<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=313-315 pin=b8a46f76234d -->
 
 `kdos toggle stay-awake` writes a state file under `~/.local/state/kdos/toggles/`, which the
 compositor reads each time it re-arms its idle timer; see
@@ -69,7 +69,9 @@ screen at all. The checker's contract is in
 Any of these starts `kdos-lock`:
 
 1. Press Super+L.
-2. In the Start menu, choose the Lock Screen button in the row of power buttons at the bottom; see
+2. In the Start menu, click the first of the five power icons at the bottom right (pointing at it
+   shows `Lock Screen` in the search field), or type `lock` and choose `Lock Screen` from the
+   results; see
    [kdos-start](../../kdos/04-programs/kdos-shell.md#kdos-start).
 3. Right-click the desktop and choose **Lock Screen**; see
    [kdos-desk](../../kdos/04-programs/kdos-shell.md#kdos-desk).
@@ -79,12 +81,22 @@ Any of these starts `kdos-lock`:
    kdos-lock
    ```
 
-   It prints `locked` once the compositor confirms the lock.
+   It prints `locked` once the compositor confirms the lock, and exits 0 when the session is
+   unlocked. It exits 1 with `kdos-lock: cannot create a lock surface — is kdos-comp running?`
+   when there is no compositor to lock, and with
+   `kdos-lock: the session is already locked by another client` when another lock program holds
+   the session.
 
-The lock shows one box on the first output: `KDOS` and the time, the account as `<user>@<host>`, a
-`password` field and `Enter to unlock`. To unlock, type the account's password and press Enter.
-A wrong one turns the box red with `Wrong password`. The field takes no keys until the
-compositor has confirmed the lock.
+The lock draws one box on the first output, under the KDOS logo (the wordmark and the penguin)
+when the screen has room for both: `KDOS` and the time, the account as `<user>@<host>`, a `password` field that shows a dot per
+character typed, and `Enter to unlock`. Every other output is covered in the theme's background
+colour. To unlock, type the account's password and press Enter. Esc, or a left or right click,
+clears the field; the pointer does nothing else. Ctrl and Alt chords are not typed into the field,
+and it holds at most 255 bytes, after which further keys are ignored.
+
+A wrong password turns the box red with `Wrong password`. `Cannot check the password`, also in
+red, means the checker could not tell either way; see Troubleshooting. Until the compositor has
+confirmed the lock the field takes no keys: a key typed then shows `locking...` and is discarded.
 
 ### Locking on idle
 
@@ -148,7 +160,8 @@ it holds one.
 ## Tips
 
 - The screensaver is a separate program, `kdos-saver`, started with Super+Shift+L. It does not
-  lock; the idle policy never starts it.
+  lock; the idle policy never starts it. The first key, click or touch closes it, and that press
+  reaches no window.
 - `kdos why kdos-lock` prints the design notes about the lock screen, among them why a crashed lock
   program leaves the session locked.
 - A lock started from a terminal outside the session needs that session's `WAYLAND_DISPLAY`; from
@@ -158,11 +171,12 @@ it holds one.
 
 ## Troubleshooting
 
-**The lock screen refuses the right password.**
+**The lock screen answers `Cannot check the password` to the right password.**
 `kdos-checkpass` has lost its setuid bit. It then cannot read `/etc/shadow`, answers "could not
-tell" to every attempt, and the lock cannot be opened. Ctrl+Alt+F2 still switches to `tty2`: the
-compositor handles Ctrl+Alt+F1 to F12 before it looks at whether the session is locked. Log in
-there and run `kdos doctor`; its Desktop section checks the bit,
+tell" to every attempt, and the lock cannot be opened. (`Wrong password` is a different answer:
+the checker read the hash and the password did not match it.) Ctrl+Alt+F2 still switches to
+`tty2`: the compositor handles Ctrl+Alt+F1 to F12 before it looks at whether the session is
+locked. Log in there and run `kdos doctor`; its Desktop section checks the bit,
 `[warn] kdos-checkpass is not setuid root — every password will be refused (fix: chown root and chmod 4755)`,
 and the repair is:
 
@@ -179,9 +193,17 @@ one takes about 1005 ms, a right one under 10 ms), and the lock screen pauses a 
 second more before it takes the next attempt.
 
 **The account has no password, and the lock cannot be opened.**
-An empty or locked hash never unlocks: `kdos-checkpass` answers
-`the account has no password — it cannot be unlocked this way` and "could not tell". From `tty2`,
-set one with `passwd`, or `sudo passwd <user>`.
+An empty or locked hash never unlocks: the lock shows `Cannot check the password`. The lock
+discards the checker's own message; run the checker by hand from `tty2`, as the same account, to
+read it:
+
+```bash
+printf '%s' 'the password' | kdos-checkpass; echo $?
+```
+
+It prints `kdos-checkpass: the account has no password — it cannot be unlocked this way` and `2`.
+`0` is the right password, `1` a wrong one. Set a password for the account
+as root: `sudo passwd <user>` from an account in `wheel`, or `passwd <user>` logged in as root.
 
 **The screen never locks on idle.**
 Check, in this order: that `idle_lock` is set and not `0` in `~/.config/kdos/comp.conf` (in a
@@ -191,6 +213,14 @@ state); and that no program holds an idle inhibitor, as a video player does whil
 **`kdos-power suspend` prints `no lock confirmation within 2s — suspending anyway`.**
 `kdos-lock` did not confirm the lock in time, and the machine suspended unlocked. Run `kdos-lock`
 from a terminal in the session and read what it prints on standard error.
+
+**`kdos-lock` prints `the session is already locked by another client` and exits.**
+A lock program already holds the session, and the compositor refuses a second one. The lock that
+is already on screen is the one to type the password into.
+
+**`kdos-lock` prints `cannot create a lock surface — is kdos-comp running?`.**
+It found no compositor that offers session locking: it was run outside the desktop session, or
+with no `WAYLAND_DISPLAY` naming the session's display. Nothing was locked.
 
 **The screens stay covered and show no password field.**
 The lock program has died and the compositor keeps the session locked, as it should: every output

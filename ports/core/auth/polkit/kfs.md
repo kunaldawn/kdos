@@ -12,16 +12,17 @@ elogind, no ConsoleKit), so polkit never sees an active session, and there is no
 agent, so it never asks for a password. What members of `wheel` may do is a fixed list of action
 ids in `/etc/polkit-1/rules.d/50-kdos.rules`, shipped from the tree's `fs/` overlay rather than by
 this port. Why a prompt cannot work here and what is granted instead is in
-[polkit, and why the desktop has no authentication agent](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#polkit-and-why-the-desktop-has-no-authentication-agent).
+[polkit, and why the desktop has no authentication agent](../../../../docs/kdos/03-architecture/security-model.md#polkit-and-why-the-desktop-has-no-authentication-agent).
 
 `polkitd` is started at boot by `/etc/init.d/41_polkitd.sh`, after D-Bus and before
 ModemManager and NetworkManager, and never by D-Bus activation; see
-[How polkit and ModemManager are started](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#how-polkit-and-modemmanager-are-started).
+[How polkit and ModemManager are started](../../../../docs/kdos/03-architecture/security-model.md#how-polkit-and-modemmanager-are-started).
 
 ## Flags
 
-- `--libexecdir=/usr/lib` — Puts the daemon and the agent helper in `/usr/lib/polkit-1/`, as
-  `/usr/lib/polkit-1/polkitd`, the path the boot script starts.
+- `--libexecdir=/usr/lib` — Changes nothing in polkit 128, whose build reads no `libexecdir`: it
+  installs `polkitd` and `polkit-agent-helper-1` in `lib/polkit-1/` under the prefix whatever the
+  option says, so the daemon is `/usr/lib/polkit-1/polkitd`, the path the boot script starts.
 - `-Dauthfw=pam` — Authenticates through PAM, from the [pam](#port-pam) port, rather than by
   reading the shadow file itself. It is upstream's default.
 - `-Dpam_prefix=/etc/pam.d` — Installs polkit's PAM service file, `polkit-1`, in `/etc/pam.d`,
@@ -39,7 +40,7 @@ ModemManager and NetworkManager, and never by D-Bus activation; see
   choices, each need that library at build time. ConsoleKit is not installed, so every lookup
   fails and every check falls to the `allow_any` column of an action's policy, which is the
   behaviour `50-kdos.rules` is written against (see
-  [Why a password prompt cannot work here](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#why-a-password-prompt-cannot-work-here)).
+  [Why a password prompt cannot work here](../../../../docs/kdos/03-architecture/security-model.md#why-a-password-prompt-cannot-work-here)).
 - `-Dintrospection=false` — Generates no GObject introspection data for the polkit libraries, so
   the build does not need [gobject-introspection](#port-gobject-introspection).
 - `-Dman=true` — Builds the manual pages (`polkit(8)`, `polkitd(8)`, `pkexec(1)` and the rest)

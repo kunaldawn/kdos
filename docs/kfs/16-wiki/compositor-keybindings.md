@@ -41,17 +41,17 @@ The shipped file opens with the one rule that matters more than any binding:
 The first bindings, after `<default />`. `W` is Super, `S` Shift, `C` Ctrl and `A` Alt; the key
 after the last hyphen is an XKB key name:
 
-<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=110-129 pin=f0f29bada4b6 lang=xml -->
+<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=110-133 pin=558445918d82 lang=xml -->
 
 `Super+Escape` shows the shape of a binding with several actions: it writes the session list,
 then asks through `kdos-prompt`, then exits. A [run-or-raise]{.idx} key looks for a window by its
 application identifier and either raises it or starts the program:
 
-<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=178-196 pin=b92833b13631 lang=xml -->
+<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=173-191 pin=56c458a486f7 lang=xml -->
 
 ### Workspaces
 
-<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=101-108 pin=3796b507ad9d lang=xml -->
+<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=100-107 pin=3796b507ad9d lang=xml -->
 
 The keys for workspaces 5 to 9 are already bound, so raising `number` is the only edit needed for
 more.
@@ -111,9 +111,9 @@ environment, not from `rc.xml`; see [Session and environment](session-and-enviro
    <keybind key="W-b"><action name="Execute" command="firefox-esr"/></keybind>
    ```
 
-   `Execute` splits its command into words, honouring quotes, and runs it without a shell, so
-   variables, globs and pipes are passed through as literal text; put anything that needs a shell
-   in a script and name the script. See
+   `Execute` splits its command into words, honouring quotes, and runs it without a shell. Every
+   `~` in it becomes your home directory, but variables, globs and pipes are passed through as
+   literal text; put anything that needs a shell in a script and name the script. See
    [The prompt command](../../kdos/04-programs/kdos-comp.md#the-prompt-command).
 
 3. Check that the file is still well-formed XML:
@@ -133,11 +133,11 @@ environment, not from `rc.xml`; see [Session and environment](session-and-enviro
 ### Changing a shipped binding
 
 Add a binding for the same chord after the shipped one. Of two bindings with the same chord, the
-later one wins, so the shipped line can stay where it is. For example, to make `Super+Ctrl+V`
-open the clipboard history picker:
+later one wins, so the shipped line can stay where it is. For example, the shipped `Super+Ctrl+T`
+opens the resource monitor, `kdos-res`; to make the chord open `htop` in a terminal instead:
 
 ```xml
-<keybind key="W-C-v"><action name="Execute" command="kdos-clip --pick"/></keybind>
+<keybind key="W-C-t"><action name="Execute" command="kdos-term -e htop"/></keybind>
 ```
 
 ### Removing a binding
@@ -193,8 +193,8 @@ See [`kdos hey`](../../kdos/04-programs/kdos-command.md#kdos-hey).
 
 1. Change `<desktops number="4">` to the number you want, up to 9 for the shipped keys, and add a
    `<name>` for each new one if you want names.
-2. Reload. How the panel's strip shows the extra workspaces is in
-   [Keyboard shortcuts](../../kdos/02-user-guide/desktop.md#keyboard-shortcuts).
+2. Reload. How the panel draws the extra workspaces is in
+   [Workspaces](../../kdos/02-user-guide/desktop.md#workspaces).
 
 ### Sending an application to a workspace
 
@@ -227,8 +227,9 @@ pkill -HUP -x kdos-comp
   wallpaper opens the root menu only with `desktop_icons = no` in `comp.conf`; with desktop icons
   on, it opens the desktop's own menu, which `kdos-shell` draws and `menu.xml` does not define.
 - labwc's manual pages are not installed. `labwc-config(5)` and `labwc-actions(5)` are at
-  [labwc.github.io](https://labwc.github.io/); the labwc release the compositor was forked from is
-  named in `src/desktop/kdos-comp/KDOS-FORK`.
+  [labwc.github.io](https://labwc.github.io/); the compositor is a fork of labwc 0.20.0, as
+  `src/desktop/kdos-comp/KDOS-FORK` in the source tree records, so read the pages for that
+  release.
 
 ## Troubleshooting
 
@@ -260,18 +261,16 @@ compositor. Use `pkill -HUP -x kdos-comp` instead.
 
 **A run-or-raise key opens a second window every time.** The key finds the window by its
 application identifier, and a terminal started as `foot -e <program>` carries `foot`'s own. A key
-of your own must start the program as `foot --app-id=<program> -e <program>`, with the same name in
-its `<query identifier>`, as the shipped keys do.
+of your own must start the program as `foot --app-id=<program> -e <program>` (or
+`kdos-term --app-id <program> -e <program>`, two arguments, as the `rmpc` key does), with the same
+name in its `<query identifier>`, as the shipped keys do.
 
-**A chord shows nothing at all.** Two shipped chords are known to do that; see
-[Known gaps](#known-gaps).
-
-**A keyboard aid is on and you do not know why.** Each switch posted a notification when it
-changed; `Super+Shift+N` opens the notification centre. Press the same chord again to turn it off.
+**A keyboard aid is on and you do not know why.** Sticky, slow and bounce keys, dwell click and
+the large pointer each post a notification when they change; `Super+Shift+N` opens the
+notification centre. Press the same chord again to turn it off.
 
 ## Known gaps
 
-- [Two shipped chords and two routes show nothing](../../kdos/06-reference/known-gaps.md#two-shipped-chords-and-two-routes-show-nothing)
 - [The control centre has no pointer page](../../kdos/06-reference/known-gaps.md#the-control-centre-has-no-pointer-page)
 - [Nothing starts the screensaver on idle](../../kdos/06-reference/known-gaps.md#nothing-starts-the-screensaver-on-idle)
 - [A touchpad scroll is not one-to-one with the finger](../../kdos/06-reference/known-gaps.md#a-touchpad-scroll-is-not-one-to-one-with-the-finger)

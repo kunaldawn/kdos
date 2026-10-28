@@ -192,11 +192,13 @@ static void do_smart(void)
  * table inside a filesystem — which cfdisk reads as an empty disk and offers
  * to write.
  */
+static void disk_of(const char *kname, char *out, size_t n);
+
 static void do_partition(void)
 {
 	const ShMountRow *r = sel_row();
 	const char *av[12];
-	char id[64], node[64];
+	char id[64], disk[64], node[80];
 	int n;
 
 	if (!r)
@@ -206,18 +208,16 @@ static void do_partition(void)
 			 "unmount %s first — the table is in use", r->kname);
 		return;
 	}
-	/* The DISK behind the row: `sdb1` is on `sdb`, and a mapper name has
-	 * no disk of its own to edit. */
+	/* The DISK behind the row, by disk_of: `sdb1` is on `sdb` and
+	 * `nvme0n1p1` on `nvme0n1`. A mapper name has no disk of its own to
+	 * edit. */
 	if (!strncmp(r->kname, "kdos-", 5)) {
 		snprintf(status, sizeof(status),
 			 "%s is a mapping, not a disk", r->kname);
 		return;
 	}
-	size_t k = strlen(r->kname);
-
-	while (k > 1 && r->kname[k - 1] >= '0' && r->kname[k - 1] <= '9')
-		k--;
-	snprintf(node, sizeof(node), "/dev/%.*s", (int)k, r->kname);
+	disk_of(r->kname, disk, sizeof(disk));
+	snprintf(node, sizeof(node), "/dev/%s", disk);
 
 	n = sh_term_argv(av, 0, (int)(sizeof(av) / sizeof(*av)), "cfdisk", id,
 			 sizeof(id));

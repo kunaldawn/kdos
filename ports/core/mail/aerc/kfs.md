@@ -47,6 +47,6 @@ because `mutool` opens a document by path.
 
 The desktop entry is KDOS's own, written over upstream's `contrib/aerc.desktop`. It sets
 `Terminal=true` and passes `%u`, so a `mailto:` link opened through the entry reaches aerc as its
-argument. It claims no MIME type: `xdg-open` runs a scheme handler's `Exec` without a terminal, so
-`mailto:` and `message/rfc822` go to [thunderbird](#port-thunderbird) in
-`/etc/xdg/kdos-mimeapps.list`, and aerc is run by name.
+argument. It claims no MIME type. Every row of `/etc/xdg/kdos-mimeapps.list` names an application
+that draws its own window, so `mailto:` and `message/rfc822` go to
+[thunderbird](#port-thunderbird) there, and aerc, which needs a terminal around it, is run by name.

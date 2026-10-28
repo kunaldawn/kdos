@@ -15,14 +15,14 @@ QtWebEngine.
 - `-DBUILD_QBS=OFF` — Do not build the Qbs build tool from the copy in `src/shared/qbs`. It is
   upstream's default; Qbs is a separate product.
 - `-DWITH_QMLDESIGNER=OFF` — Leave out the QML Designer, the visual Qt Quick editor. Upstream turns
-  it on by default whenever Qt Quick and a new enough compiler are present.
+  it on by default whenever Qt is new enough, Qt Quick is present and the compiler is new enough.
 - `-DBUILD_DESIGNSTUDIO=OFF` — No Qt Design Studio plugins, examples or settings. It is upstream's
   default.
 - `-DQTC_USE_INTERNAL_TASKTREE=ON` — Use Qt Creator's own copy of the TaskTree library. Upstream
   chooses it whenever Qt has no TaskTree module, as the Qt ports here do not; naming it keeps the
   choice the same on every build.
 - `-DQTC_CLANG_BUILDMODE_MATCH=ON` — Declare that the clang libraries match this build's
-  release mode. `cmake/FindClang.cmake` tests that only on Windows and on Linux sets it on
+  release mode. `cmake/FindClang.cmake` tests that only on Windows and elsewhere sets it on
   whenever `clangTooling` is found; the one thing it gates is the ClangFormat plugin, which is off.
 - `-DBUILD_EXECUTABLE_CMDBRIDGE=OFF` — Do not build `cmdbridge`, the helper for fast container and
   remote device access. It is written in Go and built with `go build` once for every remote

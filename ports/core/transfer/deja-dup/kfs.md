@@ -1,8 +1,8 @@
 ## About
 [Déjà Dup]{.idx} is a GTK 4 and libadwaita front end for scheduled, encrypted backups. It stores
 nothing itself: [restic](#port-restic) writes and reads the backups, [rclone](#port-rclone)
-reaches the cloud locations, and `fusermount` from [fuse](#port-fuse) mounts a snapshot for
-browsing. Each is found on `PATH` when it is needed, which is why all three are in `depends`
+reaches the cloud locations, and the setuid `fusermount3` from [fuse](#port-fuse) mounts a
+snapshot for browsing. Each is found by name at run time, which is why all three are in `depends`
 though none is linked. The passphrase is kept through libsecret, by whatever answers
 `org.freedesktop.secrets`.
 
@@ -20,10 +20,10 @@ though none is linked. The passphrase is kept through libsecret, by whatever ans
   `org.gnome.DejaDup.Monitor.desktop` into `/etc/xdg/autostart`, the only file it puts under
   `/etc`; nothing on KDOS reads that directory, so `build.sh` removes `$PKG/etc` and
   `kdos-desktop-start` runs `/usr/libexec/deja-dup/deja-dup-monitor` instead (see
-  [Input methods](../../../../docs/kdos/03-architecture/session.md#input-methods), which describes
-  both). Without the monitor, "Back up automatically" never backs up.
-- **The menu icon.** Upstream ships `org.gnome.DejaDup.svg` only, and the panel reads hicolor
-  PNGs, so `build.sh` renders 48, 64 and 128 pixel PNGs with `rsvg-convert`.
+  [What `kdos-desktop-start` does](../../../../docs/kdos/03-architecture/session.md#what-kdos-desktop-start-does)).
+  Without the monitor, "Back up automatically" never backs up.
+- **The menu icon.** Upstream installs the application icon as `org.gnome.DejaDup.svg` only, and
+  the panel reads hicolor PNGs, so `build.sh` renders 48, 64 and 128 pixel PNGs with `rsvg-convert`.
 - **The menu entry is replaced.** The GtkApplication id, `org.gnome.DejaDup`, is the Wayland
   app_id and the `StartupWMClass`. Upstream's `MimeType` line, which claims the two OAuth
   callback URL schemes a Google Drive or OneDrive location signs in through, is left out, and so

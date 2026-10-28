@@ -9,8 +9,8 @@ link C++ for RV32 and RV64 microcontrollers and for the soft cores the FPGA tool
 the second build of the cross compiler's gcc source: libstdc++ compiles against the target C
 library, and picolibc is built with that compiler, so the compiler, the C library and this library
 are three recipes. It is the same build as [libstdcxx-arm-none-eabi](#port-libstdcxx-arm-none-eabi)
-for the other target; how the split works is in [A second build of the same
-source](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#a-second-build-of-the-same-source).
+for the other target; how the split works is in
+[A second build of the same source](../../../../docs/kdos/05-developer/writing-ports.md#a-second-build-of-the-same-source).
 
 ## Flags
 
@@ -26,10 +26,12 @@ source](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writi
   directory that does not exist.
 - `--with-picolibc`, `--without-newlib` — Select libstdc++'s picolibc configuration: the
   `os/picolibc` support files and a fixed list of the functions picolibc provides, taken without
-  link tests, which a bare-metal target cannot run. `--with-newlib` in their place would select
-  newlib's list, which claims functions picolibc does not have.
-- `--with-headers=no` — Keeps libtool's `dlopen` probe, a link test, out of configure. It also makes
-  libstdc++ default to a freestanding build, which `--enable-hosted-libstdcxx` reverses.
+  link tests, which a bare-metal target cannot run. `--with-picolibc` also keeps libtool's `dlopen`
+  probe, a link test, out of configure. configure tests for newlib before picolibc, so
+  `--with-newlib` would take the newlib branch and its `os/newlib` files instead.
+- `--with-headers=no` — In libstdc++'s configure, takes `#include <stdio.h>` out of the prologue
+  autoconf puts in front of every compile test, and, with `--without-newlib` beside it, makes the
+  library default to a freestanding build, which `--enable-hosted-libstdcxx` reverses.
 - `--enable-hosted-libstdcxx` — Builds the hosted library, with streams, strings, containers and the
   rest, which picolibc can support, rather than the freestanding subset.
 - `--disable-libstdcxx-verbose` — Leaves the verbose terminate handler out of the library. That
@@ -48,9 +50,8 @@ source](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writi
 - `CFLAGS_FOR_TARGET`, `CXXFLAGS_FOR_TARGET` — The flags for the target libraries: `-Os -pipe
   -ffunction-sections -fdata-sections`, nothing from the host's flags. `-Os` because every byte of
   `libstdc++` a firmware links lands in the part's flash, and the per-function sections let
-  `--gc-sections` drop what a firmware image does not call. See [A language standard reaching the
-  compiler's own
-  runtime](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/build-troubleshooting.md#a-language-standard-reaching-the-compilers-own-runtime).
+  `--gc-sections` drop what a firmware image does not call. See
+  [A language standard reaching the compiler's own runtime](../../../../docs/kdos/05-developer/build-troubleshooting.md#a-language-standard-reaching-the-compilers-own-runtime).
 
 ## Patches
 

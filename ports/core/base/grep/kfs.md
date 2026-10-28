@@ -3,7 +3,7 @@ GNU grep searches text for lines matching a pattern: basic and extended regular 
 fixed strings, and Perl-compatible expressions with `grep -P`. `egrep` and `fgrep` are installed as
 the small scripts upstream ships. On KDOS every `grep` is this one, which matters to build systems:
 configure scripts and `build.sh` files lean on GNU behaviour such as `\|` in a basic pattern
-([The base userland](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/build-troubleshooting.md#the-base-userland)).
+([The base userland](../../../../docs/kdos/05-developer/build-troubleshooting.md#the-base-userland)).
 
 `10_bootstrap` cross-compiles the same source without PCRE ([Grep](#03-bootstrap-066-grep)).
 This port rebuilds it natively in the first run of `30_foundation`, linked to

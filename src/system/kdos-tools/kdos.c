@@ -46,9 +46,8 @@
 #include "kdos-tools.h"
 
 /* Where kdos-cursors installs its artwork. kdos-theme's own CURSOR_ART_DEFAULT
- * is this same path; asking here is only "is there anything to recolour", so an
- * older install without the art keeps its cursors instead of getting an empty
- * theme. */
+ * is this same path; asking here is only "is there anything to recolour", so a
+ * system without the art keeps its cursors instead of getting an empty theme. */
 #define CURSOR_ART_PATH "/usr/share/kdos/cursors/art"
 
 /* ANSI, but only when someone is looking. */
@@ -218,10 +217,9 @@ void kdt_reload_session(void)
 	 * The list is by NAME because kdos-shell is basename-dispatched: the
 	 * panel, the desktop icons and the notification daemon are three
 	 * different argv[0]s of one binary, and `pkill -HUP kdos-shell` reaches
-	 * exactly one of them. Photographed on a booted ISO — `kdos theme amber`
-	 * left the desktop icons and a toast in phosphor while the panel and the
-	 * window frames went amber, which reads as a half-finished repaint
-	 * because that is what it was.
+	 * exactly one of them. A name missing here keeps the old accent while
+	 * the rest of the desktop takes the new one — desktop icons and a toast
+	 * left in phosphor beside an amber panel, a half-finished repaint.
 	 *
 	 * Separate pkills rather than one pattern: `kdos-*` would also signal
 	 * kdos-appbox and every alien app launched through it.
@@ -230,8 +228,8 @@ void kdt_reload_session(void)
 	 * A name goes here ONLY if that program installs a SIGHUP handler —
 	 * the default disposition is death, so this list and sh_theme_watch()
 	 * are two things that must agree. kdos-slit is here because it calls
-	 * sh_theme_watch() and was on nobody's list, so the dockapp column
-	 * kept the accent it started in. Every other front end follows the
+	 * sh_theme_watch(); without the entry the dockapp column keeps the
+	 * accent it started in. Every other front end follows the
 	 * state file's mtime instead (sh_theme_poll), which needs no entry
 	 * here and cannot be got wrong in this direction.
 	 */
@@ -260,7 +258,7 @@ void kdt_reload_session(void)
 		 * two /bin/sh scripts that own the session. A substring match
 		 * would send them a SIGHUP they do not handle, and the default
 		 * disposition for that is death — so retinting the desktop
-		 * would have taken the session's own helpers with it.
+		 * would take the session's own helpers with it.
 		 */
 		kb_argv_add(&a, "-x");
 		kb_argv_add(&a, "-HUP");
@@ -295,8 +293,10 @@ void kdt_reload_session(void)
  * nothing is lost.
  *
  * Alien apps in the appbox share $HOME, which is why all of this lives there
- * rather than in /usr/share. Qt apps in the box follow via the qgtk3 platform
- * theme.
+ * rather than in /usr/share. Qt apps in the box follow through whichever
+ * platform theme their box selects: `kde` reads kdeglobals, qt5ct and qt6ct
+ * read their own files (all three written further down), and `gtk3` reads
+ * these.
  */
 static void write_gtk_settings(const KcolScheme *sc)
 {
@@ -577,13 +577,13 @@ static void write_icons(const KcolScheme *sc)
 
 /*
  * The cursors, into ~/.icons/KDOS-cursors — where XCURSOR_THEME already points
- * and, as with the icons, the only path the appbox can see. This was the one
- * artefact an accent switch could not reach: the generator was always
- * parameterised, but the art it needs was not installed on the target until
- * kdos-cursors started shipping it to /usr/share/kdos/cursors/art.
+ * and, as with the icons, the only path the appbox can see. The generator is
+ * parameterised by accent; the art it recolours is what kdos-cursors installs
+ * to /usr/share/kdos/cursors/art, and without that art there is nothing to do.
  *
  * A cursor theme is 4.4 MB of premultiplied Xcursor files and takes a moment to
- * write, which is why the accent switch prints before it rather than after.
+ * write; `kdos theme` prints its line after it, so the line appearing means
+ * the switch is complete.
  */
 static void write_cursors(const KcolScheme *sc)
 {
@@ -1454,10 +1454,9 @@ static void write_lscolors(const KcolScheme *sc)
  *
  * Two things here are not decoration:
  *
- *   - `window.*.title.bg: flat solid` MUST accompany the colour. labwc's
+ *   - `window.*.title.bg: flat kdos` MUST accompany the colour. labwc's
  *     default titlebar texture is a GRADIENT, and a bg.color alone is ignored
- *     by it — the trap that made the first hand-written version of this file
- *     appear to do nothing.
+ *     by it, so a file that sets only the colour appears to do nothing.
  *   - the close button takes the URGENT slot while the other buttons take the
  *     accent. It is the one control on a window that cannot be undone, it is
  *     red in Turbo Vision and in every desktop since, and on an eight-colour
@@ -1540,9 +1539,9 @@ static void write_themerc(const KcolScheme *sc)
 		 *
 		 * labwc has no hover ICONS: it copies the plain one and lays
 		 * `window.button.hover.bg.color` over it. An OPAQUE colour
-		 * there paints the symbol out, so every titlebar button on
-		 * this desktop went BLANK under the pointer — the one moment a
-		 * button most needs to say what it is. labwc's own default
+		 * there paints the symbol out, so every titlebar button goes
+		 * BLANK under the pointer — the one moment a button most
+		 * needs to say what it is. labwc's own default
 		 * carries an alpha for exactly this reason; ours has to too.
 		 */
 		"window.button.hover.bg.color: #%s66\n"
@@ -1550,10 +1549,10 @@ static void write_themerc(const KcolScheme *sc)
 		/*
 		 * labwc's own default cap is 200 PIXELS, sized for the ~10px
 		 * font a normal theme uses. This desktop draws menus at 32px,
-		 * where 200px is eleven characters — measured on a booted ISO,
-		 * the root menu read "Applicati...", "Lock Scr..." and
-		 * "Reload C...". The cap only truncates; a generous one costs
-		 * a narrow menu nothing, because the width is the content's.
+		 * where 200px is eleven characters and the root menu would
+		 * read "Applicati...", "Lock Scr..." and "Reload C...". The
+		 * cap only truncates; a generous one costs a narrow menu
+		 * nothing, because the width is the content's.
 		 */
 		"menu.width.min: 120\n"
 		"menu.width.max: 900\n"
@@ -1575,8 +1574,8 @@ static void write_themerc(const KcolScheme *sc)
 		/*
 		 * #rrggbbaa, not the openbox `#rrggbb 40` form: labwc still
 		 * parses that one (40 is a PERCENT, so 0x66) but logs an ERROR
-		 * per occurrence and says it may stop. Two of them were the
-		 * only errors in a whole booted session's log.
+		 * per occurrence and says it may stop, which buries real
+		 * errors in the session's log.
 		 */
 		"snapping.overlay.region.bg.enabled: yes\n"
 		"snapping.overlay.region.bg.color: #%s66\n"
@@ -1602,10 +1601,10 @@ static void write_themerc(const KcolScheme *sc)
 
 	/* `kdos theme style` leaves its themerc lines in their own file and
 	 * they are re-appended HERE, after the generated block, so they win —
-	 * labwc keeps the last spelling of a repeated key. Appending them once
-	 * at style time instead lost them on the next plain `kdos theme
-	 * <accent>`, which rewrites this file whole: half an applied style
-	 * survived (comp.conf) and half vanished, with nothing saying so. */
+	 * labwc keeps the last spelling of a repeated key. A plain `kdos theme
+	 * <accent>` rewrites this file whole, so lines appended only at style
+	 * time would vanish on the next one while the style's comp.conf half
+	 * survives, with nothing saying so. */
 	char *sf = kdt_cfg_home("kdos/style-themerc");
 	size_t sn = 0;
 	char *style = kb_read_all(sf, &sn);
@@ -2254,9 +2253,9 @@ static int kde_palette(KdeKV *kv, const KcolScheme *sc)
 /* What this generator owns: whole sections, and named keys in shared ones.
  *
  * KConfig nests groups as `[A][B]`, and a nested group is a DIFFERENT group:
- * `[Colors:View][Inactive]` is an application's, not ours. Owning it swallowed
- * it — silently, on every accent switch — so a header with a subgroup in it is
- * never ours. */
+ * `[Colors:View][Inactive]` is an application's, not ours, and owning it would
+ * drop it silently on every accent switch — so a header with a subgroup in it
+ * is never ours. */
 static int kde_owns_section(const char *sec)
 {
 	if (strchr(sec, ']'))
@@ -2768,8 +2767,8 @@ static void write_starship(const KcolScheme *sc)
  * The wallpaper follows the accent: the shipped PNG is retinted through
  * kcol_remap — the same operation every icon goes through — into
  * $XDG_CACHE_HOME/kdos/wallpaper.png, which kdos-comp prefers over the
- * comp.conf path when it re-reads the wallpaper on SIGHUP. Without this,
- * `kdos theme ice` was an ice desktop over a green background.
+ * comp.conf path when it re-reads the wallpaper on SIGHUP. Without it,
+ * `kdos theme ice` gives an ice desktop over a green background.
  *
  * Gated on KDOS_HAVE_LIBPNG (build.sh passes it with -lpng) so the host
  * selftest, which links kdos-tools without libpng, still builds; without the
@@ -2979,7 +2978,8 @@ static void theme_commit(const KcolScheme *sc)
  *   accent = amber            the normal accent path
  *   crt = 40                  ┐ rewritten in ~/.config/kdos/comp.conf,
  *   crt_scanlines = 50        │ preserving every line the style does not name
- *   chrome_font = ...         ┘ (kdos-comp re-reads them on the same SIGHUP)
+ *   chrome_font = ...         ┘ (the crt keys apply on the same SIGHUP;
+ *                               chrome_font and clock_format at the next login)
  *   osd.bg.color: ...         any dotted key is a themerc-override line, kept
  *                             in ~/.config/kdos/style-themerc and re-appended
  *                             AFTER the generated block on every regeneration
@@ -3272,14 +3272,14 @@ static void help_body(FILE *o)
 		{ "kdos theme [name]", "phosphor | amber | ice | bone | norton | borland | perfect | paper | next | prev | list" },
 		{ "kdos theme style <f>", "apply a style file: accent + crt + fonts, shareable" },
 		{ "kdos theme --audit", "is every generated colour still the palette's?" },
-		{ "kdos theme --preview <a>", "the state file and the signal only — what kdos-theme's arrows do" },
+		{ "kdos theme --preview <a>", "the state file and the signal only — what kdos-style's arrows do" },
 		{ "kdos status", "packages, containers, exported apps" },
 		{ "kdos doctor", "check the session for common breakage" },
 		{ "kdos appid", "do launcher icons match the windows they open?" },
 		{ "kdos restarts", "what is running code an upgrade replaced" },
 		{ "kdos stutter", "why the desktop hiccuped — with the app's name" },
 		{ "kdos hey list", "every window, from a prompt; run <action> <id>" },
-		{ "kdos update check", "what the ports tree pins that is not installed; --json for a surface" },
+		{ "kdos update check", "installed packages older than their recipe; --json for a surface" },
 		{ "kdos update fetch", "the newest signed ports tree, in place of /ports" },
 		{ "kdos oracle", "one recorded lesson, picked for today" },
 		{ "kdos trash <file>", "the desktop's trash, from a prompt — also --restore" },
@@ -3314,7 +3314,7 @@ static void help_body(FILE *o)
 	 * `kdos-keys` — the W-F1 keybind card in kdos-shell — is the program
 	 * that reads it. This POINTS AT it rather than pasting it: `--dump`
 	 * renders the card into a fixed 72x24 viewport with no scroll, so what
-	 * came back was a 72-column box holding the first twenty bindings and
+	 * comes back is a 72-column box holding the first twenty bindings and
 	 * an interactive hint row, silently missing every workspace, lock,
 	 * screenshot and media key. A cheat sheet that stops two thirds of the
 	 * way through is worse than a short one.
@@ -3345,14 +3345,14 @@ static void help_body(FILE *o)
 		{ "Alt+F2", "run a command" },
 		{ "Super+Return", "terminal (foot)" },
 		{ "Super+E", "files (mc)" },
-		{ "PrtSc / Shift+PrtSc", "screenshot: a region / the screen" },
+		{ "PrtSc / Shift+PrtSc", "screenshot: the screen / a region" },
 		{ "Super+Q / Alt+F4", "close window" },
 		{ "Super+Tab / Alt+Tab", "switch window (most recent first)" },
 		{ "Super+Shift+Tab", "switch window, backwards" },
 		{ "Super+M", "maximize / restore" },
 		{ "Super+F", "fullscreen / restore" },
 		{ "Super+N", "minimize the window" },
-		{ "Super+Space", "the root menu, without the desktop" },
+		{ "Super+Space", "search windows, apps, settings, files (kdos-palette)" },
 		{ "Super+P", "the screens (kdos-display)" },
 		{ "Super+Arrows", "snap the window to that half or corner" },
 		{ "Alt+Space", "the window menu" },
@@ -3365,8 +3365,8 @@ static void help_body(FILE *o)
 		{ "Volume / Brightness", "the media keys, with an on-screen gauge" },
 		/* fcitx5's own binding, not kdos-comp's — but it is the one key
 		 * a CJK user needs and nothing else on the machine tells them
-		 * about it. Listed only because the compositor now speaks
-		 * text-input-v3, so it works wherever fcitx5 is installed. */
+		 * about it. The compositor speaks text-input-v3, so it works
+		 * wherever fcitx5 is installed. */
 		{ "Ctrl+Space", "switch input method (fcitx5, if installed)" },
 		{ NULL, NULL }
 	};
@@ -3380,8 +3380,8 @@ static void help_body(FILE *o)
  * program here spawns a shell — not because this particular string could be
  * attacked (it could not) but because a shell in the tree is a place the next
  * person puts a variable. kdosbuild's `O` key already opens $PAGER by argv;
- * this is the same answer, and it gains $PAGER along the way — `less` was
- * hardcoded, so a machine whose owner prefers something else got less anyway.
+ * this is the same answer: $PAGER is honoured, and `less` is the fallback when
+ * it is unset or empty.
  */
 static int cmd_help(int argc, char **argv)
 {
@@ -3419,7 +3419,7 @@ static int cmd_help(int argc, char **argv)
  * because `kdos status` names the compositor and asks the same question. */
 static int running(const char *exact, const char *contains);
 /* Which session this process is in, or NULL. One place decides, so `kdos
- * info`, `kdos version` and `kdos doctor` cannot disagree. */
+ * status` and `kdos version` cannot disagree. */
 static const char *session_name(void);
 
 /* Non-empty, non-comment lines. The alien-apps table is one line per app. */
@@ -3509,16 +3509,15 @@ static int cmd_status(int argc, char **argv)
 	 * created, which is every machine before the first launch. */
 	printf("%s%-16s%s %d\n", C_B, "Alien apps", C_0,
 	       count_lines("/usr/share/kdos/alien-apps"));
-	/* Naming the session rather than saying "wayland": "wayland" would hide
-	 * the case where the session is something else entirely.
-	 * `session_name()` is the one place that decides, so this line cannot
-	 * disagree with `kdos version`. */
+	/* `session_name()` decides tty against a display, so this line cannot
+	 * disagree with `kdos version` about that. It names kdos-comp for any
+	 * WAYLAND_DISPLAY, so whether kdos-comp is really running is asked
+	 * here, and a display with no kdos-comp says so. */
 	const char *sn = session_name();
 
 	printf("%s%-16s%s %s\n", C_B, "Session", C_0,
 	       !sn			      ? "tty"
-	       : strcmp(sn, "kdos-comp")      ? sn
-	       : running("kdos-comp", NULL)   ? "kdos-comp"
+	       : running("kdos-comp", NULL)   ? sn
 					      : "wayland (not kdos-comp)");
 	putchar('\n');
 
@@ -3567,8 +3566,7 @@ static void warn_(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 /*
  * Doctor's two funnels, and `--json` is a mode on them rather than a second
  * pass over the same checks. Every check reports through exactly one of these,
- * so the machine-readable output cannot drift from what a human is told — which
- * is the entire point of N15 and the reason it is worth doing at all.
+ * so the machine-readable output cannot drift from what a human is told.
  */
 static int doctor_json;		/* emitting records rather than lines */
 static const char *doctor_section = "";
@@ -3858,7 +3856,10 @@ static void check_default_password(void)
 
 	char *h = crypt("kdos", hash);
 	if (h && !strcmp(h, hash)) {
-		if (kb_path_exists(INIT_DIR "/70_sshd"))
+		/* Enabled the way rcS decides it: the script executable and
+		 * no /etc/service.disabled marker for its name. */
+		if (access(INIT_DIR "/70_sshd.sh", X_OK) == 0 &&
+		    !kb_path_exists(DISABLED_DIR "/sshd"))
 			warn_("the kdos password is still the shipped default "
 			      "— and sshd is enabled, so anyone who can reach "
 			      "this machine can log in (run: passwd)");
@@ -4309,9 +4310,11 @@ static int cmd_doctor(int argc, char **argv)
 		char sock[512];
 		if (*wd == '/')
 			snprintf(sock, sizeof(sock), "%s", wd);
+		else if (wl_rt && *wl_rt)
+			snprintf(sock, sizeof(sock), "%s/%s", wl_rt, wd);
 		else
-			snprintf(sock, sizeof(sock), "%s/%s",
-				 wl_rt && *wl_rt ? wl_rt : "/run/user/1000", wd);
+			snprintf(sock, sizeof(sock), "/run/user/%u/%s",
+				 (unsigned)getuid(), wd);
 		if (kb_path_exists(sock))
 			ok("WAYLAND_DISPLAY=%s", wd);
 		else
@@ -4338,8 +4341,8 @@ static int cmd_doctor(int argc, char **argv)
 	if (running(NULL, "xdg-desktop-portal-wlr"))
 		ok("wlr portal running");
 	else
-		warn_("wlr portal not running — screen capture and "
-		      "file pickers degraded");
+		warn_("wlr portal not running — screen sharing and "
+		      "screenshots from applications fail");
 	doctor_gap();
 
 	doctor_head("Containers");
@@ -4443,8 +4446,8 @@ static int cmd_doctor(int argc, char **argv)
 	 * The SOCKET again, and for the opposite reason: kdos-comp exports
 	 * DISPLAY only into what IT spawned, so a shell reached over ssh or from
 	 * another VT has none while Xwayland is perfectly alive. kdos-appbox
-	 * already probes /tmp/.X11-unix for exactly this — reading getenv here
-	 * warned about a working Xwayland on every session.
+	 * already probes /tmp/.X11-unix for exactly this — reading getenv alone
+	 * would warn about a working Xwayland in every such shell.
 	 */
 	const char *disp = getenv("DISPLAY");
 	char xsock[32] = {0};
@@ -4495,7 +4498,7 @@ static int cmd_doctor(int argc, char **argv)
 	struct stat rst;
 	if (stat("/usr/bin/kdos-resctl", &rst) != 0)
 		warn_("kdos-resctl missing — kdos-res cannot end a process it "
-		      "does not own, and the Memory page has no DIMM details");
+		      "does not own");
 	else if ((rst.st_mode & S_ISUID) && rst.st_uid == 0)
 		ok("kdos-resctl is setuid root");
 	else
@@ -4652,10 +4655,10 @@ static int cmd_doctor(int argc, char **argv)
 
 		/*
 		 * The command socket, and the two failures it distinguishes.
-		 * A compositor that IS running without one is an older
-		 * kdos-comp — `kdos hey` and kdos-teams then fail with a
-		 * message about a socket, which sounds like a permissions
-		 * problem and is a version.
+		 * A compositor that IS running without one is a kdos-comp
+		 * of another version than this tool's — `kdos hey` and
+		 * kdos-teams then fail with a message about a socket, which
+		 * sounds like a permissions problem and is a version.
 		 */
 		char *cs = kb_path_join(rtd, "kdos-cmd.sock");
 		if (kb_path_exists(cs))
@@ -4663,7 +4666,8 @@ static int cmd_doctor(int argc, char **argv)
 		else if (comp_mine)
 			warn_("kdos-comp is running but exposes no command "
 			      "socket — `kdos hey` and kdos-teams have nothing "
-			      "to talk to (this compositor predates it)");
+			      "to talk to (this kdos-comp is not the one "
+			      "kdos-tools was built with)");
 		else if (comp)
 			skip_("kdos-comp runs in another account's session — "
 			      "run kdos doctor as that user to check `kdos hey`");
@@ -4676,16 +4680,16 @@ static int cmd_doctor(int argc, char **argv)
 	/*
 	 * The keybind card. It is the one surface that answers "what can I
 	 * press", on a desktop where every operation has a key and almost none
-	 * of them is discoverable any other way — and `kdos help` quietly falls
-	 * back to a static table when it is missing, so its absence is
-	 * otherwise invisible.
+	 * of them is discoverable any other way — and without it `kdos help`
+	 * prints its static table with no pointer to Super+F1 and says nothing
+	 * else, so its absence is otherwise invisible.
 	 */
 	if (kb_have_prog("kdos-keys"))
-		ok("kdos-keys installed — W-F1 and `kdos help` read the real "
-		   "rc.xml");
+		ok("kdos-keys installed — W-F1 shows the keys the real rc.xml "
+		   "binds");
 	else
-		warn_("kdos-keys missing — no keybind card, and `kdos help` "
-		      "falls back to a hand-written key list that rc.xml can "
+		warn_("kdos-keys missing — no keybind card; `kdos help` has "
+		      "only its fixed key table, which a changed rc.xml can "
 		      "contradict");
 
 	/*

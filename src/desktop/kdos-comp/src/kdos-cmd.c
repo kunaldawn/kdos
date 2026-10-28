@@ -4,7 +4,7 @@
  * NDJSON request line in, one NDJSON response line out, close. Haiku's
  * scripting soul in the shape this distro already speaks: every other
  * KDOS channel between two of its own programs is a unix socket carrying
- * one JSON object per line, and `kdos stutter` proved the shape.
+ * one JSON object per line, as kdos-frames.sock behind `kdos stutter` does.
  *
  *   {"cmd":"list"}      -> {"ok":true,"views":[...]}
  *   {"cmd":"run","action":"Close","id":7} -> {"ok":true}
@@ -43,7 +43,7 @@
 /* _GNU_SOURCE rather than the _POSIX_C_SOURCE its siblings use: struct
  * ucred is a GNU extension, and it is a superset of what that asked for.
  * Guarded, because an unguarded one collides with a -D on the command
- * line — that cost kdos-boxsock a build. */
+ * line and fails the build. */
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif

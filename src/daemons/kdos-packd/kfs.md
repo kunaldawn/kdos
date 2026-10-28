@@ -8,14 +8,14 @@ places data packs where their consumers look. A client names a pack by an id out
 daemon published, never by a path. Mounting as root is what makes the overlay's whiteouts real, so
 a box's root is composed from the packs as they are, with no flattening step. Its clients are
 [kdos-appbox](#port-kdos-appbox) and `kdos doctor`. The pack format is in
-[Packs and boxes](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/packs-and-boxes.md), and the daemon's verbs, paths and
-configuration in [kdos-packd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/daemons.md#kdos-packd).
+[Packs and boxes](../../../docs/kdos/03-architecture/packs-and-boxes.md), and the daemon's verbs, paths and
+configuration in [kdos-packd](../../../docs/kdos/04-programs/daemons.md#kdos-packd).
 
 The port is KDOS's own C, with no upstream source. `build.sh` compiles the daemon's files with
 the sources of `libkbase`, `libksig` (and the Monocypher code inside it, which is where the
 recipe's `BSD-2-Clause OR CC0-1.0` licence comes from), `libkpkg` and `libkpack`, and nothing
 else, because every library a root daemon links is code running as root; see
-[How the libraries are built](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/c-libraries.md#how-the-libraries-are-built).
+[How the libraries are built](../../../docs/kdos/05-developer/c-libraries.md#how-the-libraries-are-built).
 
 ## Notes
 

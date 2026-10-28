@@ -32,6 +32,6 @@ which asciidoctor builds with upstream's `doc/man.rb` converter, and installs th
 
 The Rust crates come from the vendor bundle, `newsboat-vendor-<version>.tar.xz`, pinned with its own
 `sha256 =` line and unpacked at the top of the tree, where the makefile runs cargo (see
-[Vendoring](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#vendoring)).
+[Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring)).
 The recipe sets no `RUSTFLAGS`: cargo builds `libnewsboat` as a static archive, and the final link
 is the C++ compiler's, not rustc's.

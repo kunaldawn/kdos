@@ -48,9 +48,10 @@ reaches radio hardware through [SoapySDR](#port-soapysdr), [UHD](#port-uhd) and
 - `-DCMAKE_POLICY_DEFAULT_CMP0167=NEW` — make `find_package(Boost)` read [Boost](#port-boost)'s
   own CMake package. The old `FindBoost` module looks for a `libboost_system` library, and
   Boost.System is header-only.
-- `-DPYTHON_INCLUDE_DIR` — with `-DPYTHON_LIBRARY`: Python's header directory and library, read
-  from `sysconfig` and handed to CMake's `FindPythonLibs`, whose table of known versions does not
-  reach the tree's Python.
+- `-DPYTHON_INCLUDE_DIR` — with `-DPYTHON_LIBRARY`: Python's header directory and shared library,
+  as `sysconfig` reports them for `/usr/bin/python3`. `GrPython.cmake` calls
+  `find_package(PythonLibs … EXACT)` for the interpreter's version, and with both cache variables
+  set CMake's `FindPythonLibs` takes these paths instead of searching for them.
 - `-Dpybind11_DIR` — the CMake package directory of [python3-pybind11](#port-python3-pybind11),
   as `python3 -m pybind11 --cmakedir` prints it; the Python bindings are built with it.
 

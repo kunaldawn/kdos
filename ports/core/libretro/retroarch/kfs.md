@@ -24,8 +24,8 @@ them.
 - `--enable-hid` — Build RetroArch's low-level HID layer, off by default. `--enable-libusb`, the
   joypad driver that reads USB pads directly, is part of it, and the configure refuses libusb
   unless HID is enabled with it.
-- `--enable-sdl2` — The SDL 2 joypad and audio drivers, through [sdl2-compat](#port-sdl2-compat);
-  `--disable-sdl` leaves out SDL 1.2.
+- `--enable-sdl2` — The SDL 2 video, input, joypad and audio drivers, through
+  [sdl2-compat](#port-sdl2-compat); `--disable-sdl` leaves out SDL 1.2.
 - `--enable-alsa` — Audio through ALSA, `--enable-pulse` and `--enable-pipewire`.
 - `--disable-jack` — None of the other audio back ends: JACK, OSS (`--disable-oss`), the RSound
   and RoarAudio network sound servers (`--disable-rsound`, `--disable-roar`), TinyALSA
@@ -44,8 +44,8 @@ them.
 - `--disable-langextra` — Build no menu translations; the menu is English
   ([language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
 - `--disable-builtinzlib` — Link the system [zlib](#port-zlib) instead of the bundled copy.
-- `--enable-builtinflac` — Compile the bundled FLAC, which the CHD disc-image reader is written
-  against.
+- `--enable-builtinflac` — Compile the bundled FLAC. The CHD disc-image reader decodes through
+  the bundled `dr_flac`, which only this path compiles in (`HAVE_DR_FLAC`).
 - `--disable-cg` — No Nvidia Cg shader runtime. With `--disable-caca` and `--disable-sixel`
   (terminal video drivers), `--disable-vg` (OpenVG) and `--disable-videocore` (the Raspberry Pi's
   Broadcom VideoCore), these drivers are left out.
@@ -65,6 +65,6 @@ at.
 this build cannot load, and it is a Python script nothing here runs.
 
 The panel reads no SVG, so the menu icon is a PNG rasterised from upstream's. Upstream's desktop
-entry is replaced: it claims every ROM type, among them the Game Boy Advance types the
-[mgba](#port-mgba) entry claims, which would open those files in whichever entry sorted first.
-RetroArch opens games from its own menu. The Wayland app id is `com.libretro.RetroArch`.
+entry is replaced: it claims every ROM type, among them the Game Boy, Game Boy Color and Game Boy
+Advance types the [mgba](#port-mgba) entry claims, which would open those files in whichever entry
+sorted first. RetroArch opens games from its own menu. The Wayland app id is `com.libretro.RetroArch`.

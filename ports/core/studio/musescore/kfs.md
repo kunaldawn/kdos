@@ -35,6 +35,9 @@ playback uses.
 - `-D MUSE_COMPILE_USE_COMPILER_CACHE=OFF` — upstream's default tries ccache, sccache and
   buildcache in turn and puts the first it finds in front of the compiler; off, the tree's compiler
   is called directly.
+- `-D MUSE_COMPILE_USE_UNITY=OFF` — compile every source file as its own translation unit.
+  Upstream's default is a unity build, which merges each module's sources, twelve at a time, into
+  one.
 - `-D MUSE_MODULE_UPDATE=OFF` — and `MUSE_MODULE_CLOUD`, `MUSE_MODULE_LEARN`,
   `MUSE_MODULE_MUSESAMPLER`, `MUE_BUILD_MUSESOUNDS_MODULE`: the update checker, the MuseScore.com
   account and cloud scores, the Learn page, and the Muse Sounds and Muse Sampler integration
@@ -71,7 +74,7 @@ playback uses.
 ## Patches
 
 - `fix-destdir-symlinks.patch` — Upstream's pull request 33819. The install rules in `src/app/CMakeLists.txt` (Linux and FreeBSD) and `buildscripts/packaging/Linux+BSD/SetupAppImagePackaging.cmake` create the `musescore` link to `mscore` and the `musescore` manual page's link to `mscore`'s with `cmake -E create_symlink` at a path built from `CMAKE_INSTALL_PREFIX` alone. The patch puts `$ENV{DESTDIR}` in front of the link's own path (the target stays `/usr/...`), so the links land in the package instead of in the build root's `/usr`.
-- `wayland-platform.patch` — Removes the block of `src/app/main.cpp` that, on Linux, sets `QT_QPA_PLATFORMTHEME=gtk3` and, unless `MU_QT_QPA_PLATFORM` is set, `QT_QPA_PLATFORM=xcb`. Unpatched, MuseScore is always an Xwayland window with the GTK 3 platform theme; patched, Qt follows the session's `QT_QPA_PLATFORM` and `QT_QPA_PLATFORMTHEME` (see [a graphical application](../../../../docs/kdos/05-developer/writing-ports.md#a-graphical-application)).
+- `wayland-platform.patch` — Removes the block of `src/app/main.cpp` that, on Linux, sets `QT_QPA_PLATFORMTHEME=gtk3` (unless `MU_QT_QPA_PLATFORM` is `offscreen`) and, unless `MU_QT_QPA_PLATFORM` is set, `QT_QPA_PLATFORM=xcb`. Unpatched, MuseScore is always an Xwayland window with the GTK 3 platform theme; patched, Qt follows the session's `QT_QPA_PLATFORM` and `QT_QPA_PLATFORMTHEME` (see [a graphical application](../../../../docs/kdos/05-developer/writing-ports.md#a-graphical-application)).
 
 ## Notes
 

@@ -9,8 +9,8 @@ and TeX Live build on it.
 
 - `--disable-rpath` — Hardcodes no run-time library path into the library and its programs. With
   every library in `/usr/lib`, the default search path, such an entry adds nothing, and the package
-  lint warns on it (see [What the package lint
-  refuses](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#what-the-package-lint-refuses)).
+  lint warns on it (see
+  [What the package lint refuses](../../../../docs/kdos/05-developer/writing-ports.md#what-the-package-lint-refuses)).
 - `--disable-werror` — Keeps `-Werror` out of the compile. configure adds it for a GCC build of a
   git checkout; the release tarball has no `.git`, and the switch keeps it off whatever the tree.
 - `--enable-gd-formats` — Builds the GD and GD2 file formats, GD's own uncompressed and chunked

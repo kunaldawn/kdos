@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/disable-update-check.patch"
+
 tar xf $PORT_SRC/${name}-vendor-${version}.tar.xz
 
 export CGO_ENABLED=0

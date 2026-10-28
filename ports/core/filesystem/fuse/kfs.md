@@ -4,7 +4,7 @@ mount to the process behind it, through `/dev/fuse`. This port is libfuse 3, the
 program is written against, and `fusermount3`, the setuid helper that performs the mount and
 unmount for a user who may not call `mount(2)` themselves. sshfs, gocryptfs, fuse-overlayfs, gvfs,
 the document portal, `rclone mount` and `restic mount` all go through it; see
-[setuid binaries](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#setuid-binaries).
+[setuid binaries](../../../../docs/kdos/03-architecture/security-model.md#setuid-binaries).
 
 ## Flags
 - `--libexecdir=/usr/lib` — Where internal helper programs would go. libfuse 3 installs none,

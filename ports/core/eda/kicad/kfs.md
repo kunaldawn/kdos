@@ -39,7 +39,9 @@ includes it before it exists.
 
 SWIG from version 4.4 drops the Python 2 style `.next()` method of its iterators, which the
 `pcbnew` bindings call; `fix-swig-iterator-next.patch`, upstream's merge request, calls Python 3's
-`next()` instead. Without it every board iteration from a script raises.
+`next()` instead. Without it a script that iterates over a board's item or track lists (the
+`std::deque<BOARD_ITEM *>` and `std::deque<PCB_TRACK *>` wrappers in
+`pcbnew/python/swig/board.i`) fails with an `AttributeError`.
 
 The plugin and content manager reads an online repository, so on a machine with no network it
 lists nothing.

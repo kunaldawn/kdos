@@ -16,5 +16,6 @@ and fldigi are among the ports that link it.
 - `--without-oss`, `--without-asihpi` — The OSS host API and the one for AudioScience HPI sound
   cards. Both are detected by default; naming them keeps them out.
 - `--enable-cxx` — Build the C++ binding, `libportaudiocpp`.
-- `-j1` — Build and install serially. The library and the C++ binding race each other under a
-  parallel make, and the loser fails to find an object that is half written.
+- `-j1` — Build and install serially. The top `Makefile`'s `all` names the library and the
+  recursive build of `bindings/cpp` as independent prerequisites, so under a parallel make the C++
+  binding can link against `lib/libportaudio.la` before the library is written.

@@ -25,20 +25,29 @@
  * warms up. Boot then reports itself as POST lines. Quitting runs it backwards
  * — collapse to a line, pinch to a dot, decay.
  *
- * Every failure path here exits 0 without drawing. A boot animation that can
- * stop a boot is a bug, not a feature. Boot messages still go to /dev/console
- * either way, and a boot the initramfs cannot finish puts its reason and a
- * shell on tty1, so a machine that dies behind the splash is still debuggable.
+ * Every failure to reach the display or the running instance exits 0 without
+ * drawing. A boot animation that can stop a boot is a bug, not a feature. The
+ * exceptions are no part of a boot: a command line it does not understand (an
+ * unknown command, or `preview` with fewer than three arguments) prints usage
+ * and exits 1, and `preview` itself exits 1 when it cannot render. Boot
+ * messages still go to /dev/console either way, and a boot the initramfs
+ * cannot finish puts its reason and a shell on tty1, so a machine that dies
+ * behind the splash is still debuggable.
  *
  *   kdos-splash run                 draw, and read commands until told to quit
  *   kdos-splash step "PROBING..."   begin a stage (prints NAME ....... )
  *   kdos-splash ok | fail           close the current stage
  *   kdos-splash msg  "text"         a plain line
+ *   kdos-splash detail "text"       a detail line; the newest few are kept
  *   kdos-splash total N             add N to the expected step count (the
  *                                   progress bar; senders add their share as
  *                                   soon as they know it — until the first
  *                                   total arrives the bar sweeps)
+ *   kdos-splash accent NAME         switch the running splash's colour scheme
  *   kdos-splash quit                power-off animation, then exit
+ *   kdos-splash preview WxH T out.ppm
+ *                                   render the frame at T seconds to a file,
+ *                                   with no framebuffer and no FIFO
  *
  * Commands reach the running instance through a FIFO in /dev, which is the
  * one filesystem that survives switch_root intact (devtmpfs is moved, not
@@ -99,15 +108,17 @@ static uint32_t C_PHOS, C_PHOSDIM, C_DIM, C_AMBER, C_ALARM, C_TEXT, C_DEEP;
 static uint32_t C_HOT;		/* mix(text, white, 60) — the beam flash    */
 static uint32_t C_GLOW;		/* mix(text, white, 68) — the mascot rim    */
 
-/* kcol_mix, transcribed: the same integer blend, so a value derived here and
- * one derived by the library are the same number. */
+/* kcol_mix's blend, term for term: the unsigned weighted sum floored once, so
+ * a value derived here and one derived by the library are the same number in
+ * either direction. A signed step would truncate toward zero and land one
+ * higher on a falling channel (171 against 170 for 255 to 0 at 33). */
 static uint32_t spl_mix(uint32_t a, uint32_t b, int pct)
 {
 	uint32_t out = 0;
 
 	for (int sh = 16; sh >= 0; sh -= 8) {
-		int x = (int)((a >> sh) & 0xff), y = (int)((b >> sh) & 0xff);
-		out |= (uint32_t)(x + (y - x) * pct / 100) << sh;
+		unsigned x = (a >> sh) & 0xff, y = (b >> sh) & 0xff;
+		out |= ((x * (100 - (unsigned)pct) + y * (unsigned)pct) / 100) << sh;
 	}
 	return out;
 }
@@ -1183,9 +1194,10 @@ int main(int argc, char **argv)
 	const char *cmd = argc > 1 ? argv[1] : "run";
 	const char *arg = argc > 2 ? argv[2] : "";
 
-	/* BEFORE ANY ENTRY POINT, because the colours are variables now and an
-	 * unset one is black on black. The default is libkcolor's own, so the
-	 * splash and an unconfigured desktop come up in the same scheme. */
+	/* BEFORE ANY ENTRY POINT, because the colours are variables set from a
+	 * scheme and an unset one is black on black. The default is libkcolor's
+	 * own, so the splash and an unconfigured desktop come up in the same
+	 * scheme. */
 	spl_accent(KCOL_DEFAULT_NAME);
 
 	if (!strcmp(cmd, "run"))

@@ -24,8 +24,9 @@ drawing the bitmap, and only the programs that ask for `Terminus (TTF)` get this
   traced outline stays sharp, as a pixel font's should.
 - `-V "$version"` — The font version written into each face: mkttf's release number for this
   Terminus, `version` in `kpkgbuild`, which differs from the Terminus release `_terminus`.
-- `-O` — Has mkttf set the OS/2 table's weight fields from the face's weight itself, which some
-  FontForge builds leave undone.
+- `-O` — Has mkttf set the style bits itself, the OS/2 table's `fsSelection` and the head
+  table's `macStyle` (regular, bold, italic), from the face's weight and name. Newer FontForge
+  releases leave both to the script that builds the font.
 
 ## Notes
 

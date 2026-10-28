@@ -21,9 +21,8 @@ cairo and pango give the PNG, SVG and PDF devices anti-aliased text with no disp
 - `--disable-R-static-lib` — Builds no `libR.a`, upstream's default.
 - `--disable-java` — Skips R's Java setup. rJava is not shipped, and on its default configure would
   probe a JDK and record its paths in `/usr/lib/R/etc/javaconf`.
-- `--disable-nls` — Builds and installs no translated messages. KDOS ships English only (see [the
-  size and language
-  policy](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
+- `--disable-nls` — Builds and installs no translated messages. KDOS ships English only (see
+  [the size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
 - `--enable-openmp` — Uses OpenMP where R's code supports it, upstream's default.
 - `--with-recommended-packages` — Builds and installs the recommended packages, which ship inside
   the tarball under `src/library/Recommended`, so they work with no network; any other CRAN package
@@ -49,6 +48,7 @@ cairo and pango give the PNG, SVG and PDF devices anti-aliased text with no disp
 as a plain C library that other programs link without embedding R; the static `libRmath.a` the
 install may copy is deleted.
 
-The `test -e` and `test -d` lines at the end turn a silently dropped feature into a failed build:
-the recommended packages they name, `tcltk.so` and `R_X11.so` are each left out, with configure
-carrying on, when something they need is missing, and `libR.so` is checked with them.
+The `test -e` and `test -d` lines at the end turn a silently dropped feature into a failed build.
+configure turns Tcl/Tk support off with only a warning when it cannot use tcl or tk, so a build
+without `tcltk.so` otherwise installs cleanly; `libR.so`, `R_X11.so` and the six recommended
+packages they name are checked with it, so the package never ships without any of them.

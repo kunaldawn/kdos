@@ -8,9 +8,9 @@
  *   kdos-kpkg — one binary, five names
  *
  * kpkg, kpkgadd, kpkgbuild, kpkgdel and kpkgdepends are the same executable
- * dispatched on its own basename. The names are unchanged: 393 recipes, the
- * build orchestrator, the test runner and a decade of muscle memory all call
- * them by those names.
+ * dispatched on its own basename. Every recipe, the build orchestrator and the
+ * test runner call them by those five names, so none of them is free to
+ * change.
  * ---------------------------------
  */
 
@@ -164,8 +164,10 @@ int kp_cmd_fetch(const KpConf *c, int argc, char **argv);
  * The binary repository (binhost.c)
  * ──────────────────────────────────────────────────────────────────────── */
 
-/* No index is ever this large — 396 ports plus room. The cap exists so the
- * parser cannot be made to allocate by a hostile index. */
+/* The most stanzas an index may hold, packages and deltas together. The cap
+ * exists so the parser cannot be made to allocate by a hostile index; an index
+ * past it is refused, so it must stay above the tree's port count with room
+ * for deltas. */
 #define KP_MAX_INDEX 4096
 
 int kp_cmd_index(const KpConf *c, int argc, char **argv);

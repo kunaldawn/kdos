@@ -173,8 +173,8 @@ Five rules hold:
   `ktui_id_pop()`. Outside a scope a control's id is its place in the frame, so a group that
   appears renumbers everything after it: the focus lands on a different control and a field takes
   another field's caret. Inside a scope the ids are hashed from the name, and the controls after
-  the group keep theirs. The installer's passphrase pair under *Encrypt the root filesystem* is
-  drawn this way. Tab follows the order the controls were drawn in, scoped or not.
+  the group keep theirs. The installer's passphrase pair under *Encrypt the root filesystem (LUKS2)*
+  is drawn this way. Tab follows the order the controls were drawn in, scoped or not.
 - A resize is not applied until the loop applies it. The backend sets `ktui_resized`; the cell
   buffer follows only when the loop calls `ktui_draw_resize()` and `ktui_draw_invalidate()`, as
   above. Every loop that owns a surface owns this step, and on the runner the step is the
@@ -200,10 +200,10 @@ client acknowledges it and then *commits*, which presents the buffer it has atta
 | `SAVER` | The whole screen, above windows, taking no input | See below |
 | `NONE` | Connect and bind the globals, install no backend, create no surface | The panel's `--dump`, and `kdos-display --list` / `--apply` |
 
-The other fields that matter most are `app_id`, `title` (toplevel only), `font`, `output` (the
-compositor's name for a screen, such as `eDP-1`; `NULL` leaves the choice to the compositor, which
-chooses exactly one), `keyboard`, `dismiss_on_unfocus`, `corner` with `margin_x`/`margin_y`
-(overlay only), `floating` (a toplevel that opens centred at the size it asked for), `opacity`
+The other fields that matter most are `app_id`, `title` (toplevel only), `font`, `output` (layer
+surfaces only: the compositor's name for a screen, such as `eDP-1`; `NULL` leaves the choice to
+the compositor, which chooses exactly one), `keyboard`, `dismiss_on_unfocus`, `corner` with
+`margin_x`/`margin_y` (overlay only), `floating` (a toplevel that opens centred at the size it asked for), `opacity`
 (body opacity in percent; 0 means 100) and `manage` (the surface intends to act on other programs'
 windows). `kdisp.h` documents each one.
 
@@ -236,19 +236,22 @@ composing nothing on a grid narrower than it needs.
 
 ### A saver asks for no size and takes no input
 
-`SAVER` covers every pixel of one output, takes its size from the display, and passes all input
-through to what is underneath.
+`SAVER` covers every pixel of one output, takes its size from the display, and is closed by the
+display on the first key, button or touch.
 
 It asks for no size. An overlay is centred and sized in cells by the client, and a client cannot
 see the output; one that measured the screen itself would have to round pixels into cells, and a
 row rounded down is a strip of desktop along the bottom edge of a surface whose job is to cover
 it. The display sends the size in the first configure, exactly as it does for `BACKGROUND`.
 
-It takes no keyboard and claims no pointer region (`kdisp_input_cells(NULL, 0)`). Every keystroke
-and every click goes to what is underneath, which is what lets the display's idle policy see the
-activity and take the surface away; a saver that took input would hide that activity and never be
-removed. It is asked to close rather than killed, so the loop must exit when
-`kdisp_should_close()` answers true; a saver that ignores the request stays on the screen.
+It takes no keyboard and claims no pointer region (`kdisp_input_cells(NULL, 0)`), and the idle
+policy still sees every event. `kdos-comp` finds a mapped overlay surface whose namespace (the
+`app_id`) is `kdos-saver`, closes it on the first key press, button press or touch, and delivers
+that event to nobody: the key's release is eaten with it, so no window sees half a keystroke, and
+no click lands on a window the saver was hiding. In a locked session the saver is still closed
+but the event goes on to the lock screen above it. A saver under another `app_id` is not closed. It
+is asked to close rather than killed, so the loop must exit when `kdisp_should_close()` answers
+true; a saver that ignores the request stays on the screen.
 
 ### Anchoring a popup
 
@@ -303,8 +306,9 @@ accessibility code of its own. What a widget cannot know it does not invent: a l
 take their rows from your callback, so they state "3 of 9" and leave the name to you. If your rows
 have text a reader should hear, call `ktui_announce()` from the row callback for the selected row.
 `ktui_frame_begin()` clears the queue (at most 16 entries) every frame, so what you announce is
-only ever about the current one. See [Accessibility](../02-user-guide/accessibility.md) for who
-reads the queue.
+only ever about the current one. Nothing on the image reads the queue: its one reader is the
+library self-test (`src/libs/selftest.c`), which fails when a widget's record goes stale. See
+[The announcement record](../02-user-guide/accessibility.md#the-announcement-record).
 
 How a finished frame reaches the compositor is `libkwl`'s concern; see
 [Presenting a frame](#presenting-a-frame).
@@ -506,8 +510,8 @@ A surface with a menu bar or a context menu declares a `KtuiMenu` (panes of `Ktu
 with a label, an id, an optional accelerator string and an enabled flag) and points `keys.menu` at
 it. `ktui_keys()` then routes into the menu before the `Esc` ladder: `F10` opens the bar,
 `Alt`+letter opens a pane by its marked letter, `Shift+F10` pops the context pane where the
-surface's `ctx_at` callback says its focus is drawn, and `Esc` closes an open pane before it
-reaches any layer. A pick returns `KTUI_KEY_MENU` with the item's id in `keys.menu_id`.
+surface's `ctx_at` callback says its focus is drawn (a long press of a finger pops it under the
+finger, if `ctx_at` does not refuse), and `Esc` closes an open pane before it reaches any layer. A pick returns `KTUI_KEY_MENU` with the item's id in `keys.menu_id`.
 `ktui_menu_draw()` draws the bar and the open pane and pushes the menu's own hints. `kdos-pick`
 and `kdos-desk` use it.
 
@@ -543,7 +547,7 @@ which has stopped being drawn stops being grabbable.
 A *sprite* is a picture registered in one of `libktui`'s numbered sprite slots (not to be confused
 with the palette slots under [Colour](#colour)); a cell refers to the picture by its slot number.
 The set of sprite slots is the *sprite table*. See also the
-[glossary](../06-reference/glossary.md).
+[glossary](../06-reference/glossary.md#sprite).
 
 A picture is an enhancement layer over the cell grid, never a replacement, and every consumer must
 draw correctly when the picture is unavailable. `kicon_slot()` answers −1 on a terminal, with icons
@@ -676,7 +680,8 @@ ktui_sel_slots(selected, pane_has_keyboard, KT_SURFACE, &fg, &bg);
 
 There are three states: an ordinary row is `KT_TEXT` on the page; the caret in a pane without the
 keyboard is a marker in `KT_MID` with no fill; the caret in the focused pane is a `KT_DIM` fill with
-the marker in `KT_ACCENT`. `ktui_sel_row()` gives the same answer with the fill and the `►` marker
+the marker in `KT_ACCENT`, or in `KT_TEXT` in a scheme whose accent reads below 4.5:1 on the fill
+(`paper`). `ktui_sel_row()` gives the same answer with the fill and the `►` marker
 drawn for you; the row's text starts two cells in. Pass the page slot, `KT_BG` or `KT_SURFACE`,
 rather than letting the control guess, or a translucent window gets an opaque band across it.
 
@@ -742,9 +747,9 @@ int thing_main(int argc, char **argv)
    prints `usage: <app_id> <usage>` with exit status 2 for one that nobody takes.
 2. It calls `start(dump)`, where the surface reads what it shows, and then applies the theme and
    night light through `ktui_theme_load()`.
-3. With `--dump` it draws one frame offscreen at `.cols` × `.rows` through the same `draw()` and
-   prints it, before `kdisp_init()` is reached. That is what makes the golden a picture of the real
-   surface.
+3. With `--dump` it draws one frame offscreen at `.cols` × `.rows`, calling `ready()` and then the
+   same `draw()`, and prints it, before `kdisp_init()` is reached. That is what makes the golden a
+   picture of the real surface.
 4. Otherwise it calls `kdisp_init()`, or prints `<app_id>: no display server` and exits 1. When
    `.icons` points at a set flag (the surface's own `icons_on`, which `--no-icons` clears) it then
    calls `sh_pic_backend()` and `kicon_init()`. It puts the popup plate under an overlay that asks
@@ -770,8 +775,8 @@ dump draws inside a frame too. It is off by default because it changes three thi
 with draw, key and hit functions of its own relies on: `ktui_frame_end()` walks the Tab ring on
 any Tab that `event()` did not answer `SH_EV_TAKEN`; `ktui_id_base()` stops restarting the id
 counter, so a group that points the focus at its own members counts from the page's ids; and the
-hit lists swap once per frame. No shipped front end on the runner takes it yet; the runner's own
-test surface in the dump harness pins what it does.
+hit lists swap once per frame. No shipped front end on the runner sets it; the runner's own test
+surface in the dump harness pins what it does.
 
 Ten front ends run on `sh_run()`: `kdos-about`, `kdos-chars`, `kdos-contacts`, `kdos-firewall`,
 `kdos-note`, `kdos-print`, `kdos-trash`, `kdos-update`, `kdos-users` and `kdos-verify`. The rest
@@ -1027,10 +1032,12 @@ several places, and most of them fail silently.
    worth pinning, and the suite passes with none of them:
    - add `<x>` to the `for s in …` candidate list in `testing/selftest.sh`, so the file is compiled
      into the dump harness;
-   - add **both** `FRONT_END(<x>_main);` and a `{ "<short name>", <x>_main }` row to
-     `testing/fixtures/shell/dumpmain.c`. Every entry point there is declared weak, so missing
-     either makes `dumpcheck --have <short name>` answer no and the golden block print
-     `(skipped — not linked into the harness)`;
+   - add a `{ "<short name>", <x>_main }` row to the table in
+     `testing/fixtures/shell/dumpmain.c`, and `FRONT_END(<x>_main);` beside the others. The row is
+     what `dumpcheck --have <short name>` looks up, so without it the golden block prints
+     `(skipped — not linked into the harness)`. `FRONT_END` declares the entry point weak, which
+     keeps the harness linking on a host where the file failed its candidate compile and was left
+     out;
    - add a `golden <name> <WxH> <argv…>` call to `testing/selftest.sh`. The candidate list and the
      golden calls are separate, and being on the first buys no coverage at all;
    - add a fixture if the surface reads anything the host owns. `--fixture <dir>` replaying recorded
@@ -1069,7 +1076,7 @@ take the first rule that fits:
 
 | Area | Holds | Searched by |
 |---|---|---|
-| `src/libs` | A library. Every one is a `libk*` directory here, and none is a port | Every port's `build.sh`, by path |
+| `src/libs` | A library. Every one is a `libk*` directory here, and none is a port | The `build.sh` of each port of KDOS's own that links one, by path |
 | `src/devtools` | A program that is not installed on the target, such as `kdosbuild` and `kdos-portup` | Nothing: they are not ports |
 | `src/desktop` | A program that draws, or that speaks the session's Wayland or D-Bus: the compositor, the panel, the terminal, the portal | `50_desktop` |
 | `src/daemons` | A root daemon whose client is the desktop account, such as `kdos-powerd` | `50_desktop` |
@@ -1137,7 +1144,7 @@ database says those ports own, and patches them into the RAM overlay of a booted
 writable in-memory layer the live system runs on; see [Testing](testing.md#the-fast-loop) and
 [Developing](developing.md)). It needs a built tree and the container image of the *rig*, the QEMU
 harness that boots the ISO, drives it and photographs it ([Testing](testing.md#the-qemu-rig), and
-the [glossary](../06-reference/glossary.md)); the rig writes a PPM file whatever the extension. A
+the [glossary](../06-reference/glossary.md#rig)); the rig writes a PPM file whatever the extension. A
 new symbolic link in the recipe travels with the package, but a new row under `fs/`, such as a
 `menu.conf` route, does not unless the file is named in `KDOS_QUICK_FILES` (a path relative to
 `build/fs`) after the bootstrap filesystem step (`10_bootstrap:000_file_system.sh`) has copied `fs/`

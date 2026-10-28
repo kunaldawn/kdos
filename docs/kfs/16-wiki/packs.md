@@ -21,8 +21,8 @@ covers exporting and importing a set, carrying one box as a pack, signing and ve
   [kdos-tools](#port-kdos-tools), run it.
 - [kdos-boxinit](#port-kdos-boxinit) is the init a pack box runs as process 1.
 - The base filesystem supplies the service script, `/etc/init.d/59_packd.sh` (the service
-  `packd`), the daemon's settings, [`/etc/kdos/packd.conf`]{.idx}, and the key packs on a medium are
-  verified against, in [`/etc/kdos/keys/packs/`]{.idx term="/etc/kdos/keys/packs"}.
+  `packd`), the daemon's settings, [`/etc/kdos/packd.conf`]{.idx}, and the ring of trusted pack
+  keys, [`/etc/kdos/keys/packs/`]{.idx term="/etc/kdos/keys/packs"}.
 - The image step [100_packs](../15-image/100-packs.md) creates the pack store's directories.
 
 The service `packd` is enabled on the live medium and on an installed system. It skips itself when
@@ -38,8 +38,9 @@ From `fs/etc/kdos/packd.conf`:
 
 <!-- kfs:include fs/etc/kdos/packd.conf -->
 
-`retain` is how many superseded versions of one pack the store keeps, at most 8, read when the
-daemon starts. `KDOS_PACK_RETAIN` in the daemon's environment overrides it. See
+`retain` is how many superseded versions of one pack the store keeps, at most 8. The daemon reads
+the file once, the first time it needs the value, so an edit takes effect after
+`sudo service restart packd`. `KDOS_PACK_RETAIN` in the daemon's environment overrides it. See
 [/etc/kdos/packd.conf](../../kdos/06-reference/configuration.md#etckdospackdconf).
 
 ### /etc/init.d/59_packd.sh
@@ -56,9 +57,15 @@ The script sets none of the daemon's environment variables (`KDOS_PACK_STORE`, `
 ### /etc/kdos/keys/packs/
 
 The ring a pack's signature is checked against. It is a directory of its own because a ring is a
-flat read of `*.pub`, and a key that vouches for packs must not thereby vouch for host packages. The
-image ships one key, `kdos-packs.pub`, for the signed index beside the packs on a medium. Trusting
-another key is copying its `.pub` in; removing trust is deleting it.
+flat read of `*.pub`, and a key that vouches for packs must not thereby vouch for host packages.
+Trusting a key is copying its `.pub` in; removing trust is deleting it.
+
+The image ships one key here, `kdos-packs.pub`. Nothing the build makes is signed with it: the
+medium carries no signed pack and no pack index, and the optional base pack `kdos` is unsigned. The
+shipped key therefore verifies nothing on a standard medium; it only means that a pack signed with
+its secret half would be accepted. Delete it if you want the ring to hold only keys you chose. See
+[Signing and trust](../../kdos/03-architecture/security-model.md#signing-and-trust) and
+[Signing keys and trust](signing-keys-and-trust.md).
 
 ### The pack store
 
@@ -68,11 +75,12 @@ another key is copying its `.pub` in; removing trust is deleting it.
 | `/var/lib/kdos/packs/<id>-<version>.kpack` | Superseded versions, up to `retain`; `<version>` is the pack's `version =` without its release |
 | `/var/lib/kdos/packs/staging/` | The one place an unprivileged write lands, mode `01777` |
 | `/var/lib/kdos/packs/mnt/<id>/` | Where a pack is mounted, read-only, `nosuid` and `nodev`, and `noexec` too for a data pack |
-
-An installed pack is the staged file renamed into the store, so it keeps the owner and mode it was
-staged with: a pack you copied into `staging/` is yours, mode `0664`, in the store.
 | `/mnt/iso/packs/` | Packs on the boot medium, mounted from there |
 | [`/var/lib/kdos/pack-manifest`]{.idx} | Every [graft]{.idx} made, for `ungraft` |
+
+The daemon does not install the staged file itself. It copies it into a private file in the store,
+owned by root with mode `0644`, verifies that copy and renames it to `<id>.kpack`, then deletes the
+staged file. An installed pack is owned by root whoever staged it.
 
 The image step makes the staging directory with its mode, so that a first boot accepts an import
 before the daemon has ever run:
@@ -144,9 +152,13 @@ one `.ktar` file for another machine.
    KDOS_PACK_KEY=~/keys/mine.key kdos app export apps.ktar app.hugin
    ```
 
+   An import stages a signed set's `PACKAGES` and `PACKAGES.sig` beside its packs and names that
+   index in each install it asks for, so the daemon installs each pack the index lists as signed
+   by that key, provided its `.pub` is in `/etc/kdos/keys/packs`. The packs of an unsigned set are accepted as unsigned.
+
 Each pack is the application's whole image flattened, base and runtime included, so it needs no
 other pack. The archive also holds `SELECTION`, the ids that were named and the members of each
-group that was named, and `PACKAGES`, the index.
+group that was named, `PACKAGES`, the index, and `PACKAGES.sig` when the index was signed.
 
 ### Importing a set
 
@@ -164,8 +176,8 @@ install it by file name; the daemon checks the pack's payload hash and its signa
 2. Read the last line, which counts what imported and what failed; the exit status is 1 if any
    failed. A pack the daemon refuses is named and skipped, and the rest still import.
 
-3. The launchers are regenerated when at least one pack imported, so the applications are in the
-   menu and on the command line.
+3. The launchers are regenerated when at least one application imported, so the applications are
+   in the menu and on the command line.
 
 A bare import installs every id line in `SELECTION`, the members of a group listed under its
 `group` line. An id whose application was not installed on the exporting machine is listed but has
@@ -238,8 +250,11 @@ image has no such layer.
 
 The daemon accepts a pack whose signature is good, and one with no signature at all, which it logs
 as unsigned. It refuses the other three outcomes. The packs `kdos-appbox export` makes carry no
-signature block of their own, and an import stages each pack without the set's index, so such a
-pack is accepted as unsigned; sign each pack with `kdos-pack sign` for the signature to count. See
+signature block of their own. A set exported with `KDOS_PACK_KEY` installs as signed through its
+index, which the import stages beside the packs, when that key's `.pub` is in
+`/etc/kdos/keys/packs`; a pack whose hash the signed index contradicts is refused. Only the packs
+of an unsigned set are accepted as unsigned, and `kdos-pack sign` gives a pack a signature of its
+own that counts without an index. See
 [Signature outcomes](../../kdos/03-architecture/packs-and-boxes.md#signature-outcomes).
 
 ### Deltas
@@ -253,9 +268,10 @@ sha256sum rebuilt.kpack
 ```
 
 `delta` names its output `<new>--from--<old>.kdelta` when given no name, and says how much smaller
-than the pack it is. `apply` writes the pack and prints `<out> written — check it against the
-index's C: before using it`; it does not check what it rebuilds: compare the result's SHA-256 with the `C:` line of the pack in a signed index
-before you install it. Nothing on the system applies a delta by itself.
+than the pack it is. `apply` writes the pack and prints
+`<out> written — check it against the index's C: before using it`; it does not check what it
+rebuilds. Compare the result's SHA-256 with the `C:` line of the pack in a signed index before you
+install it. Nothing on the system applies a delta by itself.
 
 ### The KDOS base pack
 
@@ -281,19 +297,20 @@ echo 'rollback app.hugin' | socat - UNIX-CONNECT:/run/kdos-packd.sock
 echo 'remove app.hugin' | socat - UNIX-CONNECT:/run/kdos-packd.sock
 ```
 
-A rollback answers `ok <id> <old> -> <new>` and a removal `ok <id> removed`. The daemon's row for
-an id is the installed `<id>.kpack`: `list`, `info`, `mount` and `remove` act on it, and a kept
-`<id>-<version>.kpack` is reached only by `rollback`, which takes the newest kept version by version
-comparison. See
+A rollback answers `ok <id> <installed version> -> <restored version>` and a removal
+`ok <id> removed`. The daemon's row for an id is the installed `<id>.kpack`: `list`, `info`,
+`mount` and `remove` act on it, and a kept `<id>-<version>.kpack` is reached only by `rollback`,
+which takes the newest kept version by version comparison. See
 [Installing a pack](../../kdos/03-architecture/packs-and-boxes.md#installing-a-pack).
 
 ### On the live medium and on an installed system
 
-The daemon works the same on both. On the live medium the pack store is on the overlay in RAM, so an
-imported pack is gone at power-off without a persistence store, and so is a box's writable layer,
-which the daemon puts on a tmpfs because the kernel will not stack it on the overlay that holds
-your home. `kdos-appbox status` marks such a box `ephemeral`. An installed system keeps both on
-disk.
+The daemon works the same on both. On the live medium the pack store is on the session's overlay,
+so an imported pack is gone at power-off unless the medium has a
+[persistence store](live-persistence.md). A box's writable layer is lost at the end of every live
+session, persistence store or not: the daemon puts it on a tmpfs because the kernel will not stack
+it on the overlay that holds your home. `kdos-appbox status` marks such a box `ephemeral`. An
+installed system keeps both on disk.
 
 ## Tips
 
@@ -302,7 +319,7 @@ disk.
   not cover the metadata.
 - `kdos-pack extract-meta <pack>` prints the metadata, and `--icon` writes the icon instead.
 - A pack in the store is not hashed again on each mount; a pack on the medium is hashed and
-  checked the first time it is mounted, which on a slow stick takes seconds.
+  checked whenever it is mounted, which on a slow stick takes seconds.
 - When one id is both installed and on the medium, the installed copy is the one used.
 
 ## Troubleshooting
@@ -346,10 +363,9 @@ A frozen box imports and its box is not created
 - [Applications imported or built during an install stay in the live session](../../kdos/06-reference/known-gaps.md#applications-imported-or-built-during-an-install-stay-in-the-live-session)
 - [A live session cannot create a persistent box](../../kdos/06-reference/known-gaps.md#a-live-session-cannot-create-a-persistent-box)
 - [A catalogue change reaches an installed application only when it is rebuilt](../../kdos/06-reference/known-gaps.md#a-catalogue-change-reaches-an-installed-application-only-when-it-is-rebuilt)
-- The catalogue's grafts are carried out by nothing in the tree, so a data pack does not reach the
-  application that needs it; see [Grafts and data packs](../../kdos/03-architecture/packs-and-boxes.md#grafts-and-data-packs).
-- No harness exercises the daemon's `rollback`, which has been run by hand on the live medium
-  only; see the kdos-packd row of
+- A data set built by `kdos app install` is an image and is grafted nowhere; only an imported data
+  pack is grafted. See [Grafts and data packs](../../kdos/03-architecture/packs-and-boxes.md#grafts-and-data-packs).
+- No harness exercises the daemon's `rollback`; see the kdos-packd row of
   [Applications and boxes](../../kdos/06-reference/status.md#applications-and-boxes) in the status page.
 
 ## See also

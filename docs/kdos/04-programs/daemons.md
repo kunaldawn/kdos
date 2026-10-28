@@ -28,7 +28,7 @@ kept running by `ksvc`, the service supervisor in `kdos-tools`.
 
 | Daemon | Socket | Command-line client | Other clients | Init script | Skipped at boot when |
 |---|---|---|---|---|---|
-| `kdos-powerd` | `/run/kdos-powerd.sock` | `kdos-power` | The panel's and the Start menu's power items, the power and sleep keys, the compositor's lid handler `kdos-lid`, the `kdos-firewall`, `kdos-time` and `kdos-users` [surfaces](../06-reference/glossary.md) (windows and pop-ups drawn by `kdos-shell`), `kdos theme`, `kdos doctor` (checks that the socket exists) | `55_powerd.sh` | The binary is missing |
+| `kdos-powerd` | `/run/kdos-powerd.sock` | `kdos-power` | The panel's and the Start menu's power items, the power and sleep keys, the compositor's lid handler `kdos-lid`, the `kdos-firewall`, `kdos-time` and `kdos-users` [surfaces](../06-reference/glossary.md#surface) (windows and pop-ups drawn by `kdos-shell`), `kdos theme`, `kdos doctor` (checks that the socket exists) | `55_powerd.sh` | The binary is missing |
 | `kdos-energyd` | `/run/kdos-energyd.sock` | `kdos-energy` | `kdos-res` (the Energy and Boxes pages), `kdos doctor` (checks that the socket exists) | `56_energyd.sh` | The binary is missing, or no `/sys/class/powercap/*/energy_uj` is readable |
 | `kdos-oomd` | `/run/kdos-oomd.sock` | — | `kdos doctor` (checks that the socket exists) | `57_oomd.sh` | The binary is missing, or `/proc/pressure/memory` is not writable (the kernel has PSI off) |
 | `kdos-mountd` | `/run/kdos-mountd.sock` | `kdos-mount` | The `kdos-devices`, `kdos-disks` and `kdos-connect` surfaces, and the session helper `kdos-mediad` | `58_mountd.sh` | The binary is missing |
@@ -90,9 +90,10 @@ diagnose and review all five.
 A daemon runs in the foreground and never forks into the background. The init script calls
 `supervise <name> <binary>` from `/etc/init.d/service_helper`; the supervisor leads its own process
 group, writes `/run/<full name>.pid`, and restarts the daemon five seconds after it exits.
-`service stop <name>` sends SIGTERM to the whole group, waits for it to empty for at most five
-seconds, then sends SIGKILL to whatever is left. `supervise` on a name whose supervisor is alive
-starts nothing and says `[SKIP]`, so a second `service start` cannot leave a daemon nothing stops.
+`service stop <name>` sends SIGTERM to the whole group, waits for it to empty, checking every 50
+ms, and sends SIGKILL to whatever is left when the stop grace runs out. The grace is five seconds
+unless the init script passed `supervise --stop-grace <seconds>`; none of these five daemons does.
+`supervise` on a name whose supervisor is alive starts nothing and says `[SKIP]`, so a second `service start` cannot leave a daemon nothing stops.
 A `SIGTERM` sent to the supervisor alone is passed on to its group, so the daemon goes with it. A
 daemon whose supervisor was killed outright is still found through the state file: `service
 status` reports it as `[FAIL]` rather than `[DOWN]`, `service start` refuses to start a second
@@ -275,7 +276,8 @@ to announce one), so it tells the two programs that must act around it:
    five-second reply timeout so the devices are down before the kernel freezes them.
 3. `tlp suspend`.
 4. Write `mem` to `/sys/power/state` (suspend to RAM). Hibernation is not offered, because the
-   initramfs sets up no resume device.
+   initramfs sets up no resume device. The file is opened right after the `sync`; if it cannot be
+   opened, the daemon stops there, runs none of the hooks, and logs `suspend failed`.
 5. After waking, or at once if the kernel refused the write: `tlp resume`, then NetworkManager's
    `Sleep(false)`.
 
@@ -289,13 +291,15 @@ resets across suspend, are not restored. Each hook is skipped when `/usr/bin/dbu
 
 `poweroff` and `reboot` ask init first, by running `/sbin/telinit 0` or `/sbin/telinit 6` through
 the argument-vector builder. Init ends the consoles, and then `/etc/init.d/rcK`, its first runlevel
-0 and 6 entry, stops every service in reverse order, `kdos-powerd` among them, before anything is
-unmounted. Only if the daemon is still alive sixty seconds later, which means init never acted on
-the request, does it call `reboot(2)` directly. The wait is that long because init gives the
-consoles up to three seconds and `rcK` then stops every supervised service numbered above
-`55_powerd.sh` first, at a cost of about a second each; a shorter wait would cut the power
-mid-shutdown. No signal can stand in for `telinit`: sysvinit ignores `SIGTERM`, and `SIGUSR2`
-closes `/run/initctl`, its request channel, for the rest of the boot.
+0 and 6 entry, stops every service but the firewall in reverse order, `kdos-powerd` among them,
+before anything is unmounted. Only if the daemon is still alive sixty seconds later, which means
+init never acted on the request, does it call `reboot(2)` directly. The wait has to outlast init's
+three seconds for the consoles plus `rcK`'s walk through every service that sorts after
+`55_powerd.sh`. Each stop returns as soon as that service's processes are gone, but a slow one is
+given its whole stop grace (PostgreSQL's is 30 seconds, Samba's 15), and a shorter wait would cut
+the power mid-shutdown. No signal can stand in for `telinit`: sysvinit ignores `SIGTERM`, and
+`SIGUSR2` closes `/run/initctl`, its request channel, for the rest of the boot. The shutdown walk
+is described in [Boot and init](../03-architecture/boot-and-init.md#shutdown).
 
 ### accent
 
@@ -370,12 +374,15 @@ logs straight into the desktop. `autologin off` turns it off.
   with `nologin` would give a machine that boots to a login nobody can complete.
 - `off` comments the key line out as it stands, so `autologin = alice` becomes
   `#autologin = alice`, the form the installer writes, and a line already commented is left as it
-  is. It does not empty the value. The login program only hands `agetty --autologin` a non-empty
-  name, so an empty value would read as a setting and behave as none.
-- Only the key line changes. A line counts as the key when it starts with `autologin`, or with
+  is. The name stays in the file, so turning autologin back on by hand is deleting one `#`. The
+  login program treats an empty value, a commented line and a missing key alike: tty1 asks for a
+  password.
+- Only key lines change. A line counts as the key when it starts with `autologin`, or with
   one `#` then `autologin`, and contains `=`. Prose that merely mentions the key is left alone.
-- A file too large to rewrite safely is refused (`err login.conf is too large`) rather than
-  truncated: half a configuration file is a machine whose login settings are whatever survived.
+  Every other line, blank and long ones included, is written back byte for byte.
+- On a `login.conf` with no key line, `autologin <user>` appends `autologin = <user>`, so the
+  account the answer names is the one the next boot logs in. `autologin off` changes nothing there
+  and answers `ok`: a missing key already asks for a password.
 
 The file is written to `login.conf.new`, flushed, and renamed over the original.
 
@@ -394,7 +401,6 @@ carrying its own copy.
 | `ipp` | TCP 631 | Sharing a printer with CUPS |
 | `smb` | TCP 445 | Sharing files over SMB |
 | `kiwix` | TCP 8080 | `kiwix-serve` |
-| `mdns` | UDP 5353 | mDNS beyond the default rule |
 | `mqtt` | TCP 1883, 8883 | An MQTT broker for LAN devices (`73_mosquitto`) |
 | `xmpp` | TCP 5222 | XMPP clients (`74_prosody`) |
 | `nfs` | TCP 2049 | Sharing files over NFSv4 (`72_nfsd`) |
@@ -422,16 +428,18 @@ How a change is applied:
    the `inet filter` table. It never merges, because merging means parsing nftables syntax, and a
    parser that got it wrong would leave a port open that the surface showed as closed. Anything you
    write by hand belongs in another file under `/etc/nftables.d`, which the daemon never reads or
-   touches. The new file is renamed into place before anything checks it.
-3. It runs `nft --check -f /etc/nftables.conf`. If the ruleset would not load, it answers
-   `err the ruleset would not load; nothing changed` and the kernel keeps the previous rules, but
-   the rewritten file stays on disk: `firewall list` then reports the requested state, and the next
-   boot loads that file. Turning the service back to its previous state rewrites the file as it
-   was.
+   touches. The new file is renamed into place before anything checks it, because the check reads
+   it through `/etc/nftables.conf`'s include. The daemon reads the current file first so that it
+   can put it back; a file that exists but cannot be read refuses the toggle with
+   `err cannot read the current rules`.
+3. It runs `nft --check -f /etc/nftables.conf`. If the ruleset would not load, the previous
+   `50-kdos-services.nft` is put back, or removed if there was none, and the answer is
+   `err the ruleset would not load; nothing changed`. The kernel keeps the previous rules, and
+   `firewall list` and the next boot see the previous state too.
 4. It runs `nft -f /etc/nftables.conf`. That file deletes and rebuilds only its own `inet filter`
    table, so the NAT that netavark (the container network backend) sets up for rootful containers
-   and NetworkManager's for a hotspot survive a toggle. If the load itself fails, it answers
-   `err the ruleset did not apply`.
+   and NetworkManager's for a hotspot survive a toggle. If the load itself fails, the previous file
+   is put back the same way and the answer is `err the ruleset did not apply`.
 
 A successful toggle answers `ok <service> on|off`. An unknown name answers
 `err no service called that`; a state other than `on` or `off` answers `err a service is on or off`.
@@ -460,7 +468,8 @@ It exits 0 when the user is allowed anything and 1 when refused.
 The other flags run a verb's own rules without the socket, which is the only way to test them: the
 socket's check needs two different users to exercise. They grant nothing, because the binary is
 writing to an `/etc` the person running it could already write to. Three environment variables
-point them at a scratch tree: `KDOS_POWERD_ETC` replaces `/etc` (and then skips `nft` and `iw`),
+point them at a scratch tree: `KDOS_POWERD_ETC` replaces `/etc` (and then runs neither `nft`,
+`iw` nor `70_sshd.sh`, so a `ssh` toggle only writes the marker),
 `KDOS_POWERD_ZONEDIR` replaces `/usr/share/zoneinfo`, and `KDOS_POWERD_SOCKET` moves the socket.
 
 ## kdos-energyd
@@ -470,7 +479,7 @@ Per-application energy attribution: which application is using the processor's p
 Measuring the processor's energy is routine: the kernel exposes the counter under
 `/sys/class/powercap`. Attribution is the hard part on an ordinary Linux desktop: an application is
 dozens of processes in scattered groups, and nothing owns enough of the system to name them. On
-KDOS every boxed application (one running in its own [box](../06-reference/glossary.md), a rootless
+KDOS every boxed application (one running in its own [box](../06-reference/glossary.md#box), a rootless
 container) runs under a known name, listed in `/usr/share/kdos/alien-apps`, so the attribution
 starts from an identity rather than a guess.
 
@@ -611,7 +620,8 @@ modest machine.
   visible reason.
 - A box over its declared memory budget goes first. A box profile's `memory` key is passed to
   the container, but a rootless container on a machine with no cgroup delegation accepts the limit
-  and ignores it; this rule is what makes the key mean something. The daemon adds up the resident
+  and ignores it; this rule is what makes the key mean something (see
+  [memory and grants](kdos-appbox.md#memory-and-grants)). The daemon adds up the resident
   memory of each box's processes, and when a box is over its budget the largest process in that box
   is the victim. Budgets come from each user's own box profiles,
   `/home/<user>/.config/kdos/boxes/<box>.conf`; `KDOS_BOX_PROFILES`, when set, replaces that search
@@ -690,10 +700,11 @@ A **row** below is a number from the daemon's own `list`; a **share row** is a n
 | `list` | The eligible devices | One row each: index, kernel name, label, filesystem, size in GiB (`28.7G`), mountpoint, tab-separated, with `-` for an empty label or mountpoint; then `ok` |
 | `mount <row>` | Mount the device | `ok <mountpoint>`; a device already mounted answers with its mountpoint |
 | `unmount <row>` | Unmount it and remove the mountpoint the daemon made | `ok <mountpoint>` |
-| `eject <row>` | Power the medium down. An optical disc ejects its own drive; any other device ejects its **parent disk**, because a stop command sent to one partition means nothing to the hardware | `ok <kname>` |
+| `eject <row>` | Power the medium down. An ISO 9660 row (an optical disc) is ejected through its own node; any other row ejects its **parent disk**, because a stop command sent to one partition means nothing to the hardware | `ok <kname>` |
 | `unlock <row> <count>` | Open a LUKS volume. The passphrase is the second frame | `ok kdos-<kname>` |
 | `close <row>` | Close the mapping `unlock` made; `<row>` is the container's row, the one `unlock` was sent for, not the mapping's | `ok kdos-<kname>` |
 | `format <row> <fs> <count>` | Write a filesystem. **Off unless `format = yes`.** The second frame is the device's kernel name, typed by the person | `ok <kname>` |
+| `write <row> <count>` | Put a disk image over the whole disk the row is on, then read it back. **Off unless `write = yes`.** The image travels as a descriptor attached to the request; the second frame is the disk's name, typed by the person (see [Writing an image](#writing-an-image)) | `progress` lines, then `ok <disk> <bytes> verified` |
 | `smart <row>` | The drive's health | `ok <model>\t<serial>\t<health>` |
 | `cifs <server> <share> <user> <domain> <count>` | Mount an SMB share. The password is the second frame | `ok <mountpoint>` |
 | `krb5 <server> <share> <user\|-> <domain\|->` | Mount an SMB share with the Kerberos ticket `kinit` left in the caller's credential cache. **No second frame** | `ok <mountpoint>` |
@@ -739,7 +750,7 @@ be piped into another program.
 | Exit status | Means |
 |---|---|
 | 0 | The daemon answered, **including when the answer was `err …`**. A script must check standard output for a leading `err` to tell a failed mount |
-| 2 | No `kdos-mountd` to ask (`kdos-mount: no kdos-mountd on <socket path> (<reason>)`), or bad usage |
+| 2 | No `kdos-mountd` to ask (`kdos-mount: no kdos-mountd on <socket path> (<reason>)`), bad usage, or, for `write`, an image the client could not open (`kdos-mount: <image>: <reason>`) |
 
 The index is re-rendered as a number before it is sent, through `atoi`, so an argument that is not a
 number becomes row 0: `kdos-mount mount sdb1` acts on row 0 rather than being refused.
@@ -751,9 +762,9 @@ progress lines as they arrive. The other verbs that carry a secret (`unlock`, `f
 
 | Surface | Uses |
 |---|---|
-| `kdos-devices` | `list`, `mount`, `unmount` |
-| `kdos-disks` | `list`, `mount`, `unmount`, `unlock`, `close`, `format` (always as `ext4`), `smart`, `write` |
-| `kdos-connect` | `cifs`, `krb5`, `shares`, `browse`, `disconnect` |
+| [`kdos-devices`](kdos-shell.md#kdos-devices) | `list`, `mount`, `unmount` |
+| [`kdos-disks`](kdos-shell.md#kdos-disks) | `list`, `mount`, `unmount`, `unlock`, `close`, `format` (always as `ext4`), `smart`, `write` |
+| [`kdos-connect`](kdos-shell.md#kdos-connect) | `cifs`, `krb5`, `shares`, `browse`, `disconnect` |
 | `kdos-mediad` | `subscribe`, `list`, `mount`, `eject` |
 
 ### The request format
@@ -796,7 +807,7 @@ if every one of these holds:
 |---|---|
 | Its disk is removable, or is on USB | An internal disk is the administrator's. An external drive in a USB enclosure reports itself as non-removable, so the bus is checked too |
 | It carries a filesystem the daemon recognises | See the list below |
-| It is not named in `/etc/fstab`, by device path or by `LABEL=` | An entry there is a decision somebody already made |
+| It is not named in `/etc/fstab`: an entry's source field is exactly its device path or exactly `LABEL=<its label>`, so `/dev/sdb10` does not claim `/dev/sdb1` and `LABEL=foobar` does not claim `LABEL=foo` | An entry there is a decision somebody already made |
 | It is not on the disk this system runs from | Offering to unmount or eject the live medium, or the persistence store, is offering to end the session |
 
 A device that is already mounted is listed, with its mountpoint in the last column. The disk this
@@ -857,9 +868,10 @@ request that needs it.
 | `format = yes` | `format` refused | The `format` verb is allowed |
 | `write = yes` | `write` refused | The `write` verb is allowed |
 
-The daemon searches the whole file for the text `exec = yes` or `exec=yes` (and likewise for
-`format` and `write`) anywhere, comments included. A commented-out `# exec = yes` therefore still
-turns the setting on. To turn a setting off, delete the text rather than commenting it out.
+The file holds one `key = value` per line; blanks around the key, the `=` and the value are
+ignored. A line whose first non-blank character is `#` is a comment, so `# exec = yes` leaves the
+setting off. The key must be exactly `exec`, `format` or `write` and the value exactly `yes`, and
+the last line for a key wins: `format = no` after `format = yes` turns formatting off.
 
 ### Encrypted volumes
 
@@ -933,9 +945,9 @@ it is at that moment. `disconnect` rebuilds the same list before acting on a row
 `browse` is two broadcasts, not a directory. There is no browse master to ask (samba is built
 without winbind and without a domain controller), so the list is `avahi-browse -ptrk _smb._tcp` for
 machines that advertise the service, plus `nmblookup -S -- '*'` for machines that answer a NetBIOS
-query. Only a machine with a `<20>` (file server) entry is offered, since one without it is sharing
-nothing. At most 32 machines are listed. A browse row is not an index: `cifs` and `krb5` take a
-server name.
+query. Of the NetBIOS answers, only a machine with a `<20>` (file server) entry is offered, since
+one without it is sharing nothing. At most 32 machines are listed. A browse row is not an index:
+`cifs` and `krb5` take a server name.
 
 `krb5` mounts with `sec=krb5`, using the ticket already in the caller's credential cache. No
 secret crosses the socket: the kernel's cifs module raises a `cifs.spnego` key request,
@@ -1004,7 +1016,7 @@ verb passes, it refuses:
 |---|---|
 | No descriptor attached | `err no image: the file travels as a descriptor, not a name` |
 | Any row on the same disk mounted, or an unlocked mapping on it | `err unmount <kname> first`, `err close <kname> first` |
-| Any partition of the disk, or the disk itself, that `/etc/fstab` names or the running system is mounted from — partitions `list` leaves out, which the write would replace all the same | `err <name> is in /etc/fstab or holds the running system` |
+| Any partition of the disk, or the disk itself, that `/etc/fstab` names (an entry's source field exactly its device path or exactly `LABEL=<its label>`) or the running system is mounted from — partitions `list` leaves out, which the write would replace all the same | `err <name> is in /etc/fstab or holds the running system` |
 | A second frame that is not the disk's name (`sdb` for a row on `sdb1`) | `err type <disk> to confirm` |
 | A descriptor that is not a regular file with something in it | `err the image is not a file with something in it` |
 | An image larger than the disk | `err the image is <n>G and <disk> is <m>G` |
@@ -1125,10 +1137,10 @@ combined into a box is in [Packs and boxes](../03-architecture/packs-and-boxes.m
 | `mount <id>`, `unmount <id>` | Mount or release a pack. A pack still used by a box is not unmounted |
 | `compose <box> <id>…` | Build a box's overlay stack from 1 to 32 packs. Ids past the 32nd are ignored rather than refused |
 | `decompose <box>` | Tear it down |
-| `install <file>` | Verify a pack in the staging directory and move it into the store |
+| `install <file> [<index>]` | Copy a pack out of the staging directory, verify the copy and move it into the store. `<index>` is a second staged file name, a signed index with its signature staged as `<index>.sig`; the daemon reads no index a request does not name |
 | `remove <id>` | Take a pack out of the store |
 | `rollback <id>` | Return to a retained earlier version |
-| `graft <id>`, `ungraft <id>` | Place a data pack's contents where its consumer looks for them, or remove them (a [graft](../06-reference/glossary.md)) |
+| `graft <id>`, `ungraft <id>` | Place a data pack's contents where its consumer looks for them, or remove them (a [graft](../06-reference/glossary.md#graft)) |
 | `ping` | `ok` |
 | `status` | Tab-separated lines: `store`, `medium` and `staging` directories, `retain` count, mount `route` (`file-backed`, `loop device`, or `not yet used`), `packs` (installed, available and mounted counts), `boxes` (how many are composed), and a `box` line for each composed box (name, merged root, `ephemeral` or `persistent`), then `ok` |
 
@@ -1165,7 +1177,7 @@ not only in fixture mode. The init script sets none of them:
 |---|---|
 | `KDOS_PACK_STORE`, `KDOS_PACK_MEDIUM`, `KDOS_PACK_MANIFEST` | Replace the store, the boot-medium pack directory and the graft record |
 | `KDOS_PACK_HOME`, `KDOS_PACK_SHARE` | Replace the caller's home directory and `/usr/share` as graft and box-upper destinations |
-| `KDOS_PACK_RETAIN` | Overrides `retain` in `packd.conf` (below) |
+| `KDOS_PACK_RETAIN` | Overrides `retain` in `packd.conf` (below); a negative value counts as `0`, as it does in the file |
 | `KDOS_REQUIRE_SIG` | Refuse every unsigned pack at install (`<id> is unsigned and KDOS_REQUIRE_SIG is set`), for a machine that installs only what it can attribute |
 
 All of them are also listed in
@@ -1180,9 +1192,15 @@ count, so a program writing a download into the store does not have to work eith
 a second definition of where an unprivileged write is allowed is the kind of thing that drifts.
 
 Verification happens in the daemon, where the mount happens, because a client that verified and
-then asked a daemon to mount would have verified nothing:
+then asked a daemon to mount would have verified nothing. The daemon first copies the staged pack,
+and the staged index the request names and its `<index>.sig` when there is one, into private root-owned
+files in the store (`.install.part`, `.install-index.part`, mode 0644), and everything after reads
+the copies. The staged file belongs to whoever put it in a directory every user may write, so a
+check on it would say nothing about the bytes a later read found. A staged symlink or anything
+other than a regular file is refused with `err cannot read <name> from the staging directory`.
+An install therefore needs free space in the store for a second copy of the pack while it runs.
 
-1. If the staging directory holds a `PACKAGES` index whose signature is good and which lists this
+1. If the staging directory held a `PACKAGES` index whose signature is good and which lists this
    pack, the pack's SHA-256 must match the index entry; a mismatch is refused
    (`<id> does not match the signed index`).
 2. Otherwise the pack's own signature block is checked against `/etc/kdos/keys/packs`. A good
@@ -1190,6 +1208,9 @@ then asked a daemon to mount would have verified nothing:
    hold is refused.
 3. A pack with no signature at all is accepted and logged as unsigned, unless `KDOS_REQUIRE_SIG`
    is set.
+
+A pack that passes has its copy renamed to `<id>.kpack`, and only then is the staged file deleted;
+a refused install deletes the copies and leaves the staged file where it was.
 
 A pack in the store was verified when it was written and only root can write the store, so it is
 not re-hashed at each mount. A pack on the boot medium was never installed, so it is verified at its
@@ -1330,14 +1351,26 @@ input.
 Once the compositor confirms the session is locked, `kdos-lock` prints `locked` on standard output;
 `kdos-power suspend` waits for that line.
 
+What the box shows answers what `kdos-checkpass` said: `Wrong password` when it exits 1, and
+`Cannot check the password` for any other failure, so a broken `/etc/shadow` is not mistaken for a
+typing error. A key pressed before the compositor confirms the lock shows `locking...`. Escape, or
+a left or right mouse press, clears the field. After a failed attempt the screen waits 1.2 seconds
+before it takes the next key.
+
+| `kdos-lock` exit | Means |
+|---|---|
+| 0 | The session was unlocked |
+| 1 | No lock surface could be created (no compositor, no session-lock support, or no font), or the compositor refused the lock because another client already holds it |
+
 The compositor, not the lock program, owns the locked state. If the lock program crashes, the
 screens stay covered and a new lock client may take over. See
-[kdos-comp](kdos-comp.md#idle-dim-lock-and-lid).
+[kdos-comp](kdos-comp.md#who-owns-the-locked-state).
 
 ### kdos-checkpass
 
 `kdos-checkpass` (`/usr/bin`, mode 4755) is the only setuid piece of the lock screen: `/etc/shadow`
-is readable only by root, and the lock screen must not run as root.
+is readable only by root, and the lock screen must not run as root. Its place among the system's
+setuid programs is in [The security model](../03-architecture/security-model.md#kdos-checkpass).
 
 - It takes no arguments and checks the password of the user who ran it, identified by the real user
   id, never by a name it was given. An argument would make it an oracle for any account's password.

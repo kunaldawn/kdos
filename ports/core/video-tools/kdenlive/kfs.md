@@ -16,6 +16,12 @@ from other editors.
   API documentation in Qt Help format, no fuzzing target and no Qt Designer plugin. All three are
   upstream's defaults, named.
 
+## Patches
+- `no-qmllint-in-build.patch` — Removes `add_dependencies(kdenlive all_qmllint)` from
+  `src/CMakeLists.txt`, so building the `kdenlive` target does not first run qmllint over every
+  QML module. The lint target installs nothing; the program and its QML are built and installed
+  the same.
+
 ## Notes
 - **Features that download.** Speech-to-text and object masking build a Python virtual
   environment with pip and download their models when first asked for. Without a network both

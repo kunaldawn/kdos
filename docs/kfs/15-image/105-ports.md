@@ -41,8 +41,10 @@ ports in its `PORT_REPO`.
 
 The two books, `docs/kdos` with `docs/screenshots`, and `docs/kfs` with its renderer
 `script/book`, are copied to the same relative places under `/ports`. The ports `kdos-doc` and
-`kdos-kfs` reach them through links in their port directories (`../../../docs/kdos`,
-`../../../docs/kfs`, `../../../script/book`), and the recipe hash follows those links. A link left
+`kdos-kfs`, whose recipes are under `src/system`, reach them through links in their port
+directories: `kdos-doc` through `kdos` and `screenshots` (`../../../docs/kdos`,
+`../../../docs/screenshots`), `kdos-kfs` through `docs` and `book` (`../../../docs/kfs`,
+`../../../script/book`). The recipe hash follows those links. A link left
 dangling would drop out of the hash, so the tree on the machine would hash the port differently
 from the tree its package was built from, and kpkg would take the installed package for stale. A
 missing directory stops the phase. `kdos-kfs` builds only in a full checkout all the same, because
@@ -51,20 +53,21 @@ its renderer also reads `ports/core` and `script/phases`.
 Dot-files and `__pycache__` directories are removed from the copies, and every mode is made
 readable by all.
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=100-108 pin=b0eac1a92403 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=100-108 pin=2ae9719ff407 -->
 
-A file over 16 MB under the copied ports is a source the filters above missed, and stops the phase,
-naming up to five of them. The log ends with the number of ports, files and programs of our own,
-and the size of the staged tree.
+A file over 16 MB under the copied `core/` is a source the filters above missed, and stops the
+phase, naming up to five of them. The staging then logs the number of ports, files and programs of
+our own, and the size of the staged tree.
 
 ## The stamp and the key
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=122-141 pin=f377f0227aab -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=123-142 pin=f377f0227aab -->
 
 `/ports/TREE` names the commit the tree is and that commit's time, in the format
-`ports/publish --release` writes into a published tree. `kdos update fetch` replaces `/ports` only
-with a signed tree whose `TREE` is newer, so an image without the stamp would take any signed
-tree, an older one included. Without `KDOS_GIT_COMMIT` there is no stamp.
+`ports/publish --release` writes into a published tree. `kdos update fetch` refuses a signed tree
+whose `TREE` time is older than the one in `/ports`, and takes one of the same commit for current,
+so an image without the stamp would take any signed tree, an older one included. Without
+`KDOS_GIT_COMMIT` there is no stamp.
 
 [`/etc/kdos/keys/tree`]{.idx} is the keyring `kdos update fetch` checks a published tree against. The step
 empties it of keys and installs the public half of the release key, `build/keys/kdos-release.pub`,
@@ -74,14 +77,14 @@ tree rather than trusting an unsigned one.
 
 ## The source offer
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=151-171 pin=959efcc4c4c7 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=152-172 pin=959efcc4c4c7 -->
 
 The step reads every installed package's recipe, under `/ports/core` or `/kdos/src`, and collects
 the hash of every source it names. `ports/sources.idx` says which `sources-<N>` release of the
 archive holds each hash, so the releases the image's sources are in are those the index gives for
 any of the collected hashes. The hashes the index does not hold are counted.
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=173-199 pin=2ea75f8df3d3 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=174-200 pin=2ea75f8df3d3 -->
 
 `SOURCES` names the repository, the commit (with `-dirty` when the tree had unrecorded changes,
 `unrecorded` without a commit), its date, and a `release` line for each archive release that
@@ -100,7 +103,7 @@ the image when `110_iso.sh` appends it to `system.sfs`:
 /ports/core/<shelf>/<name>/   each port's recipe files
 /ports/shelves
 /ports/sources.idx
-/ports/TREE
+/ports/TREE                   with a commit only
 /ports/src/                   the programs of KDOS's own
 /ports/docs/kdos/  /ports/docs/screenshots/  /ports/docs/kfs/
 /ports/script/book/

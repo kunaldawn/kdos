@@ -28,7 +28,8 @@ their library is not in the root yet. This page shows the commands of
 
 ## Contents of grep
 
-**Installed programs:** [`grep`]{.idx}, and [`egrep`]{.idx} and [`fgrep`]{.idx}, which run `grep -E` and `grep -F`.
+**Installed programs:** [`grep`]{.idx}, and [`egrep`]{.idx} and [`fgrep`]{.idx}, two shell scripts that
+warn that they are obsolescent and then run `grep -E` and `grep -F`.
 
 The [grep](#port-grep) port's page describes each program.
 

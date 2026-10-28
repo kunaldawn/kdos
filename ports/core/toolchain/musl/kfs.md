@@ -7,7 +7,7 @@ names, is a link to it. Why KDOS is built on musl rather than glibc, and what th
 and [How KDOS differs](../../../../docs/kdos/01-philosophy/how-kdos-differs.md#the-c-library).
 
 This port rebuilds, inside the chroot and with the bootstrap's native compiler, the musl that
-[Part III](#03-bootstrap-020-musl-libc) cross-compiled, and kpkg adopts the files that step
+[Part III](../../../../docs/kfs/03-bootstrap/020-musl-libc.md) cross-compiled, and kpkg adopts the files that step
 installed. Every package of every later phase is linked against this build.
 
 musl's `configure` is a short script of its own, not an autoconf one. It reads `CC` and `CFLAGS`

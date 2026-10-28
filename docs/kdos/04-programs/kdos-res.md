@@ -2,17 +2,17 @@
 
 `kdos-res` is the KDOS resource monitor, the program the desktop calls **Resources**. It shows what
 is using the machine on eleven pages (applications, processes, processor, memory, graphics, drives,
-network, batteries, energy, sensors and boxes), and it can end, stop or renice a process through a
-small setuid helper, `kdos-resctl`. This chapter is for three readers: anyone who uses the monitor
-day to day, administrators who want to know exactly what the helper may do, and contributors
-changing the program. To use the monitor, press `Ctrl+Shift+Escape` and read [Pages](#pages) and
+network, batteries, energy, sensors and boxes), and it can end, kill or renice a process, using a
+small setuid helper, `kdos-resctl`, for what the caller may not do itself. This chapter is for three
+readers: anyone who uses the monitor day to day, administrators who want to know exactly what the
+helper may do, and contributors changing the program. To use the monitor, press `Ctrl+Shift+Escape` and read [Pages](#pages) and
 [Keys](#keys). Administrators want [Acting on a process](#acting-on-a-process). The later sections
 explain how readings are taken and drawn, and end with the reference material: configuration,
 options, fixtures and files. [The design language](../03-architecture/design-language.md)
 describes the keys and the frame every KDOS surface shares, and is worth reading first. The word
 *box* is used throughout for the per-application container every boxed program runs in; it is
-defined in [Packs and boxes](../03-architecture/packs-and-boxes.md) and in the
-[glossary](../06-reference/glossary.md).
+defined in [Packs and boxes](../03-architecture/packs-and-boxes.md#the-box) and in the
+[glossary](../06-reference/glossary.md#box).
 
 ## How it runs
 
@@ -27,7 +27,7 @@ that grid goes:
 
 Every backend calls the same drawing function, so the layout cannot differ between the window, the
 terminal and a committed reference frame. Which display server the window reaches is decided by
-[libkdisp](../05-developer/c-libraries.md), the display library, not by `kdos-res` itself; the
+[libkdisp](../05-developer/c-libraries.md#libkdisp), the display library, not by `kdos-res` itself; the
 program links the Wayland implementation and nothing else.
 
 There is only ever one frame round the program. In the terminal and in a dump, `kdos-res` draws a
@@ -41,8 +41,8 @@ and a one-row hint line naming the keys that work at that moment, for example
 `F1 help  F10 pages | [/] page | Tab panes | Esc Close`.
 
 In a window, five pages also put their one number at the right of the band, two rows high: the CPU
-page its busy share, Memory the share in use, GPU the selected device's busy share (only where the
-driver reports one), Batteries the first battery's charge and Sensors the hottest temperature. It
+page its busy share, Memory the share in use, GPU the busy share of the first device whose driver
+reports one, Batteries the first battery's charge and Sensors the hottest temperature. It
 is [display text](../05-developer/writing-desktop-software.md#display-text), drawn on the pixel
 layer in the chrome's own face (two rows of the 16×32 cell are the 32-pixel Terminus strike
 doubled). The headline already says each of these in words, so the figure is drawn only where the
@@ -87,8 +87,10 @@ request, and on a screen too small for it the compositor's size wins.
 Every boxed application on KDOS runs in a container of its own, so an ordinary process list shows
 rows of internal process names and no row for the application a person launched. `kdos-res` finds
 each process's box by walking up its parent chain to the container monitor, `conmon`, whose
-arguments carry the box's name (`-n <name>`). The walk is done by `libkproc`, the same library
-`kdos-energyd`, `kdos-oomd` and `kdos stutter` use, so all four agree on which box a process is in.
+arguments carry the box's name (`-n <name>`). The walk is done by
+[`libkproc`](../05-developer/c-libraries.md#libkproc), the same library
+[`kdos-energyd`](daemons.md#kdos-energyd), [`kdos-oomd`](daemons.md#kdos-oomd) and
+[`kdos stutter`](kdos-command.md#kdos-stutter) use, so all four agree on which box a process is in.
 The walk stops at `conmon`: a process whose chain reaches init without passing a `conmon` belongs to
 no box.
 
@@ -133,8 +135,8 @@ outside its box and appears as a row of its own.
 | **APPLICATION** | The row's name, with `[box NAME]` for a boxed application |
 | **CPU%** | The members' processor use added up, as a percentage of one core |
 | **MEMORY** | The members' resident memory (RSS) added up |
-| **DISK** | Bytes read plus bytes written since each member started. A `+` means at least one member's counters were unreadable, so the sum is a lower bound. Shown at 60 columns and wider |
-| **PROCS** | How many processes are in the row. Shown at 72 columns and wider |
+| **DISK** | Bytes read plus bytes written since each member started. A `+` means at least one member's counters were unreadable, so the sum is a lower bound. Shown where the page body is 60 columns or wider |
+| **PROCS** | How many processes are in the row. Shown where the page body is 72 columns or wider |
 
 The footer states the processor time spent outside the rollup and that RSS counts a shared page
 once for every process that maps it. The table holds at most 128 applications; processes beyond that
@@ -149,7 +151,8 @@ counters the caller may not read shows `-`. **CPU%** reads `CPU%m` when the conf
 percentage of the whole machine.
 
 Kernel threads are hidden by default and counted: the footer reads, for example,
-`2 hidden kernel threads  .  sort: cpu`. The selection follows the process ID, not the row, so a
+`2 hidden kernel threads  .  sort: cpu`. With `kernel_threads = yes` they are listed, and the footer
+counts them as `2 listed kernel threads`. The selection follows the process ID, not the row, so a
 table re-sorted by processor use every second does not move the cursor onto somebody else's process.
 
 `/` starts a filter, which matches the process name, the command line, the box or the user name as
@@ -169,9 +172,10 @@ frequency of any running processor against the maximum; the processor temperatur
 governor; and whether the machine is bare metal or which hypervisor it runs under.
 
 Under **per core**, a machine with up to sixteen logical processors gets a small chart for each, in
-four columns (two below 60 columns). A machine with more gets a heat strip with one column per
-processor. An offline processor keeps its position and is drawn as a muted label with no chart, so
-each chart's number matches the kernel's CPU number.
+four columns (two below 60 columns). An offline processor keeps its position in that grid and is
+drawn as a muted label with no chart, so each chart's number matches the kernel's CPU number. A
+machine with more than sixteen gets a heat strip with one column per processor instead, in which an
+offline processor reads as idle.
 
 ### Memory
 
@@ -182,8 +186,12 @@ and the second figure would report a healthy machine as full. A machine with no 
 from `/proc/pressure/memory`, and a **breakdown** of available, free, cached, buffers, shared, dirty
 and reclaimable memory, as far as the page has rows for them.
 
-The last line reads `memory device details need kdos-resctl`. No page shows the per-slot memory
-modules; see [Limitations](#limitations).
+The first time the page is drawn, it runs `kdos-resctl dmi` once and keeps the answer: a **memory
+devices** group with one row per populated slot, giving its size and speed, or the SMBIOS table's own
+line saying no memory device is populated. Where there is no table, the page gives the reason
+instead: `kdos-resctl` is not installed, it has lost its setuid bit, it refused (the caller is not
+in `wheel`, or the table is empty), or the SMBIOS table could not be read. A fixture never runs the
+helper, and its frame prints `memory device details need kdos-resctl`.
 
 ### GPU
 
@@ -191,11 +199,14 @@ One group per DRM device (a graphics device of the kernel's Direct Rendering Man
 `/sys/class/drm`; render nodes are skipped. A driver that publishes a utilisation percentage
 (`amdgpu` does, through `gpu_busy_percent`) gets a `utilisation` line. Any other driver gets an
 `engine time` line: the milliseconds of engine work in the last sampling interval, taken from the
-DRM file descriptors of every process and summed. It is labelled `ms/s`, which is exact at the
-default one-second interval; at any other interval the figure is per interval, not per second. The
-line carries the note that the driver publishes no utilisation. Engine time is not converted into a
-percentage, because an engine can be busy while the device as a whole is idle. Where the driver
-publishes them, the page adds used and total memory, the clock, and the temperature and power.
+DRM file descriptors of every process whose descriptors the caller may read, and summed. The sum is
+machine-wide and not split by device. It is labelled `ms/s`, which is exact at the default one-second interval; at any other
+interval the figure is per interval, not per second. The line carries the note that the driver
+publishes no utilisation; on a machine with two or more such devices, each line reads `(all N
+devices without utilisation together)` instead, since the total belongs to none of them alone. Engine time is not converted into a percentage, because an engine can be
+busy while the device as a whole is idle. Where the driver publishes them, the page adds used and
+total memory, the clock, and the temperature and power. The headline, and the figure in the band,
+describe the first device that reports a busy share, or the first device listed when none does.
 
 For the proprietary NVIDIA driver, the page loads `libnvidia-ml.so.1` at run time if it is present
 and reads what the kernel driver does not publish. KDOS does not ship that library, and without it
@@ -257,17 +268,19 @@ kernel publishes under `/sys/class/powercap`; most virtual machines have none, a
 does not start. When the socket does not answer, the page says why: that the machine exposes no RAPL
 energy domain when `/sys/class/powercap` does not exist, and that `kdos-energyd` is not running
 otherwise. The RAPL counters are readable only by root, so the daemon's answer is the only one this
-page can give.
+page can give. The daemon answers only root and members of the `wheel` group; anyone else sees its
+refusal, `err not permitted`, printed as the page's report.
 
 ### Sensors
 
-Every reading from `hwmon` (the kernel's hardware-monitoring interface, under `/sys/class/hwmon`)
-and the thermal zones, grouped under the chip that publishes it and named with the kernel's own
-labels (for example `k10temp Tctl`), because a channel name such as `temp1` is unique only within
-one chip. `kdos-res` does not use `libsensors`, so its names match what other
+Every reading from `hwmon` (the kernel's hardware-monitoring interface, under `/sys/class/hwmon`),
+and each thermal zone whose type names no `hwmon` chip already listed, grouped under the chip that
+publishes it and named with the kernel's own labels (for example `k10temp Tctl`), because a channel
+name such as `temp1` is unique only within one chip. `kdos-res` does not use `libsensors`, so its names match what other
 tools on the machine print from the same files.
 
-Temperatures, fan speeds (rpm), voltages and power readings are shown as numbers. A temperature
+Temperatures, fan speeds (rpm), voltages and power readings are shown as numbers. The readings, the
+critical points, the headline and the figure in the band follow the `temperature` setting. A temperature
 whose chip publishes a critical point also gets a bar scaled to that point (on pages wider than 56
 columns), drawn in the warning colour from 90% of it and the error colour at or above it; no other
 threshold is invented. The headline names the hottest temperature, the number of temperature
@@ -279,12 +292,17 @@ readings and the number of fans. Board sensors on common desktop boards need the
 ![The Boxes page](../../screenshots/res-boxes.png)
 
 A rollup keyed on the box, over the same lookup the process table uses. The columns are **BOX**,
-**CPU%**, **MEMORY**, **DISK**, **PROCS**, **ENERGY** and **UPTIME**; the last four appear from 47,
-54, 62 and 71 columns respectively.
+**CPU%**, **MEMORY**, **DISK**, **PROCS**, **ENERGY** and **UPTIME**; the last four appear where the
+page body is at least 47, 54, 62 and 71 columns wide respectively. The page holds at most 64 boxes.
 
-- **DISK** is the size of what the box has written: the writable layer of its overlay, under
-  `~/.local/share/kdos/boxes/<name>`, walked to a depth of twelve. The shared packs underneath are
-  not counted, because counting a shared base once per box would report it several times over.
+- **DISK** is the size of the box's own directory, `~/.local/share/kdos/boxes/<name>`, walked to a
+  depth of twelve. For a pack box that is its writable layer, its snapshots and, where the profile
+  asks for one, its private home. A store box keeps its writes inside the container engine, so its
+  **DISK** counts at most a private home (the two kinds are described in
+  [Two lanes, one box](../03-architecture/packs-and-boxes.md#two-lanes-one-box)). The column reads
+  `-` for any box with no such directory. The shared packs
+  underneath are not counted, because counting a shared base once per box would report it several
+  times over.
 - **ENERGY** is `kdos-energyd`'s share for the box, asked of the daemon rather than recomputed and
   cached for ten seconds, which is the daemon's own sampling period. It shows `-` when the daemon is
   not running, never `0`, which would report a missing reading as an idle box.
@@ -292,7 +310,8 @@ A rollup keyed on the box, over the same lookup the process table uses. The colu
 
 A box with a profile in `~/.config/kdos/boxes/<name>.conf` that is not running is still listed,
 marked `(stopped)`, with `-` for its processor and memory. The headline counts boxes and how many are
-running. `Enter` opens a facts page with the box's base, persistence, state, process count, memory,
+running. The footer reads `Enter for one box: its base, persistence, footprint and uptime`, and
+`Enter` opens a facts page with the box's base, persistence, state, process count, memory,
 writable size, energy share where known, and uptime.
 
 ### The sidebar and its three widths
@@ -373,10 +392,14 @@ question is waiting on its answer.
 
 ### The pointer
 
-On the Applications, Processes, Boxes and Drives tables, moving over a row highlights it, a click
-selects it, and a click on the row that is already selected opens its detail page. A click on a
-column heading of the Applications, Processes or Boxes table sorts by that column, and a second
-click reverses it. The wheel scrolls those three tables while the list is longer than
+The pointer follows the [pointer contract](../03-architecture/design-language.md#the-pointer-contract)
+every KDOS surface keeps. On the Applications, Processes, Boxes, Drives and Network tables, moving over a row
+highlights it, a click selects it, and a click on the row that is already selected opens its detail
+page. A click on a column heading of the Applications, Processes or Boxes table sorts by that column,
+and a second click reverses it. **USER** and **BOX** on Processes are not sort columns, and a click
+on them does nothing. On Boxes a click sorts only when it lands on a visible sort heading (**BOX**,
+**CPU%**, **MEMORY**, **DISK** or **PROCS**); **ENERGY** and **UPTIME** are not sort keys, a click
+on them or between headings does nothing, and a column hidden on a narrow page cannot be clicked. The wheel scrolls those three tables while the list is longer than
 the window and moves the selection while it fits; on Drives and Network it moves the selection. The
 Applications, Processes and Boxes tables have a scrollbar that can be dragged, and in a window a
 scroll of those three glides to its new rows instead of jumping (see
@@ -451,8 +474,8 @@ kdos-resctl renice <pid> <-20..19>
 The caller must be in the `wheel` group (the administrators' group), judged by real user ID; root
 always passes. It is the same gate as `kdos-powerd` and `kdos-energyd`. The group is fixed when the
 helper is built and cannot be changed by an environment variable. A signal is sent through a process
-handle (a pidfd) taken first, so a process ID reused in the meantime is not signalled; on a kernel
-without pidfd support the helper falls back to `kill(2)`. `dmi` opens `/sys/firmware/dmi/tables/DMI`
+handle (a pidfd) taken first, so a process ID reused in the meantime is not signalled; when no
+handle can be taken, as on a kernel without pidfd support, the helper falls back to `kill(2)`. `dmi` opens `/sys/firmware/dmi/tables/DMI`
 as root, drops root, and then parses the table and prints one line per populated memory slot. The
 full argument is in [the security model](../03-architecture/security-model.md#kdos-resctl).
 
@@ -500,9 +523,11 @@ Four further rules shape what you see:
   and sent) skip that sample together, so they stay in step.
 - **Rates come from the sampler, not from drawing.** A frame is not an interval, and the dump draws
   once after two samples, so a rate computed while drawing would be empty in every reference frame.
-- **A page coming back into view reports no rate on its first tick.** The previous per-process
-  sample may have been taken minutes earlier on another page, and a rate over that gap would be
-  wrong; the second tick reports a correct one.
+- **A process page coming back into view reports no rate on its first tick.** The previous
+  per-process sample may have been taken minutes earlier on another page, and a rate over that gap
+  would be wrong; the second tick reports a correct one. Drives and Network report a rate on their first tick back:
+  each page keeps its own sampling clock, so that rate spreads what was counted while the page was
+  away over the whole time it was away.
 - **Ages are measured in seconds since boot on both sides.** A box's uptime is the system uptime
   minus the start time of its oldest process, and a start later than the uptime shows `-` rather
   than an underflowed number. A process's elapsed time on the detail page needs the boot time from
@@ -513,7 +538,9 @@ Four further rules shape what you see:
 The loop samples once per interval (1000 ms by default) and redraws on every event in between.
 Keystrokes, pointer movement and resizes all wake the loop, so a loop that always waited a full
 interval after each wake-up would sample unevenly and draw an uneven chart. It waits only for
-whatever remains until the next sample.
+whatever remains until the next sample. A sample that takes longer than the interval moves the next
+one to a full interval after it finished, not after it began, so a slow sample is never followed at
+once by another.
 
 Every sample reads the processor times, memory and the three pressure files. What else it reads is
 decided by the page on screen, so the monitor does not become part of the load it measures:
@@ -540,22 +567,22 @@ drawn at the smallest height the tier has, so a trickle is not mistaken for sile
   chart drawn as a [pixel tile](../05-developer/writing-desktop-software.md#pixel-tiles) over its
   cells: a faint plate, a base line, the area at a third of the colour's weight and the trace at
   full weight over it, a line and a half wide. It is the same renderer as the
-  [panel's meters](kdos-shell.md) (`kch_plot()` in `libkchrome`), so a chart looks the same on the
+  [panel's meters](kdos-shell.md#the-meters-strip) (`kch_plot()` in `libkchrome`), so a chart looks the same on the
   bar and here. The vertical resolution is the chart's height in pixels, and a pair of series is
   mirrored about a midline.
 - **Cells, everywhere else.** On a terminal, in `--dump` and in every golden frame, and whenever a
   tile is not up (no pixel cell, `icons = no`, no icon artwork, a full sprite table), a chart is
   drawn as character cells. Whole rows are the full block, and the top row of each column is the
   block-ramp character for the remainder, so the resolution is the chart's height times the ramp's
-  levels (eight levels a row in a full font, fewer on the console font) and the shape survives all
-  three glyph tiers of the [design language](../03-architecture/design-language.md). A pair is two
+  levels (eight levels a row in a full font, three on the console font and in plain ASCII) and the
+  shape survives all three [glyph tiers](../03-architecture/design-language.md#the-glyph-tiers). A pair is two
   bands stacked in a fixed order, because the ramp has no downward-growing twin.
 
 **One sample, read off the chart.** On the CPU and Memory pages (the utilisation chart, the per-core
 charts, and the RAM and swap charts), the pointer resting on a chart marks the sample under it, and
 the chart's reading, top right, becomes that sample's age and value in the accent colour, as a
-percentage on all four kinds (the RAM chart's usual `11G of 16G` included): `12s ago 34%`, or
-`now 50%` for the newest. `←` does the same from the keyboard on the page's first chart
+percentage on all four kinds (the RAM chart's usual `11G of 16G` included): `12s ago  34%`, or
+`now  50%` for the newest; a sample two minutes old or more is counted in minutes, `3m ago`. `←` does the same from the keyboard on the page's first chart
 (utilisation, or RAM): the first press marks the newest sample, each further press the one before,
 `→` steps forward and, past the newest, stops, and so does `Esc`. The marked sample is an absolute
 sample, so it moves left with its column as new samples arrive, and the reading stops when it
@@ -625,15 +652,13 @@ start.
 |---|---|---|---|
 | `interval` | milliseconds | `1000` | Sampling period, clamped to 200–60000 |
 | `units` | `1024`, `1000` | `1024` | `1024` gives binary sizes (`K`, `M`, `G`); `1000` gives `kB`, `MB`, `GB` |
-| `temperature` | `c`, `f` | `c` | Temperature scale, everywhere a temperature is shown |
+| `temperature` | `c`, `f` | `c` | Temperature scale everywhere a temperature is shown: the CPU, GPU, Drives and Sensors pages, the drive facts page and the figures in the band. A value starting with `f` or `F` means Fahrenheit, anything else Celsius |
 | `cpu_percent` | `core`, `machine` | `core` | Whether a Processes or detail-page percentage is of one core (eight busy threads read 800%) or of the running processors of the whole machine. The Applications and Boxes pages always use one core |
-| `memory` | `rss`, `pss` | `rss` | Read and stored; no page consults it, and every memory figure is RSS (resident set size). PSS, proportional set size, would divide a shared page among the processes that map it |
 | `kernel_threads` | boolean | `no` | Show kernel threads in the process table |
 | `virtual_drives` | boolean | `no` | Show loop, `ram`, `zram` and device-mapper devices on Drives |
 | `virtual_net` | boolean | `no` | Show loopback and interfaces with no backing device on Network |
 | `icons` | boolean | `yes` | Draw the page's icon in the header band and the charts as pixels; `no` keeps the whole window character cells |
 | `sort` | a column name | `cpu` | Initial sort column. Processes: `cpu`, `memory`, `pid`, `name`, `disk`. Applications and Boxes: `name`, `cpu`, `memory`, `disk`, `procs`. A name a page does not have leaves that page on its own default |
-| `columns` | column list | empty | Read and stored; no page consults it |
 
 `yes`, `1`, `true` and `on` are true for a boolean; anything else is false.
 
@@ -701,7 +726,7 @@ from the page table, so it always names every page.
 kdos-res --fixture testing/fixtures/res --page boxes --dump
 ```
 
-A **fixture** is a recorded system state (see the [glossary](../06-reference/glossary.md)).
+A **fixture** is a recorded system state (see the [glossary](../06-reference/glossary.md#fixture)).
 `--fixture DIR` points every reader at `DIR/proc` and `DIR/sys` instead of the live ones, and uses
 `DIR/passwd` for user names when it exists, so the same recording renders the same names on every
 host. This is what makes the output deterministic enough to commit reference frames, called
@@ -750,20 +775,17 @@ See [Testing](../05-developer/testing.md#goldens) for how the goldens are regene
 | `~/.cache/kdos/theme` | The accent, read at start and on `SIGHUP` |
 | `~/.local/state/kdos/toggles/night-light` | Night light, read with the accent |
 | `~/.config/kdos/boxes/<name>.conf` | Box profiles, read by the Boxes page for stopped boxes, base and persistence |
-| `~/.local/share/kdos/boxes/<name>` | Each box's writable layer, measured for the Boxes page's DISK column |
+| `~/.local/share/kdos/boxes/<name>` | Each box's own directory (a pack box's writable layer, snapshots and private home), measured for the Boxes page's DISK column |
 | `/run/kdos-energyd.sock` | The energy daemon's socket, asked by the Energy and Boxes pages |
 
 ## Limitations
 
-- On the Network page the pointer does not select or open a row; use `↑`, `↓` and `Enter`.
 - The Drives and Network lists have no scrollbar and hold at most sixteen devices each.
 - A signal or renice that the kernel or the helper refuses (for example, when the caller is not in
   `wheel`) fails without any message on the screen.
-- The sampler records when one sample takes longer than the interval, but no page displays it.
+- A sample that takes longer than the interval is not shown on any page; the only effect is that the
+  next sample waits a full interval after it ends.
 - A changed `sort` is not applied on `SIGHUP`; it takes effect when the program is next started.
-- `memory` and `columns` in the configuration are accepted and have no effect.
-- Per-slot memory module details are not shown. `kdos-resctl dmi` reads them from the SMBIOS table,
-  but no page asks it.
 - The Energy page asks the daemon once, the first time the page is drawn; a later visit shows the
   same report until `g` is pressed.
 - `Esc` clears a Processes filter only while it is being typed. With a filter kept by `Enter`,
@@ -778,9 +800,9 @@ See [Testing](../05-developer/testing.md#goldens) for how the goldens are regene
 - [The daemons](daemons.md) — the energy daemon this asks, and the memory daemon it complements
 - [The security model](../03-architecture/security-model.md#kdos-resctl) — the setuid helper in full
 - [Packs and boxes](../03-architecture/packs-and-boxes.md) — what a box is and where its layers live
-- [Configuration](../06-reference/configuration.md) — `res.conf` beside every other configuration
-  file
-- [Testing](../05-developer/testing.md) — fixtures and reference frames
+- [Configuration](../06-reference/configuration.md#configkdosresconf) — `res.conf` beside every
+  other configuration file
+- [Testing](../05-developer/testing.md#fixtures) — fixtures and reference frames
 - [The kdos command](kdos-command.md) — `kdos doctor`, `kdos stutter` and the same readings from a
   prompt
 

@@ -27,7 +27,8 @@ for itself: SMPlayer runs under Xwayland, and the mpv it starts uses its X11 vid
   Chromecast sender, which is not built; every translation catalogue but English; every manual
   directory under `/usr/share/doc/packages/smplayer` but `en`; and the `smplayer_enqueue.desktop`
   entry, a file-manager action rather than a program. The manual page is decompressed, because
-  the install gzips it and gzip records the time it ran in the file.
+  the install gzips it, and gzip records the page's modification time, the moment of the install,
+  in its header, which would make two builds of the same source differ.
 - **The data paths stay upstream's.** `DOC_PATH` and the other paths reach the compiler as quoted
   string defines through the top-level Makefile's environment; set on the `make` line, they would
   reach the sub-make unquoted. The manual SMPlayer's About dialog shows is under

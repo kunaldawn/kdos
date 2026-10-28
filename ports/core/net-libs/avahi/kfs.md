@@ -13,7 +13,7 @@ KDOS the daemon is started by `/etc/init.d/45_avahi.sh` once the system bus is u
   daemon's start-up script is KDOS's own, under `fs/etc/init.d`.
 - `--with-systemdsystemunitdir=no` — Install no systemd unit files. Without it configure asks
   pkg-config for systemd's unit directory. KDOS has
-  [no systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd).
+  [no systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd).
 - `--with-xml=expat` — Parse `.service` files in `/etc/avahi/services` with expat, and fail
   configure if it is missing, instead of taking whichever of expat and bsdxml it finds first.
 - `--with-avahi-user=avahi` — The account `avahi-daemon` drops to, with `--with-avahi-group`,
@@ -43,7 +43,8 @@ KDOS the daemon is started by `/etc/init.d/45_avahi.sh` once the system bus is u
 - `--disable-introspection` — Generate no GObject introspection data for `libavahi-gobject`.
 - `--disable-libevent` — Build no `libavahi-libevent` main loop adapter; configure would
   otherwise require [libevent](#port-libevent) through pkg-config.
-- `--disable-libsystemd` — Do not link libsystemd for socket activation and journal logging.
+- `--disable-libsystemd` — Do not link libsystemd, through which the daemon would take its sockets
+  from socket activation and report its state with `sd_notify`.
 - `--disable-doxygen-doc` — Generate no API reference with Doxygen.
 - `--enable-compat-libdns_sd` — Install `libdns_sd` and `dns_sd.h`, an implementation of Apple's
   Bonjour (mDNSResponder) client API on top of Avahi. Upstream leaves it off; mumble's zeroconf
@@ -59,7 +60,7 @@ KDOS the daemon is started by `/etc/init.d/45_avahi.sh` once the system bus is u
 tarball, and carries no generated `configure`.
 
 `/run` and `/var/run` are removed from the staged tree, because both are tmpfs on a running
-system and the [package lint](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/packaging.md#the-package-lint)
+system and the [package lint](../../../../docs/kdos/03-architecture/packaging.md#the-package-lint)
 refuses files there; the init script creates `/run/avahi-daemon` and gives it to `avahi` before
 it starts the daemon. `ssh.service` and `sftp-ssh.service` are removed from
 `/etc/avahi/services`, so a KDOS machine does not announce an SSH server on the local network.

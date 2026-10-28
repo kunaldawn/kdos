@@ -21,11 +21,14 @@ so there is no third party to attest to. This ring is for a binhost you
 choose to trust, a build's own included: `make build KDOS_MAKE_BINHOST=1`
 signs one with a key kept under build/ and puts its .pub beside the index.
 
-`packs/` IS SHIPPED WITH A KEY, and it is a different question. It verifies the
-signed index beside the packs on the medium, and what it asserts is only that
-those packs came from the same bake. It is a subdirectory because a keyring is
-a flat read of `*.pub`: a key that vouches for a medium must not thereby vouch
-for a package repository.
+`packs/` IS SHIPPED WITH A KEY, and it is a different question. kdos-packd
+checks an application pack's own signature, or a signed pack index (PACKAGES)
+beside the packs being imported, against it. Nothing the build makes is signed
+with that key and the build does not hold its secret half, so on a fresh system
+it verifies nothing; add the `.pub` from `kdos-pack keygen` to trust packs you
+sign yourself. It is a subdirectory because a keyring is a flat read of
+`*.pub`: a key that vouches for a pack must not thereby vouch for a package
+repository.
 
 `tree/` holds the key that signs a published ports tree, which
 `kdos update fetch` installs as /ports. The build puts its release key's public

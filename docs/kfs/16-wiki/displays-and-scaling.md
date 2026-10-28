@@ -14,7 +14,7 @@ and why every KDOS surface is sized by its font is in
 | Port | Provides |
 |:--|:--|
 | [kdos-comp](#port-kdos-comp) | The compositor. It takes screen configuration over `wlr-output-management`, and runs `kdos-display --apply` whenever a screen appears |
-| [kdos-shell](#port-kdos-shell) | [`kdos-display`]{.idx}, the screen arranger, and [`kdos-osd`]{.idx}, which changes a laptop panel's brightness. Both are names of the `kdos-shell` binary |
+| [kdos-shell](#port-kdos-shell) | [`kdos-display`]{.idx}, the screen arranger, and [`kdos-osd`]{.idx}, the volume and brightness overlay on the media keys, which also sets a laptop panel's brightness. Both are names of the `kdos-shell` binary |
 | [wlroots](#port-wlroots), [libdisplay-info](#port-libdisplay-info) | The display back end under the compositor, and the EDID parser that reads what each monitor says it can do |
 | [ddcutil](#port-ddcutil) | Brightness, contrast and input selection on an external monitor, over its DDC/CI line |
 | [wl-mirror](#port-wl-mirror) | One screen mirrored into a window, for a projector |
@@ -50,7 +50,10 @@ The file is always looked up under `$HOME/.config`, whatever `$XDG_CONFIG_HOME` 
 `kdos-display` is bound to `Super+P` and to a laptop's display key in the shipped
 `~/.config/kdos-comp/rc.xml` (`fs/etc/skel/.config/kdos-comp/rc.xml`):
 
-<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=267-268 pin=0f368a5ba24b -->
+<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=261-262 pin=0f368a5ba24b -->
+
+To move it to another chord, see
+[Changing a shipped binding](compositor-keybindings.md#changing-a-shipped-binding).
 
 ### The size of the desktop's text
 
@@ -58,18 +61,18 @@ KDOS draws its chrome in cells, so the font size is the size of the desktop. Two
 `~/.config/kdos/comp.conf` (`fs/etc/skel/.config/kdos/comp.conf`) set it, for the panel and for
 the rest of the chrome:
 
-<!-- kfs:include fs/etc/skel/.config/kdos/comp.conf lines=44-57 pin=436c1ca34021 -->
+<!-- kfs:include fs/etc/skel/.config/kdos/comp.conf lines=44-57 pin=7dfac4ae70f0 -->
 
 <!-- kfs:include fs/etc/skel/.config/kdos/comp.conf lines=103-121 pin=83f1ef1455a0 -->
 
 The window title bars and the compositor's menus take their font from `<theme>` in `rc.xml`, in
 points:
 
-<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=84-96 pin=f41f19e048ae -->
+<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=83-95 pin=f41f19e048ae -->
 
 The pointer has its own size:
 
-<!-- kfs:include fs/etc/skel/.config/kdos/comp.conf lines=314-319 pin=a7d60aef2093 -->
+<!-- kfs:include fs/etc/skel/.config/kdos/comp.conf lines=316-321 pin=a7d60aef2093 -->
 
 ### Night light
 
@@ -78,7 +81,7 @@ There is nothing to configure; what it does to the palette is in
 [`~/.local/state/kdos/toggles/`](../../kdos/06-reference/configuration.md#localstatekdostoggles).
 The shipped chord:
 
-<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=326-326 pin=4dbe4e0f699c -->
+<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=320-320 pin=4dbe4e0f699c -->
 
 ### The DDC/CI line of an external monitor
 
@@ -139,8 +142,9 @@ kdos hey outputs         # the compositor's own view: name, size, scale and posi
 Virtual-1	1280x800@75*	on	scale=1.00	transform=normal	at=0,0	logical=1280x800	Red Hat, Inc. QEMU Monitor (Virtual-1)
 ```
 
-The `*` marks the mode in use. `kdos hey outputs --json` prints the compositor's reply as it
-arrived, `{"ok":true,"outputs":[{"name":"Virtual-1","w":1280,"h":800,"scale":1.000,…}]}`; see
+The second column is the mode in use, its refresh rounded to whole hertz; a `*` after it means
+that mode is the one the monitor itself prefers. `kdos hey outputs --json` prints the
+compositor's reply as it arrived, `{"ok":true,"outputs":[{"name":"Virtual-1","w":1280,"h":800,"scale":1.000,…}]}`; see
 [kdos hey](../../kdos/04-programs/kdos-command.md#kdos-hey).
 
 ### A scale the arranger does not offer
@@ -202,7 +206,8 @@ against `kdos-comp`.
 
 `displays.conf` is in your home directory. On the live medium the home directory is in memory, so
 a kept layout lasts until power-off unless a persistence store exists
-([kdos persist](../../kdos/04-programs/kdos-command.md#kdos-persist)). On an installed system it is
+([Live persistence](live-persistence.md),
+[kdos persist](../../kdos/04-programs/kdos-command.md#kdos-persist)). On an installed system it is
 on disk. In a virtual machine the outputs are the emulator's, and their modes are whatever the
 virtual display offers.
 
@@ -229,7 +234,9 @@ when the countdown ends the earlier arrangement comes back. Then choose another 
 1. Check the file exists and names the screen: `cat ~/.config/kdos/displays.conf`, and compare the
    names with `kdos-display --list`. A monitor on another connector has another name.
 2. Run `kdos-display --apply` in a terminal and read what it prints. `kdos-display: no compositor`,
-   with exit status 1, means it found no Wayland display; run it from inside the session.
+   with exit status 1, means it found no Wayland display; run it from inside the session. A layout
+   the compositor turned down prints `kdos-display: the compositor refused that configuration`,
+   also with exit status 1, and nothing on the screens changes.
 3. A line that does not match the format is skipped without a word; compare it with the writer in
    [Configuration](#configkdosdisplaysconf).
 
@@ -248,7 +255,7 @@ grep comp.conf "$XDG_RUNTIME_DIR/kdos-comp.log"
 2. `ls -l /dev/i2c-*`. The display controller's buses are group `video`; the chipset's SMBus is
    left to root on purpose.
 3. `id`. Without `video` in the list, add the account: `sudo usermod -aG video <user>`, then log in
-   again.
+   again; see [Adding an account to a group](udev-and-device-groups.md#adding-an-account-to-a-group).
 4. Some monitors turn DDC/CI off in their own on-screen menu.
 
 `ddcutil detect` saying `No /sys/bus/i2c buses that might be used for DDC/CI communication found.`
@@ -263,8 +270,8 @@ native application, draw their own colours and do not follow it.
 ## Known gaps
 
 - [KDOS's own surfaces have not been seen at a fractional scale](../../kdos/06-reference/known-gaps.md#kdoss-own-surfaces-have-not-been-seen-at-a-fractional-scale):
-  on the test rig at scale 1.5 the arranger itself, open across the change, is drawn partly off the
-  left edge of the screen
+  the panel, the menus and the other KDOS surfaces are drawn at the device size on a scale such
+  as 1.5, but none has been photographed that way, so the result is unconfirmed
 - [The phosphor shader is not in any rig photograph](../../kdos/06-reference/known-gaps.md#the-phosphor-shader-is-not-in-any-rig-photograph)
 - [Broad hardware support is not a goal](../../kdos/06-reference/known-gaps.md#broad-hardware-support-is-not-a-goal)
 
@@ -279,8 +286,9 @@ native application, draw their own colours and do not follow it.
   [The pointer size](../../kdos/02-user-guide/accessibility.md#the-pointer-size)
 - [The system surfaces](../../kdos/04-programs/kdos-shell.md#the-system-surfaces): `kdos-display`
 - [Configuration](../../kdos/06-reference/configuration.md#configkdosdisplaysconf): `displays.conf`
-- `graphics-drivers.md`: [Graphics drivers](graphics-drivers.md)
-- `laptops.md`: [Laptops](laptops.md)
+- [Graphics drivers](graphics-drivers.md): which driver drives a GPU, and checking that the
+  desktop is accelerated
+- [Laptops](laptops.md): the lid, panel brightness and docks over Thunderbolt
 
 <!-- book-nav -->
 ---

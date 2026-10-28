@@ -13,10 +13,11 @@ for its point-cloud layers.
 - `-D WITH_ZLIB=ON`, `-D WITH_ZSTD=ON`, `-D WITH_LZMA=ON` — Compression support, through
   [zlib](#port-zlib), [zstd](#port-zstd) and [xz](#port-xz). zstd is found through pkg-config
   because of `10-zstd.patch`.
-- `-D WITH_COMPLETION=OFF` — Leave the bash completion to `build.sh`. Upstream installs it only
-  when `/usr/share/bash-completion/completions` already exists on the build machine, so the result
-  would depend on what was built first; `build.sh` installs `scripts/bash-completion/pdal` there
-  itself.
+- `-D WITH_COMPLETION=OFF` — Leave the bash completion to `build.sh`; off is upstream's default.
+  With it on, upstream installs the script only when `/usr/share/bash-completion/completions` (or
+  else `/etc/bash_completion.d`) already exists on the build machine, so the result would depend
+  on what was built first. `build.sh` installs `scripts/bash-completion/pdal` into
+  `/usr/share/bash-completion/completions` itself.
 - `-D WITH_BACKTRACE=OFF` — Build without the stack trace PDAL prints on a crash, which links
   libunwind or libexecinfo when found. It is on by default upstream.
 - `-D WITH_ABSEIL=OFF` — No Abseil, which upstream uses only as test debugging support.

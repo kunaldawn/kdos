@@ -11,9 +11,11 @@ KDOS keys `X-KDOS-Float` and `X-KDOS-Size` (see
 
 - `LIBCLANG_PATH=/usr/lib` — Where bindgen finds `libclang`. The `pipewire-sys` and `libspa-sys`
   crates generate their bindings from PipeWire's headers at build time, and bindgen loads
-  [clang](#port-clang)'s library to parse them. The `RUSTFLAGS` line matters here too: with
-  `-crt-static` the build script is linked dynamically and can load a library; a static musl
-  binary cannot (see [rust](../../../../docs/kdos/05-developer/writing-ports.md#rust)).
+  [clang](#port-clang)'s library to parse them.
+- `-C target-feature=-crt-static` — Link dynamically against musl. The musl target links
+  statically unless told otherwise, and `pipewire-sys` binds the shared `libpipewire`; bindgen
+  also runs inside the crates' build scripts, and a statically linked build script cannot load
+  `libclang`; see [rust](../../../../docs/kdos/05-developer/writing-ports.md#rust).
 
 ## Notes
 

@@ -17,8 +17,8 @@ a desktop entry, *Python Shell*, that opens it in a terminal.
   imported by other programs too, so they are ports of their own in `depends`, and the bundle's
   copies of them are never installed. A resolving install would instead package whatever the build
   root happened to lack, and which package owned those three would follow build order. The rule is
-  in [The three Python
-  keys](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
+  in
+  [The three Python keys](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
 - **Nothing is installed into the build root.** pip builds each source distribution in an isolated
   environment whose backends (setuptools, flit-core, hatchling, poetry-core and their helpers) also
   come from the bundle, through `--no-index --find-links=vendor`, and `--ignore-installed` keeps pip

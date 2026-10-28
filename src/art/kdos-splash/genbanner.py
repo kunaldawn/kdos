@@ -9,14 +9,15 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 #
-# Restamp the two caption lines on kdos-banner.png, the boot menu's wallpaper.
+# Restamp the two caption lines on kdos-banner.png: the artwork genbackdrop.py
+# derives the boot menu's wallpaper from, and the wallpaper itself wherever
+# kdos-backdrop.png is missing.
 #
 # HOST ONLY, and its output is committed -- the arrangement genlogo.py,
 # genmarks.py and kdos-bb's genimg.py already use. It exists because the
-# banner is the one shipped artefact with TEXT BAKED INTO A BINARY: the
-# strings below said `cosmic` for a whole milestone after that desktop was
-# deleted, and nothing in the tree could see it. grep cannot read a PNG.
-# Changing what the boot screen says is now a one-line edit here.
+# banner is the one shipped artefact with TEXT BAKED INTO A BINARY, and
+# nothing in the tree can see a stale caption there: grep cannot read a PNG.
+# The strings below are the one place what the boot screen says is edited.
 #
 # IDEMPOTENT. The caption band is repainted with the flat background before
 # anything is drawn, so running this twice produces the same file. The band

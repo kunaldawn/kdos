@@ -1,7 +1,8 @@
 ## About
 
 gThumb is GNOME's photo and video browser: a thumbnail browser, a viewer, catalogues and tags,
-import from cameras and folders, and simple editing. It is built for GTK 4 and libadwaita.
+import from removable devices and folders, and simple editing. It is built for GTK 4 and
+libadwaita.
 
 ## Flags
 

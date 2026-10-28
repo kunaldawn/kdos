@@ -11,8 +11,8 @@ the install as failing preflight when `mkfs.vfat` is missing; `kdos rebuild` che
 
 - `--enable-compat-symlinks` — Also installs the tools under their older names, as links:
   `mkfs.vfat`, `mkfs.msdos` and `mkdosfs` to `mkfs.fat`; `fsck.vfat`, `fsck.msdos` and `dosfsck`
-  to `fsck.fat`; and `dosfslabel` to `fatlabel`. They are off by default, and `kinstall` runs
-  `mkfs.vfat` by that name, so without them it finds no FAT formatter. `fsck -t vfat` also looks
-  for `fsck.vfat`.
+  to `fsck.fat`; and `dosfslabel` to `fatlabel`. They are off by default, and `kinstall` and
+  `kdos-mountd`'s format request both run `mkfs.vfat` by that name, so without them neither finds
+  a FAT formatter. `fsck -t vfat` also looks for `fsck.vfat`.
 - `--docdir=/usr/share/doc/$name` — Where the documentation goes. It is the same directory as
   configure's default, `/usr/share/doc/dosfstools`.

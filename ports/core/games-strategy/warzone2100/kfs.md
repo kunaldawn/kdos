@@ -20,9 +20,10 @@ texture packages are encoded during the build from the PNGs in the source.
   compiler adds would otherwise stop the build.
 - `-DWZ_ENABLE_BASIS_UNIVERSAL=ON` — with `-DWZ_INCLUDE_TERRAIN_HIGH=ON` and
   `-DWZ_DOWNLOAD_PREBUILT_PACKAGES=OFF`: support Basis Universal compressed textures, include the
-  high-quality terrain texture pack, and encode all the texture packages here from the PNGs in
-  `data/` with the bundled `basisu` encoder, rather than downloading upstream's prebuilt ones. The
-  encode is slow, and it needs no network.
+  high-quality terrain texture pack, and encode that pack here from its PNGs in `data/`, as every
+  other texture package is, rather than downloading upstream's prebuilt `high.wz`. The encoder is
+  `basisu`, which configure builds from `3rdparty/` when none is installed. The encode is slow,
+  and it needs no network.
 - `-DWZ_DISABLE_FETCHCONTENT_GIT_CLONE=ON` — never clone the Vulkan headers from git when the
   system's are missing or too old. With
   `-DCMAKE_REQUIRE_FIND_PACKAGE_VulkanHeaders=ON`, the [vulkan-headers](#port-vulkan-headers)
@@ -46,8 +47,9 @@ texture packages are encoded during the build from the PNGs in the source.
   default; without Asciidoctor or `a2x` it skips the documentation with only a warning.
 - `-DCMAKE_REQUIRE_FIND_PACKAGE_Fribidi=ON` — with the same switch for `Miniupnpc`: make each
   lookup required. Upstream finds [fribidi](#port-fribidi), for right-to-left text, and
-  [miniupnpc](#port-miniupnpc), for opening a hosted game's port on the router, as optional and
-  builds without them when they are missing.
+  [miniupnpc](#port-miniupnpc), for opening a hosted game's port on the router, as optional. A
+  missing fribidi builds the game without it, and a missing miniupnpc builds the copy in
+  `lib/netplay/3rdparty/` into the program instead.
 
 ## Patches
 

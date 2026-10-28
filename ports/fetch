@@ -164,8 +164,10 @@ vendor_tar() {
 # source_file <entry> <first:0|1> <name> <version> — the filename a `source =`
 # entry is saved under. It must agree with kdos-kpkg's kp_source_file() in
 # build.c, which looks for exactly this name at build time: `file::url` names
-# it outright, a bare URL is its basename, EXCEPT for the first entry, which is
-# saved as `<name>-<version>.<ext>`.
+# it outright, a bare URL is its basename, and an entry that is not a URL is
+# its own name. The one exception is a first entry whose URL ends in .tar.gz,
+# .tgz, .tar.bz2, .tbz2, .tar.xz, .txz, .tar.zst or .zip: it is saved as
+# `<name>-<version>.<ext>`, and any other first URL keeps its basename.
 source_file() {
     local src=$1 ext=""
     case $src in
@@ -392,9 +394,10 @@ gen_vendor() {
         # "Unable to find libclang: ... Dynamic loading not supported" —
         # so it reads as a missing library on a machine where libclang is
         # right there, and it costs a full rebuild to find. The two lines
-        # that fix it are in CLAUDE.md's recurring-fixes table; this says
-        # so HERE, where the vendor tree is unpacked and the answer is one
-        # `test -d` rather than a decompression of somebody's bundle.
+        # that fix it are in build-troubleshooting.md, under "Rust with a
+        # binding generator"; this says so HERE, where the vendor tree is
+        # unpacked and the answer is one `test -d` rather than a
+        # decompression of somebody's bundle.
         if [ -d vendor/bindgen ] &&
            ! grep -q 'crt-static' "$portdir/build.sh" 2>/dev/null; then
             echo "⚠  $port: vendors bindgen, and build.sh does not set"

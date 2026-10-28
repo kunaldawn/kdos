@@ -10,11 +10,11 @@
 # ---------------------------------
 #
 # Run from the repository root; testing/docscheck.sh runs it. Three pages carry
-# exact counts of the ports tree: docs/kdos/06-reference/status.md,
-# docs/kdos/06-reference/ports-catalogue.md and
-# docs/kdos/03-architecture/packaging.md. Every other page says "about 2,000"
-# or links to one of them, so these three are the only places a count can go
-# stale, and this check recomputes each figure they state:
+# exact counts of the recipes, shelves and package lists:
+# docs/kdos/06-reference/status.md, docs/kdos/06-reference/ports-catalogue.md
+# and docs/kdos/03-architecture/packaging.md. Every other page says "about
+# 2,000" or links to one of them, and this check recomputes each such figure
+# the three state:
 #
 #   - recipes: directories holding a kpkgbuild, in ports/core and per src/ area
 #   - shelves: the non-comment lines of ports/shelves
@@ -26,6 +26,12 @@
 #     count in its heading and in the per-shelf table; the ports named in more
 #     than one list; and that every port it lists as the application-developer
 #     platform is still named by no `depends =`
+#
+# The vendoring counts (recipes that set `vendoring =`, per ecosystem, and
+# ports carrying a vendor bundle) are stated exactly on principles.md,
+# glossary.md, writing-ports.md, how-kdos-is-built.md and packaging.md, and
+# nothing here recomputes them: a recipe that gains or drops `vendoring =`
+# leaves those figures wrong until a page is edited by hand.
 #
 # A recipe that no phase installs, from a list or by a 00_cross/10_bootstrap
 # step, is refused unless ports/unbuilt names it, and a name there that a

@@ -22,9 +22,11 @@ bullets below are the switch-by-switch reading of it.
 - `-DQT_DISABLE_RPATH=ON` — with `-DFEATURE_rpath=OFF`: no `RPATH` in Qt's own libraries and
   tools, and none added by `qmake6` to what it links. Every Qt library is in `/usr/lib`, so an
   entry would only add a lookup, and the package lint warns on each.
-- `-DQT_QPA_PLATFORMS="wayland;xcb"` — the default platform plugin list: Wayland first, and the
-  X11 plugin, which runs under Xwayland, only for a program that asks for it or when Wayland cannot
-  start. The session sets the same list in `QT_QPA_PLATFORM`.
+- `-DQT_QPA_PLATFORMS="wayland;xcb"` — the build's default platform plugins; the first, Wayland,
+  is compiled in as the default platform. With no `QT_QPA_PLATFORM` set, Qt tries Wayland when
+  `WAYLAND_DISPLAY` is set or `XDG_SESSION_TYPE` is `wayland`, and the X11 plugin, which runs under
+  Xwayland, when `DISPLAY` is set, Wayland first. The session sets `QT_QPA_PLATFORM` to the same
+  list, so X11 is used only by a program that asks for it or when Wayland cannot start.
 - `-DINPUT_opengl=desktop` — with `-DFEATURE_opengl_desktop=ON`: desktop OpenGL through
   [libglvnd](#port-libglvnd), rather than OpenGL ES 2.
 - `-DINPUT_publicsuffix=qt` — use the copy of the Public Suffix List compiled into QtNetwork, which
@@ -45,8 +47,8 @@ bullets below are the switch-by-switch reading of it.
 - `-DFEATURE_eglfs=OFF` — with `-DFEATURE_linuxfb=OFF`, `-DFEATURE_vnc=OFF`,
   `-DFEATURE_vkkhrdisplay=OFF` and `-DFEATURE_directfb=OFF`: none of the platform plugins that
   draw without a window system, straight to the card or the framebuffer, or serve the screen over
-  VNC. A Qt program started outside the compositor would otherwise take the display and the input
-  devices from it.
+  VNC. Every Qt program on this desktop runs under the compositor, through the Wayland plugin or
+  through the X11 one under Xwayland.
 - `-DFEATURE_tslib=OFF` — no touchscreen input through tslib, which is not a port.
 - `-DFEATURE_libinput=ON` — with `mtdev`, `evdev` and `libudev`: Qt's input device support through
   [libinput](#port-libinput), [mtdev](#port-mtdev) and [eudev](#port-eudev); named, so the

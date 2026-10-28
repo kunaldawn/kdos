@@ -32,7 +32,7 @@ profiles to files from a shell.
 - `-D SVG_BACKEND=librsvg` — Draws the interface's SVG icons through
   [librsvg](#port-librsvg) rather than the alternative, lunasvg; upstream's default, named.
 - `-D USE_LIBCANBERRA=ON` — Plays a sound through [libcanberra](#port-libcanberra) when the
-  batch queue finishes; upstream's default on Linux, named.
+  batch queue finishes or a long edit completes; upstream's default on Linux, named.
 
 ## Notes
 

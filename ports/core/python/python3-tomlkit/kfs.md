@@ -3,8 +3,10 @@ tomlkit reads and writes TOML while keeping the document's comments, ordering an
 so a program can change one value in a file a person wrote and leave the rest as it was.
 
 In KDOS it is in `30_foundation` because [python3-hatchling](#port-python3-hatchling) depends on
-it: `hatchling version` uses it to rewrite the version in a project's `pyproject.toml`. [picard](#port-picard), [toot](#port-toot), [spyder](#port-spyder) and
-[python3-lsp-server](#port-python3-lsp-server) depend on it at run time.
+it: `hatchling version` uses it to read, and to rewrite, a version written directly in the
+`[project]` table of a project's `pyproject.toml`. [picard](#port-picard), [toot](#port-toot),
+[spyder](#port-spyder) and [python3-lsp-server](#port-python3-lsp-server) depend on it at run
+time.
 
 ## Flags
 - `--no-build-isolation` — Build with the backend already installed in the build root rather

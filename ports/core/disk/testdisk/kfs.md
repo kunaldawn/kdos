@@ -37,5 +37,6 @@ writes images with (without them it falls back to the older `libewf_handle_read_
 and `qphotorec_LDADD` in `src/Makefile` must link `Qt6Widgets`. A build that would
 lack any of them stops with a message naming it.
 
-Upstream installs `linux/qphotorec.desktop`; `build.sh` writes its own over it, adding
-`StartupWMClass=qphotorec` and search keywords.
+Upstream installs `linux/qphotorec.desktop`; `build.sh` writes its own over it. The replacement
+adds a `Comment`, search keywords and `StartupWMClass=qphotorec`, drops `TryExec` and `Version`,
+and runs plain `qphotorec` where upstream runs `/usr/bin/qphotorec %F`.

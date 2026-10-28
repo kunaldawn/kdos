@@ -10,9 +10,9 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 #
-# Remove packages whose PORT no longer exists, and packages whose port
-# ports/unbuilt lists: no phase builds those, so one installed here is left
-# from a build before the port was listed and would ride into the image.
+# Remove packages that have no port in the tree, and packages whose port
+# ports/unbuilt lists: no phase builds either, so one installed here is
+# nothing this tree builds and would otherwise ride into the image.
 #
 # The build tree is incremental and `cp` never deletes, so a port removed from
 # `ports/` keeps its package installed forever unless something sweeps it.

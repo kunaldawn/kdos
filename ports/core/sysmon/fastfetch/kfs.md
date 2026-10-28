@@ -13,13 +13,15 @@ draws from `fastfetch --logo none` beside its own logo. The recipe's second sour
   inside `#ifdef FF_HAVE_XCB_RANDR` and `#ifdef FF_HAVE_XRANDR`, which only these switches define.
   Off, the display is reported through the Wayland probe alone and no X library is needed.
 - `-DENABLE_VAX11=OFF` — and `-DENABLE_GLX=OFF`: the same for libva's X11 backend and GLX, the X
-  paths of the GPU detection.
+  paths of the video-codec and OpenGL detection; VA-API is still queried over DRM and OpenGL
+  through EGL.
 - `-DENABLE_WAYLAND=ON` — and every other `ENABLE_*=ON`: Vulkan, DRM, VA-API over DRM, GIO,
-  D-Bus, SQLite, EGL, ImageMagick 7, chafa, zlib, PulseAudio, ddcutil, libelf and Lua. Each library
-  is named because a switch whose library is missing only prints `Library: missing: <NAME>` and
-  builds without it; each one turned on has its port in `depends`. fastfetch opens almost all of
-  these libraries with `dlopen()` at run time, so the build needs only their headers and
-  pkg-config files.
+  D-Bus, SQLite, EGL, ImageMagick 7, chafa, zlib, PulseAudio, ddcutil, libelf and Lua. These are
+  upstream's defaults on Linux, named so the recipe states which libraries the binary is built
+  for. A switch whose library is missing only prints `Library: missing: <NAME>` and builds without
+  it, so the switch does not make the library present; each one turned on has its port in
+  `depends`. fastfetch opens almost all of these libraries with `dlopen()` at run time, so the
+  build needs only their headers and pkg-config files.
 - `-DLUA_INCLUDE_DIR=/usr/include/lua5.4` — and `-DLUA_LIBRARY=/usr/lib/liblua5.4.so`: build the
   Lua scripting against [lua54](#port-lua54). fastfetch opens Lua at run time by the name
   `liblua5.<minor>.so`, which only lua54 installs; the [lua](#port-lua) port names its library
@@ -37,4 +39,7 @@ draws from `fastfetch --logo none` beside its own logo. The recipe's second sour
 `config.jsonc` is a source of the recipe with its own `sha256 =` line, so editing it changes the
 recipe and rebuilds the port. It lays out the information column for the login banner and for a
 bare `fastfetch`; the banner itself runs fastfetch with `--logo none` and places the logo beside
-the output.
+the output. fastfetch reads `/etc/xdg/fastfetch/config.jsonc` only when the user has no
+`~/.config/fastfetch/config.jsonc`, and `fs/etc/skel` gives every new account its own copy of the
+layout, so a change to the banner's layout is made in both files or new accounts keep the old
+one.

@@ -25,7 +25,7 @@ and the server from the source, installs the data, and never installs the prebui
 
 ## Patches
 
-- `placement-new.patch` — In `src/shared/tools.h`, replaces the engine's own inline definitions of placement `new`, `new[]`, `delete` and `delete[]` with `#include <new>`. libstdc++'s `<cmath>` brings in `<new>` before `tools.h` is read, and a second definition of those operators does not compile.
+- `placement-new.patch` — In `src/shared/tools.h`, replaces the engine's own inline definitions of placement `new`, `new[]`, `delete` and `delete[]` with `#include <new>`. `cube.h` includes `<math.h>` before `tools.h`, and libstdc++'s `<math.h>` brings in `<new>` through `<cmath>`, so a second definition of those operators does not compile.
 
 ## Notes
 

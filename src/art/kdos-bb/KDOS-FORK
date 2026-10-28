@@ -3,12 +3,13 @@ Upstream tarball: bb-1.3rc1.tar.gz  sha256: 793d88c872793b6dab444cf5bab24f283ecb
 Frozen: no upstream merges. License: GPL-2.0 (see COPYING — kept, and AUTHORS
 with it: the demo's own credits scroll is the authors' work and stays).
 
-The tree that upstream ships is 81 files; this carries the 42 sources and 16
-headers the binary is actually built from, the three .s3m tracks, and nothing
-else. What went: the whole autotools apparatus (configure, Makefile.in,
-aclocal.m4, install-sh, missing, mkinstalldirs, acconfig.h, aconfig.h.in,
-stamp-h.in), which is replaced by a static src/aconfig.h and a build.sh that
-calls the compiler; and ChangeLog, NEWS, INSTALL, bb.lsm, README.LZO.
+The tree that upstream ships is 81 files; this carries the 43 of its sources
+and 15 of its headers that the binary is built from, the three .s3m tracks,
+and nothing else of upstream's. src/kdostux.c and src/aconfig.h are the
+fork's own, for 44 sources and 16 headers in src/. What went: the whole
+autotools apparatus (configure, Makefile.in, aclocal.m4, install-sh, missing,
+mkinstalldirs, acconfig.h, aconfig.h.in, stamp-h.in), which is replaced by a
+static src/aconfig.h and a build.sh that calls the compiler; and ChangeLog, NEWS, INSTALL, bb.lsm, README.LZO.
 
 KDOS changes, all applied in place because this is our source now:
 
@@ -79,13 +80,13 @@ KDOS changes, all applied in place because this is our source now:
             unscheduled gap and never prints one: stderr here is the terminal
             the demo draws on, and a real-time thread blocked in write() is
             the very stall the instrument is looking for.
-  tex.c     clear_zbuff() cleared sizeof(long) per cell against a sizeof(int)
-            allocation. The same size in 1997, double on x86_64: the heap
+  tex.c     clear_zbuff() clears sizeof(int) per cell, the element size of
+            the allocation. sizeof(long) is double that on x86_64: the heap
             corrupts and stage 2 aborts on "malloc(): corrupted top size".
-  messager.c the scroll used memcpy on overlapping ranges. glibc survived it;
-            musl is free not to. memmove.
-  config.h  REGISTERS(n) no longer expands to __attribute__((regparm(n))),
-            which is x86-32 only and warns on every declaration here.
+  messager.c the scroll moves overlapping ranges, so it is memmove: memcpy on
+            an overlap is undefined, and musl is free not to survive it.
+  config.h  REGISTERS(n) expands to nothing. __attribute__((regparm(n))) is
+            x86-32 only and warns on every declaration here.
 
 Then the rebranding, which is deliberate rather than incidental. The demo is
 the AA-group's and the credits scroll, the greetings and the history stay
@@ -98,7 +99,7 @@ own mark in the two beats that already spend time on a logo.
             held the mixer settings table until Continue was pressed -- two
             questions whose answers were always yes and default, in front of
             the one thing the program does. Both are flags now.
-            song_progress() is new: thousandths through the module, which is
+            song_progress() reports thousandths through the module, which is
             what paces the extro scroll.
   scene1.c  blazinec()'s nineteen flash words are reworded and the mascot is
             drawn in the twelfth, which upstream spent on an empty string.
@@ -110,9 +111,9 @@ own mark in the two beats that already spend time on a logo.
             the four slots after the last contributor, and the pointer that
             named README now names this file, which is the one that exists.
   credits2.c the mascot in the extro's logo beat, and THE CLOSING TEXT
-            SCROLLS ITSELF, A SCREEN AT A TIME. It was a pager that waited on
-            a keypress, so the demo ended by sitting still until somebody
-            noticed. It now asks the player where it is and turns to the page
+            SCROLLS ITSELF, A SCREEN AT A TIME. A pager that waits on a
+            keypress ends the demo sitting still until somebody notices, so
+            the scroll asks the player where it is and turns to the page
             that fraction of the way through, landing on the last page just
             before bb3.s3m ends. Any key hands control back for good -- a
             scroll that pulled the page out from under a reader would be
@@ -122,8 +123,8 @@ own mark in the two beats that already spend time on a logo.
             whole second of cross-fade, and the document is some fifteen
             screens against four and a half minutes -- a line at a time asks
             for one every three quarters of a second, the morph never lands,
-            and nothing on the page can be read. Measured at 106x33: 16
-            turns, 16.4s a page, 1s of it the morph.
+            and nothing on the page can be read. Measured at 106x33: 15
+            turns over 16 slots, 16.4s a slot, 1s of it the morph.
   main.c    sound_sync() is a SERVO and not only a report: the scene clock
             follows the player. A scene runs to an absolute deadline, so time
             the machine loses is paid in skipped frames -- but the module
@@ -193,8 +194,9 @@ own mark in the two beats that already spend time on a logo.
             kdos-bb.md. Under KDOS_BB_DEBUG the line also carries `held`,
             the whole correction so far and therefore the audio time this
             machine has lost, and the mixer's worst unscheduled gap.
-  textform.c the closing document gains what KDOS is and what this fork
-            changed, and loses the claims that were no longer true.
+  textform.c the closing document says what KDOS is and what this fork
+            changed, and carries none of upstream's claims that are false of
+            the fork.
   kdostux.c kdos.png as an LZO-compressed greyscale image in the format
             image.h describes, so dispimg() draws it with the same scaling,
             dithering and strobe as the photographs. GENERATED -- see

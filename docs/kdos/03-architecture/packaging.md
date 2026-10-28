@@ -26,11 +26,12 @@ read-only images run in a sandbox, a separate system described in
 A **port** is a directory that describes how to build one piece of software. A **recipe** is the
 pair of files that make up that description, and a **package** is what building a port produces:
 an archive that `kpkg` installs and records. Every program on the KDOS host, the compiler and the
-kernel included, is built from a port.
+kernel included, is built from a port, except `kpkg` itself, which the bootstrap compiles before
+any recipe can be read (see [The recipes under src/](#the-recipes-under-src)).
 
 The build that turns ports into a system runs in numbered **phases**, from `00_cross` to
 `70_image`. From `20_selfhost` onwards each runs inside the build
-[chroot](../06-reference/glossary.md): the directory tree holding the system built so far, which
+[chroot](../06-reference/glossary.md#chroot): the directory tree holding the system built so far, which
 the build enters as its root. The phases are introduced under
 [Phases, package lists and shelves](#phases-package-lists-and-shelves), and run as described in
 [The build system](../05-developer/build-system.md#phases).
@@ -54,8 +55,9 @@ The split into two files is deliberate. Because the metadata is parsed rather th
 reading a recipe runs no shell, so querying a thousand recipes is as cheap and as safe as reading a
 thousand configuration files. Because the build is a real script, syntax checking, `shellcheck`,
 highlighting and diffing all work on it, and no parser has to tell a heredoc in the build apart
-from the metadata's own syntax. [Decisions](../01-philosophy/decisions.md) gives the reasoning in
-full.
+from the metadata's own syntax.
+[Decisions](../01-philosophy/decisions.md#the-build-shell-lives-beside-the-recipe) gives the
+reasoning in full.
 
 A recipe's `depends =` line is the only dependency list. It names every port that must be
 installed before this one builds, and serves as the runtime dependency list as well; there is no
@@ -82,7 +84,7 @@ every upstream port sits on a **shelf**, a directory named for its subject, such
 `ports/core/python-net/python3-requests/`. The shelves are a closed list, the file `ports/shelves`,
 with one line per shelf giving its id, the source-archive volume that keeps its files, and what
 belongs on it. [Writing
-ports](../05-developer/writing-ports.md) gives the rules for choosing one.
+ports](../05-developer/writing-ports.md#choosing-a-shelf) gives the rules for choosing one.
 
 A shelf is only where a recipe is filed. A port's identity is its bare name: `depends =` lines,
 package lists, the package database, the binary host and the source index all name `wlroots`, never
@@ -118,8 +120,9 @@ are ports like any other, found on a longer search path.
 Beside `ports/core`, the `ports/` directory holds the shelf list `shelves` and the tools that
 operate on the tree rather than recipes: `fetch` and `publish` for sources, `srclib.sh` (the
 library both share), `update` for upstream version checks, `hackage-vendor` for Haskell vendor
-bundles, `Containerfile.fetch` for the container that generates vendor bundles, and the source
-index `sources.idx`. Each of these tools names a port by its bare name and finds it on any shelf.
+bundles, `Containerfile.fetch` for the container that generates vendor bundles, the source
+index `sources.idx`, and `unbuilt`, the recipes no phase builds (see
+[Phases, package lists and shelves](#phases-package-lists-and-shelves)). Each of these tools names a port by its bare name and finds it on any shelf.
 
 ### The recipes under src/
 
@@ -127,8 +130,7 @@ The four `src/` areas that hold recipes hold KDOS's own software. Each directory
 whose recipe names no `source =`: the code lives in the port directory itself, and `build.sh`
 compiles it from `$PORT_SRC` (the port directory; see
 [What a build verifies](#what-a-build-verifies)), usually together with some of the shared
-libraries under `src/libs` (see [The C libraries](../05-developer/c-libraries.md)). Two of those
-recipes carry an empty `source =` line, which means the same thing.
+libraries under `src/libs` (see [The C libraries](../05-developer/c-libraries.md)).
 
 Every port there sits exactly two levels below `src/`, at `src/<area>/<name>/`. That depth is load
 bearing: a recipe finds the libraries at `$PORT_SRC/../../libs`, and `kdos-installer` compiles a
@@ -192,10 +194,11 @@ Where a list names more ports than it installs, the extra names are ports an ear
 installed, named again so that one whose recipe changed is rebuilt at that point in the order. A
 name may be written again only in the list's *order run*: `packages.d/00-order.txt`, or the names
 a `packages.txt` gives ahead of its first shelf heading. `30_foundation`'s order run is the build
-tools recipes use without naming them in `depends =` (`make`, `file`, `muon`, `pkgconf`, the autotools, `cmake`,
-`meson`, `ninja`, `python3`, `perl`, `bash`, and the userland a `build.sh` runs in: `coreutils`,
-`grep`, `which` and `musl-utils`), led by the toolchain `20_selfhost` built (`musl`, `gcc`,
-`binutils`) and followed by the rest of `20_selfhost`'s ports, so a changed recipe among them is
+tools recipes use without naming them in `depends =` (`make`, `file`, `muon`, `pkgconf`, the
+autotools, `bison`, `flex`, `cmake`, `meson`, `ninja`, `python3`, `perl`, `bash`, and the userland
+a `build.sh` runs in: `coreutils`, `grep`, `which` and `musl-utils`), led by the toolchain
+`20_selfhost` built (`fortify-headers`, `musl`, `gcc`, `binutils`) and followed by the rest of
+`20_selfhost`'s ports, so a changed recipe among them is
 rebuilt before anything uses it (see [The base userland](#the-base-userland)).
 
 **From `30_foundation` on, a list names exactly the ports its phase installs.** Each port's
@@ -238,9 +241,8 @@ phase installs.
 The second job is stating the constraint that pins a port's position, such as the build tools at
 the head of `30_foundation`. A run of ports whose order a comment pins cannot be split across shelf
 files, so in a `packages.d/` directory it lives in `00-order.txt`, which sorts ahead of every shelf
-file and installs first, in the order written. `41_system` keeps each Python module there straight
-after the program whose vendor bundle carries a copy of it, so that the port, installed last, owns
-the files.
+file and installs first, in the order written. `41_system` is the only phase with that file, and it
+names no port: none of that phase's ports needs a pinned position.
 
 The toolkits and the natively ported graphical applications build last among the userland phases,
 in `43_toolkits` and `44_apps`. These toolkits serve applications only; the desktop's own
@@ -274,9 +276,11 @@ one upstream release: `glib` and `glib-introspection` carry `group = glib`, `pyt
 and the same holds for `gcc-arm-none-eabi`, `gcc-riscv64-unknown-elf`, `limesuite`, `mgba`, `nmap`,
 `qca`, `qscintilla`, `qwt`, `stlink`, `supertuxkart`, `texlive` and `v4l-utils`. The other two are
 families released together
-from a host the derivation does not read: the Qt modules and PySide, fetched from `download.qt.io`,
-carry `group = qt6` (29 recipes) or `group = qt5` (11).
-[Writing ports](../05-developer/writing-ports.md) covers the key and the review it feeds.
+mostly from a host the derivation does not read: the Qt modules and PySide, fetched from
+`download.qt.io` except `qt6-qtmqtt`, which comes from GitHub, carry `group = qt6` (29 recipes) or
+`group = qt5` (11).
+[Writing ports](../05-developer/writing-ports.md#steering-the-checker-from-a-recipe) covers the key
+and the review it feeds.
 
 A `group =` family is not a shelf either, but it lives on one: every member of a group is filed on
 the same shelf, so a bump offered as one group touches one directory. Preflight refuses a group
@@ -305,9 +309,13 @@ at the first copy that verifies, looking in this order:
 5. for a port's own vendor bundle only, generating it again.
 
 A **vendor bundle** is a port's language dependencies (Go modules, Rust crates, Python or Haskell
-packages) packed as `<name>-vendor-<version>.tar.xz`; 164 ports carry one. It has a `sha256 =`
+packages) packed as `<name>-vendor-<version>.tar.xz`; 166 ports carry one. It has a `sha256 =`
 line but no `source =` URL, so when no copy exists anywhere it is generated rather than downloaded,
-inside the `kdos-fetch` container that `ports/Containerfile.fetch` describes.
+inside the `kdos-fetch` container that `ports/Containerfile.fetch` describes. Four of them,
+pdfium's, LibreOffice's, LibrePCB's and Surfer's, `ports/fetch` cannot generate: they are made by
+hand, and when no copy exists the fetch fails. [Vendoring](../05-developer/writing-ports.md#vendoring)
+covers both kinds, the hand-made ones under
+[A bundle no tool writes](../05-developer/writing-ports.md#a-bundle-no-tool-writes).
 
 Whatever verifies is entered into the cache, so switching branches downloads nothing twice.
 
@@ -339,9 +347,9 @@ now sits on and deletes the old copy only after the new one is verified and the 
 `ports/publish --orphans --prune=yes-delete`, which deletes files no current recipe, no recipe at
 any `v*` tag and no freeze list names. A checkout years old therefore finds the exact bytes it was
 written against even after the upstream host has gone, fetched with the newest index through
-`ports/fetch --tree`. The current `ports/core` recipes name 2,487 distinct hashed files over 102
-shelves, the largest shelf, `python-libs`, naming 81. 39 of them are small files git tracks beside
-their recipes, and the other 2,448, about 38.6 GiB, are archived in four volumes. Stored by hash, a
+`ports/fetch --tree`. The current `ports/core` recipes name 2,572 distinct hashed files over 102
+shelves, the largest shelf, `python-libs`, naming 82. 44 of them are small files git tracks beside
+their recipes, and the other 2,528, about 39.3 GiB, are archived in four volumes. Stored by hash, a
 file several ports use is one asset, in the volume of the first shelf that names it; the LLVM monorepo tarball, for example, is shared by eight ports.
 
 The commands and settings:
@@ -353,6 +361,8 @@ The commands and settings:
 | `ports/fetch [port…]` | Fetch only the named ports |
 | `ports/fetch --tree <dir> [port…]` | Fetch for another checkout's `ports/core`; never generates a vendor bundle |
 | `KDOS_SOURCES_BASE=` (empty) | Skip the archive and go straight to upstream |
+| `KDOS_SOURCES_BASE=<dir>` | Read the archive from a directory laid out as `<tag>/<asset>`, such as an archive disk, with no network |
+| `FETCH_JOBS=N` | Fetch up to N ports at once (default 1); `make fetch` passes it through |
 | `KDOS_SOURCES_REPO` | The archive repository (default `kunaldawn/kdos`) |
 | `KDOS_SOURCES_INDEX` | The index to read (default `ports/sources.idx`); only format 2 is read |
 | `KDOS_SRCCACHE` | Move the cache, for example to share one between checkouts |
@@ -407,7 +417,7 @@ names as symbolic links, and what it does depends on the name it was run as:
 | `kpkgadd` | Install a prebuilt package file: `kpkgadd [-f] [--root <path>] <file>`; `-f` skips the [conflict scan](#who-owns-a-file) and leaves a contested path claimed by both packages |
 | `kpkgbuild` | Build the port in the current directory into a package without installing it |
 | `kpkgdel` | Remove packages: `kpkgdel [--root <path>] <package>…` |
-| `kpkgdepends` | Print the resolved install order, and nothing else |
+| `kpkgdepends` | Print the resolved install order, and nothing else: `kpkgdepends [--root <path>] <package>…` |
 
 The `kpkgbuild` command shares its name with the recipe file it reads; this chapter says "the
 `kpkgbuild` file" where the file is meant.
@@ -418,28 +428,29 @@ The front end's commands:
 |---|---|
 | `install <pkg>…` (`i`) | Build and install packages with their dependencies |
 | `remove <pkg>…` (`r`) | Remove packages |
-| `list [--json]` (`l`) | List installed packages |
-| `info [--json] <pkg>` | For an installed package, its version, release and file count; for one that is not installed, the recipe's description and `depends =` list |
+| `list [--root <path>] [--json]` (`l`) | List installed packages |
+| `info [--root <path>] [--json] <pkg>` | For an installed package, its version, release, licence (the recipe's `license =`) and file count; for one that is not installed, the recipe's description, licence and `depends =` list |
 | `check [--root <path>] <pkg>…` or `check [--root <path>] --all` | Compare the root with what was installed; see [Checking an installed root](#checking-an-installed-root) |
 | `meta <pkg or portdir>` | Print the recipe's metadata as shell assignments, which `ports/fetch` reads |
 | `fetch <pkg>…` | Download each source the port directory and `SOURCE_DIR` lack; see [Fetching sources on a machine](#fetching-sources-on-a-machine) |
-| `verify <pkg>` | Build the current recipe and a candidate written beside it as `kpkgbuild.new` (with an optional `build.sh.new`), then compare the two packages |
-| `verify --repro <pkg>` | Build the same recipe twice; the two packages must be byte-identical |
+| `verify <pkg>` | Build the current recipe and a candidate written beside it as `kpkgbuild.new` (with an optional `build.sh.new`), then compare the two packages; exits 0 when their payloads match, 1 when they differ, a build fails or there is no `kpkgbuild.new` |
+| `verify --repro <pkg>` | Build the same recipe twice; exits 0 only when the two packages are byte-identical. Either form leaves the two packages at `/tmp/kpkg-verify-0.tar.xz` and `/tmp/kpkg-verify-1.tar.xz` |
 | `keygen <name>` | Make an Ed25519 signing key pair |
 | `sign <file> <key>` | Write `<file>.sig`, one signature over any file, which `verify-pkg` checks; a release's `SHA256SUMS` is signed this way |
 | `index <dir> [--sign <key>]` | Write `PACKAGES` for a directory of packages, optionally signing it and every package |
 | `verify-index <dir>` | Check `PACKAGES` against the trusted keys |
 | `verify-pkg <file>` | Check `<file>.sig` against the trusted keys |
 | `delta <old> <new> [-o <file>]` | Write the difference between two packages |
-| `apply-delta <old> <delta> -o <new>` | Rebuild a package from a delta |
-| `binhost <dir> <pkg> [--dry-run] [--insecure]` | Install a prebuilt package if it matches this machine exactly |
+| `apply-delta <old> <delta> -o <new> [--expect <sha256>]` | Rebuild a package from a delta; with `--expect`, delete the result and exit 1 unless it hashes to the given SHA-256 |
+| `binhost [--root <path>] <dir> <pkg> [--dry-run] [--insecure]` | Install a prebuilt package if it matches this machine exactly; `--dry-run` checks and installs nothing. An unknown option or a second port is refused with exit 1 |
+| `store gc <dir> <max-size>` | Shrink a [package store](#the-package-store) to a size such as `60G`; see [Eviction](#eviction) |
 | `help` | Print usage |
 
 Options and environment:
 
 | Option or variable | Effect |
 |---|---|
-| `--root <path>`, `KPKG_ROOT` | Operate on another root directory, such as an installer's target |
+| `--root <path>`, `KPKG_ROOT` | Install into, remove from or read another root directory, such as an installer's target. Only the install and the package database move: a build still runs on this system, with its compiler, headers and libraries. `install`, `remove`, `list`, `info`, `check`, `binhost`, `kpkgadd`, `kpkgdel` and `kpkgdepends` take `--root` |
 | `--keep-cache`, `KPKG_KEEP_CACHE=1` | Keep each built package in `PACKAGE_DIR` after installing it, compressed with the kept `xz -9` setting; by default it is compressed with `xz -0` and deleted once installed |
 | `-f`, `--force` | Rebuild the named packages, though not their dependencies. The rebuilt package is installed through the same [conflict scan](#who-owns-a-file) as any other |
 | `install --build-only <pkg>…` | Build exactly the named ports into `PACKAGE_DIR` and install nothing; see [Building apart from installing](#building-apart-from-installing) |
@@ -455,7 +466,8 @@ Options and environment:
 | `KDOS_ALLOW_UNVERIFIED=1` | Extract a source the recipe gives no hash for; see [What a build verifies](#what-a-build-verifies) |
 | `KPKG_FETCH=1` | Have every build fetch its missing sources before it verifies them, as `kpkg fetch` does; `kdos update apply` sets it, and the build never does |
 
-An unknown option is refused rather than read as a package name.
+`install`, `remove`, `check` and `kpkgadd` refuse an unknown option rather than read it as a package
+name.
 
 `/etc/kpkg.conf` sets `PORT_REPO` (default `/ports/core /ports/src/system /ports/src/art
 /ports/src/desktop /ports/src/daemons`), `SOURCE_DIR`
@@ -498,12 +510,14 @@ it is either absent or complete:
 /var/cache/kpkg/packages/foo-1.0-1.tar.xz
 <the recipe hash taken at build start>
 transient
+<the package-store key taken before the build, or an empty line>
 ```
 
-The third line is `kept` or `transient`, the xz preset the package was packed with; lines after it
-are ignored. A `--build-only` that finds a record naming an existing package built from the same
-recipe hash prints `already built` and builds nothing, so a run that was interrupted resumes at no
-cost. Under a kept cache the record must also say `kept`: a transient package is not the bytes
+The third line is `kept` or `transient`, the xz preset the package was packed with. The fourth is
+the [package store](#the-package-store) key, empty when the store is off or the key is unknown;
+`--commit` stores the package under it once it is installed. Lines after the fourth are ignored.
+A `--build-only` that finds a record naming an existing package built from the same recipe hash
+prints `already built` and builds nothing, so a run that was interrupted resumes at no cost. Under a kept cache the record must also say `kept`: a transient package is not the bytes
 `kpkgbuild` makes, so it is built again rather than left in the cache the binhost publishes.
 
 `--commit <pkg>…` handles the names in the order given. For each it reads the record, installs the
@@ -524,7 +538,7 @@ A package is a compressed tar archive plus a database entry.
 | Compression | `xz -9 -T0 --block-size=32MiB --no-adjust` for every package that outlives its install; `xz -0 -T0 --block-size=8MiB --no-adjust` for one `kpkg install` deletes straight after installing it. See [Reproducible packages](#reproducible-packages) |
 | Database entry | `/var/lib/kpkg/db/<name>`: the version and release on the first line, then the manifest |
 | Manifest | Every path the package owns, one per line, `./`-prefixed, directories with a trailing slash. Each line is the name's own bytes, as `tar --quoting-style=literal` lists it, so a name outside ASCII is stored as the UTF-8 the package holds rather than as tar's octal escapes; a name holding a newline cannot be stored |
-| Recipe hash | `/var/lib/kpkg/db/.recipe/<name>`, one line; see [Deciding what to rebuild](#deciding-what-to-rebuild) |
+| Recipe hash | `/var/lib/kpkg/db/.recipe/<name>`, one line, written by `kpkg install`, `--commit` and `kpkg binhost`, which records the matched stanza's `E:`. `kpkgadd` removes any existing record before it writes the entry, so a direct `kpkgadd` leaves the package with no record. See [Deciding what to rebuild](#deciding-what-to-rebuild) |
 | Package-file hash | `/var/lib/kpkg/db/.pkgsha/<name>`, one line: the SHA-256 of the `.tar.xz` it was installed from, written by `kpkgadd` after the entry; see [The package store](#the-package-store) |
 | File record | `/var/lib/kpkg/db/.files/<name>`, one line per regular file the install placed: `<sha256> <mode> <path>`, the mode as four octal digits and the path as the manifest spells it; written by `kpkgadd` after the entry, once the install hook has run, and read by [`kpkg check`](#checking-an-installed-root) |
 | Writer lock | `/var/lib/kpkg/db/.lock`, empty; held by `kpkgadd` and `kpkgdel` while they change the tree and the database |
@@ -631,8 +645,9 @@ Nothing on the image is a multi-call userland.
 - `fu_cv_sys_stat_statvfs=n` makes `stat -f` and `df` read `statfs` instead of `statvfs`. musl's
   `statvfs` keeps only 32 bits of `f_fsid`, so without it `stat -f -c %i` prints a filesystem id
   whose high half is zero, which matches no other tool's id for the same filesystem.
-- `--without-openssl` keeps libcrypto out of the base set. configure links it into every program,
-  not only the checksum ones, whenever it finds it.
+- `--without-openssl` keeps libcrypto out of the base set. Whenever configure finds OpenSSL 3 or
+  later, it links the checksum programs and `sort` against it; with the flag they use gnulib's own
+  digest code.
 - `--enable-xattr` is what lets `cp -a`, `cp --preserve=xattr` and `mv` across filesystems carry
   extended attributes; without it they copy the data and drop the attributes with no message.
   `--enable-acl` and `--enable-libcap` do the same for ACLs and for `ls`'s view of file
@@ -678,8 +693,8 @@ names indexes not to rebuild, space-separated (`man`, `schemas`, `fonts`, and so
 skipped prints `index skipped: <name>`. The build's chroot phases set it to `man`, because
 `70_image` writes every `mandoc.db` from scratch over the finished tree; a running system never
 sets it. No package owns these
-files, so no package ships them; `kpkgbuild` deletes the info `dir` file and each `fonts.dir` from
-the staged tree for that reason. The list is in
+files, so no package ships them; `kpkgbuild` deletes the info `dir` file, the desktop entries'
+`mimeinfo.cache` and each `fonts.dir` from the staged tree for that reason. The list is in
 [Writing ports](../05-developer/writing-ports.md#shared-indexes).
 
 ### Checking an installed root
@@ -736,9 +751,7 @@ conflict with. To install Python software that is not a port, create an environm
 `python3 -m venv DIR`; `python3-pip` ships the pip wheel that `ensurepip` installs into it.
 
 `/etc/localtime` is kept out of every package for the same reason: a file the machine's owner
-changes cannot also be a file an upgrade rewrites. A machine whose installed `tzdata` manifest
-still lists it has the link removed as an orphan on the next upgrade; see
-[Known gaps](../06-reference/known-gaps.md#a-tzdata-upgrade-can-reset-the-time-zone-to-utc-once).
+changes cannot also be a file an upgrade rewrites.
 
 ## What a build verifies
 
@@ -819,7 +832,7 @@ read to be hashed; extraction looks in the same two places in the same order, so
 unpacks is the file that was checked.
 
 That is wider than the `source =` list on purpose, because of vendor bundles (see [Where sources
-come from](#where-sources-come-from)). 164 ports carry a vendor bundle, most of them Go, Rust,
+come from](#where-sources-come-from)). 166 ports carry a vendor bundle, most of them Go, Rust,
 Python or Haskell programs, with pdfium among the rest, and each unpacks it in `build.sh` itself. A
 vendor bundle is declared with a hash but named by no `source =` line, so a check that walked
 `source =` alone would compile those ports from bytes nothing had looked at.
@@ -841,7 +854,8 @@ their URL's basename, and `file::url` names a file explicitly.
 
 The last step before the roll reads the staged tree (`src/system/kdos-kpkg/lint.c`). Every rule
 below is a fact about the files a user's machine receives, so a failure refuses the package: the
-build prints each failing path with `ERROR: lint:` and a reason, and writes no package file. Paths
+build prints the first 20 failing paths with `ERROR: lint:` and a reason, then a count of the rest,
+and writes no package file. Paths
 are read with the merged-`/usr` aliases folded, so `bin/x` is checked as `usr/bin/x`.
 
 | Rule | Fails | Allowed |
@@ -931,13 +945,22 @@ pre-push hook refuse it.
 
 The cost is that editing one library rebuilds every port of KDOS's own, not only the ones that use
 it. Upstream ports' hashes are unaffected.
+[Decisions](../01-philosophy/decisions.md#a-library-edit-rebuilds-every-in-tree-port) weighs that
+cost.
 
 ### `B:` — the build-config hash
 
 The build-config hash is SHA-256 over the architecture, the C library (always musl), the target
-triple (`KDOS_TARGET`, or `native`), the compiler and its version, and the `CFLAGS`, `CXXFLAGS` and
-`LDFLAGS`. Two machines with the same
-`B:` produce comparable binaries; two with different `B:` do not, whatever the recipe says.
+triple (`KDOS_TARGET`, or `native`), the compiler as `$CC` names it (`cc` when unset) with the
+version its `-dumpversion` prints, and the `CFLAGS`, `CXXFLAGS` and `LDFLAGS`. Two machines with the
+same `B:` produce comparable binaries; two with different `B:` do not, whatever the recipe says.
+
+Every term but the architecture and the C library is read from the environment of the process
+running `kpkg`, not from any file. The build's chroot phases set `CC`, `CFLAGS`, `CXXFLAGS` and `LDFLAGS` in
+`script/env/chroot.env` and `script/env/common.env` (`CC=gcc`, and flags that carry
+`-ffile-prefix-map` and `-Wl,--build-id=sha1`) and leave `KDOS_TARGET` unset; a shell on an
+installed machine sets none of them. The same compiler therefore hashes to a different `B:` at a
+login prompt than inside the build.
 
 Both hashes include their field names, because a hash over values alone collides the moment
 two fields swap.
@@ -958,7 +981,10 @@ check on:
 The third row makes the check safe on a tree that has packages without a record: absent reads as
 *unknown*, never as *changed*, so no package is rebuilt merely for lacking a record. A record that
 is not exactly 64 lowercase hex digits is treated the same way; reading it as a mismatch would
-rebuild that one package on every run, with nothing saying why.
+rebuild that one package on every run, with nothing saying why. The price is that a package with no
+record is never rebuilt for a recipe change. Only a direct `kpkgadd` leaves a package without one,
+and it does so even over a package that had a record, since it removes the old record before it
+writes the entry; such a package stays as it is until `kpkg install -f` builds it again.
 
 The hash is taken from the port directory when the build starts, and recorded in
 `/var/lib/kpkg/db/.recipe/<name>` after a successful install, never before. A record written ahead
@@ -1110,7 +1136,8 @@ unset, `uname -v` and the boot banner carry the build container's hostname and t
 ran. Its module-signing key is pinned too, in `build/keys/` (see
 [Module signing](security-model.md#module-signing)). The `linux` package is still the one exception
 to byte-identical builds: an ECDSA signature uses a fresh random number each time it is made, so
-every module's appended signature differs between two builds of the same tree.
+every module's appended signature differs between two builds of the same tree (see
+[Known gaps](../06-reference/known-gaps.md#the-kernel-package-differs-between-two-builds-of-the-same-tree)).
 
 Reproducibility is what makes a signed binary host meaningful, what lets a delta rebuild a package
 that still verifies against the *original* signature, and what lets a rebuild be checked against
@@ -1141,7 +1168,7 @@ opens the file. Each package stanza carries:
 | `F:` | The package file name |
 | `S:` `C:` | Its size and SHA-256 |
 | `B:` | The build-config hash of the machine that wrote the index |
-| `E:` | The recipe hash, taken from the ports tree on that machine; empty for a package whose port that tree does not have |
+| `E:` | The recipe hash, taken from the ports tree on that machine; empty for a package whose port that tree does not have, or for a file whose version and release are not the ones its recipe there declares |
 | `T:` | The recipe's description |
 
 Three equality tests decide whether a prebuilt package is usable, and there is no "close enough":
@@ -1150,15 +1177,33 @@ source. `kpkg binhost` says which test failed, and its exit status says what hap
 
 | Exit | Meaning |
 |---|---|
-| 0 | The prebuilt package was used |
+| 0 | The prebuilt package was used, or under `--dry-run` would be |
 | 1 | No match, so build it from source; also a usage error, or a matching package whose install failed |
 | 2 | Refused: no index, no trusted key, or verification failed |
 
+Because `B:` is read from the environment (see [`B:` — the build-config hash](#b--the-build-config-hash)),
+the client must run `kpkg binhost` with the `CC`, `CFLAGS`, `CXXFLAGS`, `LDFLAGS` and `KDOS_TARGET`
+the indexing machine had. A binhost the build wrote was indexed under the chroot's environment, so
+`kpkg binhost` typed at an ordinary shell reports `different build config` for every package in it.
+
+The package goes in through `kpkgadd`, into `--root` or `KPKG_ROOT` when either is set. After a
+successful install `kpkg binhost` records the stanza's `E:` as the package's recipe hash, the way
+`kpkg install` records its own, since that `E:` equals this tree's recipe hash (see
+[The three states](#the-three-states)).
+
 `make build KDOS_MAKE_BINHOST=1` writes such a directory at `build/binhost/`: every `kpkg install`
 of the build keeps the package it made, and the image phase, `70_image`, copies them there and
-indexes them with a key kept under `build/binhost-key/`. That phase runs with the default
+indexes them with the key `build/binhost-key/kdos-binhost.key`, made on the first such run and
+never replaced; its public half is copied beside the index as `kdos-binhost.pub`. The directory
+accumulates: each run adds the packages it built and keeps what earlier runs left, and neither a
+later run nor `--fresh` removes anything from it. `kpkg index` takes each package's `E:` from the
+ports tree it runs on, looked up by package name, and writes it only for the file whose version and
+release are the ones that recipe declares. A superseded file an earlier run left gets an empty
+`E:`, is listed, and matches no client, so a client is only ever handed the current recipe's
+build. That phase runs with the default
 `PORT_REPO`, `/ports/core` alone, so the index finds no recipe for a package built from `src/` and
-gives it an empty `E:`. Such a package matches no client and always builds from source there.
+gives it an empty `E:`. Such a package matches no client and always builds from source there. No
+binhost is published; see [Known gaps](../06-reference/known-gaps.md#there-is-no-public-binary-host).
 
 Gentoo solves the same problem by matching USE flags between the builder and the client. KDOS has
 no USE flags, so the whole question reduces to these equality tests. `kdos update` does not use a
@@ -1173,7 +1218,9 @@ CC0, under `src/libs/libksig/monocypher`. See [The C libraries](../05-developer/
 
 One signature over the index covers every package, because the index carries each package's hash.
 A per-package sidecar signature, `<file>.sig`, exists for the separate case of a package travelling
-on a stick with no index beside it.
+on a stick with no index beside it. [Signing the index, not every package](../01-philosophy/decisions.md#signing-the-index-not-every-package)
+gives the reasoning, and [Signing and trust](security-model.md#signing-and-trust) sets these keys
+beside the system's other keyrings.
 
 The scheme keeps these rules:
 
@@ -1183,20 +1230,26 @@ The scheme keeps these rules:
   signature that could supply its own key would verify nothing.
 - A bad signature is treated differently from a missing one. Installing a package whose sidecar
   fails is refused. One with no sidecar is allowed, because locally built packages are the majority
-  and are never signed. `KPKG_REQUIRE_SIG=1` is the stricter policy for a machine that installs
-  only from a binhost.
+  and are never signed, and so is one whose sidecar cannot be checked because the machine trusts no
+  key at all. `KPKG_REQUIRE_SIG=1` is the stricter policy for a machine that installs only from a
+  binhost: it refuses both.
 - `--insecure` prints a warning every time it is used, so it is never left quietly in a script.
 - Everything is verified before use: the index before it is believed, and a package's hash before
   it is unpacked.
-- Several signatures are allowed. A signature file is one line per signature, so during a key
-  rollover both keys sign and a client trusting either keeps working.
+- Several signatures are allowed. A signature file is one line per signature, and any line a
+  trusted key verifies is enough, so a file signed by both keys during a rollover keeps working for
+  a client trusting either. `kpkg index --sign` and `kpkg sign` replace the file with one line from
+  the one key they are given; a second signature is added by appending the line another key wrote.
 - The private key is written with mode 0600 and exclusive creation, so an existing key is never
   replaced, and reading it back is refused if its mode has loosened.
 
-The trusted directory is the policy: every `*.pub` file in it is a trusted key. There is no
-revocation list and no online check: trusting a key is copying a file in, and removing trust is
+The trusted directory is the policy: every readable `*.pub` key file in it is a trusted key, up to
+16, taken in name order; a seventeenth and any after it are not loaded, and the loader names each one on stderr
+(`<dir>: a keyring holds at most 16 keys; <name> is not trusted`). There is
+no revocation list and no online check: trusting a key is copying a file in, and removing trust is
 deleting it. The loader does not descend into subdirectories, which keeps `/etc/kdos/keys`
-(host packages) and `/etc/kdos/keys/packs` (application packs) separate policies.
+(host packages), `/etc/kdos/keys/packs` (application packs) and `/etc/kdos/keys/tree` (the signed
+ports tree `kdos update fetch` takes) separate policies.
 
 Ports built from source are not signed and need no signature. A port is compiled on the machine
 that installs it, and its integrity rests on the `sha256 =` lines in its recipe. A signature
@@ -1235,8 +1288,9 @@ wrong bytes, falls back to the full package.
 
 `kdos update` is the command a person types. It fetches a signed recipe tree and drives `kpkg` and
 the tool that manages the A/B root slots (an installed disk's two root filesystems, one running and
-one receiving updates; see [Boot and init](boot-and-init.md#ab-slot-selection)). There is no binary
-package host: every update is built from source on the machine.
+one receiving updates; see [Boot and init](boot-and-init.md#ab-slot-selection)). It reads no
+[binary host](#the-binary-host): every update is built from source on the machine, and a binhost is
+used only through `kpkg binhost`, by hand.
 
 | Command | Does |
 |---|---|
@@ -1250,21 +1304,36 @@ the recipe-only tree at `/ports`, without the source archives; see
 [How KDOS is built](../05-developer/how-kdos-is-built.md#packaging-70_image). A newer one arrives
 over the network: `ports/publish --release` puts the tree of the release's commit beside the ISO as
 `kdos-ports.tar.xz`, with a `TREE` stamp naming the commit and its time, signed with the release key
-as `kdos-ports.tar.xz.sig`. `kdos update fetch` downloads both from the latest release, verifies
+as `kdos-ports.tar.xz.sig`. `kdos update fetch` downloads both, from the latest release unless
+`--from`, `KDOS_UPDATE_TREE` or `tree =` in `/etc/kdos/update.conf` names another place, verifies
 the signature against `/etc/kdos/keys/tree`, which holds the public half of the release key the
 image was built with, and only then unpacks the tree and exchanges it with `/ports`. A tree older
 than the installed one is refused.
 
-`kdos update apply` then fetches every source of every package that is behind with
+A package is **behind** when its installed version, or at an equal version its release, is older
+than what its recipe pins. A recipe changed without a `version =` or `release =` bump is not an
+update. `kdos update apply` fetches every source of every package that is behind with
 [`kpkg fetch`](#fetching-sources-on-a-machine), stopping before any build when one cannot be had,
 and builds each package with `kpkg install -f`. An update therefore needs the network for the tree and
-for the sources, and compiles on the machine, for hours on a large set. On a machine with A/B root
-slots, `apply` installs into the inactive slot and marks it to be tried on the next boot, so the
-running system is untouched and a bad update rolls back. Before the slot is marked, `apply` runs
-[`kpkg check --all`](#checking-an-installed-root) on it, and a missing file, or a changed one
-outside `/etc`, leaves the slot untried; it then copies `/ports` into the slot, so the slot boots with the recipes it was built
-from. If that slot is not mounted, `apply` refuses; `--in-place` makes it update the running root
-instead, which gives up the rollback.
+for the sources, and compiles on the machine, for hours on a large set.
+
+On a machine with A/B root slots, `apply` installs into the inactive slot and marks it to be tried
+on the next boot, so the running system is untouched and a bad update rolls back. It works out
+what is behind from the slot's package database, puts the list in dependency order, so that a
+package comes after every dependency that is behind with it, and builds each one with
+`chroot <slot> kpkg install -f`: the build runs on the slot's own compiler, headers and libraries,
+so a package whose dependency was upgraded earlier in the run links the copy just installed. Into
+the chroot it binds `/proc`, `/sys`, `/dev`, the ports tree, the running root's source cache that
+the fetch filled (named to the slot's `kpkg` as `SOURCE_DIR`) and `/etc/resolv.conf` when the slot
+has a regular file there, and it unmounts them all before checking the slot. `--root DIR` does none
+of this: it points `KPKG_ROOT` at `DIR`, which moves only the installs and the package database, and
+builds on the running root. A package that fails to build leaves the slot untried. Otherwise `apply` runs
+[`kpkg check --all`](#checking-an-installed-root) on the slot, and a missing file, or a changed one
+outside `/etc`, leaves it untried; it then copies `/ports` into the slot, so the slot boots with the
+recipes it was built from, and puts the slot's kernel on the ESP before marking it. If that slot is
+not mounted, `apply` refuses; `--in-place` makes it update the running root instead, which gives up
+the rollback. This path is untested against a published tree; see
+[Known gaps](../06-reference/known-gaps.md#the-update-path-has-not-been-run-against-a-published-tree).
 
 What went wrong is recorded in `/var/lib/kdos/update.state` (no tree, no network, a fetch or a build
 that failed), and `kdos update check` reports it, as does the panel's update badge through the
@@ -1291,8 +1360,9 @@ The data is a vendored, pruned copy of Alpine's security database, installed as
 another file. It is a committed, diffable text file generated by `vendor.py` beside it and merged
 from twelve Alpine branches (`main` and `community` for v3.19 to v3.24), so the answer needs no
 network. Alpine is a close proxy for KDOS because it is also a musl distribution building the same
-upstream tarballs. See [Decisions](../01-philosophy/decisions.md) for why Alpine rather than a
-larger source.
+upstream tarballs. See
+[Decisions](../01-philosophy/decisions.md#alpines-security-database-not-nvd-or-osv) for why Alpine
+rather than a larger source.
 
 Five details each change the answer:
 
@@ -1357,7 +1427,7 @@ vendored table is the everyday answer.
 - [The ports catalogue](../06-reference/ports-catalogue.md) — every port, by shelf, with its phase
 - [Developing](../05-developer/developing.md) — fetching sources and running the build
 - [Packs and boxes](packs-and-boxes.md) — the other packaging system, and why it is separate
-- [The security model](security-model.md) — the trust argument behind the keyrings
+- [The security model](security-model.md#signing-and-trust) — the trust argument behind the keyrings
 - [The kdos command](../04-programs/kdos-command.md) — `kdos cve` and `kdos update`
 
 <!-- book-nav -->

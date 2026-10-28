@@ -11,30 +11,33 @@
  *
  * Boxes and their sandbox profiles.
  *
- * A profile is a handful of booleans in ~/.config/kdos/boxes/<name>.conf, and
- * every one of them maps onto a distrobox flag that the kernel actually
+ * A profile is a handful of keys in ~/.config/kdos/boxes/<name>.conf. The
+ * namespace keys map onto flags of the container runtime — distrobox's for an
+ * image box, `podman create --rootfs` for a pack box — which the kernel
  * enforces. KDOS deliberately does not offer confinement it cannot deliver:
- * there is no "no filesystem access" switch, because distrobox shares the
- * host root at /run/host by design and pretending otherwise would be a lie
- * printed in a settings dialog.
+ * there is no "no filesystem access" switch, because the box shares the host
+ * root by design and pretending otherwise would be a lie printed in a
+ * settings dialog.
  *
- * A profile is applied at CREATE time. Namespaces cannot be re-flagged on a
- * live container, so changing one marks the box as needing a recreate rather
- * than silently doing nothing — see cmd_security() in main.c.
+ * A profile is applied at CREATE time. Namespaces and volumes cannot be
+ * re-flagged on a live container, so `kdos-box profile` says that a change
+ * takes effect once the box is removed and created again, rather than
+ * silently doing nothing.
  *
  * THE PROTOCOL HALF IS NOT THIS FILE'S. kdos-comp's filter
- * (allow_for_sandbox() in its server.c) is a fixed allowlist, so a client is
- * sandboxed or it is not — screencopy, data-control, input-method and
- * layer-shell are denied to every tagged client, and no profile key changes
- * that. Nothing here writes or reads a `wayland.*` key. What this file owns is
- * the namespace half — the keys above, applied at create time.
+ * (allow_for_sandbox() in its server.c) denies screencopy, data-control,
+ * input-method, layer-shell and the other globals that reach past a client's
+ * own windows to every tagged client, and kdos-grant.c reads this profile's
+ * `grant` key to let one box bind named ones beyond that. This file parses
+ * and writes `grant` and enforces nothing of it; what it owns is the
+ * namespace half — the keys applied at create time.
  *
  * A KEY THAT ENFORCES NOTHING IS PRINTED AS SUCH, never silently, which is
- * what the `audio` note already does: a setting that quietly does nothing is
- * worse than an absent one. Two are in that state and profile_print() says so
- * on the line. `wayland` cannot take a display away, because the box shares
- * $XDG_RUNTIME_DIR and a client that opens the default `wayland-0` reaches the
- * session's own socket — withholding WAYLAND_DISPLAY would advertise
+ * what the `audio` note does: a setting that quietly does nothing is worse
+ * than an absent one. `persistence`, `wayland=no` and `export` are in that
+ * state and profile_print() says so. `wayland` cannot take a display away,
+ * because the box shares $XDG_RUNTIME_DIR and a client that opens the
+ * default `wayland-0` reaches the session's own socket — withholding WAYLAND_DISPLAY would advertise
  * confinement the sandbox does not deliver. `export` triggers nothing:
  * `kdos-appbox genlaunchers` covers every installed pack and every store box
  * at once and `kdos-box export` is the per-application route.
@@ -47,6 +50,7 @@
 
 #include "kdos-appbox.h"
 
+#include <ctype.h>
 #include <dirent.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -229,10 +233,11 @@ int profile_set(Profile *p, const char *kv)
 		else
 			p->persist = PERSIST_PERSISTENT;
 	} else if (!strcmp(key, "network")) {
-		/* host | private | none, and the legacy shared/private the
-		 * image lane already wrote. `none` is private PLUS no
-		 * interface at all, which is a different thing from a
-		 * namespace of one's own with a bridge in it. */
+		/* host | private | none. `yes`, `on`, `1` and `true` read as
+		 * private and any other word, `shared` among them, as host.
+		 * `none` is private PLUS no interface at all, which is a
+		 * different thing from a namespace of one's own with a bridge
+		 * in it. */
 		p->netnone = !strcmp(eq, "none");
 		p->netns = p->netnone || truthy(eq);
 	} else if (!strcmp(key, "ipc"))
@@ -311,12 +316,19 @@ int profile_load(Profile *p, const char *box)
  * promptly by a start lands exactly here — as does a hung app holding D-state
  * I/O, which can wedge a box in `stopping` for good.
  *
- * Wait it out, then force the way back. A box is stateless — its packs are
- * mounted read-only and its writable upper is on disk — so nothing is lost by
- * recreating the container over the same stack.
+ * Wait it out, then kill. Only a PACK box is ever removed past that: it keeps
+ * nothing in its container — its packs are mounted read-only and its
+ * writable upper lives outside it, on disk or on tmpfs in a live session — so
+ * recreating the container over the same stack loses nothing, and a return of
+ * 3 tells the caller to create it again. Every other box (a store box over a
+ * local image, or one with no recorded base) keeps its writes inside the
+ * container, and removing it would delete them: it is left stuck, a return of
+ * 4, with a warning naming `kdos-box remove <box> --force`, which is the one
+ * place that data is given up and only when somebody asks.
  */
 int box_unstick(const char *box, char *state, size_t n)
 {
+	Profile p;
 	int i;
 
 	box_state(box, state, n);
@@ -343,6 +355,15 @@ int box_unstick(const char *box, char *state, size_t n)
 	if (strcmp(state, "stopping"))
 		return 2;
 
+	profile_load(&p, box);
+	if (strncmp(p.base, "pack:", 5)) {
+		kb_warn("%s is stuck stopping and its writes are inside its "
+			"container, so it is left as it is — `kdos-box remove "
+			"%s --force` discards the box and everything it wrote",
+			box, box);
+		return 4;
+	}
+
 	{
 		KbArgv r = {0};
 		kb_argv_add(&r, "podman");
@@ -367,8 +388,8 @@ int profile_save(const Profile *p)
 	snprintf(buf, sizeof(buf),
 		 "# KDOS box profile — applied when the box is CREATED.\n"
 		 "# Namespaces and volumes cannot be re-flagged on a live\n"
-		 "# container, so a change here takes effect after\n"
-		 "# `kdos-box recreate %s`.\n"
+		 "# container, so a change here takes effect once the box\n"
+		 "# is removed (`kdos-box remove %s`) and created again.\n"
 		 "base=%s\n"
 		 "image=%s\n"
 		 "accent=%s\n"
@@ -444,8 +465,10 @@ void profile_print(const Profile *p)
 	       "recorded in the profile");
 	if (p->persist != PERSIST_PERSISTENT)
 		printf("            ! %s is not enforced — a box's writes land"
-		       " where its runtime puts them, and every launch here"
-		       " keeps the upper on disk\n", persist_name(p->persist));
+		       " where its runtime puts them: inside the container for"
+		       " an image box, and for a pack box wherever kdos-packd"
+		       " puts the upper, on disk or on tmpfs when $HOME cannot"
+		       " hold one\n", persist_name(p->persist));
 	printf("network     = %-11s %s\n",
 	       p->netnone ? "none" : p->netns ? "private" : "host",
 	       p->netnone ? "--network none" :
@@ -509,8 +532,8 @@ void profile_print(const Profile *p)
 	if (p->pids)
 		printf("pids        = %-11d --pids-limit\n", p->pids);
 	if (p->autostop_s)
-		printf("autostop    = %-11d seconds idle, enforced by `kdos-box gc`\n",
-		       p->autostop_s);
+		printf("autostop    = %-11d seconds after start with no window,"
+		       " enforced by `kdos-box gc`\n", p->autostop_s);
 	/*
 	 * ONE ROUTE, WHICHEVER WORD IS IN THE FILE. `kdos-appbox genlaunchers`
 	 * writes the entries, the shims and the mime cache for every installed
@@ -651,6 +674,24 @@ int box_state(const char *box, char *buf, size_t n)
 	return 0;
 }
 
+/* Letters, digits and dots: a size (`4G`), a count or a fraction (`1.5`),
+ * and nothing a shell would split, expand or quote. */
+static int plain_word(const char *s)
+{
+	if (!*s)
+		return 0;
+	for (; *s; s++)
+		if (!isalnum((unsigned char)*s) && *s != '.')
+			return 0;
+	return 1;
+}
+
+static void add_flag(char *buf, size_t n, const char *flag, const char *val)
+{
+	size_t l = strlen(buf);
+	snprintf(buf + l, n - l, "%s%s %s", l ? " " : "", flag, val);
+}
+
 int box_create(const Profile *p)
 {
 	KbArgv a = {0};
@@ -687,8 +728,8 @@ int box_create(const Profile *p)
 	/* The host's cups socket, so every boxed app's own print dialog works
 	 * (no portal Print backend exists or is needed). A volume is a
 	 * CREATE-time property — it cannot be added to a live container — so a
-	 * box created before cups was up keeps missing it until
-	 * `kdos-appbox recreate`; the matching CUPS_SERVER export in box_env()
+	 * box created before cups was up keeps missing it until it is removed
+	 * and created again; the matching CUPS_SERVER export in box_env()
 	 * is per-launch and probes the socket again. */
 	if (kb_path_exists("/run/cups/cups.sock")) {
 		kb_argv_add(&a, "--volume");
@@ -706,6 +747,36 @@ int box_create(const Profile *p)
 		kb_argv_add(&a, "--volume");
 		kb_argv_add(&a, "/dev/dri:/dev/dri");
 	}
+	/*
+	 * THE LIMITS AND `network = none`, which distrobox has no flags of its
+	 * own for, go to podman through --additional-flags. distrobox-create
+	 * `eval`s the command it builds, so a value is passed only when it is
+	 * made of characters a shell reads as one plain word; anything else is
+	 * refused by name rather than handed to that eval. `--unshare-netns`
+	 * above is what keeps distrobox from adding `--network host`, so
+	 * `--network none` here is the only network flag podman sees.
+	 */
+	if (p->memory[0]) {
+		if (plain_word(p->memory))
+			add_flag(flags, sizeof(flags), "--memory", p->memory);
+		else
+			kb_warn("%s: memory=%s is not a size — not applied",
+				p->name, p->memory);
+	}
+	if (p->cpus[0]) {
+		if (plain_word(p->cpus))
+			add_flag(flags, sizeof(flags), "--cpus", p->cpus);
+		else
+			kb_warn("%s: cpus=%s is not a number — not applied",
+				p->name, p->cpus);
+	}
+	if (p->pids > 0) {
+		char n[16];
+		snprintf(n, sizeof(n), "%d", p->pids);
+		add_flag(flags, sizeof(flags), "--pids-limit", n);
+	}
+	if (p->netnone)
+		add_flag(flags, sizeof(flags), "--network", "none");
 	if (flags[0]) {
 		kb_argv_add(&a, "--additional-flags");
 		kb_argv_add(&a, flags);

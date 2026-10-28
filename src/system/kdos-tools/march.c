@@ -36,14 +36,17 @@
  *   - The MEDIAN of several runs, not the mean and not one run. One run measures
  *     the scheduler; the mean measures the worst outlier.
  *   - A win under the noise floor is not a win. The floor is measured, not
- *     assumed: it comes from the spread of the baseline's own runs.
+ *     assumed: it is the wider of the two builds' spreads, the baseline's
+ *     runs and the optimised build's.
  * ---------------------------------
  */
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -166,9 +169,9 @@ static void bench_shell(char *out, size_t cap, const char *root, const char *cmd
 	/*
 	 * EXPORTED, not prefixed. `VAR=x cmd` applies to one simple command, and
 	 * a bench line is a pipeline or an && list by nature — so the prefix
-	 * form set PATH for the `dd` and left the `lz4` after it running the
-	 * SYSTEM's copy, which is the most convincing way to measure nothing at
-	 * all.
+	 * form would set PATH for the first command alone and leave every
+	 * command after it running the SYSTEM's copy, which measures nothing
+	 * the build changed.
 	 */
 	snprintf(out, cap,
 		 "cd '%s' && export PATH='%s/usr/bin:%s/usr/sbin:'$PATH "
@@ -179,10 +182,10 @@ static void bench_shell(char *out, size_t cap, const char *root, const char *cmd
 /*
  * `bench_setup =` runs ONCE per build and is not timed.
  *
- * It exists because the first bench line written here measured
- * `dd if=/dev/urandom` more than it measured lz4: 64 MiB out of the kernel's
- * RNG dominated the sample and pushed the noise floor to 13.5%, which is wider
- * than any answer worth having. A fixture belongs outside the stopwatch.
+ * A fixture belongs outside the stopwatch. Generating input inside the bench
+ * line times the generator as well as the port: 64 MiB from
+ * `dd if=/dev/urandom` outweighs an lz4 run, and its spread widens the noise
+ * floor past any win worth keeping.
  */
 static int bench_setup(const char *cmd, const char *root)
 {
@@ -287,9 +290,14 @@ static void ledger_append(const char *port, const char *level, double base,
 	}
 	free(copy);
 
+	/* A verdict that reaches the screen and not the ledger is lost:
+	 * `report` reads only the ledger, so the failure has to be said here. */
 	FILE *f = fopen(path, "a");
-	if (!f)
+	if (!f) {
+		fprintf(stderr, "kdos: %s not recorded — cannot write %s: %s\n",
+			port, path, strerror(errno));
 		return;
+	}
 	fprintf(f, "%s %s %.4f %.4f %+.1f %s\n", port, level, base, opt, win,
 		verdict);
 	fclose(f);
@@ -384,23 +392,42 @@ static int unpack(const char *pkgdir, const char *root)
 	return rc;
 }
 
+/*
+ * kpkgbuild runs in the port directory with the flags in its environment,
+ * through fork and exec and no shell: the port path comes from the command
+ * line and $CFLAGS from the caller, and a quote in either pasted into a shell
+ * line would end the string and run the rest as commands.
+ */
 static int build_port(const char *portdir, const char *pkgdir,
 		      const char *extra_cflags)
 {
-	KbArgv a = {0};
-	char cmd[4096];
 	const char *base = getenv("CFLAGS");
+	char flags[2048];
 
-	snprintf(cmd, sizeof(cmd),
-		 "cd '%s' && CFLAGS='%s %s' CXXFLAGS='%s %s' "
-		 "PACKAGE_DIR='%s' kpkgbuild",
-		 portdir, base ? base : "-O2 -pipe", extra_cflags,
-		 base ? base : "-O2 -pipe", extra_cflags, pkgdir);
-	kb_argv_add(&a, "sh");
-	kb_argv_add(&a, "-c");
-	kb_argv_add(&a, cmd);
-	kb_argv_end(&a);
-	return kb_run_tty(&a);
+	snprintf(flags, sizeof(flags), "%s %s", base ? base : "-O2 -pipe",
+		 extra_cflags);
+	fflush(NULL);
+	pid_t pid = fork();
+	if (pid < 0)
+		return -1;
+	if (pid == 0) {
+		if (chdir(portdir) != 0) {
+			fprintf(stderr, "kdos: %s: %s\n", portdir,
+				strerror(errno));
+			_exit(127);
+		}
+		setenv("CFLAGS", flags, 1);
+		setenv("CXXFLAGS", flags, 1);
+		setenv("PACKAGE_DIR", pkgdir, 1);
+		kb_child_reset_signals();
+		execlp("kpkgbuild", "kpkgbuild", (char *)NULL);
+		_exit(127);
+	}
+	int st;
+	while (waitpid(pid, &st, 0) < 0)
+		if (errno != EINTR)
+			return -1;
+	return WIFEXITED(st) ? WEXITSTATUS(st) : 128 + WTERMSIG(st);
 }
 
 static int run_one(const KpConf *c, const char *port, const char *level)
@@ -531,6 +558,10 @@ int march_main(int argc, char **argv)
 				"report}\n");
 		return 2;
 	}
+	if (argc <= 2) {
+		fprintf(stderr, "kdos: name at least one port\n");
+		return 2;
+	}
 
 	char level[32];
 	if (best_level(level, sizeof(level)) < 0 || !level[0]) {
@@ -556,7 +587,5 @@ int march_main(int argc, char **argv)
 	for (int i = 2; i < argc; i++)
 		if (run_one(&c, argv[i], level) != 0)
 			rc = 1;
-	if (argc <= 2)
-		fprintf(stderr, "kdos: name at least one port\n");
 	return rc;
 }

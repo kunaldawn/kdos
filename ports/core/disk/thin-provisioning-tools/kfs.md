@@ -24,9 +24,10 @@ root on such a volume. It is a Rust program built from a vendored crate bundle.
   symbolic link to it, the same links upstream's `make install` makes; the links are what make
   `thin_check` a command.
 - **The manual pages are made one by one.** For each tool, `make man8/<tool>.8` renders the page
-  from `man8/<tool>.txt` with the `bin/txt2man` script in the source. The recipe does not run
-  upstream's `make install`, whose rule builds the program with a plain `cargo build --release`,
-  without the recipe's features and offline flags.
+  from `man8/<tool>.txt` with the `bin/txt2man` script in the source, which calls `gawk` by name,
+  so [gawk](#port-gawk) is in `depends`. The recipe does not run upstream's `make install`, whose
+  rule builds the program with a plain `cargo build --release`, without the recipe's features and
+  offline flags.
 - **Built after lvm2.** `thin_migrate` talks to device-mapper through the `devicemapper` crate,
   which links lvm2's `libdevmapper`, found through pkg-config, so [lvm2](#port-lvm2) is in `depends`
   and lvm2 cannot ask these tools for their version when it is configured.

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""One-shot probe: boot the blob container, dump signals that distinguish a
-blob-capable QEMU (HW dmabuf works) from plain virgl (needs software force),
-so the noctalia wrapper can auto-gate. Tears down after."""
+"""One-shot probe: boot the blob container and dump the guest kernel's view of
+the virtio GPU (command line, virtio_gpu and DRM messages, blob and
+host-visible features), which tells a blob-capable QEMU (HW dmabuf works) from
+plain virgl (needs software rendering). Tears down after."""
 import socket, subprocess, sys, time, os
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))

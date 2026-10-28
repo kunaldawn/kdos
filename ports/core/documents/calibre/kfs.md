@@ -11,7 +11,7 @@ from a vendor bundle.
   [xxhash](#port-xxhash) library instead of compiling the copy of its C source the module carries.
 - `CALIBRE_CONFIG_DIRECTORY="$SRC_ROOT/calibre-config"` — the build imports calibre, which creates
   its configuration directory on import; this keeps that directory inside the work tree rather than
-  under the builder's home.
+  at `/tmp/calibre-install-config`, where `setup/install.py` puts it when the variable is unset.
 - `QT_QPA_PLATFORM=offscreen` — run Qt with no display during the build.
 - `CFLAGS="${CFLAGS/-std=gnu11/}"` — remove the tree's C standard from `CFLAGS` for
   `setup.py install`. calibre's `setup/build.py` adds the environment's `CFLAGS` to the flags of
@@ -28,7 +28,7 @@ from a vendor bundle.
 ## Patches
 - `0001-calibre-no-update.patch` — empties the loop of the background thread in `src/calibre/gui2/update.py` that checks for a new calibre release and for plugin updates, so neither check is ever made; the thread still runs and only waits.
 - `0002-calibre-use-make.patch` — in `setup/build.py`, adds `-GUnix Makefiles` to the CMake command that configures calibre's headless Qt platform plugin. The step runs `make` straight after it, and without the switch the generator would follow `CMAKE_GENERATOR` from the environment.
-- `0003-calibre-disable-piper.patch` — removes the `piper` extension, calibre's built-in neural text-to-speech, from `setup/extensions.json` and from the list of required extensions in `src/calibre/constants.py`, and skips it in the import test. It calls `espeak_TextToPhonemesWithTerminator()`, which the tree's [espeak-ng](#port-espeak-ng), a release, does not have, and its voices are downloaded on first use; with it gone, reading aloud goes through Qt Speech and [speech-dispatcher](#port-speech-dispatcher).
+- `0003-calibre-disable-piper.patch` — removes the `piper` extension, calibre's built-in neural text-to-speech, from `setup/extensions.json` and from the list of required extensions in `src/calibre/constants.py`, and leaves its module out of the import test when `SKIP_SPEECH_TESTS` is set. It calls `espeak_TextToPhonemesWithTerminator()`, which the release of [espeak-ng](#port-espeak-ng) the tree builds does not declare, and its voices are downloaded on first use; with it gone, reading aloud goes through Qt Speech and [speech-dispatcher](#port-speech-dispatcher).
 - `netifaces-msghdr.patch` — applied to the bundled `netifaces` module, not to calibre: initialises a `struct msghdr` in `netifaces.c` by field name instead of by position. musl's `msghdr` has padding members glibc's has not, so the positional form puts the values in the wrong fields and does not compile.
 
 ## Notes

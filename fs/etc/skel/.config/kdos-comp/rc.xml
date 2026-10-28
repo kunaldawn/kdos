@@ -63,19 +63,18 @@
     of every 32-pixel window, which is the one place the desktop stopped
     looking like one machine.
 
-    Plain `Terminus` was asked for here and NEVER ARRIVED. Terminus is a PCF
-    bitmap and **pango has not rendered bitmap fonts since 1.44**, so the
-    request fell through to DejaVu Sans on every titlebar and
-    every menu — measured on a booted ISO, where the panel's text has 3
-    luminance levels and the titlebar's has 143. fontconfig was never the
-    problem: `fc-match Terminus` resolves correctly on the target.
+    Plain `Terminus` cannot be named here. Terminus is a PCF bitmap and
+    **pango renders no bitmap fonts (since 1.44)**, so the request falls
+    through to DejaVu Sans on every titlebar and every menu: an antialiased
+    title over a crisp cell grid. fontconfig resolves `Terminus` correctly;
+    the refusal is pango's.
 
-    Hence the `terminus-ttf` port: the same face, converted to TTF, which pango
-    CAN draw. Its family is `Terminus (TTF)` — upstream names it that way on
-    purpose — and that separation is doing real work here. fcft draws the cell
+    The `terminus-ttf` port is the answer: the same face, converted to TTF,
+    which pango CAN draw. Its family is `Terminus (TTF)` — upstream names it
+    that way on purpose — and that separation is doing real work here. fcft draws the cell
     grid from the PCF and stays crisp; only these pango surfaces ask for the
-    scalable one. A fontconfig alias from `Terminus` to the TTF would have
-    "fixed" this line and turned the whole panel antialiased.
+    scalable one. A fontconfig alias from `Terminus` to the TTF would serve
+    this line and turn the whole panel antialiased.
 
     Pango sizes are POINTS: at 96dpi, 24pt is 32 pixels, which keeps the
     titlebar the height of one cell. The colours of these same surfaces are
@@ -110,7 +109,8 @@
   <keyboard>
     <default />
 
-    <!-- the KDOS bindings, carried over from the old compositor -->
+    <!-- the core KDOS bindings: terminal, launcher, close, session, window
+         cycling, lock -->
     <keybind key="W-Return"><action name="Execute" command="foot"/></keybind>
     <keybind key="W-d"><action name="Execute" command="kdos-launcher"/></keybind>
     <keybind key="W-q"><action name="Close"/></keybind>
@@ -132,22 +132,17 @@
     <keybind key="W-l"><action name="Execute" command="kdos-lock"/></keybind>
     <keybind key="W-S-l"><action name="Execute" command="kdos-saver"/></keybind>
 
-    <!-- new with the fork: maximize / fullscreen finally exist -->
+    <!-- window state -->
     <keybind key="W-m"><action name="ToggleMaximize"/></keybind>
     <keybind key="W-f"><action name="ToggleFullscreen"/></keybind>
-    <!-- Minimise had no key at all: the taskbar could do it with a click and
-         the keyboard could not, so a window sent behind another could only be
-         got at with the mouse. -->
+    <!-- Minimise from the keyboard: without it the taskbar's click is the
+         only way, and a hand on the keys has to reach for the mouse. -->
     <keybind key="W-n"><action name="Iconify"/></keybind>
-    <!-- The root menu from the keyboard. It is a right-click on the desktop
-         otherwise, and the desktop is not always reachable — a maximised
-         window covers all of it. atCursor="no" puts it where the pointer is
-         NOT, which is the right answer for a menu opened by a key. -->
-<!-- One search over everything the desktop can reach, on the chord a
-         keyboard reaches for. This was labwc's own root menu, which is what
-         the RIGHT BUTTON on the desktop opens and what the Start button
-         opens — a pointer wants rows and a keyboard wants a search, so the
-         two are not the same thing on the same key. -->
+    <!-- One search over everything the desktop can reach, on the chord a
+         keyboard reaches for. labwc's root menu is not on this key: it is
+         what the RIGHT BUTTON on the desktop and the Start button open. A
+         pointer wants rows and a keyboard wants a search, so the two are not
+         the same thing on the same key. -->
     <keybind key="W-space"><action name="Execute" command="kdos-palette"/></keybind>
 
     <!-- The capture group, opened at its own routes, for the verbs that have
@@ -172,7 +167,7 @@
          than a history is read. -->
     <keybind key="W-S-n"><action name="Execute" command="kdos-notify"/></keybind>
 
-    <!-- the three shell front ends that had no way in until now -->
+    <!-- the run prompt, on the chord most desktops give it -->
     <keybind key="A-F2"><action name="Execute" command="kdos-run"/></keybind>
 
     <!-- ONE KEY PER PROGRAM: raise the window running it, or start it.
@@ -180,8 +175,8 @@
          <none> when nothing matched, so the key does both halves — it is
          fluxbox's ClientPattern language and labwc already has it compiled in.
          The <query identifier> is the app_id, which for a terminal program is
-         what `foot`'s app-id argument was given: the program's own name,
-         not `foot`.
+         what the terminal's app-id argument was given, in foot's or
+         kdos-term's spelling: the program's own name, not the terminal's.
 
          A ROW WHOSE PROGRAM IS NOT INSTALLED IS DROPPED FROM THE KEY CARD,
          which reads the identifier out of the query. The key stays bound and
@@ -212,7 +207,7 @@
       <action name="ForEach">
         <query identifier="rmpc"/>
         <then><action name="Focus"/><action name="Raise"/></then>
-        <none><action name="Execute" command="foot --app-id=rmpc -e rmpc"/></none>
+        <none><action name="Execute" command="kdos-term --app-id rmpc -e rmpc"/></none>
       </action>
     </keybind>
     <keybind key="W-S-c">
@@ -238,8 +233,8 @@
     </keybind>
     <!-- THE SCRATCHPAD, and it is one flag. The flag is omnipresence: the
          view belongs to no workspace, so it is on the one you are looking at.
-         Pressing the key again takes the flag off, and the view goes back to
-         the workspace it was opened on.
+         Pressing the key again takes the flag off, and the view stays on the
+         workspace that is showing.
 
          THE QUERY NAMES A MARKER AND NOT A PROGRAM. `kdos-scratchpad` is the
          app id `foot` is started under, which is what makes exactly one window
@@ -260,9 +255,8 @@
         </none>
       </action>
     </keybind>
-    <!-- The screens. labwc takes its output configuration over
-         wlr-output-management-v1 and KDOS had no client for it, so a mode, a
-         scale or a second monitor's place could not be set at all. Both keys,
+    <!-- The screens: kdos-display is the wlr-output-management-v1 client
+         that sets a mode, a scale and a second monitor's place. Both keys,
          because a laptop's own display key is the one people press. -->
     <keybind key="W-p"><action name="Execute" command="kdos-display"/></keybind>
     <keybind key="XF86Display"><action name="Execute" command="kdos-display"/></keybind>
@@ -282,8 +276,8 @@
          The binding takes the key before a focused player sees it, so
          `kdos-mpctl` routes it: to mpd over its socket or to an MPRIS player
          on the session bus (mpv, cmus, a boxed player), whichever is playing.
-         Volume and brightness are labwc's own defaults and are not
-         restated. -->
+         Volume and brightness are bound to kdos-osd in the media-key block
+         further down. -->
     <keybind key="XF86AudioPlay"><action name="Execute" command="kdos-mpctl toggle"/></keybind>
     <keybind key="XF86AudioStop"><action name="Execute" command="kdos-mpctl stop"/></keybind>
     <keybind key="XF86AudioNext"><action name="Execute" command="kdos-mpctl next"/></keybind>
@@ -360,7 +354,7 @@
     <keybind key="W-S-comma"><action name="SendToDesktop" to="left"/></keybind>
     <keybind key="W-S-period"><action name="SendToDesktop" to="right"/></keybind>
 
-    <!-- Window-state toggles the fork compiled and nothing bound. -->
+    <!-- Window-state toggles that labwc has and binds to no key. -->
     <keybind key="W-t"><action name="ToggleAlwaysOnTop"/></keybind>
     <keybind key="W-o"><action name="ToggleOmnipresent"/></keybind>
     <keybind key="W-s"><action name="ToggleShade"/></keybind>
@@ -374,8 +368,8 @@
     </keybind>
 
     <!-- Keyboard tiling. The W-arrow snaps are labwc defaults, restated with
-         the same combine="yes" they ship with; MoveToEdge and GrowToEdge had
-         no key at all. -->
+         the same combine="yes" they ship with; MoveToEdge and GrowToEdge have
+         no default key and are bound here. -->
     <keybind key="W-Left"><action name="SnapToEdge" direction="left" combine="yes"/></keybind>
     <keybind key="W-Right"><action name="SnapToEdge" direction="right" combine="yes"/></keybind>
     <keybind key="W-Up"><action name="SnapToEdge" direction="up" combine="yes"/></keybind>
@@ -395,17 +389,18 @@
     <keybind key="W-C-Right"><action name="GrowToEdge" direction="right"/></keybind>
     <keybind key="W-C-Up"><action name="GrowToEdge" direction="up"/></keybind>
     <keybind key="W-C-Down"><action name="GrowToEdge" direction="down"/></keybind>
-    <!-- The next workspace somebody is using, in either direction: nine of
-         them reached only by number is nine keys for a person who uses two. -->
+    <!-- The adjacent workspace, in either direction, stopping at the first
+         and the last (W-comma and W-period wrap): nine of them reached only
+         by number is nine keys for a person who uses two. -->
     <keybind key="W-Page_Up"><action name="GoToDesktop" to="left"/></keybind>
     <keybind key="W-Page_Down"><action name="GoToDesktop" to="right"/></keybind>
 
     <!-- The keybind cheat sheet, generated from THIS file. -->
     <keybind key="W-F1"><action name="Execute" command="kdos-keys"/></keybind>
-    <!-- The rest of the panel from the keyboard. Everything below was a
-         pointer-only surface: the clock and battery opened a calendar on a
-         click and on nothing else, the volume applet was the wheel, and the
-         settings and the documentation had no way in at all. -->
+    <!-- The rest of the panel from the keyboard: the calendar the clock and
+         battery open on a click, the audio surface behind the volume
+         applet, the settings and the documentation, each of which otherwise
+         answers only the pointer. -->
     <keybind key="W-c"><action name="Execute" command="kdos-cal"/></keybind>
     <keybind key="W-F2"><action name="Execute" command="kdos-teams"/></keybind>
     <keybind key="W-F3"><action name="Execute" command="kdos-audio"/></keybind>
@@ -421,25 +416,29 @@
          the program in the window — so the chord it labels has to exist. -->
     <keybind key="W-F10"><action name="Execute" command="kdos-start"/></keybind>
     <keybind key="W-F7"><action name="Execute" command="kdos-launcher"/></keybind>
-    <!-- The device managers. Everything they drive has been running here
-         since before there was a desktop; what was missing was a way in. -->
+    <!-- The device managers: the front ends to the network, Bluetooth and
+         device daemons, which run below the session. -->
     <keybind key="W-F4"><action name="Execute" command="kdos-net"/></keybind>
     <keybind key="W-F5"><action name="Execute" command="kdos-bt"/></keybind>
     <keybind key="W-F6"><action name="Execute" command="kdos-devices"/></keybind>
 
     <!-- A power page and a system monitor are what a person reaches for while
          something is going wrong, and both are otherwise reachable only from
-         the Start menu. -->
-    <keybind key="W-C-p"><action name="Execute" command="kdos-energy"/></keybind>
+         the Start menu. The power page is the monitor's Energy page:
+         kdos-energy is the report's command-line client, which prints and
+         exits with no window, so a key bound to it shows nothing. -->
+    <keybind key="W-C-p"><action name="Execute" command="kdos-res --page energy"/></keybind>
     <keybind key="W-C-t"><action name="Execute" command="kdos-res"/></keybind>
 
     <!-- The desk accessories. Summoned over whatever is on the screen and
-         dismissed leaving it untouched, which is
-         what Sidekick sold a million copies of in 1984 and what a layer
-         surface already is. -->
+         dismissed leaving it untouched, which is what a layer surface
+         already is. -->
     <keybind key="W-C-q"><action name="Execute" command="kdos-calc"/></keybind>
     <keybind key="W-C-n"><action name="Execute" command="kdos-note"/></keybind>
-    <keybind key="W-C-v"><action name="Execute" command="kdos-clip"/></keybind>
+    <!-- The picker, never bare kdos-clip: with no argument that program is
+         the history daemon, and a second one takes the history socket over
+         from the copy the compositor supervises. -->
+    <keybind key="W-C-v"><action name="Execute" command="kdos-clip --pick"/></keybind>
     <keybind key="W-C-e"><action name="Execute" command="kdos-chars"/></keybind>
     <keybind key="W-C-b"><action name="Execute" command="kdos-contacts"/></keybind>
     <!-- Find, and Shift because W-f is fullscreen: a search one slip from
@@ -451,10 +450,12 @@
     <keybind key="W-C-S-space"><action name="Execute" command="kdos-style"/></keybind>
 
     <!-- Accessibility. The magnifier on Super+= and its zoom on Super+Alt
-         with = and -; the rest are Super+Alt with a letter, and each switch
-         puts up a notification saying which way it went, because a keyboard
-         aid switched on by accident is a keyboard that misbehaves for no
-         visible reason. comp.conf sets where each one starts. -->
+         with = and -; the rest are Super+Alt with a letter, and each key
+         filter and pointer switch puts up a notification saying which way it
+         went, because a keyboard aid switched on by accident is a keyboard
+         that misbehaves for no visible reason. The on-screen keyboard shows
+         or hides itself instead, and posts a notice only when comp.conf has
+         it off. comp.conf sets where each one starts. -->
     <keybind key="W-equal"><action name="ToggleMagnify"/></keybind>
     <keybind key="W-A-equal"><action name="ZoomIn"/></keybind>
     <keybind key="W-A-minus"><action name="ZoomOut"/></keybind>
@@ -474,8 +475,7 @@
     <keybind key="XF86AudioLowerVolume"><action name="Execute" command="kdos-osd volume -5"/></keybind>
     <keybind key="XF86AudioMute"><action name="Execute" command="kdos-osd volume toggle"/></keybind>
     <!-- The other half of the panel's `●MIC` lamp: the indicator names the
-         application recording you and this is the key that stops it. It was
-         the one media key with a readout and no control. -->
+         application recording you and this is the key that stops it. -->
     <keybind key="XF86AudioMicMute"><action name="Execute" command="kdos-osd mic toggle"/></keybind>
     <keybind key="XF86MonBrightnessUp"><action name="Execute" command="kdos-osd brightness +10"/></keybind>
     <keybind key="XF86MonBrightnessDown"><action name="Execute" command="kdos-osd brightness -10"/></keybind>

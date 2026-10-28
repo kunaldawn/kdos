@@ -18,7 +18,7 @@ a vendored crate bundle, against the system's OpenSSL and oniguruma.
   `http-message-signatures` adds xh's support for signing requests (RFC 9421) through the
   `httpsig-hyper` crate, a feature upstream leaves off by default. The TLS rule for every Rust port
   is in
-  [rust](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#rust).
+  [rust](../../../../docs/kdos/05-developer/writing-ports.md#rust).
 
 ## Notes
 

@@ -59,14 +59,14 @@ are wholly generated or wholly the template's:
 merges its colours into the file rather than replacing it. Anything in these trees edited by hand
 in `build/fs/home/kdos` is lost on the next image build.
 
-<!-- kfs:include script/phases/70_image/070_user.sh lines=111-116 pin=a13e99b438db -->
+<!-- kfs:include script/phases/70_image/070_user.sh lines=112-117 pin=a13e99b438db -->
 
 git cannot carry these directories either, so they are made here. Each is a directory a program
 expects and will not create: `~/.config/user-dirs.dirs` names the XDG ones, `kdos-shot` writes into
 `Pictures/Screenshots`, notmuch and mbsync both name `~/Mail`, khal's shipped configuration reads
 `.local/share/calendars/*`, and khard's names `.local/share/contacts/personal`.
 
-<!-- kfs:include script/phases/70_image/070_user.sh lines=121-127 pin=02825bae40ce -->
+<!-- kfs:include script/phases/70_image/070_user.sh lines=122-128 pin=02825bae40ce -->
 
 `cp` gives a new file the template's mode but leaves the mode of an existing one alone, so the two
 mail files are set to 600 in the home as well. The whole home is then given to the account's UID

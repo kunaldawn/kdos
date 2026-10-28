@@ -16,7 +16,7 @@ The port also installs the card tools, `opensc-tool`, `pkcs11-tool`, `pkcs15-too
   cryptography of most card drivers, [zlib](#port-zlib) for compressed certificates on cards,
   [readline](#port-readline) for `opensc-explorer`'s line editing, and PC/SC for the readers.
 - `--enable-sm` — Secure messaging, the encrypted channel some cards, national eIDs among them,
-  require between the host and the card.
+  require between the host and the card; upstream's default, written out.
 - `--enable-man`, `--disable-doc` — Generate the manual pages with `xsltproc` from
   [libxslt](#port-libxslt), and install no HTML documentation.
 - `--with-xsl-stylesheetsdir=/usr/share/xml/docbook/xsl-stylesheets-nons-1.79.2` — The DocBook
@@ -28,12 +28,13 @@ The port also installs the card tools, `opensc-tool`, `pkcs11-tool`, `pkcs15-too
   versioned soname, which is upstream's default for Linux written out.
 - `--disable-notify` — No `opensc-notify`, the desktop notifier for card insertion and removal,
   built on GIO notifications.
-- `--disable-autostart-items` — Install no XDG autostart entry, which would start
-  `opensc-notify` with every graphical session.
+- `--disable-autostart-items` — Install no XDG autostart entry for `pkcs11-register`, which
+  would add OpenSC's module to the user's Firefox, Chromium and Thunderbird NSS databases at every
+  login; upstream's default, written out.
 - `--disable-openpace` — No PACE, the password-authenticated channel of the German eID card and
   others, which needs the OpenPACE library; it is not in the tree.
-- `--disable-tests`, `--disable-cmocka` — Build neither upstream's test programs nor the
-  `p11test` suite.
+- `--disable-tests`, `--disable-cmocka` — Build neither upstream's test programs under
+  `src/tests` nor the cmocka suites in `src/tests/p11test` and `src/tests/unittests`.
 
 ## Notes
 `make install` puts `opensc-notify`'s desktop entry, bash completion and manual page in place even

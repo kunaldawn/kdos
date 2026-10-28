@@ -355,14 +355,13 @@ int pack_box_create(const Profile *p, const char *merged)
 
 	/*
 	 * EVERY VOLUME IS FORMATTED INTO THE ARGV, NOT THROUGH ONE BUFFER.
-	 * `kb_argv_add` STORES THE POINTER — it does not copy — so five
-	 * `--volume` arguments built in one reused stack buffer all pointed at
-	 * the same bytes and podman received the LAST value five times.
-	 * Measured on a booted machine: `podman inspect` listed
-	 * `/run/user/1000` alone, so $HOME, /tmp, /dev and /sys were silently
-	 * unshared. A boxed app then has no home — it reads no gtk.css, no
-	 * icon theme, no kdeglobals — and the whole "alien apps are themed
-	 * through $HOME" arrangement is inert with nothing reporting a fault.
+	 * `kb_argv_add` STORES THE POINTER — it does not copy — so `--volume`
+	 * arguments built in one reused stack buffer would all point at the
+	 * same bytes and podman would receive the LAST value for each of them:
+	 * $HOME, /tmp, /dev and /sys silently unshared. A boxed app then has
+	 * no home — it reads no gtk.css, no icon theme, no kdeglobals — and
+	 * the whole "alien apps are themed through $HOME" arrangement is inert
+	 * with nothing reporting a fault.
 	 */
 	kb_argv_add(&a, "--volume");
 	kb_argv_add(&a, "/tmp:/tmp:rslave");
@@ -446,8 +445,8 @@ int pack_box_create(const Profile *p, const char *merged)
 	 * podman's `--rootfs` is a BOOLEAN — it says "the first positional is
 	 * an exploded rootfs, not an image" — and `create` parses its flags
 	 * NON-INTERSPERSED so that everything after that positional is the
-	 * container's own command. Passing the path early therefore made every
-	 * later flag the command, and the box was created and then died on
+	 * container's own command. A path passed early makes every later flag
+	 * the command, and the box is created and then dies on
 	 *
 	 *   crun: executable file `--hostname=<box>.<host>` not found in $PATH
 	 *
@@ -484,6 +483,25 @@ int pack_box_ensure(const char *box, const char *id)
 		if (fd >= 0)
 			close(fd);
 		return 0;
+	}
+
+	/*
+	 * A STORE BOX IS MADE AGAIN FROM ITS IMAGE. `base=image:` is what
+	 * `kdos app install` creates, over an image this machine built and
+	 * still holds; a box whose container `kdos-box remove` took, the
+	 * profile kept, is recreated over it with an empty writable layer. The
+	 * stuck-in-`stopping` recovery never removes one. Composing
+	 * it from packs would look for a pack named after the box, and a store
+	 * box would then come back only through another install.
+	 */
+	if (!strncmp(p.base, "image:", 6)) {
+		kb_strlcpy(p.image, p.base + 6, sizeof(p.image));
+		fprintf(stderr, "==> Recreating '%s' from %s...\n", box,
+			p.image);
+		rc = box_create(&p);
+		if (fd >= 0)
+			close(fd);
+		return rc;
 	}
 
 	rc = pack_compose(box, id, merged, sizeof(merged));
@@ -543,12 +561,18 @@ int pack_box_start(const char *box)
 	 * `kdos-box stop x` followed by `kdos-box enter x` asks podman to start
 	 * a container it will refuse — `container state improper`, which names
 	 * nothing a reader can act on, and the box then looks permanently
-	 * broken. The app-launch path in main.c has recovered from this since
-	 * the image lane; `box_unstick` is that recovery, shared. A container
-	 * it had to REMOVE is gone, so the create path runs again. */
-	if (box_unstick(box, state, sizeof(state)) == 3)
-		return strncmp(p.base, "pack:", 5)
-			     ? 1 : pack_box_ensure(box, p.base + 5);
+	 * broken. `box_unstick` is the recovery, shared with the app-launch
+	 * path in main.c. Only a pack box is removed, and the create path then
+	 * runs again over the same packs; any other box that will not settle
+	 * is left stuck with its writes, and this start fails. */
+	switch (box_unstick(box, state, sizeof(state))) {
+	case 3:
+		if (pack_box_ensure(box, p.base + 5) != 0)
+			return 1;
+		break;
+	case 4:
+		return 1;
+	}
 
 	/*
 	 * COMPOSE FIRST, BECAUSE THE OVERLAY DOES NOT SURVIVE A REBOOT.

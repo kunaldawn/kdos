@@ -14,6 +14,7 @@
 #include "config/rcxml.h"
 #include "config/touch.h"
 #include "idle.h"
+#include "kdos.h" /* KDOS */
 #include "labwc.h"
 #include "ssd.h"
 #include "view.h"
@@ -133,6 +134,12 @@ handle_touch_down(struct wl_listener *listener, void *data)
 	struct wlr_touch_down_event *event = data;
 
 	idle_manager_notify_activity(seat->wlr_seat);
+
+	/* KDOS: a touch that closes the saver is spent on it; with no touch
+	 * point recorded, its motion and up find nothing to deliver */
+	if (kdos_saver_dismiss()) {
+		return;
+	}
 
 	/* Compute layout => surface offset and save for this touch point */
 	struct touch_point *touch_point = znew(*touch_point);

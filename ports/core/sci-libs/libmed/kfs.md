@@ -2,15 +2,21 @@
 
 MED-file is the library for the MED format, the mesh and field file format of the Salome
 platform, stored inside HDF5 files. [freecad](#port-freecad) reads and writes FEM meshes through
-it, and [gmsh](#port-gmsh) imports and exports `.med` meshes. The package holds the libraries `libmedC`, `libmed`,
-`libmedfwrap` and `libmedimport`, and the `mdump`, `xmdump` and `medconforme` tools. The source is the GitHub repository `chennes/med`, which carries
-MED-file's sources with both its autotools and its CMake build; the recipe uses CMake.
+it, and [gmsh](#port-gmsh) imports and exports `.med` meshes. The package holds the libraries
+`libmedC`, `libmed`, `libmedfwrap` and `libmedimport`, and the tools: `mdump2`, `mdump3` and
+`mdump4`, which print the meshes and fields of a file, with `mdump` a link to `mdump4`;
+`xmdump2`, `xmdump3` and `xmdump4`, Tk front ends to them, with `xmdump` a link to `xmdump4`;
+`medconforme`, which reports whether the library can read a file's HDF5 format and MED version;
+and `medimport`, which converts a file written by an older MED version. The `xmdump` scripts run
+under `wish`, from [tk](#port-tk), which this port does not depend on.
+The source is the GitHub repository `chennes/med`, which carries MED-file's sources with both its
+autotools and its CMake build; the recipe uses CMake.
 
 ## Flags
 
 - `-DCMAKE_SKIP_RPATH=ON` — Give no binary an `RPATH`, in the build tree or installed. Every
   library the tools need is in `/usr/lib`, where the loader looks anyway.
-- `-DMEDFILE_BUILD_SHARED_LIBS=ON`, `-DMEDFILE_BUILD_STATIC_LIBS=OFF` — Build the shared library
+- `-DMEDFILE_BUILD_SHARED_LIBS=ON`, `-DMEDFILE_BUILD_STATIC_LIBS=OFF` — Build the shared libraries
   only; both are upstream's defaults.
 - `-DMEDFILE_BUILD_TESTS=OFF` — Build none of the test programs, which upstream builds by default.
 - `-DMEDFILE_BUILD_PYTHON=OFF` — No Python bindings; they need SWIG. Upstream's default.

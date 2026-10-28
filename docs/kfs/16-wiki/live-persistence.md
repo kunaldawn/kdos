@@ -14,7 +14,7 @@ Persistence is part of the live medium and needs nothing installed. Three pieces
 
 | Piece | From | Does |
 |---|---|---|
-| `kdos persist` | [kdos-tools](#port-kdos-tools) | Reports the store, and makes one with `sfdisk` from [util-linux](#port-util-linux) and `mkfs.ext4` from [e2fsprogs](#port-e2fsprogs) |
+| `kdos persist` | [kdos-tools](#port-kdos-tools) | Reports the store, and makes one with `sfdisk` and `partx` from [util-linux](#port-util-linux) and `mkfs.ext4` from [e2fsprogs](#port-e2fsprogs) |
 | The live path of the initramfs `init` | `script/phases/70_image/090_initramfs.sh` | Finds the store by its label at boot and uses it as the overlay's upper layer |
 | `KDOS Live (clean session)` | `script/phases/70_image/110_iso.sh` | A menu entry that passes `nopersist` and ignores the store for one boot |
 
@@ -46,11 +46,11 @@ On the store itself, the overlay uses two directories, `upper/` (the session's f
 
 `kdos persist create` makes the filesystem with no reserved blocks and the label:
 
-<!-- kfs:include src/system/kdos-tools/persist.c lines=298-313 pin=adc5db1e67b9 -->
+<!-- kfs:include src/system/kdos-tools/persist.c lines=303-318 pin=adc5db1e67b9 -->
 
 The menu entry that skips the store:
 
-<!-- kfs:include script/phases/70_image/110_iso.sh lines=326-331 pin=00a38d5e1ac3 -->
+<!-- kfs:include script/phases/70_image/110_iso.sh lines=329-334 pin=00a38d5e1ac3 -->
 
 ## Usage
 
@@ -110,18 +110,18 @@ for, wherever it is.
    error about the label's length; an NTFS volume takes the label, and the boot refuses it.
 3. Reboot with that device attached.
 
-The initramfs asks for the label as soon as it has found the medium, and keeps asking while USB
-storage is still arriving: while a hub port holds a device that is not yet configured, or a USB
-mass-storage interface has no disk beneath it. A new stick has no disk for about a second after
-it is enumerated, because usb-storage waits that long before it scans it. While a hub other than a
+The initramfs asks for the label as soon as it has mounted the system image from the medium, and
+keeps asking while USB storage is still arriving: while a hub port holds a device that is not yet
+configured, or a USB mass-storage interface has no disk beneath it. A new stick has no disk for
+about a second after it is enumerated, because usb-storage waits that long before it scans it. While a hub other than a
 root hub is attached, the initramfs also waits until the set of USB devices has stood still for
 one second, since a hub shows nothing in the moment before it reports what is plugged into it.
 The console shows `Waiting for USB devices to settle before looking for a persistence store...`
 while it waits. The wait ends as soon as the store answers, and after 10 seconds at most, with
 `USB storage still settling after 10s; no persistence store found`, after which the session runs
 in RAM. A boot with no USB storage pending and no external hub does not wait. It asks once, and
-once more straight away for each USB disk that has appeared since the last ask, because the kernel
-creates a disk before it has read the disk's partitions.
+asks again straight away whenever the set of USB disks has changed since the ask before, because
+the kernel creates a disk before it has read the disk's partitions.
 
 Keep one store attached. With two filesystems labelled `KDOS_PERSIST`, `blkid -L` answers with one
 of them, and which one is not settled.
@@ -140,17 +140,21 @@ stops the desktop from starting.
 ### Starting the store afresh
 
 1. Boot `KDOS Live (clean session)`.
-2. Mount the store somewhere other than `/mnt/persist`, for example
-   `sudo mount -L KDOS_PERSIST /mnt/x` after `sudo mkdir -p /mnt/x`.
+2. Mount the store somewhere other than `/mnt/persist`, which `kdos persist` takes to mean the
+   session is using it: `sudo mkdir -p /mnt/x`, then `sudo mount -L KDOS_PERSIST /mnt/x`.
 3. Remove the saved session: `sudo rm -rf /mnt/x/upper /mnt/x/work`.
 4. `sudo umount /mnt/x` and reboot normally. The initramfs creates both directories again, and
    the session starts with nothing of the old one in it.
 
 ### Removing the store
 
-Take the label off, and the next boot runs in RAM: `sudo e2label /dev/sdX4 ""` for an ext store.
-The console then shows `Mounting OverlayFS...` with no `(persistent)`, and `kdos persist` prints
-`no persistence store`. Deleting its partition with `sfdisk --delete` frees the space as well.
+1. Boot `KDOS Live (clean session)`, so that the session is not writing to the store.
+2. Find the store's device with `sudo blkid -L KDOS_PERSIST`, for example `/dev/sdb2`.
+3. Take the label off: `sudo e2label /dev/sdb2 ""` for an ext store. `kdos persist` then prints
+   `no persistence store`, and the next boot shows `Mounting OverlayFS...` with no `(persistent)`
+   and runs in RAM.
+4. To free the space as well, delete the partition: `sudo sfdisk --delete /dev/sdb 2`, naming the
+   disk and the partition's number.
 
 ## Tips
 
@@ -158,7 +162,8 @@ The console then shows `Mounting OverlayFS...` with no `(persistent)`, and `kdos
   is what flushes the store.
 - `kdos persist create` refuses when a store already exists anywhere the system can see
   (`kdos persist: a store already exists on /dev/vda2` and `remove it first, or use it as it is`,
-  exit status 1), and when no device is named and the system did not boot from a medium.
+  exit status 1), when no device is named and the system did not boot from a medium, when the
+  device named is not a block device, and when it is not run as root.
 - On a persistent boot the console shows `Persistent session on /dev/vda2 (ext4)`,
   `Mounting OverlayFS (persistent)...`; a boot in RAM shows `Mounting OverlayFS...` alone.
 - Software installed with `kpkg` in a persistent session is kept with everything else the session
@@ -186,11 +191,10 @@ to RAM, and the console shows `Mounting OverlayFS (persistent)...` followed by
 last partition on that disk. Name another device, or make a partition by hand and label it.
 
 **`kdos persist create` says the new partition `did not appear`.** The partition was added to the
-table, but the kernel has no device node for it yet, and no filesystem was made. Reboot, then make
-the filesystem on that partition by hand, as `kdos persist create` would have:
-`sudo mkfs.ext4 -m 0 -L KDOS_PERSIST /dev/sdX<n>`, with the number the command printed. Running
-`kdos persist create` again instead would append a second partition, because the first has no
-label for it to find.
+table, but the kernel has no device node for it yet, and no filesystem was made. The message tells
+you to reboot and then run `mkfs.ext4 -m 0 -L KDOS_PERSIST <part>` on the partition it names, as
+`kdos persist create` would have: `sudo mkfs.ext4 -m 0 -L KDOS_PERSIST /dev/sdX<n>`. Running `kdos persist create` again would append a second
+partition, because the first has no label for it to find.
 
 **The desktop does not start after a change.** Boot `KDOS Live (clean session)`, then either start
 the store afresh or remove the file that caused it from the store's `upper/` directory, mounted as
@@ -210,8 +214,10 @@ space; start it afresh or make a larger one on another device.
 - [The live medium and persistence](../../kdos/03-architecture/boot-and-init.md#the-live-medium-and-persistence)
 - [kdos persist](../../kdos/04-programs/kdos-command.md#kdos-persist)
 - [Keep what you change](../../kdos/02-user-guide/getting-started.md#keep-what-you-change)
-- `boot-menu-and-kernel-parameters.md`: [Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md)
-- `initramfs-and-rescue.md`: [The initramfs and the rescue shell](initramfs-and-rescue.md)
+- [Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md): the live medium's menu,
+  its clean-session entry, and adding a parameter for one boot
+- [The initramfs and the rescue shell](initramfs-and-rescue.md): looking inside the initramfs, and
+  the shell it opens when a boot cannot finish
 
 <!-- book-nav -->
 ---

@@ -77,12 +77,13 @@ is not writing to a terminal, and the programs the build runs write theirs direc
 `Resolving dependencies...` asks the same solver `kpkgdepends` uses for the install order of `pv`
 and everything it depends on, leaving out every port that is already installed and current.
 **Current** means that the hash of the port's recipe as it stands now equals the hash recorded when
-the package was installed. The phase environment sets `KPKG_STRICT_RECIPE=1`, which turns that
-comparison on; without it, as on a running system, an installed package counts as current whatever
-its recipe says.
+the package was installed. A package with no recorded hash counts as current, because an unknown
+hash is not evidence of a change. The phase environment sets `KPKG_STRICT_RECIPE=1`, which turns
+that comparison on; without it, as on a running system, an installed package counts as current
+whatever its recipe says.
 
-`pv` depends on [`ncurses`]{.idx}, which `20_selfhost` installed long before and whose recipe has not
-changed, so `ncurses` is dropped and the order is `pv` alone: `Packages to install: pv`. On a tree
+`pv` depends on [`ncurses`]{.idx}, which `30_foundation` installed long before and whose recipe has
+not changed, so `ncurses` is dropped and the order is `pv` alone: `Packages to install: pv`. On a tree
 where `pv` itself is installed and current, the order is empty and kpkg prints `Nothing to do`. The
 same command with the database hidden shows the whole order instead, as
 [Entering the chroot](entering.md#a-shell-in-the-chroot) shows.
@@ -104,8 +105,10 @@ installs a stored package with that key in place of everything up to [Adopting](
 below, printing `Reusing pv from the store` with the start of the key.
 
 `Building pv...` starts the build proper. `kpkg install -f pv` would print `Rebuilding pv
-(forced)...` instead, and build it whether it is current or not; only the ports named on the
-command line are forced, never their dependencies.
+(forced)...` instead, and build it whether it is current or not. Only the ports named on the
+command line are forced, never their dependencies: the order is resolved as if nothing were
+installed, so `Packages to install` lists `ncurses pv`, and kpkg then prints `Skipping ncurses
+(already installed)` for the dependency that is current.
 
 ## Building
 
@@ -183,8 +186,9 @@ cd "$SRC"
 
 `KPKG_CONF` is kpkg's configuration file, `/etc/kpkg.conf`. The five values from `name` to `sha256`
 are the recipe's own, as `kpkg meta pv` prints them, expanded and single-quoted; a recipe's helper
-variables would follow them. `PORT_SRC` is the port directory, `SRC` the unpacked source and the
-working directory, and `PKG` the empty staging directory the build installs into. They are shell
+variables would follow them. The descriptive keys, `description`, `homepage`, `license` and
+`depends`, are not passed to the build. `PORT_SRC` is the port directory, `SRC` the unpacked source
+and the working directory, and `PKG` the empty staging directory the build installs into. They are shell
 variables, not exported ones, so the programs the build runs do not see them.
 
 `set -e` stops the build at the first command that fails. There is no `set -o pipefail` and no
@@ -347,7 +351,8 @@ built from, the value the next build compares the port against:
 and `/var/lib/kpkg/db/.pkgsha/pv` the SHA-256 of the package file itself, which the package store
 keys every port that depends on `pv` with. These values are those of one build of the tree. A
 package rebuilt from the same recipe, on the same tree and with the same compressor settings, is
-meant to reproduce every one of them, which is what makes them worth recording. The layout of every file kpkg keeps is in
+meant to reproduce every one of them, which is what makes them worth recording. The layout of
+every file kpkg keeps is in
 [Files kpkg keeps to itself](../../kdos/03-architecture/packaging.md#files-kpkg-keeps-to-itself).
 
 ## Building in levels
@@ -358,7 +363,7 @@ same install is split in two. `kpkg install --build-only pv` runs everything up 
 is not installed and current is an error there, never a build. Later, once every port of the level
 is built, one step runs `kpkg install --commit` over the whole level, which runs
 [Adopting](#adopting-kpkgadd) and the recording for each in turn. A port's log then holds the build
-and the level's `L<n>.commit.log` holds the install. See
+and the level's `<NNNN>_L<n>.commit.log` holds the install. See
 [Building apart from installing](../../kdos/03-architecture/packaging.md#building-apart-from-installing).
 
 ## See also

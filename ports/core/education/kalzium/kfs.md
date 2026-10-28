@@ -11,7 +11,7 @@ editor. The viewer is built on [openbabel](#port-openbabel) and
 - `-Wl,--strip-debug` — Drop debug sections at the link. The OCaml runtime that the equation
   solver links into `kalzium` is a static archive compiled with debug information, which no
   compile flag of this build reaches (see
-  [What kpkg does around build.sh](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#what-kpkg-does-around-buildsh)).
+  [What kpkg does around build.sh](../../../../docs/kdos/05-developer/writing-ports.md#what-kpkg-does-around-buildsh)).
 - `-D CMAKE_REQUIRE_FIND_PACKAGE_OpenBabel3=ON` — This switch and the other
   `CMAKE_REQUIRE_FIND_PACKAGE_` switches (`AvogadroLibs`, `Eigen3`, `OCaml`, `Libfacile`) make each
   of those `find_package` calls fail configure when its package is missing. All five are optional
@@ -21,13 +21,14 @@ editor. The viewer is built on [openbabel](#port-openbabel) and
 
 ## Notes
 
-The equation solver is compiled by `ocamlopt -output-obj`, which links the solver and the OCaml
-runtime into the `kalzium` executable itself; `FindLibfacile` looks for facile in the directory
-`ocamlc -where` reports.
+The equation solver and facile are compiled by `ocamlopt -output-obj` into one object,
+`solver.o`, which goes into the `kalzium` executable itself. The link adds the OCaml runtime
+archive, `libasmrun.a`, from the directory `ocamlc -where` reports, which is also where
+`FindLibfacile` looks for facile.
 
 Translations are not built (`KF_SKIP_PO_PROCESSING`), and the package prune removes the
 translated handbooks; see
-[Size and language policy](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#size-and-language-policy).
+[Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy).
 
 Both menu entries are replaced. The main one gives `StartupWMClass=org.kde.kalzium`, the Wayland
 app_id `KAboutData` sets. The `chemical/x-cml` handler opens a file in the molecule editor, and

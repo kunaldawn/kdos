@@ -16,8 +16,8 @@ the rest of its dependencies are ports of their own, found in `site-packages` th
   network. pycodec2 binds codec2's C library and builds against NumPy's headers with Cython.
 - `--ignore-installed` — Keeps the prefix whole when a copy of a package is already in the build
   root; without it pip would uninstall that copy from the root instead of writing the new one into
-  `$PKG` (see [The three Python
-  keys](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-three-python-keys)).
+  `$PKG` (see
+  [The three Python keys](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys)).
 - `--no-deps` — Installs exactly the named packages and resolves nothing. Of Sideband's declared
   requirements, materialyoucolor and beautifulsoup4 are imported by no module it ships, and are not
   installed.
@@ -27,7 +27,7 @@ the rest of its dependencies are ports of their own, found in `site-packages` th
 The vendor bundle, `sideband-vendor-<version>.tar.xz`, is a Python bundle that `ports/fetch` makes
 from the recipe's `pypackages` line, `pycodec2 mistune audioop-lts`, as source distributions with
 their build requirements, and pins by its `sha256` (see
-[Vendoring](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#vendoring)).
+[Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring)).
 LXST is the recipe's second `source =`, a GitHub tag archive installed from its unpacked tree.
 audioop-lts is the `audioop` module Python 3.13 removed from the standard library, which LXST's
 pydub imports.

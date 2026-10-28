@@ -31,7 +31,7 @@ pixel format.
 - `-DENABLE_LIBNUMA=OFF` — Upstream's default is to link libnuma whenever it finds it, for thread
   pools placed by NUMA node on multi-socket machines. Off, the library links no libnuma whatever
   the build root holds.
-- `-DENABLE_TESTS=OFF` — Leave out upstream's unit-test program.
+- `-DENABLE_TESTS=OFF` — Leave out upstream's unit-test program. It is upstream's default.
 - `-DHIGH_BIT_DEPTH=ON`, `-DMAIN12=ON` — Store samples in 16 bits, and with `MAIN12` encode 12-bit
   rather than 10-bit. The first build has both, the second only `HIGH_BIT_DEPTH`.
 - `-DEXPORT_C_API=OFF` — In the 12- and 10-bit builds, leave out the public C API, whose symbols

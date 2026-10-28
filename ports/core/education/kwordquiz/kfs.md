@@ -7,14 +7,14 @@ or typed question-and-answer, and edits the decks. Decks are KVTML files, read a
 ## Flags
 
 - `-D CMAKE_REQUIRE_FIND_PACKAGE_KF6DocTools=ON` — Fail configure if [kdoctools](#port-kdoctools)
-  is missing. The handbook is optional upstream and is left out without a word when kdoctools is
-  not found.
+  is missing. The handbook is optional upstream: when kdoctools is not found it is left out and
+  the package is only listed as a missing optional one in configure's summary.
 
 ## Notes
 
 The translation catalogues are not built (`KF_SKIP_PO_PROCESSING`), and the package prune removes
 the translated handbooks; see
-[Size and language policy](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#size-and-language-policy).
+[Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy).
 
 KVTML is not in the shared MIME database, so `build.sh` installs `kdos-kvtml.xml`, which defines
 `application/x-kvtml` for `*.kvtml`; KWordQuiz is the one entry that claims it. The menu entry is

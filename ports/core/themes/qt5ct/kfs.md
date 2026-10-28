@@ -19,10 +19,12 @@ Qt 5 program follows the desktop's colours; [qt6ct](#port-qt6ct) is the Qt 6 cou
 ## Notes
 
 Upstream's desktop entry names the theme icon `preferences-desktop-theme` and no
-`StartupWMClass`. The recipe rasterises Breeze's `preferences-desktop-theme.svg`, read from the installed
-[breeze-icons](#port-breeze-icons) in the build root, into `hicolor` PNGs named `qt5ct`, and
-writes its own entry:
-qt5ct sets its desktop file name to `qt5ct.desktop`, so its Wayland app id is `qt5ct`, which the
-entry names in `StartupWMClass`. The interface translations are compiled into the program by
-`lrelease` from [qt5-qttools](#port-qt5-qttools); the configure stops when it cannot find
-`lrelease`.
+`StartupWMClass`. The recipe rasterises Breeze's 32-pixel `preferences-desktop-theme.svg`, read
+from the installed [breeze-icons](#port-breeze-icons) in the build root, into 32, 48, 64 and
+128-pixel `hicolor` PNGs named `qt5ct`, and overwrites upstream's `qt5ct.desktop` with its own
+entry, which names that icon. qt5ct sets its desktop file name to `qt5ct.desktop`, so its Wayland
+app id is `qt5ct`, which the entry names in `StartupWMClass`.
+
+The interface translations are compiled into the program by `lrelease` from
+[qt5-qttools](#port-qt5-qttools), and the configure reads Qt 5's plugin directory from the
+`qtpaths` beside it; it stops when it cannot find either.

@@ -36,6 +36,6 @@ desktop entry is hidden from the menu: it is a handler that pictures are opened 
 
 ## Notes
 
-Upstream's desktop entry is replaced by one that adds `StartupWMClass=swayimg`, the app_id the
-window carries unless its configuration names another. It stays `NoDisplay=true`, as upstream
-ships it, and keeps upstream's `MimeType=` list.
+Upstream's desktop entry is replaced by one that adds `TryExec=swayimg` and
+`StartupWMClass=swayimg`, the app_id the window carries unless `--appid` or its configuration names
+another. It stays `NoDisplay=true`, as upstream ships it, and keeps upstream's `MimeType=` list.

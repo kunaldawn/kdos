@@ -6,7 +6,7 @@ uses it for its streaming outputs' TLS, [librist](#port-librist) for RIST's encr
 line its `series` key names; see
 [Filtering](../../../../docs/kdos/05-developer/writing-ports.md#filtering) for what the key does.
 The port installs the shared libraries `libmbedcrypto`, `libmbedx509` and `libmbedtls`, the
-headers and the CMake package.
+headers, their pkg-config files and the CMake package.
 
 ## Flags
 - `-DUSE_SHARED_MBEDTLS_LIBRARY=ON`, `-DUSE_STATIC_MBEDTLS_LIBRARY=OFF` — Build the shared
@@ -24,7 +24,7 @@ headers and the CMake package.
 ## Notes
 Threading is set in the installed configuration header, never with a `-D` on the compiler's command
 line. `MBEDTLS_THREADING_C` adds a mutex to the RSA context and to the contexts of the random number
-generators, the entropy source and the SSL cookie and ticket modules, structures that consumers allocate
-themselves, so a consumer compiled without the define would disagree with the library about their
-layout. With it in `mbedtls_config.h`, every program
-that includes Mbed TLS's headers sees the same value the library was built with.
+generators, the entropy source and the SSL cookie, ticket and session-cache modules, structures
+that consumers allocate themselves, so a consumer compiled without the define would disagree with
+the library about their layout. With it in `mbedtls_config.h`, every program that includes Mbed
+TLS's headers sees the same value the library was built with.

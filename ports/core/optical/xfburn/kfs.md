@@ -9,8 +9,9 @@ external writer program, so it needs nothing at run time beyond the libraries it
 - `-Dgudev=enabled` — List optical drives and notice a disc change through udev, by
   [libgudev](#port-libgudev). The feature is `auto` upstream, which drops it when the library is
   missing; `enabled` makes a missing one a configuration error.
-- `-Dgstreamer=enabled` — Decode the MP3, FLAC and Ogg files of an audio composition to CD audio
-  through GStreamer, required in the same way.
+- `-Dgstreamer=enabled` — Decode the files of an audio composition to CD audio through
+  GStreamer's `decodebin`, so any format the installed plugins read (MP3, FLAC, Ogg Vorbis among
+  them) can go onto an audio CD; required in the same way.
 
 ## Notes
 
@@ -25,4 +26,5 @@ Upstream installs its icon, `stock_xfburn`, under hicolor's `stock/media` contex
 panel's icon lookup does not read. `build.sh` rasterises the same SVG into `apps/xfburn.png` at
 48, 64 and 128 pixels, and the desktop entry it writes names that icon. The entry replaces
 upstream's: GTK 3 takes the Wayland app id from the program name, so `StartupWMClass=xfburn`, and
-the name is qualified, "Disc Burner (Xfburn)", because K3b is the burner the menu lists first.
+the name is qualified, "Disc Burner (Xfburn)", as [Brasero](#port-brasero)'s is "Disc Burner
+(Brasero)", so the menu tells the two GTK burners apart.

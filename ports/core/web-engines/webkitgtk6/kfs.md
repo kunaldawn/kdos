@@ -16,9 +16,12 @@ are repeated below, and the two ports install side by side.
 - `-DUSE_WOFF2=OFF` — no libwoff2; the tree's FreeType decodes WOFF2 fonts itself.
 - `-DUSE_SYSTEM_SYSPROF_CAPTURE=OFF` — use WebKit's own copy of `libsysprof-capture`; sysprof is
   not a port.
+- `-DUSE_LIBBACKTRACE=OFF` — no libbacktrace, which is not a port.
 - `-DUSE_VULKAN=OFF` — no Vulkan support, which needs the Volk loader, not a port.
 - `-DENABLE_SWIFT_DEMO_URI_SCHEME=OFF` — with `-DENABLE_BACK_FORWARD_LIST_SWIFT=OFF`: the Swift
   features need `swiftc`, which is not a port.
+- `-DENABLE_MINIBROWSER=OFF` — with `-DENABLE_API_TESTS=OFF` and `-DENABLE_DOCUMENTATION=OFF`:
+  no MiniBrowser test program, API tests or gi-docgen reference.
 - `-fuse-ld=lld` — added to `LDFLAGS`: link with LLVM's [lld](#port-lld) instead of GNU ld.
 
 ## Patches

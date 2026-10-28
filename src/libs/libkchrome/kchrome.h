@@ -420,7 +420,7 @@ int kch_button_at(int mx, int my);
  *
  * A button bar that looks identical whether or not the pointer is on it is a
  * row of words with brackets round them: the only way to find out that
- * `[ Connect ]` is a control was to click it. Fed from the same motion branch
+ * `[ Connect ]` is a control is to click it. Fed from the same motion branch
  * that already moves the list selection; (-1, -1) — libkwl's leave — clears it.
  */
 void kch_hover(int mx, int my);
@@ -428,8 +428,9 @@ void kch_hover(int mx, int my);
 /* ────────────────────────────────────────────────────────────────────────
  * Scrolling lists (kch_chrome.c)
  *
- * ONE ANSWER TO "WHAT DOES THE WHEEL DO", because it was answered fifteen
- * times. The rule is what a mature list toolkit does and it has two halves:
+ * ONE ANSWER TO "WHAT DOES THE WHEEL DO", so a list that calls these two
+ * answers it the way every other list does. The rule is what a mature list
+ * toolkit does and it has two halves:
  *
  *   - The list FITS: the wheel is a cursor step, the same as ↑ and ↓.
  *   - The list SCROLLS: the wheel moves the VIEWPORT and the cursor stays on
@@ -438,9 +439,9 @@ void kch_hover(int mx, int my);
  * The other half of it is in libkwl (pt_motion): hover re-selects only when
  * the pointer has actually MOVED to another cell. Without that, a wheel notch
  * — which on every absolute pointing device arrives with the position repeated
- * — put the highlight straight back on the row under a stationary pointer, so
- * the selection appeared to snap back the instant it moved. Reported as "the
- * highlight jumps"; it was two correct behaviours fighting.
+ * — puts the highlight straight back on the row under a stationary pointer, so
+ * the selection appears to snap back the instant it moves: two correct
+ * behaviours fighting, which reads as "the highlight jumps".
  * ──────────────────────────────────────────────────────────────────────── */
 
 /* Rows per notch when the wheel is scrolling a viewport. */

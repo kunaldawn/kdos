@@ -32,9 +32,9 @@ int ki_nservices = (int)(sizeof(ki_services) / sizeof(ki_services[0]));
 
 /*
  * ext4 first because it is the default and the one the kernel has built in.
- * btrfs is built in too; xfs is a MODULE, which is why 090_initramfs.sh
- * carries it — an xfs root the initramfs cannot mount is a machine that installs fine
- * and never boots again.
+ * btrfs and xfs are built in too; f2fs is a MODULE, which is why
+ * 090_initramfs.sh carries it — a root the initramfs cannot mount is a machine
+ * that installs fine and never boots again.
  */
 const Filesystem ki_filesystems[] = {
 	{ "ext4",  "mkfs.ext4",  "-F", "defaults,noatime", 1,

@@ -20,7 +20,7 @@ rules, and the data library is compiled from those sources. That is the reason f
 
 - `CC=gcc` — Names the C compiler. configure's own search tries `cc` and `clang` before `gcc`. The
   chroot already sets the same `CC=gcc` and `CXX=g++` for every port; see
-  [A configuration script preferring another compiler](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/build-troubleshooting.md#a-configuration-script-preferring-another-compiler).
+  [A configuration script preferring another compiler](../../../../docs/kdos/05-developer/build-troubleshooting.md#a-configuration-script-preferring-another-compiler).
 - `CXX=g++` — Names the C++ compiler; configure's search tries `c++` and `clang++` before `g++`.
 - `--disable-samples` — Builds none of the sample programs, which are not installed.
 - `--disable-tests` — Builds none of the test suites, which the recipe does not run.
@@ -33,6 +33,6 @@ libraries just built in `lib/` rather than any ICU already installed. ICU's own 
 carries the same rules; this extra file is for nodejs, whose `build.sh` copies it over the
 `zoneinfo64.res` inside its vendored Rust crate, so that its `Temporal` and ICU's `Intl` read
 one time-zone database (see
-[Data with no other source form](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/why-kdos.md#data-with-no-other-source-form)).
+[Data with no other source form](../../../../docs/kdos/01-philosophy/why-kdos.md#data-with-no-other-source-form)).
 nodejs finds the file by the version `pkg-config --modversion icu-uc` prints, so the directory
 name must stay the ICU version.

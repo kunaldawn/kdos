@@ -12,10 +12,10 @@
 /*
  * The CPU page.
  *
- * Utilisation as an area chart with /proc/pressure/cpu's `some avg10` under it
- * as a second, dimmer series. That pairing is the point: "busy" and "starved"
- * are different questions, a machine can be either without the other, and no
- * other monitor here puts them on one axis.
+ * Utilisation as an area chart with /proc/pressure/cpu's `some avg10` and
+ * `avg60` on a line of text directly under it. That pairing is the point:
+ * "busy" and "starved" are different questions, a machine can be either
+ * without the other, and no other monitor here shows them together.
  *
  * Per core: up to sixteen get their own small chart. Above that the page draws
  * a heat strip, one column per core — 128 sparklines is a wall rather than a
@@ -134,7 +134,7 @@ void res_draw_cpu(int x, int y, int w, int h)
 	row += chart_h;
 
 	/*
-	 * Pressure under the chart, on its own row, in the secondary colour.
+	 * Pressure under the chart, on its own row, in the warning colour.
 	 * `some avg10` is the share of the last ten seconds in which at least
 	 * one task was stalled waiting for a runnable CPU — which is what
 	 * "the machine feels slow" is, and it is not the same as busy.

@@ -23,7 +23,7 @@ installed with it, checks that a file is well-formed XML.
   again from `doc/xmlwf.xml`. Left to check, configure renders the page with the first of
   `docbook2x-man`, `db2x_docbook2man`, `docbook2man` and `docbook-to-man` it finds, so the page would depend on what
   happens to be in the build root (see
-  [An optional tool found in the tree](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/build-troubleshooting.md#an-optional-tool-found-in-the-tree)).
+  [An optional tool found in the tree](../../../../docs/kdos/05-developer/build-troubleshooting.md#an-optional-tool-found-in-the-tree)).
 - `--without-examples` — Does not build the example programs, which upstream never installs.
 - `--without-tests` — Does not build the test suite, which the recipe does not run.
 

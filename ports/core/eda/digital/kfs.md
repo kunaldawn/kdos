@@ -9,9 +9,9 @@ alone, without upstream's Maven build.
 - `-sourcepath "$_dep:$SRC_ROOT/xmlpull-api-v1-$_xmlpull/src/java/api:src/main/java"`,
   `-implicit:class` — Let `javac` find every class it is not handed on the command line in the
   unpacked dependency sources (XStream, MXParser, the XML Pull API, org.json, SLF4J) and in
-  Digital's own tree, and write a class file for each one it compiles that way. Only the
-  classes Digital reaches are compiled, so the parts of the dependencies that would need
-  libraries nobody ships are never built.
+  Digital's own tree, and write a class file for each one it compiles that way. MXParser, the
+  XML Pull API, org.json and SLF4J are not on the command line, so of those only the classes
+  that Digital and XStream reach are compiled.
 - `-encoding UTF-8` — Read the sources as UTF-8, whatever the build's locale.
 - `-proc:none` — Run no annotation processors.
 - `-nowarn` — Print no compiler warnings.

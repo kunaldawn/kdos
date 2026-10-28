@@ -10,7 +10,7 @@
  * `kpkg install -f` FORCES ONLY WHAT WAS NAMED. Dependencies pulled in behind
  * a forced package keep the ordinary skip-if-installed behaviour. That is not
  * a nicety: kdosbuild passes `-f` for exactly the ports a build plan selected,
- * and a blanket force would rebuild all ~350 packages on every run.
+ * and a blanket force would rebuild every package in the tree on every run.
  *
  * kpkgdepends drops anything already installed, which would make `-f` resolve
  * to nothing at all, so under `-f` resolution runs against an EMPTY database
@@ -67,7 +67,6 @@ static void usage(void)
 	       "Commands:\n"
 	       "  install <pkg>...   Install package(s) with dependencies\n"
 	       "  remove <pkg>...    Remove package(s)\n"
-	       "  update             Update all installed packages\n"
 	       "  list               List installed packages\n"
 	       "  info <pkg>         Show package information\n"
 	       "  check [<pkg>...|--all]  Compare installed files with what\n"
@@ -92,8 +91,9 @@ static void usage(void)
 	       "  verify-pkg <file>  Check <file>.sig against the trusted keys\n"
 	       "  delta <old> <new>  Write the difference between two packages\n"
 	       "  apply-delta <old> <delta> -o <new>  Rebuild a package from one\n"
-	       "  binhost <dir> <p>  Install the prebuilt package, if arch, build\n"
-	       "                     config and recipe hash all match this machine\n"
+	       "  binhost [--root <path>] <dir> <p>  Install the prebuilt package,\n"
+	       "                     if arch, build config and recipe hash all\n"
+	       "                     match this machine\n"
 	       "  store gc <dir> <max-size>  Evict package-store entries, least\n"
 	       "                     recently used first, down to max-size\n"
 	       "                     (bytes, or K/M/G/T)\n"

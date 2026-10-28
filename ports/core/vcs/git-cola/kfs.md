@@ -13,8 +13,12 @@ depends on is [PyQt6](#port-python3-pyqt6).
 ## Notes
 - **The vendor bundle** carries one run-time module, `polib`, which `pyproject.toml` requires and
   which is not a port; `cola/i18n.py` imports it to read git-cola's translation catalogues, and
-  falls back to its own copy, `cola/polib.py`, when it is missing. The rest of the bundle is what
-  building the sdist needs. `extras/` holds the `sphinxtogithub` Sphinx extension and the licences
+  falls back to its own copy, `cola/polib.py`, when it is missing. The rest of the bundle,
+  setuptools, setuptools_scm and the packages they are built with, is the build-requirement chain
+  `ports/fetch` collects from each `pyproject.toml`. `build.sh` passes `--no-build-isolation`, so
+  pip builds polib and git-cola with the [setuptools](#port-python3-setuptools) and
+  [setuptools-scm](#port-python3-setuptools-scm) ports in `depends` and installs none of those
+  archives. `extras/` holds the `sphinxtogithub` Sphinx extension and the licences
   of polib and QtPy, and is not installed.
 - **The manual pages** for `git-cola` and `git-dag` are built from the Sphinx sources in `docs/`
   with [python3-sphinx](#port-python3-sphinx). `docs/conf.py` puts `extras/` on `sys.path`,

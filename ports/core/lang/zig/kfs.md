@@ -3,14 +3,14 @@
 linker. In KDOS it builds [ncdu](#port-ncdu) and the Zig language server [zls](#port-zls), and
 [python3-maturin](#port-python3-maturin) is built with its `zig` feature, the
 `maturin build --zig` that links through Zig. How a Zig port is written is
-in [zig](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#zig).
+in [zig](../../../../docs/kdos/05-developer/writing-ports.md#zig).
 
 Zig is built against exactly one major series of LLVM, and its CMake search refuses an
 `llvm-config` from any other. It therefore depends on the slot ports [llvm21](#port-llvm21),
 [clang21](#port-clang21) and [lld21](#port-lld21), which install LLVM, clang and lld of that series
 under `/usr/lib/llvm21`, and not on the system [llvm](#port-llvm); how the slot is kept apart from
 the system LLVM is in
-[A second version beside the first](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#a-second-version-beside-the-first).
+[A second version beside the first](../../../../docs/kdos/05-developer/writing-ports.md#a-second-version-beside-the-first).
 
 The CMake build is upstream's bootstrap. It translates `stage1/zig1.wasm`, a WebAssembly build of
 the compiler carried in the source archive, to C, compiles it, uses the result to build the
@@ -32,19 +32,20 @@ compiler from its Zig source, and installs that compiler and the standard librar
 - `ZIG_USE_LLVM_CONFIG=ON` — Finds LLVM, clang and lld through `llvm-config`, which is upstream's
   default for a native build, named.
 - `ZIG_STATIC_LLVM=OFF` — Links the slot's shared LLVM libraries instead of static archives, which
-  the slot does not install for LLVM and clang; this is upstream's default, named. The `zig` binary records `/usr/lib/llvm21/lib` as
-  its run path, so it finds them without any search path being changed.
+  the slot does not install for LLVM and clang; this is upstream's default, named. The `zig`
+  binary records `/usr/lib/llvm21/lib` as its run path, so it finds them without any search path
+  being changed.
 - `ZIG_STATIC_ZLIB=ON` — Links zlib's static archive, `libz.a`, into `zig` in place of the
   `-lz` that `llvm-config` reports, so the installed binary needs no `libz.so`.
 - `ZIG_STATIC_ZSTD=ON` — The same for zstd, with `libzstd.a`.
 - `ZIG_PIE=ON` — Builds `zig` as a position-independent executable, as every program in the tree
   is (see
-  [The release flags](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-release-flags)).
+  [The release flags](../../../../docs/kdos/05-developer/writing-ports.md#the-release-flags)).
   Upstream's default follows `CMAKE_POSITION_INDEPENDENT_CODE`, which this build does not set.
 - `CCACHE_DISABLE=1` — Keeps the compiler cache out of this one build. ccache holds a file's
   preprocessed form in memory to hash it, and the preprocessed form of the generated `zig2.c` is
   far larger than the memory the build has, so ccache fails where gcc alone compiles the file; see
-  [The compiler cache](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/how-kdos-is-built.md#the-compiler-cache).
+  [The compiler cache](../../../../docs/kdos/05-developer/how-kdos-is-built.md#the-compiler-cache).
 
 ## Notes
 `ZIG_STATIC_ZLIB` and `ZIG_STATIC_ZSTD` take whatever `find_library` finds first among the static

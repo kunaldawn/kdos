@@ -6,7 +6,7 @@ libisoburn joins [libisofs](#port-libisofs), which lays out an ISO 9660 file sys
 
 KDOS needs it twice. The image step, `script/phases/70_image/110_iso.sh`, runs
 `xorriso -as mkisofs` to write `kdos.iso`, the hybrid image that boots from optical media and
-from a USB stick ([Packaging: `70_image`](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/how-kdos-is-built.md#packaging-70_image)),
+from a USB stick ([Packaging: `70_image`](../../../../docs/kdos/05-developer/how-kdos-is-built.md#packaging-70_image)),
 and `kdos rebuild` checks for `xorriso` before it promises an ISO. On the desktop, `kdos-burn`
 in [kdos-shell](#port-kdos-shell) writes a folder or an image to a disc by running `xorriso` as
 the logged-in user, and [k3b](#port-k3b) runs `mkisofs` from `$PATH` to build a data image.
@@ -24,11 +24,13 @@ expects cdrtools' or cdrkit's command finds a compatible one.
   [readline](#port-readline). The probe falls back without an error when readline is missing, so
   readline in `depends` is what keeps it.
 - `--disable-libedit` — Do not fall back to libedit when readline is not found.
-- `--enable-libacl` — Read and record POSIX ACLs of the files put into an image, with
-  [acl](#port-acl), and restore them when `xorriso` extracts files from an image. Like readline,
-  a probe that turns the feature off quietly if acl is missing.
-- `--enable-zlib` — Build the zisofs and gzip content filters, which compress a file inside the
-  image, with [zlib](#port-zlib); a probe of the same kind.
+- `--enable-libacl` — Link [acl](#port-acl) into libisoburn and `xorriso`. The probe also
+  defines a macro that no source in this package reads: recording POSIX ACLs in an image and
+  restoring them on extraction is done inside [libisofs](#port-libisofs), and comes from that
+  port's own `--enable-libacl`.
+- `--enable-zlib` — Link [zlib](#port-zlib) into libisoburn and `xorriso`, the same way. The
+  zisofs and gzip content filters, which compress a file inside the image, are libisofs's, and
+  come from that port's own `--enable-zlib`.
 - `--disable-libjte` — Build without libjte, which writes the Jigdo template and checksums of an
   image as it is made. libjte is not in the tree; libisofs is built `--disable-libjte` as well.
 - `--disable-libcdio` — Drive optical drives through libburn's own Linux SCSI code rather than
@@ -41,12 +43,13 @@ expects cdrtools' or cdrkit's command finds a compatible one.
   default, and banned under setuid as well.
 - `-j1` — Run the install with one job, overriding the tree's parallel `MAKEFLAGS` for that one
   invocation, as the [libburn](#port-libburn) and [libisofs](#port-libisofs) ports do; see
-  [A parallel install race](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/build-troubleshooting.md#a-parallel-install-race).
+  [A parallel install race](../../../../docs/kdos/05-developer/build-troubleshooting.md#a-parallel-install-race).
 
 ## Notes
-readline, acl and zlib are all probes that switch their feature off without a word when the
-library is missing, so the `depends` line is what keeps line editing, ACLs and zisofs in this
-build: removing a dependency there changes the program and the build still succeeds.
+The readline probe switches line editing off without a word when the library is missing, so
+readline in `depends` is what keeps it: removing it changes the program and the build still
+succeeds. ACLs and zisofs follow libisofs's build, not this one's; removing acl or zlib here only
+drops a link.
 
 A change to how `xorriso` lays out the volume is a change to the boot medium. `110_iso.sh`
 checks the finished image for an EFI system partition, an MBR boot signature and a non-empty MBR

@@ -28,17 +28,16 @@
  *
  *   - EVERY REQUEST IS ANSWERED. Response 0 is success, 1 is cancelled, 2 is
  *     an error — and a request that is simply not replied to leaves the
- *     application blocked forever with a half-drawn window. This is the same
- *     lesson as the ScreenCast zero-streams trap, arriving on a different
- *     interface.
+ *     application blocked forever with a half-drawn window.
  *   - `parent_window` IS PASSED ON AND NEVER PARSED FURTHER. The string an
  *     application sends is `wayland:<xdg-foreign handle>`; this strips the
  *     scheme and hands the handle to `kdos-pick --parent`, which imports it
  *     and tells the compositor whose child the dialog is. A CLIENT CANNOT
  *     PLACE ITS OWN TOPLEVEL, so this is the only route there is: the
  *     compositor centres a child on its parent. An `x11:` handle is dropped —
- *     there is no X server here — and so is anything with no scheme, because
- *     a bare string is not a handle this desktop minted.
+ *     the chooser can import only an xdg-foreign handle, and an X window id
+ *     is not one — and so is anything with no scheme, because a bare string
+ *     is not a handle this desktop minted.
  *   - THE CHOOSER IS EXEC'D WITH argv, never a command string. Filter patterns
  *     and file names arrive from other applications over a bus.
  * ---------------------------------
@@ -168,7 +167,7 @@ static struct pending *pendings;
 
 /*
  * Fork kdos-pick and register it. The read and the wait happen later and in
- * that order, which is the rule this file has always had: a chooser that
+ * that order, and the order is a rule: a chooser that
  * printed more than a pipe buffer would block in write() while this blocked in
  * waitpid(), and neither would ever move.
  */
@@ -200,7 +199,7 @@ static int start_picker(const char *const argv[], sd_bus_message *call,
 	 * NON-BLOCKING, and this is not belt and braces: `pending_read` drains
 	 * until EOF or EAGAIN, and on a blocking pipe the read AFTER the one
 	 * poll() promised would block until the chooser wrote again or exited
-	 * — which is the whole thing this rewrite exists to stop doing.
+	 * — and the whole bus loop with it.
 	 */
 	fcntl(fds[0], F_SETFL, O_NONBLOCK);
 
@@ -255,11 +254,12 @@ static void pending_free(struct pending *p)
  *   a(sa(us))  — a list of (label, list of (kind, pattern))
  * where kind 0 is a glob and kind 1 is a MIME type.
  *
- * Only the FIRST filter is applied and only its globs. kdos-pick takes one
- * filter, and a MIME type cannot be matched without a shared-mime-info lookup
- * that this process has no business doing — a filter that silently matched
- * nothing would be worse than one that is not applied, so a MIME-only filter
- * is dropped and the chooser shows everything.
+ * Only the first filter that carries a glob is applied, and only its globs.
+ * kdos-pick takes one filter, and a MIME type cannot be matched without a
+ * shared-mime-info lookup that this process has no business doing — a filter
+ * that silently matched nothing would be worse than one that is not applied,
+ * so a MIME-only filter is skipped, and when every filter is MIME-only the
+ * chooser shows everything.
  */
 static int read_first_filter(sd_bus_message *m, char *out, size_t len)
 {
@@ -272,9 +272,9 @@ static int read_first_filter(sd_bus_message *m, char *out, size_t len)
 	 *
 	 * sd_bus_message_exit_container() fails with -EINVAL on a container that
 	 * is only partly consumed, and the caller then abandons the rest of the
-	 * options dictionary — so a request carrying `filters` followed by
-	 * `current_folder` lost the folder, and a second filter entry made the
-	 * whole OpenFile fail. Keep the first match, skip the remainder.
+	 * options dictionary — so stopping early would lose every option after
+	 * `filters`, such as `current_folder`, and fail the whole OpenFile on a
+	 * second filter entry. Keep the first match, skip the remainder.
 	 */
 	bool got = false;
 	for (;;) {
@@ -560,9 +560,9 @@ static int method_save_files(sd_bus_message *m, void *userdata, sd_bus_error *er
  * desktop entries, so a boxed app's link opens in the Firefox launcher this
  * desktop generated. What it needs from a back end is a CHOICE: the
  * `org.freedesktop.impl.portal.AppChooser` interface, and the front end
- * exports OpenURI only when a back end provides it. Measured: a back end
- * implementing `impl.portal.OpenURI` — an interface the spec does not have —
- * left every boxed `xdg-open` answering "No such interface".
+ * exports OpenURI only when a back end provides it. A back end implementing
+ * `impl.portal.OpenURI` instead — an interface the spec does not have —
+ * leaves every boxed `xdg-open` answering "No such interface".
  *
  * NO DIALOG. The front end passes the handlers it found, best first, and
  * `last_choice` when the user has picked before; this answers that or the
@@ -857,9 +857,7 @@ static void pending_finish(struct pending *pend)
 	pending_parse(pend, &p);
 
 	uint32_t code;
-	if (pend->kind == PEND_SAVEFILES) {
-		code = (rc == 0 && p.n > 0) ? 0 : 1;
-	} else if (rc == 0) {
+	if (rc == 0) {
 		code = p.n > 0 ? 0 : 1;
 	} else if (rc == 1) {
 		code = 1;
@@ -905,10 +903,11 @@ static int pending_read(struct pending *pend)
  * TWO NAMESPACES, AND A BOXED APPLICATION NEEDS BOTH.
  *
  * `org.freedesktop.appearance` is what libadwaita and every current toolkit
- * reads: `color-scheme` is always 1 — "prefer dark", because KDOS has no light
- * palette and a toolkit told "no preference" picks its own light theme and
- * stands out from everything around it — `accent-color` is a (ddd) of
- * doubles in 0..1, and `contrast` is 0, "no preference": KDOS has no
+ * reads: `color-scheme` is always 1 — "prefer dark", under every accent
+ * including the light `paper` one, so a boxed application draws dark even on
+ * a paper desktop; a toolkit told "no preference" picks its own light theme
+ * and stands out from every dark accent around it — `accent-color` is a (ddd)
+ * of doubles in 0..1, and `contrast` is 0, "no preference": KDOS has no
  * high-contrast switch for it to report, and every accent already holds the
  * contrast floors libkcolor's self-test asserts.
  *
@@ -935,9 +934,8 @@ static int pending_read(struct pending *pend)
 
 /* The accent table is KCOL_SCHEMES expanded at compile time — the X-macro,
  * not libkcolor's object code, so this process still links sd-bus and nothing
- * else. The previous version carried a hand-copied table and two of its four
- * entries were wrong: an app honouring accent-color wore a colour the desktop
- * never was. */
+ * else. A hand-copied table drifts from libkcolor's, and an app honouring
+ * accent-color then wears a colour the desktop never is. */
 static const struct {
 	const char *name;
 	uint32_t primary;
@@ -1184,8 +1182,8 @@ out:
  *
  * WITHOUT THIS THE PORTAL IS A LOOKUP NOBODY REPEATS: a toolkit reads the
  * settings once at startup and then waits for this signal, so an accent
- * switched while a boxed application is open reached the next launch and never
- * that window.
+ * switched while a boxed application is open would reach the next launch and
+ * never that window.
  */
 static int theme_watch = -1;
 
@@ -1200,12 +1198,23 @@ static void theme_watch_open(void)
 	if (!slash)
 		return;
 	*slash = '\0';
+	/* Create the directory before watching it: a fresh home has no
+	 * ~/.cache, a watch on a missing directory fails, and the first
+	 * `kdos theme` of the session would then send no SettingChanged.
+	 * An existing directory is EEXIST and left as it is. */
+	{
+		char *sep = strrchr(path, '/');
+
+		if (sep && sep != path) {
+			*sep = '\0';
+			(void)mkdir(path, 0700);
+			*sep = '/';
+		}
+		(void)mkdir(path, 0700);
+	}
 	theme_watch = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
 	if (theme_watch < 0)
 		return;
-	/* A directory that does not exist yet is not an error: nothing has
-	 * switched the accent on this machine, and the default is what every
-	 * reader above already answers. */
 	if (inotify_add_watch(theme_watch, path,
 			      IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE) < 0) {
 		close(theme_watch);
@@ -1280,11 +1289,14 @@ static const sd_bus_vtable file_chooser_vtable[] = {
 };
 
 /*
- * `version` is a property the front end reads to decide which methods exist.
- * OpenDirectory arrived in version 3, and all three are implemented here — so
- * 3 is the honest answer and not a claim. A getter rather than an offset: with
- * a NULL getter sd-bus reads the value out of the vtable's userdata, which is
- * NULL here, and the read is a crash rather than a wrong number.
+ * `version` is the AppChooser property the front end reads to decide which
+ * methods and options the back end has; ChooseApplication and UpdateChoices
+ * are both implemented here. It is 2, the version the installed
+ * org.freedesktop.impl.portal.AppChooser.xml describes: a number above the
+ * interface the front end was built against promises options it never sends.
+ * A getter rather than an offset: with a NULL getter sd-bus reads the value
+ * out of the vtable's userdata, which is NULL here, and the read is a crash
+ * rather than a wrong number.
  */
 static int prop_version(sd_bus *bus, const char *path, const char *iface,
 			const char *prop, sd_bus_message *reply, void *userdata,
@@ -1292,7 +1304,7 @@ static int prop_version(sd_bus *bus, const char *path, const char *iface,
 {
 	(void)bus; (void)path; (void)iface; (void)prop; (void)userdata;
 	(void)err;
-	return sd_bus_message_append(reply, "u", (uint32_t)3);
+	return sd_bus_message_append(reply, "u", (uint32_t)2);
 }
 
 static const sd_bus_vtable app_chooser_vtable[] = {
@@ -1331,7 +1343,7 @@ int main(int argc, char **argv)
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--version")) {
-			printf("xdg-desktop-portal-kdos 0.1.0\n");
+			printf("xdg-desktop-portal-kdos 0.3.0\n");
 			return 0;
 		}
 		fprintf(stderr, "usage: xdg-desktop-portal-kdos\n");

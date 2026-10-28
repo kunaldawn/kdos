@@ -90,9 +90,10 @@ set_bool(const char *where, int lineno, const char *value, bool *out)
 }
 
 /*
- * The pre-fork schema put the binding IN the key — `bind Super+Return = spawn
- * foot` — so the key of a line worth naming is `bind Super+Return`, not
- * `bind`. An exact compare here matched nothing anyone had actually written.
+ * A keybind written in comp.conf puts the binding IN the key — `bind
+ * Super+Return = spawn foot` — so the key of a line worth naming is
+ * `bind Super+Return`, not `bind`. An exact compare here would match
+ * none of them.
  */
 static bool
 first_word_is(const char *key, const char *word)
@@ -206,13 +207,14 @@ conf_line(const char *key, char *value, const char *path, int lineno)
 		set_bool(path, lineno, value, &c->clipboard);
 	} else if (!strcmp(key, "panel_bottom")) {
 		/*
-		 * Retired with the two-panel layout. Reported by name rather
-		 * than ignored: the shipped comp.conf promises that a line
-		 * which does not take effect says so, and a key that silently
-		 * stopped meaning anything is indistinguishable from a typo.
+		 * Not a setting: there is one taskbar, placed by `panel`.
+		 * Reported by name rather than ignored: the shipped comp.conf
+		 * promises that a line which does not take effect says so, and
+		 * a key that silently means nothing is indistinguishable from
+		 * a typo.
 		 */
-		wlr_log(WLR_INFO, "%s:%d: `panel_bottom` is retired — there is "
-			"one taskbar now; use `panel = bottom|top|off`",
+		wlr_log(WLR_INFO, "%s:%d: `panel_bottom` is not a setting; "
+			"use `panel = bottom|top|off`",
 			path, lineno);
 	} else if (!strcmp(key, "desktop_icons")) {
 		set_bool(path, lineno, value, &c->desktop_icons);
@@ -279,13 +281,14 @@ conf_line(const char *key, char *value, const char *path, int lineno)
 			|| first_word_is(key, "workspaces")
 			|| first_word_is(key, "mouse")) {
 		/*
-		 * The pre-fork schema. Saying where it went beats both
-		 * alternatives: silence leaves a keybind that stopped working
-		 * with nothing to read, and honouring it would be a second
-		 * place to configure what rc.xml already owns.
+		 * Keybinds, autostart, workspaces and the mouse belong to
+		 * rc.xml. Saying where they go beats both alternatives:
+		 * silence leaves a keybind that does nothing with nothing to
+		 * read, and honouring it would be a second place to configure
+		 * what rc.xml already owns.
 		 */
-		wlr_log(WLR_INFO, "%s:%d: `%s` is rc.xml's since the labwc "
-			"fork — see ~/.config/kdos-comp/rc.xml; ignored here",
+		wlr_log(WLR_INFO, "%s:%d: `%s` belongs in "
+			"~/.config/kdos-comp/rc.xml; ignored here",
 			path, lineno, key);
 	} else {
 		/*
@@ -314,7 +317,9 @@ kdos_conf_load(void)
 	 * at a period nothing on the screen shares, so text that is drawn
 	 * two-colour and crisp arrives striped. `crt_scanlines = 60` in
 	 * comp.conf is the shipped strength for anyone who wants them back.
-	 * Curvature stays off for the same reason it always did.
+	 * Curvature is off too: it bends the same grid, forces a software
+	 * cursor and the whole-frame shader run, and keeps a fullscreen
+	 * window from scanning out while the pointer is on it.
 	 */
 	c->crt = 55;
 	c->crt_scanlines = 0;
@@ -422,7 +427,7 @@ kdos_conf_reload(void)
 			|| old.panel_margin != kdos_conf.panel_margin
 			|| old.panel_opacity != kdos_conf.panel_opacity) {
 		wlr_log(WLR_INFO, "comp.conf: panel/panel_cells/icons/slit/"
-			"desktop_icons/panel_autohide/panel_margin/"
+			"clipboard/desktop_icons/panel_autohide/panel_margin/"
 			"panel_opacity changed — applies at the next login");
 		kdos_conf.panel_edge = old.panel_edge;
 		kdos_conf.panel_cells = old.panel_cells;

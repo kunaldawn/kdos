@@ -10,7 +10,7 @@
 | ipp          open       sharing a printer with CUPS  |
 | smb          closed     sharing files over SMB       |
 | kiwix        closed     kiwix-serve                  |
-| mdns         closed     mDNS beyond the default rule |
+|                                                      |
 |                                                      |
 |                                                      |
 |                                                      |

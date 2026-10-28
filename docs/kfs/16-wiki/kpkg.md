@@ -2,8 +2,8 @@
 
 [`kpkg`]{.idx} is the [package manager]{.idx} of KDOS. The build uses it to make every package from its
 port, and the same program is on every installed system and on the live medium, where it lists
-what is installed, says which package owns a file, checks the installed files against what was
-installed, removes packages, and builds and installs a port from the recipe tree at `/ports`. This
+what is installed, checks the installed files against what was installed, removes packages, and
+builds and installs a port from the recipe tree at `/ports`. This
 page is about that second use, on a running machine. Updating the whole system is
 [Updating](updating.md); rebuilding a port with a recipe of your own is
 [Local rebuilds and kdos march](local-rebuilds-and-march.md). What `kpkg install` does step by step
@@ -28,8 +28,8 @@ The five names, each dispatching on the name it was run under:
 | `kpkgdepends` | Prints the resolved install order, and nothing else |
 
 Every image carries the recipe tree at `/ports`: each port's `kpkgbuild`, `build.sh` and patches,
-`ports/shelves`, `ports/sources.idx`, and KDOS's own programs under `/ports/src`, with no source
-archive ([105_ports](../15-image/105-ports.md) stages it). The trust ring for prebuilt packages,
+`ports/shelves`, `ports/sources.idx`, and KDOS's own programs under `/ports/src`, with no upstream
+source archive in it ([105_ports](../15-image/105-ports.md) stages it). The trust ring for prebuilt packages,
 [`/etc/kdos/keys/`]{.idx term="/etc/kdos/keys"}, comes from the base filesystem, `fs/etc/kdos/keys/`.
 
 `kpkg` needs no service. It downloads sources with `curl`, which the [curl](#port-curl) port
@@ -65,8 +65,8 @@ Each directory `PORT_REPO` names is searched for a port at `<name>/` and one she
 edit it by hand. For each installed package it holds `<name>` (the version and release, then every path the
 package owns), and `.recipe/<name>`, `.pkgsha/<name>` and `.files/<name>` beside it;
 [The database entry](../04-chroot/kpkg-install.md#the-database-entry) shows the four files of one
-package, and [Files kpkg keeps to itself](../../kdos/03-architecture/packaging.md#files-kpkg-keeps-to-itself)
-lists the rest.
+package, and [`/var/lib/kpkg/`](../../kdos/06-reference/filesystem-and-ipc.md#varlibkpkg--the-host-package-database)
+says what each file and the lock beside them hold.
 
 ### /etc/kdos/keys/
 
@@ -84,7 +84,8 @@ The settings that change what `kpkg` does, rather than where its trees are, are 
 environment only. Two matter on a running machine: `KPKG_FETCH=1`, which lets a build download the
 sources it lacks, and `KPKG_REQUIRE_SIG=1`, which refuses any package file without a good
 signature. `KPKG_CONF` names another configuration file and `KPKG_KEYRING` another trusted-key
-directory. Every variable is in the table under
+directory. `kpkg binhost` also reads the compiler variables `CC`, `CFLAGS`, `CXXFLAGS`, `LDFLAGS`
+and `KDOS_TARGET`; see [Using a binary host](#using-a-binary-host). Every variable is in the table under
 [kpkg](../../kdos/03-architecture/packaging.md#kpkg); the image sets none of them.
 
 ## Usage
@@ -153,7 +154,8 @@ the SHA-256 and mode of every regular file it placed.
 2. Read the findings. `missing`, `changed` and `mode` lines are faults and make the exit status 1;
    a `config` line is a file under `/etc` that someone edited, and an `unowned` line (with `--all`)
    is a file under `/usr` or `/opt` that no package claims. Neither of the last two changes the
-   exit status. Each line names the package first, and the last line counts them:
+   exit status. A package that is not installed, or a usage error, exits 2. Every line but an
+   `unowned` one names the package first, and the last line counts them:
 
    ```text
    libvirt: config ./etc/libvirt/qemu/networks/default.xml
@@ -245,7 +247,7 @@ sudo kpkg remove pv
 ```
 
 `kpkg remove` is `kpkgdel`. It removes the files in the package's manifest that no other package
-claims, and every directory of it that no other package's files still occupy. It does not check
+claims, and every directory of it that is left empty. It does not check
 reverse dependencies: `kpkg remove bash` removes bash. Before removing a library, list the recipes
 whose `depends =` names it:
 
@@ -264,44 +266,69 @@ A package file built elsewhere, by `kpkgbuild` or kept in `/var/cache/kpkg/packa
 sudo kpkgadd /media/stick/pv-<version>-<release>.tar.xz
 ```
 
-When a `.sig` file lies beside the package, `kpkgadd` verifies it against `/etc/kdos/keys/` and
-refuses one that does not verify. A package with no `.sig` is installed, unless `KPKG_REQUIRE_SIG=1`
-is set, when it is refused with `<file>: signature check FAILED — not installing`.
+When a `.sig` file lies beside the package and `/etc/kdos/keys/` holds a key, `kpkgadd` verifies
+it and refuses a package whose signature does not verify. A package with no `.sig`, or a `.sig`
+with no key in the ring to check it, is installed, unless `KPKG_REQUIRE_SIG=1` is set, when it is
+refused with `<file>: signature check FAILED — not installing`.
 
 ### Using a binary host
 
 A [binary host]{.idx} is a directory of prebuilt packages with a signed index, `PACKAGES`. KDOS
-publishes none; a build machine can write one with `make build KDOS_MAKE_BINHOST=1`, which
-[010_binhost](../15-image/010-binhost.md) indexes.
+publishes none; a build machine writes one to `build/binhost/` with
+`make build KDOS_MAKE_BINHOST=1`, which [010_binhost](../15-image/010-binhost.md) indexes and
+signs, putting the public key beside the index as `kdos-binhost.pub`. A medium built with
+`KDOS_ISO_SOURCES=1` as well carries that directory at `/mnt/iso/sources/binhost`.
 
-1. On the build machine, make a signing key once, and give the public half to the machines that
-   should trust it. It writes `builder.key`, mode `0600`, and `builder.pub` into the current
-   directory, and prints the key's id:
+1. Have a public key for the index. For a binary host the build wrote, it is `kdos-binhost.pub`
+   in the same directory. For a directory of packages of your own, make a key once and sign the
+   index with it; `kpkg keygen` writes `builder.key`, mode `0600`, and `builder.pub` into the
+   current directory and prints the key's id:
 
    ```bash
    kpkg keygen builder
+   kpkg index /mnt/binhost --sign builder.key
    ```
 
-2. On each client, trust the key by copying it into the ring:
+2. On each client, trust the key by copying its public half into the ring (`builder.pub` for a
+   key of your own):
 
    ```bash
-   sudo cp builder.pub /etc/kdos/keys/
+   sudo cp /mnt/binhost/kdos-binhost.pub /etc/kdos/keys/
    ```
 
-3. Check the index, then install a package from it:
+3. Check the index:
 
    ```bash
    kpkg verify-index /mnt/binhost
-   sudo kpkg binhost /mnt/binhost zlib
    ```
 
+4. Install a package from it, with the compiler variables the index was written under. The
+   build-configuration hash `kpkg binhost` compares is taken from `CC`, `CFLAGS`, `CXXFLAGS`,
+   `LDFLAGS` and `KDOS_TARGET` in its own environment, with the version `$CC -dumpversion`
+   prints. A binary host the build wrote was indexed under `script/env/chroot.env` of the tree
+   that built it, which sets `CC=gcc` and the three flag variables and leaves `KDOS_TARGET` unset.
+   Export those values, copied from that file, and pass them through `sudo`:
+
+   ```bash
+   sudo env CC="$CC" CFLAGS="$CFLAGS" CXXFLAGS="$CXXFLAGS" LDFLAGS="$LDFLAGS" \
+       kpkg binhost /mnt/binhost zlib
+   ```
+
+   Typed at a shell with none of them set, every package is answered with
+   `==> <name>: different build config (<hash>... vs <hash>...) — build from source`.
+
 `kpkg binhost` uses a package only when its architecture, its build-configuration hash and its
-[recipe hash]{.idx} all equal this machine's. It exits 0 when it used the package, 1 when nothing matched
-(build from source instead), and 2 when it refused: no index (`ERROR: no index at
-<dir>/PACKAGES`), no trusted key, or a failed verification. `--dry-run` says what it would do. As
-shipped the ring is empty, so until step 2 `kpkg verify-index` answers
+[recipe hash]{.idx} all equal this machine's. It installs the one package named and nothing it
+depends on, and records the recipe hash it matched, as `kpkg install` records the hash of what it
+built. The full form is `kpkg binhost [--root <path>] <dir> <port> [--dry-run] [--insecure]`;
+`--root` installs into another root, as it does for `kpkg install`. An option it does not know, or
+a second port, is refused with exit 1. It exits 0 when it used the package, 1 when nothing matched
+(build from source instead), and 2 when it refused: no index (`ERROR: no index at <dir>/PACKAGES`), no trusted key, a
+failed verification, or a package whose checksum does not match the index. `--dry-run` says what
+it would do. As shipped the ring is empty, so until step 2 `kpkg verify-index` answers
 `ERROR: no trusted keys in /etc/kdos/keys` and exits 2. See
-[The binary host](../../kdos/03-architecture/packaging.md#the-binary-host).
+[The binary host](../../kdos/03-architecture/packaging.md#the-binary-host) and
+[`B:` — the build-config hash](../../kdos/03-architecture/packaging.md#b--the-build-config-hash).
 
 ### On the live medium
 
@@ -312,8 +339,8 @@ build on the live medium also compiles into RAM: `/var/cache/kpkg/work` is on th
 
 ## Tips
 
-- `kpkg help` prints the full command list. It also lists `update`, which `kpkg` does not
-  implement; the system is updated with `kdos update` ([Updating](updating.md)).
+- `kpkg help` prints the full command list. `kpkg` has no update command; the system is updated
+  with `kdos update` ([Updating](updating.md)).
 - `kpkg install --root DIR <port>` installs into another root, such as a mounted target or a
   second slot, and `kpkg list --root DIR` lists one.
 - `kpkg check` reads the record taken after the package's install hook ran, so a mode a hook sets
@@ -370,8 +397,8 @@ build on the live medium also compiles into RAM: `/var/cache/kpkg/work` is on th
   [Local rebuilds and kdos march](local-rebuilds-and-march.md#troubleshooting).
 
 `kpkg check` reports `changed` files under `/usr`
-: Something wrote over a package's file. Rebuild that package with `kpkg install -f`, and find what
-  wrote it before trusting the root.
+: Something wrote over a package's file. Rebuild that package with
+  `sudo env KPKG_FETCH=1 kpkg install -f <name>`, and find what wrote it before trusting the root.
 
 A `kpkg install` or `kpkg remove` waits and never finishes
 : Another `kpkgadd` or `kpkgdel` holds the database's lock, `/var/lib/kpkg/db/.lock`. Find it with
@@ -380,7 +407,6 @@ A `kpkg install` or `kpkg remove` waits and never finishes
 ## Known gaps
 
 - [There is no public binary host](../../kdos/06-reference/known-gaps.md#there-is-no-public-binary-host)
-- [A tzdata upgrade can reset the time zone to UTC, once](../../kdos/06-reference/known-gaps.md#a-tzdata-upgrade-can-reset-the-time-zone-to-utc-once)
 - `kpkg help` lists an `update` command that does not exist; see
   [Packaging](../../kdos/06-reference/command-index.md#packaging) in the command index.
 

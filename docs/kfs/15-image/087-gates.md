@@ -6,7 +6,7 @@ package it never declared, a script whose interpreter is not installed, a [deskt
 program is missing, a link into a package that was swept. `script/phases/70_image/087_gates.sh`
 runs three checks over the tree that is about to become the image, and stops the phase on their
 findings, before the initramfs and the ISO are written; the first check stops it only for what it
-finds under the documentation directories.
+finds under the four directories that hold manuals, documentation and translations.
 
 ## The step
 
@@ -60,8 +60,9 @@ The exact rules of each, their exemptions and how to run them by hand are in
 
 `unowned.py` prints a `FAIL unowned` line for each path it stops on, `linkcheck.py` a `FAIL` line
 for each finding, and `entrycheck.py` a line naming the kind of finding (`link`, `exec`, `icon` or
-`udev`) and a count of each at the end. All three are in the step's log under
-`build/logs/70_image/`. The fix is usually in a recipe: a missing `depends`, a package that
+`udev`) and a count of each at the end. All three are in the step's log,
+`build/logs/70_image/<NNNN>_gates.sh.log` (see
+[Step logs](../../kdos/05-developer/build-system.md#step-logs)). The fix is usually in a recipe: a missing `depends`, a package that
 installs a link to a file it does not ship, a desktop entry naming the wrong program, a build
 that installs a manual outside its package. Rebuild
 the port, then run the image phase again; nothing earlier needs to run:

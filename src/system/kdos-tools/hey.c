@@ -281,12 +281,11 @@ static int list_table(const char *reply)
 	if (!reply_ok(reply, p))
 		return 1;
 
-	/* THE BOX COLUMN IS NOT TRUNCATED. It was `%-12.12s`, and a box is
-	 * named after its pack — `app.gnome-mines`, `app.libreoffice` — so
-	 * every name past twelve characters came out cut, and anything
-	 * matching on the box (the app sweep, a script) found nothing for
-	 * exactly the half of the catalogue with the longer names. An
-	 * identifier is printed whole; a wide one widens the column. */
+	/* THE BOX COLUMN IS NOT TRUNCATED. A box is named after its pack —
+	 * `app.gnome-mines`, `app.libreoffice` — and a cut name makes
+	 * anything matching on the box (the app sweep, a script) find
+	 * nothing for every app with a longer name. An identifier is
+	 * printed whole; a wide one widens the column. */
 	printf("  %3s %3s %-6s %-22s %-20s %s\n", "id", "ws", "state", "app_id",
 	       "box", "title");
 	int n = 0;

@@ -19,8 +19,9 @@ and then `configure --enable-maintainer-mode` with the arguments given to it, wh
   configure that `autogen.sh` generates refuses to run.
 - `--enable-python` — Use Python in the build, and stop configure when no Python is found. The
   build runs `modules/arch/x86/gen_x86_insn.py` to generate `x86insn_nasm.gperf`,
-  `x86insn_gas.gperf` and `x86insns.c`; without Python the makefile copies those files from the
-  source tree instead, and the tag archive does not have them. [python3](#port-python3) is in
+  `x86insn_gas.gperf` and `x86insns.c`; without Python the makefile copies the two `.gperf`
+  files from the source tree instead and has no rule for `x86insns.c`, and the tag archive has
+  none of the three. [python3](#port-python3) is in
   `depends` for this.
 - `--disable-python-bindings` — Build no Python module for libyasm. This is configure's
   default, so the switch only states it; the bindings would also need Cython and the Python

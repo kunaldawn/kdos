@@ -5,7 +5,7 @@
 
 # ─────────────────────────────────────────────────────────────────────────
 # tile — the tiled-state transition
-#   src/view.c view_snap_to_edge(), lines 2105-2175
+#   src/view.c view_snap_to_edge(), libkwm kwm_tile_next()
 #
 # tile <current> <edge> <combine> <across> -> <new>
 #
@@ -73,7 +73,7 @@ tile T  T 1 1 -> B  @adjacent
 
 # ─────────────────────────────────────────────────────────────────────────
 # geom — a tiled state becomes a rect
-#   src/view.c view_get_edge_snap_box(), lines 480-519
+#   src/view.c view_get_edge_snap_box(), libkwm kwm_tile_geom()
 #
 # geom <usable x,y,w,h> <gap> <margin l,t,r,b> <tiled> -> <x,y,w,h>
 #
@@ -136,7 +136,7 @@ geom 0,0,1920,1080 8 1,26,1,1 TL -> 9,34,946,501
 
 # ─────────────────────────────────────────────────────────────────────────
 # place — where a new window lands
-#   src/placement.c placement_find_best(), lines 400-560
+#   src/placement.c placement_find_best(), libkwm kwm_place()
 #
 # place <usable x,y,w,h> <gap> <margin l,t,r,b> <w>x<h> [<x,y,w,h> ...] -> <x,y>
 #
@@ -149,8 +149,8 @@ geom 0,0,1920,1080 8 1,26,1,1 TL -> 9,34,946,501
 # Only cases whose answer is determinate by inspection are recorded here. The
 # convolution's tie-breaking depends on iteration order over the grid, and a row
 # asserting a hand-simulated result would be asserting my arithmetic rather than
-# the compositor's. libkwm PORTS this algorithm rather than reimplementing it,
-# and these rows are what prove the port did not change its boundaries.
+# the compositor's. libkwm carries this algorithm unchanged, and these rows pin
+# its boundaries.
 # ─────────────────────────────────────────────────────────────────────────
 
 # No other windows: build_grid() returns early on nviews < 1, so the default

@@ -6,7 +6,7 @@ sleep key, the touchpad, docks over [Thunderbolt]{.idx}, and the power settings 
 Suspend itself, TLP and thermald are on [Power management](power-management.md), external
 monitors on [Displays and scaling](displays-and-scaling.md), and locking on
 [Screen lock](screen-lock.md). Most of what is here is done by the compositor and the panel inside
-the desktop session; nothing below the session watches the lid, the keys or the battery.
+the desktop session; nothing below the session acts on the lid, the keys or the battery.
 
 ## Installation
 
@@ -54,9 +54,11 @@ with `fs/etc/udev/rules.d/70-kdos-backlight.rules`. The same file covers the key
 
 <!-- kfs:include fs/etc/udev/rules.d/70-kdos-backlight.rules lines=27-31 pin=a30da97566e9 -->
 
-### The power button and the sleep key
+### The power and sleep key bindings
 
-The kernel reports both as keys, and only the compositor listens for them:
+The kernel reports the power button and the sleep key as keys, and only the compositor listens for
+them; what each press does is under
+[The power button and the sleep key](#the-power-button-and-the-sleep-key):
 
 <!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=482-494 pin=6e4bd601eb1e -->
 
@@ -80,7 +82,7 @@ settings as a commented template:
 
 ### Charge thresholds
 
-On laptops whose firmware supports it, TLP can stop charging below 100 per cent.
+On laptops whose firmware supports it, TLP can stop charging short of 100 per cent.
 `START_CHARGE_THRESH_BAT0` and `STOP_CHARGE_THRESH_BAT0` in a drop-in under [`/etc/tlp.d/`]{.idx term="/etc/tlp.d"} set the
 thresholds; no file ships with them set. Which vendors TLP supports is upstream's list, in
 `/usr/share/tlp/bat.d/`.
@@ -95,16 +97,18 @@ thresholds; no file ships with them set. Which vendors TLP supports is upstream'
 3. `kdos-res` and its Batteries page show the charge in watt-hours, the health (full-charge energy
    as a share of the design energy), the cycle count and the present draw.
 4. From a prompt: `cat /sys/class/power_supply/BAT0/capacity /sys/class/power_supply/BAT0/status`.
-   The battery's name may differ; `ls /sys/class/power_supply` lists them. A machine with neither
-   a battery nor a mains supply the kernel can see, such as a virtual machine, has none, and
-   `kdos notify --battery` then says *No battery*.
+   The battery's name may differ; `ls /sys/class/power_supply` lists them. On a machine whose
+   kernel reports no battery, such as a virtual machine, `kdos notify --battery` says *On mains*
+   when it sees a mains supply and *No battery* when it sees neither.
 
 ### Choosing what the lid does
 
 1. Edit `~/.config/kdos/comp.conf` and set `lid_close = suspend`, `lock` or `off`.
 2. Reload the compositor: `kdos-comp -r`. Settings' Session page writes the same key.
-3. Check: `grep lid_close "$XDG_RUNTIME_DIR/kdos-comp.log"` shows the policy the compositor
-   started with, and says when it is the virtual-machine default.
+3. Check: close the lid. The compositor logs each close with the policy it applied, such as
+   `lid closed — locking (lid_close = lock)`, in `$XDG_RUNTIME_DIR/kdos-comp.log`. The
+   `lid_close = …` line near the top of that log is the policy the session started with, and says
+   when it is the virtual-machine default; a reload does not write it again.
 
 ### Brightness
 
@@ -247,10 +251,10 @@ libfprint drives no reader on this machine; `lsusb` shows whether one is plugged
 - [The device groups and the udev rules](../../kdos/02-user-guide/administration.md#the-device-groups-and-the-udev-rules):
   the backlight rule
 - [Thunderbolt, phones, smart cards and firmware updates](../../kdos/02-user-guide/administration.md#thunderbolt-phones-smart-cards-and-firmware-updates)
-- `power-management.md`: [Power management](power-management.md)
-- `screen-lock.md`: [Screen lock](screen-lock.md)
-- `displays-and-scaling.md`: [Displays and scaling](displays-and-scaling.md)
-- `microcode-and-firmware.md`: [Microcode and firmware](microcode-and-firmware.md)
+- [Power management](power-management.md): suspend, TLP and thermald
+- [Screen lock](screen-lock.md): what locks the session and how to unlock it
+- [Displays and scaling](displays-and-scaling.md): external monitors and their brightness
+- [Microcode and firmware](microcode-and-firmware.md): CPU microcode, device firmware and `fwupd`
 
 <!-- book-nav -->
 ---

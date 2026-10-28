@@ -6,7 +6,7 @@ AsciiDoc manual into a manual page, `asciidoctor`, is built in `31_compilers`. c
 `ENABLE_DOCUMENTATION` switch builds the HTML manual and the page together and has no
 manual-page-only form, so the `ccache` port turns it off and this port, in the later phase, builds
 the page from the same tarball (see
-[Manual pages](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#manual-pages)).
+[Manual pages](../../../../docs/kdos/05-developer/writing-ports.md#manual-pages)).
 
 ## Flags
 

@@ -31,7 +31,8 @@ links against the OpenSSL 3 runtime that [openssl3](#port-openssl3) installs (se
 - `-confirm-license` — with `-opensource`: accept the open-source licence without the interactive
   question.
 - `-optimized-qmake` — upstream's other name for `-optimized-tools`: build `qmake` and the other
-  host tools optimised even in a debug build, which upstream does not do by default.
+  host tools optimised even in a debug build. This build is `-release`, which optimises them
+  already, so the switch changes nothing here; configure reports it as not useful in release mode.
 - `-archdatadir /usr/lib/qt5` — with `-bindir`, `-libexecdir`, `-plugindir`, `-importdir`,
   `-qmldir`, `-headerdir`, `-datadir`, `-translationdir`, `-docdir` and `-examplesdir`: every
   Qt 5 path under a `qt5` directory. `-sysconfdir /etc/xdg` is where `QSettings` looks for
@@ -75,16 +76,18 @@ links against the OpenSSL 3 runtime that [openssl3](#port-openssl3) installs (se
   be linked without `BIND_NOW`.
 
 ## Patches
-- `qt5-base-cflags.patch` — makes the GCC mkspecs build their release compile and link flags from the environment's `CPPFLAGS`, `CFLAGS`, `CXXFLAGS` and `LDFLAGS`, and their debug flags from `DEBUG_CFLAGS` and `DEBUG_CXXFLAGS`, when those are set, falling back to upstream's optimisation flag and `-Wl,-O1` only when they are empty. Qt, and every `qmake` project built in the tree's environment, then compile with the tree's flags.
+- `qt5-base-cflags.patch` — makes the GCC mkspecs build their release compile and link flags from the environment's `CPPFLAGS`, `CFLAGS`, `CXXFLAGS` and `LDFLAGS`, and their debug flags from `DEBUG_CFLAGS` and `DEBUG_CXXFLAGS`, when those are set, falling back to upstream's optimisation flag, `-g` and `-Wl,-O1` only when they are empty. Qt, and every `qmake` project built in the tree's environment, then compile with the tree's flags.
 - `lfs64.patch` — makes Qt's POSIX platform header map its file calls to the plain names, `stat`, `open`, `lseek`, `mmap` and the rest, rather than their `*64` forms. musl's `off_t` is 64 bits already, and musl declares the `*64` names only under `_LARGEFILE64_SOURCE`, so code that includes the header would otherwise fail to compile.
 - `egl-x11.patch` — replaces the body of the configure test for EGL on X11, which opens an X display and creates a window, with `return 0;`. The test then passes whenever `EGL/egl.h` and `X11/Xlib.h` compile and link together, and the X11 plugin is built with its EGL integration.
 - `qt-musl-iconv-no-bom.patch` — makes QtCore's iconv codec treat a Linux system without glibc as it treats FreeBSD: name the byte order in the UTF-16 encoding, `UTF-16LE` here, rather than hand iconv a byte order mark to read it from.
 
 ## Notes
 After the install, `build.sh` links every tool in `/usr/lib/qt5/bin` into `/usr/bin` with a
-`-qt5` suffix, such as `moc-qt5` and `uic-qt5`, and links `qmake` itself under its plain name as
-well, since Qt 6 installs only `qmake6`.
+`-qt5` suffix, such as `moc-qt5` and `uic-qt5`; a name with an extension takes the suffix before
+it, so `syncqt.pl` becomes `syncqt-qt5.pl`. It links `qmake` under its plain name as well, since
+Qt 6 puts only `qmake6` in `/usr/bin`.
 
-`qmake`'s bootstrap makefile puts `-g` after every compile flag and reads none of the tree's
-`CFLAGS`, so `build.sh` runs `strip --strip-debug` on the installed `qmake` and fails the build if
-it still carries `.debug_info`.
+`qmake`'s bootstrap makefile puts `-g` on every compile line, and takes its other compile flags
+from the mkspec's plain assignments rather than from the tree's `CFLAGS`, so `build.sh` runs
+`strip --strip-debug` on the installed `qmake` and fails the build if it still carries
+`.debug_info`.

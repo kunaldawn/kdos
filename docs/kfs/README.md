@@ -6,8 +6,10 @@ mechanism is and why it was chosen; this one gives the commands. Where the two m
 links to the other rather than repeating it.
 
 **Edition.** The book tracks the source tree it is rendered from: the edition line on its title
-page names the KDOS version, the commit and that commit's date. The pages published from `main`
-are the development edition; every release attaches the PDF and HTML of its own commit.
+page names the KDOS version, the edition, the commit and that commit's date. A commit carrying a
+`v*` tag renders as the release edition of that tag, and any other commit as the development
+edition; `KDOS_EDITION` names the edition outright. The pages published from `main` are the
+development edition; every release attaches the PDF and HTML of its own commit.
 
 **How it is made.** The chapters of narrative are written by hand under `docs/kfs/`. Every package
 page is generated from its recipe each time the book is rendered, with `make book`, so a page can

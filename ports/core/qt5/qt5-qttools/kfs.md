@@ -10,7 +10,10 @@ libraries. A Qt 5 port that ships translations runs this port's `lrelease` at bu
   library it does not declare.
 - `-feature-assistant` — with `-feature-designer`, `-feature-linguist`, `-feature-qdbus`,
   `-feature-qtpaths`, `-feature-qtdiag`, `-feature-qtplugininfo` and `-feature-pixeltool`: each
-  tool named, so that one that cannot be built stops the configure.
+  tool named. These features carry no condition in the module's configure, so each is on by
+  default and naming it stops nothing: a tool whose Qt module is missing is skipped by
+  `src/src.pro` without an error (Designer, Assistant and pixeltool need QtWidgets, `qdbus`
+  needs QtDBus).
 
 ## Notes
 The switches follow `--` on the `qmake` line: qmake hands everything after it to the module's own

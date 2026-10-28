@@ -24,7 +24,7 @@ that opens it in a terminal as *Log Viewer*.
   as they are.
 
 ## Patches
-- `lnav-tailer-static.patch` — lnav tails a file on a remote host (`lnav user@host:/var/log/syslog`) by copying a small helper, the tailer, over `ssh` and running it there. Upstream embeds `tailer.ape`, a prebuilt Actually Portable Executable checked into the source; the patch builds the tailer from `tailer.main.c` instead, as a static, stripped executable, `tailer.static`, and embeds that. The remote side then runs a binary built by this tree rather than one fetched with the source; being an ordinary static Linux ELF, it runs only on an x86-64 Linux remote.
+- `lnav-tailer-static.patch` — lnav tails a file on a remote host (`lnav user@host:/var/log/syslog`) by copying a helper, the tailer, over `ssh` and running it there: `tailer.main.py` where the remote has `python3`, and otherwise a native executable. Upstream's native tailer is `tailer.ape`, a prebuilt Actually Portable Executable checked into the source; the patch builds it from `tailer.main.c` instead, as a static, stripped executable, `tailer.static`, and embeds that beside the Python one. The remote side then runs a binary built by this tree rather than one fetched with the source; being an ordinary static Linux ELF, it runs only on an x86-64 Linux remote, so a remote of another kind is tailed only where it has `python3`.
 
 ## Notes
 The Rust extension's crates come from a vendor bundle, `lnav-vendor-<version>.tar.xz`. Its

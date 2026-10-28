@@ -12,7 +12,7 @@ module it is built on. The desktop entry calls it Print Settings.
   cups-browsed and this program.
 - `--without-systemdsystemunitdir` — Install no systemd unit. Without the switch configure asks
   pkg-config for systemd's unit directory; KDOS has no systemd (see
-  [No systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd)).
+  [No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)).
 - `--with-xmlto` — Build the manual pages from DocBook with `xmlto`, through
   [docbook-xml](#port-docbook-xml) and [docbook-xsl](#port-docbook-xsl).
 

@@ -10,9 +10,10 @@ build. The one thing this port generates itself is a header of enumerations per 
 `/usr/include/wayland-protocols/<protocol>-enum.h`, which it makes with `wayland-scanner --strict`
 whenever the scanner is installed, and in KDOS it always is.
 
-In KDOS it is a build dependency of every program that speaks an extension:
+In KDOS it is a build dependency of most programs that speak an extension:
 [wlroots](#port-wlroots) and [kdos-comp](#port-kdos-comp) on the server side, the KDOS clients of
-`src/desktop`, and the Wayland backends of the toolkits, Mesa and Xwayland.
+`src/desktop`, the Wayland backends of GTK 3, GTK 4 and SDL 3, Mesa, and [Xwayland](#port-xwayland).
+Qt's Wayland platform and GLFW carry their own copies of the XML they use and do not depend on it.
 
 ## Flags
 

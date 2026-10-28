@@ -5,8 +5,9 @@
 #
 # <tag> is the GitHub release on kunaldawn/kdos that holds the file: sources-<N>,
 # the volume ports/shelves gives the shelf of the first port that names it, or
-# another volume when that one was full. A src-<name> tag is the older layout,
-# one release per shelf, still read until ports/publish --rehome moves the file.
+# another volume when that one was full. A src-<name> tag names a release that
+# holds one shelf's files; it fetches as any other, and ports/publish --rehome
+# moves its files into their volumes.
 # <asset> is the name GitHub stored, which is what the download URL uses:
 # <shelf>--<file>, longer when that is taken, attic--<file> for a file only old
 # history names. The file's own name is <port>/<file>. A file larger than
@@ -1702,6 +1703,7 @@ a77d8b787ba13f685de819348d5146f9f6ec56fd3bcf71e880dfc5e0086d4cb0 sources-2 gis--
 a78e3222e44d12b8b6208845966be70ed56103f70ea909f026cb5ea6a92c883c sources-3 net-diag--bandwhich-vendor-0.23.1.tar.xz bandwhich/bandwhich-vendor-0.23.1.tar.xz
 a7ad45c1e3cec3a2473d37ea9870b6c3baeccc560298623c8eb59265714c06e2 sources-4 python-gui--python3-pyqt6-sip-13.12.0.tar.gz python3-pyqt6-sip/python3-pyqt6-sip-13.12.0.tar.gz
 a7ced37f4102b745ac86d6a70a9da399cc139ff168ba6b8002b4d8d43c900c15 sources-2 gpu--libepoxy-1.5.10.tar.gz libepoxy/libepoxy-1.5.10.tar.gz
+a7d9149cdbe49a4ca49074d5b80ca3afd572bb5f7aa45b1eb15a5bd424ba292d sources-4 toolchain--crubit-0.20260909.tar.gz crubit/crubit-0.20260909.tar.gz
 a7db850025b95ded1eae8a46181a1a6c56c92c96f0e2b005d9ff8dc0210cab44 sources-4 python-net--python3-idna-3.20.tar.gz python3-idna/python3-idna-3.20.tar.gz
 a7e8bcbec0e6f761b4af24f25677626b35f762f68eef79c08677a363212d11f6 sources-1 crypto--mbedtls-3.6.7.tar.bz2 mbedtls/mbedtls-3.6.7.tar.bz2
 a810c95332317bd0017e1ca07e376a8472c79075cbed00fa3737d190a8a0a45a sources-2 editors--neovim-0.12.5.tar.gz neovim/neovim-0.12.5.tar.gz
@@ -2153,6 +2155,7 @@ d0aed49230bc02a65c1e0229e65f34590a4b037ec40d546f32573b467f7551ea sources-3 lang-
 d0d71c40a5f20bcd752bef743e7d713c1500490ff3cc0ae2a709eff639e90345 sources-4 python-libs--python3-hatch-tryton-0.1.1.tar.gz python3-hatch-tryton/python3-hatch-tryton-0.1.1.tar.gz
 d0e4b27d5694ecf5c737be88fea4afb09049686626f112d536f5d9504d5cd7d1 sources-2 gpu--spirv-tools-2026.4.rc2.tar.gz spirv-tools/spirv-tools-2026.4.rc2.tar.gz
 d1008fb78dcae1323ddab664bcb352a61f022b1b131bd8018548e021d975ec7a sources-1 base--less-710.tar.gz less/less-710.tar.gz
+d11d5be1aaa19170061ba707c9e40b57aa1f7bb002572041236c9846274e6648 sources-4 toolchain--crubit-vendor-0.20260909.tar.xz crubit/crubit-vendor-0.20260909.tar.xz
 d14203fb1aae2ad9b3d52f8a0e82aeb10197ef1c9bc61da7f358bd70b00123d5 sources-4 python-libs--python3-orjson-3.12.0.tar.gz python3-orjson/python3-orjson-3.12.0.tar.gz
 d14601572e16ba3472c3373b5856eb30281b997b012763100d247bd15a6b3b7e sources-1 documents--bounds.patch convertlit/bounds.patch
 d14929f910d060932e717e9382425d47c2e7144235a53713d55a94f7de535a4b sources-1 disk--hdparm-9.65.tar.gz hdparm/hdparm-9.65.tar.gz

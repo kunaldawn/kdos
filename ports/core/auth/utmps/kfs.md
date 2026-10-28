@@ -5,8 +5,8 @@ store nothing, so on KDOS these records exist only because of this package. It i
 `libutmps`, which sends each call over a socket, and the two daemons that answer it,
 `utmps-utmpd` and `utmps-wtmpd`, which `/etc/init.d/06_utmps.sh` starts under the supervisor. What
 each daemon keeps, and who may write to it, is in
-[Login records](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/boot-and-init.md#login-records)
-and [utmpd and wtmpd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/daemons.md#utmpd-and-wtmpd).
+[Login records](../../../../docs/kdos/03-architecture/boot-and-init.md#login-records)
+and [utmpd and wtmpd](../../../../docs/kdos/04-programs/daemons.md#utmpd-and-wtmpd).
 
 Every reader and writer of the records must link `libutmps`, because utmps' record layout is not
 musl's: [sysvinit](#port-sysvinit), [util-linux](#port-util-linux), [shadow](#port-shadow),

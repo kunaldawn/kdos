@@ -20,8 +20,9 @@ configuration (see
   [rust](../../../../docs/kdos/05-developer/writing-ports.md#rust)). Here a static link is not even
   possible: the program links the compiler's own `librustc_driver-<hash>.so`.
 - `RUSTC_BOOTSTRAP=1` — let the stable compiler accept the nightly-only `#![feature(...)]`
-  attributes the program's source declares, `rustc_private` and `never_type`. `rustc_private` is
-  what gives it the compiler's internal crates, through which it reads a crate's types.
+  attributes the program and the Crubit crates it is built from declare, among them
+  `rustc_private`, `never_type` and `cfg_accessible`. `rustc_private` is what gives it the
+  compiler's internal crates, through which it reads a crate's types.
 - `--bin cc_bindings_from_rs` — build that one binary target and nothing else of the manifest.
 - `--manifest-path` — the generated manifest of the tool,
   `cargo/cc_bindings_from_rs/cc_bindings_from_rs/Cargo.toml`. The `Cargo.toml` at the top of the
@@ -34,7 +35,7 @@ entries name `librustc_driver-<hash>.so`, whose hash identifies one build of the
 [rust](#port-rust) port. A new version of `rust` leaves the installed program unable to start
 until this port is rebuilt against it.
 
-The commit in `_commit` is meant to be the `CRUBIT_REVISION` that Chromium's
+The commit in `_commit` has to be the `CRUBIT_REVISION` that Chromium's
 `tools/rust/update_rust.py` names. The headers the tool writes include the support library
 installed beside it, and Chromium's build is written against that revision of both, so a version
 change of the `chromium` port reads that line from the new release and moves `_commit` with it.

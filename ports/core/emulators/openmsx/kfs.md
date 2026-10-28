@@ -21,8 +21,9 @@ ROMs from upstream's `Contrib/`, so the emulator starts with no copyrighted ROM.
   copies that upstream's `make 3rdparty` downloads and compiles, its route for binary packages.
 - `CXXFLAGS="${CXXFLAGS/-O2/-O3} -DNDEBUG"` — The makefile starts `CXXFLAGS` empty and never
   reads the environment, so the tree's flags go on the `make` line. There they replace every
-  `CXXFLAGS +=` in the makefile, the opt flavour's `-O3 -DNDEBUG` among them, so this value
-  carries those two back.
+  `CXXFLAGS +=` in the makefile, the opt flavour's `-O3 -DNDEBUG -fomit-frame-pointer` among them,
+  so this value carries the first two back. GCC omits the frame pointer at `-O3` on x86-64
+  without the third.
 - `LDFLAGS="${LDFLAGS//-Wl,/}"` — The makefile also starts `LDFLAGS` empty, and treats it as a
   list of linker arguments, putting `-Wl,` before each word. The tree's flags are passed without
   their own `-Wl,` prefix, so each comes out as one `-Wl,` argument.
@@ -38,8 +39,9 @@ name into `$SRC_ROOT/sdl-shim`, first on `PATH`, that answers `--cflags`, `--lib
 installed.
 
 Beyond the emulation core, the probe builds every component whose libraries it finds: the OpenGL
-renderer through [glew](#port-glew), LaserDisc video through [libtheora](#port-libtheora) and
-[libvorbis](#port-libvorbis), and ALSA MIDI. Each of those libraries is in `depends`, which is all
+renderer through [glew](#port-glew), LaserDisc video through [libogg](#port-libogg),
+[libvorbis](#port-libvorbis) and [libtheora](#port-libtheora), and ALSA MIDI through
+[alsa-lib](#port-alsa-lib). Each of those libraries is in `depends`, which is all
 that keeps a component from being left out with no error.
 
 Upstream ships no desktop entry and installs its icons only under its share directory; `build.sh`

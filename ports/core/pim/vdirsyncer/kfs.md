@@ -5,9 +5,11 @@ the way `mbsync` does it for mail. It is how [khal](#port-khal)'s calendars and
 
 ## Flags
 - `--target` — The first `pip3 install` puts `expandvars` and `hatch-fancy-pypi-readme`, two
-  build backends the bundle's own packages need, into `$SRC_ROOT/backends` and onto
-  `PYTHONPATH`, never into the build root, where their files would belong to no package. See
-  [The three Python keys](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
+  build-time packages that are not ports, into `$SRC_ROOT/backends` and onto `PYTHONPATH`, never
+  into the build root, where their files would belong to no package. `expandvars` is a build
+  requirement of `frozenlist`, `propcache` and `yarl`; no member of the bundle names
+  `hatch-fancy-pypi-readme` in its build requirements. See
+  [The three Python keys](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
 - `aiohappyeyeballs` — The second `pip3 install` names the bundle's runtime members before `.`:
   `aiohappyeyeballs`, `aiohttp`, `aiosignal`, `aiostream`, `frozenlist`, `multidict`,
   `propcache`, `tenacity` and `yarl`, vdirsyncer's asynchronous HTTP stack. Each is built from

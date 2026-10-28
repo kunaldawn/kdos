@@ -17,9 +17,9 @@
  *   ║ Enter connect  p pair  t trust  x remove  Esc Close             ║
  *   ╚═════════════════════════════════════════════════════════════════╝
  *
- * kdos-audio has a read-only bluetooth pane, which answers "is my headset
- * connected" and cannot answer "how do I connect it in the first place".
- * PAIRING IS THE WHOLE POINT, and pairing needs an agent.
+ * kdos-audio's bluetooth pane connects, disconnects and calls Pair(), and
+ * registers no agent, so it can pair only a device that asks for no passkey.
+ * PAIRING ANYTHING ELSE IS THIS PROGRAM, and pairing needs an agent.
  *
  * WITHOUT AN org.bluez.Agent1 A KEYBOARD CANNOT BE PAIRED AT ALL. bluez asks
  * the agent to confirm a passkey and refuses the pairing when nobody answers;
@@ -31,7 +31,7 @@
  * handler REFS the message, returns "handled" without replying, and the reply
  * is sent when the user presses y or n. A handler that sat in its own event
  * loop waiting would stop answering bluez — the same rule
- * xdg-desktop-portal-kdos had to learn about its file chooser, on a different
+ * xdg-desktop-portal-kdos keeps for its file chooser, on a different
  * interface.
  *
  * Everything else is one GetManagedObjects, re-read on a timer, exactly as
@@ -808,8 +808,8 @@ int bt_main(int argc, char **argv)
 		/*
 		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
 		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
-		 * move and no resize in the protocol at all, so every native
-		 * app on this desktop was a rectangle nailed to the screen
+		 * move and no resize in the protocol at all, so a native app
+		 * drawn as one would be a rectangle nailed to the screen
 		 * while every boxed one could be dragged and pulled about. A
 		 * toplevel also gets the compositor's own frame, which is the
 		 * other half of it: the decoration then MATCHES an alien app's

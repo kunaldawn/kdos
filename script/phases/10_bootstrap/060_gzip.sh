@@ -20,7 +20,7 @@ fi
 
 echo ">>> Building gzip..."
 
-# Extract gzip and dependencies from ports
+# Unpack the gzip port's source tarball
 GZIP_SRC=$(extract_port_source gzip)
 
 cd "$GZIP_SRC"
@@ -31,6 +31,11 @@ cd "$GZIP_SRC"
     --prefix=/usr
 make
 make DESTDIR=$SYSROOT install
+
+# configure installs zless only when it finds less on $PATH. The container
+# has one and the gzip port's chroot does not, so the port's package carries
+# no zless: this one would be owned by nothing and never replaced.
+rm -f $SYSROOT/usr/bin/zless $SYSROOT/usr/share/man/man1/zless.1
 
 rm -rf "$GZIP_SRC"
 touch "$MARK/gzip"

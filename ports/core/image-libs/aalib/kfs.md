@@ -28,7 +28,15 @@ gst-plugins-good, gimp and gphoto2 link it. The package also installs aalib's ow
 ## Patches
 
 - `config-no-rpath.patch` — removes `@AALIB_RLD_FLAGS@` from the `--libs` output of `aalib-config`, so a program that links aalib through the script is not given `-Wl,-rpath,/usr/lib`.
-- `curses-kbd-debug-print.patch` — deletes the `printf("uninitializing\n")` in the curses keyboard driver's `curses_uninit()`, which printed after `endwin()` had restored the screen and so landed on the user's terminal, over the shell prompt, every time a curses program such as `kdos-bb` exited.
-- `linuxkbd-bounds.patch` — in the Linux console keyboard driver, sizes `key_down[]` by `NR_KEYS` (256) instead of 128, since the driver's loops index it up to `NR_KEYS`, and passes the `KDGKBENT` ioctl its argument as a pointer instead of casting it to `unsigned int`, which cut the address to 32 bits on x86-64.
+- `curses-kbd-debug-print.patch` — deletes the `printf("uninitializing\n")` in the curses keyboard driver's `curses_uninit()`. It runs after `endwin()` has restored the screen, so the word lands on the user's terminal, over the shell prompt, every time a curses program such as `kdos-bb` exits.
+- `linuxkbd-bounds.patch` — in the Linux console keyboard driver, sizes `key_down[]` by `NR_KEYS` (256) instead of 128, since the driver's loops index it up to `NR_KEYS`, and passes the `KDGKBENT` ioctl its argument as a pointer instead of casting it to `unsigned int`, a cast that cuts the address to 32 bits on x86-64.
+- `ltconfig-musl.patch` — lets the bundled libtool 1.3.5 `ltconfig` treat a `linux-musl` host as Linux ELF, as it does `linux-gnu`. An unmatched host falls through to `dynamic_linker=no`, and libtool then builds no shared library, so there would be no `libaa.so.1`.
 - `m4-quote.patch` — quotes the macro name in `aalib.m4`'s `AC_DEFUN(AM_PATH_AALIB, ...)`, so `aclocal` in a project that uses the macro does not warn about an underquoted definition.
 - `ncurses-opaque-window.patch` — reads the curses screen size with `getmaxx(stdscr)` and `getmaxy(stdscr)` instead of `stdscr->_maxx` and `_maxy`: ncurses' `WINDOW` is opaque, so the fields do not compile.
+
+## Notes
+
+After the install, `build.sh` reads the dynamic section of `libaa.so.1` and fails unless it names
+`libncurses.so` or `libncursesw.so` as needed. configure finds ncurses by probing, and a probe that
+misses still produces a library, one with no curses driver, which every consumer would then
+receive; the check stops the build there instead.

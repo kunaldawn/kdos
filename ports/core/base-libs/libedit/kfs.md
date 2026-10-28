@@ -13,9 +13,10 @@ fallback — and `openssh`'s `sftp`, `chrony`, `xfsprogs`, `ledger` and others l
 
 ## Notes
 
-- **The terminal database comes from ncurses.** `configure` walks `ncurses`, `curses`, `termcap`
-  and `tinfo` looking for `tgetent` and stops at the first; with no `ncurses` installed the search
-  ends in an error rather than a narrower library, which is why `ncurses` is the one dependency.
+- **The terminal database comes from ncurses.** `configure` takes `tgetent` from the first of
+  `ncurses`, `curses`, `termcap` and `tinfo` it can link, and stops with an error when none links.
+  The [ncurses](#port-ncurses) port is what provides the first two names, as links to
+  `libncursesw`, so it is the one dependency, and configure settles on `-lncurses`.
 - **The version is the upstream date.** Upstream names its tarballs `libedit-<date>-<api>`; the
   recipe's `version` is the date and its `_api` helper the API version, and the `source =` line
   saves the download under the port's own `$name-$version` name.

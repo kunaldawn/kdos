@@ -37,7 +37,9 @@ drawn by [goffice](#port-goffice).
 
 The source is a git archive of the release tag with no generated `configure`. `autogen-common.sh`
 writes the plugin lists that `configure.ac` includes, and `autoreconf -fi` generates the rest;
-the patch to `configure.ac` has to be applied before both.
+`enchant-2-pkgconfig.patch` has to be applied before `autoreconf`, or the generated `configure`
+asks pkg-config for the Enchant 1 module, which Enchant 2 does not install, and `--enable-spell`
+stops configure.
 
 SVG needs no plugin: the GTK front end draws SVG through [librsvg](#port-librsvg) itself, and
 configure leaves the `rsvg` plugin unconfigured with GTK, so naming it would build it with no

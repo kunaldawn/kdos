@@ -102,8 +102,12 @@ on GTK 3 with both its Wayland and X11 backends; the session's `MOZ_ENABLE_WAYLA
 After `mach install`, `build.sh` adds what makes the package KDOS's:
 
 - `distribution/policies.json`, Firefox's enterprise policies, which turn off telemetry,
-  studies, update checks, Firefox accounts, the default-browser check, sponsored and suggested
-  content and the AI features, and lock DNS over HTTPS off;
+  studies, remote improvements and remote settings, application and system add-on updates, the
+  feedback commands, Firefox accounts, the default-browser check, captive portal detection,
+  network prediction, search suggestions, translation, IP Protection, the terms-of-use prompt,
+  the first-run and post-update pages, the weather, sponsored and recommended content on the new
+  tab page and in the address bar, Mozilla's messaging and onboarding, and lock DNS over HTTPS and
+  the AI features off;
 - `distribution/distribution.ini`, naming the distributor;
 - `browser/defaults/preferences/kdos.js`, which points the spelling checker at the
   [hunspell-en](#port-hunspell-en) dictionaries in `/usr/share/hunspell`, opens files through the

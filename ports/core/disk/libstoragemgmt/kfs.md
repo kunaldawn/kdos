@@ -23,8 +23,8 @@ the plugins, and a service script that starts `lsmd` at boot.
   fails.
 - `--with-systemdsystemunitdir=no`, `--with-systemd-sysusersdir=no`, `--with-systemd-tmpfilesdir=no`
   — Each defaults to the directory pkg-config reports for systemd; `no` installs no unit, sysusers
-  or tmpfiles file. KDOS has no systemd (see [No
-  systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd));
+  or tmpfiles file. KDOS has no systemd (see
+  [No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd));
   the service script and `postinstall.sh` do the work of the three files.
 - `PYTHON=python3` — The interpreter `AM_PATH_PYTHON` checks and records; it decides where the
   Python binding and the Python plugins are installed.
@@ -35,8 +35,8 @@ the plugins, and a service script that starts `lsmd` at boot.
   `/run/lsm/ipc` with mode 775 and the group `libstoragemgmt`, the modes and group of upstream's
   tmpfiles entry, then starts `lsmd -d` under `supervise`. `lsmd` exits at start when it cannot read
   and write the socket directory, and `-d` keeps it in the foreground instead of forking away from
-  the supervisor. How the service scripts run is in [rcS and the service
-  scripts](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/boot-and-init.md#rcs-and-the-service-scripts).
+  the supervisor. How the service scripts run is in
+  [rcS and the service scripts](../../../../docs/kdos/03-architecture/boot-and-init.md#rcs-and-the-service-scripts).
   It runs after `01_udev.sh`, whose device database the local-disk plugin reads.
 - **`postinstall.sh` creates the `libstoragemgmt` account.** `lsmd`, started as root, drops to it
   for every plugin that does not need root; without the account the plugins keep root. The script

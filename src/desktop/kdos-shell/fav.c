@@ -21,8 +21,9 @@
  * half-written favorites file is a quick-launch row that comes up empty at the
  * next login, and the whole file is a few dozen bytes.
  *
- * It is shell state rather than chrome, which is why it stayed behind when the
- * header band, the button bar and the list helpers moved to libkchrome.
+ * It is shell state rather than chrome, which is why it lives in kdos-shell
+ * and not in libkchrome beside the header band, the button bar and the list
+ * helpers.
  */
 
 #include <ctype.h>

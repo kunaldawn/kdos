@@ -5,7 +5,7 @@ the compiler and linker flags a program needs to use them. A configure script re
 library run it, whether or not the recipe names pkgconf in `depends`; that is why it is in the
 opening run of `30_foundation`. The package lint runs it too, resolving every `.pc`
 file a package ships (see
-[The package lint](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/packaging.md#the-package-lint)).
+[The package lint](../../../../docs/kdos/03-architecture/packaging.md#the-package-lint)).
 It is built with [muon](#port-muon).
 
 ## Flags

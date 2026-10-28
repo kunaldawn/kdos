@@ -9,14 +9,17 @@ typesetting a page to PostScript, PDF or HTML.
 ## Flags
 
 - `--disable-rpath` — Does not write a run-time library search path into the programs.
-- `--without-x` — Does not build `gxditview`, the X11 previewer for troff output.
+- `--without-x` — Does not build `gxditview`, the X11 previewer for troff output, or
+  `xtotroff`, which writes groff font descriptions for X11 fonts.
 - `--with-uchardet=yes` — Builds `preconv`, the input-encoding converter, against
   [uchardet](#port-uchardet), so it can guess the encoding of a file that does not declare one.
   `yes` makes a missing uchardet a configure error instead of a `preconv` without it.
-- `--with-gs=gs` — Names the Ghostscript program instead of searching for one. grohtml renders the
-  pictures, tables and equations of an HTML page through [ghostscript](#port-ghostscript) and the
-  [netpbm](#port-netpbm) tools. configure checks for every one of them; with any missing it warns
-  that grohtml will not work properly and makes no HTML documentation.
+- `--with-gs=gs` — Names the Ghostscript program instead of searching for one; configure takes the
+  name as given and does not look for it on `PATH`. grohtml renders the pictures, tables and
+  equations of an HTML page through [ghostscript](#port-ghostscript) (`gs` and `ps2ps`) and the
+  [netpbm](#port-netpbm) tools (`pnmcrop`, `pamcut`, `pnmtopng`, `pnmtops`). configure looks for
+  `ps2ps` and the netpbm tools; with any missing it warns that grohtml will not work properly and
+  makes no HTML documentation.
 - `--without-urw-fonts` — Turns off the search for the URW Type 1 fonts. That search takes
   Ghostscript's `Resource/Font` directory for the URW set, finds no AFM metrics there, and the
   install then stops on the `U-*` font descriptions that were never generated. Without them,

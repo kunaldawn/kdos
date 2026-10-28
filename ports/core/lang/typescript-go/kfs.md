@@ -12,7 +12,7 @@ files it reads, and `/usr/bin/tsgo` is a symbolic link to it.
   carries it already.
 - `-tags=noembed` — Build without the declaration files compiled into the binary.
   `internal/bundled/noembed.go` then reads them from the directory of the executable's resolved
-  path, and stops with "does not exist; this executable may be misplaced" when `lib.d.ts` is not
+  path, and panics with "does not exist; this executable may be misplaced" when `lib.d.ts` is not
   there. A caller with its own edited set of declaration files can place a copy of the binary
   beside them, which is what Chromium's build does.
 - `-X github.com/microsoft/typescript-go/internal/core.version=$version` — Set the version the
@@ -21,7 +21,7 @@ files it reads, and `/usr/bin/tsgo` is a symbolic link to it.
 ## Notes
 The executable's path is resolved through symbolic links before the declaration files are looked
 for, which is why the link in `/usr/bin` finds the files in `/usr/lib/typescript-go`. A copy of
-the binary elsewhere, without the files beside it, stops with the message above.
+the binary elsewhere, without the files beside it, panics with the message above.
 
 `build.sh` unpacks the vendor bundle twice; the second extraction writes the same files again
 and changes nothing.

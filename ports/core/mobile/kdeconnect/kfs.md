@@ -7,8 +7,9 @@ tray, and the `kdeconnect-cli` command. Browsing the phone's files mounts them w
 [sshfs](#port-sshfs).
 
 ## Flags
-- `-D CMAKE_INSTALL_LIBEXECDIR=lib` — install the helper programs upstream puts in the libexec
-  directory under `/usr/lib`.
+- `-D CMAKE_INSTALL_LIBEXECDIR=lib` — point the libexec directory at `/usr/lib`. This release
+  installs nothing there: `kdeconnectd`, the windows and the command all go to `/usr/bin`, so the
+  switch changes nothing in the package.
 - `-D WITH_X11=OFF` — leave out the X11 path. Its mousepad plugin needs libfakekey, which is not a
   port, so the plugin is built for Wayland alone, on [libei](#port-libei). That path asks the
   RemoteDesktop portal for an input connection, which no backend on KDOS answers, so the phone

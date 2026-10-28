@@ -5,7 +5,7 @@ the stylesheet for the format asked for, runs `xsltproc`, and hands the result t
 post-processor when the format needs one. `xmlif`, installed with it, selects the conditional
 sections of an XML file. In KDOS it is a build tool: git, alsa-utils, zbar and the other ports
 that depend on it render their manual pages through `xmlto man` (see
-[Manual pages](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#manual-pages)).
+[Manual pages](../../../../docs/kdos/05-developer/writing-ports.md#manual-pages)).
 
 xmlto is a shell script. Its `configure` writes the programs it calls into the installed script:
 one it finds in the build root by its absolute path, one it does not find by its bare name, which
@@ -26,10 +26,11 @@ the script then looks up on `PATH` each time it runs. configure also checks that
   for the default paper size. With the bare name, the installed script finds `paperconf` on `PATH`
   each time it runs. libpaper is installed in a later phase, and an absolute path would record
   whether it happened to be present when xmlto was configured (see
-  [An optional tool found in the tree](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/build-troubleshooting.md#an-optional-tool-found-in-the-tree)).
+  [An optional tool found in the tree](../../../../docs/kdos/05-developer/build-troubleshooting.md#an-optional-tool-found-in-the-tree)).
 
 ## Notes
 
 The `LINKS="/usr/bin/links"` line in `build.sh` sets a shell variable without exporting it, and
-`configure` is not passed it, so it changes nothing. The installed `xmlto` looks for `elinks` or
-`links` itself, on `PATH`, when it is asked for text output.
+`configure` is not passed it, so it changes nothing. Nothing configure finds would reach the
+installed script either: asked for text output, `xmlto` looks on `PATH` each time it runs for
+`w3m`, then `lynx`, then `elinks` or `links`, and uses the first it finds.

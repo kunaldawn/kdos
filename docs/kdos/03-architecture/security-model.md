@@ -9,8 +9,8 @@ and a *pack* is the read-only image a box is composed from (both are defined in 
 
 The chapter runs in this order: the threat model, the setuid binaries and the two KDOS wrote,
 the system accounts, the root daemons, the firewall, polkit, the containers and the compositor's
-filter for boxed clients, mount options, signing and trust, and the two paths by which untrusted
-bytes reach a terminal. Its last section, [What is not protected](#what-is-not-protected), is part
+filter for boxed clients, the kernel, mount options, signing and trust, and the two paths by which
+untrusted bytes reach a terminal. Its last section, [What is not protected](#what-is-not-protected), is part
 of the specification rather than a footnote: a model that lists only its defences gets relied on
 for things it does not do. A reader with time for one section should read that one.
 
@@ -222,8 +222,9 @@ kdos-resctl renice <pid> <-20..19>
 - Standard input, output and error are opened on `/dev/null` if they arrive closed, so output
   cannot land in a file the program opens later.
 - It signals through a process handle (a pidfd) taken before the signal is sent, so the
-  process it opened is the one it signals even if the number is reused in between. On a kernel
-  without pidfd support it falls back to `kill(2)`, which has no such guarantee.
+  process it opened is the one it signals even if the number is reused in between. When no handle
+  can be taken, as on a kernel without pidfd support, it falls back to `kill(2)`, which has no
+  such guarantee.
 - Process ids 1 and below are refused. That covers init, and 0 and negative ids, which
   `kill(2)` reads as process groups.
 - Root is dropped before the hardware table is parsed. The table is opened as root, then
@@ -233,9 +234,10 @@ kdos-resctl renice <pid> <-20..19>
   reniced directly. When the helper is missing or has lost its setuid bit, `kdos-res` disables the
   action and puts the reason on the button.
 
-The `dmi` verb prints the populated memory slots (size and speed, from SMBIOS type 17). No shipped
-program calls it; the Memory page of `kdos-res` says that memory device details need
-`kdos-resctl`.
+The `dmi` verb prints the populated memory slots (size and speed, from SMBIOS type 17). The
+Memory page of `kdos-res` calls it once, the first time the page is drawn, and keeps the answer
+for its per-slot table; a refusal or an unreadable table is written on the page in place of the
+table.
 
 | Exit code | Meaning |
 |---|---|
@@ -262,10 +264,11 @@ in: each has `/sbin/nologin` as its shell and `!` as its password. The image shi
 
 More are created when their port is installed, by the port's `postinstall.sh` with `groupadd -r` and
 `useradd -r`, which pick a free id: `polkitd`, `avahi`, `avahi-autoipd`, `clamav`, `geoclue`,
-`gnuhealth`, `kolibri`, `maddy`, `minidlna`, `mosquitto`, `mumble-server`, `ngircd`, `nm-openvpn`,
-`nut`, `pcscd`, `postgres`, `prosody`, `radicale`, `tcpdump` and `usbmux`. `nut` is also put in
-`dialout`, for a UPS on a serial line. `libvirt`'s hook creates the account `qemu`, whose primary
-group is the shipped `kvm`, so the guests `libvirtd` starts can open `/dev/kvm`, and the group
+`gnuhealth`, `kolibri`, `libstoragemgmt`, `maddy`, `minidlna`, `mosquitto`, `mumble-server`,
+`ngircd`, `nm-openvpn`, `nut`, `pcscd`, `postgres`, `prosody`, `radicale`, `tcpdump` and `usbmux`.
+`lsmd`, the storage-management daemon, starts as root and runs every plugin that does not need root
+as `libstoragemgmt`. `nut` is also put in `dialout`, for a UPS on a serial line. `libvirt`'s hook
+creates the account `qemu`, whose primary group is the shipped `kvm`, so the guests `libvirtd` starts can open `/dev/kvm`, and the group
 `libvirt`, which libvirt's own polkit rule admits and which has no member. `brltty`'s hook creates
 the group `brlapi` and adds the desktop account to it; that is the group brltty's own polkit rule
 admits to its braille display interface. The file-system build step merges these files rather than
@@ -370,7 +373,8 @@ created or mounted.
 - every partition of the disk the system booted from, and of the disk holding the persistence
   store in use;
 - anything currently mounted, for a verb that writes;
-- a verb carrying a token nobody issued, and a device index that is not a number;
+- a request with more or fewer arguments than its verb takes, and a device index that is not a
+  number or not in the list;
 - a device node that differs from the one the scan recorded;
 - any format request unless `format = yes` is set in `/etc/kdos/mountd.conf`. With it set, a
   format request must repeat the device's kernel name (for example `sdb1`) exactly as
@@ -389,8 +393,11 @@ stick the caller can. The disk is opened with `O_EXCL`, the kernel's exclusive c
 device, so the write cannot start while anything on the disk is in use, and nothing else can open
 the disk for writing or mount it until the write ends.
 
-The image does not ship `/etc/kdos/mountd.conf`, so formatting and image writes are off, and
-removable media mount `noexec`, until an administrator writes the file.
+The image does not ship `/etc/kdos/mountd.conf`, so formatting and image writes are off and
+removable media mount `noexec` until an administrator writes the file with `format = yes`,
+`write = yes` or `exec = yes`. The daemon looks for each of those strings anywhere in the file, so
+a commented-out line such as `# format = yes` turns the verb on as well; remove a setting rather
+than comment it out.
 
 `kdos-energyd` exists because the CPU energy counter (RAPL) is root-only: fine-grained
 unprivileged reads can recover cryptographic keys through a side channel. What leaves the daemon
@@ -400,8 +407,9 @@ cannot drive the interval towards a fine-grained one. There is no write path int
 interface at all.
 
 `kdos-boxsock` is not a root daemon: it is installed in `/usr/bin`, runs as the desktop user,
-binds one tagged Wayland socket per box, and holds that box's security context open for the box's
-lifetime.
+binds one tagged Wayland socket per box and compositor, and holds that socket's security context
+open until the compositor exits or the process is killed. Stopping the box does not end it; every
+later launch of the same box in that session reuses the socket.
 
 ## The firewall
 
@@ -428,12 +436,16 @@ same for guests on a `virbr*` bridge and lets them reach the network's dnsmasq f
 and holds the services an administrator has opened.
 
 Opening a port goes through the same rule as every other daemon verb: the client names a service,
-never a port. `kdos-powerd` carries the table of twenty-five names (`ssh`, `http`, `https`, `ipp`,
-`smb`, `kiwix`, `mdns`, `mqtt`, `xmpp`, `nfs`, `babel`, `nut`, `snmp`, `mumble`, `caldav`, `mail`,
+never a port. `kdos-powerd` carries the table of twenty-four names (`ssh`, `http`, `https`, `ipp`,
+`smb`, `kiwix`, `mqtt`, `xmpp`, `nfs`, `babel`, `nut`, `snmp`, `mumble`, `caldav`, `mail`,
 `irc`, `dlna`, `tryton`, `caddy`, `mosh`, `syncthing`, `kdeconnect`, `vnc`, `xonotic`), each with the one rule it adds, so a client that
-can only say `ssh` can open exactly TCP 22 and nothing else. The daemon rewrites
+can only say `ssh` can open exactly TCP 22 and nothing else. `ssh` is also the switch for the SSH
+server: turning it on removes `/etc/service.disabled/sshd` and starts `sshd`, and turning it off
+puts the marker back and stops it. mDNS has no name in the table: the base input chain accepts
+UDP 5353 on its own. The daemon rewrites
 `50-kdos-services.nft` whole from the names that are on, checks the full ruleset with `nft --check`,
-and then reloads it. A rule written by hand into that file is dropped on the
+and then reloads it. When the check refuses the ruleset or the reload fails, the daemon puts the
+previous file back, so the file on disk is the ruleset the kernel runs. A rule written by hand into that file is dropped on the
 next change; a hand-written rule belongs in a file of its own beside it.
 
 ```sh
@@ -502,7 +514,7 @@ action without reading a rule.
 | `org.freedesktop.udisks2.modify-device`, `…modify-device-system` | Formatting and partitioning in GNOME Disks |
 | `org.freedesktop.udisks2.rescan`, `…cancel-job`, `…ata-check-power`, `…ata-smart-update`, `…nvme-smart-update` | Re-reading a device, cancelling a job, and reading a drive's health |
 | `org.gnome.gparted` | GParted, whose wrapper re-runs itself through `pkexec` |
-| `org.kde.k3b.updatepermissions` | K3b's helper, which sets the burner device's group and permissions |
+| `org.kde.k3b.updatepermissions` | K3b's helper, which sets the group and permissions of the burner device and of the burning programs, making a program setuid root when K3b's settings ask for it |
 | `org.kde.ktexteditor6.katetextbuffer.savefile` | Kate and KDevelop saving a file the user cannot write |
 | `net.nokyan.Resources.kill` | Resources ending another user's process |
 | `org.libvirt.unix.manage` | virt-manager managing `qemu:///system` |
@@ -747,7 +759,7 @@ already bound.
 The kernel's configuration is `kdos.config` in the `linux` port, and six of its settings are there
 to remove a way in rather than to support hardware. Each is set explicitly, even where it matches
 the kernel's own default, so the build fails if a later kernel stops honouring it (see
-[How KDOS is built](../05-developer/how-kdos-is-built.md#the-kernel-60_kernel)):
+[The kernel configuration](../05-developer/how-kdos-is-built.md#the-kernel-configuration)):
 
 | Setting | Value | What it removes |
 |---|---|---|
@@ -757,6 +769,24 @@ the kernel's own default, so the build fails if a later kernel stops honouring i
 | `CONFIG_LDISC_AUTOLOAD` | off | Any user loading a line-discipline module by setting it on a terminal they opened. A process with `CAP_SYS_MODULE` still loads one, so `pppd` and `hciattach`, which run as root, are unaffected |
 | `CONFIG_PROC_MEM_FORCE_PTRACE` | on | Writing to another process's read-only memory through `/proc/<pid>/mem` merely by having the right to trace it; only a debugger actually attached with `ptrace` may |
 | `CONFIG_BUG_ON_DATA_CORRUPTION` | on | Running on after a kernel list or reference-count check has found corrupted memory: the kernel stops the offending task with a `BUG` instead of logging a warning and continuing |
+
+### Security modules
+
+The kernel starts the security modules named in `CONFIG_LSM`, which is
+`landlock,lockdown,yama,integrity`; no boot entry passes an `lsm=` that would change the list.
+
+| Module | What it does here |
+|---|---|
+| Landlock | Lets an unprivileged program restrict its own file and network access. [`kdos sandbox`](../04-programs/kdos-command.md#kdos-sandbox) uses it to run a native program under a profile of readable and writable paths and allowed TCP ports; nothing is run that way unless you ask |
+| Lockdown | Built in, in its default mode, `none`: it restricts nothing until root writes `integrity` or `confidentiality` to `/sys/kernel/security/lockdown` or a `lockdown=` boot option names one |
+| Yama | Restricts `ptrace`. Nothing sets `kernel.yama.ptrace_scope`, so it keeps the kernel's default of 1: a process may trace only its own descendants, and `gdb -p` or `strace -p` on another process of your own fails unless you run it as root or start the program under the tracer |
+| Integrity | The kernel's keyrings for signature checks; it enforces no policy by itself |
+
+SELinux, AppArmor, Smack, TOMOYO, LoadPin, SafeSetID and IPE are compiled in but are not in the
+list, so none of them runs.
+`CONFIG_SECURITY_DMESG_RESTRICT` is on as well: the kernel log is readable only by root (or a
+process with `CAP_SYSLOG`), so `dmesg` as an ordinary user prints `Operation not permitted` and
+`sudo dmesg` is the way to read it.
 
 ### Module signing
 
@@ -813,8 +843,8 @@ KDOS uses three keyrings, and keeping them apart is structural rather than a con
 | Directory | Attests | Used for | Shipped with |
 |---|---|---|---|
 | `/etc/kdos/keys` | Who built a host package | The binary-package host (binhost) index and package signature files | No key |
-| `/etc/kdos/keys/packs` | That packs came from the same bake as the medium (the build run that produced them) | Pack indexes and packs' own signatures, read by `kdos-packd` and `kdos-pack verify` | `kdos-packs.pub` |
-| `/etc/kdos/keys/tree` | That a published ports tree came from whoever holds the release key the image was built with | `kdos-ports.tar.xz.sig`, read by `kdos update fetch` before the tree is unpacked | `kdos-release.pub`, when the build had `build/keys/kdos-release.key`; otherwise no key |
+| `/etc/kdos/keys/packs` | That whoever holds the matching secret key signed a pack or a pack index | Pack indexes and packs' own signatures, read by `kdos-packd` and `kdos-pack verify` | `kdos-packs.pub` (see below) |
+| `/etc/kdos/keys/tree` | That a published ports tree came from whoever holds the release key the image was built with | `kdos-ports.tar.xz.sig`, read by `kdos update fetch` before the tree is unpacked | `kdos-release.pub`, when the build found `build/keys/kdos-release.pub`; otherwise no key |
 
 The keyring loader reads `*.pub` in one directory and does not descend into subdirectories, so the
 three are separate policies. A pack-signing key placed in `/etc/kdos/keys` would silently become a
@@ -824,6 +854,12 @@ The directory is the policy:
 
 - Adding trust is copying a `.pub` file in; removing it is deleting one. There is no
   revocation list and no online check.
+- A ring holds at most sixteen keys, read in name order. Each further `*.pub` file is left
+  untrusted and never tried, and the loader names it on stderr (`<dir>: a keyring holds at most
+  16 keys; <name> is not trusted`).
+- A secret key whose file mode grants any group or other permission is refused for signing: a
+  key others could read has to be assumed copied. `kpkg` says so (`<key> is readable by other
+  users — refusing to sign with it`); `kdos-pack` prints only `cannot read the signing key <key>`.
 - A key id is a label, not a credential. Verification tries every key in the directory and
   nothing outside it, so a tool reports the key that actually verified, not the id the signature
   claimed.
@@ -842,22 +878,28 @@ sudo cp builder.pub /etc/kdos/keys/    # on every machine that should trust it
 `kpkg keygen builder` writes an Ed25519 key pair as two files: `builder.key`, the secret half,
 which stays on the build machine, and `builder.pub`, the public half you copy.
 
-The key that ships in `/etc/kdos/keys/packs` asserts only that the packs beside it on a medium
-came from the same bake, the build run that produced the medium (see
-[Packs and boxes](packs-and-boxes.md)). To make it say something about you, replace it and
-re-sign. The rest of the signing design is in [Packaging](packaging.md).
+The key that ships in `/etc/kdos/keys/packs`, `kdos-packs.pub`, is a fixed public key committed
+under `fs/`. Nothing in the build holds or uses its secret half: the image step bakes no
+application packs and writes no pack index (see
+[Packs and boxes](packs-and-boxes.md#where-a-pack-comes-from)), and the opt-in KDOS base pack it can
+build is unsigned. So the key verifies nothing the build makes; it only means that a pack or index
+signed with its secret half, wherever that is, would be accepted. To trust packs you sign yourself,
+add your own `.pub` with `kdos-pack keygen`, and delete `kdos-packs.pub` if you want only yours.
+The rest of the signing design is in [Packaging](packaging.md#signing).
 
 The key in `/etc/kdos/keys/tree` is the one choice of trust an image makes for you: the recipe tree
 is the trust root for everything built on the machine, since every source is checked against a
 hash the tree names, so the image trusts the next tree from the same key as the tree it carries.
-`ports/publish --release` signs each release's `kdos-ports.tar.xz` with `build/keys/kdos-release.key`,
-and the build copies that key's public half into the ring. `kdos update fetch` refuses a tree whose
-signature does not verify, and a tree whose `TREE` stamp is older than the installed one, so a
-replayed old tree cannot pin old versions. Replace the key to follow a tree you publish yourself.
+`ports/publish --release` signs each release's `kdos-ports.tar.xz` with `build/keys/kdos-release.key`
+(or the key `$KDOS_RELEASE_KEY` names), and the build copies `build/keys/kdos-release.pub` into the
+ring; a build that finds no `.pub` there ships an empty ring, and that image refuses every fetched
+tree. `kdos update fetch` refuses a tree whose signature does not verify, and a tree whose `TREE`
+stamp is older than the installed one, so a replayed old tree cannot pin old versions. Replace the key to follow a tree you publish yourself.
 
 ### TLS trust anchors
 
-The certificate authorities used for TLS are a third trust root, kept apart from both keyrings.
+The certificate authorities used for TLS are a separate trust root, kept apart from all three
+keyrings.
 
 | File | What it is |
 |---|---|
@@ -926,7 +968,7 @@ lane* installs a pack somebody else exported (see *lane* in the
 | | Built by the store lane | Imported |
 |---|---|---|
 | Bytes come from | Debian's archive (or another registry), over the network | A `.ktar` set made by `kdos app export`, or a pack from `kdos-box freeze` |
-| Signed by | Nothing in `/etc/kdos/keys` | A `kdos-box freeze` pack: its own signature block, when someone ran `kdos-pack sign`. A `.ktar` set: nothing the import checks (see below) |
+| Signed by | Nothing in `/etc/kdos/keys` | A `kdos-box freeze` pack: its own signature block, when someone ran `kdos-pack sign`. A `.ktar` set: its index (`PACKAGES.sig`), when `kdos app export` had a key; its packs are not signed (see below) |
 | Checked by | Nothing KDOS controls | `kdos-packd`, when it takes the pack in |
 | Needs a network | Yes | No |
 
@@ -942,10 +984,13 @@ client that verified a pack and then asked for an install would have verified no
 
 1. If the staging directory (`/var/lib/kdos/packs/staging`) holds an index (`PACKAGES`) whose
    signature verifies against `/etc/kdos/keys/packs` and which lists the pack, the pack's SHA-256
-   must match the index entry. A match is accepted; a mismatch is refused. Neither
-   `kdos-appbox import` nor `kdos-box import` puts an index there: each copies only the `.kpack`
-   file it installs, so this check applies only when an index was placed in the staging directory
-   by other means.
+   must match the index entry. A match is accepted; a mismatch is refused. `kdos-appbox import`
+   (behind `kdos app import`) copies a set's `PACKAGES` and `PACKAGES.sig` into the staging
+   directory as `PACKAGES.<pid>` and its `.sig` when the archive holds both, names that index in
+   each `install` it sends and takes it away when the import ends, so the packs of a set whose
+   index was signed with a trusted key are checked here. The daemon reads no index a request does
+   not name.
+   `kdos-box import` copies only the `.kpack` file it installs.
 2. Otherwise the pack's own footer is checked: the payload must hash to the value the footer
    records, and then the pack's signature block, if it has one, must verify against the same ring.
    A bad hash, a bad signature, or a signature with no key on this machine to check it is refused.
@@ -966,10 +1011,11 @@ and `kdos-pack keygen <name>` makes the key pair (`<name>.key` and `<name>.pub`)
 [Packs and boxes](packs-and-boxes.md#building-a-pack) describes; a signed pack's block is checked
 at install by step 2. `kdos app export` signs the set's index (`PACKAGES.sig` beside `PACKAGES`)
 when `KDOS_PACK_KEY` names a readable secret key and otherwise says that the index is unsigned, but
-it does not sign the packs themselves, and `kdos app import` stages each pack without the index.
-Every pack of an exported set therefore reaches `kdos-packd` as an unsigned pack: it is accepted
-on its payload hash alone, and refused outright when `KDOS_REQUIRE_SIG` is set, whether or not the
-exporter had a key.
+it does not sign the packs themselves. `kdos app import` stages the signed index with the packs, so
+a pack of a set whose index verifies against `/etc/kdos/keys/packs` is accepted at step 1 on that
+signature. A pack of a set exported without a key, or signed with a key this machine does not
+trust, reaches `kdos-packd` as an unsigned pack: it is accepted on its payload hash alone, and
+refused outright when `KDOS_REQUIRE_SIG` is set.
 
 Refusing unsigned packs is opt-in. With `KDOS_REQUIRE_SIG` set, `kdos-packd` refuses an unsigned
 pack at install (a medium pack is not covered), and `kdos-pack verify` reports an unsigned one as a
@@ -1018,7 +1064,7 @@ The terminal library `libkvt` adds its own limit before `libkimg` sees anything:
   the ordinary DCS handling and an APC is ignored up to its terminator.
 
 In `kdos-term` the relevant settings go in `~/.config/kdos/term.conf` (see
-[kdos-term](../04-programs/kdos-term.md)). A value outside the range is clamped to it:
+[kdos-term's configuration](../04-programs/kdos-term.md#configuration)). A value outside the range is clamped to it:
 
 | Key | Default | Range | Meaning |
 |---|---|---|---|
@@ -1055,16 +1101,18 @@ you. `libkvt` and `kdos-term` apply these rules:
 This section lists what the mechanisms above do not do. A reader who assumes a protection that is
 not there is worse off than one who knows it is missing.
 
-- **There is no mandatory access control.** No SELinux and no AppArmor. A process running as you
-  can do anything you can do.
+- **There is no mandatory access control.** SELinux and AppArmor are compiled into the kernel but
+  not started (see [Security modules](#security-modules)), and no policy ships. A process running
+  as you can do anything you can do.
 - **There is no verified boot and no signed kernel.** The boot chain is not measured or attested.
   Anyone with physical access can boot a modified kernel or initramfs and take control of the
   machine.
 - **Module signatures are not enforced.** Modules are signed, but `CONFIG_MODULE_SIG_FORCE` is off
-  and lockdown is not enabled, so root loads any module, signed or not, and the kernel only marks
-  itself tainted (see [Module signing](#module-signing)).
+  and lockdown runs in its `none` mode, so root loads any module, signed or not, and the kernel
+  only marks itself tainted (see [Module signing](#module-signing)).
 - **The live image's serial console is a root shell.** `/etc/inittab` runs
-  `agetty --autologin root` on `ttyS0`, so anyone with a serial connection to a machine running
+  `agetty --autologin root` on `ttyS0` (through `/etc/init.d/serial-getty`, which skips a machine
+  with no serial port), so anyone with a serial connection to a machine running
   the live medium is root, with no password. The installer removes `--autologin root` from the
   installed copy, where `ttyS0` asks for a login.
 - **Single-user mode asks for root's password.** The installed menu's `KDOS (single user)` entry
@@ -1101,7 +1149,10 @@ not there is worse off than one who knows it is missing.
   the untagged `wayland-0`, and is offered the protocols the allowlist in
   [Sandboxed clients](#sandboxed-clients) denies to a box, screen capture and the virtual keyboard
   among them; the shipped `rc.xml` restricts none of them. Chromium's renderer sandbox and
-  QtWebEngine's confine their own web content; nothing confines the application itself.
+  QtWebEngine's confine their own web content; nothing confines the application itself unless you
+  start it under [`kdos sandbox`](../04-programs/kdos-command.md#kdos-sandbox), which limits its
+  files and its TCP traffic through Landlock; Landlock does not police a Unix socket reached by
+  path, so the program still reaches the compositor and the session bus.
 - **A box can widen its own grant.** The profile that holds `grant =` lives under the home
   directory a box shares by default, so a program in the box can add `input-method` to its own
   profile, and the compositor honours it the next time it reads that profile: after a `SIGHUP`, a

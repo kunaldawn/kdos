@@ -6,7 +6,7 @@ Mozilla browsers and Chromium, `librsvg`, `mesa`, `linux`, `typst` and the Pytho
 Rust extensions all name it in `depends`. It is built in `31_compilers`, the phase that holds the
 long compiler builds, so that a failure there restores `30_foundation` and loses minutes, not the
 foundation work before it (see
-[How KDOS is built](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/how-kdos-is-built.md#the-foundation-and-the-compilers-30_foundation-and-31_compilers)).
+[How KDOS is built](../../../../docs/kdos/05-developer/how-kdos-is-built.md#the-foundation-and-the-compilers-30_foundation-and-31_compilers)).
 
 KDOS builds Rust differently from upstream's release in three ways. It links the system LLVM, the
 `llvm` port, instead of compiling the LLVM inside the source tarball. It links rustc and the
@@ -50,18 +50,18 @@ recipe. They are the [stage0]{.idx} compiler that x.py starts from to compile th
   code-generation unit, as upstream's release builds do. rustc itself keeps the default of 16.
 - `rustflags = ["-Cstrip=debuginfo"]` — pass `-C strip=debuginfo` to every rustc that x.py runs,
   so nothing the bootstrap links keeps debug information (see
-  [What kpkg does around build.sh](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#what-kpkg-does-around-buildsh)).
+  [What kpkg does around build.sh](../../../../docs/kdos/05-developer/writing-ports.md#what-kpkg-does-around-buildsh)).
 - `llvm-config = "/usr/bin/llvm-config"` — build against the LLVM that this `llvm-config`
   describes, the `llvm` port, and do not compile the LLVM in `src/llvm-project`. This is why the
   recipe carries the two LLVM patches.
 - `llvm-filecheck` — where LLVM's `FileCheck` is: `/usr/lib/llvm/utils/FileCheck`, where the
-  `llvm` port installs its utilities. With an external LLVM, x.py's sanity check stops the build
-  when it finds no `FileCheck` beside `llvm-config` or under the LLVM library directory, and
-  neither is where this tree keeps it.
+  `llvm` port installs its utilities. With an external LLVM and no `llvm-filecheck`, x.py looks
+  for `FileCheck` in `llvm-config --bindir` and then in `llvm/` under `llvm-config --libdir`, and
+  its sanity check stops the build when neither exists; this tree keeps it in neither place.
 - `crt-static = false` — link rustc, its tools and the standard library for this target against
   the shared musl `libc.so`. The musl target's own default for programs rustc compiles stays
   static, which is why every Rust port passes `-C target-feature=-crt-static` (see
-  [Writing ports](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#rust)).
+  [Writing ports](../../../../docs/kdos/05-developer/writing-ports.md#rust)).
 - `RUST_BACKTRACE=1` — print a backtrace when any Rust program in the build panics, x.py's own
   helpers included, so a failure in the log says where it happened.
 - `LIBSSH2_SYS_USE_PKG_CONFIG=1`, `LIBGIT2_NO_VENDOR=1` — make the `libssh2-sys` and
@@ -82,12 +82,13 @@ anything. The recipe's `_date` and `_rust` must be the `compiler_date` and `comp
 there, tries the network, and the build fails in the chroot. After a version bump, read
 `src/stage0` and set both.
 
-`x.py install` has no step for `rustc-dev`, the compiler's own crates (`rustc_driver`,
-`rustc_middle` and the rest) as `.rmeta` files under `lib/rustlib/x86_64-unknown-linux-musl/lib`.
-A tool built against rustc's internals with `#![feature(rustc_private)]` links them; `crubit`,
-which Chromium needs, is one. `build.sh` makes the `rustc-dev` dist tarball and installs it. That
-tarball carries its own copies of the compiler's shared libraries; each one `/usr/lib` already
-holds is replaced with a symbolic link to it, so the two can never differ.
+`rustc-dev` is the compiler's own crates (`rustc_driver`, `rustc_middle` and the rest) as
+`.rmeta` files under `lib/rustlib/x86_64-unknown-linux-musl/lib`. `x.py install` installs it only
+when `tools` names it, and the list above does not. A tool built against rustc's internals with
+`#![feature(rustc_private)]` links them; `crubit`, which Chromium needs, is one. `build.sh` makes
+the `rustc-dev` dist tarball with `x.py dist rustc-dev` and runs the tarball's own `install.sh`
+into the package. That tarball carries its own copies of the compiler's shared libraries; each
+one `/usr/lib` already holds is replaced with a symbolic link to it, so the two can never differ.
 
 The rest of `build.sh` tidies the install: it deletes the installer's bookkeeping in
 `lib/rustlib` (`components`, `install.log`, `manifest-*`, `uninstall.sh`,
@@ -95,9 +96,8 @@ The rest of `build.sh` tidies the install: it deletes the installer's bookkeepin
 bash completion from `/etc/bash_completion.d` to `/usr/share/bash-completion/completions`, where
 bash-completion loads it on demand.
 
-The two patches are rustc's own changes for the LLVM release the `llvm` port carries, which is
-newer than the LLVM this Rust release is built against. Its header says only that
-`rust-llvm23-assign-guid.patch` reapplies an upstream commit; what it does is add LLVM's
-`AssignGUIDPass` ahead of the two places rustc writes ThinLTO bitcode, when built against LLVM 23
-or later. That LLVM assigns the global identifiers ThinLTO's summaries are keyed on only when the
-pass pipeline asks for them.
+Both patches adapt rustc to LLVM 23, the series the `llvm` port carries, which is newer than the
+LLVM this Rust release is built against. The header of `rust-llvm23-assign-guid.patch` says only
+that it reapplies an upstream commit; what it does is add LLVM's `AssignGUIDPass` ahead of the two
+places rustc writes ThinLTO bitcode, when built against LLVM 23 or later. That LLVM assigns the
+global identifiers ThinLTO's summaries are keyed on only when the pass pipeline asks for them.

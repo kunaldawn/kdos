@@ -69,7 +69,8 @@ pack `kdos`. See [Packs and boxes](../03-architecture/packs-and-boxes.md#the-cat
 The **binary host**: a directory of prebuilt host packages with a signed index, read by `kpkg
 binhost`. It is a local path, such as a USB stick or an NFS mount, never a URL. It is optional and
 one you make yourself; there is no public one. A package from it is used only when its architecture,
-its *build-config hash* and its *recipe hash* all equal this machine's. See
+its *build-config hash* and its *recipe hash* all equal this machine's, and once installed it is
+recorded as that recipe's build, so the next build does not rebuild it. See
 [Packaging](../03-architecture/packaging.md#the-binary-host).
 
 ### box
@@ -91,9 +92,12 @@ identifies the box; it does not show focus. See
 
 ### box profile
 
-`~/.config/kdos/boxes/<name>.conf`, a handful of settings for one box. Every key maps onto a
-container-engine flag or onto something KDOS enforces itself, and the profile printer says which.
-See [kdos-appbox](../04-programs/kdos-appbox.md).
+`~/.config/kdos/boxes/<name>.conf`, a handful of settings for one box. Most keys map onto a
+container-engine flag or onto something KDOS enforces itself; a few, such as `persistence` and
+`export`, are only recorded. `kdos-box profile <name>` prints each key beside the mechanism that
+applies it, and marks with `!` a setting it cannot enforce. See
+[kdos-appbox](../04-programs/kdos-appbox.md#box-profiles) and
+[Configuration](configuration.md#configkdosboxesnameconf).
 
 ### build-config hash
 
@@ -146,7 +150,8 @@ system](../05-developer/build-system.md#the-chroot).
 
 The scroll that continues after a finger leaves a touchpad while still moving: `libkwl` keeps
 producing the wheel ticks the finger would have made, slowing to a stop, unless a scroll, a click, a
-key or the pointer leaving ends it first. Off with `motion = no`. See [Writing desktop
+key or the pointer leaving ends it first. Off with `motion = no` in
+[`~/.config/kdos/comp.conf`](configuration.md#configkdoscompconf). See [Writing desktop
 software](../05-developer/writing-desktop-software.md#input-the-backend-cleans).
 
 ### commit
@@ -205,8 +210,8 @@ See [Writing desktop software](../05-developer/writing-desktop-software.md#displ
 
 ### dockapp
 
-One gadget in the *slit*: a command re-run on an interval whose output is one line of text. See
-[kdos-comp](../04-programs/kdos-comp.md#keys-applied-at-the-next-login).
+One gadget in the *slit*: a command re-run on an interval, of which the first line it prints is
+drawn. See [Configuration](configuration.md#configkdosslitconf).
 
 ### dump
 
@@ -237,7 +242,7 @@ software](../05-developer/writing-desktop-software.md#choosing-a-role).
 ### fixture
 
 Recorded system state that a program can be pointed at instead of the live machine, which is what
-makes its readings and decisions testable. There are 49 fixture directories under
+makes its readings and decisions testable. There are 51 fixture directories under
 `testing/fixtures/`. See [Testing](../05-developer/testing.md#fixtures).
 
 ### front end
@@ -264,15 +269,15 @@ exists because the console font has 512 glyphs, and a character it lacks is draw
 ### golden
 
 A committed reference frame: a surface's *dump*, compared byte for byte by the self-test. Text
-frames catch geometry; cell frames catch colour as well. There are 217 under `testing/goldens/`,
+frames catch geometry; cell frames catch colour as well. There are 222 under `testing/goldens/`,
 counting every file there except its `README`. See [Testing](../05-developer/testing.md#goldens).
 
 ### graft
 
 A declared placement of a *data pack*'s contents where a consumer will look for them. There are two
 namespaces, because the host's data directories are invisible inside a box. Each graft is recorded
-in a manifest, so that removal is exact. `kdos-packd` places a graft when asked `graft <id>`; no
-program in the tree asks, so a data pack is grafted by hand. See [Packs and
+in a manifest, so that removal is exact. `kdos-packd` places a graft when asked `graft <id>`, which
+`kdos-appbox import` asks for every data pack it installs. See [Packs and
 boxes](../03-architecture/packs-and-boxes.md#grafts-and-data-packs).
 
 `testing/selftest.sh` and the compositor's source comments also call `kdos-comp`'s own files,
@@ -498,10 +503,10 @@ thirteen, numbered in bands of ten so that one can be added between two others: 
 `10_bootstrap`, `20_selfhost`, `30_foundation`, `31_compilers`, `40_lang`, `41_system`,
 `42_graphics`, `43_toolkits`, `44_apps`, `50_desktop`, `60_kernel` and `70_image`. `00_cross`,
 `10_bootstrap` and `70_image` hold numbered step scripts; the other ten hold a *package list*. Each
-has its environment in its own directory, `phase.env`, which says whether it runs in the *chroot*,
-which port repositories it searches beyond the default `/ports/core` and what its *snapshot* holds, and which sources the settings
-every phase shares from `script/env/`. See [The build
-system](../05-developer/build-system.md#phases).
+has its environment in a `phase.env` in its own directory, which says whether it runs in the
+*chroot*, which port repositories it searches beyond the default `/ports/core` and what its
+*snapshot* holds, and then sources the settings every phase shares from `script/env/`. See [The
+build system](../05-developer/build-system.md#phases).
 
 ### phosphor pass
 
@@ -515,7 +520,7 @@ confused with `phosphor`, one of the eight *accents*. See
 
 One piece of host software as this repository describes it: a directory holding a *kpkgbuild* and a
 `build.sh` (the build, run by bash with the unpacked source as its working directory). There are
-five port repositories in one format, holding about 2,000 recipes: the upstream ports in
+five port repositories in one format, holding 2,109 recipes: the upstream ports in
 `ports/core/`, each on a *shelf*, and KDOS's own in four *areas*: `src/system/`, `src/art/`,
 `src/desktop/` and `src/daemons/` ([The ports catalogue](ports-catalogue.md#ports-per-shelf) counts
 them). (`src/system/kdos-kpkg` has no recipe; `10_bootstrap` compiles it by script.) A port is known by its bare name, which is unique
@@ -577,7 +582,8 @@ init](../03-architecture/boot-and-init.md#rcs-and-the-service-scripts).
 
 The files that describe how to build one *port*: its *kpkgbuild*, its `build.sh`, and any
 `postinstall.sh` and patches beside them. The *recipe hash* is taken over them and every other
-file beside them that no `sha256 =` line names, except the book note `kfs.md`. See [Writing
+file beside them that no `sha256 =` line names, except the book note
+[`kfs.md`](../05-developer/writing-ports.md#the-ports-note-kfsmd). See [Writing
 ports](../05-developer/writing-ports.md).
 
 ### recipe hash
@@ -586,8 +592,10 @@ The other of the two package hashes: a SHA-256 over a port's recipe files (`kpkg
 `postinstall.sh` and every patch) and every other file in its directory that no `sha256 =` line
 names except the book note `kfs.md`, so editing a kernel config beside a recipe changes it. For a port with no `source =` that is
 the port's whole directory, and for one of KDOS's own ports under `src/` all of `src/libs` as well, so editing a
-program's source or a shared library changes it. Written `E:` in a package index. It decides what
-the build rebuilds. Not to be confused with a *source hash*. See
+program's source or a shared library changes it. Written `E:` in a package index, where only the
+file of the version and release the recipe names carries it and every other file of the port has an
+empty `E:` that matches nothing. `kpkg binhost` records the `E:` it matched as the installed
+package's recipe hash. It decides what the build rebuilds. Not to be confused with a *source hash*. See
 [Packaging](../03-architecture/packaging.md#e--the-recipe-hash).
 
 ### restamp
@@ -752,9 +760,9 @@ its chain and every layer above it in turn. `--full-snapshots` writes none. See
 
 The store of every upstream source file the recipes name: release assets of the GitHub repository
 `kunaldawn/kdos`, in numbered pre-releases, the volumes `sources-1`, `sources-2` and on, each holding
-the shelves `ports/shelves` maps to it. An asset is named `<shelf>--<file>`, or `attic--<file>` for a
-file only old history names, and each file is checked against its SHA-256 before use. A file larger
-than 1,900 MiB is stored in parts. Nothing in it is replaced, and nothing is removed except by
+the shelves `ports/shelves` maps to it. An asset is named `<shelf>--<file>` (longer when that name
+is already taken in the volume), or `attic--<file>` for a file only old history names, and each
+file is checked against its SHA-256 before use. A file larger than 1,900 MiB is stored in parts. Nothing in it is replaced, and nothing is removed except by
 `ports/publish --rehome` and `--prune=yes-delete`. `make fetch` reads it through
 *sources.idx*; `ports/publish` adds to it. See [Packaging](../03-architecture/packaging.md#where-sources-come-from) and [Writing
 ports](../05-developer/writing-ports.md#publishing-sources).
@@ -780,8 +788,7 @@ ports](../05-developer/writing-ports.md#checksums).
 `# kdos-sources-index 2` first, then one line per file, `<sha256> <tag> <asset> <port>/<file>`, with
 `parts=<N>:<h1>,…` for a file stored in parts, giving the release and asset each hash lives in.
 `make fetch` and the pre-push hook read it from the tree, so a file uploaded to the archive is found
-only once its line is committed, and an index of any other format is not read at all. It names no
-file until `ports/publish` fills it. See [Writing
+only once its line is committed, and an index of any other format is not read at all. See [Writing
 ports](../05-developer/writing-ports.md#publishing-sources).
 
 ### splash
@@ -853,8 +860,8 @@ is rolled back. See [Boot and init](../03-architecture/boot-and-init.md#one-boot
 
 ### vendor bundle
 
-A tarball of a port's language dependencies (Rust crates, Go modules, Python source distributions or
-Hackage packages), named `<name>-vendor-<version>.tar.xz`, so that the build needs no network. `make
+A tarball of a port's language dependencies (Rust crates, Go modules, Python source distributions,
+Hackage packages or npm packages), named `<name>-vendor-<version>.tar.xz`, so that the build needs no network. `make
 fetch` takes it from the port directory, the *source cache* or the *source archive* like any other
 source, and generates it, by default in the `kdos-fetch` container, only when none of them has it.
 It is generated reproducibly, so it has a stable *source hash*. A recipe asks for one with the
@@ -870,8 +877,8 @@ to start. See [kdos-appbox](../04-programs/kdos-appbox.md#warmup-and-collection)
 ### whiteout
 
 How a filesystem layer records a deletion. Overlay whiteouts are kept in `trusted.overlay.*`
-attributes that only root can write, so `kdos-pack build` runs `mkfs.erofs` as root to preserve
-them, and `kdos-appbox export` flattens a box with `podman export` so that no whiteout is involved.
+attributes that only root can write, so `kdos-pack build` must run as root for `mkfs.erofs` to
+preserve them, and `kdos-appbox export` flattens a box with `podman export` so that no whiteout is involved.
 Because `kdos-packd` mounts as root, an application pack can delete a file its base provides. See
 [kdos-appbox](../04-programs/kdos-appbox.md#export-and-import) and [Packs and
 boxes](../03-architecture/packs-and-boxes.md#composition).

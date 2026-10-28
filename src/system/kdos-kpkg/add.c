@@ -457,9 +457,9 @@ int add_main(int argc, char **argv)
 		kp_msg("Signature good (key %s)", signer);
 
 	const char *root = c.root[0] ? c.root : "/";
-	/* The question is not "am I uid 0" but "can I write here" — that is
-	 * what the root check was standing in for, and it is the one that stays
-	 * true when a build installs into a sysroot it owns. */
+	/* The test is "can I write here", not "am I uid 0": a build installs
+	 * into a sysroot it owns without being root, and a uid check would
+	 * refuse it. */
 	if (access(root, W_OK) != 0) {
 		kp_err("cannot write to %s — run as root", root);
 		return 1;
@@ -501,11 +501,11 @@ int add_main(int argc, char **argv)
 	 *
 	 * GNU tar restores permissions in full only for the superuser unless
 	 * it is asked; extracting as an ordinary user applies the umask and
-	 * strips setuid and setgid without a word. A build run as a person
-	 * rather than as root therefore produced an image whose `su`, `mount`
-	 * and `newuidmap` were plain executables — and nothing failed until
-	 * something needed the privilege, in a program that had no way to say
-	 * why it could not have it.
+	 * strips setuid and setgid without a word. Without `-p`, a build run
+	 * as a person rather than as root produces an image whose `su`,
+	 * `mount` and `newuidmap` are plain executables — and nothing fails
+	 * until something needs the privilege, in a program that has no way
+	 * to say why it cannot have it.
 	 */
 	kb_argv_add(&x, "--quoting-style=literal");
 	kb_argv_add(&x, "-xpvf");
@@ -701,6 +701,21 @@ int add_main(int argc, char **argv)
 
 	kp_triggers_note(&trig, m);
 	kb_mkdir_p(db);
+
+	/* The recipe hash goes BEFORE the entry is replaced: it names the
+	 * recipe the previous bytes were built from, and nothing here knows
+	 * what these were built from. The caller that does (kpkg install,
+	 * --commit, binhost) records it again once this returns; left in
+	 * place, the solver would take these bytes for that recipe's build.
+	 * Absent reads as unknown, so an interruption past here is safe. */
+	{
+		char *rdir = kb_path_join(db, ".recipe");
+		char *rfile = kb_path_join(rdir, name);
+		unlink(rfile);
+		free(rfile);
+		free(rdir);
+	}
+
 	KbBuf entry = {0};
 	kb_buf_printf(&entry, "%s %s\n", ver, rel);
 	kb_buf_add(&entry, m, mn);

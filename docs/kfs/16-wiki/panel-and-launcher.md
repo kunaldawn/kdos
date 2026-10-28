@@ -32,11 +32,11 @@ power-off.
 Where the bar sits, how tall it is, its font, margin, opacity and autohide are compositor keys,
 because they are the panel's command line. Every key ships commented out at its default:
 
-<!-- kfs:include fs/etc/skel/.config/kdos/comp.conf lines=34-77 pin=79441209ff98 -->
+<!-- kfs:include fs/etc/skel/.config/kdos/comp.conf lines=34-77 pin=cf838293aff8 -->
 
 The clock's format is in the same file:
 
-<!-- kfs:include fs/etc/skel/.config/kdos/comp.conf lines=123-126 pin=a05a25d2e697 -->
+<!-- kfs:include fs/etc/skel/.config/kdos/comp.conf lines=123-126 pin=9b51a6041ba2 -->
 
 These keys are read when the session starts, so a change takes effect at the next login. A reload
 logs the change and keeps the running value until then. Every key and its range is in
@@ -55,8 +55,10 @@ The widget and meter names, and what an empty value means for each key, are in
 
 ### Pinned applications: ~/.config/kdos/favorites
 
-One desktop-entry identifier per line. The Start menu's pinned column, the palette and the panel's
-quick-launch row read the first word of each line and ignore a `code=` after it:
+One desktop-entry identifier per line: the file name of its entry without `.desktop`. The Start
+menu's pinned column and the panel's quick-launch row take the first word of each line as the
+identifier. A `code=XX` after it is the two-letter shorthand that the Start menu and the palette
+open the row by (see [Pinning an application](#pinning-an-application)):
 
 <!-- kfs:include fs/etc/skel/.config/kdos/favorites -->
 
@@ -115,8 +117,8 @@ it back, even with autohide on.
 
 ### Choosing the panel's widgets and meters
 
-1. Open **Settings** (`Super+I`) on its Panel page, or run `kdos-settings --page panel`. It writes
-   `~/.config/kdos/panel.conf` and signals the panel itself.
+1. Open **Settings** (`Super+I`) and go to its Panel page, or run `kdos-settings --page panel` to
+   open on that page. It writes `~/.config/kdos/panel.conf` and signals the panel itself.
 2. Or edit the file by hand. For example, to put the stutter chip on the bar and chart disk use in
    place of the network:
 
@@ -218,8 +220,8 @@ name as a system route replaces it; no route can be deleted.
   an application that is not installed yet leaves no dead button.
 - Typing `wifi`, `bluetooth` or a route name such as `setup.network` into the Start menu's search
   finds the fixed rows as well as applications.
-- `kdos-shell --dump` prints one frame of the bar as text, two rows 100 columns wide, and exits; it needs no
-  display.
+- `kdos-shell --dump` prints one frame of the bar as text, two rows 100 columns wide, and exits; it
+  needs no display. `--dump-width N` sets another width.
 - Middle-click a window button for another instance of the same application.
 
 ## Troubleshooting
@@ -240,9 +242,9 @@ name as a system route replaces it; no route can be deleted.
    A panel that exits is started again within a few seconds, under a new process id.
 
    A panel that exits more than five times within 30 seconds is not started again, and a dialog
-   names it. `kdos-comp -r` in a terminal the compositor started, or `pkill -HUP -x kdos-comp`
-   from any shell, gives it another run of attempts. `kdos doctor` also reports a session with no
-   `kdos-shell` running.
+   names it. A compositor reload gives it another run of attempts: `kdos-comp -r` in a terminal
+   the compositor started, or `pkill -HUP -x kdos-comp` from any shell. `kdos doctor` also reports
+   a session with no `kdos-shell` running.
 
 **A change to `comp.conf` did nothing.** The panel keys apply at the next login. The compositor's
 log names every line it ignored, with the file and line number:
@@ -252,11 +254,14 @@ grep comp.conf "$XDG_RUNTIME_DIR/kdos-comp.log"
 ```
 
 **A change to `panel.conf` did nothing.** The panel re-reads the file only on `SIGHUP`; run
-`pkill -x -HUP kdos-shell`. A name the panel does not know is reported in the log as
-``panel.conf: no widget named `x` — ignored`` or ``no meter named `x` — ignored``.
+`pkill -x -HUP kdos-shell`. A name the panel does not know is reported in the compositor's log as
+``panel.conf: no widget named `x` — ignored`` or ``no meter named `x` — ignored``. A word in
+`overflow =` that is not a widget, or is `more` itself, is reported as
+``panel.conf: `x` cannot go in the overflow — ignored``.
 
 **An application is missing from the menus.** Check that its entry is in one of the directories
-above, has a `Name=` line, and has no `NoDisplay=true` or `Hidden=true`. A boxed application's entry is written when it is installed; see
+above, has `Type=Application` (or no `Type=` line), a `Name=` line and an `Exec=` line, and has no
+`NoDisplay=true` or `Hidden=true`. A boxed application's entry is written when it is installed; see
 [Applications](../../kdos/02-user-guide/applications.md).
 
 **A menu row or a route opens nothing.** A program started from a menu has no terminal attached,
@@ -266,7 +271,7 @@ shipped routes are known to show nothing; see [Known gaps](#known-gaps).
 ## Known gaps
 
 - [The launcher's `files` setting does nothing](../../kdos/06-reference/known-gaps.md#the-launchers-files-setting-does-nothing)
-- [Two shipped chords and two routes show nothing](../../kdos/06-reference/known-gaps.md#two-shipped-chords-and-two-routes-show-nothing)
+- [Two menu routes show nothing](../../kdos/06-reference/known-gaps.md#two-menu-routes-show-nothing)
 - [Workspace occupancy is inferred, not reported](../../kdos/06-reference/known-gaps.md#workspace-occupancy-is-inferred-not-reported)
 - [A tray menu does not update while it is open](../../kdos/06-reference/known-gaps.md#a-tray-menu-does-not-update-while-it-is-open)
 - [Only two ways of ending the session save the list of open windows](../../kdos/06-reference/known-gaps.md#only-two-ways-of-ending-the-session-save-the-list-of-open-windows)

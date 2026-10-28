@@ -4,7 +4,7 @@ and searches with regular expressions. On KDOS it is what `man` pages through
 ([mandoc](#port-mandoc) depends on it), and the login profile points it at an input filter from
 [lesspipe](#port-lesspipe) with `LESSOPEN`, and sets `LESS=-R` so colour escapes are shown as
 colour (see
-[Shell environment](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/06-reference/configuration.md#shell-environment)).
+[Shell environment](../../../../docs/kdos/06-reference/configuration.md#shell-environment)).
 The port installs `less`, and its helpers `lessecho` and `less-osc8-open` in `/usr/libexec`.
 
 ## Flags

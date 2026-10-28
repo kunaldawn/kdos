@@ -12,7 +12,7 @@ use it at run time.
 - `PYYAML_FORCE_LIBYAML=1` — Make the libyaml extension mandatory. PyYAML's `setup.py` builds it
   when it can and, when the compile or link fails, falls back to pure Python with only a warning;
   with the variable set, the failure stops the build, so a package without `CLoader` cannot be
-  produced by accident. See [Python modules](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#python-perl-haskell-node-and-ocaml-modules).
+  produced by accident. See [Python modules](../../../../docs/kdos/05-developer/writing-ports.md#python-perl-haskell-node-and-ocaml-modules).
 - `--find-links=vendor` — Look for distributions in the unpacked `vendor` directory, the only
   place pip looks with `--no-index`. The line has no `--no-build-isolation`, so pip builds
   PyYAML in a temporary environment and installs its build requirements, setuptools and Cython,

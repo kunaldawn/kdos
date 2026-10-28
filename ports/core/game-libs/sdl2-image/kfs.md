@@ -26,6 +26,9 @@ libraries is linked rather than loaded at run time.
 - `-DSDL2IMAGE_JXL=ON` — JPEG XL through [libjxl](#port-libjxl). Upstream's default is off.
 - `-DSDL2IMAGE_SVG=ON` — SVG, rasterised by the nanosvg code compiled into the library; it takes no
   outside library.
+- `-DSDL2IMAGE_SAMPLES=OFF`, `-DSDL2IMAGE_TESTS=OFF` — Builds neither the sample programs, which
+  upstream builds by default when SDL2_image is the top-level project, nor the unit tests, which are
+  off by default.
 
 ## Notes
 

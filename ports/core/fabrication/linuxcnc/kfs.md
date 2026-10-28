@@ -5,7 +5,7 @@ motion layer, the HAL component system that wires it to the hardware, the RS274N
 Tk interfaces AXIS and the configuration picker, and GTK 3 configuration wizards. In KDOS it is
 built and shipped as the simulator: the package carries no setuid file, so its realtime threads run
 without realtime priority and it cannot drive a machine (see
-[LinuxCNC is the simulator only](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/06-reference/known-gaps.md#linuxcnc-is-the-simulator-only)).
+[LinuxCNC is the simulator only](../../../../docs/kdos/06-reference/known-gaps.md#linuxcnc-is-the-simulator-only)).
 
 ## Flags
 
@@ -55,7 +55,7 @@ without realtime priority and it cannot drive a machine (see
 ## Notes
 
 The install marks `rtapi_app` and `linuxcnc_module_helper` setuid root; `build.sh` clears every
-setuid bit in the package (see [setuid binaries](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#setuid-binaries)).
+setuid bit in the package (see [setuid binaries](../../../../docs/kdos/03-architecture/security-model.md#setuid-binaries)).
 
 No package may install under `/etc/X11`. The install puts the `TkLinuxCNC` X resource file there;
 `build.sh` moves it beside the Tcl sources in `/usr/lib/tcltk/linuxcnc`, where it is read from

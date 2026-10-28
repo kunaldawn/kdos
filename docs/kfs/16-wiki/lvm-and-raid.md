@@ -28,7 +28,7 @@ Two boot scripts come from the tree's `fs/` overlay, and both are enabled on the
 
 | Script | Does | Skips itself when |
 |---|---|---|
-| `03_lvm` | Activates every volume group once, then checks and mounts any [`/etc/fstab`]{.idx} entry on a volume that was not active earlier in the boot. It starts no daemon | `/usr/sbin/lvm` is missing |
+| `03_lvm` | Activates every volume group once, then checks and mounts any [`/etc/fstab`]{.idx} entry on a volume that was not active earlier in the boot, and turns on any swap entry on one. It starts no daemon | `/usr/sbin/lvm` is missing |
 | `51_mdmonitor` | Supervises `mdadm --monitor --scan --syslog`, which writes a failed member, a degraded array or a missing spare to the system log | [`/proc/mdstat`]{.idx} lists no array |
 
 The initramfs carries `mdadm`, `lvm`, `dmsetup`, `thin_check` and `cache_check`, and assembles
@@ -56,7 +56,8 @@ on hotplug.
 <!-- kfs:include script/phases/70_image/090_initramfs.sh lines=332-340 pin=9b5a3ded256f -->
 
 **[`/etc/init.d/03_lvm.sh`]{.idx}**, from `fs/etc/init.d/03_lvm.sh`. Its `start` activates the groups and,
-when any is active, checks and mounts the `fstab` entries the earlier `mount -a` could not reach:
+when any is active, checks and mounts the `fstab` entries the earlier `mount -a` could not reach,
+and turns on their swap:
 
 <!-- kfs:include fs/etc/init.d/03_lvm.sh lines=33-56 pin=f2fa25519dd0 -->
 
@@ -101,7 +102,8 @@ has a persistence store; see [`kdos persist`](../../kdos/04-programs/kdos-comman
 
 3. Mount the one you want, for example `sudo mount /dev/data/files /mnt`.
 
-`service status lvm` runs `lvs` and prints the same list, or nothing when no group is active.
+`sudo service status lvm` runs `lvs` and prints the same list, or nothing when no group is active.
+Run without `sudo` it prints nothing either way, because `lvs` needs root.
 
 ### Making a volume group on a new disk
 
@@ -165,7 +167,8 @@ The volume is made with `sudo lvcreate -n root_b -l 100%FREE kdos`; the rest of 
 
    mdadm asks two questions first: whether to enable a write-intent bitmap, which speeds up a
    resynchronisation after a crash, and, after a note that the metadata sits at the start of each
-   member, `Continue creating array [y/N]?`. Answer `y` to the second, or add `--run` to skip both.
+   member, `Continue creating array [y/N]?`. Answer `y` to the second. `--run` skips both
+   questions and makes the array without a bitmap; add `--bitmap=internal` beside it to have one.
    It ends `mdadm: array /dev/md0 started.`
 
 3. Watch the first synchronisation:

@@ -3,7 +3,8 @@
 The first step of the build compiles GNU binutils, the assembler, the linker and the tools that
 read and rewrite object files, to run in the container and write code for
 `x86_64-kdos-linux-musl`. It is the step the cross GCC needs before it can be built, and it is
-the unit of build time this book measures in. This page shows the commands of
+the unit of build time this book measures in (see
+[Build times and the SBU](../00-front/conventions.md#build-times-and-the-sbu)). This page shows the commands of
 `script/phases/00_cross/00_binutils.sh`, explains each configure switch, lists what it installs,
 and compares it with the two later builds of the same source.
 
@@ -25,9 +26,9 @@ a `build` directory of its own, as its documentation asks, so the source tree st
 `--target=$KDOS_TARGET`
 : Build tools that run here and write for `x86_64-kdos-linux-musl`. Every program is installed as
   `build/cross/bin/x86_64-kdos-linux-musl-ld` and the like, the names a configure script given
-  `--host` looks for. The ten that a compiler driver runs, `as`, `ld` and `ar` among them, are
-  installed a second time under their plain names in `build/cross/x86_64-kdos-linux-musl/bin`,
-  which is where the cross GCC looks for its assembler and linker.
+  `--host` looks for. Ten of them, `as`, `ld` and `ar` among them, are installed a second time
+  under their plain names in `build/cross/x86_64-kdos-linux-musl/bin`, which is where the cross
+  GCC looks for its assembler and linker.
 
 `--with-sysroot=$SYSROOT`
 : Make `build/fs` the linker's root. Its default library directories, `/usr/lib` among them, and
@@ -75,7 +76,8 @@ a `build` directory of its own, as its documentation asks, so the source tree st
 
 **Installed directory:** `build/cross/x86_64-kdos-linux-musl`, with unprefixed copies of `ar`,
 `as`, `ld`, `ld.bfd`, `nm`, `objcopy`, `objdump`, `ranlib`, `readelf` and `strip` in `bin`, and the
-linker scripts in `lib/ldscripts`.
+linker scripts in `lib/ldscripts`. `build/cross/lib/bfd-plugins` holds `libdep.so`, the linker
+plugin that links the libraries an archive records in its `__.LIBDEP` member.
 
 `as`
 : The assembler: turns the assembly GCC writes into object files.
@@ -103,8 +105,8 @@ The same source is built twice more, and each build replaces this one in its own
 
 [Native binutils](../03-bootstrap/090-binutils.md), in `10_bootstrap`, is compiled by the cross GCC
 to run on KDOS. It keeps every switch above except the three that make a [cross toolchain]{.idx}:
-`--target` and `--with-sysroot` go, `--host=$KDOS_TARGET` comes in, and it installs into
-`build/fs/usr`.
+`--target` and `--with-sysroot` go, `--prefix` becomes `/usr`, and `--host=$KDOS_TARGET` comes in.
+It installs into `build/fs/usr` through `DESTDIR`.
 
 The [binutils](#port-binutils) port, in `20_selfhost`, is the one KDOS ships. It is built inside
 the chroot with no triplet, and it adds what a system's binutils needs: shared `libbfd` and

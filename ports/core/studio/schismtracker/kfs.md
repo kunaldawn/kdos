@@ -27,7 +27,7 @@ recipe builds from upstream's dated tag archive, and the date is the version.
 
 ## Patches
 
-- `version.patch` — In `configure.ac`, the `m4_esyscmd` that computes the version (the date of the last git commit, through `git log`) prints `$SCHISM_VERSION` instead when it is set. `build.sh` runs `autoreconf` with `SCHISM_VERSION=$version`. The tag archive is not a git checkout, so without the patch `git log` prints nothing and the program reports an empty version.
+- `version.patch` — In `configure.ac`, the `m4_esyscmd` that computes the version (the date of the last git commit, through `git log`) prints `$SCHISM_VERSION` instead when it is set. `build.sh` runs `autoreconf` with `SCHISM_VERSION=$version`. The tag archive is not a git checkout, so without the patch `git log` prints nothing, configure defines `EMPTY_VERSION`, and the program shows the date and time it was compiled in place of a version.
 
 ## Notes
 

@@ -18,8 +18,8 @@ port.
   `SDL_Init(SDL_INIT_AUDIO)` opens no window, so it runs in a terminal with no compositor.
   [sdl2-compat](#port-sdl2-compat) provides SDL2.
 - `-DWHISPER_COMMON_FFMPEG=ON` — Let the programs fall back to [ffmpeg](#port-ffmpeg) when the
-  bundled miniaudio decoder, which reads WAV, MP3 and FLAC, cannot open a file, so `whisper-cli`
-  also reads Ogg, Opus and the audio track of a video.
+  bundled miniaudio decoder, which reads WAV, MP3, FLAC and (through stb_vorbis) Ogg Vorbis, cannot
+  open a file, so `whisper-cli` also reads Opus, AAC and the audio track of a video.
 - `-DWHISPER_USE_SYSTEM_GGML=ON` — Link the [libggml](#port-libggml) port instead of building the
   copy of ggml in the tarball, so whisper.cpp and llama.cpp load one set of CPU, OpenBLAS and Vulkan
   backend modules from `/usr/lib/ggml`. `build.sh` fails if the install put a `libggml.so` or a

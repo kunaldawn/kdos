@@ -81,9 +81,8 @@ takes the mainstream approach: every everyday command is the full GNU or util-li
 a separate binary with one owner.
 
 - **GNU coreutils** in full (`ls`, `cp`, `install`, `sort`, `stat` and the rest), with **GNU grep,
-  sed, gawk, findutils, diffutils, patch and tar**. They are cross-built in the first build stage
-  and rebuilt as ports, so every configure script KDOS runs meets the tools upstream tested
-  against.
+  sed, gawk, findutils, diffutils, patch and tar**. They are cross-built in the bootstrap phase and
+  rebuilt as ports, so every configure script KDOS runs meets the tools upstream tested against.
 - **util-linux** owns `mount`, `umount`, `swapon`, `blkid`, `switch_root`, `agetty`, `sulogin` and
   several dozen others.
 - **procps-ng** owns `ps`, `top`, `free` and the rest of the process tools.
@@ -96,7 +95,8 @@ A compact userland differs from GNU in ways that fail silently: a mode an `insta
 an `awk` that printed nothing, a `grep` that matched nothing and reported no error. Every one of
 those is a build that goes wrong without failing, and on a distribution that compiles every
 package that cost lands on every port. The price of the full tools is size, a few megabytes more
-than a multi-call binary, and a longer first build stage. Why each name has the owner it does is
+than a multi-call binary, and a longer bootstrap phase. The alternatives that lost are in
+[Decisions](decisions.md#gnu-at-every-name-no-multi-call-userland), which package owns each name is
 in [Packaging](../03-architecture/packaging.md#the-base-userland), and the initramfs's own checks
 are in
 [Boot and init](../03-architecture/boot-and-init.md#tools-that-must-be-util-linuxs).
@@ -110,14 +110,16 @@ uses the Shepherd. Linux From Scratch offers a System V init edition and a syste
 KDOS uses no systemd component. Its PID 1 is sysvinit's `init`, configured by `/etc/inittab`, which
 runs `/etc/init.d/rcS` at boot and `rcK` at shutdown. Runlevel 3 is the running system, and
 runlevel `S` is single-user mode: `sulogin` asks for root's password on the console, with no
-gettys and no desktop. `rcS` runs the numbered scripts in
-`/etc/init.d/` in order: 40 of them ship in the system files, from `01_udev.sh` to
-`88_llama-server.sh`, and a few more are installed by their ports and do nothing until configured. A
-script is a service table entry in shell. It starts its daemon under `ksvc`, a small supervisor
-written in C for KDOS, which restarts the daemon when it exits and, when the service is stopped,
-stops everything the daemon started. A service is disabled by creating a file named after it in
-`/etc/service.disabled/`. Each of the other jobs systemd does, from device management to logging and
-timers, is done by a separate program that does only that job;
+gettys and no desktop. `rcS` runs the numbered scripts in `/etc/init.d/` in order: 41 of them
+ship in the system files, from `01_udev.sh` to `88_llama-server.sh`, and 24 more are installed by
+the ports whose daemons they start. Most of those, the servers among them, skip themselves until
+their service is configured. A few start without configuration, among them the libvirt daemons,
+and the Thunderbolt and dual-GPU daemons when that hardware is present. A script is a service
+table entry in shell. One that runs a daemon starts it under `ksvc`, a small supervisor written in
+C for KDOS, which restarts the daemon when it exits and, when the service is stopped, stops
+everything the daemon started. A service is disabled by creating a file named after it in
+`/etc/service.disabled/`, which is how `sshd` ships. Each of the other jobs systemd does, from
+device management to logging and timers, is done by a separate program that does only that job;
 [Principles](principles.md#no-systemd) lists them.
 
 This is the same trade OpenRC, runit and s6 users make, and KDOS keeps it smaller still: there is
@@ -130,7 +132,8 @@ service manager. Rootless podman's resource limits depend on a cgroup subtree th
 hand out, so KDOS has to provide that subtree itself and back it with a memory-pressure daemon.
 lvm2's hotplug activation runs through `systemd-run`, so a volume group plugged in after boot has to
 be activated by hand. See
-[Principles](principles.md#no-systemd) and
+[Principles](principles.md#no-systemd),
+[Decisions](decisions.md#sysvinit-as-pid-1) and
 [Boot and init](../03-architecture/boot-and-init.md#rcs-and-the-service-scripts).
 
 ## The display stack
@@ -167,7 +170,8 @@ libraries written for it; the boot splash, which runs before any of them, draws 
 the framebuffer. The compositor's window titlebars and menus are drawn with pango at a size that
 lines up with the cell grid. Applications on the host are ported with their own toolkit (GTK 3 and
 4, libadwaita, WebKitGTK, Qt 5 and 6, QtWebEngine, KDE Frameworks, wxWidgets, FLTK or Tk). Every
-toolkit is built with its Wayland and its X11 backend, Wayland is the default at run time, and GTK
+toolkit that has a Wayland backend is built with it and with its X11 backend, and Wayland is the
+default at run time; Tk has only an X11 backend, so a Tk application runs through Xwayland. GTK
 and Qt 6 applications take their colours from the desktop's palette. The containers carry the same
 toolkits for the catalogue's applications. A library's toolkit front end is built where a ported
 application uses it.
@@ -189,9 +193,9 @@ of the labwc 0.20.0 Wayland compositor: upstream's source imported whole, never 
 with KDOS's additions in their own files. Around it sit programs written for KDOS: the panel
 `kdos-shell` with its menus and settings surfaces, an experimental terminal of its own, `kdos-term`,
 beside `foot`, which is the default terminal, the resource monitor `kdos-res`, the lock screen
-`kdos-lock`, and a set of daemons for power, mounting, memory pressure and application packs. They
-share one palette of colour slots, one set of keys and pointer gestures, and one [design
-language](../03-architecture/design-language.md).
+`kdos-lock`, and a set of daemons for power, energy accounting, mounting, memory pressure and
+application packs. They share one palette of colour slots, one set of keys and pointer gestures,
+and one [design language](../03-architecture/design-language.md).
 
 The reason is that the cell grid is the project's identity, and a desktop from elsewhere would bring
 its toolkit into the desktop itself, which the previous section keeps out. KDE's and GNOME's
@@ -221,6 +225,8 @@ release     = 1
 source      = https://zlib.net/$name-$version.tar.gz
 sha256      = bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16  zlib-1.3.2.tar.gz
 description = Compression library implementing the deflate compression method
+homepage    = https://zlib.net/
+license     = Zlib
 ```
 
 The package manager, `kpkg`, is written for KDOS in C. It builds a port into a compressed tar
@@ -230,7 +236,9 @@ upstream software and some two dozen under `src/` for KDOS's own, and all of the
 format.
 The upstream recipes are filed on 102 subject shelves, `ports/core/<shelf>/<name>/`, much as T2
 SDE files its packages by repository, while a port is still named by its bare name everywhere.
-[The ports catalogue](../06-reference/ports-catalogue.md) lists every one of them by shelf.
+[The ports catalogue](../06-reference/ports-catalogue.md) lists every one of them by shelf, and
+[Decisions](decisions.md#ports-are-shelved-by-subject-identity-is-the-bare-name) says why a shelf
+is not part of a port's name.
 
 The closest relatives are Arch's `PKGBUILD` and CRUX's `Pkgfile`, with the metadata pulled out so
 that it can be parsed safely. Gentoo's USE flags, which let one ebuild build many configurations,
@@ -253,12 +261,12 @@ first place that holds a copy with the right hash: the port directory, a local c
 source archive, and finally the upstream URL. The source archive is a set of GitHub releases in
 which each file is stored under its own hash and never replaced or removed, so a checkout from
 years ago still finds the exact bytes it names after upstream has moved them. The recipes name
-2,489 distinct files, about 38.6 GiB.
+2,572 distinct files, about 39.3 GiB.
 
 `make build` then runs its build container with `--network none`. A recipe that tries to download
 anything during its build therefore fails on the machine that added it. Language ecosystems that
 fetch their dependencies at build time (Rust, Go, Python, Haskell) get a vendor bundle, a
-reproducible tarball of those dependencies that is itself hashed and archived; 164 ports carry one.
+reproducible tarball of those dependencies that is itself hashed and archived; 166 ports carry one.
 
 This is the Nix and Guix model of hash-pinned inputs applied to a conventional ports tree. The cost
 falls on whoever adds a port: vendoring, publishing new sources to the archive before pushing, and
@@ -302,7 +310,9 @@ isolate every build and identify each result by a hash of its inputs, which make
 same thing reliable, and they check bit-for-bit reproducibility separately.
 
 In KDOS a package built twice from the same tree is byte-identical, and that is a property of one
-function rather than of each recipe. `kpkg` rolls every package archive itself, normalising what
+function rather than of each recipe. The one exception is the kernel package: each module is
+signed with ECDSA, which draws a fresh random number for every signature, so the modules'
+signatures differ between two builds. `kpkg` rolls every package archive itself, normalising what
 would otherwise vary between two builds, and every build phase pins the environment a build can
 observe. `kpkg verify --repro` builds a recipe twice and compares the two packages.
 
@@ -342,22 +352,25 @@ browser, an office suite, media and graphics tools, maps and an offline library 
 They are ordinary recipes in the ports tree, filed on shelves named for what they are for and built
 mostly in the `43_toolkits` and `44_apps` phases, with those that need no toolkit, such as mpv, in
 `42_graphics`; [The ports catalogue](../06-reference/ports-catalogue.md)
-lists them. Beside them, the catalogue of boxed applications lists 73 applications over 7 shared
-runtimes, each declared as a chain of Debian trixie packages. Installing one makes podman build a
-container image on the machine that asked, layer by layer over the shared runtime, pinned to a
+lists them. Beside them, the catalogue of boxed applications lists 73 applications, each declared
+as a few Debian trixie packages over a shared Debian base and, for most of them, one of seven
+shared runtimes (GTK, Qt, KDE, media, science, Electron and Wine). Installing one makes podman
+build a container image on the machine that asked, layer by layer over the shared runtime, pinned to a
 snapshot of the Debian archive, and creates a rootless container, a *box*, over the top image. The
 application then behaves like native software: it has a launcher entry, a command on your `PATH`,
 file-type associations and the desktop's theme, and it reaches the host through portals. A set of
-built applications can be exported as signed packs, read-only images in EROFS, a compressed
-read-only filesystem format, that another machine imports without a network; the pack daemon checks
-each pack's hash and signature when it installs it.
+built applications can be exported as packs, read-only images in EROFS, a compressed read-only
+filesystem format, that another machine imports without a network. The pack daemon checks each
+pack's hash when it installs it, and its signature when it carries one; an unsigned pack is
+accepted unless the daemon is told to require signatures.
 
 Compared with Flatpak, the model is similar in shape (shared runtimes, per-application artefacts,
 portals) and different in three ways. The packages come from Debian's archive rather than from a
 dedicated store, so the catalogue covers whatever Debian carries and adding an application is one
-line in a text file. Nothing is downloaded prebuilt from a KDOS server: each machine builds its own
-images. And the confinement is aimed at the desktop rather than at your files. A box shares your
-home directory by default; what it cannot do, unless its box profile grants it, is bind the
+line in a text file; the one application Debian does not carry, VSCodium, is a `.deb` taken from
+its own releases page and installed by the same apt. Nothing is downloaded prebuilt from a KDOS
+server: each machine builds its own images. And the confinement is aimed at the desktop rather than
+at your files. A box shares your home directory by default; what it cannot do, unless its box profile grants it, is bind the
 compositor's screen-capture, input-method, clipboard-control or window-management protocols, so by
 default it has to ask a portal on the host.
 
@@ -389,7 +402,8 @@ what is installed with what the tree pins. `kdos update apply` then downloads th
 everything that is behind, each checked against its recipe's hash, and compiles it on the machine.
 There is no binary package archive: an update needs the network for the tree and the sources, and
 takes as long as compiling it does, which is hours for a large set. This is Gentoo's model with a
-signed tree in place of a sync, and without USE flags.
+signed tree in place of a sync, and without USE flags; the reasons are in
+[Decisions](decisions.md#updates-build-a-signed-tree-from-source).
 
 On a machine set up with two root slots, `kdos update apply` installs into the inactive slot and
 marks it to be tried on the next boot. The initramfs, the small early-boot filesystem that finds
@@ -400,8 +414,9 @@ idea of an update that cannot break the running system, applied to a package-bui
 Nothing installs updates automatically: the timer fetches the tree and reports, and the panel's
 badge shows how many packages are behind or what failed. A machine with no ports tree on it cannot
 update until `kdos update fetch` installs one. The
-installer lays out only the first slot, so creating and filling the second is a manual job, and
-several of the slot paths have been exercised against fixtures rather than booted.
+installer lays out only the first slot, so creating and filling the second is a manual job. Slot
+trials have been booted on virtual firmware only, a second encrypted slot has never been booted,
+and the update path has not been run against a published release over the internet.
 See [Packaging](../03-architecture/packaging.md#updating-a-machine),
 [Boot and init](../03-architecture/boot-and-init.md#ab-slot-selection) and
 [Known gaps](../06-reference/known-gaps.md#boot-and-updates).
@@ -418,18 +433,19 @@ few privileged programs, and against catastrophic mistakes made through its own 
 Boxed applications run in rootless containers whose compositor access is filtered to an
 allowlist of Wayland protocols, widened for one box only by an explicit grant in its profile. The
 root daemons obey callers by their credentials and never accept a path from them. Host sources are
-verified by the hash in their recipe, prebuilt packages by the signed index, imported packs by a
-hash and signature when they are installed, and packs on the install medium by the same check the
-first time they are mounted. The shipped image carries nineteen setuid-root binaries, two of
-them KDOS's own. `kdos cve` compares installed versions against a vendored copy of Alpine's security
-database, offline.
+verified by the hash in their recipe, prebuilt packages by the signed index, imported packs at
+install by their hash and, when they carry one, their signature, and packs on the install medium by
+the same check the first time they are mounted. The shipped image carries nineteen setuid-root
+binaries, two of them KDOS's own. `kdos cve` compares installed versions against a vendored copy of
+Alpine's security database, offline.
 
 It is equally explicit about what it does not do. There is no SELinux or AppArmor, no Secure Boot,
 no verified or measured boot, and disk encryption is a passphrase typed at boot rather than a key
 sealed in a TPM. Membership of `wheel` is effectively root. A box shares your home directory. There
 is no security advisory service and no automatic update. The recipe tree is the trust root for
 everything on the host. See [The security model](../03-architecture/security-model.md), and read
-its last section first.
+its last section, [What is not
+protected](../03-architecture/security-model.md#what-is-not-protected), first.
 
 ## Hardware and support
 
@@ -450,9 +466,9 @@ hardware matrix. See [Known gaps](../06-reference/known-gaps.md#hardware-and-pla
 
 Each section above states its own cost. Two are not stated elsewhere. The first build from a clean
 checkout takes most of a day, and gigabytes more disk if it keeps phase snapshots; see
-[Developing](../05-developer/developing.md). Commercial software that assumes glibc and systemd on
-the host does not run there; it runs in a box or not at all. Whether the trade as a whole is worth
-it depends on what you want the machine for; [Why KDOS](why-kdos.md#who-should-run-kdos) says who
+[Developing](../05-developer/developing.md#the-first-build). Commercial software that assumes
+glibc and systemd on the host does not run there; it runs in a box or not at all. Whether the trade
+as a whole is worth it depends on what you want the machine for; [Why KDOS](why-kdos.md#who-should-run-kdos) says who
 it suits.
 
 ## See also

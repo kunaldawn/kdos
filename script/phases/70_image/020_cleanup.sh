@@ -24,7 +24,7 @@ source script/phases/70_image/phase.env
 FS=/kdos/build/fs
 
 # ── Phase gates ─────────────────────────────────────────────────────────
-CLEAN_BUILD_CACHE=1     # /tmp, /var/tmp (the build's HOME), /root's caches, kpkg work dir
+CLEAN_BUILD_CACHE=1     # /tmp, /var/tmp (holds the build's HOME), /root's caches, kpkg work dir
 CLEAN_KPKG_PACKAGES=1   # /var/cache/kpkg/packages (built .tar.xz cache, .pending records)
 CHECK_PYCACHE=1         # unowned __pycache__ / *.pyc / *.pyo removed; owned .py checked
 CLEAN_UNOWNED_DOCS=1    # unowned catalogs, translated manuals, HTML, and the bootstrap's extras
@@ -64,7 +64,7 @@ fi
 #
 # A `.pending` record names a package in this directory, so the two go
 # together: a record left without its package reads as a build to commit that
-# no longer exists.
+# cannot be found.
 if [ "$CLEAN_KPKG_PACKAGES" = 1 ]; then
     section "kpkg package cache"
     target="$FS/var/cache/kpkg/packages"
@@ -211,6 +211,9 @@ fi
 # image on any unowned file left under usr/share/{locale,man,doc,info}.
 if [ "$CLEAN_UNOWNED_DOCS" = 1 ]; then
     section "Unowned documentation and catalogs"
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "  no python3 on PATH: skipped, and 087_gates.sh reports what is left"
+    else
     python3 -I - "$FS" <<'PY'
 import os, sys
 
@@ -285,15 +288,15 @@ for top in ("usr/share/locale", "usr/share/man", "usr/share/doc", "usr/share/inf
             emptied.add(os.path.dirname(d))
 print(f"  removed {removed} unowned file(s), {size // 1024} KiB")
 PY
+    fi
 fi
 
 # ── podman's container store ────────────────────────────────────────────
 #
 # A SHIPPED ROOTFS CARRIES NO CONTAINER STORE. Applications are built on the
 # machine that asks for one, in that user's own home, so anything here is
-# somebody else's images riding into system.sfs — measured at 10.4 GB when a
-# build left one behind, which is the same way 529 MB of a removed desktop rode
-# three ISOs before the package sweep existed.
+# somebody else's images riding into system.sfs. A store runs to gigabytes, and
+# nothing else in this phase removes it.
 #
 # Not a `kpkgdel`: no package owns these paths — podman wrote them.
 if [ -d "$FS/home/kdos/.local/share/containers" ]; then

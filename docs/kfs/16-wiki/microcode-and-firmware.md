@@ -65,7 +65,7 @@ The country is a module option, [`/etc/modprobe.d/kdos-regdom.conf`]{.idx}. No f
 installer writes it from the [time zone]{.idx} you choose, and `kdos-powerd` writes it whenever the time
 zone is set, as a two-letter code taken from `zone.tab`:
 
-<!-- kfs:include src/daemons/kdos-powerd/main.c lines=803-829 pin=07f9a54f24a7 -->
+<!-- kfs:include src/daemons/kdos-powerd/main.c lines=835-861 pin=07f9a54f24a7 -->
 
 A zone with no country, such as `UTC`, removes the file, and the radio stays on the world domain,
 `00`. On a machine installed with the zone `Europe/Berlin`, the file reads:
@@ -77,8 +77,8 @@ A zone with no country, such as `UTC`, removes the file, and the radio stays on 
 options cfg80211 ieee80211_regdom=DE
 ```
 
-and after boot `iw reg get` begins `global` / `country DE: DFS-ETSI`, and `kdos doctor` reports
-`[ ok ] regulatory.db signed and loaded (regdom DE)`, with or without a wireless device.
+and after boot `iw reg get` begins `global` / `country DE: DFS-ETSI`, and on a machine with a
+wireless device `kdos doctor` reports `[ ok ] regulatory.db signed and loaded (regdom DE)`.
 
 ### fwupd
 
@@ -88,7 +88,7 @@ job that refreshes the LVFS metadata:
 <!-- kfs:include ports/core/boot/fwupd/build.sh lines=48-62 pin=c9eb6e7687c7 -->
 
 On the image these are `/etc/fwupd/fwupd.conf` (readable by root only), whose one setting is
-`EspLocation=/boot/efi`, and `/etc/kdos/timers.d/30-fwupd-refresh.timer`, which `rcS` starts as
+`EspLocation=/boot/efi`, and `/etc/kdos/timers.d/30-fwupd-refresh.timer`, which `18_timers` starts at boot as
 the supervised `kdos-timer-fwupd-refresh`. The job's line format is described in
 [Periodic jobs](../../kdos/02-user-guide/administration.md#periodic-jobs).
 
@@ -98,8 +98,8 @@ the supervised `kdos-timer-fwupd-refresh`. The job's line format is described in
 
 1. Run `kdos doctor`. Its Kernel section reports whether the initramfs carries microcode for
    this processor's vendor, as `[ ok ] AMD microcode in the initrd` or
-   `[ ok ] Intel microcode in the initrd`, followed by the running revision in brackets when the
-   kernel exposes one.
+   `[ ok ] Intel microcode in the initrd`, followed by `(revision …)` when the kernel exposes the
+   running revision.
 2. For the revision alone: `cat /sys/devices/system/cpu/cpu0/microcode/version`. A virtual
    machine has no such file, and the doctor line then carries no revision.
 3. For what the kernel did with it at boot: `dmesg | grep -i microcode`. On real hardware the
@@ -136,10 +136,11 @@ carries it: the live medium of that image loads it, and so does a machine instal
    `# Written by kdos-powerd from the timezone (Europe/Berlin)`, and runs `iw reg set` for this
    boot, so `iw reg get` reads `country DE: DFS-ETSI` straight away.
 2. To set a country for this boot only: `sudo iw reg set FR`.
-3. Check: `iw reg get`, or `kdos doctor`. The doctor reports
-   `[ ok ] regulatory.db signed and loaded (regdom DE)` once a country is set, warns while the
-   domain is still `00` on a machine with a wireless device, and reports `[skip]` on one with
-   none.
+3. Check: `iw reg get` shows the country in force now. `kdos doctor` reads the country the
+   kernel's `cfg80211` module was loaded with, which comes from the file, so it reports
+   `[ ok ] regulatory.db signed and loaded (regdom DE)` from the next boot; until then, and after an
+   `iw reg set` alone, it warns that the domain is `00` on a machine with a wireless device and
+   reports `[skip]` on one with none.
 
 On the live medium no time zone has been chosen, so the file is absent and the radio is on the
 world domain until you set one: `iw reg get` begins `global` / `country 00: DFS-UNSET`.
@@ -167,7 +168,7 @@ update has been staged and booted
 - On a machine without the hardware, as in a virtual machine, `kdos doctor` still checks that the
   files are installed: it reports `[ ok ] SOF firmware installed (no SOF audio device here)` and
   the same for NVIDIA GSP firmware, and `[skip]` for the regulatory database when there is no
-  wireless device to load it.
+  wireless device and the kernel's `cfg80211` module has not been loaded with a country.
 - `regulatory.db.p7s` must sit beside `regulatory.db`. Without the signature the kernel ignores
   the database.
 
@@ -216,9 +217,12 @@ or newer than the upstream release the recipe pins.
   [Microcode](../../kdos/02-user-guide/administration.md#microcode) and
   [Thunderbolt, phones, smart cards and firmware updates](../../kdos/02-user-guide/administration.md#thunderbolt-phones-smart-cards-and-firmware-updates)
 - [kdos doctor](../../kdos/04-programs/kdos-command.md#kdos-doctor)
-- `initramfs-and-rescue.md`: [The initramfs and the rescue shell](initramfs-and-rescue.md)
-- `boot-menu-and-kernel-parameters.md`: [Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md)
-- `updating.md`: [Updating](updating.md)
+- [The initramfs and the rescue shell](initramfs-and-rescue.md): looking inside an initramfs with
+  the microcode archive in front
+- [Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md): adding a kernel parameter
+  for one boot or for every boot
+- [Updating](updating.md): checking, fetching and applying an update, which installs newer
+  firmware packages under `/usr/lib/firmware`
 
 <!-- book-nav -->
 ---

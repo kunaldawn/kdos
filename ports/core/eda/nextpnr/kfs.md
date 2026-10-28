@@ -12,18 +12,19 @@ the binary.
 - `-Wl,--strip-debug` — Drop debug sections at the link. nextpnr's `CMakeLists.txt` sets its own
   `CMAKE_CXX_FLAGS_RELEASE` to `-O3 -g`, so a release build compiles every object with DWARF;
   no port ships it (see
-  [What kpkg does around build.sh](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#what-kpkg-does-around-buildsh)).
+  [What kpkg does around build.sh](../../../../docs/kdos/05-developer/writing-ports.md#what-kpkg-does-around-buildsh)).
 - `-DCMAKE_POLICY_DEFAULT_CMP0167=NEW` — Make `find_package(Boost)` read the `BoostConfig.cmake`
   package that [boost](#port-boost) installs instead of CMake's old FindBoost module. FindBoost
   looks for a `libboost_system` library file; the boost port installs Boost.System as headers
   only, so the module reports the component missing.
 - `-DCURRENT_GIT_VERSION="nextpnr-$version"` — The version string the programs print. Unset,
   `common/CMakeLists.txt` runs `git describe` in the source tree, which is no checkout here.
-- `-DARCH="ice40;ecp5;machxo2;generic"` — The families to build. The cache variable is empty upstream, and
-  configure stops until it names at least one.
-  `ice40` reads icestorm's database and `ecp5` and `machxo2` read prjtrellis's. nexus, mistral and
-  himbaechel are left out: their databases come from prjoxide, the mistral source tree and
-  apicula, none of which is a port.
+- `-DARCH="ice40;ecp5;machxo2;generic"` — The families to build. The cache variable is empty
+  upstream, and configure stops until it names at least one. `ice40` reads icestorm's database
+  and `ecp5` and `machxo2` read prjtrellis's. nexus, mistral and himbaechel are left out: nexus's
+  database comes from prjoxide, mistral's from the mistral source tree, and each himbaechel
+  micro-architecture's from its own project (apicula for Gowin, Project Peppercorn for GateMate,
+  prjbeyond for NG-Ultra, prjxray for Xilinx), none of which is a port.
 - `-DMACHXO2_DEVICES="1200;6900"` — The MachXO2 and MachXO3 parts whose chip database is compiled
   in, which is upstream's default pair. A design for any other part of that family finds no
   database.

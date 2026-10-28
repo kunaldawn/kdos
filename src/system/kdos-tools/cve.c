@@ -568,8 +568,9 @@ int kdt_cve(int argc, char **argv, const char *tty_accent,
 			printf("  %d bundled copies, %d not in the database\n",
 			       nbund, bunknown);
 		if (age > CVE_STALE_DAYS)
-			printf("  %sthe database is %d days old — re-run "
-			       "src/system/kdos-tools/secdb/vendor.py%s\n",
+			printf("  %sthe database is %d days old — a newer one "
+			       "arrives with kdos-tools (`kdos update`), or "
+			       "KDOS_SECDB names another%s\n",
 			       tty_warn, age, tty_reset);
 		if (unknown)
 			printf("  packages Alpine does not carry under that "

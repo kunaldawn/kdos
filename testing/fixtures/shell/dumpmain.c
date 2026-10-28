@@ -11,17 +11,16 @@
  *
  * That path touches no fcft and no wlroots — libkwl is stubbed out here, so
  * the front ends link against libktui alone and the layouts can be looked at
- * on a host that has neither. It does now need libwayland-client, because
+ * on a host that has neither. It does need libwayland-client, because
  * shell.c and menu.c reach for wlr-foreign-toplevel and ext-workspace on the
  * INTERACTIVE path and the generated glue is compiled in whether the dump
  * calls it or not.
  *
  * Two things here exist for testing/goldens/:
  *
- *   - Every front end is declared WEAK. New surfaces land one agent at a time
- *     and a harness that named a file which is not on the tree yet would fail
- *     to link; instead the name is simply not dispatchable and selftest.sh
- *     says so out loud.
+ *   - Every front end is declared WEAK. A harness that named a surface whose
+ *     file is not on the tree would fail to link; instead the name is simply
+ *     not dispatchable and selftest.sh says so out loud.
  *   - KDOS_DUMP_SIZE=WxH overrides the geometry a surface asked for, through a
  *     linker --wrap on ktui_offscreen_init. A surface picks its own dump size
  *     (cal 42 columns, pick 64x22) and a golden wants a common one; forcing it
@@ -42,9 +41,9 @@
  * because the same translation units carry the interactive path. */
 /*
  * The stub stands in for libkdisp, not for libkwl: the front ends reach a
- * display through the interface now, so that is what has to be absent here.
- * Returning -1 is what it always did — no compositor — and the front ends take
- * their non-Wayland path exactly as before.
+ * display through that interface, so that is what has to be absent here.
+ * Returning -1 means no compositor, and the front ends take their non-Wayland
+ * path.
  */
 /*
  * EXCEPT UNDER A KEY DRIVE. `$KDOS_DUMP_KEYS` is a script of input events and
@@ -91,9 +90,7 @@ int kdisp_px_logical(int px) { return px; }
 /* Nothing is drawing a frame round an offscreen grid, so the surface draws its
  * own — which is what makes a golden the picture tty1 shows. */
 int kdisp_decorated(void) { return 0; }
-int kdisp_px_h(void) { return 0; }
 int kdisp_popup_offset(void) { return 0; }
-void kdisp_report_error(void) {}
 void kdisp_set_backdrop(KDispBackdropFn fn) { (void)fn; }
 /* No output, so no scale ever changes and nothing is ever called back. */
 void kdisp_on_scale(KDispScaleFn fn) { (void)fn; }
@@ -121,7 +118,7 @@ int kcell_ascii_image(const uint32_t *argb, int w, int h, int stride_px,
 }
 
 /*
- * THE FIVE kdos-desk AND kdos-notifyd REACH FOR, and every one of them is a
+ * THE FOUR kdos-desk AND kdos-notifyd REACH FOR, and every one of them is a
  * verb rather than a reading: a dump presses nothing, drags nothing and asks
  * the session for nothing, so each does what it does on a machine with no
  * compositor — nothing, and says so in its return value.
@@ -131,7 +128,6 @@ int kcell_ascii_image(const uint32_t *argb, int w, int h, int stride_px,
  * fails and a harness that then skips the whole family. See the note at the
  * top of this file.
  */
-void kdisp_session_action(const char *verb) { (void)verb; }
 int kdisp_drag_start(const char *mime, const char *data, size_t len)
 { (void)mime; (void)data; (void)len; return -1; }
 /* 0 is "no window has the keyboard", which is the truth with no server. */

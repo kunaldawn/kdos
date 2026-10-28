@@ -31,5 +31,5 @@ the encryption is [olm](#port-olm).
 ## Notes
 Both patches are upstream commits and carry their own descriptions. One makes the CMake build find
 the private Qt modules nheko links, which Qt from 6.10 on has to be asked for by name
-(`GuiPrivate`, `QmlPrivate`); the other repairs how replies are drawn in the timeline under
-recent Qt releases.
+(`GuiPrivate`, `QmlPrivate`); the other repairs how replies are drawn in the timeline from Qt 6.9.2
+on.

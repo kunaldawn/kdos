@@ -38,11 +38,12 @@ directories and, if the player declines, keeps using it.
 - `-DUSE_INTERNAL_LIBS=OFF` — with `-DUSE_INTERNAL_SDL=OFF`, `-DUSE_INTERNAL_ZLIB=OFF`,
   `-DUSE_INTERNAL_JPEG=OFF`, `-DUSE_INTERNAL_OGG=OFF`, `-DUSE_INTERNAL_VORBIS=OFF` and
   `-DUSE_INTERNAL_OPUS=OFF`: link the tree's SDL2, zlib, libjpeg, Ogg, Vorbis and Opus rather than
-  the copies in `thirdparty/`. Each per-library switch defaults to `USE_INTERNAL_LIBS`, which is
-  on upstream.
+  the copies in `code/thirdparty/`. Each per-library switch defaults to `USE_INTERNAL_LIBS`, which
+  is on upstream.
 - `-DCMAKE_REQUIRE_FIND_PACKAGE_CURL=ON` — with `-DCMAKE_REQUIRE_FIND_PACKAGE_OpenAL=ON`: make the
   cURL and OpenAL lookups required. Upstream looks for each `QUIET` and, when it is missing, falls
-  back to the headers bundled in `thirdparty/`, so the build would succeed without the system's.
+  back to the headers bundled in `code/thirdparty/`, so the build would succeed without the
+  system's.
 - `-DCURL_NO_CURL_CMAKE=ON` — keep CMake's FindCURL from first looking for a `CURLConfig.cmake`,
   which the tree's curl does not install; with the lookup required, that search would itself fail
   the configure (see
@@ -54,8 +55,8 @@ Because the engine finds its renderers and modules beside the path it was starte
 `/usr/bin/ioquake3` and `/usr/bin/ioq3ded` are small scripts that start the programs by their full
 paths under `/usr/lib/ioquake3`; a symbolic link would leave the engine looking in `/usr/bin`.
 
-Upstream's icon is an SVG. The desktop's icon lookup reads PNGs only (see
+Upstream installs no icon and no desktop entry. The desktop's icon lookup reads PNGs only (see
 [Desktop entries belong to the port](../../../../docs/kdos/05-developer/writing-ports.md#desktop-entries-belong-to-the-port)),
-so `build.sh` renders a 256-pixel PNG from `misc/quake3.svg` with `rsvg-convert` from
+so `build.sh` renders a 256-pixel PNG from upstream's `misc/quake3.svg` with `rsvg-convert` from
 [librsvg](#port-librsvg) and writes the desktop entry; the window's Wayland app id is the
 executable's name, `ioquake3`.

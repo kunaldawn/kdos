@@ -29,17 +29,17 @@
  *
  * THE LEFT COLUMN IS WHAT YOU USE, NOT WHAT IS INSTALLED. Pinned entries above
  * the rule and most-frequent below it, from the usage count apps.c records —
- * which nothing on this desktop had before, and without which this column is
- * just an alphabetical list with fewer entries. All Programs opens the
- * category list IN PLACE rather than as a cascade: a cascade needs a surface
+ * without which this column is just an alphabetical list with fewer entries.
+ * All Programs opens the category list IN PLACE rather than as a cascade: a
+ * cascade needs a surface
  * per level and a pointer-tracking policy to decide when a level goes away,
  * and on a character grid it buys nothing.
  *
  * TYPING SEARCHES, and it searches the same index the launcher does. There is
- * no mode to enter and no field to click into — the first printable character
- * turns the left column into results, Escape empties it, and a second Escape
- * closes the menu. That is the one thing this shape got right in 2001 and
- * every desktop since has kept.
+ * no mode to enter and the field at the foot need not be clicked first — the
+ * first printable character turns the left column into results, Escape
+ * empties it, and a second Escape closes the menu. A click on the field only
+ * lights it, and its clear mark empties the query.
  *
  * IT IS ANCHORED TO THE BOTTOM-LEFT CORNER, which is a libkwl addition
  * (KDISP_CORNER_BOTTOM_LEFT): a menu belonging to a bar on the bottom edge has
@@ -64,8 +64,6 @@
 #include "shell.h"
 #include "routes.h"
 
-/* 56, not 66. At the chrome cell that is 896 pixels — seventy per cent of a
- * 1280 screen rather than eighty-two, which is a menu and not a takeover. */
 /*
  * THE MENU ASKS WIDE AND LAYS OUT FROM WHAT IT WAS GIVEN.
  *
@@ -79,18 +77,18 @@
  */
 #define ST_COLS 104
 /* Three columns from here up. Below it the system rows collapse under one row
- * rather than being listed, which is the shape the narrow menu needs: the
- * complaint this answers is a SYSTEM column scrolling at row nine of
- * fourteen. */
+ * rather than being listed, which is the shape the narrow menu needs: listed
+ * in full, the fourteen-row SYSTEM group (twelve programs, its rule and Back)
+ * would scroll in a column too short to hold it. */
 #define ST_WIDE_AT 100
 #define ST_ROWS 20
 /*
  * THE TWO COLUMNS SHARE THE WIDTH, so narrowing the menu has to narrow this
- * too. Left at 38 in a 56-column menu leaves the right column fifteen columns
- * — three for the icon and twelve for the label — and `Notifications` and
- * `Lock Screen` came out as `Notificat` and `Lock Scre`. At 32 the right
- * column has eighteen columns of label, which is the longest entry it carries,
- * and the left still fits `GNU Image Manipulation P`.
+ * too. The right column needs eighteen columns of label for its longest
+ * entry, and a narrower one cuts labels short — at twelve, `Notifications`
+ * comes out as `Notificat`. At 32 the
+ * right column keeps those eighteen in the narrow menu and the left still
+ * fits `GNU Image Manipulation P`.
  */
 #define ST_LEFT_W 32
 #define ST_MAX_ROWS 128
@@ -543,8 +541,13 @@ static int pack_installed(const char *id)
 		"/usr/share/kdos/alien-apps", NULL };
 	char user[512];
 	const char *home = getenv("HOME");
-	snprintf(user, sizeof(user), "%s/.local/share/kdos/alien-apps",
-		 home ? home : "/root");
+	const char *data = getenv("XDG_DATA_HOME");
+	/* Where `genlaunchers --user` writes the table. */
+	if (data && *data)
+		snprintf(user, sizeof(user), "%s/kdos/alien-apps", data);
+	else
+		snprintf(user, sizeof(user), "%s/.local/share/kdos/alien-apps",
+			 home ? home : "/root");
 	for (int t = 0; t < 2; t++) {
 		FILE *f = fopen(t ? user : tables[0], "r");
 		char line[1024];
@@ -645,9 +648,9 @@ static void build_left(void)
 		const struct sh_app *hits[64];
 		int n = sh_apps_match(query, hits, 64);
 
-		/* A search has a way out too, and clearing the query is the
-		 * one thing a pointer could not do at all: the field takes
-		 * keystrokes and there was no backspace to click. */
+		/* A search has a way out too, as a row: a pointer in the list
+		 * can empty the query where it already is, without travelling
+		 * to the field's clear mark. */
 		push_back("Clear search");
 		for (int i = 0; i < n; i++) {
 			struct row *r = push(left, &nleft, hits[i]->name);
@@ -660,11 +663,11 @@ static void build_left(void)
 		}
 		/*
 		 * AND THE PLACES AND THE SETTINGS, which a search over the
-		 * application index alone could never find. Typing `wifi`
-		 * looked like a machine with no network tool on it — the one
-		 * is in the right column, three rows from the top, and a
-		 * person who is typing has stopped looking over there. Every
-		 * fixed row carries its own synonyms; see build_right.
+		 * application index alone could never find. Without them,
+		 * typing `wifi` would look like a machine with no network
+		 * tool on it — the one is in the right column, and a person
+		 * who is typing has stopped looking over there. Every fixed
+		 * row carries its own synonyms; see build_right.
 		 */
 		int extra = 0;
 		struct row *fixed[3] = { right, power_row, routes };
@@ -1162,11 +1165,9 @@ static int first_right(int lo, int hi)
  *
  * ALL FIVE VERBS IN ONE PLACE, and out of the list.
  *
- * They were split: Log Off and Shut Down were footer buttons and Lock,
- * Suspend and Restart were rows near the bottom of the right column — five
- * things of one kind in two places, and the three rows were what made that
- * column exactly full. Taking them out is what buys the third group heading
- * and four rows of height; a menu that is shorter is the point of this shape.
+ * Five things of one kind belong in one place, and as rows in the right
+ * column they would cost it the third group heading and four rows of height;
+ * a menu that is shorter is the point of this shape.
  *
  * THREE CELLS EACH AND NO LABEL, which is a trade this file can only make
  * because it already has somewhere to put the name: with nothing typed, the
@@ -1198,8 +1199,8 @@ static void build_power(void)
 		r->keys = "sleep power suspend";
 		/* A MOON, not Papirus's `system-suspend`, which is a circle
 		 * with a minus in it and reads as "blocked" rather than as
-		 * "asleep" — and sat two icons from `system-reboot`, which is
-		 * also a ring. The moon is what every phone made since 2015
+		 * "asleep" — and would sit two icons from `system-reboot`,
+		 * which is also a ring. The moon is what every phone made since 2015
 		 * uses, and it is the same name the notification applet
 		 * already borrows for Do Not Disturb. */
 		r->icon = "weather-clear-night";
@@ -1217,16 +1218,16 @@ static void build_power(void)
 	/*
 	 * SIGTERM to the compositor, not a kdos-power verb: kdos-powerd knows
 	 * suspend, poweroff and reboot and nothing about a session. `-x` is
-	 * load-bearing — `kdos-desk` was a substring of `kdos-desktop`, which
-	 * is exactly how a signal ends the wrong process.
+	 * load-bearing: a pattern match signals every process whose name
+	 * contains `kdos-comp`, which is how a signal ends the wrong process.
 	 */
 	r = push(power_row, &npower, "Log Off");
 	if (r) {
 		r->keys = "logout log off session exit quit";
 		/* A DOOR, not `system-log-out`: Papirus draws that as a ring
 		 * with an arrow, which beside `system-reboot`'s ring with an
-		 * arrow is the same picture twice — measured on the booted
-		 * ISO, the third and fourth buttons were indistinguishable. */
+		 * arrow is the same picture twice, and the third and fourth
+		 * buttons would be indistinguishable. */
 		r->icon = "application-exit";
 		r->argv[0] = "pkill";
 		r->argv[1] = "-TERM";
@@ -1563,7 +1564,8 @@ static void draw_frame(void)
 	 * THREE COLUMNS FROM ST_WIDE_AT UP: favourites, then places and files,
 	 * then the system group. Below it the group folds behind one row and
 	 * the menu is two columns, which is the shape a fourteen-row system
-	 * list needs when the body is sixteen.
+	 * group (twelve programs, its rule and Back) needs when the body is
+	 * sixteen.
 	 *
 	 * The right half is split down the middle rather than at the widest
 	 * label: the two lists grow independently — places come from the user

@@ -5,19 +5,20 @@ video driver and an OpenCL implementation. On KDOS the port that leans on it har
 [kdos-comp](#port-kdos-comp): the compositor draws through EGL and GLES2 from here, and on a
 machine with only software rendering, such as a virtual machine with plain graphics, it turns its
 phosphor pass off
-([The phosphor pass](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/kdos-comp.md#the-phosphor-pass)).
+([The phosphor pass](../../../../docs/kdos/04-programs/kdos-comp.md#the-phosphor-pass)).
 
 Mesa is built behind [libglvnd](#port-libglvnd), which owns `libGL`, `libEGL` and `libGLX` and
 dispatches to Mesa's `libEGL_mesa` and `libGLX_mesa`. It is built for Wayland and for X11 alike:
 there is no X server on the login path, but X11 clients run under Xwayland and draw through
 Mesa's GLX; see
-[No Xorg server, and one carve-out](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-xorg-server-and-one-carve-out)
-and [Desktop GL and GLX](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/testing.md#desktop-gl-and-glx).
+[No Xorg server, and one carve-out](../../../../docs/kdos/01-philosophy/principles.md#no-xorg-server-and-one-carve-out)
+and [Desktop GL and GLX](../../../../docs/kdos/05-developer/testing.md#desktop-gl-and-glx).
 
 Every probed dependency that has a switch is named on or off, so the set of drivers and features
-does not depend on what happens to be installed when Mesa builds. Two probes have no switch:
-`libudev` and `xcb-keysyms` are linked whenever they are found, which is why
-[eudev](#port-eudev) and [xcb-util-keysyms](#port-xcb-util-keysyms) are in `depends`.
+does not depend on what happens to be installed when Mesa builds. Some probes have no switch:
+`libudev`, `xcb-keysyms` and `libelf` are linked whenever they are found, which is why
+[eudev](#port-eudev), [xcb-util-keysyms](#port-xcb-util-keysyms) and [elfutils](#port-elfutils)
+are in `depends`. Without `libelf` the build stops, because radeonsi and NVK require it.
 
 ## Flags
 - `ln -sf "$SRC_ROOT/syn-2.0.87" subprojects/syn-2.0.87` — The first of the blocks, one per Rust
@@ -58,7 +59,10 @@ does not depend on what happens to be installed when Mesa builds. Two probes hav
   [libXrandr](#port-libXrandr). It is named because on `auto` it turns itself on with the X11
   platform.
 - `-D llvm=enabled`, `-D shared-llvm=enabled` — Use [llvm](#port-llvm), which llvmpipe, lavapipe
-  and rusticl need, and link it as the shared `libLLVM` rather than statically into each driver.
+  and rusticl need and the AMD drivers link, and link it shared rather than statically into each
+  driver. The llvm port installs one shared library per component and no single `libLLVM`, so
+  `libgallium`, lavapipe and RADV carry a `DT_NEEDED` for each component they use
+  (`libLLVMCore.so`, `libLLVMAMDGPUCodeGen.so` and the rest).
 - `-D gallium-drivers=zink,crocus,iris,nouveau,r300,r600,radeonsi,svga,llvmpipe,softpipe,virgl,i915`
   — The OpenGL drivers: Intel (`i915`, `crocus`, `iris`, oldest to newest), NVIDIA (`nouveau`),
   AMD (`r300`, `r600`, `radeonsi`), VMware's virtual GPU (`svga`), QEMU's virtio GPU (`virgl`),
@@ -73,7 +77,7 @@ does not depend on what happens to be installed when Mesa builds. Two probes hav
   statistics overlay, and Mesa's implementation of AMD's `VK_AMD_anti_lag` latency extension.
 - `-D gallium-extra-hud=true` — Add the disk, network and CPU-frequency sources to the Gallium HUD,
   the overlay `GALLIUM_HUD` draws over any GL client; see
-  [The overlay, which is already on every machine](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/testing.md#the-overlay-which-is-already-on-every-machine).
+  [The overlay, which is already on every machine](../../../../docs/kdos/05-developer/testing.md#the-overlay-which-is-already-on-every-machine).
 - `-D lmsensors=enabled` — Let the HUD show temperatures and other readings from
   [lm-sensors](#port-lm-sensors).
 - `-D xmlconfig=enabled`, `-D expat=enabled` — Read driconf files (`/usr/share/drirc.d`,

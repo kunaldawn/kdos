@@ -215,7 +215,7 @@ static void draw_help(void)
 		{ "Alt + Left/Right", "previous / next page" },
 		{ "Esc", "back a page, or close this" },
 		{ "F1", "this help" },
-		{ "L", "full log, on the install page" },
+		{ "L", "full log, on the install and done pages" },
 		{ "Ctrl+U", "clear a text field" },
 		{ "Ctrl+Q", "quit the installer" },
 		{ "", "" },
@@ -507,8 +507,8 @@ int main(int argc, char **argv)
 		/*
 		 * AN UNATTENDED RUN ENDS BY ITSELF, WHICHEVER WAY IT WENT.
 		 * There is nobody to press Reboot and nobody to press
-		 * anything else either, so a finished install that only knew
-		 * how to reboot sat on its own last screen for ever — which
+		 * anything else either, so a finished install that waited for
+		 * a key would sit on its own last screen for ever — which
 		 * is a scripted install that never returns, and the one
 		 * outcome "unattended" must not have. It still shows the
 		 * finished screen for a beat, so a watcher sees what happened

@@ -42,7 +42,7 @@ release tarball.
 
 ## Patches
 
-- `offline-default.patch` — In `src/config/user_config.hpp`, changes the default of the `enable_internet` setting from `0` ("the user was not asked") to `2` ("not allowed"). With `0` the game asks on its first start whether it may connect to the SuperTuxKart servers; with `2` it does not ask, and fetches no news and no add-on list until the player ticks the internet checkbox under Options, General. Online multiplayer is behind the same setting.
+- `offline-default.patch` — In `src/config/user_config.hpp`, changes the default of the `enable_internet` setting from `0` ("the user was not asked") to `2` ("not allowed"). With `0` the game asks on its first start whether it may connect to the SuperTuxKart servers; with `2` it does not ask, and fetches no news and no add-on list until the player ticks "Connect to the Internet" under Options, General. Online multiplayer is behind the same setting.
 
 ## Notes
 

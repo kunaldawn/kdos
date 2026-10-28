@@ -42,11 +42,11 @@ and everything installed on top of it, with the settings the build expects:
 ### The meaning of the packages
 
 `gcc`, `g++`, `musl-dev`, `linux-headers`
-:   The compilers that build the cross toolchain in `00_cross`, and the C library headers and
-    kernel headers they compile against. Nothing they produce is installed into the new root: they
-    build the cross compiler, and the cross compiler builds the root. The libraries GCC itself needs,
-    GMP, MPFR and MPC, are not taken from Alpine; the cross GCC script unpacks them from their own
-    ports and builds them inside GCC's source tree.
+:   The compilers that build the cross toolchain in `00_cross` and kdosbuild itself, and the C
+    library headers and kernel headers they compile against. Nothing they produce is installed into
+    the new root: they build the cross compiler, and the cross compiler builds the root. The
+    libraries GCC itself needs, GMP, MPFR and MPC, are not taken from Alpine; the cross GCC script
+    unpacks them from their own ports and builds them inside GCC's source tree.
 
 [`make`]{.idx}, [`bison`]{.idx}, [`flex`]{.idx}, [`texinfo`]{.idx}
 :   What the configure scripts and makefiles of binutils, GCC and the GNU userland call while they
@@ -58,9 +58,10 @@ and everything installed on top of it, with the settings the build expects:
     applets an Alpine image has by default. The build scripts are bash scripts.
 
 `tar`, `xz`, [`zstd`]{.idx}
-:   GNU tar, which unpacks every source and writes every [snapshot]{.idx}; `xz` for the many sources
-    shipped as `.tar.xz`; `zstd`, which kdosbuild compresses phase snapshots with when it is
-    present.
+:   GNU tar, which unpacks the sources of `00_cross` and `10_bootstrap` and writes every
+    [snapshot]{.idx}; `xz` for the many sources shipped as `.tar.xz`; `zstd`, which kdosbuild
+    compresses phase snapshots with when it is present. The later phases unpack their sources with
+    the tools of the root being built.
 
 `rsync`
 :   Called by the kernel's `headers_install` target, which `10_bootstrap` uses to install the Linux
@@ -87,17 +88,19 @@ packages.
 
 This is the whole of the `make build` target:
 
-<!-- kfs:include Makefile lines=170-198 pin=55a5d1802c0e -->
+<!-- kfs:include Makefile lines=171-199 pin=55a5d1802c0e -->
 
 ### The meaning of the switches
 
 `check-iso-free`
 :   A prerequisite target that refuses to start while `build/iso-build/kdos.iso` is held open by
     another process, normally a virtual machine booted from it, because rewriting an image under a
-    running guest gives that guest I/O errors. `make build ALLOW_ISO_IN_USE=1` overrides it.
+    running guest gives that guest I/O errors. It asks `fuser`, so on a machine without `fuser` it
+    checks nothing. `make build ALLOW_ISO_IN_USE=1` overrides it.
 
 The `case` line
-:   Refuses a `KDOS_JOBS` that is not a positive whole number, before anything else runs.
+:   Refuses a `KDOS_JOBS` that is not a positive whole number, before anything else runs. An empty
+    one, the default, passes.
 
 `--network none`
 :   The container has no network interface but loopback. The build is a function of the sources
@@ -109,9 +112,10 @@ The `case` line
     every thread, and a busy one shares the processor between the build and everything else.
 
 `--cpus=...`
-:   Present only when you set `KDOS_JOBS`. It caps the container at that many processors, or at the
-    number the machine has if that is fewer, because cargo and go size their own parallelism from
-    the container's processor limit rather than from the job count.
+:   Present only when you set `KDOS_JOBS`. It caps the container at that many processors, because
+    cargo and go size their own parallelism from the container's processor limit rather than from
+    the job count. The cap is lowered to the number the machine has when that is fewer, since
+    Docker refuses a larger one.
 
 `--rm`
 :   The container is deleted when the build ends. Everything the build keeps is under `build/`,
@@ -187,8 +191,10 @@ docker run --rm -it --network none --privileged \
 You are root in `/workspace`. The image must exist: `make build` builds it, and so does
 `docker build -t os-dev .` from the top of the repository. Anything you create under `build/` from
 this shell is owned by root on your machine, since nothing hands it back, and is removed again from
-a container rather than with `sudo`. [Entering the chroot](../04-chroot/entering.md) continues from
-this shell into the root being built.
+a container rather than with `sudo`. To go on into the root being built, run
+`script/chroot/exec.sh bash` from this shell;
+[A shell in the chroot](../04-chroot/entering.md#a-shell-in-the-chroot) explains what that gives
+you.
 
 ## See also
 

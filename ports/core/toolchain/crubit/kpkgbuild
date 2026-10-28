@@ -9,12 +9,12 @@
 # ---------------------------------
 
 name        = crubit
-version     = 0.20260811
+version     = 0.20260909
 release     = 1
-_commit     = 69b85cba43f85a6439dc0be86a6fe424bb07a100
+_commit     = a355b02da81bc9f350925c73ec0322ce4d5140f1
 source      = $name-$version.tar.gz::https://github.com/google/crubit/archive/$_commit.tar.gz
-sha256      = af8910353d7694c2a97231b7ce346f8cf7a27912dd4fe52bf631bb82a99f4bcd  crubit-0.20260811.tar.gz
-sha256      = 87dd4c4711eb8e5c2de35e8f2443c1b84a0e1cbb985ecac120237c3add1d7530  crubit-vendor-0.20260811.tar.xz
+sha256      = a7d9149cdbe49a4ca49074d5b80ca3afd572bb5f7aa45b1eb15a5bd424ba292d  crubit-0.20260909.tar.gz
+sha256      = d11d5be1aaa19170061ba707c9e40b57aa1f7bb002572041236c9846274e6648  crubit-vendor-0.20260909.tar.xz
 description = Crubit's cc_bindings_from_rs, which writes C++ headers for calling Rust crates, and its C++ support library
 homepage    = https://github.com/google/crubit
 license     = Apache-2.0 WITH LLVM-exception

@@ -104,9 +104,9 @@ int kp_installed_version(const KpConf *c, const char *name, char *ver,
  * rather than more fields on the database entry's first line.
  *
  * Returns 0 and fills `out` when a hash is recorded, -1 when it is not. -1 is
- * "unknown", and every caller must treat it as "do not know": a tree that
- * predates a sidecar has none, and reading its absence as "changed" rebuilds
- * the entire userland.
+ * "unknown", and every caller must treat it as "do not know": an entry
+ * installed without a sidecar has none, and reading its absence as "changed"
+ * rebuilds the entire userland.
  */
 static int sidecar_read(const KpConf *c, const char *kind, const char *name,
 			char out[65])

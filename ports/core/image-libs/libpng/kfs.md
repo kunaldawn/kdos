@@ -3,7 +3,8 @@
 libpng is the reference library for [PNG]{.idx} images, and the most depended-on image library in
 the tree: freetype, cairo, harfbuzz, gdk-pixbuf, both Qt versions, the desktop's own programs
 (`kdos-comp`, `kdos-shell`, `kdos-term`) and most of the graphical applications link it. It also installs
-`pngfix`, which checks and repairs PNG files, and the `libpng-config` script.
+`pngfix`, which checks and repairs PNG files, `png-fix-itxt`, which corrects the length field of the
+uncompressed `iTXt` chunks libpng 1.6.0 and 1.6.1 wrote wrong, and the `libpng-config` script.
 
 ## Flags
 

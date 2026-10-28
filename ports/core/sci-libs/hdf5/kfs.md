@@ -37,10 +37,12 @@ under [netcdf-c](#port-netcdf-c), [libmed](#port-libmed), [matio](#port-matio) a
 
 The release tarball's entries start with `./hdf5-<version>/`. kpkg strips one component, the `.`,
 so the source lands one level down and `build.sh` begins with `cd "$name-$version"`; see
-[Sources, and what each one becomes](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#sources-and-what-each-one-becomes).
+[Sources, and what each one becomes](../../../../docs/kdos/05-developer/writing-ports.md#sources-and-what-each-one-becomes).
 
-The Fortran `.mod` files are installed in `/usr/include/mod/shared`. The exported CMake targets
-in `/usr/lib/cmake/hdf5` put that directory on a consumer's include path, but `hdf5_fortran.pc`
+The Fortran `.mod` files are installed twice: in `/usr/include/mod/shared`, which the exported
+CMake targets in `/usr/lib/cmake/hdf5` put on a consumer's include path, and in `/usr/include`
+itself. The second copy comes from upstream's `HDF5_INSTALL_MOD_FORTRAN`, whose default `SHARED`
+copies the shared library's modules into the include directory. With it set, `hdf5_fortran.pc`
 gives `moddir=${prefix}/include`, and `h5fc` takes its flags from that file, so a Fortran program
-compiled with `h5fc` or with `pkg-config hdf5_fortran` does not find the modules without an
-`-I/usr/include/mod/shared` of its own.
+compiled through CMake, `h5fc` or `pkg-config hdf5_fortran` finds the modules without a flag of
+its own.

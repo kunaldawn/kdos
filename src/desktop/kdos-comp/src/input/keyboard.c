@@ -652,6 +652,15 @@ keyboard_key_deliver(struct keyboard *keyboard,
 	/* any new press/release cancels current keybind repeat */
 	keyboard_cancel_keybind_repeat(keyboard);
 
+	/* KDOS: a press that closes the saver is spent on it; storing it as
+	 * bound eats its release too, so no client sees half a keystroke */
+	if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED
+			&& kdos_saver_dismiss()) {
+		key_state_set_pressed(event->keycode, true);
+		key_state_store_pressed_key_as_bound(event->keycode);
+		return;
+	}
+
 	enum lab_key_handled handled =
 		handle_compositor_keybindings(keyboard, event);
 

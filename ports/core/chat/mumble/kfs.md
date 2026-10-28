@@ -1,8 +1,8 @@
 ## About
 [Mumble]{.idx} is low-latency group voice chat: the `mumble` client and `mumble-server`, the
 server it connects to (Murmur, in upstream's build options), which a machine on a LAN can host for
-its own group. Both are built from the one source. The client is a Qt 5 application, which decides how the port
-links OpenSSL.
+its own group. Both are built from the one source. The client is a Qt 5 application, which
+decides how the port links OpenSSL.
 
 ## Flags
 - `-DOPENSSL_INCLUDE_DIR="$_ossl/include"` — with `-DOPENSSL_SSL_LIBRARY=/usr/lib/libssl.so.3` and
@@ -25,8 +25,10 @@ links OpenSSL.
 - `-Dtests=OFF` — no test suite and, with `-Dbenchmarks=OFF`, no benchmarks.
 - `-Dwarnings-as-errors=OFF` — upstream's default is on, so any warning the tree's compiler raises
   that upstream's did not would stop the build.
-- `-Duse-timestamps=OFF` — do not compile the build's date and time into the programs, so two builds
-  of one recipe produce the same binaries. Upstream's default is on.
+- `-Duse-timestamps=OFF` — keep the build's clock out of the output. With the switch on, upstream
+  compiles the current year into the client's copyright line and writes the day of the build as
+  the release date in the generated AppStream metadata, so two builds of one recipe on different
+  days differ. Upstream's default is on.
 - `-Dupdate=OFF` — the client does not check for a newer version by default.
   Upstream's default is on.
 - `-Dcrash-report=OFF` — leave out the crash reporter that sends reports to the Mumble developers.
@@ -55,7 +57,8 @@ links OpenSSL.
   upstream's default on Linux; `-Dqtspeech=OFF`, also the default, keeps that rather than Qt
   Speech.
 - `-Dxinput2=ON` — link the X Input 2 extension (`X11::Xi`), which the client's global shortcuts
-  use under X11; upstream's default on Linux; `-Dg15=OFF`, the default, leaves out the Logitech G15 keyboard display.
+  use under X11; upstream's default on Linux. `-Dg15=OFF`, the default, leaves out the Logitech
+  G15 keyboard display.
 - `-Dzeroconf=ON` — find servers on the local network over mDNS through [avahi](#port-avahi),
   and announce `mumble-server` there; upstream's default.
 - `-Dqssldiffiehellmanparameters=ON` — let the server use custom Diffie-Hellman parameters,
@@ -75,9 +78,9 @@ the `openssl3` slot, which installs `libssl.so.3` and `libcrypto.so.3` and no he
 [A second version beside the first](../../../../docs/kdos/05-developer/writing-ports.md#a-second-version-beside-the-first)).
 The recipe's second source is that OpenSSL release, pinned in `_openssl`, and `build.sh` runs its
 `./config` with the slot's own configuration line, word for word, then `make build_generated`,
-which writes the generated headers and sources without compiling the library. The configuration has to match, because the generated
-`include/openssl/configuration.h` records which algorithms the library was built with. Nothing from that tree is
-installed.
+which writes the generated headers and sources without compiling the library. The configuration
+has to match, because the generated `include/openssl/configuration.h` records which algorithms the
+library was built with. Nothing from that tree is installed.
 
 After the install, `build.sh` reads the dynamic section of `mumble` and `mumble-server` and fails
 the build unless each needs `libssl.so.3` and neither needs an OpenSSL 4 library. musl's loader
@@ -92,4 +95,5 @@ there is no account or no database yet; a database is made by running `mumble-se
 that account. `postinstall.sh` creates the account and group in the root being installed into,
 `PKG_ROOT`, and gives the account `/var/lib/mumble-server` (mode 0750) and the `.ini`, which only
 its group may read. It reads `/etc/passwd` and `/etc/group` under `PKG_ROOT` directly, because
-`getent` answers for the running system and not the tree being installed. See [postinstall.sh](../../../../docs/kdos/05-developer/writing-ports.md#postinstallsh).
+`getent` answers for the running system and not the tree being installed. See
+[postinstall.sh](../../../../docs/kdos/05-developer/writing-ports.md#postinstallsh).

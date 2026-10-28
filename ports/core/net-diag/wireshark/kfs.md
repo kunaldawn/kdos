@@ -15,8 +15,9 @@ window started from the menu opens a saved capture but lists no interfaces (see
 - `-DBUILD_androiddump=OFF` — leave out `androiddump`, the extcap that captures an Android
   device's logcat and interfaces through `adb`. Upstream's default is on.
 - `-DBUILD_sshdump=ON` — with `-DBUILD_ciscodump=ON` and `-DBUILD_wifidump=ON`: the extcaps that
-  capture on a remote host over SSH, through [libssh](#port-libssh): with `tcpdump` there, from a
-  Cisco router's capture buffer, and Wi-Fi frames in monitor mode. Upstream's defaults, named.
+  capture on a remote host over SSH, through [libssh](#port-libssh): with `tcpdump` there, through
+  the Embedded Packet Capture of a Cisco IOS, IOS-XE or ASA device, and Wi-Fi frames in monitor
+  mode. Upstream's defaults, named.
 - `-DBUILD_sdjournal=OFF` — leave out `sdjournal`, the extcap that reads the systemd journal.
   KDOS has no systemd (see
   [No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)); upstream's default
@@ -46,7 +47,8 @@ window started from the menu opens a saved capture but lists no interfaces (see
   libsmi, and the bundled plugins. Each is upstream's default; upstream turns one off without an
   error when its library is missing, which is why `build.sh` checks the result (see Notes).
 - `-DENABLE_WERROR=OFF` — do not turn compiler warnings into errors. Upstream's default is on, and
-  a newer compiler's new warnings would then fail the build.
+  a newer compiler's new warnings would then fail the build. On, it also passes asciidoctor
+  `--failure-level WARN`, so one documentation warning would fail `ninja docs`.
 
 ## Notes
 Every optional library in Wireshark's configuration is found or skipped quietly. After `cmake`,
@@ -60,9 +62,10 @@ install rule names every manual page in roff and HTML and stops on the first one
 pages ship, because the window's Help > Manual Pages opens them (see
 [Manual pages](../../../../docs/kdos/05-developer/writing-ports.md#manual-pages)).
 
-After the install, `build.sh` removes the Stratoshark release notes, and every manual page, roff
-and HTML, whose program is not in the package; upstream installs the pages of programs this build
-leaves out, such as `androiddump`.
+After the install, `build.sh` removes the Stratoshark release notes, and every section 1 manual
+page, roff and HTML, whose program is not in the package; upstream installs the pages of programs
+this build leaves out, such as `androiddump` and `stratoshark`.
 
 `build.sh` writes its own `org.wireshark.Wireshark.desktop` over upstream's. It keeps upstream's
-`MimeType` list of capture formats and adds `StartupWMClass` and search keywords.
+`Exec`, `TryExec`, `Icon` and the `MimeType` list of capture formats, drops upstream's translated
+names and comments, writes its own `Comment`, and adds `StartupWMClass` and search keywords.

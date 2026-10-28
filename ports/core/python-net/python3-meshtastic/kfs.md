@@ -3,7 +3,7 @@ The Python client for [Meshtastic]{.idx}, the LoRa mesh network: the `meshtastic
 library, which talk to a Meshtastic radio over USB serial, TCP or Bluetooth LE to send and
 receive text and position messages and to configure the node. A LoRa mesh needs no licence and
 no infrastructure. The radio's serial adapter is reached through the `dialout` group; see
-[The device groups and the udev rules](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md#the-device-groups-and-the-udev-rules).
+[The device groups and the udev rules](../../../../docs/kdos/02-user-guide/administration.md#the-device-groups-and-the-udev-rules).
 [contact](#port-contact) depends on it.
 
 ## Flags
@@ -16,9 +16,10 @@ no infrastructure. The radio's serial adapter is reached through the `dialout` g
 The bundle's `pypackages` are the runtime dependencies that are not ports: pypubsub, bleak,
 dbus-fast and tabulate, installed by name with `--no-deps`, and protobuf, which is named in
 `pypackages` but installed from the [python3-protobuf](#port-python3-protobuf) port; requests,
-urllib3, idna, charset-normalizer, certifi, PyYAML and pyserial are ports in `depends` as well.
+urllib3, idna, charset-normalizer, certifi, PyYAML, pyserial and packaging are ports in
+`depends` as well.
 A second copy of a module that a port also installs would be a path two packages own; see
-[The three Python keys](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
+[The three Python keys](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
 
 bleak, the Bluetooth LE library, is installed even for a radio on a serial port, because
 `meshtastic/__main__.py` imports `BLEInterface` at the top, and without bleak the command fails
@@ -31,5 +32,6 @@ isolation pip does not check the declaration.
 
 After the install, `build.sh` removes two things. `site-packages/contrib` is a top-level
 package of pypubsub's, its examples `netpubsub.py` and `wx_monitor.py`, under a generic name.
-`/usr/bin/mesh-analysis` is the entry point of meshtastic's `analysis` extra, whose
-dependencies (dash, dash-bootstrap-components, pandas-stubs) have no port.
+`/usr/bin/mesh-analysis` is the entry point of meshtastic's `analysis` extra, three of whose
+four dependencies (dash, dash-bootstrap-components, pandas-stubs) have no port; the fourth is
+[pandas](#port-pandas).

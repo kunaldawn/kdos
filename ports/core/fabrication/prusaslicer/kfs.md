@@ -40,10 +40,10 @@ libraries that the tree has.
 
 ## Patches
 
-- `boost-1.87.patch` — Replaces `boost::asio::io_service`, which Boost 1.87 removed, with `io_context`, and its `post()` member with `boost::asio::post` on the executor, in the firmware dialog, the Bonjour client, the serial port and the TCP console.
+- `boost-1.87.patch` — Boost 1.87 removes `boost::asio::io_service` and its `post()` member, and a resolve returns a range of endpoints rather than an iterator. The patch uses `io_context` in the firmware dialog, the Bonjour client and the serial port, calls `boost::asio::post` on the executor in the Bonjour client, and has the TCP console connect to the first endpoint of a resolve through `begin()`.
 - `boost-1.88.patch` — Includes Boost.Process's version 1 headers explicitly (`BOOST_PROCESS_VERSION 1`, `<boost/process/v1/...>`) in the G-code post-processor and the removable-drive manager, since `<boost/process.hpp>` names version 2 from Boost 1.88.
 - `boost-1.89.patch` — Drops `system` from the Boost components the build asks for, because the header-only `boost_system` has no library to find, and includes `<boost/asio/deadline_timer.hpp>` directly in the Bonjour client, which uses the timer.
-- `cgal6.patch` — CGAL 6 returns `std::optional` from a surface mesh's `property_map()` where CGAL 5 returned a pair; the patch takes `.value()` instead of `.first`, and renames `CGAL::AABB_traits` to `AABB_traits_3`, in the cut-surface code and its test.
+- `cgal6.patch` — CGAL 6 returns `std::optional` from a surface mesh's `property_map()` where CGAL 5 returned a pair; the patch takes `.value()` instead of `.first`, and renames `CGAL::AABB_traits` to `AABB_traits_3`, in the cut-surface code (`CutSurface.cpp`) and the emboss test.
 - `eigen5.patch` — Eigen 5 fails the `find_package(Eigen3 3.3.7)` version check and drops `DynamicSparseMatrix`; the patch asks for Eigen3 with no version and rewrites the bundled libigl's `diag`, `slice` and `slice_into` with an uncompressed `SparseMatrix`. Its `igl::slice` hunk assigns the result to the const input `X` instead of the output `Y`; it compiles only because PrusaSlicer uses libigl header-only and nothing in it instantiates that template.
 - `opencascade-tkdestep.patch` — OpenCASCADE 7.8 merged the STEP toolkits (`TKXDESTEP`, `TKSTEP`, `TKSTEP209`, `TKSTEPAttr`, `TKSTEPBase`) into `TKDESTEP`; the patch links that one, asks for OpenCASCADE with no version, and installs `OCCTWrapper` into the library directory.
 - `serial-unistd.patch` — `src/slic3r/Utils/Serial.cpp` includes `<sys/unistd.h>`, a name only glibc carries; the patch includes `<unistd.h>`.
@@ -70,7 +70,7 @@ otherwise), so it runs under Xwayland.
 `build.sh` removes `/usr/share/PrusaSlicer/localization`. Its catalogs sit at
 `<lang>/PrusaSlicer.mo`, outside any `LC_MESSAGES` directory and with no language in the file
 name, so the package-wide English-only rule (see
-[Size and language policy](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#size-and-language-policy))
+[Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy))
 would keep them; without them the interface shows its English source strings.
 
 Upstream's desktop entry claims `.3mf` and `.obj` files by their aliases

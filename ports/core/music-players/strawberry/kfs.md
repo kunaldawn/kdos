@@ -14,11 +14,11 @@ every component offered on Linux, so the set it asks for is explicit.
   QtTest are found, so the lookup is turned off.
 - `-D BUILD_WERROR=OFF` — no `-Werror`. It is upstream's default, named.
 - `-D ENABLE_ALSA=ON` — this switch and the other `ENABLE_` switches set `ON`: ALSA and PulseAudio
-  output, D-Bus and the MPRIS2 interface, global shortcuts through
-  [kglobalaccel](#port-kglobalaccel), device discovery through [udisks2](#port-udisks2) and GIO,
-  audio CDs through [libcdio](#port-libcdio), MTP through [libmtp](#port-libmtp), the moodbar and
-  its FFTW spectrum, the waveform seek bar, EBU R 128 loudness normalisation through
-  [libebur128](#port-libebur128), Qt's private native interface, the stream tag reader on
+  output, D-Bus and the MPRIS2 interface, global shortcuts registered over D-Bus with KDE's
+  `kglobalacceld` (a service no port provides, so they have no effect on KDOS), device discovery
+  through [udisks2](#port-udisks2) and GIO, audio CDs through [libcdio](#port-libcdio), MTP
+  through [libmtp](#port-libmtp), the moodbar and its FFTW spectrum, the waveform seek bar,
+  EBU R 128 loudness normalisation through [libebur128](#port-libebur128), Qt's private native interface, the stream tag reader on
   [sparsehash](#port-sparsehash), Chromaprint, and the iPod classic through
   [libgpod](#port-libgpod), whose artwork is read and written with gdk-pixbuf.
 - `-D ENABLE_SONGTRACKING=ON` — fingerprint the collection locally with
@@ -37,5 +37,6 @@ every component offered on Linux, so the set it asks for is explicit.
 The desktop entry is KDOS's own, written over upstream's. Strawberry's `main()` sets the desktop
 file name, so the Wayland app id is `org.strawberrymusicplayer.strawberry`, which
 `StartupWMClass` repeats where upstream's says `strawberry`. The entry drops upstream's `tidal:`
-scheme handler along with the Tidal service, and keeps the Play/Pause, Stop, Previous and Next
-actions of upstream's five, leaving out Stop After Current.
+scheme handler along with the Tidal service, and its `video/x-ms-asf` type, so an ASF file is not
+offered to Strawberry. It keeps the Play/Pause, Stop, Previous and Next actions of upstream's five,
+leaving out Stop After Current.

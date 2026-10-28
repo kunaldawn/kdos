@@ -198,18 +198,16 @@ void sh_theme_from_cache(void)
  * The same retint for the front ends nobody signals — and the reason it polls
  * a file instead of taking the SIGHUP the panel takes.
  *
- * `kdos theme` signals FOUR names by design (kdos-shell, kdos-desk,
- * kdos-notifyd, kdos-comp), because SIGHUP's default disposition is death and
- * a name on that list whose program installs no handler would be KILLED by a
- * theme change. That made the list a thing two files have to agree about, and
- * they already disagreed: kdos-slit calls sh_theme_watch() and is on nobody's
- * list, so the slit never retinted at all.
+ * `kdos theme` signals a FIXED LIST of names (kdos.c's `who[]`), because
+ * SIGHUP's default disposition is death and a name on that list whose program
+ * installs no handler would be KILLED by a theme change. A list is a thing two
+ * files have to agree about, and a surface missing from it never retints.
  *
- * A dialog is not short-lived just because it is modal. Photographed on a
- * booted ISO: `kdos theme amber` repainted the wallpaper, both panels and the
- * desktop icons, and left the open `kdos-openwith` in phosphor — and the most
- * likely way to change an accent at all is kdos-settings, which is one of
- * these surfaces and so was left wearing the accent it had just replaced.
+ * A dialog is not short-lived just because it is modal. An open
+ * `kdos-openwith` that missed the change would keep the old accent beside a
+ * repainted desktop — and the most likely way to change an accent at all is
+ * kdos-settings, which is one of these surfaces and would be left wearing the
+ * accent it had just replaced.
  *
  * Polling the state file's mtime needs no signal, no handler and no second
  * list: a front end that draws is a front end that follows. It is one stat per
@@ -937,21 +935,7 @@ void sh_activate_workspace(struct sh_state *sh, int i)
 	wl_display_flush(sh->display);
 }
 
-/*
- * Spawn something no surface here must wait for.
- *
- * DOUBLE FORK: the intermediate child exits at once and init reaps the
- * grandchild, so a panel that never calls waitpid() cannot accumulate zombies
- * — and a launcher that blocked on a boxed app's eighteen-second cold start
- * would be a launcher nobody uses twice.
- *
- * The waitpid on the INTERMEDIATE child is interruptible on purpose: the
- * SIGHUP `kdos theme` sends is caught without SA_RESTART (see sh_theme_watch),
- * and a waitpid it interrupts leaves that child a zombie for the life of the
- * process — one per menu click.
- *
- * No shell. argv is exec'd as given.
- */
+/* Open a help page in kdos-doc, without waiting for it. */
 void sh_help(const char *doc, void *user)
 {
 	const char *argv[] = { "kdos-doc", doc, NULL };
@@ -962,6 +946,21 @@ void sh_help(const char *doc, void *user)
 	sh_spawn(argv);
 }
 
+/*
+ * Spawn something no surface here must wait for.
+ *
+ * DOUBLE FORK: the intermediate child exits at once and init reaps the
+ * grandchild, so a panel that never calls waitpid() cannot accumulate zombies
+ * — and a launcher that blocked on a boxed app's eighteen-second cold start
+ * would be a launcher nobody uses twice.
+ *
+ * The waitpid on the INTERMEDIATE child retries on EINTR: the SIGHUP
+ * `kdos theme` sends is caught without SA_RESTART (see sh_theme_watch), and a
+ * waitpid it interrupted and nobody retried would leave that child a zombie
+ * for the life of the process — one per menu click.
+ *
+ * No shell. argv is exec'd as given.
+ */
 void sh_spawn(const char *const argv[])
 {
 	pid_t pid;
@@ -984,11 +983,6 @@ void sh_spawn(const char *const argv[])
 }
 
 /*
- * THE TERMINAL EMULATOR ON THIS DESKTOP, named in one place so a call site
- * needs no branch of its own. `kdos-term` accepts the same `-e CMD` and
- * `-D DIR`, so swapping the name here is the whole change.
- */
-/*
  * THE WALL CLOCK, AND THE ONE PLACE $KDOS_PANEL_NOW IS READ.
  *
  * A surface that draws the time draws a different picture every minute, so a
@@ -1007,6 +1001,11 @@ time_t sh_wall(void)
 	return time(NULL);
 }
 
+/*
+ * THE TERMINAL EMULATOR ON THIS DESKTOP, named in one place so a call site
+ * needs no branch of its own. `kdos-term` accepts the same `-e CMD` and
+ * `-D DIR`, so swapping the name here is the whole change.
+ */
 const char *sh_term(void)
 {
 	return "foot";
@@ -1022,8 +1021,8 @@ const char *sh_term(void)
  * terminal entry started as a bare `foot -e …` is a taskbar row called foot,
  * wearing foot's icon, however many of them are open. The identity is the
  * first word of `cmd` without its directory, which is the desktop id for
- * everything that ships one. foot takes it as `--app-id`; kdos-term as the
- * `--title` the panel shows until the program sets one.
+ * everything that ships one. foot takes it as `--app-id`; kdos-term as both
+ * `--app-id` and the `--title` the panel shows until the program sets one.
  */
 /*
  * A NAME, NOT A PROGRAM. `X-KDOS-Term` chooses between the two emulators this
@@ -1067,11 +1066,11 @@ int sh_term_argv_in(const char *want, int floating, const char *size,
 	base = base ? base + 1 : word;
 	argv[n++] = prog;
 	/*
-	 * THE FLAG BELONGS TO THE EMULATOR AND NOT TO THE DESKTOP. `foot`
-	 * takes `--app-id`, `kdos-term` takes `--title`, and an entry may ask
-	 * for either whatever the session is. Keying this off which session is
-	 * up hands `kdos-term` a `--app-id` it does not know as soon as an
-	 * entry asks for it under the compositor.
+	 * THE FLAGS BELONG TO THE EMULATOR AND NOT TO THE DESKTOP. `foot`
+	 * takes `--app-id` alone, `kdos-term` takes `--title` and `--app-id`,
+	 * and an entry may ask for either emulator whatever the session is.
+	 * Keying this off which session is up would hand one emulator the
+	 * other's flags as soon as an entry asks for it.
 	 */
 	if (*base) {
 		if (!strcmp(prog, "foot")) {

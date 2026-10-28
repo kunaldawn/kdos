@@ -6,8 +6,8 @@ and shuts the machine down cleanly before the battery runs out. Its drivers talk
 `nut-scanner` read and find devices. With `MODE` in `/etc/nut/nut.conf` the machine is a
 stand-alone UPS host, a server for other machines, or a client of another machine's `upsd`. The
 init script, the firewall name and the final power cut are described in
-[Administration](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md) and
-[Shutdown](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/boot-and-init.md#shutdown).
+[Administration](../../../../docs/kdos/02-user-guide/administration.md) and
+[Shutdown](../../../../docs/kdos/03-architecture/boot-and-init.md#shutdown).
 
 ## Flags
 
@@ -49,7 +49,7 @@ init script, the firewall name and the final power cut are described in
 - `--with-systemdsystemunitdir=no`, `--with-systemdsystempresetdir=no`,
   `--with-systemdshutdowndir=no`, `--with-systemdtmpfilesdir=no`, `--with-systemdsysusersdir=no`,
   `--without-libsystemd` — Install no systemd files and link no `libsystemd`. KDOS has no systemd
-  ([No systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd)).
+  ([No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)).
 - `--with-hotplug-dir=no`, `--with-devd-dir=no`, `--with-augeas-lenses-dir=no`,
   `--with-solaris-smf=no`, `--with-solaris-init=no`, `--with-solaris-pkg-svr4=no`,
   `--with-solaris-pkg-ips=no` — Install none of the integration files for the old Linux 2.4
@@ -71,8 +71,8 @@ it under `/run`, and it skips when the `nut` account is missing.
 
 `postinstall.sh` creates the account under `PKG_ROOT`, the root the package is being installed
 into, so an install into another tree (`--root`, or an A/B update) gives that tree the account.
-It also puts `nut` in the `dialout` group, the group the tree's udev rules give serial adapters
-and other plug-in devices. Both checks read
+The account it creates is also in the `dialout` group, the group the tree's udev rules give serial
+adapters and other plug-in devices; an account that already exists is not added to it. Both checks read
 `etc/group` and `etc/passwd` under `PKG_ROOT` directly, so they test the tree being installed into
 rather than the running system's account database. The account's home is `/nonexistent`: the
 state `upsd` and the drivers keep is under `/run/nut`, which the script creates. The hook sets

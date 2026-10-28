@@ -38,8 +38,8 @@ person uses it, and where the capsule goes on the ESP, is in
   from `/etc/os-release`, and creates `EFI/<ID>` when none exists.
 - `-Dplugin_uefi_capsule_splash=false` — Build without the "Installing firmware update…" splash
   images the capsule loader can show. Making them runs `make-images.py`, which needs the `gi`
-  Python module with the Pango, PangoCairo and cairo typelibs at configure time; `po/test-deps`
-  checks for them and stops the configure when one is missing.
+  Python module with the Pango, PangoCairo and cairo typelibs, and the `cairo` Python module;
+  `po/test-deps` checks for them at configure time and stops the configure when one is missing.
   [python3-gobject](#port-python3-gobject) is not in `depends`.
 - `-Dplugin_modem_manager=enabled` — Build the plugin that updates the firmware of mobile
   broadband modems through ModemManager. [modemmanager](#port-modemmanager),
@@ -77,12 +77,12 @@ person uses it, and where the capsule goes on the ESP, is in
   -Dvendor_ids_dir=" when none holds one.
 
 ## Patches
-- `esp-mount-path.patch` — Lets the daemon find the EFI system partition without udisks. When no ESP volume is known, it reads `EspLocation` from `fwupd.conf` and, if set, describes the filesystem mounted there itself before asking udisks: it must be a mount point (its device differs from its parent's) and a FAT filesystem; the partition number, start and size are read from `/sys/dev/block/<major>:<minor>`, and the partition UUID and type from the udev database under `/run/udev/data`. A partition the udev database does not describe still gives a volume with no UUID, usable for capsule-on-disk and not for a boot entry. The patch adds `fu_volume_new_esp_from_mount_path()` and makes the volume's size, offset, number and block size fall back to the probed values when there is no udisks proxy.
+- `esp-mount-path.patch` — Lets the daemon find the EFI system partition without udisks. Upstream first asks udisks for ESP and then for BDP partitions; when that gives no FAT ESP and no internal FAT BDP, whether because udisks is not running or because it knows of none, the patch reads `EspLocation` from `fwupd.conf` and, if set, describes the filesystem mounted there itself, before upstream's last udisks call, the block-device check that turns "nothing found" into an error: it must be a mount point (its device differs from its parent's), a FAT filesystem, and on a partition; the partition number, start and size are read from `/sys/dev/block/<major>:<minor>`, the device node from its `uevent`, and the partition UUID and type from the udev database under `/run/udev/data`. A partition the udev database does not describe still gives a volume with no UUID, usable for capsule-on-disk and not for a boot entry. The patch adds `fu_volume_new_esp_from_mount_path()` and, when there is no udisks proxy, makes the volume's size, offset and number return the probed values and its block size come from the probed device node.
 
 ## Notes
 - **`EspLocation` and the patch go together.** `build.sh` writes `/etc/fwupd/fwupd.conf` with
   `EspLocation=/boot/efi`, the mount point the installer's `fstab` gives the ESP, and the patch
-  is what reads it before udisks. [udisks2](#port-udisks2) is installed later, in `43_toolkits`,
+  is what reads it when udisks reports no ESP. [udisks2](#port-udisks2) is installed later, in `43_toolkits`,
   for gvfs; with `EspLocation` set and mounted, fwupd does not need it. The live image mounts no
   ESP, and the patch refuses a path that is not a FAT mount point, so there fwupd reports no ESP
   rather than a wrong one. The file keeps mode `0640`, the mode upstream installs it with,

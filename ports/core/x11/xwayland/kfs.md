@@ -3,13 +3,13 @@
 Xwayland is an X server that runs as a client of a Wayland compositor, drawing each X11 window as
 a Wayland surface of its own. In KDOS it is the one X server on the system: there is no Xorg
 server, no display manager and nothing X on the login path, and every program that has no Wayland
-path (Motif, Tk and Swing programs, VLC 3, an X11-only application inside a box) runs on it. The
-compositor starts it rootless, through [wlroots](#port-wlroots), when the first X11 client
-connects; wlroots is built with Xwayland support and is the only port that depends on this one.
+path (Motif, Tk and Swing programs, [VLC](#port-vlc) 3, an X11-only application inside a box)
+runs on it. The compositor starts it rootless, through [wlroots](#port-wlroots), when the first
+X11 client connects; wlroots is built with Xwayland support and is the only port that depends on this one.
 What the carve-out allows and what it keeps out is in
-[Principles](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-xorg-server-and-one-carve-out),
+[Principles](../../../../docs/kdos/01-philosophy/principles.md#no-xorg-server-and-one-carve-out),
 and how the compositor runs it is in
-[kdos-comp](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/kdos-comp.md#xwayland).
+[kdos-comp](../../../../docs/kdos/04-programs/kdos-comp.md#xwayland).
 
 The source is the X.Org server tree cut down to its Xwayland part, so the switches below are the
 X server's own. The build turns off every other server and every feature that needs something KDOS
@@ -34,7 +34,7 @@ and font paths at the directories the KDOS ports install.
   window is decorated by the compositor; as with libei, `auto` would follow whether
   [libdecor](#port-libdecor) happened to be built first.
 - `-Dsystemd_notify=false` — Builds no `sd_notify` readiness call. KDOS has no systemd (see
-  [No systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd)).
+  [No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)).
 - `-Dxselinux=false` — Builds no SELinux extension. No libselinux port exists.
 - `-Dglamor=true` — Renders the X server's drawing with OpenGL through EGL and GBM from
   [mesa](#port-mesa). This is upstream's default. It makes libxshmfence, libdrm and libepoxy
@@ -52,9 +52,9 @@ and font paths at the directories the KDOS ports install.
   install.
 - `-Dsha1=libcrypto` — Takes the SHA-1 the server uses to identify glyphs in the RENDER
   extension's glyph cache from OpenSSL's libcrypto ([openssl](#port-openssl) is a dependency).
-  Left on `auto`, the probe tries libmd, libsha1, nettle and libgcrypt before libcrypto and takes
-  the first it finds, and [libmd](#port-libmd) is a dependency of [libbsd](#port-libbsd), so the
-  result would depend on what else was in the root.
+  Left on `auto`, the probe tries the C library, libmd, libsha1, nettle and libgcrypt before
+  libcrypto and takes the first it finds, and [libmd](#port-libmd) is a dependency of
+  [libbsd](#port-libbsd), so the result would depend on what else was in the root.
 - `-Dxkb_dir=/usr/share/X11/xkb` — Where the server reads the XKB keymap sources, the directory
   [xkeyboard-config](#port-xkeyboard-config) installs.
 - `-Dxkb_output_dir=/var/lib/xkb` — Where the server writes the keymaps [xkbcomp](#port-xkbcomp)
@@ -83,4 +83,4 @@ own Mesa over this server's DRI3, so for boxed programs `-Ddri3=true` is the hal
 
 X11 programs under Xwayland have no input method. Xwayland carries no text input for its X clients,
 and [fcitx5](#port-fcitx5) is built without its XIM frontend; see
-[Input methods](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/session.md#input-methods).
+[Input methods](../../../../docs/kdos/03-architecture/session.md#input-methods).

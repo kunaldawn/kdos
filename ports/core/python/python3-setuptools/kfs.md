@@ -2,8 +2,10 @@
 
 setuptools is a build backend for Python packages: the `setup.py` and
 `setuptools.build_meta` machinery that turns a source tree into a wheel, and builds C extensions on
-the way. It also provides `pkg_resources`, and a `distutils` module for programs that import
-one, which Python's own standard library does not include. Many `python3-*` ports in the tree build with
+the way. It also provides a `distutils` module, which Python's own standard library does not
+include, for programs that import one: `setuptools/_distutils`, which the `_distutils_hack` shim
+puts in its place. It does not provide `pkg_resources`; a program that imports it fails at run
+time. Many `python3-*` ports in the tree build with
 it, and so does [meson](#port-meson), which `30_foundation` installs with pip once this port and
 [python3-pip](#port-python3-pip) are in place.
 

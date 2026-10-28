@@ -2,8 +2,9 @@
 [tree-sitter]{.idx} is a parser generator and an incremental parsing library. The port installs
 two things: the `tree-sitter` command, which generates a grammar's C parser from its
 `grammar.js` and compiles it, and `libtree-sitter`, the C runtime every generated parser runs
-against, with its header and `tree-sitter.pc`. Editors that highlight and navigate code with
-tree-sitter grammars use both. [lldb](#port-lldb) names it in `depends`.
+against, with its header and `tree-sitter.pc`. [lldb](#port-lldb) names it in `depends` for
+its tree-sitter syntax highlighting (`LLDB_ENABLE_TREESITTER`). [neovim](#port-neovim) does not:
+it builds its own copy of the library from a tree-sitter release its recipe pins.
 
 The phase list's reason is the offline case: an editor plugin that downloads and compiles a
 grammar the first time a file of that language is opened cannot do so with no network, and the
