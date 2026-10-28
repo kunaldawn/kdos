@@ -11,7 +11,7 @@ under `$SRC_ROOT/seed`, compiles Hadrian (GHC's build system) and GHC's first st
 left behind; the first stage compiles the second, which is what ships. Hadrian's own Hackage
 dependencies come from the vendor bundle, the third `sha256 =` line, so nothing is downloaded
 during the build (see
-[The Haskell bundle](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-haskell-bundle)).
+[The Haskell bundle](../../../../docs/kdos/05-developer/writing-ports.md#the-haskell-bundle)).
 
 Hadrian does not install. Its `binary-dist-dir` target lays out a binary distribution under
 `_build/bindist`, and that distribution's own `configure` and `make install` put it into `$PKG`,
@@ -22,8 +22,9 @@ which is how upstream's release tarballs are installed too.
   the system; nothing under it reaches `$PKG`.
 - `-w` — Tells Hadrian's `bootstrap.py` which GHC to compile Hadrian with: the seed.
 - `-d` — The bootstrap plan `bootstrap.py` follows, `hadrian/bootstrap/plan-bootstrap-<seed>.json`
-  from the GHC source, chosen by the recipe's `hsplan` helper. It names every package Hadrian
-  needs, with its version and hashes, solved for the seed's version of GHC.
+  from the GHC source, where `<seed>` is the recipe's `_seed` with its dots turned to underscores;
+  the `hsplan` helper spells the name. The plan names every package Hadrian needs, with its
+  version and hashes, solved for the seed's version of GHC.
 - `--no-archive` — Builds Hadrian in place without packing it into a distribution archive; the
   build runs it straight from `hadrian/bootstrap/_build/bin`.
 - `--build=x86_64-unknown-linux` — The platform triple GHC is configured for, given for build,
@@ -51,7 +52,7 @@ which is how upstream's release tarballs are installed too.
   among them, is linked with `-z,now`. It is passed to both
   `configure` runs, because the binary distribution's `configure` writes the `settings` file that
   is installed. GHC links its programs without PIE; why, and what that leaves out, is in
-  [The release flags](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-release-flags).
+  [The release flags](../../../../docs/kdos/05-developer/writing-ports.md#the-release-flags).
 - `GHC="$_seedghc"` — The compiler GHC's `configure` builds the first stage with: the seed.
 - `--flavour=release+no_profiled_libs` — `release` is Hadrian's flavour for a distributed
   compiler: `perf`, which compiles the compiler and the libraries with `-O2` and splits sections

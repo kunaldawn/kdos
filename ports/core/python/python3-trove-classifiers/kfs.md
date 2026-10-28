@@ -17,8 +17,8 @@ project's declared classifiers against this list when it builds the project's me
 calver reads the version from that first, so the installed version is the release's, not the
 date of the build (see [python3-calver](#port-python3-calver)).
 
-hatchling stops with ``Unknown classifier in field `project.classifiers` `` when a project it builds
-declares a classifier this list does not contain, other than a `Private ::` one, unless
+hatchling stops with ``Unknown classifier in field `project.classifiers`: `` when a project it
+builds declares a classifier this list does not contain, other than a `Private ::` one, unless
 `HATCH_METADATA_CLASSIFIERS_NO_VERIFY` is set in the environment. A project that uses a
 classifier newer than this version of the list therefore needs this port bumped, or the variable
 set in its `build.sh`.

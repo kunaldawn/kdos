@@ -24,9 +24,9 @@
 #define KD_SHARE    "/usr/share"
 /*
  * A KEY IS SCOPED TO WHAT IT SIGNS. `/etc/kdos/keys` is kpkg's binhost ring —
- * whoever is trusted to publish PACKAGES for the HOST — and a pack-bake key
- * has no business there: it attests that some packs came off one medium, not
- * that a package repository is sound. ksig_ring_load reads *.pub flat and
+ * whoever is trusted to publish PACKAGES for the HOST — and a pack key has no
+ * business there: it vouches for a pack or a pack index, not for a package
+ * repository. ksig_ring_load reads *.pub flat and
  * never descends, so a subdirectory is a real boundary rather than a
  * convention.
  */

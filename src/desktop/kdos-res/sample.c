@@ -230,9 +230,9 @@ const char *res_temp(double c)
 }
 
 /*
- * The one rendering of a counter the caller may not read. An em dash, never a
- * zero: a column of confident zeroes is worse than an empty column, because
- * somebody will act on it.
+ * The one rendering of a counter the caller may not read. res_none()'s dash,
+ * never a zero: a column of confident zeroes is worse than an empty column,
+ * because somebody will act on it.
  */
 const char *res_counter(unsigned long long v)
 {

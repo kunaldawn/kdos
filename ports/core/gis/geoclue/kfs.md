@@ -5,7 +5,7 @@ position, and it answers from Wi-Fi networks, the cellular modem, a GPS feed, th
 fixed location. KDOS carries it because it is what xdg-desktop-portal's Location portal asks, and
 `libgeoclue`, the client convenience library, is what [xdg-desktop-portal](#port-xdg-desktop-portal)
 links for it. How the service runs on KDOS, with no consent agent, is in
-[Access, and what it unlocks](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/session.md#access-and-what-it-unlocks).
+[Access, and what it unlocks](../../../../docs/kdos/03-architecture/session.md#access-and-what-it-unlocks).
 
 ## Flags
 
@@ -41,7 +41,7 @@ configuration. It empties the `[agent]` whitelist, the condition `no-agent.patch
 the portal, `[xdg-desktop-portal]`, `allowed=true` and `system=true`, so the Location portal is
 treated as a system component for every user. The result is that GeoClue answers any client on
 the system bus that is not refused by name; see
-[known gaps](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/06-reference/known-gaps.md#a-boxed-application-is-given-your-location-without-being-asked).
+[known gaps](../../../../docs/kdos/06-reference/known-gaps.md#a-boxed-application-is-given-your-location-without-being-asked).
 
 The `geoclue` account is made by `postinstall.sh`, under `PKG_ROOT`, the root the package is being
 installed into. `dbus-daemon-launch-helper` refuses to start a service whose `User=` does not

@@ -1923,7 +1923,7 @@ theme_init(struct theme *theme, const char *theme_name)
 		paths_destroy(&paths);
 	}
 
-	/* Read <config-dir>/labwc/themerc-override */
+	/* Read <config-dir>/kdos-comp/themerc-override */
 	paths_config_create(&paths, "themerc-override");
 	theme_read(theme, &paths);
 	paths_destroy(&paths);

@@ -19,7 +19,7 @@ port installs both front ends and the server packages they share, from one vendo
 `vendoring = python` with an explicit `pypackages` list: the bundle holds the source
 distributions of every Python package the two front ends need that is not a port of its own,
 plus the build requirements of each, and `build.sh` installs that list `--no-deps` from it (see
-[The three Python keys](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-three-python-keys)). A
+[The three Python keys](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys)). A
 package listed here is owned by this port, so a module that another program also imports belongs
 in a `python3-*` port that both name in `depends`, never in this bundle.
 

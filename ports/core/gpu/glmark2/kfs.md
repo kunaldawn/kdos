@@ -6,8 +6,8 @@ effects) that ends in one score. Unless `--swap-mode fifo` is given it asks for 
 flavour: `glmark2-wayland` and `glmark2-es2-wayland` in a Wayland window, `glmark2-drm` and
 `glmark2-es2-drm` straight to the display from a text console, and `glmark2-gbm` and
 `glmark2-es2-gbm` rendering offscreen with no display at all. Each reaches GL through EGL. Which
-one answers which question is in [Which tool answers which
-question](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/testing.md#which-tool-answers-which-question).
+one answers which question is in
+[Which tool answers which question](../../../../docs/kdos/05-developer/testing.md#which-tool-answers-which-question).
 
 ## Flags
 

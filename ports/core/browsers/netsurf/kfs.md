@@ -35,8 +35,9 @@ source. This port builds the GTK 3 front end, `netsurf-gtk3`.
   enables the feature only when pkg-config finds its library; `YES` stops the build with "Unable
   to find library" instead.
 - `NETSURF_USE_ROSPRITE=NO` — No RISC OS sprite images; librosprite is not a port.
-- `NETSURF_USE_HARU_PDF=NO` — No PDF export, which needs libharu; upstream's
-  default, which has no detection for it.
+- `NETSURF_USE_HARU_PDF=NO` — No PDF export through libharu; upstream's default. The switch has
+  no `AUTO` detection, and `YES` links `-lhpdf` directly, which would need
+  [libharu](#port-libharu) in `depends`.
 - `NETSURF_USE_VIDEO=NO` — No video; upstream's default. The GTK front end looks for
   `gstreamer-0.10`, and the tree's [gstreamer](#port-gstreamer) is not that series.
 - `GTK_TRANSLATIONS_HTML=en` — Install the English resource tree only. The default list installs

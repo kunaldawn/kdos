@@ -8,7 +8,7 @@ codecs link the image library ports named in `depends`.
 
 - `export CFLAGS="$CFLAGS -flto=auto"` — Link-time optimisation for the imaging modules, one of
   the few hot libraries the tree builds with LTO; see the LTO rule under
-  [Every port](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#every-port).
+  [Every port](../../../../docs/kdos/05-developer/writing-ports.md#every-port).
 - `export AR=gcc-ar NM=gcc-nm RANLIB=gcc-ranlib` — The archive tools that load GCC's LTO plugin.
   Pillow compiles `Mode.c` into a static library, `pil_imaging_mode`, that the `_imaging`
   extension links. Under `-flto` its object holds only LTO bytecode, which `ar` indexes only
@@ -26,7 +26,7 @@ codecs link the image library ports named in `depends`.
 - `-C xcb=disable` — Leave out `ImageGrab`'s X11 screen capture, which links `libxcb`. The
   Wayland compositor owns the screen, and the one X server, Xwayland, runs rootless for X11
   clients only
-  ([principles](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-xorg-server-and-one-carve-out)),
+  ([principles](../../../../docs/kdos/01-philosophy/principles.md#no-xorg-server-and-one-carve-out)),
   so there is no X screen holding the desktop to grab.
 - `--no-build-isolation` — Build with the setuptools and pybind11 already in the build root; both
   are in `depends`. An isolated build would try to fetch them, and the build has no network.

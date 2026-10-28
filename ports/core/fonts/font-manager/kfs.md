@@ -8,7 +8,7 @@ installs it for the current user.
 ## Flags
 
 - `-Dmanager=true` — With `-Dviewer=true`: both programs. Upstream's defaults, named.
-- `-Dsearch-provider=false` — No GNOME Shell search provider, an interface file under
+- `-Dsearch-provider=false` — No GNOME Shell search provider, a `.ini` registration file under
   `share/gnome-shell/search-providers` that only GNOME Shell reads; there is no GNOME Shell here.
 - `-Dadwaita=false` — Upstream's own stylesheet rather than libadwaita's Adwaita one. Upstream's
   default, named.

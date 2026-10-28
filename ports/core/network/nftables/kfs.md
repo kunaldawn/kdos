@@ -5,7 +5,7 @@ its rules. The KDOS [firewall]{.idx} is written in it: `/etc/init.d/25_nftables.
 `/etc/nftables.conf` and the drop-ins in `/etc/nftables.d/` with `nft -c` and loads them at boot,
 and `kdos-powerd` rewrites `50-kdos-services.nft` and reloads the ruleset when an administrator
 opens or closes a service. The shipped ruleset and how it is applied are in
-[The firewall](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#the-firewall).
+[The firewall](../../../../docs/kdos/03-architecture/security-model.md#the-firewall).
 
 Container networking uses it as well. [netavark](#port-netavark), podman's network backend, runs
 with its nftables firewall driver and drives `nft` in JSON mode.

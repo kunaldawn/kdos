@@ -5,8 +5,10 @@
 `41_system` is the largest phase of the build. It installs everything whose [dependency closure]{.idx}
 reaches no graphics and no toolkit: the services the machine boots into, networking, storage and
 file systems, the command line, cryptography, the audio and image codecs, fonts, and the science,
-radio and hardware libraries. It also builds KDOS's own artwork and its first system programs. This
-part describes the rule that fills the phase, how its list is filed, the order file that sorts
+radio and hardware libraries. It also builds KDOS's own artwork and the first of KDOS's own
+programs to be built as ports; [kpkg](../03-bootstrap/120-kpkg.md) and
+[kinstall](../03-bootstrap/130-kinstall.md) are built earlier, by hand, in Part III. This part
+describes the rule that fills the phase, how its list is filed, the order file that sorts
 ahead of every shelf and what it does to a parallel build, and which of its ports have a full
 page. The package pages follow, in chapters by shelf, in the shelves' own order, and within a shelf
 in the order [kpkgdepends]{.idx} builds them.
@@ -15,7 +17,7 @@ in the order [kpkgdepends]{.idx} builds them.
 
 A port is installed here when nothing in its closure is graphical: no Wayland, no Xlib, no Mesa or
 libdrm, no cairo or pango, no GStreamer, FFmpeg or PipeWire, and no toolkit. Subject does not
-enter into it. A terminal game, a text-mode browser, the data files of a graphical game or a font
+enter into it. A terminal game, a text-mode browser or the data files of a graphical game
 is a `41_system` port when its closure stays clear of those, even though its shelf is one of the
 application shelves; the same shelf then has more of its ports in Part X or Part XII. The table of
 phases and what decides each is in
@@ -32,7 +34,7 @@ GObject introspection and dconf, and not GTK.
 The list is `script/phases/41_system/packages.d/`, one file per shelf named after it, plus
 `src-system.txt` and `src-art.txt` for the programs of KDOS's own from those two areas of `src/`
 (see [Package lists](../../kdos/05-developer/build-system.md#package-lists)). Almost every shelf
-of [`ports/shelves`]{.idx} has a file here. The chapters fall into a few groups:
+of [`ports/shelves`]{.idx} has a file here. Most of the chapters fall into these groups:
 
 The machine itself
 : `base` (the D-Bus daemon, the system logger, `seatd`, `snooze`, the s6 tools, procps),
@@ -68,6 +70,9 @@ KDOS's own
   boot splash and the `kdos-bb` demo) and `src-system` (`kdos-pack`, `kdos-boxinit`, and the two
   books, `kdos-doc` and `kdos-kfs`). They come last in the part, after every shelf.
 
+The other chapters, such as `toolchain`, `security`, `printing` and the game shelves, hold the
+ports of their subject whose closure reaches no graphics.
+
 ## The order file
 
 [`00-order.txt`]{.idx} sorts ahead of every shelf's file, so the ports it names are resolved first, in the
@@ -97,7 +102,7 @@ daemon, `seatd`, `sysklogd`, `snooze` and polkit; Limine, `efibootmgr` and `linu
 file-system, image and encryption tools (`e2fsprogs`, `dosfstools`, `mtools`, `erofs-utils`,
 `squashfs-tools`, `cpio`, `libisoburn` and `cryptsetup`); `crun`, the OCI runtime that
 `containers-common` configures podman with; `nftables` and NetworkManager; `libinput`; and every
-port of `src-art` and `src-system` apart from `kdos-kfs`. Their pages carry a hand-written note beside the recipe; see
+port of `src-art` and `src-system`. Their pages carry a hand-written note beside the recipe; see
 [The three tiers](../00-front/reading-a-package-page.md#the-three-tiers).
 
 Many more ports have [Tier B]{.idx} pages, for the reasons that page gives: a patch, a vendor bundle, a long

@@ -12,23 +12,30 @@ what is in `fs/`, what that step does with it, and what does not belong there.
 and one at `fs/usr/local/bin/kdos-desktop` becomes `/usr/local/bin/kdos-desktop`. The main areas are:
 
 `fs/etc/`
-:   The system's own configuration: `inittab` and the boot scripts under `init.d/` that sysvinit
-    runs, one numbered script per service; `passwd`, `group` and [`shadow`]{.idx} with the accounts every
-    machine has; `profile`, `bash.bashrc` and `profile.d/`; `fstab`, `hostname`, `hosts`,
-    `nsswitch.conf` and `resolv.conf`; the firewall in `nftables.conf` and `nftables.d/`; and
-    configuration for udev, polkit, PipeWire, ALSA and the XDG menus.
+:   The system's own configuration: `inittab`, which sysvinit reads, and the boot scripts under
+    `init.d/`, numbered scripts that `rcS` runs in order at boot, one per service or boot task, with
+    `service.disabled/` naming those that must not start; `passwd`, `group` and [`shadow`]{.idx}
+    with the accounts every machine has; `profile`, `bash.bashrc` and `profile.d/`; `fstab`,
+    `hostname`, `hosts`, `nsswitch.conf` and `resolv.conf`; the firewall in `nftables.conf` and
+    `nftables.d/`; KDOS's own settings under `kdos/`, such as `login.conf` and `zram.conf`, and the
+    directories of trusted signing keys under `kdos/keys/`; and configuration for udev, polkit, PipeWire, ALSA
+    and the XDG menus.
 
 `fs/etc/skel/`
 :   The skeleton of a user's home directory, copied into each home when the image phase creates the
-    users.
+    users. `fs/root/` holds root's own `.bashrc` and `.bash_profile`.
 
 `fs/usr/local/`
-:   A few scripts of KDOS's own that are not part of any program's port, such as the desktop's
-    start-up script.
+:   KDOS's own scripts that belong to no port: the desktop's start-up script `bin/kdos-desktop` and
+    a few helpers beside it, the tty1 login script `sbin/kdos-login`, and the session bring-up that
+    `kdos-desktop` and `kdos-desktop-start` share, `lib/kdos/session-common.sh`.
 
 `fs/usr/share/`
-:   Data files: the boot menu's pictures and the in-system help pages under `kdos/`, D-Bus,
-    portal and GSettings configuration, a few desktop entries, backgrounds.
+:   Data files: the boot menu's pictures, the in-system help pages, the logo and the screensaver
+    text under `kdos/`; the portal configuration `xdg-desktop-portal/kdos-portals.conf`; the
+    GSettings override in `glib-2.0/schemas/`; bash completion for the `kdos` command; the desktop
+    entries of KDOS's own tools under `applications/`; and the default wallpaper under
+    `backgrounds/kdos/`.
 
 `fs/usr/lib64`
 :   A symbolic link to `lib`, so that the root has one library directory. Anything that installs
@@ -36,7 +43,8 @@ and one at `fs/usr/local/bin/kdos-desktop` becomes `/usr/local/bin/kdos-desktop`
 
 `fs/etc/mtab`
 :   A symbolic link to `../proc/self/mounts`, the kernel's list of mounts, for the programs that
-    read or write `/etc/mtab`: lvm2's `lvextend -r` and `mount.nfs4` fail without it.
+    read or write `/etc/mtab`: lvm2's `lvextend -r` and `mount.nfs4` fail without it; see
+    [Mount points that must be right](../../kdos/03-architecture/boot-and-init.md#mount-points-that-must-be-right).
 
 To see the whole of it, list it from the top of the repository on your machine:
 
@@ -75,8 +83,9 @@ machine:
 make build BUILD_ARGS="--phases 10_bootstrap,70_image --steps 10_bootstrap:000_file_system.sh"
 ```
 
-`--steps` limits `10_bootstrap` to this one script and `--phases` adds the image phase after it.
-[kdosbuild](kdosbuild.md) explains both.
+`--phases` runs only `10_bootstrap` and `70_image`, and `--steps` limits `10_bootstrap` to this
+one script; the image phase runs whole.
+[Narrowing a build](kdosbuild.md#narrowing-a-build) explains both.
 
 ## What does not belong in fs/
 
@@ -85,7 +94,9 @@ system's own principles:
 
 - **No file a package installs.** The copy writes over whatever is at a path, so a file both in
   `fs/` and in a package ends up as `fs/`'s copy the next time the step runs, while the package
-  database still records the package's. Configuration a port installs belongs in its port.
+  database still records the package's. Deleting such a file from `fs/` later deletes it from the
+  tree too, package or not, because the manifest named it. Configuration a port installs belongs
+  in its port.
 - **No `fs/etc/X11/`.** KDOS has no X server on its login path, and the directory must never exist;
   see [No Xorg server](../../kdos/01-philosophy/principles.md#no-xorg-server-and-one-carve-out).
 - **Nothing for systemd.** No unit files and no `systemd-*` configuration; services are started by

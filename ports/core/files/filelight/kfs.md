@@ -12,7 +12,7 @@ with a QML interface on [kirigami](#port-kirigami), drawn through
   stops the configure instead of leaving the handbook out.
 - `-D KF_SKIP_PO_PROCESSING=ON` — Skips building the interface translations, which the
   package-wide English-only rule would remove anyway (see
-  [Size and language policy](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
+  [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
 
 ## Patches
 
@@ -20,5 +20,6 @@ with a QML interface on [kirigami](#port-kirigami), drawn through
 
 ## Notes
 
-Kirigami and qqc2-desktop-style are QML modules imported at run time: upstream's CMake only
-reports them (`TYPE RUNTIME`, `ecm_find_qmlmodule`), so `depends` is what puts them on the system.
+Kirigami and qqc2-desktop-style are QML modules imported at run time. Upstream's CMake only
+reports them, Kirigami through `ecm_find_qmlmodule` and qqc2-desktop-style as a `TYPE RUNTIME`
+package, and configures without either, so `depends` is what puts them on the system.

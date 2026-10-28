@@ -3,17 +3,17 @@ eudev is the [device manager]{.idx}: `udevd` receives the kernel's device events
 names the nodes and links under `/dev`, sets their owners and permissions from its rules, loads
 the driver a device needs, and tells the rest of the system through libudev. It is a fork of
 systemd's udev that builds without systemd, and KDOS uses it in place of `systemd-udevd` (see
-[No systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd)).
+[No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)).
 The `01_udev` boot script starts it, the initramfs carries `udevd` and `udevadm` with the rules
 (see
-[The initramfs](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/boot-and-init.md#the-initramfs)),
+[The initramfs](../../../../docs/kdos/03-architecture/boot-and-init.md#the-initramfs)),
 and libudev is what the session's input, storage, audio, Bluetooth and camera stacks link to find
 their devices.
 
 KDOS's own rules are the files in `fs/etc/udev/rules.d`, which the file-system overlay places
 in `/etc/udev/rules.d`. The hardware database is compiled once over the finished tree rather than
 by this port (see
-[Databases stamped into the image](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/build-system.md#databases-stamped-into-the-image)).
+[Databases stamped into the image](../../../../docs/kdos/05-developer/build-system.md#databases-stamped-into-the-image)).
 
 ## Flags
 - `--enable-manpages` — Install the manual pages `udev(7)`, `udevadm(8)`, `udevd(8)`,
@@ -48,7 +48,7 @@ The source is a GitHub tag archive with no generated `configure`, so `build.sh` 
 
 eudev needs util-linux's libblkid, so [util-linux](#port-util-linux) is built before it, and
 without libudev. The cost is in
-[Known gaps](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/06-reference/known-gaps.md#lsblk-shows-a-filesystems-type-label-and-uuid-to-root-only).
+[Known gaps](../../../../docs/kdos/06-reference/known-gaps.md#lsblk-shows-a-filesystems-type-label-and-uuid-to-root-only).
 
 `udev.pc` carries `udevdir=/lib/udev`, and a port that installs rules or helpers by asking
 pkg-config for that variable puts them there.

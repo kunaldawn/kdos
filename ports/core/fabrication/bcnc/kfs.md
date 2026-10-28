@@ -24,12 +24,12 @@ auto-levelling and simple CAM tools. Tk draws through X11, so the window runs un
 svgelements and shxparser, which bCNC's `setup.py` requires and nothing else in the tree uses, are
 vendored: they are named at their versions in `pypackages` in `kpkgbuild`, and `ports/fetch`
 packs their source distributions into `bcnc-vendor-<version>.tar.xz`, pinned by its `sha256` (see
-[Vendoring](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#vendoring)). numpy, Pillow,
+[Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring)). numpy, Pillow,
 pyserial and OpenCV are ports in `depends`.
 
 `build.sh` removes every language directory under `bCNC/locales`, so the interface is English;
 kpkg's English-only rule removes only the `.mo` catalogs in them and would leave the `.po` sources
-(see [Size and language policy](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
+(see [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
 
 bCNC's only icon is 204 pixels square, which is no hicolor size, so `build.sh` scales it to 128
 pixels with [python3-pillow](#port-python3-pillow). `/usr/bin/bcnc` is a symbolic link to

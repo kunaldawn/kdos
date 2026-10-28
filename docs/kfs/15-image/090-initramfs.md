@@ -130,7 +130,9 @@ a note, `init` finds no `/bin/e2fsck`, and an ext root is mounted unchecked. `e2
 <!-- kfs:include script/phases/70_image/090_initramfs.sh lines=212-219 pin=c82a6ed7ed75 -->
 
 `udevd` and `udevadm` come from [eudev](#port-eudev). They name `libkmod`, which names `liblzma`,
-`libz` and `libzstd`, and `libblkid`, which `blkid` has already brought. `libudev` is for [`mdadm`]{.idx}.
+`libz` and `libzstd`, and `libblkid`, which `blkid` has already brought. Neither names `libudev`;
+it is copied for the programs built on it: [`mdadm`]{.idx}, lvm2's programs, `pdata_tools` and udev
+helpers such as `hid2hci`.
 This list, too, is written out by hand, and the closure check holds it to what the binaries name.
 
 ## kdos-bootctl
@@ -141,7 +143,8 @@ This list, too, is written out by hand, and the closure check holds it to what t
 [A/B slot selection](../../kdos/03-architecture/boot-and-init.md#ab-slot-selection). It is one name
 of the multi-call `ksvc` binary from [kdos-tools](#port-kdos-tools), and `cp` copies the binary
 through the link, so the initramfs gets all of it, and with it its `libpng16`. The script looks for
-`/usr/bin/kdos-bootctl` and then for `/usr/bin/kdos-tools`. Either the binary and libpng are both
+`/usr/bin/kdos-bootctl`, the link the port installs, and then for `/usr/bin/kdos-tools`, a path the
+port does not install. Either the binary and libpng are both
 copied, or neither is and the step prints a note; with no `kdos-bootctl`, `init` skips the
 `BOOT SLOT` stage and boots the `root=` on the command line.
 
@@ -169,17 +172,19 @@ that does not start with `/usr/sbin/`; any such path, or a `95-dm-notify.rules` 
 their closures to `usr/sbin/`, the path the rules name, with links from `bin/` so that `PATH=/bin`
 finds them too.
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=309-344 pin=8375cc419aef -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=309-344 pin=ce328c168448 -->
 
 [`thin_check`]{.idx} and [`cache_check`]{.idx} are installed by
 [thin-provisioning-tools](#port-thin-provisioning-tools) as links to one program. `readlink -f`
 finds it, `copy_closure` copies it once under its own name, and the two names are made links to it
-again. The generated `lvm.conf` names those two paths and nothing else. Activation itself is in
+again. On an image with lvm2, a missing `thin_check` or `cache_check` stops the step, as a missing
+`lvm` does: lvm runs the matching one before it activates a thin pool or a cache, and refuses the
+volume when it cannot. The generated `lvm.conf` names those two paths and nothing else. Activation itself is in
 [Activating volume groups](../../kdos/03-architecture/boot-and-init.md#activating-volume-groups).
 
 ## The udev rules and kmod
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=346-371 pin=8b74918ed89a -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=347-372 pin=8b74918ed89a -->
 
 The rules come from both rule directories, and then the whole of `/usr/lib/udev` is copied, which
 brings the helper programs the rules call. `hwdb.d` is removed again: udev reads only the compiled
@@ -199,7 +204,7 @@ name it is run under, so those three are links to it.
 
 ### Finding the kernel
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=373-390 pin=4f1656a3e5d6 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=374-391 pin=4f1656a3e5d6 -->
 
 The modules belong to the newest kernel in `/lib/modules`, taken with `sort -V`. With none there,
 the [linux](#port-linux) port has not been installed and the step stops. `depmod -a` runs only when
@@ -207,13 +212,13 @@ that kernel has no `modules.dep`, the index [`modinfo`]{.idx} uses to turn a mod
 
 ### copy_module
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=392-443 pin=f18c3199a32b -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=393-444 pin=f18c3199a32b -->
 
 `copy_module NAME` does for one module what `copy_closure` does for a program:
 
 1. A name listed in `modules.builtin` is part of the kernel image and has nothing to copy.
-2. `modinfo -k <version> -n` prints the module's file. When `modinfo` gives nothing, [`find`]{.idx} looks
-   for `NAME.ko*` instead.
+2. `modinfo -k <version> -n` prints the module's file. When `modinfo` gives nothing, or answers
+   `(builtin)`, [`find`]{.idx} looks for `NAME.ko*` instead.
 3. A module not found at all is a warning, and the list goes on.
 4. The file keeps its path relative to `/lib/modules/<version>`. A `.ko.zst` is decompressed on the
    way in and stored as `.ko`; anything else is copied as it is.
@@ -222,25 +227,28 @@ that kernel has no `modules.dep`, the index [`modinfo`]{.idx} uses to turn a mod
 
 ### The module list
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=445-484 pin=89cd4623a48c -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=446-485 pin=89cd4623a48c -->
 
 The list grows in groups: the live medium's needs (`overlay`, `squashfs`, `isofs`, the CD drive and
 `loop`) with the common storage controllers and USB storage, the disk transports the installer can
 install to, `vfat` and its two code pages for the ESP, the root filesystems the installer offers
-beyond the built-in [ext4]{.idx} and btrfs, device-mapper and the LUKS ciphers, software RAID, and the
-device-mapper targets an LVM root can use. Why each group is there is in
+beyond [ext4]{.idx} and btrfs (`xfs` and `f2fs`), device-mapper and the LUKS ciphers, software RAID,
+and the device-mapper targets an LVM root can use. This kernel builds ext4, btrfs and xfs in and
+f2fs as a module, so of the two only `f2fs` is copied; `xfs` stays in the list so that a kernel
+with xfs as a module still boots an xfs root. Why each group is there is in
 [The initramfs](../../kdos/03-architecture/boot-and-init.md#the-initramfs).
 
 A name in the list that is built into the kernel costs nothing, so the list names what a boot needs
 rather than what this kernel happens to build as modules. Two other parts of the tree have to agree
 with it. Every root filesystem `ki_filesystems[]` in the installer offers must be in it, and
-`testing/preflight.sh` checks that, ext4 and btrfs excepted because they are built in. And
+`testing/preflight.sh` checks that, with ext4 and btrfs exempt; xfs is held to the list although
+this kernel builds it in. And
 `modprobe` in `init` loads modules by these names, so a module `init` asks for must be in the list
 to be in the tree at all.
 
 ### The list on the image, and the module index
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=486-507 pin=28265998fce2 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=487-508 pin=28265998fce2 -->
 
 The list is written to `/boot/initramfs.modules` in the root, one name per line. The `linux` port's
 `postinstall.sh` reads it when a later kernel is installed and builds that kernel's initramfs from
@@ -255,7 +263,7 @@ against, and this call passes no `-e`.
 
 ## The init script
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=509-512 pin=1ad9e2d8fa1a -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=510-513 pin=1ad9e2d8fa1a -->
 
 `init` is written by `cat` from a here-document that ends at the `EOF` line below. The delimiter is
 not quoted, so the shell expands `$` and backquotes inside it while the step runs. Every `$` that
@@ -265,11 +273,11 @@ reaches the script. The next chapter shows it piece by piece as it stands in the
 included. `build/initramfs/init` is the same text with those escapes undone, and with every line
 that ends in a backslash joined to the next one, which an unquoted here-document also does.
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1311-1312 pin=612d39e844dc -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1312-1313 pin=612d39e844dc -->
 
 ## Microcode
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1314-1350 pin=2374498df0b8 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1315-1351 pin=2374498df0b8 -->
 
 The processor's early microcode loader runs before the kernel unpacks anything, and reads two
 literal paths from the start of the initrd as it is in memory. Those paths are built here in a tree
@@ -278,7 +286,7 @@ builds, copied under the name the loader wants. An empty bundle stops the step, 
 installed `intel-ucode` package with no bundle; with neither, Intel processors keep the microcode
 their firmware loaded, and the step says so.
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1352-1378 pin=1677e9d765a0 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1353-1379 pin=1677e9d765a0 -->
 
 The AMD containers come from [linux-firmware](#port-linux-firmware), one per processor family, and
 are concatenated into one file in the order the shell's glob sorts them. A `.bin.zst` is expanded
@@ -289,7 +297,7 @@ least one vendor's file is in it. Why the archive must be uncompressed and first
 
 ## The udev check
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1380-1439 pin=8d290eaeb14f -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1381-1440 pin=8d290eaeb14f -->
 
 A rule whose program is absent costs nothing in function, since the root's `01_udev` replays every
 rule, but udevd logs `failed to execute` for every device the rule matches, early in every boot.
@@ -304,7 +312,7 @@ waits on; one of them that would be removed, or that is on the root and not here
 
 ## The closure check
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1441-1459 pin=efc9486cc771 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1442-1460 pin=efc9486cc771 -->
 
 This is the check every hand-written list above relies on. Every regular file in `bin/` and `usr/sbin/`, and
 every shared library in `lib/`, is read with the reader proven at the start, and every library it names must be in
@@ -314,7 +322,7 @@ one line per program and library, in the form `bin/cryptsetup:libjson-c.so.5`.
 
 ## Packing
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1461-1469 pin=0b7432e9b2d1 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1462-1470 pin=0b7432e9b2d1 -->
 
 The tree is listed with `find`, sorted byte by byte so that the order does not depend on the
 filesystem, and written by [cpio](#port-cpio) in copy-out mode (`-o`) in the `newc` format, the one

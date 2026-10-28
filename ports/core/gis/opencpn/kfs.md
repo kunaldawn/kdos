@@ -34,18 +34,20 @@ harmonics and the manual in the package, so it opens a usable chart of the world
   Left empty, `cmake/TargetSetup.cmake` runs `lsb_release` for it, and stops configure when the
   program is missing, as it is here.
 - `-Wl,--strip-debug` — Drops debug information at the link. The bundled plugins' own CMake files
-  (`chartdldr_pi`'s and `wmm_pi`'s `PluginConfigure.cmake`) add `-g` to their compile options, which `CMAKE_BUILD_TYPE=Release` does not remove (see
+  (`chartdldr_pi`'s and `wmm_pi`'s `PluginConfigure.cmake`) add `-g` to their compile options,
+  which `CMAKE_BUILD_TYPE=Release` does not remove (see
   [What kpkg does around build.sh](../../../../docs/kdos/05-developer/writing-ports.md#what-kpkg-does-around-buildsh)).
 
 ## Patches
 
 - `mdns.patch` — Adds `#include <sys/select.h>` to `model/src/mdns_service.cpp`, which calls `select()`; musl declares it only there.
 - `system-shapelib.patch` — Removes the `#define USE_CPL` that `gui/include/gui/dychart.h` makes for every source. With it, the system [shapelib](#port-shapelib)'s `shapefil.h` includes GDAL's `cpl_conv.h` on top of the CPL headers OpenCPN carries in `libs/gdal`, and the two sets do not compile together.
-- `openssl4.patch` — Builds the name of the self-signed certificate OpenCPN makes for its network server as a new `X509_NAME`, then sets it as both subject and issuer. The code wrote into the name `X509_get_subject_name()` returns, which OpenSSL 4 returns `const`.
-- `udev-rule-destdir.patch` — Replaces the install step that copies `98-sglock-ocpn.rules` straight into the running system's `/usr/lib/udev/rules.d` when that directory is writable with an ordinary install into `/usr/lib/udev/rules.d` under the package. The rule makes the SGLock USB licence dongle, vendor `1547` product `1000`, readable and writable by every user. The `test` at the end of `build.sh` fails the build if the rule is not in the package.
+- `openssl4.patch` — Builds the name of the self-signed certificate OpenCPN makes for its network server as a new `X509_NAME`, then sets it as both subject and issuer. Upstream adds its entries to the name `X509_get_subject_name()` returns, and OpenSSL 4 returns that name `const`, so the unpatched code does not compile.
+- `udev-rule-destdir.patch` — Replaces the install step that copies `98-sglock-ocpn.rules` straight into the running system's `/usr/lib/udev/rules.d`, whenever `/lib/udev/rules.d` is writable, with an ordinary install into `/usr/lib/udev/rules.d` under the package. The rule makes the SGLock USB licence dongle, vendor `1547` product `1000`, readable and writable by every user. The `test` at the end of `build.sh` fails the build if the rule is not in the package.
 
 ## Notes
 
 At start OpenCPN sets `GDK_BACKEND=x11` for itself whenever `WAYLAND_DISPLAY` is set, unless
-`OCPN_DISABLE_X11_GDK_BACKEND` is, so on the session it is an X11 window under Xwayland, whose class is the program's name. The
-desktop entry is written in `build.sh` with `StartupWMClass=opencpn` to match it.
+`OCPN_DISABLE_X11_GDK_BACKEND` is, so on the session it is an X11 window under Xwayland, whose
+class is the program's name. The desktop entry is written in `build.sh` with
+`StartupWMClass=opencpn` to match it.

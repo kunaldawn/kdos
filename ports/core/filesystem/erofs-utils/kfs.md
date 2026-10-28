@@ -5,8 +5,9 @@ kernel mounts directly: `mkfs.erofs` makes one, `fsck.erofs` checks and extracts
 `dump.erofs` prints its layout. Every KDOS [pack]{.idx} is an EROFS image with its metadata,
 icon and signatures appended. `kdos-pack` makes the image by running `mkfs.erofs -zzstd -b 4096`
 with a fixed timestamp, owner and UUID, so that a pack depends only on its inputs; see
-[Reproducibility](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/packs-and-boxes.md#reproducibility).
-`script/phases/70_image/100_packs.sh` runs it the same way for the root-filesystem pack. The
+[Reproducibility](../../../../docs/kdos/03-architecture/packs-and-boxes.md#reproducibility).
+`script/phases/70_image/100_packs.sh` runs it the same way for the root-filesystem pack when
+`KDOS_PACK_KDOS=1` asks for one. The
 [kdos-pack](#port-kdos-pack) and [kdos-packd](#port-kdos-packd) ports depend on this one.
 
 ## Flags
@@ -22,8 +23,9 @@ with a fixed timestamp, owner and UUID, so that a pack depends only on its input
   compressed with zstd (`-zzstd`); a `mkfs.erofs` without zstd refuses that compressor and no pack
   can be built.
 - `--with-zlib` — Uses [zlib](#port-zlib) to inflate DEFLATE data, so the tools can read a
-  DEFLATE-compressed image and `mkfs.erofs` can take a gzip-compressed tar as input. DEFLATE
-  compression itself is erofs-utils' own code and is built either way.
+  DEFLATE-compressed image and `mkfs.erofs` can take a gzip-compressed tar as input. Named, the
+  switch makes a missing zlib a configure error where the default, `auto`, would build without it.
+  DEFLATE compression itself is erofs-utils' own code and is built either way.
 - `--enable-multithreading` — Compresses with several threads. It is upstream's default.
 - `--without-xxhash`, `--without-libcurl`, `--without-openssl`, `--without-libxml2`,
   `--without-json-c`, `--without-libnl3` — Link none of these libraries. libcurl and json-c are
@@ -33,10 +35,13 @@ with a fixed timestamp, owner and UUID, so that a pack depends only on its input
   copy of the hash. Each defaults to `auto`: without the switch configure links the library
   whenever an earlier port has installed it, and the package then needs a library its `depends`
   line does not name.
-- `--without-uuid` — Builds without util-linux's libuuid. erofs-utils then generates a UUID with
+- `--without-uuid` — Builds without util-linux's libuuid, which upstream's default requires:
+  without the switch configure stops when pkg-config finds no `uuid`, and `depends` does not name
+  [util-linux](#port-util-linux). erofs-utils then generates a UUID with
   `getrandom` and parses one given with `-U` by its own code, so `kdos-pack`'s fixed UUID works
   the same.
-- `--without-selinux` — Builds no SELinux file labelling. No libselinux port exists.
-- `--disable-fuse` — Builds no `erofsfuse`, which mounts an image in user space through FUSE. The
-  kernel's EROFS driver mounts packs, and `kdos-packd` mounts a pack file directly. It is
+- `--without-selinux` — Builds no SELinux file labelling. No libselinux port exists. It is
   upstream's default.
+- `--disable-fuse` — Builds no `erofsfuse`, which mounts an image in user space through FUSE.
+  `kdos-packd` mounts packs with the kernel's EROFS driver, from the pack file directly or through
+  a loop device. It is upstream's default.

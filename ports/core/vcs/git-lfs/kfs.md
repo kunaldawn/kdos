@@ -14,8 +14,11 @@ of the files. It is a Go program built with cgo off from its vendor bundle, the 
 - `-X github.com/git-lfs/git-lfs/v3/config.GitCommit=v$version` — the commit in the same string.
   Upstream's Makefile takes it from `git rev-parse`, which a release archive cannot answer, so the
   tag stands in for it.
-- `VERSION=v$version` — with `GIT_LFS_SHA`, given to every `make` call. The Makefile otherwise
-  asks `git describe` and `git rev-parse` of whatever repository encloses the build directory.
+- `VERSION=v$version` — given to both `make` calls. The Makefile's release rules name
+  `$(VERSION)` in their targets, so make expands it while reading the Makefile, and unset it runs
+  `git describe HEAD` against whatever repository encloses the build directory. `GIT_LFS_SHA` goes
+  with it in place of `git rev-parse`; the Makefile reads it only in the link flags of its own
+  `go build` rule, which neither call runs.
 
 ## Notes
 `go generate ./commands` must come before `go build`. It runs `docs/man/mangen.go`, which writes

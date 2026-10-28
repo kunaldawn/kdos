@@ -14,7 +14,7 @@ application that drives them. It reads and writes Matroska through
 - `--disable-update-check` — Compile out the GUI's daily download of the release list from the
   MKVToolNix home page.
 - `--disable-precompiled-headers` — Build without precompiled headers, which configure otherwise
-  turns on for GCC (`ac/precompiled_headers.m4`).
+  turns on for any compiler at version 4.1.0 or later (`ac/precompiled_headers.m4`).
 - `--without-gettext` — Build the programs in English, with no message catalogues.
 - `--with-flac` — With `--with-dvdread`: FLAC audio, and reading chapters from DVDs through
   [libdvdread](#port-libdvdread). Both are upstream's defaults, named; neither makes a missing
@@ -22,8 +22,8 @@ application that drives them. It reads and writes Matroska through
 
 ## Notes
 - **The build tool.** The build runs on `drake`, a parallel version of rake that the tarball
-  carries under `rake.d/vendor`, so [ruby](#port-ruby) is all it needs. `V=1` prints each command in full, and
-  `-j"$KDOS_JOBS"` gives it the tree's job count.
+  carries under `rake.d/vendor`, so [ruby](#port-ruby) is all it needs. `V=1` prints each
+  command in full, and `-j"$KDOS_JOBS"` gives it the tree's job count.
 - **Manual pages** come from DocBook through `xsltproc`, with [docbook-xsl](#port-docbook-xsl).
   The translated pages need po4a, which is not a port, and are not built.
 - **The menu icon.** Upstream installs SVGs, and the panel reads hicolor PNGs, so `build.sh`

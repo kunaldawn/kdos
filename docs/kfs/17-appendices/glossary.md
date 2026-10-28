@@ -4,15 +4,16 @@ This glossary lists the KDOS terms a reader of this book meets, in alphabetical 
 sense this book uses it in and a link to the entry or chapter that defines it fully. Most of them
 are defined at length in [the KDOS book's glossary](../../kdos/06-reference/glossary.md), which is
 the authority; a term that belongs to this book alone, such as *tier* or *SBU*, links to the
-chapter of this book that defines it. A word in *italics* inside an entry has an entry of its own, and links to it.
+chapter of this book that defines it. A linked word in *italics* inside an entry has an entry of its own.
 
 ## Terms
 
 ### area
 
-One of the directories under `src/` that hold KDOS's own programs, as `src/system/` and
-`src/desktop/`. A port of KDOS's own sits in an area rather than on a [*shelf*](#shelf), and its pages are in
-the chapter of the shelf `src-<area>`. See [area in the KDOS glossary](../../kdos/06-reference/glossary.md#area).
+One of the four directories under `src/` that hold ports of KDOS's own: `src/system/`,
+`src/art/`, `src/desktop/` and `src/daemons/`. A port of KDOS's own sits in an area rather than on a
+[*shelf*](#shelf), and its pages are in the chapter named `src-<area>` of the part for its phase.
+See [area in the KDOS glossary](../../kdos/06-reference/glossary.md#area).
 
 ### binhost
 
@@ -25,13 +26,15 @@ package's hashes match the machine's. The build in this book makes one only when
 A rootless container that one application, or one working environment, runs in. Boxes belong to
 the running desktop, not to the build, and the medium carries none. This book meets them as what
 the base pack `kdos` is for: a box built over it gives a running KDOS a clean KDOS to build ports
-in. See [box in the KDOS glossary](../../kdos/06-reference/glossary.md#box).
+in. See [box in the KDOS glossary](../../kdos/06-reference/glossary.md#box) and
+[Boxes](../16-wiki/boxes.md).
 
 ### build-state snapshot
 
 The files under `docs/kfs/data/` that `make book-data` writes from a built tree: each package's
-installed version, size, file count and build time, its programs and libraries, and the stamp that
-names the checkout's commit when the data was gathered. The package pages take every figure about a built package
+installed version, size, file count and build time, its programs, libraries, pkg-config modules and
+manual-page summaries, the size of every source, and the stamp that names the checkout's commit
+when the data was gathered. The package pages take every figure about a built package
 from it. Not to be confused with a phase [*snapshot*](#snapshot). See
 [Reading a package page](../00-front/reading-a-package-page.md#the-header).
 
@@ -53,7 +56,8 @@ produce programs for KDOS, before KDOS exists to run a compiler of its own. See
 
 The package manager, which reads a [*recipe*](#recipe), builds it into a package and installs it. Every
 package page stands for one `kpkg install`. See [kpkg in the KDOS glossary](../../kdos/06-reference/glossary.md#kpkg)
-and [Anatomy of a kpkg install](../04-chroot/kpkg-install.md).
+and [Anatomy of a kpkg install](../04-chroot/kpkg-install.md); on a running system, see
+[kpkg](../16-wiki/kpkg.md).
 
 ### kpkgbuild
 
@@ -71,19 +75,31 @@ The tool that turns a list of ports into the order they must be installed in, fo
 One application, runtime, base or dataset as a single signed file, an EROFS image with metadata
 appended. `70_image` creates the directories packs are installed into and, with
 `KDOS_PACK_KDOS=1`, packs the built root itself as the base pack `kdos`. See
-[pack in the KDOS glossary](../../kdos/06-reference/glossary.md#pack).
+[pack in the KDOS glossary](../../kdos/06-reference/glossary.md#pack) and [Packs](../16-wiki/packs.md).
+
+### package lint
+
+The checks kpkg runs over the [*staging tree*](#staging-tree) before it rolls a package. It refuses
+the package for a path outside the system's layout (`usr/lib64`, `usr/etc` or `usr/local`, among
+others), a file mode it does not allow, a `.pc` file that cannot be resolved, or a program with an
+executable stack or an `RPATH` into a build tree, and it warns about lesser faults, such as a plain
+`/usr/lib` `RPATH`. See
+[What the package lint refuses](../../kdos/05-developer/writing-ports.md#what-the-package-lint-refuses)
+and [The package lint](../../kdos/03-architecture/packaging.md#the-package-lint).
 
 ### package list
 
 The list of ports a [*phase*](#phase) installs, kept in its `packages.txt` or in the files of its
 `packages.d/` directory. The comment above a port's name in it is what a package page quotes as
-*Why it is in KDOS*. See [package list in the KDOS glossary](../../kdos/06-reference/glossary.md#package-list).
+*Why it is in KDOS*. See [package list in the KDOS glossary](../../kdos/06-reference/glossary.md#package-list)
+and [About, and why it is in KDOS](../00-front/reading-a-package-page.md#about-and-why-it-is-in-kdos).
 
 ### package store
 
 `build/pkgstore`, where the build keeps every package it makes when `KDOS_PKG_STORE` is on, and
 from which it installs a port whose recipe, environment and dependencies match a package made
-before, instead of building it again. A port installed from the store records no build time. See
+before, instead of building it again. A port installed from the store records no new build time:
+the book keeps the figure of the last run that built it. See
 [The package store](../../kdos/03-architecture/packaging.md#the-package-store) and
 [Caches and the package store](../01-preparing/build-tree.md#caches-and-the-package-store).
 
@@ -110,7 +126,8 @@ them. See [recipe in the KDOS glossary](../../kdos/06-reference/glossary.md#reci
 ### recipe hash
 
 The SHA-256 over a port's recipe files and the other files in its directory that no `sha256 =` line
-names, except the [*sidecar*](#sidecar). The build rebuilds a port when its recipe hash differs from the one
+names, except the [*sidecar*](#sidecar). A port of KDOS's own names no source, and its recipe hash
+covers all of `src/libs` as well, so an edit to any library rebuilds every such port. The build rebuilds a port when its recipe hash differs from the one
 recorded at its install, and skips it otherwise. See
 [recipe hash in the KDOS glossary](../../kdos/06-reference/glossary.md#recipe-hash).
 
@@ -119,6 +136,14 @@ recorded at its install, and skips it otherwise. See
 The standard build unit, the time `00_cross/binutils` took, in which this book gives every build
 time. See [Build times and the SBU](../00-front/conventions.md#build-times-and-the-sbu) and
 [Build times](sbu.md).
+
+### self-hosting
+
+Able to build itself. From `20_selfhost` on, every port is built inside the [*chroot*](#chroot),
+and `20_selfhost` itself rebuilds the C library, the assembler, the linker and the compiler there,
+so that no file of the toolchain every later phase uses comes out of the build container. See
+[self-hosting in the KDOS glossary](../../kdos/06-reference/glossary.md#self-hosting) and
+[Part V](../05-selfhost/intro.md).
 
 ### shelf
 
@@ -140,7 +165,8 @@ version of some software beside the tree's main one, under names or a prefix of 
 `llvm21` beside `llvm`; see
 [A second version beside the first](../../kdos/05-developer/writing-ports.md#a-second-version-beside-the-first).
 On an installed disk, one of the two root filesystems, A and B; see
-[root slot in the KDOS glossary](../../kdos/06-reference/glossary.md#root-slot). In the desktop's drawing code, a named
+[root slot in the KDOS glossary](../../kdos/06-reference/glossary.md#root-slot) and
+[A/B slots and rollback](../16-wiki/ab-slots-and-rollback.md). In the desktop's drawing code, a named
 colour role; see [slot in the KDOS glossary](../../kdos/06-reference/glossary.md#slot).
 
 ### snapshot
@@ -163,6 +189,20 @@ recipes name, which `make fetch` reads when the [*source cache*](#source-cache) 
 into the port directories. See [source cache in the KDOS glossary](../../kdos/06-reference/glossary.md#source-cache) and
 [The cache](../01-preparing/sources.md#the-cache).
 
+### source hash
+
+A `sha256 =` line in a [*kpkgbuild*](#kpkgbuild), naming one source file by the SHA-256 of its
+contents. A copy that matches is the right file wherever it came from. Not to be confused with the
+[*recipe hash*](#recipe-hash). See
+[source hash in the KDOS glossary](../../kdos/06-reference/glossary.md#source-hash) and
+[How a recipe names a source](../01-preparing/sources.md#how-a-recipe-names-a-source).
+
+### staging tree
+
+`$PKG`, the empty directory a port's `build.sh` installs into instead of `/`, which kpkg then tidies,
+checks with the [*package lint*](#package-lint) and rolls into the package. See
+[Anatomy of a kpkg install](../04-chroot/kpkg-install.md#build).
+
 ### step
 
 One unit of work kdosbuild runs and logs: a numbered script of `00_cross`, `10_bootstrap` or
@@ -176,8 +216,8 @@ Tier C. See [The three tiers](../00-front/reading-a-package-page.md#the-three-ti
 
 ### vendor bundle
 
-A tarball of a port's language dependencies, Rust crates, Go modules, Python distributions or
-Haskell packages, made in advance so that the build needs no network. See
+A tarball of a port's language dependencies, Rust crates, Go modules, Python distributions,
+Haskell packages or npm packages, made in advance so that the build needs no network. See
 [vendor bundle in the KDOS glossary](../../kdos/06-reference/glossary.md#vendor-bundle) and
 [Vendor bundles](../01-preparing/sources.md#vendor-bundles).
 

@@ -33,4 +33,4 @@ The manual pages are written from upstream's Markdown, `Documentation/MANPAGE.md
 
 The Go modules, go-fuse among them, come from the vendor bundle, `gocryptfs-vendor-<version>.tar.xz`,
 made by `go mod vendor` and pinned by its own `sha256 =` line (see
-[Vendoring](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#vendoring)).
+[Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring)).

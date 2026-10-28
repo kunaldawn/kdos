@@ -30,7 +30,7 @@ Not every password check goes through PAM. These do, each with the PAM service f
 | Program | [`/etc/pam.d/`]{.idx term="/etc/pam.d"} file | From |
 |---|---|---|
 | `sudo`, `sudoedit` | `sudo` | the sudo port |
-| polkit's password helper, `polkit-agent-helper-1` | `polkit-1` | the polkit port |
+| polkit's password helper, `polkit-agent-helper-1`, and `pkexec` | `polkit-1` | the polkit port |
 | `vlock` | `vlock` | the [kbd](#port-kbd) port |
 | CUPS | `cups` | the [cups](#port-cups) port |
 | [`wayvnc`]{.idx} | `wayvnc` | the [wayvnc](#port-wayvnc) port |
@@ -84,6 +84,13 @@ the file and its directory to root and mode 644 and 755; see
 
 <!-- kfs:include fs/etc/polkit-1/rules.d/50-kdos.rules -->
 
+Ports install rules of their own in `/usr/share/polkit-1/rules.d`, and polkitd reads that
+directory and `/etc/polkit-1/rules.d` as one list, in order of file name. polkit's own
+`50-default.rules` names `wheel` as the administrators, which matters only for a password
+challenge, and nothing here can answer one. `50-libvirt.rules` grants libvirt's group, which no
+account is in until one is added to it. The rules of fwupd, bolt and gvfs grant `wheel` only to a subject in an active
+local session, which no process here is in, so they never answer.
+
 **`/etc/init.d/41_polkitd.sh`**, from `fs/etc/init.d/41_polkitd.sh`:
 
 <!-- kfs:include fs/etc/init.d/41_polkitd.sh -->
@@ -129,7 +136,8 @@ lecture…") before the prompt; later runs print only the prompt.
    ```
 
 2. The account logs out and in again; its next `sudo` asks for its own password. A new login,
-   including `su - alice`, has the group at once.
+   including `su - alice`, has the group at once. Other groups are added the same way; see
+   [Adding an account to a group](users-and-groups.md#adding-an-account-to-a-group).
 
 Taking it out again is `sudo gpasswd -d alice wheel`, which prints
 `Removing user alice from group wheel`. Membership of `wheel` also opens every polkit
@@ -179,7 +187,9 @@ of `Sorry, try again.`
 
 ### Unlocking sudo with a fingerprint
 
-On a machine with a reader that libfprint drives. On one without, every `fprintd-*` command
+On a machine with a reader that libfprint drives; fprintd's own configuration is on
+[Fingerprints, FIDO keys and smart cards](fingerprint-fido-smartcards.md). On one without, every
+`fprintd-*` command
 answers `No devices available`, and `fprintd-enroll` prints it as
 `Impossible to enroll: GDBus.Error:net.reactivated.Fprint.Error.NoSuchDevice: No devices available`.
 
@@ -315,7 +325,7 @@ service status polkitd
 cat /run/kdos-init.polkitd.log
 ```
 
-`[SKIP] polkitd: no polkitd account` means the account the port's `postinstall.sh` makes is
+`[SKIP] polkitd: no polkitd account (the port's postinstall makes it)` means the account the port's `postinstall.sh` makes is
 missing. Make it with the same two commands, then start the daemon:
 
 ```bash

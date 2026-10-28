@@ -1,17 +1,20 @@
 ## About
 
 Embree is Intel's library of ray-tracing kernels for the processor: the acceleration structures
-and the ray intersection tests a renderer builds on. In KDOS [Blender](#port-blender) builds its Cycles
-renderer with it (`WITH_CYCLES_EMBREE`). Kernels for every x86-64 instruction set from SSE2 to AVX-512 are compiled into
-the one library, and it chooses the widest the running processor has.
+and the ray intersection tests a renderer builds on. In KDOS [Blender](#port-blender) builds its
+Cycles renderer with it (`WITH_CYCLES_EMBREE`). Kernels for every x86-64 instruction set from SSE2
+to AVX-512 are compiled into the one library, and it chooses the widest the running processor has.
 
 ## Flags
 
 - `-DEMBREE_STATIC_LIB=OFF` — Build `libembree4.so`, the shared library. `build.sh` checks that it
   was installed.
-- `-DEMBREE_ZIP_MODE=OFF` — Install with the system layout. Upstream's default, on, lays the files
-  out as its binary release archive: `embree-vars.sh` scripts at the top of the prefix and an
-  `$ORIGIN`-relative RPATH.
+- `-DEMBREE_ZIP_MODE=OFF` — Install with the system layout, and name the library file with the
+  full version, `libembree4.so.4.4.1`. Upstream's default, on, lays the files out as its binary
+  release archive: `embree-vars.sh` and `embree-vars.csh` at the top of the prefix and an
+  `$ORIGIN/../lib` RPATH. The library carries an `$ORIGIN` RPATH in either mode, which upstream
+  sets so that it finds a oneTBB copied beside it; here oneTBB is in `/usr/lib` with it, so the
+  entry changes nothing.
 - `-DEMBREE_INSTALL_DEPENDENCIES=OFF` — Do not copy oneTBB's libraries into the package; the
   [onetbb](#port-onetbb) port provides them.
 - `-DEMBREE_TUTORIALS=OFF` — Leave out the tutorial programs, which upstream builds by default.

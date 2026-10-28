@@ -59,7 +59,8 @@ Every key is described in `xdg-desktop-portal-wlr(5)`, which the port installs.
 ### kdos-desktop-start
 
 The start-up order is set in `fs/usr/local/bin/kdos-desktop-start`, installed as
-`/usr/local/bin/kdos-desktop-start`:
+`/usr/local/bin/kdos-desktop-start`. Why the capture backend must own its name before the front
+end starts is in [Startup ordering](../../kdos/03-architecture/session.md#startup-ordering):
 
 <!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=46-95 pin=9602b31a72c7 -->
 
@@ -67,7 +68,7 @@ The start-up order is set in `fs/usr/local/bin/kdos-desktop-start`, installed as
 
 The screenshot and recording keys, from `fs/etc/skel/.config/kdos-comp/rc.xml`:
 
-<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=269-274 pin=7e1418ed503a -->
+<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=263-268 pin=7e1418ed503a -->
 
 ### /etc/geoclue/conf.d/90-kdos.conf
 
@@ -127,7 +128,8 @@ video-call program on a KDOS image (see Known gaps), and the `SCR` lamp has not 
 
 2. Pick the screen from the `Share:` list. `kdos-record` prints
    `kdos-record: recording node <n> to <file> — run kdos-record again to stop`. Esc instead
-   prints `kdos-record: nothing was shared (1)` and records nothing.
+   prints `kdos-record: nothing was shared (1)` and records nothing. With no choice made within
+   two minutes it prints `kdos-record: no screen was picked` and gives up.
 3. Press Alt+Print again, or run `kdos-record` again, to stop. The second run prints
    `kdos-record: stopping the recording` and signals the first, which ends the stream so the file
    is closed properly.
@@ -156,8 +158,9 @@ path, and copies the picture to the clipboard as `image/png`. It does not go thr
 ### Answering an Access question
 
 The first time an application asks for the camera, or for a non-interactive screenshot, a
-`kdos-prompt` dialog asks whether to grant it. Deny is selected when it opens, and it is also the
-answer when nobody answers. The answer is stored and the question is not asked again.
+`kdos-prompt` dialog asks whether to grant it. Deny is selected when it opens, so Enter denies,
+and Esc or closing the dialog denies as well. The answer is stored and the question is not asked
+again.
 
 Every box looks like the same host program to the front end, so one answer covers every box. A
 boxed application's location is given without a question; see Known gaps.
@@ -198,7 +201,8 @@ The directory holds `gtk.portal`, `kdos.portal` and `wlr.portal`. The last comma
 
 - `kdos doctor` checks the capture backend and the configuration file in its Session and Desktop
   sections: `wlr portal running` and `screen-capture portal installed and selected for KDOS`.
-- A screenshot of a whole screen includes the phosphor pass; a capture of one window does not.
+- A screenshot of a whole screen includes the phosphor pass; a capture of one window does not
+  (see [Screen capture and the clipboard](../../kdos/03-architecture/session.md#screen-capture-and-the-clipboard)).
 - `max_fps=30` bounds what a recording of a still screen costs. Raise it in your copy of the
   backend's config for smoother capture of fast motion.
 - `kdos explain portal` prints every recorded reason that mentions the portals.
@@ -217,15 +221,19 @@ dbus-send --session --print-reply --dest=org.freedesktop.DBus /org/freedesktop/D
   org.freedesktop.DBus.NameHasOwner string:org.freedesktop.impl.portal.desktop.wlr
 ```
 
-`-f` is needed: `pgrep` matches a bare name only against the first 15 characters of a process
-name, and refuses a longer pattern. A working session lists `/usr/lib/xdg-desktop-portal`,
-`-wlr`, `-kdos` and `-gtk`, and the second command ends `boolean true`.
+`-f` is needed: without it `pgrep` matches only the first 15 characters of a process name, so a
+longer pattern draws a warning and matches nothing. A working session lists
+`/usr/lib/xdg-desktop-portal`, `-wlr`, `-kdos` and `-gtk`, and the second command ends
+`boolean true`.
 
 If the backend is missing, or both run and capture still fails, restart the two in the session's
-order:
+order, the backend first:
 
 ```bash
-/usr/lib/xdg-desktop-portal-wlr -r &
+pkill -f '^/usr/lib/xdg-desktop-portal-wlr'
+sleep 1
+dbus-send --session --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus \
+  org.freedesktop.DBus.StartServiceByName string:org.freedesktop.impl.portal.desktop.wlr uint32:0
 sleep 1
 pkill -f '^/usr/lib/xdg-desktop-portal$'
 sleep 1
@@ -233,8 +241,9 @@ dbus-send --session --print-reply --dest=org.freedesktop.DBus /org/freedesktop/D
   org.freedesktop.DBus.StartServiceByName string:org.freedesktop.portal.Desktop uint32:0
 ```
 
-`-r` replaces the running backend. The front end is ended and started by the bus, as the session
-starts it. Logging out and in again does the same.
+Both are started by the bus, as the session starts them, so neither is tied to the terminal: a
+backend run as a background job of a shell ends when that terminal is closed. Logging out and in
+again also restarts both in this order.
 
 **`kdos doctor` warns `kdos-portals.conf missing`.**
 Without the file ScreenCast has no backend. It belongs to the base filesystem rather than to a
@@ -248,6 +257,9 @@ again to see it arrive:
 ```bash
 /usr/lib/xdg-desktop-portal-wlr -r -l DEBUG
 ```
+
+`-r` replaces the running backend. Ctrl+C ends this one and leaves the session with no capture
+backend, so restart the two afterwards as shown above.
 
 **A recording cannot be seeked, or has no length.**
 The pipeline was killed rather than stopped, so the muxer never wrote the file's index. Stop a
@@ -274,6 +286,8 @@ started from a shell that did not read `/etc/profile.d/10-wayland.sh` draws its 
 ```bash
 /usr/lib/xdg-desktop-portal -r -v
 ```
+
+`-r` replaces the running front end. After Ctrl+C the bus starts a new one at the next request.
 
 ## Known gaps
 

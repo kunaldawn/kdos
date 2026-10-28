@@ -18,8 +18,8 @@
 # by a rule it does not follow, finds no port and reports nothing to update.
 # kdos-portup's own find_repo_root() walks two directories up from
 # /proc/self/exe, so this binary has to live at exactly <repo_root>/ports/.portup
-# for that to resolve — unlike ports/.kpkg-meta's reader, the binary's own
-# NAME does not matter to any dispatcher here.
+# for that to resolve — unlike the kpkg reader at ports/.kpkgbin/kpkg, the
+# binary's own NAME does not matter to any dispatcher here.
 
 set -e
 

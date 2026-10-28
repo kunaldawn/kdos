@@ -12,6 +12,6 @@ Xwayland. The session's `QT_QPA_PLATFORM="wayland;xcb"` makes the Wayland plugin
   a title bar and a place on the desktop, and the EGL integration that lets it draw with OpenGL,
   each named so that a missing library stops the configure.
 - `-feature-wayland-server` — the QtWaylandCompositor module. Upstream's default, named.
-- `-no-feature-xcomposite-egl` — with `-no-feature-xcomposite-glx`: no XComposite
-  hardware integrations, which hand a client's buffers to a Qt compositor as X11 pixmaps. Upstream builds them whenever `libXcomposite` is found, and it is
-  not in `depends`.
+- `-no-feature-xcomposite-egl` — with `-no-feature-xcomposite-glx`: no XComposite hardware
+  integrations, which hand a client's buffers to a Qt compositor as X11 pixmaps. Upstream builds
+  them whenever `libXcomposite` is found, and it is not in `depends`.

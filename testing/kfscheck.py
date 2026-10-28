@@ -41,8 +41,11 @@
 #              --strict: a recipe bump is not a reason to rebuild the tree.
 #   stamp      docs/kfs/data/recipes.stamp holds kfsgen's stamp_digest of
 #              this tree: every recipe, every kfs.md, the phase lists and
-#              environments, the bootstrap step scripts and every
-#              kfs:include target. A change to any of them changes the
+#              environments, the bootstrap step scripts, ports/shelves,
+#              ports/sources.idx, testing/optdeps.py, fs/etc/os-release and
+#              every kfs:include target, less the ports that link a book
+#              under docs/ (kfsgen's stamp_inputs and stamp_digest say
+#              why). A change to any of them changes the
 #              digest, so a stale stamp fails until `make book-stamp` (or
 #              `make book-data`) rewrites it, which makes the change also a
 #              change to docs/kfs and to the kdos-kfs port that ships the

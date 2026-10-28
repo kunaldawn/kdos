@@ -3,11 +3,11 @@ GnuTLS is the TLS library of much of the GNU and GNOME side of the system:
 [glib-networking](#port-glib-networking) and so every GIO program that opens a TLS connection,
 [networkmanager](#port-networkmanager), [cups](#port-cups), [ffmpeg](#port-ffmpeg),
 [qemu](#port-qemu) and [libvirt](#port-libvirt), [wireshark](#port-wireshark),
-[gnupg](#port-gnupg)'s `dirmngr`, [samba](#port-samba), [msmtp](#port-msmtp), chrony's NTS and
-[weechat](#port-weechat) among them. Its cryptography is [nettle](#port-nettle); its certificate
+[gnupg](#port-gnupg)'s `dirmngr`, [samba](#port-samba), [msmtp](#port-msmtp),
+[chrony](#port-chrony)'s NTS and [weechat](#port-weechat) among them. Its cryptography is [nettle](#port-nettle); its certificate
 parsing is [libtasn1](#port-libtasn1); it reaches smart cards, and the system's trust anchors,
 through [p11-kit](#port-p11-kit). The port also installs `certtool`, `gnutls-cli`,
-`gnutls-serv`, `p11tool`, `ocsptool` and `psktool`.
+`gnutls-cli-debug`, `gnutls-serv`, `p11tool`, `ocsptool` and `psktool`.
 
 ## Flags
 - `gnutls_cv_dlopen_soname_works=yes` — Pre-answer configure's test of whether a library can be

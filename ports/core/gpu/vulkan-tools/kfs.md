@@ -5,8 +5,8 @@ Vulkan-Tools is Khronos's pair of Vulkan diagnostics: `vulkaninfo`, which lists 
 and `vkcube` (with its C++ twin `vkcubepp`), a spinning textured cube drawn through a real
 swapchain. `vulkaninfo --summary` is what says whether a machine has a Vulkan driver at all, and
 which, since a Vulkan program falls back to lavapipe on the CPU without saying so. How the tools
-are used together with glmark2 and mesa-demos is in [Which tool answers which
-question](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/testing.md#which-tool-answers-which-question).
+are used together with glmark2 and mesa-demos is in
+[Which tool answers which question](../../../../docs/kdos/05-developer/testing.md#which-tool-answers-which-question).
 
 ## Flags
 

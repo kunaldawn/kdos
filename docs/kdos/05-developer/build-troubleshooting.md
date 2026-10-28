@@ -27,7 +27,8 @@ build/logs/<phase directory>/<NNNN>_<name>.log
 
 For a script step, `<name>` is the script's file name without its numeric prefix
 (`build/logs/10_bootstrap/0000_file_system.sh.log`); for a port built from a phase's package list it
-is the port name followed by `.install` (`build/logs/42_graphics/0123_mesa.install.log`). The
+is the port name followed by `.install` (`build/logs/42_graphics/0123_mesa.install.log`), and under
+`--port-jobs` the step that installs a finished level is `L<n>.commit`. The
 orchestrator names the failing step, and in its failure panel `O` opens the log, `C` copies the
 path, and `R`, once the fix is made, runs the phase again in the same run (see
 [Retrying a failed phase](build-system.md#retrying-a-failed-phase)). The message at the very end of a build's output is usually not the error: read upward from the
@@ -86,7 +87,7 @@ lists everything preflight checks.
 | `Failed to download` for every file, `is in no cache, and the archive is off`, or `pre-push: cannot reach the source archive` | [Fetch cannot reach the archive](#fetch-cannot-reach-the-archive) |
 | `package resolution failed - see build/logs/.../expansion.log` | [A package list that does not resolve](#a-package-list-that-does-not-resolve) |
 | `port <name> is filed twice: <path> and <path>`, or `is in two places` | [A port filed twice](#a-port-filed-twice) |
-| Preflight: `phase closure` fails, with `installed by <phase> (pulled in: …) but not named in its list` or `but named by <phase>` | [A phase that installs a port it does not name](#a-phase-that-installs-a-port-it-does-not-name) |
+| Preflight: `phase closure` fails, with `installed by <phase> (pulled in: …) but not named in its list`, `but named by <phase>`, or `so the phase table puts it in <phase>` | [A phase that installs a port it does not name](#a-phase-that-installs-a-port-it-does-not-name) |
 | `kdosbuild: <phase> has both packages.txt and packages.d/`, `holds no *.txt`, `has no packages.txt, no packages.d/ and no *.sh`, or `no phase under script/phases/` | [A phase the orchestrator will not run](#a-phase-the-orchestrator-will-not-run) |
 | The startup picker offers only *start fresh* on a tree that has snapshots | [Snapshots the orchestrator does not see](#snapshots-the-orchestrator-does-not-see) |
 | `build/iso-build/kdos.iso is open by another process` | [The ISO is in use](#the-iso-is-in-use) |
@@ -189,7 +190,7 @@ Upstream sources are not in git. A recipe names each source by its `sha256 =` li
 that verifies: the port directory, the local cache `ports/.srccache`, the `kunaldawn/kdos` source
 archive (numbered pre-releases, `sources-<N>`, located through the committed index
 `ports/sources.idx`), and finally the URL in the
-recipe's `source =` line. `make fetch` is the only networked step. `make build` runs its container
+recipe's `source =` line. `make fetch` is the only step that downloads a source. `make build` runs its container
 with `--network none` and mounts `ports/` read-only, so the build can only read what the fetch has
 already put beside each recipe. [Where sources come from](developing.md#where-sources-come-from)
 and [Publishing sources](writing-ports.md#publishing-sources) describe the whole arrangement.
@@ -234,7 +235,8 @@ once more from zero, from the same URL. The port fails only when every location 
 wrong bytes.
 
 `kpkg` prints `sha256 MISMATCH for <file>` at build time. It checks every file a `sha256 =` line
-names that is present in the port directory, not only the ones a `source =` line reaches, so the
+names that is present in the port directory or in `kpkg`'s source directory (`SOURCE_DIR`,
+`/var/cache/kpkg/sources`), not only the ones a `source =` line reaches, so the
 usual cause is a recipe whose hash was changed after the file beside it was fetched. Run
 `ports/fetch <port>` again: it replaces a file that does not match.
 
@@ -360,8 +362,8 @@ tool assumes. Each line names one breach:
 | `shelf <shelf>: the name is reserved`, `an id is lowercase letters, digits and -`, or `shares its name with the port at <path>` | A shelf is never `libs` or `core`, never named after a port, and uses only `[a-z0-9-]`. Rename it |
 | `ports/shelves is missing or lists no shelf` | The commit lost or emptied `ports/shelves` |
 
-`testing/preflight.sh` checks the same rules and more, so run it first; the hook holds when
-preflight was not run. `KDOS_SKIP_LAYOUT_CHECK=1` skips this check only, and
+`testing/preflight.sh` checks the same rules and more, so run it first; the hook catches what
+reaches a push without it. `KDOS_SKIP_LAYOUT_CHECK=1` skips this check only, and
 `KDOS_SKIP_PUBLISH_CHECK=1` skips only the archive check that follows.
 
 ### A patch with no Subject line
@@ -390,9 +392,11 @@ pre-push: (KDOS_SKIP_BOOK_CHECK=1 git push … skips this check)
 
 The lines above it are the two checks' own reports, read off the working copy. The common one after
 a recipe change is `STAMP docs/kfs/data/recipes.stamp is stale`: *KDOS from Scratch* renders every
-package page from its recipe and its `kfs.md`, and shows lines of the phase scripts, the `Makefile`
-and the `Dockerfile`; the stamp is how the port that ships the book notices that one of them
-changed. Run `make book-stamp`, which needs no built tree, and commit `docs/kfs/data/recipes.stamp`.
+package page from its recipe and its `kfs.md`, reads the phase lists, and quotes lines of phase
+scripts, files under `fs/` and other files of the tree. The stamp is one digest over all of them;
+it lives under `docs/kfs`, which the `kdos-kfs` port that builds the book hashes, so rewriting it
+is how such a change rebuilds the book. Run `make book-stamp`, which needs no built tree, and
+commit `docs/kfs/data/recipes.stamp`.
 An `INCLUDE` line saying the pinned lines are now elsewhere means a script the book shows gained or
 lost lines above a range: `python3 testing/kfscheck.py --repin` moves the range, and a range whose
 own lines changed is fixed by hand. A `NOTE` line
@@ -471,7 +475,7 @@ Check that the machine can reach `https://github.com` at all. Then look at the v
 | Variable | Default | Effect |
 |---|---|---|
 | `KDOS_SOURCES_REPO` | `kunaldawn/kdos` | The GitHub repository holding the archive |
-| `KDOS_SOURCES_BASE` | `https://github.com/$KDOS_SOURCES_REPO/releases/download` | The download base. A mirror or a directory laid out as `<tag>/<asset>`, parts as `<asset>.partNN`, works unchanged. Empty skips the archive and fetches from upstream alone; `ports/publish` and the pre-push hook then refuse to run |
+| `KDOS_SOURCES_BASE` | `https://github.com/$KDOS_SOURCES_REPO/releases/download` | The download base. A mirror or a directory laid out as `<tag>/<asset>`, parts as `<asset>.partNN`, works unchanged for fetching. Empty skips the archive and fetches from upstream alone. `ports/publish` and the pre-push hook refuse to run with it empty or naming a local directory, since neither can confirm what the published archive holds |
 | `KDOS_SRCCACHE` | `ports/.srccache` | The local cache, one file per hash. Files already there need no network |
 | `KDOS_SOURCES_INDEX` | `ports/sources.idx` | Which release and asset hold each hash, read only in format 2. A hash it does not name is fetched from upstream |
 
@@ -529,9 +533,15 @@ chain of dependencies that pulled it in, and the later phase that names it, if o
 - **`but not named in its list`.** Add the port to that phase's list: in a `packages.d/`, the
   file of its shelf, `<shelf>.txt`, or for a port of KDOS's own `src-<area>.txt`; otherwise its
   `packages.txt`.
-- **`but named by <later phase>`.** A dependency now reaches forward. Either move the port to the
+- **`but named by <later phase>`.** A dependency reaches forward, into a later phase. Either move the port to the
   earlier phase's list, which also moves everything that needs it into order, or remove the new
   dependency. The port cannot stay in the later phase: the earlier one would build it anyway.
+- **`so the phase table puts it in <phase>`.** The four phases from `41_system` to `44_apps` are
+  split by what a port's dependency closure reaches: neither the graphics stack nor a toolkit, the
+  graphics stack, a toolkit, or, for a port nothing depends on, an application. The port is listed
+  in a phase its closure does not fit, often after a new `depends =` entry; move it to the phase
+  the line names. The rule is in
+  [Which phase lists a port](writing-ports.md#which-phase-lists-a-port).
 
 The same run also refuses a name that is not a port on the phase's `PORT_REPO`, a name listed twice
 in one phase, a dependency that resolves only on a later phase's `PORT_REPO`, such as a port of
@@ -564,16 +574,17 @@ ERROR: build/iso-build/kdos.iso is open by another process — a running VM?
 
 `make build` refuses to start while another process holds the ISO open, because rewriting it would
 give that guest I/O errors on anything it has not already cached. Shut the virtual machine down.
-`make build ALLOW_ISO_IN_USE=1` overrides the check.
+`make build ALLOW_ISO_IN_USE=1` overrides the check. The check asks `fuser`, so on a host without
+it `make build` does not check at all.
 
 ### A recipe change that did not rebuild its port
 
 The build marks a port you have just changed `installed` and runs no step for it, or `kpkg` prints
 `Skipping <port> (already installed)` for it.
 
-`kpkg`, and the orchestrator before it with the same function, decides whether an installed port
-is current by comparing a *recipe hash* with the one `kpkg` recorded for the build that installed
-it. That hash covers every file in the port directory, subdirectories included, except the
+`kpkg` decides whether an installed port is current by comparing a *recipe hash* with the one it
+recorded for the build that installed it, and the orchestrator asks the same question, through the
+same function, before it starts a step for the port. That hash covers every file in the port directory, subdirectories included, except the
 tarballs a `sha256 =` line names, which that line covers; a port with no `source =`, which builds
 out of its own directory as the ports under `src/` do, also counts all of `src/libs`. So:
 
@@ -582,7 +593,8 @@ out of its own directory as the ports under `src/` do, also counts all of `src/l
   by name.
 - The hash is taken from the port directory when the build *starts*, and recorded only after the
   install succeeds. An edit made while the port's rebuild is running is therefore not recorded as
-  built: the next build under `KPKG_STRICT_RECIPE=1` sees a mismatch and rebuilds the port.
+  built: the next build, which sets `KPKG_STRICT_RECIPE=1` (`script/env/common.env`), sees a
+  mismatch and rebuilds the port.
 
 To force a rebuild:
 
@@ -592,14 +604,18 @@ make build BUILD_ARGS="--phases <its phase>,70_image --rebuild <port>"
 
 ### A variable that does not reach the chroot
 
-A variable passed to `make build` changes the steps that run in the build container and has no
-effect on any step that runs inside the chroot, including every packaging step.
+A variable the `Makefile` passes into the build container reaches the steps that run in the
+container itself, `00_cross` and `10_bootstrap`, and has no effect on any step that runs inside the
+chroot, which is every phase from `20_selfhost` on, packaging included.
 
 `script/chroot/exec.sh` enters the chroot with `env -i`, which clears the environment, and names
-the few variables that pass through (`HOME`, `TERM`, `PATH`, `KDOS_REPLAY`, `KDOS_JOBS`,
-`KDOS_ISO_SOURCES`, `KDOS_PACK_KDOS`, `KDOS_ISO_COMP`, `KDOS_CCACHE`, `KDOS_MAKE_BINHOST`,
-`KPKG_KEEP_CACHE`, `KDOS_PKG_STORE`, `KDOS_PKG_STORE_MAX`, `KPKG_STORE`, `KPKG_STORE_CHECK` and
-`KPKG_STORE_SALT`). A build variable
+on that line every variable that passes through: `TERM`; `KDOS_REPLAY` and `KDOS_JOBS`; the
+packaging knobs `KDOS_ISO_SOURCES`, `KDOS_PACK_KDOS`, `KDOS_MAKE_BINHOST` (also passed as
+`KPKG_KEEP_CACHE`) and `KDOS_ISO_COMP`; `KDOS_CCACHE`; the package store's `KDOS_PKG_STORE`,
+`KDOS_PKG_STORE_MAX`, `KPKG_STORE`, `KPKG_STORE_CHECK` and `KPKG_STORE_SALT`; and
+`KDOS_GIT_COMMIT`, `KDOS_GIT_DIRTY`, `KDOS_GIT_DATE` and `KDOS_GIT_TIME`, which stamp the image
+with the commit it was built from. `HOME` and `PATH` are set there to fixed values rather than
+passed through. A build variable
 therefore needs two edits: the `Makefile` passes it into the container with `-e`, and
 `script/chroot/exec.sh` names it on the `env -i` line. See
 [`env -i` means every variable must be named](build-system.md#env--i-means-every-variable-must-be-named).
@@ -608,15 +624,16 @@ therefore needs two edits: the `Makefile` passes it into the container with `-e`
 
 Every CMake port in the chroot compiles through ccache into `build/ccache` (see [The compiler
 cache](how-kdos-is-built.md#the-compiler-cache)). A hit is byte-identical to a compile, and a
-change to gcc, binutils or an LLVM recipe misses the whole cache, so a cached object is rarely the
-cause. To rule it out, rebuild the port with the cache off:
+change to the recipe of gcc, binutils, LLVM or Clang, or to gcc's version, misses the whole cache,
+so a cached object is rarely the cause. To rule it out, rebuild the port with the cache off:
 
 ```sh
 make build KDOS_CCACHE=0 BUILD_ARGS="--phases <phase> --rebuild <port>"
 ```
 
-To empty it, remove the directory from a container, since the build writes it as root:
-`docker run --rm -v $PWD/build:/b alpine rm -rf /b/ccache`.
+To empty it, remove `build/ccache`. A build writes it as root and hands it back to your user when
+it exits; one killed before it could do that leaves it owned by root, and then it is removed from
+a container: `docker run --rm -v $PWD/build:/b alpine rm -rf /b/ccache`.
 
 ### A port that came from the package store
 
@@ -634,15 +651,17 @@ make build KDOS_PKG_STORE=check BUILD_ARGS="--phases <phase>"   # build every hi
 
 `check` writes each port whose rebuild differed from its stored package to
 `build/logs/pkgstore-check.log`; see [Testing](testing.md#reading-pkgstore-checklog). `<port>: store
-key unknown (<dep> is installed with no .pkgsha)` means a dependency was installed before the store
-recorded package hashes; the port builds and is not stored until that dependency is rebuilt. To
-empty the store, remove `build/pkgstore` from a container, as for the compiler cache.
+key unknown (<dep> is installed with no .pkgsha); building, not storing` means the package database
+holds no package hash for that dependency, so the key cannot name it; the port builds and is not
+stored until that dependency is reinstalled by `kpkg`. To empty the store, remove `build/pkgstore`,
+as for the compiler cache.
 
 ### A package manager older than its source
 
 `kpkg` is not a port. `script/phases/10_bootstrap/120_kpkg.sh` compiles it straight into the target
 tree and records a hash of its sources in `build/mark/bootstrap/kpkg`. A run that includes
-`10_bootstrap` recompiles it when that hash changes; a run that starts later, such as
+`10_bootstrap` recompiles it when that hash changes, and so does a retry with `R` in the failure
+panel of any later phase, which runs that script first. A run that starts later, such as
 `--continue-from 41_system`, never does,
 so every later install and upgrade uses the older binary in the target tree. The current `kpkg`
 keeps a file another installed package still lists (`Keeping <path>: <package> claims it`); an
@@ -650,9 +669,10 @@ older one can remove it as an orphan instead. The tool is then missing for every
 it: a removed `cmp`, for example, makes bzip2's test fail with
 `make: cmp: No such file or directory`.
 
-Recompile `kpkg` in the target tree in place before continuing. A plan that names a step suppresses
-snapshots and sets `KDOS_REPLAY=1`, so the step's "already built" guard stands down and the
-`10_bootstrap` snapshot is not overwritten:
+Recompile `kpkg` in the target tree in place before continuing, with `R` while the failure panel
+is up or with a plan naming the one step. A plan that names a step writes no snapshot unless
+`--snapshot` is given, and runs the step with `KDOS_REPLAY=1`, so its "already built" guard stands
+down and the `10_bootstrap` snapshot is not overwritten:
 
 ```sh
 make build BUILD_ARGS="--phases 10_bootstrap --steps 10_bootstrap:120_kpkg.sh"
@@ -678,8 +698,11 @@ the next run recompile them. `ports/.srccache` is plain data and does not need c
 
 ### A snapshot the orchestrator refuses
 
-After each phase the orchestrator archives the build tree to `build/snapshots/<phase>/` (see
-[Snapshots](build-system.md#snapshots)). A snapshot it cannot take is reported as a notice, shown
+A run that writes snapshots, given `--snapshot` or with writing turned on in the startup picker,
+archives the build tree to `build/snapshots/<phase>/` after each phase from `00_cross` to
+`50_desktop`; otherwise only `S` on the build screen writes one, a partial snapshot of the
+current phase (see [Snapshots](build-system.md#snapshots)). A snapshot it
+cannot take is reported as a notice, shown
 in the build and kept in `build/logs/snapshots.log`, and that phase has no snapshot to restore or
 continue from:
 
@@ -747,9 +770,11 @@ refuse it as a conflict. Pin both in the phase's order run, `00-order.txt` or th
 `packages.txt`'s first shelf heading, the replaced port first; the order run builds one port at a
 time.
 
-`its kpkg has no --build-only; building one port at a time` means the `kpkg` in the tree predates the
-two-part install, as one restored from an early snapshot can. The phase runs serially and is
-correct; the next build of `kdos-kpkg` brings the option.
+`<phase>: its kpkg has no --build-only; building one port at a time` means the `kpkg` in the target
+tree was compiled from sources without the two-part install, as one restored from an old snapshot
+can be. The phase runs serially and is correct. `kpkg` is not a port, so no port rebuild brings the
+option: compile it into the tree again with the plan in
+[A package manager older than its source](#a-package-manager-older-than-its-source).
 
 ---
 
@@ -955,9 +980,11 @@ does not help, because the host is recognised and then not matched. `aalib`'s
 `undefined reference to libintl_gettext` (or `libintl_ngettext`) at link, from a program that
 compiled without complaint.
 
-musl has a `gettext()` in libc, but the GNU `libintl.h` the `gettext` port installs renames every
-call to `libintl_gettext`, which only GNU's libintl defines; glibc provides those names and musl
-does not. Upstream build systems routinely test `uname -s` and take Linux to mean glibc, so the one
+musl has `gettext()` and its relatives in libc, and `/usr/include/libintl.h` is musl's, which
+declares those plain names. GNU's own `libintl.h` maps every call to a `libintl_`-prefixed name,
+`libintl_gettext` and the rest, which only GNU's libintl defines, so a program whose objects were
+built against GNU's header, a copy it carries or one its build generates, needs that library to
+link. Upstream build systems routinely test `uname -s` and take Linux to mean glibc, so the one
 platform that needs `-lintl` is the one their test excludes.
 
 No message catalogue ships, so first look for the build's own switch: autotools' `--disable-nls`,
@@ -969,10 +996,10 @@ that project's link line will keep it. Check which variable survives before choo
 where a library reference belongs. Do not add `-liconv` alongside it out of habit: musl carries
 iconv in libc and there is no library of that name.
 
-`libintl` exists because the `gettext` port is built `--disable-nls` and installs the header
-without the library, which is right for a system that ships no message catalogues. The `libintl`
-port builds only the runtime library from the same tarball and version, so a caller's header and
-library cannot describe two different gettexts.
+`libintl` exists because the `gettext` port is built `--disable-nls` and installs neither GNU's
+`libintl.h` nor its library, which is right for a system that ships no message catalogues. The
+`libintl` port builds only the runtime library, from the same tarball and version as `gettext`,
+and installs no header: `/usr/include/libintl.h` stays musl's.
 
 ### A kernel ioctl request missing on musl
 
@@ -1093,7 +1120,8 @@ read.
 
 ### A file installed unreadable
 
-A package with a regular file that users cannot read, or a file in `usr/bin` with no `x` bit, is
+A package with a regular file that users cannot read, or a file in `usr/bin` or `usr/sbin` with no
+`x` bit, is
 refused by the [package lint](../03-architecture/packaging.md#the-package-lint). An unreadable
 file in `/etc` or `/usr` breaks every non-root user of it, and silently: `git` stops on an
 unreadable `/etc/gitconfig`, `/etc/profile` skips an unreadable `profile.d` script, and
@@ -1805,8 +1833,10 @@ with no diagnostic at all, in a large C++ port such as WebKit, QtWebEngine, LLVM
 Every phase runs `KDOS_JOBS` jobs at once, and a heavy C++ translation unit or link can need more
 than 2 GiB on its own, which is the budget per job the default job count assumes. Lower the job
 count for the build: `make build KDOS_JOBS=6`. It reaches make, `cmake --build` (WebKit and most
-CMake ports build through it) and cargo, and it caps the container's CPUs, which the chroot sees
-through its read-only cgroup mount, so a bare `ninja` in a recipe follows it too. Under
+CMake ports build through it) and cargo through the environment, and every `ninja` call that names
+no job count through `script/bin/ninja`, which the chroot phases put first on `PATH`. It also caps
+the container's CPUs, which the chroot sees through its read-only cgroup mount, so a tool that
+sizes itself from that cap, such as Go, follows it too. Under
 `--port-jobs` it is the size of the jobserver the ports of a level share, so a large port left
 building alone runs that many jobs. WebKit runs at
 most four links at once whatever the job count; its CMake reads `WEBKIT_NINJA_COMPILE_MAX` and

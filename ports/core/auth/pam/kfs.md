@@ -21,7 +21,7 @@ files include by name.
   `pam_unix`; none of their libraries is a port.
 - `-D nis=disabled` — NIS/YP lookups in `pam_unix`; accounts are local.
 - `-D pam_userdb=disabled` — Do not build `pam_userdb`, which checks passwords against a
-  Berkeley DB or GDBM file instead of the shadow file.
+  Berkeley DB, GDBM or NDBM file instead of the shadow file.
 - `-D i18n=disabled` — No translated messages; the English-only result is the
   [language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy).
 - `-D docs=disabled`, `-D examples=false`, `-D xtests=false` — No manuals built from DocBook, no
@@ -35,9 +35,11 @@ files include by name.
   is refused. It is one of the entries in
   [setuid binaries](../../../../docs/kdos/03-architecture/security-model.md#setuid-binaries).
 - **The shared stacks.** `build.sh` writes `system-auth`, `system-account`, `system-session` and
-  `system-password`, which the service files of other ports include by name: `sudo`'s and
-  `kbd`'s `vlock`. A service file naming a stack that is absent falls through to `other`,
-  which reports itself as "PAM account management error" and never mentions the missing stack.
+  `system-password`, which the service files of other ports include by name: `sudo`'s,
+  `kbd`'s `vlock` and polkit's `polkit-1`. An `include` of a stack that is absent makes every
+  call through that module type fail with `PAM_PERM_DENIED`, and only syslog names the file. With
+  `system-account` missing, `sudo` reports "PAM account management error: Permission denied" and
+  syslog has `_pam_load_conf_file: unable to open config for system-account`.
 - **`other` denies.** A service with no file of its own is refused, and `pam_warn` logs it,
   rather than authenticating against nothing.
 - **New hashes are SHA-512.** `pam_unix` hashes through musl's `crypt()`, which knows DES, MD5,

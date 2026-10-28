@@ -6,10 +6,11 @@ plugin, the qmake feature files under `/usr/lib/qt5/mkspecs/features` and the pk
 
 ## Flags
 - `QMAKE_CFLAGS_RELEASE="$CFLAGS"` — with `QMAKE_CXXFLAGS_RELEASE` and `QMAKE_LFLAGS_RELEASE` on
-  the qmake line: the tree's compile and link flags as the release flags.
+  the qmake line: replace the release flags of Qt 5's mkspec with the tree's, so the library is
+  compiled and linked like every other port.
 
 ## Patches
-- `10_install_paths.patch` — the same patch as the Qt 6 port's: Qwt's install prefix `/usr` in place of `/usr/local/qwt-<version>`, its documentation in `share/doc/qwt`, and the Designer plugin and qmake feature files under `lib`.
+- `10_install_paths.patch` — the same patch as the Qt 6 port's: Qwt's install prefix `/usr` in place of `/usr/local/qwt-<version>`, its headers in `include/qwt` (which `40_headers_per_qt.patch` changes), its documentation in `share/doc/qwt`, and the Designer plugin and qmake feature files under `lib`.
 - `20_fix_rpath.patch` — removes the `RPATH` that `designer/designer.pro` compiles into the Designer plugin; the library is in `/usr/lib`, where the loader looks anyway.
 - `30_multibuild.patch` — names the library `libqwt-qt5`, with the soname `libqwt-qt5.so.<major>.<minor>`, and puts the Designer plugin and the feature files under `/usr/lib/qt5`, so the two builds take no name from each other.
 - `40_headers_per_qt.patch` — the one patch the Qt 6 port does not carry: it installs the headers in `include/qwt-qt5` rather than `include/qwt`, which the Qt 6 build keeps.

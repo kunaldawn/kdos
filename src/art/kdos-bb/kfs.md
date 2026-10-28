@@ -2,7 +2,7 @@
 `kdos-bb` is the audio-visual demo that ships with KDOS: a hard fork of `bb`, the AA-project's
 text-mode demo, drawn by [aalib](#port-aalib) and scored with three S3M tracker modules played by
 [libmikmod](#port-libmikmod). What it does, how the fork differs from upstream and why, is
-[the program's chapter](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/kdos-bb.md);
+[the program's chapter](../../../docs/kdos/04-programs/kdos-bb.md);
 `KDOS-FORK` at the root of the port lists every change file by file. No other port depends on it.
 
 The build has no configure step. Upstream's autoconf script fails under GCC 14 (its compiler
@@ -26,7 +26,7 @@ and `COPYING` and `AUTHORS` as the licence.
 - `-laa`, `-lmikmod`, `-lncurses`, `-lm`, `-lpthread` — The libraries, named by hand because no
   build system finds them. AAlib draws through its curses driver, so ncurses is linked as well;
   `-lpthread` is for the mixer thread that feeds libmikmod
-  ([The mixer runs on its own thread](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/kdos-bb.md#the-mixer-runs-on-its-own-thread)).
+  ([The mixer runs on its own thread](../../../docs/kdos/04-programs/kdos-bb.md#the-mixer-runs-on-its-own-thread)).
 
 ## Notes
 The source list in `build.sh` is the build: a `.c` file added under `src/` is not compiled until
@@ -37,10 +37,11 @@ checked by hand. `timers.c` takes its clock from the first of `HAVE_GETTIMEOFDAY
 `HAVE_FTIME` that is defined; `aconfig.h` defines only the first, so the demo is timed with
 `gettimeofday`.
 
-`src/kdostux.c`, the mascot as a compressed image, is the output of `genimg.py`, which runs on a
-development host with Pillow. The build never runs it, so a changed picture means running it and
-committing its output.
+`src/kdostux.c`, the mascot as an LZO-compressed image, is the output of `genimg.py`, which runs on
+a development host with Pillow and a C compiler: it compiles the fork's own `minilzo.c` to
+compress the picture, because only the matching LZO1X implementation is guaranteed to decompress
+it. The build never runs it, so a changed picture means running it and committing its output.
 
 The port builds only where aalib and libmikmod are installed, which is inside the build tree,
 not on a bare host; rebuilding it alone is in
-[Building and changing it](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/kdos-bb.md#building-and-changing-it).
+[Building and changing it](../../../docs/kdos/04-programs/kdos-bb.md#building-and-changing-it).

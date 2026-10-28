@@ -22,15 +22,15 @@ kept as an XML file.
 - `-D WITH_PYTHON=OFF` — No Python bindings or Python plugin; upstream's default.
 - `-D DISABLE_NLS=ON` — No translations. The packager removes every non-English catalogue in any
   case (see
-  [Size and language policy](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#size-and-language-policy)),
+  [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)),
   so the switch only saves build time.
 - `-D COMPILE_GSCHEMAS=OFF` — Do not run `glib-compile-schemas` at install time. The GSettings
   schema cache is shared by every package, and kpkg rebuilds it after an install as one of its
-  [shared indexes](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#shared-indexes).
+  [shared indexes](../../../../docs/kdos/05-developer/writing-ports.md#shared-indexes).
 
 ## Patches
 
-- `install-rpath.patch` — drops `${CMAKE_INSTALL_FULL_LIBDIR}` from the run path GnuCash gives its installed programs and libraries, keeping only `/usr/lib/gnucash`, where its own modules are. The loader searches `/usr/lib` anyway, and the [package lint](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/packaging.md#the-package-lint) reports a plain `/usr/lib` run-path entry.
+- `install-rpath.patch` — drops `${CMAKE_INSTALL_FULL_LIBDIR}` from the run path GnuCash gives its installed programs and libraries, keeping only `/usr/lib/gnucash`, where its own modules are. The loader searches `/usr/lib` anyway, and the [package lint](../../../../docs/kdos/03-architecture/packaging.md#the-package-lint) reports a plain `/usr/lib` run-path entry.
 
 ## Notes
 
@@ -41,6 +41,6 @@ installed, whether or not the tests are run, so it is a dependency.
 `install(FILES ...)` rule, which gives it mode 644; `build.sh` makes it executable.
 
 Online price quotes (the Price Database's *Get Quotes* button and `gnucash-cli --quotes`) run
-`finance-quote-wrapper`, a Perl script that needs Finance::Quote and its modules (JSON, LWP,
-HTML::TreeBuilder, DateTime and more), none of which is a port. GnuCash itself starts; the quote
-command reports `Can't locate JSON.pm` and fetches nothing.
+`finance-quote-wrapper`, a Perl script that needs the Finance::Quote and JSON::Parse modules,
+neither of which is a port. GnuCash itself starts; a quote fetch reports that Perl is missing
+those modules and fetches nothing.

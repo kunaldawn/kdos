@@ -1,7 +1,7 @@
 ## About
 libcdio gives programs one interface to CD-ROM drives and CD images: it reads audio CD tracks and
-the table of contents, and with its `libiso9660` part reads ISO 9660 file systems. Audio CD
-playback in [mpv](#port-mpv), [mpd](#port-mpd), [gst-plugins-ugly](#port-gst-plugins-ugly) and
+the table of contents, with its `libiso9660` part reads ISO 9660 file systems, and with its
+`libudf` part reads UDF ones. Audio CD playback in [mpv](#port-mpv), [mpd](#port-mpd), [gst-plugins-ugly](#port-gst-plugins-ugly) and
 [kodi](#port-kodi) goes through it, and [libcdio-paranoia](#port-libcdio-paranoia) builds its
 error-correcting ripper on it. The package also installs `cd-info`, `cd-read`, `cd-drive`,
 `iso-info`, `iso-read`, `cdda-player` and `mmc-tool`.

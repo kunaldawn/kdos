@@ -21,4 +21,4 @@ KDOS uses it through other programs. [python3-docutils](#port-python3-docutils) 
 ## Notes
 pip installs no manual pages. Pygments ships a finished `doc/pygmentize.1`, so `build.sh`
 installs it by hand, as the tree's rule on
-[manual pages](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#manual-pages) asks of a project whose installer skips them.
+[manual pages](../../../../docs/kdos/05-developer/writing-ports.md#manual-pages) asks of a project whose installer skips them.

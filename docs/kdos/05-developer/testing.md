@@ -66,9 +66,15 @@ tested by building the distribution with them.
 | Nothing, but a build finished and a phase is about to be built with `--port-jobs` | `python3 testing/depdrift.py` in the development image |
 | A recipe's flags, `depends` or installed files, once its port is built | `make debuginfo`, `make linkcheck` and `make entrycheck`, from a container or as root; `70_image` runs the last two and stops on them |
 
+Each offline check has a make target of its own name: `make preflight`, `make selftest`,
+`make docscheck`, `make anchorcheck`, `make booknav`, `make kfscheck` and `make phaseclosure`.
+`make selftest-asan` runs the self-test under the sanitizers, with the compiler in `SELFTEST_CC`.
+`make check` runs all of them but the sanitized self-test, in that order, in one command. The
+full list of targets is under [Make targets](developing.md#make-targets).
+
 ## preflight.sh
 
-Preflight checks the tree's wiring without building anything. It runs about 65 checks:
+Preflight checks the tree's wiring without building anything. It runs 70 checks:
 
 ```sh
 testing/preflight.sh
@@ -94,15 +100,15 @@ check that finds its directory there reports what is missing from it.
 | Group | Checks |
 |---|---|
 | Layout | Every recipe under `ports/core` sits exactly at `ports/core/<shelf>/<name>/kpkgbuild`, and `ports/core` holds nothing but shelves; `ports/shelves` lists every shelf once, each with a volume that is a positive integer and a description, an id of lowercase letters, digits and `-`, not `libs` or `core` and not a port's name, and each a non-empty directory; `src/` holds only its six areas and every port of KDOS's own sits at `src/<area>/<name>/`; the orphan sweep searches every `src/` area that holds a recipe; every bare name is one port across the shelves and the `src/` areas; every `name =` is its directory's name; every `group =` family sits on one shelf; every file of a `packages.d/` is `00-order.txt`, a listed shelf's `<shelf>.txt` or a `src-<area>.txt`, and names only ports filed there, and no phase has both `packages.txt` and `packages.d/` |
-| Packages | Each package phase from `30_foundation` on installs exactly the ports its list names, and each port of `41_system` to `44_apps` is in the phase the phase table gives its closure, computed by `testing/phaseclosure.py` (see [Every phase installs exactly its list](build-system.md#every-phase-installs-exactly-its-list)); every package named in a phase list has a port; ports built from one tarball (`linux` and `perf`) agree on its version and hash; every list resolves to a dependency order with clean output and valid tokens; every `depends` entry names a port that exists; every port of KDOS's own is built by something; the build tree carries no package whose port is gone or listed in `ports/unbuilt` |
+| Packages | Each package phase from `30_foundation` on installs exactly the ports its list names, and each port of `41_system` to `44_apps` is in the phase the phase table gives its closure, computed by `testing/phaseclosure.py` (see [Every phase installs exactly its list](build-system.md#every-phase-installs-exactly-its-list)); every package named in a phase list has a port; ports built from one tarball agree on its version and hash (sixteen pairs: `linux` and `perf`, `python3` and `python3-tkinter`, `gettext` and `libintl`, `glib` and `glib-introspection`, `webkitgtk` and `webkitgtk6`, `qca` and `qca-qt5`, `qscintilla` and `python3-qscintilla`, `qwt` and `qwt-qt5`, `mgba` and `libretro-mgba`, and `llvm` with each of `clang`, `lld`, `lldb`, `compiler-rt`, `libunwind`, `openmp` and `libclc`); every list resolves to a dependency order with clean output and valid tokens; every `depends` entry names a port that exists; every port of KDOS's own is built by something; the build tree carries no package whose port is gone or listed in `ports/unbuilt` |
 | Recipes | Every port has a build script and it parses; every recipe parses as metadata; every one declares a name, version and release; every recipe and build script carries the KDOS banner; every source a port declares is named by a checksum and is non-empty where it is on disk (one not yet fetched is reported as a `make fetch` note, not a failure); every recipe carries a `description`, a `homepage` and a `license` that is an SPDX expression, its first source spells the version as `$version` (`docbook-xml` excepted), and its `description` is exactly the one its row in the [ports catalogue](../06-reference/ports-catalogue.md) gives, every port having one row there (all read by `testing/recipemeta.py`); the switches that turn off a feature whose library is a port are counted by `testing/optdeps.py`, a report that never fails; every `.patch` or `.diff` under `ports/` or `src/` that is new or changed (on no remote yet) has a `Subject:` line in its mail header, by `testing/kfscheck.py --only patches`, with `KDOS_CHECK_BASE=<ref>` measuring against a ref instead (see [kfscheck.py](#kfscheckpy)) |
-| Build options | Every meson option a recipe passes is one that port defines, checked against the tarball's own option file, with the two closed-value option types validated; every recipe that runs `meson setup` names its buildtype; every `go build` and `go install` passes `-s` and `-w` in its `-ldflags`, read with its backslash continuations joined; every recipe that runs cargo builds against a shared C library; every consumer of a shared library generates the Wayland protocols it includes |
+| Build options | Every meson option a recipe passes is one that port defines, checked against the tarball's own option file, with the two closed-value option types validated; every recipe that runs `meson setup` names its buildtype; every `go build` and `go install` passes `-s` and `-w` in its `-ldflags`, read with its backslash continuations joined; every `pip install` into a package root (`--root`) passes `--ignore-installed`, or pip removes the build root's own copy of what it installs; `script/bin/ninja`, run against a stand-in ninja, adds `-j$KDOS_JOBS` only to a call that gives no job count, passes `-t`, `--version` and a given `-j` through unchanged, and runs `/usr/bin/ninja` by absolute path; `script/bin/meson` adds `--wrap-mode=nodownload` to an explicit or implicit `setup` that names no wrap mode and hands `compile`, `install`, `configure`, `subprojects` and `--version` on unchanged; every recipe that runs cargo builds against a shared C library; every consumer of a shared library generates the Wayland protocols it includes |
 | Sources | Every source file in a port of KDOS's own is compiled by its recipe, unless that recipe globs its own `$PORT_SRC` directory (a glob of the shared `libk*` trees does not exempt it); a first source whose members are `./`-prefixed is accounted for; a flat first source is unpacked by its own recipe |
 | The sources archive | No archive a recipe hashes is tracked by git; `.gitignore` ignores every archive suffix under `ports/core` and the source cache, and none of the archive fixtures under `testing/fixtures`; `ports/srclib.sh`, `ports/fetch`, `ports/publish` and `script/hooks/pre-push` exist, are executable where they must be, and pass `bash -n`; `ports/sources.idx` holds every format-2 rule: `# kdos-sources-index 2` on line 1, each line `<sha256> <tag> <asset> <port>/<file>` with an optional `parts=<N>:…` of 2 to 99 hashes, each tag `sources-<N>` with `N` a positive integer, or a `src-<name>` of the older layout, which passes and is counted in a `WARNING` note saying `make publish-rehome` moves those lines, one line per hash, no part hash equal to a line's hash, no two asset names in one tag equal ignoring case (a split file's parts and its bare name counted), and hash order. An unset `core.hooksPath` is printed as a note, not a failure |
 | Shipped configuration | The shipped compositor configuration keeps labwc's default bindings; every command it, the menus and `menu.conf`'s routes name exists; every program `fs/etc/inittab` names is on the image; every filesystem the installer offers, the initramfs can mount; the ISO step builds every boot path (BIOS and UEFI, disc and written stick); the built `kinstall` is the installer in this tree |
 | Permissions and accounts | `/etc/shadow` on the built tree is mode 600 or 640 and the file-system step narrows it; the polkit and udev rule directories and files are owned by root; no udev rule sets `GROUP=`, `MODE=` or `OWNER=` on a device class that has no node, and every group a rule grants is one the desktop user is in; every account a shipped daemon drops to exists in `fs/etc/passwd`; the desktop user is in the groups its surfaces need |
 | Shell | All shipped and build shell is syntactically valid; every file a build script, a `phase.env` or a shared environment file sources exists, and a step sources its own phase's `phase.env`; a script a recipe ships inside a `KDOS_SH` heredoc parses too, and every program it names as the first word of a line is one the image carries; no build script names a command inside double quotes and runs it; every helper the Makefile runs is on disk |
-| Consistency | The build tree's root carries nothing but a root filesystem; no installed ELF file of a port under `src/` names a GTK, libadwaita, WebKitGTK, Qt, KDE Frameworks, wxWidgets, FLTK, Tk or Xlib library in its `NEEDED` entries, so the desktop links no toolkit while the applications may; every flag one shell tool passes another is one it accepts; every daemon an init script starts is installed by a port; every script under `fs/etc/init.d` but `service_helper` is executable in the work tree and recorded as `100755` in git; the root filesystem carries no script whose interpreter is gone; nothing points at a removed file; every `port:`, `path:`, `see:` and `cite:` a recorded reason names still resolves; no chroot step reads the ports tree through `/kdos/ports`; the compiler cache sets no `base_dir`, checks the compiler by a string rather than a modification time, has its `KDOS_CCACHE` switch both passed by the `Makefile` and named by `script/chroot/exec.sh`, and puts no masquerade directory on a `PATH`; the catalogue's rows match the tree; the application store is wired everywhere it has to be; a desktop toggle has one flag and only `libkbase` builds its path; only `kdos_crt_scanout()` in the compositor writes the scene's direct-scanout switch; a frame that opens the synchronized-output bracket closes it on every path; a literal colour is set at the render boundary and nowhere else; the control centre's row table agrees with the files it writes |
+| Consistency | The build tree's root carries nothing but a root filesystem; no installed ELF file of a port under `src/` names a GTK, libadwaita, WebKitGTK, Qt, KDE Frameworks, wxWidgets, FLTK, Tk or Xlib library in its `NEEDED` entries, so the desktop links no toolkit while the applications may; every flag one shell tool passes another is one it accepts; every daemon an init script starts is installed by a port; every script under `fs/etc/init.d` but `service_helper` is executable in the work tree and recorded as `100755` in git; the root filesystem carries no script whose interpreter is gone; nothing points at a removed file; every `port:`, `path:`, `see:` and `cite:` a recorded reason names still resolves; no chroot step reads the ports tree through `/kdos/ports`; the compiler cache sets no `base_dir`, checks the compiler by a string rather than a modification time, has its `KDOS_CCACHE` switch both passed by the `Makefile` and named by `script/chroot/exec.sh`, and puts no masquerade directory on a `PATH`; the package store's `KDOS_PKG_STORE` and `KDOS_PKG_STORE_MAX` are passed by the `Makefile`, `exec.sh` names those two and `KPKG_STORE`, `KPKG_STORE_CHECK` and `KPKG_STORE_SALT`, and `make cleanbuild` keeps `build/pkgstore`; the catalogue's rows match the tree; the application store is wired everywhere it has to be; a desktop toggle has one flag and only `libkbase` builds its path; only `kdos_crt_scanout()` in the compositor writes the scene's direct-scanout switch; a frame that opens the synchronized-output bracket closes it on every path; a literal colour is set at the render boundary and nowhere else; the control centre's row table agrees with the files it writes |
 | Shipped data | `mc`'s shipped rows name programs that exist; every `kdos-*` handler in the shipped `mimeapps` lists is on the image; every window a program of ours opens as a toplevel has a desktop entry named after its `app_id`; every help page names a document that ships; the generated `aerc` styleset is one `aerc` will load; every `kdos-*` command on the built tree has a manual page |
 | Chrome | Every glyph in `libktui`'s UTF-8 table is one the shipped console font can draw; no text draw under `src/` takes `KT_DIM` as its foreground, except a rule, shade or block glyph, a blank cell, or a call marked `/* not text */`; no text, menu-label, sprite or gauge draw takes `KT_SURFACE` or `KT_BG` ink, in the call or through a local, on a background `ktui_sel_slots()` or `ktui_sel_row()` filled; every icon name a surface asks for resolves on the image; every front end that names an icon calls `kicon_init()` or points its runner descriptor's `.icons` at its flag; every visible desktop entry's icon and command exist on the image, and no two visible entries share a `Name=`; no visible entry reads as a server, session picker, launch pad, tray helper or diagnostic unless `testing/visible-entries.allow` names it, and that file names only entries that are visible and read that way |
 
@@ -130,7 +136,7 @@ not an error: the cell is written, the flush succeeds, and a piece of the deskto
 missing. `▓`, the half blocks `▀ ▄` and the double tees `╠ ╣ ╦ ╩` all look reasonable in an editor
 and none of them is in the font. The check reads the shipped font itself, because a hand-kept list
 of what it carries is the thing that goes stale. Goldens cannot catch this: they are dumps at the
-ASCII [glyph tier](../06-reference/glossary.md), where every one of those glyphs resolves to
+ASCII [glyph tier](../06-reference/glossary.md#glyph-tier), where every one of those glyphs resolves to
 something.
 
 The fourth is that every flag one shell tool passes another is one it accepts. The shell's tools
@@ -151,9 +157,12 @@ It compiles everything with the host compiler into a temporary directory, with
 `-Wall -Wextra -Werror`, and runs each block in turn, printing a `==>` heading per block. The
 blocks fall into these groups, in roughly this order:
 
-1. **The libraries.** Every library is compiled and the shared assertion program,
-   `src/libs/selftest.c`, runs against them. Where `libkimg`'s decoders are present, the image
-   fuzzer runs next (see below).
+1. **The libraries.** The shared assertion program, `src/libs/selftest.c`, is linked from the
+   twelve libraries that link no outside library (`libkbase`, `libkcolor`, `libkpkg`, `libkbuild`,
+   `libktui`, `libkproc`, `libkxdg`, `libksig`, `libkpack`, `libkwm`, `libkvt` and `libkdisp`),
+   with `libkimg` added where pixman is installed, and run. Where `libkimg` is built, the image
+   fuzzer runs next (see below). `libkcell`, `libkchrome`, `libkicon` and `libkwl` are not in this
+   program: they are compiled by the Wayland-gated blocks and the pixel checks described below.
 2. **The consumers.** `kinstall`, `kdos-appbox`, `kdos-theme`, `kdos-tools`, `kdos-kpkg`, the
    daemons, `kdosbuild`, `kdos-portup`, `kdos-packd` and `kdos-pack` are compiled against the
    libraries to prove the headers still agree with their callers, and several run their own
@@ -163,22 +172,28 @@ blocks fall into these groups, in roughly this order:
 3. **Boxes, packs and the terminal.** Box profiles, the pack store and its signature checks, and
    the terminal emulator library replaying recorded streams.
 4. **Packaging and the build.** The version checker against a recorded corpus, offline; the ports
-   tree resolving through `kpkgdepends`, and `libkpkg`'s lookup over a fixture tree of shelves (a
+   tree resolving through `kpkgdepends`; the desktop entries of four game ports (`nethack`,
+   `frotz`, `bsd-games` and `moon-buggy`), read from their build scripts, checked for their
+   category, terminal flag and command; and `libkpkg`'s lookup over a fixture tree of shelves (a
    port found one shelf down or loose beside the shelves, a name filed twice or nested below its
    shelf refused, a shelf with no port ignored); a package built twice being byte-identical; the
    package lint refusing a synthetic port for each rule (an unreadable file, a program with no `x`
    bit, a world-writable file, a `.orig`, a `usr/lib64` or `usr/etc` path, an empty `.pc`
    `Version`, a build-directory `RPATH`, an executable stack) and rolling one that holds a path
    from each allowlist, with the Python bytecode compiled into the package and `direct_url.json`
-   left out; the
-   shared indexes, file ownership, skip-if-installed (a book note `kfs.md` beside a recipe added,
+   left out; `kpkg` copying licences and pruning manuals and translations, and compressing
+   cheaply only a package it deletes after installing; the
+   shared indexes, file ownership, `kpkg check` finding missing, changed and unowned files while
+   passing an edited `/etc`, skip-if-installed (a book note `kfs.md` beside a recipe added,
    edited or removed leaving its hash where it was, and `build.sh` beside it still moving it), the
    package store (a hit installs the same
    files without running `build.sh`; a dependency's changed bytes, a changed `CFLAGS`, a
    dependency without `.pkgsha`, a truncated stored file and `-f` all build; a job count does
    not; an undeclared link is recorded as `X:` and a change to it misses; check mode logs a
-   port that differs on every build and exits 0; `store gc` evicts the oldest), the binary
-   host's signed index and delta packages; `kdosbuild --selftest` laying out the build screen and
+   port that differs on every build and exits 0; `store gc` evicts the oldest),
+   `kpkg install --build-only` and `--commit`, the binary host's signed index, `kpkg fetch` taking
+   a source from a local archive and telling an offline network from a missing file, and delta
+   packages; `kdosbuild --selftest` laying out the build screen and
    its HUD at every size, and retrying a failed phase over a three-phase tree in a temporary
    directory (kpkg's step first, a finished script keeping its result, a package phase's rows
    dropped and resolved again, nothing pointing at a freed row), its jobserver FIFO keeping
@@ -201,13 +216,24 @@ blocks fall into these groups, in roughly this order:
    starts, each given its share of `KDOS_JOBS` and the jobserver FIFO and pinned to no CPU window, an ownership inversion named, a
    failure letting its running sibling finish and committing nothing, every step reported exactly
    once, and `--port-jobs 1` running exactly the serial commands.
-5. **The system programs.** Timers, reminders, the boot slots and their rollback, the initramfs's
-   encrypted-root unlock, the installer's plan, the polkit rules, the power, energy,
-   out-of-memory and mount daemons, the tray and the file-chooser portal.
+5. **The system programs.** Thumbnails landing in the shared cache; a terminal view noticing its
+   host terminal hang up; timers and reminders; service supervision (a crash-looping service shown
+   as `[FAIL]`, a running one supervised once, `stop` waiting out its grace period, a daemon never
+   orphaned and sent one `SIGTERM`, `--restart-with`, `service list`); `kdos app tui`;
+   `kdos-share` reading the code out of what `croc` prints; the `-march` keep decision;
+   `kdos rebuild`'s refusals; `kdos doctor`'s microcode check (skipped, by name, without `cpio`);
+   the boot slots and their rollback; the initramfs's encrypted-root unlock; the shipped console
+   palette matching the default scheme; the installer's plan; the polkit rules;
+   `kdos-netagent`'s replies to NetworkManager; the power, energy, out-of-memory and mount
+   daemons; `kdos clone` reading an image's length from the image; `genlaunchers`;
+   `kdos-appbox open`; a desktop entry asking for the terminal it needs; `kdos stutter` over a
+   recorded fixture; the tray and the file-chooser portal.
 6. **The surfaces.** Every surface of the shell rendered offscreen, the key-row contract (every
    frame draws a bottom row naming its keys; see [The key row](#the-key-row)), then every golden
    compared (see [Goldens](#goldens)).
-7. **The last checks.** The recording indicator, the CVE comparison, the four list views, the
+7. **The last checks.** The recording indicator, the CVE comparison, `kdos appid` matching a
+   window to a `NoDisplay` entry and never to a `Hidden` one, the key card printing without a
+   display server, the four list views, the
    [tone ladder](../03-architecture/design-language.md#the-pixel-layer-under-the-cells) (the rest,
    hover and focused tones a plate is painted in), and `kdos theme --audit` over the shipped
    artwork.
@@ -441,10 +467,12 @@ AddressSanitizer and UndefinedBehaviorSanitizer on glibc.
 
 `libkwm`'s block asserts nothing of its own. It replays `testing/fixtures/wm/geometry.txt`, whose
 106 rows are the window model as `kdos-comp` implements it: tile transitions, tiled geometry,
-placement, dragging, clipping and workspace adjustment. Each section of the file names the
-compositor function and the lines its rows were read from, and `testing/fixtures/wm/README`
-states the rule that a row which cannot be traced to a line does not belong in the file. A failure
-means the library and the compositor disagree, which is the disagreement that keeping the window
+placement, the neighbour-edge search, the nearest occupied workspace, and the drag threshold.
+Each section's header names the compositor source its rows were read from, except the drag
+section, which follows `kwm_drag_threshold()` in `libkwm`'s own header. Some headers also give a
+line range, and those ranges are not kept in step with the source, so find the function by name.
+`testing/fixtures/wm/README` states the rule that a row which cannot be traced to the source does
+not belong in the file. A failure means the library and the compositor disagree, which is the disagreement that keeping the window
 model outside the compositor is meant to expose.
 
 Add a case by adding a row and citing its source, never by writing an assertion in `selftest.c`. A
@@ -492,14 +520,16 @@ when they are missing:
 
 - KDOS's own source files added to the compositor (`src/desktop/kdos-comp/src/kdos-*.c`) need
   `wlroots-0.20`, `glesv2`, `egl`, `wayland-server`, `pixman`, `libdrm`, `libpng`, `libxml2`,
-  `cairo`, `pango` and `glib`;
-- `libkwl`, `kdos-lock` and `kdos-shell` need `fcft`, `pixman`, `xkbcommon` and `wayland-client`;
+  `cairo`, `pango`, `glib` and `basu`;
+- `libkwl`, `kdos-lock` and `kdos-shell` need `fcft`, `fontconfig`, `pixman`, `xkbcommon`,
+  `wayland-client` and the `wayland-protocols` data;
 - `kdos-shell` additionally needs an sd-bus (basu or libsystemd), ALSA, `libpipewire-0.3` and the
   `ext-workspace-v1` protocol;
 - `libkimg` needs `pixman`, and each of its decoders its own library: `libpng`, `libjpeg`,
   `libwebp`, `libsixel` and `libnsgif`;
 - the tray, portal, network and D-Bus menu blocks need an sd-bus and `dbus-daemon`, and the portal
-  block also `busctl`; the polkit block needs `duk`; the MIME blocks need `shared-mime-info`.
+  block also `busctl`; the polkit block needs `duk`; the MIME blocks need `shared-mime-info`;
+  the microcode block needs `cpio`.
 
 A bare host still reaches every section and exits clean. What it loses is inside them, and each
 block it cannot build says so.
@@ -551,21 +581,21 @@ and the stale binary survives. Delete them from a container rather than with `su
 ## Goldens
 
 A **golden** is a committed reference frame: a surface rendered offscreen and compared byte for
-byte. There are 217 of them under `testing/goldens/`. They cover the shell's surfaces, all eleven
+byte. There are 222 of them under `testing/goldens/`. They cover the shell's surfaces, all eleven
 resource-monitor pages plus its detail page and a chart read one sample at a time, the terminal, the cell-level frames, nine replayed
-terminal streams, and fourteen frames of a surface driven through its own loop. Text frames are
-committed at twelve different sizes and driven frames at three, two of them their own.
+terminal streams, and fifteen frames of a surface driven through its own loop. Text frames are
+committed at thirteen different sizes and driven frames at three, two of them their own.
 `testing/goldens/README` states the rules for adding one.
 
 | Kind | Catches | Count |
 |---|---|---|
-| Text frames (`--dump`) | Geometry: overflow, misalignment, a control drawn past its rectangle | 185 |
+| Text frames (`--dump`) | Geometry: overflow, misalignment, a control drawn past its rectangle | 189 |
 | Cell frames (`--dump-cells`, `cells-*.txt`) | Colour-slot and attribute drift as well | 9 |
 | Replayed streams (`vt-*.txt`) | A change in the terminal's state machine, against bytes real programs wrote: the characters, the attributes, the cells that named a colour of their own, the hyperlinks and the prompt marks | 9 |
-| Driven frames (`drive-*.txt`) | A loop that does not answer a key, a loop without the resize step, `ktui_keys()` asked after the surface's own keys, and a change in the runner's frame opt-in | 14 |
+| Driven frames (`drive-*.txt`) | A loop that does not answer a key, a loop without the resize step, `ktui_keys()` asked after the surface's own keys, and a change in the runner's frame opt-in | 15 |
 
 A text frame is the character in each cell, one line per row. A cell frame is one line per
-non-blank cell, `row col U+XXXX fg bg attr`, so a selection that lost its accent fill, or a label
+non-blank cell, `row col U+XXXX fg bg attr`, so a selected row that lost its `KT_DIM` fill, or a label
 that dropped to an unreadable colour slot, changes it even when the text frame is identical. Every
 dump is drawn at the ASCII glyph tier, because a surface drawing straight to a buffer has no
 terminal to report richer capabilities.
@@ -576,15 +606,19 @@ the loop, so nothing in it can show an event handler. With `$KDOS_DUMP_KEYS` set
 and resizes (the steps are listed in
 [Writing desktop software](writing-desktop-software.md#looking-at-it-without-a-screen)); the
 surface takes its live path, and the frame it last presented is printed when it shuts down,
-followed by `-- N of M events read`. `keydrive` in `testing/selftest.sh` commits these. Every
-script ends in `esc tick`, so a surface that closes on `Esc` stops one short of the total and one
-where `Esc` closed a rung first reads them all, and every script resizes once, so the frame is at
-the new size only if the resize step ran. No script runs a command whose answer depends on the host
+followed by `-- N of M events read`. `keydrive` in `testing/selftest.sh` commits these. The scripts
+of eight surfaces (firewall, trash, contacts, the character map, verify, update, print and the
+note) end in `esc tick`, so a surface that closes on `Esc`
+stops one short of the total and one where `Esc` closed a rung first reads them all, and each of
+them resizes once, so the frame is at the new size only if the resize step ran. The desktop menu's
+script is a right click and a tick, with no `Esc` and no resize, because the frame wanted is the
+one with the menu open. No script runs a command whose answer depends on the host
 (a toggle, a delete, a check). A surface that saves when it closes, as the note does on `Esc`
 after an edit, is given a data directory of its own, made empty for the run, so the save is
 exercised and the next run does not load it back. The six `drive-runner-*` frames are of a surface defined in the
 harness itself, on `sh_run()` with and without `.frame`, which is where the frame opt-in is pinned:
-no shipped front end takes it.
+no shipped front end takes it. Their scripts are short key and click sequences ending in a tick,
+and only `drive-runner-resize` resizes.
 
 A driven frame is a golden of the loop as it is, not a proof that it is right. A migration of a
 surface onto the runner keeps its frames byte-identical and its driven frame identical to the one
@@ -618,7 +652,7 @@ block headed `the shell's front ends draw offscreen, and the boxes line up` in
 2. the **base source list** (`DFRONTS` in the script): the files every surface needs, always
    linked. These are `shell.c`, `cal.c`, `menu.c`, `pick.c`, `osd.c`, `apps.c`, and shared helpers
    such as `fav.c`, `mountd.c`, `routes.c`, `chords.c` and `libkchrome`'s drawing code;
-3. the **candidates**: every other surface's source file, 46 of them, each checked on its own
+3. the **candidates**: every other surface's source file, 48 of them, each checked on its own
    with a compile-only pass. A candidate that does not compile is skipped by name and costs only
    its own golden.
 
@@ -665,7 +699,7 @@ not, run the dump twice.
 `libkdisp` is stubbed, not linked, so adding a `kdisp_` entry point needs a stub. The stubs are in
 `testing/fixtures/shell/dumpmain.c`, and no compiler check ties them to the header. A new entry
 point without a stub fails as `undefined reference` and skips every candidate's frame. Linking the
-real `libkdisp` beside the stubs is not the fix, because 38 of the 41 stubbed names are defined
+real `libkdisp` beside the stubs is not the fix, because 40 of the 43 stubbed names are defined
 there too and each is a *multiple definition* error. Add the stub, and make it answer the state a
 dump really has: `kdisp_win_supported()` is 0, because a dump renders one frame with no compositor,
 and a stub that invented two windows would make the frames assert a fiction.
@@ -799,20 +833,20 @@ The image must carry a font and GNU `tar`, and must have the Wayland development
 A **fixture** is recorded system state that a program can be pointed at instead of the live
 machine. It is what makes a monitor, an attribution engine or a kill-selection policy testable at
 all. The seam is the same everywhere: the process and system filesystems sit behind a movable root,
-or a variable moves one directory walk. There are 50 fixture directories under
+or a variable moves one directory walk. There are 51 fixture directories under
 `testing/fixtures/`.
 
 | Fixture | Records | Makes testable |
 |---|---|---|
 | `res` | A process and system tree, and a second one (`next/`) taken later | Every monitor page, deterministically, including the rates that need two samples |
-| `res/*/sys/class/net/*/device` | A `uevent` file inside the directory | Whether an interface is real. The test is the directory's presence, and git stores no empty directory, so the file keeps the directory in every clone |
+| `res/sys/class/net/*/device`, and the same under `res/next/` | A `uevent` file inside the directory | Whether an interface is real. The test is the directory's presence, and git stores no empty directory, so the file keeps the directory in every clone |
 | `stutter` | Two snapshots half a second apart, plus the frame events between them | That the application is named with its box, the blocked process comes first, pressure is quoted, and exactly one event is blamed on the compositor |
 | `energy` | Four recorded power and process trees | The nesting rule, the counter wrap, the roll-up onto one application, and the short-lived residue |
 | `oomd` | Three trees arranged so only the memory budget produces the right answer; the self-test replays one with a `meminfo` written beside it | That the budget check matters: the host process is larger than anything in either box. And that a stall with 80% of memory available kills nothing while the same tree at 7.5% does |
 | `mountd` | A block-device tree plus two hand-built superblocks | The acceptance and both refusals. The internal disk carries a real superblock, so a broken check shows up as an extra row rather than as nothing |
 | `privacy` | Three processes: one holding a camera twice, one an audio device that must be ignored | The camera indicator, on a machine with no camera |
 | `portup` | Recorded upstream responses (a registry index, git tag lists and branch heads, feeds, a releases API answer, directory listings) and, under `ports/`, the recipes seven ports were recorded at | Every discovery adapter and filter in `kdos-portup --selftest`, and all three outcomes end to end, offline and unaffected by bumps to the live recipes |
-| `cve` | Four ports and a five-row database | A version behind two fixes, one that only looks behind because of a packaging revision, a name mapping, and a package the database has never heard of |
+| `cve` | Six ports and an eleven-row database | A version behind two fixes, one that only looks behind because of a packaging revision, a name mapping, a package the database has never heard of, and two ports on an older release branch: one its own branch's fix closed, one still behind it |
 | `about` | A whole machine under one root: `os-release` with a build stamp, a kernel, eight threads, a process tree with a boxed browser, a boot state mid-trial, one empty keyring and one with a key, a fourteen-package database, and the logo | `kdos-about`'s three pages, through `KDOS_ABOUT_ROOT` |
 | `update` | Recorded answers from `kdos update check --json`, `kdos cve --json` and `kdos-bootctl status`, plus a second `kdos cve` answer with no findings and two bundled copies | `kdos-update`'s frames, through `KDOS_UPDATE_JSON`, `KDOS_CVE_JSON` and `KDOS_SLOT_TEXT`, and that bundled copies are not counted as vulnerabilities |
 | `clone` | Three hand-built image headers | The two-record length rule |
@@ -826,7 +860,7 @@ or a variable moves one directory walk. There are 50 fixture directories under
 | `vt` | What `vim`, `htop`, `mc`, `less` and `tmux` wrote to an 80×24 terminal, four hand-written streams, the recorder `record.py` and the replayer `vtrender.c` | That the terminal's state machine still produces the same screen |
 | `img` | Valid, truncated, zero-length, oversized and malformed images in each decoded format, and `fuzz.c` beside them | `libkimg`: every fixture decoded, then mutated and truncated |
 | `catalogue` | A small catalogue with every row type | The catalogue parser |
-| `wm` | `geometry.txt`, 106 rows read from the compositor's source | See [The window-model contract](#the-window-model-contract) |
+| `wm` | `geometry.txt`, 106 rows read from the compositor's source and `libkwm`'s drag threshold | See [The window-model contract](#the-window-model-contract) |
 | `polkit` | A rule harness and a stub, run under `duk` | What the shipped polkit rules grant, and what they must not |
 | `term` | A stub of `libkwl` | `kdos-term --dump` on a host with no Wayland |
 | `kwl` | `paintcheck.c` and `tickcheck.c`, which include `libkwl`'s own source and stand a simulated compositor under it, and `inspcheck.c`, which drives `kwl_insp.c` with the clock handed in | That a partial repaint produces the same pixels as a full one and that the damage covers every changed pixel; that a gliding list is its own picture at the position presented; that the frame clock ticks while an animation runs and is silent otherwise; that the wheel counts detents and a flick coasts; that the `KDOS_INSPECT` overlay stays off the cells and goes still on a still surface; see [The partial paint](#the-partial-paint), [The frame clock](#the-frame-clock) and [The inspector](#the-inspector) |
@@ -1154,8 +1188,8 @@ itself, as the login shell's profile would have.
 | `--sweep X1,Y1,X2,Y2[,N[,MS[,BTN]]]` | A drag at a real mouse's report rate: `N` interpolated motions `MS` milliseconds apart (default 120, 2 and button 1). `--drag` and `--press` space events 150 ms apart, so a defect that needs a fast hand needs this |
 | `--sleep <s>` | Wait this many seconds before the next step |
 | `--wait <s>` | Seconds to let the session settle after boot (default 25) |
-| `--soak <s>` | Let the session run after every step and before the final shot (default 0) |
-| `--cmd <cmd>` | Run a command in the desktop session |
+| `--soak <s>` | Let the session run this many seconds after the last step, before the final `--out` picture (taken only when no `--shot` step ran) (default 0) |
+| `--cmd <cmd>` | Start a command in the background in the desktop session, through a login shell as the desktop user, then wait a fixed four seconds; nothing waits for it to finish |
 | `--root-cmd <cmd>` | Run a command as root on the serial console, wait for it to finish and print its output |
 | `--root-script <file>` | Send a local script into the guest and run it as root |
 | `--script-timeout <s>` | How long a `--root-script` or a `--root-cmd` may take (default 900) |
@@ -1188,14 +1222,17 @@ whose timing follows its own playback runs to a different clock on the two. To r
 device is playback-only (`hda-output`), so recording is tested through `snd-aloop` instead; see
 below.
 
-`--soak` lets the session run between launch and measurement, because a monitor's cost over its
-first few seconds is its start-up, which is not what is being measured.
+`--soak` lets the session run on after the last step and before the final picture, because a
+monitor's cost over its first few seconds is its start-up, which is not what is being measured. A
+`--shot` or `--root-cmd` step runs before the soak, not after it.
 
 `--root-script` is the form for a check too long to be one command. The script travels
 base64-encoded, in short lines, because a terminal in canonical mode silently drops everything past
 its line limit and an encoded payload contains nothing the shell acts on before decoding. The rig
 then waits for a marker the *guest* prints, so a step taking minutes is waited for rather than cut
-off. A plain command waits a fixed short time, so anything longer must be a script.
+off. `--root-cmd` waits on a marker the same way, up to the same `--script-timeout`, and prints
+what the command wrote; it is the form for anything that fits on one line. Only `--cmd` is fire and
+forget: it is started in the background and the rig moves on after four seconds.
 
 ### Vulkan in the rig
 
@@ -1321,7 +1358,7 @@ puts it in its port directory (see
 |---|---|---|
 | `make fetch-check` (`ports/fetch --check [port…]`) | Offline, about a minute | Every hashed source that git does not track is on disk and matches its hash; it lists what is missing or corrupt and exits 1 if anything is |
 | Preflight's source checks | `testing/preflight.sh` | No recipe-hashed archive is tracked by git, `.gitignore` keeps fetched sources and the cache out of commits, the fetch and publish scripts parse, and `ports/sources.idx` is a well-formed format-2 index |
-| The pre-push hook | Enabled with `git config core.hooksPath script/hooks` | Offline first, a pushed tip whose ports layout breaks is refused: a recipe not exactly at `ports/core/<shelf>/<name>/`, a shelf missing from `ports/shelves` or named `libs`, `core` or after a port, or a bare name held twice across `ports/core` and `src/<area>/` (`KDOS_SKIP_LAYOUT_CHECK=1` skips it). Then a push naming a source hash that `ports/sources.idx` and the archive do not hold, or one of whose parts the archive lacks, is refused, as is one made while the archive is unreachable (`KDOS_SKIP_PUBLISH_CHECK=1` skips that check only); see [Writing ports](writing-ports.md#the-pre-push-hook) |
+| The pre-push hook | Enabled with `git config core.hooksPath script/hooks` | Offline first, a pushed tip whose ports layout breaks is refused: a recipe not exactly at `ports/core/<shelf>/<name>/`, a shelf missing from `ports/shelves` or named `libs`, `core` or after a port, or a bare name held twice across `ports/core` and `src/<area>/` (`KDOS_SKIP_LAYOUT_CHECK=1` skips it). Next, a new or changed `.patch` or `.diff` under `ports/` or `src/` without a `Subject:` line is refused (`KDOS_SKIP_PATCH_CHECK=1` skips it). Then `testing/docscheck.sh` and `testing/kfscheck.py` run over the working copy, not the pushed commit, so push from a checkout of what is pushed (`KDOS_SKIP_BOOK_CHECK=1` skips them). Last, a push naming a source hash that `ports/sources.idx` and the archive do not hold, or one of whose parts the archive lacks, is refused, as is one made while the archive is unreachable (`KDOS_SKIP_PUBLISH_CHECK=1` skips that check only); see [Writing ports](writing-ports.md#the-pre-push-hook) |
 
 A file git tracks, such as a patch or a configuration file beside a recipe, is never treated as an
 archived source: `ports/fetch` and `--check` skip it. A recipe-hashed archive that git tracks fails
@@ -1417,7 +1454,7 @@ rendered from. `--only` runs a subset by name:
 | `notes` | A new or changed port meeting a Tier B criterion (a patch, vendored dependencies, a `build.sh` of more than 30 lines, 20 or more reverse dependencies) has no `kfs.md` with an About or a Notes section |
 | `patches` | A new or changed `.patch` or `.diff` under `ports/` or `src/` has no `Subject:` line before its first `diff `, `--- ` or `Index: ` line |
 | `snapshot` | Only with `--strict`: a port's version and release in `docs/kfs/data/packages.tsv` are not its recipe's. Without it the count is printed |
-| `stamp` | `docs/kfs/data/recipes.stamp` is not this tree's digest, which covers every recipe, every `kfs.md`, the phase lists and environments, the bootstrap step scripts, `fs/etc/os-release` and every included file; `make book-stamp` rewrites it with no built tree, `make book-data` after a build |
+| `stamp` | `docs/kfs/data/recipes.stamp` is not this tree's digest, which covers every recipe (by its recipe hash) and every `kfs.md`, except a port that links a book under `docs/`; the phase lists and environments; the `00_cross` and `10_bootstrap` step scripts; `ports/shelves`, `ports/sources.idx`, `testing/optdeps.py` and `fs/etc/os-release`; and every included file; `make book-stamp` rewrites it with no built tree, `make book-data` after a build |
 | `includes` | A `kfs:include` names a file that does not exist; or its `lines=A-B` lies outside the file, carries no `pin=`, or holds other lines than the ones its pin was taken from. When the pinned lines are elsewhere in the file the failure says where, and `kfscheck.py --repin` moves the range there and pins every unpinned one; a range whose lines changed is never repinned, so the prose around it is read again first |
 | `kernel` | A row of the option tables in `docs/kfs/14-kernel/configuring.md` disagrees with the `linux` port's `kdos.config`. A row's first cell is the backquoted `CONFIG_…` symbol and its third the backquoted value: `y`, `m`, `n` for a `# CONFIG_… is not set` line, or the text after `=`, quotes kept. A row also fails when `kdos.config` does not set its symbol, since a kernel default is checked by nothing, and so does a repeated symbol, a row of fewer than four cells, or a page with no rows |
 | `render` | `kfsgen.py` leaves a port unplaced or prints a warning |
@@ -1451,10 +1488,10 @@ and cannot raise the third. What a cap costs on a 144 Hz panel is a claim about 
 has to be measured there.
 
 The present rate is the one the machine reports on its own. The compositor writes a line to
-[`kdos-frames.sock`](../06-reference/filesystem-and-ipc.md) for every frame that missed, with the
-output's refresh interval, the lateness, its own render cost, and whether the gap was measured from
-a presentation event or from the frame clock. `kdos stutter` is the front end. The socket says
-nothing while the screen is static; see [Harness traps](#harness-traps).
+[`kdos-frames.sock`](../06-reference/filesystem-and-ipc.md#xdg_runtime_dirkdos-framessock--late-frames)
+for every frame that missed, with the output's refresh interval, the lateness, its own render
+cost, and whether the gap was measured from a presentation event or from the frame clock.
+`kdos stutter` is the front end. The socket says nothing while the screen is static; see [Harness traps](#harness-traps).
 
 ### The overlay, which is already on every machine
 
@@ -1578,8 +1615,8 @@ Run them against a medium or a store you have put those packs into.
 | Harness | Runs | Does |
 |---|---|---|
 | `packlane.sh` | In the guest, desktop up | The pack lane end to end: the daemon, the keyring, an install from the medium or the store, the launchers, a box on a pack base, the telemetry and a timed launch, reporting pass, fail or skip with a reason and carrying on past a failure. It exercises no rollback, and its checks for a base and `rt-gtk` in the store fail until packs have been imported |
-| `install-to-disk.sh` | In the guest, with `--disk` | Runs the installer unattended into the attached disk, with its interface on `/dev/tty3`. Every 15 seconds it prints a heartbeat: the seconds elapsed, the space used on the target mounted at `/mnt/kinstall`, and the last line of `/var/log/kinstall.log`, so that a slow copy can be told from a wedged one. It gives up after `INSTALL_CAP` seconds (default 5400) and prints the log's last 40 lines at the end. The answer file sets root's password to `kdos`. The second half boots the disk with `--no-cdrom`, and the rig logs root in on the serial console with `--root-password` |
-| `bios-boot.sh` | On the host | Boots the ISO as a USB stick on an xHCI controller under SeaBIOS, with no OVMF anywhere. `vnc-shot.py` always boots UEFI, so it cannot answer this. The proof is the serial log reaching `switch_root`, not the exit status |
+| `install-to-disk.sh` | In the guest, with `--disk` | Runs the installer unattended into the attached disk, with its interface on `/dev/tty3`. Every 15 seconds it prints a heartbeat: the seconds elapsed, the space used on the target mounted at `/mnt/kinstall`, and the last line of `/var/log/kinstall.log`, so that a slow copy can be told from a wedged one. It gives up after `INSTALL_CAP` seconds (default 5400) and prints the log's last 40 lines at the end. The answer file sets root's password to `kdos`. `INSTALL_DISK` names the target (default `/dev/vda`); `INSTALL_LUKS=1` makes the same run with an encrypted root, written into the answer file with the passphrase in `INSTALL_LUKS_PASS` (default `kdosdisk`), and then also checks that the boot state records the encrypted container beside the filesystem. The second half boots the disk with `--no-cdrom`, and the rig logs root in on the serial console with `--root-password` |
+| `bios-boot.sh` | On the host | Boots the ISO as a USB stick on an xHCI controller under SeaBIOS, with no OVMF anywhere. `vnc-shot.py` always boots UEFI, so it cannot answer this. It waits `KDOS_BIOS_SECS` seconds (default 90), saves the screen as `build/shots/bios-screen.ppm` and the serial console as `build/shots/bios-serial.log`, then reads the log for `Found KDOS media` and `Switching to new root`: it prints `bios-boot: ok` and exits 0 when both are there, and `bios-boot: FAILED` with exit status 1 when either is missing. QEMU itself is killed rather than shut down, so its own exit status means nothing |
 | `appsweep.sh` | In the guest, `--boot-disk` | For each catalogue application: install it off the medium, launch it through its shim, wait for the compositor to report a window, photograph it, and remove the box. Usage `appsweep.sh <outdev> <runtime\|all> [max]` |
 | `appreport.sh` | On the host, needs ImageMagick | Reads what the sweep wrote to the scratch disk and renders it as a table and a contact sheet, flagging windows that mapped but painted nothing. Usage `appreport.sh <scratch.img> [outdir]` |
 | `appbox-smoke.sh` | In the session, as the desktop user (`su - kdos -c 'WAYLAND_DISPLAY=wayland-0 testing/appbox-smoke.sh'`) | Does every boxed application's launcher start something: a cheap `command -v` pass (`--probe`), then real launches; names on the command line limit it to those |
@@ -1589,7 +1626,7 @@ Run them against a medium or a store you have put those packs into.
 | `bootcheck/` | On the host | Plumbing for scripted boots with no display: `boot.sh [soft\|gl]` starts QEMU detached, `guest.py` runs a command on the serial console, `type.py` types into the console, `sock.py` owns one QEMU socket. `bootcheck/README.md` describes them |
 | `quick.sh`, `quickpatch.sh` | Host, then guest | [The fast loop](#the-fast-loop) |
 | `qemu-audio.sh` | Sourced by the run targets and the rig | Picks a working audio backend rather than hard-coding one, because QEMU aborts at start-up on a backend its build lacks, and sets the mixer's rate, because QEMU's default is 44100 and the guest drives the codec at 48000 |
-| `qemu-hw/` | On the host, needs Docker and the NVIDIA container toolkit | The containerised QEMU with accelerated (virgl) graphics behind `make run-hw` and `make rundisk-hw` (`run.sh iso` and `run.sh disk`); `probe.py` and `verify.py` check the GPU path |
+| `qemu-hw/` | On the host, needs Docker and the NVIDIA container toolkit | The containerised QEMU with accelerated (virgl) graphics behind `make run-hw` and `make rundisk-hw` (`run.sh iso` and `run.sh disk`, built from its `Dockerfile`). Beside them, `probe.py` boots the ISO with blob resources and prints what the guest's kernel reports about the virtio GPU (its command line, the `virtio_gpu` and DRM messages, the blob and host-visible features), to tell a blob-capable QEMU from plain virgl. `verify.py` drives a niri compositor and a noctalia shell, neither of which is in this tree, so it checks nothing on a KDOS image |
 | `rig-image.sh`, `devdeps-image.sh` | On the host | Build the rig image (`kdos-qemu-py`, from `Dockerfile.qemu`) and the development image (`kdos-devdeps`, from `Dockerfile.devdeps`) |
 | `barcheck.c`, `boxcheck.c`, `appindex.c` | Compiled by the self-test | The scrollbar's drawing against its hit test at every position, the shell's two box questions against a fixture store, and the application index keeping every entry past its first allocation |
 
@@ -1646,7 +1683,8 @@ Two scripts read the recipes with no build tree, and preflight runs both:
 ```sh
 python3 testing/recipemeta.py            # every finding; --brief prints a count per rule
 python3 testing/optdeps.py               # every switch that turns off a feature a port provides
-python3 testing/optdeps.py --claims      # every recipe line saying something is not a port
+python3 testing/optdeps.py --count       # the number of those switches only
+python3 testing/optdeps.py --claims      # every build-script comment saying something is not a port
 ```
 
 `recipemeta.py` reads each `kpkgbuild` the way `kpkg info` and the version checker do, the first
@@ -1656,15 +1694,18 @@ instead of `$version`, and a `description` that is not exactly its port's row in
 [ports catalogue](../06-reference/ports-catalogue.md), with ports that have no row and rows that
 name no port. It exits 1 on any finding, and preflight fails with it.
 
-`optdeps.py` reads every `build.sh` for `--without-X`, `--disable-X`, `-D…=OFF`,
-`-DCMAKE_DISABLE_FIND_PACKAGE_X=ON` and `-D…=disabled`, and maps X to a port by its name, by
+`optdeps.py` reads every `build.sh` under `ports/core` and `src/` for `--without-X`,
+`--disable-X`, a CMake `-D…=OFF` (or `false` or `no`), `-DCMAKE_DISABLE_FIND_PACKAGE_X=ON`, and a
+meson `-DX=disabled` or `-DX=false`, and maps X to a port by its name, by
 `lib<X>`, by `python3-<X>` and through an alias table of upstream spellings (`numa` is `numactl`,
 `PyGObject` is `python3-gobject`, `libstemmer` is `snowball`). A switch whose X is a port is either
 a choice or a feature lost to the belief that the library is missing, and the switch cannot say
 which, so the script is a report: preflight prints its count and never fails on it. An upstream
 spelling that maps to no port is silent, so a new port whose upstream name differs from its own
-needs its row in the alias table. `--claims` marks each name in a "not a port" line that is one;
-the features whose library really has no port are listed in
+needs its row in the alias table. `--claims` reads only comment lines in each `build.sh` and marks
+each name in a "not a port" comment that is one; recipes carry no rationale comments, so on this
+tree it prints nothing.
+The features whose library really has no port are listed in
 [known gaps](../06-reference/known-gaps.md#features-whose-library-has-no-port).
 
 ### Debug information in the built tree
@@ -1684,9 +1725,9 @@ is parsed in place; nothing is spawned per file, and `build/fs` takes about thre
 `.debug_*` and `.zdebug*` section that occupies bytes is summed. Kernel modules, firmware, the
 cross-target sysroots (`arm-none-eabi`, `avr`, `riscv*-elf`) and BPF objects are left out. The
 totals are grouped by the package whose manifest in `<root>/var/lib/kpkg/db` names the file, largest
-first; a manifest path is keyed as `kpkg` keys it, with a top-level `/bin`, `/sbin` or `/lib` alias
-folded into `/usr`, so a file a package installed through the alias is not misread as unowned. A
-file no manifest names is listed under `(unowned)`.
+first; a manifest path is keyed as `kpkg` keys it, with a top-level `/bin`, `/sbin`, `/lib`,
+`/lib64` or `/lib32` alias folded into `/usr`, so a file a package installed through the alias is
+not misread as unowned. A file no manifest names is listed under `(unowned)`.
 
 One pattern is allowed: ghc's `libHSrts*_debug-ghc*.so`, the runtimes `ghc -debug` links. Carrying
 DWARF is what they are for, so they are counted on a line of their own and never in the total.
@@ -1694,6 +1735,12 @@ DWARF is what they are for, so they are counted on a line of their own and never
 Exit status is 1 when the DWARF outside the allowlist exceeds the threshold, 1 MiB unless
 `--threshold` says otherwise, and 0 when it does not. It changes nothing, and preflight does not run
 it, because it needs a built tree.
+
+This check and the three after it (`unowned.py`, `linkcheck.py` and `entrycheck.py`) read the root
+through one shared module, `testing/treescan.py`, which is not run on its own. It walks the root
+once, recognises an ELF file by its first four bytes, parses its section, dynamic and interpreter
+tables in place, reads the `kpkg` manifests with `tar`'s quoting undone, and folds the merged-`/usr`
+aliases into their targets. How a path is keyed is therefore decided in one place for all four.
 
 ### Files nothing owns
 
@@ -1787,15 +1834,16 @@ logic, not that the distribution builds.
 The memory daemon fires only under `testing/oomd-fire.sh`, a rig run rather than a self-test block,
 because it needs a booted machine with real memory to exhaust.
 
-The pack lane (the [import lane](../06-reference/glossary.md), exercised by `packlane.sh` and
+The pack lane (the [import lane](../06-reference/glossary.md#lane), exercised by `packlane.sh` and
 `appsweep.sh`) cannot run against the shipped ISO alone, because the packaging step bakes no
 application packs into it. Nothing tests the lane until someone provides packs, and nothing tests a
 pack rollback on a booted machine; see [The other harnesses](#the-other-harnesses).
 
-Of the 55 names `kdos-shell` answers to, fourteen have no committed frame: `about`, `ascii`,
-`audio`, `bt`, `cal`, `calc`, `clip`, `devices`, `ime`, `mediad`, `note`, `slit`, `time` and
-`users`. `ascii`, `ime` and `mediad` have no dump at all. `clip` cannot be linked into the dump
-harness, because it wants a protocol the harness does not generate. Most of the rest draw something
+Of the 55 names `kdos-shell` answers to, twelve have no committed frame: `ascii`, `audio`, `bt`,
+`cal`, `calc`, `clip`, `devices`, `ime`, `mediad`, `slit`, `time` and `users`. (`about` is goldened
+over the `about` fixture, and `note` by its driven frame.) `ascii`, `ime` and `mediad` have no dump
+at all. `clip` cannot be linked into the dump harness, because it wants a protocol the harness
+does not generate. Most of the rest draw something
 that depends on the host, as `testing/goldens/README` and the comment beside the golden list in
 `selftest.sh` record: `cal` draws the current month, `kdos-slit` renders the output of commands it
 runs, the mixer lists the machine's ALSA cards, and `kdos-users` reads its password file. `cal`

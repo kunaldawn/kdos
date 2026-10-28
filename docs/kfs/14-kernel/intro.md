@@ -23,6 +23,7 @@ compact card.
 
 - [Reading a package page](../00-front/reading-a-package-page.md): how the pages below are laid out
 - [The build system](../../kdos/05-developer/build-system.md): phases and their package lists
+- [The kernel phase](../../kdos/05-developer/how-kdos-is-built.md#the-kernel-60_kernel): the phase in the whole build, and how to change `kdos.config`
 
 <!-- book-nav -->
 ---

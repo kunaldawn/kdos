@@ -11,7 +11,7 @@ finds, and GCC never sees it.
 The port configures LLVM's `runtimes` directory and names itself in `LLVM_ENABLE_RUNTIMES`, the
 build upstream supports for its runtimes; `openmp`'s own directory refuses to configure on its
 own (see
-[A second version beside the first](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#a-second-version-beside-the-first)).
+[A second version beside the first](../../../../docs/kdos/05-developer/writing-ports.md#a-second-version-beside-the-first)).
 It is compiled by GCC, the system compiler: this port builds before clang, which depends on it.
 
 ## Flags
@@ -24,8 +24,9 @@ It is compiled by GCC, the system compiler: this port builds before clang, which
 - `LIBOMP_ENABLE_SHARED=ON` — Builds `libomp` as a shared library, which is upstream's default,
   named.
 - `LIBOMP_INSTALL_ALIASES=OFF` — Installs none of the alias links upstream adds by default,
-  `libgomp.so` and `libiomp5.so`, each pointing at `libomp`. `libgomp.so` is GCC's library, and
-  with the alias a program linked with `-lgomp` would get LLVM's runtime instead.
+  `libgomp.so`, `libgomp.so.1` and `libiomp5.so`, each pointing at `libomp`. The two `libgomp`
+  names are GCC's library, and with the aliases a program linked with `-lgomp`, or one already
+  linked against GCC's `libgomp.so.1`, would get LLVM's runtime instead.
 - `LIBOMP_ARCHER_SUPPORT=OFF` — Builds no Archer, the OMPT tool that reports data races in
   OpenMP programs through ThreadSanitizer. [compiler-rt](#port-compiler-rt) builds no
   ThreadSanitizer, which does not support musl, so Archer would have nothing to report through.

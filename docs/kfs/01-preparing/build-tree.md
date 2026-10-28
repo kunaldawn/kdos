@@ -25,8 +25,10 @@ build/
 ```
 
 Later phases and opt-in settings add more: `iso-build/` with the finished `kdos.iso`, `keys/`,
-`pkgstore/`, `image-ports/`, `kdos-base/`, `binhost/`, and `kfs/`, where `make book` renders this
-book. The full table, with every file and who writes it, is in
+`pkgstore/`, `image-ports/`, `kdos-base/`, `binhost/` and `binhost-key/`, and the `jobserver` FIFO
+of a run given `--port-jobs` above 1. Other targets add their own: `kdos.qcow2` from `make run`,
+`fetch-home/` from `make fetch`, and `kfs/`, where `make book` renders this book. The full table,
+with every file and who writes it, is in
 [Where the build puts things](../../kdos/05-developer/developing.md#where-the-build-puts-things).
 
 ### fs: the root being built
@@ -44,7 +46,7 @@ therefore needs root, or a container such as the one in
 
 Its package database, `build/fs/var/lib/kpkg/db`, is the record of what is installed, which recipe
 each package came from, and which files it owns.
-[Anatomy of a kpkg install](../04-chroot/kpkg-install.md) shows one entry.
+[The database entry](../04-chroot/kpkg-install.md#the-database-entry) shows one.
 
 ### cross: the cross toolchain
 
@@ -73,8 +75,8 @@ The guard at the top of `00_cross/00_binutils.sh` is typical:
 This is why a second run of the two early phases costs seconds. A marker stands down when kdosbuild
 exports `KDOS_REPLAY=1`, which it does for a step a build plan names explicitly, so a named step
 runs again whatever its marker says. The marker for `kpkg` is the one exception to "empty": it
-holds a hash of every source file kpkg is compiled from, so that a change to kpkg or its libraries
-rebuilds it. See
+holds a hash of every source file kpkg is compiled from and of the step script that compiles it, so
+that a change to kpkg, its libraries or its compile line rebuilds it. See
 [Guards in the early phases](../../kdos/05-developer/build-system.md#guards-in-the-early-phases).
 
 ### logs: one file per step
@@ -95,10 +97,12 @@ build/logs/41_system/0145_pv.install.log
 ```
 
 When `--port-jobs` builds a phase level by level, each level's install step has a log of its own,
-`<NNNN>_L<level>.commit.log`. Three more files sit directly under `build/logs/`:
+`<NNNN>_L<level>.commit.log`. A few files are not step logs. Directly under `build/logs/` sit
 `snapshots.log`, every notice the build shows, with the time; `chroot.log`, warnings from the
-chroot wrapper; and, under a phase whose package list could not be resolved, `expansion.log`
-saying why. When a step fails, its log is the first thing to read; see
+chroot wrapper; and, after a run with `KDOS_PKG_STORE=check`, `pkgstore-check.log`, every port
+whose rebuild differed from its stored package. A phase whose package list could not be resolved
+gets an `expansion.log` in its own directory saying why. When a step fails, its log is the first
+thing to read; see
 [Build troubleshooting](../../kdos/05-developer/build-troubleshooting.md).
 
 ### snapshots: restore points and timings
@@ -117,8 +121,9 @@ build/snapshots/30_foundation/
 The first snapshot of a path holds the whole tree; each later one is a layer holding only what
 changed since the one before, compared against the index in `build/.snap-lineage/`. A snapshot
 other snapshots still layer on is moved to `build/snapshots/.held/` when it is replaced, until
-nothing needs it. Writing snapshots is off unless a run asks for it.
-[kdosbuild](kdosbuild.md) shows how to ask, and how to restore one.
+nothing needs it. Writing snapshots is off unless a run asks for it;
+[Writing and listing snapshots](kdosbuild.md#writing-and-listing-snapshots) shows how to ask, and
+[Resuming and restoring](kdosbuild.md#resuming-and-restoring) how to start a build from one.
 
 The same directory holds `timings.json`, the seconds each step took the last time it did its work
 and the machine each was measured on, which the book's build times are computed from; see
@@ -147,12 +152,15 @@ carries a new certificate, so modules from earlier builds load only as tainted u
 their steps. `build/.kdosbuild` is the orchestrator, compiled from source at the start of every
 `make build` when its sources, flags or compiler differ from the hash in `build/.kdosbuild.sum`.
 `build/.devplan.json` is the build plan in force, which the plan picker opens on.
+`build/jobserver` is a FIFO holding the job slots that the ports of one level share when a run is
+given `--port-jobs` above 1; kdosbuild makes it at the first such level and replaces one left by
+a killed run.
 
 ## Cleaning
 
 Two targets empty `build/`, and they differ in what they keep:
 
-<!-- kfs:include Makefile lines=244-266 pin=5da386d0c722 -->
+<!-- kfs:include Makefile lines=244-266 pin=93b6a0e75ace -->
 
 `make cleanbuild` keeps the snapshots, the compiler cache, the package store and the keys, all of
 which stay valid for the next build. `make clean` keeps only the keys.

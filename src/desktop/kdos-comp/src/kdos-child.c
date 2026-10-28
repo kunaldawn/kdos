@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Supervised chrome children, ported from the pre-fork kdos-comp.
+ * Supervised chrome children.
  *
  * labwc's spawn_async_no_shell() double-forks so the compositor never
  * reaps — right for a terminal a keybinding opened, wrong for the SHELL:

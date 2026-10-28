@@ -3,7 +3,7 @@
 A device in `/dev` is usable without root only when two things agree: a [udev]{.idx} rule gives
 the device node to a group, and the account is a member of that group. Neither works alone. This
 page covers the device manager and how it starts, the groups the shipped account is in, KDOS's own
-rules, modules loaded by name and the one blacklist, and the procedures for checking a device,
+rules, modules loaded by name and the blacklists, and the procedures for checking a device,
 granting one to a group and writing a rule of your own.
 
 ## Installation
@@ -58,8 +58,11 @@ What each hardware group makes usable, and what removing it stops, is in
 ### /etc/udev/rules.d
 
 KDOS's rules are the `70-kdos-*.rules` files here, one per family of device. Each grants a
-device node to a group with mode 0660. One more file, `99-qemu-tablet.rules`, grants nothing: it
-marks QEMU's emulated USB tablet as a pointer. The serial rule is the shape of most of them:
+device node to a group with mode 0660, except the backlight rule: a backlight has no node, so the
+rule makes its sysfs `brightness` file writable by `video` instead (see [Tips](#tips)). One more
+file, `99-qemu-tablet.rules`, grants nothing: it marks QEMU's emulated USB tablet as a pointer. The
+GPS receivers' rule, `70-kdos-gpsd.rules`, comes with the gpsd package and is in
+`/lib/udev/rules.d`. The serial rule is the shape of most of them:
 
 <!-- kfs:include fs/etc/udev/rules.d/70-kdos-serial.rules -->
 
@@ -81,13 +84,15 @@ One of the shipped files, for the I2C character devices that `ddcutil` needs:
 
 ### /etc/modprobe.d
 
-One blacklist ships, which keeps the kernel's TV-tuner driver off an RTL2832U radio stick:
+KDOS's one blacklist keeps the kernel's TV-tuner driver off an RTL2832U radio stick:
 
 <!-- kfs:include fs/etc/modprobe.d/kdos-sdr.conf -->
 
 Packages add files of their own beside it, none of them a blacklist: on the image they are
 `stlink_v1.conf`, a `usb-storage` quirk for ST-Link programmers, and `nvdimm-security.conf`, which
-loads NVDIMM keys before `libnvdimm`.
+loads NVDIMM keys before `libnvdimm`. The other blacklist is the hwdata package's
+`/usr/lib/modprobe.d/dist-blacklist.conf`, which keeps the old framebuffer drivers, the PC
+speaker, an Intel watchdog and a few others from loading on their own.
 
 ## Usage
 
@@ -113,9 +118,9 @@ loads NVDIMM keys before `libnvdimm`.
    udevadm info -a /dev/ttyUSB0
    ```
 
-4. `kdos doctor` checks each serial, video-capture and USBTMC node that is present
-   (`/dev/ttyUSB*`, `/dev/ttyACM*`, `/dev/video*`, `/dev/usbtmc*`), lists the ones you cannot open
-   and names the group that owns each:
+4. `kdos doctor` checks the serial, video-capture and USBTMC nodes that are present
+   (`/dev/ttyUSB0` to `/dev/ttyUSB7`, and the same eight numbers of `/dev/ttyACM`, `/dev/video` and
+   `/dev/usbtmc`), lists the ones you cannot open and names the group that owns each:
 
    ```bash
    kdos doctor
@@ -182,7 +187,9 @@ Write `blacklist <module>` in a file of `/etc/modprobe.d`, then unload the modul
 
 ### Adding to the hardware database
 
-Put a `.hwdb` file in [`/etc/udev/hwdb.d`]{.idx}, then compile the database and replay the devices:
+Put a `.hwdb` file in [`/etc/udev/hwdb.d`]{.idx} under a name no package uses, such as
+`70-local.hwdb`: the packages install their own files in the same directory. Then compile the
+database and replay the devices:
 
 ```bash
 sudo udevadm hwdb --update

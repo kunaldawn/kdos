@@ -22,7 +22,8 @@ sources it builds under `vendor/`. The iPhone's side of the same job is usbmuxd 
 
 ## Notes
 
-`gtest` is a build dependency only: headers of libbase and fastboot include `gtest_prod.h`.
+`gtest` is a build dependency only: fastboot's `socket.h` and libziparchive's `zip_writer.h` include
+`gtest_prod.h`.
 
 `build.sh` writes a udev rule, `/usr/lib/udev/rules.d/70-android-tools.rules`, that gives the
 `dialout` group read and write access to a USB device offering interface class `ff`, subclass `42`,

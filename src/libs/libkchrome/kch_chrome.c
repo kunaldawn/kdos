@@ -197,14 +197,14 @@ int kch_buttons(int w, int row, const struct kch_button *b, int n,
 	int x = w - 2 - total, left = x;
 	/*
 	 * CLEAR THE WHOLE STRIP FIRST. The single column BETWEEN two buttons
-	 * is not covered by either of them, so whatever was on the row showed
-	 * through the gap: `[ Rescan ]s[ Wi-Fi Off ]`, photographed. Anything
-	 * that overdraws part of a row has to own all of it.
+	 * is not covered by either of them, so whatever is on the row shows
+	 * through the gap: `[ Rescan ]s[ Wi-Fi Off ]`. Anything that overdraws
+	 * part of a row has to own all of it.
 	 *
 	 * The RETURN VALUE is the other half of that rule: the status line
 	 * shares this row, and clearing a span it was already drawn across cuts
-	 * it off mid-word — `Enter [ Connect ]`, photographed on the fifty-two
-	 * column popup, which is wide enough to carry both.
+	 * it off mid-word — `Enter [ Connect ]` on the fifty-two column popup,
+	 * which is wide enough to carry both.
 	 * The caller draws its status clipped to this column instead.
 	 */
 	/* To the PAGE, which is not always KT_BG: half this desktop's surfaces

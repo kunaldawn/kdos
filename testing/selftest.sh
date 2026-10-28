@@ -72,7 +72,7 @@ pkg-config --exists basu 2>/dev/null && TRAY_SDBUS=basu
 # and those are held by a rule (`SH_SOCK_MAX`, `DV_DEVPATH`) rather than by a
 # warning that cannot tell the two apart. The shipped recipes build with
 # `-Wall -Wextra` and no `-Werror` at all; everything else in $WARN stays on
-# here, which is what caught a dead choice list in settings.c.
+# here, so an unused variable or table in a surface still fails this suite.
 #
 # Defined once, up here: the kdos-shell block and the dump harness compile the
 # same sources a thousand lines apart, and flags that disagree mean one of them
@@ -99,7 +99,7 @@ export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}"
 
 #
 # libkimg is OPTIONAL in this build, and guarded the way the kdos-shell block
-# is. Its four decoders are ports and none of them is on a bare host, so the
+# is. Its five decoders are ports and none of them is on a bare host, so the
 # corpus is checked wherever they exist and the rest of the suite still runs
 # where they do not — a library nobody can build is a library nobody runs the
 # assertions for, which is worse than a skip that says so.
@@ -570,8 +570,9 @@ if pkg-config --exists fcft fontconfig pixman-1 xkbcommon wayland-client 2>/dev/
 -Isrc/libs/libkcell -Isrc/libs/libkwl -Isrc/libs/libkdisp -Isrc/libs/libkwm"
         # libkcell first and on its OWN: it must compile with no Wayland
         # header anywhere on the command line, because that is the property
-        # that lets kdos-comp link it. Handing it $PROTO would let a stray
-        # include pass here and fail in the compositor's build.
+        # the split from libkwl exists for: a consumer of the cell painter
+        # links no Wayland client library. Handing it $PROTO would let a stray
+        # Wayland include pass here unseen.
         for f in src/libs/libkcell/*.c; do
             $CC $STD $WARN -Isrc/libs/libkbase -Isrc/libs/libktui \
                 -Isrc/libs/libkcolor -Isrc/libs/libkcell \
@@ -5235,7 +5236,7 @@ echo "  the erase plan lays out a BIOS boot partition"
 # sentinel is what proves neither rendering repeats one.
 printf 'password = hunter2-sentinel\nroot_password = hunter2-sentinel\n' \
     >> "$OUT/answers.conf"
-# The LUKS passphrase is the third secret cfg carries and the newest, so it goes
+# The LUKS passphrase is the third secret cfg carries, so it goes
 # through the same sentinel: an answer file may hold it, a dump may not.
 printf 'luks = 1\nluks_passphrase = hunter2-sentinel\n' >> "$OUT/answers.conf"
 "$KI" --config "$OUT/answers.conf" --dump plan --json > "$OUT/plan.json" 2>&1
@@ -6584,8 +6585,8 @@ echo "  Exec quoting round-trips, and a field code with no file vanishes"
 
 echo
 echo "==> kdos-appbox open resolves a path to the thing that opens it"
-# `kdos-desk` called `kdos-appbox open` for a release before the subcommand
-# existed, so every double-click on the desktop died on "unknown". The
+# `kdos-desk` hands every double-click on the desktop to `kdos-appbox open`,
+# so a missing or broken subcommand breaks every one of them. The
 # resolution is the freedesktop one — globs for the MIME type, then
 # mimeapps.list, then the mimeinfo.cache genlaunchers writes above — and
 # `--print` is what makes it checkable without launching LibreOffice.
@@ -6670,9 +6671,10 @@ echo "==> a desktop entry can ask for the terminal it needs, and only for one"
 #   it even where `foot` is what the session would otherwise pick.
 #
 #   THE OPENER WRAPS AND NAMES NOTHING ELSE. `kdos-appbox open` puts the
-#   emulator and `-e` in front of the Exec and stops there; the identity flag
-#   — `--title` for kdos-term, `--app-id` for foot — is the launcher's, because
-#   only a launcher knows which entry a window should answer to.
+#   emulator and `-e` in front of the Exec and stops there; the identity flags
+#   — `--title` and `--app-id` for kdos-term, `--app-id` for foot — are the
+#   launcher's, because only a launcher knows which entry a window should
+#   answer to.
 #
 #   A NAME AND NEVER A PROGRAM. An entry is a file anything can write, so a key
 #   naming something that is not an emulator this image ships falls back to the
@@ -7563,14 +7565,12 @@ echo "==> golden frames — the committed cell grid, diffed"
 #   users      kb_users() walks getpwent() and the group list comes from
 #              getgrent(); KDOS_ETC redirects only login.conf, so the account
 #              list is the developer's own
-#   about      reads /etc/os-release, uname(), /proc/cpuinfo, /proc/meminfo and
-#              /proc/uptime and counts /var/lib/kpkg/db — a machine report, and
-#              a frame of one is true on the host that wrote it and nowhere
-#              else
 #
-# Two are goldened but need their own environment rather than the loop's, and
-# both are set up below: `disks` is pointed at a mountd socket that is not
-# there, and `print` at recorded `lpstat`/`lpinfo` answers.
+# Some are goldened but need their own environment rather than the loop's,
+# each set up below. Among them, `disks` is pointed at a mountd socket that is
+# not there, `print` at recorded `lpstat`/`lpinfo` answers, and `about`, a
+# report on the machine it runs on, at a recorded root through
+# KDOS_ABOUT_ROOT.
 #
 # Two more need an ARGUMENT rather than an environment. `launcher` is goldened
 # with `--apps`, and the loop's XDG_DATA_DIRS points at nothing, so its frame is
@@ -8719,10 +8719,13 @@ fi
 # dumpmain.c): the surface takes its live path, reads the events, and the
 # frame it last presented is the golden, followed by `-- N of M events read`.
 #
-# WHAT EACH ONE PINS. Every script ends `esc tick`: a surface that closes on
-# Esc stops one short of the total, and one where Esc closed a rung first
-# (trash's question, verify's path prompt) reads them all. Every script
-# resizes once, so the frame is drawn at the new size or the step is missing.
+# WHAT EACH ONE PINS. A shipped surface's script ends `esc tick` and resizes
+# once before it. Ending on Esc, a surface that closes on it stops one short of
+# the total, and one where Esc closed a rung first (trash's question, verify's
+# path prompt) reads them all; the resize means the frame is drawn at the new
+# size or the step is missing. `desk-menu` is the exception, with no Esc and no
+# resize, because the frame it pins is the one with the menu down, and the
+# runner's scripts are their own case, below.
 # The rest walks the keys each surface answers — the table, the field, a
 # question and its cancel, a page — and not one of them runs a command the
 # harness host would answer differently: no toggle, no delete, no check.

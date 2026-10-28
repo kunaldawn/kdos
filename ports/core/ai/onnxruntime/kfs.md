@@ -7,7 +7,8 @@ to run its voice models; it is built against [numpy](#port-numpy).
 Every third-party library ONNX Runtime uses is compiled into `libonnxruntime` at the version this
 release pins: abseil, protobuf, re2, flatbuffers, Eigen, the ONNX definitions and the rest. The
 installed library needs nothing but the C and C++ runtime libraries. Each of those sources is a
-further `source =` line of the recipe, named `ort-<name>-<version>`.
+further `source =` line of the recipe, named `ort-`, the dependency's name in `cmake/deps.txt`, a
+hyphen, and the file name of its URL.
 
 ## Flags
 - `-Wa,--noexecstack` — in `ASMFLAGS`, and `-Wl,-z,noexecstack` in `LDFLAGS`: mark every object

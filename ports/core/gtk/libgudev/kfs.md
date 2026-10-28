@@ -8,7 +8,9 @@ libraries built on GLib, among them [upower](#port-upower), [networkmanager](#po
 
 ## Flags
 
-- `-Dintrospection=disabled` — Generate no `GUdev-1.0` GIR or typelib. At the default, `auto`, the
-  data would be generated whenever gobject-introspection is installed first.
-- `-Dvapi=disabled` — Generate no Vala binding, which needs `vapigen`.
+- `-Dintrospection=disabled` — Generate no `GUdev-1.0` GIR or typelib. gobject-introspection is
+  not in `depends`, so at the default, `auto`, whether the package carried the data would depend on
+  whether gobject-introspection happened to be installed before this port was built.
+- `-Dvapi=disabled` — Generate no Vala binding. It needs `vapigen` from vala, which is not in
+  `depends` either, and `auto` would make the package depend on build order in the same way.
 - `-Dtests=disabled` — Build no tests. They need umockdev, which is not a port.

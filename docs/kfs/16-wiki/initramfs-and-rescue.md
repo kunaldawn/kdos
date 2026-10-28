@@ -37,25 +37,27 @@ installer copy that file to the ESP when it exists, and the image's own file oth
 ## Configuration
 
 Nothing about the initramfs is configured on a running machine. It is read-only, and there is no
-`mkinitcpio.conf` or `dracut.conf` to edit. Its behaviour is set by three things in the tree and
-one on the machine.
+`mkinitcpio.conf` or `dracut.conf` to edit. Its behaviour is set in the tree, by the image's build
+script and the `linux` postinstall, and by one file on the machine.
 
 The module list, in the build script, decides which disks and filesystems can hold a root:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=445-491 pin=e85bf30992e0 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=446-492 pin=e85bf30992e0 -->
 
 The last line writes the same list to the image as [`/boot/initramfs.modules`]{.idx}. That file is the one
 setting on the machine: the [`linux`]{.idx} postinstall reads it to decide which modules to append for a
 new kernel. A module named there is carried for the next kernel installed into that root.
 
-The command-line words the generated `init` reads (`\$` here is the generator's escaping: the init
-is written by a heredoc, and the generated script has a plain `$`):
+The command-line words the generated `init` reads are below (`\$` here is the generator's
+escaping: the init is written by a heredoc, and the generated script has a plain `$`). The live
+path checks for `nopersist` separately, to skip the persistence store. Every word is explained in
+[Command-line parameters KDOS reads](../../kdos/03-architecture/boot-and-init.md#command-line-parameters-kdos-reads):
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=631-655 pin=0cddbb0c0606 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=632-656 pin=0cddbb0c0606 -->
 
 The rescue helper, which every failure ends in:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=555-577 pin=17c2e4e0f539 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=556-578 pin=17c2e4e0f539 -->
 
 The new kernel's initramfs and its deploy, in the `linux` postinstall:
 
@@ -76,12 +78,14 @@ Until a kernel update, the file in slot A's directory is a byte-for-byte copy of
 
 ### Looking inside
 
-The file is the uncompressed microcode archive followed by gzip-compressed archives. GNU `cpio`
+The image's file is the uncompressed microcode archive followed by one gzip-compressed archive; an
+`initramfs-kdos.cpio.gz` has a second gzip-compressed archive after that. GNU `cpio`
 (the [cpio](#port-cpio) port) stops at the end of the first archive, so on a machine with microcode
-it lists only that archive:
+it lists only that archive. The ESP is mounted readable by root alone, so let `cpio` open the file
+itself with `-F` rather than redirecting it from your own shell:
 
 ```bash
-sudo cpio -t < /boot/efi/EFI/kdos/a/initramfs.cpio.gz
+sudo cpio -t -F /boot/efi/EFI/kdos/a/initramfs.cpio.gz
 ```
 
 On the shipped image that first listing is the `kernel/x86/microcode/` directory with
@@ -97,7 +101,7 @@ To list the rest:
    ```
 
 On a file with no microcode archive in front, the first `cpio -t` fails on the gzip header, and
-`zcat < file | cpio -t` lists the archive directly.
+`sudo zcat <file> | cpio -t` lists the archive directly.
 
 Either listing stops at the end of the image's archive. In an `initramfs-kdos.cpio.gz`, the
 modules the `linux` postinstall appended follow it as one more archive, which `cpio -t` does not
@@ -125,8 +129,9 @@ prints `A rescue shell is also open on tty1.` above its own prompt.
 2. Look around. `PATH` is `/bin`. `blkid`, `mount`, `umount`, `dmesg`, `modprobe` and the
    coreutils `init` uses (`ls`, `cat`, `cp`, `dd`, `mkdir` and the like) are always there;
    `cryptsetup`, `e2fsck`, `mdadm` and `lvm` are there when the image carried them, as the shipped
-   image does. There is no editor, no `tty` and no network tool. The shell has no job control,
-   and says so when it starts.
+   image does. There is no editor, no `tty` and no network tool. The shell on `/dev/console` has
+   no controlling terminal, so it has no job control and says so when it starts; `Ctrl+C` does not
+   reach a program it runs.
 3. Repair what you can: run `e2fsck` on an unmounted ext root, open a container with
    `cryptsetup open`, assemble an array with `mdadm --assemble --scan`.
 4. Restart the machine: `sync; echo b > /proc/sysrq-trigger`. The initramfs carries no `reboot`.
@@ -141,9 +146,9 @@ the one on the serial line.
   it with `root=` and `cryptdevice=` in `cat /proc/cmdline`.
 - On an installed machine, the `KDOS (verbose)` entry prints every kernel message, which shows a
   missing driver before the splash reaches the stage that needs it.
-- The init, the programs and the microcode in the image's initramfs are the medium's. `kdos
-  update` and the `linux` postinstall append modules and never rebuild that base, so the copy in a
-  root is the one it was installed or copied from.
+- The init, the programs and the microcode in the image's initramfs are the medium's. A kernel
+  update, through `kdos update` or `kpkg`, runs the `linux` postinstall, which appends modules and
+  never rebuilds that base, so the copy in a root is the one it was installed or copied from.
 - `kdos doctor` warns when the mount namespace's root is not `/`, the sign of a `switch_root`
   that only chrooted; see [`switch_root`](../../kdos/03-architecture/boot-and-init.md#switch_root).
 
@@ -151,12 +156,13 @@ the one on the serial line.
 
 | What the screen says | Check | Fix |
 |---|---|---|
-| `Error: Root device with UUID=… not found!`, then `Disk boot failed: no root at UUID=… with /sbin/init on it` | `blkid` in the rescue shell: is the UUID there, and on which device? | A disk that is absent from `blkid` needs a driver the initramfs does not carry; add its module name to `/boot/initramfs.modules` in that root, and the next kernel the `linux` package installs there carries it. A changed UUID: record it with `kdos-bootctl set-slot` (the menu's `root=` is regenerated from the boot state), or, on a machine with no boot state, correct `root=` in the `/KDOS` entries of `limine.conf` |
+| `Error: Root device with UUID=… not found!`, then `Disk boot failed: no root at UUID=… with /sbin/init on it` | `blkid` in the rescue shell: is the UUID there, and on which device? | A disk that is absent from `blkid` needs a driver the initramfs does not carry; add its module name to `/boot/initramfs.modules` in that root, and the next kernel the `linux` package installs there carries it. A changed UUID: record it with `kdos-bootctl set-slot <slot> <fs-uuid> [<luks-uuid>]`, where `<slot>` is `a` or `b`, and the menu's `root=` is regenerated from the boot state. On an encrypted slot give the container's UUID too: `set-slot` clears it when it is left out. On a machine with no boot state, correct `root=` in the `/KDOS` entries of `limine.conf` |
 | `Error: /sbin/init not found on root device!`, then the same `Disk boot failed` line | `mount` the root by hand in the rescue shell and look at `/sbin/init` | The root is not a KDOS root, or is damaged; see [Recovering an unbootable system](recovering-an-unbootable-system.md) |
 | `cryptdevice: no device for …` or `Failed to unlock …` | `blkid -t TYPE=crypto_LUKS` | A wrong container UUID on the command line or in the boot state. Repeated wrong passphrases end here too |
 | `ROOT FILESYSTEM HAS ERRORS - RUN e2fsck` on the splash, and the boot goes on | `e2fsck -p` left errors on an ext root | Run `e2fsck -f` on the root while it is not mounted, from the live medium |
-| `Failed to find KDOS installation media.` (live) | Is the stick still in? Did it enumerate within the scan? | Try another port, or the `KDOS Live (verbose)` entry, and read the serial line |
-| `Cannot release /mnt/iso after <dev>` (live) | The scan's one mount point stayed busy | Reboot; report the device |
+| `Failed to find KDOS installation media.` (live) | Is the stick still in? Did it enumerate within the scan's ten seconds? | Try another port, or the `KDOS Live (verbose)` entry, and read the serial line |
+| `Failed to find KDOS installation media.`, with `Cannot release /mnt/iso after <dev> — stopping the scan` before it on the serial line (live) | The scan's one mount point stayed busy | Reboot; report the device |
+| `Failed to set up a loop device for system.sfs`, `Failed to mount system.sfs` or `Error: /sbin/init not found in new root!` (live) | `dmesg` in the rescue shell, for read errors on the medium | The medium was found but its system image cannot be read: write the ISO to the stick again, or use another stick |
 | `Attempted to kill init` | The kernel panicked | After leaving the rescue shell, that was the shell exiting. Otherwise `init` itself died: boot the `KDOS (verbose)` entry and read the messages above the panic |
 
 The stage the splash stopped on narrows it down; see
@@ -177,11 +183,14 @@ The stage the splash stopped on narrows it down; see
 - [Unlocking an encrypted root](../../kdos/03-architecture/boot-and-init.md#unlocking-an-encrypted-root),
   [Finding the root](../../kdos/03-architecture/boot-and-init.md#finding-the-root),
   [Checking the root](../../kdos/03-architecture/boot-and-init.md#checking-the-root)
-- `microcode-and-firmware.md`: [Microcode and firmware](microcode-and-firmware.md)
-- `ab-slots-and-rollback.md`: [A/B slots and rollback](ab-slots-and-rollback.md)
-- `recovering-an-unbootable-system.md`: [Recovering an unbootable system](recovering-an-unbootable-system.md)
-- `encrypted-root.md`: [Encrypted root](encrypted-root.md)
-- `lvm-and-raid.md`: [LVM and RAID](lvm-and-raid.md)
+- [Microcode and firmware](microcode-and-firmware.md): the microcode archive in front of the
+  initramfs, and checking that it loaded
+- [A/B slots and rollback](ab-slots-and-rollback.md): the slot the initramfs selects, and rolling
+  an update back
+- [Recovering an unbootable system](recovering-an-unbootable-system.md): every way into a broken
+  machine, of which the rescue shell is one
+- [Encrypted root](encrypted-root.md): unlocking at boot, and opening the root by hand
+- [LVM and RAID](lvm-and-raid.md): volume groups and arrays the root can live on
 
 <!-- book-nav -->
 ---

@@ -19,7 +19,7 @@ writing and copies, and `mkisofs`, which [libisoburn](#port-libisoburn) installs
   decoder plugins for FFmpeg, Ogg Vorbis, MP3 (libmad), FLAC, libsndfile and WAV, and the encoder
   plugins for Ogg Vorbis, LAME, SoX and external programs. These decide which audio files can go
   onto an audio CD and which formats a ripped CD can be saved in. The SoX and external-program
-  encoders run programs at run time and link no library.
+  encoders run programs at run time and link no codec library.
 - `-D K3B_BUILD_MUSE_DECODER_PLUGIN=OFF` — No Musepack decoder; libmpcdec is not a port.
 - `-D CMAKE_REQUIRE_FIND_PACKAGE_DvdRead=ON` — and the other `CMAKE_REQUIRE_FIND_PACKAGE_*=ON`
   switches, for Taglib, FFmpeg, Flac, Flac++, Mad, Sndfile, Lame and OggVorbis. Upstream marks
@@ -31,16 +31,19 @@ writing and copies, and `mkisofs`, which [libisoburn](#port-libisoburn) installs
   pane, which is a plain Qt view without it, and it would make K3b load a Chromium engine for that.
 - `-D KF_SKIP_PO_PROCESSING=ON` — Build and install no translations. The packager removes every
   non-English catalogue and translated handbook in any case (see
-  [Size and language policy](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#size-and-language-policy)),
+  [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)),
   so the switch only saves build time.
 
 ## Notes
 
 Audio-CD ripping opens [libcdio-paranoia](#port-libcdio-paranoia) at run time with `dlopen()`. The
-KAuth helper `k3bhelper`, with its polkit action `org.kde.k3b.updatepermissions`, changes the group
-of the burner device.
+KAuth helper `k3bhelper` runs as root behind two polkit actions, each of which asks for an
+administrator's password: `org.kde.k3b.updatepermissions` sets the group and mode of the burner
+devices and of the burning programs K3b runs, setuid root where K3b asks for it, and
+`org.kde.k3b.addtogroup` adds a user to a group with `gpasswd`.
 
 `build.sh` replaces upstream's desktop entry. `KAboutData` sets the desktop file name, so the
-Wayland app id is `org.kde.k3b`, not upstream's `k3b`, and the new entry names it in
-`StartupWMClass`. It also claims only K3b's own project type: disc images and blank media are
-types other programs open too, and a default among them is chosen in `mimeapps.list`.
+Wayland app id is `org.kde.k3b`, not the `k3b` upstream's entry names in `StartupWMClass`, and the
+new entry names `org.kde.k3b` there. It also claims only K3b's own project type: disc images and
+blank media are types other programs open too, and a default among them is chosen in
+`mimeapps.list`.

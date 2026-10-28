@@ -6,8 +6,8 @@ small desktop tools `kdos-banner`, `kdos-shot`, `kdos-sfx`, `kdos-mpctl`, `kdos-
 `kdos-fetch-app` and `kdos-fetch-static`. `main.c` picks the tool from the name it was started
 under, and every other name is a symbolic link `build.sh` makes; run as `kdos-tools`, the first
 argument names the tool. The names, where each is installed and where each is documented are in
-[`ksvc` — 12 names](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/README.md#ksvc--12-names)
-and [The kdos command](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/kdos-command.md).
+[`ksvc` — 12 names](../../../docs/kdos/04-programs/README.md#ksvc--12-names)
+and [The kdos command](../../../docs/kdos/04-programs/kdos-command.md).
 
 The package also carries data the `kdos` command reads: the reasons corpus that `kdos why` and
 `kdos explain` browse, under `/usr/share/kdos/reasons`; `secdb.txt`, the vulnerability database
@@ -31,14 +31,14 @@ not with the other `src/system` programs in `41_system`.
   wallpaper cache and the compositor uses the configured picture.
 - `"$PORT_SRC"/*.c` — Every C file in the port directory is part of the binary, so a new tool's
   source is compiled without a change to `build.sh`. Its name still has to be added to the table
-  in `main.c` and given a link here.
+  in `main.c` and given a link in `build.sh`.
 - `-I"$LIBS/libkbase"`, `-I"$LIBS/libkcolor"`, `-I"$LIBS/libkpkg"`, `-I"$LIBS/libkxdg"`,
   `-I"$LIBS/libkproc"`, `-I"$LIBS/libksig"`, `-I"$LIBS/libkpack"`, `-I"$PORT_SRC"` — The headers
   of the libraries it is built from, and of the program itself. `$LIBS` is `src/libs`.
 - `"$LIBS"/libkbase/*.c`, `"$LIBS"/libkcolor/*.c`, `"$LIBS"/libkpkg/*.c`, `"$LIBS"/libkxdg/*.c`,
   `"$LIBS"/libkproc/*.c`, `"$LIBS"/libksig/*.c`, `"$LIBS"/libkpack/*.c` — Compile those libraries
   into the binary, which is how every `libk*` library is used; see
-  [How the libraries are built](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/c-libraries.md#how-the-libraries-are-built).
+  [How the libraries are built](../../../docs/kdos/05-developer/c-libraries.md#how-the-libraries-are-built).
 - `"$LIBS"/libksig/monocypher/*.c` — Monocypher, the Ed25519 code vendored under libksig, which
   verifies signatures; it is the `BSD-2-Clause OR CC0-1.0` in the licence line.
 - `-std=gnu11`, `-D_GNU_SOURCE` — The C dialect, which the tree's `CFLAGS` already names, and the
@@ -64,4 +64,4 @@ row in the same change.
 lands there is this whole binary, and with it `libpng16`, which the `-lpng` above makes part of
 its closure; the step copies the tool whole or not at all, because a `kdos-bootctl` that cannot
 run leaves A/B slot selection silently off. See
-[`kdos-bootctl`](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/boot-and-init.md#kdos-bootctl).
+[`kdos-bootctl`](../../../docs/kdos/03-architecture/boot-and-init.md#kdos-bootctl).

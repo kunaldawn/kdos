@@ -21,12 +21,12 @@
  * reliably loses: wait for fbcon to report it in the kernel ring, then retry
  * setfont until showconsolefont confirms 16x32 is what the VT actually has.
  *
- * setfont/showconsolefont/setvtrgb/loadkeys are still exec'd rather than
- * reimplemented as KDFONTOP/PIO_CMAP/KDSKBENT calls. Deliberate: setfont's
- * real job is parsing a gzipped PSF and its unicode table, and a second
- * implementation of that is a new way to produce exactly the wrong-font bug
- * this wrapper exists to prevent. What DID move into C is the polling — the
- * kernel ring is read with klogctl() instead of forking dmesg fifty times.
+ * setfont/showconsolefont/setvtrgb/loadkeys are exec'd rather than
+ * reimplemented as KDFONTOP/PIO_CMAP/KDSKBENT calls: setfont's real job is
+ * parsing a gzipped PSF and its unicode table, and a second implementation of
+ * that is a new way to produce exactly the wrong-font bug this wrapper exists
+ * to prevent. The polling is C — the kernel ring is read with klogctl(), so a
+ * wait of fifty polls forks nothing.
  *
  * It is also the last root process on either login path, so the two things that
  * must be done as root and then inherited -- the delegated cgroup and the
@@ -57,14 +57,12 @@
 /* Force the tty's window size to the VT's real character grid.
  *
  * Deferred take-over means the console has no geometry yet when this runs, so
- * whoever asks first gets a 0x0 TIOCGWINSZ and settles on a fallback — and on
- * tty1 that fallback stuck: the VT is 120x33 with the 16x32 font, but every
- * full-screen program came up believing it had 80x24 and drew into the
- * top-left corner of the screen (measured with a full-screen aalib demo,
- * which centred on column 40 of 120). kinstall and every other libktui program
- * are on the same path. The size the loaded font actually produced is the
- * first two bytes of /dev/vcsa<n> — rows, then columns — which is the
- * console's own answer rather than a second guess at the arithmetic. Runs
+ * whoever asks first gets a 0x0 TIOCGWINSZ and settles on a fallback that
+ * sticks: on a VT that is 120x33 with the 16x32 font, a full-screen program
+ * that read 0x0 believes it has 80x24 and draws into the top-left corner of
+ * the screen. kinstall and every other libktui program are on the same path.
+ * The size the loaded font actually produced is the first two bytes of
+ * /dev/vcsa<n> — rows, then columns — which is the console's own answer rather than a second guess at the arithmetic. Runs
  * after the font is loaded, because that is what decides the grid. */
 static void fix_winsize(int fd, const char *tty)
 {
@@ -227,10 +225,11 @@ static const char *autologin_user(void)
  * silence, heard as a gap, and the buffer is delivered a cycle late for the
  * rest of the run -- a drift no player corrects.
  *
- * The numbers are the ones the shipped 25-pw-rlimits.conf asks for, so the
- * image grants what its own configuration says it wants: 95 clears module-rt's
- * server priority of 88 and its client priority of 83. RLIMIT_NICE is the
- * 20-minus-ceiling encoding, so 39 is nice -19, below module-rt's -11.
+ * The numbers are the ones PipeWire's own 25-pw-rlimits.conf asks for. That
+ * file is not installed (pipewire is built -Drlimits-install=false, since
+ * nothing reads limits.d), so these grants are the only place they live: 95
+ * clears module-rt's server priority of 88 and its client priority of 83.
+ * RLIMIT_NICE is the 20-minus-ceiling encoding, so 39 is nice -19, below module-rt's -11.
  * RLIMIT_MEMLOCK is BYTES here where that file's number is kB: 4 MiB covers
  * PipeWire's mlocked buffer pool, which the kernel's 64 KiB default does not,
  * while the 4 GiB a kB reading would mean is a ceiling that lets an
@@ -306,9 +305,9 @@ int getty_main(int argc, char **argv)
 		/* End fbcon's deferred take-over. Neither escape sequences NOR
 		 * SPACES do it — escapes are eaten by the VT state machine and
 		 * spaces are skipped by the render path; only a real glyph
-		 * reaches the putc that arms the take-over (verified: ' ' ->
-		 * nothing, 'K' -> "fbcon: Taking over console"). So: one K,
-		 * cleared away before anyone sees it. */
+		 * reaches the putc that arms the take-over and logs "fbcon:
+		 * Taking over console". So: one K, cleared away before anyone
+		 * sees it. */
 		if (write(vt, "K\033[2J\033[H", 8) < 0)
 			fprintf(stderr, "kdos-getty: cannot write %s\n", dev);
 

@@ -18,8 +18,8 @@ ports, so the RAR, unarchiver and ARJ plugins find nothing to run.
 - `-D BUILD_DOC=ON` — Build Ark's handbook with [kdoctools](#port-kdoctools), which is then a
   required package. On by default upstream; named so the handbook cannot drop out.
 - `-D CMAKE_REQUIRE_FIND_PACKAGE_LibZip=ON` — Ark looks for LibZip as optional and builds the
-  libzip plugin only when it is found. Required, a missing libzip stops the configure instead of
-  quietly leaving zip to the command-line plugin alone (see
+  libzip plugin only when it is found. Made required, a missing libzip stops the configure instead
+  of quietly leaving zip to the command-line plugin alone (see
   [a graphical application](../../../../docs/kdos/05-developer/writing-ports.md#a-graphical-application)).
 
 ## Patches

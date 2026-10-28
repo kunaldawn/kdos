@@ -43,12 +43,11 @@ static char *user_table(void)
 	return p;
 }
 
-/* One "name\tcommand" line, in either table. */
 /*
- * `name<TAB>command` — and, since the pack lane, an optional third field
- * naming the pack that provides it. Readers split at the SECOND tab and a
- * two-field line still parses, because a table written by an older
- * genlaunchers must not stop working the day the third field exists.
+ * `name<TAB>command`, with an optional third field naming the pack that
+ * provides it. Readers split at the SECOND tab and a two-field line still
+ * parses: genlaunchers writes two fields for an app no pack provides, and
+ * that row resolves its command and leaves the pack empty.
  */
 static int table_lookup(const char *path, const char *name, char *cmd, size_t n,
 			char *pack, size_t pn)
@@ -101,11 +100,11 @@ static int table_lookup(const char *path, const char *name, char *cmd, size_t n,
  * THE PROGRAM A COMMAND LINE RUNS IS NOT ALWAYS ITS FIRST WORD. Debian ships
  * `sh -c "wesnoth-1.18 >/dev/null 2>&1"` and `env GDK_BACKEND=x11 audacity`,
  * and a lookup keyed on the first token asks the table about `sh` — which no
- * pack carries, so the Start menu's launch of every wrapped entry was refused
- * while the shim, keyed by NAME, worked. This skips the wrappers: `env` and
- * its assignments, and `sh -c`/`bash -c` down to the first word of the
- * string they run. Path and desktop-entry quotes are stripped, so what comes
- * back is a bare basename that compares against another bare basename.
+ * pack carries, so every wrapped entry launched from the Start menu would be
+ * refused while its shim, keyed by NAME, still ran. This skips the wrappers:
+ * `env` and its assignments, and `sh -c`/`bash -c` down to the first word of
+ * the string they run. Path and desktop-entry quotes are stripped, so what
+ * comes back is a bare basename that compares against another bare basename.
  */
 void app_exec_key(const char *cmdline, char *out, size_t n)
 {

@@ -1,9 +1,13 @@
 ## About
 [Impression]{.idx} writes a disk image to a USB drive or a memory card, to make a bootable drive:
 it lists the removable drives it finds through [udisks2](#port-udisks2), and can also download an
-image of a distribution to write. It is a GTK 4 and libadwaita application written in Rust,
-whose meson build runs cargo itself, from the vendor bundle that is the second `sha256 =` line
-(see [Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring)).
+image of a distribution to write. A Windows installation ISO is not copied byte for byte, since it
+has no hybrid boot record and its `install.wim` can exceed FAT32's 4 GiB file limit: Impression
+builds a bootable FAT32 drive instead, reading the ISO's UDF filesystem through libcdio's `libudf`
+and splitting an oversized `install.wim` with wimlib's `libwim`, both linked from the system, which
+is why [libcdio](#port-libcdio) and [wimlib](#port-wimlib) are in `depends`. It is a GTK 4 and
+libadwaita application written in Rust, whose meson build runs cargo itself, from the vendor bundle
+that is the second `sha256 =` line (see [Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring)).
 
 ## Flags
 - `OPENSSL_NO_VENDOR=1` — tell the `openssl-sys` crate to link the system [openssl](#port-openssl)
@@ -23,4 +27,11 @@ file that points every crate at `vendor/`, by searching upward from the director
 The recipe has no `readelf` check that the program needs `libssl.so`, so a build that compiled
 OpenSSL in would not stop.
 
-`build.sh` renders the scalable icon to PNGs at three sizes and writes the desktop entry.
+`build.sh` renders the scalable icon to PNGs at 48, 64 and 128 pixels with `rsvg-convert`, because
+the session's icon lookup reads no SVG (see
+[Desktop entries belong to the port](../../../../docs/kdos/05-developer/writing-ports.md#desktop-entries-belong-to-the-port)),
+and writes its own `io.gitlab.adhami3310.Impression.desktop` over the one meson installs. The
+replacement keeps upstream's name, comment, `Exec`, categories and keywords, adds `TryExec` and
+`StartupWMClass`, and leaves out three of upstream's keys: `DBusActivatable=true`, so the launcher
+runs the program named in `Exec`; `X-GNOME-UsesNotifications`; and the `MimeType=` list, which
+claims ISO, CD and raw disk images and xz files.

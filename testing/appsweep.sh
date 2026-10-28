@@ -82,9 +82,9 @@ purge() {
 # and MS_MOVEs it across switch_root. A machine booted from disk with the same
 # stick in the drive has no such mount and no reason to make one — so the packs
 # are sitting on a device nobody opened, and a sweep that assumed otherwise
-# reads whatever stale directory happens to be at that path. Measured: a
-# leftover one-entry PACKAGES made a 72-app batch look like a 1-app batch, and
-# the sweep reported it as a complete success.
+# reads whatever stale directory happens to be at that path: a leftover
+# PACKAGES there sizes the batch from the wrong file, and a short batch would
+# report itself as a complete success. Fewer than ten packs is refused.
 if ! grep -q ' /mnt/iso ' /proc/mounts 2>/dev/null; then
     mkdir -p /mnt/iso
     for d in /dev/sr0 /dev/sr1 /dev/cdrom; do

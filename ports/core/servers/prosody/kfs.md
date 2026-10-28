@@ -4,7 +4,7 @@ Prosody is an XMPP (Jabber) chat server written in Lua. On a LAN with no route b
 people on the same network talk to each other; [dino](#port-dino) is the graphical client that
 speaks to it. The package adds a service script, `74_prosody`, which runs the server under the supervisor as the
 `prosody` account; other machines reach it once the firewall's `xmpp` name is on (see
-[Services](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md#services)).
+[Opening a service](../../../../docs/kdos/02-user-guide/administration.md#opening-a-service)).
 
 Prosody's `configure` accepts none of the Lua versions as new as the tree's main [lua](#port-lua),
 so it is built against and runs on the parallel [lua54](#port-lua54) port, with the Lua libraries
@@ -25,7 +25,9 @@ it needs built for that version (`lua54-luasocket`, `lua54-luasec`, `lua54-luaex
   upstream's default, ICU.
 - `--with-random=getrandom` — Take random numbers from the kernel's `getrandom()` system call rather
   than upstream's default, reading `/dev/urandom`.
-- `--no-example-certs` — Generate no example certificates at install time.
+- `--no-example-certs` — Skip making the self-signed `localhost` and `example.com` certificates
+  during `make`, so `make install` copies none into `/etc/prosody/certs`. Made at build time, their
+  private keys would be the same in every copy of the package.
 - `--add-cflags="$CFLAGS"`, `--add-ldflags="$LDFLAGS"` — Hand the tree's compiler and linker flags
   to Prosody's own makefiles, which set theirs from `configure` and would otherwise build the C
   modules without them. The `add-` forms keep Prosody's own defaults and append these.

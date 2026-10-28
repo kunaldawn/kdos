@@ -94,8 +94,9 @@ The daemon has no configuration, and its sampling interval cannot be changed. Se
 
 From the desktop, the Start menu's footer and the System menu (a right click on the Start button)
 hold Lock Screen, Suspend, Restart, Shut Down and the item that ends the session, *Log Off* in the
-footer and *Log Out* in the System menu. Restart and Shut Down ask for confirmation first. The sleep key suspends and the power button
-asks before it shuts down; see [Laptops](laptops.md#the-power-button-and-the-sleep-key).
+footer and *Log Out* in the System menu. Restart, Shut Down and the session item ask for
+confirmation first; Suspend does not. The sleep key suspends and the power button asks before it
+shuts down; see [Laptops](laptops.md#the-power-button-and-the-sleep-key).
 
 From a prompt, as a member of `seat` or `wheel`:
 
@@ -148,11 +149,13 @@ than woken; the refusal and `kdos-power ping` have.
    among the `defaults.conf` lines.
 
 `sudo tlp power-saver`, `sudo tlp balanced` and `sudo tlp performance` apply one of TLP's three
-profiles by hand. `sudo tlp bat` and `sudo tlp ac` apply the `balanced` and `performance` profiles
-in manual mode, which TLP reports as `balanced/BAT (manual)`: the profile then stays when the
-machine moves between battery and mains, until the next `tlp start` or boot. `sudo tlp-stat -s`
-shows which profile is in force. Otherwise TLP's udev rule applies the profile for the power source
-again whenever the machine moves between battery and mains.
+profiles by hand. TLP assigns `balanced` to battery and `performance` to mains (`TLP_PROFILE_BAT`
+and `TLP_PROFILE_AC`), and its default smart switching (`TLP_AUTO_SWITCH=2`) changes to the new
+source's profile, when the machine moves between battery and mains, only if the profile in force
+is the one assigned to the source being left; a profile chosen by hand otherwise stays.
+`sudo tlp bat` and `sudo tlp ac` apply the profile assigned to battery or to mains in manual mode,
+which TLP reports as `balanced/BAT (manual)`: that profile stays whatever the power source, until
+the next `tlp start` or boot. `sudo tlp-stat -s` shows which profile is in force.
 
 ### Checking thermald
 
@@ -179,8 +182,8 @@ members of `wheel` may read it.
 
 1. `sudo powertop` opens its report. The *Overview* tab lists what wakes the processor most.
 2. The *Tunables* tab lists settings that are marked *Bad*. Changing one there lasts until the
-   next boot, and TLP applies its own values again at boot and at each change between battery and
-   mains.
+   next boot, and TLP applies its own values again at boot and whenever a change between battery
+   and mains changes its profile.
 
 ## Tips
 
@@ -191,7 +194,8 @@ members of `wheel` may read it.
   offers both. See [Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md).
 - Every refused `kdos-powerd` request is logged with the caller's uid, so a power key that does
   nothing can be traced: `grep kdos-powerd /var/log/messages` shows lines such as
-  `kdos-powerd: refused uid 1001 (not root and in neither seat nor wheel)`.
+  `kdos-powerd: refused uid 1001 (not root and in neither seat nor wheel)`. The system log is
+  described on [Logs](logs.md).
 - Most virtual machines have no RAPL counter, so `56_energyd` skips itself there, logging
   `[SKIP] kdos-energyd: no readable RAPL energy domain` in `/run/kdos-init.energyd.log`, and
   `kdos doctor` reports `[skip] no RAPL energy domain on this machine — per-app energy cannot be
@@ -202,20 +206,25 @@ members of `wheel` may read it.
 
 ## Troubleshooting
 
-**`kdos-power: no kdos-powerd — service start powerd`.** The daemon is not running. Start it
-with the command the message names:
+**``kdos-power: no kdos-powerd — `service start powerd` ``.** The daemon is not running. Start
+it with the command the message names:
 
 ```bash
 sudo service start powerd
 ```
 
-Then read why it stopped: `/run/kdos-svc.kdos-powerd.log`, and `grep kdos-powerd
-/var/log/messages`.
+Then read why it stopped. The supervisor's log is readable by root only:
+
+```bash
+sudo cat /run/kdos-svc.kdos-powerd.log
+grep kdos-powerd /var/log/messages
+```
 
 **`kdos-power suspend` prints `kdos-power: err not permitted`.** The account is in neither
 `seat` nor `wheel`; `id` shows the groups. `kdos-power ping` asks the same question without
 suspending: it prints nothing and exits 0 when allowed, and prints the same refusal and exits 1
-when not.
+when not. `kdos-powerd --explain <user>` needs no privilege and says whether that account would be
+let in, and through which group.
 
 **The machine suspends but the network is gone after waking.** NetworkManager is told to sleep and
 wake around the suspend only through `dbus-send`; check that NetworkManager is running
@@ -248,9 +257,10 @@ and what TLP set for the processor (`sudo tlp-stat -p`).
 - [Services with no daemon](../../kdos/02-user-guide/administration.md#services-with-no-daemon):
   why `service status tlp` prints TLP's summary
 - [polkit, and why the desktop has no authentication agent](../../kdos/03-architecture/security-model.md#polkit-and-why-the-desktop-has-no-authentication-agent)
-- `laptops.md`: [Laptops](laptops.md)
-- `screen-lock.md`: [Screen lock](screen-lock.md)
-- `services.md`: [Services](services.md)
+- [Laptops](laptops.md): the lid, the backlight and the battery readout
+- [Screen lock](screen-lock.md): what locks the session and how to unlock it
+- [Logs](logs.md): where each daemon's output goes and how to read it
+- [Services](services.md): turning a service on or off and reading its state
 
 <!-- book-nav -->
 ---

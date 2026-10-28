@@ -13,7 +13,7 @@ This book follows the build in the order it happens. It starts with the containe
 in and the sources the build needs. It shows the two cross-toolchain scripts and the twenty-two
 bootstrap scripts command by command. It explains how the new root is entered as a chroot and what
 one `kpkg install` does there, and then it gives every package of every later phase a page of its
-own, in the order the build installs them.
+own, or a compact card for the plainer ones, in the order the build installs them.
 
 The model is the *Linux From Scratch* book. A package page says what the package is and where its
 sources come from, shows the exact commands that build it, explains the switches that are not
@@ -26,8 +26,8 @@ After the package phases, the kernel and the image each have a part: how the ker
 configured, built and installed, and what every step of the last phase does to turn the built root
 into an ISO. *System administration* then turns from building the system to running it, with one
 task page per subject in the manner of a wiki: services, boot, storage, security, networking,
-hardware, packages, the desktop and recovery. The appendices collect every switch the recipes pass,
-the build shapes they share, the build times, the licences and a glossary.
+hardware, packages, the desktop and recovery. The appendices collect the switches that recur across
+the recipes, the build shapes they share, the build times, the licences and a glossary.
 
 ## Who it is for
 
@@ -38,10 +38,10 @@ at a phase that failed, a reader who wants to know what is on the image and how 
 It assumes that you are at home on a Linux command line, can read a shell script, know roughly what
 `./configure`, `make` and a compiler do, and have used Docker. It assumes no knowledge of KDOS
 itself. A KDOS term is explained where it first appears, or linked to the
-[glossary](../../kdos/06-reference/glossary.md).
+[glossary](../17-appendices/glossary.md).
 
-To follow along you need a clone of the repository and a machine that runs Docker, with tens of
-gigabytes of free disk for the sources and the build; the full list is in
+To follow along you need a clone of the repository and a machine that runs Docker, with about
+42 GB of free disk for the sources and tens of gigabytes more for the build; the full list is in
 [What a development machine needs](../../kdos/05-developer/developing.md#what-a-development-machine-needs).
 There is no supported way to build KDOS with your own machine's compilers and tools. The chapter on
 [the os-dev container](../01-preparing/host-container.md) says what the container gives the build
@@ -75,19 +75,23 @@ They are kept in a snapshot under `docs/kfs/data/`, which `make book-data` refre
 When a recipe has a different version from the one the snapshot recorded, its page says so above
 the figures.
 
-`make book` renders the book into `build/kfs/`: the HTML edition, one page per section, in `html/`;
-the whole book as one PDF, `kfs.pdf`; and the HTML edition packed as `kfs-html.tar.zst`. Both
-formats are produced by pandoc and typst, by default the copies that KDOS builds for itself, run out
-of a built tree. The HTML edition also lists every file each package installed, read from that
-tree's package database; the PDF leaves the lists out.
+`make book` renders the book into `build/kfs/`: the HTML edition, one page for each part, chapter
+and package, in `html/`; the whole book as one PDF, `kfs.pdf`; and the HTML edition packed as
+`kfs-html.tar.zst`. pandoc writes the HTML, and pandoc and typst together write the PDF; by default
+both are the copies KDOS builds for itself, run out of the built tree that `BUILDFS` names
+(`build/fs` unless you say otherwise). When that tree has a package database, the HTML edition also
+lists every file each package installed; the PDF leaves the lists out. The edition published on the
+project's pages is rendered without a built tree, so its package pages carry the snapshot's summary
+of programs, libraries and directories and no full file lists.
 
 ## Editions
 
 A copy of this book describes one commit of the source tree: the one it was rendered from. Every
 HTML page carries an edition line in its header, and the PDF's title page carries the same, giving
 the KDOS version (read from `fs/etc/os-release`), the commit, and that commit's date. The title page
-also names the commit and date of the built tree the snapshot in `docs/kfs/data/` was taken from,
-which can be older than the commit the book describes.
+also describes the snapshot in `docs/kfs/data/`: the commit the checkout stood at when it was taken,
+and the date of the newest package in that built tree. Both can be older than the commit the book
+describes.
 
 Check the edition line against the tree you are building. A recipe, a script or a flag shown here
 belongs to that commit. If your checkout is at another one, render the book again from it with

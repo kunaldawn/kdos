@@ -1,6 +1,8 @@
 # Input methods
 
-This page covers typing languages a keyboard layout alone cannot type, Chinese, Japanese and Korean
+This page covers typing languages a
+[keyboard layout](locale-and-console.md#changing-the-keyboard-layout-of-the-consoles-and-the-desktop)
+alone cannot type, Chinese, Japanese and Korean
 among them, through [fcitx5]{.idx}: which engines ship, how the session starts them, the files they
 are configured through, switching between them, and what to check when typing comes out as Latin.
 It also covers the on-screen keyboard, which follows the same text-input signal. How the engine,
@@ -69,14 +71,14 @@ service, and without their Qt configuration windows:
 A boxed application reaches fcitx5 through the compositor, never directly. `kdos-appbox` sets one
 variable for it (`src/system/kdos-appbox/main.c`):
 
-<!-- kfs:include src/system/kdos-appbox/main.c lines=341-354 pin=fe9f35096fbb -->
+<!-- kfs:include src/system/kdos-appbox/main.c lines=339-352 pin=fe9f35096fbb -->
 
 ### The on-screen keyboard
 
 `osk` in `~/.config/kdos/comp.conf` (`fs/etc/skel/.config/kdos/comp.conf`) decides whether the
 compositor runs `wvkbd`, and whether a focused text field raises it:
 
-<!-- kfs:include fs/etc/skel/.config/kdos/comp.conf lines=321-325 pin=32ce41c64116 -->
+<!-- kfs:include fs/etc/skel/.config/kdos/comp.conf lines=323-327 pin=32ce41c64116 -->
 
 ## Usage
 
@@ -86,8 +88,8 @@ compositor runs `wvkbd`, and whether a focused text field raises it:
 2. Press `Ctrl+Space` to turn the input method on. fcitx5 switches from `keyboard-us` to the
    engine used last; the first time, that is the one after it in the profile, `pinyin`.
 3. Type. The text being composed is shown in the field, and the numbered candidates appear
-   in `kdos-ime`'s window, a bar drawn in cells above the panel; choose a candidate with its number
-   key.
+   in `kdos-ime`'s window, drawn in cells at the bottom centre of the screen, just above the panel;
+   choose a candidate with its number key.
 4. Press `Ctrl+Space` again to go back to plain typing.
 
 To reach another engine, press `Ctrl+Space` and keep `Ctrl` held: each further `Space` steps to
@@ -111,7 +113,8 @@ session, which is itself such a field; with nothing focused, `-n` prints an empt
 state is `0`. An engine that is not in the profile's group cannot be switched to; `-s` then
 does nothing. A query is no test of whether fcitx5 runs: when it is stopped, any `fcitx5-remote`
 call but `-e` starts it again through D-Bus activation
-(`/usr/share/dbus-1/services/org.fcitx.Fcitx5.service`). Use `pgrep -a fcitx5` instead.
+(`/usr/share/dbus-1/services/org.fcitx.Fcitx5.service`). Use `pgrep -a fcitx5` instead, or
+`fcitx5-remote --check`, which exits with status 1 and starts nothing when fcitx5 is not running.
 
 ### Adding an engine
 
@@ -172,10 +175,11 @@ memory, so a changed profile lasts until power-off unless a persistence store ex
   `rc.xml` binds to the palette. The shipped profile has one group, so there is nothing to switch
   to.
 - fcitx5 exits when the compositor goes away; the next session starts it again.
-- Upstream also installs `fcitx5-configtool`, a script that looks for a Qt configuration program
-  and, finding none, asks through `kdialog` or `zenity` whether to open the configuration
-  directory instead. Run from a login shell on the live medium, the `zenity` question crashed with
-  a segmentation fault and the script ended having done nothing.
+- Upstream also installs `fcitx5-configtool`, with a desktop entry named *Fcitx 5
+  Configuration*. It is a script that looks for a Qt configuration program, which is not a port,
+  and, finding none, asks through `kdialog` or `zenity` whether to open `~/.config/fcitx5` with
+  `xdg-open`. It changes no setting itself; edit the files as in
+  [Adding an engine](#adding-an-engine).
 
 ## Troubleshooting
 
@@ -194,9 +198,9 @@ memory, so a changed profile lasts until power-off unless a persistence store ex
 **Candidates appear in a window that is not drawn in cells.** fcitx5 drew its own candidate
 window because `kdos-ime` was not running when it started. `pgrep -x kdos-ime`; restart both as above.
 
-**`kdos-ime` refuses to start with `org.kde.impanel is already owned — something else is
-drawing the candidate window`.** Another process owns `org.kde.impanel`, usually a `kdos-ime`
-that is still running. `pkill -x kdos-ime`, then start it again.
+**`kdos-ime` refuses to start with `org.kde.impanel is already owned by … — something else is
+drawing the candidate window`.** The program the message names owns `org.kde.impanel`, usually a
+`kdos-ime` that is still running. `pkill -x kdos-ime`, then start it again.
 
 **A GTK application takes no input method although others do.** Something in its environment
 sets `GTK_IM_MODULE`, a wrapper script or a profile of your own. Unset it there.
@@ -211,8 +215,8 @@ sets `GTK_IM_MODULE`, a wrapper script or a profile of your own. Unset it there.
 - [There is no input-method configuration tool](../../kdos/06-reference/known-gaps.md#there-is-no-input-method-configuration-tool)
 - [Every program speaks English](../../kdos/06-reference/known-gaps.md#every-program-speaks-english):
   input methods type other languages; no program's menus are translated
-- Choosing a candidate with its number key has not been tried on a display; the candidate window
-  itself has been photographed on the live medium. See
+- `kdos-ime` has never been run against fcitx5: neither its candidate window nor choosing a
+  candidate with its number key has been seen on a display. See
   [Status](../../kdos/06-reference/status.md#the-desktop)
 
 ## See also
@@ -225,7 +229,11 @@ sets `GTK_IM_MODULE`, a wrapper script or a profile of your own. Unset it there.
 - [The on-screen keyboard](../../kdos/04-programs/kdos-comp.md#the-on-screen-keyboard) and
   [The on-screen keyboard](../../kdos/02-user-guide/accessibility.md#the-on-screen-keyboard)
 - [The environment a box receives](../../kdos/03-architecture/session.md#the-environment-a-box-receives)
-- `displays-and-scaling.md`: [Displays and scaling](displays-and-scaling.md)
+- [Session and environment](session-and-environment.md): what `kdos-desktop-start` starts, and in
+  which order
+- [Accessibility](accessibility.md): the on-screen keyboard and the other aids
+- [Locale and console](locale-and-console.md): the keyboard layout the session types in
+- [Xwayland and X11 applications](xwayland-and-x11-apps.md): the programs no input method reaches
 
 <!-- book-nav -->
 ---

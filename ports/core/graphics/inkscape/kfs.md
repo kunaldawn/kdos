@@ -44,13 +44,15 @@ it is the library's entry in `depends` that keeps the feature in the package.
 
 The patches are upstream's own commits for poppler releases newer than this Inkscape release,
 and the loop in `build.sh` applies them in the order of their commit dates, which puts the
-version-check correction before the last of the release fixes. The PDF importer uses poppler's private headers, whose interface changes
-with every poppler release, so a poppler update can need another such patch.
+version-check correction before the last of the release fixes. The PDF importer uses poppler's
+private headers, whose interface changes with every poppler release, so a poppler update can
+need another such patch.
 
 After the install, `build.sh` removes the extension manager, `extensions/inkman`, which installs
 extensions from the network into a private Python environment and fails on a machine with no
-network; the translated manual-page directories; and every translated tutorial, the
-`tutorial-<name>.<language>.svg` files, keeping the English `tutorial-<name>.svg`.
+network; the translated manual-page directories; and every translated tutorial file, any name
+with a language before its extension (`tutorial-<name>.<language>.svg` and translated screenshots
+such as `potrace.<language>.png`), keeping the English `tutorial-<name>.svg` and its images.
 
 Upstream's desktop entry is replaced by one with `StartupWMClass=org.inkscape.Inkscape`: GTK 3
 takes the Wayland app_id from the program name, which Inkscape sets to its application id. The

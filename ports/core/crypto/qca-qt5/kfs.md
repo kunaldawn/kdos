@@ -11,7 +11,7 @@ OpenSSL 4, so this port carries the OpenSSL 3 release that the [openssl3](#port-
 is built from, configures it with the slot's own switches to generate its headers, and compiles
 the provider against those headers and the slot's `libssl.so.3` and `libcrypto.so.3`. The rule
 and the reason are in
-[A second version beside the first](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#a-second-version-beside-the-first).
+[A second version beside the first](../../../../docs/kdos/05-developer/writing-ports.md#a-second-version-beside-the-first).
 
 ## Flags
 
@@ -35,8 +35,9 @@ and the reason are in
   `-D OPENSSL_CRYPTO_LIBRARY=/usr/lib/libcrypto.so.3` — Point CMake's OpenSSL search at the
   generated OpenSSL 3 headers and the slot's two libraries by path, instead of the OpenSSL 4 headers and
   `libssl.so` it would otherwise find.
-- `-D CMAKE_DISABLE_FIND_PACKAGE_Doxygen=ON` — Do not look for Doxygen, so no API documentation is
-  generated even when it is in the build root.
+- `-D CMAKE_DISABLE_FIND_PACKAGE_Doxygen=ON` — Do not look for Doxygen. Its one use is an optional
+  `doc` target that the default build never runs, so the switch keeps the configure step the same
+  whether or not Doxygen is in the build root.
 
 ## Notes
 

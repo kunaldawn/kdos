@@ -9,7 +9,7 @@ files under `/usr/share/lite-xl`.
 - `--wrap-mode=nofallback` — Use the system's Lua, PCRE2 and FreeType and never a meson wrap. The
   source carries wraps for all three, each of which builds a static copy; with this mode a missing
   system library is a configure error instead (see
-  [meson](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#meson)).
+  [meson](../../../../docs/kdos/05-developer/writing-ports.md#meson)).
 - `-Duse_system_lua=true` — Look for Lua by pkg-config name, among them `lua5.4` from the
   [lua54](#port-lua54) port. Off by default upstream, and off, Lua is always built from its wrap,
   which `nofallback` refuses.
@@ -20,7 +20,12 @@ files under `/usr/share/lite-xl`.
 
 Both patches are git commits with their own descriptions.
 `cve-2025-12121-remove-legacy-exec-function.patch` removes `system.exec`, which handed a string to
-`system()`, and changes its callers to start an argument vector through `process.start`.
+`system()`, and changes the folder drop in `rootview.lua` and the tree view's *Open in System*
+to start an argument vector through `process.start`. Against 2.1.8 its hunk for
+`core:open-project-folder` (`data/core/commands/core.lua`) lands on the wrong branch: choosing the
+folder that is already open starts a second window with no folder argument instead of reporting
+it, and choosing any other folder still calls `system.exec` and raises a Lua error instead of
+opening a second window.
 `poor-text-rendering-20260312-a17c0455.patch` stops lite-xl setting its own LCD filter weights
 under slight and full hinting, leaving FreeType's filter in place; upstream's issue reports poor
 text rendering with those weights.

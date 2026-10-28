@@ -40,10 +40,11 @@ and xcb on Linux unconditionally, and that plugin is built with it.
 - `ENABLE_LIBFDK=OFF` — No FDK AAC encoder: its licence cannot be combined with the GPL of the
   OBS binary that ships. FFmpeg's AAC encoder is used instead.
 - `ENABLE_SNDIO=OFF` — With `ENABLE_AJA=OFF`, `ENABLE_DECKLINK=OFF`, `ENABLE_NVENC=OFF`,
-  `ENABLE_FFMPEG_NVENC=OFF` and `ENABLE_QSV11=OFF`: sndio output, AJA and DeckLink capture cards,
-  NVIDIA NVENC and Intel QSV are left out. sndio, AJA's libajantv2, NVENC's FFnvcodec headers and
-  QSV's libvpl are not ports. DeckLink builds from the SDK headers in OBS's own tree and loads
-  Blackmagic's `libDeckLinkAPI.so` at run time.
+  `ENABLE_FFMPEG_NVENC=OFF` and `ENABLE_QSV11=OFF`: the sndio audio input, AJA and DeckLink
+  capture cards, NVIDIA NVENC and Intel QSV are left out. sndio, AJA's libajantv2, NVENC's
+  FFnvcodec headers and QSV's libvpl are not ports. DeckLink builds from the SDK headers in
+  OBS's own tree, but a card works only through `libDeckLinkAPI.so`, loaded at run time from
+  Blackmagic's proprietary Desktop Video driver, which is not a port.
 - `ENABLE_TEST_INPUT=OFF` — Build no test sources.
 
 ## Notes

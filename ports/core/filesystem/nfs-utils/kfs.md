@@ -6,7 +6,7 @@ machines and phones, NFS is how it shares files with another Unix machine with P
 symbolic links and byte-range locks intact. The server is NFSv4 only. The recipe writes two boot
 services, `63_gssd` and `72_nfsd`, each of which skips itself until it has something to do (a
 Kerberos keytab, a share in `/etc/exports`); see
-[Services](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md#services).
+[Services](../../../../docs/kdos/02-user-guide/administration.md#services).
 `mount.nfs` is setuid, so an ordinary user can mount a share listed in `fstab`.
 
 ## Flags
@@ -29,7 +29,7 @@ Kerberos keytab, a share in `/etc/exports`); see
 - `--disable-svcgss` — Do not build `rpc.svcgssd`, the server side of RPCSEC_GSS. Off is upstream's
   default.
 - `--enable-ipv6` — IPv6 transport for the client and server. Upstream's default.
-- `--enable-caps` — Link [libcap](#port-libcap) into `rpc.statd`, `nfsdcld`, `nfsdcltrack` and
+- `--enable-caps` — Link [libcap](#port-libcap) into `rpc.statd`, `sm-notify`, `nfsdcld` and
   `nfsref`, which use it to drop capabilities they do not need. Named, the switch makes missing
   libcap headers a configure error.
 - `--enable-uuid` — Use libblkid, from [util-linux](#port-util-linux), to find an exported
@@ -41,8 +41,8 @@ Kerberos keytab, a share in `/etc/exports`); see
 - `--without-systemd` — Install no systemd units; KDOS has no systemd. Off is also upstream's
   default.
 - `--with-statedir=/var/lib/nfs` — The state directory, where `rpc_pipefs` is mounted and
-  `nfsdcld` keeps its client records. This is upstream's default, and both boot services write
-  the same path.
+  `nfsdcld` keeps its client records. This is upstream's default, and both boot services mount
+  `rpc_pipefs` under the same path.
 - `--with-rpcgen=internal` — Generate the RPC stubs with the `rpcgen` in nfs-utils' own `tools/`
   directory instead of a system one. Without it, configure looks for `rpcgen` in `/usr/local/bin`,
   `/usr/bin` and `/bin` and stops when it finds none, and the recipe does not depend on
@@ -55,7 +55,10 @@ Kerberos keytab, a share in `/etc/exports`); see
 ## Notes
 `make install` also installs the internal `rpcgen` and its manual page. Both are deleted, because
 [rpcsvc-proto](#port-rpcsvc-proto) owns `/usr/bin/rpcgen` and kpkg refuses a path another package
-owns. `nfs.systemd.7`, a manual page about the systemd units, is deleted with them.
+owns. `nfs.systemd.7`, a manual page about the systemd units that is installed with or without
+them, is deleted too, and so is `/var/lib/nfs/state`, the empty file `make install` creates for
+the NSM state number: `rpc.statd` and `sm-notify` write that file themselves when it is missing,
+and in the package it would be a file kpkg owns that the daemons rewrite.
 
 `72_nfsd` starts the server with `rpc.nfsd -N 3 -V 4`: NFSv3 is off, so no portmapper,
 `rpc.mountd`, `rpc.statd` or lock daemon is started, although the build installs them. It loads

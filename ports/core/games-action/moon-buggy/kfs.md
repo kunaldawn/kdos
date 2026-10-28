@@ -14,3 +14,12 @@ recurse until the stack runs out and the game dies of `SIGSEGV`. The patched `te
 clears each flag before it acts on it and ignores the result, so the game exits with
 `Fatal error: Cannot read keyboard input` and status 1, or of the `SIGHUP` it was sent, whichever
 it reaches first.
+
+`build.sh` installs through `install-exec install-data-local install-man install-info-am` rather
+than `make install`, which also runs upstream's `install-data-hook`. That hook runs the
+just-installed binary with `-c` to create the shared score file, and the binary writes to the
+directory compiled into it, `/var/lib/moon-buggy`, which `DESTDIR` does not reach: the file would
+be written on the build machine, or as the builder's own `~/.mbscore` where that directory is
+missing, and never into the package. Without the hook the package ships the empty
+`/var/lib/moon-buggy` alone, which a user cannot write to, so the game keeps each user's high
+scores in `~/.mbscore`.

@@ -17,8 +17,10 @@ sources as well; `build.sh` configures only the host software, in `host/`.
 - `-DENABLE_LIBUHD=ON`, `-DENABLE_C_API=ON`, `-DENABLE_UTILS=ON`, `-DENABLE_USB=ON` — Require the
   library, its C API, the utility programs and USB transport (for the B-series and the USRP1, on
   [libusb](#port-libusb)). Each is a UHD component, on by default whenever its dependencies are
-  found and left out with only a status line when they are not; named `ON`, a component whose dependencies are
-  missing stops configure with "Dependencies for required component … not met".
+  found. Upstream marks the library required, so configure stops without Boost and Mako even
+  unnamed; the other three are left out with only a status line when theirs are missing. Named
+  `ON`, a component whose dependencies are missing stops configure with "Dependencies for
+  required component … not met".
 - `-DENABLE_PYTHON_API=ON` — Build the `uhd` Python module with pybind11. The component needs
   [numpy](#port-numpy) and the Python headers, and named `ON` it fails configure without them. It
   compiles against [python3-pybind11](#port-python3-pybind11) when CMake finds it, and against the
@@ -34,8 +36,9 @@ sources as well; `build.sh` configures only the host software, in `host/`.
 - `-DENABLE_RFNOC_DEV=OFF` — Install none of the RFNoC FPGA development files; upstream's default.
 - `-DENABLE_MAN_PAGES=OFF` — Let UHD install no manual pages itself. Its manual-page component
   installs the uncompressed pages by bare name from `host/docs/`, where they are not, and the
-  install stops; with compression on, it installs gzipped copies it writes into the build tree.
-  The loop after the install puts the uncompressed pages in place, below.
+  install stops; with compression on, it installs gzipped copies of its whole list, among them
+  pages for `rfnoc_modtool` and `rfnoc_image_builder`, which this build does not install. The loop
+  after the install puts the uncompressed pages in place, below.
 - `-DENABLE_MANUAL=OFF`, `-DENABLE_DOXYGEN=OFF` — Generate neither the HTML manual nor the API
   documentation with Doxygen.
 
@@ -57,8 +60,9 @@ the host finds none until then.
 
 Access to the USB radios comes from the tree's own udev rules, which give the Ettus and National
 Instruments ids to the `dialout` group (see
-[The device groups and the udev rules](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md#the-device-groups-and-the-udev-rules)); upstream's `uhd-usrp.rules`, installed under
-`/usr/lib/uhd/utils`, is not used.
+[The device groups and the udev rules](../../../../docs/kdos/02-user-guide/administration.md#the-device-groups-and-the-udev-rules));
+upstream's `uhd-usrp.rules`, installed under `/usr/lib/uhd/utils`, is not used.
 
 The recipe's `series` key keeps `ports/update` offering only releases on the line it names. The
-next line moves the N3xx, E3xx and X4xx devices onto gRPC, which is not a port.
+next line, 4.11, moves the RPC transport of the MPM devices (N3xx, E3xx, X4xx) onto gRPC and
+Protobuf, and its host build needs gRPC, which is not a port.

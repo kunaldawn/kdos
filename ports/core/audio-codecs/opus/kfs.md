@@ -13,18 +13,20 @@ It is one of the hot libraries the tree builds with link-time optimisation (see
 - `-flto=auto` — compile and link with link-time optimisation, in `CFLAGS` and `LDFLAGS`.
 - `-frandom-seed=opus` — fix the seed GCC names each object's `.gnu.lto_*` sections with, so the
   objects are the same bytes on every build.
-- `--enable-deep-plc` — conceal lost packets of SILK speech with a neural network instead of the
-  classic concealment.
+- `--enable-deep-plc` — conceal lost packets with a neural network instead of the classic
+  concealment, in SILK frames and in CELT frames alike.
 - `--enable-dred` — Deep REDundancy: an encoder can add neural redundancy to a stream, from which a
   decoder rebuilds speech lost in a burst of dropped packets.
-- `--enable-osce` — enhance low-bit-rate speech in the decoder with a neural network.
+- `--enable-osce` — enhance low-bit-rate SILK speech in the decoder with a neural network, and build
+  the blind bandwidth extension that widens 16 kHz SILK speech to full band.
 - `--disable-doc` — with `--disable-extra-programs`: no API reference and no demo and test
   programs.
 
 ## Notes
 All three neural features are off by upstream's default. Their model weights ship in the release
 archive as C sources under `dnn/`, so nothing is downloaded; what they cost is the weights' size
-in `libopus`. A caller turns each on: the decoder uses deep PLC and OSCE only above a complexity
-the caller sets with `OPUS_SET_COMPLEXITY`, whose decoder default is 0, and the encoder adds DRED
-only when the caller sets `OPUS_SET_DRED_DURATION`. A caller that asks for none of them encodes
-and decodes as it would with a library built without them.
+in `libopus`. A caller turns each on: the decoder uses deep PLC from a complexity of 5 and OSCE
+from 6, both set with `OPUS_SET_COMPLEXITY`, whose decoder default is 0; the bandwidth extension
+needs a complexity of 4 and `OPUS_SET_OSCE_BWE` as well; and the encoder adds DRED only when the
+caller sets `OPUS_SET_DRED_DURATION`. A caller that asks for none of them encodes and decodes as it
+would with a library built without them.

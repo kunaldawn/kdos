@@ -8,21 +8,24 @@ preferably a boxed one, and never the compositor, the panel, the audio session o
 programs the desktop is made of. It frees the victim's memory at once
 with `process_mrelease()`. It acts at most once every ten seconds. The kernel's own out-of-memory
 killer fires only when an allocation fails, which on a machine with swap can be long after the
-session stopped responding. How it chooses, and the socket `kdos doctor` asks, are in
-[kdos-oomd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/daemons.md#kdos-oomd).
+session stopped responding. How it chooses, and its socket, are in
+[kdos-oomd](../../../docs/kdos/04-programs/daemons.md#kdos-oomd).
 
 The port is KDOS's own C, with no upstream source. `build.sh` compiles `main.c` with the sources
-of `libkbase` and `libkproc`, the library that reads the process table and names the box a
-process belongs to, and nothing else; see
-[How the libraries are built](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/c-libraries.md#how-the-libraries-are-built).
+of `libkbase` and `libkproc` and nothing else. The daemon reads the process table from `/proc`
+itself; `libkproc` names the box a process belongs to, by walking its parent chain up to podman's
+`conmon`, and moves the `/proc` root for the `--fixture` mode. See
+[How the libraries are built](../../../docs/kdos/05-developer/c-libraries.md#how-the-libraries-are-built).
 
 ## Notes
 
 The daemon needs PSI in the kernel. `/etc/init.d/57_oomd.sh` skips it at boot when
 `/proc/pressure/memory` is not writable, and the machine then has only the kernel's own killer.
-It is installed under one name only, with no client link. Its socket takes no argument and
-answers `ping` and `status`; `kdos doctor` reports whether the socket is present.
+It is installed under one name only, with no client link. Its socket, `/run/kdos-oomd.sock`,
+answers `ping` and `status` from root and members of `seat` or `wheel`, and nothing in the
+protocol names a process; `kdos doctor` reports only whether the socket is present.
 
-The protected programs are matched by process name, a list compiled into `main.c`. A desktop
-program renamed, or a new one added to the session, is a candidate victim until the list names it.
-Any other process is protected by an `oom_score_adj` of -500 or lower, which its children inherit.
+The protected programs are matched by process name, a list compiled into `main.c`, and any
+name that begins with `pipewire` is protected as well. A desktop program renamed, or a new one added to
+the session, is a candidate victim until the list names it. Any other process is spared only when
+its `oom_score_adj` is -500 or lower, a value only root can set and which its children inherit.

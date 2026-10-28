@@ -10,8 +10,9 @@ viewport draw with OpenGL or Vulkan.
   instead of switching the feature off, so every `ON` in the list is a feature the package has.
   Every feature that needs a library the tree does not carry is named `OFF`.
 - `-DWITH_LIBS_PRECOMPILED=OFF` — with `-DWITH_STATIC_LIBS=OFF` and `-DWITH_INSTALL_PORTABLE=OFF`:
-  use the installed libraries rather than Blender's precompiled set under `../lib`, link them
-  shared, and install into `/usr` instead of a redistributable directory with its own runtime.
+  use the installed libraries rather than Blender's precompiled set under `lib/linux_x64` in the
+  source tree, link them shared, and install into `/usr` instead of a redistributable directory
+  with its own runtime.
 - `-DWITH_CPU_CHECK=OFF` — no start-up processor check. It is a library only a portable install
   ships, and with strict options configure stops when it is left on.
 - `-DWITH_PYTHON_INSTALL=OFF` — with `-DWITH_PYTHON_INSTALL_NUMPY=OFF`,
@@ -80,8 +81,9 @@ The three numbered patches are Alpine's musl fixes, each with its header: the bu
 `<cstdint>`; and `readfile.hh` poisons `off_t`, which musl's own headers use after it.
 
 The panel reads PNG icons only, so `build.sh` rasterises the scalable icon to 256 by 256 with
-`rsvg-convert` and removes the SVG. It replaces upstream's desktop entry with one that carries
-`StartupWMClass=blender`, GHOST's Wayland app_id, and `--offline-mode`, which disallows internet
-access for that run whatever Blender's "Allow Online Access" preference holds, and leaves the
-preference itself as it is, so the extensions platform does not offer what a machine without a
-network cannot reach.
+`rsvg-convert` and removes the SVG. It replaces upstream's desktop entry, whose
+`StartupWMClass=Blender` does not match `blender`, the app_id GHOST gives its Wayland windows, with
+one that carries `StartupWMClass=blender` and starts `blender --offline-mode`. That switch
+disallows internet access for the run whatever Blender's "Allow Online Access" preference holds,
+and leaves the preference itself as it is, so the extensions platform offers nothing that needs
+the network.

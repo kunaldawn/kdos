@@ -7,8 +7,9 @@
 # ██║  ██╗██████╔╝╚██████╔╝███████║
 # ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
 # ---------------------------------
-#   script/hooks/pre-push — refuse a push that breaks the ports layout, or
-#   names a source the archive lacks
+#   script/hooks/pre-push — refuse a push that breaks the ports layout,
+#   carries a patch with no Subject:, fails the book checks, or names a
+#   source the archive lacks
 # ---------------------------------
 #
 # Enabled per clone with
@@ -24,9 +25,11 @@
 #   - every kpkgbuild under ports/core is exactly
 #     ports/core/<shelf>/<name>/kpkgbuild, nothing loose one level up and
 #     nothing a level deeper
+#   - ports/shelves exists at that commit and lists at least one shelf
 #   - every <shelf> is listed in that commit's ports/shelves
 #   - every bare port name is unique across ports/core and src/<area>/
-#   - no listed shelf is named `libs` or `core`, or after a port
+#   - every listed shelf id is lowercase letters, digits and -, is not
+#     `libs` or `core`, and is not a port's name
 #
 # A port is found by bare name one shelf down, so a name held by two ports
 # resolves to neither, and a loose or over-deep recipe is a port no build
@@ -40,11 +43,11 @@
 # adds or modifies must have a `Subject:` line in its mail header at the tip,
 # because KDOS from Scratch prints that line on the port's page. A move that
 # keeps the content whole (R100) of a patch the remotes already hold is not a
-# change, and the patches that predate the rule pass until one is edited; a
-# patch added and then moved whole before the push is still new, so the
-# commits are read oldest first and a move carries its path's state to the
-# new path. testing/kfscheck.py and preflight hold
-# the same rule. KDOS_SKIP_PATCH_CHECK=1 bypasses it.
+# change, and a patch the remotes already hold is not checked until a pushed
+# commit modifies it; a patch added and then moved whole before the push is
+# still new, so the commits are read oldest first and a move carries its
+# path's state to the new path. testing/kfscheck.py and preflight hold the
+# same rule. KDOS_SKIP_PATCH_CHECK=1 bypasses it.
 #
 # THE BOOKS come next, and are the one check here that reads the WORKING COPY
 # rather than the pushed commit, so push from a checkout of what is pushed:
@@ -75,7 +78,8 @@
 # AN UNREACHABLE ARCHIVE REFUSES THE PUSH, and so does one answering anything
 # but 200 or 404. Offline or mid-outage, absence cannot be ruled out, and a
 # silent pass is exactly the push this exists to stop.
-# KDOS_SKIP_PUBLISH_CHECK=1 bypasses the archive check, and not the layout.
+# KDOS_SKIP_PUBLISH_CHECK=1 bypasses the archive check alone; the layout,
+# patch and book checks before it still run.
 
 ROOT=$(git rev-parse --show-toplevel) || exit 1
 # shellcheck source=ports/srclib.sh

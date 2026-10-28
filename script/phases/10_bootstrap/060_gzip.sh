@@ -20,7 +20,7 @@ fi
 
 echo ">>> Building gzip..."
 
-# Extract gzip and dependencies from ports
+# Unpack the gzip port's source tarball
 GZIP_SRC=$(extract_port_source gzip)
 
 cd "$GZIP_SRC"

@@ -55,6 +55,12 @@ developers.
   no-compile tests, and no running clang-format over Blink's generated code.
 - `enable_rust = true`, `rust_bindgen_root = "/usr"` — Build Chromium's Rust code with the tree's
   Rust, and find `bindgen` in `/usr/bin`.
+- `v8_metagen_libclang_so = "/usr/lib/libclang.so"`,
+  `v8_metagen_libclang_bindings_dir = "../../third_party/llvm-libclang/bindings/python"` — V8's
+  metagen step parses V8's headers through libclang. Its default loads the prebuilt `libclang.so`
+  in `third_party/llvm-libclang`, which the ELF purge in `build.sh` deletes; these point it at the
+  tree's [clang](#port-clang) library and keep the Python bindings that ship beside the deleted
+  copy. The two are set together or not at all.
 - `node_version_check = false` — An argument added by copium's
   `cr138-node-version-check.patch`; the build accepts the tree's Node.js, whose version differs
   from the one Chromium pins.
@@ -125,13 +131,15 @@ sources, keeping their GN files, and `build/linux/unbundle/replace_gn_files.py` 
 at the system's. ffmpeg, ICU, libxml and the rest stay bundled.
 
 `ulimit -n` is raised to 4096 (or the hard limit) before ninja runs. Only the `chrome` and
-`chrome_crashpad_handler` targets are built, and the install copies the program, its resource
-packs, the ANGLE, Vulkan loader and SwiftShader libraries and the `en-US` and `en-GB` locale packs alone.
+`chrome_crashpad_handler` targets are built, and the install copies the program and its crash
+handler, the resource packs, ICU's data, the V8 snapshot, the ANGLE, Vulkan loader and SwiftShader
+libraries and the `en-US` and `en-GB` locale packs alone.
 
 The `/usr/bin/chromium` wrapper sets the three Google API variables to `no`. With none
 configured, Chromium shows an infobar about missing API keys at every start. It adds the
 contents of `$CHROMIUM_FLAGS` to the command line. The managed policy file,
-`/etc/chromium/policies/managed/kdos.json`, turns off metrics, component updates, Safe Browsing,
-password leak detection, sign-in and sync, spell checking and its network service, translation,
-search suggestions, network prediction, DNS over HTTPS, background mode and the generative AI
-features.
+`/etc/chromium/policies/managed/kdos.json`, turns off metrics and URL-keyed data collection,
+component updates, Safe Browsing, password leak detection, sign-in and sync, spell checking and
+its network service, translation, search suggestions, the suggestions on error pages, network
+prediction, DNS over HTTPS, promotions, the default-browser check, background mode and the
+generative AI features.

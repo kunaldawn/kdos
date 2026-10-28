@@ -365,12 +365,17 @@ needs nested virtualisation from its host.
 
    ```bash
    sudo service start libvirtd
-   cat /run/kdos-svc.libvirtd.log
+   sudo cat /run/kdos-svc.libvirtd.log
    ```
+
+   The supervisor keeps the daemon's output in that file, readable by root only, and in the
+   system log; `service start` itself prints only the script's own lines.
 
 2. If it is up, check your groups with `id`: the account needs `wheel` or `libvirt`.
 
-**A guest has no network.** Check that `default` is active (`virsh net-list --all`), that a
+**A guest has no network.** Check that `default` is active
+(`virsh -c qemu:///system net-list --all`; without `-c`, `virsh` run as an ordinary account
+lists the per-user `qemu:///session` networks, of which there are none), that a
 `dnsmasq` is running for it (`pgrep -a dnsmasq`), and that the firewall loaded the libvirt
 fragment. When `/etc/nftables.conf` with its drop-ins does not load at boot, the `nftables`
 service loads it without `/etc/nftables.d` and reports `[FAIL]`, and the libvirt fragment is then
@@ -389,7 +394,12 @@ See [Firewall](firewall.md).
 ls -ld /var/lib/swtpm-localca
 ```
 
-Reinstalling the swtpm package runs its install script again.
+If it does not, give it back, as the swtpm package's install script does:
+
+```bash
+sudo chown -R tss:root /var/lib/swtpm-localca
+sudo chmod 0750 /var/lib/swtpm-localca
+```
 
 **A guest's log.** `virtlogd` keeps each guest's console and QEMU output in
 `/var/log/libvirt/qemu/<guest>.log`. The directory is the package's, and the image carries it
@@ -399,8 +409,9 @@ empty, so before the first guest it holds nothing.
 build; see the first item under [Known gaps](#known-gaps).
 
 **`-netdev bridge` fails as an ordinary user.** QEMU prints
-`failed to parse default acl file '/etc/qemu/bridge.conf'` and `bridge helper failed`: no
-`bridge.conf` is shipped. That is a known gap; use user-mode networking, or a libvirt network.
+`failed to parse default acl file '/etc/qemu/bridge.conf'` and `bridge helper failed`:
+`qemu-bridge-helper` is installed without its setuid bit and no `bridge.conf` is shipped, so the
+helper serves only root. That is a known gap; use user-mode networking, or a libvirt network.
 
 ## Known gaps
 
@@ -414,7 +425,7 @@ build; see the first item under [Known gaps](#known-gaps).
 
 - [Services](../../kdos/02-user-guide/administration.md#services): `62_virtlogd`, `63_libvirtd` and every other service script
 - [The firewall](../../kdos/02-user-guide/administration.md#the-firewall): the ruleset the libvirt fragment joins
-- [Users and groups](../../kdos/02-user-guide/administration.md#users-and-groups): what the `kvm` group makes usable
+- [Users and groups](../../kdos/02-user-guide/administration.md#users-and-groups): the groups an account is in, and what each grants
 - [The security model](../../kdos/03-architecture/security-model.md): polkit with no agent, and the setuid list
 - [Running the result](../../kdos/05-developer/developing.md#running-the-result): booting a KDOS image under QEMU on the build machine
 - [Services](services.md), [Firewall](firewall.md), [Users and groups](users-and-groups.md),

@@ -4,14 +4,20 @@ scripts: the relay plugin lets a remote interface or another WeeChat attach to a
 and scripts in Python, Perl, Ruby, Lua, Tcl and Scheme add the rest. The port builds the curses
 client `weechat`, the daemon-style `weechat-headless`, every plugin upstream ships except the PHP
 and JavaScript ones, the manual pages, and a desktop entry that opens it in a terminal as *IRC*.
-TLS comes from [gnutls](#port-gnutls), and the encrypted secured data and IRC SASL
-authentication from [libgcrypt](#port-libgcrypt).
+TLS and the ECDSA mechanism of IRC SASL come from [gnutls](#port-gnutls); the encryption of
+secured data and the hashing behind the SCRAM mechanisms of IRC SASL come from
+[libgcrypt](#port-libgcrypt).
 
 ## Flags
-- `-DLIBDIR=/usr/lib` — WeeChat's own name for the library directory; the plugins go in
-  `$LIBDIR/weechat/plugins`.
+- `-DLIBDIR=/usr/lib` — WeeChat's own name for the library directory, given although it matches
+  upstream's default under the `/usr` prefix; the plugins go in `$LIBDIR/weechat/plugins`.
 - `-DENABLE_MAN=ON`, `-DENABLE_DOC=OFF` — Build the manual pages, which are generated with
-  [asciidoctor](#port-asciidoctor), and not the HTML user's guide and API references.
+  [asciidoctor](#port-asciidoctor), and not the HTML guides (the user's guide, the plugin API
+  reference, the scripting guide and the rest). Upstream's default for both is off.
+- `-DENABLE_NLS=OFF` — No message catalogues: the interface is in English, and the build needs no
+  gettext. Upstream's default is on; the tree's
+  [language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)
+  would remove the catalogues in any case.
 - `-DENABLE_HEADLESS=ON` — Also build `weechat-headless`, which runs a session with no interface
   for a relay client to attach to.
 - `-DENABLE_ZSTD=ON` — Zstandard compression, for rotated log files and for relay messages.

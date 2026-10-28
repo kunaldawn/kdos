@@ -12,8 +12,9 @@ comment names.
   Its default is `sdl2-config`, which [sdl2-compat](#port-sdl2-compat) does not install.
 - `DO_USERDIRS=1` — with `USE_SDL2=1`: keep configuration, saves and screenshots in `~/.ironwail`
   rather than the game directory, and build on SDL2. Both are upstream's defaults, named.
-- `USE_CURL=0` — build without cURL, which upstream uses for its in-game add-on browser that
-  downloads mods from a remote server. [curl](#port-curl) is not in `depends`.
+- `USE_CURL=0` — build without cURL, which upstream uses only to download the official add-ons of
+  the Quake re-release, from the re-release's own add-on server, into the in-game mods menu.
+  [curl](#port-curl) is not in `depends`.
 - `USE_CODEC_WAVE=1` — with `USE_CODEC_FLAC=1`, `USE_CODEC_MP3=1`, `USE_CODEC_VORBIS=1`,
   `USE_CODEC_OPUS=1`, `USE_CODEC_XMP=1` and `USE_CODEC_UMX=1`: play streamed music as WAV, FLAC
   ([flac](#port-flac)), MP3, Ogg Vorbis ([libvorbis](#port-libvorbis)), Opus
@@ -30,9 +31,9 @@ comment names.
 
 ## Notes
 
-`build.sh` first runs `make -C Misc/pak`, which packs the engine's own menu graphics and
-`default.cfg` from their lumps into `ironwail.pak` with upstream's `mkpak.sh`, and copies the
-result over the prebuilt `Quake/ironwail.pak` in the source before the engine is built.
+`build.sh` first runs `make -C Misc/pak`, which packs the engine's own menu graphics lumps and its
+`default.cfg` into `ironwail.pak` with upstream's `mkpak.sh`, and copies the result over the
+prebuilt `Quake/ironwail.pak` in the source before the engine is built.
 
 The engine finds `ironwail.pak` beside the path it was started by, so the program and the pak are
 installed together in `/usr/lib/ironwail`, and `/usr/bin/ironwail` is a small script that starts

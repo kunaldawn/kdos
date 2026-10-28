@@ -14,7 +14,7 @@ separate source of the recipe, and `build.sh` applies them in order before confi
   shell. Bash reads it before `~/.bashrc` only when this is defined; upstream leaves the definition
   commented out in `config-top.h`. KDOS ships that file, with the history settings, the aliases and
   the prompt marks described in
-  [Prompt marks](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/kdos-term.md#prompt-marks).
+  [Prompt marks](../../../../docs/kdos/04-programs/kdos-term.md#prompt-marks).
 - `--with-curses` — Take the terminal-capability functions from ncurses rather than a separate
   termcap library.
 - `--enable-readline` — Build the interactive line editor in. It is upstream's default, stated.
@@ -29,7 +29,7 @@ separate source of the recipe, and `build.sh` applies them in order before confi
 `/bin/sh` a link to it. On the installed system `/bin` is a link to `usr/bin`, so both land in
 `/usr/bin`, over the two files the bootstrap left there, and kpkg folds `./bin/bash` to
 `./usr/bin/bash` when it compares ownership, so no other package can claim either name under the
-other spelling ([Who owns a file](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/packaging.md#who-owns-a-file)).
+other spelling ([Who owns a file](../../../../docs/kdos/03-architecture/packaging.md#who-owns-a-file)).
 
 Every `#!/bin/sh` script on the image runs in bash, so a script that works here may still use
 something a strict POSIX shell refuses.

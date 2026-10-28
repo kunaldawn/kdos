@@ -18,13 +18,16 @@ directly.
   HTTPS fetches, is [GnuTLS](#port-gnutls). configure prefers NTBTLS, GnuPG's own TLS library,
   whenever it finds it, and falls back to GnuTLS; ntbtls is not a port.
 - `--with-tss=intel` — build `tpm2daemon`, which keeps a key in the TPM, against the Intel TPM
-  software stack, [tpm2-tss](#port-tpm2-tss), named rather than picked from the two configure
-  probes for.
+  software stack, [tpm2-tss](#port-tpm2-tss). Left to detect, configure looks for IBM's stack
+  first, and when it finds neither it builds no `tpm2daemon` and says so only in its summary.
+  Named, a missing tpm2-tss stops configure.
 - `--enable-card-support` — with `--enable-ccid-driver`: build `scdaemon`, and its own CCID
   driver, which reaches a USB card reader directly through [libusb](#port-libusb). Both are
   upstream's default, named.
-- `--enable-sqlite` — keep the TOFU (trust on first use) trust model, which stores what it has
-  seen in an [SQLite](#port-sqlite) database. Upstream's default, named.
+- `--enable-sqlite` — build the two parts of GnuPG that keep their data in an
+  [SQLite](#port-sqlite) database: the TOFU (trust on first use) trust model and `keyboxd`, the
+  key-database daemon. Upstream's default, named. configure answers a missing SQLite with a
+  warning and builds neither.
 - `--with-readline` — with `--with-zlib` and `--with-bzip2`: line editing in `gpg`'s interactive
   prompts, and the ZLIB and BZIP2 compression algorithms of OpenPGP messages.
 - `--disable-tests` — run none of the regression tests in `make check`.

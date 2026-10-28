@@ -8,7 +8,7 @@ program built from a vendored crate bundle, linked against the system's [xz](#po
 
 ## Patches
 
-- `xz2-shared-liblzma.patch` — Changes caligula's `Cargo.toml` dependency on the `xz2` crate from `features = ["static"]` to the plain dependency. The `static` feature makes `lzma-sys` compile the copy of liblzma it carries and link it into the binary; without it, `lzma-sys` finds the system `liblzma` through pkg-config. No environment switch overrides a feature a program turns on, so the change has to be made in the manifest. See [rust](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#rust).
+- `xz2-shared-liblzma.patch` — Changes caligula's `Cargo.toml` dependency on the `xz2` crate from `features = ["static"]` to the plain dependency. The `static` feature makes `lzma-sys` compile the copy of liblzma it carries and link it into the binary; without it, `lzma-sys` finds the system `liblzma` through pkg-config. No environment switch overrides a feature a program turns on, so the change has to be made in the manifest. See [rust](../../../../docs/kdos/05-developer/writing-ports.md#rust).
 
 ## Notes
 

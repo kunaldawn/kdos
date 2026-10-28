@@ -3,8 +3,8 @@
 Tlf is a contest logger for amateur radio, drawn with curses in a terminal. It checks each contact
 for duplicates, tracks multipliers and scores, controls the radio through
 [hamlib](#port-hamlib), and writes the Cabrillo file a contest asks for at the end. Everything
-except the DX-cluster feed works with no network: the log is local, and the Cabrillo file is a
-local file.
+except the DX-cluster feed and the LAN link that shares one contest among several logging
+stations works with no network: the log is local, and the Cabrillo file is a local file.
 
 ## Flags
 

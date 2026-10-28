@@ -14,13 +14,15 @@ that name it talk to the daemon or link the library. `fs/etc/init.d/60_bluetooth
 - `--enable-library` — Install `libbluetooth` and its headers, which upstream does not install by
   default and which the ports that link BlueZ need.
 - `--disable-systemd` — Install no systemd unit files. KDOS has no systemd
-  ([No systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd)).
-- `--enable-obex` — Build `obexd`, the OBEX service for file transfer and phonebook access. It
-  needs [libical](#port-libical)'s `libicalvcal`. Its phonebook stays the default dummy back end;
-  the other one needs evolution-data-server.
-- `--enable-cups` — Install the CUPS backend for Bluetooth printers. `configure` installs it only
-  when it can read CUPS's `serverbin` directory from pkg-config, and says nothing when it cannot,
-  so [cups](#port-cups) is in `depends` to make the result the same in every build order.
+  ([No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)).
+- `--enable-obex` — Build `obexd`, the OBEX service for file transfer and phonebook access, which
+  is also upstream's default. It links [libical](#port-libical)'s `libicalvcal`. Its phonebook
+  stays the default `dummy` back end; the other two, `ebook` and `tracker`, need
+  evolution-data-server and Tracker.
+- `--enable-cups` — Build `bluetooth`, the CUPS backend for Bluetooth printers, which is also
+  upstream's default. It links no CUPS library. It is installed into the `backend` directory under
+  the `cups_serverbin` that pkg-config reads from [cups](#port-cups), or under `/usr/lib/cups` when
+  that is not found; both are `/usr/lib/cups/backend` here.
 - `--enable-midi` — Build Bluetooth Low Energy MIDI support, which links
   [alsa-lib](#port-alsa-lib).
 - `--enable-deprecated` — Install the tools upstream marks deprecated, among them `hciattach`,

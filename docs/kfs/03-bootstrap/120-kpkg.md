@@ -34,9 +34,9 @@ The step names its sources and its output, a scratch file under `build/tmp`:
 
 ### The mark is a hash
 
-Every other bootstrap step skips itself when its mark file exists. This one writes a SHA-256 into
-its mark instead, over every `.c` and `.h` file and [`kpkg.conf`]{.idx} in the four source directories and
-over the step script itself, and skips only when the stored hash still matches:
+The other package steps of the bootstrap skip themselves when their mark file exists. This one
+writes a SHA-256 into its mark instead, over every `.c` and `.h` file and [`kpkg.conf`]{.idx} in
+the four source directories and over the step script itself, and skips only when the stored hash still matches:
 
 <!-- kfs:include script/phases/10_bootstrap/120_kpkg.sh lines=39-47 pin=06f2d23891ca -->
 
@@ -83,8 +83,8 @@ with is here, and because no later phase rebuilds it, the line carries the tree'
 : Relative relocations are stored in the compact `DT_RELR` form, which musl's loader reads.
 
 `-Wl,--build-id=sha1`
-: The build ID note is a hash of the binary's contents rather than random, so the same sources
-  give the same binary.
+: The binary carries a build ID note, a SHA-1 of its contents, so the same sources give the same
+  ID. The cross compiler adds no build ID of its own.
 
 `-I…`
 : Each library's directory and the program's own, for their headers.

@@ -79,10 +79,6 @@ static void on_hup(int sig)
 	g_reload = 1;
 }
 
-/* OSC 0 and OSC 2, which is how a program names its own window. It reaches the
- * frame whoever drew it: `kdisp_set_title()` is `xdg_toplevel_set_title` under
- * a compositor, and the box this program draws when nothing else did reads
- * `g_title` directly. */
 /*
  * A CHILD PUT SOMETHING ON THE CLIPBOARD, through OSC 52. It goes wherever
  * this program's display server puts a selection, which is the compositor's
@@ -96,6 +92,10 @@ static void on_clip(struct kvt_vte *vte, const char *text, size_t len,
 	kdisp_copy(text, len, primary);
 }
 
+/* OSC 0 and OSC 2, which is how a program names its own window. It reaches the
+ * frame whoever drew it: `kdisp_set_title()` is `xdg_toplevel_set_title` under
+ * a compositor, and the box this program draws when nothing else did reads
+ * `g_title` directly. */
 static void on_osc(struct kvt_vte *vte, const char *u8, size_t len, void *data)
 {
 	(void)vte;

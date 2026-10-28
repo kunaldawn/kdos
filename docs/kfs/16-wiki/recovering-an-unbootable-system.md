@@ -29,7 +29,7 @@ The live medium carries every tool the procedures below use: `cryptsetup`, `lvm`
 
 The consoles and single-user mode are entries of `/etc/inittab`, shipped from `fs/etc/inittab`:
 
-<!-- kfs:include fs/etc/inittab lines=11-39 pin=7a3549400522 -->
+<!-- kfs:include fs/etc/inittab lines=11-40 pin=c1172d0a1a26 -->
 
 `sulogin` asks for **root's** password. The installer locks root unless it was asked to set a root
 password (`root_locked` in an answer file, see
@@ -116,7 +116,8 @@ session.
 ### Emergency mode
 
 1. Stop the countdown, highlight `KDOS`, and press `E`.
-2. Add `emergency` to the `cmdline:` line, and press `F10` to boot it.
+2. Add `emergency` to the `cmdline:` line, and press `F10` to boot it. The editor is described
+   in [Adding a parameter for one boot](boot-menu-and-kernel-parameters.md#adding-a-parameter-for-one-boot).
 3. `sulogin` runs before `rcS`, with the same prompt as single-user mode: only the initramfs's
    mounts exist, which are the root, `/proc`, `/sys`, `/dev` with `/dev/pts` and `/dev/shm`, and
    no service has run (`/run/kdos-init.*.log` does not exist yet; `runlevel` prints `unknown`).
@@ -299,14 +300,18 @@ graphical session. Use `sudo poweroff`.
 - [Diagnosing](../../kdos/02-user-guide/administration.md#diagnosing) and
   [Services](../../kdos/02-user-guide/administration.md#services)
 - [What the installer writes](../../kdos/02-user-guide/installation.md#what-the-installer-writes)
-- `initramfs-and-rescue.md`: [The initramfs and the rescue shell](initramfs-and-rescue.md)
-- `ab-slots-and-rollback.md`: [A/B slots and rollback](ab-slots-and-rollback.md)
-- `boot-menu-and-kernel-parameters.md`: [Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md)
-- `live-persistence.md`: [Live persistence](live-persistence.md)
-- `init-and-runlevels.md`: [Init and runlevels](init-and-runlevels.md)
-- `services.md`: [Services](services.md)
-- `logs.md`: [Logs](logs.md)
-- `encrypted-root.md`: [Encrypted root](encrypted-root.md)
+- [The initramfs and the rescue shell](initramfs-and-rescue.md): the rescue shell's messages and
+  what each one means
+- [A/B slots and rollback](ab-slots-and-rollback.md): rolling an update back and booting the
+  other slot once
+- [Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md): reaching the menu and
+  adding a parameter for one boot
+- [Live persistence](live-persistence.md): booting the live medium past its persistence store
+- [Init and runlevels](init-and-runlevels.md): `/etc/inittab`, the recovery console and
+  single-user mode
+- [Services](services.md): finding out why a service did not start, and keeping one from starting
+- [Logs](logs.md): what a boot printed, and the system log across boots
+- [Encrypted root](encrypted-root.md): opening an encrypted root by hand from the live medium
 
 <!-- book-nav -->
 ---

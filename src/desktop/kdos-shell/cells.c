@@ -18,11 +18,9 @@
  * cell buffer is private to libktui and the backend vtable is its documented
  * seam, and offscreen mode short-circuits the flush entirely.
  *
- * ONE COPY. This was written three times — kdos-keys, kdos-doc and
- * kdos-openwith each carried the same forty-five lines — which is three
- * answers to what a cell dump looks like and two of them nobody was reading.
- * A golden compares text: the moment two surfaces print it differently, half
- * the goldens are of a format the other half does not use.
+ * ONE COPY, which every surface's cell dump calls. A golden compares text:
+ * the moment two surfaces print it differently, half the goldens are of a
+ * format the other half does not use.
  * ---------------------------------
  */
 

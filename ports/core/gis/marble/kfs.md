@@ -16,8 +16,8 @@ Behaim globe of 1492, and `marble-maps`, a Kirigami map-and-navigation front end
   them out of the package, as the image is English only (see
   [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
 - `-DBUILD_QT_AND_KDE=OFF` — Builds one main program, not both a plain Qt one and a KDE one. With
-  [kparts](#port-kparts) found, the one built is the KDE application, `marble-kde`, installed as
-  `marble`.
+  [kparts](#port-kparts) found, the one built is the KDE application in `src/apps/marble-kde`,
+  whose program is `marble`; without it, the plain Qt `marble-qt` would be built instead.
 - `-DBUILD_MARBLE_APPS=ON` — Builds the applications, upstream's default. Behaim and Marble Maps
   are built with it whenever KConfig, KI18n and KCoreAddons are found; they need
   [kirigami](#port-kirigami) at run time.
@@ -31,9 +31,10 @@ Behaim globe of 1492, and `marble-maps`, a Kirigami map-and-navigation front end
 - `-DWITH_DESIGNER_PLUGIN=OFF` — Leaves out the Marble widget plugin for Qt Designer, which is on
   by default.
 - `-DWITH_libgps=ON`, `-DWITH_libshp=ON`, `-DWITH_ZLIB=ON` — Marble probes each of these with a
-  macro that makes an option `WITH_<name>`, on by default, and quietly leaves the feature out when
-  the package is not found. Named here: positions from [gpsd](#port-gpsd), shapefiles through
-  [shapelib](#port-shapelib), and the system zlib rather than the copy in `src/3rdparty/zlib`.
+  macro that makes an option `WITH_<name>`, on by default, and quietly carries on when the package
+  is not found: without gpsd or shapelib the feature is left out, and without zlib the copy in
+  `src/3rdparty/zlib` is built instead. Named here: positions from [gpsd](#port-gpsd), shapefiles
+  through [shapelib](#port-shapelib), and the system [zlib](#port-zlib).
   The loop after configure checks that gpsd's and shapelib's libraries and `protoc` were found,
   so a missing one fails the build instead of shipping a Marble without it.
 - `-DWITH_Phonon4Qt6=OFF` — No Phonon, which gives the routing plugin spoken turn instructions.

@@ -1,11 +1,11 @@
 # testing/bootcheck — driving a booted KDOS from a script
 
 `preflight.sh` proves the wiring, `selftest.sh` proves the decisions, and
-neither of them has ever seen a session. Both were clean on the day the desktop
-opened every window underneath its own panel, drew the launcher's selected row
-as a solid green block with the text punched out of it, and parked an empty
-notification rectangle in the middle of the screen. Those are screen bugs, and
-the only thing that finds a screen bug is a screen.
+neither of them sees a session. Both pass on a desktop that opens every window
+underneath its own panel, draws the launcher's selected row as a solid block
+with the text punched out of it, or parks an empty notification rectangle in
+the middle of the screen. Those are screen bugs, and the only thing that finds
+a screen bug is a screen.
 
 This is the plumbing for the third gate. It boots the ISO with **no display**,
 puts the serial console and the qemu monitor on unix sockets, and gives a script
@@ -26,7 +26,7 @@ kill $(cat /tmp/kdos-bootcheck/qemu.pid)
 | `guest.py <cmd…>` | runs a command on the serial console and prints only its output; `KQ_TIMEOUT` in seconds |
 | `type.py '<text>'` | types into the VT via monitor `sendkey`; `\n` is Enter |
 
-Four things it exists to encode, each of which cost a debug cycle:
+Four rules it encodes, each of which breaks the run when ignored:
 
 - **One owner per socket.** A background reader polling the serial socket while
   something else writes to it desynchronises the console: replies land in the

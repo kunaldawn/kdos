@@ -16,9 +16,12 @@
 # assignment syntax, so bash performs `$name`, `${version%.*}` and the rest
 # itself — which is exactly what the recipes were written against.
 #
-# Only the keys this file uses are evaluated. `description` and `homepage` are
-# free text that could contain a backtick, and there is no reason to let them
-# near an eval.
+# Every key whose name is a shell identifier is evaluated, except four.
+# `description`, `homepage`, `depends` and `pypackages` are skipped: they are
+# free text that could contain a backtick, and nothing here reads them. Every
+# other key — `license`, `group`, `bench`
+# and the recipe helpers alike — goes through eval, so a backtick or `$(` in
+# one of those runs as a command when the recipe is read.
 read_recipe() {
     local file=$1 line key val
     unset name version release source vendoring

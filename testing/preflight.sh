@@ -9,10 +9,10 @@
 #   testing/preflight.sh — everything a full build would catch, minus the build
 #
 # `make build` takes hours and needs a container. This checks the WIRING in
-# seconds: that every package named in a phase list resolves, that every
-# recipe parses, that the phase scripts are valid shell, that nothing still
-# points at a file the C consolidation removed, and that the shipped rootfs
-# carries no script whose interpreter is gone.
+# about two and a half minutes: that every package named in a phase list
+# resolves, that every recipe parses, that the phase scripts are valid shell,
+# that no retired path exists and nothing invokes a retired tool, and that the
+# shipped rootfs carries no script whose interpreter is gone.
 #
 # It cannot prove the build works. It can prove the build will not fail for one
 # of the dull reasons.
@@ -785,8 +785,9 @@ note "pip ignore-installed" "$pip_checked pip installs into a package root check
 # file(1)'s answer depends on which magic database the machine has, and the
 # suite is meant to pass inside kdos-devdeps: the SAME file-5.46 calls the
 # 95 MB Noto CJK zip "Zip archive data" on a development host and "data" in
-# that container, so the check below reported a good archive as broken in the
-# one place it has to be right. A signature is six bytes and no database.
+# that container, so a check asking `file` would report a good archive as
+# broken in the one place it has to be right. A signature is six bytes and no
+# database.
 #
 # Every suffix the caller matches is covered. A plain uncompressed tar carries
 # no leading signature at all — `ustar` sits at offset 257 of the first header
@@ -1060,13 +1061,11 @@ for d in "${PORTS_ALL[@]}"; do
         [ -f "$f" ] || continue
         scripts=$((scripts + 1))
         bash -n "$f" 2>"$SP/err" || bad "$p" "$(basename "$f"): $(head -1 "$SP/err")"
-        # `local` is only legal inside a function, and a build.sh IS the
-        # function body now — bash accepts it at parse time and dies at RUN
-        # time with "can only be used in a function", hours into a build.
-        # `bash -n` cannot see it. It is a scar from the recipe conversion:
-        # the old format wrapped the build in `build() { ... }`, where local
-        # was fine, and the conversion lifted the body out verbatim. No
-        # build.sh in the tree defines a function, so any `local` is this bug.
+        # `local` is only legal inside a function, and a build.sh runs as a
+        # plain script — bash accepts it at parse time and dies at RUN time
+        # with "can only be used in a function", hours into a build. `bash -n`
+        # cannot see it. No build.sh in the tree defines a function, so any
+        # `local` in one is this failure.
         if grep -qn '^[[:space:]]*local[[:space:]]' "$f"; then
             bad "$p" "$(basename "$f"): 'local' outside a function (line $(grep -n '^[[:space:]]*local[[:space:]]' "$f" | head -1 | cut -d: -f1))"
             missing=$((missing + 1))
@@ -1611,8 +1610,10 @@ fi
 #
 # The check is against a STRING THE SOURCE OWNS. Comparing timestamps cannot
 # work — build/fs is stamped to a fixed epoch for reproducibility — and
-# comparing hashes would need a reference build. `limine`, which the rewritten
-# installer must mention and the old one cannot, answers it in one grep.
+# comparing hashes would need a reference build. The limine share path that
+# install.c names must appear in the built binary's strings: one grep proves
+# the binary was built from an install.c that names that path, and nothing
+# about any other edit to the installer's sources.
 echo
 echo "==> the built kinstall is the installer in this tree"
 ki_src=src/system/kdos-installer/install.c
@@ -1719,8 +1720,9 @@ if [ -d ports/core ] && git rev-parse --git-dir >/dev/null 2>&1; then
     # hash on two lines names two places for one file, two assets one name
     # apart in a tag are one download URL, and a format-1 index is one fetch
     # skips whole. srclib.sh's src_index_problems holds every rule, so
-    # ports/publish and this check the same ones. Absent is fine — nothing is
-    # archived yet.
+    # ports/publish and this check the same ones. An absent index is skipped,
+    # not refused: fetch then resolves every source from the cache or
+    # upstream.
     if [ -f ports/sources.idx ]; then
         pa_idx_bad=$(src_index_problems ports/sources.idx)
         pa_idx_n=$(grep -cE '^[0-9a-f]{64} ' ports/sources.idx)

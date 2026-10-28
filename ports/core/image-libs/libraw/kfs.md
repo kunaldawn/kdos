@@ -7,16 +7,17 @@ libvips, openimageio, gegl and KDE's libkdcraw link it.
 
 ## Flags
 
-- `${CFLAGS/-O2/-O3}` — Compile at `-O3` instead of the tree's `-O2`. [Every
-  port](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#every-port)
-  says when a recipe raises the level.
+- `${CFLAGS/-O2/-O3}` — Compile at `-O3` instead of the tree's `-O2`.
+  [Every port](../../../../docs/kdos/05-developer/writing-ports.md#every-port) says when a recipe
+  raises the level.
 - `--disable-examples` — Build none of the sample programs (`dcraw_emu`, `raw-identify` and the
   others); consumers link the library.
 - `--enable-openmp` — Parallelise the demosaic algorithms and several decoders (Canon CR3,
   Fujifilm compressed, Panasonic) with OpenMP, over gcc's `libgomp`; `gcc` is in `depends` for that
   library.
-- `--enable-jpeg` — With `--enable-lcms` and `--enable-zlib`, decode lossy-JPEG raws through
-  libjpeg-turbo, apply colour profiles through lcms2, and read deflate-compressed DNG through zlib.
+- `--enable-jpeg` — With `--enable-lcms` and `--enable-zlib`, decode lossy-compressed DNG files
+  through libjpeg-turbo, apply colour profiles through lcms2, and read deflate-compressed DNG
+  through zlib.
 
 ## Notes
 

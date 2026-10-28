@@ -9,12 +9,12 @@ is `glabels-3`.
 - `CFLAGS="$CFLAGS -fcommon -Wno-error=incompatible-pointer-types"` — `-fcommon` because two of
   gLabels' headers define a global variable instead of declaring it, so every object that includes
   one carries its own definition; GCC's default, `-fno-common`, makes the link fail on the
-  duplicates, and `-fcommon` merges them. `-Wno-error=incompatible-pointer-types` turns two pointer
-  conversions that GCC rejects as errors back into warnings.
+  duplicates, and `-fcommon` merges them. `-Wno-error=incompatible-pointer-types` turns the
+  pointer conversions between incompatible types, which GCC rejects as errors, back into warnings.
 - `--disable-gtk-doc` — Build no gtk-doc API reference for libglabels, the library gLabels installs with the program.
 - `--disable-schemas-compile` — Do not run `glib-compile-schemas` at install time; kpkg rebuilds
   the shared GSettings schema cache after an install as one of its
-  [shared indexes](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#shared-indexes).
+  [shared indexes](../../../../docs/kdos/05-developer/writing-ports.md#shared-indexes).
 - `--without-libzint` — No Zint barcode backend. gLabels' backend calls `ZBarcode_Render`, which
   the library of [zint](#port-zint) does not have, so configure would not find it and the backend
   could not build against the port.
@@ -32,5 +32,6 @@ to; without `xml-unzip.patch` every saved label fails to open.
 Only the English help under `/usr/share/help/C` is kept.
 
 The program has no GtkApplication and calls no `set_prgname`, so its Wayland app id is the program
-name, `glabels-3`. `build.sh` replaces upstream's desktop entry, whose name carries a "3", with one
-that names that id in `StartupWMClass`.
+name, `glabels-3`. `build.sh` replaces upstream's desktop entry, `glabels-3.0.desktop`, named
+"gLabels Label Designer 3" and with no `StartupWMClass`, with `glabels-3.desktop`, which names that
+id in `StartupWMClass`.

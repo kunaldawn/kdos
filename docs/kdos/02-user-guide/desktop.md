@@ -14,16 +14,17 @@ listed with its default in [Configuration](../06-reference/configuration.md).
 | Piece | Program |
 |---|---|
 | Window frames, the compositor's menus, the phosphor pass | [`kdos-comp`](../04-programs/kdos-comp.md), the compositor |
-| The panel | `kdos-shell` |
+| The panel | [`kdos-shell`](../04-programs/kdos-shell.md) |
 | Icons on the wallpaper | `kdos-desk` |
 | Everything that opens from the panel | Other names of the same `kdos-shell` binary |
 
 The *phosphor pass* is a shader that makes the whole screen imitate a CRT; see the
-[glossary](../06-reference/glossary.md).
+[glossary](../06-reference/glossary.md#phosphor-pass).
 
 The compositor starts one panel and one desktop-icon surface per screen. The panel sits on the
-bottom edge and is two character cells tall. Its second row carries the clock's date, the meters
-strip and, when window buttons show their names, each window's title under its application name.
+bottom edge and is two character cells tall. Its second row carries the clock's date and, when
+window buttons show their names, each window's title under its application name. The meters strip
+sits between the window list and the notification area, as tall as the bar.
 
 The panel's shape is set in `~/.config/kdos/comp.conf`. Each of these keys becomes part of a
 program's command line, so the compositor reads them once, when the session starts: a change takes
@@ -44,7 +45,8 @@ with an empty value is ignored and the default stays in force.
 | `icons` | `yes` | `no` draws a character glyph wherever a picture would go |
 | `slit` | `no` | `yes` starts `kdos-slit`, a column of small gadgets configured in `~/.config/kdos/slit.conf`, one gadget per line as `<interval_s> <width_cells> <command> [args…]` |
 
-The wallpaper and the phosphor pass are also `comp.conf` keys; [Theming](theming.md) covers them.
+The wallpaper and the phosphor pass are also `comp.conf` keys; Theming covers
+[the wallpaper](theming.md#wallpaper) and [the phosphor pass](theming.md#the-phosphor-pass).
 Settings' Panel and Desktop pages write the same keys.
 
 ## How the desktop is drawn
@@ -61,7 +63,7 @@ Three things are not on that grid:
   display, drawn as text sized to one cell; see [Windows](#windows).
 - **Applications.** A graphical application draws whatever its own toolkit draws, whether it is
   built natively or runs in a *box*, the container a boxed application runs in (see the
-  [glossary](../06-reference/glossary.md)). Only its window frame and its file dialogs are the
+  [glossary](../06-reference/glossary.md#box)). Only its window frame and its file dialogs are the
   desktop's.
 - **Pictures**, such as icons and window previews, which occupy whole cells.
 
@@ -70,11 +72,11 @@ this, and [kdos-shell](../04-programs/kdos-shell.md) explains how each surface i
 
 ## The panel
 
-These are the pieces that are always on the panel, from left to right. The occasional ones (the
-recording lamps, the now-playing controls, the clipboard depth, the CPU readout, the update and
-restart marks, the stutter chip) are widgets you can add, remove and reorder; the second table
-below says how each answers a click, and [the notification area](#the-notification-area) explains
-how to choose them.
+These are the pieces the panel shows by default, from left to right. Everything from the workspace
+squares to the clock is a widget of the notification area, which you can remove and reorder as
+[the notification area](#the-notification-area) explains. Some widgets appear only some of the time
+(the recording lamps, the now-playing controls, the clipboard depth, the CPU readout, the update and
+restart marks, the stutter chip); the second table below says how each of those answers a click.
 
 | Element | Left click | Middle click | Right click |
 |---|---|---|---|
@@ -87,7 +89,7 @@ how to choose them.
 | Overflow chevron | The status popup, listing what is behind it | — | — |
 | Network | The network manager, `kdos-net` | — | The network manager |
 | Volume | A slider you can drag; the wheel over it changes the volume by 5% | Mute or unmute | Audio devices and volumes |
-| Battery | The calendar | — | Settings' Session page |
+| Battery, on a machine that has one | The calendar | — | Settings' Session page |
 | Notification badge | The notification centre | Do not disturb, on and off | — |
 | Clock | The calendar. The clock and the battery share this popup, so either one closes what the other opened | — | — |
 | Show desktop (the last column) | Minimises every window, or brings back the ones it minimised when nothing is on screen | — | — |
@@ -99,7 +101,7 @@ The widgets that come and go answer clicks like this:
 
 | Widget | Left click | Middle click | Right click |
 |---|---|---|---|
-| Microphone lamp | Mute every capture switch on the sound card; a second click restores them | The same as a left click | Audio devices and volumes |
+| Microphone lamp | Mute the sound card's capture control (`Capture`, or `Mic` on a card without one); a second click unmutes it | The same as a left click | Audio devices and volumes |
 | Camera or screen lamp | Devices (`kdos-devices`) | — | Devices |
 | Removable media | Devices | — | Devices |
 | Now playing | Play or pause | Previous track | Next track |
@@ -141,9 +143,11 @@ window buttons need as pictures.
 
 ### The meters strip
 
-The meters strip is up to sixteen cells of live graphs on the panel's second row. The default set is
-CPU, memory and network. The network meter is a mirrored pair: data received is drawn above the
-midline in the accent colour and data sent below it in the secondary colour, on one shared scale.
+The meters strip is up to sixteen cells of live graphs between the window list and the notification
+area, drawn as tall as the panel. Where the panel cannot draw pictures it falls back to a line of
+text graphs on its second row. The default set is CPU, memory and network. The network meter is a
+mirrored pair: data received is drawn above the midline in the accent colour and data sent below it
+in the secondary colour, on one shared scale.
 
 Choose the meters with `meters =` in `~/.config/kdos/panel.conf`. Six are available:
 
@@ -252,18 +256,24 @@ group folds behind a single **Settings** row. The rows named by `@toplevel` in
 `/etc/kdos/menu.conf` (by default Network, Sound, Displays and Terminal) stay listed beside it; a
 copy of that line in `~/.config/kdos/menu.conf` overrides it.
 
-The footer holds five power actions: Lock Screen, Suspend, Restart, Log Off and Shut Down.
-Restart, Log Off and Shut Down ask before they act. Suspend does not ask, because waking the machine
-undoes it.
+The footer holds the search field and, at its right end, five power actions drawn as pictures: Lock
+Screen, Suspend, Restart, Log Off and Shut Down. Resting the pointer on one names it in the search
+field. Restart, Log Off and Shut Down ask before they act. Suspend does not ask, because waking the
+machine undoes it.
+
+While nothing has been typed, the search field shows the description of the selected application,
+and `Type to search` when there is none.
 
 ### Searching
 
-Start typing to search. There is no field to click: the first letter you type turns the left
-column into results, `Esc` clears the search, and a second `Esc` closes the menu. The search covers
-applications, every row in the right column, the power actions and every named *route* (a stable
-`verb.noun` name for a place in the system, such as `setup.network`, defined in
-`/etc/kdos/menu.conf`). Each fixed row also answers to synonyms: typing `wifi` finds Network. A
-search with results offers **Clear search** as its first row.
+Start typing to search. The keys go to the search field without clicking it first; clicking it only
+lights it up. The first letter you type turns the left column into results, `Esc` clears the search,
+and a second `Esc` closes the menu. The search covers applications, every row in the right column,
+the power actions and every named *route* (a stable `verb.noun` name for a place in the system,
+such as `setup.network`, defined in `/etc/kdos/menu.conf`; see the
+[glossary](../06-reference/glossary.md#route)). Each fixed row also answers to synonyms: typing
+`wifi` finds Network. Every search offers **Clear search** as its first row, and the mark at the
+right end of the field clears it too.
 
 An application that runs in a box is marked `[box]`, because its first launch has to start a
 container and takes noticeably longer. The mark at the right edge of an application row pins or
@@ -307,8 +317,8 @@ run `kdos-term` to open one. **Terminal**, in the menus and in the System column
 When the medium you booted from carries application packs, a search also lists matching applications
 that are not installed yet, under **INSTALL FROM THE MEDIUM**, and each category of All Programs
 lists them under **ON THE MEDIUM**. Choosing one installs it and opens it in one action. The
-standard image carries no packs, so these rows appear only on a medium that has them. To build
-applications from the catalogue instead, open the application store, `kdos-store`, from the command
+standard image carries no application packs, so these rows appear only on a medium that has them.
+To build applications from the catalogue instead, open the application store, `kdos-store`, from the command
 palette's setup routes (`Super+Ctrl+H`; the command palette is described under [Keyboard
 shortcuts](#applications-and-shell-surfaces)). See [Applications](applications.md).
 
@@ -330,8 +340,8 @@ of cells.
 
 A frame may carry a small coloured square at the left of its title. That is a *box chip*, showing
 which box the window came from. It appears only for a box given its own colour with `accent =` in
-`~/.config/kdos/boxes/<name>.conf`, so a fresh install shows none. When the same application runs in
-two boxes, the panel adds the box name to its window label, as in `GIMP (arch)`.
+[`~/.config/kdos/boxes/<name>.conf`](../06-reference/configuration.md#configkdosboxesnameconf), so a
+fresh install shows none. When the same application runs in two boxes, the panel adds the box name to its window label, as in `GIMP (arch)`.
 
 To move a window, drag its title bar, or hold `Super` and drag anywhere in the window. To resize
 one, drag a border, or hold `Super` and right-drag anywhere in the window. Many boxed applications
@@ -435,7 +445,7 @@ saved as a job in `~/.config/kdos/timers.d`, so it survives logging out, and it 
 | `Super+X` | Dismiss the notification on screen |
 | `Super+Shift+X` | Dismiss every notification on screen |
 | `Super+Ctrl+X` | Do not disturb, on and off |
-| `Super+Alt+X` | Bring back the last dismissed notification |
+| `Super+Alt+X` | Bring back the newest notification in the notification centre |
 | `Super+Ctrl+Alt+T` | Show the time as a notification |
 | `Super+Ctrl+Alt+B` | Show the battery level as a notification |
 | `Super+Ctrl+I` | Stay awake: stop dimming, locking and blanking on idle, and allow them again |
@@ -523,7 +533,8 @@ once you answer there is no session left to save it from. Log Out, Restart and S
 compositor's root menu save it the same way; the Start menu's footer and the System menu do not.
 The list is used only when `~/.config/kdos/session-restore` exists: create that file
 (`touch ~/.config/kdos/session-restore`) and your boxed applications are started again at the next
-login, two seconds apart. Programs that are not boxed are recorded but not restarted.
+login, two seconds apart. Programs that are not boxed are not restarted; where each window comes
+back to is the desktop's [window memory](#windows), not this list.
 
 ### Accessibility
 
@@ -612,9 +623,10 @@ cannot tell the difference. A notification marked urgent is shown anyway. While 
 the badge shows a moon.
 
 A left click on a toast's button runs that action, a left click on a toast whose text holds one link
-opens the link, and any other click dismisses the toast; so does `Super+X`. `Super+Alt+X` brings the
-last one back if you dismissed it too early. It comes back without its buttons, because the original
-notification is closed and its actions belonged to the program that sent it.
+opens the link, and any other click dismisses the toast; so does `Super+X`. `Super+Alt+X` brings
+back the newest notification in the notification centre, whether you dismissed it, it ran out or Do
+not disturb kept it off the screen, and takes it out of the centre while it is on screen. It comes back without its buttons,
+because the original notification is closed and its actions belonged to the program that sent it.
 
 `Super+Ctrl+I` and `Super+Ctrl+Shift+N` each raise a one-line notice saying whether the switch is
 on or off. Stay awake changes nothing on screen, so for that switch the notice is the only sign that
@@ -721,8 +733,9 @@ Some of the shipped defaults:
 | A disc image (`.iso`) | Burn (`kdos-burn`) |
 | A `.rar` archive, or a comic book packed as 7z or rar | `kdos-openarchive` |
 | A `.csv` file | No default: `visidata` and LibreOffice Calc both claim `text/csv`, so **Open With** asks |
-| A Word, OpenDocument, Works or RTF document | LibreOffice Writer |
+| A Word (`.docx`) or Works document, or a flat OpenDocument text (`.fodt`) | LibreOffice Writer |
 | A flat OpenDocument spreadsheet, presentation or drawing (`.fods`, `.fodp`, `.fodg`) | LibreOffice Calc, Impress or Draw |
+| Any other type, such as an ordinary `.odt` or `.rtf` | No row in the shipped tables: whichever installed application claims it, or **Open With** when more than one does |
 | A `mailto:` link, an `.eml` message or an `.ics` calendar | Thunderbird |
 | A web page, `http:` or `https:` link | Firefox ESR |
 | An `rdp:`, `vnc:`, `spice:` or `remmina:` link | Remmina |
@@ -730,7 +743,8 @@ Some of the shipped defaults:
 
 The system-wide defaults are in two files, and a type is named in only one of them.
 `/etc/xdg/kdos-mimeapps.list` is searched first and holds every choice that needs a window, which is
-every row in the table above except the `kdos-openarchive` row and the `.csv` row. A Word document
+every row in the table above except the `kdos-openarchive` row, the `.csv` row and the row for
+any other type. A Word document
 has a row because `doxx`, a terminal viewer, claims `.docx` beside Writer, and without one the
 choice would be asked on every open; the other office types have one for the same reason, wherever
 a second entry claims them.
@@ -856,7 +870,9 @@ The service offers only a disk that is removable or attached over USB, and never
 - anything listed in `/etc/fstab`,
 - the medium this system booted from.
 
-See [the daemons](../04-programs/daemons.md) for the full rules.
+See [which devices are offered](../04-programs/daemons.md#which-devices-are-offered) and
+[`/etc/kdos/mountd.conf`](../04-programs/daemons.md#etckdosmountdconf) in the daemons chapter for
+the full rules.
 
 ![kdos-devices: removable media, cameras and microphones on one surface](../../screenshots/devices.png)
 

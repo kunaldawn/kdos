@@ -82,9 +82,9 @@ Your own store is `~/.local/share/containers/storage`, and its run directory
 [`/etc/containers/storage.conf`]{.idx} mounts it through [`fuse-overlayfs`]{.idx}, which the live
 medium needs, because its home directory is on the boot
 overlay and the kernel will not stack an overlay's writable layer on an overlay. On an installed
-system, `kdos-appbox` writes `~/.config/containers/storage.conf` on its first run, choosing the
-kernel's own overlay driver, but only when the file does not exist, the store holds no container,
-and your home is on ext2, ext3, ext4, btrfs, XFS or F2FS. The two drivers mark deletions
+system, `kdos-appbox` writes `~/.config/containers/storage.conf` naming the kernel's own overlay
+driver. It checks each time it runs, and writes the file only when the file does not exist, the
+store holds no container, and your home is on ext2, ext3, ext4, btrfs, XFS or F2FS. The two drivers mark deletions
 differently, so once a container exists the driver must not change. See
 [Storage drivers](../../kdos/04-programs/kdos-appbox.md#storage-drivers).
 
@@ -166,7 +166,10 @@ kdos-podman-api lazydocker
 kdos-podman-api podman-tui
 ```
 
-The menu's *Containers* and *Containers (lazydocker)* entries do this. `kdos-podman-api` gives
+The menu's *Containers* and *Containers (lazydocker)* entries do this. A login shell already has
+`DOCKER_HOST` naming the same socket, set by `/etc/profile.d/podman-docker.sh` from the podman
+port, but nothing listens on it unless `kdos-podman-api` has started the service and the service
+has not yet exited, so a Docker client run on its own usually finds no socket. `kdos-podman-api` gives
 `podman-tui` its connection by writing a small containers configuration that names the socket,
 `$XDG_RUNTIME_DIR/podman/kdos-api.conf`, and pointing `CONTAINERS_CONF_OVERRIDE` at it; when you have exported a `CONTAINERS_CONF_OVERRIDE` of
 your own, it leaves yours in place and sets only `DOCKER_HOST`. Any command works in their place,
@@ -191,7 +194,7 @@ a password login prints `0::/`, and there a `--memory` container has no `memory.
 ### On the live medium and on an installed system
 
 On the live medium the store is on the overlay in RAM, goes through `fuse-overlayfs`, and is gone
-at power-off unless the medium has a persistence store. On an installed system the store is on
+at power-off unless the medium has a persistence store ([Live persistence](live-persistence.md)). On an installed system the store is on
 disk, and uses the kernel's overlay driver once `kdos-appbox` has written your `storage.conf`.
 
 ## Tips
@@ -211,8 +214,9 @@ disk, and uses the kernel's overlay driver once `kdos-appbox` has written your `
 
 ## Troubleshooting
 
-Start with `kdos doctor`. Its Containers section checks that the mount namespace's root is `/` and
-that `/etc/subuid` and `/etc/subgid` carry your range; its Desktop section checks the setuid bits
+Start with `kdos doctor` ([Diagnostics](diagnostics.md)), run as your own account. Its Containers
+section checks that the mount namespace's root is `/`, that `/etc/subuid` and `/etc/subgid` carry
+your range, and that `podman info` can open your store; its Desktop section checks the setuid bits
 on `newuidmap` and `newgidmap`. On a healthy machine:
 
 ```text
@@ -220,21 +224,26 @@ Containers
   [ ok ] mount namespace root is /
   [ ok ] subuid mapping present
   [ ok ] subgid mapping present
+  [ ok ] podman store /home/<you>/.local/share/containers/storage
 ```
+
+When `podman info` fails, the line is a `[warn]` that carries podman's own first line of error.
 
 `Error: creating runtime static files directory "/var/lib/containers/storage/libpod": mkdir /var/lib/containers/storage: permission denied`
 : Rootless Podman is using root's store, because a `storage.conf` it reads names `graphroot` or
   `runroot`. `podman info --format '{{.Store.GraphRoot}}'` should print a path under your home.
   `/etc/containers/storage.conf` as shipped names neither; remove the two lines from it, or from
-  `~/.config/containers/storage.conf`. `kdos doctor` does not check this.
+  `~/.config/containers/storage.conf`. `kdos doctor` shows the same error on its
+  `podman info fails` line.
 
 Every container fails, the engine exits 125
 : `newuidmap` or `newgidmap` has lost its setuid bit:
   `sudo chmod 4755 /usr/bin/newuidmap /usr/bin/newgidmap`.
 
 `no subuid ranges found for user`
-: Your account has no line in `/etc/subuid` or `/etc/subgid`. Add a range that overlaps no other
-  account's, then run `podman system migrate`:
+: Your account has no line in `/etc/subuid` or `/etc/subgid`. Read both files, pick a range that
+  overlaps no other account's (the example assumes nothing uses 300000 to 365535), add it, then run
+  `podman system migrate`:
 
   ```bash
   sudo usermod --add-subuids 300000-365535 --add-subgids 300000-365535 "$USER"

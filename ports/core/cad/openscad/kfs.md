@@ -25,8 +25,9 @@ three submodules it needs fetched as sources of their own.
   finds it.
 - `-DUSE_GLAD=ON` — load OpenGL entry points with GLAD, the loader in OpenSCAD's own tree, and with
   `-DUSE_GLEW=OFF` not with GLEW. Left unset, upstream picks GLAD unless the OpenCSG it finds is
-  older than 1.6; naming both keeps [glew](#port-glew) out of the link whatever OpenCSG is
-  installed.
+  older than 1.6. An OpenCSG older than 1.6 links [glew](#port-glew) whatever the two switches
+  say, because that OpenCSG itself loads OpenGL through GLEW; the [opencsg](#port-opencsg) port is
+  newer, so the program carries GLAD alone.
 - `-DENABLE_EGL=ON` — compile the EGL and, with `-DENABLE_GLX=ON`, the GLX ways of making an
   offscreen OpenGL context for command-line rendering. Each is used only when CMake finds it.
   Both are upstream's defaults.

@@ -100,9 +100,8 @@ int kd_retain(void)
 		return cached;
 	cached = 1;
 	/* `> 0`, not `== 0`: kb_read_file answers the BYTE COUNT, so `== 0`
-	 * parses the file only when it is empty — `retain =` was read from a
-	 * zero-byte packd.conf and from nothing else, and rollback silently
-	 * kept the default on every machine that had configured it. */
+	 * would parse the file only when it is empty, and every configured
+	 * `retain =` would be ignored in favour of the default. */
 	if (kb_read_file("/etc/kdos/packd.conf", buf, sizeof(buf)) > 0) {
 		char *line, *save;
 		for (line = strtok_r(buf, "\n", &save); line;
@@ -421,19 +420,19 @@ int kd_install(const char *staged, char *msg, size_t n)
 		break;
 	case KPK_SIG_NONE:
 		/*
-		 * Allowed, and SAID. The medium's own index IS signed and the
-		 * public half of that key ships in /etc/kdos/keys, so a pack
-		 * that came off the medium takes the branch above and never
-		 * reaches here. What reaches here is a pack from somewhere
-		 * else — an imported set, a `kdos-box freeze` — and refusing
-		 * those outright would refuse the artefact this system can
-		 * make for itself.
+		 * Allowed, and SAID. A pack reaches here when it carries no
+		 * signature block and no signed index beside it vouches for it
+		 * — an imported set, a `kdos-box freeze` — and refusing those
+		 * outright would refuse the artefact this system can make for
+		 * itself. A pack mounted straight off the medium does not
+		 * pass through here; kd_mount checks it.
 		 *
-		 * SHIPPING A KEY IS A CLAIM ABOUT WHO BAKED THE MEDIUM, not
-		 * about who wrote KDOS: it says the packs beside it came from
-		 * the same bake. Replace it and re-sign to make it say
-		 * something about you. KDOS_REQUIRE_SIG is the stricter rule
-		 * for a machine that installs only what it can attribute.
+		 * THE KEY IN KD_KEYS SIGNS NOTHING THE BUILD MAKES: the build
+		 * does not hold its secret half, so on a fresh system it
+		 * attributes nothing. Add the `.pub` of a key from `kdos-pack
+		 * keygen` to make a signature say something about you.
+		 * KDOS_REQUIRE_SIG is the stricter rule for a machine that
+		 * installs only what it can attribute.
 		 */
 		if (getenv("KDOS_REQUIRE_SIG")) {
 			snprintf(msg, n, "%s is unsigned and KDOS_REQUIRE_SIG is set",
@@ -452,12 +451,11 @@ accepted:
 	 * A MOUNTED SUPERSEDED VERSION MUST NOT OUTLIVE THE INSTALL. The mount
 	 * table is keyed by id and survives the rescan, so leaving the
 	 * superseded version mounted puts every later compose's NEW app diff
-	 * over the OLD runtime's bytes — after an update of rt-gtx that is
-	 * kicad dying on `libSM.so.6: cannot open`, a library the new runtime
-	 * carries and the mounted one does not. Idle, the stale mount is
-	 * dropped here so the next mount reads the new file; composed into a
-	 * box, the install is refused by the same rule `remove` applies, and
-	 * `kdos app update` has already named the boxes to stop.
+	 * over the OLD runtime's bytes, and an app then fails to load a
+	 * library the new runtime carries and the mounted one does not. Idle,
+	 * the stale mount is dropped here so the next mount reads the new
+	 * file; composed into a box, the install is refused by the same rule
+	 * `remove` applies, and the refusal says how many boxes to stop.
 	 */
 	{
 		int cur = kd_find(p.meta.id);

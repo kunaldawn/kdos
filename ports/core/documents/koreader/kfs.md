@@ -11,7 +11,8 @@ privately under `/usr/lib/koreader`.
   the window, input and audio, against the system's [SDL3](#port-sdl3).
 - `KODEBUG=` — An empty `KODEBUG` is a release build; the desktop build defaults to a debug one
   (`-Og`, no `NDEBUG`).
-- `VERBOSE=` — Leave the build's quiet output on.
+- `VERBOSE=` — Override any `VERBOSE` in the environment with an empty one. With `VERBOSE` and
+  `V` both empty, `base` marks its makefiles `.SILENT` and adds no make trace or `ninja -v`.
 - `TARGET_CFLAGS=` — Replace the desktop build's `-march=native`, which would tune every library
   to the processor of the machine that built it, with nothing.
 - `QFLAGS=-fstack-clash-protection`, `COMPAT_LDFLAGS=-Wl,-z,now` — `base` assigns its own
@@ -33,8 +34,8 @@ privately under `/usr/lib/koreader`.
 ## Notes
 - **Two sources, one made by hand.** The first is the KOReader superproject with its submodules
   (`base`, crengine, fonts and translations), as Alpine mirrors it. `base` builds its
-  third-party libraries (LuaJIT, MuPDF, crengine's, DjVuLibre, HarfBuzz, SQLite and the rest) at
-  pinned versions, each downloaded at build time into
+  third-party libraries (LuaJIT, MuPDF, the libraries crengine needs, DjVuLibre, HarfBuzz, SQLite
+  and the rest) at pinned versions, each downloaded at build time into
   `base/thirdparty/<project>/build/downloads`, as a tarball checked by MD5 or a git clone at a
   pinned revision. The second source is those downloads, packed by hand after
   `make TARGET= KODEBUG= download-all`; with each archive present and each clone at its revision,

@@ -44,17 +44,18 @@ tzdata's `zone.tab`, which gives each zone one country.
 
 The installer writes it from the zone chosen on its *Time* page:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=1746-1754 pin=5a0dbdc98892 -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=1751-1759 pin=5a0dbdc98892 -->
 
 `kdos-powerd` writes it whenever the time zone is changed later, and runs `iw reg set` so the
 running radio follows at once. A zone with no country, such as `UTC`, removes the file:
 
-<!-- kfs:include src/daemons/kdos-powerd/main.c lines=808-819 pin=7a5ecb4a3526 -->
+<!-- kfs:include src/daemons/kdos-powerd/main.c lines=810-821 pin=7a5ecb4a3526 -->
 
 The file is read when `cfg80211` loads, which is during boot, as the first wireless driver loads,
 or, on a machine with no wireless driver, when a program such as `iw` first asks for the wireless
 layer. A change to it takes effect at the next boot. Removing it changes nothing in the running
-kernel either: after a change to `UTC` the radio keeps the country it had until the next boot. The key is described in
+kernel either: after a change to `UTC` the radio keeps the country it had until the next boot. The
+key is described in
 [/etc/modprobe.d/kdos-regdom.conf](../../kdos/06-reference/configuration.md#etcmodprobedkdos-regdomconf),
 and the verb in [timezone](../../kdos/04-programs/daemons.md#timezone).
 
@@ -102,8 +103,8 @@ place for a country that differs from the zone's.
 kdos doctor
 ```
 
-The *Hardware* section has one line for the database. It reads both files and the country `cfg80211` was
-loaded with, and reports `ok` with that country when the files are in place and it is not `00`;
+The *Hardware* section has one line for the database. It reads both files and the country
+`cfg80211` was loaded with, and reports `ok` with that country when the files are in place and it is not `00`;
 `warn` when either file is missing, or when the country is `00` on a machine with a radio; and
 `skip` when the country is `00` and there is no wireless device, as in a virtual machine, where the
 line reads `[skip] regulatory.db and signature present; no wireless device here to load them`.
@@ -114,9 +115,10 @@ the line.
 
 The live medium ships no `kdos-regdom.conf`, so it boots on the world domain. Setting the time zone
 in the live session writes the file and sets the running radio's country, and the file lasts until
-the next reboot unless the medium has a persistence store. An installed system carries the file
-the installer wrote from the zone you chose, so it boots with a country from the start, unless the
-zone has none, such as `UTC`.
+the next reboot unless the medium has a [persistence store](live-persistence.md). An installed
+system carries the file the installer wrote from the zone you chose, so it boots with a country
+from the start. For a zone with no country, such as `UTC`, the installer writes nothing, and the
+disk keeps whatever file the live session had, since the installer copies the live tree.
 
 ## Tips
 
@@ -131,8 +133,9 @@ zone has none, such as `UTC`.
 ## Troubleshooting
 
 **`kdos doctor` warns that the domain is `00`.**
-No country was set at boot. Set the time zone as above; the warning names the same two remedies
-it does, `kdos-power timezone <Area/City>` for every boot and `iw reg set <CC>` for this one.
+No country was set at boot. Set the time zone as above. The warning names the same two remedies
+this page gives: `kdos-power timezone <Area/City>` for every boot and `iw reg set <CC>` for this
+one.
 
 **`kdos doctor` warns that `regulatory.db` or `regulatory.db.p7s` is missing.**
 The package's files are gone or damaged. `sudo kpkg check wireless-regdb` compares them with the
@@ -145,9 +148,11 @@ country set, `iw list` shows whether the card itself supports the band.
 **The country is set and `iw reg get` still says `00`.**
 Check that the file holds a line `options cfg80211 ieee80211_regdom=<CC>` with a two-letter code,
 and that it is read: `cat /sys/module/cfg80211/parameters/ieee80211_regdom` prints the value the
-module was loaded with. `dmesg | grep -i regulatory` shows whether the kernel loaded the database
-and accepted its signature; its first line is `cfg80211: Loading compiled-in X.509 certificates
-for regulatory database`.
+module was loaded with. `sudo dmesg | grep -i regulatory` shows whether the kernel loaded the
+database and accepted its signature (the kernel log is root's alone). Its first line is
+`cfg80211: Loading compiled-in X.509 certificates for regulatory database`; a missing file adds
+`cfg80211: failed to load regulatory.db`, and a database that fails the signature check adds
+`cfg80211: loaded regulatory.db is malformed or signature is missing/invalid`.
 
 ## Known gaps
 

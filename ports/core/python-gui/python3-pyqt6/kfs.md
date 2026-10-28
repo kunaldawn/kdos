@@ -6,7 +6,8 @@ applications written in Qt 6 import it. The bindings for Qt WebEngine are the se
 [python3-pyqt6-webengine](#port-python3-pyqt6-webengine) port.
 
 The package also carries the `pyuic6` and `pylupdate6` tools, the Qt Designer plugin that lets
-Designer load widgets written in Python, and the `dbus.mainloop.pyqt6` module, which runs
+Designer load widgets written in Python, the qmlscene plugin that lets QML import types written in
+Python, and the `dbus.mainloop.pyqt6` module, which runs
 [dbus-python](#port-python3-dbus) on Qt's event loop.
 
 ## Flags
@@ -29,6 +30,9 @@ Designer load widgets written in Python, and the `dbus.mainloop.pyqt6` module, w
   sip-build builds the bindings of every Qt module it finds, so without these switches whether
   they were in the package would depend on build order.
 - `--no-make` — only generate the build directory; `build.sh` runs `make` there itself.
+
+## Patches
+- `qt612-edit-focus.patch` — adds `Qt_6_12_0` to the `%Timeline` in `sip/QtCore/QtCoremod.sip` and wraps `QEvent.EnterEditFocus` and `QEvent.LeaveEditFocus` in `sip/QtCore/qcoreevent.sip` in `%If (- Qt_6_12_0)`. Qt 6.12, the version [qt6-qtbase](#port-qt6-qtbase) builds, does not declare those two event types, so without the patch the generated QtCore code names enumerators the installed headers lack and fails to compile.
 
 ## Notes
 sip-build runs a small configuration test for each Qt module and leaves out, without an error,

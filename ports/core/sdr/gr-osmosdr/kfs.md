@@ -21,9 +21,11 @@ tools.
 - `-DCMAKE_POLICY_DEFAULT_CMP0167=NEW` — make `find_package(Boost)` read [Boost](#port-boost)'s
   own CMake package, which knows Boost.System is header-only; the old `FindBoost` module looks for
   a `libboost_system` library.
-- `-DPYTHON_INCLUDE_DIR` — with `-DPYTHON_LIBRARY`: Python's header directory and library, read
-  from `sysconfig` and handed to `FindPythonLibs`, whose table of known versions does not reach
-  the tree's Python.
+- `-DPYTHON_INCLUDE_DIR` — with `-DPYTHON_LIBRARY`: Python's header directory and shared library,
+  as `sysconfig` reports them for `/usr/bin/python3`. CMake's `FindPythonLibs` runs twice: through
+  `GrPython.cmake`, which [GNU Radio](#port-gnuradio)'s CMake package includes and which asks for
+  the interpreter's exact version, and through the configure's own `find_package(PythonLibs 3)`.
+  With both cache variables set, each takes these paths instead of searching for them.
 - `-Dpybind11_DIR` — the CMake package directory of [python3-pybind11](#port-python3-pybind11),
   for the `osmosdr` Python module.
 

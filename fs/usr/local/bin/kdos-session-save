@@ -9,7 +9,8 @@
 #   app <name>            an alien app, by its /usr/share/kdos/alien-apps name
 #   native <app_id>       a host toplevel, by the app_id it reported
 #
-# Only the `app` lines are ever relaunched (kdos-desktop-start, opt-in via
+# Only the `app` lines are ever relaunched (kdos_session_once in
+# /usr/local/lib/kdos/session-common.sh, opt-in via
 # ~/.config/kdos/session-restore) — an alien app costs a measured 18.3 s of
 # container cold start and a host program does not. Where each window comes
 # BACK is the compositor's window memory, not this file.
@@ -87,7 +88,7 @@ fi
 #
 # `kdos hey list` is the compositor's own answer over $XDG_RUNTIME_DIR/
 # kdos-cmd.sock, one NDJSON object per call. No socket, no line — a session
-# with no kdos-comd socket is a session where nothing here is knowable, not one
+# with no kdos-cmd.sock is a session where nothing here is knowable, not one
 # where nothing is running.
 SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/kdos-cmd.sock"
 if [ -S "$SOCK" ] && command -v kdos >/dev/null 2>&1; then

@@ -887,10 +887,10 @@ void probe_system(void)
 
 	/*
 	 * The count comes from /sys, not from counting "processor" in
-	 * /proc/cpuinfo — which reported 1 on every machine and was found by
-	 * looking at `--dump probe`. Two reasons it could not work: the model
+	 * /proc/cpuinfo, which would report 1 on every machine: the model
 	 * name parse above NUL-terminates the buffer at the end of the first
-	 * block, so there is nothing left to count, and cpuinfo on a 16-thread
+	 * model name line, so only the first "processor" line is left to
+	 * count, and cpuinfo on a 16-thread
 	 * part is 26 KB against an 8 KB buffer anyway. `present` is one short
 	 * line in the documented "0-3,8-11" form.
 	 */
@@ -974,8 +974,10 @@ static const char *catalogue_path(void)
  * removable filesystem wins, and it is the only one offered — a second medium
  * carrying a different set is not reachable from the page.
  *
- * It is looked for ONCE, at probe time. Walking every mount on every draw
- * would put a filesystem scan inside the paint path.
+ * It is looked for when the Applications page is entered (probe_apps), never
+ * from the draw: walking every mount on every draw would put a filesystem
+ * scan inside the paint path. A medium mounted while the page is open is seen
+ * on the next visit.
  */
 static void find_archive(void)
 {

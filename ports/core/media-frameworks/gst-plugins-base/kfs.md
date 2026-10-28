@@ -9,15 +9,16 @@ through Wayland, EGL and DRM only.
 
 ## Flags
 
-- `--libexecdir=/usr/lib` — The directory every GStreamer port in the tree passes, so the plugin
-  sets agree with the core on `/usr/lib/gstreamer-1.0`.
+- `--libexecdir=/usr/lib` — The directory every GStreamer port in the tree passes. Here it sets
+  the `pluginscannerdir` the `.pc` files report, `/usr/lib/gstreamer-1.0`, where the core installs
+  `gst-plugin-scanner`, and the path compiled into `gstreamer-pbutils` for the missing-plugin
+  installer, `/usr/lib/gst-install-plugins-helper`.
 - `-Dintrospection=enabled` — Installs the `GstAudio`, `GstVideo`, `GstPbutils`, `GstGL` and
-  sibling GIRs, which gst-plugins-bad's GIRs and WebKitGTK's media code include.
+  sibling GIRs, which gst-plugins-bad's GIRs include.
 - `-Ddoc=disabled`, `-Dexamples=disabled`, `-Dtests=disabled` — No documentation, examples or
   tests.
-- `-Dnls=disabled` — Builds and installs no translated messages. KDOS ships English only (see [the
-  size and language
-  policy](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
+- `-Dnls=disabled` — Builds and installs no translated messages. KDOS ships English only
+  (see [the size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
 - `-Dx11=disabled`, `-Dxshm=disabled`, `-Dxvideo=disabled`, `-Dxi=disabled` — No `ximagesink` or
   `xvimagesink`, and no X11 support in the libraries or the OpenGL library. On `auto` each would
   follow whether [libX11](#port-libX11), libXext, libXv and libXi happened to be in the root; none

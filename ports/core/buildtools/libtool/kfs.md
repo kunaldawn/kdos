@@ -9,7 +9,7 @@ programs load their plugins.
 
 ## Notes
 The `.la` files libtool writes beside each library are removed from every package by kpkg itself,
-so no recipe deletes them (see [Anatomy of a kpkg install](#04-chroot-kpkg-install)).
+so no recipe deletes them (see [Anatomy of a kpkg install](../../../../docs/kfs/04-chroot/kpkg-install.md)).
 
 A configure script generated with libtool's macros looks for [file](#port-file), which the same run
 names, and on x86-64 Linux runs it on a test object to learn whether the compiler produces 32-bit

@@ -10,7 +10,7 @@ is one it can use.
 
 - `-D KF_SKIP_PO_PROCESSING=ON` — Build and install no interface translations. The packager
   removes every non-English catalogue and translated handbook in any case (see
-  [Size and language policy](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#size-and-language-policy)),
+  [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)),
   so the switch only saves build time.
 - `-D CMAKE_REQUIRE_FIND_PACKAGE_KF6DocTools=ON` — Require KDE's documentation tools, which
   upstream looks up as optional. With them the handbook is built and Help opens a local copy;

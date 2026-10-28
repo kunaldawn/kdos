@@ -48,7 +48,7 @@ kdos/
 │   │   ├── kpkgbuild          declarative metadata — parsed, never sourced
 │   │   ├── build.sh           the build; bash, run in the unpacked source
 │   │   ├── postinstall.sh     optional install-time hook (27 ports have one)
-│   │   ├── *.patch            optional patches, tracked (619 files)
+│   │   ├── *.patch            optional patches, tracked (620 files)
 │   │   ├── kfs.md             optional: the port's note in KDOS from Scratch; never hashed
 │   │   ├── other support files  configuration, data files, single-file sources — tracked
 │   │   └── <name>-<ver>.tar.* the upstream archive or vendor bundle — fetched, not tracked
@@ -62,7 +62,7 @@ kdos/
 │   ├── srclib.sh              the source archive's addressing, and the port lookup by name,
 │   │                          shared by fetch, publish, the hook and preflight
 │   ├── fetch                  download and verify sources; generate vendor bundles (`make fetch`)
-│   ├── publish                upload sources to the archive; freeze a release's hash list
+│   ├── publish                upload sources to the archive; freeze and publish a KDOS release
 │   └── update                 front end of the upstream version checker (`make updates`)
 │
 ├── src/                   KDOS's own code; every port is at exactly src/<area>/<name>/
@@ -131,19 +131,26 @@ kdos/
 ├── fs/                    copied verbatim into the target root filesystem
 │   ├── etc/                   the system configuration; see the table below the tree
 │   ├── root/                  root's own shell dotfiles
-│   └── usr/                   local/{bin,sbin,lib} — including the per-application launchers —
-│                              and share/{kdos,applications,backgrounds,bash-completion,
-│                              dbus-1,xdg-desktop-portal}; boot artwork is in share/kdos/boot,
-│                              the help pages in share/kdos/doc
+│   └── usr/                   local/bin and local/sbin: shell programs such as kdos-desktop,
+│                              xdg-terminal-exec and kdos-login; local/lib/kdos: the session
+│                              bring-up the two kdos-desktop scripts source;
+│                              share/{applications,backgrounds,bash-completion,glib-2.0,kdos,
+│                              xdg-desktop-portal}; boot artwork is in share/kdos/boot, the
+│                              help pages in share/kdos/doc; lib64 is a link to lib
 │
 ├── script/                the build
 │   ├── phases/<NN>_<name>/  the thirteen phases, run in number order; each holds its
 │   │                        phase.env and either step scripts or a package list
-│   ├── env/                 common.env, host.env, chroot.env — what the phase.env files share
+│   ├── env/                 common.env, host.env, chroot.env — what the phase.env files
+│   │                        share — and config.site, the autoconf site file chroot.env names
+│   ├── bin/                 ninja and meson wrappers chroot.env puts first on PATH; never
+│   │                        installed
 │   ├── lib/port.sh          the recipe reader the two host phases source
 │   ├── chroot/              exec.sh runs a step in the chroot; enter.sh opens a shell there
 │   ├── book/                the renderer of KDOS from Scratch (`make book`); kdos-kfs links it
 │   ├── kdosbuild.sh         compiles and runs the orchestrator
+│   ├── migrate-phase-names.sh  renames the snapshots, logs and marks of a build/ tree
+│   │                        made under other phase directory names to the current ones
 │   └── hooks/pre-push       refuses a push that breaks the ports layout, adds a patch with
 │                            no Subject:, fails the book checks or names an unarchived
 │                            source (opt-in)
@@ -158,11 +165,21 @@ kdos/
 │   ├── booknav.py            the chapter footers of both books, and KDOS from Scratch's contents
 │   ├── kfscheck.py           KDOS from Scratch against the tree: notes, patch headers, kernel table, stamp
 │   ├── phaseclosure.py       every package phase installs exactly the ports its list names
+│   ├── recipemeta.py         every recipe's description, homepage and licence, and its catalogue row
+│   ├── optdeps.py            features a recipe switches off although a port provides them
+│   ├── visible-entries.allow the visible desktop entries preflight accepts though they read
+│   │                         like helpers
+│   ├── depdrift.py           link dependencies a package uses but its recipe does not declare
+│   ├── debuginfo.py          fails a built tree that ships more than 1 MiB of debug information
+│   ├── unowned.py, linkcheck.py, entrycheck.py
+│   │                         the gates 70_image runs on the image: files nothing owns, run-time
+│   │                         references nothing satisfies, links and launchers that lead nowhere
+│   ├── treescan.py           the built-tree reader those four checks share
 │   ├── barcheck.c, boxcheck.c, appindex.c
 │   │                         checks selftest.sh compiles and runs
 │   ├── hostcheck.sh          in a booted guest: is the binary each name resolves to the right one
-│   ├── fixtures/             recorded system state, 49 directories
-│   ├── goldens/              committed reference frames: 217 files and a README
+│   ├── fixtures/             recorded system state, 51 directories
+│   ├── goldens/              committed reference frames: 222 files and a README
 │   ├── vnc-shot.py           drive and photograph a real session
 │   ├── rig-image.sh          builds kdos-qemu-py, the image vnc-shot.py runs in
 │   ├── quick.sh, quickpatch.sh   one port, patched into a booted ISO's RAM overlay
@@ -194,7 +211,7 @@ kdos/
 | Identity and login text | `os-release` (the version string; the image adds the build's commit and date), `issue`, `motd` |
 | Accounts | `passwd`, `group`, `shadow`, `shells`, `subuid`, `subgid` |
 | Network | `hostname`, `hosts`, `resolv.conf`, `nsswitch.conf`, `nftables.conf`, `nftables.d/` |
-| Init and shells | `inittab`, `init.d/`, `fstab`, `profile`, `profile.d/`, `bash.bashrc`, `skel/` |
+| Init and shells | `inittab`, `init.d/`, `service.disabled/` (one flag file per service that does not start; `sshd` ships there), `default/` (settings for `pcscd` and `useradd`), `fstab`, `mtab` (a link to `/proc/self/mounts`), `profile`, `profile.d/`, `bash.bashrc`, `skel/` |
 | Kernel, modules and devices | `sysctl.conf`, `modprobe.d/`, `modules-load.d/`, `udev/`, `vtrgb`, `ld-musl-x86_64.path` |
 | Desktop services | `polkit-1/`, `pipewire/`, `alsa/`, `xdg/` |
 | KDOS's own | `kdos/`: `login.conf`, `packd.conf`, `menu.conf`, `zram.conf`, `timers.d/`, `keys/` |
@@ -233,7 +250,7 @@ more:
 
 | Phases | `PORT_REPO` |
 |---|---|
-| `20_selfhost`, `30_foundation`, `31_compilers`, `70_image` | not set: the default, `/ports/core` |
+| `20_selfhost`, `30_foundation`, `31_compilers`, `70_image` | not set: the default, of which only `/ports/core` exists |
 | `40_lang` to `44_apps`, `60_kernel` | `/ports/core /kdos/src/system /kdos/src/art` |
 | `50_desktop` | `/ports/core /kdos/src/system /kdos/src/art /kdos/src/desktop /kdos/src/daemons` |
 
@@ -259,10 +276,12 @@ closed list, one line per shelf giving its id and what belongs on it, in the ord
 lists and the catalogue group by. [Choosing a shelf](../05-developer/writing-ports.md#choosing-a-shelf)
 places a new port.
 
-Four checks hold the layout, in preflight and again in the pre-push hook: every recipe under
+Five checks hold the layout, in preflight and again in the pre-push hook: every recipe under
 `ports/core` is exactly one shelf down; every shelf is listed in `ports/shelves`; one name is one
-port across `ports/core` and `src/`; and no shelf is named `libs`, `core` or after a port.
-Preflight alone also requires every listed shelf to hold a port, `name =` to equal the directory's
+port across `ports/core` and `src/`; no shelf is named `libs`, `core` or after a port; and a
+shelf id is lowercase letters, digits and hyphens.
+Preflight alone also requires every listed shelf to have a volume and a description and to hold a
+port, `name =` to equal the directory's
 name, every `group =` family to sit on one shelf, and each file of a `packages.d/` list to name
 only ports filed on its own shelf or in its own `src/` area.
 
@@ -338,7 +357,7 @@ those keys are written in every `phase.env`. Everything shared is sourced from `
 |---|---|---|
 | `common.env` | every phase, through one of the two below | The reproducibility settings, the job count `KDOS_JOBS` with the `MAKEFLAGS`, `CMAKE_BUILD_PARALLEL_LEVEL` and `CARGO_BUILD_JOBS` it sets (under a jobserver, `GNUMAKEFLAGS` and `CARGO_MAKEFLAGS` in place of the last two), and `KPKG_STRICT_RECIPE=1` |
 | `host.env` | `00_cross`, `10_bootstrap` | The target triplet, the sysroot and cross-toolchain paths, and the cross `pkg-config` setup |
-| `chroot.env` | `20_selfhost` onwards | `PKG_CONFIG_PATH`, `CC` and `CXX`, the release flags, `CMAKE_BUILD_TYPE`, `CARGO_PROFILE_RELEASE_DEBUG`, `GOFLAGS` and the `CGO_*FLAGS`, the CMake compiler cache, `KPKG_SKIP_INDEX=man`; it removes nothing, since `kpkg` empties each port's own work directory |
+| `chroot.env` | `20_selfhost` onwards | `PKG_CONFIG_PATH`, `CC` and `CXX`, the release flags, `CMAKE_BUILD_TYPE`, `CARGO_PROFILE_RELEASE_DEBUG`, `GOFLAGS` and the `CGO_*FLAGS`, the compiler cache, `script/bin/` first on `PATH` once ninja is installed, `CONFIG_SITE` naming `config.site`, `KPKG_SKIP_INDEX=man`; it removes nothing, since `kpkg` empties each port's own work directory |
 
 `script/lib/port.sh` is sourced by the step scripts of `00_cross` and `10_bootstrap`, which run
 before `kpkg` exists; it reads a recipe and unpacks its source, and finds a port by name one shelf
@@ -410,12 +429,12 @@ read-only, and `ports/` at
 [The build system](../05-developer/build-system.md).
 
 A build run with `KDOS_ISO_SOURCES=1` has `script/phases/70_image/110_iso.sh` copy the tree onto the
-ISO under `sources/`, beside the compressed system image rather than inside it: `src/`, `script/`
-and `fs/` from `/kdos`, and every entry of `/ports` but its dot-directories, so each fetched source
-travels beside its recipe while the source cache and the compiled host helpers stay behind. The
-step also names the `Makefile`, the `Dockerfile` and `CLAUDE.md`, which are not mounted into the
-build and are skipped. A binary host the build wrote goes beside the tree as `sources/binhost`, and
-`sources/SOURCES` records the number of ports, the size and the build time.
+ISO under `sources/`, beside the compressed system image rather than inside it: `src/`, `script/`,
+`fs/`, the `Makefile` and the `Dockerfile` from `/kdos`, and every entry of `/ports` whose name does
+not start with a dot, so each fetched source travels beside its recipe while the source cache and
+the compiled host helpers stay behind. The step also names `CLAUDE.md`, which is not mounted into
+the build and is skipped. A binary host the build wrote goes beside the tree as `sources/binhost`, and
+`sources/SOURCES` records the number of recipes under `ports/core`, the size and the build time.
 
 ## Where the upstream sources are
 
@@ -423,9 +442,10 @@ Upstream source archives are not stored in git. A recipe names each of its files
 hash, and each archived file is a release asset of the `kunaldawn/kdos` repository, named
 `<shelf>--<file>`, in the numbered pre-release `sources-<N>` that `ports/shelves` gives the shelf
 whose port first names it; a file over GitHub's 2 GiB asset limit is stored in parts. `make fetch`
-puts every file in its port directory; it is the only build step that uses the network. A hash
-`ports/sources.idx` does not name comes from upstream. The lookup order, the cache, the vendor bundles and the environment variables are
-described in [Developing](../05-developer/developing.md#where-sources-come-from).
+puts every file in its port directory, and a hash `ports/sources.idx` does not name comes from
+upstream. `make build` runs its container with no network; only building that container's image
+reaches out, for Alpine's packages. The lookup order, the cache, the vendor bundles and the
+environment variables are described in [Developing](../05-developer/developing.md#where-sources-come-from).
 
 Five files in the tree make this work:
 
@@ -434,8 +454,8 @@ Five files in the tree make this work:
 | `ports/srclib.sh` | The archive's addressing and hash checks, the lookup of a port by bare name on any shelf, and the on-demand build of the recipe reader; sourced by `ports/fetch`, `ports/publish`, the pre-push hook and `testing/preflight.sh` |
 | `ports/sources.idx` | Format 2: the first line is `# kdos-sources-index 2`, then one line per archived file, `<sha256> <tag> <asset> <port>/<file>`, with `parts=<N>:<h1>,…,<hN>` after it for a file stored in parts. The file is asset `<asset>` (or `<asset>.part01` onwards) of release `<tag>`. Written by `ports/publish`, read by `ports/fetch` and the pre-push hook, checked by `testing/preflight.sh`, and committed with the recipe that needs it; an index of any other format is not read |
 | `ports/fetch` | Resolves every recipe hash from the port directory, `ports/.srccache/`, the archive, or the recipe's `source =` URL, in that order, and generates a port's own vendor bundle when none of those holds it. `make fetch` runs it; `make fetch-check` runs `ports/fetch --check`, which is offline |
-| `ports/publish` | Uploads sources the archive does not hold into their shelf's volume (needs a token) and writes their index lines; `--check` and `--dry-run` report without uploading; `--plan` gives a new shelf its volume in `ports/shelves`; `--rehome` moves files whose port changed shelf, `--retire` deletes the emptied releases of the older one-per-shelf layout, `--orphans` lists files no recipe names; `--freeze <tag>` attaches a release's frozen `sources.sha256` list. See [Writing ports](../05-developer/writing-ports.md#publishing-sources) |
-| `script/hooks/pre-push` | Refuses a `git push` that breaks the ports layout, or whose recipes name a hash the archive does not hold, every part of a split file included |
+| `ports/publish` | Uploads sources the archive does not hold into their shelf's volume (needs a token) and writes their index lines; `--check` and `--dry-run` report without uploading; `--history` adds the files older commits' recipes name; `--plan` gives a new shelf its volume in `ports/shelves`; `--describe` rewrites each release's title and notes from the index; `--rehome` moves files whose port changed shelf, `--retire` deletes the emptied releases of the older one-per-shelf layout, `--orphans` lists files no recipe names; `--freeze <tag>` attaches a release's frozen `sources.sha256` list; `--release <tag>` puts up a KDOS release: the ISO, the recipe tree, checksums and their signatures. See [Writing ports](../05-developer/writing-ports.md#publishing-sources) |
+| `script/hooks/pre-push` | Refuses a `git push` that breaks the ports layout, adds or changes a patch with no `Subject:` line, fails the book checks, or whose recipes name a hash the archive does not hold, every part of a split file included |
 
 The hook runs only in a clone that has opted in:
 
@@ -443,33 +463,39 @@ The hook runs only in a clone that has opted in:
 git config core.hooksPath script/hooks
 ```
 
-With the hook on, a push is first checked offline for the ports layout, at the tip of each pushed
-ref the remotes do not already hold, since only the tip is built; an intermediate commit that a
-later one repairs passes. The check asks for every recipe under `ports/core` exactly one listed
-shelf down, one name per port across `ports/core` and `src/`, and no shelf named `libs`, `core` or
-after a port.
-`KDOS_SKIP_LAYOUT_CHECK=1` skips that check. The archive check follows, and refuses the push when
-the archive cannot be reached, when it answers anything but 200 or 404, or when `KDOS_SOURCES_BASE`
-is empty, because the hook cannot then rule out that a source is missing. Working offline therefore
-means skipping the archive check for that push, which leaves the layout check in force:
+With the hook on, a push passes four checks in order, and the first that fails stops it. The ports
+layout and the patch headers are read from git's own tree, at the tip of each pushed ref the
+remotes do not already hold, since only the tip is built; an intermediate commit that a later one
+repairs passes. The layout check holds the five rules in
+[ports/core and its shelves](#portscore-and-its-shelves); the patch check asks every new or changed
+`.patch` or `.diff` under `ports/` or `src/` for a `Subject:` line. The book checks,
+`testing/docscheck.sh` and `testing/kfscheck.py`, read the working copy rather than the pushed
+commit. The archive check comes last, and refuses the push when
+the archive cannot be reached, when it answers anything but 200 or 404, or when
+`KDOS_SOURCES_BASE` is empty or a local directory, because the hook cannot then rule out that a
+source is missing. Each refusal names the variable that skips its check: `KDOS_SKIP_LAYOUT_CHECK=1`,
+`KDOS_SKIP_PATCH_CHECK=1`, `KDOS_SKIP_BOOK_CHECK=1` or `KDOS_SKIP_PUBLISH_CHECK=1`. Working offline
+therefore means skipping the archive check for that push, which leaves the other three in force:
 
 ```sh
 KDOS_SKIP_PUBLISH_CHECK=1 git push …
 ```
 
 Setting `core.hooksPath` replaces `.git/hooks` as a whole, so any hook installed there, git-lfs's
-included, stops running in that clone.
+included, stops running in that clone. Each check's exact rules are in
+[The pre-push check](../05-developer/developing.md#the-pre-push-check).
 
 ## Generated and ignored
 
 | Path | Ignored by git | Notes |
 |---|---|---|
-| `build/` | entirely | The root filesystem, logs, snapshots, the compiler cache `build/ccache`, the package store `build/pkgstore` (`<key[0:2]>/<key>/`, one package and its `META` each, written only with `KDOS_PKG_STORE` on), the ISO, signing keys, frozen source lists, and `build/podman/`, a podman container store that `script/kdosbuild.sh` leaves owned by root |
+| `build/` | entirely | The root filesystem, logs, snapshots, the compiler cache `build/ccache`, the package store `build/pkgstore` (`<key[0:2]>/<key>/`, one package and its `META` each, written only with `KDOS_PKG_STORE` on), the ISO, signing keys, frozen source lists, and `build/podman/`, the pack bake's podman container store. After a build `script/kdosbuild.sh` hands everything back to your user except `build/fs/`, whose ownership is the shipped system's, and `build/podman/`, which podman requires to stay root's; reading either from the host needs a container or `sudo`. See [Where the build puts things](../05-developer/developing.md#where-the-build-puts-things) |
 | `build_test/` | entirely | Where `testing/prepare_base.py` builds the minimal root filesystem that `testing/test_runner.py` builds ports against |
 | `ports/core/*/*/*.tar`, `*.tar.*`, `*.tgz`, `*.tbz2`, `*.txz`, `*.zip`, `*.7z`, `*.part`, and a few more suffixes | yes | Upstream archives, vendor bundles and partial downloads, put there by `make fetch`, matched in a port directory one shelf down. A pattern for one port's odd suffix names its shelf, and must be edited when the port changes shelf. A patch or configuration file a recipe hashes is tracked and unaffected, and the archive fixtures under `testing/fixtures/` stay tracked |
 | `ports/.srccache/` | yes | The source cache, `sha256-XX/<hash>`. Plain data: it survives `make clean` and `make cleanbuild` |
 | `ports/.kpkgbin/`, `.portup`, `.portup-tools/` | yes | Compiled host helpers. `.kpkgbin/kpkg` is the recipe reader `ports/fetch` and `ports/publish` use, built by `ports/srclib.sh`; `.portup` is the version checker and `.portup-tools/` its own recipe reader. `.gitignore` also lists `ports/.kpkg-meta`, which nothing in the tree builds |
 | `ports/.update-cache.json` | yes | Per-port version-check results, kept for 24 hours |
+| `ports/sources.idx.lock`, `ports/sources.idx.tmp.*` | yes | `ports/publish`'s lock on the index, and its scratch copy while it rewrites it |
 | `docs/` except `docs/kdos/`, `docs/kfs/` and `docs/screenshots/` | yes | Room for scratch notes. A new documentation directory needs a line in `.gitignore`, or git will not see anything in it |
 | `testing/logs/`, `testing/test_results.json` | yes | Test-run output. `testing/fixtures/` is *not* ignored — those are the recorded inputs the self-test replays |
 | `__pycache__/`, `.claude/`, `ports-archived/`, `port-archive.sh` | yes | Local scratch and tool state |
@@ -486,9 +512,9 @@ delete them from inside a container rather than with `sudo`.
 |---|---|
 | `README.md` | The front door: what KDOS is, and how to build and run it |
 | `CLAUDE.md` | The contributor briefing read by coding assistants: hard rules, conventions and the build loop. It is not a description of how the system works; that is this book |
-| `Makefile` | Every target: `all` (the default, the same as `build`), `fetch`, `fetch-check`, `updates`, `build`, `check-iso-free`, `snapshots`, `run`, `run-hw`, `rundisk`, `rundisk-hw`, `debug-boot`, `check-hw`, `cleandisk`, `cleanbuild`, `clean`. `check-iso-free` runs before every `build` and stops it while another process — usually a running VM — holds `build/iso-build/kdos.iso` open, since rewriting the image under a guest gives it I/O errors; `ALLOW_ISO_IN_USE=1` overrides it. See [Developing](../05-developer/developing.md#make-targets) |
+| `Makefile` | Every target: building (`all`, the default and the same as `build`; `build`, `snapshots`, `cleanbuild`, `clean`), running (`run`, `run-hw`, `rundisk`, `rundisk-hw`, `debug-boot`, `check-hw`, `cleandisk`), sources (`fetch`, `fetch-check`, `updates`, `publish` and the seven `publish-*` targets), releases (`freeze`, `release`, `release-publish`), checks (`check`, and each of its checks alone, with `selftest-asan`, `booknav-write` and the built-tree checks `depdrift`, `debuginfo`, `unowned`, `linkcheck` and `entrycheck`), the book (`book`, `book-data`, `book-stamp`) and the rig (`quick`, `rig-image`, `devdeps-image`). `make help` lists them with a line each. `check-iso-free` runs before every `build` and stops it while another process — usually a running VM — holds `build/iso-build/kdos.iso` open, since rewriting the image under a guest gives it I/O errors; `ALLOW_ISO_IN_USE=1` overrides it. See [Developing](../05-developer/developing.md#make-targets) |
 | `Dockerfile` | The build container, `os-dev`: Alpine with the host tools the two host phases (`00_cross`, `10_bootstrap`) need |
-| `.dockerignore` | What the build container's context leaves out: `build/` and `ports-archived/` |
+| `.dockerignore` | What the build container's context leaves out: `build/`, `ports-archived/` and `ports/` |
 | `.gitignore` | The ignore rules in the table above |
 | `.gitattributes` | Declares that no path goes through a filter |
 | `.github/workflows/books.yml` | The one CI workflow. On a push to `main` it renders both books and deploys them as one GitHub Pages site, the KDOS book at the root and *KDOS from Scratch* under `kfs/` with `kfs/kfs.pdf`; on a published `v*` release it attaches `kfs.pdf` and `kfs-html.tar.zst`. Pages must deploy from GitHub Actions, since the tree holds no Jekyll configuration. See [Developing](../05-developer/developing.md#rebuilding-one-thing) |

@@ -11,7 +11,8 @@ it.
 
 Nothing needs installing. The zram device is made by [`/etc/init.d/12_zram.sh`]{.idx}, which comes from the
 tree's `fs/` overlay rather than from a port, and its programs come from
-[util-linux](#port-util-linux): [`swapon`]{.idx}, [`swapoff`]{.idx}, `mkswap`, [`zramctl`]{.idx} and [`fallocate`]{.idx}. The
+[util-linux](#port-util-linux): [`swapon`]{.idx}, [`swapoff`]{.idx}, `mkswap`, [`zramctl`]{.idx}, `findmnt` and
+[`fallocate`]{.idx}. A swap file on btrfs is made with `btrfs` from [btrfs-progs](#port-btrfs-progs). The
 driver is a kernel module of the [linux](#port-linux) port, `zram`, which the script loads itself.
 
 The service is enabled on the image: `/etc/service.disabled/` holds no `zram` marker, so `rcS` runs
@@ -21,7 +22,9 @@ scripts that start no daemon; see
 
 Disk swap is the installer's choice. On the erase plan it offers a swap file, a swap partition or
 none (see [Swap](../../kdos/02-user-guide/installation.md#swap)), and writes the `/etc/fstab` line
-for it. The live medium has no disk swap.
+for it. The reuse plan shows no swap choice and installs with the erase plan's last setting, a
+4096 MiB swap file unless it was changed; a swap *partition* setting installs no swap there, since
+only the erase plan makes partitions. The live medium has no disk swap.
 
 ## Configuration
 
@@ -37,9 +40,10 @@ that sizes the device, makes it swap at priority 100 and then changes the two ke
 <!-- kfs:include fs/etc/init.d/12_zram.sh lines=69-98 pin=4b429f69db28 -->
 
 **`/etc/fstab`** carries any disk swap. The image's own `fs/etc/fstab` has no swap line; the
-installer appends one, in one of these two forms, from `src/system/kdos-installer/install.c`:
+installer writes its own lines, swap among them, ahead of the image's, in one of these two forms,
+from `src/system/kdos-installer/install.c`:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=1636-1643 pin=99d9a475fbf5 -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=1639-1646 pin=99d9a475fbf5 -->
 
 `rcS` turns on every swap line of `/etc/fstab` once the filesystems are mounted, from
 `fs/etc/init.d/rcS`:
@@ -49,7 +53,7 @@ installer appends one, in one of these two forms, from `src/system/kdos-installe
 and `/etc/inittab`, from `fs/etc/inittab`, turns all swap off again at power-off and reboot, after
 the services are stopped and before the filesystems are unmounted:
 
-<!-- kfs:include fs/etc/inittab lines=56-60 pin=3481280b9e99 -->
+<!-- kfs:include fs/etc/inittab lines=57-61 pin=3481280b9e99 -->
 
 ## Usage
 
@@ -71,7 +75,8 @@ the services are stopped and before the filesystems are unmounted:
    ```
 
    `DISKSIZE` is the size the script worked out from `size` in `zram.conf`, `DATA` what has been
-   swapped to the device, and `COMPR` the space that data takes once compressed.
+   swapped to the device, `COMPR` the space that data takes once compressed, and `TOTAL` the RAM
+   the device occupies, its own bookkeeping included.
 
 3. Ask the service itself:
 
@@ -79,8 +84,9 @@ the services are stopped and before the filesystems are unmounted:
    service status zram
    ```
 
-   It prints `zram: /dev/zram0 active, <bytes> bytes nominal`, or `present but not swap` with exit
-   status 1.
+   It prints `zram: /dev/zram0 active, <bytes> bytes nominal`. With exit status 1 it prints
+   `zram: /dev/zram0 present but not swap` when the device exists but is not swap, as after `service stop zram`, and
+   `zram: no zram device` when the module is not loaded.
 
 ### Changing the size or the compression algorithm
 
@@ -97,7 +103,9 @@ the services are stopped and before the filesystems are unmounted:
    ```
 
    `stop` runs `swapoff` on the device, which has to bring every page held in it back into RAM
-   before the device can be reset; on a machine that is short of memory, reboot instead.
+   before the device can be reset; on a machine that is short of memory, reboot instead. If that
+   `swapoff` fails, the restart keeps the old device and prints `zram: /dev/zram0 is already swap`
+   (see [Troubleshooting](#troubleshooting)).
 
 3. Check the result with `zramctl`. An algorithm the kernel does not carry, or a `size` outside
    1–90, is reported in the script's output and replaced (see
@@ -125,6 +133,10 @@ medium has a persistence store ([kdos persist](../../kdos/04-programs/kdos-comma
    [`/etc/service.disabled/<name>`](../../kdos/06-reference/configuration.md#etcservicedisabledname).
 
 ### Adding a swap file on an installed system
+
+An installed machine may already have one: the installer's swap file is `/swapfile`, and
+`swapon --show` lists it. The commands below use that name, so pick another, in every step, to add
+a second file.
 
 The way the file is made depends on the root filesystem. `swapon` refuses a file made the wrong
 way, and at boot `rcS` throws that error away, so a wrong file in `/etc/fstab` leaves the machine
@@ -210,12 +222,16 @@ cat /run/kdos-init.zram.log
   the running kernel are not installed. Check that `/usr/lib/modules/$(uname -r)` exists, then try
   `sudo modprobe zram` and read its error.
 - `[FAIL] zram: the kernel refused a N% disksize`, `mkswap /dev/zram0` or `swapon /dev/zram0`: the
-  step named failed. `dmesg | tail` usually says why.
+  step named failed. `sudo dmesg | tail` usually says why; the kernel lets only root read its
+  log.
 - No log at all: the service is disabled. `ls /etc/service.disabled/` shows a `zram` marker;
   `sudo service enable zram` removes it.
 
-**The log says `no 'lz4' backend in this kernel — keeping the default`.** The algorithm in
-`zram.conf` is not one this kernel offers. List the ones it does; the bracketed name is in use:
+**The log says `no '<name>' backend in this kernel — keeping the default`.** The algorithm in
+`zram.conf` is not one this kernel offers. The KDOS kernel carries all six that `zram.conf` lists,
+so on it this is usually a misspelt name. The script reads a value only up to its first character
+that is not a letter or a digit, so `lzo-rle` is read as `lzo`. List the algorithms the kernel
+offers; the bracketed name is in use:
 
 ```bash
 cat /sys/block/zram0/comp_algorithm
@@ -236,8 +252,10 @@ On btrfs, `swapon failed: Invalid argument` means the file is copy-on-write or c
 is what `btrfs filesystem mkswapfile` avoids. Remove the file and make it again as
 [above](#adding-a-swap-file-on-an-installed-system).
 
-**`service restart zram` hangs or fails in `swapoff`.** The pages in zram have nowhere to go. Close
-some programs and try again, or reboot.
+**`service restart zram` hangs, or prints `zram: /dev/zram0 is already swap`.** `swapoff` could not
+bring the pages held in zram back into RAM. `stop` discards its error, so the device keeps its old
+size and algorithm, and zswap and swap read-ahead are left switched back on as `stop` sets them.
+Close some programs and run the restart again, or reboot.
 
 ## Known gaps
 

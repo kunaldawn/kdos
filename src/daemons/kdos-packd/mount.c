@@ -11,8 +11,9 @@
  * TWO ROUTES TO ONE MOUNT, AND WHICH ONE YOU GET DEPENDS ON THE KERNEL.
  * With CONFIG_EROFS_FS_BACKED_BY_FILE the kernel takes a regular file as the
  * source directly and there is no loop device at all; without it, mount(2)
- * answers ENOTBLK and the pack goes through a loop device. The format does not
- * care which — the trailing footer is invisible to both — so the daemon tries
+ * answers ENOTBLK or EINVAL and the pack goes through a loop device. The
+ * format does not care which — the trailing footer is invisible to both — so
+ * the daemon tries
  * the cheap one, remembers the answer, and `status` reports it. A person
  * debugging a failed mount needs to know which one they are on.
  *
@@ -199,8 +200,9 @@ int kd_mount(int idx, char *msg, size_t n)
 	 * entirely — `kdos app install` mounts straight off ISO9660 without a
 	 * copy, so this is the only place that file is ever checked.
 	 *
-	 * Stated cost: the first mount of a medium pack reads it once, which on
-	 * a slow stick is seconds. The alternative is mounting bytes nobody
+	 * Stated cost: every mount of a medium pack reads it once, which on a
+	 * slow stick is seconds; a pack already mounted returns above and is
+	 * not read again. The alternative is mounting bytes nobody
 	 * looked at.
 	 */
 	if (p->origin == KD_ORIGIN_MEDIUM && !kd_fixture_trust) {
@@ -511,8 +513,10 @@ int kd_compose(const char *box, char *const *ids, int nids, uid_t uid,
 		/*
 		 * A live session's $HOME is on the boot overlay and the kernel
 		 * refuses to stack an upper on overlayfs. The fallback is
-		 * tmpfs, and the CALLER IS TOLD: losing somebody's work quietly
-		 * is the failure this branch exists to avoid.
+		 * tmpfs, and the box is MARKED EPHEMERAL in the log and in the
+		 * `status` reply; the compose reply carries only the merged
+		 * path. Losing somebody's work quietly is the failure the mark
+		 * exists to avoid.
 		 */
 		b->ephemeral = 1;
 		if (path_fmt(b->upper, sizeof(b->upper), "%s/kdos/boxes/%s/upper",

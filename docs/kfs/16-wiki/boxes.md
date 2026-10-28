@@ -12,15 +12,17 @@ machine is [Packs](packs.md); Podman and distrobox used directly are [Containers
 
 - [kdos-appbox](#port-kdos-appbox) installs `/usr/local/bin/kdos-appbox` and, as links to it,
   `kdos-box` and `xdg-open`, and the catalogue, [`/usr/share/kdos/appstore/catalogue`]{.idx}. It depends
-  on [podman](#port-podman) and [distrobox](#port-distrobox).
+  on [podman](#port-podman), [distrobox](#port-distrobox),
+  [shared-mime-info](#port-shared-mime-info) and [xdg-utils](#port-xdg-utils).
 - `kdos app`, the everyday command, is in [kdos-tools](#port-kdos-tools); every verb of it that
   builds, removes, exports or imports runs `kdos-appbox`.
 - [kdos-boxinit](#port-kdos-boxinit) is process 1 inside a box made from packs, and
   [kdos-boxsock](#port-kdos-boxsock) holds each box's own tagged Wayland socket.
 - [kdos-packd](#port-kdos-packd), the service `packd`, mounts and composes the packs a pack box is
   made of; see [Packs](packs.md).
-- The desktop session starts the boxes behind your pinned launchers at login and stops idle ones
-  every ten minutes, from `/usr/local/lib/kdos/session-common.sh`.
+- The desktop session starts the boxes behind your pinned launchers at login and, every ten
+  minutes, stops any box that has run past its profile's `autostop` time with no window open, from
+  `/usr/local/lib/kdos/session-common.sh`.
 
 The image carries the catalogue and no application: each one is built on the machine that asks for
 it, which needs the network. Boxes need no service of their own.
@@ -38,9 +40,9 @@ come from:
 
 An application row and its description, as an example:
 
-<!-- kfs:include src/system/kdos-appbox/catalogue lines=314-314 pin=db241a9ade70 -->
+<!-- kfs:include src/system/kdos-appbox/catalogue lines=317-317 pin=db241a9ade70 -->
 
-<!-- kfs:include src/system/kdos-appbox/catalogue lines=502-502 pin=6a389e27c186 -->
+<!-- kfs:include src/system/kdos-appbox/catalogue lines=505-505 pin=6a389e27c186 -->
 
 The format of every line kind is in
 [The catalogue file](../../kdos/04-programs/kdos-appbox.md#the-catalogue-file).
@@ -63,18 +65,18 @@ The compositor reads the same file for the box's `grant` line.
 The session's `kdos_session_boxes`, in `fs/usr/local/lib/kdos/session-common.sh`, runs two
 commands in the background. The warmup, once at login:
 
-<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=91-91 pin=fa4c063a4b0e -->
+<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=92-92 pin=fa4c063a4b0e -->
 
 and the idle sweep, every ten minutes from login on. The loop keeps running after Log Out and ends
 with the login; a box stops for neither:
 
-<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=99-99 pin=b0b7bb100465 -->
+<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=100-100 pin=b0b7bb100465 -->
 
-The warmup starts up to eight pack boxes, the ones behind the entries of
+The warmup starts up to eight boxes, the ones behind the entries of
 `~/.config/kdos/favorites`, in order. Its skeleton, `fs/etc/skel/.config/kdos/favorites`, describes
 the format:
 
-<!-- kfs:include fs/etc/skel/.config/kdos/favorites lines=10-20 pin=625f093219e1 -->
+<!-- kfs:include fs/etc/skel/.config/kdos/favorites lines=11-19 pin=9d380fc97c16 -->
 
 ### Other files
 
@@ -114,9 +116,12 @@ per application and data pack. `kdos app info app.hugin` names the runtime row t
    kdos app install app.hugin --dry-run
    ```
 
-   With the catalogue's `snapshot = auto`, the dry run also warns
+   With the catalogue's `snapshot = auto`, the date is read by running `debian:trixie-slim`, which
+   pulls that image first when it is not in your image store. When that run fails (no network, or
+   podman cannot start a container) or the image's sources file carries no snapshot line, the dry
+   run and the install both warn
    `could not read the snapshot date out of debian:trixie-slim — building against the live archive,
-   which is not reproducible` when the base image has not been pulled yet.
+   which is not reproducible` and build unpinned.
 
 2. Install it, by id or by group. It builds a stack of images on this machine, one per catalogue
    row, `kdos/base`, then the runtime, then the application; an image already built is skipped:
@@ -131,7 +136,8 @@ per application and data pack. `kdos app info app.hugin` names the runtime row t
 The step after the images creates the box with `kdos-box create <id> base=image:kdos/<id>`. The
 image is already in your image store, so the create uses it without asking a registry, and the
 install then writes the application's launchers. When the create fails, the install prints
-`<id>: the image built and the box did not`, no launcher is made, and the images stay built;
+`<id>: the image built and the box did not`, no launcher is made, and the images stay built.
+Running `kdos app install <id>` again skips those images and tries the box again;
 `kdos-box remove <id>` deletes the profile the failed create left. See
 [install and uninstall](../../kdos/04-programs/kdos-appbox.md#install-and-uninstall).
 
@@ -170,8 +176,10 @@ the kill (15 seconds on the live medium), and `list` may still show it `stopping
 
 `remove` runs `podman rm` without `-f`, which refuses a running box. On success it prints
 `<name> removed — its profile and its writable layer are still in ~/.local/share/kdos/boxes/<name>`
-and exits 0. When podman refuses, podman's own error is printed, then
-`<name> was not removed (podman rm exited N)`, and `kdos-box remove` exits with podman's status;
+and exits 0; the profile itself is `~/.config/kdos/boxes/<name>.conf`, and a store box's writes
+were inside its container and go with it. When podman refuses, podman's own error is printed, then
+`<name> was not removed (podman rm exited N)`, which without `--force` goes on to say that a
+running box needs `kdos-box stop` first, and `kdos-box remove` exits with podman's status;
 the box and its stack are left as they were. Stop the box first with `kdos-box stop`, then remove
 it. `--force` (`kdos-box remove app.hugin --force`) adds `-f` to `podman rm`, which does not
 remove a running box made from an image on the live medium: podman gives up with `given PID did
@@ -194,31 +202,40 @@ Inside, `KDOS_BOX` holds the box's name.
    kdos-box profile app.hugin
    ```
 
-2. Set keys. It answers `<name>: written`, reminds you that namespaces and volumes apply at
-   create time, and prints the profile again; `autostop=30m` is stored as `autostop=1800s`:
+2. Set keys. For a box that has a container it answers `<name>: written`, reminds you that
+   namespaces and volumes apply at create time, and prints the profile again; for one with no
+   container yet it says the profile applies when the box is created. `autostop=30m` is stored as
+   `autostop=1800s`:
 
    ```bash
-   kdos-box profile app.hugin home=private network=none memory=4G
+   kdos-box profile app.hugin home=private network=private
    ```
 
-3. Namespaces and shared directories are set when a box is created. For those keys, remove the
-   box and let it be created again from the kept profile: a pack box is recreated by its next
-   launch.
+3. Namespaces and shared directories are set when a box is created. For those keys, stop and
+   remove the box, then create it again from the kept profile. A pack box is created again by its
+   next launch. A store box, the kind `kdos app install` makes, is not: install it again, which
+   skips the images already built and creates the box over them.
 
    ```bash
+   kdos-box stop app.hugin
    kdos-box remove app.hugin
+   kdos app install app.hugin
    ```
 
-`memory` and `cpus` become [cgroup]{.idx} limits only in a session started by autologin, which
-`kdos-getty` puts in your delegated cgroup; in a session started any other way the engine accepts
-them and the kernel does not apply them. See
+The two kinds of box do not take the same keys. A store box is created by `distrobox create`,
+which receives none of `memory`, `cpus` and `pids` and gives `network=none` the same private
+namespace, with an interface, as `network=private`; `kdos-box profile` still prints the pack box's
+flags (`--memory`, `--network none`) beside those keys. On a pack box, `memory` and `cpus` become
+[cgroup]{.idx} limits only in a session started by autologin, which `kdos-getty` puts in your
+delegated cgroup; in a session started any other way the engine accepts them and the kernel does
+not apply them. See [Box profiles](../../kdos/04-programs/kdos-appbox.md#box-profiles) and
 [memory and grants](../../kdos/04-programs/kdos-appbox.md#memory-and-grants).
 
 ### Granting a box more of the desktop
 
 A box's clients reach the compositor through a tagged socket, and the compositor refuses them
-screen capture, clipboard managers, layer-shell surfaces and input methods unless the profile
-grants them by name:
+screen capture, clipboard managers, lists of other windows, layer-shell surfaces, output power and
+input methods unless the profile grants them by name:
 
 ```bash
 kdos-box profile app.hugin grant=screencopy
@@ -234,8 +251,12 @@ asks for; after that the box's next client sees the change, and a running one ke
 
 ### Snapshots, clones and rollback
 
-These work on a pack box's writable layer, under `~/.local/share/kdos/boxes/<name>/`. A box built
-from a container image keeps its writes inside the engine's store, where they do not reach.
+These work on a pack box's writable layer, under `~/.local/share/kdos/boxes/<name>/`; the example
+is a box imported from a set, which is named after its pack. A box built from a container image,
+such as a store box, keeps its writes inside the engine's store, where they do not reach: on it,
+`snapshot` refuses, and `clone` makes the new box on the same image without copying any work. A
+pack box on the live medium keeps its writes on a temporary filesystem instead, and `snapshot`
+refuses there too.
 
 ```bash
 kdos-box snapshot app.scribus before-plugin    # a full copy of the writable layer, tagged
@@ -277,9 +298,12 @@ A box made from a container image is a working environment, not tied to an appli
 
    `kdos-box apps` lists the desktop ids in the box's `/usr/share/applications`, and prints
    nothing for an image, such as Alpine's, that has none. `export` writes
-   `~/.local/share/applications/<desktop-id>.scratch.desktop`, which works, and a shim
-   `~/.local/bin/<desktop-id>@scratch`, which answers `unknown alien app` until a table row of that
-   name exists. `kdos-box unexport scratch <desktop-id>` removes both.
+   `~/.local/share/applications/<desktop-id>.scratch.desktop`, whose command is
+   `kdos-box run scratch <desktop-id>`: the name is run as a program inside the box, so the
+   launcher works only for an entry whose desktop id is also its command, such as `gimp`, and not
+   for one such as `org.gnome.gedit`. It also writes a shim `~/.local/bin/<desktop-id>@scratch`,
+   which answers `unknown alien app` until a table row of that name exists.
+   `kdos-box unexport scratch <desktop-id>` removes both.
 
 A box on a pack base (`base=pack:<id>`) needs no network, and its pack was verified when it was
 installed. Do not use `base=box:<name>`: that create never finishes, repeating the same step until
@@ -310,7 +334,10 @@ kdos app remove app.hugin
 ```
 
 It removes the box, the application's image, and each runtime image above the base that no
-remaining box's chain names, then regenerates the launchers. The base image is never removed.
+remaining box's chain names, then regenerates the launchers. The base image is never removed, and
+neither is the box's profile. The box is removed with `kdos-box remove`, which refuses a running
+box: the remove then prints `kdos-appbox: app.hugin was not uninstalled` and touches no image, so
+stop the box first with `kdos-box stop app.hugin`.
 
 ### Updating an application
 
@@ -354,15 +381,17 @@ home can hold a box's writable layer; its Containers and Desktop sections check 
 
 `<id>: the image built and the box did not`
 : The box create after the images failed, with podman's own message above this line; the images
-  stay built. `kdos-box remove <id>` deletes the profile it left, and `kdos app install <id>`
-  then tries the box again. See [Installing an application](#installing-an-application).
+  stay built. `kdos app install <id>` tries the box again without rebuilding them, and
+  `kdos-box remove <id>` deletes the profile the failed create left. See
+  [Installing an application](#installing-an-application).
 
 A launch does nothing
 : Run it from a terminal with the engine's messages shown: `kdos-appbox -v run <app>`. The
   stage timings of recent launches are in `$XDG_RUNTIME_DIR/kdos-appbox.trace`.
 
 `could not start <name>`
-: `enter` and `start` do not show the engine's message. Look at the container with
+: `kdos-box enter` prints this when the box will not start, without the engine's message, and
+  `kdos-box start` prints nothing at all. Look at the container with
   `podman ps -a` and `podman logs <name>`, or in the *Containers* terminal program, `podman-tui`.
 
 No box starts, and the engine exits 125
@@ -377,12 +406,22 @@ A box's work is gone after a reboot
 : It ran on the live medium, or `kdos-appbox status` marks it `ephemeral`; see
   [A live session cannot create a persistent box](../../kdos/06-reference/known-gaps.md#a-live-session-cannot-create-a-persistent-box).
 
+`could not compose box '<name>' from packs` on a launch
+: The box does not exist and the launch tried to make it from packs. A launch creates only a pack
+  box; a store box that was removed is created again with `kdos app install <id>`. For a pack box,
+  the line above names the cause, such as `kdos-packd is not running`.
+
 A profile change has no effect
-: Namespace and directory keys apply at creation. Remove the box and launch the application again.
-  A `grant` change needs `kdos-comp -r`, and then reaches the next client, not a running one.
+: Namespace and directory keys apply at creation: stop and remove the box, then launch a pack box
+  again or run `kdos app install <id>` for a store box. On a store box `memory`, `cpus` and `pids`
+  never apply, and `network=none` is a private network; see
+  [Changing what a box may share](#changing-what-a-box-may-share). A `grant` change needs
+  `kdos-comp -r`, and then reaches the next client, not a running one.
 
 `kdos-box snapshot` says `<name> has nothing written to snapshot`
-: The box was built from a container image, and its writes are in the engine's store.
+: The box was built from a container image, and its writes are in the engine's store, or it is a
+  pack box on the live medium, whose writes are on a temporary filesystem under
+  `/run/user/<uid>/kdos/boxes/`.
 
 ## Known gaps
 

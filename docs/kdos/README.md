@@ -19,6 +19,11 @@ shell, files and permissions, what a kernel, a boot loader and a package manager
 about KDOS itself. The chapters for developers also assume that you can read C and shell, and that
 you have compiled a program from source before.
 
+This is the first of KDOS's two books. It explains what each mechanism is and why it was chosen.
+The second, [KDOS from Scratch](../kfs/README.md), gives the commands: the build phase by phase,
+a page for every package, and the tasks of running a machine. Where the two meet, the second links
+here rather than repeating it.
+
 The book moves from a bird's-eye view to depth. Part I says what KDOS is, how it differs from other
 distributions and why it chose differently. Part II uses the system as a person sitting at it
 would. Part III opens the running system and explains each mechanism, starting with a map of the
@@ -130,7 +135,7 @@ are written for the person at the keyboard and name the file behind each behavio
    finding, installing, launching, updating and removing boxed applications, carrying a set to
    another machine, and managing boxes
 9. [Theming](02-user-guide/theming.md): the eight accents, fonts, the phosphor pass, wallpaper,
-   the boot menu and consoles, and theming inside a box
+   the boot menu and consoles, and theming native applications and applications inside a box
 10. [Administration](02-user-guide/administration.md): services, users, storage, networking, the
     firewall, hardware, updates and diagnosis, then each user's backups, mail, passwords and input
     methods
@@ -219,7 +224,7 @@ failures that recur, the C libraries, desktop software and the test harnesses.
 36. [Writing desktop software](05-developer/writing-desktop-software.md): building a KDOS surface:
     the frame protocol, roles, input, drawing, chrome, pictures, and testing without a screen
 37. [Testing](05-developer/testing.md): preflight, the self-test, goldens, fixtures, the QEMU rig,
-    checking the sources, docscheck, and what is not tested
+    checking the sources, the book checks, measuring frame rate, and what is not tested
 
 ### Part VI — Reference
 
@@ -260,14 +265,16 @@ it says what was counted or measured, and every such number was taken from the t
 writing. The book describes the system as it is: it records no history, and a behaviour that
 changes changes its page in the same commit.
 
-The KDOS version string appears in three places and nowhere else: the
-[repository README](../../README.md), which names the release line;
-[Status](06-reference/status.md), which says what each subsystem's maturity rests on; and
-`fs/etc/os-release`. A version number anywhere else in the book belongs to an upstream component,
-not to the system.
+This book states the KDOS version in two places: the [repository README](../../README.md), which
+names the release line, and [Status](06-reference/status.md#release-line), which says what that
+line delivers and what it does not promise. The running system reads it from `fs/etc/os-release`. Any other
+version number in the book belongs to an upstream component, except a release tag shown as an
+example in a command.
 
 ## See also
 
 - [Repository README](../../README.md): the front door, and the shortest path to a running system
+- [KDOS from Scratch](../kfs/README.md): the companion book: the build phase by phase, a page for
+  every package, and the tasks of running a machine
 - [Why KDOS](01-philosophy/why-kdos.md): the first chapter, for a reader starting at the beginning
 - [Glossary](06-reference/glossary.md): every term the book uses, defined once

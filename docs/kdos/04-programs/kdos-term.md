@@ -39,10 +39,13 @@ because it is mature and `kdos-term` has not been used as a day-to-day terminal;
 - The shipped `mc` user menu (`/etc/skel/.config/mc/menu`) has **Terminal here**, which runs
   `kdos-term -D` on the current directory.
 - A desktop entry can ask for it by name with `X-KDOS-Term=kdos-term`, which is what an application
-  that draws pictures in the cell grid does. `X-KDOS-Term` accepts only `kdos-term` and `foot`; any
+  that draws pictures in the cell grid does: the shipped entries for `yazi`, `rmpc`, `timg`,
+  `presenterm` and `epy` all carry it. `X-KDOS-Term` accepts only `kdos-term` and `foot`; any
   other value gets the session's default. Such an entry's `X-KDOS-Size` and `X-KDOS-Float` reach
   `kdos-term` as `--size` and `--float`; `foot` is given neither. See
-  [kdos-appbox](kdos-appbox.md) for how launchers use these keys.
+  [Opening a terminal](kdos-shell.md#opening-a-terminal) for how the panel passes these keys, and
+  [Terminal entries](kdos-appbox.md#terminal-entries) for how `kdos-appbox` honours
+  `X-KDOS-Term`.
 
 Use `kdos-term` when you want pictures in the terminal, clickable links, prompt jumping, or a font
 size per window.
@@ -145,8 +148,9 @@ A program that has asked for mouse reports gets the pointer, because it draws it
 Hold `Shift` to take the pointer back and select text out of such a program, or to scroll the
 scrollback with the wheel, as in other terminals.
 
-Any key press ends a scrollback view and returns to the live screen, so you never type into a line
-you cannot see.
+Any key that goes to the program ends a scrollback view and returns to the live screen, so you never
+type into a line you cannot see. The terminal's own chords, the scrollback ones included, keep the
+scrollback view open.
 
 Programs can copy too. An `OSC 52 ; <targets> ; <base64>` escape sequence (an operating-system
 command; the introducers are defined in [The escape layer](#the-escape-layer)) puts text on the
@@ -155,7 +159,9 @@ clipboard, or on the primary selection when the targets include `p`. The read fo
 was last copied anywhere on the desktop, and there is no setting to allow it.
 
 In a `--tty` run there is no display server to hold a selection, so a drag, `Ctrl+Shift+C` and
-`OSC 52` copy nothing.
+`OSC 52` copy nothing. Pasting with the outer terminal's own paste still works: `kdos-term` turns
+on bracketed paste in the outer terminal, and what arrives goes through the same filter as any
+other paste.
 
 ### Chords the terminal keeps
 
@@ -236,13 +242,13 @@ outer terminal.
 ## Hyperlinks
 
 A program marks text as a link with `OSC 8 ; params ; URI` and ends it with `OSC 8 ; ;`. Moving the
-pointer over a link underlines the whole run of text; `Ctrl`+click opens it. A plain click does not,
-so selecting a word inside a link never opens anything by accident.
+pointer over a link underlines the whole run of text, and every other run on the screen with the
+same address; `Ctrl`+click opens it. A plain click does not, so selecting a word inside a link never
+opens anything by accident. `Ctrl`+click opens a link even while a program has the mouse.
 
-A link opens through `kdos-appbox open`, the same route the desktop portal's `OpenURI` call takes
-(see [Portals](../03-architecture/session.md#portals)), as an argument vector and never a command
-line. The address resolves to the handler for its type, or for
-`x-scheme-handler/<scheme>`.
+A link opens through `kdos-appbox open`, the command `xdg-open` is on KDOS (see
+[The open path](kdos-appbox.md#the-open-path)), run as an argument vector and never a command
+line. The address resolves to the handler for its type, or for `x-scheme-handler/<scheme>`.
 
 The rules, each of which exists because anything that can write to a terminal can write an `OSC 8`
 (a `cat` of a hostile file, a program on the far end of `ssh`):
@@ -369,12 +375,16 @@ eighteen lines are present; otherwise the built-in one stays. See
 - `paste_guard` applies to the next paste. `image_cells` applies to the next picture; the geometry
   reported to programs follows at the next resize or font step.
 - `images = no` stops decoding at once. `images = yes` and a new `image_max` take full effect when a
-  window opens or after a font step, which re-registers the picture path.
+  window opens, or after a font step or scale change that changes the cell size, which
+  re-registers the picture path.
 - `shell`, `font`, `columns`, `rows`, `opacity` and `scrollback` are read only when a window opens.
 - `term-colors.conf` is read only when a window opens. An open window keeps its sixteen colours,
   although what they reduce to on screen follows the new accent.
 
 A window whose font you stepped keeps its stepped size: this file is where a window starts.
+
+A reload reads the file over the values in force and does not restore the defaults first, so a
+line you delete keeps its last value in an open window until that window closes.
 
 ## The escape layer
 
@@ -424,6 +434,7 @@ and fall back to the most basic output.
 | `OSC 4 ; n ; ?` | Report palette entry `n`. Setting the palette is not supported; a set is skipped |
 | `OSC 10 ; ?`, `OSC 11 ; ?` | Report the default foreground and background |
 | `CSI 18 t` | Report the text area in characters: `CSI 8 ; rows ; cols t` |
+| `CSI 19 t` | Report the screen in characters, which here is the same size: `CSI 9 ; rows ; cols t` |
 
 Replies end with the same terminator the query used (`BEL` or `ST`).
 
@@ -486,7 +497,7 @@ for `OK` or an error code. `kdos-term` answers `APC G i=<id> ; OK ST` with the p
 
 **The sixteen named colours.** They are resolved through the palette in force, which is
 `term-colors.conf` from `kdos theme` when all eighteen of its lines are present, and are then mapped
-to the nearest of the accent's eight colour [slots](../06-reference/glossary.md) (named colour roles
+to the nearest of the accent's eight colour [slots](../06-reference/glossary.md#slot) (named colour roles
 such as `KT_TEXT` and `KT_BG`; see [The design language](../03-architecture/design-language.md)). So
 `kdos theme` moves a terminal's red along with everything else on the screen.
 
@@ -518,6 +529,9 @@ colon, reads `4:3` as `SGR 43`, and draws a yellow background.
 - `blink` (`SGR 5`) and `dim` (`SGR 2`) are parsed and not drawn. Drawing blink as bold would
   misstate which words are emphasised.
 
+How the companion faces are found and the synthesised styles drawn is in
+[Styles and companion faces](../05-developer/c-libraries.md#styles-and-companion-faces).
+
 ## Pictures
 
 `kdos-term` shows pictures sent with three protocols: sixel, iTerm2's inline images and the kitty
@@ -543,7 +557,7 @@ the margin. Afterwards the cursor is on the line below the picture, in the colum
 The work is divided: `libkvt` finds where each picture sequence starts and ends and decodes nothing;
 `kdos-term` removes the transport encoding (base64 and the `key=value` control blocks, both
 bounded), decides how many cells the picture covers, and writes
-[sprite](../06-reference/glossary.md) cells into the screen; `libkimg` does all image decoding;
+[sprite](../06-reference/glossary.md#sprite) cells into the screen; `libkimg` does all image decoding;
 `libkcell` scales and cuts the picture into tiles of up to 16 by 16 cells, the same code
 [`kdos-peek`](kdos-shell.md#kdos-peek) uses. Nothing in `kdos-term` parses an image format.
 
@@ -563,7 +577,7 @@ Before any of that, three budgets bound what a sequence can make the terminal do
 |---|---|
 | One payload, before decoding | `image_max` kilobytes (1024 by default); a chunked kitty transmission counts all its chunks |
 | One decoded picture | `image_cells` × 64 pixels on each side, and 64 MB of pixels |
-| The [sprite](../06-reference/glossary.md) table | 32 MB of tiles; older tiles are evicted to make room |
+| The [sprite](../06-reference/glossary.md#sprite) table | 32 MB of tiles; older tiles are evicted to make room |
 
 A picture that cannot get every one of its tiles is not drawn in part. It is not drawn at all: its
 cells keep what they held and the cursor does not move.
@@ -652,8 +666,10 @@ kdos-term --dump 44x8 -e /bin/echo hello
 
 ## A child that dies
 
-When the child exits, the window draws one last frame showing how it finished, then closes. There is
-no option to keep the window open.
+When the child exits, the window draws one last frame of what the child left on the screen and
+closes straight after it. `kdos-term` adds no exit message of its own, and there is no option to
+keep the window open, so to read a command's output afterwards, run it from a shell in the
+terminal rather than with `-e`.
 
 A program killed before it could tidy up leaves its terminal modes set. So before that last frame,
 `kvt_term_reset_modes()` turns bracketed paste, mouse reporting, focus reporting and synchronized
@@ -674,21 +690,22 @@ window.
 
 | Library | Contributes |
 |---|---|
-| [`libkvt`](../05-developer/c-libraries.md) | The VT100–VT520 state machine, the child on a pseudo-terminal, the screen as cells, selection, links and prompt marks |
-| `libkdisp` | Which display server to use, decided once at startup |
-| `libkwl` | The Wayland window: the only display implementation `kdos-term` links. A screen that scrolls has its rows' pixels moved inside the window's buffer rather than repainted |
-| `libktui` | The cell grid, the sprite table and its budget, the paste filter, the one dialog |
-| `libkcell` | The font painter, and the one scale-and-cut from a decoded picture into sprite tiles |
-| `libkimg` | The one place untrusted image bytes become a picture |
-| `libkxdg` | Splitting `shell` and `$SHELL` into an argument vector |
-| `libkcolor` | The accent palettes |
-| `libkbase` | Files, processes, notifications |
+| [`libkvt`](../05-developer/c-libraries.md#libkvt) | The VT100–VT520 state machine, the child on a pseudo-terminal, the screen as cells, selection, links and prompt marks |
+| [`libkdisp`](../05-developer/c-libraries.md#libkdisp) | Which display server to use, decided once at startup |
+| [`libkwl`](../05-developer/c-libraries.md#libkwl) | The Wayland window: the only display implementation `kdos-term` links. A screen that scrolls has its rows' pixels moved inside the window's buffer rather than repainted (see [Scrolling by moving pixels](../05-developer/c-libraries.md#scrolling-by-moving-pixels)) |
+| [`libktui`](../05-developer/c-libraries.md#libktui) | The cell grid, the sprite table and its budget, the paste filter, the one dialog |
+| [`libkcell`](../05-developer/c-libraries.md#libkcell) | The font painter, and the one scale-and-cut from a decoded picture into sprite tiles |
+| [`libkimg`](../05-developer/c-libraries.md#libkimg) | The one place untrusted image bytes become a picture |
+| [`libkxdg`](../05-developer/c-libraries.md#libkxdg) | Splitting `shell` and `$SHELL` into an argument vector |
+| [`libkcolor`](../05-developer/c-libraries.md#libkcolor) | The accent palettes |
+| [`libkbase`](../05-developer/c-libraries.md#libkbase) | Files, processes, notifications |
 
 The port's `build.sh` (`src/desktop/kdos-term/build.sh`) compiles every one of these into the binary
 and links the system's `wayland-client`, `fcft`, `fontconfig`, `pixman`, `libxkbcommon`, and the
 decoders `libkimg` uses: `libpng`, `libjpeg-turbo`, `libwebp`, `libsixel` and `libnsgif`. The
-recipe's `kpkgbuild` names these in `depends`; `ncurses` is there for its terminfo database, not for
-linking.
+recipe's `kpkgbuild` names these in `depends`, with three that are not linked: `wayland-protocols`
+and `wlroots` supply the protocol files the build generates `libkwl`'s Wayland headers from, and
+`ncurses` supplies the terminfo database that `TERM=xterm-256color` is looked up in.
 
 A `--tty` or `--dump` run opens no display at all.
 
@@ -706,14 +723,20 @@ frames under `testing/goldens/`:
 | `term-kitty-uniph-44x10` | A kitty picture drawn through Unicode placeholders. Skipped on a host without the PNG decoder |
 
 Where the Wayland libraries are present, it also builds the real window binary, to prove the same
-source links the real `libkwl`. Nothing in the suite drives a window. See
+source links the real `libkwl`. Nothing in the suite drives a window.
+
+The state machine underneath has nine `vt-*` goldens of its own: five replay recordings of what `vim`,
+`htop`, `mc`, `less` and `tmux` write to a terminal, and four replay hand-written streams for
+attributes, links, prompt marks and malformed input. See
+[The terminal fixtures](../05-developer/testing.md#the-terminal-fixtures) and
 [Testing](../05-developer/testing.md).
 
 ## See also
 
 - [kdos-comp](kdos-comp.md) — the compositor it is a window under
 - [kdos-appbox](kdos-appbox.md) — launchers, `X-KDOS-Term`, and `kdos-appbox open`
-- [kdos-shell](kdos-shell.md) — how `Terminal=true` entries are started, and `kdos-settings`
+- [kdos-shell](kdos-shell.md#opening-a-terminal) — how `Terminal=true` entries are started, and
+  [`kdos-settings`](kdos-shell.md#kdos-settings)
 - [The C libraries](../05-developer/c-libraries.md) — `libkvt`, `libkimg` and the sprite table
 - [Theming](../02-user-guide/theming.md) — `kdos theme`, which writes the accent and the terminal colours
 - [Configuration](../06-reference/configuration.md) — `term.conf` beside every other key file

@@ -1,8 +1,8 @@
 ## About
 
-qrupdate is a Fortran library of fast updates to QR, Cholesky and LU
-factorisations: after a rank-one change, or a row or column inserted or deleted, it recomputes the factors from the old ones
-instead of from scratch. [octave](#port-octave) links it for its `qrupdate`, `cholupdate`,
+qrupdate is a Fortran library of fast updates to QR, Cholesky and LU factorisations: after a
+rank-one change, or a row or column inserted or deleted, it recomputes the factors from the old
+ones instead of from scratch. [octave](#port-octave) links it for its `qrupdate`, `cholupdate`,
 `qrinsert`, `qrdelete` and related functions. The source is `qrupdate-ng`, a maintained fork
 of Jaroslav Hajek's original library with a CMake build. It installs the same `libqrupdate`, so
 Octave's configure finds it as `-lqrupdate`; it calls BLAS and LAPACK, which here are

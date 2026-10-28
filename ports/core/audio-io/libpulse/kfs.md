@@ -24,8 +24,8 @@ library and talks to PipeWire without knowing it; see
   upstream's `xmltoman`, a Perl script using `XML::Parser`, which is why `perl` and
   `perl-xml-parser` are dependencies.
 - `-Dipv6=true` — Let a client reach a server address given as an IPv6 host.
-- `-Ddbus=enabled` — Lets a client notice a server that appears on the session bus; `enabled`
-  makes a missing `dbus` a setup error.
+- `-Ddbus=enabled` — Lets a client notice a PulseAudio server that appears on the session or
+  system bus; `enabled` makes a missing `dbus` a setup error.
 - `-Dglib=enabled` — Builds `libpulse-mainloop-glib`, the GLib main-loop adapter most graphical
   consumers link.
 - `-Dasyncns=disabled` — Resolve server host names synchronously instead of through

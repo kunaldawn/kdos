@@ -18,7 +18,7 @@ the passphrase from the environment rather than a terminal; each comes with its 
 The Go modules come from the vendor bundle, `age-vendor-<version>.tar.xz`, which `ports/fetch`
 makes with `go mod vendor` because the recipe says `vendoring = go`; `build.sh` unpacks it and
 builds with `-mod=vendor`, offline. See
-[Vendoring](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#vendoring).
+[Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring).
 
 The loop builds each command from `./cmd/<name>` and installs it with its page from
 `doc/<name>.1`. A command added upstream reaches the package only when its name is added to the

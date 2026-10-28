@@ -8,8 +8,9 @@ set for a whole suffix, such as one a server at `a.co.uk` tries to set for all o
 [curl](#port-curl) links it for exactly that cookie check, as do [libsoup3](#port-libsoup3),
 [networkmanager](#port-networkmanager) and [transmission](#port-transmission). The package also
 installs the `psl` command and `psl-make-dafsa`, the Python script that compiles a list into the
-form the library reads. Configure needs Python only when the compiled list is missing from the
-source; the release tarball carries it, `src/suffixes_dafsa.h`, so the build itself runs no Python.
+form the library reads. Configure needs Python only when a compiled form of the list is missing
+from the source; the release tarball carries all three, `src/suffixes_dafsa.h` and the test suite's
+`tests/psl.dafsa` and `tests/psl_ascii.dafsa`, so the build itself runs no Python.
 The recipe's `depends` names [python3](#port-python3), which the installed script runs on.
 
 ## Flags
@@ -32,6 +33,6 @@ The recipe's `depends` names [python3](#port-python3), which the installed scrip
 The library's manual page, `libpsl.3`, is installed by `make install` only when both gtk-doc and
 manual pages are enabled, and building it then needs `xsltproc` and the DocBook stylesheets. The
 release tarball carries the finished page in `docs/libpsl/`, so `build.sh` installs that file
-itself, as [Manual
-pages](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#manual-pages)
+itself, as
+[Manual pages](../../../../docs/kdos/05-developer/writing-ports.md#manual-pages)
 asks for a page upstream ships but does not install.

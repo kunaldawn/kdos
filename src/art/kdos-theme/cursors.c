@@ -19,10 +19,9 @@
  *   * Xcursor ARGB is PREMULTIPLIED: alpha is divided out before the ramp and
  *     multiplied back after, or every anti-aliased edge becomes a dark halo.
  *   * The real file of each alias group is the CSS name and every X11 name is
- *     a symlink to it. That direction matters on upgrades — the theme this
- *     replaced was laid out the same way, so a stale `left_ptr -> default` is
- *     overwritten by an identical link instead of forming a loop that makes
- *     kpkg abort with "Symbolic link loop".
+ *     a symlink to it, never the other way round: a link from the CSS name
+ *     to an X11 one beside a link back would form a loop that makes kpkg
+ *     abort with "Symbolic link loop".
  * ---------------------------------
  */
 

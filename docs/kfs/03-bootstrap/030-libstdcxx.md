@@ -65,7 +65,13 @@ somewhere else.
 the language support half alone (exceptions, RTTI, `new` and `delete`); [`libstdc++exp.a`]{.idx} and
 [`libstdc++fs.a`]{.idx}, the experimental and filesystem extensions.
 
-**Installed headers:** `build/cross/x86_64-kdos-linux-musl/include/c++/<version>`, outside the root.
+**Installed headers:** `build/cross/x86_64-kdos-linux-musl/include/c++/<version>`, outside the root,
+with the sources of the C++ `std` module, `bits/std.cc` and `bits/std.compat.cc`, among them.
+
+**Other files:** `libstdc++.modules.json` in `/usr/lib`, the manifest that tells a compiler where
+the `std` module's sources are; the `libstdc++.so.6.*-gdb.py` hook beside the library, which the
+[native GCC](100-gcc.md) step deletes; and the gdb pretty-printers in
+`/usr/share/gcc-<version>/python`.
 
 ## Built again later
 

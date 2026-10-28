@@ -5,7 +5,7 @@ IMAP for reading, with its own account database and mail storage. It replaces th
 MTA, an MDA and an IMAP server for a small installation, such as a LAN with no mail provider. The
 package adds a service script, `78_maddy`, which runs it under the supervisor as the `maddy`
 account; other machines reach it once the firewall's `mail` name is on (see
-[Services](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md#services)).
+[Opening a service](../../../../docs/kdos/02-user-guide/administration.md#opening-a-service)).
 
 ## Flags
 
@@ -22,7 +22,7 @@ account; other machines reach it once the firewall's `mail` name is on (see
 The Go modules come from the vendor bundle, `maddy-vendor-<version>.tar.xz`, which `ports/fetch`
 makes with `go mod vendor` because the recipe says `vendoring = go`; `build.sh` unpacks it and
 builds with `-mod=vendor`, offline. See
-[Vendoring](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#vendoring). The manual page is
+[Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring). The manual page is
 rendered from `docs/man/maddy.1.scd` with [scdoc](#port-scdoc).
 
 `/etc/maddy/maddy.conf` is upstream's configuration as it ships. The host name, the domain and the

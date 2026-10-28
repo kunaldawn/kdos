@@ -22,9 +22,10 @@ records that the file was installed: no package owns it until `30_foundation` in
 ### The meaning of the configure options
 
 `--host=$KDOS_TARGET`
-: The system the program will run on, `x86_64-kdos-linux-musl`. Because that is not the
-  container, configure looks for the compiler under that name and finds the cross compiler from
-  [Part II](../02-cross/intro.md) on `PATH`.
+: The system the program will run on, `x86_64-kdos-linux-musl`. configure looks for the compiler
+  under that name, `x86_64-kdos-linux-musl-gcc`, and finds the cross compiler from
+  [Part II](../02-cross/intro.md#the-environment) in `build/cross/bin`, which `host.env` puts on
+  `PATH`.
 
 `--build=$(build-aux/config.guess)`
 : The machine doing the compiling, as patch's own copy of `config.guess` names it. With the build
@@ -40,8 +41,7 @@ without extended-attribute support.
 
 When the install is done the step removes the source directory and touches
 `build/mark/bootstrap/patch`. While that file exists the step exits at once without building,
-unless a build plan names it; see
-[Guards in the early phases](../../kdos/05-developer/build-system.md#guards-in-the-early-phases).
+unless a build plan names it; see [Marks and KDOS_REPLAY](intro.md#marks-and-kdos_replay).
 
 ## Built again later
 
@@ -52,7 +52,7 @@ then on the program belongs to the package. The port build differs in three ways
 - It is a native build inside the chroot with KDOS's own GCC, so it passes no `--host` or
   `--build`, and it is compiled with the chroot's
   [release flags](../../kdos/05-developer/writing-ports.md#the-release-flags) rather than the plain
-  `-O2 -pipe` of `script/env/host.env`.
+  `-O2 -pipe -std=gnu99` that `script/env/host.env` gives this step.
 - It passes `--enable-xattr` and depends on `attr`, so [`patch`]{.idx} keeps a file's extended attributes
   when it rewrites the file.
 - It names `--sysconfdir=/etc`, `--mandir=/usr/share/man` and `--localstatedir=/var` explicitly.

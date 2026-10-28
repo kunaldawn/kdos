@@ -13,15 +13,16 @@
 export PATH=/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
 export PKG_CONFIG_PATH="/usr/share/pkgconfig:/usr/lib/pkgconfig:/usr/lib64/pkgconfig:/usr/local/share/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig"${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
 # TERM describes the TERMINAL and belongs to whoever opened it — agetty says
-# `linux` on a VT, foot says `foot`, ssh forwards the client's. Exporting one
-# value here overrode all three, and on tty1 that broke the one thing on this
-# distro that reads it: libktui takes TERM=linux to mean the 512-glyph console
+# `linux` on a VT, foot says `foot`, ssh forwards the client's, and the
+# serial console's agetty says `vt102`. Exporting one value here would
+# override all of them, and on tty1 that breaks the one thing on this distro
+# that reads it: libktui takes TERM=linux to mean the 512-glyph console
 # (ktui_term.c), and without it kinstall picks the eighth-block ramp the font
 # does not carry (invisible bars), emits A_BOLD — which on a 512-glyph VT
 # changes the FONT PAGE, not the weight — skips the PIO_CMAP palette, and
 # reports SGR mouse to a console that has none instead of reading evdev.
-# So: only fill it in when nobody set one, which is the serial console, where
-# inittab runs `bash -l` with no getty in front of it.
+# So: only fill it in when nobody set one, as for a login shell started
+# without a getty in front of it.
 if [ -z "$TERM" ] || [ "$TERM" = "dumb" ]; then
 	case "$(tty 2>/dev/null)" in
 	/dev/tty[0-9]*) TERM=linux ;;
@@ -33,9 +34,9 @@ export LANG=C.UTF-8
 export LINES=${LINES:-24}
 export COLUMNS=${COLUMNS:-80}
 # HOME/USER/LOGNAME come from login(1). Only derive them when a login shell was
-# started without them (init's serial console, `su` without -l). Never hardcode
-# them — that would hand every user root's home and break rootless podman,
-# distrobox and anything else that resolves $HOME.
+# started without them (a shell with no login(1) in front of it, `su` without
+# -l). Never hardcode them — that would hand every user root's home and break
+# rootless podman, distrobox and anything else that resolves $HOME.
 [ -n "$USER" ]    || USER="$(id -un)"
 [ -n "$LOGNAME" ] || LOGNAME="$USER"
 [ -n "$HOME" ]    || HOME="$(awk -F: -v u="$(id -u)" '$3==u {print $6; exit}' /etc/passwd)"
@@ -56,8 +57,9 @@ fi
 # Banner. /etc/bash.bashrc draws it — fastfetch when present, /etc/motd
 # otherwise — for every interactive bash, including the terminals that never
 # read this file. Only a non-bash login shell still needs it here. Doing it in
-# both places does not merely duplicate the banner: this block runs AFTER
-# bash.bashrc is sourced above, so its `clear` wiped the one already drawn.
+# both places would not merely duplicate the banner: this block runs AFTER
+# bash.bashrc is sourced above, so its `clear` would wipe the one already
+# drawn.
 if [ -z "$BASH" ] && [ -t 1 ]; then
     clear
     echo ""

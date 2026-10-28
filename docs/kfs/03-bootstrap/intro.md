@@ -63,7 +63,8 @@ The program is linked against `build/fs`'s musl, but its interpreter path,
 concludes it is not cross-compiling. The logs of `050_xz.sh`, `070_readline.sh`, `080_bash.sh`
 and `110_make.sh` say `checking whether we are cross compiling... no`: their configure tests ran
 in the container, against the container's musl. Steps 030, 040, and 060 to 068 pass `--build`
-and report `yes`.
+and report `yes`. The ncurses log also holds one `no`, from the first configure in
+`040_ncurses.sh`, which builds a `tic` for the container itself.
 
 `--prefix=/usr` with `DESTDIR=$SYSROOT` installs into `build/fs/usr` while compiling `/usr` into the
 programs, which is where they will find their files once `build/fs` is the root.
@@ -111,20 +112,21 @@ the part of kpkg's work the bootstrap needs, in three functions:
 `get_port_version NAME`
 : Prints the recipe's `version`. Steps 030 and 100 use it for GCC's versioned paths.
 
-The recipe is read, not sourced. Only `name`, `version`, `release`, `source`, `vendoring` and the
-recipe's helpers are evaluated, by bash's own parameter expansion, which is the subset of shell the
-recipes are written in. `description`, `homepage` and `depends` are free text and are never
+The recipe is read, not sourced. Each `key = value` line is evaluated by bash's own parameter
+expansion, which is the subset of shell the recipes are written in, so `$name`, `${version%.*}`
+and a helper declared above `source` all expand. A repeated `source` line adds to the list.
+`description`, `homepage`, `depends` and `pypackages` are free text and are skipped, never
 evaluated.
 
 The archive is the first `source =` entry that is an archive present in the port directory. An
-entry `FILE::URL` names its file outright. For the first URL, the local name is
+entry `FILE::URL` names its file outright. When the first entry is a plain URL, its local name is
 `$name-$version` with the URL's archive extension, `.tar.xz` for instance, which is the name
-`make fetch` stores it under; any other URL keeps its own file name. The file is in the port
+`make fetch` stores it under; any later URL keeps its own file name. The file is in the port
 directory because `make fetch` put it there, linked from `ports/.srccache`, and a step that reports
 `Source tarball not found` is a tree that has not been fetched (see
 [Sources and the archive](../01-preparing/sources.md)). It is then unpacked:
 
-<!-- kfs:include script/lib/port.sh lines=153-162 pin=69f7883feabb -->
+<!-- kfs:include script/lib/port.sh lines=156-165 pin=69f7883feabb -->
 
 The printed path is `build/tmp/$name-$version`, so a port whose archive unpacks to a directory of
 any other name cannot be built by a bootstrap step.
@@ -146,10 +148,13 @@ would otherwise put build-directory paths on later link lines, findutils' `locat
 to plocate, gawk's C-shell profile script and maintainers' notes, binutils' manual pages for the
 Windows tools, and the message catalogues, translated manual pages and HTML manuals that kpkg's
 [size and language policy](../../kdos/05-developer/writing-ports.md#size-and-language-policy)
-prunes from every package: xz and bash are built with `--disable-nls`, and the readline and bash
-steps delete their HTML manuals. The image phase removes any such file that is still unowned and
-stops on one under `/usr/share/locale`, `man`, `doc` or `info` (see
-[Cleaning up the root](../15-image/020-cleanup.md)).
+prunes from every package: every step whose package has translations is built with
+`--disable-nls` (the list is in [What the bootstrap leaves](what-you-have.md#what-is-not-there-yet)),
+and the readline and bash steps delete their HTML manuals. The image phase removes any such catalogue or
+manual that is still unowned (see
+[Unowned documentation and catalogues](../15-image/020-cleanup.md#unowned-documentation-and-catalogues)),
+and stops on any unowned file left under `/usr/share/locale`, `man`, `doc` or `info` (see
+[The three checks](../15-image/087-gates.md#the-three-checks)).
 
 ## See also
 

@@ -23,8 +23,9 @@ view_impl_map(struct view *view)
 
 	if (!view->been_mapped) {
 		window_rules_apply(view, LAB_WINDOW_RULE_EVENT_ON_FIRST_MAP);
-		/* KDOS: window memory, AFTER the rules — a rule that placed
-		 * this window has an opinion older than ours */
+		/* KDOS: window memory, AFTER the rules, so it sees the state
+		 * and fixedPosition they set — a rule that only moves the
+		 * window (MoveTo, SendToDesktop) is overridden by a record */
 		kdos_winpos_apply(view);
 	}
 

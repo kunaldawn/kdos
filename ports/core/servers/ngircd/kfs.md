@@ -18,9 +18,10 @@ machines.
   and refuses both at once.
 - `--with-zlib` — Compress server-to-server links with zlib. configure would detect it on its
   own; naming it makes a missing library a failed configure.
-- `--with-iconv` — Build the `CHARCONV` command, which upstream builds only when asked for, with which a client names its character set and
-  the server converts that client's messages to and from UTF-8. On musl, `iconv` is part of the C
-  library.
+- `--with-iconv` — Build character conversion for the IRC+ `CHARCONV` command, with which a client
+  names its character set and the server converts that client's messages to and from UTF-8.
+  configure checks for iconv only when asked, so without the switch the command is left out. On
+  musl, `iconv` is part of the C library.
 - `--without-ident` — Leave out IDENT (RFC 1413) lookups of connecting users. The library it needs,
   libident, is not a port.
 - `--without-tcp-wrappers` — Leave out `hosts.allow`/`hosts.deny` checks through libwrap, which is

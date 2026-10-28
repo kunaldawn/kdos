@@ -41,8 +41,9 @@ with two differences:
 - It adds `-std=gnu99` to the chroot's [release flags](../../kdos/05-developer/writing-ports.md#the-release-flags),
   whose own standard is `-std=gnu11`. The bootstrap build already compiles as `gnu99`, the standard
   `script/env/host.env` sets.
-- It passes no `--disable-nls`, so whether the packaged make carries translations is left to
-  configure.
+- It passes no `--disable-nls`. The package still ships no translations, because kpkg's
+  [size and language policy](../../kdos/05-developer/writing-ports.md#size-and-language-policy)
+  prunes every non-English message catalogue from it.
 
 ## See also
 

@@ -9,7 +9,7 @@ sweep, and draws them in a GTK 3 window.
 - `-g0` — Appended to `CFLAGS` to cancel the `-O2 -g` that `src/Makefile.am` puts in its own
   `xnec2c_CFLAGS`. automake places a target's own flags ahead of `CFLAGS` on the compile line, so
   the last `-g` option wins and the program carries no DWARF (see
-  [What kpkg does around build.sh](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#what-kpkg-does-around-buildsh)).
+  [What kpkg does around build.sh](../../../../docs/kdos/05-developer/writing-ports.md#what-kpkg-does-around-buildsh)).
 
 ## Notes
 
@@ -21,7 +21,7 @@ The release archive carries `configure.ac` and `autogen.sh` but no `configure` s
 The linear-algebra backend, [openblas](#port-openblas), is not linked: xnec2c `dlopen`s it when
 the user chooses it in the program. It is in `depends` so that the choice works.
 
-`build.sh` writes the menu entry over upstream's, adding `StartupWMClass`. It claims
+`build.sh` writes its own menu entry over upstream's, which has no `StartupWMClass`. It claims
 `application/x-nec2`, the type `files/x-nec2.xml` defines; `make install` puts that file in
 `/usr/share/mime/packages`, and the last line of `build.sh` checks that it did. `make install`
 installs the icon as one 256×256 PNG and the SVG in `/usr/share/pixmaps`; `build.sh` rasterises

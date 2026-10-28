@@ -15,19 +15,27 @@ configured ([Services](../../../../docs/kdos/02-user-guide/administration.md#ser
 
 ## Notes
 - **The vendor bundle is the `pypackages` closure.** `pypackages` names every distribution the
-  bundle carries, several pinned (`trytond:7.0.57` and the `trytond-*` modules, `proteus`,
-  `gnuhealth-control`); `pyrequirements = no` and `pyruntime = no` keep `ports/fetch` from
-  resolving more. Everything else GNU Health imports at run time (psycopg2, lxml, dateutil,
-  pytz, Pillow, qrcode, matplotlib and the rest) is a port in `depends`. The `pip3 install` line
-  must name the same set; a name missing there is in the bundle and never installed. `vobject` is
-  pinned to 0.9.8 because 0.9.9's metadata imports dateutil, which the isolated fetch build
-  lacks.
+  server installs from the bundle, several pinned (`trytond:7.0.57` and the `trytond-*` modules,
+  `proteus`, `gnuhealth-control`, `vobject`). `ports/fetch` downloads that list without resolving
+  dependencies and adds only the build backends the source distributions declare (setuptools,
+  setuptools_scm, flit_core, hatchling, hatch-tryton, poetry_core and their own requirements),
+  which this build never installs: `--no-build-isolation` builds every distribution with the
+  backends that are ports in `depends`. `pyrequirements = no` and `pyruntime = no` change nothing
+  here, because the source tree has no top-level `requirements.txt` or project file for them to
+  act on. Everything else GNU Health imports at run time (psycopg2, lxml, dateutil, pytz, Pillow,
+  qrcode, matplotlib and the rest) is a port in `depends`. The `pip3 install` line must name the
+  same set; a name missing there is in the bundle and never installed. `vobject` is pinned to
+  0.9.8 because 0.9.9 reads its version with `attr: vobject.VERSION`, which imports the package
+  and through it six and dateutil, and the isolated build that `pip download` runs to read
+  metadata has neither.
 - **Three modules are left out.** The loop over `tryton/health*` installs every GNU Health module
   in the source except `health_federation`, `health_genetics_uniprot` and `health_orthanc`.
   `health_orthanc` talks to an Orthanc PACS through `pyorthanc`, which is neither a port nor in
   the bundle; `health_federation` talks to Thalamus, the GNU Health Federation message server,
-  through `requests`, which `depends` does not name; `health_genetics_uniprot` is data only, the
-  UniProtKB variant tables.
+  through `requests`, which `depends` does not name; `health_genetics_uniprot` is data only:
+  39 MB of UniProtKB protein-disease, gene-variant and variant-phenotype records as XML, loaded
+  into the database when the module is activated, on top of `health_genetics`, which is installed
+  and works without it.
 - **Translations are deleted by hand.** Tryton modules carry their translations as `.po` files
   under `trytond/modules/*/locale/`, which the tree-wide language prune does not match (it
   removes `.mo`, `.gmo` and `.qm` catalogs), so `build.sh` deletes them itself; see

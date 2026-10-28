@@ -3,9 +3,9 @@
 Syncthing keeps folders the same on several machines, peer to peer. The package ships it with a
 starting configuration that keeps it on the local network: the machines find each other by local
 discovery; global discovery and relays, which reach servers on the internet, are off, and so is
-NAT traversal, which asks the router by UPnP or NAT-PMP to forward a port to the machine. The launcher entry *File Sync* runs `kdos-syncthing`, a wrapper the recipe
-writes, in a terminal; the web interface is on `127.0.0.1:8384`, and closing the terminal stops the
-sync.
+NAT traversal, which asks the router by UPnP or NAT-PMP to forward a port to the machine. The
+launcher entry *File Sync* runs `kdos-syncthing`, a wrapper the recipe writes, in a terminal; the
+web interface is on `127.0.0.1:8384`, and closing the terminal stops the sync.
 
 ## Flags
 
@@ -29,10 +29,11 @@ discovery and relay servers, which are not built.
 
 `/usr/share/kdos/syncthing-offline.xml` is a whole configuration with only an `<options>` block.
 Syncthing reads a `config.xml` over its own defaults, so every key it does not name keeps
-upstream's value, and the device's identity and keys are made on first start. Besides the three network switches it declines usage reporting (`urAccepted` of `-1`) and
-sets the automatic upgrade interval to zero. Its `version="52"` is the configuration schema this
-release writes, so no migration runs over the file; a version bump that moves Syncthing's
-`CurrentVersion` should move it too.
+upstream's value, and the device's identity and keys are made on first start. Besides the three
+network switches it declines usage reporting (`urAccepted` of `-1`) and sets the automatic upgrade
+interval to zero. Its `version="52"` is the configuration schema this release writes, so no
+migration runs over the file; a version bump that moves Syncthing's `CurrentVersion` should move
+it too.
 
 `kdos-syncthing` looks for an existing configuration where Syncthing itself does: `$STHOMEDIR`,
 `$STCONFDIR`, `$XDG_CONFIG_HOME/syncthing` and `~/.config/syncthing` when a `config.xml` is there,

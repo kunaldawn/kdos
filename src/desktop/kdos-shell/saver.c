@@ -5,15 +5,15 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   kdos-saver — attract mode, between idle and lock
+ *   kdos-saver — attract mode, on request
  *
  *   ░ ▒     █        ▒
  *   ▒ █  ░  ▒     ░  █   ░
  *   █    ▒  ░  ▒  ▒  ░   ▒
  *
- * The step between a desktop being left alone and it being locked. What is
- * there otherwise is a desktop sitting on screen being read over somebody's
- * shoulder; this covers it with something that is unmistakably not the desktop.
+ * A cover for a desktop left alone. What is there otherwise is a desktop
+ * sitting on screen being read over somebody's shoulder; this covers it with
+ * something that is unmistakably not the desktop.
  *
  * NOTHING STARTS IT AUTOMATICALLY. The compositor's idle ladder in
  * kdos-comp/src/kdos-idle.c dims, spawns kdos-lock and powers the outputs
@@ -28,8 +28,8 @@
  * password. This surface asks for NO keyboard interactivity and claims NO
  * pointer region at all (kdisp_input_cells(NULL, 0)), so every keystroke and every
  * click goes to whatever is underneath exactly as if this were not here.
- * Activity detection stays with the display, which takes the surface away on
- * the first event.
+ * Nothing in the display takes the surface away on activity: it runs until it
+ * is killed or the compositor closes its surface.
  *
  * ONE PROCESS PER OUTPUT, named with `--output`, the same convention the panel
  * and the desktop already follow: libktui has a single cell buffer, so a second
@@ -909,7 +909,7 @@ static const struct sv_effect sv_effects[] = {
 	{ "art",	sv_art_load,	sv_art_init,	sv_art_step,
 	  sv_art_draw },
 	/*
-	 * `bounce` IS `art`, AND IS A NAME RATHER THAN A SIXTH EFFECT. The art
+	 * `bounce` IS `art`, AND IS A NAME RATHER THAN AN EIGHTH EFFECT. The art
 	 * bouncing off the edges of the screen is exactly what `art` does, and
 	 * a second implementation of it would be a copy that goes stale the
 	 * first time either is tuned. The name is here because it is what the
@@ -992,7 +992,7 @@ int saver_main(int argc, char **argv)
 		mode = sv_mode_of("art");
 
 	/* `off` is an honest off: nothing is drawn and nothing is connected to,
-	 * so the idle policy can start this unconditionally and have it cost a
+	 * so a caller can start this unconditionally and have it cost a
 	 * process that exits. */
 	if (mode == SV_MODE_OFF)
 		return 0;
@@ -1084,7 +1084,7 @@ int saver_main(int argc, char **argv)
 		return 1;
 	}
 	/* And no pointer region at all — a click goes through to the desktop,
-	 * where the display's idle policy sees it and takes this away. */
+	 * where the compositor's idle timer counts it as activity. */
 	kdisp_input_cells(NULL, 0);
 	ktui_draw_init();
 	sv_ramp_init();

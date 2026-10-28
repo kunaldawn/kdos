@@ -73,9 +73,9 @@ geometry work underneath it.
 
 ## Patches
 
-- `10-libspatialindex_2_1.patch` — Removes the configure error QGIS raises for libspatialindex 2.1 or later. The error refers to a libspatialindex defect that the release the tree carries does not have.
+- `10-libspatialindex_2_1.patch` — Removes the configure error QGIS raises for libspatialindex 2.1 or later, so QGIS builds against the tree's [libspatialindex](#port-libspatialindex) 2.1.0. The error stands for [libspatialindex issue 276](https://github.com/libspatialindex/libspatialindex/issues/276): 2.1's nearest-neighbour search measures each leaf entry through the bounding-box form of `getMinimumDistance()`, never the data form that `src/core/qgsspatialindex.cpp` overrides to measure a feature's stored geometry and apply the maximum distance. The tree's 2.1.0 carries that behaviour unpatched, so `QgsSpatialIndex::nearestNeighbor()` ranks features by their bounding boxes even in an index that stores their geometries, and drops none beyond the maximum distance.
 - `50-qstring.patch` — Casts the snapping layer's type to `int` in `QgsSnappingUtils::dump()` before it is passed to `QString::arg()`, which with the tree's Qt does not accept the enum.
-- `offline-defaults.patch` — Changes the global defaults in `resources/qgis_global_settings.ini` so that a machine with no network is not contacted at every start: the version check is off and its checkbox is hidden from the options dialog, the welcome page's news feed from `feed.qgis.org` is disabled, and the plugin manager does not check the online repository. Plugins can still be installed from a ZIP file.
+- `offline-defaults.patch` — Changes the global defaults in `resources/qgis_global_settings.ini` so that a machine with no network is not contacted at every start: the version check is off and its checkbox is hidden from the options dialog, the welcome page's news feed from `feed.qgis.org` is disabled, and the plugin manager does not check the online repository for updates at start. Plugins can still be installed from a ZIP file.
 - `sip-movable.patch` — Gives the PyQt6 bindings a second `std::unique_ptr` mapped type marked Movable, chosen by the `MOVABLE_MAPPED_TYPE` feature that `python/CMakeLists.txt` turns off only for a sip too old to parse the annotation. The tree's sip refuses to return a `NoRelease` mapped type by value unless it is Movable, and every binding module stops at code generation without it.
 - `system-meshoptimizer.patch` — Includes the system `<meshoptimizer.h>` in `src/core/mesh/qgstriangularmesh.cpp` and passes the extra arguments its `meshopt_simplifySloppy()` takes: no vertex lock, no error target and no error result.
 
@@ -89,6 +89,6 @@ The project and layer file types QGIS defines are in upstream's RPM packaging,
 `rpm/sources/qgis-mime.xml`, and not in its CMake install; `build.sh` installs that file into the
 shared MIME database. Upstream's desktop entry is replaced by one that names
 `StartupWMClass=org.qgis.qgis`, the Wayland app_id Qt builds from the organisation domain
-`qgis.org` and the executable's name (upstream writes the X11 class `QGIS3`). It claims only those
-five QGIS types, and drops the image and raster formats upstream's entry also claims, TIFF, JPEG
-and JPEG 2000 among them.
+`qgis.org` and the executable's name (upstream's entry names `QGIS3`, the application name). It
+claims only those five QGIS types, and drops the image, raster and vector formats upstream's entry
+also claims, among them TIFF, JPEG, JPEG 2000, shapefiles, KML and GeoPackage.

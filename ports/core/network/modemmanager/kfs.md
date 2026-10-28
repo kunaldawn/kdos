@@ -7,7 +7,7 @@ see [Mobile broadband](../../../../docs/kfs/16-wiki/mobile-broadband.md).
 
 `ModemManager` is started at boot by `/etc/init.d/42_modemmanager.sh`, after polkit and before
 NetworkManager, and never by D-Bus activation; see
-[How polkit and ModemManager are started](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#how-polkit-and-modemmanager-are-started).
+[How polkit and ModemManager are started](../../../../docs/kdos/03-architecture/security-model.md#how-polkit-and-modemmanager-are-started).
 
 ## Notes
 

@@ -1,8 +1,9 @@
 ## About
-[QCAD]{.idx} is a 2D CAD program for technical drawings, plans and parts, working in DXF and
-reading DWG. Most of its interface and tools are written in ECMAScript, run by `QJSEngine` from Qt 6's QML
-module through two bindings layers released beside it, `qtjsapi` and `qcadjsapi`; the port builds
-the community edition with all three, which is why the recipe has three sources at one version.
+[QCAD]{.idx} is a 2D CAD program for technical drawings, plans and parts, working in DXF. DWG
+import and export belong to the proprietary QCAD Professional and are not in this build. Most of
+its interface and tools are written in ECMAScript, run by `QJSEngine` from Qt 6's QML module
+through two bindings layers released beside it, `qtjsapi` and `qcadjsapi`; the port builds the
+community edition with all three, which is why the recipe has three sources at one version.
 
 ## Flags
 - `-DBUILD_QT6=ON` — build against Qt 6. It is upstream's default, named because the main tree's
@@ -37,7 +38,8 @@ regenerated at build time by `src/scripts/update_qrc.sh`, a bash script, which i
 Everything is installed under `/usr/lib/qcad` as upstream lays out a run-in-place tree: `qcad-bin`,
 its libraries, `plugins/`, and the fonts, patterns, line types, part libraries, themes and
 examples it reads relative to itself. `/usr/bin/qcad` is a small wrapper that puts
-`/usr/lib/qcad` on `LD_LIBRARY_PATH` and runs `qcad-bin`. `fonts/qt`, a set of DejaVu TrueType
-faces that upstream's documentation offers as a `QT_QPA_FONTDIR` for running QCAD in a server
-environment, is removed; nothing in the program loads it by itself, and on the desktop Qt finds
-fonts through fontconfig. QCAD's own CXF stroke fonts in `fonts/` stay.
+`/usr/lib/qcad` on `LD_LIBRARY_PATH` and runs `qcad-bin`. `fonts/qt` is removed: DejaVu and
+Bitstream Vera TrueType faces, Type 1 faces (Utopia, Charter, Courier, Luxi) and Qt's prerendered
+QPF fonts, which QCAD's `--help` text names as a `QT_QPA_FONTDIR` for running it in a server
+environment. Nothing in the program loads it by itself, and on the desktop Qt finds fonts through
+fontconfig. QCAD's own CXF stroke fonts in `fonts/` stay.

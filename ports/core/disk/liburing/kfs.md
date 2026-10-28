@@ -21,7 +21,8 @@ use C inline functions) and the section 2, 3 and 7 manual pages.
 ## Notes
 
 The recipe passes no `--prefix`: configure's defaults are already `/usr` and `/usr/lib`, and
-`--prefix` is resolved with `realpath -s`, an option not every `realpath` accepts. When configure
-fails, the top-level Makefile finds no `config-host.mak` and runs `./configure` again itself, with
-no options at all. The recipe runs `make library`, which builds only `src/`, not the tests and
-examples `make all` builds.
+`--prefix` is resolved with `realpath -s`, an option not every `realpath` accepts. The top-level
+Makefile runs `./configure` itself, with no options at all, whenever `config-host.mak` is missing,
+so `make` must run only after a configure that succeeded; `build.sh` runs under `set -e`, which stops
+it at a failed configure first. The recipe runs `make library`, which builds only `src/`, not the
+tests and examples `make all` builds.

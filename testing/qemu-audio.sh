@@ -19,13 +19,14 @@
 # -audiodev its build does not carry, so a wrong guess here does not degrade
 # to silence — it stops the VM from booting at all.
 #
-# "Carries the driver" is necessary but NOT sufficient, which cost a debug
-# cycle: the qemu-hw container installs qemu-system-x86, which pulls in
-# libpipewire, so `-audiodev help` lists pipewire — but libpipewire cannot
-# build a context without /usr/share/pipewire/client.conf, packaged separately
-# in libpipewire-0.3-common. QEMU died with "Could not create PipeWire context"
-# and took `make run-hw` with it. Each backend is therefore checked for the
-# runtime files it actually needs, not just for its presence in the build.
+# "Carries the driver" is necessary but NOT sufficient: the qemu-hw container
+# installs qemu-system-x86, which pulls in libpipewire, so `-audiodev help`
+# lists pipewire — but libpipewire cannot build a context without
+# /usr/share/pipewire/client.conf, packaged separately in
+# libpipewire-0.3-common, and without it QEMU exits with "Could not create
+# PipeWire context" and `make run-hw` never boots. Each backend is therefore
+# checked for the runtime files it actually needs, not just for its presence
+# in the build.
 
 # THE MIXER'S RATE IS SAID OUT LOUD, because QEMU's own default is 44100 and
 # the guest is not. PipeWire in the guest drives the emulated codec at 48000

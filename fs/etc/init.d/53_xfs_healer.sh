@@ -7,8 +7,8 @@ DAEMON="/usr/libexec/xfsprogs/xfs_healer"
 # ONE SUPERVISED xfs_healer PER MOUNTED XFS FILESYSTEM. It listens to the
 # kernel's XFS health monitor for that mount and, where the filesystem's
 # `autofsck` property asks for it, has the kernel repair damaged metadata
-# online; otherwise it logs what the kernel found. Upstream starts it from a
-# systemd template unit per mount, which is what this replaces.
+# online; otherwise it logs what the kernel found. Upstream ships a systemd
+# template unit per mount; this script does that job here.
 #
 # The filesystems are the ones mounted when this runs — the root and every
 # fstab line. An XFS stick mounted later by kdos-mountd has no healer.

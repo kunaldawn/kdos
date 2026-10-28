@@ -34,5 +34,5 @@ installs it, and a parallel install can relink a module before the library is in
 
 The gtk-doc HTML reference ships prebuilt in the tarball and installs whatever `--disable-gtk-doc`
 says, so `build.sh` removes it. It also removes the GNOME session autostart and shutdown files, the
-GDM autostart file and the `gnome-settings-daemon-3.0` module link, which name programs KDOS does
-not have.
+GDM autostart file and the `gnome-settings-daemon-3.0` entry that asks that daemon to load the GTK
+module, which name programs KDOS does not have.

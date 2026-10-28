@@ -25,17 +25,20 @@ the second graphics toolkit, run as a separate program.
   [graphicsmagick](#port-graphicsmagick)'s C++ library. It is upstream's default, named.
 - `--with-openssl` — use libcrypto's MD5 and SHA routines for Octave's `hash` function.
 - `--without-fltk` — no FLTK graphics toolkit; the Qt toolkit takes its place.
-- `--without-x` — with `--with-wayland-client`: Octave asks the display for the screen's size and
-  resolution (the root figure's `screensize` and `screenpixelsperinch`) through the Wayland client
-  library instead of Xlib, so Octave's own code links no Xlib.
+- `--without-x` — with `--with-wayland-client`: Octave talks to the display through the Wayland
+  client library instead of Xlib, so its own code links no Xlib. The `octave` launcher connects to
+  the display to decide whether the GUI can start, and runs `octave-cli` with "disabling GUI
+  features" when it cannot; built with neither library, it finds no display and never starts the
+  GUI. The interpreter reads the screen's size and resolution (the root figure's `screensize` and
+  `screenpixelsperinch`) the same way.
 
 ## Patches
 - `abs.patch` — adds `abs` overloads for the unsigned and narrow integer types (`unsigned int`, `unsigned long`, `unsigned long long`, `unsigned short`, `unsigned char`, `signed char` and `short`) to `libinterp/corefcn/pr-output.cc`, ahead of the template that prints integer arrays and calls an unqualified `abs` on each element's value. The patch is Alpine's, which describes it only as needed on Alpine.
 
 ## Notes
 Octave's configure answers a missing optional library with a warning and builds without the
-functions it backs, so after the configure `build.sh` checks `config.h` for every one this port
-depends on and stops on the first that is missing. The list covers
+functions it backs, so after the configure `build.sh` checks `config.h` for the `HAVE_` macro of
+each library in its loop and stops on the first that is missing. The loop covers
 [suitesparse](#port-suitesparse) (UMFPACK, CHOLMOD, CXSparse, KLU, SPQR, for sparse algebra),
 [arpack-ng](#port-arpack-ng) (`eigs`), [qrupdate](#port-qrupdate), [fftw](#port-fftw) in both
 precisions, [glpk](#port-glpk), [qhull](#port-qhull) (`convhulln`, `delaunayn`),

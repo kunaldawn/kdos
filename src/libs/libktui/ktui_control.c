@@ -318,15 +318,15 @@ int ktui_slider(KRect r, int *val, int min, int max, int step,
 /* ────────────────────────────────────────────────────────────────────────
  * A LIST OF ROWS, POINTED AT
  *
- * THE ELEVEN SURFACES THAT DROPPED EVERY POINTER EVENT. `kdos-style`,
- * `kdos-chars`, `kdos-notes`, `kdos-trash`, `kdos-find`, `kdos-contacts`,
- * `kdos-rec`, `kdos-palette` and the rest all end their event loop with
- * `if (ev.type != KT_EVT_KEY) continue;` — so a person holding a mouse could
- * not choose an accent, pick a character or open a note at all.
+ * FOR THE SURFACES WHOSE OWN EVENT LOOP DRAWS ITS ROWS — `kdos-style`,
+ * `kdos-find`, `kdos-rec` and `kdos-palette` pass their pointer events here.
+ * A loop that ends in `if (ev.type != KT_EVT_KEY) continue;` with nothing
+ * before it leaves a person holding a mouse unable to choose an accent or
+ * pick a row at all.
  *
- * ONE IMPLEMENTATION OF WHAT A PRESS ON A ROW MEANS, because eleven of them
- * would be eleven desktops. The rule is `kdos-pick`'s and every other list
- * here already keeps it: a press MOVES the caret, and a press on the row the
+ * ONE IMPLEMENTATION OF WHAT A PRESS ON A ROW MEANS, because one per surface
+ * would be a desktop of different answers. The rule is `kdos-pick`'s and
+ * every other list here already keeps it: a press MOVES the caret, and a press on the row the
  * caret is already on PICKS. One hand learns one thing.
  *
  * IT IS NOT A FRAME CONTROL, and that is the point: these surfaces run their

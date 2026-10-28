@@ -19,8 +19,7 @@
  *   kdos-appbox genlaunchers …        launchers, shims, mime cache, table
  *
  * Boxes themselves are `kdos-box`'s — a second name on this binary. The launch
- * path keeps the ordering the launchers and the login warmup depend on; every
- * comment marked "cost a debug cycle" below describes something that broke.
+ * path keeps the ordering the launchers and the login warmup depend on.
  */
 
 #include "kdos-appbox.h"
@@ -137,12 +136,12 @@ static const char *box_wayland_socket(void)
  * By default every boxed GTK app is told not to probe org.a11y.Bus: the host's
  * at-spi registry serves native applications, and a box that has not opted in
  * would only pay for the probe at startup. It is a DEFAULT and not a policy:
- * a user who wants the box's own stack (the image carries at-spi2-core, and a
- * screen reader running inside the box can reach it) opts in by creating
- * ~/.config/kdos/a11y — an empty file is enough — or by exporting KDOS_A11Y=1
- * for one launch. Resolved from $HOME/.config like the box profiles, and for
- * the same reason: two programs resolving it differently is the failure this
- * must not have.
+ * a user who wants a boxed app on the a11y bus (GTK's own dependencies bring
+ * the at-spi client library; no catalogue row names at-spi2-core) opts in by
+ * creating ~/.config/kdos/a11y — an empty file is enough — or by exporting
+ * KDOS_A11Y=1 for one launch. Resolved from $HOME/.config like the box
+ * profiles, and for the same reason: two programs resolving it differently is
+ * the failure this must not have.
  */
 static int a11y_wanted(void)
 {
@@ -302,23 +301,22 @@ static void box_env(KbArgv *a, const Profile *prof, const char *pack)
 	/*
 	 * THE PORTAL, AND WHY THE ENV IS WHAT SWITCHES IT ON.
 	 *
-	 * KDOS serves FileChooser, Settings and OpenURI from
-	 * xdg-desktop-portal-kdos, and every one of those is for the benefit of
-	 * boxed applications — but a GTK app only ROUTES through the portal
-	 * when it believes it is sandboxed, which it decides from
-	 * /.flatpak-info or from this variable. A distrobox is neither, so
-	 * every one of them went on drawing its own GtkFileChooser: the KDOS
-	 * file dialog existed, the portal answered, and nothing ever called it.
+	 * xdg-desktop-portal-kdos serves FileChooser, Settings, AppChooser and
+	 * Access, and the front end's own OpenURI rides on AppChooser; every
+	 * one of those is for the benefit of boxed applications — but a GTK
+	 * app only ROUTES through the portal when it believes it is sandboxed,
+	 * which it decides from /.flatpak-info or from this variable. A box is
+	 * neither, so without it every boxed GTK app draws its own
+	 * GtkFileChooser and the KDOS file dialog is never called.
 	 * Firefox's `widget.use-xdg-desktop-portal.file-picker` default of 2
 	 * ("auto") consults the same variable, so it is covered by this line
 	 * too.
 	 *
-	 * The cost, stated: with the portal on, GTK's Print dialog also goes
-	 * through it, and KDOS has no Print backend (kdos-portals.conf says
-	 * `default=none` and means it). Printing still works from a boxed app:
-	 * box_create() shares /run/cups into the box and CUPS_SERVER below
-	 * points every toolkit's OWN print dialog at it, which is the route
-	 * that needs no portal.
+	 * With the portal on, GTK's Print dialog also goes through it, and
+	 * kdos-portals.conf names xdg-desktop-portal-gtk as the Print backend.
+	 * box_create() also shares /run/cups into the box and CUPS_SERVER
+	 * below points every toolkit's OWN print dialog at it, which is the
+	 * route that needs no portal.
 	 *
 	 * XDG_CURRENT_DESKTOP goes with it because a toolkit that has decided
 	 * to use portals then asks which desktop it is on, and the answer
@@ -331,9 +329,9 @@ static void box_env(KbArgv *a, const Profile *prof, const char *pack)
 	 * Printing. box_create() shares /run/cups into the box as a VOLUME —
 	 * a create-time property — while this export is per-LAUNCH and probes
 	 * the socket again. Asymmetric on purpose: a box created before cups
-	 * was up gets the env but not the socket, and needs `kdos-appbox
-	 * recreate` to grow the volume, which is the same message the profile
-	 * system already sends for a namespace change.
+	 * was up gets the env but not the socket, and needs `kdos-box remove`
+	 * and a new create to grow the volume, which is the same message the
+	 * profile system sends for a namespace change.
 	 */
 	if (kb_path_exists("/run/cups/cups.sock"))
 		kb_argv_add(a, "CUPS_SERVER=/run/cups/cups.sock");
@@ -612,11 +610,15 @@ int cmd_run(int argc, char **argv)
 				       "a few extra seconds.");
 
 	/*
-	 * Cost a debug cycle: a hung app (D-state I/O on fuse-overlayfs) can
-	 * wedge the box in "stopping" forever, and every enter then dies
-	 * instantly with "container state improper" — no app ever opens again.
-	 * Wait it out, then force our way back to a startable container. The box
-	 * is stateless (image + shared $HOME), so nothing is lost.
+	 * A hung app (D-state I/O on fuse-overlayfs) can wedge the box in
+	 * "stopping" forever, and every enter then dies instantly with
+	 * "container state improper" — no app ever opens again. Wait it out,
+	 * then force the way back to a startable container. A pack box loses
+	 * nothing: its packs are read-only, its writable upper lives outside
+	 * the container, and run_pack composes it again over the same stack.
+	 * A store box (`base=image:`) keeps its writable layer inside the
+	 * container, so `podman rm` deletes it, and run_pack cannot make it
+	 * again because it composes only from packs.
 	 */
 	if (!strcmp(state, "stopping")) {
 		for (i = 0; i < 15 && !strcmp(state, "stopping"); i++) {
@@ -855,11 +857,11 @@ static int run_as_shim(const char *name, int argc, char **argv)
 	/*
 	 * kxdg_exec_split, not a `strtok(" ")`: the table's commands come out
 	 * of upstream .desktop files and carry the format's QUOTING, which a
-	 * whitespace split gets wrong. Measured on the shipped image —
-	 * `gsmartcontrol` is `"/usr/bin/gsmartcontrol-root"` and was exec'd
-	 * with the quotes still on the path, and `wesnoth` is
-	 * `sh -c "wesnoth-1.18 >/dev/null 2>&1"`, whose one shell argument was
-	 * handed to sh in three pieces. Both looked exactly like an app that
+	 * whitespace split gets wrong: `gsmartcontrol` is
+	 * `"/usr/bin/gsmartcontrol-root"`, which a split execs with the quotes
+	 * still on the path, and `wesnoth` is
+	 * `sh -c "wesnoth-1.18 >/dev/null 2>&1"`, whose one shell argument a
+	 * split hands to sh in three pieces. Both look exactly like an app that
 	 * does not start.
 	 *
 	 * Field codes are .desktop placeholders for the file the user picked;

@@ -20,8 +20,10 @@ directory on the ESP.
 Several of the build dependencies are there for one configuration option each. `rust`, `bindgen` and
 `clang` are what `CONFIG_RUST` needs, and with it the QR-code panic screen; `dwarves` provides
 `pahole`, without which there is no BTF; `openssl` writes the module-signing key and signs the
-modules. `cpio` and `zstd` are for `postinstall.sh`, which lists the image's initramfs with
-`cpio` and appends an archive of this kernel's modules, decompressed with `zstd`.
+modules. `zstd` compresses the kernel image (`CONFIG_KERNEL_ZSTD`) and every module as
+`modules_install` writes it (`CONFIG_MODULE_COMPRESS_ZSTD`), and `postinstall.sh` uses it again to
+decompress the modules it puts into the initramfs. `cpio` is for `postinstall.sh` alone, which
+lists the image's initramfs and writes the archive of this kernel's modules it appends.
 
 ## Flags
 

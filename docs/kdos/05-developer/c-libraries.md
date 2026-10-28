@@ -18,7 +18,7 @@ of your own.
 ## How the libraries are built
 
 A `libk*` library is a directory of C sources with one public header, and sometimes private
-headers of its own (`kcell_priv.h`, `kicon_int.h`, `kwl_priv.h`, and several in `libkvt`). It is
+headers of its own (`kcell_priv.h`, `kicon_int.h`, three in `libkwl` and several in `libkvt`). It is
 not an installed archive or a shared object. Each program that uses a library compiles that
 library's `.c` files straight into its own binary, from its own `build.sh`, and names the external
 libraries it needs on its own link line. `kinstall`'s recipe, for example, compiles
@@ -54,7 +54,8 @@ Some consumers are compiled outside a recipe, by a script that names its librari
 | `script/kdosbuild.sh` | `kdosbuild`, the build screen, on the build host | `libkbase`, `libkbuild`, `libkpkg`, `libktui`, `libkcolor` |
 | `src_kpkg_ensure` in `ports/srclib.sh` | the host recipe reader `ports/fetch` and `ports/publish` use | `libkbase`, `libkpkg`, `libksig` |
 | `ports/update` | `kdos-portup`, the upstream version checker | `libkbase`, `libkpkg`, `libkbuild` |
-| `testing/selftest.sh` | `src/libs/selftest.c` and a compile of every consumer | all seventeen |
+| `ensure_kpkg_bin` in `src/devtools/kdos-portup/main.c` | `kdos-portup`'s own copy of the recipe reader, in `ports/.portup-tools/` | `libkbase`, `libkpkg`, `libksig` |
+| `testing/selftest.sh` | `src/libs/selftest.c` and a compile of every consumer | all seventeen; the five pixel libraries only where their external libraries are installed |
 
 ## The constraint
 
@@ -97,18 +98,19 @@ cell painter is not made to link a Wayland client library to get it.
 
 The header column names the library's one public header, which is what a consumer includes. The
 prefix column is the one every exported symbol of that library carries (a second prefix marked
-"internal" is linker-visible but declared only in a private header). The "Built on" column lists
+"internal" is linker-visible but declared only in a private header, and `libksig`'s `crypto_` is
+the vendored Monocypher's own). The "Built on" column lists
 the other `libk*` libraries it needs, either by calling them or by using a type or macro from
 their header.
 
 | Library | Header | Prefix | Owns | Built on | Used by |
 |---|---|---|---|---|---|
 | `libkbase` | `kbase.h` | `kb_` | Allocation and its failure hook, fatal and warning output, strings, files, paths, locking, monotonic time, SHA-256 and MD5, base64, JSON string escaping, `file://` URIs, per-user toggles and state paths, group membership and the root-daemon authorisation gate, the argument-vector builder and process helpers, desktop notifications, Landlock self-sandboxing, the fuzzy matcher, and the freedesktop trash | — | Every KDOS C program except `kdos-splash`, `kdos-bb`, `kdos-boxsock`, `kdos-record` and `xdg-desktop-portal-kdos`; also `kpkg`, `kdosbuild` and `kdos-portup` |
-| `libkcolor` | `kcolor.h` | `kcol_` | The palette table, colour-space conversion, mixing, contrast, the readable muted colour, the hue-family classifier, remapping and retinting | `libkbase` | Everything that links `libktui`, plus `kdos-comp`, `kdos-theme`, `kdos-tools` and `kdos-powerd`; its header alone is used by `kdos-splash` and `xdg-desktop-portal-kdos` |
-| `libktui` | `ktui.h` | `ktui_` | Terminal ownership, the cell buffer and its diff, key and mouse decoding, the touch-gesture recogniser, character width, paste and drop, immediate-mode widgets, the draw-and-key views, menus, modals, the keys contract (the keys every surface answers; see [Writing desktop software](writing-desktop-software.md#the-keys-contract)), the selection rule every surface draws its rows with, the three glyph tiers, charts, the sprite table, offscreen rendering, and announcements | `libkcolor` (its palette macro), `libkbase` | `kinstall`, `kdosbuild`, `kdos-appbox`, `kdos-shell`, `kdos-res`, `kdos-term`, `kdos-lock` |
+| `libkcolor` | `kcolor.h` | `kcol_` | The palette table, colour-space conversion, mixing, contrast, the readable muted colour, the derived semantic colours, the hue-family classifier, the nearest of the 256 indexed colours, remapping and retinting, and the generated boot-menu look and console palette | `libkbase` | Everything that links `libktui`, plus `kdos-comp`, `kdos-theme`, `kdos-tools` and `kdos-powerd`; its header alone is used by `kdos-splash` and `xdg-desktop-portal-kdos` |
+| `libktui` | `ktui.h` | `ktui_` | Terminal ownership, the cell buffer and its diff, key and mouse decoding, the touch-gesture recogniser, character width, paste and drop, immediate-mode widgets, the draw-and-key views, menus, modals, the keys contract (the keys every surface answers; see [Writing desktop software](writing-desktop-software.md#the-keys-contract)), the selection rule every surface draws its rows with, the three glyph tiers, charts, the sprite table, offscreen rendering, and announcements | `libkcolor` (its palette macro and `kcol_theme_name()`), `libkbase` | `kinstall`, `kdosbuild`, `kdos-appbox`, `kdos-shell`, `kdos-res`, `kdos-term`, `kdos-lock` |
 | `libkxdg` | `kxdg.h` | `kxdg_` | Desktop entries, the MIME glob table, what handles a type, the one correct way to turn a command line into an argument vector, places, recent files and file verbs | `libkbase` | `kdos-shell`, `kdos-res`, `kdos-term`, `kdos-appbox`, `kdos-tools` |
-| `libkpkg` | `kpkg.h` | `kp_` | Configuration, the package database, the ports tree, dependency parsing and solving, version comparison, the recipe and build-config hashes | `libkbase` | `kpkg` (also compiled on the build host as the recipe reader), `kdosbuild`, `kdos-portup`, `kdos-pack`, `kdos-packd`, `kdos-tools` |
-| `libksig` | `ksig.h` | `ksig_` | Ed25519 signing and verification, key files, keyrings; the one library with vendored third-party source | `libkbase` | `kpkg`, `kdos-pack`, `kdos-packd`, `kdos-tools`, `kdos-shell` (for `kdos-about`'s key ids) |
+| `libkpkg` | `kpkg.h` | `kp_` | Configuration, the package database and its merged-`/usr` path spellings, the ports tree, dependency parsing and solving, version comparison, the recipe and build-config hashes, and the content-keyed package store | `libkbase` | `kpkg` (also compiled on the build host as the recipe reader), `kdosbuild`, `kdos-portup`, `kdos-pack`, `kdos-packd`, `kdos-tools` |
+| `libksig` | `ksig.h` | `ksig_`, `crypto_` (vendored) | Ed25519 signing and verification, key files, keyrings; the one library with vendored third-party source | `libkbase` | `kpkg`, `kdos-pack`, `kdos-packd`, `kdos-tools`, `kdos-shell` (for `kdos-about`'s key ids) |
 | `libkbuild` | `kbuild.h` | `kbuild_`, `kj_` | Phase discovery, the phase metadata block, the build plan, the snapshot inventory and its chains, the layer diff, a read-only JSON scanner | `libkbase`, `libkpkg` | `kdosbuild`, `kdos-portup` |
 | `libkproc` | `kproc.h` | `kpr_` | Every reading about the running machine, from a movable root: processes, uptime, box identity, processor, memory and pressure, block devices, network, power, sensors, graphics, sound PCMs, and the sample ring | `libkbase` | `kdos-res`, `kdos-shell`, `kdos-tools`, `kdos-oomd`, `kdos-energyd` |
 | `libkpack` | `kpack.h` | `kpk_` | The pack format: the footer, the metadata blob, the requirement solve, the payload hash, the signature block, and the index | `libkbase`, `libksig`, `libkpkg` | `kdos-pack`, `kdos-packd`, `kdos-tools` |
@@ -149,10 +151,11 @@ libkimg    (no libk* library)
 
 Some edges carry a rule of their own:
 
-- `libktui` takes the palette from `libkcolor`'s X-macro at compile time. That is why
-  `script/phases/10_bootstrap/130_kinstall.sh` puts `libkcolor` on the bootstrap command line:
-  leaving it out builds on a development host, where `testing/selftest.sh` supplies it, and fails
-  only in `10_bootstrap`.
+- `libktui` takes the palette from `libkcolor`'s X-macro at compile time and reads the desktop's
+  accent through `kcol_theme_name()`, so `libkcolor`'s header and its sources go wherever
+  `libktui` does. That is why `script/phases/10_bootstrap/130_kinstall.sh` puts `libkcolor` on the
+  bootstrap command line: leaving it out builds on a development host, where
+  `testing/selftest.sh` supplies it, and fails only in `10_bootstrap`.
 - `libkdisp` uses `libktui`'s `KRect` type and calls none of its functions, so adding it to a
   program costs a table of function pointers (`KDispImpl`, see [libkdisp](#libkdisp)) and a
   structure rather than a font renderer.
@@ -302,8 +305,8 @@ loses to a prefix of its own name.
 
 It lives here rather than in a surface because several surfaces search the same things. The
 command palette, Find and the Start menu search applications through `kdos-shell`'s one
-application matcher, which ranks by `kb_fuzzy`; the palette ranks windows, routes and files with
-it; and the keybind card filters its rows with it. One query ranked three ways teaches a person
+application matcher, which ranks by `kb_fuzzy`; the palette ranks windows, routes, settings
+pages, files and chords with it; and the keybind card filters its rows with it. One query ranked three ways teaches a person
 that the desktop's search cannot be relied on.
 
 A caller that sorts on it must sort descending. A sort written for a lower-is-better matcher ranks
@@ -346,6 +349,27 @@ measures below any text floor against the background; the muted colour from `kco
 readable one, and every text role goes through it. See
 [the design language](../03-architecture/design-language.md#colour).
 
+Some consumers cannot take the palette as numbers, so the library writes their format for them,
+and each format is generated rather than kept as a second table that would go stale:
+
+- `kcol_limine_conf()` writes the whole look of a `limine.conf`: the `interface_*` lines, the
+  palettes, the margins, the wallpaper style and the font scale. It leaves out the two lines that
+  name paths, `wallpaper` and `term_font`, because which artwork and face are installed is not a
+  question an accent answers. The ISO step stamps the medium's boot menu with it through
+  `kdos-bootctl theme --print`, the installer stamps a new machine's, and `kdos-bootctl theme`
+  restamps an installed one.
+- `kcol_vtrgb()` writes the Linux console's sixteen colours in `setvtrgb`'s format.
+  `kdos-bootctl theme` writes the result to `/etc/vtrgb`, and `kdos-getty` loads that file before
+  it clears `tty1`, so the login prompt is already in the scheme. Blue, magenta and cyan are fixed
+  hues rather than scheme colours, so `ls --color` and a diff can still tell their classes apart.
+- `kcol_sem()` derives the named semantic colours: the text on an accent fill, the warning and
+  destructive pairs, and the header, dialog and border colours. `kdos-theme`'s stylesheet and the
+  user `gtk.css` that `kdos theme` writes both expand this one structure, so the two layers cannot
+  disagree.
+- `kcol_xterm256()` answers the nearest of the 256 indexed colours for a program that accepts only
+  an index, such as newsboat. It searches the colour cube and the grey ramp and never the first
+  sixteen, which are the terminal's own colours the scheme has already replaced.
+
 ## libktui
 
 The toolkit: terminal ownership, the cell buffer, the diff, input decoding, widgets, charts, the
@@ -379,8 +403,8 @@ them as they arrive shows a menu before the one under it is erased. The close is
 a bounded flush dropped the frame, and once more when the terminal is handed back, because a
 terminal left inside the block draws nothing further: an unclosed bracket freezes the screen.
 
-`ktui_progress()` draws a solid whole-cell bar, and its output must not change: `kinstall` and the
-on-screen display in `kdos-shell` call it. `ktui_progress_ex()` is the general form, with the
+`ktui_progress()` draws a solid whole-cell bar, and its output must not change: `kinstall`, and
+the on-screen display and the Disks window in `kdos-shell`, call it. `ktui_progress_ex()` is the general form, with the
 `KT_BAR_SOLID`, `KT_BAR_TIP` and `KT_BAR_SEGMENTED` styles and the `KT_BAR_PULSE` flag; the build
 screen uses it. Change the general form freely and leave the plain wrapper's output alone.
 
@@ -606,10 +630,12 @@ how many. `ktui_announce()` takes a role, a label, a value and the item's positi
 "3 of 9" is a fact the widget states rather than a count somebody has to make.
 
 - It lives here, not in a surface. A record composed per surface would be composed once per
-  surface; one set in this library is set once and every consumer reads it.
-- The queue is per frame, fixed in size, and cleared at the start of every frame. Nothing on the
-  draw path allocates, because a widget that allocated to say its own name would drop frames over
-  a slow link, and a frame with more to say than the queue holds drops the rest.
+  surface; one set in this library is set once, and `ktui_announce_count()` and
+  `ktui_announce_at()` are the one place to read it.
+- The queue is per frame, holds `KTUI_A11Y_MAX` (16) records, and is cleared at the start of every
+  frame. Nothing on the draw path allocates, because a widget that allocated to say its own name
+  would drop frames over a slow link, and a frame with more to say than the queue holds drops the
+  rest.
 - Silence is the failure mode, never a stale name. A widget that says nothing announces nothing; a
   reader told the wrong control is worse off than one told nothing, and last frame's record is the
   wrong control by default.
@@ -623,8 +649,9 @@ how many. `ktui_announce()` takes a role, a label, a value and the item's positi
 - A repeated record is the same control. Dropping the repeat is the reader's job; the widget's job
   is to be right every frame.
 
-What a screen reader does with these records is described in
-[Accessibility](../02-user-guide/accessibility.md).
+No program reads the queue: the widgets fill it every frame, and the self-test is what pins its
+contents. What that leaves a screen-reader user with is described in
+[Accessibility](../02-user-guide/accessibility.md#the-announcement-record).
 
 ### The cell's attribute byte
 
@@ -747,8 +774,9 @@ passes its values straight in; changing one side without the other is a silent g
 
 The contract is `testing/fixtures/wm/geometry.txt`. Each section cites the source file and function
 of `kdos-comp` its rows were derived from, and the self-test replays the file rather than asserting
-anything of its own. Where the library and a row disagree, the row is right. Adding a case means
-adding a row, under a section that cites where the behaviour lives.
+anything of its own (see [The window-model contract](testing.md#the-window-model-contract)). Where
+the library and a row disagree, the row is right. Adding a case means adding a row, under a section
+that cites where the behaviour lives.
 
 The file pins three behaviours that each look like a defect and are not:
 
@@ -1017,10 +1045,14 @@ whose programs exist, and `testing/preflight.sh` refuses one that does not.
 ## libkpkg
 
 `libkpkg` holds the package manager's configuration, the package database, the ports tree, the
-solver, version comparison and the two package hashes.
+solver, version comparison, the two package hashes and the content-keyed package store
+(`kp_store.c`), which installs a port from a package built earlier from exactly the same inputs
+instead of building it again (see
+[Packaging](../03-architecture/packaging.md#the-package-store)).
 
 It is the one place a port is found by name, and every tool that looks a port up goes through it:
-`kpkg`, `kdos update`, `kdos cve`, `kdos-portup` and the build's port index. A repository on
+`kpkg`, `kdos update`, `kdos cve`, `kdos why`, `kdos march`, `kdos-portup`, `kdosbuild` and the
+build plan's port index. A repository on
 `PORT_REPO` holds each port at `<repo>/<name>/` or one shelf down at `<repo>/<shelf>/<name>/`;
 `ports/core` is shelved and each `src/` area is flat (see
 [Shelves, and how a port is found](writing-ports.md#shelves-and-how-a-port-is-found)).
@@ -1036,6 +1068,16 @@ It is the one place a port is found by name, and every tool that looks a port up
 | `kp_owned_load_some(c, rel, n)` | The same table holding only the claims on the `n` given paths, canonicalised the way a question is. Those two functions answer exactly as from the full table for those paths, and NULL for any other. It streams every manifest but keeps a handful of pairs, which is what an install, an upgrade's orphan sweep and a removal need |
 | `kp_db_lock(c)` | Takes the database's writer lock, an exclusive `flock` on `<db>/.lock`, blocking, and returns the descriptor; closing it releases the lock. -1 when the database directory cannot hold the file |
 
+One file can have two spellings on a merged-`/usr` root: a package built with `--exec-prefix=`
+records `./bin/free` and one built with `--prefix=/usr` records `./usr/bin/free`. `kp_canon_load()`
+reads which top-level names (`bin`, `sbin`, `lib`, `lib64`, `lib32`) are links into `usr/` on the
+install root, and `kp_canon_path()` rewrites a path to its canonical spelling. Every ownership
+question (the conflict scan, a declared takeover, an upgrade's orphan sweep and a removal)
+compares canonical spellings, because otherwise a shared file is invisible to the scan, claimed
+twice, and deleted by whichever package is upgraded or removed next. The aliases are read from the
+root rather than assumed, because a root whose `bin` is a real directory holds two different files
+under those two names. See [Who owns a file](../03-architecture/packaging.md#who-owns-a-file).
+
 A shelf is any directory of a repository with no `kpkgbuild` of its own, other than a dot-name. The
 shelf names are cached per repository when the repositories are set, so a shelf created afterwards
 is not seen until they are set again. No shelf may be named `libs`: a source-less port's recipe
@@ -1043,8 +1085,11 @@ hash covers `<portdir>/../../libs`, which for a port under `ports/core` is `port
 shelf by that name would be hashed into every such port.
 
 Version comparison (`kp_vercmp`) and the version-shape filter (`kp_vershape`) live here rather than
-in either consumer, because the package manager and the upstream version checker ask the same
-questions about the same strings and two implementations would eventually disagree. Both carry
+in any one consumer, because several programs ask the same question of the same strings and two
+implementations would eventually disagree: `kdos-portup` asks whether upstream is newer than the
+pin, `kdos cve` whether the pin is older than the version that fixed a flaw, `kdos update` whether
+a recipe is newer than what is installed, and `libkpack`'s solve and `kdos-packd` which pack
+version is the newest. Both carry
 `libkpkg`'s `kp_` prefix even though `kdos-portup` is the shape filter's only caller: a symbol
 exported under a consumer's prefix is one the next reader looks for in the wrong library, and two
 libraries that each define a generic name cannot be linked into one program.
@@ -1086,6 +1131,11 @@ whole. Covered in [The build system](build-system.md#libkbuild).
 The movable root (`kpr_root_set()`) is what makes the resource monitor, the stutter attribution
 (`kdos stutter`), the memory daemon and the energy daemon testable against recorded system state
 under `testing/fixtures/`. A tool whose readings cannot be replayed cannot be tested at all.
+
+User names are the one reading that does not move with the root. `kpr_user_of()` reads the file
+`$KPR_PASSWD` names when it is set, and `/etc/passwd` otherwise. `kdos-res --fixture` sets it to
+the recording's own `passwd` when the recording carries one; a test that moves the root without setting it resolves
+names from the host it runs on.
 
 Elapsed time may only be computed against the system uptime. A process's start time and the uptime
 are both seconds since boot; pairing the start time with a monotonic timestamp mixes two clocks,
@@ -1880,7 +1930,8 @@ shown in cells.
   count of hit rects; and an outline round each hit rect of a frame surface (`KT_ACCENT` the
   focused control, `KT_WARN` the others, `KT_MID` chrome). A surface too short for the panel gets
   one line of it and one narrower than 30 cells none. It is painted into the shared-memory buffer
-  over a copy of the cells, so no dump, golden or `tty1` frame carries it.
+  over a copy of the cells, so no dump, golden or `tty1` frame carries it. See
+  [The inspector](testing.md#the-inspector) for using it.
 - The frame clock is `libkwl`'s. While `ktui_anim_live()` holds, `poll_event` returns a
   `KT_EVT_TICK` with a return of 1 each time a frame callback is answered, so a loop that draws on
   every return animates at the display's rate; one more tick follows the last frame drawn inside
@@ -1948,7 +1999,8 @@ presentation rules in [Presenting a frame](writing-desktop-software.md#presentin
   without its band of the picture restored first draws the new glyph over the old one; and damage
   cut from the cell diff says nothing about a picture that differs from the one showing. Both are
   answered by key, per buffer and for the screen, through the backdrop's differ, and
-  `KDOS_PAINT_FULL=1` turns both off to compare.
+  `KDOS_PAINT_FULL=1` turns both off to compare. `testing/fixtures/kwl/paintcheck.c` holds the
+  partial paint to the full one (see [The partial paint](testing.md#the-partial-paint)).
 - A scrolled band is moved only inside the buffer about to be painted, never out of the other one,
   and its shadow moves with it. That buffer is not busy and its shadow is the exact record of what
   it holds; the other buffer may be the one on screen and must not be written. A shadow left
@@ -2021,7 +2073,8 @@ presentation rules in [Presenting a frame](writing-desktop-software.md#presentin
   its own when the output next presents, and not at all while the surface is on no output. So a
   callback unanswered for `KWL_FRAME_STALL_MS` is dropped into a tick and asked for again, and the
   tick owed after the end is paid once, whether or not the loop draws on it: a loop that ignores
-  ticks cannot keep the clock running. `testing/fixtures/kwl/tickcheck.c` holds all of this.
+  ticks cannot keep the clock running. `testing/fixtures/kwl/tickcheck.c` holds all of this (see
+  [The frame clock](testing.md#the-frame-clock)).
 - A lock surface must not receive the pre-configure commit, which is a protocol error there.
 - A drop's offer is owned separately from the drag's, because the leave that follows a drop arrives
   while the payload is still draining and a second drag may enter before it ends. One slot for both
@@ -2105,7 +2158,11 @@ one and the surface size the compositor derives held to the size configured.
    - The `libkdos.a` line in `src/desktop/kdos-comp/build.sh`, which meson links into the
      compositor.
 6. Add its assertions to `src/libs/selftest.c`, especially any invariant established by comparing
-   against a reference implementation.
+   against a reference implementation. `selftest.c` is compiled without fcft, fontconfig or
+   Wayland, so a library that links an external library gets a check program of its own under
+   `testing/fixtures/` instead, as `libkcell`, `libkchrome` and `libkwl` have
+   (`cellclip/clipcheck.c`, `tile/tilecheck.c`, `kwl/paintcheck.c` and others), compiled and run in `testing/selftest.sh`
+   where those libraries are installed.
 7. Add it to the consumer compile block in `testing/selftest.sh` (the step headed "every consumer
    still compiles against the libraries"), so a header change that breaks a consumer fails on a
    development host rather than hours into a build.

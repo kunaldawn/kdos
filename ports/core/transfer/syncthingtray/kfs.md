@@ -16,8 +16,9 @@ client the desktop entry's "Rescan all folders" action runs.
 - `-D WEBVIEW_PROVIDER=none` — no built-in web view. Upstream's `auto` would embed Syncthing's web
   interface through QtWebEngine; with `none` the web interface opens in the browser, and
   [qt6-qtwebengine](#port-qt6-qtwebengine) is not linked.
-- `-D JS_PROVIDER=qml` — the JavaScript engine of `syncthingctl`'s script console, from
-  Qt QML ([qt6-qtdeclarative](#port-qt6-qtdeclarative)). This is upstream's default.
+- `-D JS_PROVIDER=qml` — the JavaScript engine behind `syncthingctl edit --script` and
+  `--js-lines`, which run a script over Syncthing's configuration instead of opening an editor,
+  taken from Qt QML ([qt6-qtdeclarative](#port-qt6-qtdeclarative)). This is upstream's default.
 - `-D WIDGETS_GUI=ON` — the Qt Widgets interface, with `-D QUICK_GUI=OFF` leaving out the
   experimental Qt Quick one; both are upstream's desktop defaults.
 - `-D NO_LIBSYNCTHING=ON` — do not build Syncthing itself into the program as a library; the tray
@@ -25,21 +26,25 @@ client the desktop entry's "Rescan all folders" action runs.
 - `-D NO_PLASMOID=ON` — and `-D NO_FILE_ITEM_ACTION_PLUGIN=ON`: no Plasma panel applet and no
   Dolphin context-menu plugin, both on by default on Linux. The applet needs Plasma's applet
   library, which is not a port. The context-menu plugin is a KIO file-item-action plugin, which
-  [Dolphin](#port-dolphin) would load; it is not built.
-- `-D SETUP_TOOLS=OFF` — no setup tools; upstream's own description says this likely makes sense
-  to disable when distributing through a package manager.
+  [Dolphin](#port-dolphin) would load; it links [kio](#port-kio), which is not in this port's
+  `depends`.
+- `-D SETUP_TOOLS=OFF` — no setup tools: the updater that checks for a newer Syncthing Tray
+  release, downloads and verifies it and restarts into it, with its settings page and tray
+  notice. This is upstream's default, and its description of the option says it likely makes
+  sense to disable when distributing through a package manager; here kpkg installs and updates
+  the program.
 - `-D SYSTEMD_SUPPORT=OFF` — no control of a Syncthing systemd unit. KDOS has no systemd (see
   [No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)), so there is no unit
   to control.
 - `-D USE_BOOST_PROCESS=OFF` — launch Syncthing through Qt's `QProcess` instead of Boost.Process,
   which upstream enables by default.
 - `-D DBUS_BASED_POWER_MONITORING=ON` — battery and power-saver monitoring over D-Bus, in
-  upstream's words.
+  upstream's words. On by default upstream on Linux.
 - `-D NO_DOXYGEN=ON` — and `-D NO_SPHINX=ON`: no API documentation with Doxygen or Sphinx.
 
 ## Notes
 
-Upstream installs the logo as SVG and a 256-pixel PNG; the recipe rasterises the SVG to 48, 64
-and 128 pixel PNGs as well, because the panel draws PNG icons only. Upstream's desktop entry has
-no `StartupWMClass`; the recipe writes its own, naming the window's app id, `syncthingtray`, the
-program's name.
+Upstream installs the logo as SVG only. The recipe rasterises it to 48, 64 and 128 pixel PNGs and
+installs the 256-pixel PNG the source carries under `tray/resources/icons`, because the panel
+draws PNG icons only. Upstream's desktop entry has no `StartupWMClass`; the recipe writes its
+own, naming the window's app id, `syncthingtray`, the program's name.

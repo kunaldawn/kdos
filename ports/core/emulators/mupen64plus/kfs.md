@@ -14,7 +14,7 @@ with a ROM file, so its desktop entry is hidden from the menu and serves only to
   `cc1plus` warns that the option is not valid for C++. The makefiles assign `CC` themselves, so it
   is given on the `make` line, and `CFLAGS` is exported rather than given there, because a
   `CFLAGS` on the `make` line would replace every `CFLAGS +=` in the makefile (see
-  [C flags handed to the C++ compiler](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/build-troubleshooting.md#c-flags-handed-to-the-c-compiler)).
+  [C flags handed to the C++ compiler](../../../../docs/kdos/05-developer/build-troubleshooting.md#c-flags-handed-to-the-c-compiler)).
 - `PLUGINDIR=/usr/lib/mupen64plus` — Where the plugins are installed and, in the console front
   end, the directory it searches for them by default; the same value is given to every component
   so the two agree.

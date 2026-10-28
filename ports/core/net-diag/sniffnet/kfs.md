@@ -16,14 +16,14 @@ installs the program, its icons and a desktop entry that `build.sh` writes itsel
 The build is offline: `sniffnet-vendor-<version>.tar.xz` holds every crate, produced by `cargo
 vendor` when `ports/fetch` sees `vendoring = rust`, and it carries its own `sha256 =` line, so a
 regenerated bundle that resolves differently is refused. See
-[Vendoring](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#vendoring).
+[Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring).
 
 `reqwest` pulls in rustls, whose crypto provider is `aws-lc-rs` over `aws-lc-sys`, so the binary carries its own copy of AWS-LC. That
 copy is listed in `/usr/share/kdos/bundled.txt` with the version the vendored source states, and a
 bump that regenerates the bundle must rewrite that row; see
-[Bundled copies](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/packaging.md#bundled-copies).
+[Bundled copies](../../../../docs/kdos/03-architecture/packaging.md#bundled-copies).
 
 Capturing needs raw-socket privilege, and the port grants none: no setuid bit and no file
 capability. Run it as root, or give the binary the capability yourself, as
-[setuid binaries](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#setuid-binaries)
+[setuid binaries](../../../../docs/kdos/03-architecture/security-model.md#setuid-binaries)
 describes.

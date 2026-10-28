@@ -93,9 +93,10 @@ kdos-shell
 # btop.
 kdos-term
 
-# The lock screen, and one of the two setuid-root binaries KDOS ships:
-# /etc/shadow is root-only and kdos-lock must not be. ext-session-lock-v1 means
-# the compositor keeps the screen locked even if the client dies.
+# The lock screen. Its kdos-checkpass is one of the two setuid-root helpers of
+# KDOS's own: /etc/shadow is root-only and kdos-lock must not be.
+# ext-session-lock-v1 means the compositor keeps the screen locked even if the
+# client dies.
 kdos-lock
 
 # The resource monitor. One binary that is a TTY program on tty1 and an
@@ -108,8 +109,8 @@ kdos-lock
 # It ships BESIDE btop rather than replacing it: btop is mature, and until this
 # has run on real hardware a fallback is worth keeping.
 #
-# kdos-resctl is built by the same recipe and is the SECOND setuid bit this
-# distro ships — three verbs, no paths in argv, gated on `wheel` by real uid.
+# kdos-resctl is built by the same recipe and is the OTHER setuid-root helper
+# of KDOS's own — three verbs, no paths in argv, gated on `wheel` by real uid.
 kdos-res
 
 # The FileChooser portal. xdg-desktop-portal-wlr does ScreenCast and

@@ -25,7 +25,7 @@ is in [The kernel](../14-kernel/intro.md). Every command on this page runs on a 
   `/etc/modprobe.d/kdos-regdom.conf`, the Wi-Fi country.
 
 Every service involved is enabled on every image. On the live medium a file added under `/etc` is
-kept only when a persistence store exists (`kdos persist`).
+kept only when a persistence store exists (`kdos persist`; see [Live persistence](live-persistence.md)).
 
 ## Configuration
 
@@ -64,7 +64,11 @@ their own:
 
 The installer's file is written from the time zone's country:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=1746-1754 pin=5a0dbdc98892 -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=1751-1759 pin=5a0dbdc98892 -->
+
+`kdos-power timezone` writes the same `options cfg80211` line when the zone changes, and removes
+the file for a zone with no country, such as `UTC`. What the country changes is on
+[Wireless regulatory domain](wireless-regulatory-domain.md).
 
 ### Udev and coldplug
 
@@ -155,8 +159,9 @@ the compressed swap device is active, and back to the kernel's default when it s
 A module the initramfs loads, such as a filesystem or a disk controller driver, loads before the
 root filesystem is mounted, and the initramfs carries no `/etc/modprobe.d`. Such a module takes its
 options from the [kernel command line]{.idx} instead, as `<module>.<parameter>=<value>`; `modprobe` reads
-those from `/proc/cmdline` too. How to add a word to the command line is in
-[Limine and the kernel command line](../../kdos/03-architecture/boot-and-init.md#limine-and-the-kernel-command-line).
+those from `/proc/cmdline` too. How to add a word to the command line, for one boot or for every
+boot, is on
+[Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md#adding-a-parameter-for-one-boot).
 
 ### Keeping a module from loading
 
@@ -169,7 +174,8 @@ those from `/proc/cmdline` too. How to add a word to the command line is in
    This stops the module loading for a device; `modprobe <module>` by name still loads it.
 
 2. For one boot, add `modprobe.blacklist=<module>` to the kernel command line in the boot menu's
-   entry editor (`E` on an entry).
+   entry editor (`E` on an entry; see
+   [Adding a parameter for one boot](boot-menu-and-kernel-parameters.md#adding-a-parameter-for-one-boot)).
 
 ### Reading and setting a kernel parameter
 

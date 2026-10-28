@@ -4,8 +4,9 @@ KIO is KDE's network-transparent file access: one job API for every kind of loca
 scheme handled by a worker process. KIO itself carries the workers for local files, FTP, HTTP and
 WebDAV, the trash and `help:`; [kio-extras](#port-kio-extras) adds SFTP, SMB, archives and the
 rest. It also provides the file open and save dialogs, the file properties dialog and the
-"Open With" machinery of KDE applications, the `kiod6` daemon and the `ktrash6` command. [dolphin](#port-dolphin), [kate](#port-kate), [okular](#port-okular) and many
-KDE applications in the tree link it.
+"Open With" machinery of KDE applications, the `kiod6` daemon and the `ktrash6` command.
+[dolphin](#port-dolphin), [kate](#port-kate), [okular](#port-okular) and many KDE applications in
+the tree link it.
 
 ## Flags
 
@@ -13,9 +14,16 @@ KDE applications in the tree link it.
   an application, or hands files to one over D-Bus from "Open With", it passes on the X11 startup
   identifier or the Wayland `xdg-activation` token, so the application's window may take focus.
   Both are upstream's defaults on Linux; every toolkit in the tree keeps both backends (see
-  [Toolkits, Wayland and X11](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/applications.md#toolkits-wayland-and-x11)).
+  [Toolkits, Wayland and X11](../../../../docs/kdos/02-user-guide/applications.md#toolkits-wayland-and-x11)).
 - `-D BUILD_DESIGNERPLUGIN=OFF` — Build no Qt Designer plugin for the file widgets, which upstream
   builds by default.
+
+## Patches
+
+- `kiod6-desktop-exec-path.patch` — Sets `Exec=` in `org.kde.kiod6.desktop` to
+  `/usr/lib/libexec/kf6/kiod6`, where the daemon is installed, in place of the bare `kiod6`, which
+  is on no `PATH` directory; the image's [entrycheck](../../../../testing/entrycheck.py) gate
+  refuses a desktop entry whose program does not resolve.
 
 ## Notes
 

@@ -11,9 +11,10 @@ entry plays the library mpd serves.
   bundle.
 - `VERGEN_GIT_DESCRIBE` — set to `v<version>`. rmpc's `build.rs` asks git, through the vergen
   crate, for the `git describe` string that `rmpc version` and `rmpc debug-info` print and the log
-  records at start, and a release tarball has no git history. vergen takes a value already in the environment; without one it puts
-  the placeholder `VERGEN_IDEMPOTENT_OUTPUT` into the binary. `VERGEN_GIT_SHA` is set the same way,
-  but `build.rs` asks vergen for the describe string alone, so nothing reads it.
+  records at start, and a release tarball has no git history. vergen takes a value already in the
+  environment; without one it puts the placeholder `VERGEN_IDEMPOTENT_OUTPUT` into the binary.
+  `VERGEN_GIT_SHA` is set the same way, but `build.rs` asks vergen for the describe string alone,
+  so nothing reads it.
 
 ## Notes
 The vendor bundle, `rmpc-vendor-<version>.tar.xz`, is `cargo vendor` run by `ports/fetch`
@@ -26,9 +27,10 @@ there.
 
 The desktop entry is KDOS's own. It is `NoDisplay=true`: rmpc exits at once when no mpd is
 running, and the session starts mpd only once an `mpd.conf` exists, which the image does not ship,
-so Start does not list it; `Super+Shift+U` opens it. It sets
-`Terminal=true` and `X-KDOS-Term=kdos-term`, which asks
-for [kdos-term](../../../../docs/kdos/04-programs/kdos-term.md) whatever the session's terminal is,
+so Start does not list it. `Super+Shift+U` does not use this entry: a binding in the compositor's
+`rc.xml` raises a running rmpc or starts one in `foot`. The entry sets `Terminal=true` and
+`X-KDOS-Term=kdos-term`, which asks for
+[kdos-term](../../../../docs/kdos/04-programs/kdos-term.md) whatever the session's terminal is,
 because the album art is drawn in the terminal's cell grid; see
 [Terminal entries](../../../../docs/kdos/04-programs/kdos-appbox.md#terminal-entries). rmpc's
 visualiser pane runs `cava`, which is not a port, so that pane draws nothing (see

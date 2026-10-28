@@ -163,7 +163,7 @@ idle_callback(void *data)
 	}
 
 	session_autostart_init();
-	kdos_children_start(); /* KDOS: supervised kdos-shell + kdos-notifyd */
+	kdos_children_start(); /* KDOS: supervised chrome, kdos-child.c TEMPLATES */
 	if (ctx->startup_cmd) {
 		spawn_async_no_shell(ctx->startup_cmd);
 	}
@@ -179,8 +179,8 @@ main(int argc, char *argv[])
 	 * its decisions at INFO (crt on/off and why, idle timers, frames
 	 * socket, wallpaper) and a session log that says nothing is how
 	 * "the screen went dark and I do not know why" stays unanswerable.
-	 * KDOS_COMP_DEBUG=1 is the documented debug switch (`kdos stutter`
-	 * section in CLAUDE.md) and maps to DEBUG.
+	 * KDOS_COMP_DEBUG=1 is the documented debug switch
+	 * (docs/kdos/04-programs/kdos-comp.md, Debugging) and maps to DEBUG.
 	 */
 	enum wlr_log_importance verbosity = WLR_INFO; /* KDOS */
 	const char *kdos_dbg = getenv("KDOS_COMP_DEBUG"); /* KDOS */

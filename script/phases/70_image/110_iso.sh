@@ -174,8 +174,8 @@ fi
 # system nothing and is readable from /mnt/iso the moment the live image is up.
 #
 # Every image carries the recipes at /ports (2a); this adds the fetched
-# sources, script/ and fs/. Opt-in because of its size: ports/ is about 39 G
-# of upstream tarballs that are already compressed, and squashing them again
+# sources, script/ and fs/. Opt-in because of its size: ports/ is tens of
+# gigabytes of upstream tarballs that are already compressed, and squashing them again
 # buys nothing.
 # `make build KDOS_ISO_SOURCES=1` is a developer stick, not the default one.
 #
@@ -187,8 +187,9 @@ fi
 # ports/ everything but its
 # dot-directories travels, every fetched source beside its recipe: those are
 # the fetch cache, whose bytes each port directory already holds by hard link,
-# and compiled host helpers. A binhost this build wrote (KDOS_MAKE_BINHOST=1) goes
-# beside the tree as sources/binhost.
+# and compiled host helpers. A binhost in build/binhost goes beside the tree as
+# sources/binhost; the test is on its index file, not on KDOS_MAKE_BINHOST, so
+# one an earlier opt-in build left there travels too.
 if [ "${KDOS_ISO_SOURCES:-0}" = "1" ]; then
     echo "Copying the sources onto the ISO (this is the big one)..."
     mkdir -p $ISO_ROOT/sources/ports

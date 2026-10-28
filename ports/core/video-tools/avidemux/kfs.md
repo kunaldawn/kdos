@@ -7,6 +7,10 @@ the plugins for both. Its core carries a private FFmpeg release under
 libraries, separate from the [ffmpeg](#port-ffmpeg) port.
 
 ## Flags
+- `-DCMAKE_POLICY_VERSION_MINIMUM=3.5` — The parts' `CMakeLists.txt` files declare
+  `cmake_minimum_required` floors from 2.6 to 3.0, and the tree's CMake 4 refuses any floor below
+  3.5 (see
+  [An old CMake policy floor](../../../../docs/kdos/05-developer/build-troubleshooting.md#an-old-cmake-policy-floor)).
 - `-DFAKEROOT="$PKG"` — Where the later parts look for the core's headers and CMake files. Each
   part is installed into `$PKG` before the next is configured.
 - `-DENABLE_QT6=True` — With `-DQT6=ON` and `-DLRELEASE_EXECUTABLE=/usr/lib/qt6/bin/lrelease`:

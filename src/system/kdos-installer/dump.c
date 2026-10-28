@@ -5,11 +5,11 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   kinstall --probe / --plan — what it sees, and what it would do
+ *   kinstall --dump probe / --dump plan — what it sees, and what it would do
  *
  * The installer is the one program here that CANNOT be tested by running it:
  * a real run repartitions a disk. `--dry-run` exists for that and still needs
- * a terminal and a person to click through ten pages, which means the two
+ * a terminal and a person to click through eleven pages, which means the two
  * questions worth asking of an installer before trusting it —
  *
  *   what does it think this machine IS?
@@ -24,7 +24,7 @@
  * defect it would hide — a disk the text form lists and the JSON form does not
  * — is exactly the kind of disagreement that makes a dump untrustworthy.
  *
- * `--probe` is also the right thing to paste into a bug report, which is why
+ * `--dump probe` is also the right thing to paste into a bug report, which is why
  * the text form exists at all rather than JSON alone.
  */
 

@@ -8,8 +8,9 @@ entry, *Processes*, that opens it in a terminal from the launcher.
 
 - `XML_CATALOG_FILES=/etc/xml/catalog` — Make `xsltproc`, which `a2x` runs to turn the DocBook it
   generates into a manual page, resolve the DocBook DTD and stylesheets through the system catalog
-  rather than by fetching their URLs. The catalog is written by
-  [docbook-xml](#port-docbook-xml) and [docbook-xsl](#port-docbook-xsl).
+  rather than by fetching their URLs. [docbook-xsl](#port-docbook-xsl) writes that catalog, maps
+  the stylesheet URLs to its local copy, and delegates the DocBook DTD's identifiers to
+  `/etc/xml/docbook`, the catalog [docbook-xml](#port-docbook-xml) writes.
 
 ## Notes
 

@@ -18,7 +18,9 @@ framebuffer configurations. Games and emulators written against GLEW link it.
   Regal variant; both are upstream's defaults, named here.
 - `-DOpenGL_GL_PREFERENCE=GLVND` — Tells CMake's `FindOpenGL` to take the
   [libglvnd](#port-libglvnd) libraries, `libOpenGL` and `libGLX`, rather than the legacy `libGL`.
-  GLEW then links those two, plus libX11.
+  The link line names those two with libX11 and libXext; under the tree's `--as-needed`,
+  `libGLX.so.0` is the one that stays a run-time dependency, since GLEW resolves every GL entry
+  point through `glXGetProcAddressARB`.
 
 ## Notes
 

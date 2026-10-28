@@ -4,12 +4,13 @@ By the time the image phase starts, `build/fs` has been the working root of ever
 and it holds what those builds left behind: scratch files, caches, built package archives, Python
 bytecode written by build tools, a container store, and whatever a tool wrote into root's home.
 `script/phases/70_image/020_cleanup.sh` removes all of it, so that the root carries only what a
-package or `fs/` put there, and removes the translations and HTML manuals that no package owns. It also fails the image when a packaged Python module has no
-compiled bytecode. This page goes through the script in order.
+package or `fs/` put there, and removes the translations and HTML manuals that no package owns. It
+also fails the image when a packaged Python module has no compiled bytecode. This page goes through
+the script in order.
 
 ## The switches
 
-<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=26-30 pin=4ebbfd4c867f -->
+<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=26-30 pin=c45592f59c67 -->
 
 Each of the four passes below is guarded by one of these variables, set in the script itself. No
 `make` variable reaches them; turning a pass off means editing the line. The removal of podman's
@@ -23,10 +24,10 @@ log.
 <!-- kfs:include script/phases/70_image/020_cleanup.sh lines=48-61 pin=e547544be06f -->
 
 `root/.cache`, `root/.cargo` and `root/.npm` are the caches tools write into root's home; the
-contents of `/tmp` and `/var/tmp` are scratch, and `/var/tmp` is also `HOME` for every chroot
-command (`HOME=/var/tmp/kdos-home`, set by `script/chroot/exec.sh`). `/var/cache/kpkg/work` is
-kpkg's work directory, where each port is unpacked and staged; a build that failed leaves its
-directory there. Without this pass all of it would go into `system.sfs`, including the
+contents of `/tmp` and `/var/tmp` are scratch, and `/var/tmp` also holds the `HOME` of every
+chroot command (`HOME=/var/tmp/kdos-home`, set by `script/chroot/exec.sh`).
+`/var/cache/kpkg/work` is kpkg's work directory, where each port is unpacked and staged; a build
+that failed leaves its directory there. Without this pass all of it would go into `system.sfs`, including the
 `podman<pid>` directories an appbox bake leaves in `/var/tmp`, which are multi-gigabyte.
 
 `$target` is deliberately unquoted in the `rm`, so that `tmp/*` and `var/tmp/*` expand to the
@@ -38,8 +39,9 @@ directories' contents and the directories themselves stay.
 
 `/var/cache/kpkg/packages` holds the package archives kpkg keeps: every package of the build when
 `KDOS_MAKE_BINHOST=1` (which is why [010_binhost.sh](010-binhost.md) runs first), and the packages
-a level build has built and not yet installed. A `.pending` record names a package in this
-directory that is waiting to be committed, so the two are removed together. A record left without
+a build with `--port-jobs` above 1 has built and not yet installed (see
+[Building in levels](../04-chroot/kpkg-install.md#building-in-levels)). A `.pending` record names
+a package in this directory that is waiting to be committed, so the two are removed together. A record left without
 its package would read as a build to commit that cannot be found.
 
 ## Python bytecode
@@ -48,7 +50,8 @@ kpkg compiles every Python module a package ships into checked-hash bytecode ins
 so each `.pyc` is owned by the package database and an upgrade or removal replaces it. `/usr` is
 read-only on the live medium, so a module with no `.pyc` would be compiled again on every import.
 The pass is one embedded Python program, run only when [`python3`]{.idx} is installed. Its first half
-reads every package's file list and removes the bytecode no package owns:
+reads every package's file list and removes the bytecode no package owns, anywhere under `/usr`,
+`/opt`, `/etc`, `/var` and `/srv`:
 
 <!-- kfs:include script/phases/70_image/020_cleanup.sh lines=105-152 pin=26318ff72863 -->
 
@@ -97,12 +100,12 @@ whose language is not English, anything under a `usr/share/man` directory that i
 `man<section>` one, and an `.html`, `.htm` or `.pdf` under `usr/share/doc`. `EXTRA` adds the
 files the gawk and binutils ports delete from their packages, which the policy does not cover. A
 directory the pass empties is removed with it; one that was empty before is left.
-[087_gates.sh](087-gates.md) stops the image on any unowned file still under those four
-directories.
+The pass walks `usr/share/locale`, `usr/share/man`, `usr/share/doc` and `usr/share/info`, and
+[087_gates.sh](087-gates.md) stops the image on any unowned file still under one of those four.
 
 ## podman's stores
 
-<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=299-313 pin=9abf4339ed4b -->
+<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=298-312 pin=9abf4339ed4b -->
 
 A shipped root carries no container store. An application's box is built on the machine that asks
 for it, in that user's home, so images in `/home/kdos/.local/share/containers` or in the root
@@ -112,7 +115,7 @@ installed system. No package owns these paths, so they are removed with `rm` and
 
 ## root's home
 
-<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=323-330 pin=5d44f628e809 -->
+<!-- kfs:include script/phases/70_image/020_cleanup.sh lines=322-329 pin=5d44f628e809 -->
 
 `/root` is replaced with exactly what `fs/root` holds, with no file writable by group or others
 and the directory itself at mode 0700. The chroot's `HOME` is a scratch directory, but a tool that

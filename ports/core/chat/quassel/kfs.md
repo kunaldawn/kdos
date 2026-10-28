@@ -30,13 +30,16 @@ application.
   notification framework, which the tree does not carry; notifications go through D-Bus.
 - `-D CMAKE_REQUIRE_FIND_PACKAGE_Qca-qt5=ON` — make a missing [qca-qt5](#port-qca-qt5) a configure
   error. Upstream finds it quietly and marks it "Required for encryption support": the message
-  encryption keyed per channel or nick (`/setkey`, `/keyx`), which would otherwise drop out without a word.
+  encryption keyed per channel or nick (`/setkey`, `/keyx`), which would otherwise drop out without
+  a word.
 - `-D CMAKE_REQUIRE_FIND_PACKAGE_Qt5Multimedia=ON` — likewise for Qt Multimedia, which plays the
   audio notifications.
 - `-D CMAKE_REQUIRE_FIND_PACKAGE_Qt5DBus=ON` — likewise for Qt D-Bus, needed for D-Bus
   notifications and the tray icon.
 - `-D CMAKE_REQUIRE_FIND_PACKAGE_KF5Sonnet=ON` — likewise for [sonnet-qt5](#port-sonnet-qt5), the
-  spell checker in the input line.
+  spell checker in the input line. Quassel looks for Sonnet only once it has found
+  [extra-cmake-modules](#port-extra-cmake-modules), which comes into the build root as a dependency
+  of sonnet-qt5; without it the search is skipped and this switch has nothing to enforce.
 - `-D CMAKE_REQUIRE_FIND_PACKAGE_dbusmenu-qt5=ON` — likewise for
   [libdbusmenu-qt5](#port-libdbusmenu-qt5), which gives the D-Bus tray icon its context menu.
 

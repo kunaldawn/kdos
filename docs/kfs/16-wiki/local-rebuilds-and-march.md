@@ -30,7 +30,8 @@ None of these is a service.
 ### Where a port is found
 
 `kpkg` looks for a port in the directories `PORT_REPO` names, in order, and the first that holds
-the name wins. The default, from `src/system/kdos-kpkg/kpkg.conf`:
+the name wins. The default, from `/etc/kpkg.conf` (`src/system/kdos-kpkg/kpkg.conf` in the tree),
+which a `PORT_REPO` in the environment replaces:
 
 <!-- kfs:include src/system/kdos-kpkg/kpkg.conf lines=11-13 pin=9c67adf101ce -->
 
@@ -76,7 +77,7 @@ per build, default 5), `KDOS_MARCH_LEVEL` (the level to measure against) and `KD
 `KDOS_ISO_SOURCES=1` makes the image's last step copy the tree onto the medium beside the system
 image, and write a stamp `kdos rebuild` prints before it starts:
 
-<!-- kfs:include script/phases/70_image/110_iso.sh lines=192-215 pin=a3950da6288f -->
+<!-- kfs:include script/phases/70_image/110_iso.sh lines=193-216 pin=a3950da6288f -->
 
 ## Usage
 
@@ -126,19 +127,20 @@ that tree does not find them; change those in a checkout of the repository inste
    With `release = 2` in the copy, `kpkg info pv` then reports `Version: 1.12.0-2`, and the
    package file is deleted from `/var/cache/kpkg/packages` once it is installed.
 
-4. To compare a changed recipe with the shipped one before installing anything, write the change
-   beside the original as `kpkgbuild.new` (and `build.sh.new` when the script changes too) and run
-   `kpkg verify`, which builds both and compares the two packages:
+4. To see whether a change alters the package, before or instead of installing it, keep the
+   shipped recipe as the copy's `kpkgbuild`, put the changed one beside it as `kpkgbuild.new`
+   (and `build.sh.new` when the script changes too), and run `kpkg verify`, which builds both and
+   compares the two packages:
 
    ```bash
-   cp ~/ports/pv/kpkgbuild ~/ports/pv/kpkgbuild.new
-   # edit kpkgbuild.new
+   cp ~/ports/pv/kpkgbuild ~/ports/pv/kpkgbuild.new       # the changed recipe
+   cp /ports/core/cli/pv/kpkgbuild ~/ports/pv/kpkgbuild   # the shipped one
    sudo env PORT_REPO="$HOME/ports /ports/core" kpkg verify pv
    ```
 
-   It builds the recipe, then `==> Building with kpkgbuild.new...`, and ends with one verdict
-   line. A change of `release` alone changes no file in the package, so that one ends
-   `==> pv: the two packages are BYTE-IDENTICAL (<hash>...)`.
+   It prints `==> Building with kpkgbuild...`, then `==> Building with kpkgbuild.new...`, and
+   ends with one verdict line. A change of `release` alone changes no file in the package, so
+   that one ends `==> pv: the two packages are BYTE-IDENTICAL (<hash>...)`.
 
 5. `kpkg verify --repro pv` builds the same recipe twice instead, and requires the two packages to
    be byte-identical; `pv` passes with the same line.
@@ -178,6 +180,7 @@ plus the noise it measured on this machine.
      x86-64-v2    yes
      x86-64-v3    yes
      x86-64-v4    missing avx512f missing avx512bw missing avx512dq missing avx512vl
+
    highest usable: x86-64-v3
    nothing is built with it until `kdos march run <port>` measures a win
    ```
@@ -197,21 +200,26 @@ plus the noise it measured on this machine.
    sudo kdos march run lz4
    ```
 
-   Each build is timed `KDOS_MARCH_RUNS` times and the medians are compared. A verdict is one of
-   `kept`, `reverted` (the win is inside the noise), `unmeasurable` (no `bench =` line, or no
-   result) or `unbuildable` (the build with the flag failed). Nothing is installed: both packages
-   are written under a temporary directory, `/tmp/kdos-march.*`, and the builds themselves use
-   `/var/cache/kpkg/work/<name>`. The run ends with one line per port:
+   Each build is timed `KDOS_MARCH_RUNS` times and the medians are compared; `sudo` clears the
+   environment, so a different count is passed through it, as
+   `sudo env KDOS_MARCH_RUNS=9 kdos march run lz4`. A verdict is one of `kept`, `reverted` (the
+   win is inside the noise), `unmeasurable` (no `bench =` line, or no result) or `unbuildable`
+   (the build with the flag failed). A baseline build that fails records nothing, and the run
+   exits 1. Nothing is installed: both packages are written under a temporary directory,
+   `/tmp/kdos-march.*` (under `$TMPDIR` when that is set), which the run removes, and the builds
+   themselves use `/var/cache/kpkg/work/<name>`. The run ends with one line per port:
 
    ```text
+   measuring against x86-64-v3, 3 runs per build
+
    lz4: building twice (baseline, then -march=x86-64-v3)...
    lz4: benchmarking 3 runs each...
    lz4                      x86-64-v3  baseline 0.380s  -march=x86-64-v3 0.403s  -5.9% (noise 9.0%) -> reverted
                               this machine's noise floor is 9.0% — close things down or raise KDOS_MARCH_RUNS
    ```
 
-   That run, with `KDOS_MARCH_RUNS=3` on an eight-thread virtual machine, took 2 minutes 40
-   seconds.
+   That run, `sudo env KDOS_MARCH_RUNS=3 kdos march run lz4` on an eight-thread virtual machine,
+   took 2 minutes 40 seconds.
 
 4. Read the ledger:
 
@@ -225,6 +233,7 @@ plus the noise it measured on this machine.
    ```text
    port                     level          baseline  optimised   change
    lz4                      x86-64-v3        0.380s     0.403s    -5.9%  reverted
+
    0 kept, 1 reverted, 0 unmeasurable
    ```
 
@@ -232,8 +241,9 @@ plus the noise it measured on this machine.
 
 The ledger is a record, and only `kdos march report` reads it: a `kept` verdict changes nothing
 about how `kpkg` or `kdos update apply` builds that port. To install the faster build, rebuild the
-port with the level added to the flags it was measured with; `kdos march` used `CFLAGS` from its
-own environment, or `-O2 -pipe` when that was empty:
+port with the level added to the flags it was measured with. `kdos march` takes `CFLAGS` from its
+own environment, or `-O2 -pipe` when it is unset, as it is under `sudo`, and uses the same value
+for `CXXFLAGS`:
 
 ```bash
 sudo env KPKG_FETCH=1 CFLAGS='-O2 -pipe -march=x86-64-v3' CXXFLAGS='-O2 -pipe -march=x86-64-v3' \
@@ -261,29 +271,32 @@ carries every source. No rebuild from a medium has been run through every phase;
 3. Mount a real disk with at least 25 GB free, not a tmpfs and not an overlay, for example at
    `/mnt/disk`.
 
-4. Check first, then run:
+4. Check first, then run. The build enters a chroot for most of its phases, which needs root:
 
    ```bash
-   kdos rebuild --dry-run /mnt/disk/work
-   kdos rebuild /mnt/disk/work
+   sudo kdos rebuild --dry-run /mnt/disk/work
+   sudo kdos rebuild /mnt/disk/work
    ```
 
-`kdos rebuild` looks for the tree in `$KDOS_SOURCES`, then `/mnt/iso/sources`, `/kdos` and the
+`kdos rebuild` looks for the tree in `$KDOS_SOURCES` (passed through `sudo` as
+`sudo env KDOS_SOURCES=<dir> kdos rebuild ...`), then `/mnt/iso/sources`, `/kdos` and the
 current directory, and takes the first that has `script/kdosbuild.sh`, `ports/core`, `fs/etc` and
 `src/devtools/kdosbuild`. It copies the tree to `<work-dir>/kdos` (a second run with the same work
 directory reuses the copy), compiles the build orchestrator into `<work-dir>/kdosbuild`, and runs
 it with `--fresh`. `--iso-only` runs only the image phase, `70_image`. The job count is
-`KDOS_JOBS` when you set it; otherwise one job per thread, but no more than one per 2 GiB of
-memory. See [kdos rebuild](../../kdos/04-programs/kdos-command.md#kdos-rebuild).
+`KDOS_JOBS` when you set it, passed through `sudo env` in the same way; otherwise one job per
+thread, but no more than one per 2 GiB of memory. See
+[kdos rebuild](../../kdos/04-programs/kdos-command.md#kdos-rebuild).
 
 ### On the live medium and on an installed system
 
 On the live medium `/var/cache/kpkg` is on the overlay in RAM, so a large build there compiles in
-memory, and what it installs is gone at power-off without a persistence store. On a 4 GB machine
-`df -h /` shows that overlay as 2.0 GB, which every source, work tree and package of a build
-shares. `kdos rebuild`
-refuses a work directory on the live root for that reason. On an installed system the same
-commands write to the disk and stay.
+memory, and what it installs is gone at power-off without a
+[persistence store](live-persistence.md). On a 4 GB machine `df -h /` shows that overlay as
+2.0 GB, which every source, work tree and package of a build shares. `kdos rebuild` refuses a work
+directory on the live root for that reason, and still refuses it with a persistence store, because
+`/` is then an overlay on the store. On an installed system the same commands write to the disk and
+stay.
 
 ## Tips
 
@@ -311,14 +324,16 @@ A port that builds in the tree fails on the machine
 : `kdos march` runs `kpkgbuild`, a link to `/usr/bin/kpkg`. Check that `/usr/bin/kpkgbuild`
   exists.
 
-`kdos march run` reports `unmeasurable — no bench = line in the recipe`
+`kdos march run` reports ``unmeasurable — no `bench =` line in the recipe``
 : Only a port with a `bench =` line can be measured. Add one to a copy of the recipe, as in
   [Rebuilding from a recipe you changed](#rebuilding-from-a-recipe-you-changed), and run
-  `kdos march` with that copy first in `PORT_REPO`.
+  `kdos march` with that copy first in `PORT_REPO`, passed through `sudo` as
+  `sudo env PORT_REPO="$HOME/ports /ports/core" kdos march run <port>`.
 
 Every verdict is `reverted`, and the output warns about the noise floor
 : The machine's own variation is wider than the win. A floor above 5 per cent is reported with
-  that advice; close what is running, or raise `KDOS_MARCH_RUNS` (3 to 31).
+  that advice; close what is running, or raise `KDOS_MARCH_RUNS` (3 to 31; an even count is
+  raised to the next odd one, so the median is one of the runs).
 
 `kdos rebuild` refuses the work directory
 : It is on tmpfs, ramfs or an overlay, or has less than 25 GB free. A live medium's root is an
@@ -334,13 +349,13 @@ Every verdict is `reverted`, and the output warns about the noise floor
 
 - [An offline kdos rebuild from the medium has not been run to the end](../../kdos/06-reference/known-gaps.md#an-offline-kdos-rebuild-from-the-medium-has-not-been-run-to-the-end)
 - [The kernel package differs between two builds of the same tree](../../kdos/06-reference/known-gaps.md#the-kernel-package-differs-between-two-builds-of-the-same-tree)
-- [Build times and snapshots are measured for the early phases only](../../kdos/06-reference/known-gaps.md#build-times-and-snapshots-are-measured-for-the-early-phases-only)
+- [Build times and snapshot sizes are measured for part of the build only](../../kdos/06-reference/known-gaps.md#build-times-and-snapshot-sizes-are-measured-for-part-of-the-build-only)
 
 ## See also
 
 - [kdos march](../../kdos/04-programs/kdos-command.md#kdos-march) and [kdos rebuild](../../kdos/04-programs/kdos-command.md#kdos-rebuild): every option
 - [Tuning for this machine](../../kdos/02-user-guide/administration.md#tuning-for-this-machine) and [kdos rebuild](../../kdos/02-user-guide/administration.md#kdos-rebuild) in the user guide
-- [Decisions](../../kdos/01-philosophy/decisions.md): why levels are measured per machine rather than chosen for the image
+- [`-march` measured per machine, not chosen for a population](../../kdos/01-philosophy/decisions.md#-march-measured-per-machine-not-chosen-for-a-population): why levels are measured per machine rather than chosen for the image
 - [How KDOS is built](../../kdos/05-developer/how-kdos-is-built.md): the build `kdos rebuild` runs
 - [Writing ports](../../kdos/05-developer/writing-ports.md): the rules a changed recipe keeps
 - [kpkg](kpkg.md), [Updating](updating.md)

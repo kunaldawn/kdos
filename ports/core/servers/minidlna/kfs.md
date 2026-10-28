@@ -6,8 +6,8 @@ the local network. The port ships its own start script, `/etc/init.d/84_minidlna
 starts `minidlnad` under supervision as the unprivileged `minidlna` account and skips the service
 until `/etc/minidlna.conf` exists and is not empty; the upstream example is installed as
 `/usr/share/doc/minidlna/minidlna.conf.example`. Other machines reach it only once the `dlna`
-firewall name is opened; see [Services](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md#services)
-and [firewall](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/daemons.md#firewall).
+firewall name is opened; see [Opening a service](../../../../docs/kdos/02-user-guide/administration.md#opening-a-service)
+and [firewall](../../../../docs/kdos/04-programs/daemons.md#firewall).
 
 ## Flags
 
@@ -49,5 +49,5 @@ it the shipped `Makefile.in` would still carry the reference. That is why
 `/etc/passwd`, so an install into a root that is not the running system gives the directories
 to the right account. The start script runs `minidlnad -S -u minidlna`, so the daemon writes its
 database after dropping to that account; see
-[postinstall.sh](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#postinstallsh) and
-[System accounts](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#system-accounts).
+[postinstall.sh](../../../../docs/kdos/05-developer/writing-ports.md#postinstallsh) and
+[System accounts](../../../../docs/kdos/03-architecture/security-model.md#system-accounts).

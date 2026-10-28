@@ -15,6 +15,9 @@ default features, `git` and `watchman` (see
   build; a version whose dependencies bring the crate in links the [openssl](#port-openssl) port
   rather than a private copy (see
   [rust](../../../../docs/kdos/05-developer/writing-ports.md#rust)).
+- `-C target-feature=-crt-static` — link `jj` dynamically against musl's `libc.so`. Rust's musl
+  target links statically otherwise (see
+  [rust](../../../../docs/kdos/05-developer/writing-ports.md#rust)).
 - `--bin jj` — build only the `jj` program. Run at the top of the workspace without it, cargo
   builds every member package, the `lib/gen-protos` generator among them. The `fake-*` test
   programs the `cli` package declares need the `test-fakes` feature and are skipped either way.

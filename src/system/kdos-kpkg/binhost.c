@@ -25,7 +25,7 @@
  * A client uses a prebuilt package when all three equal its own, and builds
  * from source otherwise. There is no BUILD_ID counter and no "close enough".
  *
- * SIGN THE INDEX, NOT 353 PACKAGES. The index carries each package's SHA-256,
+ * SIGN THE INDEX, NOT EVERY PACKAGE. The index carries each package's SHA-256,
  * so one signature transitively covers every file it names — and the per-package
  * `.sig` sidecar exists for the other case, a package that travels on a USB
  * stick with no index beside it.
@@ -33,9 +33,9 @@
  * Two rules this file exists to keep:
  *
  *   - A signature is verified against the LOCAL KEYRING or not at all. The key
- *     id inside a signature file selects which key to try; it can never supply
- *     one. `--insecure` is spelled out on the command line every time, and says
- *     so in the output.
+ *     id inside a signature file is informational: every key in the ring is
+ *     tried, and the id can never supply a key. `--insecure` is spelled out
+ *     on the command line every time, and says so in the output.
  *   - The index is checked BEFORE the package, and the package's hash is checked
  *     before it is unpacked. Verifying after install is verifying nothing.
  * ---------------------------------

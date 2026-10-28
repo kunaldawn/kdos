@@ -12,8 +12,10 @@ VXI-11 RPC protocol and raw TCP, and finds them on the network with mDNS through
 ## Notes
 VXI-11 is Sun RPC. musl carries no RPC, so every `xdr_*` and `clnt_*` call resolves in
 [libtirpc](#port-libtirpc), and `link-tirpc.patch` adds it to the library's dependencies on
-every system that uses it; upstream adds it only on Cygwin. Without it `liblxi.so.1` has no
-`libtirpc.so.3` in `NEEDED`, and `lxi` stops at load with `xdr_u_char: symbol not found`.
+every system that uses it; upstream adds it only on Cygwin. Without it the `xdr_*` and `clnt_*`
+calls are left unresolved: with `-Db_lundef=true` the library's link stops on them, and without
+that switch `liblxi.so.1` links with no `libtirpc.so.3` in `NEEDED` and `lxi` stops at load with
+`xdr_u_char: symbol not found`.
 
 The `grep` after setup stops the build when configure did not find `avahi-client/client.h`:
 `src/meson.build` then compiles no mDNS backend, and mDNS discovery finds nothing.

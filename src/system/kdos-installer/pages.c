@@ -1491,8 +1491,9 @@ static Page page_system = {
  * step, after the summary, which is this program's first design decision.
  *
  * THE UNIT IS A GROUP, not an application. Seven named bundles is a thing to
- * read during an install; 182 rows is not. An answer file may still name an
- * application by id — `cat_expand` takes either.
+ * read during an install; a row per application is not. An answer file names
+ * groups too: ki_apps_enter() matches group ids only, and a line naming none
+ * falls back to `essential`.
  *
  * AND THE PAGE SAYS HOW THEY WILL ARRIVE. An exported set on a stick is
  * offline and verified and wins; a network during the install is next; with

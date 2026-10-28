@@ -83,14 +83,14 @@ are absent if that package is removed.
 |---|---|
 | `01_udev` | Device management, and the coldplug that loads drivers for the hardware already present. It also creates device nodes such as `/dev/uinput`, `/dev/uhid`, `/dev/snd/seq` and `/dev/vhost-net`, whose driver loads only when a program first opens the node, so they exist before anything asks for them |
 | `02_modules` | Modules listed in `/etc/modules-load.d` |
-| `03_lvm` | LVM volume groups, activated once at boot, then any `fstab` entry on a logical volume checked and mounted. On a disk boot the initramfs has already activated the groups it saw; this pass catches the rest — every group on a live boot, and any on a disk that appeared after the initramfs ran. A group plugged in later is not activated automatically; run `sudo vgchange -aay` |
+| `03_lvm` | LVM volume groups, activated once at boot, then any `fstab` entry on a logical volume checked and mounted, and any swap entry on one turned on. On a disk boot the initramfs has already activated the groups it saw; this pass catches the rest — every group on a live boot, and any on a disk that appeared after the initramfs ran. A group plugged in later is not activated automatically; run `sudo vgchange -aay`. See [Activating volume groups](../03-architecture/boot-and-init.md#activating-volume-groups) |
 | `05_hostname` | The hostname |
 | `06_utmps` | Login records: `utmpd` and `wtmpd`, the two daemons through which `login`, `who`, `last` and init read and write the records of who is logged in and since when, because musl's own utmp calls do nothing. It waits up to two seconds for their sockets, so init's boot record is not lost — see [Login records](../03-architecture/boot-and-init.md#login-records) |
 | `10_sysctl` | Kernel parameters from `/etc/sysctl.conf`: unprivileged `ping`; the name of the fatal signal in the kernel log when a program crashes; the `fs.protected_*` link protections, which stop a user redirecting a root job's write in `/tmp` onto another file; per-task delay accounting, which `iotop`'s IO% and `htop`'s delay columns read, at a small cost on every wait the kernel accounts; no ICMP redirect accepted or sent; the loose reverse-path filter; and kernel addresses hidden from every account but root |
 | `12_zram` | Compressed swap in RAM — see [Storage](#storage) |
 | `15_userdirs` | `/run/user/<uid>` for every account with a UID from 1000 to 65533, and a delegated cgroup subtree for each with the `cpu`, `memory` and `pids` controllers, which is what lets rootless podman apply a *box*'s memory and CPU limits (a box is the rootless container one application runs in; see [the glossary](../06-reference/glossary.md)) |
 | `18_timers` | Periodic jobs: one supervised `snooze` per line of `/etc/kdos/timers.d` — see [Periodic jobs](#periodic-jobs) |
-| `20_dmesg`, `22_syslog` | Kernel and system logging. `20_dmesg` lowers the console log level to 3, so only kernel errors reach the screen. `22_syslog` runs `syslogd`, whose `/etc/syslog.conf` sets `secure_mode 2`, so it opens no network socket: it neither accepts messages from other hosts nor forwards to one. `secure_mode 1` allows forwarding to an `@host` action without listening. See [Logs](#logs) |
+| `20_dmesg`, `22_syslog` | Kernel and system logging. `20_dmesg` lowers the console log level to 3, so only critical, alert and emergency kernel messages reach the screen; once `syslogd` is running it turns the kernel's console logging down further, to emergencies only, and restores it when it exits. `22_syslog` runs `syslogd`, whose `/etc/syslog.conf` sets `secure_mode 2`, so it opens no network socket: it neither accepts messages from other hosts nor forwards to one. `secure_mode 1` allows forwarding to an `@host` action without listening. See [Logs](#logs) |
 | `25_nftables` | The firewall, loaded before the network comes up — see [The firewall](#the-firewall) |
 | `30_network` | `dhcpcd`, the fallback DHCP client. It stays down when NetworkManager is installed and not disabled, because NetworkManager's own DHCP client does not defer to it: two clients on one link means two leases, two default routes and two writers of `/etc/resolv.conf` |
 | `31_babeld` *(babeld)* | Babel mesh routing, skipped until a non-empty `/etc/babeld.conf` exists. Open the `babel` firewall name for the neighbours |
@@ -109,7 +109,7 @@ are absent if that package is removed.
 | `51_mdmonitor` | `mdadm --monitor --scan --syslog`: a failed member, a degraded array or a missing spare is written to the system log. Skipped when `/proc/mdstat` lists no array; a `MAILADDR` or `PROGRAM` line in `/etc/mdadm.conf` adds a route of your own |
 | `51_lsmd` *(libstoragemgmt)* | The libstoragemgmt plugin daemon, which udisks2's LSM module and `lsmcli` reach over `/run/lsm/ipc`; plugins that do not need root run as the `libstoragemgmt` account |
 | `52_smartd` | Disk health: `smartd` polls every disk that answers SMART every half hour and logs a failing health check, bad sectors, drive errors and failed self-tests. Where no disk answers SMART — any virtual machine — it logs why and stops |
-| `53_xfs_healer` | One `xfs_healer` per XFS filesystem mounted at boot. It logs the metadata damage the kernel reports and, where the filesystem's `autofsck` property asks for it, has it repaired online. Skipped on a kernel without the XFS health monitor |
+| `53_xfs_healer` | One `xfs_healer` per XFS filesystem mounted at boot. It logs the metadata damage the kernel reports and, where the filesystem's `autofsck` property asks for it, has it repaired online. A filesystem is skipped when the kernel has no XFS health monitor or its `autofsck` property is `none`, and an XFS stick mounted after boot gets no healer |
 | `54_thermald` | Intel thermal management |
 | `55_powerd` | `kdos-powerd`: suspend, power-off and reboot for the desktop, and a few system settings (time zone, accent, autologin, firewall names) |
 | `55_tlp` | Laptop power management: `tlp init start` at boot and `tlp init stop` at shutdown, which apply the startup and shutdown radio settings in `/etc/tlp.d`. `kdos-powerd` runs `tlp suspend` and `tlp resume` around a suspend |
@@ -128,7 +128,7 @@ are absent if that package is removed.
 | `70_sshd` | The SSH server, disabled until you enable it (the image ships `/etc/service.disabled/sshd`). Opening `ssh` in the firewall enables and starts it, and closing `ssh` disables and stops it. Before the first start it generates every missing host key type with `ssh-keygen -A` |
 | `71_snmpd` *(net-snmp)* | The SNMP agent, as root, skipped until a non-empty `/etc/snmp/snmpd.conf` exists; it logs to syslog. Open the `snmp` firewall name for other machines |
 | `72_nfsd` *(nfs-utils)* | The NFSv4 server, skipped until `/etc/exports` names a share. It loads `nfsd`, supervises `nfsdcld` (the client records a restarted server needs) and `nfsv4.exportd`, runs `exportfs -r`, then starts the kernel threads with `rpc.nfsd -N 3 -V 4`. NFSv3 is off, so no portmapper, `rpc.mountd` or lock daemon runs. After editing `/etc/exports`, run `sudo exportfs -r`. Open the `nfs` firewall name for other machines |
-| `73_mosquitto` *(mosquitto)* | The MQTT broker, as the `mosquitto` account, skipped until `/etc/mosquitto/mosquitto.conf` exists. With no configuration the broker listens on loopback only; a `listener 1883` line there, plus the `mqtt` firewall name, lets devices on the LAN reach it |
+| `73_mosquitto` *(mosquitto)* | The MQTT broker, as the `mosquitto` account, skipped until a non-empty `/etc/mosquitto/mosquitto.conf` exists; the package ships only `/etc/mosquitto/mosquitto.conf.example`, the template. A configuration with no `listener` line makes the broker listen on loopback only; a `listener 1883` line, plus the `mqtt` firewall name, lets devices on the LAN reach it |
 | `74_prosody` *(prosody)* | The XMPP chat server, as the `prosody` account, skipped until it has an account: `sudo prosodyctl adduser <user>@<host>` makes the first. Clients are refused until the host has a certificate; `sudo prosodyctl cert generate <host>` makes a self-signed one. Open the `xmpp` firewall name for other machines |
 | `75_mumble-server` *(mumble)* | The Mumble voice server, as the `mumble-server` account, skipped until its database exists: running `mumble-server -supw <password>` as that account makes it. Open the `mumble` firewall name for other machines |
 | `76_postgresql` *(postgresql)* | One shared PostgreSQL server, as the `postgres` account, skipped until a cluster exists: `sudo -u postgres initdb -D /var/lib/postgres/data` makes it. It listens on loopback and on a socket in `/tmp` |
@@ -158,16 +158,23 @@ the machine is never on the network unfiltered. See
 
 ### Services that skip themselves
 
-A daemon that cannot do its job on this machine is skipped at boot, with a `[SKIP]` line saying
-why, instead of being started and left to fail:
+A service that cannot do its job on this machine's hardware or kernel is skipped at boot, with a
+`[SKIP]` line saying why, instead of being started and left to fail. The servers in the table
+above that wait for a configuration file or an account skip the same way; these are the ones that
+skip because of the machine:
 
 | Script | Skipped when |
 |---|---|
+| `12_zram` | The `zram` module will not load |
+| `43_boltd` | `/sys/bus/thunderbolt/devices` is empty: no Thunderbolt controller |
 | `44_switcheroo-control` | Fewer than two GPUs under `/sys/class/drm` |
+| `51_mdmonitor` | `/proc/mdstat` lists no md array |
+| `53_xfs_healer` | Per filesystem, when `xfs_healer --supported` refuses it: no XFS health monitor in the kernel, or `autofsck` is `none`. When no filesystem is left, the line is `no XFS filesystem to watch` |
 | `54_thermald` | The processor is not Intel |
 | `56_energyd` | No readable CPU energy counter (`/sys/class/powercap/*/energy_uj`) |
 | `57_oomd` | `/proc/pressure/memory` is not writable (pressure stall information is off) |
 | `59_packd` | The kernel cannot mount EROFS, the pack filesystem |
+| `64_lircd` | No infrared receiver: no `/dev/lirc*` node and no rc-core device under `/sys/class/rc` |
 
 The check runs before the daemon starts, because a daemon that refuses to run, restarted every
 five seconds by its supervisor, keeps the boot from ever settling.
@@ -312,8 +319,10 @@ below. The installer asks for its password; on the live image it is `kdos`.
   line `%wheel ALL=(ALL) ALL` in `/etc/sudoers.d/00-sudo`, which asks for your own password.
   The same file keeps `EDITOR`, `VISUAL` and `SUDO_EDITOR` through `sudo`, so `sudoedit` and
   `visudo` open the editor your shell names; without one they open `nvim`, else `nano`.
-- **`seat`** alone reaches suspend, power-off, reboot and removable-media mounting. An account in
-  `seat` but not `wheel` can run a desktop and power it down, but cannot administer the machine.
+- **`seat`** is the group whose members `seatd` serves: it is how the compositor opens the
+  display and input devices without running as root. It alone also reaches suspend, power-off,
+  reboot and removable-media mounting. An account in `seat` but not `wheel` can run a desktop and power it
+  down, but cannot administer the machine.
 
 The hardware groups of the `kdos` account, and what removing each would silently stop:
 
@@ -324,7 +333,7 @@ The hardware groups of the `kdos` account, and what removing each would silently
 | `video` | The GPU's display nodes, screen and keyboard backlight, and a monitor's DDC/CI line |
 | `render` | GPU rendering and compute |
 | `input` | Input devices and game controllers' raw HID |
-| `kvm` | Hardware virtualisation for QEMU |
+| `kvm` | `/dev/udmabuf`, through which QEMU's virtio-gpu shares a guest's display buffers with the host without copying them. `/dev/kvm`, `/dev/vhost-net` and `/dev/vhost-vsock` are open to every account, so running a guest needs no group; see [Virtual machines](../../kfs/16-wiki/virtual-machines.md) |
 | `cdrom` | Optical drives |
 | `lpadmin` | Adding and managing printers in CUPS |
 | `tty` | Opening a virtual terminal from a backgrounded session: `/dev/tty0` is `0620 root:tty`, and a backgrounded session has no controlling terminal of its own, so without this group the desktop is refused a terminal |
@@ -333,11 +342,13 @@ The hardware groups of the `kdos` account, and what removing each would silently
 create accounts. Use the `shadow` tools:
 
 ```sh
-sudo useradd -m -G wheel,seat,audio,video,render,input -s /bin/bash alice
+sudo useradd -m -G wheel,seat,users,tty,audio,video,render,input -s /bin/bash alice
 sudo passwd alice
 ```
 
-Add the other groups from the table as needed. Two things to check afterwards:
+Those are the groups of the `kdos` account less the ones for particular hardware and printers. Add
+`dialout`, `cdrom`, `kvm` and `lpadmin` from the table as needed, and leave out `wheel` for an account that should not administer the
+machine. Three things to check afterwards:
 
 - **Boxed applications** run rootless podman, which needs a range in `/etc/subuid` and
   `/etc/subgid` for the account; `grep alice /etc/subuid` shows whether `useradd` added one. The
@@ -346,6 +357,11 @@ Add the other groups from the table as needed. Two things to check afterwards:
 - **`/run/user/<uid>`** is created by `15_userdirs` at boot for the accounts that exist then. For an
   account added since, run `sudo service start userdirs` or reboot before its first desktop login;
   until then each of its logins prints `kdos: no /run/user/<uid> yet` with that instruction.
+- **Empty directories** are not in the home `useradd -m` makes: it copies `/etc/skel`, which
+  carries no empty directory, and the image build creates the empty directories in the `kdos` home alone. Mail,
+  the calendar and address book, and screenshots each expect theirs to exist, so create them as
+  the new account:
+  `mkdir -p ~/Mail ~/Pictures/Screenshots ~/.local/share/calendars ~/.local/share/contacts/personal`.
 
 No account keeps a mailbox: nothing on KDOS delivers local mail, so `/etc/login.defs` names no mail
 spool, `/etc/default/useradd` sets `CREATE_MAIL_SPOOL=no`, and `useradd` and `userdel` neither
@@ -376,7 +392,9 @@ hand from `tty2`. A filesystem on an LVM volume group that the initramfs did not
 checked and mounted later by `03_lvm`, which appends to the same log.
 
 **Swap.** `rcS` runs `swapon -a` at boot, after `mount -a`, so any swap partition or swapfile in
-`/etc/fstab` is used. The installer can create a swapfile and writes its `fstab` line.
+`/etc/fstab` is used. The installer can create a swapfile, or a swap partition on its erase plan,
+and writes the `fstab` line for either, naming a partition by its UUID; see
+[kinstall](../04-programs/kinstall.md#the-pages).
 
 **zram** is compressed swap held in RAM, set up by `12_zram` from `/etc/kdos/zram.conf`:
 
@@ -587,6 +605,8 @@ What the shipped policy does:
 | Anything to or from `10.42.0.0/16` | Forwarded |
 | DNS (UDP and TCP 53) from a `podman*` bridge | Accepted |
 | From a `podman*` bridge, or to one through a published port | Forwarded |
+| DNS (UDP and TCP 53) and DHCP (UDP 67) from a `virbr*` bridge (with `libvirt`) | Accepted |
+| From a `virbr*` bridge (with `libvirt`) | Forwarded |
 
 Why the less obvious rows are there:
 
@@ -601,6 +621,10 @@ Why the less obvious rows are there:
   Without them a container gets an address, reaches nothing, and cannot resolve names, because
   `aardvark-dns` answers on the bridge's own address. Rootless boxes forward nothing and need
   neither.
+- **`virbr*`** is the bridge libvirt makes for its guests' network. The `libvirt` package installs
+  these rows as `/etc/nftables.d/40-libvirt.nft`, so a guest of `libvirtd` gets its address and
+  names from libvirt's `dnsmasq` and reaches the network through this machine; without the
+  package the rows are absent.
 - **NetBIOS** is a reply, not a service. Name lookups on a Windows network are broadcasts that
   every machine answers from its own address, so the firewall cannot match them as replies to a
   connection. Without this rule `kdos-mount browse` finds no file servers. Nothing on the image
@@ -629,7 +653,7 @@ kdos-power firewall ssh off
 | `ipp` | TCP 631 (sharing a printer) |
 | `smb` | TCP 445 |
 | `kiwix` | TCP 8080 (`kiwix-serve`) |
-| `mdns` | UDP 5353 |
+| `mdns` | UDP 5353, which the shipped policy already accepts, so turning it on or off changes nothing |
 | `mqtt` | TCP 1883 and 8883 |
 | `xmpp` | TCP 5222 |
 | `nfs` | TCP 2049 |
@@ -733,7 +757,7 @@ gives that group the device. Neither works alone. The KDOS rules live in `/etc/u
 
 | Rules file | Devices | Group |
 |---|---|---|
-| `70-kdos-serial.rules` | USB serial adapters — FTDI, CP210x, CH341, CDC-ACM | `dialout` |
+| `70-kdos-serial.rules` | Serial ports: USB adapters (`ttyUSB*`, `ttyACM*`) and the on-board UARTs (`ttyS*`, `ttyAMA*`), plus the raw USB devices of FTDI, Prolific, Silicon Labs and WCH bridges, which libftdi1 and libserialport open | `dialout` |
 | `70-kdos-debug.rules` | In-circuit debuggers and programmers, raw USB and HID: CMSIS-DAP from any vendor, ST-Link, J-Link, Atmel-ICE, PICkit, USBasp, USB-Blaster, XDS110, Nu-Link, KitProg and the rest of openocd's and openFPGALoader's cables | `dialout` |
 | `70-kdos-sdr.rules` | Software-defined radio front ends: every RTL2832U stick librtlsdr knows, HackRF, Airspy, bladeRF, SDRplay and Mirics, LimeSDR, the USRP B-series, ADALM-Pluto, the FUNcube Dongles (their HID node too), Perseus, RFNM and Fobos | `dialout` |
 | `70-kdos-usbtmc.rules` | USB Test & Measurement: scopes, meters, function generators — `/dev/usbtmc*` and the raw USB device pyvisa-py opens | `dialout` |
@@ -850,7 +874,7 @@ starts it at boot on a machine with a Thunderbolt controller, and a udev rule st
 Thunderbolt device appears later. Enrol a new dock with `sudo boltctl enroll <uuid>`. `boltd` is
 built to trust `wheel` and ships a polkit rule for it, but that rule also requires an active
 session, which nothing on KDOS provides, so the command needs `sudo` — see
-[Security model](../03-architecture/security-model.md).
+[Security model](../03-architecture/security-model.md#why-a-password-prompt-cannot-work-here).
 
 **Firmware updates.** `fwupd` updates the firmware of SSDs, docks and peripherals from the LVFS, the
 Linux Vendor Firmware Service. Run `sudo fwupdmgr get-updates` to see what is available and
@@ -861,11 +885,11 @@ capsule — is applied at the next boot. fwupd places the capsule on the EFI sys
 it expects at `/boot/efi` (`EspLocation` in `/etc/fwupd/fwupd.conf`, matching the installer's
 `fstab`). Then either the firmware picks it up from disk, or the machine boots once into
 `fwupdx64.efi` (from `fwupd-efi`, placed in `EFI/kdos` beside the kernel), which hands it over.
-fwupd's usual way of finding that partition is to ask udisks; the `fwupd` package is patched to
-describe the FAT filesystem mounted at `EspLocation` from sysfs and the udev database instead. The
+fwupd finds that partition by asking udisks first; when udisks names none, the `fwupd` package is
+patched to describe the FAT filesystem mounted at `EspLocation` from sysfs and the udev database. The
 live image mounts no EFI partition, so there only devices updated over USB are offered. The loader is unsigned, which is
 no extra restriction, since KDOS already requires Secure Boot to be off (see
-[Known gaps](../06-reference/known-gaps.md#hardware-and-platform)).
+[Known gaps](../06-reference/known-gaps.md#secure-boot-is-not-supported)).
 
 **Phones.** `libmtp` recognises a phone and gives its USB device to `dialout`. To browse its
 storage, unlock the phone, set it to file transfer, and open Android File Transfer from the Start
@@ -956,9 +980,10 @@ now-playing display control it.
 **Optical discs.** `mpv` opens `dvd://`, `bd://` and `cdda://`, and plays a DVD's titles and
 chapters without its menus. `mpd` and `cmus` play audio CDs; `cd-paranoia` rips one with verified
 reads, and `ffmpeg -f dvdvideo -i /dev/sr0` rips a DVD title with its chapters. GStreamer has
-`cdiocddasrc`, `dvdreadsrc` and `rsndvdbin`, and `rsndvdbin` plays DVD menus. CSS-encrypted DVDs
-and AACS-encrypted Blu-rays do not open, and Blu-ray Java menus do not run — see
-[Known gaps](../06-reference/known-gaps.md#hardware-and-platform).
+`cdiocddasrc`, `dvdreadsrc` and `rsndvdbin`, and `rsndvdbin` plays DVD menus. A CSS-encrypted DVD
+opens through `libdvdcss`, which `libdvdread` links. AACS-encrypted Blu-rays do not open, and
+Blu-ray Java menus do not run — see
+[Known gaps](../06-reference/known-gaps.md#encrypted-blu-ray-discs-do-not-play).
 
 **Other media abilities:**
 
@@ -995,7 +1020,7 @@ shows whether it is synchronised.
 kdos cve                  # which installed versions have known vulnerabilities, offline
 kdos cve --json           # the same, as JSON
 kdos update fetch         # the newest signed ports tree, over the network, as /ports
-kdos update check         # what the ports tree pins that is not installed, and what went wrong
+kdos update check         # which installed packages are behind the ports tree, and what went wrong
 kdos update apply         # fetch the sources and build it all here (see A/B root slots)
 kdos app install <id>     # install a boxed application (to update one, see Applications below)
 ```
@@ -1036,7 +1061,7 @@ package.
 | Command | Does |
 |---|---|
 | `kdos update fetch` | Downloads the latest release's ports tree, checks its signature against `/etc/kdos/keys/tree`, and installs it as `/ports`. A tree older than the installed one is refused. `--from URL` or `--from DIR` (a stick holding `kdos-ports.tar.xz` and its `.sig`) reads it from elsewhere |
-| `kdos update check` | Lists installed packages that differ from the ports tree, and the last problem: no tree, no network, a fetch or a build that failed. `--json` prints JSON; `--out PATH` writes that JSON to a file; `--fetch` runs `fetch` first (the nightly timer uses both, for the panel's update badge) |
+| `kdos update check` | Lists installed packages whose version and release are older than the ports tree's (a newer local build is not listed), and the last problem: no tree, no network, a fetch or a build that failed. `--json` prints JSON; `--out PATH` writes that JSON to a file; `--fetch` runs `fetch` first (the nightly timer uses both, for the panel's update badge) |
 | `kdos update apply` | Downloads the sources of every out-of-date package, then builds and installs each one. `--dry-run` lists what would be built; `--root DIR` installs into another root |
 | `kdos update theme` | Re-runs the theme generators for your home directory after an artwork upgrade |
 
@@ -1059,8 +1084,9 @@ then installs that slot's kernel with `kdos-bootctl deploy` and marks the slot t
 next boot. The running system is not
 touched, so a bad update can be rolled back by booting the other slot. If the inactive slot is not
 mounted it refuses; `--in-place` updates the running root instead and gives up that rollback. See
-[Boot and init](../03-architecture/boot-and-init.md) for how a tried slot is confirmed, and
-[Known gaps](../06-reference/known-gaps.md) for what the updater does not do.
+[Boot and init](../03-architecture/boot-and-init.md#counting-and-confirming) for how a tried slot
+is confirmed, and [Known gaps](../06-reference/known-gaps.md#boot-and-updates) for what the updater
+does not do.
 
 **Applications** have no separate update command. An application is a stack of images this machine
 built, so rebuilding it is the update: `kdos app remove <id>` and then `kdos app install <id>`
@@ -1134,22 +1160,26 @@ memory rather than disk. Emergency messages are also written to every logged-in 
 `syslogd` runs with `-8`, so a message in UTF-8 is written as it was sent and the files stay text
 that a plain `grep` reads; only ASCII control characters are rewritten, as `^x`.
 
-Three more places hold what the system log does not:
+Four more places hold what the system log does not, or what it missed while `syslogd` was not
+running:
 
 | Where | Holds |
 |---|---|
 | `dmesg` | The kernel's ring buffer, including messages from before `syslogd` started |
 | `/run/kdos-init.<name>.log` | The output of each service script at boot (see [Services](#services)) |
+| `/run/kdos-svc.<name>.log` | A supervised daemon's own output and its supervisor's lines, the last 64 KB, with one older file beside it as `.old` |
 | `/run/kdos-fsck.log` | The boot-time filesystem check (see [Storage](#storage)) |
 
-A supervised daemon's restarts and final exits (`[KDOS] (name) Exited with code …`) appear in its
-service's boot log.
+A supervised daemon's output, and its supervisor's restarts and final exits
+(`[KDOS] (name) Exited with code …`), go to the system log under the service's name and to
+`/run/kdos-svc.<name>.log`, not to the script's boot log. The file is what is left of the lines
+written before `syslogd` started or while it restarted.
 
 ## Copying and rebuilding the medium
 
 ```sh
-sudo kdos clone /dev/sdb        # write this medium to another stick
-kdos rebuild /mnt/disk/work     # run the build from a source tree on this machine
+sudo kdos clone /dev/sdb          # write this medium to another stick
+sudo kdos rebuild /mnt/disk/work  # run the build from a source tree on this machine
 ```
 
 ### kdos clone
@@ -1178,8 +1208,10 @@ and a counterfeit stick would pass.
 
 ### kdos rebuild
 
-`kdos rebuild <work-directory>` runs the KDOS build on a booted system, with no network. It looks
-for a source tree wherever `KDOS_SOURCES` points, then at `/mnt/iso/sources`, `/kdos` and the
+`kdos rebuild <work-directory>` runs the KDOS build on a booted system, with no network. It runs
+as root, because the build enters a chroot. It looks for a source tree wherever `KDOS_SOURCES`
+points (passed through `sudo` as `sudo env KDOS_SOURCES=<dir> kdos rebuild …`, since `sudo` clears
+the environment), then at `/mnt/iso/sources`, `/kdos` and the
 current directory, and accepts one that has `script/kdosbuild.sh`, `ports/core`, `fs/etc` and
 `src/devtools/kdosbuild`.
 
@@ -1187,8 +1219,9 @@ A stick built with `make build KDOS_ISO_SOURCES=1` carries a copy under `/mnt/is
 ports tree with every fetched source beside its recipe, `src/`, `script/` and the `fs/` overlay of
 system files. The `Makefile` and the `Dockerfile` are not copied. `kdos rebuild` copies the tree to
 the work directory and runs the build there, with `KDOS_WORKSPACE` naming the copy so that the
-host phases read `fs/` from it rather than from `/workspace`. No rebuild from a medium has yet
-been run through every phase; see
+host phases read `fs/` from it rather than from `/workspace`. No rebuild from a medium has been
+run through every phase; see
+[Known gaps](../06-reference/known-gaps.md#an-offline-kdos-rebuild-from-the-medium-has-not-been-run-to-the-end),
 [Why KDOS](../01-philosophy/why-kdos.md#kdos-can-build-kdos) and
 [The kdos command](../04-programs/kdos-command.md#kdos-rebuild).
 
@@ -1207,25 +1240,37 @@ reports gigabytes free, fills memory and dies hours in. It also stops if a compi
 
 ```sh
 kdos march probe          # which instruction set levels this CPU has
-kdos march run lz4        # build lz4 twice and measure
+sudo kdos march run lz4   # build lz4 twice and measure
 kdos march report         # the ledger: kept, reverted, unmeasurable
 ```
 
 `kdos march probe` reports which of the x86-64 instruction set levels beyond the baseline
 (`x86-64-v2`, `-v3` and `-v4`) this CPU supports. `kdos march run <port>` builds a port with and
 without `-march=` set to the highest of them, runs the benchmark named by the `bench =` line in
-that port's recipe against both builds (the median of five runs by default), and keeps the faster
-flags only where the gain exceeds 3 per cent plus this machine's own measured noise. A difference
-inside the noise is recorded as reverted, and a port with no `bench =` line is reported as
-unmeasurable. The decisions are kept in `/var/lib/kdos/march.ledger`, and
-`kdos march report` lists reverted ports as prominently as kept ones. On a CPU with only the
-baseline level there is nothing to measure, and it says so.
+that port's recipe against both builds (the median of five runs by default), and records the
+verdict `kept` only where the gain exceeds 3 per cent plus this machine's own measured noise. A
+difference inside the noise is recorded as reverted, a port with no `bench =` line as
+unmeasurable, and one whose `-march=` build fails as unbuildable. The verdicts are kept in
+`/var/lib/kdos/march.ledger`, and `kdos march report` lists reverted ports as prominently as kept
+ones. On a CPU with only the baseline level there is nothing to measure, and it says so. `run`
+needs root, since the ledger and `kpkg`'s work directory, `/var/cache/kpkg/work`, are root's, and
+the port's sources must be fetched first with `sudo kpkg fetch <port>`.
+
+The ledger is a record and nothing else: a `kept` verdict installs nothing and changes nothing
+about how `kpkg` or `kdos update apply` builds that port. To use the faster build, rebuild the port
+by hand with the level in its flags, as
+[Measuring a port with kdos march](../../kfs/16-wiki/local-rebuilds-and-march.md#measuring-a-port-with-kdos-march)
+shows. A package built for a level runs only on a processor that has it.
 
 ## Backups
 
 `kdos-backup` backs up with [restic](https://restic.net/). Opened from the menu it is a window
 listing the snapshots in your repository, newest first: `b` starts a backup (it does not wait for
-it to finish) and `r` re-reads the repository. `kdos-backup --once` backs up without a window, waits
+it to finish), `r` re-reads the repository, and `Enter` opens a snapshot to restore from it (see
+below). When restic fails to list the repository, for a missing repository, a wrong password or a
+lock another process holds alike, the window says `restic answered nothing — is <repo> a
+repository?` and does not show restic's own message; run `restic -r <repo> snapshots` in a
+terminal to read it. `kdos-backup --once` backs up without a window, waits
 for restic, and exits 0 on success, 1 on any failure and 2 on a bad argument; that is what the
 timer runs. restic's summary and errors are printed where `--once` runs, and a failure inside
 restic ends with `kdos-backup: restic exited N`, restic's own status. Under the timer both are
@@ -1247,6 +1292,8 @@ Set it up once:
    | `exclude` | A path to leave out | Up to eight; more are ignored |
    | `password-file` | The password file, when it is not `~/.config/kdos/backup.pass` | No; the last line wins |
 
+   No shell reads the file, so `~` and `$HOME` are not expanded: write every path in full.
+
 4. Run `kdos-backup --once` and check that it succeeds.
 5. To run it nightly, uncomment the `backup` line in `~/.config/kdos/timers.d/10-backup.timer`.
 
@@ -1254,8 +1301,16 @@ Set it up once:
 `include`, or if the password file is missing or readable by others. An enabled timer with no
 configuration therefore does nothing harmful.
 
-Restoring is a restic command, run by hand so its options are in front of you:
-`restic -r <repo> restore <snapshot> --target <dir>`. `restic help restore` lists the options.
+**Restoring.** `Enter` on a snapshot opens its folders: `Enter` or `→` goes into a folder,
+`Backspace` or `←` goes up, and `t` restores the selected file or folder into
+`~/Restored/<snapshot>/`, with its full original path recreated beneath that. A restore never
+writes over the original, so the restored copy sits beside the current one to compare and move by
+hand. It runs in the background, the window shows its progress, and closing the window does not
+stop it. From a terminal the same restore is
+`restic -r <repo> --password-file <file> restore <snapshot> --target <dir> --include <path>`;
+`restic help restore` lists the options, and
+[Restoring a file or folder](../../kfs/16-wiki/backups.md#restoring-a-file-or-folder) walks
+through both.
 
 ## Mail
 
@@ -1339,7 +1394,8 @@ PassCmd   "pizauth show work"
 
 OAUTHBEARER is not available to `mbsync`: the plugin implements XOAUTH2 only. A provider that
 offers only OAUTHBEARER can be read in `aerc` and sent to through `msmtp`, but has no local Maildir
-— and with it no `notmuch` index and no offline search.
+— and with it no `notmuch` index and no offline search. See
+[Known gaps](../06-reference/known-gaps.md#mbsync-has-xoauth2-but-not-oauthbearer-and-no-synchroniser-has-met-a-server).
 
 ## Passwords and one-time codes
 
@@ -1378,7 +1434,8 @@ in.
 | `vdirsyncer` | Keeps a server's collection and the local vdir the same, as `mbsync` does for mail. Unconfigured, `vdirsyncer sync` does nothing and exits 0 |
 
 `khal` and `khard` refuse to start with no store configured, so the shipped configuration names
-empty ones, and the image creates both directories in each new home: `khal` reads every directory
+empty ones, and the image build creates both directories in the `kdos` home (an account added
+later makes its own; see [Users and groups](#users-and-groups)): `khal` reads every directory
 under `~/.local/share/calendars/`, and `khard` reads the one address book
 `~/.local/share/contacts/personal`. To add a calendar, make a directory under
 `~/.local/share/calendars` and put `.ics` files in it; `khal` discovers it with no registration.

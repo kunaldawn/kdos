@@ -5,7 +5,7 @@ them the language server `clangd` and `clang-tidy`. It also installs `libclang`,
 `libclang-cpp.so`, the C++ libraries as one shared object.
 
 The system C and C++ compiler stays GCC; nothing in the environment makes clang the default, and a
-port uses clang only when its recipe asks for it. Ports that do are the browsers
+port uses clang only when its recipe asks for it. Among the ports that do are the browsers
 ([chromium](#port-chromium), [firefox-esr](#port-firefox-esr), [librewolf](#port-librewolf)) and
 [thunderbird](#port-thunderbird), the BPF tools ([bpftrace](#port-bpftrace), [bcc](#port-bcc),
 [bpftool](#port-bpftool)), and [mesa](#port-mesa), whose OpenCL driver, rusticl, compiles OpenCL C

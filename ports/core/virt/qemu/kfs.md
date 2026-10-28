@@ -3,8 +3,9 @@
 A container shares the host's kernel, so QEMU is what KDOS has for running another operating
 system: testing a kernel, opening a disk image whose contents are not trusted, booting the
 installer of another distribution. It is the emulator under [libvirt](#port-libvirt) and
-virt-manager, and QEMU is also what KDOS's own test rig drives. The port builds three system emulators, the
-`qemu-img`, `qemu-nbd` and `qemu-storage-daemon` tools, and the guest firmware those emulators
+virt-manager, and QEMU is also what KDOS's own test rig drives. The port builds three system
+emulators, the tools (among them `qemu-img`, `qemu-io`, `qemu-nbd`, `qemu-storage-daemon`, and
+`qemu-vnc`, a standalone VNC server for a D-Bus display), and the guest firmware those emulators
 boot, compiled from the sources in the tarball's `roms/`.
 
 ## Flags
@@ -12,9 +13,9 @@ boot, compiled from the sources in the tarball's `roms/`.
   emulators: this machine's own architecture, the aarch64 boards the tree cross-compiles for, and
   riscv64. The target list is the largest lever on the size of the package.
 - `--libexecdir=/usr/lib/qemu` — the directory of the helper programs QEMU starts, such as
-  `qemu-bridge-helper`, which QEMU looks for there by the path compiled in. `qemu-bridge-helper` is installed without its setuid bit and with no
-  `/etc/qemu/bridge.conf`, so `-netdev bridge` serves only root, and only once root writes an
-  `allow <bridge>` line there (see
+  `qemu-bridge-helper`, which QEMU looks for there by the path compiled in. `qemu-bridge-helper`
+  is installed without its setuid bit and with no `/etc/qemu/bridge.conf`, so `-netdev bridge`
+  serves only root, and only once root writes an `allow <bridge>` line there (see
   [A qemu guest cannot join a host bridge as an ordinary user](../../../../docs/kdos/06-reference/known-gaps.md#a-qemu-guest-cannot-join-a-host-bridge-as-an-ordinary-user));
   `--enable-passt` is the unprivileged network, through [passt](#port-passt).
 - `--enable-gtk` — with `--enable-vte`: the window QEMU opens by default, a GTK 3 Wayland client.

@@ -17,8 +17,9 @@ through [geos](#port-geos). It installs the `gdal` command and the classic tools
   copy GDAL carries where it carries one (libgeotiff, LERC and shapelib among them), and is
   otherwise absent.
 - `-DGDAL_USE_CURL=OFF` — Build no HTTP client into the library. With curl, `/vsicurl/` and the
-  network drivers turn a dataset path into a download. The phase list gives this the same reason
-  as [proj](#port-proj)'s `ENABLE_CURL=OFF`.
+  network drivers (WCS, WFS, OGC API Features and the HTTP driver among them) turn a dataset path
+  into a download; without it GDAL opens only what is on the disk. [proj](#port-proj) is built
+  with `ENABLE_CURL=OFF` for the same reason, so neither library fetches anything on its own.
 - `-DGDAL_USE_POPPLER=ON` — The PDF driver's read side through [poppler](#port-poppler), for
   geospatial PDFs. It includes poppler's core headers (`PDFDoc.h`, `GlobalParams.h`), which the
   poppler port installs because it is built with `ENABLE_UNSTABLE_API_ABI_HEADERS=ON`.

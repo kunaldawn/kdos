@@ -17,5 +17,6 @@ with `cargo vendor` and unpacked into the top of the source tree; the build runs
 `build.sh` writes `/usr/share/qemu/vhost-user/50-virtiofsd.json`, the vhost-user descriptor of
 type `fs` that names the daemon. When a guest's virtio-fs `<filesystem>` share names no
 `<binary path=…>` of its own, libvirt looks the daemon up through such descriptors, and the guest
-fails to start with `Unable to find a satisfying virtiofsd` when none qualifies. Upstream's own `50-virtiofsd.json` names `/usr/libexec/virtiofsd`; the one written here is
-the same file with the path where this package installs it, `/usr/bin/virtiofsd`.
+fails to start with `Unable to find a satisfying virtiofsd` when none qualifies. Upstream's own
+`50-virtiofsd.json` names `/usr/libexec/virtiofsd`; the one written here is the same file with
+the path where this package installs it, `/usr/bin/virtiofsd`.

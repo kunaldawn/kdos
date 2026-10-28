@@ -32,8 +32,8 @@
 /*
  * How many ports one run carries. It is this tool's own ceiling and nothing
  * else's — kp_all_ports() grows its answer — so it is set well above the tree
- * rather than at it: a run that silently stopped at the cut reported every
- * port after it as absent, which reads as a repo that lost them.
+ * rather than at it: a run that stops at the cut reports every port after it
+ * as absent, which reads as a repo that lost them.
  */
 #define MAX_PORTS  4096
 #define GROUP_MAX  64		/* generous headroom over the 17-member max */
@@ -68,7 +68,7 @@ typedef struct {
 #define JOBS_MAX     32
 
 /* ────────────────────────────────────────────────────────────────────────
- * Repo location and the on-demand kpkg-meta build
+ * Repo location and the on-demand kpkg build (ports/.portup-tools/kpkg)
  *
  * `ports/update` (the wrapper) always runs this binary from
  * <repo_root>/ports/.portup, so walking two directories up from

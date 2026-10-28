@@ -3,9 +3,9 @@
 FluidSynth is a software synthesiser that plays MIDI with SoundFont instruments: the `fluidsynth`
 program and `libfluidsynth`, which SDL_mixer, the Doom engines and other programs use for their
 MIDI music. The SoundFont comes from [fluidr3-gm-sf3](#port-fluidr3-gm-sf3), which installs
-`/usr/share/soundfonts/default.sf2`, the default SoundFont FluidSynth compiles in
-(`DEFAULT_SOUNDFONT` in `cmake_admin/DefaultDirs.cmake`), so `fluidsynth -a alsa tune.mid` plays
-with no SoundFont named.
+`/usr/share/soundfonts/default.sf2`, a link to its SF3 SoundFont, at the path FluidSynth compiles in
+as its default (`DEFAULT_SOUNDFONT` in `cmake_admin/DefaultDirs.cmake`), so
+`fluidsynth -a alsa tune.mid` plays with no SoundFont named.
 
 ## Flags
 
@@ -15,23 +15,22 @@ with no SoundFont named.
   reaches the same graph directly.
 - `-Denable-jack=ON` — The JACK audio and MIDI drivers, against PipeWire's `libjack`. There is no
   JACK server, and once `jack.pc` is installed a port that leaves JACK on auto-detection gains it
-  or not by build order, so it is named, with [pipewire](#port-pipewire) in `depends` (see [JACK
-  programs on the
-  host](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/session.md#jack-programs-on-the-host)).
+  or not by build order, so it is named, with [pipewire](#port-pipewire) in `depends` (see
+  [JACK programs on the host](../../../../docs/kdos/03-architecture/session.md#jack-programs-on-the-host)).
 - `-Denable-sdl3=OFF`, `-Denable-oss=OFF` — Builds neither the SDL 3 audio driver nor the OSS one.
 - `-Denable-readline=ON` — Line editing in the `fluidsynth` shell, through readline.
 - `-Denable-libsndfile=ON` — Through [libsndfile](#port-libsndfile): rendering to an audio file,
   and decoding the Ogg Vorbis samples of an SF3 SoundFont. Without it FluidSynth refuses a version
   3 SoundFont, which is what fluidr3-gm-sf3 installs.
 - `-Denable-dbus=ON` — D-Bus, through which FluidSynth asks rtkit for a realtime audio thread.
-- `-Denable-openmp=ON` — OpenMP, from GCC's libgomp, which parallelises SoundFont loading and voice
-  mixing.
+- `-Denable-openmp=ON` — OpenMP, from GCC's libgomp: a SoundFont's samples are decoded in parallel
+  as it loads, the effects units run in parallel, and the voice-mixing loops are vectorised.
 - `-Denable-ladspa=ON` — LADSPA effect units in the audio path, against [ladspa](#port-ladspa).
 - `-Denable-signalsmith=OFF` — Builds without the Signalsmith reverb and limiter. Their source is a
   git submodule, `signalsmith-audio-basics/`, which the release archive leaves empty.
-- `-Denable-systemd=OFF` — Builds without libsystemd and its service unit. KDOS has no systemd (see
-  [No
-  systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd)).
+- `-Denable-systemd=OFF` — Builds without libsystemd, which the `fluidsynth` program would link
+  only to report readiness to a systemd service manager with `sd_notify()`. KDOS has no systemd
+  (see [No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)).
 - `-Denable-midishare=OFF` — Builds no MidiShare driver; MidiShare is not a port.
 
 ## Notes

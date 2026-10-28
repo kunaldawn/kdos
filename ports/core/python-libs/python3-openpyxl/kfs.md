@@ -11,4 +11,4 @@ openpyxl's one dependency that is not a port, `et-xmlfile`, comes from the vendo
 without its dependencies, plus the build backends `ports/fetch` collects for each source in the
 bundle. It and openpyxl are installed with `--no-deps --no-index` from
 `vendor/` alone, and `--no-build-isolation` builds them with the setuptools of the build root;
-see [The three Python keys](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
+see [The three Python keys](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys).

@@ -3,16 +3,16 @@
 tool of the Haskell ports that come after it, [pandoc](#port-pandoc) and
 [shellcheck](#port-shellcheck), which their recipes run as `cabal v2-install` against a local
 repository made from their vendor bundles (see
-[The Haskell bundle](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-haskell-bundle)).
+[The Haskell bundle](../../../../docs/kdos/05-developer/writing-ports.md#the-haskell-bundle)).
 
 cabal-install is itself a Haskell program with Hackage dependencies, and there is no `cabal` to
 build it with before it exists. The recipe uses upstream's `bootstrap/bootstrap.py`, which builds
 each dependency and then cabal-install with each package's `Setup.hs` and the installed
 [ghc](#port-ghc) alone. The dependencies are the port's vendor bundle, the second `sha256 =` line,
 laid out in `_build/tarballs` where the script looks for a prefetched set: `<pkg>-<ver>.tar.gz`
-and the revised `<pkg>.cabal` beside it. Before it builds each package the script checks both
-files against the plan's hashes; its build step never downloads, so a missing or altered file
-stops the build.
+and the revised `<pkg>.cabal` beside it. The script checks every file against the plan's hashes
+before it builds anything, and downloads only a file that is not there. The chroot has no
+network, so a missing file stops the build as an altered one does.
 
 ## Flags
 - `-w` — The GHC `bootstrap.py` compiles with: the system's `/usr/bin/ghc`.

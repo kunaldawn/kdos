@@ -13,12 +13,13 @@ gpsmanshp, is its loadable Tcl extension for reading and writing ESRI Shapefiles
 ## Notes
 
 Neither source has a build system that fits a package. GPSMan is a script, so `build.sh` installs
-`gpsman.tcl` as `/usr/bin/gpsman` and copies `gmsrc/` beside it under `/usr/share/gpsman`.
-gpsmanshp is compiled by hand: one C file, linked as a shared object against `-lshp` and
-`-ltcl9.0`, installed as `/usr/lib/gpsmanshp<version>/gpsmanshp.so` with a `pkgIndex.tcl` that
+`gpsman.tcl` as `/usr/bin/gpsman` and copies its Tcl sources, `gmsrc/`, to
+`/usr/share/gpsman/gmsrc`. gpsmanshp is compiled by hand: `gpsmanshp.c` alone (the other C file,
+`gpstr2shp.c`, is a standalone GPStrans-to-Shapefile converter and is not built), linked as a
+shared object against `-lshp` and `-ltcl9.0`, installed as `/usr/lib/gpsmanshp<version>/gpsmanshp.so` with a `pkgIndex.tcl` that
 `build.sh` writes. The `tclsh9.0` line then runs `package require gpsmanshp` against the package
 directory and fails the build unless the extension loads and reports its own version.
 
 The menu icon is made from the GIF logo in the HTML manual: upstream's logo exists only as GIF,
-which the panel does not read, so ImageMagick pads it square and scales it to hicolor PNGs. `StartupWMClass=Gpsman` is the Tk class, the script's name with its first
-letter capitalised.
+which the panel does not read, so ImageMagick pads it square and scales it to hicolor PNGs.
+`StartupWMClass=Gpsman` is the Tk class, the script's name with its first letter capitalised.

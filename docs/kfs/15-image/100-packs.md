@@ -41,7 +41,8 @@ make build KDOS_PACK_KDOS=1 BUILD_ARGS="--phases 70_image"
 ```
 
 It runs only when the flag is set and both [`mkfs.erofs`]{.idx} (from [erofs-utils](#port-erofs-utils))
-and [`kdos-pack`]{.idx} are installed; with either missing it is skipped without a word.
+and [`kdos-pack`]{.idx} are installed; with either missing it is skipped without a word, and a base
+pack an earlier run left in `build/kdos-base/` stays there for `110_iso.sh` to copy.
 
 ### The metadata
 
@@ -131,8 +132,8 @@ on the live system with nothing installed.
 ## What it leaves
 
 On the image, `/var/lib/kdos/packs/staging` at mode 01777 and [`/var/lib/kdos/packs/mnt`]{.idx}, both
-empty. With `KDOS_PACK_KDOS=1`, `build/kdos-base/` holds `meta` and `kdos.kpack`; without it,
-`build/kdos-base/` does not exist.
+empty. With `KDOS_PACK_KDOS=1` and both tools installed, `build/kdos-base/` holds `meta` and
+`kdos.kpack`; without the flag, `build/kdos-base/` does not exist.
 
 ## See also
 

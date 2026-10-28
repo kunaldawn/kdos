@@ -660,9 +660,9 @@ void ktui_sel_slots(int selected, int pane_focused, int page, int *fg, int *bg)
 
 int ktui_sel_dim(int selected, int pane_focused)
 {
-	/* KT_MID off the fill and KT_TEXT on it. The derived muted colour
-	 * measures 2.84-3.38:1 against KT_DIM, so a tag left muted on a
-	 * selected row is a tag nobody can read. */
+	/* KT_MID off the fill and KT_TEXT on it. KT_MID measures 2.19-4.21:1
+	 * against KT_DIM and the derived muted colour 2.44-3.38:1, so a tag
+	 * left muted on a selected row is a tag nobody can read. */
 	return (selected && pane_focused) ? KT_TEXT : KT_MID;
 }
 

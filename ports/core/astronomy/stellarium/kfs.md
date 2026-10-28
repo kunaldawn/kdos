@@ -19,9 +19,13 @@ estimator.
   [size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
 - `-D ENABLE_SHOWMYSKY=0` — No ShowMySky atmosphere model. Upstream's default is on, and it then
   looks for the library and, failing that, has CPM fetch and build it; ShowMySky is not a port.
-- `-D ENABLE_QTWEBENGINE=0`, `-D USE_PLUGIN_ONLINEQUERIES=0` — Build without Qt WebEngine and
-  without the Online Queries plugin, whose web view uses it when it is found. `qt6-qtwebengine`
-  is not in `depends`, so neither is built against it.
+- `-D ENABLE_QTWEBENGINE=0` — Never link Qt WebEngine. Its one user is the Online Queries plugin,
+  which links it whenever it finds it; [qt6-qtwebengine](#port-qt6-qtwebengine) is a port but not
+  in `depends`, so with that plugin built the result would depend on whether it happened to be
+  installed.
+- `-D USE_PLUGIN_ONLINEQUERIES=0` — Leave out the Online Queries plugin, which upstream builds by
+  default. It looks the selected object up on web services and shows the page in a WebEngine view,
+  or in the system web browser when built without WebEngine.
 - `-D ENABLE_GPS=1`, `-D CMAKE_REQUIRE_FIND_PACKAGE_GPS=ON` — Location from a GPS receiver. On
   Linux Stellarium queries [gpsd](#port-gpsd) through `libgps` when it finds it and otherwise
   reads NMEA from a serial device; requiring the package stops the configure when `libgps` is
@@ -34,9 +38,10 @@ estimator.
 - `-D ENABLE_MEDIA=1`, `-D ENABLE_SPEECH=1` — Video and sound through Qt Multimedia, and speech
   output through Qt TextToSpeech. Both are on by default; named so they cannot drop out.
 - `-D ENABLE_XLSX=1`, `-D CPM_QXlsxQt6_SOURCE="$SRC_ROOT/QXlsx-$_qxlsx"` — Export tables from the
-  Astronomical Calculations window and the Satellites plugin to Excel files with QXlsx. QXlsx is not a port, and
-  Stellarium builds it in through CPM; the `CPM_<name>_SOURCE` variable makes CPM use the copy
-  this recipe fetched instead of downloading one.
+  Astronomical Calculations window and the Satellites plugin to Excel files with QXlsx. QXlsx is
+  not a port, and Stellarium builds it in through CPM when it finds no system copy; the
+  `CPM_<name>_SOURCE` variable makes CPM use the copy this recipe fetched instead of downloading
+  one.
 - `-D ENABLE_INDI=1`, `-D PREFER_SYSTEM_INDILIB=0`, `-D CPM_indiclient_SOURCE="$SRC_ROOT/indi-$_indi"`
   — Telescope Control can drive a mount through an INDI server. INDI is not a port, so
   Stellarium builds the INDI client library from the INDI source this recipe fetched. With

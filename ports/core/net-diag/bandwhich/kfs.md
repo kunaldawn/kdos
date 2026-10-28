@@ -2,7 +2,7 @@
 bandwhich shows, live in the terminal, which processes and which connections are using the
 network and how much bandwidth each takes. It sniffs packets on an interface and matches them to
 processes through `/proc`. It is built from its
-[Rust vendor bundle](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#vendoring)
+[Rust vendor bundle](../../../../docs/kdos/05-developer/writing-ports.md#vendoring)
 with no network.
 
 ## Flags
@@ -17,4 +17,4 @@ process needs `CAP_SYS_PTRACE` and `CAP_DAC_READ_SEARCH` to read other processes
 `/proc/<pid>/fd/`. The package grants none of them: `bandwhich` is not setuid and carries no file
 capability, so it runs as root or with the four capabilities set on the file yourself, as
 upstream's README shows with `setcap`. See
-[setuid binaries](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#setuid-binaries).
+[setuid binaries](../../../../docs/kdos/03-architecture/security-model.md#setuid-binaries).

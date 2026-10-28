@@ -35,7 +35,7 @@ go through udev; see [Services](../../../../docs/kdos/02-user-guide/administrati
   configuration is installed.
 
 ## Notes
-`build.sh` also deletes upstream's `/etc/default/pcscd`, whose comments describe the variables as
+`build.sh` also deletes upstream's `/etc/default/pcscd`, whose comment describes `PCSCD_ARGS` as
 read by the systemd unit. The base filesystem ships its own `/etc/default/pcscd` with the same keys,
 which `47_pcscd` parses at every start; see
 [/etc/default/pcscd](../../../../docs/kfs/16-wiki/fingerprint-fido-smartcards.md#etcdefaultpcscd).

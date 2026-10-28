@@ -52,7 +52,8 @@ AMD, Intel and NVIDIA as modules, which udev loads when it finds the device:
 | Intel GMA 900 to 3150 | `i915` | `i915` | none |
 | Intel GMA X3000 to Haswell | `i915` | `crocus` | `intel_hasvk`, from Ivy Bridge |
 | Intel Broadwell | `i915` | `iris` | `intel_hasvk` |
-| Intel Skylake and newer | `i915` or `xe` | `iris` | `intel` (ANV) |
+| Intel Skylake to Arrow Lake, Arc A-series | `i915` | `iris` | `intel` (ANV) |
+| Intel Lunar Lake, Arc B-series, Panther Lake | `xe` | `iris` | `intel` (ANV) |
 | AMD, before GCN | `radeon` | `r300`, `r600` | none |
 | AMD, GCN and newer | `amdgpu` | `radeonsi` | `amd` (RADV) |
 | NVIDIA | `nouveau` | `nouveau` | `nouveau` (NVK) |
@@ -63,7 +64,12 @@ The first two GCN generations, Southern Islands and Sea Islands, can be driven b
 driver. `CONFIG_DRM_AMDGPU_SI` and `CONFIG_DRM_AMDGPU_CIK` build their support into `amdgpu`, and
 the kernel then gives them to `amdgpu` by default; `radeon.si_support=1 amdgpu.si_support=0` (and
 the same pair with `cik_support`) on the kernel command line hands them back to `radeon`, which
-has no Vulkan driver.
+has no Vulkan driver. Adding a parameter is in
+[Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md#adding-a-parameter-to-every-boot-of-an-installed-machine).
+
+`xe` also knows Tiger Lake to Arrow Lake and the Arc A-series, but the kernel leaves those to
+`i915`; `i915.force_probe=!<device id> xe.force_probe=<device id>` on the kernel command line
+hands one to `xe`.
 
 `virtio_gpu`, `simpledrm` and `bochs` are built into the kernel. `02_modules` also loads the
 virtual machines' display drivers by name at boot, rather than leaving them to udev's modalias
@@ -131,9 +137,11 @@ A value you set yourself, empty included, is kept.
    grep 'crt:' "$XDG_RUNTIME_DIR/kdos-comp.log"
    ```
 
-   `crt: on` means the compositor runs on the GLES2 renderer. `crt: off — this is not the GLES2
-   renderer` means it fell back to software rendering. `crt: off (crt = 0)` says only that the
-   pass is turned off in `comp.conf`.
+   `crt: on — intensity …` means the compositor runs on the GPU. `crt: off — this is not the
+   GLES2 renderer` means it fell back to software rendering, and `crt: off — the GL renderer is
+   llvmpipe` means it runs GLES2 on Mesa's software rasteriser because no hardware driver took
+   the GPU. `crt: off (crt = 0)` says only that the pass is turned off in `comp.conf`, and the
+   renderer is then not checked at all.
 2. Ask EGL which driver answers: `eglinfo -B`.
 3. Ask Vulkan: `vulkaninfo --summary`. A list holding only `llvmpipe` means no hardware Vulkan
    driver loaded. `vkcube` draws a spinning cube in a window.
@@ -170,7 +178,7 @@ fault from a fault in the program.
   [GPU](../../kdos/04-programs/kdos-res.md#gpu).
 - `nvtop` shows the same per process, in a terminal.
 - `GALLIUM_HUD=fps <program>` draws Mesa's own overlay over a GL client on a Gallium driver;
-  `GALLIUM_HUD=help` lists what it can show. See
+  `GALLIUM_HUD=help <program>` lists what it can show. See
   [The overlay, which is already on every machine](../../kdos/05-developer/testing.md#the-overlay-which-is-already-on-every-machine).
 
 ## Tips
@@ -191,8 +199,8 @@ fault from a fault in the program.
 
 ## Troubleshooting
 
-**The desktop is slow and `kdos-comp.log` says the pass is off because this is not GLES2.** The
-compositor found no hardware renderer.
+**The desktop is slow and `kdos-comp.log` says the pass is off because this is not GLES2, or
+because the GL renderer is `llvmpipe`.** The compositor found no hardware renderer.
 
 1. Run the steps in [Finding which driver a GPU uses](#finding-which-driver-a-gpu-uses). A GPU
    with no `Kernel driver in use:` line was not claimed.
@@ -242,9 +250,9 @@ GPU is `[SKIP] switcheroo-control: fewer than two GPUs`.
 - [Firmware](../../kdos/02-user-guide/administration.md#firmware)
 - [GPU](../../kdos/04-programs/kdos-res.md#gpu): what the resource monitor reads
 - [kdos doctor](../../kdos/04-programs/kdos-command.md#kdos-doctor)
-- `microcode-and-firmware.md`: [Microcode and firmware](microcode-and-firmware.md)
-- `displays-and-scaling.md`: [Displays and scaling](displays-and-scaling.md)
-- `modules-and-sysctl.md`: [Modules and sysctl](modules-and-sysctl.md)
+- [Microcode and firmware](microcode-and-firmware.md): the firmware a GPU driver loads
+- [Displays and scaling](displays-and-scaling.md): outputs, modes and scale
+- [Modules and sysctl](modules-and-sysctl.md): loading, blacklisting and passing options to a module
 
 <!-- book-nav -->
 ---

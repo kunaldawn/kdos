@@ -12,8 +12,9 @@
  * the host it is running on: it creates the user, fixes up sudo, links host
  * paths and finally prints `container_setup_done`, which is the marker
  * `box_wait_ready()` polls for. A pack box needs a small, specific part of
- * that, because most of what distrobox-init reconciles is decided at bake time
- * here rather than found at run time.
+ * that, because most of what distrobox-init reconciles is either fixed by the
+ * flags the launcher creates the box with or has no use in a box nobody logs
+ * in to.
  *
  * WHAT IT DOES, and each line of it is something the launch path already
  * depends on:
@@ -159,10 +160,12 @@ static int ensure_record(const char *path, const char *name, const char *id,
  * a document — all through xdg-open, which inside a Debian rootfs walks a list
  * of browsers the box does not carry and gives up. The session bus is shared
  * (`/run/user/<uid>/bus`), so the OpenURI portal on the host is one method
- * call away, and `xdg-desktop-portal-kdos` answers it with `kdos-appbox
- * open`. A file path is made absolute and passed as file://: $HOME and /tmp
- * are the same directories on both sides, which is where an application's
- * own files are.
+ * call away. xdg-desktop-portal launches the host's handler for the type,
+ * chosen through `xdg-desktop-portal-kdos`, and only when the host has no
+ * handler does the back end open the item itself, through `kdos-appbox open`
+ * for a path and `xdg-open` for a scheme. A file path is made absolute and
+ * passed as file://: $HOME and /tmp are the same directories on both sides,
+ * which is where an application's own files are.
  *
  * gdbus carries the call (`libglib2.0-bin` in the base pack); a base without
  * it — alpine — gets a script that says so rather than one that fails inside

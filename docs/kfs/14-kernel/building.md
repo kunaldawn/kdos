@@ -115,10 +115,12 @@ What the signature does and does not protect is in
 `CONFIG_LOGO_LINUX_MONO_FILE`. kbuild converts the image into C with its own `pnmtologo` while it
 compiles the kernel, so the file has to be in place before `make bzImage`.
 
-The panic screen draws this logo at one screen pixel per image pixel, and only a one-bit logo:
-it asks for the logo of depth 1, which is the monochrome one, and draws nothing if the logo it gets
-is any other kind. It draws a logo at all only when both `CONFIG_LOGO` is set and DRM is built into
-the kernel rather than loaded as a module, which is why `kdos.config` sets `CONFIG_DRM=y`.
+The panic screen draws this logo in its top-left corner at one screen pixel per image pixel, and
+leaves it out where it would overlap the message or the QR code. It takes only a one-bit logo: it
+asks for the logo of depth 1, which is the monochrome one. When it has none, because the logo it
+gets is of another kind, `CONFIG_LOGO` is off, or DRM is loaded as a module rather than built into
+the kernel, it draws a small ASCII-art Tux in its place. That is why `kdos.config` sets both `CONFIG_LOGO=y`
+and `CONFIG_DRM=y`.
 
 The `.pbm` is a committed file, in the plain-text P1 form so that a change to it reads as a diff.
 `genlogo-mono.py` beside the recipe cuts it from the KDOS artwork, `kdos.png` at the top of the

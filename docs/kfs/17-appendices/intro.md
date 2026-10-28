@@ -5,8 +5,9 @@
 
 The appendices collect what is looked up rather than read. The first two are about recipes: the
 canonical shape of a `build.sh` for each build system, and a glossary of the switches the recipes
-pass most often. The next two are generated from the tree each time the book is rendered: every
-measured build time, phase by phase, and every licence the ports are distributed under. A glossary
+pass most often. The next two are generated each time the book is rendered: every measured build
+time, phase by phase, from the book's snapshot of a built tree, and every licence the ports are
+distributed under, from the recipes. A glossary
 of the KDOS terms this book uses follows, and the last chapter holds the pages of the ports no
 phase builds.
 

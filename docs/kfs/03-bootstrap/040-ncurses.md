@@ -1,10 +1,10 @@
 # Ncurses
 
 ncurses is the terminal library: it knows, from the terminfo database, how to move the cursor and
-draw on every kind of terminal. readline and bash link it in the next steps, and every full-screen
-program after them. The step builds it twice from one source: first a `tic` for the container, then
-the library for KDOS. This page shows the commands of `script/phases/10_bootstrap/040_ncurses.sh`
-and explains both halves.
+draw on every kind of terminal. [Readline](070-readline.md) and [Bash](080-bash.md) link it later
+in the bootstrap, and every full-screen program after them. The step builds it twice from one
+source: first a `tic` for the container, then the library for KDOS. This page shows the commands of
+`script/phases/10_bootstrap/040_ncurses.sh` and explains both halves.
 
 **Source:** the archive of the [ncurses](#port-ncurses) port\
 **Installs into:** `build/fs/usr`, and one program into `build/cross/bin`\
@@ -75,8 +75,8 @@ The [ncurses](#port-ncurses) port's page describes each program.
 
 ## Built again later
 
-The [ncurses](#port-ncurses) port is built in `20_selfhost`, as a dependency of readline and gawk.
-It builds natively, so it needs no `tic` of its own first, and it differs in these switches:
+The [ncurses](#port-ncurses) port is built in `20_selfhost`, whose list does not name it: `gawk`
+there depends on `readline`, which depends on `ncurses`. It builds natively, so it needs no `tic` of its own first, and it differs in these switches:
 
 - It adds `--enable-pc-files` and `--with-pkg-config-libdir=/usr/lib/pkgconfig`, so the libraries
   come with `pkg-config` files, and `--disable-pkg-ldflags`, so those files carry no build-time

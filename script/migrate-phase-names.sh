@@ -10,15 +10,15 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 #
-# script/migrate-phase-names.sh — carry a build/ tree across the phase rename.
+# script/migrate-phase-names.sh — map a build/ tree keyed by the RENAME table's
+# phase names (00_toolchain … 06_packaging) onto the current phase directories.
 #
 #   script/migrate-phase-names.sh [--dry-run] [--build-dir DIR]
 #
 # Every piece of build state is keyed by a phase directory name, so a tree
-# built under the numbered phase names shows the orchestrator no snapshot at
-# all: the next build offers only a fresh start, and 10_bootstrap re-runs
-# every step because its marks are not where it looks. This renames that state
-# in place:
+# keyed by those names shows the orchestrator no snapshot at all: the next
+# build offers only a fresh start, and 10_bootstrap re-runs every step because
+# its marks are not where it looks. This renames that state in place:
 #
 #   build/snapshots/<dir>/     renamed; manifest.json "phase_dir", "phase" and
 #                              "title" rewritten; the `mark` archive of the
@@ -27,9 +27,10 @@
 #   build/mark/<short>/        renamed
 #   build/.devplan.json        phase names and step file names remapped
 #
-# A SPLIT PHASE'S SNAPSHOT AND LOGS GO TO ITS LAST SUCCESSOR: the old phase-3
-# tree is the state after 31_compilers, the old phase-4 tree the state after
-# 44_apps. The phases before it have no snapshot until a build passes them.
+# A NAME THAT MAPS TO SEVERAL PHASES HANDS ITS SNAPSHOT AND LOGS TO THE LAST
+# OF THEM: a 03_phase3 tree is the state after 31_compilers, a 04_phase4 tree
+# the state after 44_apps. The phases before it have no snapshot until a build
+# passes them.
 #
 # SNAPSHOTS ARE RENAMED, NEVER COPIED: a full set does not fit twice.
 #

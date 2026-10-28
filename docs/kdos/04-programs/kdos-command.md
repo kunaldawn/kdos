@@ -10,9 +10,9 @@ It is written for anyone working at a KDOS prompt, whether diagnosing a fault, c
 of the desktop or scripting it. If you are new to KDOS, run `kdos help`, then `kdos status` and
 `kdos doctor`: those three say what the machine is, what is running and what is wrong, and
 everything else here is something you reach for with a specific job in mind. Terms such as
-*box*, *pack*, *accent*, *surface* and *binhost* are defined in the
-[glossary](../06-reference/glossary.md). A *toast* is the transient notification popup that
-`kdos-notifyd` draws. The user-facing tour of the same commands, arranged by task, is
+*box*, *pack*, *accent*, *surface*, *toast* (the transient notification popup that
+`kdos-notifyd` draws) and *binhost* are defined in the [glossary](../06-reference/glossary.md).
+The user-facing tour of the same commands, arranged by task, is
 [Administration](../02-user-guide/administration.md).
 
 ## Synopsis
@@ -92,10 +92,9 @@ word it offers ten subcommands: `help`, `theme`, `status`, `doctor`, `version`, 
 | `remind` | `in`, `at`, `tomorrow`, `ls`, `clear` |
 | `notify` | `--time`, `--battery` |
 
-The same file completes the first word of [`kdos-shot`](#kdos-shot) from `region`, `screen`,
-`window`, `qr` and `colour` (it omits `full`, and `colour` is a mode `kdos-shot` refuses), and
-completes `kdos-share` with file names plus its `--clipboard` flag. `bash-completion` loads a
-completion file on demand, by the name of the command being completed, and there is no file named
+The same file completes the first word of [`kdos-shot`](#kdos-shot) from its five modes,
+`region`, `screen`, `full`, `window` and `qr`, plus `--help`, and completes `kdos-share` with
+file names plus its `--clipboard` flag. `bash-completion` loads a completion file on demand, by the name of the command being completed, and there is no file named
 `kdos-shot` or `kdos-share`: those two complete only after `kdos` has been completed once in the
 same shell.
 
@@ -310,9 +309,14 @@ this order:
 3. The accent's name is written to `~/.cache/kdos/theme`, atomically.
 4. `SIGHUP` goes to each long-lived KDOS surface by exact name: `kdos-shell`, `kdos-desk`,
    `kdos-notifyd`, `kdos-slit`, `kdos-res`, `kdos-comp` and `kdos-term`.
-5. `kdos-power accent <name>` asks `kdos-powerd` to retint the boot menu and the splash. When the
-   daemon does not answer (on the live medium, or inside a box) the command prints
-   `boot menu and splash unchanged` and the accent is still applied everywhere else.
+5. `kdos-power accent <name>` asks [`kdos-powerd`](daemons.md#kdos-powerd) to update the three
+   root-owned files that carry the accent before any session exists: `/etc/kdos/accent`, which
+   the boot splash reads, and, through `kdos-bootctl theme`, the console palette `/etc/vtrgb` and
+   the boot menu's colours in `limine.conf`. The daemon accepts the request from root and members
+   of `wheel`. When it is not running or refuses (inside a box, or for a user outside `wheel`) the
+   command prints `boot menu and splash unchanged (kdos-powerd did not answer)`, and the accent is
+   still applied everywhere else. On the live medium, which has no writable `limine.conf`, the
+   daemon writes the other two files and leaves the boot menu as it is.
 6. A running tmux server re-reads its configuration.
 
 The order matters. The wallpaper and the state file are both inputs to the signal, so both are
@@ -341,8 +345,8 @@ retinted default. `wallpaper = none` is never overridden.
 stylesheet, icons, cursors or foreign configuration files are generated. Those take seconds and are
 read by programs that are not running, so a preview repaints every KDOS surface at once and leaves
 GTK and Qt applications, boxed or native, in the old accent. It is what the arrow keys in the
-`kdos-theme` picker run, and it is why that picker restores the accent it opened on unless you tell
-it to keep one.
+[`kdos-style`](kdos-shell.md#kdos-style) picker run, and it is why that picker puts back the
+accent it opened on unless you keep the new one with `Enter`.
 
 #### Style files
 
@@ -492,7 +496,9 @@ returns and the other then finds nothing: the file is the reminder. With no `gdb
 bus when the time comes, nothing is delivered and the file stays.
 
 The text is a comment line in the file, because both timer parsers split a row into words with no
-quoting, so `"make tea"` would arrive as two broken words; `ls` reads the text back from there.
+quoting, so `"make tea"` would arrive as two broken words; `ls` reads the text back from there,
+and prints each reminder's id, the time it was set (the file's modification time, not the time it
+is due) and its text.
 `snooze -t` counts from the file's modification time, the moment the reminder was set, with a day
 of slack, so a reminder due while the machine was off fires when it comes back.
 
@@ -534,8 +540,8 @@ A route is a name for a place in the system, such as `setup.network`, defined in
 [Configuration](../06-reference/configuration.md#etckdosmenuconf-merged-under-configkdosmenuconf).
 A script holds a route rather than a chord, because chords can be rebound and menu rows move.
 
-Both verbs open `kdos-palette`, the program `Super+Space` opens, with `--route <route>`, so
-summoning a route is a search with the name already typed. `toggle` first runs
+Both verbs open [`kdos-palette`](kdos-shell.md#kdos-palette-and-kdos-launcher), the program
+`Super+Space` opens, with `--route <route>`, so summoning a route is a search with the name already typed. `toggle` first runs
 `pkill -x kdos-palette`; if that found a palette, it is closed and the command returns, and
 otherwise a new one is opened. The match is on the exact program name, so the palette must be
 started as `kdos-palette` and not through a wrapper. Exit 2 for a missing or unknown verb, 127
@@ -548,8 +554,8 @@ kdos settings           # the grid
 kdos settings hardware  # straight to a page
 ```
 
-Replaces itself with `kdos-settings`, passing a page name through as `--page`. The page name is
-not checked here: `kdos-settings` owns the list of pages, and a second copy would be a second list
+Replaces itself with [`kdos-settings`](kdos-shell.md#kdos-settings), passing a page name
+through as `--page`. The page name is not checked here: `kdos-settings` owns the list of pages, and a second copy would be a second list
 to keep in step. When `kdos-settings` is not installed it says so and exits 127.
 
 ### kdos places
@@ -559,9 +565,10 @@ kdos places                  # the column, one per line
 kdos places add DIR [NAME]   # keep one
 ```
 
-Prints the places column the desktop shows, the same list `kdos-start`, `kdos-menu` and the file
-chooser (`kdos-pick`, `Ctrl+P`) show, read through the same `kxdg_places()` call. Each line is the
-name and the path.
+Prints the places column: the list [`kdos-start`](kdos-shell.md#kdos-start),
+[`kdos-menu`](kdos-shell.md#kdos-menu) and the file chooser
+([`kdos-pick`](kdos-shell.md#kdos-pick), `Ctrl+P`) show, read through the same `kxdg_places()`
+call. Each line is the name and the path.
 
 `add` keeps a folder in that column, appending `NAME = PATH` to `~/.config/kdos/places`. The name
 defaults to the folder's own name and may not contain `=` or a newline. The path is made absolute
@@ -902,8 +909,9 @@ kdos oracle [--plain]
 Prints one reason from the same corpus as `title · citation`. The choice is keyed on the day
 combined with the boot's identifier, so the line stays the same all day and changes after a
 reboot. On a terminal it is printed in the accent's secondary colour; `--plain` prints it without
-colour, which is also what happens when the output is not a terminal. The login banner shows the
-same line. Exit 1 when no reasons are installed.
+colour, which is also what happens when the output is not a terminal. The animated
+[login banner](#kdos-banner-and-kdos-getty) shows the same line when the terminal has room for
+it. Exit 1 when no reasons are installed.
 
 ### kdos restarts
 
@@ -1041,8 +1049,9 @@ Upgrades the host system by building it from source. A recipe pins its version, 
 arrives with the ports tree: every image carries the recipe-only tree at `/ports` (each recipe,
 patch and program of our own, and no source tarball), `fetch` replaces it with the newest signed
 tree over the network, and `apply` builds every package whose recipe is now ahead of what is
-installed. There is no binary package host. An update needs the network, for the tree and for
-every source, and compiles on the machine, which takes hours on a large set.
+installed. `kdos update` takes nothing from a [binary package
+host](../03-architecture/packaging.md#the-binary-host): an update needs the network, for the tree
+and for every source, and compiles every package on the machine, which takes hours on a large set.
 
 `/etc/kpkg.conf`'s default `PORT_REPO` names `/ports/core` and the four areas of `/ports/src`;
 `PORT_REPO` can point at a checkout instead. Each directory `PORT_REPO` names is searched for a port
@@ -1053,10 +1062,10 @@ counts.
 
 | Verb | Does |
 |---|---|
-| `check` (the default when no argument is given; name it to pass an option) | Lists each package whose installed version differs from the ports tree, counts packages with no recipe here, names the tree's commit, and reports the last problem. Exit 0 up to date, 1 something behind, 2 no tree or no package database. `--json` prints the same as a document; `--out PATH` writes that document atomically to `PATH` and implies `--json`; `--fetch` runs `fetch` first |
+| `check` (the default when no argument is given; name it to pass an option) | Lists each installed package whose version, then release, is older than its recipe's, counts packages with no recipe here, names the tree's commit, and reports the recorded problem. A package newer than its recipe, such as a local rebuild with a higher release, is not listed. Exit 0 up to date, 1 something behind, 2 no tree or no package database. `--json` prints the same as a document; `--out PATH` writes that document atomically to `PATH` and implies `--json`; `--fetch` runs `fetch` first |
 | `fetch` | Downloads the newest published tree, checks its signature against `/etc/kdos/keys/tree`, and installs it as `/ports`. With no key in that directory it downloads nothing and records `no-key`. Exit 0 installed or already current, 1 refused or failed, 2 not attempted (not root, another update running, or `/ports` inside a git checkout) |
 | `apply` | Downloads the sources of every package `check` lists, then builds and installs each one with `kpkg install -f`. An A/B slot it installed into is then checked with [`kpkg check --all --root`](../03-architecture/packaging.md#checking-an-installed-root), and a slot with a missing file, or a changed one outside `/etc`, is not tried; edited configuration under `/etc` is reported and does not stop it |
-| `theme` | Re-runs the theme generators for `$HOME` with the accent in force, after an update changes the artwork |
+| `theme` | Applies the accent in force again, exactly as `kdos theme <accent>` does, so the copies under `$HOME` are regenerated from artwork an update replaced |
 
 **Where a tree comes from.** `fetch` reads `kdos-ports.tar.xz` and `kdos-ports.tar.xz.sig` from
 `--from`, else `$KDOS_UPDATE_TREE`, else `tree =` in `/etc/kdos/update.conf`, else the latest KDOS
@@ -1074,9 +1083,10 @@ as current. The signature is downloaded first, and one byte for byte the install
 **What went wrong is recorded.** `fetch` and `apply` write their outcome to
 `/var/lib/kdos/update.state`, and `check` reports the first problem of: `no-tree`, then the last
 fetch's `no-key`, `no-network` or `fetch-failed`, then the last apply's `no-network`, `fetch-failed` or
-`build-failed`. In JSON these are the `"problem"` and `"detail"` fields beside `"behind"`, `"tree"`
-and `"packages"`. The nightly timer runs `kdos update check --fetch --out /var/lib/kdos/update.json`,
-and `fetch` and `apply` rewrite that file when they finish, so the panel's update badge shows a
+`build-failed`. In JSON these are the `"problem"` and `"detail"` fields beside `"behind"`,
+`"orphans"` (installed packages with no recipe), `"tree"` and `"packages"`; a machine with a tree
+and no package database reports `no-database` there and exits 2. The nightly timer runs
+`kdos update check --fetch --out /var/lib/kdos/update.json`, and `fetch` and `apply` rewrite that file when they finish, so the panel's update badge shows a
 problem in the warning colour, with `!` when nothing is behind.
 
 `apply` options:
@@ -1084,7 +1094,7 @@ problem in the warning colour, with `!` when nothing is behind.
 | Option | Does |
 |---|---|
 | `--dry-run` | List what would be fetched and built; needs no root |
-| `--root DIR` | Install into `DIR` instead of choosing a root |
+| `--root DIR` | Install into `DIR` instead of choosing a root. No slot is looked for, and nothing after the installs runs: no `kpkg check`, no copy of `/ports`, no `kdos-bootctl deploy` or `try` |
 | `--in-place` | Update the running root even on an A/B machine, giving up the rollback |
 
 `apply` fetches every source before it builds anything, with [`kpkg
@@ -1095,12 +1105,21 @@ or a source neither place has, stops the run in minutes and builds nothing. The 
 it. `fetch` and `apply` need root and take one lock, so a tree is never replaced under a build.
 
 On a machine with A/B root slots, `apply` installs into the inactive slot, which must already be
-mounted. When every package installed and `kpkg check` passed, it copies `/ports` into the slot, runs
+mounted, and works out what is behind from that slot's package database rather than the running
+root's. When every package installed and `kpkg check` passed, it copies `/ports` into the slot, runs
 `kdos-bootctl deploy` to put that slot's kernel in its directory on the EFI system partition (ESP),
 then `kdos-bootctl try` to mark it as the candidate for the next boot. A failed package, a failed
-check, copy or deploy leaves the slot untried. When the inactive slot is not mounted, `apply` refuses
-and says so, unless given `--in-place`. On a machine without A/B slots it updates the running root.
-See [A/B slot selection](../03-architecture/boot-and-init.md#ab-slot-selection).
+check, copy or deploy leaves the slot untried. When the inactive slot is not mounted, `apply`
+refuses and says so unless given `--in-place`, and that refusal comes before `--dry-run` lists
+anything. On a machine without A/B slots it updates the running root, and a package that fails
+leaves the ones that built installed there. See
+[A/B slot selection](../03-architecture/boot-and-init.md#ab-slot-selection).
+
+| Exit | Means |
+|---|---|
+| 0 | Done, or nothing was behind |
+| 1 | A source could not be fetched, a package failed, or the slot's check, copy, deploy or `try` failed |
+| 2 | Not attempted: no tree, no package database, not root (without `--dry-run`), another update holds the lock, a bad option, or the inactive slot is not mounted and `--in-place` was not given |
 
 ### kdos march
 
@@ -1120,8 +1139,9 @@ lz4                      x86-64-v3  baseline 0.321s  -march=x86-64-v3 0.302s  +5
 
 Asks whether building a port for this processor's instruction-set level (`-march=x86-64-v2`,
 `-v3` or `-v4`) makes it faster here. `probe` reads `/proc/cpuinfo` for the flags each level
-needs. `run` builds the port twice on this machine with `kpkgbuild`, once with the default
-`CFLAGS` and once with the flag added, unpacks both, runs the port's own benchmark against each,
+needs. `run` builds the port twice on this machine with `kpkgbuild`, once with the `CFLAGS` of
+its own environment (`-O2 -pipe` when `CFLAGS` is unset; `CXXFLAGS` gets the same value) and
+once with `-march=<level>` appended, unpacks both, runs the port's own benchmark against each,
 and records the verdict `kept` only when the win is more than 3% plus the noise
 measured on this machine (with 8% noise, a win must exceed 11%). Nothing is installed; the verdicts go to a ledger.
 
@@ -1153,12 +1173,12 @@ they are the evidence the measuring is real. `decide` applies the decision rule 
 and exits 0 for `kept`, 1 otherwise; it exists for testing.
 
 The argument for measuring per machine rather than choosing a tier is in
-[Decisions](../01-philosophy/decisions.md).
+[Decisions](../01-philosophy/decisions.md#-march-measured-per-machine-not-chosen-for-a-population).
 
 ### kdos rebuild
 
 ```sh
-kdos rebuild [--dry-run] [--iso-only] <work-dir>
+sudo kdos rebuild [--dry-run] [--iso-only] <work-dir>
 ```
 
 Runs the KDOS build from a booted KDOS medium, with no network at any point. It rests on three
@@ -1185,7 +1205,15 @@ phase scripts. The job count is `KDOS_JOBS` when the caller sets it; otherwise t
 environment computes it from this machine, one job per thread but no more than one per 2 GiB of
 memory, so a laptop with little memory builds slower rather than having its compilers killed.
 `--iso-only` runs only the `70_image` phase. `--dry-run` stops after the
-checks and prints the plan. [How KDOS is built](../05-developer/how-kdos-is-built.md) follows
+checks and prints the plan.
+
+The build runs as root. It sets owners on the files of the tree it assembles, and most phases
+run their steps inside a chroot whose entry script, `script/chroot/exec.sh`, exits at once for
+any other user. `kdos rebuild` itself does not check, so a run without `sudo` passes every check,
+copies the tree and compiles the orchestrator, and the build then fails at the first step that
+needs root. `sudo` resets the environment, so `KDOS_JOBS` and
+`KDOS_SOURCES` reach the build only when they are passed through it, as in
+`sudo env KDOS_JOBS=4 kdos rebuild /mnt/disk/work`. [How KDOS is built](../05-developer/how-kdos-is-built.md) follows
 the same build from `git clone` to an ISO, and [The build system](../05-developer/build-system.md)
 describes the orchestrator.
 
@@ -1196,7 +1224,7 @@ A developer medium, one that carries the sources, is made and used in four steps
 2. Write the ISO to a USB stick and boot it.
 3. Mount a real disk with at least 25 GB free (not tmpfs and not an overlay), for example at
    `/mnt/disk`.
-4. Run `kdos rebuild /mnt/disk/work`.
+4. Run `sudo kdos rebuild /mnt/disk/work`.
 
 `KDOS_ISO_SOURCES=1` makes `script/phases/70_image/110_iso.sh` copy `ports/`, `src/`, `script/`
 and `fs/` onto the medium's ISO 9660 filesystem beside the system image, under `/sources`,
@@ -1204,7 +1232,7 @@ together with the `Makefile`, `Dockerfile` and `CLAUDE.md` when they are present
 binary host at `/sources/binhost` when the same build wrote one (`KDOS_MAKE_BINHOST=1`). The sources
 cost the installed system nothing and are readable at `/mnt/iso/sources` as soon as the live
 system is up. The option is off by default because a medium that carried `ports/` would roughly
-double in size: `ports/` is about 39 GB of archives that are already compressed (`du -sh
+double in size: `ports/` is about 40 GiB of archives that are already compressed (`du -sh
 ports/core` with every source fetched). The fetch cache `ports/.srccache` is left off, because
 each port directory already holds its own copy of the bytes. A `SOURCES` stamp records the port
 count, size and build time, and `kdos rebuild` prints it before it starts; the port count is the
@@ -1524,7 +1552,7 @@ match.
 | `set-slot <a\|b> <uuid> [<luks-uuid>]` | Record a slot's root filesystem and, when encrypted, its LUKS container; without one the slot is recorded as unencrypted |
 | `crypt <fs-uuid>` | Print the LUKS container recorded for the slot whose root filesystem has that UUID; asked by the initramfs after `select`, silent with exit 1 when there is none |
 | `deploy <root> [<a\|b>]` | Copy the kernel from a slot's root into that slot's directory on the ESP |
-| `theme [--print] [<accent>]` | Rewrite the theme lines of `limine.conf` for an accent, or print them |
+| `theme [--print] [<accent>]` | Write the accent's console palette to `/etc/vtrgb` and rewrite the theme lines of `limine.conf` (the default accent when none is named); a machine with no `limine.conf` keeps its boot menu and still exits 0. `--print` prints the `limine.conf` lines and writes nothing |
 | `palette [<accent>]` | Print the console palette (the `/etc/vtrgb` format) for an accent, the default one when none is named |
 
 It is also copied into the initramfs. The full boot flow is in
@@ -1561,10 +1589,11 @@ the command waiting in `slurp` for a drag.
 
 `kdos-banner` draws the login banner: the KDOS logo beside the output of `fastfetch --logo none`,
 revealed line by line like a CRT beam, followed by the [`kdos oracle`](#kdos-oracle) line when
-it fits the terminal's width. `--plain` prints the banner with no animation and without the oracle
-line, so its output is the same every time and can be compared. It does not animate when standard
-output is not a terminal, when `KDOS_NO_ANIM` is set, when `TERM` is `dumb`, or when the terminal
-is too short for the banner, and any key skips the rest.
+the terminal is wide enough for it and has two rows to spare below the banner. `--plain` prints the
+banner with no animation and without the oracle line, so its output is the same every time and can
+be compared. The same plain banner is printed when standard output is not a terminal, when
+`KDOS_NO_ANIM` is set, when `TERM` is unset or `dumb`, or when the terminal is too short for the
+banner. While it animates, any key skips the rest.
 
 `kdos-getty <ttyN> <getty...>` wraps each console getty in `/etc/inittab`. It waits for the
 kernel's framebuffer console to take over the terminal, loads the `ter-kdos32n` font and the

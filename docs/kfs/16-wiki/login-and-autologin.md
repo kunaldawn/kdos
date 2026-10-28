@@ -34,13 +34,12 @@ The live medium and an installed system differ in three places:
 
 | | Live medium | Installed system |
 |:--|:--|:--|
-| `tty1` | Logs in [`kdos`]{.idx term="kdos (command)"} without a password | Asks for a password, unless the [installer]{.idx}'s answer file set `autologin = yes` |
+| `tty1` | Logs in [`kdos`]{.idx term="kdos (account)"} without a password | Asks for a password, unless the [installer]{.idx}'s answer file set `autologin = yes` |
 | The `kdos` password | `kdos` | The one given to the installer |
 | The serial console `ttyS0` | Logs in `root` without a password | Asks for a login |
 
-The live column is what a booted live medium shows. The installed column is what the installer's
-Configure step writes into the target's `login.conf`, `inittab` and `shadow`; an installed disk
-has not been booted to check it.
+The installed column is what the installer's Configure step writes into the target's
+`login.conf`, `inittab` and `shadow`.
 
 ## Configuration
 
@@ -61,7 +60,7 @@ line rather than rewriting the file: `autologin = <user>` when autologin was cho
 
 `init` reads the consoles from this file, `fs/etc/inittab` in the tree. The three login lines:
 
-<!-- kfs:include fs/etc/inittab lines=22-46 pin=2543de49292e -->
+<!-- kfs:include fs/etc/inittab lines=22-47 pin=82afe0988bdd -->
 
 `tty1` runs [`kdos-login`]{.idx} under `kdos-getty`; `tty2` runs a plain `agetty` under `kdos-getty`; the
 serial line runs [`/etc/init.d/serial-getty`]{.idx}, which hands its arguments to `agetty`. The file names
@@ -104,8 +103,9 @@ shell, `tty1`, `tty2`, serial and SSH alike.
 The first two need membership of `wheel`, the third needs root. Each changes only the key's line in
 `login.conf`, and the change applies the next time `tty1` starts its getty.
 
-1. With the desktop: open Settings, go to **System**, choose **Accounts…** ([`kdos-users`]{.idx}), and
-   switch the autologin there. The surface is described in
+1. With the desktop: open Settings, go to **System**, choose **Accounts…** ([`kdos-users`]{.idx}),
+   select the account and press **Autologin**; on the account `tty1` already logs in, the same
+   button reads **No autologin** and turns it off. The surface is described in
    [The system surfaces](../../kdos/04-programs/kdos-shell.md#the-system-surfaces).
 
 2. From a shell, through `kdos-powerd`:
@@ -122,7 +122,9 @@ The first two need membership of `wheel`, the third needs root. Each changes onl
    [autologin](../../kdos/04-programs/daemons.md#autologin).
 
 3. By hand, as root: edit `/etc/kdos/login.conf` and set or comment out the `autologin` line.
-   `kdos-login` reads the last such line, so leave only one.
+   `kdos-login` reads the last such line, so leave only one. Comment the line rather than
+   deleting it: the first two ways rewrite an existing `autologin` line and add none, so on a file
+   without one they report success and change nothing.
 
 4. To apply the change without rebooting, end the desktop session and then the shell it leaves
    on `tty1` (`exit`). `init` respawns the `tty1` line, and the new `agetty` reads the file again.
@@ -214,9 +216,9 @@ getty, so end the session and the shell on `tty1`, or reboot.
 The login worked and the session did not come up. Either the profile never ran `kdos-desktop`, or
 it ran and exited.
 
-1. Check what the profile tests: `tty` must print `/dev/tty1`, and `command -v kdos-desktop` must
-   find the program. An account created without `-m`, or with a home directory that has no
-   `.bash_profile`, never runs it; copy [`/etc/skel/.bash_profile`]{.idx} into the home directory.
+1. Check what the profile tests: `tty` must print `/dev/tty1`, `WAYLAND_DISPLAY` must be empty,
+   and `command -v kdos-desktop` must find the program. An account created without `-m`, or with
+   a home directory that has no `.bash_profile`, never runs it; copy [`/etc/skel/.bash_profile`]{.idx} into the home directory.
 2. Run `kdos-desktop` from the prompt and read what it prints. The compositor's own output is kept
    in `$XDG_RUNTIME_DIR/kdos-comp.log`.
 
@@ -231,11 +233,14 @@ names. The daemon's log is `/run/kdos-svc.kdos-powerd.log`.
 See [The client](../../kdos/04-programs/daemons.md#the-client).
 
 **`kdos-power autologin` answers `kdos-power: err not permitted`.**
-The caller is not in `wheel`. `sudo kdos-powerd --explain <user>` prints what the daemon allows that
-user and why, as in `alice: uid 1001, primary gid 1001, in neither seat nor wheel — refused`; see [Diagnosis and testing](../../kdos/04-programs/daemons.md#diagnosis-and-testing).
+The caller is not in `wheel`; membership of `seat` alone allows only suspend, power-off and
+reboot. `kdos-powerd --explain <user>`, which needs no privilege, prints what the daemon allows
+that user and why, as in `alice: uid 1001, primary gid 1001, in neither seat nor wheel — refused`;
+see [Diagnosis and testing](../../kdos/04-programs/daemons.md#diagnosis-and-testing).
 
-**`kdos-getty` prints `not moved into /sys/fs/cgroup/user.slice/user-<uid>/session/cgroup.procs`.**
-The account's control group does not exist: `15_userdirs` creates it at boot for the accounts in
+**`/run/kdos-getty.tty1.log` holds `kdos-getty: not moved into /sys/fs/cgroup/user.slice/user-<uid>/session/cgroup.procs`.**
+`kdos-getty` moves only the account `login.conf` names for autologin, and that account's control
+group does not exist: `15_userdirs` creates it at boot for the accounts in
 `/etc/passwd` then, so an account added since has none, and its boxed applications run with no
 memory limit. Run `sudo service start userdirs`, then end the session and log in on `tty1` again.
 

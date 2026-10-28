@@ -11,7 +11,7 @@ plugs into it.
 - `--target` — The first `pip3 install` puts `hatch-fancy-pypi-readme` and `pdm-backend`, build
   backends some bundle members need and which are not ports, into `$SRC_ROOT/backends` and onto
   `PYTHONPATH` for this build only, so nothing outside the package is written. See
-  [The three Python keys](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
+  [The three Python keys](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
 - `PYTOKENS_USE_MYPYC=0` — Build `pytokens` as plain Python. On CPython its `setup.py` otherwise
   compiles it with mypyc, which needs mypy, and mypy has no port. Black's and isort's mypyc build
   hooks are off unless enabled, so both build as plain Python without a switch.
@@ -22,7 +22,7 @@ plugs into it.
 
 ## Patches
 - `stdlib-importlib-metadata.patch` — In `docstring-to-markdown`, import `entry_points` and `EntryPoint` from the standard library's `importlib.metadata` instead of the `importlib_metadata` backport, which has no port; the call it makes is the same. Without it `pylsp` fails on its first import.
-- `autopep8-py314.patch` — In `autopep8`, held to an older release by `pylsp`'s version bound: `setup.py` reads the version through `ast`'s `.value` rather than `.s`, which the tree's Python does not have, so metadata generation runs; `detect_encoding()` comes from the standard library's `tokenize` instead of `lib2to3`, which the tree's Python does not ship, so the command works on every file; and the `lib2to3` fixers that `--aggressive`'s W690 runs return the source unchanged when `lib2to3` cannot be imported.
+- `autopep8-py314.patch` — In `autopep8`, held to an older release by `pylsp`'s version bound: `setup.py` reads the version through `ast`'s `.value` rather than `.s`, which the tree's Python does not have, so metadata generation runs; `detect_encoding()` comes from the standard library's `tokenize` instead of `lib2to3`, which the tree's Python does not ship, and whose import there would otherwise stop the command with `ModuleNotFoundError` on every file it reads; and `refactor()`, through which `--aggressive` runs its `lib2to3` fixers for E231, E721 and W690, returns the source unchanged when `lib2to3` cannot be imported.
 
 ## Notes
 The two patched packages are unpacked from the vendor bundle into `$SRC_ROOT`, patched there and

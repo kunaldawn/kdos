@@ -5,7 +5,7 @@ run it directly; it is a build tool for the ports that carry hand-written SIMD k
 syntax. The codecs (`ffmpeg`, `x264`, `x265`, `dav1d`, `svt-av1`, `libvpx`, `openh264`),
 `libjpeg-turbo`, `libass`, `firefox-esr`, `librewolf`, `thunderbird`, `qemu` and the `limine`
 boot loader all name it in `depends`. The tree builds those ports with their assembly on, as
-[Writing ports](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#every-port)
+[Writing ports](../../../../docs/kdos/05-developer/writing-ports.md#every-port)
 sets out, and NASM is the assembler that assembly is written for.
 
 The package is two programs, `nasm` and `ndisasm`, with their manual pages.
@@ -31,7 +31,7 @@ The package is two programs, `nasm` and `ndisasm`, with their manual pages.
   (`autoconf/m4/pa_option_debug.m4`). The `g3` answer stops `-g3`; `--disable-gdb` stops `-ggdb`,
   and the `ggdb` answer stops it a second time. No port ships debug information, and these are
   how this recipe keeps upstream's own `-g` out (see
-  [What kpkg does around build.sh](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#what-kpkg-does-around-buildsh)).
+  [What kpkg does around build.sh](../../../../docs/kdos/05-developer/writing-ports.md#what-kpkg-does-around-buildsh)).
   The `--disable-gdb` here is NASM's switch for its debug flags, not a feature tied to the `gdb`
   port, so the "Optional, off in KDOS" entry above is not a lost feature.
 

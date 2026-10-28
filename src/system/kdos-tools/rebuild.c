@@ -241,7 +241,9 @@ int rebuild_main(int argc, char **argv)
 		return 2;
 	}
 
-	/* Everything that would fail later, asked now. */
+	/* Every missing tool that would fail the build later, asked now. Root
+	 * is not asked: the build's steps need it, so a run without it copies
+	 * the tree and then fails in the first phase. */
 	const char *missing = NULL;
 	static const char *const BUILD_TOOLS[] = { "cc", "make", "bash", "tar",
 						   "xz", NULL };

@@ -200,9 +200,9 @@ Start it with `sudo service start oomd`, the command the doctor's warning names.
 
 **The desktop froze and no kill was logged.** Check the count with the `status` query above, then
 the pressure: a machine whose `full` stall stays under `KO_TRIGGER` does not fire it, and one whose
-`MemAvailable` stays above `KO_AVAIL_PCT` percent of `MemTotal` kills nothing when it does. Read `dmesg` for a kill by the kernel. If a protected program is the one using
-the memory, the daemon finds nothing to kill; `ps -eo rss,comm --sort=-rss | head` shows the
-largest.
+`MemAvailable` stays above `KO_AVAIL_PCT` percent of `MemTotal` kills nothing when it does. Read
+`dmesg` for a kill by the kernel. If a protected program is the one using the memory, the daemon
+finds nothing to kill; `ps -eo rss,comm --sort=-rss | head` shows the largest.
 
 **The wrong program was killed.** The log line names it and its box. Give the box that should go
 first a `memory` budget, or lower the score of the process that should stay, as above. Which of
@@ -211,9 +211,10 @@ several large processes the daemon picks is tested only against recorded process
 
 **A large copy fires the trigger.** The installer's Copy system step, and any copy of many
 gigabytes, streams through the page cache and can stall the machine long enough to fire
-`KO_TRIGGER`, most of all with swap off, as the installer's Prepare step leaves it. The page cache
-counts as available memory, so `MemAvailable` stays high and the daemon kills nothing; the `status`
-query's count stays where it was. The installer's copy is out of reach even when memory does run
+`KO_TRIGGER`, most of all with little swap: the installer's Prepare step turns off every swap area
+on a disk and leaves only [zram](zram-and-swap.md). The page cache counts as available memory, so
+`MemAvailable` stays high and the daemon kills nothing; the `status` query's count stays where it
+was. The installer's copy is out of reach even when memory does run
 short: `kinstall` sets its own score to -900 when an install starts, and `rsync` and every other
 program the install runs inherit it (`cat /proc/$(pgrep -x rsync | head -1)/oom_score_adj` during
 the Copy system step prints `-900`). Any other copy that must not be killed is started with a

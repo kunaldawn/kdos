@@ -11,7 +11,7 @@ explains them.
 
 ## Installation of gawk
 
-<!-- kfs:include script/phases/10_bootstrap/065_gawk.sh lines=23-42 pin=755ee3a74b1a -->
+<!-- kfs:include script/phases/10_bootstrap/065_gawk.sh lines=23-42 pin=985a780b7e83 -->
 
 ### The meaning of the configure options
 
@@ -23,8 +23,8 @@ explains them.
   them, rather than under `/usr/etc`.
 
 `--without-readline`
-: Build gawk's debugger, `gawk -D`, with plain line input. readline is built in step 070, after
-  this one.
+: Build gawk's debugger, `gawk -D`, with plain line input. readline is built in
+  [step 070](070-readline.md), after this one.
 
 `--without-mpfr`
 : Build without arbitrary-precision arithmetic, so `gawk -M` is not available. MPFR is not in the
@@ -40,13 +40,15 @@ never be replaced or removed (see [Part III](intro.md#what-the-bootstrap-leaves-
 
 ## Contents of gawk
 
-**Installed programs:** [`gawk`]{.idx}, `gawk-` followed by the version, [`awk`]{.idx} (a link to `gawk`) and
-[`gawkbug`]{.idx}; [`grcat`]{.idx} and [`pwcat`]{.idx} in `/usr/libexec/awk`.
+**Installed programs:** [`gawk`]{.idx}, `gawk-` followed by the version (a second name for the
+same file), [`awk`]{.idx} (a symbolic link to `gawk`) and [`gawkbug`]{.idx}; [`grcat`]{.idx} and
+[`pwcat`]{.idx} in `/usr/libexec/awk`.
 
 **Installed libraries:** the dynamic extensions in `/usr/lib/gawk`, such as [`filefuncs.so`]{.idx},
 [`inplace.so`]{.idx}, [`readdir.so`]{.idx} and [`time.so`]{.idx}.
 
-**Installed files:** [`/etc/profile.d/gawk.sh`]{.idx}, and the awk library functions in `/usr/share/awk`.
+**Installed files:** [`/etc/profile.d/gawk.sh`]{.idx}, the awk library functions in `/usr/share/awk`,
+and [`gawkapi.h`]{.idx}, the header a dynamic extension is compiled against.
 
 The [gawk](#port-gawk) port's page describes each program.
 

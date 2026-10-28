@@ -86,7 +86,7 @@ int kcol_limine_conf(const KcolScheme *sc, char *buf, size_t cap)
 		 * AN EMPTY BRANDING STRING, AND EMPTY IS NOT THE SAME AS
 		 * ABSENT.
 		 *
-		 * The artwork is the branding now: the plate sits below a
+		 * The artwork carries the branding: the plate sits below a
 		 * header band carrying the wordmark and the penguin, so the
 		 * key would put "KDOS" on the screen a second time, in a
 		 * font, under a picture of it. But LEAVING THE KEY OUT does

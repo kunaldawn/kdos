@@ -111,14 +111,15 @@ struct au_dev {
 static struct au_dev au_dev[AU_MAX_DEV];
 static int au_ndev;
 static int au_default_card;	/* what ~/.asoundrc says, or 0 */
-/* comp.conf's `icons = no`, through --no-icons. */
+/* Pixel icons beside the rows; only --dump turns them off, because a golden
+ * frame is the character grid. The argument loop parses no --no-icons, so
+ * comp.conf's `icons = no` has no route to this switch. */
 static int au_icons_on = 1;
 /*
- * Where the last frame put its two lists. The header band moved them down by
- * three rows and the click test derived its own origin, so a click landed on
- * the row above the one under the pointer — and on this window that is
- * switching the wrong output. RECORDED by the draw, read by the click: two
- * places computing one geometry is the defect, not the offset.
+ * Where the last frame put its two lists. RECORDED by the draw, read by the
+ * click: a click test that derives its own origin drifts from the draw the
+ * moment the header band changes height, and a click one row off on this
+ * window switches the wrong output.
  */
 static int au_out_y = 3, au_out_rows, au_bt_y, au_bt_rows;
 
@@ -1313,8 +1314,8 @@ int audio_main(int argc, char **argv)
 		/*
 		 * ANCHORED MEANS POPUP; CENTRED MEANS A WINDOW — and a window
 		 * is an xdg TOPLEVEL, not a layer surface. Layer-shell has no
-		 * move and no resize in the protocol at all, so every native
-		 * app on this desktop was a rectangle nailed to the screen
+		 * move and no resize in the protocol at all, so a native app
+		 * drawn as one would be a rectangle nailed to the screen
 		 * while every boxed one could be dragged and pulled about. A
 		 * toplevel also gets the compositor's own frame, which is the
 		 * other half of it: the decoration then MATCHES an alien app's

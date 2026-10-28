@@ -20,12 +20,13 @@ subcommands `cargo-flash`, which programs a compiled Rust project or any ELF int
 ## Notes
 
 - **The chip descriptions are compiled in.** The `probe-rs` library's default `builtin-targets`
-  feature builds the target descriptions under `probe-rs/targets` into the program, each with its
+  feature builds the target descriptions under `probe-rs/targets` into the program, and the
+  `probe-rs-espressif` crate builds in the Espressif ones under its own `targets`, each with its
   memory map and the flash algorithms that run on the chip, so nothing has to be downloaded for a
   supported part. A part outside that set needs a chip description file, which upstream's
   `target-gen` makes from a CMSIS-Pack, given with `--chip-description-path`. The flash algorithms
-  are code for the target, carried as upstream publishes them; see [What is built from
-  source](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#what-is-built-from-source).
+  are code for the target, carried as upstream publishes them; see
+  [What is built from source](../../../../docs/kdos/05-developer/writing-ports.md#what-is-built-from-source).
 - **No C library is linked for USB.** Probes are reached through `nusb` and through `hidapi` with
   its `linux-native-basic-udev` back end, both of which talk to `/dev/bus/usb` and `/dev/hidraw*`
   directly, so the program NEEDs only the C library and `libgcc_s`. Access to the probes as the

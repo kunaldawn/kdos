@@ -2,9 +2,9 @@
 
 KDOS ships its own diagnostic commands beside the usual process and log tools. This page covers
 them: `kdos doctor`, which checks the faults KDOS is known to have; `kdos why` and `kdos explain`,
-which say what owns a file and why it is the way it is; `kdos restarts`, `kdos stutter` and
-`kdos cve`; `kpkg check`, which compares the root with what was installed; and the resource
-monitor. Where each kind of log is written, and how to read it, is a separate page:
+which say what owns a file and why it is the way it is; `kdos restarts`, `kdos stutter`,
+`kdos cve`, `kdos hey` and `kdos appid`; `kpkg check`, which compares the root with what was
+installed; and the resource monitor. Where each kind of log is written, and how to read it, is a separate page:
 [Logs](logs.md). Each command is described in full in
 [The kdos command](../../kdos/04-programs/kdos-command.md).
 
@@ -12,7 +12,7 @@ monitor. Where each kind of log is written, and how to read it, is a separate pa
 
 | Port | Provides |
 |:--|:--|
-| [kdos-tools](#port-kdos-tools) | [`kdos`]{.idx term="kdos (command)"} and its subcommands `status`, `version`, `doctor`, `why`, `explain`, `oracle`, `restarts`, `stutter`, `cve`, `appid` and `hey`; the reasons corpus under [`/usr/share/kdos/reasons`]{.idx}; the vulnerability database [`/usr/share/kdos/secdb.txt`]{.idx} and the list of bundled libraries [`/usr/share/kdos/bundled.txt`]{.idx} |
+| [kdos-tools](#port-kdos-tools) | [`kdos`]{.idx term="kdos (command)"}, whose diagnostic subcommands are `status`, `version`, `doctor`, `why`, `explain`, `oracle`, `restarts`, `stutter`, `cve`, `appid` and `hey`; the reasons corpus under [`/usr/share/kdos/reasons`]{.idx}; the vulnerability database [`/usr/share/kdos/secdb.txt`]{.idx} and the list of bundled libraries [`/usr/share/kdos/bundled.txt`]{.idx} |
 | [kdos-res](#port-kdos-res) | [`kdos-res`]{.idx}, the resource monitor, and its setuid helper [`kdos-resctl`]{.idx} |
 | [kdos-comp](#port-kdos-comp) | The frames socket `kdos stutter` reads and the command socket `kdos hey` uses |
 | [btop](#port-btop), [htop](#port-htop), [bottom](#port-bottom), [procs](#port-procs), [iotop](#port-iotop), [nvtop](#port-nvtop) | Terminal process, I/O and GPU monitors |
@@ -140,8 +140,10 @@ kdos doctor >/dev/null || echo "kdos doctor found something"
    kdos explain portal       # every reason that mentions it
    ```
 
-   Each title is followed by its name in brackets, such as `(default-first-in-rc-xml)`. A path
-   or port no reason names gets `no recorded reason`.
+   Each title is followed, on the next line, by the reason's file name in brackets, such as
+   `(default-first-in-rc-xml)`; with a word, each reason's text follows its title. A word no
+   reason contains prints `nothing recorded about '<word>'`, and a path or port that `kdos why`
+   finds in no reason gets `no recorded reason`.
 
 ### After an upgrade
 
@@ -151,7 +153,9 @@ kdos restarts
 
 It lists each running process that still maps a library or program an upgrade replaced, with the
 packages concerned. Restart each one, or log out and back in for the desktop's own. Exit 0, with
-`Nothing is running deleted code.`, means nothing is running old code.
+`Nothing is running deleted code.`, means nothing is running old code, and exit 1 means something
+is. A process whose memory map the caller cannot read is skipped, so run `sudo kdos restarts` to
+cover the daemons and every other account's processes.
 
 ### Checking the installed files
 
@@ -161,8 +165,9 @@ sudo kpkg check --all
 ```
 
 Each finding is a line such as `pipewire: changed <path>`, and the last line counts them:
-`1 package checked: 0 missing, 0 changed, 0 mode, 0 config`. `config` lines are edited files under
-`/etc` and do not count as faults; `unowned` lines, from `--all`, are files under `/usr` or `/opt`
+`1 package checked: 0 missing, 0 changed, 0 mode, 0 config`. The exit status is 1 when anything
+is missing, changed or has the wrong mode, and 2 for a package that is not installed. `config`
+lines are edited files under `/etc` and do not count as faults; `unowned` lines, from `--all`, are files under `/usr` or `/opt`
 that no package claims, such as `unowned ./usr/share/xdg-desktop-portal/kdos-portals.conf` for a
 file of the base filesystem. `--all` reads every installed file, about ten minutes on the live
 medium. The format is in
@@ -176,10 +181,12 @@ kdos cve openssl
 kdos doctor --cve
 ```
 
-The comparison is offline, against the database shipped with the image; the report's first line
-gives its date and age, as in `Alpine secdb of 2026-08-12 (70 days old)`, and flags one older than
-180 days. A package the database does not carry is reported as unknown, and `kdos doctor --cve`
-ends with the counts, such as `2104 checked, 1803 not in the database, 3 behind a recorded fix`.
+The comparison is offline, against the database shipped with the image. The report's first line
+gives the database's date and age, as in `Alpine secdb of 2026-08-12 (<n> days old)`, and a
+warning under the summary flags a database more than 180 days old. A package the database does not
+carry is reported as unknown, never as clean, and the summary line counts each kind:
+`<n> checked, <n> not in the database, <n> behind a recorded fix`. `kdos doctor --cve` prints the
+same report as `kdos cve`. The exit status is 1 when any package is behind a recorded fix.
 
 ### A desktop that hiccups
 
@@ -209,8 +216,9 @@ kdos appid
 `(no windows)` when there are none; `kdos hey outputs` gives each screen's name, size, scale and
 position; `kdos hey run Close <id>` acts on one window. `kdos appid` reports each application
 identifier that matches no launcher file name, which is what puts a second icon beside a pinned
-one on the panel. Before any window has mapped in this home it says `No windows have been
-observed yet.`
+one on the panel. It reads the identifiers the compositor has recorded in this home; with none
+recorded yet it reports on the windows open at that moment, and with no window open either it
+says `No windows have been observed yet.`
 
 ### Processes and resources
 
@@ -245,7 +253,9 @@ see [Desktop troubleshooting](desktop-troubleshooting.md).
 **`kdos stutter` exits at once with status 2.**
 There is no frames socket: the compositor is not running, or the command was run from a shell whose
 `XDG_RUNTIME_DIR` is not the session's. The message names the path it tried, as in
-`nothing is reporting frame timing on /run/user/0/kdos-frames.sock` for root.
+`nothing is reporting frame timing on /run/user/0/kdos-frames.sock` for root. A shell with no
+`XDG_RUNTIME_DIR` at all, such as one reached through `sudo`, gets `no XDG_RUNTIME_DIR — this is
+not a desktop session`.
 
 **`kdos hey` exits 1.**
 The compositor cannot be reached, or refused the request, for instance an id that names no window,

@@ -4,8 +4,9 @@
 
 `20_selfhost` is the first phase that runs inside the [chroot]{.idx}, and the first in which [kpkg]{.idx} builds
 anything. Its list is short: the fortify headers, tar, the C library, zlib, the assembler and
-linker, the compiler, and the few tools their builds run, each a port rebuilt over the files
-[Part III](../03-bootstrap/intro.md) installed by hand. This part explains what the phase sets out
+linker, the compiler, and the few tools their builds run. Most of them are ports rebuilt over the
+files [Part III](../03-bootstrap/intro.md) installed by hand; fortify-headers, zlib and m4 have no
+bootstrap step and arrive here for the first time. This part explains what the phase sets out
 to do, the environment it runs in, why its list holds these ports and in this order, how the
 compiler's name changes on the way, and what the `gcc` package's install hook clears away at the
 end. The package pages follow, in chapters by shelf, in the shelves' own order, and within a shelf
@@ -92,8 +93,9 @@ The phase's whole list is one file:
 
 <!-- kfs:include script/phases/20_selfhost/packages.txt -->
 
-[kdosbuild]{.idx} resolves it the way `kpkgdepends` does: each name in turn, with the ports it depends on
-ahead of it, and nothing that is already installed and current. Ports come in that the list
+[kdosbuild]{.idx} hands the list to `kpkgdepends`, which orders it: each name in turn, with the ports it
+depends on ahead of it. Each port in that order is then one `kpkg install` step, and a port already
+installed from an unchanged recipe is skipped when its step comes. Ports come in that the list
 never names: [xxhash](#port-xxhash) ahead of binutils, and [gmp](#port-gmp), [mpfr](#port-mpfr) and
 [mpc](#port-mpc), which GCC links. gawk depends on GMP and MPFR as well, so those two arrive
 ahead of gawk, and MPC follows them just before GCC. No phase's list names any of them, so this phase is the only one that installs them.
@@ -175,8 +177,10 @@ findutils, patch, make, xz and gzip; the Linux API headers, which the `linux` po
 takes over; and kpkg and kinstall, which no phase's list names. [Part VI](../06-foundation/intro.md) rebuilds the userland
 as full ports before anything needs what the bootstrap left out.
 
-The phase writes a [snapshot]{.idx} of `fs` when it ends, so a later failure can restart from this tree
-(see [Snapshots](../../kdos/05-developer/build-system.md#snapshots)).
+In a run that writes snapshots, one given `--snapshot` or with snapshot writing switched on in the
+startup picker, the phase archives `fs` as its [snapshot]{.idx} when it ends, so a later failure can
+restart from this tree. A run writes none otherwise (see
+[Snapshots](../../kdos/05-developer/build-system.md#snapshots)).
 
 ## See also
 

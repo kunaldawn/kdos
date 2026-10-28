@@ -5,8 +5,9 @@
 #
 # <tag> is the GitHub release on kunaldawn/kdos that holds the file: sources-<N>,
 # the volume ports/shelves gives the shelf of the first port that names it, or
-# another volume when that one was full. A src-<name> tag is the older layout,
-# one release per shelf, still read until ports/publish --rehome moves the file.
+# another volume when that one was full. A src-<name> tag names a release that
+# holds one shelf's files; it fetches as any other, and ports/publish --rehome
+# moves its files into their volumes.
 # <asset> is the name GitHub stored, which is what the download URL uses:
 # <shelf>--<file>, longer when that is taken, attic--<file> for a file only old
 # history names. The file's own name is <port>/<file>. A file larger than

@@ -10,8 +10,10 @@ Avogadro 2, is a separate project and is not a port.
 
 - `-DBUILD_SHARED_LIBS=ON` — Shared libraries, upstream's default.
 - `-DENABLE_RPATH=OFF`, `-DCMAKE_SKIP_INSTALL_RPATH=ON` — Avogadro's `cmake/InstallLocation.cmake`
-  sets its own install run path unless `ENABLE_RPATH` is off; with both, the libraries and plugins
-  install with none, and the loader finds them in `/usr/lib`.
+  sets the install run path to `/usr/lib` whatever `ENABLE_RPATH` says, and with `ENABLE_RPATH` on
+  adds the directory of every library it links. Off drops the added directories and the skip drops
+  the run path itself, so the libraries and plugins install with none and the loader finds them in
+  `/usr/lib`.
 - `-DUSE_QT=ON`, `-DQT_VERSION=6`, `-DUSE_OPENGL=ON` — The Qt 6 widget, GUI and OpenGL rendering
   libraries and the plugins, on [qt6-qtbase](#port-qt6-qtbase), [glew](#port-glew) and
   [libglvnd](#port-libglvnd).
@@ -24,8 +26,8 @@ Avogadro 2, is a separate project and is not a port.
 - `-DUSE_SPGLIB=OFF`, `-DUSE_LIBMSYM=OFF`, `-DUSE_PLOTTER=OFF` — Space groups (spglib), symmetry
   detection (libmsym) and the spectra, conformer, PDF and XRD plots (JKQTPlotter); none of the
   three libraries is a port, so those plugins are not built.
-- `-DUSE_LIBARCHIVE=OFF` — The plugin package installer, the one plugin that needs libarchive,
-  which downloads plugin packages over the network at run time and unpacks them.
+- `-DUSE_LIBARCHIVE=OFF` — Leave out the plugin package installer, the one plugin that needs
+  libarchive, which downloads plugin packages over the network at run time and unpacks them.
 - `-DBUILD_GPL_PLUGINS=OFF` — Leave out the code under the GPL (the QTAIM analysis plugin, and
   the GPL parts of the force-field plugin), so the package stays under the BSD licence in
   `license`. Off is upstream's default.
@@ -38,11 +40,11 @@ Avogadro 2, is a separate project and is not a port.
 
 ## Notes
 
-The data that the fragment, molecule, crystal and input-generator plugins install comes from four
-more tarballs in `source`, all tagged with the library's version. The build looks for each as a
-sibling directory of the source tree named exactly `molecules`, `crystals`, `fragments` and
-`avogenerators`, and the first three are otherwise cloned from GitHub at build time, which has no
-network and fails. The archives unpack with the version in the name, so `build.sh` first moves
-each to the name the build expects. A missing `avogenerators` is only reported and skipped, so
+The data that the fragment-insertion, peptide-insertion, template-tool and input-generator plugins
+install comes from four more tarballs in `source`, all tagged with the library's version. The build
+looks for each as a sibling directory of the source tree named exactly `molecules`, `crystals`,
+`fragments` and `avogenerators`, and the first three are otherwise cloned from GitHub at build
+time, which has no network and fails. The archives unpack with the version in the name, so
+`build.sh` first moves each to the name the build expects. A missing `avogenerators` is only reported and skipped, so
 the `test -e` line after the install stops the build unless the generators' `pyproject.toml` is
 in the package.

@@ -2,9 +2,9 @@
 
 [Luanti]{.idx} is a voxel game engine: a world of blocks that can be mined and built with, where
 the game itself is written in Lua and loaded at run time. The engine installs no playable game
-(its source carries only Development Test, a test game), so this port also builds Minetest Game, a
-sandbox game from the same project, from a second source, giving the program something to play from
-its first start without downloading anything. The client renders
+(its source carries only Development Test, a test game), so this port also installs Minetest Game,
+a sandbox game from the same project, written in Lua and taken from a second source, giving the
+program something to play from its first start without downloading anything. The client renders
 through IrrlichtMt, Luanti's own fork of the Irrlicht engine, on SDL3.
 
 ## Flags

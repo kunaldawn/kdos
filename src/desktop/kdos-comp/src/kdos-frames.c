@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Frame timing, reported to whoever asks — ported from the pre-fork
- * kdos-comp. Half of `kdos stutter`: the compositor is the only thing
- * that knows a frame was late; /proc knows who was busy. See the
- * pre-fork header comment for the full rationale (Latency Lens's
- * "cannot identify which specific process caused a frame miss" is the
- * sentence this finishes).
+ * Frame timing, reported to whoever asks. Half of `kdos stutter`: the
+ * compositor is the only thing that knows a frame was late; /proc knows
+ * who was busy, and the pair names which process caused a frame miss.
  *
- * Rules carried over verbatim:
+ * Rules:
  * - Presentation events are the truth where the backend emits them;
  *   headless/nested backends do not present, so the frame clock is the
  *   fallback, and the two are reported with a `source` field rather
@@ -18,7 +15,7 @@
  *   and there is no history.
  * - Threshold is 1.5 refresh intervals.
  *
- * Fork adaptation: per-output state lives in this file's own records
+ * Per-output state lives in this file's own records
  * keyed by struct output *, with our own listeners on the wlr_output's
  * present and destroy signals — labwc's structs stay untouched. The
  * only upstream hooks are in handle_output_frame() (frame tick + render

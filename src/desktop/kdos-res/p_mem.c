@@ -136,9 +136,10 @@ void res_draw_mem(int x, int y, int w, int h)
 	}
 
 	/*
-	 * The per-slot DIMM table lives behind kdos-resctl: SMBIOS type 17 is
-	 * in /sys/firmware/dmi/tables/DMI at mode 0400. Without the helper the
-	 * section says so and the rest of the page is unaffected.
+	 * A per-slot DIMM table needs kdos-resctl: SMBIOS type 17 is in
+	 * /sys/firmware/dmi/tables/DMI at mode 0400. This page does not call
+	 * the helper and draws no table, installed or not; the line below
+	 * is printed always, and the rest of the page does not depend on it.
 	 */
 	if (row < bottom - 1)
 		ktui_draw_text(x + 1, row + 1, w - 2,

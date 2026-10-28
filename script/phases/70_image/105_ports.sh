@@ -18,8 +18,8 @@
 # books under docs/ and script/book for the programs of our own, whose sources
 # no archive holds. A shipped machine updates
 # by building from this tree, and kpkg fetches each source over the network
-# from the sources-<N> archive or upstream. The fetched tarballs are about
-# 39 GB and stay off the medium.
+# from the sources-<N> archive or upstream. The fetched tarballs are tens of
+# gigabytes and stay off the medium.
 #
 # A FILE IS A SOURCE WHEN ITS RECIPE HASHES IT (`sha256 = <hash>  <file>`) OR
 # WHEN IT IS AN ARCHIVE. The second rule catches a tarball an older version of
@@ -97,7 +97,7 @@ find "$TREE/src" "$TREE/docs" "$TREE/script" -mindepth 1 \( -name '.*' -o -name 
 chmod -R u=rwX,go=rX "$STAGE"
 nsrc=$(find "$TREE/src" -mindepth 3 -maxdepth 3 -name kpkgbuild | wc -l)
 
-# The tree must hold no source: one archive is the first of 39 GB.
+# The tree must hold no source: one archive is the first of tens of gigabytes.
 leak=$(find "$TREE/core" -type f -size +16M | head -n 5)
 if [ -n "$leak" ]; then
     echo "FATAL: the recipe tree holds files over 16 MB, which are sources:" >&2
@@ -110,8 +110,9 @@ echo "  $nports ports ($nfiles files), $nsrc of our own under src/, $(du -sh "$S
 # ── The tree's stamp and the key for the next one ───────────────────────
 #
 # TREE names the commit this tree is and when it was made. `kdos update fetch`
-# replaces /ports only with a signed tree whose TREE is newer, so an image
-# without the stamp takes any signed tree, an older one included. The format
+# treats a tree naming the same commit as current, refuses one whose time is
+# older, and replaces /ports with any other signed tree, so an image without
+# the stamp takes any signed tree, an older one included. The format
 # is the one `ports/publish --release` writes into the published tree.
 #
 # THE RELEASE KEY'S PUBLIC HALF GOES INTO /etc/kdos/keys/tree, the ring

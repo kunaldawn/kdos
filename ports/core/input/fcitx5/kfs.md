@@ -10,7 +10,7 @@ compositor and never directly. The language engines are separate ports built on 
 Korean. `kdos-desktop-start` starts it as `fcitx5 -d` once the compositor is up, and the candidate
 window is drawn as cells by `kdos-ime`, which takes over through fcitx5's kimpanel module. The
 whole arrangement is in
-[Input methods](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/session.md#input-methods).
+[Input methods](../../../../docs/kdos/03-architecture/session.md#input-methods).
 
 The build is Wayland only: no X11 frontend, no systemd, no autostart entry, and every helper
 archive the build would download already in place.
@@ -40,9 +40,10 @@ archive the build would download already in place.
   provider beside fcitx5's own English list. Upstream's check for it is `REQUIRED` once the
   option is on.
 - `-D ENABLE_TESTING_ADDONS=On` — Builds the testing addons, a test frontend, a test engine
-  and a test interface, although `ENABLE_TEST` is off. This is upstream's default. [fcitx5-anthy](#port-fcitx5-anthy) and
-  [fcitx5-hangul](#port-fcitx5-hangul) ask for the `TestFrontend` module with an unconditional
-  `REQUIRED` `find_package`, so without these addons neither engine configures.
+  and a test interface, although `ENABLE_TEST` is off. This is upstream's default.
+  [fcitx5-anthy](#port-fcitx5-anthy) and [fcitx5-hangul](#port-fcitx5-hangul) ask for the
+  `TestFrontend` module with an unconditional `REQUIRED` `find_package`, so without these addons
+  neither engine configures.
 - `-D ENABLE_XDGAUTOSTART=Off` — Installs no `.desktop` file under `/etc/xdg/autostart`. Nothing
   on KDOS reads that directory; `kdos-desktop-start` starts fcitx5 by name.
 - `-D BUILD_SPELL_DICT=On` — Compiles `en_dict.fscd`, the English word list the spell module uses

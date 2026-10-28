@@ -10,7 +10,7 @@ GLib-based library names it in `depends`, because the GIR it writes includes GLi
 Gio's.
 
 The arrangement is described in
-[A second build of the same source](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#a-second-build-of-the-same-source).
+[A second build of the same source](../../../../docs/kdos/05-developer/writing-ports.md#a-second-build-of-the-same-source).
 
 ## Flags
 

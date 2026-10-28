@@ -51,7 +51,7 @@
 #define KP_SHELF_BYTES 4096
 /* KP_MAX_DEPS bounds ONE recipe's `depends` line: kp_depends stops reading at
  * it, so a recipe naming more loses the rest from its build closure. The
- * largest recipes (vlc, chromium, libreoffice) name 60-75. */
+ * largest recipes (vlc, chromium, libreoffice) name 65-77. */
 #define KP_MAX_DEPS  128
 #define KP_MAX_ORDER 4096
 
@@ -136,8 +136,8 @@ char **kp_ports_scan(const KpConf *c, int *count, char *err, size_t errcap);
 char **kp_all_ports(const KpConf *c, int *count);
 
 /*
- * `# depends<blank>*:<blank>*` from a recipe, split on SPACES only — a tab
- * inside the list stays part of its token, which is what `tr ' ' '\n'` did.
+ * `depends<blank>*=<blank>*` from a recipe, split on SPACES only — a tab
+ * inside the list stays part of its token.
  * Fills up to KP_MAX_DEPS names; returns how many.
  */
 int kp_depends(const char *portdir, char out[][128], int max);

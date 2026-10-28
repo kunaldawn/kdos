@@ -98,8 +98,9 @@ while IFS=: read -r name _pw uid gid _gecos home shell; do
 
     # XDG user dirs. ~/.config/user-dirs.dirs names them, but git cannot carry
     # an empty directory through /etc/skel, so they are created here.
-    # `kdos-shot` writes into Pictures/Screenshots and will not create the tree
-    # itself. Mail is here for the same reason from the other direction:
+    # `kdos-shot` makes Pictures/Screenshots on its first capture, and is made
+    # here as well so the tree exists before one. Mail is here because
+    # the tools that use it do not make it:
     # notmuch's mail_root and mbsync's MaildirStore both name ~/Mail, and both
     # report an error on a directory that is not there rather than making one.
     # The calendar and contact stores are here for the same reason Mail is:

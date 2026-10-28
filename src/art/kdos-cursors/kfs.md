@@ -11,7 +11,7 @@ The session exports `XCURSOR_THEME=KDOS-cursors` from `/etc/profile.d/10-wayland
 application draws over its own window match. The vendored artwork is installed as well, under
 `/usr/share/kdos/cursors/art`, because `kdos theme <accent>` regenerates the theme from it on the
 running system; see
-[How the theme is generated](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/theming.md#how-the-theme-is-generated).
+[How the theme is generated](../../../docs/kdos/02-user-guide/theming.md#how-the-theme-is-generated).
 
 ## Flags
 - `phosphor` — The accent the system copy is generated in. A user's own accent is applied by
@@ -24,7 +24,7 @@ running system; see
 `/usr/share/kdos/cursors/art`, and `/usr/share/icons/default/index.theme`, which inherits
 `KDOS-cursors` and is the theme a program falls back to when it never sees `XCURSOR_THEME`: one
 started through `sudo` or `pkexec`, or an X client; see the `XCURSOR_THEME` row in
-[Starting a session](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/session.md#starting-a-session).
+[Starting a session](../../../docs/kdos/03-architecture/session.md#starting-a-session).
 
 The package puts nothing in `/etc/skel`. The copy in `/etc/skel/.icons`, which a box needs because
 it shares the home directory and not the host's `/usr/share/icons`, is written by `kdos theme` in

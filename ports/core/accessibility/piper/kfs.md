@@ -1,11 +1,14 @@
 ## About
 
 Piper is a neural text-to-speech engine that runs on the processor through
-[onnxruntime](#port-onnxruntime), with the voice model as a file on the disk: nothing is sent
-anywhere. A voice is an `.onnx` model with an `.onnx.json` beside it, passed with `-m`; the
-`piper.download_voices` module, which fetches voices, is the only part of the program that
-downloads anything. The package installs the `piper` Python package and a `piper` command, and with no
-`-f` output file `piper` speaks through PipeWire.
+[onnxruntime](#port-onnxruntime), with the voice model as a file on the disk: the text it speaks
+is sent nowhere. A voice is an `.onnx` model with an `.onnx.json` beside it, passed with `-m`.
+Three parts of the program reach the network: the `piper.download_voices` module, which fetches
+voices; the `piper.http_server` module's voice list and download routes; and a voice whose
+phoneme type is pinyin (Mandarin), which fetches the g2pW model from Hugging Face into `g2pW`
+under the current directory whenever `g2pW/g2pw.onnx` is not already there. The package installs
+the `piper` Python package and a `piper` command, and with none of `-f`, `-d` and `--output-raw`
+the `piper` command speaks through PipeWire.
 
 ## Flags
 
@@ -28,8 +31,9 @@ past the commit the new release pins in its `CMakeLists.txt`. espeak-ng's compil
 `espeak-ng-data` is installed inside the package directory, where piper looks for it, and
 `build.sh` stops if `phontab` or the `espeakbridge` extension is missing.
 
-Upstream builds its Python package with scikit-build, which is not a port. `build.sh` does what
-that build does by hand: it runs the project's CMake, which compiles the `espeakbridge` extension
-and espeak-ng's data, copies `src/piper` into `site-packages` without the training code, installs
-the CMake output into it, byte-compiles it, and writes the `piper` console script that the
-package's entry point would have made.
+Upstream builds its Python package with scikit-build, the setuptools-based `skbuild`, which is
+not a port (scikit-build-core, a different backend, is). `build.sh` does what that build does by
+hand: it runs the project's CMake, which compiles the `espeakbridge` extension and espeak-ng's
+data and copies the data into `src/piper`; copies `src/piper` into `site-packages` without the
+training code and the extension's C source; installs the CMake output into it; byte-compiles it;
+and writes the `piper` console script that the package's entry point would have made.

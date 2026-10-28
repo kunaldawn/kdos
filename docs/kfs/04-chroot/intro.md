@@ -3,10 +3,10 @@
 <!-- kfs:order entering kpkg-install -->
 
 From `20_selfhost` on, every package is built inside `build/fs` as a chroot, by kpkg, from a recipe
-under `ports/`. This part shows how the chroot is entered, with what mounts and what environment,
-and then follows a single `kpkg install` through every step it takes. The package pages in the rest
-of the book describe each of those steps for one port; this part is where the steps themselves are
-explained once.
+under `ports/`, or under `src/` for KDOS's own programs. This part shows how the chroot is entered,
+with what mounts and what environment, and then follows a single `kpkg install` through every step
+it takes. The package pages in the rest of the book describe each of those steps for one port; this
+part is where the steps themselves are explained once.
 
 ## See also
 

@@ -3,13 +3,14 @@
 speaks through a speech synthesiser, or both. It reads the Linux console through `/dev/vcsa`, so
 what it covers is the login prompt, a shell on another virtual terminal and the installer. It does
 not read the graphical session. There the reader is Orca, which reads the native applications and
-reaches a braille display through BRLTTY's API, BrlAPI, and its Python module. What is and is not read, how to turn it on and
-how its speech reaches the sound card are in
+reaches a braille display through BRLTTY's API, BrlAPI, and its Python module. What is and is not
+read, how to turn it on and how its speech reaches the sound card are in
 [Braille and speech at a text console](../../../../docs/kdos/02-user-guide/accessibility.md#braille-and-speech-at-a-text-console).
 
-The package installs the `brltty` daemon, its braille and speech drivers as loadable modules under
-`/usr/lib/brltty`, `libbrlapi` with its Python module, the polkit action and rule that admit a
-BrlAPI client, and a service script, `65_brltty`.
+The package installs the `brltty` daemon, with its three screen drivers and the eSpeak NG speech
+driver built in; its braille drivers and its other speech drivers as loadable modules under
+`/usr/lib/brltty`; `libbrlapi` with its Python module; the polkit action and rule that admit a
+BrlAPI client; and a service script, `65_brltty`.
 
 ## Flags
 - `--disable-x` — leave out BRLTTY's X11 support: `xbrlapi`, the helper that tells BrlAPI which X
@@ -82,8 +83,8 @@ own serial, USB, HID and Bluetooth code and need no library.
 The source is the release archive from brltty.app, not the tag archive from GitHub. The release
 carries upstream's generated `configure`; the tag archive has none and needs `./autogen`, which
 would generate it with this tree's autoconf and run `Tools/gendeps`, a Tcl script that opens every
-source file to follow its includes. Upstream's `configure` calls `expr length`, a GNU extension that POSIX `expr` does
-not have, so [coreutils](#port-coreutils) is in `depends`.
+source file to follow its includes. Upstream's `configure` calls `expr length`, a GNU extension
+that POSIX `expr` does not have, so [coreutils](#port-coreutils) is in `depends`.
 
 BrlAPI admits a client only when it may: its default is a key file plus polkit, and `make install`
 writes neither half. The key file would be one secret copied into every image, so the port installs

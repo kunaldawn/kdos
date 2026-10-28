@@ -2356,7 +2356,7 @@ static int own_diff(KwlBuffer *b, const KtuiCell *cur, int w, int h,
 
 /*
  * Paint `cur` into a buffer and commit it. Two different diffs, against two
- * different baselines, and keeping them apart is the whole of S1:
+ * different baselines, and they must be kept apart:
  *
  * The DAMAGE is the diff against `K.screen` — what the compositor is showing —
  * because damage describes what changed ON SCREEN. It is also what keeps the

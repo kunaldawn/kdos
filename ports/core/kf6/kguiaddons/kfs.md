@@ -15,8 +15,10 @@ or dark colour scheme. [kcolorscheme](#port-kcolorscheme), [kxmlgui](#port-kxmlg
   [wayland-protocols](#port-wayland-protocols) and
   [plasma-wayland-protocols](#port-plasma-wayland-protocols), so a missing one stops it.
 - `-D WITH_X11=ON` — Build the X11 code of `KModifierKeyInfo`, which a KDE program uses when it
-  runs under Xwayland. Every toolkit in the tree is built with both backends (see
-  [Toolkits, Wayland and X11](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/applications.md#toolkits-wayland-and-x11)).
+  runs under Xwayland. On, the configure requires [libX11](#port-libX11), [libxcb](#port-libxcb)
+  and a [qt6-qtbase](#port-qt6-qtbase) built with its xcb feature. Every toolkit in the tree is
+  built with both backends (see
+  [Toolkits, Wayland and X11](../../../../docs/kdos/02-user-guide/applications.md#toolkits-wayland-and-x11)).
 - `-D BUILD_GEO_SCHEME_HANDLER=OFF` — Build no `kde-geo-uri-handler`, the program that opens a
   `geo:` link in a web map, and none of the desktop entries that register it for OpenStreetMap,
   Google Maps, Wheelmap and Cartes.

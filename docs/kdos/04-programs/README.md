@@ -20,7 +20,10 @@ command on your `PATH` and want to know where it is documented, the tables below
 [Binaries that answer to several names](#binaries-that-answer-to-several-names) lists every name
 each of the four binaries behind most commands answers to; the three daemon clients are under
 [Root daemons](#root-daemons). The complete alphabetical list is the
-[command index](../06-reference/command-index.md).
+[command index](../06-reference/command-index.md). On an installed machine every `kdos-*` command,
+and each of ours without the prefix such as `kpkg`, `ksvc` and `kinstall`, also has a manual page,
+generated at build time from the section of this book that documents it: see
+[Manual pages and the book](kdos-command.md#manual-pages-and-the-book).
 
 ## Where the programs come from
 
@@ -29,14 +32,14 @@ program sits exactly two levels down, in one of five directories chosen by what 
 
 | Directory | Holds | Built by |
 |---|---|---|
-| `src/desktop/` | The compositor, the panel, the terminal, the resource monitor, the lock screen, the portal backend, the per-box Wayland socket and the screen recorder: the programs that draw the session or serve it over Wayland or D-Bus | The `50_desktop` phase, the only phase whose port search path includes this directory |
+| `src/desktop/` | The compositor, the panel, the terminal, the resource monitor, the lock screen, the portal backend, the per-box Wayland socket and the screen recorder: the programs that draw the session or serve it over Wayland or D-Bus | The `50_desktop` phase, the only phase whose [port search path](../05-developer/build-system.md#where-kpkg-looks-for-a-port) includes this directory |
 | `src/daemons/` | The five root daemons the desktop account talks to | The `50_desktop` phase, the only other phase that searches here |
-| `src/system/` | The package manager, the `kdos` command and its services, the pack tool, the box manager and the box init, and the installer | The userland phases: `kdos-pack` and `kdos-boxinit` in `41_system`, `kdos-tools` in `42_graphics` (its closure reaches Wayland through `kbd`), `kdos-appbox` in `44_apps`. Two are exceptions: `kdos-kpkg` (`kpkg`) and `kdos-installer` (`kinstall`) are compiled by the `120_kpkg.sh` and `130_kinstall.sh` steps of `10_bootstrap` and appear in no package list |
+| `src/system/` | The package manager, the `kdos` command and its services, the pack tool, the box manager and the box init, the installer, and the two ports that render this book and *KDOS from Scratch* onto the image | The userland phases: `kdos-pack`, `kdos-boxinit`, `kdos-doc` and `kdos-kfs` in `41_system`, `kdos-tools` in `42_graphics` (its closure reaches Wayland through `kbd`), `kdos-appbox` in `44_apps`. Two are exceptions: `kdos-kpkg` (`kpkg`) and `kdos-installer` (`kinstall`) are compiled by the `120_kpkg.sh` and `130_kinstall.sh` steps of `10_bootstrap` and appear in no package list |
 | `src/art/` | The theme generator, the icon, cursor and GTK themes built from it, the boot splash and the demo | The `41_system` phase |
 | `src/devtools/` | The build orchestrator `kdosbuild` and the upstream version checker `kdos-portup`, neither of which is installed on the target | `kdosbuild` by `script/kdosbuild.sh`, on the build host, at the start of every `make build`; `kdos-portup` by `ports/update`, on the build host, on demand |
 
-`src/libs/`, the sixth directory, holds the libraries every program links. The phases named here
-are described in the order they run, from the cross toolchain to the ISO, in
+`src/libs/`, the sixth directory, holds the libraries most of these programs link. The phases
+named here are described in the order they run, from the cross toolchain to the ISO, in
 [How KDOS is built](../05-developer/how-kdos-is-built.md); the phase that adds `src/desktop/` and
 `src/daemons/` is [The desktop: `50_desktop`](../05-developer/how-kdos-is-built.md#the-desktop-50_desktop).
 
@@ -45,13 +48,17 @@ The shell scripts in the tables (`kdos-desktop`, `kdos-desktop-start`, `kdos-ses
 are installed as they stand from `fs/usr/local/`. The build-host scripts live under `ports/`,
 `script/hooks/` and `testing/`.
 
-A program under `src/desktop/`, `src/daemons/`, `src/system/` or `src/art/` is an ordinary port: a directory holding a
-`kpkgbuild` and a `build.sh`, with no `source =` to fetch because the code is in the tree. Most of
-them link the static `libk*` libraries under `src/libs/`, described in
-[The C libraries](../05-developer/c-libraries.md). Three ports under `src/art/`,
-`kdos-icons`, `kdos-cursors` and `kdos-gtk-theme`, carry no program: each runs `kdos-theme` at
-build time to generate the icon, cursor or GTK theme it installs. They are described in
-[Theming](../02-user-guide/theming.md#how-the-theme-is-generated).
+A program under `src/desktop/`, `src/daemons/`, `src/system/` or `src/art/` is an ordinary port:
+a directory holding a `kpkgbuild` and a `build.sh`, with no `source =` to fetch because the code is
+in the tree. The one exception is `src/system/kdos-kpkg/`, which has neither file: the package
+manager has to exist before anything can be built with it, so `120_kpkg.sh` compiles it straight
+into the sysroot. Most of these programs compile in the `libk*` libraries under `src/libs/`,
+described in [The C libraries](../05-developer/c-libraries.md). Five ports carry no program. Three under
+`src/art/`, `kdos-icons`, `kdos-cursors` and `kdos-gtk-theme`, each run `kdos-theme` at build time
+to generate the icon, cursor or GTK theme they install; they are described in
+[Theming](../02-user-guide/theming.md#how-the-theme-is-generated). Two under `src/system/` render
+the books: `kdos-doc` writes this book to `/usr/share/doc/kdos` with the manual pages described above, and
+`kdos-kfs` writes *KDOS from Scratch* to `/usr/share/doc/kfs` as HTML and one PDF.
 
 A new program goes in the directory its kind names, and it is built only once a phase's list names
 it: `50_desktop`'s `packages.txt` for `src/desktop/` and `src/daemons/`, and the
@@ -73,12 +80,12 @@ one that runs in a box.
 | `kdos-comp` | The compositor: a frozen hard fork of labwc 0.20.0; its KDOS additions live mainly in twenty-three `src/kdos-*.c` files | [kdos-comp](kdos-comp.md) |
 | `kdos-shell` | The panel and 53 further surfaces: 55 names in all, since `kdos-launcher` and `kdos-palette` open the same surface. See [below](#kdos-shell--55-names) | [kdos-shell](kdos-shell.md) |
 | `kdos-res` | The resource monitor. The same binary runs as a text program on a virtual terminal and as a window on the desktop | [kdos-res](kdos-res.md) |
-| `kdos-term` | A terminal with three inline-picture protocols: sixel, iTerm2's and kitty's. It ships beside `foot`, which remains the default terminal | [kdos-term](kdos-term.md) |
+| `kdos-term` | A terminal with three inline-picture protocols: sixel, iTerm2's and kitty's. It ships beside `foot`, which is the default terminal | [kdos-term](kdos-term.md) |
 | `kdos-lock` | The lock screen, an `ext-session-lock-v1` client: the compositor keeps the screen locked if the client dies | [The daemons](daemons.md#kdos-lock) |
 | `kdos-record` | The screen recorder: the ScreenCast portal into a `gst-launch-1.0` pipeline. Running it a second time stops the recording | [The session](../03-architecture/session.md#recording) |
 | `kdos-desktop` | Starts a session from a virtual terminal after login. A shell script in `/usr/local/bin` | [The session](../03-architecture/session.md#what-kdos-desktop-does) |
 | `kdos-desktop-start` | Brings up the audio stack and the portals, then runs the compositor. After a crash it prints the log's tail and offers to restart the session; the third crash within 60 seconds returns to the text console without offering. A clean exit is a logout. A shell script in `/usr/local/bin` | [The session](../03-architecture/session.md#what-kdos-desktop-start-does) |
-| `kdos-session-save` | Records the running applications when the session is ended, so the next login can relaunch the boxed ones. A shell script | [The session](../03-architecture/session.md#what-runs-once-after-the-display-exists) |
+| `kdos-session-save` | Records the running applications when the session is ended from the root menu or `Super+Escape`, so that, with session restore turned on, the next login relaunches the boxed ones. A shell script | [The session](../03-architecture/session.md#what-runs-once-after-the-display-exists) |
 | `xdg-desktop-portal-kdos` | The FileChooser, Settings, AppChooser and Access portal backends, installed at `/usr/lib/xdg-desktop-portal-kdos` and started on demand over D-Bus in your session. It answers a file-chooser request by running `kdos-pick`, and an access question by running `kdos-prompt` | [The daemons](daemons.md#xdg-desktop-portal-kdos) |
 
 ## Root daemons
@@ -92,7 +99,7 @@ connection (`SO_PEERCRED`), never by anything the message claims. All five are d
 
 | Command | Owns |
 |---|---|
-| `kdos-powerd` | Suspend, power-off and reboot, for root and members of `seat` or `wheel`; the time zone, the [accent](../06-reference/glossary.md) (the colour palette), the autologin account and the firewall service list, for root and `wheel` only |
+| `kdos-powerd` | Suspend, power-off and reboot, for root and members of `seat` or `wheel`; the time zone, the [accent](../06-reference/glossary.md#accent) (the colour palette), the autologin account and the firewall service list, for root and `wheel` only |
 | `kdos-energyd` | The CPU energy counter (RAPL), sampled and attributed per application |
 | `kdos-oomd` | Killing a process when memory pressure, as the kernel's pressure-stall information (PSI) reports it, would otherwise leave the desktop unresponsive |
 | `kdos-mountd` | Mounting, unmounting, ejecting and formatting removable media; unlocking LUKS volumes; SMB shares; SMART queries |
@@ -108,15 +115,14 @@ place. Run by an ordinary user, the client writes a request to the socket and pr
 | `kdos-energy` | `/usr/bin`, a link to `../sbin/kdos-energyd` | `kdos-energyd` |
 | `kdos-mount` | `/usr/bin`, a link to `../sbin/kdos-mountd` | `kdos-mountd` |
 
-The same page also describes two programs that run as you rather than as root:
-`xdg-desktop-portal-kdos`, listed under [The desktop](#the-desktop), and `kdos-boxsock`, listed
-under [Packaging and boxes](#packaging-and-boxes).
+The same page also describes three programs that run as you rather than as root:
+`xdg-desktop-portal-kdos` and `kdos-lock`, listed under [The desktop](#the-desktop), and
+`kdos-boxsock`, listed under [Packaging and boxes](#packaging-and-boxes).
 
 ## Privileged helpers
 
-Two programs of KDOS's own are setuid root. Both are short (189 and 285 lines of C, counted with
-`wc -l` on `checkpass.c` and `resctl.c`), and neither takes a path from its caller. The image's
-whole setuid inventory is in
+Two programs of KDOS's own are setuid root. Both are short (`checkpass.c` is 189 lines of C,
+`resctl.c` 285), and neither takes a path from its caller. The image's whole setuid inventory is in
 [The security model](../03-architecture/security-model.md#setuid-binaries).
 
 | Command | Does | Takes |
@@ -124,7 +130,10 @@ whole setuid inventory is in
 | `kdos-checkpass` | Checks the caller's own password, by real user ID, against `/etc/shadow`, for `kdos-lock`. Exits 0 when it matches, 1 when it does not and 2 when it cannot tell | No arguments; the password on standard input |
 | `kdos-resctl` | For `kdos-res`: sends `TERM`, `KILL`, `STOP` or `CONT` to a process, renices it, or reads the SMBIOS table from a compiled-in path. The caller must be in `wheel` | Three verbs, `dmi`, `signal` and `renice`; no paths, no options |
 
-Both are installed in `/usr/bin` with mode 4755.
+Both are installed in `/usr/bin` with mode 4755. The security model gives each its own section,
+[`kdos-checkpass`](../03-architecture/security-model.md#kdos-checkpass) and
+[`kdos-resctl`](../03-architecture/security-model.md#kdos-resctl), and
+[Acting on a process](kdos-res.md#acting-on-a-process) describes when `kdos-res` calls its helper.
 
 ## Packaging and boxes
 
@@ -155,9 +164,9 @@ Both are installed in `/usr/bin` with mode 4755.
 | `kdos-mpctl` | Music player control, over mpd's protocol or MPRIS: what a media key runs | [The kdos command](kdos-command.md#kdos-mpctl) |
 | `kdos-share` | Sends a file to another machine over `croc` | [The kdos command](kdos-command.md#kdos-share) |
 | `kdos-sfx` | Plays the machine's four sounds: `login`, `notify`, `error`, `degauss` | [The kdos command](kdos-command.md#kdos-sfx) |
-| `kdos-fetch-app`, `kdos-fetch-static` | Install an [alien application](../06-reference/glossary.md) (one not compiled by this repository) from a network; fetch one verified static binary | [The kdos command](kdos-command.md#kdos-fetch-app-and-kdos-fetch-static) |
+| `kdos-fetch-app`, `kdos-fetch-static` | Install an [alien application](../06-reference/glossary.md#alien-app) (one not compiled by this repository) into a distrobox container from its distribution's packages, and export it to your desktop; fetch one upstream binary, checked against a SHA-256 you give it, into `/usr/local/bin` | [The kdos command](kdos-command.md#kdos-fetch-app-and-kdos-fetch-static) |
 | `kdos-bb` | A hard fork of bb 1.3rc1, the AAlib ASCII-art demo | [kdos-bb](kdos-bb.md) |
-| `kdos-openarchive` | Extracts an archive that `mc` cannot browse as a directory. A shell script | [kdos-shell](kdos-shell.md#kdos-pick) |
+| `kdos-openarchive` | Extracts an archive that `mc` cannot browse as a directory, with `ouch`, into the directory the archive is in. A shell script | [kdos-shell](kdos-shell.md#kdos-pick) |
 | `kdos-updatedb` | Rebuilds your own `plocate` index, scoped to your home directory. A shell script | [Administration](../02-user-guide/administration.md#finding-a-file-by-name) |
 | `xdg-terminal-exec` | The first terminal name GLib looks for when it wraps a `Terminal=true` entry, which is how the portal opens a link for a boxed application. It drops a leading `-e` or `--` and runs `foot -e` with the rest, the same terminal `kdos-appbox` chooses. A shell script | [kdos-appbox](kdos-appbox.md#terminal-entries) |
 
@@ -171,8 +180,8 @@ These run on a build host and never ship on the target.
 | `kdos-portup` | Checks every port for a newer upstream release. Compiled on demand by `ports/update` | [Writing ports](../05-developer/writing-ports.md#checking-for-new-versions) |
 | `ports/update` | The front end to the version checker | [Writing ports](../05-developer/writing-ports.md#checking-for-new-versions) |
 | `ports/fetch` | Fetches every source a recipe names, from the cache, the source archive or upstream, and generates missing vendor bundles. `make fetch` runs it | [Developing](../05-developer/developing.md#where-sources-come-from) |
-| `ports/publish` | Uploads sources the archive lacks into the numbered volumes `ports/shelves` maps each shelf to, plans volumes for new shelves, moves files when a port changes shelf, retires the emptied releases of the older one-per-shelf layout, lists and prunes files no recipe names, freezes a release's source list, and puts a system release on GitHub | [Writing ports](../05-developer/writing-ports.md#publishing-sources) |
-| `script/hooks/pre-push` | Refuses a push that breaks the ports layout (every recipe at `ports/core/<shelf>/<name>/` on a listed shelf, every port name used once), or whose recipes name a source the archive does not hold. Enabled with `git config core.hooksPath script/hooks` | [Developing](../05-developer/developing.md#the-pre-push-check) |
+| `ports/publish` | Uploads sources the archive lacks into the numbered volumes `ports/shelves` maps each shelf to, plans volumes for new shelves, moves files when a port changes shelf, deletes the per-shelf `src-<name>` releases once they hold nothing, lists and prunes files no recipe names, freezes a release's source list, and puts a system release on GitHub | [Writing ports](../05-developer/writing-ports.md#publishing-sources) |
+| `script/hooks/pre-push` | Refuses a push that breaks the ports layout (every recipe at `ports/core/<shelf>/<name>/` on a listed shelf, every port name used once across `ports/core` and `src/`), that adds or changes a patch with no `Subject:` line, whose working copy fails `testing/docscheck.sh` or `testing/kfscheck.py`, or whose recipes name a source the archive does not hold. Enabled with `git config core.hooksPath script/hooks` | [Developing](../05-developer/developing.md#the-pre-push-check) |
 | `testing/*` | The test harnesses, including the rig, which boots the ISO in QEMU and photographs it over VNC | [Testing](../05-developer/testing.md) |
 
 ## Binaries that answer to several names
@@ -181,8 +190,11 @@ Four binaries provide most of the commands on the system. Each dispatches on its
 is installed once, with a symbolic link for each further name. In `kdos-shell`, `ksvc` and `kpkg`
 a table in `main.c` maps each name to an entry point, and the table and the installed links must
 agree. A name in the table with no matching entry point fails the link; a name with no link
-installed is a program nothing can reach. Run under a name missing from its table, `kdos-shell` or
-`ksvc` prints the names it does know, and `kpkg` reports that it has no tool of that name.
+installed is a program nothing can reach. Run under a name missing from its table, each of the
+three takes its first argument as the name instead, so the freshly compiled `kdos-tools` binary
+runs as `kdos-tools service list` before any link exists. When that does not match either,
+`kdos-shell` or `ksvc` prints the names it does know, and `kpkg` reports that it has no tool of
+that name.
 `kdos-appbox` has no such table: it treats any name it does not recognise as the name of a boxed
 application to launch (an application shim, described below). Three root daemons also answer to a
 second name; see [Root daemons](#root-daemons).
@@ -228,8 +240,8 @@ link to it.
 | `kdos-sfx` | `/usr/local/bin` | Sound effects |
 | `kdos-mpctl` | `/usr/local/bin` | Music player control |
 | `kdos-share` | `/usr/local/bin` | A file to another machine, over `croc`. An open-with list offers its Share row only when this name is on `PATH` |
-| `kdos-fetch-app` | `/usr/local/bin` | Installs an alien application from a network |
-| `kdos-fetch-static` | `/usr/local/bin` | Fetches one verified static binary |
+| `kdos-fetch-app` | `/usr/local/bin` | Installs an alien application into a distrobox container and exports it |
+| `kdos-fetch-static` | `/usr/local/bin` | Installs one upstream binary, checked against a given SHA-256 |
 
 ### `kpkg` — 5 names
 

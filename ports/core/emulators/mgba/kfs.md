@@ -5,7 +5,7 @@ the SDL front end, `mgba`, which runs one ROM named on its command line; the lib
 [libretro-mgba](#port-libretro-mgba) port, built from the same tarball, and RetroArch is the menu's
 emulator front end. The player supplies the ROMs; the replacement GBA BIOS that mGBA compiles in
 is one of the exemptions listed in
-[What is built from source](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#what-is-built-from-source).
+[What is built from source](../../../../docs/kdos/05-developer/writing-ports.md#what-is-built-from-source).
 
 ## Flags
 
@@ -19,10 +19,11 @@ is one of the exemptions listed in
   and GLES 3 renderers, upstream's defaults. Upstream turns each off without an error when its
   library is not found.
 - `-DUSE_EPOXY=ON` — Load OpenGL through [libepoxy](#port-libepoxy). It is upstream's default.
-- `-DUSE_FFMPEG=OFF` — No FFmpeg. Its only use is the recording path of the Qt front end, which is
-  not built.
-- `-DUSE_LUA=OFF`, `-DENABLE_SCRIPTING=OFF` — No Lua scripting: the SDL front end has no way to
-  load a script.
+- `-DUSE_FFMPEG=OFF` — No FFmpeg. Its users are the Qt front end's video and GIF recording and
+  the e-Reader dot-code scanner in `libmgba`, which only the Qt front end calls; neither front end
+  path is built.
+- `-DUSE_LUA=OFF`, `-DENABLE_SCRIPTING=OFF` — No Lua scripting: Lua runs in the scripting context
+  that only the Qt front end creates, so the SDL front end has no way to run a script.
 - `-DUSE_DISCORD_RPC=OFF` — No Discord presence.
 - `-DUSE_ZLIB=ON` — This switch and `-DUSE_PNG=ON`, `-DUSE_LIBZIP=ON`, `-DUSE_LZMA=ON`,
   `-DUSE_SQLITE3=ON`, `-DUSE_ELF=ON` and `-DUSE_EDITLINE=ON` are upstream's defaults: compressed
@@ -45,4 +46,4 @@ after the executable, `mgba`. The icon is upstream's, installed as `io.mgba.mGBA
 
 `group = mgba` keeps this port and libretro-mgba one version bump: both build the same
 tarball (see
-[Steering the checker from a recipe](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#steering-the-checker-from-a-recipe)).
+[Steering the checker from a recipe](../../../../docs/kdos/05-developer/writing-ports.md#steering-the-checker-from-a-recipe)).

@@ -12,9 +12,9 @@
  *   ║   foot          ~           4231                ws 1   ║
  *   ╚════════════════════════════════════════════════════════╝
  *
- * Haiku's Team Monitor, and the escape hatch this desktop did not have: a
- * fullscreen alien app that has stopped answering owns the screen, and the
- * only way out was a tty. Enter is the POLITE close the protocol already has —
+ * Haiku's Team Monitor, and the desktop's escape hatch: a fullscreen alien
+ * app that has stopped answering owns the screen, and without this the only
+ * way out is a tty. Enter is the POLITE close the protocol already has —
  * an editor still gets to ask about unsaved work — and `k` is SIGTERM to the
  * process behind it, which is the answer when the polite one is being ignored.
  *
@@ -627,9 +627,9 @@ static void draw(int sel, int top)
 
 	/*
 	 * ONE COLUMN THAT SAYS THERE IS MORE, on the frame's own right edge —
-	 * see kch_scrollbar. It matters more since the wheel started
-	 * moving the PAGE rather than the cursor: without it the content
-	 * slides for no visible reason.
+	 * see kch_scrollbar. It is also a control: a press or drag on it
+	 * moves the page without moving the selection, and without it a
+	 * list longer than the frame gives no sign of the rows below.
 	 */
 	kch_scrollbar(0, w - 1, 2, rowsv, nviews, top, KT_SURFACE);
 

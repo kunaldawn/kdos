@@ -11,7 +11,7 @@ libraries that do not ship their own, among them `cairo-1.0`, `fontconfig-2.0`, 
 Every port that generates introspection data names it in `depends`, and with it
 [glib-introspection](#port-glib-introspection), whose GLib, GObject and Gio GIRs every new GIR
 includes. GLib itself is built without introspection, because this port needs GLib first; see
-[A second build of the same source](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#a-second-build-of-the-same-source).
+[A second build of the same source](../../../../docs/kdos/05-developer/writing-ports.md#a-second-build-of-the-same-source).
 
 ## Flags
 

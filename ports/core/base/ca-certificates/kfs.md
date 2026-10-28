@@ -12,7 +12,7 @@ and the links `/etc/ssl/certs/ca-certificates.crt` and `/etc/ssl/ca-bundle.crt`.
 OpenSSL program actually reads, `/etc/ssl/cert.pem`, is not in the package: `postinstall.sh` writes
 it on the installed system. How OpenSSL, GnuTLS, NSS and Python each find these anchors, and how to
 add a root of your own, is in
-[TLS trust anchors](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#tls-trust-anchors).
+[TLS trust anchors](../../../../docs/kdos/03-architecture/security-model.md#tls-trust-anchors).
 
 ## Flags
 - `-n` — `mk-ca-bundle.pl`: do not download `certdata.txt`, use the one in the current directory.

@@ -37,14 +37,15 @@ music to start; the free ones are the [openttd-opengfx](#port-openttd-opengfx),
   the configure (see
   [A graphical application](../../../../docs/kdos/05-developer/writing-ports.md#a-graphical-application)).
 - `-DCMAKE_EXE_LINKER_FLAGS` — the tree's `LDFLAGS` plus `-Wl,-z,stack-size=1048576`. musl gives a
-  new thread 128 KiB of stack unless the executable asks for more, and OpenTTD's pathfinder and
-  script threads need more than that; the linker flag records a 1 MiB request in the program.
+  new thread 128 KiB of stack unless the executable asks for more, and OpenTTD runs its game loop,
+  with the pathfinders and the AI and game scripts, on a thread of its own (`ottd:game`), which
+  needs more than that; the linker flag records a 1 MiB request in the program.
 
 ## Patches
 
 - `fix-segfault.patch` — From upstream pull request 15962. In `src/gfx_layout_icu.cpp`, keeps the `icu::UnicodeString` handed to the ICU line-break iterator in a named variable instead of a temporary. The iterator keeps a reference to the text, and a temporary is destroyed at the end of the statement, before the iterator reads it, so laying out a line that needs breaking could crash.
 - `musl-getrandom.patch` — In `src/core/random_func.cpp`, takes `getrandom()` from `<sys/random.h>` on any Linux, rather than only when `__GLIBC__` says glibc 2.25 or later. musl defines no `__GLIBC__`, so unpatched the game falls back to its own non-cryptographic random generator and warns that no strong one is available.
-- `no-survey.patch` — In `src/network/network_survey.h`, makes `IsSurveyPossible()` return `false`. That removes the opt-in usage survey, its settings button and the question about it at the first network game, so the program never offers to send a survey report.
+- `no-survey.patch` — In `src/network/network_survey.h`, makes `IsSurveyPossible()` return `false`. That removes the opt-in usage survey, its settings button and the question about it the first time the main menu opens, so the program never offers to send a survey report.
 
 ## Notes
 

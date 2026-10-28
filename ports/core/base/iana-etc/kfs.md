@@ -14,7 +14,7 @@ and `build.sh` turns them into the tables, which is why it is long.
   the three. Refreshing the tables is a new version, a fetch and three new hashes; the tables on
   the system are a function of three hashed registry snapshots and nothing else.
 - **`gawk`, by name.** The `rpc` transform uses `delete` on a whole array and `length()` of an
-  array, and whichever `awk` the name resolves to in the chroot is not guaranteed to have both;
+  array, which not every `awk` has, so `build.sh` runs `gawk` rather than `awk`, and
   `gawk` is the recipe's one dependency. Each table's header carries the registry date rather
   than the build time, so two builds of one version are byte-identical.
 - **What the transforms leave out.** In `services`, a record marked Unassigned, Reserved or
@@ -22,8 +22,9 @@ and `build.sh` turns them into the tables, which is why it is long.
   a description rather than a service name; both are skipped.
 - **The `rpc` aliases.** IANA names program 100000 `pmapprog portmap rpcbind`; `rpcbind`,
   `rpcinfo` and older tools look up `portmapper` and `sunrpc`, and programs 100001, 100002, 100005
-  and 100008 are looked up as `rstatd`, `rusersd`, `mountd` and `rwalld`. The transform adds those names where the registry lacks them, so the
-  lookups do not fail on a name every other system resolves.
+  and 100008 are looked up as `rstatd`, `rusersd`, `mountd` and `rwalld`. The transform adds those
+  names where the registry lacks them, so the lookups do not fail on a name every other system
+  resolves.
 - **An empty table stops the build.** A registry whose layout changes would make the transforms
   print nothing but the header, and a system whose `getservbyname()` fails for everything. After
   writing the files, `build.sh` fails when any of them has no entry, when `services` has no

@@ -2,12 +2,12 @@
 GNU findutils, of which KDOS installs `find`, which walks a directory tree and tests
 or acts on each file, and `xargs`, which builds command lines from its input. They are part of the
 GNU command line every KDOS system carries (see
-[The base userland](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/packaging.md#the-base-userland)).
+[The base userland](../../../../docs/kdos/03-architecture/packaging.md#the-base-userland)).
 
 The other half of the package, `locate`, `updatedb` and their helper `frcode`, is deleted after the
 install. `locate` and `updatedb` on KDOS are [plocate](#port-plocate)'s, which read and write a
 different index format (see
-[Finding a file by name](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md#finding-a-file-by-name)).
+[Finding a file by name](../../../../docs/kdos/02-user-guide/administration.md#finding-a-file-by-name)).
 
 ## Flags
 - `--localstatedir=/var/lib/locate` — The directory `updatedb` would keep its database in, which
@@ -26,6 +26,6 @@ the package afterwards.
 The `rm` and `rmdir` lines after the install must match what upstream installs. A `locate` left in
 the package would own `/usr/bin/locate`, which plocate installs in a later phase, and kpkg refuses
 a package that installs over a path another package owns (see
-[Who owns a file](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/packaging.md#who-owns-a-file)).
+[Who owns a file](../../../../docs/kdos/03-architecture/packaging.md#who-owns-a-file)).
 `rmdir` fails, and the build with it, if `/usr/libexec` or `/usr/share/man/man5` still holds a
 file after the deletions.

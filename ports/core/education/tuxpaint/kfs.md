@@ -44,6 +44,6 @@ The makefile is not safe in parallel, so both `make` runs pass `-j1`.
 `maketuxfont.py`, a Python helper that upstream installs with the zh_TW font documents.
 
 The entries are replaced. Tux Paint asks for the window class `TuxPaint.TuxPaint` by setting SDL
-2's `SDL_VIDEO_X11_WMCLASS` with `putenv()` in `main()`, but sdl2-compat renames that variable to
-`SDL_APP_ID` only in its load-time constructor, before `main()` runs, so SDL 3 falls back to the
-executable's name and the app_id is `tuxpaint`.
+2's `SDL_VIDEO_X11_WMCLASS` with `putenv()` in `setup()`, which `main()` calls, but sdl2-compat
+renames that variable to `SDL_APP_ID` only in its load-time constructor, before `main()` runs, so
+SDL 3 falls back to the executable's name and the app_id is `tuxpaint`.

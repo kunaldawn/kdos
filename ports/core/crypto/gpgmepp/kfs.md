@@ -2,8 +2,8 @@
 
 GpgME++ is the C++ binding to [gpgme](#port-gpgme): key, context and operation classes over the C
 API. It is released separately from GPGME. In KDOS it is used by [poppler](#port-poppler) for
-signed PDFs, by [libreoffice](#port-libreoffice), [kate](#port-kate), [ledger](#port-ledger), and
-through [qgpgme](#port-qgpgme) by [kleopatra](#port-kleopatra) and its libraries.
+signed PDFs, by [libreoffice](#port-libreoffice), [kate](#port-kate), [ledger](#port-ledger), and,
+directly and through [qgpgme](#port-qgpgme), by [kleopatra](#port-kleopatra) and its libraries.
 
 ## Flags
 

@@ -27,8 +27,8 @@ volume group inside an image through [libvslvm](#port-libvslvm) and [libbfio](#p
   which takes the same arguments. The define renames the one call at compile time; without it
   `ewf.cpp` fails on an undeclared function.
 - `--disable-java` — Build no Java bindings or jar file, the JNI layer Java front ends such as
-  Autopsy use; there is no Autopsy port. Upstream's README says the bindings build with Ant and
-  download the jars `ivy.xml` lists, which an offline build cannot do.
+  Autopsy use; there is no Autopsy port. The bindings' README, `bindings/java/README.txt`, says
+  they build with Ant and download the jars `ivy.xml` lists, which an offline build cannot do.
 - `--disable-cppunit` — Build without the cppunit tests.
 - `--with-afflib`, `--with-libbfio`, `--with-libvhdi`, `--with-libvmdk`, `--with-libvslvm`,
   `--with-libewf`, `--with-zlib` — Ask for each image-format library and zlib. configure still
@@ -59,4 +59,4 @@ port.
 
 The last loop runs `readelf -d` over every installed file and fails the build if any names a
 directory under `/var/cache`, the build tree, which the package lint also refuses (see
-[What the package lint refuses](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#what-the-package-lint-refuses)).
+[What the package lint refuses](../../../../docs/kdos/05-developer/writing-ports.md#what-the-package-lint-refuses)).

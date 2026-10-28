@@ -39,7 +39,8 @@ void res_sensor_prepare(void)
 	g_nsen = kpr_sensors_list(&g_sen);
 }
 
-/* The hottest, as the headline names it, in the unit `fahrenheit` asks for. */
+/* The hottest reading, in the unit `fahrenheit` asks for. The headline below
+ * names the same reading and prints it in Celsius whatever the setting. */
 const char *res_sensor_figure(void)
 {
 	static char s[24];
@@ -72,7 +73,7 @@ const char *res_sensor_headline(void)
 	if (!g_nsen)
 		return "no sensor on this machine";
 	/* THE HOTTEST, because that is the one question a person opens this
-	 * page with. An em dash where nothing answered: a machine with no
+	 * page with. Words where nothing answered: a machine with no
 	 * temperature sensor is not one running at zero. */
 	if (hot < 0)
 		snprintf(s, sizeof(s), "%d reading%s, no temperature",

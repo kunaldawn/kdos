@@ -3,8 +3,8 @@
 ShellCheck reads `sh` and `bash` scripts and reports what the shell would accept and do wrong: an
 unquoted expansion that splits on spaces, a `cd` whose failure nothing checks, a variable set in a
 subshell and lost, a construct a POSIX `sh` does not have. Every `build.sh` in this tree is a bash
-script, which `testing/preflight.sh` checks only with `bash -n`; ShellCheck reads it further. It is written in Haskell,
-and the port builds it from Hackage's `ShellCheck` source with [ghc](#port-ghc) and
+script whose syntax `testing/preflight.sh` checks with `bash -n`; ShellCheck finds what parses and
+still goes wrong. It is written in Haskell, and the port builds it from Hackage's `ShellCheck` source with [ghc](#port-ghc) and
 [cabal-install](#port-cabal-install) against a vendored set of Hackage packages.
 
 ## Flags
@@ -32,5 +32,5 @@ The vendor bundle comes from `cabal freeze`, run by `ports/fetch` in the fetch c
 GHC and cabal versions this tree builds; the freeze rides in the bundle and `build.sh` puts it back
 beside `ShellCheck.cabal` so the offline solve lands on exactly the packages that were downloaded.
 How the bundle is made and checked, and why the repository is configured under Hackage's name with
-no `--offline`, is in [The Haskell
-bundle](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-haskell-bundle).
+no `--offline`, is in
+[The Haskell bundle](../../../../docs/kdos/05-developer/writing-ports.md#the-haskell-bundle).

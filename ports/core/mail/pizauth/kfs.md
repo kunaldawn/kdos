@@ -12,7 +12,7 @@ rustls, so nothing links openssl for it.
 The crates come from the vendor bundle, `pizauth-vendor-<version>.tar.xz`, which `ports/fetch`
 writes with `cargo vendor` and pins with its own `sha256 =` line; `build.sh` unpacks it at the top
 of the tree and cargo builds `--frozen --offline` from it (see
-[Vendoring](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#vendoring)).
+[Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring)).
 
 The crate's one optional feature, `systemd`, adds sd-notify readiness reports; the recipe builds the
 default features, so it is not compiled in. The manual pages, `pizauth(1)` and `pizauth.conf(5)`,

@@ -5,8 +5,8 @@ microcontrollers and home-automation devices report to, with the `mosquitto_pub`
 `mosquitto_sub` clients, `libmosquitto`, and `mosquitto_ctrl` for administering a running broker.
 A broker on the machine makes a sensor network testable with no cloud account. The package adds a
 service script, `73_mosquitto`, which runs the broker under the supervisor once
-`/etc/mosquitto/mosquitto.conf` exists; see
-[Services](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md#services).
+`/etc/mosquitto/mosquitto.conf` exists and is not empty; see
+[Services](../../../../docs/kdos/02-user-guide/administration.md#services).
 
 ## Flags
 
@@ -26,23 +26,25 @@ service script, `73_mosquitto`, which runs the broker under the supervisor once
 - `-DHTTP_API_DIR=` — Empty the directory the HTTP API serves files from by default. Its cache
   default is the literal string "Default http_api directory", and an `http_api` listener with no
   `http_dir` of its own would `realpath()` that, fail, and refuse to start.
-- `-DWITH_PLUGIN_PERSIST_SQLITE=ON` — Build the plugin that keeps the broker's persistent state (messages,
-  retained messages, client sessions) in
-  [sqlite](#port-sqlite). It is a required `find_package`, so a missing sqlite stops configure.
+- `-DWITH_PLUGIN_PERSIST_SQLITE=ON` — Build the plugin that keeps the broker's persistent state
+  (messages, retained messages, client sessions) in [sqlite](#port-sqlite); upstream's default. It
+  is a required `find_package`, so a missing sqlite stops configure.
 - `-DWITH_CTRL_SHELL=ON` — `mosquitto_ctrl`'s interactive shell, upstream's default. It needs a line-editing library,
   found silently and dropped when missing; with both installed it takes
   [libedit](#port-libedit)'s `editline/readline.h` ahead of readline.
 - `-DWITH_PLUGIN_EXAMPLES=OFF` — Build none of the example plugins, which are on by default.
 - `-DWITH_SYSTEMD=OFF` — No systemd notification; KDOS has no systemd (see
-  [No systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd)).
+  [No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)).
 - `-DWITH_SRV=OFF` — The clients do no DNS SRV lookup of the broker; upstream's default.
 - `-DWITH_DLT=OFF` — No logging to the GENIVI Diagnostic Log and Trace daemon; upstream's default.
 
 ## Notes
 
-The install writes only `mosquitto.conf.example`. With no configuration at all the broker listens
+The install writes only examples into `/etc/mosquitto`: `mosquitto.conf.example`, and
+`aclfile.example`, `pskfile.example` and `pwfile.example` for access lists, TLS pre-shared keys and
+passwords. With no configuration at all the broker listens
 on loopback alone, which `mosquitto` run by hand already covers, so the service skips itself until
-`/etc/mosquitto/mosquitto.conf` exists. That file is what says devices on the LAN are meant to
+`/etc/mosquitto/mosquitto.conf` exists and is not empty. That file is what says devices on the LAN are meant to
 reach the broker: a `listener 1883` line in it, and the firewall's `mqtt` name switched on.
 
 `postinstall.sh` creates the `mosquitto` group and system account (home `/var/lib/mosquitto`, no

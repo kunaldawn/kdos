@@ -24,7 +24,7 @@ dead. An enrolled device is authorised only while `boltd` runs.
   enroll, authorize and manage. `wheel` is upstream's default and a group in `/etc/group`. The rule
   applies only when the caller's session is active and local, and polkit sees no active session on
   KDOS (see
-  [Why a password prompt cannot work here](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#why-a-password-prompt-cannot-work-here)),
+  [Why a password prompt cannot work here](../../../../docs/kdos/03-architecture/security-model.md#why-a-password-prompt-cannot-work-here)),
   so every check falls to the policy's `auth_admin`, with no agent to answer it, and
   `boltctl enroll` and `boltctl authorize` are run under `sudo`.
 

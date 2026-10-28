@@ -32,7 +32,7 @@ text. The program is called `goldendict`.
 
 ## Patches
 
-- `offline-defaults.patch` — Changes three first-run defaults in `src/config.cc` that reach the network: `checkForNewReleases` from true to false, the preset dict.org server from enabled to disabled, and the preset Wikipedia and Wiktionary sources (`makeDefaultMediaWikis`) from enabled to disabled. Each stays one checkbox away in Preferences and in the Dictionaries dialog.
+- `offline-defaults.patch` — Changes three first-run defaults in `src/config.cc` that reach the network: `checkForNewReleases` from true to false, the preset dict.org server from enabled to disabled, and the preset English Wikipedia and English Wiktionary sources (`makeDefaultMediaWikis`) from enabled to disabled. Each stays one checkbox away in Preferences and in the Dictionaries dialog.
 
 ## Notes
 

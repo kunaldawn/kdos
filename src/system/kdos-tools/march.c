@@ -36,7 +36,8 @@
  *   - The MEDIAN of several runs, not the mean and not one run. One run measures
  *     the scheduler; the mean measures the worst outlier.
  *   - A win under the noise floor is not a win. The floor is measured, not
- *     assumed: it comes from the spread of the baseline's own runs.
+ *     assumed: it is the wider of the two builds' spreads, the baseline's
+ *     runs and the optimised build's.
  * ---------------------------------
  */
 
@@ -166,9 +167,9 @@ static void bench_shell(char *out, size_t cap, const char *root, const char *cmd
 	/*
 	 * EXPORTED, not prefixed. `VAR=x cmd` applies to one simple command, and
 	 * a bench line is a pipeline or an && list by nature — so the prefix
-	 * form set PATH for the `dd` and left the `lz4` after it running the
-	 * SYSTEM's copy, which is the most convincing way to measure nothing at
-	 * all.
+	 * form would set PATH for the first command alone and leave every
+	 * command after it running the SYSTEM's copy, which measures nothing
+	 * the build changed.
 	 */
 	snprintf(out, cap,
 		 "cd '%s' && export PATH='%s/usr/bin:%s/usr/sbin:'$PATH "
@@ -179,10 +180,10 @@ static void bench_shell(char *out, size_t cap, const char *root, const char *cmd
 /*
  * `bench_setup =` runs ONCE per build and is not timed.
  *
- * It exists because the first bench line written here measured
- * `dd if=/dev/urandom` more than it measured lz4: 64 MiB out of the kernel's
- * RNG dominated the sample and pushed the noise floor to 13.5%, which is wider
- * than any answer worth having. A fixture belongs outside the stopwatch.
+ * A fixture belongs outside the stopwatch. Generating input inside the bench
+ * line times the generator as well as the port: 64 MiB from
+ * `dd if=/dev/urandom` outweighs an lz4 run, and its spread widens the noise
+ * floor past any win worth keeping.
  */
 static int bench_setup(const char *cmd, const char *root)
 {

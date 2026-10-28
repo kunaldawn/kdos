@@ -22,9 +22,10 @@
  * that nothing calls is a second answer to a question, and the contract cannot
  * arbitrate between two copies when only one of them ships.
  *
- * NOTHING BUT libkbase, AND NO MATHS LIBRARY. kdos-comp compiles libkbase and
- * libkcolor into a static archive and feeds it to meson; giving this library a
- * real `-l` moves that archive with it. The placement grid's interval search
+ * NO OTHER LIBRARY, AND NO MATHS LIBRARY. Only the C library's headers are
+ * included. kdos-comp compiles libkbase, libkcolor and this library into one
+ * static archive and feeds it to meson; giving this library a real `-l` moves
+ * that archive with it. The placement grid's interval search
  * compares doubles, which is plain arithmetic and calls nothing — do not reach
  * for anything that would need -lm.
  *

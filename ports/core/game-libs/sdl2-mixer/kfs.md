@@ -2,21 +2,22 @@
 
 SDL2_mixer plays sound effects and music for SDL 2 programs: WAV, FLAC, Ogg Vorbis, Opus, MP3 and
 WavPack files, tracker modules, MIDI scores and the console chiptune formats. It is built against
-[sdl2-compat](#port-sdl2-compat), so its sound goes out through [sdl3](#port-sdl3). Every format is
-decoded by the library port that owns it, linked rather than loaded at run time, and the decoders
-upstream compiles in as single-file copies (dr_flac, minimp3, stb_vorbis) are left out.
+[sdl2-compat](#port-sdl2-compat), so its sound goes out through [sdl3](#port-sdl3). Every compressed
+format is decoded by the library port that owns it, linked rather than loaded at run time, and the
+decoders upstream compiles in as single-file copies (dr_flac, minimp3, stb_vorbis) are left out.
 
 ## Flags
 
 - `-DSDL2MIXER_VENDORED=OFF` — Builds against the root's codec libraries rather than upstream's own
   copies, which are git submodules that `external/download.sh` fetches and the release tarball does
-  not contain. This is upstream's default everywhere but MSVC, named here.
+  not contain. This is upstream's default everywhere but MSVC and Android, named here.
 - `-DSDL2MIXER_DEPS_SHARED=OFF` — Links each codec library. Upstream's default loads each one with
   `dlopen` at run time instead; a dlopened library is a dependency the package solver cannot see,
   and a missing one is a format that silently stops playing.
-- `-DSDL2MIXER_CMD=OFF` — Builds no `Mix_SetMusicCMD`, through which a program hands its music
-  files to an outside player command that SDL2_mixer forks and runs. Upstream's default on Linux is
-  on.
+- `-DSDL2MIXER_CMD=OFF` — Builds without the external-player interface, through which a program
+  that calls `Mix_SetMusicCMD` hands its music files to an outside command that SDL2_mixer forks and
+  runs. `Mix_SetMusicCMD` still returns success, the command is never run, and the file is decoded
+  in the library. Upstream's default on Linux is on.
 - `-DSDL2MIXER_FLAC_LIBFLAC=ON`, `-DSDL2MIXER_FLAC_DRFLAC=OFF` — FLAC through [flac](#port-flac)'s
   libFLAC instead of the dr_flac copy compiled into the library, which is upstream's default.
   SDL2_mixer tries dr_flac first when both are built.
@@ -35,9 +36,10 @@ upstream compiles in as single-file copies (dr_flac, minimp3, stb_vorbis) are le
   installs. Without a SoundFont the FluidSynth player does not open, and a MIDI score falls to
   Timidity.
 - `-DSDL2MIXER_MIDI_TIMIDITY=ON` — SDL2_mixer's own copy of Timidity, the fallback when FluidSynth
-  cannot play. It needs a `timidity.cfg` and a patch set, named by `TIMIDITY_CFG` or found at
-  `/etc/timidity.cfg` or `/etc/timidity/freepats.cfg`, and no port installs one, so with neither
-  player able to open a MIDI score does not load.
+  cannot play. It needs a `timidity.cfg` and a patch set, named by `TIMIDITY_CFG` or by the program,
+  or found at `/etc/timidity.cfg`, at `/etc/timidity/freepats.cfg` or as `timidity.cfg` in the
+  working directory, and no port installs one, so with neither player able to open a MIDI score
+  does not load.
 - `-DSDL2MIXER_VORBIS=VORBISFILE` — Ogg Vorbis through [libvorbis](#port-libvorbis)'s vorbisfile
   instead of `STB`, the stb_vorbis copy compiled into the library, which is upstream's default.
 - `-DSDL2MIXER_SAMPLES=OFF` — Builds none of the sample players, which upstream builds by default

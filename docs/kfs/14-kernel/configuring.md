@@ -133,7 +133,7 @@ In this table, *DRM* stands for Device Drivers → Graphics support → *Direct 
 
 | Option | Location | Value | Used for |
 |:-----------------|:-------------|:---|:-----------------|
-| `CONFIG_DRM` | Device Drivers → Graphics support → *Direct Rendering Manager (XFree86 4.1.0 and higher DRI support)* | `y` | The display subsystem every graphics driver and the compositor go through. Built in rather than a module, because the panic screen draws a logo only from a built-in DRM |
+| `CONFIG_DRM` | Device Drivers → Graphics support → *Direct Rendering Manager (XFree86 4.1.0 and higher DRI support)* | `y` | The display subsystem every graphics driver and the compositor go through. Built in rather than a module, because the panic screen draws the KDOS logo only from a built-in DRM, and its ASCII Tux otherwise |
 | `CONFIG_DRM_SIMPLEDRM` | DRM → Drivers for system framebuffers → *Simple framebuffer driver* | `y` | A DRM driver for the framebuffer the firmware set up, so there is a display from the first moment of boot, before any GPU driver module loads |
 | `CONFIG_SYSFB_SIMPLEFB` | Device Drivers → Firmware Drivers → *Mark VGA/VBE/EFI FB as generic system framebuffer* | `y` | Hands the firmware's framebuffer to the driver in the row above |
 | `CONFIG_FRAMEBUFFER_CONSOLE_DEFERRED_TAKEOVER` | Device Drivers → Graphics support → Console display driver support → Framebuffer Console support → *Framebuffer Console Deferred Takeover* | `y` | The text console does not take the framebuffer until a glyph is printed on a virtual terminal, which leaves it to [the splash](../../kdos/03-architecture/boot-and-init.md#the-splash) while the boot prints on the serial line |
@@ -211,10 +211,10 @@ In this table, *DRM* stands for Device Drivers → Graphics support → *Direct 
 | `CONFIG_VETH` | Device Drivers → Network device support → Network core driver support → *Virtual ethernet pair device* | `y` | The link between a container's network namespace and the bridge it sits on |
 | `CONFIG_BRIDGE` | Networking support → Networking options → *802.1d Ethernet Bridging* | `y` | podman's `podman*` bridges and libvirt's `virbr*` bridges, which the firewall's drop-ins name |
 | `CONFIG_TUN` | Device Drivers → Network device support → Network core driver support → *Universal TUN/TAP device driver support* | `m` | `/dev/net/tun`, through which [passt](#port-passt)'s `pasta`, the rootless boxes' network, and `slirp4netns` give a container's namespace its interface; `/etc/modules-load.d/kdos-containers.conf` loads it at boot |
-| `CONFIG_SECURITY` | Security options → *Enable different security models* | `y` | The security-module framework the next four rows plug into |
+| `CONFIG_SECURITY` | Security options → *Enable different security models* | `y` | The security-module framework the next three rows plug into |
 | `CONFIG_SECURITY_LANDLOCK` | Security options → *Landlock support* | `y` | `kdos sandbox`, built on `libkbase`'s Landlock calls; see [the kdos command](../../kdos/04-programs/kdos-command.md#kdos-sandbox) |
-| `CONFIG_SECURITY_YAMA` | Security options → *Yama support* | `y` | Restricts `ptrace` to a process's own descendants unless a program is granted more |
-| `CONFIG_LSM` | Security options → *Ordered list of enabled LSMs* | `"landlock,lockdown,yama,integrity"` | The security modules turned on at boot. Landlock compiled in but missing from this list answers every request with `EOPNOTSUPP`, and the sandbox refuses to run unconfined |
+| `CONFIG_SECURITY_YAMA` | Security options → *Yama support* | `y` | Restricts `ptrace`. Nothing sets `kernel.yama.ptrace_scope`, so it stays at 1: a process may trace only its own descendants, and `gdb -p` or `strace -p` on another of your processes needs root |
+| `CONFIG_LSM` | Security options → *Ordered list of enabled LSMs* | `"landlock,lockdown,yama,integrity"` | The security modules turned on at boot. Landlock compiled in but missing from this list answers every request with `EOPNOTSUPP`, and the sandbox refuses to run unconfined. Lockdown is in the list but stays in its `none` mode; see [Security modules](../../kdos/03-architecture/security-model.md#security-modules) |
 
 ### BPF and tracing
 
@@ -319,7 +319,11 @@ error, and `kfscheck.py` keeps them out of the tables for the same reason. These
   [Microcode](../../kdos/03-architecture/boot-and-init.md#microcode).
 - `CONFIG_PANIC_TIMEOUT=0`: a panicking kernel waits for a reset instead of rebooting, unless the
   command line carries `panic=`, as an update trial's entry does.
-- `CONFIG_BLK_DEV_INITRD=y` and `CONFIG_RD_GZIP=y`: the initramfs, which is gzip-compressed.
+- `CONFIG_BLK_DEV_INITRD=y`, initramfs support, which has no default of its own:
+  `CONFIG_BOOTTIME_TRACING=y` selects `CONFIG_BOOT_CONFIG`, which selects it. Every KDOS boot
+  goes through an initramfs, so a change that turns boot-time tracing off has to set
+  `CONFIG_BLK_DEV_INITRD=y` in the file instead. `CONFIG_RD_GZIP=y`, its default, unpacks the
+  initramfs, which is gzip-compressed.
 
 On a running system, `zcat /proc/config.gz` shows them with everything else.
 

@@ -17,8 +17,8 @@ validation against DTDs and XML Schema. KDOS carries it for the three ports that
   `iconv`; named, a missing ICU stops the configuration with "icu transcoder unavailable" instead
   of falling back to one of them.
 - `-Dmessage-loader=inmemory` — Compile the parser's error and warning texts into the library.
-  The alternatives are `icu`, which loads them from an ICU resource bundle, and `iconv`, which reads a message catalogue through `catopen`. `inmemory` is also
-  upstream's default.
+  The alternatives are `icu`, which loads them from an ICU resource bundle, and `iconv`, which
+  reads a message catalogue through `catopen`. `inmemory` is also upstream's default.
 - `-Dthreads=ON` — Build with thread support, so that the library's mutexes are real ones rather
   than the `nothreads` stubs. This is also upstream's default.
 

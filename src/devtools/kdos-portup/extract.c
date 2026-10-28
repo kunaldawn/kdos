@@ -105,10 +105,9 @@ int pu_extract(const char *raw, char out[][PU_MAX_VER], int max)
 
 		/* Trim known archive and compression suffixes iteratively. Recognise:
 		 * tar, gz, xz, bz2, lz, lzma, zst, tgz, txz, tbz2, tbz, tlz, zip, 7z,
-		 * crate, gem, pem. Loop to
-		 * handle compound suffixes like .tar.xz (trim .xz, then .tar). Cost a
-		 * debug cycle: 129 of 390 ports use .tar.xz; without this, they report
-		 * unknown forever. */
+		 * crate, gem, pem, src, orig. Loop to handle compound suffixes
+		 * like .tar.xz (trim .xz, then .tar): a single pass leaves ".tar"
+		 * on the version, and every .tar.xz port reports unknown. */
 		int trimmed;
 		do {
 			trimmed = 0;

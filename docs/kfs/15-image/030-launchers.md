@@ -23,14 +23,17 @@ at the end if it is still empty; `genlaunchers` reads a missing directory as no 
 sweeps. No step of the phase extracts a pack into it, so on a standard build it is empty.
 
 `genlaunchers` reconciles rather than appends. It removes every desktop entry carrying
-`X-KDOS-Alien=true` and every `/usr/local/bin` link it recognises as its own shim, and rewrites
-the table and the MIME cache whole, from the packs it found. Against an empty source that is the
-clean-out; against one holding packs it is the population. The four outputs and their naming
+`X-KDOS-Alien=true` and every `/usr/local/bin` link it recognises as its own shim (a symbolic
+link with a relative target or the target `/usr/local/bin/kdos-appbox`, except under a name it
+reserves, such as `kdos-box` and `xdg-open`), and rewrites the table and the MIME cache whole,
+from the packs it found. Against an empty source that is the clean-out; against one holding packs
+it is the population. The four outputs and their naming
 rules are in [Launcher generation](../../kdos/04-programs/kdos-appbox.md#launcher-generation).
 
 `kdos-appbox` installs in `/usr/local/bin`, which is last on the chroot's `PATH`. Without the
 `kdos-appbox` package the step prints that it is not installed and exits 0, and whatever
-launchers the tree holds ship unchanged.
+launchers the tree holds ship unchanged, beside the empty extraction directory, which the step
+made before it looked.
 
 ## The check
 

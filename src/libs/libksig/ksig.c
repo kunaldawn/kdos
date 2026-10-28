@@ -23,7 +23,7 @@
  * version and its hash are in `monocypher/UPSTREAM`.
  *
  * Everything ABOVE Monocypher is here: the file formats, the keyring, and the
- * rule that a key id selects a key but never authorises one.
+ * rule that a key id names a key but never authorises one.
  *
  * What this library will not do:
  *

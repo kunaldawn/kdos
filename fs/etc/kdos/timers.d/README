@@ -19,6 +19,7 @@ yet, and the difference can be months.
 
 The per-user table is ~/.config/kdos/timers.d/ and has the same shape. It is
 started by the session at login, as loops that are the session's children
-and not a supervised service. Nothing stops them at logout: the next login on
-the same boot stops the previous set before starting its own, and a reboot
+and not a supervised service. Leaving the desktop does not stop them: they run
+on at the tty1 prompt Log Out leaves, until the next desktop start stops the
+previous set before starting its own, or the login itself ends and its hangup
 ends them.

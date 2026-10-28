@@ -10,13 +10,15 @@ imagemagick, gimp, ghostscript, leptonica, libheif and the web engines link it.
   the recipe.
 - `-DBUILD_THIRDPARTY=OFF` — Do not build the copies of zlib, libpng, libtiff and lcms2 that the
   source tree carries under `thirdparty/`; the tools link the system libraries instead.
+  Upstream's default, named.
 - `-DCMAKE_REQUIRE_FIND_PACKAGE_ZLIB=ON` — With `CMAKE_REQUIRE_FIND_PACKAGE_PNG`, `_TIFF` and
   `_LCMS2`, stop the configure when one of the tools' libraries is missing. `opj_compress` and
   `opj_decompress` read and write PNG and TIFF and apply ICC profiles through lcms2, and each
-  library is looked up with a `find_package` that drops the format without an error when it is not
-  found.
+  library is looked up with a `find_package` that drops its support without an error when it is
+  not found.
 
 ## Notes
 
-CMake installs no manual pages for the project, so `build.sh` copies the three tool pages and
+CMake installs the manual pages only under `BUILD_DOC`, an option that otherwise only adds a `doc`
+target for the Doxygen HTML reference. `build.sh` leaves it off and copies the three tool pages and
 `libopenjp2(3)` from `doc/man` itself.

@@ -124,9 +124,9 @@ static int parse_when(int argc, char **argv, time_t *out)
 		case 'd': mul = 86400; break;
 		default: return 0;
 		}
-		/* A year is the ceiling because the snooze pattern carries a
-		 * month and a day and no year: past twelve months the same
-		 * pattern is a different reminder. */
+		/* 300 days is the ceiling because the snooze pattern carries
+		 * a month and a day and no year: near twelve months out the
+		 * same pattern is a different reminder. */
 		if (n * mul > 300L * 86400L)
 			return 0;
 		*out = now + n * mul;
@@ -217,7 +217,7 @@ static int read_text(const char *path, char *out, size_t n)
 
 /* `-m M -d D -H h -M m -s SLACK -t PATH`, the pattern that matches the one
  * minute this reminder is for. There is no year in a snooze pattern, which is
- * why `in` refuses anything further out than ten months. */
+ * why `in` refuses anything further out than 300 days. */
 static void spec_of(const time_t *at, const char *path, char *out, size_t n)
 {
 	struct tm tm;

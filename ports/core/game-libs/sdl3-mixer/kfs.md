@@ -11,7 +11,7 @@ upstream compiles in (dr_flac, dr_mp3, stb_vorbis) are left out.
 
 - `-DSDLMIXER_VENDORED=OFF` — Builds against the root's codec libraries rather than upstream's own
   copies, which are git submodules that `external/download.sh` fetches and the release tarball does
-  not contain. This is upstream's default everywhere but MSVC, named here.
+  not contain. This is upstream's default everywhere but MSVC and Android, named here.
 - `-DSDLMIXER_STRICT=ON` — Stops configure when a library a named format needs is missing.
   Upstream's default is off, and a missing library then builds the library without that format.
 - `-DSDLMIXER_DEPS_SHARED=OFF` — Links each codec library. Upstream's default loads each one with
@@ -34,10 +34,12 @@ upstream compiles in (dr_flac, dr_mp3, stb_vorbis) are left out.
 - `-DSDLMIXER_MIDI_FLUIDSYNTH=ON` — MIDI through [fluidsynth](#port-fluidsynth), tried before the
   built-in Timidity. With no SoundFont given by the program, it opens the first of three
   distribution paths that exists; `/usr/share/soundfonts/default.sf2`, which
-  [fluidr3-gm-sf3](#port-fluidr3-gm-sf3) installs, is one of them.
-- `-DSDLMIXER_MIDI_TIMIDITY=ON` — SDL3_mixer's own copy of Timidity, the fallback when FluidSynth
-  cannot play. It needs a `timidity.cfg` and a patch set, named by `TIMIDITY_CFG` or found under
-  `/etc`, and no port installs one.
+  [fluidr3-gm-sf3](#port-fluidr3-gm-sf3) installs, is one of them. With none of the three present,
+  FluidSynth still accepts the score and plays it silent; it does not pass it on to Timidity.
+- `-DSDLMIXER_MIDI_TIMIDITY=ON` — SDL3_mixer's own copy of Timidity, which plays a score only when
+  FluidSynth refuses it. It needs a `timidity.cfg` and a patch set, named by `TIMIDITY_CFG` or found
+  at one of three paths under `/etc` or as `timidity.cfg` in the working directory, and no port
+  installs one.
 - `-DSDLMIXER_FLAC=ON`, `-DSDLMIXER_GME=ON`, `-DSDLMIXER_MOD=ON`, `-DSDLMIXER_MP3=ON`,
   `-DSDLMIXER_MIDI=ON`, `-DSDLMIXER_OPUS=ON`, `-DSDLMIXER_WAVPACK=ON` — Upstream's defaults, named
   in the recipe. The chiptune formats go through [libgme](#port-libgme), Opus through

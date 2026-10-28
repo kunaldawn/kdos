@@ -8,7 +8,7 @@ and reports over a single `.xhb` file. It imports bank statements as QIF, CSV an
 
 - `--disable-nls` — Build and install no translations. The packager removes every non-English
   catalogue whatever configure is told (see
-  [Size and language policy](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#size-and-language-policy)),
+  [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)),
   so the switch saves build time and changes nothing else.
 - `--with-ofx` — Import OFX and QFX statements through [libofx](#port-libofx). It is upstream's default,
   and does not make libofx required: configure turns the import off with only a message when
@@ -16,7 +16,7 @@ and reports over a single `.xhb` file. It imports bank statements as QIF, CSV an
 
 ## Patches
 
-- `homebank-theme-files.patch` — adds two files the release tarball leaves out although its makefiles install them: `themes/Default/index.theme`, the description of HomeBank's private icon theme, and the symbolic icon `prf-transaction-transfer-symbolic.svg`, which `themes/hicolor-symbolic/Makefile.am` lists. It also makes the `install-icons` rule of `themes/Default/Makefile.in` create the theme's directory before it copies `index.theme` into it.
+- `homebank-theme-files.patch` — adds two files the release tarball leaves out although its makefiles install them: `themes/Default/index.theme`, the description of HomeBank's private icon theme, and the symbolic icon `hicolor_status_scalable_prf-transaction-transfer-symbolic.svg`, which `themes/hicolor-symbolic/Makefile.am` lists. It also makes the `install-icons` rule of `themes/Default/Makefile.in` create the theme's directory before it copies `index.theme` into it.
 
 ## Notes
 

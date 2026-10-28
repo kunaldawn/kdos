@@ -11,8 +11,8 @@ Kamoso, Nheko and Dino play and record through it.
 
 - `-Dximagesrc=disabled` — No `ximagesrc`, the X11 screen-capture source.
 - `-Dgtk3=enabled` — Build `gtksink` and `gtkglsink`, which draw video into a GTK 3 widget.
-- `-Dqt6=enabled`, `-Dqt5=disabled` — Build `qml6glsink`, the
-  `org.freedesktop.gstreamer.Qt6GLVideoItem` QML type that [kamoso](#port-kamoso) and
+- `-Dqt6=enabled`, `-Dqt5=disabled` — Build `qml6glsink` and the `GstGLQt6VideoItem` type of the
+  `org.freedesktop.gstreamer.Qt6GLVideoItem` QML module, which [kamoso](#port-kamoso) and
   [nheko](#port-nheko) draw camera and call video into; without it their windows show no picture.
   No Qt 5 plugin.
 - `-Dqt-method=qmake` — Find Qt through `qmake6`, so the tools are found where it reports them:
@@ -36,8 +36,11 @@ Kamoso, Nheko and Dino play and record through it.
 - `-Dorc=enabled`, `-Dorc-compiler=disabled` — Use the [orc](#port-orc) run-time compiler for the
   SIMD kernels, and use the pre-generated orc C files shipped in the source instead of
   regenerating them.
-- `-Dasm=enabled` — Hand-written assembly, assembled with [nasm](#port-nasm).
-- `-Dflac=enabled` through `-Dgdk-pixbuf=enabled`, `-Dspeex=enabled`, `-Dtaglib=enabled`,
+- `-Dasm=enabled` — The deinterlacer's hand-written x86-64 assembly, assembled with
+  [nasm](#port-nasm); `enabled` makes a missing `nasm` stop the configure.
+- `-Dflac=enabled`, `-Dlame=enabled`, `-Dmpg123=enabled`, `-Dwavpack=enabled`, `-Dvpx=enabled`,
+  `-Dpng=enabled`, `-Djpeg=enabled`, `-Dcairo=enabled`, `-Dbz2=enabled`, `-Daalib=enabled`,
+  `-Dpulse=enabled`, `-Dgdk-pixbuf=enabled`, `-Dspeex=enabled`, `-Dtaglib=enabled`,
   `-Dtwolame=enabled` — Each plugin that links an outside library, named `enabled` so a missing
   one stops the configure: FLAC, LAME (MP3 encode), mpg123 (MP3 decode), WavPack, VP8 and VP9
   through [libvpx](#port-libvpx), PNG, JPEG, Cairo overlays, bzip2, the AAlib text-mode video
@@ -45,7 +48,7 @@ Kamoso, Nheko and Dino play and record through it.
   MPEG-1 layer 2 audio encoding.
 - `-Doss=disabled`, `-Doss4=disabled`, `-Djack=disabled` — No OSS or JACK audio elements. The
   PulseAudio elements are GStreamer's audio path, and `pipewire-pulse` serves them (see
-  [Audio](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/session.md#audio)).
+  [Audio](../../../../docs/kdos/03-architecture/session.md#audio)).
 - `-Dlibcaca=disabled`, `-Dshout2=disabled`, `-Ddv=disabled`, `-Ddv1394=disabled`,
   `-Damrnb=disabled`, `-Damrwbdec=disabled` — No libcaca video sink, no Icecast streaming, no DV
   video or FireWire capture, and no AMR codecs; each is pinned off, so it stays off whatever else

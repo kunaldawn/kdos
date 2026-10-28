@@ -4,10 +4,13 @@ An installed KDOS machine can keep two root filesystems, slot A and slot B, and 
 the slot it is not running, falling back to the other when the update does not finish booting.
 This page covers reading the boot state, describing a second slot, putting an update on trial,
 rolling one back by hand, and what to check when a slot will not boot or will not confirm. How
-the initramfs counts attempts, why each slot has its own kernel and how a UEFI trial uses
-`BootNext` are explained in
-[A/B slot selection](../../kdos/03-architecture/boot-and-init.md#ab-slot-selection); this page
-gives the procedures.
+the initramfs counts attempts is explained in
+[A/B slot selection](../../kdos/03-architecture/boot-and-init.md#ab-slot-selection), why each slot
+has its own kernel in
+[One kernel per slot](../../kdos/03-architecture/boot-and-init.md#one-kernel-per-slot), and how a
+UEFI trial uses `BootNext` in
+[One boot through BootNext](../../kdos/03-architecture/boot-and-init.md#one-boot-through-bootnext);
+this page gives the procedures.
 
 ## Installation
 
@@ -33,7 +36,7 @@ The state is one file on the ESP, `EFI/kdos/bootstate`, which is
 `/boot/efi/EFI/kdos/bootstate` on the running system. No file in the tree ships it; the installer
 writes the first version:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=2367-2380 pin=ab8cb81addd9 -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=2373-2386 pin=ab8cb81addd9 -->
 
 `kdos-bootctl` writes every later version, under a header of its own
 (`Written by kdos-bootctl; the initramfs reads it before it mounts a root filesystem.`), and adds
@@ -64,10 +67,11 @@ boots the `root=` of the menu entry.
 | `EFI/kdos/b/…` | Slot B's, once a deploy has put them there | `kdos-bootctl deploy` |
 | `EFI/kdos/bootstate` | The boot state | `kinstall`, then `kdos-bootctl` |
 | `limine.conf` | The menu; its `/KDOS` entries follow the state | `kinstall`, then `kdos-bootctl` |
-| `EFI/kdos/trial/` | `BOOTX64.EFI` and a trial `limine.conf`, during a UEFI trial only; removed when the trial ends | `kdos-bootctl try` |
-| `EFI/kdos/memtest.efi`, `EFI/kdos/wallpaper.png` | The memory test and the menu's backdrop, shared by both slots | `kinstall` |
+| `EFI/kdos/trial/` | A copy of the ESP's `BOOTX64.EFI` (`BOOTIA32.EFI` on 32-bit firmware) and a trial `limine.conf`, during a UEFI trial only; removed when the trial ends | `kdos-bootctl try` |
+| `EFI/kdos/memtest.efi`, `EFI/kdos/wallpaper.png`, `EFI/kdos/font.bin` | The memory test, the menu's backdrop and its typeface, shared by both slots; each only when the installer finds its source | `kinstall` |
 
-The menu is covered on [Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md).
+Which lines of the menu `kdos-bootctl` rewrites is covered on
+[Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md#what-kdos-bootctl-rewrites).
 
 ### Where each half runs
 
@@ -75,7 +79,7 @@ In the initramfs, the `BOOT SLOT` stage mounts the ESP, asks `select` for the ro
 that root's container, and unmounts it again. The `\$` in this excerpt is the generator's escaping:
 the init is written by a heredoc, and the generated script has a plain `$`.
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=760-815 pin=75069784095f -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=761-816 pin=75069784095f -->
 
 At the end of `rcS`, after every service script has run:
 
@@ -132,12 +136,23 @@ filesystem, copy the system into it, record it.
    sudo mkfs.ext4 /dev/kdos/root_b
    ```
 
-2. Mount it, for example at `/mnt/b`, and copy the running system into it. The installer's own
-   copy uses `rsync -aHAX -x --numeric-ids` with the exclusions in
-   `src/system/kdos-installer/install.c` (`do_copy`); `-x` keeps the copy off `/boot/efi` and the
-   pseudo-filesystems.
-3. The copy carries slot A's `/etc/fstab`, whose root line names slot A's filesystem by UUID.
-   Edit `/mnt/b/etc/fstab` so that line names slot B's filesystem instead.
+2. Mount it, for example at `/mnt/b`, and copy the running system into it:
+
+   ```bash
+   sudo mkdir -p /mnt/b
+   sudo mount /dev/kdos/root_b /mnt/b
+   sudo rsync -aHAX -x --numeric-ids / /mnt/b/
+   ```
+
+   These are the flags of the installer's own copy (`do_copy` in
+   `src/system/kdos-installer/install.c`). `-x` keeps the copy on the root
+   filesystem, so `/boot/efi`, `/proc`, `/sys`, `/dev`, `/run`, `/tmp` and `/mnt/b` itself stay
+   out. The installer's other exclusions keep the live session's logs, shell history, machine ID
+   and SSH host keys off a new machine; both slots here are the same machine, so they are not
+   wanted.
+3. The copy carries slot A's `/etc/fstab`, whose root line names slot A's filesystem by UUID and
+   type. Edit `/mnt/b/etc/fstab` so that line names slot B's filesystem, and its type if it
+   differs.
 4. Read the UUIDs and record the slot. The second UUID is needed only when slot B is inside its
    own LUKS container; the first is always the filesystem's:
 
@@ -167,15 +182,18 @@ not been run by hand, and a second encrypted slot has not been booted.
 1. Mount the inactive slot anywhere. `kdos update apply` finds it by its UUID in the boot state
    and refuses when it is not mounted.
 2. Fetch the tree and see what is behind: `sudo kdos update fetch`, then `kdos update check`.
-3. Run `sudo kdos update apply`. It builds every package that is behind into the mounted slot,
-   checks the slot with `kpkg check`, copies `/ports` into it, runs `kdos-bootctl deploy` for its
-   kernel and `kdos-bootctl try` for the slot.
+3. Run `sudo kdos update apply`. It fetches the sources, builds every package that is behind in the
+   slot on the running system and installs it into the mounted slot, checks the slot with
+   `kpkg check --all`, copies `/ports` into it, then runs `kdos-bootctl deploy` for its kernel and
+   `kdos-bootctl try` for the slot. When nothing is behind it prints
+   `nothing to take: everything installed matches the ports tree` and puts nothing on trial.
 4. Reboot. The candidate boots; if its boot reaches the end of `rcS`, `mark-good` makes it the
    active slot.
 5. Check the outcome: `sudo kdos-bootctl status`.
 
 `kdos update apply --in-place` updates the running root instead and gives up the rollback. The
-update path has not been run against a published tree
+whole update procedure, its tree and its keys are on [Updating](updating.md#applying-an-update).
+The update path has not been run against a published tree
 ([Known gaps](../../kdos/06-reference/known-gaps.md#the-update-path-has-not-been-run-against-a-published-tree)).
 
 ### Putting a slot on trial by hand
@@ -187,20 +205,23 @@ sudo kdos-bootctl try b        # or: try b 2, on a menu-led trial
 With UEFI variables available, `try` arms one boot through `BootNext` and prints
 `will boot slot b once, through UEFI BootNext; any boot after that one that has not confirmed it rolls back to a`.
 The firmware then starts a load option labelled `KDOS update trial`, which loads
-`EFI/kdos/trial/BOOTX64.EFI` and its trial menu. During the trial the main menu's
-`default_entry` also points at `KDOS (slot b)`, commented
-`The update on trial: one boot, then the confirmed root again`. The candidate boots with a command
-line ending in `panic=10`, so a candidate whose kernel panics restarts on its own. While the trial is armed,
+`EFI/kdos/trial/BOOTX64.EFI` and its trial menu, whose `default_entry` is `KDOS (slot b)`. The main
+menu's `default_entry` stays on the confirmed slot, and its `KDOS (slot b)` entry is commented
+`The update on trial: one boot, then the confirmed root again`. The candidate's entry ends in
+`panic=10`, unless the command line already sets `panic=`, so a candidate whose kernel panics
+restarts on its own. While the trial is armed,
 `status` reads `trying   b once, through UEFI BootNext — any boot after that one starts a`. When
 the candidate's boot reaches `mark-good`, it becomes the active slot, `EFI/kdos/trial/` is
 removed and the firmware is back on its usual boot order.
 
-Without UEFI variables (every [BIOS]{.idx} boot, or a UEFI boot with `efivarfs` not mounted), `try`
-prints `bootctl: no UEFI BootNext — slot b is led by the menu instead` and
+Without UEFI variables, `try` leads the trial from the menu. On a [BIOS]{.idx} boot it prints one
+line,
 `will boot slot b up to 3 time(s), then roll back to a; a kernel that dies before its initramfs is left by picking /KDOS (slot a)`.
-The menu's first entry is then commented `Try the update in slot b`, and `status` counts down
-`trying   b, 3 attempt(s) left`. With `efivarfs` missing on a UEFI machine the first line is
-preceded by `bootctl: cannot write Boot0000: No such file or directory`.
+On a UEFI boot whose firmware variables cannot be written, which includes one with `efivarfs` not
+mounted, that line follows `bootctl: no UEFI BootNext — slot b is led by the menu instead`; with
+`efivarfs` not mounted both are preceded by `bootctl: cannot write Boot0000: No such file or directory`. The menu's first
+entry is then commented `Try the update in slot b`, and `status` counts down
+`trying   b, 3 attempt(s) left`.
 
 `try` refuses the active slot (`bootctl: slot a is already active`), a slot with no root
 (`bootctl: slot b has no root filesystem`), and a slot with no kernel on the ESP; each exits 1.
@@ -244,9 +265,14 @@ does not change.
   warns when a second slot's kernel would not fit.
 - `deploy` refuses an initramfs that carries no modules for the kernel beside it, and the slot
   keeps the kernel it had. The `linux` package's postinstall is what builds a root's
-  `/boot/initramfs-kdos.cpio.gz`; see [The initramfs and the rescue shell](initramfs-and-rescue.md).
+  `/boot/initramfs-kdos.cpio.gz`; see
+  [A new kernel on an installed machine](initramfs-and-rescue.md#a-new-kernel-on-an-installed-machine).
 - A word added by hand to the first `/KDOS` entry's command line survives every regeneration of the
-  menu; see [Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md).
+  menu, and a word added to any other entry is dropped; see
+  [What kdos-bootctl rewrites](boot-menu-and-kernel-parameters.md#what-kdos-bootctl-rewrites).
+- Each slot is a whole root: the installer gives `/home` and `/etc` no filesystem of their own.
+  Booting the other slot boots its copies of them, so a file saved or a setting changed in one slot
+  since slot B was filled is not in the other.
 
 ## Troubleshooting
 
@@ -280,6 +306,7 @@ or the live medium, and record it again with both UUIDs:
 - [Nothing creates or first fills the second root slot](../../kdos/06-reference/known-gaps.md#nothing-creates-or-first-fills-the-second-root-slot)
 - [Per-slot kernels have been booted on virtual firmware only](../../kdos/06-reference/known-gaps.md#per-slot-kernels-have-been-booted-on-virtual-firmware-only)
 - [The update path has not been run against a published tree](../../kdos/06-reference/known-gaps.md#the-update-path-has-not-been-run-against-a-published-tree)
+- [An update into a slot compiles against the running system](../../kdos/06-reference/known-gaps.md#an-update-into-a-slot-compiles-against-the-running-system)
 - [A root filesystem on LVM has been booted in one shape only](../../kdos/06-reference/known-gaps.md#a-root-filesystem-on-lvm-has-been-booted-in-one-shape-only)
 - [A disk-encryption key is typed, not sealed in the TPM](../../kdos/06-reference/known-gaps.md#a-disk-encryption-key-is-typed-not-sealed-in-the-tpm)
 
@@ -292,12 +319,15 @@ or the live medium, and record it again with both UUIDs:
 - [kdos update](../../kdos/04-programs/kdos-command.md#kdos-update) and
   [kdos-bootctl](../../kdos/04-programs/kdos-command.md#kdos-bootctl)
 - [Keeping it current](../../kdos/02-user-guide/administration.md#keeping-it-current)
-- `boot-menu-and-kernel-parameters.md`: [Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md)
-- `initramfs-and-rescue.md`: [The initramfs and the rescue shell](initramfs-and-rescue.md)
-- `recovering-an-unbootable-system.md`: [Recovering an unbootable system](recovering-an-unbootable-system.md)
-- `updating.md`: [Updating](updating.md)
-- `encrypted-root.md`: [Encrypted root](encrypted-root.md)
-- `lvm-and-raid.md`: [LVM and RAID](lvm-and-raid.md)
+- [Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md): the `KDOS (slot <x>)`
+  entry and what `kdos-bootctl` rewrites in `limine.conf`
+- [The initramfs and the rescue shell](initramfs-and-rescue.md): the initramfs each slot boots,
+  and the shell it opens when a slot's root cannot be found
+- [Recovering an unbootable system](recovering-an-unbootable-system.md): finding where a boot
+  stopped and repairing it from the live medium
+- [Updating](updating.md): checking, fetching and applying an update into the inactive slot
+- [Encrypted root](encrypted-root.md): a LUKS root, and an encrypted second slot
+- [LVM and RAID](lvm-and-raid.md): volume groups and arrays, and slot B's logical volume
 
 <!-- book-nav -->
 ---

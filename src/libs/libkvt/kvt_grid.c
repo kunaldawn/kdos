@@ -115,11 +115,11 @@ static uint8_t attr_fg(const struct kvt_screen_attr *a)
 	 * THE COLOUR THE TERMINAL RESOLVED, whether it came from an index or
 	 * from a 24-bit request. The vte has already turned a palette index
 	 * into rgb through the palette in force — which on this desktop is the
-	 * eighteen colours `kdos theme` generated — so reducing the index
-	 * through a built-in VGA table instead threw that away: the file was
-	 * read, installed and then ignored for every one of the sixteen
-	 * colours it exists to set. It is also what applies bold's brightening,
-	 * which is resolved into the same fields.
+	 * eighteen colours `kdos theme` generated — so reduce the rgb, never
+	 * the index: an index reduced through a built-in VGA table ignores the
+	 * installed palette for every one of the sixteen colours it exists to
+	 * set. The rgb also carries bold's brightening, which is resolved into
+	 * the same fields.
 	 */
 	return nearest_slot(((uint32_t)a->fr << 16) |
 			    ((uint32_t)a->fg << 8) | (uint32_t)a->fb);
@@ -232,10 +232,10 @@ static int draw_cb(struct kvt_screen *con, uint64_t id, const uint32_t *ch,
 		c.attr |= KT_A_UNDERLINE;
 	if (attr->inverse)
 		c.attr |= KT_A_REVERSE;
-	/* The three styles a KtuiCell has room for. `blink` and `dim` have no
-	 * bit and are dropped here rather than approximated: a blink drawn as
-	 * bold and a dim drawn as normal are both a lie about the text, and
-	 * the cell is the one place that can say so. */
+	/* Italic, strike and overline each have a KtuiCell bit. `blink` and
+	 * `dim` have none and are dropped here rather than approximated: a
+	 * blink drawn as bold and a dim drawn as normal are both a lie about
+	 * the text, and the cell is the one place that can say so. */
 	if (attr->italic)
 		c.attr |= KT_A_ITALIC;
 	if (attr->strike)

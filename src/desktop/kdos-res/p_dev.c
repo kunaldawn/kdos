@@ -340,8 +340,8 @@ int res_drive_wheel(int up)
 /*
  * THE POINTER, the same contract the two tables keep: motion lights a row, a
  * press selects it, a press on the row that is ALREADY selected opens it.
- * Both device pages had verbs on keys and NOTHING at all on the pointer, so a
- * hand that reached this page could pick a drive and then not look at it.
+ * Without it a hand on the pointer could reach this page and pick a drive but
+ * never open it.
  */
 void res_drive_motion(int mx, int my)
 {
@@ -412,9 +412,8 @@ void res_dev_sample(void)
 	 * THE INTERVAL IS THE SAMPLER'S OWN, not `R.sample.wall_ms`. That
 	 * field is stamped inside res_sample()'s `if (want)` branch, and
 	 * these two pages want no per-process file at all — so on Drives and
-	 * Network it is never written and every rate here divided by zero
-	 * elapsed, which renders as a chart that is simply empty with nothing
-	 * saying why.
+	 * Network it is never written, and a rate taken over it would divide
+	 * by zero elapsed and draw an empty chart with nothing saying why.
 	 *
 	 * A fixture's clock is its own: its snapshots are one declared
 	 * interval apart by construction, and the monotonic clock would put

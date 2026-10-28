@@ -4,10 +4,13 @@ network streams, with transcoding and streaming out (`sout`) as well. This port 
 its Qt 5 interface, `libvlc` and `libvlccore` for programs that embed it, the `ncurses` text
 interface, and the modules its configure line names.
 
-The Qt interface embeds the video by window id when Qt runs on xcb, and by `wl_surface` when it
-runs on Wayland. With `DISPLAY` set, VLC picks its xcb interface first, so by default it runs
-under Xwayland and draws through the xcb, GLX and EGL-on-X11 video outputs; `--enable-wayland`
-builds the Wayland outputs too, for `QT_QPA_PLATFORM=wayland vlc`.
+The Qt interface is built with its X11 helpers ([qt5-qtx11extras](#port-qt5-qtx11extras)), and
+VLC 3 then starts Qt on its xcb platform whatever `QT_QPA_PLATFORM` says, and does not open the
+interface at all when no X display answers. So VLC runs under Xwayland, embeds the video in its
+window by X window id, and draws through the xcb, XVideo, GLX and EGL-on-X11 video outputs.
+`--enable-wayland` builds the Wayland outputs as well, with an `xdg-shell` video window that VLC
+opens when it runs without the Qt interface and with no X display, as `cvlc` does with `DISPLAY`
+unset.
 
 ## Flags
 - `LUA_CFLAGS` — with `LUA_LIBS` and `LUAC`: build the Lua modules against
@@ -19,14 +22,18 @@ builds the Wayland outputs too, for `QT_QPA_PLATFORM=wayland vlc`.
   looks for one by the POSIX names `c11-gcc`, `c11`, `c99-gcc` and `c99`, which nothing in the
   tree installs, and stops when it finds none and `BUILDCC` is unset.
 - `--enable-avcodec` — and every other `--enable-` of a module with an outside library, from
-  `--enable-archive` to `--enable-secret`: each module named, so that a missing port stops
-  configure instead of producing a VLC that cannot open a format. Each library is a port in
-  `depends`.
-- `--enable-lirc` — infrared remote controls through [lirc](#port-lirc). It is the one module
-  configure drops without an error when `liblirc_client` is missing, so `lirc` in `depends` is
-  what keeps it.
-- `--enable-merge-ffmpeg` — build the FFmpeg-based modules (`avcodec`, `avformat`, `swscale`) as
-  one plugin. Off by upstream's default.
+  `--enable-archive` to `--enable-secret`, `--enable-srt` and `--enable-librist`: each module
+  named, so that for most of them a missing port stops configure instead of producing a VLC that
+  cannot open a format. Each library is a port in `depends`.
+- `--enable-lirc` — infrared remote controls through [lirc](#port-lirc). Its check never stops
+  configure: a missing library leaves the module out without a word, whatever the switch says.
+  The checks behind `--enable-png` and `--enable-jpeg` do the same, and those behind
+  `--enable-libass`, `--enable-taglib`, `--enable-fontconfig`, `--enable-fribidi` and
+  `--enable-harfbuzz` print only a warning. For these the port in `depends` is what keeps the
+  module or feature.
+- `--enable-merge-ffmpeg` — build the `avformat` demuxer and muxer, the `avio` access and the
+  `avparser` packetizer into the `avcodec` plugin instead of plugins of their own; `swscale` stays
+  separate. Off by upstream's default.
 - `--enable-wma-fixed` — the fixed-point WMA decoder module, off by upstream's default.
 - `--enable-telx` — VLC's own Teletext decoder, the one built when zvbi is absent; zvbi is not a
   port.

@@ -7,13 +7,13 @@
  * ---------------------------------
  *   privacy.c — which app is using your microphone, by name
  *
- * Every phone OS answers this and no Linux desktop does. The reason is not
- * difficulty: PipeWire knows the capture node, the node knows the client, the
- * client knows its own name, and the panel knows how to draw. It is four owners
- * for one indicator, and nobody owns all four. KDOS does.
+ * The answer has four owners: PipeWire knows the capture node, the node knows
+ * the client, the client knows its own name, and the panel knows how to draw.
+ * This file joins them into one indicator.
  *
  * TWO SOURCES, because there are two ways to record and only one of them goes
- * through PipeWire:
+ * through PipeWire: PipeWire's capture nodes, and a /proc walk for open camera
+ * devices. They feed THREE lamps:
  *
  *   microphone — a PipeWire node with media.class Stream/Input/Audio, counted
  *                only while its state is RUNNING. A node that exists but is

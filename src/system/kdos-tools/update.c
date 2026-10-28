@@ -22,12 +22,14 @@
  *   fetch   a newer tree arrives over the network as one signed tarball, is
  *           verified against /etc/kdos/keys/tree, and replaces /ports whole
  *   apply   every package whose recipe now pins something newer is BUILT ON
- *           THIS MACHINE; kpkg downloads each source as it goes (the
- *           sources-<N> archive first, then upstream) and checks it against
- *           the recipe's sha256
+ *           THIS MACHINE; kpkg fetches every behind package's source before
+ *           the first build (the sources-<N> archive first, then upstream)
+ *           and checks it against the recipe's sha256, and a dependency the
+ *           new tree adds has its source fetched when the build reaches it
  *
- * There is no binary package host. An update needs the network for the tree
- * and the sources, and compiles on the machine — for hours, on a large set.
+ * `kdos update` reads no binary package host. An update needs the network for
+ * the tree and the sources, and compiles on the machine — for hours, on a
+ * large set.
  *
  * WHAT CAN GO WRONG IS RECORDED, so a panel badge can say it: no tree on the
  * machine, no network, a fetch that failed (a download, a signature, a tree

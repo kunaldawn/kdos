@@ -8,7 +8,7 @@
  *   deltas — an update that ships the difference, not the package
  *
  *   kpkg delta <old.tar.xz> <new.tar.xz> [-o <file>]
- *   kpkg apply-delta <old.tar.xz> <delta> -o <new.tar.xz>
+ *   kpkg apply-delta <old.tar.xz> <delta> -o <new.tar.xz> [--expect <sha256>]
  *
  * `zstd --patch-from` is the whole engine; everything here is the two decisions
  * around it.
@@ -25,10 +25,12 @@
  * anything the index did not already name. So there is no delta signature, no
  * second trust path, and nothing new to get wrong.
  *
- * The client can only use a delta when it still HAS the old package — KDOS keeps
- * built packages in PACKAGE_DIR, so this is the ordinary case for a machine that
- * has been updating rather than installing fresh. When the old package is gone,
- * the full package is the answer and nothing has been lost.
+ * The client can only use a delta when it still HAS the old package in
+ * PACKAGE_DIR. `kpkg install` deletes each package it builds unless
+ * --keep-cache or KPKG_KEEP_CACHE is set, so the old package is there only on a
+ * machine that keeps its cache, or one whose previous update was itself
+ * reconstructed from a delta. When the old package is gone, the full package is
+ * the answer and nothing has been lost.
  * ---------------------------------
  */
 

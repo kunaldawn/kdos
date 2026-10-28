@@ -195,7 +195,7 @@ void res_sample(void);
 /* ── small shared helpers ────────────────────────────────────────────── */
 const char *res_size(unsigned long long bytes);	/* honours units_1024   */
 const char *res_temp(double celsius);		/* honours fahrenheit    */
-/* An unreadable counter renders as an em dash, never as 0. */
+/* An unreadable counter renders as res_none()'s ASCII dash, never as 0. */
 const char *res_counter(unsigned long long v);
 const char *res_none(void);
 const char *res_cpu_headline(void);
@@ -321,7 +321,7 @@ void res_confirm(const char *title, const char *msg, const char *yes,
 void res_draw_mem(int x, int y, int w, int h);
 
 /*
- * Boxes (p_box.c). The tenth page, and it needs no new subsystem: libkproc's
+ * Boxes (p_box.c). The eleventh page, and it needs no new subsystem: libkproc's
  * conmon walk already turns a pid into a box name and this is a rollup keyed
  * on that rather than on the application. The ENERGY column is kdos-energyd's
  * answer, asked for rather than recomputed — and a `-` when it is not running,

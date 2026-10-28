@@ -6,5 +6,6 @@ hamburger menu and the command bar. [kxmlgui](#port-kxmlgui) and many KDE applic
 
 ## Flags
 
-- `-D BUILD_DESIGNERPLUGIN=OFF` — Build no Qt Designer plugin for the widgets, which upstream
-  builds by default.
+- `-D BUILD_DESIGNERPLUGIN=OFF` — Build no Qt Designer plugin for the widgets. Upstream builds one
+  by default, and the configure then requires Qt's `UiPlugin` module from
+  [qt6-qttools](#port-qt6-qttools), which this port's `depends` does not name.

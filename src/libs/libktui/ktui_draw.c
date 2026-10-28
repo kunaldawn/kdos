@@ -19,9 +19,10 @@
 
 /* Every glyph here was checked against uni/kdos.uni — the 512-glyph charset
  * ter-kdos32n is generated from. A character that is not in that file renders
- * as a blank on the TTY, which is why there is no ▓, no half block, and no
- * ← or → (the console font has ↑ and ↓ but not the horizontal pair; ◀ ▶ are
- * the ones that exist). Do not add a glyph to this table without grepping. */
+ * as a blank on the TTY, which is why there is no ▓ and no half block. ← and
+ * → are mapped onto the solid ◀ ▶ glyphs, so on the TTY a horizontal arrow
+ * and an end cap draw alike. Do not add a glyph to this table without
+ * grepping. */
 static const char *glyph_utf8[KT_G_N] = {
 	[KT_G_HL] = "─", [KT_G_VL] = "│",
 	[KT_G_TL] = "┌", [KT_G_TR] = "┐",
@@ -959,8 +960,8 @@ void ktui_draw_blend(KRect r, const uint32_t *under, int alpha)
  * is what makes "darkens" a property of this function rather than of the
  * palette it is handed. KT_BG is not darker than KT_SURFACE in every scheme —
  * in `bone` the backdrop is lighter than the surface in red and green, and in
- * `ice` it is lighter in blue — so a plain mix towards it BRIGHTENS the strip
- * and the window appears to glow along two edges. The clamp costs nothing
+ * `ice` it is lighter in green and blue — so a plain mix towards it BRIGHTENS
+ * the strip and the window appears to glow along two edges. The clamp costs nothing
  * where the backdrop is already the darker of the two, which is most schemes,
  * and it is the only thing standing between a new accent and a luminous
  * shadow.
@@ -1529,9 +1530,10 @@ void ktui_draw_flush(void)
 	 * from the first, and the one a person aims a two-pixel scrollbar with
 	 * is the guest's.
 	 *
-	 * THE CELL SAYS SO ITSELF. `KT_A_GUEST` is set by the session on a
+	 * THE CELL SAYS SO ITSELF. `KT_A_GUEST` is the caller's to set, on a
 	 * guest's content cells and on nothing else, so this is a fact rather
-	 * than a guess about what the pixels are doing. A guess made from the
+	 * than a guess about what the pixels are doing; no program in this
+	 * tree sets it, so every frame keeps its pointer. A guess made from the
 	 * sprite table — counting how often a slot is re-registered — reads a
 	 * guest that is merely still as one that is not there: a hand resting
 	 * on a window generates no damage, no frame is published, no slot is

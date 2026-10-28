@@ -254,11 +254,11 @@ typedef enum {
  * ORDER IS THE POINT: a signature over a subject naming a hash says nothing
  * until the bytes have been shown to hash to it.
  *
- * A BAD SIGNATURE IS NOT A MISSING ONE. The packs on a medium you booted are
- * signed by nobody, and shipping a key in the image would be asking you to
- * trust whoever built it — which is the question signing exists to let you
- * answer yourself. So KPK_SIG_NONE is a state a caller may accept, and
- * KPK_SIG_BAD never is.
+ * A BAD SIGNATURE IS NOT A MISSING ONE. The build signs no pack, so the packs
+ * on a medium you booted carry no block, and the key the image ships in
+ * /etc/kdos/keys/packs verifies none of them; refusing an unsigned pack would
+ * refuse every one the medium holds. So KPK_SIG_NONE is a state a caller may
+ * accept, and KPK_SIG_BAD never is.
  *
  * AND AN EMPTY RING IS NOT A BAD SIGNATURE. `KPK_SIG_NOKEY` is a pack that
  * carries a block against a machine holding no key that could ever check it,

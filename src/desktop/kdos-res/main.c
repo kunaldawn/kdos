@@ -347,9 +347,11 @@ int main(int argc, char **argv)
 			unsigned long long spent = kpr_mono_ms() - now;
 			/*
 			 * A tick that overran its own interval means this
-			 * program is the load. It backs off and SAYS SO rather
-			 * than quietly becoming the top consumer of the
-			 * machine it is reporting on.
+			 * program is the load. R.overran records it, and
+			 * nothing reads it; the next deadline is one
+			 * interval after this tick began, so an overrunning
+			 * tick is followed by another at once, with no
+			 * back-off.
 			 */
 			R.overran = spent > (unsigned long long)RC.interval_ms;
 			next = now + (unsigned long long)RC.interval_ms;

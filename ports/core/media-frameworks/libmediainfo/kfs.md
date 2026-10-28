@@ -10,8 +10,8 @@ duration and tags. Its CMake build lives in `Project/CMake`, which is where `bui
   of the copies the build can compile; upstream's default off Windows, named.
 - `-DCURL_NO_CURL_CMAKE=ON` — Send CMake's FindCURL straight to pkg-config. Its first step asks for
   a `CURLConfig.cmake`, which curl does not install here, and with curl required that miss would
-  stop the configure; see [A graphical
-  application](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#a-graphical-application).
+  stop the configure; see
+  [A graphical application](../../../../docs/kdos/05-developer/writing-ports.md#a-graphical-application).
 - `-DCMAKE_REQUIRE_FIND_PACKAGE_CURL=ON` — Require libcurl. Without it the library links no curl and
   loads `libcurl` with `dlopen` at run time to read URLs.
 - `-DCMAKE_REQUIRE_FIND_PACKAGE_PkgConfig=ON` — Require pkg-config. Without it the build installs no

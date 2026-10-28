@@ -139,7 +139,7 @@ second answer to a question this desktop has already settled.
 | `ktui_dropdown_*` | A choice, as a list that opens under its row |
 | `ktui_input`, `ktui_field_*` | A line of text with a caret |
 | `ktui_textarea_*` | Several lines of text with a caret |
-| `ktui_list`, `ktui_table` | Rows, and rows with columns; a column may sort from its title, align right, or drag wider |
+| `ktui_list`, `ktui_table_*` | Rows, and rows with columns; a column may sort from its title, align right, or drag wider |
 | `ktui_sel_slots`, `ktui_sel_row`, `ktui_sel_dim` | What a selected row looks like, for every surface that has one |
 | `ktui_rows_*` | Which row the pointer is on, for a surface that draws its own rows |
 | `ktui_table_event` | The same for a table: wheel, press, pick, Back, and a sort or a drag in its header |
@@ -168,17 +168,19 @@ ten.
 
 A divider is a `│` (or a `─` between stacked panes) in `KT_DIM` on whatever the page put under it,
 and in the accent while it has the focus. A fold's heading is a section heading with a marker in
-front of it: `►` in the accent while shut, `▼` while open (`>` and `v` on the console), the title in
+front of it: `►` in the accent while shut, `▼` while open (`>` and `v` at the [ascii tier](#the-glyph-tiers)), the title in
 the accent and the section's rule after it; focused, the row takes the selection fill and the title
 `KT_TEXT`, as a check box does, so the marker is the state and the plate is the focus.
 
 Most controls are a `draw` / `key` / `hit` trio with one frame-level call on top. That is what
 lets a surface running its own event loop, such as `kdos-display` or `kdos-audio`, use the same
 control as one written inside the immediate-mode frame (`ktui_frame_begin()`), in which a surface
-redraws every control on every frame and reads input as it draws, and which `kdos-settings`,
-`kdos-prompt` and the installer use. A control that existed only inside the frame would have to be
-written a second time by every other surface. A control that takes the focus also records what it
-is for a screen reader (`ktui_announce`); see [Accessibility](../02-user-guide/accessibility.md).
+redraws every control on every frame and reads input as it draws. The installer is drawn that way;
+the `kdos-shell` runner can host a surface inside a frame (`ShSurface.frame`), but none of its
+surfaces asks for one. A control that existed only inside the frame would have to be written a
+second time by every other surface. A control that takes the focus also records what it would say
+to a screen reader (`ktui_announce`), though nothing reads that record; see
+[The announcement record](../02-user-guide/accessibility.md#the-announcement-record).
 
 ### The pixel layer under the cells
 
@@ -263,7 +265,7 @@ A surface holds one `KtuiKeys`, calls `ktui_keys()` first in its event dispatch,
 `ktui_hint_row()` last in its draw. `ktui_keys()` takes every event, not only keys, because it
 routes into the surface's menu first and a menu also answers the pointer. It returns
 `KTUI_KEY_PASS` for everything it does not own, so the surface's own dispatch sees the rest
-unchanged. Thirty-nine source files outside `libktui` and its self-test call it.
+unchanged. Thirty-two source files outside `libktui` and its self-test call it.
 
 ### Help and absent keys
 
@@ -340,8 +342,12 @@ on a Linux console.
 | `KT_SURFACE` | Raised chrome background | `variant` |
 | `KT_BG` | The background | `backdrop` |
 
-A scheme has a ninth field, `deep`, the darkest ground, which no slot takes. It is what a scheme's
-legibility is measured against, and it feeds derived colours such as `kcol_muted()` below.
+A scheme has a ninth field, `deep`, the ground at the far end from `text`: the darkest colour of a
+dark scheme and the lightest of `paper`. No slot takes it. It is what a scheme's legibility is
+measured against, and it feeds derived colours such as `kcol_muted()` below. Outside the slots, the
+compositor paints it under [the wallpaper](../04-programs/kdos-comp.md#the-wallpaper), so it is all
+an output shows with `wallpaper = none`, and the text console's sixteen-colour palette uses it as
+colour 0.
 
 The values behind the slots are one table in `libkcolor` (`KCOL_SCHEMES` in
 `src/libs/libkcolor/kcolor.h`), expanded at compile time by everything that draws. Nobody keeps a
@@ -736,9 +742,10 @@ The fit-aware wheel is `kch_list_wheel()` in `libkchrome`: a list that fits gets
 and a list that scrolls gets its view moved by three rows (`SH_WHEEL_ROWS`) with the selection left
 where it was. `kch_list_clamp()` keeps the view inside the list afterwards. `ktui_rows_event` does
 not follow that rule: it steps the selection on every detent, fits or not, and leaves the view to
-follow the selection. Twelve call sites in eleven source files use the fit-aware rule; the five
-`kdos-shell` surfaces that draw their rows through `ktui_rows_event` (the recorder, trash, command
-palette, theme and find surfaces) step the selection on every detent instead.
+follow the selection. Twelve call sites in eleven source files use the fit-aware rule. The four
+`kdos-shell` surfaces that draw their rows through `ktui_rows_event` (the recorder, command
+palette, theme and find surfaces) step the selection on every detent instead, and so does every
+table driven by `ktui_table_event` (the trash, backup, disc-burning and verify tables).
 
 The flag that says "pull the selection into view" (`follow`) is set by everything that moves the
 selection and by nothing that scrolls the page, or the next frame would undo the scroll. A surface
@@ -949,14 +956,14 @@ A picture that shows as nothing is worse than one that shows as a mark, because 
 like output that never arrived. That is why the tiled path carries a fallback character rather than
 a space.
 
-A tile that is a control carries the control's state in its cells' background slot. The backend
-fills a cell's background before drawing the picture over it, so that slot is the button's body
-wherever there is no pixel layer to record a plate into. `KT_SURFACE` is right only where there is
-one, since the recorded plate shows through it; on a plain character grid it would leave the button
-with no fill, no edges, and no visible hover or open-menu state. So the slot follows the same ladder
-the pixel plate draws: a quiet fill at rest, the accent under the pointer, the warning colour while
-the control's own menu is open, with the ink following the fill. The Start button is the example.
-An icon sitting inside a wider field shows its state through the field instead.
+A tile that is a control shows its state in the plate the pixel layer records under it. The Start
+button is the example: a quiet plate at rest, the accent under the pointer, the warning colour
+while its own menu is open, with the ink following the plate (`KT_TEXT` at rest, `KT_SURFACE` on a
+lit plate). The button's cells keep `KT_SURFACE`, the slot the backdrop owns, so the recorded plate
+shows through them rather than being filled over. The backend fills a cell's background before it
+draws the picture, so where there is no pixel layer the button has no fill and no visible hover or
+open-menu state, and a lit Start button's `KT_SURFACE` ink is drawn on `KT_SURFACE`. An icon sitting inside a wider
+field shows its state through the field instead.
 
 A sprite beside text is two cells wide and one tall. A cell is twice as tall as it is wide (16 by
 32 pixels at the default font), so two cells across one row is a square on the same line as the
@@ -999,7 +1006,8 @@ everything else. It is designed to match the cell grid:
   moment it most needs to say what it is.
 - **Menus are sized for the cell.** The generated file sets `menu.width.max: 900`, because at
   32-pixel text the compositor's default cap of 200 pixels holds about eleven characters.
-- **A box chip.** A window from a box whose profile sets its own accent (`accent =` in
+- **A box chip.** A window from a box whose
+  [profile](../04-programs/kdos-appbox.md#box-profiles) sets its own accent (`accent =` in
   `~/.config/kdos/boxes/<name>.conf`) carries a square of that colour at the left of its title
   area, the height of the title bar, so you can see which box it came from. A box with the
   session's own accent draws no chip, so a default installation shows none.
@@ -1009,9 +1017,10 @@ appended after the generated block each time it is written, so they survive an a
 
 ## Motion
 
-Nothing on the cell grid moves. A cell is drawn or it is not, and that is what `tty1` and `--dump`
-show, so no surface's cells may depend on a clock to reach their final state. Motion lives in three
-places, all of them pixels over, under or in place of cells that are already final.
+No cell depends on a clock to reach its final state. A cell is drawn or it is not, and the final
+state is what `tty1` and `--dump` show. Motion lives in three places, and almost all of it is pixels
+over, under or in place of cells that are already final; the About window, which moves its cells,
+is the exception, listed with the surface animations below.
 
 The compositor re-blends pictures a surface has already finished. A surface on the top or overlay
 layer fades in when it maps and out when it unmaps, from a snapshot of its last frame; peek fades
@@ -1025,12 +1034,19 @@ and a curve, read by the draw that uses it. The Wayland backend keeps the frame 
 animation in the process is running, its event wait returns a `KT_EVT_TICK` once per display frame,
 so a loop that draws on every return animates at the display's rate; when the last one ends, one
 more frame draws the end value and the loop goes back to its own timeout. An idle surface gets no
-tick, no extra commit and no shorter wait from any of this. Two surface animations are shipped:
-the panel's launch pulse, and the selection plate in the Start menu, the cascading and window
-menus and the tray menu, which slides to the row the selection moves to (`kch_px_row_anim`). Only
-the plate slides: the row's cells and its hit map are the new row from the first frame, and a list
-that scrolls under the same selection carries the plate with it at once rather than letting it
-trail the text.
+tick, no extra commit and no shorter wait from any of this. The surface animations are:
+
+- the panel's launch pulse;
+- the selection plate in the Start menu, the cascading and window menus and the tray menu, which
+  slides to the row the selection moves to (`kch_px_row_anim`). Only the plate slides: the row's
+  cells and its hit map are the new row from the first frame, and a list that scrolls under the
+  same selection carries the plate with it at once rather than letting it trail the text;
+- `kdos-about`: its facts type themselves in row by row as it opens; its Credits page rolls up one
+  row every 600 ms, starting again from the top at the end, until a key or the wheel stops it; and
+  its logo degausses (alternate rows thrown left and right, settling back on the accent) when
+  `↑ ↑ ↓ ↓ ← → ← → b a` is typed on it. These move cells rather than pixels. Where nothing moves (a
+  dump, a terminal, or [`motion = no`](../02-user-guide/accessibility.md#reducing-motion)) each is its settled picture: every row whole, the credits at
+  their top, the logo at rest.
 
 The Wayland backend presents a scrolled list gliding. A list declares where its rows are and which
 item is in the first of them (`kch_list_view`, beside `kch_list_clamp`), and when that item changes
@@ -1058,6 +1074,9 @@ resting on the pad without moving does not: the backend binds no gesture protoco
 | A window opening, restored / closing, minimised (`window_motion`) | 150 ms / 120 ms | ease-out | in place / gone |
 | The panel's launch pulse: the accent over a pinned button, twice | 1100 ms | ease-in-out, there and back | the button at rest |
 | A menu's selection plate moving to another row | 90 ms | ease-out | the new row |
+| `kdos-about`'s facts typing in as it opens | 400 ms | linear | every row whole |
+| `kdos-about`'s credits rolling, until a key or the wheel stops them | 600 ms a row | none: a whole row at a time | the rows where the roll stopped |
+| `kdos-about`'s logo degauss | 1200 ms | ease-in-out, there and back four times | the logo in its column, in the accent |
 | A list scrolled by the wheel, a touchpad or a key | 100 ms from the last step | ease-out | the new first row |
 
 Choose the curve by what the motion says. `KT_EASE_OUT` (cubic) is an arrival: fast, then
@@ -1107,7 +1126,7 @@ If `grep -c KT_EVT_MOUSE` on a new source file returns zero, line 4 has not been
 - [Writing desktop software](../05-developer/writing-desktop-software.md) — implementing all of this
 - [The C libraries](../05-developer/c-libraries.md) — `libktui`, `libkchrome`, `libkcolor` and the rest
 - [Theming](../02-user-guide/theming.md) — the accents these slots resolve to, and `kdos theme`
-- [Accessibility](../02-user-guide/accessibility.md) — what the controls announce, and to whom
+- [Accessibility](../02-user-guide/accessibility.md) — what the controls record for a screen reader, and why the desktop is not read
 - [Testing](../05-developer/testing.md) — goldens and the dump harness
 - [kdos-shell](../04-programs/kdos-shell.md) — the largest set of surfaces following this chapter
 - [kdos-comp](../04-programs/kdos-comp.md) — the compositor that draws the generated frame

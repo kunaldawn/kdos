@@ -13,4 +13,4 @@ The Go modules come from the vendor bundle, `duf-vendor-<version>.tar.xz`, which
 writes with `go mod vendor` and pins with its own `sha256 =` line. `build.sh` passes no
 `-mod=vendor`: when a `vendor/` directory with its `modules.txt` sits beside a `go.mod` whose `go`
 line is 1.14 or later, `go build` uses it by default. See
-[Vendoring](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#vendoring).
+[Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring).

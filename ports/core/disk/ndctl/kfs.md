@@ -11,11 +11,12 @@ memory devices, ports and regions. Its libraries, `libndctl`, `libdaxctl` and `l
 - `-Dversion-tag=$version` — Writes the version into `version.h` directly. Without it the build runs
   `tools/meson-vcs-tag.sh`, which asks `git describe` for the version and falls back to the project
   version only when the source is not a git checkout.
-- `-Dsystemd=disabled` — On by default, it installs `ndctl-monitor.service`, `cxl-monitor.service`,
+- `-Dsystemd=disabled` — On by default, it makes setup require systemd's and udev's pkg-config
+  files, and installs `ndctl-monitor.service`, `cxl-monitor.service`,
   the `daxdev-reconfigure@.service` template and `90-daxctl-device.rules`, a udev rule whose only
-  action is to ask systemd to start that template for a new DAX device. KDOS has no systemd (see [No
-  systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd)),
-  so none of them would do anything.
+  action is to ask systemd to start that template for a new DAX device. KDOS has no systemd (see
+  [No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)),
+  so setup would stop at the missing `systemd.pc`, and none of the files would do anything.
 - `-Ddocs=enabled`, `-Dasciidoctor=enabled` — Build the manual pages, with
   [asciidoctor](#port-asciidoctor) rather than asciidoc and xmlto. Both are upstream's defaults,
   stated; with both enabled, a missing `asciidoctor` is a configure error.

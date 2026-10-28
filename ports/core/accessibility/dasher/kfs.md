@@ -3,8 +3,9 @@
 Dasher writes text without a keyboard. Letters stream towards the pointer in boxes sized by a
 predictive language model, and steering into a box writes its letter, so a mouse, an eye tracker,
 a head pointer or a single switch is enough to type. It is a GTK 3 application. Its direct mode
-types into other applications through AT-SPI ([at-spi2-core](#port-at-spi2-core)), and it can
-speak what has been written through [speech-dispatcher](#port-speech-dispatcher). The source is
+types into the focused window of another X11 application, one running under Xwayland, through
+AT-SPI ([at-spi2-core](#port-at-spi2-core)); a native Wayland window does not receive it. Dasher
+can speak what has been written through [speech-dispatcher](#port-speech-dispatcher). The source is
 upstream's git tree at the commit `_commit` names.
 
 ## Flags
@@ -38,4 +39,5 @@ that it writes `$version` into `.tarball-version`: `AC_INIT` takes the version f
 which has no repository to read here.
 
 `build.sh` writes its own `dasher.desktop` over the one upstream installs, with `TryExec`,
-`StartupWMClass=dasher` and search keywords.
+`StartupWMClass=dasher` and search keywords, and without upstream's `GNOME` category, its GNOME
+Bugzilla keys and the translated names and comments its build merges in from `po/`.

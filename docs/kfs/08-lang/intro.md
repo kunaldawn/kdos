@@ -7,7 +7,7 @@ developer tools whose dependencies are all in place once [Part VII](../07-compil
 done: the `python3-*` and `perl-*` modules, a few more language implementations, build helpers,
 debuggers and tracers, language servers, documentation tools, and the version-control tools that
 work beside git. This part describes what decides that a port belongs here, how the phase's list is
-filed by shelf, the one change the environment makes from this phase on, and which of its ports
+filed by shelf, how its environment differs from the compilers phase's, and which of its ports
 have a full page. The package pages follow, in chapters by shelf, in the shelves' own order, and
 within a shelf in the order [kpkgdepends]{.idx} builds them.
 
@@ -80,18 +80,20 @@ the port's place in the phase's real order.
 ## The environment
 
 The phase's environment is in `script/phases/40_lang/phase.env`, and the other userland phases'
-files differ from it only in their title and description:
+files differ from it only in the comment that names the phase and in its title and description:
 
 <!-- kfs:include script/phases/40_lang/phase.env lines=23-26 pin=50eb5ec04ff4 -->
 
-It differs from `31_compilers`' in two ways. It has no `LD_LIBRARY_PATH` line. And [`PORT_REPO`]{.idx}
-names `src/system` and `src/art` beside `ports/core`, so kpkg can find KDOS's own programs from
-here on (see
+The file differs from `31_compilers`' in two ways. It has no `LD_LIBRARY_PATH` line. And it sets
+[`PORT_REPO`]{.idx}, naming `/kdos/src/system` and `/kdos/src/art` beside `/ports/core`.
+`31_compilers` sets none, so kpkg takes the list in `/etc/kpkg.conf`, and the only one of its
+repositories that exists in the chroot is `/ports/core`. KDOS's own programs can therefore be
+found from this phase on (see
 [Where kpkg looks for a port](../../kdos/05-developer/build-system.md#where-kpkg-looks-for-a-port)).
 This phase builds none of them; Parts IX, X and XII do.
 
-The other change comes from the shared `script/env/chroot.env`, which every chroot phase sources.
-From this phase on it exports the switches for Rust's [`-sys` crates]{.idx}:
+A third difference comes from the shared `script/env/chroot.env`, which every chroot phase
+sources. From this phase on it exports the switches for Rust's [`-sys` crates]{.idx}:
 
 <!-- kfs:include script/env/chroot.env lines=185-202 pin=27d26b31dbd0 -->
 

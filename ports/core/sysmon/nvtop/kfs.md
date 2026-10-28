@@ -3,15 +3,16 @@
 nvtop is a `top` for GPUs: a terminal program that shows each graphics card's load, memory and
 clock, and the processes using it. For AMD and Intel GPUs it reads per-process engine time from
 the DRM `fdinfo` files under `/proc/<pid>/fdinfo`, the same source
-[kdos-energyd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/daemons.md#kdos-energyd)'s GPU column reads, so
-the two agree. `build.sh` writes its desktop entry, which opens it in a terminal from the menu as
+[kdos-energyd](../../../../docs/kdos/04-programs/daemons.md#kdos-energyd)'s GPU column reads, so
+the two agree. The install puts upstream's `nvtop.desktop` in place, and `build.sh` then writes
+over it with the recipe's own entry, which opens nvtop in a terminal from the menu as
 *GPU Monitor*.
 
 ## Flags
 
 Upstream turns most backends on by default for Linux, so each is named here, and the binary
 carries readers only for the drivers an x86-64 KDOS machine can have
-([x86-64 only](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/06-reference/known-gaps.md#x86-64-only)).
+([x86-64 only](../../../../docs/kdos/06-reference/known-gaps.md#x86-64-only)).
 
 - `-DNVIDIA_SUPPORT=OFF` — The NVIDIA backend, which loads NVML from NVIDIA's proprietary driver.
   That driver is not something this tree can build, so the backend would have nothing to load.
@@ -28,6 +29,6 @@ carries readers only for the drivers an x86-64 KDOS machine can have
   vendor library comes from a vendor driver stack that is not a port.
 - `-DUSE_LIBUDEV_OVER_LIBSYSTEMD=ON` — Discover devices through libudev, which
   [eudev](#port-eudev) provides, even if a libsystemd is found. KDOS has no systemd
-  ([principles](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd)); with the switch
+  ([principles](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)); with the switch
   the build cannot pick up a stray libsystemd, and with neither library it fails, since the AMD
   and Intel backends need one of them.

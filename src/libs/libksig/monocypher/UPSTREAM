@@ -8,5 +8,8 @@ Vendored files, verbatim and unmodified:
 
 Dual-licensed BSD-2-Clause / CC0-1.0 (LICENCE.md, copied beside them).
 
-This is the ONLY third-party source in src/. The rule it is an exception to,
-and why the exception is narrow, is written up in libksig/ksig.c.
+This is the ONLY third-party C source in src/ carried verbatim. The hard
+forks (kdos-comp from labwc, kdos-bb from bb, libkvt from libtsm; see their
+KDOS-FORK files and kvt.h) are edited freely and are not vendored copies.
+The rule it is an exception to, and why the exception is narrow, is written
+up in libksig/ksig.c.

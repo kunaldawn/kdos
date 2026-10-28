@@ -3,8 +3,9 @@
 Viking manages GPS data on maps: it reads, edits and writes tracks, waypoints and routes in GPX
 and KML itself, draws them over OpenStreetMap and other tile layers, and follows a live position
 from [gpsd](#port-gpsd). GeoJSON and the formats GPSBabel converts go through external programs
-it runs from the path, `togeojson`, `togpx` and `gpsbabel`, and none of the three is a port. The port builds its GTK 3 interface.
-Maps work offline from MBTiles files and from the tile cache it keeps of what it has downloaded.
+it runs from the path, `togeojson`, `togpx` and `gpsbabel`, and none of the three is a port. The
+port builds its GTK 3 interface. Maps work offline from MBTiles files and from the tile cache it
+keeps of what it has downloaded.
 
 ## Flags
 

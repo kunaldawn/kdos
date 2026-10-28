@@ -12,7 +12,7 @@ upstream's, and the numbers in their file names fix the order in which faces are
   `var/cache`, so a cache there would never reach a booted machine, and the first program to start
   would rescan the whole font tree. `kpkg` rebuilds this cache with `fc-cache -s` whenever a package
   touches `/usr/share/fonts` or `/etc/fonts`; see
-  [Shared indexes](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#shared-indexes).
+  [Shared indexes](../../../../docs/kdos/05-developer/writing-ports.md#shared-indexes).
 - `--with-default-fonts=/usr/share/fonts` — The font directory compiled in for use when the
   configuration cannot be read. The same as upstream's default on Linux; every font port installs
   under it.
@@ -25,7 +25,7 @@ upstream's, and the numbers in their file names fix the order in which faces are
 cache the image ships is written once more by `70_image`, after every font directory's time has been
 set to `SOURCE_DATE_EPOCH`: fontconfig records each directory's time in the cache and discards an
 entry whose directory time differs. See
-[Databases stamped into the image](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/build-system.md#databases-stamped-into-the-image).
+[Databases stamped into the image](../../../../docs/kdos/05-developer/build-system.md#databases-stamped-into-the-image).
 
 fontconfig installs no font itself, which is why its font index also watches `/etc/fonts`: a
 system whose fonts were all installed before fontconfig would otherwise have no cache.

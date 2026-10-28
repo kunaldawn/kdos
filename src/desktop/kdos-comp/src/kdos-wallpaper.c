@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * The desktop background, ported from the pre-fork kdos-comp.
+ * The desktop background.
  *
  * labwc has no wallpaper — the usual answer is swaybg, and it is the
  * wrong one here: libkwl paints CELLS, so a wallpaper client would be
  * the one program in this desktop that is not a character grid. The
  * compositor owns a scene graph; the image goes straight in.
  *
- * Three rules carried over, each measured once:
+ * Three rules, each measured:
  * - There is no public "wlr_buffer from memory", so this file carries
  *   the smallest wlr_buffer_impl that works: data-ptr access only,
  *   which is what both the GLES2 and pixman renderers use to upload.
@@ -328,11 +328,11 @@ kdos_wallpaper_arrange(void)
 	}
 
 	/*
-	 * C8: the very bottom of every output is a rect in the accent's
-	 * DEEP colour, image or no image — `wallpaper = none` and a failed
-	 * decode now genuinely show the theme colour the log always
-	 * claimed, and an image that does not cover (it always does, but
-	 * cover is a crop) has the palette under it, not undefined black.
+	 * The very bottom of every output is a rect in the accent's DEEP
+	 * colour, image or no image: `wallpaper = none` and a failed decode
+	 * show the theme colour the log names, and an image that does not
+	 * cover (it always does, but cover is a crop) has the palette under
+	 * it, not undefined black.
 	 */
 	const KcolScheme *sc = kdos_accent_scheme();
 	KcolRgb deep = kcol_rgb(sc ? sc->deep : 0x000a03);

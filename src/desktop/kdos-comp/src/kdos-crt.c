@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * The CRT pass, ported from the pre-fork kdos-comp — the whole reason
- * KDOS owns a compositor. See that file's header for the full story;
- * the load-bearing facts survive verbatim:
+ * The CRT pass — the whole reason KDOS owns a compositor. The
+ * load-bearing facts:
  *
  * - wlroots has NO shader API. The documented seam is
  *   wlr_scene_output_build_state(so, &state, &options) with
@@ -45,9 +44,8 @@
  *   KCOL_SCHEMES — there is no second copy of the phosphor green) and
  *   kdos_crt_reload() re-reads it on SIGHUP/Reconfigure.
  *
- * Fork adaptations: per-output state lives in this file's own records
- * (destroy listener on the wlr_output), config comes from kdos_conf,
- * and the pre-fork ascii effect (Super+A) is not carried over.
+ * Per-output state lives in this file's own records (destroy listener
+ * on the wlr_output), and config comes from kdos_conf.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <math.h>
@@ -90,7 +88,7 @@ struct kdos_crt_gl {
 	bool ok;
 	struct kdos_prog prog[KDOS_NPROG];
 	float tint[3];			/* the accent, 0..1 */
-	/* D7.3: an accent change plays 400 ms of decaying wobble — the
+	/* An accent change plays 400 ms of decaying wobble — the
 	 * degauss thoomp. Amplitude decays CPU-side; 0 means over. */
 	int64_t degauss_start_ns;
 	/* KDOS_CRT_DUMP=<prefix> writes <prefix>-in.ppm / -out.ppm once;
@@ -107,7 +105,7 @@ struct kdos_crt_output {
 	struct wlr_swapchain *scene_sc;
 	struct wlr_swapchain *out_sc;
 	/*
-	 * C7: a failure is a COOLDOWN, not a sentence — a transient commit
+	 * A failure is a COOLDOWN, not a sentence — a transient commit
 	 * error (hotplug link renegotiation, VT switch) would otherwise
 	 * untheme the screen for the session. 5 s, doubling per consecutive
 	 * trip, capped at 60 s; a completed pass resets the backoff.
@@ -290,7 +288,7 @@ void
 kdos_crt_early_init(void)
 {
 	/*
-	 * C6: the hardware cursor plane is composited by the display
+	 * The hardware cursor plane is composited by the display
 	 * engine AFTER our shader, so under barrel distortion it floats
 	 * unwarped over a warped desktop and drifts off the hotspot
 	 * toward the edges. Software cursor is drawn into the scene and
@@ -439,7 +437,7 @@ kdos_crt_reload(void)
 	wlr_log(WLR_INFO, "crt: phosphor is now #%s (%s)", hex,
 		sc ? sc->name : kcol_default()->name);
 
-	/* D7.3: the retint IS the degauss moment — unless motion is off:
+	/* The retint IS the degauss moment — unless motion is off:
 	 * the wobble is exactly what a reduce-motion switch is for, and the
 	 * retint itself still lands on the next frame */
 	if (kdos_conf.motion) {
@@ -646,7 +644,7 @@ give_up(struct kdos_crt_output *co, const char *why)
 }
 
 /*
- * C11: crt_fullscreen = off means a fullscreen topmost view gets its
+ * crt_fullscreen = off means a fullscreen topmost view gets its
  * frames without the pass, on the plain path with direct scanout
  * allowed: a client buffer the display can take goes to the screen
  * with no composite at all, and one it cannot is composited once
@@ -704,7 +702,7 @@ kdos_crt_frame(struct output *output, struct wlr_scene_output *so)
 		return false;
 	}
 
-	/* D7.3: while the degauss runs, every frame is forced and the
+	/* While the degauss runs, every frame is forced and the
 	 * next one scheduled — a static desktop still animates */
 	float dg_amp = 0.0f, dg_phase = 0.0f;
 	if (gl->degauss_start_ns > 0) {
@@ -805,9 +803,11 @@ kdos_crt_frame(struct output *output, struct wlr_scene_output *so)
 
 	struct wlr_buffer *src = wlr_buffer_lock(scene_state.buffer);
 	/*
-	 * C2: the scene applies wlr-gamma-control as a color transform in
+	 * The scene applies wlr-gamma-control as a color transform in
 	 * the state it built. Our replacement commit must carry it too, or
-	 * night light silently no-ops while the pass is on. The transform
+	 * a gamma-control client's ramp silently drops while the pass is
+	 * on. (KDOS's own night light warms the palette and does not go
+	 * through this path.) The transform
 	 * is refcounted; the flag with a NULL transform is a reset and is
 	 * propagated as one.
 	 */
@@ -1003,7 +1003,7 @@ fail:
 /* ── the power-down ─────────────────────────────────────────────── */
 
 /*
- * D7.4: the signature every retro machine had, closing the loop with
+ * The signature every retro machine had, closing the loop with
  * the boot splash's power-ON. The last composite collapses vertically
  * to a bright centre line (~350 ms), then horizontally to a dot
  * (~100 ms). Runs AFTER wl_display_run() returns, so the event loop is

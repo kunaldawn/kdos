@@ -24,8 +24,9 @@
  * app's pack, and one that cannot is refused by name rather than composed. */
 #define DEFAULT_BOX   "kdos-apps"
 #define APP_TABLE     "/usr/share/kdos/alien-apps"
-/* The security-context-v1 engine. Absent on a tree built before M2.5, which is
- * why every use of it is guarded rather than assumed. */
+/* The security-context-v1 engine. It is a 50_desktop port and this one is
+ * 44_apps, so a tree built short of the desktop has none, which is why every
+ * use of it is guarded rather than assumed. */
 #define KDOS_BOXSOCK  "/usr/bin/kdos-boxsock"
 
 #define MAX_LINE   4096

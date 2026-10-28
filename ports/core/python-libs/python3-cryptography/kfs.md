@@ -15,4 +15,4 @@ from there. `build.sh` unpacks the bundle at the top of the tree all the same, b
 runs cargo from the top with `--manifest-path`, and cargo finds `.cargo/config.toml` by walking
 up from the directory it runs in, not from the manifest; a configuration beside the manifest is
 never read, and every crate then resolves as missing. See
-[Where the bundle goes](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#where-the-bundle-goes).
+[Where the bundle goes](../../../../docs/kdos/05-developer/writing-ports.md#where-the-bundle-goes).

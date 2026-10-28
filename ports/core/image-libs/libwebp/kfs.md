@@ -28,7 +28,8 @@ desktop's own `kdos-shell` and `kdos-term` link it.
 the soname the loop names. A release that changes one of those sonames stops the build, instead of
 leaving every program linked against the old name without its library.
 
-`cwebp` and `gif2webp` find their PNG, JPEG, TIFF and GIF libraries with a plain `find_package`,
-which leaves a format out without an error when its library is missing; all four are in `depends`
-so that each is present when the configure runs. Because libwebp depends on libtiff, libtiff is
-built without WebP support; see [libtiff](#port-libtiff).
+`cwebp` and `img2webp` read PNG, JPEG and TIFF, `dwebp` writes PNG, and `gif2webp` reads GIF.
+Each of those four libraries is found with a plain `find_package`, which leaves its format out
+without an error when the library is missing; all four are in `depends` so that each is present
+when the configure runs. Because libwebp depends on libtiff, libtiff is built without WebP support;
+see [libtiff](#port-libtiff).

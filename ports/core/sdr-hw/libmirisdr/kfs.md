@@ -2,8 +2,8 @@
 
 libmirisdr is a user-space driver library for receivers built on the Mirics MSi2500 USB bridge and
 MSi001 tuner, the chips of the early SDRplay receivers among others. It talks to the device
-over [libusb](#port-libusb), and installs `libmirisdr.so`, its header and pkg-config file, and the
-`miri_sdr` and `miri_fm` tools. [gr-osmosdr](#port-gr-osmosdr) and [sdrangel](#port-sdrangel)
+over [libusb](#port-libusb), and installs `libmirisdr.so`, its headers `mirisdr.h` and
+`mirisdr_export.h`, its pkg-config file, and the `miri_sdr` and `miri_fm` tools. [gr-osmosdr](#port-gr-osmosdr) and [sdrangel](#port-sdrangel)
 use it. The source is libmirisdr-4, a further development of Miroslav Slugen's libmirisdr-2
 and its libmirisdr-3-bsz fork.
 
@@ -12,6 +12,8 @@ and its libmirisdr-3-bsz fork.
 - `-DLIB_SUFFIX=` — Install the library into `lib` with nothing appended. The project's
   `CMakeLists.txt` writes `lib${LIB_SUFFIX}` for both the install path and the pkg-config
   `libdir`, and does not use `GNUInstallDirs`, so `CMAKE_INSTALL_LIBDIR` has no effect on it.
+  Left unset, the variable expands to nothing as well, so the flag pins upstream's default
+  layout, the one the `test` lines check.
 - `-DCMAKE_SKIP_INSTALL_RPATH=ON` — Install the library and tools with no `RPATH`. The project
   sets its install `RPATH` to `${CMAKE_INSTALL_PREFIX}/lib`, which is `/usr/lib`, a directory the
   loader searches anyway.
@@ -36,5 +38,6 @@ header, the `miri_sdr` program and a non-empty `Version:` line in the pkg-config
 the package. The `grep` is the one that proves the patch took effect.
 
 Access to the device for a user comes from the tree's udev rules, which give the SDRplay vendor id
-to the `dialout` group (see
-[The device groups and the udev rules](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md#the-device-groups-and-the-udev-rules)).
+`1df7` and the `04bb:0537` stick to the `dialout` group (see
+[The device groups and the udev rules](../../../../docs/kdos/02-user-guide/administration.md#the-device-groups-and-the-udev-rules)).
+Upstream's `mirisdr.rules` is not installed.

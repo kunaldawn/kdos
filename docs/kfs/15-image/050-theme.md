@@ -66,8 +66,9 @@ defaults, `fs/usr/share/glib-2.0/schemas/90_kdos.gschema.override`, take effect 
 
 kpkg rebuilds both whenever a package installs into those directories. A build that changes only
 `fs/` installs no package, so kpkg never does, and the step rebuilds both itself from what the
-directories hold. Each is skipped when its tool is not installed, and the schema index also when
-there is no schema to compile: `glib-compile-schemas` then writes no index at all, and the
+directories hold. Each is skipped when its tool is not installed, the desktop index also when
+`/usr/share/applications` does not exist, and the schema index also when there is no schema to
+compile: `glib-compile-schemas` then writes no index at all, and the
 `test -s` after it would stop the phase.
 
 ## What it leaves

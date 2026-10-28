@@ -82,12 +82,15 @@ Configure and build in a separate directory:
 
 `--disable-bootstrap`
 : Build the compiler once, with the container's compiler, instead of GCC's three-stage build that
-  compiles itself and compares the results. A cross compiler's output cannot run in the container,
-  so the comparison is not possible; the switch states it.
+  compiles itself and compares the results. That build needs a compiler that writes programs for
+  the machine it runs on, and this one writes them for `x86_64-kdos-linux-musl`, so GCC's
+  configure already leaves bootstrapping off when the host and target differ; the switch states
+  it.
 
 `BUILD_INFO=no-info`
-: Given to both `make` lines: build and install no Texinfo manuals. Nobody reads the cross
-  compiler's manuals, and the native compiler's are installed by its port.
+: Given to both `make` lines: run no `makeinfo`, so no manual is regenerated from its Texinfo
+  source. The release archive ships GCC's manuals already built, and `make install` still copies
+  those into `build/cross/share/info`.
 
 ## The limits.h fix-up
 
@@ -121,7 +124,7 @@ this compiler. `ln -sv` has no `-f`, so the step stops here when it is run again
 `crtprec*.o`. `build/cross/lib` holds [`libcc1`]{.idx}, the GDB plugin library.
 
 **Installed directories:** the compiler proper ([`cc1`]{.idx}, [`cc1plus`]{.idx}, [`collect2`]{.idx}, [`lto1`]{.idx},
-[`lto-wrapper`]{.idx} and the LTO plugin) in `build/cross/libexec/gcc/x86_64-kdos-linux-musl/<version>`,
+[`lto-wrapper`]{.idx}, the LTO plugin and `g++-mapper-server`, the C++ modules mapper) in `build/cross/libexec/gcc/x86_64-kdos-linux-musl/<version>`,
 and GCC's private headers, [`limits.h`]{.idx} among them, in the `include` directory beside `libgcc.a`.
 Step 030 adds the C++ headers in `build/cross/x86_64-kdos-linux-musl/include/c++/<version>`.
 
@@ -151,8 +154,11 @@ Step 030 adds the C++ headers in `build/cross/x86_64-kdos-linux-musl/include/c++
 ## Built again later
 
 [Native GCC](../03-bootstrap/100-gcc.md), at the end of `10_bootstrap`, is compiled by this
-compiler to run on KDOS. It is still configured for `x86_64-kdos-linux-musl`, and it is complete:
-shared libraries, POSIX threads, and libstdc++ built in. It applies the `gcc` port's
+compiler to run on KDOS. It is still configured for `x86_64-kdos-linux-musl`, and with musl in
+`build/fs` it builds what this one leaves out for want of a C library: shared libraries, POSIX
+threads and libstdc++. It still passes `--disable-libatomic`, `--disable-libgomp`,
+`--disable-libquadmath`, `--disable-libssp` and `--disable-libvtv`, and adds
+`--disable-libsanitizer`. It applies the `gcc` port's
 `t-linux64-lib.patch`, and it installs with the port's own paths (`--libexecdir=/usr/lib`).
 
 The [gcc](#port-gcc) port, in `20_selfhost`, is the compiler KDOS ships. It is built inside the

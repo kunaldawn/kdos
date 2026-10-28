@@ -6,7 +6,7 @@ tools (`dbus-send`, `dbus-monitor` and the rest). KDOS runs two kinds of bus wit
 bus is started at boot by `/etc/init.d/40_dbus.sh` and carries NetworkManager, polkit,
 ModemManager and the other root services. Each user's session runs one session bus
 at a fixed address in `$XDG_RUNTIME_DIR`, which boxed applications reach at the same path; see
-[The session message bus](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/session.md#the-session-message-bus).
+[The session message bus](../../../../docs/kdos/03-architecture/session.md#the-session-message-bus).
 
 The build differs from a systemd distribution's in what it leaves out: no systemd integration, no
 X11 autolaunch, no AppArmor or SELinux mediation and no audit logging. Activation of root services
@@ -23,7 +23,7 @@ repairs.
   the login path, and the session starts its bus itself.
 - `-D systemd=disabled` — Builds no systemd support, which upstream describes as `at_console`
   through systemd. KDOS has no systemd; see
-  [No systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd).
+  [No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd).
 - `-D launchd=disabled`, `-D kqueue=disabled` — macOS launchd autolaunch and the BSD kqueue event
   loop, which do not apply on Linux. Each defaults to `auto`.
 - `-D epoll=enabled`, `-D inotify=enabled` — Use epoll for the daemon's main loop and inotify to
@@ -64,4 +64,4 @@ carried one would give every machine the same id. `40_dbus.sh` creates it on fir
 kpkg installs every file `root:root`, so the launch helper loses the `messagebus` group upstream's
 install gives it. `postinstall.sh` sets it back, owner `root:messagebus` and mode `4110`, or the
 bus cannot start any activated root service; see
-[setuid binaries](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#setuid-binaries).
+[setuid binaries](../../../../docs/kdos/03-architecture/security-model.md#setuid-binaries).

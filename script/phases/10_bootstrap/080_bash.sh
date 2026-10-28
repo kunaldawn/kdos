@@ -20,7 +20,7 @@ fi
 
 echo ">>> Building bash..."
 
-# Extract bash and dependencies from ports
+# Unpack the bash port's source tarball alone; its patches are not applied
 BASH_SRC=$(extract_port_source bash)
 
 cd "$BASH_SRC"

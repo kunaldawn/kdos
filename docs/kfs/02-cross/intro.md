@@ -12,6 +12,7 @@ switch. This page covers what the toolchain is for, the target name it is built 
 environment both scripts run in.
 
 The whole part takes about 8.8 [SBU]{.idx}: 1 SBU for binutils, by definition, and 7.8 for GCC.
+[Build times and the SBU](../00-front/conventions.md#build-times-and-the-sbu) explains the unit.
 
 ## Why a cross compiler
 
@@ -100,8 +101,8 @@ lines are for is in
 <!-- kfs:include script/phases/00_cross/phase.env lines=25-27 pin=9e3304f6f6b7 -->
 
 `MARK` is `build/mark/cross`. Each script ends by touching a file there and begins by exiting when
-that file exists. [Part III](../03-bootstrap/intro.md) explains the guard, which every early step
-shares.
+that file exists. [Marks and KDOS_REPLAY](../03-bootstrap/intro.md#marks-and-kdos_replay) in
+Part III explains the guard, which every early step shares.
 
 ## Running the phase
 
@@ -114,6 +115,9 @@ make build BUILD_ARGS="--phases 00_cross --steps 00_cross:00_binutils.sh"
 
 A step named in a plan runs with `KDOS_REPLAY=1`, which stands its guard down. See
 [Build plans](../../kdos/05-developer/build-system.md#build-plans) for what else a plan changes.
+`01_gcc.sh` run again this way rebuilds the compiler and then fails at its final `ln -sv`, because
+the `x86_64-kdos-linux-musl-cc` link it makes already exists;
+[The limits.h fix-up](gcc.md#the-limitsh-fix-up) says why.
 
 ## See also
 

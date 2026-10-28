@@ -17,7 +17,7 @@ daemons start on demand over D-Bus.
 - `-Dsystemduserunitdir=no`, `-Dtmpfilesdir=no` — Install no systemd user units and no tmpfiles
   configuration. Left empty, either one makes the configure ask pkg-config for systemd's directory
   and stop when systemd is not found. KDOS has no systemd (see
-  [No systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd)).
+  [No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)).
 - `-Dlogind=false` — Build without logind. With it, the udisks2 volume monitor asks
   `sd-login` which seat the session is on and lists only the drives of that seat; without it, it
   assumes one seat for the whole machine. Neither libsystemd nor libelogind is a port.

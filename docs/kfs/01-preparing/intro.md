@@ -2,9 +2,9 @@
 
 <!-- kfs:order host-container sources fs-overlay build-tree kdosbuild -->
 
-Nothing in KDOS is compiled on the host directly. Every phase runs inside one container image,
-`os-dev`, built from the repository's own `Dockerfile`, and every upstream source is fetched once,
-checked against its recipe and kept by hash before the build is allowed to start. This part sets
+Nothing that goes into KDOS is compiled on the host directly. Every phase runs inside one container
+image, `os-dev`, built from the repository's own `Dockerfile`, and that container has no network,
+so every upstream source is fetched beforehand, checked against its recipe and kept by hash. This part sets
 that up: the container and why it is the only supported host, the sources and the archive that
 keeps them, the `fs/` overlay that becomes the root's first files, the layout of `build/`, and
 `kdosbuild`, the program that runs every phase in order.

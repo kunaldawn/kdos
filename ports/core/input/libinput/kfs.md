@@ -7,17 +7,17 @@ through it, by way of [wlroots](#port-wlroots); the compositor learns of a closi
 libinput, and no other program on KDOS watches the lid switch. [kdos-comp](#port-kdos-comp),
 [qt6-qtbase](#port-qt6-qtbase) and [qt5-qtbase](#port-qt5-qtbase) depend on it as well. The
 touchpad settings a user can change are the `<libinput>` block of the compositor's configuration;
-see [Changing the bindings](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/desktop.md#changing-the-bindings).
+see [Changing the bindings](../../../../docs/kdos/02-user-guide/desktop.md#changing-the-bindings).
 
 libinput sizes many touchpads from the `EVDEV_ABS_*` entries of udev's hardware database, so it
 depends on the image phase compiling that database; see
-[Databases stamped into the image](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/build-system.md#databases-stamped-into-the-image).
+[Databases stamped into the image](../../../../docs/kdos/05-developer/build-system.md#databases-stamped-into-the-image).
 
 ## Flags
 
-- `-Db_ndebug=false` — Keeps `assert()` compiled in. libinput's own header warns with `#warning
-  "libinput relies on assert(). #defining NDEBUG is not recommended"`, and its quirks parser
-  undefines `NDEBUG` itself.
+- `-Db_ndebug=false` — Keeps `assert()` compiled in. libinput's `src/libinput-util.h` warns with
+  `#warning "libinput relies on assert(). #defining NDEBUG is not recommended"`, and its quirks
+  parser undefines `NDEBUG` itself.
 - `-Dudev-dir=/lib/udev` — Where the udev helpers (`libinput-device-group`,
   `libinput-fuzz-extract`, `libinput-fuzz-to-zero`) and the rules that call them go. It is the
   directory the [eudev](#port-eudev) port installs its own rules under; `/lib` is a link to

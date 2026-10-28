@@ -5,9 +5,8 @@ module, `XML::Parser::Expat`, compiled against `libexpat`, with the higher-level
 its parsing styles on top. Beyond the encodings expat knows itself, it reads the others from
 encoding maps, `.enc` files shipped in the release and installed as the distribution's shared files
 under `auto/share/dist/XML-Parser`, where it finds them with
-[File::ShareDir](#port-perl-file-sharedir). Those maps are among the [data files with no other
-source
-form](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/why-kdos.md#data-with-no-other-source-form)
+[File::ShareDir](#port-perl-file-sharedir). Those maps are among the
+[data files with no other source form](../../../../docs/kdos/01-philosophy/why-kdos.md#data-with-no-other-source-form)
 the tree carries.
 
 [intltool](#port-intltool), the tool that extracts translatable strings from source files, needs it,

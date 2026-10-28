@@ -8,7 +8,7 @@ cores, and unpacks every `.tar.xz` source with it (see
 `liblzma` is linked by [file](#port-file), [libarchive](#port-libarchive), [elfutils](#port-elfutils),
 [zstd](#port-zstd), [gdb](#port-gdb) and many more.
 
-Until `30_foundation` the root's `xz` is the one [Part III](#03-bootstrap-050-xz) built, outside any
+Until `30_foundation` the root's `xz` is the one [Part III](../../../../docs/kfs/03-bootstrap/050-xz.md) built, outside any
 package; this port, the second of the archiver shelf, replaces it and adopts its files.
 
 ## Flags

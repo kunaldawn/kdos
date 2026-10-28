@@ -9,7 +9,7 @@ KDOS builds it as a mechanism loader for the client side. What it is here for is
 with no application passwords requires comes from the separate plugin
 [cyrus-sasl-xoauth2](#port-cyrus-sasl-xoauth2), which installs into the same plugin directory.
 What that pair can and cannot sign in to is in
-[`mbsync` has XOAUTH2 but not OAUTHBEARER](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/06-reference/known-gaps.md#mbsync-has-xoauth2-but-not-oauthbearer-and-no-synchroniser-has-met-a-server).
+[`mbsync` has XOAUTH2 but not OAUTHBEARER](../../../../docs/kdos/06-reference/known-gaps.md#mbsync-has-xoauth2-but-not-oauthbearer-and-no-synchroniser-has-met-a-server).
 [openldap](#port-openldap), [qemu](#port-qemu)'s VNC server, [libvirt](#port-libvirt) and
 [spice](#port-spice) link it as well. The build has no `saslauthd` client, no `sasldb` password
 store, no PAM check and no sample programs.
@@ -51,4 +51,5 @@ the one for `pluginviewer`, which is built regardless. `build.sh` installs `plug
 `pluginviewer -c` lists the client mechanisms the library can load, which is the quickest way to
 see whether the XOAUTH2 plugin is in place.
 
-The ANONYMOUS mechanism, `libanonymous.so`, is installed too: no switch here turns it off.
+The ANONYMOUS mechanism, `libanonymous.so`, is installed too: upstream builds it by default, and
+`build.sh` does not pass `--disable-anon`.

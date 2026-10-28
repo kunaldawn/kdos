@@ -11,7 +11,7 @@ Uranium's `CMakeLists.txt` installs only through paths that Conan, the C++ packa
 builds with, provides, so `build.sh` lays the framework out by hand where Uranium itself looks for it relative
 to the launcher's prefix (`/usr`, the parent of `/usr/bin`): the `UM` package in `site-packages`,
 the plugins under `/usr/lib/uranium/plugins`, and the resources under
-`/usr/share/uranium/resources`. The three `test` lines at the end stop the build unless the QML
+`/usr/share/uranium/resources`. The two `test` lines and the `ls` at the end stop the build unless the QML
 module's `qmldir`, the STL reader's `plugin.json` and the two vendored modules are in place.
 
 Three things are left out on purpose. The `UpdateChecker` plugin, which asks ultimaker.com for
@@ -24,7 +24,7 @@ The vendor bundle holds the four modules only Uranium imports, named in `pypacka
 versions: `pyclipper` (polygon offsetting), `numpy-stl` with its `python-utils` (the STL reader)
 and `colorlog`. Their build backends are ports, so the install runs with
 `--no-build-isolation` and fetches nothing; see
-[The three Python keys](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
+[The three Python keys](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
 numpy-stl's three command-line converters (`stl`, `stl2ascii`, `stl2bin`) are deleted, and the
 `rmdir` of `/usr/bin` after them fails the build if a vendored module ever installs a program
 there.

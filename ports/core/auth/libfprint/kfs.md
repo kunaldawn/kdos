@@ -9,10 +9,10 @@ nothing by itself in KDOS; `fprintd`, the daemon that stores enrolled prints, li
 
 - `-Dudev_rules=enabled`, `-Dudev_rules_dir=/usr/lib/udev/rules.d` — Install
   `70-libfprint-2.rules`, which binds the SPI sensors in the driver set, matched by their ACPI
-  ids, to the kernel's `spidev` driver so the library can open them, and say where, rather than
-  reading the directory from the `udevdir` variable of `udev.pc`. `meson.build` writes the file
-  only when a driver in the set needs udev, which the default set's SPI drivers do; `enabled`
-  and `auto` differ only in that `disabled` would drop it.
+  ids, to the kernel's `spidev` driver so the library can open them, and name its directory
+  rather than read it from the `udevdir` variable of `udev.pc`. `enabled` installs the file
+  whatever the driver set; at `auto` it is installed only when a driver in the set needs udev,
+  which the default set's `elanspi` does.
 - `-Dudev_hwdb=enabled`, `-Dudev_hwdb_dir=/usr/lib/udev/hwdb.d` — Install the hwdb file that marks
   supported readers for USB autosuspend. Upstream's own description says the entries are
   "included in systemd v248 and later", and on `auto` meson leaves the file out whenever `udev.pc`

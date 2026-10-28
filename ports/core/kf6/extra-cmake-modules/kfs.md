@@ -23,5 +23,5 @@ the pages. `build.sh` checks for `/usr/share/man/man7/ecm.7` after the install a
 if it is missing.
 
 ECM's `KDEInstallDirs` picks its library directory by itself (`lib64` on x86-64), apart from CMake's
-`GNUInstallDirs`, which is why KDE recipes pass `-DKDE_INSTALL_LIBDIR=lib`; see [A graphical
-application](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#a-graphical-application).
+`GNUInstallDirs`, which is why KDE recipes pass `-DKDE_INSTALL_LIBDIR=lib`; see
+[A graphical application](../../../../docs/kdos/05-developer/writing-ports.md#a-graphical-application).

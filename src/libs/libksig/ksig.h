@@ -18,9 +18,10 @@
 #define KSIG_PUB_LEN    32
 #define KSIG_SEED_LEN   32
 #define KSIG_SIG_LEN    64
-/* 16 hex characters of SHA-256(public key). An IDENTIFIER for picking a key out
- * of a keyring and for telling a person which key signed something — never a
- * credential, and never enough to verify anything on its own. */
+/* 16 hex characters of SHA-256(public key). An IDENTIFIER for telling a person
+ * which key signed something — verification tries every key in the ring and
+ * never selects one by it, so it is never a credential and never enough to
+ * verify anything on its own. */
 #define KSIG_ID_HEX     17	/* 16 + NUL */
 
 /* A keyring is a directory of `*.pub` files. Sixteen keys is a distro's worth of

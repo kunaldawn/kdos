@@ -11,14 +11,11 @@
  * to the host. kdos-fetch-static drops a checksummed upstream binary into
  * /usr/local/bin.
  *
- * The app name reaching kdos-fetch-app is the reason this is C. The shell
- * version built the in-box command by INTERPOLATING it into a `bash -c`
- * string — `sudo apt install -y '$APP'` — which the outer shell expanded
- * before the inner shell ever parsed it, so an app name containing a quote
- * broke straight out of the quoting and ran as the box's root. Here the
- * package manager fallback is still shell, because that is what it is, but
- * the name arrives as a POSITIONAL PARAMETER and is never part of the script
- * text.
+ * The app name reaching kdos-fetch-app is never part of a script's text. The
+ * package manager fallback is shell, because that is what it is, but the name
+ * arrives as a POSITIONAL PARAMETER. Interpolated into a `bash -c` string, an
+ * app name containing a quote would break out of the quoting and run as the
+ * box's root.
  * ---------------------------------
  */
 

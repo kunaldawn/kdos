@@ -253,8 +253,8 @@ void res_draw_procs(int x, int y, int w, int h)
 	/*
 	 * The header row is the sort control, and it SAYS which key is in
 	 * force: the sorted column in the accent with the direction beside it.
-	 * It always was the control — `s` cycled it — and it never looked like
-	 * one, so the only way to sort by memory was to read the manual.
+	 * `s` cycles the same key, and a header that did not show it would
+	 * leave the manual as the only way to learn the table sorts.
 	 */
 	ktui_draw_fill(krect(x, row, w, 1), KT_SURFACE);
 	hdr_cell(x + c.pid, row, 7, "PID", SORT_PID);

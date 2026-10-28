@@ -3,7 +3,7 @@ GNU coreutils is the everyday command line: `ls`, `cp`, `mv`, `install`, `sort`,
 `df` and the rest, each installed as a program of its own. KDOS has no multi-call
 userland, so every one of these names on the image is GNU's, and every configure script and
 `build.sh` meets the behaviour upstream build systems were written against
-([The base userland](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/packaging.md#the-base-userland)).
+([The base userland](../../../../docs/kdos/03-architecture/packaging.md#the-base-userland)).
 
 `10_bootstrap` cross-compiles the same source with no optional libraries
 ([Coreutils](#03-bootstrap-062-coreutils)). This port rebuilds it natively in the first run of
@@ -30,12 +30,15 @@ files the bootstrap installed.
   and drop the attributes without a message.
 - `--enable-libcap` — Let `ls --color` colour files that carry file capabilities (the `ca`
   entry of `LS_COLORS`), through [libcap](#port-libcap).
-- `--enable-install-program=arch,hostname` — Also install `arch` and `hostname`, the two programs
-  coreutils leaves out unless asked for.
+- `--enable-install-program=arch,hostname` — Also install `arch` and `hostname`. coreutils builds
+  five programs only when asked for; the other three, `kill`, `uptime` and the multi-call
+  `coreutils`, stay out, and must: [util-linux](#port-util-linux) installs `kill` and
+  [procps-ng](#port-procps-ng) installs `uptime`, and kpkg refuses a package that installs over a
+  path another package owns.
 - `CPPFLAGS=-I/usr/include/utmps`, `LIBS="-lutmps -lskarnet"` — Build `who`, `users` and `pinky`
   against [utmps](#port-utmps), so they read the login records its daemon keeps. musl's
   own utmp functions are stubs that report no one
-  ([Login records](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/boot-and-init.md#login-records)).
+  ([Login records](../../../../docs/kdos/03-architecture/boot-and-init.md#login-records)).
 
 ## Notes
 The libraries the bootstrap build goes without (GMP, acl, attr, libcap, utmps) are not in

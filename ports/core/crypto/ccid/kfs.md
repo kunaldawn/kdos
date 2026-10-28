@@ -6,12 +6,13 @@ port also builds the driver for serial CCID readers, `libccidtwin`, and installs
 that gives readers to the `pcscd` group.
 
 ## Flags
-- `-Dpcsclite=true` — Build the driver for pcsc-lite, logging through pcsc-lite's debug support.
+- `-Dpcsclite=true` — Log through pcsc-lite's debug functions, which pcscd provides, instead of
+  compiling the driver's own `debug.c`; upstream's default, written out.
 - `-Dserial=true` — Also build `libccidtwin`, the driver for serial CCID readers, with its
   `reader.conf.d` entry. Upstream's default is off.
 - `-Dclass=true` — Declare `CCIDCLASSDRIVER` in the bundle's `Info.plist`, so pcscd uses the
   driver for any USB device of the CCID class, not only for the readers the driver lists by
-  vendor and product.
+  vendor and product; upstream's default, written out.
 - `-Dcomposite-as-multislot=false`, `-Dzlp=false`, `-Dembedded=false`, `-Dos_log=false` —
   upstream's defaults written out: a composite device is not presented as one multi-slot reader,
   no Zero Length Packet workaround for certain Gemalto readers, logging kept, and no macOS

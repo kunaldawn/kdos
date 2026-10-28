@@ -51,7 +51,9 @@ and `TINYXML2_LIB` in `CMakeCache.txt` naming `/usr/lib/libtinyxml2`, so neither
 nor the system tinyxml2 can drop out in silence.
 
 Upstream installs `gmsh.py` and the Julia binding `gmsh.jl` beside the library in `/usr/lib`.
-`build.sh` moves `gmsh.py` into Python's `site-packages`, from where it still finds
-`libgmsh.so.<version>` in `/usr/lib` through its own search of the directories above it, and
-deletes `gmsh.jl`; the tree has no Julia. The 256-pixel icon is rendered from upstream's SVG with
+`build.sh` moves `gmsh.py` into Python's `site-packages` and deletes `gmsh.jl`; the tree has no
+Julia. The module loads the library by a name carrying Gmsh's major and minor version,
+`libgmsh.so.4.15` for 4.15.2, and looks for it beside itself and in the two directories above it; from
+`/usr/lib/python3.x/site-packages` the second of those is `/usr/lib`, so the moved module still
+finds it. The 256-pixel icon is rendered from upstream's SVG with
 `rsvg-convert`, which is why [librsvg](#port-librsvg) is in `depends`.

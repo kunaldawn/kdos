@@ -14,7 +14,7 @@ GStreamer are decided by what `pkg-config` finds in the build root, OpenGL ES 2 
 build root.
 
 - `USE_SDL2=1` — Build the SDL2 window, image, audio, text and clipboard providers, the only
-  backends this port uses.
+  compiled providers this port builds.
 - `USE_X11=0` — Skip the native X11 window provider, which would link `libX11` and `libXrender`
   directly. Windows are SDL's.
 - `USE_WAYLAND=0` — Compile out the Wayland handles that `Window.get_window_info()` returns for a
@@ -30,11 +30,14 @@ build root.
 - `USE_OPENGL_ES2=0` — Compile against desktop OpenGL and link `libGL`, from
   [libglvnd](#port-libglvnd), rather than OpenGL ES 2.
 - `--no-build-isolation` — Build with the Cython, setuptools and wheel already in the build root.
-  Kivy's `pyproject.toml` caps Cython below the release the tree carries and pins setuptools,
-  and the C that the capped Cython generates does not follow the C API of the tree's Python. Under this flag pip does not enforce
-  those pins, so the [python3-cython](#port-python3-cython) port compiles Kivy, and the two Cython
-  patches below are what that newer Cython needs. The pinned backends in the vendor bundle are
-  there only because `ports/fetch` collects every declared build requirement; none is installed.
+  Kivy's `pyproject.toml` caps Cython at 3.0.11, older than the release the tree carries, and
+  pins setuptools, wheel and packaging; the C that the capped Cython generates does not follow the
+  C API of the tree's Python. Under this flag pip does not install or enforce those pins, so the
+  [python3-cython](#port-python3-cython) port compiles Kivy, and the two Cython patches below are
+  what that newer Cython needs. The pinned Cython, setuptools, wheel and packaging in the vendor
+  bundle, and the `flit_core` that builds packaging, are there only because `ports/fetch` collects
+  every declared build requirement; `pip3 install` names only `filetype` and Kivy, so none of them
+  is installed.
 
 ## Patches
 
@@ -47,7 +50,7 @@ build root.
 The one module Kivy needs that is not a port, `filetype`, comes from the vendor bundle that
 `ports/fetch` makes from `pypackages = filetype`; `pip3 install --no-index` installs it and Kivy
 from `vendor/` alone. See
-[The three Python keys](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
+[The three Python keys](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
 
 `build.sh` deletes `/usr/share/kivy-examples`, the example programs Kivy's `setup.py` installs as
 data files.

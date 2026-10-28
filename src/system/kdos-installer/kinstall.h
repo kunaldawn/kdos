@@ -8,7 +8,7 @@
  *   KDOS Installer
  *
  * The terminal, the cell buffer, the input layer and every widget live in
- * libktui now; the string, file and time helpers live in libkbase. What is
+ * libktui; the string, file and time helpers live in libkbase. What is
  * left here is the installer and nothing else: what it can see about the
  * machine, what the user decided, and how the work is carried out.
  * ---------------------------------
@@ -159,9 +159,10 @@ int ki_vg_off_disk(const char *vg, const char *disk);
  * image — and catalogue.c uses `kb_*` alone, so it costs no library. A live installer
  * also cannot assume anything is on `$PATH` in the target.
  *
- * THE UNIT IS A GROUP. A list of 182 applications is not a thing to page
- * through during an install; seven named bundles is. An application chosen by
- * id in an answer file still works — `cat_expand` takes either.
+ * THE UNIT IS A GROUP. A row for every application in the catalogue is not a
+ * thing to page through during an install; seven named bundles is. An answer
+ * file names groups too: ki_apps_enter() matches group ids only, and an
+ * application id there selects nothing.
  * ──────────────────────────────────────────────────────────────────────── */
 
 /* How the ticked set will actually be installed, decided at plan time and
@@ -257,9 +258,9 @@ typedef struct {
 
 	char theme[16];
 	int with_appbox;
-	/* Which groups or applications the answer file named, space separated.
-	 * Empty means "whatever the page chose", which starts as `essential`.
-	 * A group id or an application id both work: cat_expand takes either. */
+	/* Which groups the answer file named, space separated. Empty means
+	 * "whatever the page chose", which starts as `essential`. Only group
+	 * ids match; a line naming no group falls back to `essential`. */
 	char apps[1024];
 	unsigned svc_off;	/* bitmask over ki_services                */
 

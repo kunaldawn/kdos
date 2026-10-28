@@ -26,5 +26,6 @@ package for them all.
   default when Abseil is the top-level project, written out.
 
 ## Notes
-Each library's soname carries the Abseil release, such as `libabsl_base.so.<release>`, so a version
-bump changes every soname and every port linked against Abseil has to be rebuilt with it.
+Each library's soname is taken from the Abseil release, `libabsl_base.so.2608.0.0` for
+20260817.0, so a new release changes every soname and every port linked against Abseil has to be
+rebuilt with it.

@@ -10,8 +10,9 @@ that reason. It is a Qt 6 application.
 - `-D CMAKE_REQUIRE_FIND_PACKAGE_Hunspell=ON` — make a missing system [hunspell](#port-hunspell)
   a configure error. Upstream looks for it quietly and compiles its own copy under
   `src/hunspell` when it is absent.
-- `-D CMAKE_REQUIRE_FIND_PACKAGE_QuaZip-Qt6=ON` — likewise for [quazip](#port-quazip), which
-  TeXstudio otherwise replaces with its bundled copy under `src/quazip`, linked statically.
+- `-D CMAKE_REQUIRE_FIND_PACKAGE_QuaZip-Qt6=ON` — likewise for [quazip](#port-quazip). Without
+  `QuaZip-Qt6` TeXstudio looks for an older `QuaZip` package and, failing that, compiles its
+  bundled copy under `src/quazip` and links it statically.
 - `-D CMAKE_DISABLE_FIND_PACKAGE_QTermWidget=ON` — skip the search for QTermWidget, the library
   behind the optional built-in terminal panel, which the tree does not carry.
 - `-D TEXSTUDIO_ENABLE_MEDIAPLAYER=ON` — play videos embedded in PDF files in the viewer, through

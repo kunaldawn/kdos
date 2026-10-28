@@ -16,5 +16,6 @@ built from its vendor bundle, the second `sha256 =` line (see
 ## Notes
 The menu entry, *Containers*, runs `kdos-podman-api podman-tui` in a terminal. That wrapper starts
 `podman system service` when nothing answers on the account's API socket and gives podman-tui a
-default connection to it; run bare, podman-tui has no connection until one is added with
-`podman system connection add`. See [Containers](../../../../docs/kdos/06-reference/configuration.md#containers).
+default connection to it; run bare, podman-tui has no connection until one is added, with
+`podman system connection add` or in podman-tui's own system view. See
+[Containers](../../../../docs/kdos/06-reference/configuration.md#containers).

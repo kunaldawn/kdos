@@ -31,21 +31,26 @@ package carries the core library, the `vdb_print` tool, the NanoVDB headers and 
   and oneTBB for threading. [c-blosc](#port-c-blosc), [zlib](#port-zlib) and
   [onetbb](#port-onetbb) are in `depends`.
 - `-DUSE_EXR=OFF`, `-DUSE_PNG=OFF`, `-DUSE_LOG4CPLUS=OFF` — No OpenEXR or PNG image output, which
-  only the `vdb_render` and `vdb_tool` programs use, and neither is built; and no log4cplus logging.
+  only the `vdb_render` program uses, and it is not built; and no log4cplus logging. `USE_EXR` off
+  also leaves `USE_IMATH_HALF` off, so the library uses its own embedded half-float type instead
+  of Imath's.
 - `-DUSE_CCACHE=OFF` — Do not compile through ccache, which upstream uses by default whenever it is
   on the path.
-- `-DCONCURRENT_MALLOC=Tbbmalloc` — Use oneTBB's scalable allocator. The default, `Auto`, takes
-  jemalloc whenever the build root holds it and falls back to tbbmalloc, so the allocator would
-  follow what other ports happened to install.
-- `-DNANOVDB_BUILD_TOOLS=OFF`, `-DNANOVDB_USE_OPENVDB=OFF` — NanoVDB as headers only: its tools
-  convert through OpenVDB grids, and nothing here uses them.
+- `-DCONCURRENT_MALLOC=Tbbmalloc` — Link `vdb_print` against oneTBB's scalable allocator. The
+  switch applies to the programs only; the library links no allocator and leaves the choice to the
+  program that uses it. The default, `Auto`, takes [jemalloc](#port-jemalloc) whenever the build
+  root holds it and falls back to tbbmalloc, so the allocator would follow what other ports
+  happened to install.
+- `-DNANOVDB_BUILD_TOOLS=OFF`, `-DNANOVDB_USE_OPENVDB=OFF` — NanoVDB as headers only, without its
+  command-line tools: `nanovdb_print`, `nanovdb_validate`, and `nanovdb_convert`, which converts
+  OpenVDB grids and is built only with `NANOVDB_USE_OPENVDB`. Nothing here runs them.
 - `-DNANOVDB_USE_CUDA=OFF` — No CUDA.
 - `-DNANOVDB_ALLOW_FETCHCONTENT=OFF` — Do not let NanoVDB's CMake download a missing dependency;
   the build has no network.
 
 ## Patches
 
-- `tbb-version.patch` — Replaces the include at the top of the installed `openvdb/thread/Threading.h` with upstream's later form: it includes `tbb/version.h` when that header exists, and `tbb/task_arena.h` otherwise. The header reaches TBB's version macros through `tbb/blocked_range.h`, which in oneTBB 2023 includes no version header; `TBB_INTERFACE_VERSION` is then undefined, the code for TBB before 2021 is chosen, and neither OpenVDB nor anything that includes the header compiles.
+- `tbb-version.patch` — In the installed `openvdb/thread/Threading.h`, includes `tbb/version.h` when that header exists, and `tbb/task_arena.h` otherwise, ahead of the TBB headers the file already includes. Unpatched, the header reaches TBB's version macros only through `tbb/blocked_range.h`, which in oneTBB 2023 includes no version header; `TBB_INTERFACE_VERSION` is then undefined, the branch for the old TBB task API (`tbb::task::self()`), which oneTBB does not have, is chosen, and neither OpenVDB nor anything that includes the header compiles.
 
 ## Notes
 

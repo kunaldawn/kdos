@@ -7,16 +7,16 @@ Unicode tables it needs come from [libunistring](#port-libunistring).
 
 [curl](#port-curl) links it to resolve such names, [libpsl](#port-libpsl) uses it at run time to convert the
 entries of a Public Suffix List file it loads, and [gnutls](#port-gnutls), [rsync](#port-rsync),
-[iputils](#port-iputils), [dnsmasq](#port-dnsmasq), [whois](#port-whois), [lynx](#port-lynx),
-[msmtp](#port-msmtp) and [gmime](#port-gmime) depend on it as well.
+[dnsmasq](#port-dnsmasq), [whois](#port-whois), [lynx](#port-lynx), [msmtp](#port-msmtp) and
+[gmime](#port-gmime) depend on it as well.
 
 ## Flags
 
 - `--disable-nls` — build no message catalogues. No catalogue would ship anyway: the package's
-  language prune removes every non-English one (see [Size and language
-  policy](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#size-and-language-policy)),
-  and with translation off the library has no use for GNU `libintl`; see [Gettext on
-  musl](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/build-troubleshooting.md#gettext-on-musl).
+  language prune removes every non-English one (see
+  [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)),
+  and with translation off the library has no use for GNU `libintl`; see
+  [Gettext on musl](../../../../docs/kdos/05-developer/build-troubleshooting.md#gettext-on-musl).
 - `--disable-valgrind-tests` — do not run the self-tests under Valgrind. By default configure looks
   for `valgrind` on `PATH` and, when it finds one, wraps the test suite in it. The
   [valgrind](#port-valgrind) port exists from `40_lang` on, so the switch keeps a rebuild's

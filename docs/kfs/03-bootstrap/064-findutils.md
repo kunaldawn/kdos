@@ -12,7 +12,7 @@ and explains them.
 
 ## Installation of findutils
 
-<!-- kfs:include script/phases/10_bootstrap/064_findutils.sh lines=23-43 pin=7b1def553db6 -->
+<!-- kfs:include script/phases/10_bootstrap/064_findutils.sh lines=23-44 pin=d9dbb9187d61 -->
 
 ### The meaning of the configure options
 
@@ -30,8 +30,11 @@ and explains them.
 
 `locate`, `updatedb` and their helper `frcode` are deleted with their manual pages. The
 [plocate](#port-plocate) port provides `/usr/bin/locate` and `/usr/sbin/updatedb`. The findutils
-port leaves its own pair out of its package, so a copy installed here would be owned by nothing,
-never replaced, and found on `PATH` ahead of plocate's `/usr/sbin/updatedb`.
+port leaves its own copies out of its package, so a file installed here would be adopted by no
+package (see [What the bootstrap leaves behind](intro.md#what-the-bootstrap-leaves-behind)).
+plocate's `locate` would take over a `/usr/bin/locate` left here, but nothing would ever replace
+`/usr/bin/updatedb`, `frcode` or the manual pages, and the profile's `PATH` lists `/usr/bin` before
+`/usr/sbin`, so findutils' `updatedb` would run in place of plocate's.
 
 `rmdir` removes `/var/lib/locate` only when it is empty, and its `|| true` keeps a missing or
 non-empty directory from stopping the step.
@@ -56,7 +59,8 @@ adopts the files this step installed. It differs in three ways:
 
 ## See also
 
-- [Part III](intro.md): the bootstrap, and why an unowned file must not be left behind
+- [Part III](intro.md): the bootstrap, and [why an unowned file must not be left behind](intro.md#what-the-bootstrap-leaves-behind)
+- [Finding a file by name](../../kdos/02-user-guide/administration.md#finding-a-file-by-name): the `locate` and `updatedb` KDOS ships
 - [Gawk](065-gawk.md): the next step
 
 <!-- book-nav -->

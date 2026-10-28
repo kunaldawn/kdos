@@ -11,30 +11,33 @@
  *
  * Boxes and their sandbox profiles.
  *
- * A profile is a handful of booleans in ~/.config/kdos/boxes/<name>.conf, and
- * every one of them maps onto a distrobox flag that the kernel actually
+ * A profile is a handful of keys in ~/.config/kdos/boxes/<name>.conf. The
+ * namespace keys map onto flags of the container runtime — distrobox's for an
+ * image box, `podman create --rootfs` for a pack box — which the kernel
  * enforces. KDOS deliberately does not offer confinement it cannot deliver:
- * there is no "no filesystem access" switch, because distrobox shares the
- * host root at /run/host by design and pretending otherwise would be a lie
- * printed in a settings dialog.
+ * there is no "no filesystem access" switch, because the box shares the host
+ * root by design and pretending otherwise would be a lie printed in a
+ * settings dialog.
  *
- * A profile is applied at CREATE time. Namespaces cannot be re-flagged on a
- * live container, so changing one marks the box as needing a recreate rather
- * than silently doing nothing — see cmd_security() in main.c.
+ * A profile is applied at CREATE time. Namespaces and volumes cannot be
+ * re-flagged on a live container, so `kdos-box profile` says that a change
+ * takes effect once the box is removed and created again, rather than
+ * silently doing nothing.
  *
  * THE PROTOCOL HALF IS NOT THIS FILE'S. kdos-comp's filter
- * (allow_for_sandbox() in its server.c) is a fixed allowlist, so a client is
- * sandboxed or it is not — screencopy, data-control, input-method and
- * layer-shell are denied to every tagged client, and no profile key changes
- * that. Nothing here writes or reads a `wayland.*` key. What this file owns is
- * the namespace half — the keys above, applied at create time.
+ * (allow_for_sandbox() in its server.c) denies screencopy, data-control,
+ * input-method, layer-shell and the other globals that reach past a client's
+ * own windows to every tagged client, and kdos-grant.c reads this profile's
+ * `grant` key to let one box bind named ones beyond that. This file parses
+ * and writes `grant` and enforces nothing of it; what it owns is the
+ * namespace half — the keys applied at create time.
  *
  * A KEY THAT ENFORCES NOTHING IS PRINTED AS SUCH, never silently, which is
- * what the `audio` note already does: a setting that quietly does nothing is
- * worse than an absent one. Two are in that state and profile_print() says so
- * on the line. `wayland` cannot take a display away, because the box shares
- * $XDG_RUNTIME_DIR and a client that opens the default `wayland-0` reaches the
- * session's own socket — withholding WAYLAND_DISPLAY would advertise
+ * what the `audio` note does: a setting that quietly does nothing is worse
+ * than an absent one. `persistence`, `wayland=no` and `export` are in that
+ * state and profile_print() says so. `wayland` cannot take a display away,
+ * because the box shares $XDG_RUNTIME_DIR and a client that opens the
+ * default `wayland-0` reaches the session's own socket — withholding WAYLAND_DISPLAY would advertise
  * confinement the sandbox does not deliver. `export` triggers nothing:
  * `kdos-appbox genlaunchers` covers every installed pack and every store box
  * at once and `kdos-box export` is the per-application route.
@@ -229,10 +232,11 @@ int profile_set(Profile *p, const char *kv)
 		else
 			p->persist = PERSIST_PERSISTENT;
 	} else if (!strcmp(key, "network")) {
-		/* host | private | none, and the legacy shared/private the
-		 * image lane already wrote. `none` is private PLUS no
-		 * interface at all, which is a different thing from a
-		 * namespace of one's own with a bridge in it. */
+		/* host | private | none. `yes`, `on`, `1` and `true` read as
+		 * private and any other word, `shared` among them, as host.
+		 * `none` is private PLUS no interface at all, which is a
+		 * different thing from a namespace of one's own with a bridge
+		 * in it. */
 		p->netnone = !strcmp(eq, "none");
 		p->netns = p->netnone || truthy(eq);
 	} else if (!strcmp(key, "ipc"))
@@ -311,9 +315,12 @@ int profile_load(Profile *p, const char *box)
  * promptly by a start lands exactly here — as does a hung app holding D-state
  * I/O, which can wedge a box in `stopping` for good.
  *
- * Wait it out, then force the way back. A box is stateless — its packs are
- * mounted read-only and its writable upper is on disk — so nothing is lost by
- * recreating the container over the same stack.
+ * Wait it out, then force the way back. A pack box keeps nothing in its
+ * container — its packs are mounted read-only and its writable upper lives
+ * outside it, on disk or on tmpfs in a live session — so nothing is lost by
+ * recreating the container over the same stack. An image box's writes are in
+ * the container itself, so a return of 3 has removed them, and the caller
+ * recreates only a pack box.
  */
 int box_unstick(const char *box, char *state, size_t n)
 {
@@ -687,8 +694,8 @@ int box_create(const Profile *p)
 	/* The host's cups socket, so every boxed app's own print dialog works
 	 * (no portal Print backend exists or is needed). A volume is a
 	 * CREATE-time property — it cannot be added to a live container — so a
-	 * box created before cups was up keeps missing it until
-	 * `kdos-appbox recreate`; the matching CUPS_SERVER export in box_env()
+	 * box created before cups was up keeps missing it until it is removed
+	 * and created again; the matching CUPS_SERVER export in box_env()
 	 * is per-launch and probes the socket again. */
 	if (kb_path_exists("/run/cups/cups.sock")) {
 		kb_argv_add(&a, "--volume");

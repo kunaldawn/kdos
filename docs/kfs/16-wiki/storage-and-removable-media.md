@@ -52,14 +52,15 @@ Other ports that work on [removable media]{.idx}:
 | `write = yes` | No disk image can be written through the daemon | Writing an image over a whole removable disk is allowed |
 
 The daemon reads the file on each request that needs it, so no restart is needed. It looks for the
-text anywhere in the file, comments included: a commented-out `# exec = yes` still turns the
-setting on, and a setting is turned off by deleting its text. See
+text anywhere in the file, written with or without the spaces (`exec=yes` works too), comments
+included: a commented-out `# exec = yes` still turns the setting on, and a setting is turned off
+by deleting its text. See
 [`/etc/kdos/mountd.conf`](../../kdos/04-programs/daemons.md#etckdosmountdconf).
 
 **`/etc/init.d/58_mountd.sh`**, from `fs/etc/init.d/58_mountd.sh`, checks that the daemon is
 installed and starts it in the foreground under the supervisor:
 
-<!-- kfs:include fs/etc/init.d/58_mountd.sh lines=20-22 pin=744e191b2c87 -->
+<!-- kfs:include fs/etc/init.d/58_mountd.sh lines=21-23 pin=744e191b2c87 -->
 
 **`/etc/polkit-1/rules.d/50-kdos.rules`**, from `fs/etc/polkit-1/rules.d/50-kdos.rules`, decides
 what udisks2 may do for whom. Members of `wheel` are granted these actions without a password:
@@ -68,8 +69,9 @@ what udisks2 may do for whom. Members of `wheel` are granted these actions witho
 
 For anyone outside `wheel` the rule decides nothing and udisks2's own policy applies. Where that
 policy asks for a password the request is refused, because the system has no authentication agent
-to ask it. Changing `/etc/fstab` and `/etc/crypttab`, managing arrays and volume groups, and
-firmware erases are left out of the rule for `wheel` too; the comment at the rule's end lists them.
+to ask it. Changing `/etc/fstab` and `/etc/crypttab`, managing RAID arrays, LVM volume groups,
+btrfs volumes and swap, and firmware erases are left out of the rule for `wheel` too; the comment
+at the rule's end lists them.
 See
 [What is granted instead: `50-kdos.rules`](../../kdos/03-architecture/security-model.md#what-is-granted-instead-50-kdosrules).
 
@@ -79,7 +81,8 @@ See
 <!-- kfs:include ports/core/disk/udisks2/build.sh lines=12-32 pin=074d50f6ce10 -->
 
 **`/etc/fstab`.** A device that `/etc/fstab` names by device path or by `LABEL=` is not offered by
-`kdos-mountd` at all; see [Filesystems and fstab](filesystems-and-fstab.md#tips).
+`kdos-mountd` at all. A line that names it by `UUID=` is not matched, so that device is still
+offered; see [Filesystems and fstab](filesystems-and-fstab.md#tips).
 
 ## Usage
 
@@ -97,9 +100,12 @@ stick holding another system's image can be mounted while running live.
    row under removable media and press Enter, which mounts what is not mounted and opens what is.
 3. To unmount, press `u` on the row in `kdos-devices`, or Enter on it in `kdos-disks`.
 
-The device is mounted at `/media/<user>/<label>`, a directory only you can open (mode 0770, yours),
-which is removed again at unmount. Every mount is `nosuid,nodev`, and `noexec` unless `exec = yes`
-is set. A FAT stick, for example, is mounted
+The device is mounted at `/media/<user>/<label>`, a directory the daemon makes for the mount and
+removes again at unmount, and its top directory is yours. On FAT, exFAT and NTFS, which have no
+ownership of their own, every file and directory is yours and closed to other accounts (mode
+0660 and 0770); ext4 and btrfs keep the ownership stored on them, and only the top directory is
+made yours. Every mount is `nosuid,nodev`, and `noexec` unless `exec = yes` is set. A FAT stick,
+for example, is mounted
 `rw,nosuid,nodev,noexec,relatime,uid=1000,gid=1000,fmask=0117,dmask=0007,…`.
 
 ### Mounting from a terminal
@@ -178,9 +184,12 @@ sudo mkfs.exfat -L stick /dev/sdb1           # exFAT, for files over 4 GiB
 
 ### Partitioning a stick
 
-In `kdos-disks`, select a row on the disk and press `p`. It opens [`cfdisk`]{.idx} in a terminal on the
-whole disk the row is on, never on the partition. From a terminal, the same is
-`sudo cfdisk /dev/sdb`. `cfdisk` asks before it writes.
+In `kdos-disks`, select an unmounted row on the disk and press `p`. It opens [`cfdisk`]{.idx} in a
+terminal on the whole disk the row is on, never on the partition. `cfdisk` runs through `sudo`, so
+the terminal asks for your password and the account must be in `wheel` (see
+[sudo, PAM and polkit](sudo-pam-polkit.md)); the daemon is not involved. A mounted row and an
+unlocked mapping's row are refused. From a terminal, the same is `sudo cfdisk /dev/sdb`. `cfdisk`
+asks before it writes.
 
 ### Writing a disk image to a stick
 
@@ -250,13 +259,22 @@ since both read `/proc/mounts`. The native applications have not been run; see
 
 ### A phone
 
-An MTP phone is not a block device, so neither list shows it. Mount it with
-`aft-mtp-mount ~/Phone`, or open the Android File Transfer window.
+An MTP phone is not a block device, so neither list shows it. Mount its storage as a directory,
+which must exist first, and take it away again when done:
+
+```bash
+mkdir -p ~/Phone
+aft-mtp-mount ~/Phone
+fusermount3 -u ~/Phone
+```
+
+Or open the Android File Transfer window, which copies with no mount.
 
 ## Tips
 
 - Give a backup disk a label. The mount point is named after it, so `/media/<user>/<label>` is the
-  same path every time it is plugged in.
+  same path every time it is plugged in. Every character other than letters, digits, `.`, `_` and
+  `-` is dropped from the name, so a label `My Disk` mounts at `/media/<user>/MyDisk`.
 - A row number is valid only for the list it came from: the daemon rescans on every request. In a
   script, run `kdos-mount list` again before acting on a row after anything was plugged in or out.
 - `kdos-disks` has no `fsck`. Check a removable filesystem from a terminal, unmounted, as on

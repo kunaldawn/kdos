@@ -63,7 +63,7 @@ boot. It is the one marker the image ships; see
 `kdos-powerd` treats `ssh` as both a port and a daemon. The comment above the code that does it,
 from `src/daemons/kdos-powerd/main.c`:
 
-<!-- kfs:include src/daemons/kdos-powerd/main.c lines=428-436 pin=9d44e95d2ac3 -->
+<!-- kfs:include src/daemons/kdos-powerd/main.c lines=430-438 pin=9d44e95d2ac3 -->
 
 The rule it writes goes into [`/etc/nftables.d/50-kdos-services.nft`]{.idx}; see [Firewall](firewall.md).
 
@@ -114,7 +114,7 @@ Needs membership of `wheel`.
 4. From another machine: `ssh kdos@<address>`. The first connection shows the host key's
    fingerprint. Compare it with the fingerprint the KDOS machine itself prints for
    `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`, a line of the form
-   `256 SHA256:<hash> root@kdos (ED25519)`, before answering `yes`.
+   `256 SHA256:<hash> root@<hostname> (ED25519)`, before answering `yes`.
 
 The first start makes an RSA, an ECDSA, an Ed25519 and an ML-DSA-44/Ed25519 host key in
 `/etc/ssh/`.
@@ -197,7 +197,8 @@ Do this only after a key login works, from a second connection kept open while y
   opening port 22 on an installed machine whose answer file set no password.
 - A login shell reached over SSH finds the desktop's session bus when the desktop is running: the
   profile points `DBUS_SESSION_BUS_ADDRESS` at `$XDG_RUNTIME_DIR/bus` when that socket exists, and
-  `SSH_AUTH_SOCK` at the account's shared agent. A command given on the `ssh` line runs without
+  `SSH_AUTH_SOCK` at the account's shared agent, unless the client forwarded its own agent with
+  `ssh -A`, which the profile then leaves in place. A command given on the `ssh` line runs without
   the login profile and gets neither.
 - `sftp` and `scp` work as soon as `ssh` does; the `sftp` subsystem is in the shipped file.
 - `service status ssh` finds `sshd` too, but `service enable` and `disable` need the exact name

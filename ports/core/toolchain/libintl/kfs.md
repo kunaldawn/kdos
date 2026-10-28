@@ -11,7 +11,7 @@ It is in KDOS for programs built against musl. musl's libc has `gettext()` and i
 [newsboat](#port-newsboat), or whose build links libintl whenever it finds one, as
 [gdk-pixbuf](#port-gdk-pixbuf)'s and [fcitx5](#port-fcitx5)'s do, links against this one. The
 diagnosis and the choice between a build switch and this library are in
-[Gettext on musl](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/build-troubleshooting.md#gettext-on-musl).
+[Gettext on musl](../../../../docs/kdos/05-developer/build-troubleshooting.md#gettext-on-musl).
 
 ## Flags
 - `--enable-nls` — Turn national language support on, against the tree's `--disable-nls`
@@ -37,6 +37,6 @@ gettext port, and installing it here as well would put two packages on the same 
 
 `intl`'s install writes GNU's `libintl.h` too, and `build.sh` deletes it from `$PKG`.
 `/usr/include/libintl.h` is [musl](#port-musl)'s, and kpkg refuses a package that would
-overwrite a path another package owns ([Who owns a file](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/packaging.md#who-owns-a-file)).
+overwrite a path another package owns ([Who owns a file](../../../../docs/kdos/03-architecture/packaging.md#who-owns-a-file)).
 A program compiled against musl's header calls the plain names; the library exports those as
 well as the `libintl_` ones.

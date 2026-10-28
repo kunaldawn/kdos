@@ -16,7 +16,7 @@ this page does not repeat it.
 | [smartmontools](#port-smartmontools) | [`smartctl`]{.idx}, which reads a disk's SMART data and starts its self-tests, and the `smartd` daemon |
 | [nvme-cli](#port-nvme-cli) | `nvme`, for an NVMe drive's own logs and settings |
 | [hdparm](#port-hdparm) | `hdparm`, which sets an ATA drive's power management and spindown |
-| [xfsprogs](#port-xfsprogs) | `xfs_healer`, `xfs_scrub` and [`xfs_property`]{.idx} |
+| [xfsprogs](#port-xfsprogs) | `xfs_healer`, at `/usr/libexec/xfsprogs/xfs_healer` and started only by its boot script; `xfs_scrub` and [`xfs_property`]{.idx} |
 | [ddrescue](#port-ddrescue) | [`ddrescue`]{.idx}, which copies a failing disk with retries and a resumable map file |
 | [partclone](#port-partclone) | Images a healthy filesystem by copying only its used blocks |
 | [f3](#port-f3) | `f3probe`, `f3write` and `f3read`, which find a stick that reports a false size |
@@ -28,7 +28,7 @@ overlay, and both are enabled on the image (`/etc/service.disabled/` holds no ma
 | Script | Service name | Starts | Skips or stops |
 |---|---|---|---|
 | `52_smartd` | `smartd` | `smartd -n` under the [supervisor]{.idx term="supervisor (ksvc)"} | Stops for good, without a restart, when no disk answers SMART (exit 17), as in any [virtual machine]{.idx}, or when [`/etc/smartd.conf`]{.idx} cannot be parsed (2) or read (6) |
-| `53_xfs_healer` | `xfs_healer` | One `xfs_healer` per XFS filesystem mounted when it runs, each named `xfs_healer-N` | Skips a filesystem whose kernel has no XFS health monitor or whose `autofsck` property is `none`, and prints `no XFS filesystem to watch` when none is left |
+| `53_xfs_healer` | `xfs_healer` | One `xfs_healer` per XFS filesystem mounted when it runs, each named `xfs_healer-N` | Skips a filesystem whose kernel has no XFS health monitor or whose `autofsck` property is `none`, and prints `no XFS filesystem to watch` when none is left. A healer stops for good, without a restart, when its filesystem goes away (exit 0) or on an error (1) |
 
 [`kdos-mountd`]{.idx} answers a SMART health question about a removable disk for the desktop, because no
 session may open a raw block device; see [SMART](../../kdos/04-programs/daemons.md#smart).
@@ -71,8 +71,8 @@ set with `xfs_property` (`xfs_healer(8)`):
 
 ## Usage
 
-Every command here needs root, because SMART is read from the raw block device. In a virtual
-machine the disks answer no SMART and every command below reports that it cannot:
+Every command that reads a disk needs root, because SMART is read from the raw block device;
+`kdos-mount` is the exception, because `kdos-mountd` reads the disk for it. In a virtual machine the disks answer no SMART and every command below reports that it cannot:
 `smartctl --scan` lists nothing, a virtio disk answers `Unable to detect device type`, and an
 emulated USB stick `Unknown USB bridge`.
 
@@ -91,7 +91,8 @@ emulated USB stick `Unknown USB bridge`.
    sudo smartctl -x /dev/sda
    ```
 
-   `-H` prints `PASSED` or `FAILED`. In `-x`, the reallocated, pending and uncorrectable sector
+   `-H` prints `PASSED` or `FAILED!` for an ATA or NVMe drive, and `SMART Health Status: OK` for
+   a SCSI or SAS one. In `-x`, the reallocated, pending and uncorrectable sector
    counts, and the error log, show a drive in decline before the verdict changes.
 
 For a removable disk from the desktop, select it in `kdos-disks` and press `s`, or from a terminal
@@ -140,7 +141,7 @@ smartmontools.
 
 ```bash
 grep smartd /var/log/messages
-cat /run/kdos-svc.smartd.log
+sudo cat /run/kdos-svc.smartd.log
 ```
 
 A failing health check, a growing count of pending or uncorrectable sectors, a new entry in the
@@ -178,8 +179,9 @@ is the route that works.
 
 ### Repairing XFS online
 
-A filesystem made by this `mkfs.xfs` already carries `autofsck=repair`; `xfs_property /srv/data
-get autofsck` says so. For one made elsewhere, or set otherwise:
+A filesystem made by this `mkfs.xfs` with its default reverse-mapping and parent-pointer metadata
+already carries `autofsck=repair`; `sudo xfs_property /srv/data get autofsck` says so. For one
+made elsewhere, or set otherwise:
 
 1. Set the property on the mounted filesystem:
 
@@ -197,7 +199,8 @@ get autofsck` says so. For one made elsewhere, or set otherwise:
    The restart prints `[KDOS] Starting xfs_healer for /srv/data...`, and the status lists one
    healer per filesystem, `[ OK ] xfs_healer-17  (pid …)`; the number is the filesystem's line
    in `/proc/self/mounts`. A restart prints its output to the terminal and leaves
-   `/run/kdos-init.xfs_healer.log` holding what the boot printed.
+   `/run/kdos-init.xfs_healer.log` holding what the boot printed. Each healer's own output is in
+   `/run/kdos-svc.xfs_healer-N.log`, root only, and in the system log tagged `xfs_healer-N`.
 
 `sudo xfs_scrub /srv/data` checks the same filesystem on demand, and ends with what it found and
 what it changed (`/srv/data: optimizations made: 3.`). An XFS filesystem mounted after boot, by
@@ -239,7 +242,8 @@ manual, `info ddrescue`):
 3. Work on the image, never the disk: check and mount the image file as a loop device, for example
    `sudo mount -o loop,ro /srv/rescue/disk.img /mnt` for a filesystem without a partition table.
 
-For a healthy disk, `partclone` images a filesystem by its used blocks only; see [Backups](backups.md).
+For a healthy disk, `partclone` images an unmounted filesystem by its used blocks only; see
+[Imaging a whole filesystem](backups.md#imaging-a-whole-filesystem).
 
 ## Tips
 
@@ -262,7 +266,7 @@ log:
 
 ```bash
 cat /run/kdos-init.smartd.log
-cat /run/kdos-svc.smartd.log
+sudo cat /run/kdos-svc.smartd.log
 ```
 
 `[KDOS] (smartd) Exited with code 17, a final status: not restarting` means no disk answered

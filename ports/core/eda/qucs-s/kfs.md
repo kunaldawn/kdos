@@ -2,9 +2,9 @@
 
 Qucs-S is a circuit simulator with a schematic editor in front of it: draw a circuit, choose an
 analysis, and plot the result. The simulation itself is done by [ngspice](#port-ngspice), found on
-`PATH` at run time, or by `qucsator_rf`, the RF simulator built from the same archive. The package
-also carries the filter, active-filter, attenuator, transmission-line, power-combiner and RxCalc calculators and
-`qucs-sspar-viewer`, an S-parameter viewer.
+`PATH` at run time, or by `qucsator_rf`, the RF simulator built from the same archive. The
+package also carries the filter, active-filter, attenuator, transmission-line, power-combiner and
+RxCalc calculators and `qucs-sspar-viewer`, an S-parameter viewer.
 
 ## Flags
 
@@ -13,6 +13,10 @@ also carries the filter, active-filter, attenuator, transmission-line, power-com
   `admsXml required in PATH`. Unset, it is off.
 - `-DUPDATE_TRANSLATIONS=OFF` — Compile the shipped `.ts` catalogues as they are, rather than
   regenerate them from the sources. It is upstream's default.
+
+## Patches
+
+- `gperfapphash-no-dos2unix.patch` — In `qucsator_rf/src/CMakeLists.txt`, drops the `dos2unix` run on the generated `gperfapphash.gph`. `gperfappgen` writes the file with `\n` line endings already, and no port provides `dos2unix`, so the custom command fails and stops the build without the patch.
 
 ## Notes
 
@@ -25,7 +29,7 @@ missing.
 The compiled catalogues land in `/usr/share/qucs-s/lang`, which `build.sh` removes; the interface
 falls back to its English source strings. The prune that keeps every package English-only is
 described in
-[Size and language policy](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#size-and-language-policy).
+[Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy).
 
 Qt takes the Wayland app_id from the executable's name, so the S-parameter viewer's entry, which
 upstream does not install, gives `StartupWMClass=qucs-sspar-viewer`.

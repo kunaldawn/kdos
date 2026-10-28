@@ -23,7 +23,9 @@ being dropped by meson's `auto`.
 - `-Dmtp=enabled` — MTP devices through [libmtp](#port-libmtp).
 - `-Dplugins_python=enabled` — the Python plugins (replay gain, the Python console, lyrics, cover
   search and the online services), loaded through [python3-gobject](#port-python3-gobject).
-- `-Dplugins_vala=enabled` — build the Vala plugin bindings with [vala](#port-vala).
+- `-Dplugins_vala=enabled` — install the Vala bindings, `rb.vapi` and `rhythmdb.vapi`, that a
+  plugin written in Vala builds against; it needs [vala](#port-vala). No plugin Rhythmbox ships
+  is written in Vala.
 - `-Dsample-plugins=false` — with `-Dapidoc=false`: no sample plugins and no API documentation,
   both upstream's defaults.
 - `-Dhelp=true` — install the user manual, upstream's default; `build.sh` keeps only its English
@@ -41,4 +43,7 @@ renders `org.gnome.Rhythmbox3.svg` at 48, 64 and 128 pixels with `rsvg-convert` 
 The desktop entry is KDOS's own, written over upstream's. Its `StartupWMClass` is the
 GtkApplication id `org.gnome.Rhythmbox3`, which is the Wayland app id. It claims no MIME type:
 [strawberry](#port-strawberry) is the program audio files open in, in
-`/etc/xdg/kdos-mimeapps.list`.
+`/etc/xdg/kdos-mimeapps.list`. Upstream's second entry, `org.gnome.Rhythmbox3.device.desktop`, is
+installed unchanged: hidden from menus, it runs `rhythmbox-client --select-source` and claims only
+the `x-content/audio-player` and `x-content/audio-cdda` content types, a connected player and an
+audio CD.

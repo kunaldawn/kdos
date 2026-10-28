@@ -8,15 +8,14 @@
  *   src/libs/selftest.c — the regression net for libk*
  *
  * Host-only; nothing links this into the ISO. Run it with
- * `testing/selftest.sh`, which compiles it against every library and executes
- * it. It exists because five programs now share these libraries, and a change
- * to one of them can quietly break a distro artefact that is only visible
- * after a full build.
+ * `testing/selftest.sh`, which compiles it against twelve of the libraries
+ * (libkimg too when pixman is installed) and executes it. Many
+ * programs share these libraries, and a change to one of them can quietly
+ * break a distro artefact that is only visible after a full build.
  *
- * The assertions here are the INVARIANTS that were established by diffing
- * against the implementations these libraries replaced — python's colorsys,
- * the shell kpkg, the shell kdos. Each one is a claim that was true when it
- * was measured; this file is what notices when it stops being true.
+ * The assertions here are INVARIANTS, each a claim measured against a
+ * reference implementation such as python's colorsys. This file is what
+ * notices when one stops being true.
  * ---------------------------------
  */
 
@@ -145,12 +144,12 @@ static void test_colour(void)
 		/*
 		 * AND EVERY SCHEME'S FOCUSED PLATE DOES BOTH OF ITS JOBS.
 		 *
-		 * This replaces a test on the GROUND — that white never beat
-		 * black against `deep` — which was a proxy for the real
-		 * question and wrong in both directions: it refused a light
-		 * palette whose plates are fine, and it would have passed a
-		 * dark one whose plates are not. The two floors above measure
-		 * text against the ground and say nothing about the plates at
+		 * The plates are measured themselves, not judged from the
+		 * GROUND: a test that white never beats black against `deep`
+		 * is a proxy and wrong in both directions — it refuses a light
+		 * palette whose plates are fine, and it passes a dark one
+		 * whose plates are not. The two floors above measure text
+		 * against the ground and say nothing about the plates at
 		 * all.
 		 *
 		 * The plate has to STAND OFF THE BAR and CARRY ITS OWN LABEL,
@@ -440,9 +439,9 @@ static void test_colour(void)
 			ok(!strcmp(p, "mailto:ada@example.com"),
 			   "arg: and it is passed on unchanged");
 
-			/* The one that made this function necessary: the
-			 * basename `a@b.c` matches the `*.c` glob, so a mail
-			 * address used to resolve to C++ source. */
+			/* The case this function exists for: the basename
+			 * `a@b.c` matches the `*.c` glob, so a mail address
+			 * looked up as a file name resolves to C++ source. */
 			kxdg_mime_for_arg("mailto:a@b.c", m, sizeof(m));
 			eq_str(m, "x-scheme-handler/mailto",
 			       "arg: even when the basename matches a glob");
@@ -505,9 +504,10 @@ static void test_colour(void)
 					break;
 				if (v.id == KXDG_VERB_PLACE)
 					found_place = v.present;
-				/* Peek is the row whose program is still not
-				 * built; Share's is, so it can no longer carry
-				 * the "absent stays hidden" half. */
+				/* Peek carries the "absent stays hidden" half:
+				 * kdos-peek is a kdos-shell link, absent from
+				 * a build host's PATH. On a KDOS machine it is
+				 * present and the assertion below fails. */
 				if (v.id == KXDG_VERB_PEEK)
 					unbuilt = v.present;
 				if (v.id == KXDG_VERB_SHARE)
@@ -727,13 +727,13 @@ static void test_colour(void)
 	free(out);
 
 	/*
-	 * kcol_muted is T9: `dim` was used as a TEXT colour in every scheme and
-	 * lands around 1.6:1 against `deep`, which is below any legibility
+	 * kcol_muted is the text colour for secondary labels: `dim` is a fill
+	 * and lands around 1.6:1 against `deep`, which is below any legibility
 	 * floor. The claim is not "muted is a colour" — it is that muted sits
 	 * strictly between the background and the text, and is farther from the
 	 * background than dim is by a wide enough margin to be a different
 	 * decision rather than a nudge. Checked for every scheme, because a
-	 * palette that only reads in phosphor is the bug this replaces.
+	 * muted that reads only in phosphor is illegible in every other scheme.
 	 *
 	 * STATED AS DISTANCE FROM THE GROUND, not as a luma ORDER. A light
 	 * scheme runs the other way — its text is darker than its background —
@@ -901,7 +901,7 @@ static void test_base(void)
 		KbLandlock ll;
 		ok(kb_landlock_new(&ll, 0) == 0, "ruleset builds for this ABI");
 
-		/* The regression: a path_beneath rule on a NON-DIRECTORY is
+		/* A path_beneath rule on a NON-DIRECTORY is
 		 * EINVAL if the mask names directory-only accesses. /dev/null
 		 * has to take a write rule, or every sandboxed program dies on
 		 * its first `>/dev/null` and looks broken rather than confined. */
@@ -981,9 +981,9 @@ static void test_trash(void)
 
 	/*
 	 * A TOGGLE IS A FILE'S PRESENCE, and every program must look in the
-	 * one place `kdos toggle` writes. A second copy of the path is what
-	 * made `kdos toggle dnd` set a flag the notification daemon read
-	 * somewhere else and therefore silence nothing.
+	 * one place `kdos toggle` writes. A program with its own copy of the
+	 * path reads a different file, and `kdos toggle dnd` then sets a flag
+	 * the notification daemon never sees, silencing nothing.
 	 */
 	{
 		char dir[512], tp[600];
@@ -2693,14 +2693,12 @@ static char *capture_dump(void)
 }
 
 /*
- * A modal, rendered at a size where it used to break, with nothing outside its
- * own rect.
+ * A modal, rendered at a narrow size, with nothing outside its own rect.
  *
- * S11: the buttons were placed at `x + w - 40` with no floor, so below 46
- * columns the Yes button started to the LEFT of the dialog and drew over the
- * page behind it. The rect is recomputed here from the same three rules
- * ktui_modal_draw uses (56 wide, ktui_w - 6, floor 20) because the assertion
- * IS "the drawing stayed inside the box the layout claims", and a check that
+ * Buttons placed at `x + w - 40` with no floor start to the LEFT of the dialog
+ * below 46 columns and draw over the page behind it. The rect is recomputed
+ * here from the same three rules ktui_modal_draw uses (56 wide, ktui_w - 6,
+ * floor 20) because the assertion IS "the drawing stayed inside the box the layout claims", and a check that
  * asked the drawing where the box was would agree with itself.
  */
 static void check_modal(int sw, int sh)
@@ -4298,9 +4296,9 @@ static void test_portup(void)
 
 	/* Rules must compose so that <name>-v<version> tarballs work. node-v22.14.0
 	 * needs both "node-" stripping (rule 2) AND "v" stripping (rule 1b) to yield
-	 * "22.14.0". Cost a debug cycle: 9 ports regressed (brotli, iso-codes,
-	 * libglvnd, libslirp, libuv, lynx, nodejs, spirv-tools, upower) because the
-	 * transformations were not iterative. */
+	 * "22.14.0", so the transformations must iterate: applied once each, they
+	 * miss the version of brotli, iso-codes, libglvnd, libslirp, libuv, lynx,
+	 * nodejs, spirv-tools and upower. */
 	n = pu_extract("node-v22.14.0.tar.xz", cand, PU_MAX_CAND);
 	ok(pu_extract_has(cand, n, "22.14.0"),
 	   "a <name>-v<version> tarball yields the bare version");

@@ -87,8 +87,8 @@ fi
 # without it the guest is whatever size the window happens to be, starting at
 # whatever the firmware left on screen. With it the window scales the picture
 # instead of resizing the guest, so the desktop is xres by yres however the
-# window is dragged. Set KDOS_QEMU_DISPLAY=gtk,gl=es to get the old behaviour
-# back, where the guest follows the window.
+# window is dragged. KDOS_QEMU_DISPLAY=gtk,gl=es leaves zoom-to-fit off, and
+# the guest then follows the window's size.
 GPU_ARGS=(
     -object memory-backend-memfd,id=mem,size="$MEM",share=on
     -machine pc,memory-backend=mem,accel=kvm

@@ -94,10 +94,11 @@ static void child_reset_signals(void)
 #define REPLY_TIMEOUT_US (5ULL * 1000000ULL)
 
 /* `SelectSources` IS ANSWERED BY A PERSON, and a person is not a timeout. The
- * wlr backend's chooser is `slurp` — it covers the screen and waits for the
- * pointer to pick an output — so a deadline of seconds cancels every recording
- * before anybody has decided which screen to record, and the failure reads as
- * `no answer to SelectSources` rather than as the question it really was. Two
+ * wlr backend's chooser is the `chooser_cmd` its config names (fuzzel, in
+ * dmenu mode, listing every screen and window) and it waits for a pick, so a
+ * deadline of seconds cancels every recording before anybody has decided
+ * which screen to record, and the failure reads as `no answer to
+ * SelectSources` rather than as the question it really was. Two
  * minutes is long enough to choose and short enough that a chooser nothing
  * ever answers does not hang the terminal it was typed in. */
 #define CHOOSE_TIMEOUT_US (120ULL * 1000000ULL)
@@ -285,7 +286,7 @@ static int marker_path(char *buf, size_t n)
 /*
  * The pid a marker names, or 0 — including when the process it names is gone.
  * A stale marker is a crash and not a recording; taking it for one would mean
- * a stop that stops nothing and a lamp that never goes out.
+ * a stop that stops nothing and a recording that can never start.
  */
 static pid_t marker_read(const char *path)
 {
@@ -618,9 +619,9 @@ int main(int argc, char **argv)
 		fprintf(stderr, "kdos-record: cannot start gst-launch-1.0\n");
 		goto out;
 	}
-	/* WITH THE PIPELINE AND NOT BEFORE IT: the marker is what the bar's
-	 * lamp and the next invocation both read, and one written for a
-	 * recording that failed to start is a lamp nothing can put out. */
+	/* WITH THE PIPELINE AND NOT BEFORE IT: the marker is what the next
+	 * invocation reads, and one written for a recording that failed to
+	 * start sends that invocation to stop a process that records nothing. */
 	if (have_marker)
 		marked = marker_write(marker);
 

@@ -33,8 +33,8 @@ its `PORT_REPO`, which is why the desktop's programs can only be built by the de
 To find a port's recipe, look it up here: the heading above its table names its shelf or `src/`
 area. On a running system, `kpkg info <name>` prints an installed package's version, release and
 file count. Where the ports tree is present (inside the build chroot, or with `PORT_REPO` pointed at
-a checkout's `ports/core`), it also prints an uninstalled port's recipe description and
-dependencies.
+a checkout's `ports/core`), it adds the recipe's `license =` value, and for a port that is not
+installed it prints the recipe's description, licence and dependencies instead.
 
 **Phases and their lists.** The build installs ports in **phases**, the directories under
 `script/phases/`, run in sorted order. A phase that installs packages carries a **package list**
@@ -61,11 +61,11 @@ group together, all or none. Two kinds of recipe set it. A pair that builds one 
 twice, or a program and the data released beside it, shares a group: `glib` and `glib-introspection`
 (`glib`), `python3` and `python3-tkinter` (`python3`), `gcc-arm-none-eabi` and
 `libstdcxx-arm-none-eabi` (`gcc-arm-none-eabi`), `gcc-riscv64-unknown-elf` and
-`libstdcxx-riscv64-unknown-elf` (`gcc-riscv64-unknown-elf`), `qca` and `qca-qt5` (`qca`), `qwt` and `qwt-qt5`
-(`qwt`), `qscintilla` and `python3-qscintilla` (`qscintilla`), `webkitgtk` and `webkitgtk6`
-(`webkitgtk`), `mgba` and `libretro-mgba` (`mgba`),
-`supertuxkart` and `stk-assets` (`supertuxkart`), and four programs whose graphical front end is
-built from the same tarball by a port of its own: `limesuite` and `limesuite-gui` (`limesuite`),
+`libstdcxx-riscv64-unknown-elf` (`gcc-riscv64-unknown-elf`), `qca` and `qca-qt5` (`qca`), `qwt` and
+`qwt-qt5` (`qwt`), `qscintilla` and `python3-qscintilla` (`qscintilla`), `webkitgtk` and
+`webkitgtk6` (`webkitgtk`), `mgba` and `libretro-mgba` (`mgba`), `texlive` and `texlive-doc`
+(`texlive`), `supertuxkart` and `stk-assets` (`supertuxkart`), and four programs whose graphical
+front end is built from the same tarball by a port of its own: `limesuite` and `limesuite-gui` (`limesuite`),
 `nmap` and `zenmap` (`nmap`), `v4l-utils` and `qv4l2` (`v4l-utils`), and `stlink` and `stlink-gui`
 (`stlink`). A family released together carries one key for all
 its members, so that the checker does not split it by host: the 29 Qt 6 ports carry `group = qt6`
@@ -92,7 +92,8 @@ Within each table, ports are in alphabetical order. The version is the recipe's 
 and the description is its `description =` value, reworded where that line praises the software,
 carries a typo or an aside, or does not plainly say what the software is. The phase column names the
 phase that first installs the port, and any later phase whose list names it again. "As a dependency"
-marks a port that phase installs without its list naming it.
+marks a port that phase installs without its list naming it, "by script" the one port a
+`10_bootstrap` step builds and no list names, and "not built" the recipe no phase builds.
 
 ## The phases
 
@@ -1509,7 +1510,7 @@ Notes:
 - `fuse`: the `/dev/fuse` node the install creates is removed from the package, since the build
   chroot's `/dev` is the container's. `fusermount` links to `fusermount3`, the name restic's FUSE
   client runs.
-- `gocryptfs`: built with cgo against OpenSSL for AES-GCM, unlike every other Go port, so it links
+- `gocryptfs`: built with cgo against OpenSSL for AES-GCM, unlike most Go ports, so it links
   `libcrypto`; `-tags without_openssl` gives a slower pure-Go binary. The binaries are built into
   `out/`: `gocryptfs-xray` is also a package directory, and `-o gocryptfs-xray` writes inside it.
 - `hfsprogs`: built with clang: `fsck_hfs` is written with C blocks (`-fblocks`), which gcc does
@@ -2086,7 +2087,7 @@ Email clients, fetch and send tools, mail libraries, and feed readers. 13 ports,
 
 Notes:
 
-- `aerc`: the one Go port built with `CGO_ENABLED=1`, because the `notmuch` build tag binds
+- `aerc`: built with `CGO_ENABLED=1`, unlike most Go ports, because the `notmuch` build tag binds
   libnotmuch through cgo. The `kdos-part` filter is the `KDOS_SH` heredoc in `build.sh`, which
   `testing/preflight.sh` parses as a shell script. The desktop entry carries `%u` and no
   `x-scheme-handler/mailto` type, because `xdg-open` would start aerc without a terminal.
@@ -2369,8 +2370,8 @@ Notes:
 - `intel-gmmlib`: `RUN_TEST_SUITE` defaults on and runs the test binary as part of `cmake --build`,
   which fails the build wherever that binary cannot run.
 - `intel-media-driver`: the driver installs into its libdir's `dri`, which must be the directory
-  libva searches. `ENABLE_KERNELS=OFF` is not a size trim: it switches off every feature that
-  needs a prebuilt shader.
+  libva searches. `ENABLE_KERNELS` stays `ON`, with the prebuilt shaders (`BUILD_KERNELS=OFF`):
+  turning it off is not a size trim, it switches off every feature that needs a prebuilt shader.
 - `libplacebo`: `-Dvulkan-registry` hands the generator the `vk.xml` of the vulkan-headers port,
   and the two must be the same release. Its shaders are generated through `python3-jinja2` and
   its GL loader through `python3-glad2`, since the release archive carries their submodules empty.
@@ -2907,8 +2908,8 @@ Unicode, locale, text shaping and segmentation, conversion, and translation. 15 
 | `libthai` | 0.1.30 | Thai word segmentation — where pango may wrap a line of Thai | `41_system` |
 | `libunibreak` | 8.0 | Unicode line, word and grapheme breaking — where libass may wrap a subtitle | `41_system` |
 | `libunistring` | 1.4.2 | Library for manipulating Unicode strings and C strings | `30_foundation` |
-| `opencc` | 1.4.2 | Conversion between Traditional and Simplified Chinese | `41_system` |
 | `oniguruma` | 6.9.10 | Regular expression library with Ruby, Perl and POSIX syntaxes over many character encodings | `41_system` |
+| `opencc` | 1.4.2 | Conversion between Traditional and Simplified Chinese | `41_system` |
 | `snowball` | 3.1.1 | Snowball stemming compiler and libstemmer, the stemmers for 30 languages | `41_system` |
 | `uchardet` | 0.0.8 | Guesses the character encoding of a text file — how mpv reads a subtitle that is not UTF-8 | `41_system` |
 | `utf8proc` | 2.11.3 | Unicode normalization, case folding and grapheme segmentation library | `41_system` |
@@ -3082,8 +3083,9 @@ release does. The programs below stay on Qt 5 because no release of theirs build
 | `vlc` | VLC 3's interface is Qt 5; the Qt 6 interface is VLC 4's, which is unreleased |
 | `wsjtx` | 3.0.1 finds Qt 5 only |
 
-`python3-pyqt5`, `qwt-qt5`, `qca-qt5` and `qt5ct` are the Qt 5 platform those programs and their
-plugins build on. A Qt 5 port that links OpenSSL links the `openssl3` slot, as `qt5-qtbase` does
+`python3-pyqt5`, `python3-pyqtgraph`, `qwt-qt5`, `qca-qt5`, `sonnet-qt5`, `libdbusmenu-qt5` and
+`qt5ct` are the Qt 5 platform those programs and their plugins build on. A Qt 5 port that links
+OpenSSL links the `openssl3` slot, as `qt5-qtbase` does
 ([A second version beside the first](../05-developer/writing-ports.md#a-second-version-beside-the-first)).
 
 | Port | Version | Description | Phase |
@@ -3138,8 +3140,8 @@ Third-party and KDE-hosted Qt add-on libraries that are not in KF6. 21 ports, un
 | `qtutilities` | 6.22.2 | Martchus's Qt 6 utility library: settings dialogs, about dialog, notifications and resources | `43_toolkits` |
 | `quazip` | 1.7.2 | Qt 6 C++ wrapper for zip archives | `43_toolkits` |
 | `qwt` | 6.3.0 | Qt widgets for plots, dials and scales, for QGIS | `43_toolkits` |
-| `sonnet-qt5` | 5.116.0 | KDE Frameworks 5 Sonnet — spell checking for Qt 5 widgets, through Hunspell and Aspell | `43_toolkits` |
 | `qwt-qt5` | 6.3.0 | Qwt for Qt 5 — plot, dial and scale widgets for GNU Radio's gr-qtgui and Qt 5 SDR tools | `43_toolkits` |
+| `sonnet-qt5` | 5.116.0 | KDE Frameworks 5 Sonnet — spell checking for Qt 5 widgets, through Hunspell and Aspell | `43_toolkits` |
 
 Notes:
 
@@ -4313,8 +4315,8 @@ statistics and plotting apps. 27 ports, under `ports/core/math/`.
 | `libpoly` | 0.2.1 | Polynomial arithmetic and real algebraic numbers — the library yices2's MCSAT solver reasons with | `41_system` |
 | `libqalculate` | 5.12.0 | Calculator library with unit and expression parsing | `41_system` |
 | `mpc` | 1.4.1 | A library for the arithmetic of complex numbers with arbitrarily high precision | `20_selfhost` (as a dependency) |
-| `mpfr` | 4.2.2 | Functions for multiple precision math | `20_selfhost` (as a dependency) |
 | `mpdecimal` | 4.0.1 | Correctly rounded arbitrary precision decimal floating point arithmetic — the library behind Python's decimal module | `30_foundation` |
+| `mpfr` | 4.2.2 | Functions for multiple precision math | `20_selfhost` (as a dependency) |
 | `nlopt` | 2.11.0 | Nonlinear optimisation library used by slicers and nesting tools | `41_system` |
 | `numbat` | 1.24.0 | Calculator with physical units and dimension checking | `41_system` |
 | `octave` | 11.3.0 | MATLAB-compatible numerical computing, with its Qt 6 desktop | `44_apps` |
@@ -5341,9 +5343,9 @@ Notes:
   system. `kdos-gtk-theme` and `kdos-icons` install no `/etc/skel` copy: `70_image/050_theme.sh`
   generates it with `kdos theme $KDOS_ACCENT`, which `70_image/phase.env` sets to `bone`.
 - `kdos-icons`: the marks (`start-here`, `kdos-launcher`, `distributor-logo-kdos`) go into
-  `icons/hicolor` as well as the theme. libkicon searches only its atlas and `hicolor`, so without
-  them the Start button draws a fallback glyph. The atlas is optional: without
-  `atlas/atlas.kia` the desktop draws its glyph tier.
+  `icons/hicolor` as well as the theme. libkicon reads its atlas, then hicolor's `apps/` PNGs, then
+  `pixmaps/`, and never the theme directory, so without them the Start button draws a fallback
+  glyph. The atlas is optional: without `atlas/atlas.kia` the desktop draws its glyph tier.
 - `kdos-splash`: runs from the initramfs, so it is linked statically, takes libkcolor's header
   only, and ships the console font decompressed to need no zlib.
 
@@ -5406,7 +5408,7 @@ Notes:
 These library ports are named by no recipe's `depends =`: nothing in the tree links them. They are
 built and shipped as the platform a program written on KDOS builds against, so that the GTK 4, Qt 6,
 KDE Frameworks, Qt 5 and C/C++ toolkits an application developer reaches for are complete on the
-image rather than missing their less common pieces. Together they install about 230 MB, 189 MB of it
+image rather than missing their less common pieces. Together they install about 190 MB, 149 MB of it
 `webkitgtk6`, the GTK 4 web view. Each is in its shelf's table above as well.
 `testing/bookcounts.py` fails when a port here gains a consumer, because it then belongs to that
 consumer rather than to the platform.

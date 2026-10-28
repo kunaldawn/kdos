@@ -15,6 +15,5 @@ radicale can be built.
 - `--no-build-isolation` — Build in the build root's own Python environment rather than in a
   temporary one that pip fills. hatchling builds itself: its `pyproject.toml` declares no build
   requirement and names `hatchling.ouroboros`, from the source's own `src`, as the backend. That
-  module reports hatchling's run-time dependencies as its build requirements. With no isolation
-  and no index, pip installs none of them, so they must already be in the build root, which
-  `depends` sees to.
+  module reports hatchling's run-time dependencies as its build requirements. With no isolation,
+  pip installs none of them, so they must already be in the build root, which `depends` sees to.

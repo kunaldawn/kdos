@@ -9,12 +9,12 @@ published, and the daemon chooses the device, the mountpoint and the options. It
 session helper `kdos-mediad`, and `kdos-mount` on the command line.
 [udisks2](#port-udisks2) serves the toolkit applications beside it, and this daemon stays the
 authority for the shell. Every verb, what it refuses and `/etc/kdos/mountd.conf` are in
-[kdos-mountd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/daemons.md#kdos-mountd).
+[kdos-mountd](../../../docs/kdos/04-programs/daemons.md#kdos-mountd).
 
 The port is KDOS's own C, with no upstream source. `build.sh` compiles `main.c` with the sources
 of `libkbase` and nothing else, because every library a root daemon links is code running as
 root; see
-[How the libraries are built](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/c-libraries.md#how-the-libraries-are-built).
+[How the libraries are built](../../../docs/kdos/05-developer/c-libraries.md#how-the-libraries-are-built).
 
 ## Notes
 
@@ -30,4 +30,4 @@ path: `eject` from [util-linux](#port-util-linux), `cryptsetup` from
 [e2fsprogs](#port-e2fsprogs), [btrfs-progs](#port-btrfs-progs), [dosfstools](#port-dosfstools)
 and [exfatprogs](#port-exfatprogs). They reach the image through other phases' lists, not through
 this recipe, and a program that moves to another path stops the verb that runs it. The paths are
-listed in [Writing an image](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/daemons.md#writing-an-image).
+listed in [Writing an image](../../../docs/kdos/04-programs/daemons.md#writing-an-image).

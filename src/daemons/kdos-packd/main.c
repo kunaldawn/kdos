@@ -5,7 +5,7 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   kdos-packd — the sixth root daemon
+ *   kdos-packd — the root daemon that mounts packs
  *
  *     $ printf 'list\n' | nc -U /run/kdos-packd.sock
  *     base       1.0    base     mounted    620.0M  store
@@ -13,11 +13,11 @@
  *     app.gimp   3.0.4  app      installed   92.0M  store
  *     app.krita  5.2.6  app      available  180.0M  medium
  *
- * kdos-powerd's shape exactly, for the fifth time: foreground under `ksvc`,
- * one socket in /run, gated by SO_PEERCRED to root and `wheel`, one line per
- * connection. It links libkbase, libksig and libkpack — every library it
- * links is code running as root, which is why libkpack was written to link
- * nothing else.
+ * kdos-powerd's shape exactly, the one every root daemon here takes:
+ * foreground under `ksvc`, one socket in /run, gated by SO_PEERCRED to root
+ * and `wheel`, one line per connection. It links libkbase, libksig, libkpkg
+ * (for kp_vercmp) and libkpack — every library it links is code running as
+ * root, which is why libkpack was written to link nothing else.
  *
  * THREE RULES, and each is a way a mounting daemon usually goes wrong:
  *

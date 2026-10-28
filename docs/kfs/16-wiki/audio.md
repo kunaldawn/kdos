@@ -20,7 +20,7 @@ to check when nothing plays or the sound breaks up. A Bluetooth headset is paire
 Every image carries them. No service script runs PipeWire: the desktop session starts it, once
 per user, in this order, and starts nothing when it is already running:
 
-<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=153-162 pin=aef01c508310 -->
+<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=155-164 pin=aef01c508310 -->
 
 The three keep running after Log Out, at the `tty1` prompt it leaves, and end with the login;
 the next login starts them again. See
@@ -83,7 +83,7 @@ The saved state is `/var/lib/alsa/asound.state`, in the directory alsa-utils cre
 PipeWire runs its threads at real-time priority only when the session is allowed to. `kdos-getty`
 raises three limits before the login starts, and every process of the session inherits them:
 
-<!-- kfs:include src/system/kdos-tools/getty.c lines=242-252 pin=e28f6d5c51ac -->
+<!-- kfs:include src/system/kdos-tools/getty.c lines=241-251 pin=e28f6d5c51ac -->
 
 See [The console](../../kdos/03-architecture/boot-and-init.md#the-console). Whether it took is
 visible per thread: in a desktop session,
@@ -172,9 +172,10 @@ Programs that were playing reconnect or need restarting, according to the progra
   alsa-utils.
 - `pw-top` shows every node with its quantum and its `ERR` column, the count of underruns.
   `pw-metadata -n settings` shows the quantum in force.
-- A card row in `kdos-audio` writes `defaults.pcm.card` and `defaults.ctl.card` into
-  `~/.asoundrc`. That steers programs that open the card directly, and does not move the session's
-  sound, which goes through PipeWire.
+- `Enter` on a card row in `kdos-audio` writes `defaults.pcm.card` and `defaults.ctl.card` into
+  `~/.asoundrc`. That chooses the card `kdos_card` and `sysdefault` open, and the card the panel's
+  volume control and the volume keys adjust. It does not move the session's sound, which goes
+  through PipeWire; a sink row does that.
 - The panel's microphone lamp lights only while a recording stream is running; clicking it mutes
   or unmutes the microphone. See
   [Who is using the camera and microphone](../../kdos/02-user-guide/desktop.md#who-is-using-the-camera-and-microphone).

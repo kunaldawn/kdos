@@ -2,17 +2,18 @@
 
 croc sends a file or a directory from one machine to another, the receiver typing a code phrase
 the sender shows. On KDOS `/usr/bin/croc` is a small shell wrapper that runs the real binary with
-`--local`, which keeps the transfer to direct connections on the local network: croc otherwise
-falls back to its public relay on the internet, without saying so, whenever the direct path does
-not come up. The unwrapped binary is installed as `croc-relay`, for a transfer that is meant to go
-through the relay.
+`--local`, which keeps the transfer to direct connections on the local network. Without it croc
+looks for the peer on the local network and connects to its public relay on the internet at the
+same time, and carries the transfer over whichever answers first, without saying which. The
+unwrapped binary is installed as `croc-relay`, for a transfer that is meant to go through the
+relay.
 
 ## Flags
 
 - `-tags croc_no_tailcat` — croc's relay-only build. It leaves out the Tailcat transport, a
   WireGuard path that falls back to Tailscale's DERP relay servers, and `croc ssh`, which is built
-  on it and has no `--local` of its own; with them goes the vendored Tailscale code they pull in.
-  `croc ssh` then answers that it is not supported in this build.
+  on it and has no `--local` of its own; with them goes most of the vendored Tailscale code they
+  pull in. `croc ssh` then answers that it is not supported in this build.
 - `ts_omit_webclient`, `ts_omit_debugeventbus` — Tailscale's own feature tags, in the same `-tags`
   list. They leave out Tailscale's web client and its event-bus debug page, which embed web assets
   that arrive minified, such as `htmx.min.js.gz`. With `croc_no_tailcat` nothing in the build
@@ -29,3 +30,7 @@ The modules come from the vendor bundle, `croc-vendor-<version>.tar.xz`, made by
 [Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring)). The binary is built as
 `croc.bin` and installed under its other name; the manual page, `croc.1`, describes the command as
 upstream ships it.
+
+`--local` does not cover croc's release check. A `send` or a receive asks `api.github.com` for
+the latest release, at most once a day, and caches the answer in `version-check.json` in croc's
+configuration directory; `--quiet` hides the notice but does not stop the request.

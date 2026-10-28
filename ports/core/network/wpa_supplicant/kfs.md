@@ -3,7 +3,7 @@ wpa_supplicant authenticates a machine to a wireless network, and to a wired one
 802.1X: it runs the WPA/WPA2/WPA3 key handshakes and the EAP methods enterprise networks ask for.
 On KDOS it is the Wi-Fi back end of [NetworkManager](#port-networkmanager), which drives it over
 D-Bus; the bus starts it on first use (see
-[How polkit and ModemManager are started](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#how-polkit-and-modemmanager-are-started)
+[How polkit and ModemManager are started](../../../../docs/kdos/03-architecture/security-model.md#how-polkit-and-modemmanager-are-started)
 for what that activation depends on). `wpa_cli` and `wpa_passphrase` are installed beside it.
 
 ## Flags
@@ -24,8 +24,8 @@ for what that activation depends on). `wpa_cli` and `wpa_passphrase` are install
   cryptography, upstream's default stated outright.
 - `CONFIG_EAP_MD5=y` — The EAP methods, each its own switch: MD5, MSCHAPv2, TLS, PEAP, TTLS, GTC,
   OTP, LEAP, SIM, PSK, AKA, AKA', FAST, PWD, TEAP, IKEv2, SAKE, GPSK (with its SHA-256 suite),
-  PAX, EKE and TNC, with `CONFIG_IEEE8021X_EAPOL=y` for the EAPOL framing they ride on. AKA, AKA',
-  TEAP and EKE are off in upstream's sample configuration.
+  PAX, EKE and TNC, with `CONFIG_IEEE8021X_EAPOL=y` for the EAPOL framing they ride on. SIM, PSK,
+  AKA, AKA', TEAP and EKE are off in upstream's sample configuration.
 - `CONFIG_PCSC=y` — Read the SIM or USIM over PC/SC through [pcsc-lite](#port-pcsc-lite), which
   EAP-SIM and EAP-AKA need; `CONFIG_SMARTCARD=y` lets a TLS private key live on a smart card, and
   `CONFIG_PKCS12=y` reads keys and certificates from `.p12`/`.pfx` files.

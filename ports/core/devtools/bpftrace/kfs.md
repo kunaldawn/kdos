@@ -23,8 +23,7 @@ port builds from its `kdos.config` has all of them, and that port's build stops 
   PCAP writer behind the `skboutput()` builtin, which writes the data of a socket buffer to a PCAP
   file.
 - `-DENABLE_SYSTEMD=OFF` — Off by default; when on, it links `libsystemd`. KDOS has no systemd (see
-  [No
-  systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd)).
+  [No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)).
 - `-DCMAKE_REQUIRE_FIND_PACKAGE_LibBfd=ON`, `-DCMAKE_REQUIRE_FIND_PACKAGE_LibOpcodes=ON`,
   `-DCMAKE_REQUIRE_FIND_PACKAGE_LibDw=ON`, `-DCMAKE_REQUIRE_FIND_PACKAGE_LibPcap=ON` — bpftrace
   calls `find_package()` for these four libraries without `REQUIRED`, and builds without any it does

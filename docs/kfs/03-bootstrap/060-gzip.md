@@ -30,13 +30,19 @@ gzip is configured in its source directory, as its own build expects.
 [`zegrep`]{.idx}, [`zfgrep`]{.idx}, [`zforce`]{.idx}, [`zgrep`]{.idx}, [`zless`]{.idx}, [`zmore`]{.idx} and [`znew`]{.idx}. Most of them are shell scripts
 around `gzip`.
 
+`zless` and `zmore` are installed only when configure finds `less` and `more` on the `PATH` it runs
+with. Here that is the container's, whose busybox provides both, so this step installs both.
+
 The [gzip](#port-gzip) port's page describes each program.
 
 ## Built again later
 
 The [gzip](#port-gzip) port, in `30_foundation`, rebuilds it natively with `--prefix=/usr` alone,
 and kpkg adopts the files this step installed. Apart from the two switches of the cross build, the
-two builds are the same.
+two builds differ only where configure looks for `less` and `more`: the port's configure looks in
+the chroot, and installs `zless` or `zmore` only if that program is installed there when gzip is
+built. A `zless` or `zmore` that this step installs and the port does not is adopted by no
+package (see [What the bootstrap leaves behind](intro.md#what-the-bootstrap-leaves-behind)).
 
 ## See also
 

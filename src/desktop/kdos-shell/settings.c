@@ -78,7 +78,7 @@ static const char *const CAT_NAMES[NCAT] = {
 /*
  * THE HOME SCREEN IS A GRID OF ICONS, and it is the front door.
  *
- * A sidebar of seven words is a fine way to move between pages once you know
+ * A sidebar of nine words is a fine way to move between pages once you know
  * what is on them and a poor way to find anything the first time — which is
  * why every control panel worth the name, from System 7's through XP's, opens
  * on a field of labelled pictures rather than on a list. This does the same:
@@ -593,10 +593,9 @@ static struct row rows[] = {
 	 * CAT_HARDWARE's rows do: a summary drawn in this window would be a
 	 * second thing to keep in agreement with the thing itself.
 	 *
-	 * THE CATEGORY SHIPS WITH WHAT EXISTS AND SAYS WHAT DOES NOT. Disks,
-	 * printing, backup and services are not written; a row that opened
-	 * nothing would be worse than no row, and no category at all would
-	 * teach that the machine is not reachable from here.
+	 * THE CATEGORY SHIPS WITH WHAT EXISTS AND SAYS WHAT DOES NOT. The
+	 * service list is not written, and the closing note says so: a row
+	 * that opened nothing would be worse than no row.
 	 */
 	{ CAT_SYSTEM, FT_HEAD, ST_NONE, SC_NONE, NULL, "The machine",
 	  NULL, 0, 0, 0, 0, "", "", "" },
@@ -756,8 +755,8 @@ static const char *const EXPORTS[] = { "manual", "auto" };
 /*
  * EVERY SCHEME libkcolor CARRIES, EXPANDED RATHER THAN LISTED. A hand-written
  * list is a list that stops at whichever accents existed when somebody typed
- * it — this one named four of the seven, so a box could not be told to wear
- * norton, borland or perfect at all, and nothing said so. `session` is first
+ * it, and a scheme it missed is one a box cannot be told to wear, with
+ * nothing to say so. `session` is first
  * because it is not a scheme: it means "whatever the session is wearing".
  */
 #define SH_ACCENT_NAME(id, lbl, tname, p, dm, sec, urg, dp, txt, var, pd, bd) \
@@ -1459,9 +1458,9 @@ static int write_kv(const char *path, int store)
 
 /*
  * The signal `kdos theme` already sends, for the same reason and by the same
- * route: pkill -x, exact, because `kdos-comp` must not also match
- * `kdos-desktop-start` — an unhandled SIGHUP kills a shell, and those two
- * /bin/sh scripts own the session.
+ * route: pkill -x, exact, because a pattern match signals every process
+ * whose name contains the one asked for — `kdos-res` would also reach
+ * `kdos-resctl` — and a process with no SIGHUP handler dies of it.
  */
 static void sighup(const char *name)
 {
@@ -1515,9 +1514,9 @@ static void apply(void)
 	int launch = dirty_count(ST_LAUNCH);
 	int term = dirty_count(ST_TERM), menu = dirty_count(ST_MENU);
 	int live = 0, login = 0, failed = 0;
-	/* `pkill -x` is EXACT and that is load-bearing: `kdos-comp` is a
-	 * substring of `kdos-desktop-start`, which is a /bin/sh script that
-	 * owns the session and dies on an unhandled SIGHUP. */
+	/* Signalled through sighup(), whose `pkill -x` is EXACT: the name
+	 * must reach the compositor's own process and nothing whose name
+	 * merely contains it. */
 	static const char kdos_comp[] = "kdos-comp";
 
 	for (int i = 0; i < NROWS; i++) {
@@ -1585,10 +1584,9 @@ static void apply(void)
 	}
 	if (launch) {
 		/*
-		 * NO SIGNAL EITHER, and for a different reason: the launcher
-		 * is started by its chord and reads this file as it comes up,
-		 * so the next time it is opened it has the answer. There is no
-		 * long-lived process holding a stale one.
+		 * NO SIGNAL EITHER, and for a different reason: no program
+		 * reads this file. `kdos-launcher` and `kdos-palette` ignore
+		 * its `files` key, so there is no process to tell.
 		 */
 		cfg_path("launcher.conf", path, sizeof(path));
 		if (write_kv(path, ST_LAUNCH) != 0)

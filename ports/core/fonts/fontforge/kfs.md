@@ -22,7 +22,8 @@ faces with it.
 - `-DENABLE_LIBGIF=ON`, `-DENABLE_LIBJPEG=ON`, `-DENABLE_LIBPNG=ON`, `-DENABLE_LIBTIFF=ON`,
   `-DENABLE_LIBREADLINE=ON`, `-DENABLE_LIBSPIRO=ON`, `-DENABLE_WOFF2=ON`, `-DENABLE_HARFBUZZ=ON` —
   Each optional library named `ON`. Upstream defaults most of them to `AUTO`, which builds a
-  narrower FontForge without a word when a library is missing; `ON` makes the search `REQUIRED`. The image
+  narrower FontForge without a word when a library is missing; `ON` makes the search `REQUIRED`
+  (HarfBuzz, searched only with the editor window, is required whenever it is not `OFF`). The image
   libraries read background and glyph images, readline gives the script prompt line editing,
   [libspiro](#port-libspiro) adds Spiro curves, [woff2](#port-woff2) reads and writes WOFF2 faces,
   and [harfbuzz](#port-harfbuzz) shapes text in the editor's metrics view.

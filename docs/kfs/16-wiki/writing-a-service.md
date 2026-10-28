@@ -172,7 +172,7 @@ and [postinstall.sh](../../kdos/05-developer/writing-ports.md#postinstallsh).
    ```
 
    It refuses a script under `fs/etc/init.d` that is not executable or not recorded in git as
-   `100755`, and a `kdos-*` daemon such a script names that no `build.sh` installs. In a port, it
+   `100755`, and one whose `DAEMON=` line names a `kdos-*` program that no `build.sh` installs. In a port, it
    reads every heredoc opened with `<<'KDOS_SH'`, refuses one that does not parse under `bash -n`
    and, when a build tree exists, one whose commands are on no image.
 
@@ -186,12 +186,13 @@ and [postinstall.sh](../../kdos/05-developer/writing-ports.md#postinstallsh).
   for `thermald`.
 - **Do not let the daemon's pid file and the supervisor's share a path.** The supervisor writes its
   own process id to `/run/<name>.pid`, where `<name>` is the first argument of `supervise`, and
-  `stop` signals the process group that file names. A daemon that writes its own pid file to the
-  same path replaces the supervisor's id with its own, and `stop` then ends the daemon alone, which
-  the supervisor restarts five seconds later; a daemon that also removes its pid file when it exits
-  leaves `status` reporting the service down. Give `supervise` a name the daemon does not use for
-  its pid file, or point the daemon's pid file elsewhere with its own option: `22_syslog.sh` passes
-  `syslogd` `-P /run/syslogd/syslogd.pid`, and `70_sshd.sh` passes `sshd` `-o PidFile=none`.
+  `stop` and `status` look for a supervisor at the id that file names. A daemon that writes its own
+  pid file to the same path replaces the supervisor's id with its own: `status` then reports
+  `[DOWN]` while the daemon runs, and `stop` prints `Process <pid> not found, removing stale PID
+  file`, signals nothing and leaves the service running with no file left that names it. Give
+  `supervise` a name the daemon does not use for its pid file, or point the daemon's pid file
+  elsewhere with its own option: `22_syslog.sh` passes `syslogd` `-P /run/syslogd/syslogd.pid`,
+  and `70_sshd.sh` passes `sshd` `-o PidFile=none`.
 - **Skip in the script, before supervising.** A daemon that cannot run on this machine and exits is
   restarted every five seconds for as long as the machine is up. Test for what it needs (a device,
   a kernel feature, a configuration file) first, and print `[SKIP]` with the reason.
@@ -225,9 +226,11 @@ and [postinstall.sh](../../kdos/05-developer/writing-ports.md#postinstallsh).
 
 ## Troubleshooting
 
-**`service` says `Error: Service '<name>' not found`.** The file name is wrong: it must be two digits, `_`, the name and
-`.sh`. **`rcS` never runs the script and `service start` does nothing.** The file is not
-executable. `ls -l /etc/init.d/` must show `-rwxr-xr-x`.
+**`service` says `Error: Service '<name>' not found`.** The file name is wrong: it must be two
+digits, `_`, the name and `.sh`.
+
+**`rcS` never runs the script, `service list` does not show it, and `service start` prints
+nothing.** The file is not executable. `ls -l /etc/init.d/` must show `-rwxr-xr-x`.
 
 **The boot stops at the script's stage.** `start` did not return. Either the daemon was started in
 the foreground without `supervise`, or the script waits on a pipe that a process it backgrounded
@@ -244,11 +247,24 @@ background and the supervisor saw the parent exit: the log repeats
 line. Add the daemon's foreground switch. Otherwise read its own complaint in
 `/run/kdos-svc.<name>.log`.
 
-**`service stop` reports `Stopped`, but the daemon keeps running.** Either a child of the daemon
-left the supervisor's process group (one that calls `setsid` itself does; `stop` signals the
-group and the daemon's own pid, never such a child), or the daemon rewrote
-`/run/<name>.pid`. Check with `ps -o pid,pgid,args -p "$(cat /run/<name>.pid)"`; the process should
-be `ksvc supervise …`, and the daemon should share its process group.
+**`service stop` reports `Stopped`, but a process of the daemon keeps running.** A child of the
+daemon left the supervisor's process group (one that calls `setsid` itself does): `stop` signals
+the group and the daemon's own pid, never such a child. While the service runs, compare the
+process groups:
+
+```bash
+cat /run/<name>.pid
+ps -eo pid,pgid,args | grep <daemon>
+```
+
+The first number is the supervisor's, and every process of the service should show it in the
+`PGID` column.
+
+**`service stop` prints `Process <pid> not found, removing stale PID file`, and the daemon keeps
+running.** The daemon wrote its own pid file to `/run/<name>.pid` over the supervisor's; see the
+pid-file tip above. Find the supervisor with `ps -eo pid,args | grep 'ksvc supervise'` and end
+the service with `sudo kill <supervisor pid>`, which the supervisor passes on to the daemon; then
+change the name or the daemon's pid-file option.
 
 **After the system bus restarts, the daemon runs on but answers nothing on the bus.** It does not
 exit when its bus connection closes, so its supervisor never restarts it, and `service status`
@@ -256,9 +272,14 @@ still says `[ OK ]`. Supervise it with `supervise --restart-with dbus <name> …
 `42_networkmanager.sh` does: the supervisor then restarts it once the new bus is up.
 
 **`testing/preflight.sh` reports `KDOS_SH heredoc:` and a syntax error.** The script inside the
-port's heredoc does not parse under `bash -n`. Write the delimiter quoted, `<<'KDOS_SH'`: an
+port's heredoc does not parse under `bash -n`; the message after the colon is bash's, and its
+line number counts from the first line after `<<'KDOS_SH'`. Keep the delimiter quoted, `<<'KDOS_SH'`: an
 unquoted one lets `$1` and `$PATH` expand while the recipe runs, and `preflight.sh` does not read
 such a heredoc at all.
+
+**`testing/preflight.sh` reports `KDOS_SH heredoc runs '<command>', which is on no image`.** A
+line of the script starts with a program that is in no `bin` or `sbin` directory of the build
+tree. Add the port that installs it to the recipe's `depends`, or call a program the image has.
 
 ## Known gaps
 

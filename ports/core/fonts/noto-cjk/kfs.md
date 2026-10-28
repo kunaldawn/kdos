@@ -4,7 +4,7 @@ OpenType Collection, `NotoSansCJK.ttc`, that holds the Simplified Chinese, Tradi
 Kong, Japanese and Korean variants and a monospaced variant of each. It is the system's one CJK
 face, and so the fallback for any CJK character a program's own font lacks. Like the other Noto
 ports, it installs the face upstream publishes rather than building it (see
-[What is built from source](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#what-is-built-from-source)).
+[What is built from source](../../../../docs/kdos/05-developer/writing-ports.md#what-is-built-from-source)).
 
 ## Notes
 The source is a `.zip`, which kpkg copies into `$SRC` whole rather than unpacking, so `build.sh`

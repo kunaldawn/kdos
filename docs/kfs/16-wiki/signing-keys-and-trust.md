@@ -43,7 +43,8 @@ The host ring, for a [binary host]{.idx}'s index and for a package's own `.sig` 
 
 Every `*.pub` directly in the directory is trusted; the loader does not descend into `packs/` or
 `tree/`, which is what keeps the three rings apart. `KPKG_KEYRING` names another directory for one
-[`kpkg`]{.idx} command.
+[`kpkg`]{.idx} command. Every ring, this one and the two below, is read in name order and holds at
+most sixteen keys: a seventeenth `.pub` is ignored without a message.
 
 ### /etc/kdos/keys/packs/
 
@@ -66,7 +67,7 @@ The ring `kdos update fetch` checks a published ports tree's `kdos-ports.tar.xz.
 
 The image step that fills it, from `script/phases/70_image/105_ports.sh`:
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=132-141 pin=68e72034c604 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=133-142 pin=68e72034c604 -->
 
 Where `fetch` looks for the tree is [`/etc/kdos/update.conf`]{.idx}, which is not shipped; see
 [/etc/kdos/update.conf](../../kdos/06-reference/configuration.md#etckdosupdateconf).
@@ -79,6 +80,7 @@ Where `fetch` looks for the tree is [`/etc/kdos/update.conf`]{.idx}, which is no
 | `KPKG_KEYRING` | `kpkg` | Replaces `/etc/kdos/keys` |
 | `KDOS_REQUIRE_SIG` | `kdos-pack verify`, from the caller; `kdos-packd`, from its own environment | Treats an unsigned pack as a failure |
 | `KDOS_KEYS` | `kdos-pack` | Replaces `/etc/kdos/keys/packs`. `kdos-packd` reads it only for its status listing; its checks before a mount or an install always use `/etc/kdos/keys/packs` |
+| `KDOS_TREE_KEYS` | `kdos update fetch` | Replaces `/etc/kdos/keys/tree` |
 
 `kdos-packd` is started by [`/etc/init.d/59_packd.sh`]{.idx}, which sets no variable before its `supervise`
 line:
@@ -126,7 +128,9 @@ On the machine that builds:
    ```
 
    It writes `PACKAGES`, `PACKAGES.sig`, and a `.sig` beside every package, and reports
-   `Indexed N package(s)`, `Signed with key <id>` and `Wrote N package signature(s)`.
+   `Indexed N package(s) and M delta(s) into /repo/PACKAGES`, `Signed with key <id>` and
+   `Wrote N package signature(s)`. A secret key that group or others can read is refused:
+   `ERROR: builder.key is readable by other users — refusing to sign with it`.
 
 On every machine that should use it:
 
@@ -157,11 +161,13 @@ kpkg sign <package>.tar.xz builder.key    # writes <package>.tar.xz.sig
 kpkg verify-pkg <package>.tar.xz
 ```
 
-`verify-pkg` prints `signature good (key <id>)`, or, for a file changed after it was signed or a
-key not in the ring, `ERROR: <package>.tar.xz: NO trusted signature` and exit status 1.
+`verify-pkg` prints `signature good (key <id>)`, or, for a file changed after it was signed, a key
+not in the ring, an empty ring or no `.sig` at all, `ERROR: <package>.tar.xz: NO trusted signature`
+and exit status 1.
 
-`kpkgadd` checks the `.sig` when it finds one, and refuses the package when it does not verify. A
-package with no `.sig` is installed, unless `KPKG_REQUIRE_SIG=1` is set.
+`kpkgadd` checks the `.sig` when it finds one and `/etc/kdos/keys` holds a key, and refuses the
+package when it does not verify. A package with no `.sig` is installed, and so is one with a `.sig`
+on a machine whose ring is empty, as it ships; `KPKG_REQUIRE_SIG=1` refuses both.
 
 ### Signing packs with your own key
 
@@ -184,11 +190,13 @@ package with no `.sig` is installed, unless `KPKG_REQUIRE_SIG=1` is set.
    `sign` prints `app.kpack signed`, and `index` prints `./packs/PACKAGES  N entries, signed`.
 
 3. On every machine that should accept them, put the public half in the pack ring. To trust only
-   your packs, remove the shipped key as well:
+   your packs, remove the shipped key as well. No pack the build makes is signed with it,
+   including the optional KDOS base pack on the medium, so removing it refuses nothing the image
+   carries:
 
    ```bash
    sudo cp mypacks.pub /etc/kdos/keys/packs/
-   sudo rm /etc/kdos/keys/packs/kdos-packs.pub     # only if the medium's packs are not wanted
+   sudo rm /etc/kdos/keys/packs/kdos-packs.pub
    ```
 
 4. Check a pack against the ring:
@@ -200,8 +208,9 @@ package with no `.sig` is installed, unless `KPKG_REQUIRE_SIG=1` is set.
    It prints `<pack id>: signed by <key id>`, `<pack id>: unsigned`, or the reason the signature
    failed. A signature by a key that is not in the ring reads `bad signature`, the same as a pack
    changed after it was signed, and exits 2; `--keys DIR` or `KDOS_KEYS` names a directory to try
-   instead. With `KDOS_REQUIRE_SIG=1` an unsigned pack reads
-   `unsigned, and KDOS_REQUIRE_SIG is set` and exits 2.
+   instead. With an empty ring a signed pack reads
+   `signed, but this machine has no key to check it with` and exits 2. With `KDOS_REQUIRE_SIG=1`
+   an unsigned pack reads `unsigned, and KDOS_REQUIRE_SIG is set` and exits 2.
 
 How packs are built and composed is in
 [Building a pack](../../kdos/03-architecture/packs-and-boxes.md#building-a-pack).
@@ -215,10 +224,16 @@ How packs are built and composed is in
    medium is not covered; see
    [How an application is verified](../../kdos/03-architecture/security-model.md#how-an-application-is-verified).
 
-Not verified: the image carries no pack on its medium, so no import has been refused this way on
-a booted image. `kdos-pack verify` with `KDOS_REQUIRE_SIG=1` shows the same check.
+Not verified: an image carries no pack to import, so no import has been refused this way on a
+booted image. `kdos-pack verify` with `KDOS_REQUIRE_SIG=1` shows the same check.
 
 ### Following a ports tree you publish
+
+A tree is signed with a `kpkg` key. Make one with `kpkg keygen mytree`, and sign the archive with
+`kpkg sign kdos-ports.tar.xz mytree.key`. `ports/publish --release <tag>`, which publishes a whole
+system release, signs the tree it uploads itself, with the key `--key` names, else
+`$KDOS_RELEASE_KEY`, else `build/keys/kdos-release.key`. The archive must hold the tree's `TREE`
+stamp, `core/` and `sources.idx`, or `fetch` refuses it after the signature has verified.
 
 1. Replace the tree ring's key with the public half of the key you sign trees with:
 
@@ -256,12 +271,16 @@ verification reads the ring afresh, so the next one does not try the deleted key
 
 - Keep every `.key` file off the machines that only verify. A secret key is needed only where you
   sign.
-- A build keeps its keys in `build/keys/`, which `make clean` and `make cleanbuild` leave in place.
-  Without the pack key, later bakes are unsigned, while media already written keep trusting a key
-  nobody can sign with.
+- A build keeps its release key, `kdos-release.key`, and the kernel's module-signing key in
+  `build/keys/`, which `make clean` and `make cleanbuild` leave in place. Lose the release key and
+  images already written keep trusting a key nobody can sign trees with. The binary host's key is
+  in `build/binhost-key/`, which both targets delete: the next `KDOS_MAKE_BINHOST=1` build makes a
+  new key, and every machine holding the old `kdos-binhost.pub` refuses the new index until it is
+  given the new one.
 - A key placed in the wrong ring is trusted only for that ring's kind of file. A pack key copied
   into `/etc/kdos/keys` would make its holder a trusted source of host packages.
-- `kdos explain libksig` prints the design note on why a key id is not a key.
+- `kdos explain libksig` prints the design note on why a key id is not a key; see
+  [kdos explain](../../kdos/04-programs/kdos-command.md#kdos-why-and-kdos-explain).
 
 ## Troubleshooting
 
@@ -271,13 +290,17 @@ a missing index, and for a failed verification.
 
 **`kpkg binhost` prints `no trusted signature — refusing to use it`.**
 `PACKAGES.sig` was made by a key that is not in `/etc/kdos/keys`, or the index changed after it
-was signed; `binhost` exits 2. Run `kpkg verify-index <dir>` to see which. Re-index with `--sign` on the build machine
-after changing anything in the directory.
+was signed; `binhost` exits 2. Run `kpkg verify-index <dir>` to see which. Re-index with `--sign` on the build
+machine after changing anything in the directory.
 
 **`kpkg binhost` exits 1 and says `build from source`.**
 The binhost has no such package, or its architecture, build configuration or recipe hash differs
 from this machine's; the message says which. That is a match failure, not a trust failure, and
-`binhost` installs nothing: build the port with `kpkg install`.
+`binhost` installs nothing: build the port with `kpkg install`. The build configuration is read
+from `CC` and its version, `CFLAGS`, `CXXFLAGS`, `LDFLAGS` and `KDOS_TARGET`, so
+`different build config` usually means the client's environment is not the one the index was
+written under; see
+[The binary host](../../kdos/03-architecture/packaging.md#the-binary-host).
 
 **`kdos update check` reports `no-key` or `fetch-failed`.**
 Run `sudo kdos update fetch` to see the reason. The ring is read first: an image built without a

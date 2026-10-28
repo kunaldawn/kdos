@@ -7,7 +7,7 @@ to fold constant expressions while it compiles. No phase list names GMP; `20_sel
 as gcc's dependency, ahead of the compiler that is rebuilt over it. [coreutils](#port-coreutils)
 builds `expr` and `factor` against it, and [gawk](#port-gawk)'s `-M` uses it through MPFR.
 
-In [Part III](#03-bootstrap-100-gcc) GMP is not a package: the bootstrap compiler builds a copy
+In [Part III](../../../../docs/kfs/03-bootstrap/100-gcc.md) GMP is not a package: the bootstrap compiler builds a copy
 inside its own source tree and links it statically. This port is the shared library every later
 build of gcc, including the cross compilers, links instead.
 

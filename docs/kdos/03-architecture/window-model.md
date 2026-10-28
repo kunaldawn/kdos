@@ -53,6 +53,7 @@ A *shaded* window is rolled up into its title bar: the frame stays where it was 
 hidden. The shipped `rc.xml` shades a window when the wheel turns up over its title bar and unshades
 it when the wheel turns down; the wheel-up binding also takes the keyboard away from the window,
 and the wheel-down binding gives it back. A double-click on the title and `Super+s` toggle shading.
+Snapping a shaded window to an edge unshades it.
 
 `Super+m` toggles maximise and `Super+f` toggles fullscreen. Maximise is a compositor state of its
 own, per axis: see [Opposing edges are not a tile](#opposing-edges-are-not-a-tile).
@@ -135,7 +136,8 @@ or both) and computes its rectangle from the usable area directly.
 
 ### A drag that ends against an edge
 
-Dragging a window by its title bar and letting go near a screen edge snaps it there. The pointer
+Dragging a window by its title bar, or anywhere on it with `Super` held, and letting go near a
+screen edge snaps it there. The pointer
 counts as at an edge when it is within 10 pixels of the usable area's edge
 (`<snapping><range inner="…" outer="…">`, both 10 by default; the inner value applies where another
 screen lies beyond that edge, the outer value where none does). Within 50 pixels of a corner along
@@ -187,8 +189,8 @@ puts windows and a tidier search would put them somewhere else.
 
 The search works like this:
 
-1. Every window on that output and on the current workspace is taken as a box, already enlarged by
-   its own margin. A shaded window counts only as its title bar.
+1. Every window on that output and on the current workspace, minimised ones included, is taken as
+   a box, already enlarged by its own margin. A shaded window counts only as its title bar.
 2. The edges of those boxes are extended across the whole usable area, which divides it into an
    irregular grid. Every cell of the grid is then either wholly covered by a given window or not
    covered by it at all, which is what makes the overlap count exact.
@@ -236,21 +238,29 @@ resize. So:
 Window memory saves each application's rectangle, workspace and shaded state when its window
 closes, and puts them back the next time a window with the same application id opens. It is
 `window_memory` in `~/.config/kdos/comp.conf`, on by default, and lives in the compositor
-(`src/desktop/kdos-comp/src/kdos-winpos.c`), not in `libkwm`. The records are kept in `$XDG_STATE_HOME/kdos/winpos`, most
-recent first, and only the 200 most recent applications are kept.
+(`src/desktop/kdos-comp/src/kdos-winpos.c`), not in `libkwm`. The records are kept in
+`$XDG_STATE_HOME/kdos/winpos`, most recent first, and only the 200 most recent applications are
+kept. A window closed while maximised, tiled or fullscreen is recorded at its restore rectangle.
 
 It applies only to a window the compositor would otherwise place itself. These are left alone:
 
 - a window that positioned itself (an X11 window with a position hint);
-- a window a *window rule* placed (a `<windowRule>` entry in `rc.xml`, which matches windows by
-  application id, title or box), or one with the `fixedPosition` rule;
+- a window with the `fixedPosition` property from a *window rule* (a `<windowRule>` entry in
+  `rc.xml`, which matches windows by application id, title, window type or box);
 - a window that maps maximised, tiled or fullscreen;
 - a window with an owner (see [below](#where-an-owned-window-opens)).
 
+Window rules run first, when the window first maps, and the remembered record is applied after
+them. A rule that only moves a window (a `MoveTo` or `SendToDesktop` action) is therefore
+overridden whenever the application has a record; a rule that should hold its window where it put
+it needs `fixedPosition` as well.
+
 A remembered rectangle may come from a screen of another size, so it is clamped into the usable
 area of whichever screen its centre lands nearest: first shrunk to fit, then moved inside. The
-clamp applies to the content rectangle, not the frame, so a window remembered against the top or
-left edge can reopen with its title bar outside the usable area. If another window of the same
+clamp applies to the content rectangle, not the frame: the content is kept inside the usable area,
+but the title bar above it is not. A window whose content, once clamped, starts less than a title
+bar's height below the top of the usable area reopens with its title bar partly or wholly above
+it; a window shrunk to the full usable height always does. If another window of the same
 application already sits at that position on the same workspace, the remembered rectangle is not
 used and the overlap search places the new window, so a second instance does not open exactly on
 top of the first.
@@ -317,7 +327,7 @@ member. Hidden members are minimised windows sharing the shown member's rectangl
 reports them as minimised with no extra code. Dragging a tab moves the member it names; it does not
 tear the member out of the group. None of the three actions is bound to a key in the shipped
 `rc.xml`. Tabs stack; they do not tile. See
-[Decisions](../01-philosophy/decisions.md#narrowings).
+[Decisions](../01-philosophy/decisions.md#tabs-stack-they-do-not-tile).
 
 ## The edge search is one question
 
@@ -405,7 +415,7 @@ setting that would widen one.
 
 `kdos-display`, the screen-arrangement tool (`Super+p`), places screens edge to edge from
 `x = 0`, tops aligned, in list order. A vertical arrangement, an overlap or a deliberate gap cannot
-be expressed. See [Decisions](../01-philosophy/decisions.md#narrowings).
+be expressed. See [Decisions](../01-philosophy/decisions.md#screens-are-ordered-not-placed).
 
 ### How a drag feels
 
@@ -441,8 +451,8 @@ groups: two windows side by side that move, resize and minimise together.
 
 Every rectangle in this chapter is final from the moment it is computed: a window is never
 halfway between two of them, and nothing here has a duration. With `window_motion = yes` in
-`comp.conf` the compositor draws a window on its way (rising into place as it opens, sinking as it
-closes or is minimised, sliding sideways with a workspace switch; see
+`comp.conf`, and `motion` left on, the compositor draws a window on its way (rising into place as
+it opens, sinking as it closes or is minimised, sliding sideways with a workspace switch; see
 [kdos-comp](../04-programs/kdos-comp.md#window-transitions)), but that is a picture over a state
 that has already changed. Placement, snapping, the edge search, window memory and occupancy all see
 the final rectangle and the final workspace. The one thing that follows the picture is the pointer,
@@ -462,7 +472,7 @@ arithmetic. That constraint matters because of how the compositor is built.
 `libkdos.a`, and hands it to meson through `LDFLAGS`; a library here that needed a real `-l`
 dependency would have to carry that dependency into the compositor's meson build with it.
 
-Every entry point in the library has a caller in a shipped program:
+Each entry point in this table has a caller in a shipped program:
 
 | Entry point | Called from |
 |---|---|
@@ -498,7 +508,8 @@ scale and only select it at another.
 section of the file names the function its rows were derived from: a `kdos-comp` function for
 every kind except `drag`, whose only caller is `kdos-shell` and which cites `kwm_drag_threshold()`
 itself. `testing/selftest.sh` replays the file against `libkwm` (the replay is `test_wm()` in
-`src/libs/selftest.c`) rather than asserting anything of its own. To add a case, add a row under
+`src/libs/selftest.c`; see [Testing](../05-developer/testing.md#the-window-model-contract)) rather
+than asserting anything of its own. To add a case, add a row under
 the section that names where the behaviour lives.
 
 The file records what the compositor (and, for `drag`, the desktop icons) does, read off its
@@ -544,7 +555,7 @@ grep -vE '^\s*(#|$)' testing/fixtures/wm/geometry.txt | awk '{print $1}' | sort 
   that compiles `libkwm` into the compositor
 - [The ports catalogue](../06-reference/ports-catalogue.md#srcdesktop): the compositor and
   the rest of the desktop's ports
-- [Testing](../05-developer/testing.md): how the contract file is replayed
+- [Testing](../05-developer/testing.md#the-window-model-contract): how the contract file is replayed
 - [Decisions](../01-philosophy/decisions.md#narrowings): the screen-layout and tab-group narrowings
 - [The design language](design-language.md): how a surface answers the pointer, including the wheel
 

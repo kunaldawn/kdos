@@ -31,7 +31,8 @@ For a complete description type
 .BR -help .
 .TP
 .B \-help
-Show summary of options.
+Show summary of options and exit with status 1.  It is not an option of
+its own: any argument the demo does not recognise prints the same summary.
 .TP
 .B \-loop
 play demo in infinite loop
@@ -42,7 +43,7 @@ fixed rate instead of following the music.
 .TP
 .B \-mixer
 show the sample rate and mixing settings before starting, and wait for
-Continue.  This was the startup behaviour before KDOS.
+Continue.
 .TP
 .B number
 start at stage 1, 2 or 3

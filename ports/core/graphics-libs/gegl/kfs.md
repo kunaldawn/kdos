@@ -14,7 +14,7 @@ port also installs the `gegl` command, which runs a graph from the command line.
 - `-Dintrospection=true`, `-Dvapigen=enabled` — Generate `Gegl-0.4.gir` and its typelib, and the
   Vala bindings, for which [vala](#port-vala) is in `depends`.
 - `-Drelocatable-bundle=no` — Look for operations and data at the paths compiled in, not relative
-  to the running program.
+  to the running program. Upstream's `platform-default` gives the same on Linux.
 - `-Dgdk-pixbuf=enabled`, `-Dgexiv2=enabled`, `-Dlcms=enabled`, `-Dlensfun=enabled`,
   `-Dlibraw=enabled`, `-Dlibrsvg=enabled`, `-Dlibtiff=enabled`, `-Dopenexr=enabled`,
   `-Dcairo=enabled`, `-Dpango=enabled`, `-Dpangocairo=enabled`, `-Dpoppler=enabled`,

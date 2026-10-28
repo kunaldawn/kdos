@@ -6,8 +6,8 @@ NetworkManager makes the connection, and [`mmcli`]{.idx} shows the modem's state
 its text messages. Mobile broadband is built and
 [has not been connected on hardware](../../kdos/06-reference/known-gaps.md#a-usb-modem-that-first-appears-as-a-storage-device-is-not-switched-into-a-modem),
 so nothing here has been seen to unlock a SIM, register or connect. What has been run, on a
-machine with no modem, is the service and that the supervised ModemManager holds the bus name, `mmcli`'s
-answers when there is no modem, and the creation of each profile below.
+machine with no modem, is the service starting with the supervised ModemManager holding its bus
+name, `mmcli`'s answers when there is no modem, and the creation of each profile below.
 
 ## Installation
 
@@ -44,14 +44,16 @@ The supervised ModemManager is the only one. The port's `build.sh` deletes the D
 file ModemManager's build installs, so the system bus never starts a ModemManager of its own, and
 the script returns only once the daemon holds `org.freedesktop.ModemManager1`
 (`wait_bus_name`, from [Services](services.md#etcinitdservice_helper)), so NetworkManager, which
-asks for that name as it starts, finds it taken. With the activation file, NetworkManager's call
-would make the bus start a second ModemManager beside the supervised one, and whichever lost the
-name would exit; the supervised one, restarted every five seconds, would never get it, and
-`service status modemmanager` would answer `[FAIL]`: ModemManager exits with status 0 when it
-cannot take its name, and the supervisor counts an exit 0 within five seconds of the start as a
-failed start ([Services](services.md#troubleshooting)). `pgrep -a ModemManager`
-prints one process, a child of the supervisor, and NetworkManager logs *modem-manager:
-ModemManager available*.
+asks for that name as it starts, finds it taken.
+
+The deleted file is what keeps the supervised copy alive. With it, NetworkManager's call would
+make the bus start a second ModemManager beside the supervised one. ModemManager exits with status
+0 when it cannot take its name, and the supervisor counts an exit 0 within five seconds of the start as a failed start,
+so the supervised copy would be restarted every five seconds, never get the name, and
+`service status modemmanager` would answer `[FAIL]`
+([Services](services.md#troubleshooting)). On a working system `pgrep -a ModemManager` prints one
+process, a child of the supervisor, and NetworkManager logs *modem-manager: ModemManager
+available*.
 
 ### Who may drive the modem
 
@@ -100,7 +102,7 @@ mmcli -i any --pin=<PIN>
 ```
 
 If you skip this, NetworkManager asks for the PIN when it first connects, through
-`kdos-netagent` in a desktop session.
+[`kdos-netagent`](../../kdos/04-programs/kdos-shell.md#kdos-netagent) in a desktop session.
 
 ### Connecting
 
@@ -125,7 +127,7 @@ If you skip this, NetworkManager asks for the PIN when it first connects, throug
 
 A phone that offers only dial-up networking over Bluetooth is a modem to ModemManager.
 
-1. Pair the phone in `kdos-bt`.
+1. Pair the phone in `kdos-bt`; see [Bluetooth](bluetooth.md#pairing-a-device-from-the-desktop).
 2. Create a Bluetooth profile of the `dun` kind, with the phone's address and the carrier's APN:
 
    ```bash
@@ -150,7 +152,7 @@ A carrier's data-limit warnings arrive this way.
 ### On the live medium and on an installed system
 
 The two behave the same. On the live medium a profile lasts until the next reboot unless the medium
-has a persistence store.
+has a persistence store; see [Live persistence](live-persistence.md).
 
 ## Tips
 

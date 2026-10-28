@@ -16,10 +16,11 @@ mode, which builds every port anyway and compares the result with the stored pac
 and the step prints that the store is off and exits.
 
 `kpkg store gc` orders the entries by the modification time of each entry's `META` file, which kpkg
-touches whenever it reuses the entry, and deletes the oldest first until the store's total size is
-at most the limit. An entry directory with no `META`, which is a store write that never finished,
-is deleted whatever the size. The limit is `KDOS_PKG_STORE_MAX`, `60G` unless the command line says
-otherwise:
+touches whenever it reuses the entry or a build makes the same package again, and deletes the
+oldest first until the store's total size is at most the limit. An entry directory with no `META`,
+which is a store write that never finished, is deleted whatever the size. The limit is
+`KDOS_PKG_STORE_MAX`, `60G` unless the command line says otherwise. It is a whole number of bytes
+with an optional `K`, `M`, `G` or `T` suffix, each a power of 1024:
 
 ```bash
 make build KDOS_PKG_STORE=1 KDOS_PKG_STORE_MAX=30G
@@ -35,7 +36,8 @@ as that fits under the limit. A limit smaller than one build's packages evicts s
 build's own entries, and the next build compiles those ports again.
 
 Skipping the step only lets the store grow: every changed recipe adds an entry and nothing
-removes one. `make clean` removes the whole store.
+removes one. `make clean` removes the whole store; `make cleanbuild` keeps it, with the snapshots
+and the compiler cache.
 
 ## What it leaves
 

@@ -78,10 +78,11 @@ directory does not carry the mounts beneath it, and in the container `script/`, 
 `docs/`, `testing/`, the `Makefile` and the `Dockerfile` are separate read-only mounts, so each is
 bound again explicitly. `docs/`, `testing/` and the two files are remounted read-only. `docs/` is
 read by the two ports that render the books, `kdos-doc` for the KDOS book and `kdos-kfs` for this
-one; `testing/`, with `ports/` once more at `/kdos/ports`, by the checks the image phase runs from
-`/kdos`; and the `Makefile` and `Dockerfile` by `kdos-kfs` again, for the listings of
-[Part I](../01-preparing/host-container.md), and by the image step that copies the sources onto a
-developer medium.
+one. `testing/` is read by the checks the image phase's `087_gates.sh` runs from `/kdos`, and
+`ports/` is bound once more at `/kdos/ports` because those checks, and `kdos-kfs`, read the recipes
+there. The `Makefile` and the `Dockerfile` are read by `kdos-kfs` again, for the listings of
+[Part I](../01-preparing/host-container.md), and by `110_iso.sh`, the image step that copies the
+sources onto a developer medium.
 
 ### The open-files limit
 
@@ -112,7 +113,8 @@ shell's `$0` and the command and its arguments become `"$@"`.
 The variables that cross into the chroot:
 
 `HOME`, `TERM`
-:   The build's home directory, above, and the caller's terminal type.
+:   The build's home directory, above, and the caller's terminal type, which the phase environment
+    below replaces with `dumb`.
 
 `PATH`
 :   `/usr/bin` first, then `/usr/sbin`, `/bin`, `/sbin`, and `/usr/local/bin` last. `/usr/bin` comes
@@ -129,8 +131,9 @@ The variables that cross into the chroot:
     inside the chroot.
 
 `KDOS_ISO_SOURCES`, `KDOS_PACK_KDOS`, `KDOS_MAKE_BINHOST`, `KDOS_ISO_COMP`, `KPKG_KEEP_CACHE`
-:   The opt-in switches of the image phase, and `KDOS_MAKE_BINHOST` again under the name kpkg reads,
-    so that every package is kept for the binhost.
+:   The opt-in switches of the image phase, the compression of the image's `system.sfs`, and
+    `KDOS_MAKE_BINHOST` again under the name kpkg reads, so that every package is kept for the
+    binhost.
 
 `KDOS_CCACHE`
 :   Whether CMake ports compile through the cache in `build/ccache`.
@@ -159,13 +162,13 @@ count came to 16, with the flag values cut short:
 ```text
 CC=gcc
 CXX=g++
-CFLAGS='-O2 -pipe -std=gnu11 -fPIC -fno-semantic-interposition -fstack-clash-protection ...
+CFLAGS=-O2 -pipe -std=gnu11 -fPIC -fno-semantic-interposition -fstack-clash-protection ...
 KDOS_JOBS=16
 MAKEFLAGS=-j16
 KPKG_STRICT_RECIPE=1
 LANG=C.UTF-8
 PATH=/kdos/script/bin:/usr/bin:/usr/sbin:/bin:/sbin:/usr/local/bin
-PORT_REPO='/ports/core /kdos/src/system /kdos/src/art'
+PORT_REPO=/ports/core /kdos/src/system /kdos/src/art
 SOURCE_DATE_EPOCH=1735689600
 TZ=UTC
 ```
@@ -232,9 +235,9 @@ installed and current, because the solver leaves out every port with nothing to 
 <!-- kfs:include script/chroot/enter.sh lines=13-61 pin=04cfa2a9892d -->
 
 It takes a private mount namespace in the same way and mounts `/dev`, `/proc`, `/sys`, `/tmp` and
-`/run`, but it differs from `exec.sh` in three ways. It does not mount the repository, so there is
-no `/kdos` and no `/ports` inside, and kpkg cannot find a port. It does not clear the environment,
-so the shell inherits whatever the caller had. And it copies the caller's `/etc/resolv.conf` into the
+`/run`, but it differs from `exec.sh` in three ways. It does not mount the repository, so
+`/kdos` and `/ports` inside are empty directories, and kpkg cannot find a port. It does not clear
+the environment, so the shell inherits whatever the caller had. And it copies the caller's `/etc/resolv.conf` into the
 tree, over the copy `fs/` provides, so that name resolution works from a chroot on a machine with a
 network; the next run of `000_file_system.sh` puts `fs/`'s copy back. With no arguments it starts a
 login shell, `bash -l`, which reads the tree's own `/etc/profile`; with arguments it runs them

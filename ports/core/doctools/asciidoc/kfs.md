@@ -5,7 +5,7 @@ renders AsciiDoc through DocBook into a manual page, HTML or other formats. This
 Python implementation, `asciidoc-py`, not Asciidoctor, which is a port of its own. In KDOS it is a
 build tool: git, calcurse, imv, libtraceevent, ocl-icd and the other ports that depend on it
 write their manual pages in AsciiDoc and run `asciidoc` or `a2x` to make them (see
-[Manual pages](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#manual-pages)).
+[Manual pages](../../../../docs/kdos/05-developer/writing-ports.md#manual-pages)).
 
 `a2x -f manpage` writes DocBook, checks it with `xmllint --nonet --valid` against the DTD from
 [docbook-xml](#port-docbook-xml), and converts it with `xsltproc` and the
@@ -23,7 +23,7 @@ write their manual pages in AsciiDoc and run `asciidoc` or `a2x` to make them (s
   no generated `configure`.
 - `--ignore-installed` — Installs the Python package into `$PKG` without pip first removing an
   installed asciidoc from the build root; see
-  [The three Python keys](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
+  [The three Python keys](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
 - `--no-build-isolation` — Builds with the setuptools already installed rather than fetching one
   into a fresh environment, which needs the network.
 - `--no-deps` — Installs asciidoc alone; pip resolves no dependencies.

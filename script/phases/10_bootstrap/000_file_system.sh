@@ -21,20 +21,16 @@ mkdir -pv $SYSROOT/var/local/log
 # 1777 on both: rootless podman/skopeo stage pulled image layers in /var/tmp.
 chmod 1777 $SYSROOT/tmp $SYSROOT/var/tmp
 
-# /var/run IS /run, and this is not tidiness — it is a live bug it fixes.
+# /var/run must be a link to /run.
 #
 # `sd_bus_open_system()` in basu defaults to
-# `unix:path=/var/run/dbus/system_bus_socket`, which is the pre-2011 path every
-# library still compiles in. dbus-daemon listens on /run/dbus/system_bus_socket,
-# so with /var/run a real empty directory EVERY sd-bus client on this machine
-# failed to reach the system bus: kdos-net said "NetworkManager is not
-# reachable" while NetworkManager was running two processes away, and
-# kdos-audio's bluetooth pane said the same about bluetoothd. Photographed on a
-# booted ISO.
-#
-# The symlink is what every distro has done since /run existed, and it fixes
-# libdbus, basu and anything else with the old path compiled in, at once.
-# /var/lock goes the same way for the same reason.
+# `unix:path=/var/run/dbus/system_bus_socket`, and other upstream code carries
+# the same /var/run path compiled in. dbus-daemon listens on
+# /run/dbus/system_bus_socket, so with /var/run a real empty directory every
+# sd-bus client on this machine fails to reach the system bus: kdos-net reports
+# NetworkManager unreachable and kdos-audio's bluetooth pane reports bluetoothd
+# unreachable while both are running. The link serves every such client at
+# once. /var/lock is a link to /run/lock for the same reason.
 # A directory left by an earlier build has to go first: `ln -sfT` refuses to
 # replace one. This is the build tree, never a running system, so there is no
 # runtime state under it to lose.
@@ -68,10 +64,10 @@ cd $WORKSPACE
 # Copy the fs/ overlay into the rootfs.
 #
 # /etc/{passwd,group,shadow} are merged rather than overwritten. Package
-# postinstalls add service users (polkitd, messagebus, sshd, ...) long after
+# postinstalls add service users (polkitd, geoclue, avahi, ...) long after
 # this step runs, so re-running the overlay sync on an existing tree — which is
 # exactly what the build plan's step picker is for — would otherwise delete
-# them and quietly break polkit, dbus and sshd. Repo entries win; entries that
+# them and quietly break the daemons that run as them. Repo entries win; entries that
 # exist only in the tree are appended back.
 ACCOUNT_FILES="passwd group shadow"
 EXTRA_DIR=$(mktemp -d)
@@ -86,14 +82,14 @@ for account in $ACCOUNT_FILES; do
 done
 
 # A file DELETED from fs/ has to disappear from the tree too. cp -r overwrites
-# but never removes, so a path the repo has dropped lingers forever: the shell
-# kdos-appbox survived being replaced by the C port and kpkg then refused the
-# install with a file conflict, and before that a stale icon rode three ISO
-# rebuilds. So: remember what fs/ provided last time, and on the next sync
-# delete the paths it no longer provides.
+# but never removes, so a path dropped from fs/ would stay in the tree, owned
+# by nothing, and ship in every image built from it. So: remember what fs/
+# provided last time, and on the next sync delete every remembered path that
+# fs/ no longer provides.
 #
-# Only paths this manifest put there: a package installing the same path later
-# owns it, so the manifest is rewritten AFTER the copy. A link is provided even
+# Only paths this manifest lists are deleted, and the sweep does not consult the
+# package database: a file a package installed over one of them still goes.
+# The manifest is rewritten AFTER the copy, from fs/ itself. A link is provided even
 # when its target is outside fs/ (etc/mtab, usr/lib64), hence -e OR -L.
 MANIFEST="$SYSROOT/var/lib/kdos/fs-manifest"
 if [ -f "$MANIFEST" ]; then
@@ -109,8 +105,10 @@ fi
 
 # fs/usr/lib64 is a link to lib, so gcc's runtime and every lib64 default
 # land in /usr/lib. cp cannot replace a real directory with a link, so a tree
-# whose usr/lib64 is still a directory keeps it, and only that path fails the
-# copy; the link reaches such a tree when it is rebuilt from empty.
+# whose usr/lib64 is still a directory keeps it and the copy fails there; the
+# link reaches such a tree when it is rebuilt from empty. On such a tree any
+# failure of the whole cp is tolerated, not only that one, so an unrelated copy
+# error passes silently there.
 LIB64_DIR=0
 if [ -d "$SYSROOT/usr/lib64" ] && [ ! -L "$SYSROOT/usr/lib64" ]; then
     echo "fs: usr/lib64 is a directory in this tree; the link to lib needs an empty tree" >&2
@@ -120,10 +118,10 @@ if ! cp -r $WORKSPACE/fs/* $SYSROOT/; then
     [ "$LIB64_DIR" = 1 ] || exit 1
 fi
 
-# cp overwrites CONTENT and keeps the DESTINATION's mode, so a permission
-# change in fs/ never reached a tree that had already been synced once. That
-# is not cosmetic: rcS runs `[ -x "$_script" ] || continue`, so 57_oomd.sh
-# arriving 644 meant kdos-oomd never started and nothing said so. Replay the
+# cp overwrites CONTENT and keeps the DESTINATION's mode, so on its own a
+# permission change in fs/ does not reach a tree that has been synced before.
+# That is not cosmetic: rcS runs `[ -x "$_script" ] || continue`, so an init
+# script left at 644 is skipped at boot and nothing says so. Replay the
 # execute bit — 755/644 is exactly what cp itself produces for a NEW file
 # under the umask this build runs with, so a first sync and a re-sync agree.
 # Regular files only: chmod follows a symlink.

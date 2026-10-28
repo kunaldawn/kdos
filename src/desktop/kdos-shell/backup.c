@@ -39,9 +39,10 @@
  * THE PASSWORD IS A FILE AND NEVER AN ARGUMENT. `--password-file` is restic's
  * own flag; /proc/<pid>/cmdline is world-readable, so `--password` would put
  * the key to every backup this machine has on a line any account can read.
- * There is no keyring on this desktop to put it in instead: nothing here
- * provides the Secret Service, and `pass` needs a GnuPG key the installer
- * does not make.
+ * There is no keyring this program can count on instead: the Secret Service
+ * exists only while KeePassXC runs with its integration turned on, which
+ * nothing starts and a timer run cannot wait for, and `pass` needs a GnuPG
+ * key the installer does not make.
  *
  * AND THE FILE'S MODE IS CHECKED BEFORE IT IS USED. A password file at 0644 is
  * the same disclosure by a different route, and it is the mode a text editor or
@@ -310,8 +311,10 @@ static void scan_snaps(void)
 		}
 	}
 	if (buf[0] != '[') {
-		/* restic's own message, which names the case: no repository,
-		 * a wrong password, a lock somebody else holds. */
+		/* Something on stdout that is not the JSON list, shown as
+		 * restic printed it. restic's errors (no repository, a wrong
+		 * password, a held lock) go to stderr, which kb_run_capture
+		 * discards, so those arrive as the empty answer above. */
 		buf[strcspn(buf, "\n")] = '\0';
 		snprintf(why, sizeof(why), "%.180s", buf);
 		return;
@@ -911,8 +914,10 @@ int backup_main(int argc, char **argv)
 		if (!strcmp(argv[i], "--dump"))
 			dump = 1;
 		/* What a timer line runs: back up and exit, no window. The
-		 * scheduled half of this is J.13's table and not a scheduler
-		 * of ours — one `snooze` per job under the supervisor. */
+		 * schedule is a line in a timer table, not a scheduler of
+		 * ours — a `snooze` per job, under the supervisor for
+		 * /etc/kdos/timers.d and in the session's own loop for the
+		 * per-user table. */
 		else if (!strcmp(argv[i], "--once"))
 			once = 1;
 		else if (!strcmp(argv[i], "--font") && i + 1 < argc)
@@ -950,7 +955,7 @@ int backup_main(int argc, char **argv)
 		}
 		/*
 		 * WAITED FOR, unlike the window's `b`. A timer's job is the
-		 * process the supervisor is watching: detaching here would
+		 * process its timer waits on: detaching here would
 		 * report success the instant restic started, and a backup that
 		 * failed every night would look like one that ran.
 		 *

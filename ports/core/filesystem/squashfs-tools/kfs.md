@@ -7,7 +7,7 @@ KDOS live medium boots from: `mksquashfs` builds one, `unsquashfs` lists and ext
 level 15 and 1 MiB blocks unless `KDOS_ISO_COMP` names another codec or level, then appends the recipe
 tree as `/ports` and checks the result with `unsquashfs -l`. `kdos rebuild` needs `mksquashfs` to
 make a new medium from a source tree on a running system. How the live root is mounted is in
-[The live medium and persistence](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/boot-and-init.md#the-live-medium-and-persistence).
+[The live medium and persistence](../../../../docs/kdos/03-architecture/boot-and-init.md#the-live-medium-and-persistence).
 
 The tools have no configure step. The build is selected with variables on the `make` command
 line, which override the Makefile's own assignments.

@@ -18,8 +18,9 @@ case "$1" in
         # watches a process that has already forked away.
         # -P moves syslogd's own pid file off /run/syslogd.pid, which is the
         # supervisor's: written there, it replaces the supervisor's id, so
-        # `service stop` signals the daemon alone and it is restarted, and
-        # syslogd removes it on exit, so `status` reports the service down.
+        # `service stop` finds no supervisor at that pid, drops the file as
+        # stale and signals nothing, leaving the daemon running; and syslogd
+        # removes it on exit, so `status` reports the service down.
         # -8 writes bytes 0x80-0x9F as they arrive. Without it syslogd
         # rewrites each as `M-^x`, and those bytes are the continuation bytes
         # of most UTF-8 punctuation, so one em dash leaves a lone lead byte

@@ -5,10 +5,10 @@ QtUiTools and QtDesigner libraries. A Qt 6 port that ships translations runs thi
 `lrelease` at build time, and a program that loads `.ui` files at run time links QtUiTools.
 
 ## Flags
-- `-DFEATURE_clang=OFF` — with `-DFEATURE_qdoc=OFF`: do not look for libclang, and leave out
-  QDoc, Qt's documentation generator, which needs it. [clang](#port-clang) is installed in an
-  earlier phase and is not in `depends`; left to the configure, QDoc would be built whenever
-  libclang is found.
+- `-DFEATURE_clang=OFF` — with `-DFEATURE_qdoc=OFF`: build nothing against libclang, and leave
+  out QDoc, Qt's documentation generator, the one part of the module that uses it. The configure
+  still looks for libclang; [clang](#port-clang) is installed in an earlier phase and is not in
+  `depends`, so left to the configure, QDoc would be built whenever libclang is found.
 - `-DFEATURE_assistant=ON` — with `designer`, `linguist`, `qdbus`, `qtdiag`, `pixeltool`,
   `qtplugininfo` and `distancefieldgenerator`: each tool named, so one that cannot be built
   stops the configure.

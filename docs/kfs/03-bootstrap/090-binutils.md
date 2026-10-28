@@ -15,7 +15,7 @@ a linker to call once the build moves inside `build/fs`. `090_binutils.sh` build
 The step unpacks the port's tarball and builds in a separate `build` directory, as binutils'
 own documentation recommends:
 
-<!-- kfs:include script/phases/10_bootstrap/090_binutils.sh lines=24-47 pin=41d2618656a3 -->
+<!-- kfs:include script/phases/10_bootstrap/090_binutils.sh lines=24-47 pin=35abf5a2a15d -->
 
 ### The meaning of the configure options
 
@@ -40,7 +40,9 @@ own documentation recommends:
 
 `--enable-new-dtags`
 : When a link is given a run-time search path, `ld` writes it as `DT_RUNPATH` instead of the older
-  `DT_RPATH`. A `RUNPATH` yields to `LD_LIBRARY_PATH`; an `RPATH` is searched before it.
+  `DT_RPATH`. glibc's loader lets `LD_LIBRARY_PATH` override a `RUNPATH` but not an `RPATH`;
+  musl's, the loader on KDOS, reads the two tags alike and searches `LD_LIBRARY_PATH` before
+  either.
 
 `--enable-gprofng=no`
 : Do not build the gprofng profiler. binutils already leaves it out on a musl target; the switch

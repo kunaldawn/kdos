@@ -13,9 +13,9 @@ a Wayland window or, under Xwayland, to an X11 one.
   manifests, after the XDG configuration directories and before the data directories.
 - `-DCMAKE_INSTALL_DATADIR=/usr/share` — Read by the loader's build only to find the Vulkan
   registry for code generation, which is off; it changes nothing that is installed. The data
-  directories searched at run time, `/usr/local/share` and `/usr/share`, are compiled in from
-  upstream's `FALLBACK_DATA_DIRS`, and `/usr/share/vulkan/icd.d` is where [mesa](#port-mesa)
-  installs its ICD manifests.
+  directories searched at run time are those in `XDG_DATA_DIRS`, or, when it is unset or empty,
+  upstream's compiled-in `FALLBACK_DATA_DIRS`, `/usr/local/share` and `/usr/share`;
+  `/usr/share/vulkan/icd.d` is where [mesa](#port-mesa) installs its ICD manifests.
 - `-DVULKAN_HEADERS_INSTALL_DIR=/usr`, `-DCMAKE_PREFIX_PATH=/usr` — Where the build looks for
   [vulkan-headers](#port-vulkan-headers): `CMAKE_PREFIX_PATH` for its `VulkanHeadersConfig.cmake`,
   and `VULKAN_HEADERS_INSTALL_DIR` for its registry, which only the code-generation target reads.

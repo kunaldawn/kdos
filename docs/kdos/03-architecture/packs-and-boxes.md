@@ -82,9 +82,13 @@ counts every line kind in the shipped file:
 | `group` | A curated bundle `kdos-store` and the installer offer as one tick | 17 lines, 7 groups |
 | `meta` | Display name, category, size estimate and tagline | 75: one for each `app` and `data` row |
 
-**A row's parent must appear above it.** The resolver walks a chain upward in one pass, so a
-forward reference is a chain it cannot close; reordering the file makes an install fail naming the
-missing parent rather than loop.
+**Rows may stand in any order, with one exception.** The whole file is read before any chain is
+resolved, and a parent is looked up by id wherever it stands. A chain that names a parent the file
+does not have, or runs past 16 rows (which is also where a cycle ends), cannot be closed, and the
+install of that application stops with a message that a parent is missing from the catalogue,
+rather than looping. The exception is
+`meta`, which is applied as it is read: a `meta` line placed above the row it describes is dropped
+without a message, and the application presents as its bare id.
 
 **`snapshot` pins the Debian archive.** The shipped value is `snapshot = auto`, which takes the
 date from the base image's own sources file, so what is installed on top cannot disagree with the
@@ -95,9 +99,9 @@ indistinguishable from a pinned one.
 
 **A group is not a category.** The first `group` line for a group id is its description and every
 later one lists members. The seven groups are `creative`, `dev`, `essential`, `games`, `make`,
-`office` and `science`; `essential` is what `kinstall` preselects. A category is the application's
-own, taken from its desktop entry, and every application has exactly one. A group is curated, most
-applications are in none, and bases and runtimes are in none (they arrive through the parent chain
+`office` and `science`; `essential` is what `kinstall` preselects. A category is one desktop-entry
+category (`Office`, `Development`, `AudioVideo` and the like) recorded in the row's `meta` line, and
+every application has exactly one. A group is curated, most applications are in none, and bases and runtimes are in none (they arrive through the parent chain
 of whatever is chosen). A word on a member line that does not start with `app.` or `data.` is
 ignored, and a member id missing from the file fails on its own at install time (reported as a chain
 with a missing parent) while the other members still install.
@@ -118,7 +122,7 @@ box is given come from pack metadata, as described under
 ### The graphics stack is in the base row
 
 The graphics drivers sit in the base rather than in a runtime. A row's parent chain is a single line
-(the browser sits on the GTK runtime, the video editor on the media one), so drivers placed in
+(the browser sits on the GTK runtime, the audio tools on the media one), so drivers placed in
 either runtime would reach half the catalogue and no more. The DRI drivers, the GL and EGL loaders
 and the VA-API drivers (`libgl1-mesa-dri`, `libegl1`, `libgl1`, `libva2`, `va-driver-all`) are
 therefore in the `base` row, where they are stored once and every box built on it has them. The
@@ -157,8 +161,8 @@ The build file is generated in memory and fed to `podman build -f -` with an emp
 and one `RUN` line, so the only layer with content over its parent is the `RUN` diff; the `ENV` line
 adds no files. The `RUN`:
 
-1. writes the Debian sources file for the snapshot date, over plain HTTP from
-   `snapshot.debian.org`, with `Check-Valid-Until` off because a snapshot's Release file is stale by
+1. unless the snapshot is `off`, writes the Debian sources file for the snapshot date, over plain
+   HTTP from `snapshot.debian.org`, with `Check-Valid-Until` off because a snapshot's Release file is stale by
    definition. HTTP is deliberate: the base row is the one that installs `ca-certificates`, and an
    apt repository's integrity comes from the archive signature named by `Signed-By`, not from the
    transport;
@@ -174,7 +178,8 @@ adds no files. The `RUN`:
 A data row an application `needs` is installed first. Once the chain is built, the box is created
 with `kdos-box create <id> base=image:kdos/<id>`, and the user's launchers are regenerated (see
 [Reaching the desktop](#reaching-the-desktop)). `kdos-box`, the box manager, is `kdos-appbox` under
-a second name (a symlink); its verbs are listed in [kdos-appbox](../04-programs/kdos-appbox.md).
+a second name (a symlink); its verbs are listed in
+[kdos-appbox: kdos-box](../04-programs/kdos-appbox.md#kdos-box).
 Nothing rolls back: six applications where the fourth fails leaves five installed and names the
 fourth, because an installed application is not damaged by a later one failing.
 
@@ -340,7 +345,7 @@ in the environment of `kdos-packd` (at install) or `kdos-pack verify` makes `NON
 
 `kdos-pack index <dir>` writes `PACKAGES`, an index of every `.kpack` and `.kdelta` in a directory,
 in the same single-letter shape `kpkg` uses for the host
-[binhost](../06-reference/glossary.md): one stanza per pack, a blank line
+[binhost](packaging.md#the-binary-host): one stanza per pack, a blank line
 between, sorted by id so the same set of packs always produces the same bytes.
 
 | Field | Meaning |
@@ -378,7 +383,7 @@ never through a shell.
 | `uuid <id>` | Print the image UUID derived from a pack id |
 | `extract-meta <pack> [--icon]` | Write the metadata blob, or the icon, to standard output |
 | `sign <pack> <key>` | Append a signature |
-| `verify <pack> [--keys DIR]` | Check the hash and the signatures; exits 2 on `HASH`, `BAD` or `NOKEY` |
+| `verify <pack> [--keys DIR]` | Check the hash and the signatures; exits 2 on `HASH`, `BAD` or `NOKEY`, and on `NONE` when `KDOS_REQUIRE_SIG` is set |
 | `restamp <pack>…` | Raise the footer format and re-take the digest |
 | `index <dir> [--sign key]` | Write the `PACKAGES` index for a directory of packs |
 | `delta <old> <new> [out.kdelta]` | Write the difference between two packs |
@@ -467,7 +472,7 @@ spelled and no step needs root. Its metadata holds the id, the kind, a version e
 time in seconds, the display name and the tagline. The archive also contains a `SELECTION` file,
 one id per line with a `group` line recording each group that was picked above the ids it held,
 which is what `import` reads when no ids are named, and a `PACKAGES` index, signed when the `KDOS_PACK_KEY` environment
-variable names a readable key and unsigned, with a message saying so, otherwise.
+variable names a key file that exists and unsigned, with a message saying so, otherwise.
 
 A frozen box requires its base. `kdos-box freeze` writes metadata with the id `box.<name>`,
 kind `app`, and a `requires` line naming the box's base pack when the base is a pack, so an import
@@ -481,10 +486,10 @@ in `script/chroot/exec.sh`. The pack is written to `build/kdos-base/` rather tha
 store: the pack store is *inside* the root filesystem, so a pack written there would be squashed
 into `system.sfs` and the medium would carry the tree twice. `script/phases/70_image/110_iso.sh` copies
 it to `/packs/kdos.kpack` on the ISO9660 filesystem, beside `system.sfs`. A booted medium appears at
-`/mnt/iso`, and `kdos-packd` scans `/mnt/iso/packs` for `*.kpack`, so the pack is usable with
-nothing installed. The copy is gated on the flag, not on the file being present, and `100_packs.sh`
-deletes `build/kdos-base/` whenever the flag is off, so a pack left by an earlier opt-in build does
-not reach later images.
+`/mnt/iso` (see [The live medium and persistence](boot-and-init.md#the-live-medium-and-persistence)),
+and `kdos-packd` scans `/mnt/iso/packs` for `*.kpack`, so the pack is usable with nothing installed.
+The copy needs the flag as well as the file, and `100_packs.sh` deletes `build/kdos-base/` whenever
+the flag is off, so a pack left by an earlier opt-in build does not reach later images.
 
 ### Building the root-filesystem pack
 
@@ -518,10 +523,11 @@ ownership.
 ## Installing a pack
 
 `kdos-packd` is the only program on the system that installs or mounts a pack. It runs as root under
-the service supervisor (`/etc/init.d/59_packd.sh`; see [Boot and init](boot-and-init.md)), answers
+the service supervisor (`/etc/init.d/59_packd.sh`; see
+[rcS and the service scripts](boot-and-init.md#rcs-and-the-service-scripts)), answers
 `/run/kdos-packd.sock`, and accepts requests from root and members of `wheel`, checked by the peer's
-credentials rather than by the socket's mode (`0666`). See [The daemons](../04-programs/daemons.md)
-for its full interface.
+credentials rather than by the socket's mode (`0666`). See
+[The daemons: kdos-packd](../04-programs/daemons.md#kdos-packd) for its full interface.
 
 The client never names a path. Every verb takes an id out of a list the daemon itself
 published, and `install` takes a *filename* in the staging directory: no slash, no `..`, only
@@ -536,14 +542,15 @@ published, and `install` takes a *filename* in the staging directory: no slash, 
    that alone;
 3. otherwise verifies the pack itself, accepting `GOOD` and `NONE` (unless `KDOS_REQUIRE_SIG` is
    set) and refusing `HASH`, `BAD` and `NOKEY`;
-4. if an older version of the same id is mounted, unmounts it, or refuses the install when a box
-   is composed over it, so that no later composition puts a new application over an old runtime's
-   bytes;
+4. if the copy of the same id already in the pack store is mounted, unmounts it, or refuses the
+   install when a box is composed over it, so that no later composition puts a new application over
+   an old runtime's bytes;
 5. renames the version already installed to `<id>-<version>.kpack`, and moves the new file into the
    pack store as `<id>.kpack`. Staging is inside the pack store so that this is a rename, and
    installation has no half-finished state;
-6. deletes superseded copies beyond the `retain` setting in `/etc/kdos/packd.conf` (default `1`),
-   newest kept by version comparison. The sweep runs only after an install.
+6. deletes superseded copies beyond the `retain` setting in `/etc/kdos/packd.conf` (default `1`,
+   at most 8; `KDOS_PACK_RETAIN` in the daemon's environment overrides the file), newest kept by
+   version comparison. The sweep runs only after an install.
 
 `kdos-appbox import` stages each pack file on its own, without the archive's `PACKAGES`, so an
 imported pack is accepted on step 3: its own payload hash and its own signature block.
@@ -582,8 +589,8 @@ Every pack is mounted read-only, `nosuid` and `nodev` under `/var/lib/kdos/packs
 pack is also `noexec`. There are two routes to the mount, and `kdos-appbox status` prints the one in
 use (`route`) from the daemon's `status` reply. Where the kernel has
 `CONFIG_EROFS_FS_BACKED_BY_FILE`, it takes the regular file as the filesystem source and no loop
-device is needed (`file-backed`); where it answers `ENOTBLK`, the pack goes through a read-only loop
-device, set up directly with three `ioctl` calls rather than by running `losetup`, because this is
+device is needed (`file-backed`); where it answers `ENOTBLK` or `EINVAL`, the pack goes through a
+read-only loop device, set up directly with three `ioctl` calls rather than by running `losetup`, because this is
 a root daemon and every process it starts runs as root.
 
 Mounts are reference counted, and taking a box apart does not unmount. Two boxes often share a
@@ -677,13 +684,17 @@ every pack box at `/usr/libexec/kdos-boxinit`, where it runs as process 1. It:
 
 1. writes records for a user and group matching yours into `/etc/group` and `/etc/passwd`, and a
    locked password into `/etc/shadow`, since nothing logs in to a box;
-2. sets a search path that includes `/usr/games`, and `HOME` to your home directory;
+2. creates your home directory if it is missing, which only happens for a box with a private home;
 3. writes `/usr/local/bin/xdg-open`, which hands links and files to the host's OpenURI portal over
    the shared session bus, and links `x-www-browser` and `sensible-browser` to it;
 4. writes `/etc/asound.conf` where the PulseAudio ALSA plugin exists, so ALSA's `default` in the box
    is the host's sound server;
-5. prints `container_setup_done`, which the launcher waits for, only after the records above exist;
-6. stays alive, reaping exited processes, until it is told to stop.
+5. sets a search path that includes `/usr/games`, and `HOME` to your home directory;
+6. prints `container_setup_done`, which the launcher waits for, only after the records above exist;
+7. stays alive, reaping exited processes, until it is told to stop.
+
+A launch is a separate `podman exec` and does not inherit that environment, so the launcher sets the
+same search path and `HOME` again for every application it starts.
 
 It is statically linked because it runs in a container whose libraries are Debian's, where a
 binary linked against the host's C library would look for its loader and not find it.
@@ -698,7 +709,7 @@ looked at.
 
 The graphics card reaches a box as device nodes, and the box profile's two keys govern different
 halves of it. (A box profile is `~/.config/kdos/boxes/<name>.conf`; see
-[kdos-appbox](../04-programs/kdos-appbox.md).)
+[kdos-appbox: Box profiles](../04-programs/kdos-appbox.md#box-profiles).)
 
 `gpu` is the device nodes. A box that shares the host's `/dev` has them, and nothing can be
 subtracted from that; a box with a private `/dev` gets `/dev/dri` bound back by this key alone.
@@ -706,8 +717,9 @@ subtracted from that; a box with a private `/dev` gets `/dev/dri` bound back by 
 `render` is who draws. `auto`, the default, is resolved against the machine by opening a render node
 (`/dev/dri/renderD*`), not by checking that one exists, because a session outside the `render`
 group reaches the same dead end as a machine with no card. `software` (or `pixman`, `no`, `off`,
-`0`, `false`) is a refusal honoured whatever is plugged in. A launch that resolves to software gets
-`LIBGL_ALWAYS_SOFTWARE=1`. The key is advisory, an environment variable the application may unset,
+`0`, `false`) is a refusal honoured whatever is plugged in. A box with a private `/dev` and `gpu`
+turned off resolves to software as well, because it has no render node to open. A launch that
+resolves to software gets `LIBGL_ALWAYS_SOFTWARE=1`. The key is advisory, an environment variable the application may unset,
 and it governs GL and EGL only. VA-API and Vulkan find the render node their own way, which is why
 that is the `gpu` key's job.
 
@@ -723,7 +735,10 @@ clipboard managers (data-control), input methods and layer-shell surfaces (panel
 The tag filters those protocols; it does not isolate the box. The box shares
 `$XDG_RUNTIME_DIR` with the session, so a client that opens the default `wayland-0` reaches the
 session's own socket. Withholding the variable would advertise a confinement the sandbox does not
-have, which is why no profile key withholds it. See [The security model](security-model.md).
+have, which is why no profile key withholds it. The allowlist itself is in
+[The security model: Sandboxed clients](security-model.md#sandboxed-clients); a box profile's
+`grant` key opens named protocols past it for that one box (see
+[Granting a box more than the allowlist](session.md#granting-a-box-more-than-the-allowlist)).
 
 ### The environment a box is given
 
@@ -734,9 +749,10 @@ once and an application can override its runtime. The pack asked for is the one 
 `pack:` base or, for any other box, the pack whose id is the box's name.
 
 A store box has no such pack, so it gets none of these variables. It also gets none of the
-catalogue's `env` rows, and no `QT_QPA_PLATFORMTHEME` chosen from image labels: the program holds
-both lookups, but every launch reaches the pack lookup first with a non-empty id, and the others
-sit behind it. The full list of what a box receives is in
+catalogue's `env` rows, and no `QT_QPA_PLATFORMTHEME` chosen from image labels. The launcher
+contains code for both, but every launch asks the daemon for a pack first, and that question always
+names an id, so the catalogue and label lookups behind it are never reached. The full list of what
+a box receives is in
 [kdos-appbox: The environment a box gets](../04-programs/kdos-appbox.md#the-environment-a-box-gets).
 
 A value beginning with `$HOME` has it replaced by your home directory, because a pack cannot know
@@ -789,7 +805,7 @@ one of four routes, decided in this order:
 | Route | When | What the install does |
 |---|---|---|
 | Nothing chosen | No group ticked | Makes the pack store's directories and stops |
-| From removable media | A `.ktar` is found one directory below `/mnt`, `/media` or `/run/media` | Runs `kdos-appbox import` on the first one found, which stages each pack through `kdos-packd`. The only route on a machine with no network |
+| From removable media | A `.ktar` is found one directory below `/mnt`, `/media` or `/run/media` | Runs `kdos-appbox import` on the first one found, which stages each pack through `kdos-packd`. It imports the archive's own `SELECTION`, not the ticked groups. The only route on a machine with no network |
 | Over the network | The machine has a default route | Runs `kdos-appbox install <group>…`: podman and apt, which takes minutes |
 | At first login | Neither of the above | Writes the selection to `/var/lib/kdos/apps-pending` and builds nothing |
 
@@ -832,9 +848,10 @@ existing parser is reused rather than reimplemented against the metadata. Only `
 and only installed or already-mounted ones, so a regeneration never mounts every pack on the medium.
 Store boxes have no pack for the daemon to mount. After a store install, uninstall or import,
 `kdos-appbox` copies `/usr/share/applications` out of every store box's image with `podman cp` and
-regenerates your tree from those in the `--packs-dir` shape; when no store box exists, it walks the
-installed packs instead. The two sources are not merged in one run. `kdos-box export <box> <app>`
-adds a launcher for one application in any box.
+regenerates your tree from those in the `--packs-dir` shape; when no store box yields any entries,
+it walks the installed packs instead. The two sources are not merged in one run, so on a machine
+with at least one store box, an imported application's launcher is dropped by that regeneration.
+`kdos-box export <box> <app>` adds a launcher for one application in any box.
 
 Each run writes its whole set, because the table, the cache and the shims are written whole, and
 dropping any output breaks something visible:
@@ -847,7 +864,7 @@ dropping any output breaks something visible:
 | A shim per application in the binary directory | The application is not a command |
 
 The details (entry naming, quoting, field codes, the tables that skip or rename entries) are in
-[kdos-appbox](../04-programs/kdos-appbox.md).
+[kdos-appbox: Launcher generation](../04-programs/kdos-appbox.md#launcher-generation).
 
 ## See also
 

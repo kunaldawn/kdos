@@ -12,10 +12,11 @@ case "$1" in
         fi
         # Mounting is root's and the desktop is not root. udisks2 serves the
         # toolkit applications, and this daemon is the desktop's own route: a
-        # socket in /run gated by SO_PEERCRED, root and wheel only, and a
-        # protocol whose only argument is a row number out of a list the
-        # daemon itself published — so there is no path a client can aim
-        # anywhere.
+        # socket in /run gated by SO_PEERCRED to root, seat and wheel. A
+        # block-device verb's argument is a row number out of a list the
+        # daemon itself published, so there is no device path a client can
+        # aim anywhere; the cifs verbs name a server, share, user and domain,
+        # which the daemon checks before mount.cifs sees them.
         #
         # Foreground by design: `supervise` owns the respawn.
         echo "[KDOS] Starting $NAME..."

@@ -1,9 +1,10 @@
 ## About
 
 CPython, the Python 3 interpreter, with its standard library and the shared `libpython`. It is one
-of the tools `30_foundation` installs before any shelf (see [the pinned
-run](#06-foundation--the-pinned-run)): [meson](#port-meson) is a Python program, many build systems
-run Python scripts to generate code, and every `python3-*` port is built and installed with it. Its
+of the tools `30_foundation` installs before any shelf (see
+[the pinned run](../../../../docs/kfs/06-foundation/intro.md#the-pinned-run)):
+[meson](#port-meson) is a Python program, many build systems run Python scripts to generate code,
+and every `python3-*` port is built and installed with it. Its
 `depends` line is the set of C libraries its standard extension modules link: `_ctypes`
 [libffi](#port-libffi), `_decimal` [mpdecimal](#port-mpdecimal), `_sqlite3` [sqlite](#port-sqlite),
 `pyexpat` [expat](#port-expat), `_ssl` and `_hashlib` [openssl](#port-openssl), the compression
@@ -15,15 +16,14 @@ The package has no Tk binding. `python3` is built in `30_foundation`, long befor
 `_tkinter` is turned off and the Tk-only parts of the standard library are deleted after the
 install. [python3-tkinter](#port-python3-tkinter) configures the same tarball again once Tk is
 installed and packages that module with the Tk-only parts: the `tkinter` package, `turtle`,
-`turtledemo`, `idlelib` and the `idle3` command; both recipes carry `group =
-python3` so the version checker offers them as one bump, as [A second build of the same
-source](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#a-second-build-of-the-same-source)
+`turtledemo`, `idlelib` and the `idle3` command; both recipes carry `group = python3` so the
+version checker offers them as one bump, as
+[A second build of the same source](../../../../docs/kdos/05-developer/writing-ports.md#a-second-build-of-the-same-source)
 describes.
 
 The system Python's `site-packages` belongs to kpkg. `build.sh` writes the PEP 668
-`EXTERNALLY-MANAGED` marker, so `pip install` outside a virtual environment is refused; see [Files
-kpkg keeps to
-itself](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/packaging.md#files-kpkg-keeps-to-itself).
+`EXTERNALLY-MANAGED` marker, so `pip install` outside a virtual environment is refused; see
+[Files kpkg keeps to itself](../../../../docs/kdos/03-architecture/packaging.md#files-kpkg-keeps-to-itself).
 pip itself is not part of this package. It is [python3-pip](#port-python3-pip), which also puts the
 pip wheel where `python3 -m venv` looks for it.
 
@@ -97,16 +97,17 @@ The interpreter is compiled at `-O2`, not `-O3`. `PY_CFLAGS` is `OPT` followed b
 `CFLAGS` three times over, once as recorded by configure, once from the environment of `make` and
 once as `EXTRA_CFLAGS`, and GCC takes the last `-O` it is given. The recorded value is in
 `sysconfig.get_config_var('PY_CFLAGS')`. A C extension built later compiles with the recorded
-`CFLAGS` followed by the exported ones, and so at `-O2` as well; see [Python, Perl, Haskell, Node
-and OCaml
-modules](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#python-perl-haskell-node-and-ocaml-modules).
+`CFLAGS` followed by the exported ones, and so at `-O2` as well; see
+[Python, Perl, Haskell, Node and OCaml modules](../../../../docs/kdos/05-developer/writing-ports.md#python-perl-haskell-node-and-ocaml-modules).
 
 `--with-system-libmpdec` does not make a missing mpdecimal an error. configure warns, "no system
 libmpdec found; falling back to bundled libmpdec", and builds the copy from its own source. The
-`depends` line puts mpdecimal first; `readelf -d` on `_decimal`'s `.so` under `lib-dynload` shows a
-`NEEDED` entry for `libmpdec` when the build used it. `--with-system-expat` has no such fallback:
-configure links `pyexpat` with `-lexpat` without checking, so a missing expat fails the build.
+`depends` line names mpdecimal, so it is installed before python3 builds; `readelf -d` on
+`_decimal`'s `.so` under `lib-dynload` shows a `NEEDED` entry for `libmpdec` when the build used
+it. `--with-system-expat` has no such fallback: configure links `pyexpat` with `-lexpat` without
+checking, so a missing expat fails the build.
 
-After the install, `build.sh` removes `tkinter`, `idlelib`, `turtledemo`, `turtle.py` with its bytecode in `__pycache__` and the
-`idle3` commands, which need Tk and which [python3-tkinter](#port-python3-tkinter) ships; links `python` to `python3`, and its manual page, so that both
-names work; and writes the `EXTERNALLY-MANAGED` file.
+After the install, `build.sh` removes `tkinter`, `idlelib`, `turtledemo`, `turtle.py` with its
+bytecode in `__pycache__` and the `idle3` commands, which need Tk and which
+[python3-tkinter](#port-python3-tkinter) ships; links `python` to `python3`, and its manual page,
+so that both names work; and writes the `EXTERNALLY-MANAGED` file.

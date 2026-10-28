@@ -18,7 +18,7 @@ target `RTTR::Core`. No port in the tree depends on it.
   unit tests and the examples by default. Nothing here runs or installs them.
 - `-DBUILD_DOCUMENTATION=OFF` — On by default, it adds the `doc` directory, which generates the API
   reference with doxygen.
-- `-DBUILD_INSTALLER=ON` — Every `install()` rule in RTTR's CMake files sits behind this switch: the
+- `-DBUILD_INSTALLER=ON` — Every `install()` rule for the library sits behind this switch: the
   libraries, the headers, the exported `rttr-config.cmake` and the licence and README. Without it,
   `ninja install` installs nothing.
 - `-DBUILD_PACKAGE=OFF` — On by default, it includes `CMake/installer.cmake`, which sets up CPack to

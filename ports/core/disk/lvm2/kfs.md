@@ -24,7 +24,8 @@ root on a logical volume needs before that.
   option, which defaults to `$prefix/libexec`, so this switch moves nothing: `lvresize_fs_helper` is
   installed in `/usr/libexec`.
 - `--enable-cmdlib` — Builds `liblvm2cmd`, the LVM commands as a shared library. dmeventd's LVM
-  plugin links it to run LVM commands, and configure refuses `--enable-dmeventd` without it.
+  plugin links it to run LVM commands. `--enable-dmeventd` turns it on by itself and configure
+  refuses `--disable-cmdlib` beside it; the switch states the setting outright.
 - `--enable-pkgconfig` — Installs `devmapper.pc` and the other pkg-config files, which is how the
   ports that link `libdevmapper` find it.
 - `--enable-udev_sync` — LVM and device-mapper wait for udev to finish processing a device before
@@ -52,8 +53,8 @@ root on a logical volume needs before that.
   Both are on by default, and configure turns each off when its version probe finds an older tool
   or none at all; with the probes skipped, the switches state the setting outright.
 - `--without-systemd` — No `libsystemd`, for the journal and the machine ID. KDOS has no systemd
-  (see [No
-  systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd)).
+  (see
+  [No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)).
 - `--with-default-event-activation=0` — Writes `event_activation = 0` as the default in `lvm.conf`.
   Event activation means udev activates a volume group as soon as its last physical volume appears;
   upstream does that through `69-dm-lvm.rules`, which runs `systemd-run … vgchange -aay`. With it

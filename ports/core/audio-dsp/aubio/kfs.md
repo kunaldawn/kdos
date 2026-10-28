@@ -9,10 +9,11 @@ the command-line tools built on it (`aubioonset`, `aubiopitch`, `aubiotrack`, `a
 
 - `WAFDIR`, `WAF` — The build runs a separate release of waf, the second `source =` in the
   recipe, instead of the copy in the tarball. The bundled waf imports Python's `imp` module,
-  which Python 3.12 removed. `WAFDIR` points `waf-light` at its own `waflib`; without it, waf
-  would import the bundled one from the current directory.
-- `-g0` — The `wscript` prepends `-g` to `CFLAGS` in every GCC build, release included; `-g0`, last on the line,
-  takes it back, so the objects carry no debug information.
+  which Python 3.12 removed. `WAFDIR` names the `waflib` that `waf-light` runs; it is the
+  directory `waf-light` would find beside itself, so the variable states which waf the build
+  uses rather than changing it. The tarball's own `waf` and `waflib` are never run.
+- `-g0` — The `wscript` prepends `-g` to `CFLAGS` for every compiler but MSVC, release builds
+  included; `-g0`, later on the line, takes it back, so the objects carry no debug information.
 - `--disable-jack` — Leave out the JACK input and output of the tools, so they read and write
   files only. JACK's library on KDOS is PipeWire's, and every port that can link it names it on
   or off rather than leaving it to build order; see
@@ -24,7 +25,10 @@ the command-line tools built on it (`aubioonset`, `aubiopitch`, `aubiotrack`, `a
 - `--enable-sndfile`, `--enable-samplerate` — Read and write sound files through libsndfile, and
   resample through libsamplerate. Given explicitly, a missing library stops the configure step
   instead of being skipped.
-- `--disable-docs` — The manual pages need `txt2man`, which is not a port.
+- `--disable-docs` — Documentation is otherwise built whenever its tools are found: manual
+  pages through `txt2man`, which is not a port, the API reference through Doxygen, which is, and
+  the HTML manual through Sphinx, also a port, once aubio's Python module imports. Off, the
+  package holds the same files whichever of them the tree has installed.
 - `--disable-tests` — Do not build the test programs, which are on by default, or run them
   during the build.
 - `--enable-examples` — Build the command-line tools, which aubio's build calls examples.

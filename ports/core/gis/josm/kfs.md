@@ -10,11 +10,10 @@ and Ivy are not ports and the build has no network, so `build.sh` does the same 
 compiles JOSM together with the source of every library it uses, and packs one jar. Each library is
 its own `source =` line, a `-sources.jar` from Maven Central (or the JOSM repository, for
 JMapViewer) or a tag archive from GitHub, pinned by a helper variable in the recipe; no
-upstream-compiled class reaches the package (see [What is built from
-source](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#what-is-built-from-source)).
-The tag2link index is the one exception, taken as data from its webjar (see [Data with no other
-source
-form](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/why-kdos.md#data-with-no-other-source-form)).
+upstream-compiled class reaches the package (see
+[What is built from source](../../../../docs/kdos/05-developer/writing-ports.md#what-is-built-from-source)).
+The tag2link index is the one exception, taken as data from its webjar (see
+[Data with no other source form](../../../../docs/kdos/01-philosophy/why-kdos.md#data-with-no-other-source-form)).
 
 ## Flags
 
@@ -28,20 +27,25 @@ form](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/why-kd
   something it is compiling refers to it, and writes that class file too. The dependency sources
   are unpacked whole into one tree, and only what JOSM uses of each library is built.
 - `--release 21` — Compiles JOSM and its libraries against the Java 21 API and class-file level.
-  Upstream's `build.xml` compiles at its own `java.lang.version`, a lower release.
+  Upstream's `build.xml` compiles at its own `java.lang.version`, release 11.
 - `-Djava.awt.headless=true` — Runs `BuildProjectionDefinitions`, upstream's generator for the
   `custom-epsg` projection list, with no display, as upstream's `epsg` target does.
+- `-XX:MaxRAMPercentage=75.0` — In the launcher: lets the Java heap grow to three quarters of the
+  machine's memory instead of the JVM's default quarter. Upstream's launcher sets the same value,
+  but only on a machine with more than 8 GB of memory; this one sets it on every machine.
+- `-Djava.net.useSystemProxies=true` — In the launcher: takes the HTTP proxy from the system
+  settings, as upstream's launcher does.
 - `--add-modules` — In the launcher: makes `java.scripting` and `java.sql` resolvable for a jar run
   from the class path, as upstream's own launcher does.
-- `--add-exports` — In the launcher: opens the three JDK internals JOSM reaches into
+- `--add-exports` — In the launcher: exports to JOSM the three JDK internal packages it uses
   (`sun.security.action` and two `com.sun.imageio` packages), the same three upstream's launcher
-  passes; the manifest's `Add-Exports` and `Add-Opens` lines carry the same list for a plain
-  `java -jar`.
+  passes. The manifest's `Add-Exports` line names the same three for a plain `java -jar`; its
+  `Add-Opens` line is upstream's list of packages JOSM reflects into.
 - `--offline` — In the launcher: starts the editor with `--offline=JOSM_WEBSITE`, which keeps JOSM
   from fetching its start page, version check, plugin list and help from josm.openstreetmap.de. The
   OpenStreetMap API, for downloading and uploading map data, stays available. The `render`,
-  `validate` and `project` commands are passed through without it: each takes the first argument
-  and accepts no editor option.
+  `validate` and `project` commands are passed through without it: each must be the first
+  argument, and none of them accepts the editor's options.
 
 ## Notes
 
@@ -62,14 +66,16 @@ deleted first: the JDBC disk cache (it needs commons-dbcp2), the HTTP remote cac
 utilities (the servlet API), and the Log4j 2 logger (Log4j). None of those libraries is a port, and
 JOSM configures none of those parts. Every `module-info.java` is deleted: everything is compiled
 into one unnamed module, and a module descriptor on the source path would turn the whole
-compilation into that module. The Maven metadata under `META-INF` goes too.
+compilation into that module. The libraries' Maven metadata, manifests and multi-release
+`META-INF/versions` trees go too, so that none of them is copied into the jar beside JOSM's own
+manifest.
 
 jsvg and the Adobe XMP core come from GitHub tag archives rather than `-sources.jar` files; jsvg's
 published sources lack its annotations module, which the release tree has.
 
 Every translation except English is deleted from `resources/data` before the jar is packed. KDOS
-ships English only (see [the size and language
-policy](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#size-and-language-policy)),
+ships English only (see
+[the size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)),
 and the package's own pruning removes files in the package, not entries inside a jar.
 
 The jar is reproducible: its file list is sorted, `resources/REVISION` and the manifest's

@@ -405,11 +405,9 @@ void res_draw_boxes(int x, int y, int w, int h)
 	}
 	/*
 	 * The thresholds are the columns' own right edges, not a guess: PROCS
-	 * ends at 54, ENERGY occupies 55..61 and UPTIME 63..70. Guessed ones
-	 * (72 and 84) put both off the right edge of a 1280-pixel window,
-	 * which is the shipped screen — found by LOOKING at it, which is what
-	 * the golden harness is for and why a width test is arithmetic rather
-	 * than a round number.
+	 * ends at 54, ENERGY occupies 55..61 and UPTIME 63..70. A larger
+	 * threshold hides both on a 1280-pixel window, the shipped screen,
+	 * so a width test here is that arithmetic and never a round number.
 	 */
 	if (w >= 62)
 		ktui_draw_text(x + 55, row, 7, "ENERGY", KT_MID, KT_SURFACE, 0);

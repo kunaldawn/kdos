@@ -18,10 +18,11 @@ Net, Crypto, NetSSL, JWT and Zip. [mumble](#port-mumble) is the port that needs 
   `-DENABLE_XML=ON`, `-DENABLE_JSON=ON`, `-DENABLE_UTIL=ON`, `-DENABLE_NET=ON`, `-DENABLE_ZIP=ON`
   are on by default; `-DENABLE_CRYPTO=ON`, `-DENABLE_NETSSL=ON` and `-DENABLE_JWT=ON` default on
   only when OpenSSL is found, so naming them stops a missing OpenSSL from dropping them silently.
-- `-DENABLE_DATA=OFF` — Build none of the database layer: with it go `-DENABLE_DATA_SQLITE=OFF`,
-  `-DENABLE_DATA_MYSQL=OFF`,
-  `-DENABLE_DATA_POSTGRESQL=OFF`, `-DENABLE_DATA_ODBC=OFF`, `-DENABLE_ACTIVERECORD=OFF` and
-  `-DENABLE_ACTIVERECORD_COMPILER=OFF`.
+- `-DENABLE_DATA=OFF` — Build none of the database layer. `-DENABLE_DATA_SQLITE=OFF`,
+  `-DENABLE_DATA_MYSQL=OFF`, `-DENABLE_DATA_POSTGRESQL=OFF`, `-DENABLE_DATA_ODBC=OFF`,
+  `-DENABLE_ACTIVERECORD=OFF` and `-DENABLE_ACTIVERECORD_COMPILER=OFF` go with it: any of them
+  left on turns `ENABLE_DATA` back on, and SQLite and both ActiveRecord components are on by
+  default.
 - `-DENABLE_MONGODB=OFF` — No MongoDB, Redis (`-DENABLE_REDIS=OFF`) or Prometheus
   (`-DENABLE_PROMETHEUS=OFF`) clients, and no web server page compilers
   (`-DENABLE_PAGECOMPILER=OFF`, `-DENABLE_PAGECOMPILER_FILE2PAGE=OFF`) or Apache module

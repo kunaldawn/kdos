@@ -42,7 +42,8 @@ EGL and decoding through VA-API, with a menu entry that also offers to open it f
 - `-DENABLE_INTERNAL_DAV1D=OFF` — With `-DENABLE_INTERNAL_CEC=OFF`, `-DENABLE_INTERNAL_NFS=OFF`,
   `-DENABLE_INTERNAL_RapidJSON=OFF`, `-DENABLE_INTERNAL_TAGLIB=OFF`,
   `-DENABLE_INTERNAL_UDFREAD=OFF` and `-DENABLE_INTERNAL_GTEST=OFF`: take each of these from its
-  port, never from Kodi's pinned copy.
+  port, never from Kodi's pinned copy. gtest is looked for only when `-DENABLE_TESTING` is on, so
+  it is not in `depends`.
 - `-DCROSSGUID_URL` — With `-DLIBDVDCSS_URL`, `-DLIBDVDNAV_URL`, `-DLIBDVDREAD_URL`,
   `-DFFMPEG_URL`, `-DFMT_URL`, `-DSPDLOG_URL`, `-DFLATBUFFERS_URL`, `-DFSTRCMP_URL` and
   `-DPCRE_URL`: give every library Kodi would download as a local archive, a source of this
@@ -59,8 +60,9 @@ EGL and decoding through VA-API, with a menu entry that also offers to open it f
 - `-Wl,-z,stack-size=2097152` — Ask for a 2 MiB default thread stack. musl gives a thread 128 KiB
   unless the executable asks for more, and Kodi's threads need more than that.
 - `-D_LARGEFILE64_SOURCE` — Kodi hands its compiler flags, and nothing else, to each library it
-  builds from source, and some of them (spdlog and Kodi's libdvdread among them) call `fseeko64` and `fstat64`, which musl declares
-  only under this macro, so it goes into `CFLAGS` and `CXXFLAGS`.
+  builds from source, and some of them (spdlog and Kodi's libdvdread among them) call `fseeko64`
+  and `fstat64`, which musl declares only under this macro, so it goes into `CFLAGS` and
+  `CXXFLAGS`.
 - `CMAKE_POLICY_VERSION_MINIMUM=3.5` — Exported, rather than given as a `-D`, because PCRE's own
   CMake run asks for a CMake older than 3.5 and only the environment reaches that nested run
   ([An old CMake policy floor](../../../../docs/kdos/05-developer/build-troubleshooting.md#an-old-cmake-policy-floor)).
@@ -75,8 +77,9 @@ EGL and decoding through VA-API, with a menu entry that also offers to open it f
 - `platformdefs-limits.patch` — Includes `<limits.h>` in `PlatformDefs.h`, which defines `MAX_PATH` as `PATH_MAX` and relied on another header to declare it.
 
 ## Notes
-- **Patch order.** `lfs64.patch` changes lines that `fix-musl-incompability.patch` writes, so it
-  applies only after it, as the loop in `build.sh` orders them.
+- **Patch order.** One hunk of `lfs64.patch` in `emu_msvcrt.cpp` carries, as context, a line
+  that `fix-musl-incompability.patch` writes, so it applies only after that patch, as the loop in
+  `build.sh` orders them.
 - **Parallel link.** The static `libcrossguid.a` is not a tracked output of its external project,
   so a parallel build can reach the link before it exists; `ninja crossguid` builds it first.
 - **What `build.sh` removes.** The X and Wayland session files (no display manager reads them),

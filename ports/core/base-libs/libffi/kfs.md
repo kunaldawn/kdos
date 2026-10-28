@@ -21,5 +21,5 @@ of Ruby, Guile, Node.js and GHC all link it. It is built inside the opening run 
   build machine's processor with `-mtune` rather than `-march`, so the library still runs on any
   x86-64. configure chooses them only when `CFLAGS` is unset; the chroot exports the tree's
   `CFLAGS`, so in this build libffi is compiled with the
-  [release flags](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-release-flags)
+  [release flags](../../../../docs/kdos/05-developer/writing-ports.md#the-release-flags)
   and the switch changes nothing in the result.

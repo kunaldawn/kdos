@@ -84,12 +84,20 @@ not ports; see
 2. If the adapter is off, press `o` to power it on.
 3. Put the device into pairing mode, then press `s` to scan. Devices appear as they are found.
 4. Select the device with the arrow keys and press `p` to pair. When the device asks for a passkey
-   to be confirmed, the question takes the bottom row: press `y` to confirm or `n` to refuse.
+   to be confirmed, the question takes the bottom row: press `y` (or `Enter`) to confirm or `n` to
+   refuse. A keyboard, which has no screen to show a passkey on, gets a number instead, as
+   `type 123456 on <device>` on the bottom row: type it on that keyboard and press its `Enter`.
 5. Press `t` to trust the device, and `Enter` to connect.
 6. Press `s` again to stop scanning.
 
-`x` removes a paired device and `d` makes this machine visible to others, or hides it again. `F1`
-opens the window's help page, which is also `kdos-doc bt`.
+`x` removes a paired device and `d` makes this machine visible to others, or hides it again. `Esc`
+refuses a question on the bottom row, and with none there closes the window. `F1` opens the window's help
+page, which is also `kdos-doc bt`.
+
+`kdos-bt` cannot pair a device that wants a PIN typed on this machine, an old device without
+secure simple pairing: it refuses the request and its bottom row reads
+`this device needs a typed PIN — pair it with bluetoothctl`. Pair such a device
+[from a terminal](#pairing-from-a-terminal).
 
 ### Connecting a headset
 
@@ -144,10 +152,12 @@ the installer has already done this if Bluetooth was turned off there.
   the pairing window's. `wpctl status` lists the headset's nodes once it is connected.
 - `sudo btmon` prints every packet between the daemon and the adapter, which shows where a pairing
   stops.
-- On a laptop with TLP, `DEVICES_TO_DISABLE_ON_STARTUP` and `RESTORE_DEVICE_STATE_ON_STARTUP` in
-  `/etc/tlp.d` decide whether the radio is blocked at boot; `55_tlp` applies them.
+- TLP runs at every boot, from `55_tlp`. When `DEVICES_TO_DISABLE_ON_STARTUP` names `bluetooth`,
+  in `/etc/tlp.conf` or a file under `/etc/tlp.d/`, the radio is blocked at boot, and so it is
+  with `RESTORE_DEVICE_STATE_ON_STARTUP=1` when it was off at the last shutdown. As shipped neither
+  is set. See [Power management](power-management.md#tlp).
 - Pairing keys are kept under `/var/lib/bluetooth`. On the live medium they are lost at power-off
-  unless a persistence store exists ([`kdos persist`](../../kdos/04-programs/kdos-command.md#kdos-persist)).
+  unless a persistence store exists ([Live persistence](live-persistence.md)).
 
 ## Troubleshooting
 
@@ -180,25 +190,31 @@ instead could not reach the daemon at all. Work down the chain:
 3. Did the kernel find the adapter and load its firmware?
 
    ```bash
-   dmesg | grep -i bluetooth
+   sudo dmesg | grep -i bluetooth
    ```
+
+   The kernel's log is root's to read, so `dmesg` without `sudo` prints only an error.
 
    The `Bluetooth: Core ver …`, `HCI` and `BNEP` lines are the protocol stack loading and appear
    with no adapter too; an adapter adds lines naming `hci0`. A line naming a firmware file that
    could not be loaded points at [linux-firmware](#port-linux-firmware).
 
-**The daemon keeps restarting.** Its own messages are in the supervisor's log:
+**The daemon keeps restarting.** `service status bluetooth` then reports a
+`[FAIL] bluetoothd` line with the daemon's last exit code. The daemon's own messages are in the
+supervisor's log, which only root can read, and in syslog's `/var/log/messages`:
 
 ```bash
-tail -n 40 /run/kdos-svc.bluetoothd.log
+sudo tail -n 40 /run/kdos-svc.bluetoothd.log
 ```
 
-A clean start ends with `Bluetooth daemon <version>`, `Starting SDP server` and
+A clean start logs `Bluetooth daemon <version>`, `Starting SDP server` and
 `Bluetooth management interface <version> initialized`.
 
-**A keyboard will not pair.** Pairing a keyboard needs an agent to confirm the passkey, and the
-daemon refuses the pairing when none answers. Pair it from `kdos-bt`, which registers one, or from
-`bluetoothctl` after `agent on` and `default-agent`.
+**A keyboard will not pair.** Pairing a keyboard needs an agent, a program that answers the
+daemon's passkey questions, and the daemon refuses the pairing when none answers. `kdos-bt`
+registers one while it is open, so keep its window open until the pairing finishes, and type the
+number its bottom row shows on the keyboard itself. A keyboard that wants a PIN typed on this
+machine is refused by `kdos-bt`; pair it from `bluetoothctl` after `agent on` and `default-agent`.
 
 **A keyboard or mouse pairs and connects, and does nothing.** Check that the HID node exists:
 

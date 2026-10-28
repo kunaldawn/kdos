@@ -9,7 +9,7 @@ answers how long a password of your own would hold. The package ships upstream's
 John chooses its SIMD code only when it is compiled, so `build.sh` builds it five times, once per
 instruction-set level, and installs the five as a chain that hands over at start-up to the best
 one the processor can run. This is the per-level form of the rule in
-[Every port](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#every-port).
+[Every port](../../../../docs/kdos/05-developer/writing-ports.md#every-port).
 
 ## Flags
 

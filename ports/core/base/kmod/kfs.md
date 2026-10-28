@@ -4,7 +4,7 @@ kmod loads and unloads kernel modules. It is one program, `/usr/bin/kmod`, and `
 them. On KDOS, [eudev](#port-eudev) links libkmod to load the driver for each device it sees, the
 `02_modules` boot script loads the lists in `/etc/modules-load.d`, and the initramfs carries `kmod`
 as `modprobe`, `insmod` and `depmod` and runs `depmod` over the modules it copies (see
-[The initramfs](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/boot-and-init.md#the-initramfs)).
+[The initramfs](../../../../docs/kdos/03-architecture/boot-and-init.md#the-initramfs)).
 The [linux](#port-linux) port depends on it.
 
 ## Flags
@@ -19,9 +19,13 @@ The [linux](#port-linux) port depends on it.
   The kernel's own modules are compressed with zstd (`CONFIG_MODULE_COMPRESS_ZSTD` in the
   [linux](#port-linux) port's `kdos.config`), and `depmod` and `modinfo` must decompress a module to
   read it.
-- `--without-openssl` — Build without libcrypto. With it, `modinfo` decodes a module's PKCS#7
-  signature; upstream's default is off. The kernel configuration does not set `CONFIG_MODULE_SIG`,
-  so KDOS's modules carry no signature to decode.
+- `--without-openssl` — Build without libcrypto, upstream's default. kmod uses it only to decode
+  the PKCS#7 signature appended to a module. The [linux](#port-linux) port signs every module
+  (`CONFIG_SECURITY_LOCKDOWN_LSM` turns on `CONFIG_MODULE_SIG`), so `modinfo` does find a
+  signature: it reports `sig_id: PKCS#7` and `sig_hashalgo: unknown`, and leaves the signer, key
+  and signature fields empty. Loading is unaffected, because the kernel verifies the signature
+  itself (see
+  [Module signing](../../../../docs/kdos/03-architecture/security-model.md#module-signing)).
 
 ## Patches
 - `relative-tool-links.patch` — Changes the install hook in `Makefile.in` that links the tools to `kmod`. Upstream runs `$(LN_S) --force --relative` from `$(DESTDIR)$(bindir)/kmod`; the patch writes each link with the literal relative target `../bin/kmod`, which is what `/usr/sbin/modprobe` and the others point to on an installed system.

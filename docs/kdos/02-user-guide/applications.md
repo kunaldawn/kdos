@@ -51,9 +51,11 @@ Start menu does not mark it `[box]`. It is updated with the rest of the system (
 current](administration.md#keeping-it-current)), not with `kdos app`.
 
 Data an application needs is ported too, so it is on the medium rather than fetched on first use:
-KiCad's symbol, footprint and template libraries, the GIMP manual, the TeX Live documentation,
-Celestia's star catalogues and textures, the Whisper `base.en` speech model, and the free data sets
-of the games (OpenTTD's graphics, sounds and music, Freedoom, Xonotic's and SuperTuxKart's data).
+KiCad's symbol, footprint and template libraries, the GIMP manual, Celestia's star catalogues and
+textures, the Whisper `base.en` speech model, and the free data sets of the games (OpenTTD's
+graphics, sounds and music, Freedoom, Xonotic's and SuperTuxKart's data). The manuals of the TeX
+packages are not among them; see
+[Known gaps](../06-reference/known-gaps.md#texdoc-finds-no-manuals-and-html-and-pdf-manuals-are-not-installed).
 
 ### Toolkits, Wayland and X11
 
@@ -63,8 +65,10 @@ the Plasma desktop), wxWidgets, FLTK and Tk, plus OpenJDK for the Java programs.
 links none of them: the compositor, the panel, the daemons and the portals draw character cells
 through KDOS's own libraries (see [The design language](../03-architecture/design-language.md)).
 
-Every toolkit is built with its Wayland backend and its X11 backend, and the login profile,
-`/etc/profile.d/10-wayland.sh`, makes Wayland the first choice:
+GTK, Qt and FLTK are built with both their Wayland and their X11 backends, and wxWidgets is built
+on GTK 3. SDL is built with its Wayland backend alone, so an SDL program that asks for X11 opens no
+window. The login profile, `/etc/profile.d/10-wayland.sh`, makes Wayland the first choice. Tk and
+Motif have no Wayland backend, so their programs always run on Xwayland, described below.
 
 | Toolkit | How it chooses |
 |---|---|
@@ -74,10 +78,12 @@ Every toolkit is built with its Wayland backend and its X11 backend, and the log
 | SDL | `SDL_VIDEODRIVER=wayland` |
 | Java (AWT and Swing) | Runs on Xwayland; `_JAVA_AWT_WM_NONREPARENTING=1` tells it there is no reparenting window manager |
 
-A program with no Wayland path at all, such as VLC 3, Xastir (a Motif program), or a Tk or Swing
-program, runs on *Xwayland*, the X server that runs as a client of the compositor. Xwayland is the
-only X server on the system: it serves native and boxed X11 programs alike, it is built with GLX so
-an X11 program that draws through OpenGL works, and the system carries the X core fonts
+A program with no Wayland path at all, such as Xastir (a Motif program) or a Tk or Swing program,
+runs on *Xwayland*, the X server that runs as a client of the compositor. So does VLC 3: its Qt
+interface starts on X11 whatever `QT_QPA_PLATFORM` says, and only `cvlc`, run with `DISPLAY` unset,
+opens a Wayland video window. Xwayland is the only X server on the system: it serves native and
+boxed X11 programs alike, it is built with GLX so an X11 program that draws through OpenGL works,
+and the system carries the X core fonts
 (`misc-fixed`, Adobe's 75 dpi set and the cursor font) that Motif and Xt programs ask it for. There
 is no Xorg server and no display manager.
 
@@ -140,7 +146,8 @@ In a terminal, `aerc` reads mail over a local `notmuch` index, `profanity` is an
 ### Phones
 
 `ifuse`, over `usbmuxd`, mounts an iPhone's or iPad's documents as a directory; Android File
-Transfer shows an Android phone's storage in a window. KDE Connect, above, links a phone over the
+Transfer shows an Android phone's storage in a window ([Administration](administration.md#thunderbolt-phones-smart-cards-and-firmware-updates)
+covers connecting an Android phone over USB). KDE Connect, above, links a phone over the
 network once the `kdeconnect` firewall name is on ([Administration](administration.md#opening-a-service)).
 
 ### Office, documents and reading
@@ -170,7 +177,7 @@ network once the `kdeconnect` firewall name is on ([Administration](administrati
 | Lite XL | A small editor with no toolkit, drawn through SDL |
 | Zim | A desktop wiki of linked notebook pages, with a journal and tasks |
 | QOwnNotes | Plain-text Markdown notes with a live preview |
-| TeX Live | TeX, LaTeX, pdfTeX, XeTeX, LuaTeX, MetaPost and BibTeX, with its documentation |
+| TeX Live | TeX, LaTeX, pdfTeX, XeTeX, LuaTeX, MetaPost and BibTeX |
 | TeXstudio | A LaTeX editor with a live PDF preview |
 | LyX | A structure-first document processor that writes LaTeX |
 
@@ -277,8 +284,9 @@ The desktop's own tools for the same jobs are `mc`, `kdos-pick --browse`, `kdos-
 ### Virtual machines and remote consoles
 
 Virtual Machine Manager (`virt-manager`) creates and runs virtual machines through libvirt and QEMU,
-and shows their consoles over SPICE or VNC. QEMU runs from a prompt as well. See
-[Administration](administration.md) for the services these need.
+and shows their consoles over SPICE or VNC. QEMU runs from a prompt as well. The libvirt
+services these need, `62_virtlogd` and `63_libvirtd`, are listed in
+[Administration](administration.md#services).
 
 ### Maps and navigation
 
@@ -313,7 +321,7 @@ These run on this machine's processor and send nothing to a remote service:
 | Program | What it is for |
 |---|---|
 | llama.cpp | Local language models, from a prompt or as a local server |
-| whisper.cpp | Speech to text; the `base.en` model is installed with it |
+| whisper.cpp | Speech to text; the `base.en` model is a port of its own and is installed too |
 | Piper | Text to speech |
 | translateLocally | Machine translation |
 
@@ -390,8 +398,8 @@ client and GNU Health run a clinic's records.
 ### Accessibility
 
 Orca is the screen reader, Dasher enters text by steering a pointer or a switch, `wvkbd` is an
-on-screen keyboard, and `wl-kbptr` (the menu's Keyboard Pointer) and `wtype` move the pointer and
-type from the keyboard. What
+on-screen keyboard, `wl-kbptr` (the menu's Keyboard Pointer) moves the pointer and clicks from the
+keyboard, and `wtype` types a given string into the focused window from a script. What
 each can and cannot reach on this desktop is in [Accessibility](accessibility.md).
 
 ### Windows programs
@@ -405,8 +413,8 @@ The games are native ports, each with its free data set: OpenTTD, The Battle for
 SuperTuxKart, Luanti, Warzone 2100, Endless Sky, Freeciv, Widelands, Xonotic, Cube 2: Sauerbraten,
 Pioneer, Cataclysm: Dark Days Ahead, Dungeon Crawl Stone Soup, Brogue, Neverball, The Powder Toy,
 Flare and DDraceNetwork; Freedoom with the Chocolate Doom, Crispy Doom and dsda-doom engines; KDE's
-and GNOME's card and puzzle games; and chess with Stockfish. Engines for games you own are ported
-too: Yamagi Quake II, Ironwail, ioquake3, DevilutionX, OpenRCT2, fheroes2 and ScummVM.
+and GNOME's card and puzzle games; and `chess-tui`, chess in a terminal against Stockfish. Engines
+for games you own are ported too: Yamagi Quake II, Ironwail, ioquake3, DevilutionX, OpenRCT2, fheroes2 and ScummVM.
 
 RetroArch comes with its cores for Game Boy Advance, Game Boy, SNES, NES, Mega Drive, PlayStation,
 Nintendo 64 and Nintendo DS. The standalone emulators are mGBA, Mednafen, DOSBox Staging, DOSBox-X,
@@ -416,13 +424,15 @@ Amiberry (Amiga), PPSSPP and openMSX.
 ### Services for a LAN
 
 A few ports are servers for a small network rather than applications: Radicale (calendars and
-contacts), maddy (mail), ngIRCd (IRC), MiniDLNA (media for televisions) and Network UPS Tools. See
-[Administration](administration.md#syncing-and-serving-on-the-network).
+contacts), maddy (mail), ngIRCd (IRC), MiniDLNA (media for televisions) and Network UPS Tools.
+[Administration](administration.md#services) lists the service that starts each one and what it
+needs before it will start, and [Opening a service](administration.md#opening-a-service) names the
+firewall rule other machines need to reach it.
 
 ### Programs for old hardware
 
-The *light tier* is a set of programs with no GTK or Qt, for the oldest hardware and for software
-rendering: Lite XL, KOReader, the `uosc` controls for mpv, GrafX2, Goxel, the trackers, Sniffnet
+These programs use no GTK or Qt, which suits the oldest hardware and software rendering: Lite XL,
+KOReader, the `uosc` controls for mpv, GrafX2, Goxel, the trackers, Sniffnet
 (network traffic by host and program), Inlyne (a Markdown viewer), Surfer (a waveform viewer for
 simulation traces), `wl-mirror` (an output mirrored into a window, for a projector) and the
 `fuzzel` launcher. mpv and `swayimg`, listed above, need no toolkit either.
@@ -617,10 +627,13 @@ in the selection but not installed here is skipped with a message. The index is 
 variable `KDOS_PACK_KEY` names a readable key file; without one the set still exports and imports,
 and the export states that the index is unsigned. Import does not read the index.
 
-Import hands each pack to `kdos-packd`, which checks the pack itself, against the hash the pack
-carries and against its signature where it has one, so a tampered pack is refused rather than run. An imported application is
-therefore verified where one built from the catalogue is not, and no network is needed at any
-point. Importing needs `kdos-packd` running and an account in `wheel`, because the daemon's socket
+Import hands each pack to `kdos-packd`, which checks the payload against the hash recorded in the
+pack's own footer, so a pack damaged in transit is refused rather than run. Export does not sign the
+packs themselves, so each one arrives unsigned: whoever alters a pack can rewrite that hash too,
+and the check catches corruption, not tampering. A daemon started with `KDOS_REQUIRE_SIG` set
+refuses every pack of an exported set. What each lane does and does not prove is in
+[How an application is verified](../03-architecture/security-model.md#how-an-application-is-verified).
+No network is needed at any point. Importing needs `kdos-packd` running and an account in `wheel`, because the daemon's socket
 accepts only root and `wheel`. A pack the daemon refuses is named and skipped; the rest of the set
 still imports, and the command ends with a count of what imported and what failed.
 
@@ -760,8 +773,10 @@ kdos-appbox -b app.gmic run gmic input.png -blur 3 -o output.png
 kdos-appbox -b app.gromacs run gmx mdrun -h
 ```
 
-`-b` (or `--box`) names the box. Without it, `kdos-appbox run` works out the box from an installed
-application's launcher, and a command-line tool has none.
+`-b` (or `--box`) names the box. Without it, `kdos-appbox run` looks the command up in the launcher
+tables, `~/.local/share/kdos/alien-apps` and then `/usr/share/kdos/alien-apps`, and takes the box
+from the row whose command matches. A command-line tool has no row there, so the lookup fails and
+`kdos-appbox` refuses with `no installed pack carries '<command>'`.
 
 Where a shim exists, typing the name is shorter. Shims are made for the programs an application's
 own desktop entries name, and for `wine`, `winecfg` and `winetricks` wherever the box carries them.
@@ -801,8 +816,9 @@ imported, so an update can be undone. That is `retain` in
 Importing a newer set installs the new pack even for an application whose box already exists, but
 the step that creates the box then fails, and the import reports `<name>: the pack installed and the
 box did not` and counts the application as failed. To move such a box onto the new pack, remove the
-box first with `kdos-box remove <name>` and then import; the box's writable layer and settings stay,
-and the new box is composed on the newest version of each pack.
+box first with `kdos-box remove <name>` (stopping it first if it is running) and then import; the
+box's writable layer and settings stay, and the new box is composed on the newest version of each
+pack.
 
 ### The Debian snapshot
 
@@ -829,7 +845,8 @@ kdos app remove creative      # a whole group
 Removing an application:
 
 - removes its box; the box's settings in `~/.config/kdos/boxes/<name>.conf` stay, so installing it
-  again picks them up;
+  again picks them up. A running box is not removed, and the removal then stops before any image is
+  deleted, so stop it first with `kdos-box stop <name>`;
 - deletes the application's image, and any runtime image no other installed application uses;
 - never deletes the base image, which every application sits on;
 - regenerates the launchers, shims and file-type associations from what remains.
@@ -846,15 +863,16 @@ Every application gets its own box, named after it. You do not need to manage bo
 applications, but `kdos-box` manages them directly:
 
 ```sh
-kdos-box list                                      # every box: its image, state and profile
+kdos-box list                                      # every box: base, state, persistence, disk use, accent
 kdos-box enter app.scribus                         # a shell inside one, in a new terminal window
 kdos-box create scratch base=image:alpine:3.24.1   # a new box; base= also takes pack:<id>
 kdos-box start | stop | restart | remove <name>
 kdos-box gc                                        # stop idle boxes now (--dry-run to preview)
 ```
 
-`kdos-box enter` sets `KDOS_BOX` to the box's name inside it, which a shell prompt can show. The
-full command set, including `run`, `apps`, `export` and `import`, is in
+`kdos-box list` also shows a box that has a profile and no container yet, with the state
+`not created`. `kdos-box enter` sets `KDOS_BOX` to the box's name inside it, which a shell prompt
+can show. The full command set, including `run`, `apps`, `export` and `import`, is in
 [kdos-appbox](../04-programs/kdos-appbox.md#kdos-box).
 
 ### A pack box's writable layer
@@ -882,16 +900,22 @@ with `kdos-box profile <name>` and pass it to `kdos-box create`.
 
 A box's settings live in `~/.config/kdos/boxes/<name>.conf`, its *profile*. `kdos-box profile
 <name>` shows it, and `kdos-box profile <name> key=value` changes it. The Boxes page of
-`kdos-settings` edits the same file. Every key maps onto something the box enforces, and the printed
-profile marks any setting it cannot deliver on this machine. See
-[kdos-appbox](../04-programs/kdos-appbox.md#box-profiles) for the keys.
+`kdos-settings` edits the same file. Most keys map onto a container flag or a namespace, and the
+printed profile shows each of them beside the flag that enforces it. A few enforce nothing:
+`persistence` and `export` are only recorded, and `wayland = no` cannot take the display away,
+because the box shares the session's runtime directory; the printed profile adds a `!` line under
+each of these when it is set away from its default. `audio` is never enforced and `display` is kept
+in the file unread; the printed profile has no line for either, apart from a `!` line when `devices`
+is shared and `audio` or `gpu` is `no`, since both then follow `devices`. See
+[kdos-appbox](../04-programs/kdos-appbox.md#box-profiles) for every key and what enforces it.
 
 ### Profile changes and re-creating a box
 
 Namespaces (the kernel namespaces that separate the box's processes, network and users from the
 host's) and shared directories are set when a box is created and cannot be changed on a running
 container, so a profile change to them takes effect only when the box is created again. Remove the
-box with `kdos-box remove <name>`; its profile is kept. Then:
+box with `kdos-box remove <name>`; its profile is kept. A running box is not removed: stop it first
+with `kdos-box stop <name>`, or pass `--force`. Then:
 
 - for a pack box, the next launch creates the box again from the kept profile;
 - for a store box, run `kdos app install <id>`, which finds every image already built and creates
@@ -907,12 +931,14 @@ app.scribus autostop=30m` or on the Boxes page of `kdos-settings`.
 
 ## Accessibility inside a box
 
-The desktop's own surfaces cannot be read by a screen reader. A boxed application uses its own
-toolkit's accessibility support and the at-spi2-core its box's image carries, and a screen reader
-run inside the same box can read it. That support is off by default, so that no boxed application
-spends its start-up probing for an accessibility bus;
-`touch ~/.config/kdos/a11y` turns it on for every box, and `KDOS_A11Y=1` for one launch. Native
-applications are read by Orca on the host; see [Accessibility](accessibility.md).
+The desktop's own surfaces cannot be read by a screen reader. A boxed application offers whatever
+accessibility support its own toolkit has, and the catalogue ships no screen reader to run beside
+it. For a boxed GTK application that support is off by default: `kdos-appbox` sets `NO_AT_BRIDGE=1`
+and `GTK_A11Y=none` in the box, so that the application does not spend its start-up probing for an
+accessibility bus. `touch ~/.config/kdos/a11y` leaves those variables out for every box, and
+`KDOS_A11Y=1` does so for one launch; see
+[Accessibility](accessibility.md#a-containerised-application-can-be-read). Native applications are
+read by Orca on the host; see [Accessibility](accessibility.md#the-desktop-itself-is-not-read).
 
 ## What does not work
 

@@ -11,7 +11,7 @@ and every GTK program's icons. ffmpeg's SVG decoder and imv's SVG support are bu
 - `-C target-feature=-crt-static` — Links the Rust code dynamically against musl. The musl target
   links statically unless told otherwise, and a crate that binds a system library then fails to
   link or carries a private copy of it (see
-  [rust](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#rust)).
+  [rust](../../../../docs/kdos/05-developer/writing-ports.md#rust)).
 - `CARGO_NET_OFFLINE` — Forbids cargo the network; every crate comes from the vendor bundle.
 - `-Dtriplet=x86_64-unknown-linux-musl` — Passes `--target x86_64-unknown-linux-musl` to cargo,
   naming the musl target rather than leaving cargo to its host default.
@@ -34,7 +34,7 @@ and every GTK program's icons. ffmpeg's SVG decoder and imv's SVG support are bu
 
 The Rust crates come from `librsvg-vendor-<version>.tar.xz`, which `ports/fetch` makes with
 `cargo vendor` and the recipe pins by its `sha256` like any other source (see
-[Vendoring](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#vendoring)).
+[Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring)).
 `build.sh` unpacks it at the top of the source tree, where it puts `vendor/`, `Cargo.lock` and a
 `.cargo/config.toml` that replaces crates.io with the vendored directory. Cargo finds that
 configuration by walking up from the directory meson runs it in, so the bundle must stay at the top
@@ -42,5 +42,5 @@ of the tree. `CARGO_HOME` points at the work directory, so cargo keeps its own f
 in root's home.
 
 Under `DESTDIR` the install only prints a note instead of writing gdk-pixbuf's `loaders.cache`;
-kpkg's pixbuf trigger rebuilds the cache when the package lands (see [Shared
-indexes](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#shared-indexes)).
+kpkg's pixbuf trigger rebuilds the cache when the package lands (see
+[Shared indexes](../../../../docs/kdos/05-developer/writing-ports.md#shared-indexes)).

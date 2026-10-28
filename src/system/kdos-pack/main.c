@@ -36,8 +36,8 @@
  *                           packed. --all-time is mkfs.erofs's default and is
  *                           passed anyway, because a default is not a promise
  *   --force-uid/-gid=1000   the builder's own uid would otherwise ride along,
- *                           and 1000 is what presents as root inside a
- *                           rootless container
+ *                           and 1000 is the user's uid, which a box run
+ *                           --userns keep-id presents as the user
  *   -b 4096                 mkfs.erofs takes its block size from the PAGE
  *                           SIZE, so the same tree on a 16K-page machine is a
  *                           different image
@@ -73,9 +73,10 @@ static const char *keydir(void)
  *
  * THE VERSION IS DELIBERATELY NOT IN IT. This lands in the EROFS superblock,
  * so anything that goes in here is part of the image — and a version derived
- * from the bake's clock would make every rebuild a different image even when
+ * from the build's clock would make every rebuild a different image even when
  * not one file inside had moved. `kdos-pack imagehash` could then never answer
- * "unchanged", and a bake would rewrite all 47 packs, 7.2 GB, for nothing.
+ * "unchanged", and every rebuild of a set would rewrite every pack in it for
+ * nothing.
  *
  * The cost is that two VERSIONS of one pack share a UUID. Nothing here mounts
  * by UUID — kdos-packd mounts a path, through a loop device or the file
@@ -132,7 +133,7 @@ static int mkfs(const char *dir, const char *out, const KpkMeta *m)
  * `build` runs mkfs.erofs and then wraps; `assemble` wraps an image somebody
  * else already made. The split is not a convenience: mkfs.erofs must run as
  * ROOT to preserve overlay whiteouts and trusted.overlay.* xattrs, while
- * wrapping is an ordinary file operation — so the bake makes images under the
+ * wrapping is an ordinary file operation — so a caller makes images under the
  * privilege it needs and wraps them under the privilege it does not.
  */
 static int build_or_assemble(int argc, char **argv, int have_image)
@@ -186,9 +187,9 @@ static int build_or_assemble(int argc, char **argv, int have_image)
 			kb_die("cannot read %s", iconpath);
 		/*
 		 * A pack's icon is drawn by a launcher, a taskbar and a Start
-		 * menu row. Refusing a non-PNG here rather than at draw time is
-		 * the genatlas lesson: an unusable picture still takes the
-		 * slot, and the caller never falls back to its glyph.
+		 * menu row. A non-PNG is refused here rather than at draw time:
+		 * an unusable picture still takes the slot, and the caller
+		 * never falls back to its glyph.
 		 */
 		if (iconlen < 8 || memcmp(icon, "\x89PNG\r\n\x1a\n", 8) != 0)
 			kb_die("%s is not a PNG", iconpath);
@@ -713,10 +714,10 @@ static int usage(void);
  *
  * IT ANSWERS "DID THE CONTENTS CHANGE", WHICH THE FOOTER'S OWN HASH CANNOT.
  * That one covers the metadata too, and the metadata carries the version — so
- * two bakes of an identical filesystem always differ by it, and a bake would
- * rewrite every pack in the set whether or not a single file inside had moved.
- * At 7.2 GB a set, published as release assets or committed, that is the
- * difference between a re-bake costing nothing and costing the whole archive.
+ * two builds of an identical filesystem always differ by it, and a rebuild
+ * would rewrite every pack in the set whether or not a single file inside had
+ * moved. For a set published as release assets, that is the difference between
+ * a rebuild costing nothing and costing the whole archive.
  */
 static int cmd_imagehash(int argc, char **argv)
 {
@@ -803,10 +804,11 @@ static int cmd_uuid(int n, char **a)
  * `image <pack> <out.erofs>` writes the pack's EROFS bytes and nothing else —
  * [0, erofs_len) as the footer records it. It exists for the one place that
  * has to read INSIDE a pack without a mount: the build, which is a chroot in an
- * unprivileged container and cannot mount anything, and which needs the
- * desktop entries out of the recommended packs to write the ISO's launchers.
- * `fsck.erofs --extract` then reads a plain image, which the .kpack with its
- * footer is not.
+ * unprivileged container and cannot mount anything. 030_launchers.sh reads
+ * one extracted pack per subdirectory of its extraction root to write the
+ * ISO's launchers; no pack is put there by the build, so the root is empty
+ * unless one is extracted into it. `fsck.erofs --extract` then reads a plain
+ * image, which the .kpack with its footer is not.
  */
 static int cmd_image(int n, char **a)
 {

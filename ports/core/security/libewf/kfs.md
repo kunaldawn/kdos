@@ -4,8 +4,8 @@ libewf reads and writes the Expert Witness Compression Format, the `.E01` and `.
 `.s01`) evidence files that forensic acquisition tools produce: a disk image split into segments,
 compressed, and carrying hashes of the acquired data. It reads the logical evidence files, `.L01`
 and `.Lx01`, as well. The package holds the library and the `ewf`
-tools: `ewfacquire` and `ewfacquirestream` to make an image, `ewfinfo`, `ewfverify`, `ewfexport`
-and `ewfrecover`, and `ewfmount`, which presents an image as a raw file through FUSE.
+tools: `ewfacquire` and `ewfacquirestream` to make an image, `ewfinfo`, `ewfverify`, `ewfexport`,
+`ewfrecover` and `ewfdebug`, and `ewfmount`, which presents an image as a raw file through FUSE.
 [sleuthkit](#port-sleuthkit) and [testdisk](#port-testdisk) open evidence files through it. It is
 one of the libyal libraries, as are [libbfio](#port-libbfio), [libvhdi](#port-libvhdi),
 [libvmdk](#port-libvmdk) and [libvslvm](#port-libvslvm).

@@ -4,7 +4,8 @@ Ninja is the low-level build tool that runs the build files meson and CMake writ
 of the tree's ports is configured by one of those two and then compiled by ninja, so it is one of the build
 tools `30_foundation` installs first, ahead of every shelf section of the phase list. Once
 `/usr/bin/ninja` exists, `script/env/chroot.env` puts `script/bin` first on `PATH`, and the
-`ninja` wrapper there adds `-j$KDOS_JOBS` to any call that names no job count; see
+`ninja` wrapper there adds `-j$KDOS_JOBS` to any call that names no job count, or under a
+jobserver hands ninja the jobserver's FIFO instead; see
 [The phase environment](../../../../docs/kdos/05-developer/build-system.md#the-phase-environment).
 
 The port builds ninja from nothing: `configure.py --bootstrap` compiles a first ninja binary

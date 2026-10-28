@@ -11,7 +11,7 @@ looks keys and certificates up in LDAP directories. [postgresql](#port-postgresq
 
 The recipe is held to one upstream release line by its `series` key, so a version check never
 offers a release from a later line (see
-[Filtering](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#filtering)).
+[Filtering](../../../../docs/kdos/05-developer/writing-ports.md#filtering)).
 
 ## Flags
 - `--enable-dynamic` — Link the `ldap*` programs against the shared `libldap` and `liblber`.
@@ -24,7 +24,7 @@ offers a release from a later line (see
   neither, build with no TLS and only a warning.
 - `--with-cyrus-sasl` — Authenticate binds with SASL through [cyrus-sasl](#port-cyrus-sasl).
 - `--without-systemd` — No systemd service notification. KDOS has no systemd
-  ([No systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd)),
+  ([No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)),
   and the notification is only for the servers; with `--disable-slapd` configure ignores the
   switch anyway.
 - `--without-fetch` — Do not read URLs through FreeBSD's `fetch(3)` library, which the tree does not

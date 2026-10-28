@@ -4,7 +4,7 @@ Three kinds of hardware can stand in for, or add to, a password on KDOS: a finge
 FIDO2 or U2F security key, and a [smart card]{.idx} in a reader. This page covers what each needs, the
 files that set it up, and the procedures that use it: enrolling a finger for [`sudo`]{.idx}, making an SSH
 key that lives on a security key, and reaching a smart card's certificates. What each one does
-not reach is listed under Known gaps.
+not reach is listed under [Known gaps](#known-gaps).
 
 ## Installation
 
@@ -50,7 +50,8 @@ Gives every FIDO2 and U2F key to the `dialout` group. From `fs/etc/udev/rules.d/
 
 <!-- kfs:include fs/etc/udev/rules.d/70-kdos-fido.rules -->
 
-The `kdos` account is in `dialout`. Any other account needs it for a key:
+The live medium's `kdos` account is in `dialout`, and so is the account the installer makes from
+it. Any other account needs it for a key:
 `sudo usermod -aG dialout <user>`, then log in again. The other device rules are in
 [The device groups and the udev rules](../../kdos/02-user-guide/administration.md#the-device-groups-and-the-udev-rules).
 
@@ -84,7 +85,9 @@ grants both actions to [`wheel`]{.idx}:
 
 <!-- kfs:include fs/etc/polkit-1/rules.d/50-kdos.rules lines=43-58 pin=261550fdeb7d -->
 
-An account outside `wheel` reaches no smart card. The whole rule file is explained in
+An account outside `wheel` reaches no smart card, and that includes an account the installer made
+with its Administrator box unticked, which it takes out of `wheel`. The whole rule file is
+explained in
 [What is granted instead](../../kdos/03-architecture/security-model.md#what-is-granted-instead-50-kdosrules).
 
 ### Other files
@@ -142,7 +145,8 @@ To remove every print of an account, run `sudo fprintd-delete "$USER"`.
    ```
 
    It prints one line per key, and nothing, with exit status 0, when it finds none. Nothing
-   printed with the key plugged in means the account cannot open it; see Troubleshooting.
+   printed with the key plugged in means the account cannot open it; see
+   [Troubleshooting](#troubleshooting).
 
 2. Make a key pair whose private half stays on the security key:
 
@@ -158,7 +162,8 @@ To remove every print of an account, run `sudo fprintd-delete "$USER"`.
 
 4. Log in with `ssh user@server`, and touch the key when asked.
 
-The same key type works for logging in to this machine; see [SSH server](ssh-server.md).
+The same key type works for logging in to this machine; see
+[Logging in with a key](ssh-server.md#logging-in-with-a-key).
 
 ### Reaching a smart card
 
@@ -180,7 +185,8 @@ Not verified on real hardware: no card has been used in a reader on this system.
 
    With no reader attached, `opensc-tool` prints `No smart card readers found.` and
    `pkcs11-tool` prints `No slots.`. An account outside `wheel` is refused by `pcscd` and gets the
-   same two answers; the refusal is only in the service's log (see Troubleshooting).
+   same two answers; the refusal is only in the service's log (see
+   [Troubleshooting](#troubleshooting)).
 
 3. Use it. For SSH, name the PKCS#11 module:
 
@@ -248,8 +254,8 @@ The system bus could not start the daemon. Run `kdos doctor` and read the
 fprintd's polkit actions allow only an active session. Run it with `sudo`, as above.
 
 **`sudo` over SSH waits before asking for the password.**
-For an account with a finger enrolled, `pam_fprintd` waits on the machine's reader first; see the
-first item under Known gaps. Wait for it to time out, or remove the account's prints with
+For an account with a finger enrolled, `pam_fprintd` waits on the machine's reader first; see
+[A fingerprint unlocks sudo and nothing else](../../kdos/06-reference/known-gaps.md#a-fingerprint-unlocks-sudo-and-nothing-else). Wait for it to time out, or remove the account's prints with
 `sudo fprintd-delete <user>` if it never uses the reader locally.
 
 **`fido2-token -L` prints nothing, or `ssh-keygen -t ed25519-sk` ends `Key enrollment failed: device not found`.**

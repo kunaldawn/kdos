@@ -11,9 +11,10 @@ out, and then removed from the package. See also
 
 ## Flags
 
-- `--sbindir=/usr/sbin`, `--runstatedir=/run` — The administrative programs go to `/usr/sbin`,
-  and the run-time directory compiled in is `/run`. `make install` creates that directory in the
-  package, and the
+- `--sbindir=/usr/sbin`, `--runstatedir=/run` — The server programs install to `/usr/sbin`, and
+  `build.sh` removes them from there; `libkrb5` also compiles the directory in as the value of
+  `%{SBINDIR}` in a `krb5.conf` path. The run-time directory compiled in is `/run`. `make install`
+  creates that directory in the package, and the
   [package lint](../../../../docs/kdos/03-architecture/packaging.md#the-package-lint) refuses
   `run` in a port's payload, so `build.sh` removes it again.
 - `--disable-rpath` — Every library lands in `/usr/lib`, and an rpath naming the build tree is
@@ -39,9 +40,9 @@ out, and then removed from the package. See also
 - `--with-system-et` — Use `compile_et` and `libcom_err` from `e2fsprogs` instead of building and
   installing krb5's own copy.
 - `--without-system-verto` — Build and install the bundled `libverto`, the event-loop abstraction
-  the KDC, `kadmind` and `libkrad` link. There is no libverto port; left alone, `configure` would
-  take a system libverto whenever `pkg-config` found one and the bundled copy otherwise, so the
-  switch fixes the choice.
+  the KDC, `kadmind`, `libkrad` and the OTP pre-authentication plug-in link. There is no libverto
+  port; left alone, `configure` would take a system libverto whenever `pkg-config` found one and
+  the bundled copy otherwise, so the switch fixes the choice.
 - `--without-ldap`, `--without-lmdb` — The LDAP and LMDB database back ends, which serve the KDC
   this package does not ship.
 - `--without-readline`, `--without-libedit` — The line editor they would give is `kadmin`'s, and

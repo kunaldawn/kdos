@@ -4,8 +4,8 @@ GNU readline is the line editor interactive programs link to give their prompt E
 editing, history and completion; `libhistory`, its history half, comes with it. On KDOS it is the
 line editing of [bash](#port-bash), of [gawk](#port-gawk)'s debugger, and of the many other shells,
 calculators and debuggers in the tree that name it. It builds in `20_selfhost` because gawk links
-it, and `30_foundation` names it again so a changed recipe is rebuilt there before anything else
-in that phase uses it.
+it. `30_foundation` names it again, and [python3](#port-python3), in that phase's opening run,
+depends on it, so a changed recipe is rebuilt there ahead of python3.
 
 The port builds upstream's release with its official patch series applied: numbered files
 (`readline<ver>-NNN`) that upstream publishes for each release. Each is a `source =` of the recipe with
@@ -16,8 +16,10 @@ release tree.
 
 ## Flags
 
-- `--with-curses` — take the terminal functions (`tgetent`, `tputs` and the rest) from a curses
-  library rather than from a separate termcap library.
+- `--with-curses` — prefer a curses library to a termcap one for the terminal functions (`tgetent`,
+  `tputs` and the rest). configure consults the preference only when its search ends at a
+  `termcap` library or at readline's bundled termcap; with `bash_cv_termcap_lib` given below, it
+  never searches, so the switch changes nothing in this build.
 - `--with-shared-termcap-library` — link `libreadline.so` itself against that library, so the
   shared library records that it needs `libncursesw.so.6` and a program linking readline does not
   have to name ncurses as well. readline's default leaves that to each program.

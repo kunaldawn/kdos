@@ -8,22 +8,18 @@
  *   kb_fuzzy — one answer to "does this row match what was typed"
  *
  * THE POINT IS THAT THERE IS ONE OF THESE. Three surfaces search the same
- * applications — the palette, the launcher and the Start menu — and before this
- * they ranked the same query three different ways: the launcher scored a
- * subsequence with a prefix bonus and lower was better; the application index
- * did a case-insensitive SUBSTRING in three bands and higher was better; the
- * Start menu used the second through the first. A person who learns that `sm`
- * finds the system monitor in one of them and then finds nothing in another has
+ * applications — the palette, the launcher and the Start menu — and each must
+ * rank a query through this one function. A person who learns that `sm` finds
+ * the system monitor in one of them and then finds nothing in another has
  * learned that the desktop's search is unreliable, which is worse than any
  * particular ranking being wrong.
  *
- * SUBSEQUENCE, NOT SUBSTRING, and that is the substantive change. `sm` has to
- * find `System Monitor`, which no substring search can do.
+ * SUBSEQUENCE, NOT SUBSTRING. `sm` has to find `System Monitor`, which no
+ * substring search can do.
  *
- * HIGHER IS BETTER AND ZERO IS NO MATCH. Stated here because the two matchers
- * this replaces disagreed about that too, and a sort that kept the old
- * comparison would silently rank the list backwards while every entry in it
- * remained correct — the failure looks like bad ranking, not like a bug.
+ * HIGHER IS BETTER AND ZERO IS NO MATCH. A caller that sorts ascending ranks
+ * the list backwards while every entry in it remains correct — the failure
+ * looks like bad ranking, not like a bug.
  * ---------------------------------
  */
 

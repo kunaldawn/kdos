@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * The idle POLICY — dim, then lock, then outputs off — ported from the
- * pre-fork kdos-comp. labwc's idle.c already owns the protocol half
+ * The idle POLICY — dim, then lock, then outputs off. labwc's idle.c
+ * owns the protocol half
  * (ext-idle-notify + idle-inhibit); this file is only the policy, and
  * it lives in the compositor because every step needs something only
  * the compositor has: the scene graph to dim, the output state to
  * blank, the input path to rearm on.
  *
- * Rules carried over:
+ * Rules:
  * - Stages are cumulative and each is measured from the LAST ACTIVITY,
  *   not from the previous stage: dim 300 / lock 600 / off 900 means
  *   what it says.
@@ -15,8 +15,9 @@
  *   unlocks — only a password does that.
  * - An inhibitor stops the policy dead rather than pausing it.
  * - OFF BY DEFAULT IN A VM (DMI sys_vendor): a blanked screen over VNC
- *   is indistinguishable from a crashed compositor and already cost an
- *   afternoon. Any idle_* key in comp.conf overrides — including a 0.
+ *   is indistinguishable from a crashed compositor, so a VM never
+ *   blanks unless asked. Any idle_* key in comp.conf overrides —
+ *   including a 0.
  *
  * Hooks in upstream files: one call in idle_manager_notify_activity()
  * (the single funnel every input path already goes through), and one

@@ -25,6 +25,6 @@ port the player opens no window and plays nothing.
 ## Notes
 `build.sh` writes its own `audacious.desktop` over upstream's. It has no `MimeType` line, so
 Audacious is not offered as the program that opens an audio file; of the music players in the
-tree, only strawberry's entry claims audio types, and an audio file opens in that one program.
-It adds `StartupWMClass=audacious`, the `Qt` category and search keywords, and leaves out
-upstream's translated `Comment` lines.
+tree, only strawberry's entry claims audio file types, and an audio file opens in that one
+program. It adds `StartupWMClass=audacious`, the `Qt` category and search keywords, replaces
+upstream's comment, and leaves out upstream's translated generic names and comments.

@@ -34,8 +34,10 @@ page shows the commands of `script/phases/10_bootstrap/062_coreutils.sh` and exp
 : Build no message catalogues.
 
 `--without-openssl`
-: Use coreutils' own digest code in `sha256sum` and the rest. configure links libcrypto into every
-  program, not only the checksum ones, whenever it finds it.
+: Use gnulib's own digest code in `md5sum`, the `sha*sum` programs and `cksum`, and in
+  `sort --random-sort`. Left to its default, configure takes those hashes from OpenSSL's libcrypto
+  whenever it finds OpenSSL 3 or later. OpenSSL is not in the root, and the port passes the same
+  switch, so the two builds compute digests with the same code.
 
 `--without-selinux`
 : Build no SELinux support.
@@ -64,6 +66,9 @@ page shows the commands of `script/phases/10_bootstrap/062_coreutils.sh` and exp
 [`shred`]{.idx}, [`shuf`]{.idx}, [`sleep`]{.idx}, [`sort`]{.idx}, [`split`]{.idx}, [`stat`]{.idx}, [`stdbuf`]{.idx}, [`stty`]{.idx}, [`sum`]{.idx}, [`sync`]{.idx}, [`tac`]{.idx}, [`tail`]{.idx},
 [`tee`]{.idx}, [`test`]{.idx}, [`timeout`]{.idx}, [`touch`]{.idx}, [`tr`]{.idx}, [`true`]{.idx}, [`truncate`]{.idx}, [`tsort`]{.idx}, [`tty`]{.idx}, [`uname`]{.idx}, [`unexpand`]{.idx},
 [`uniq`]{.idx}, [`unlink`]{.idx}, [`users`]{.idx}, [`vdir`]{.idx}, [`wc`]{.idx}, [`who`]{.idx}, [`whoami`]{.idx} and [`yes`]{.idx}, each a program of its own.
+
+**Installed library:** [`libstdbuf.so`]{.idx} in `/usr/libexec/coreutils`, which `stdbuf` preloads
+into the command it runs to change that command's buffering.
 
 The [coreutils](#port-coreutils) port's page describes each program.
 

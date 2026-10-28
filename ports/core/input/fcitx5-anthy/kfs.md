@@ -3,7 +3,7 @@
 The Japanese engine for [fcitx5](#port-fcitx5): kana input and kana-to-kanji conversion through
 [anthy-unicode](#port-anthy-unicode). It is one of the language engines KDOS builds for the input
 method; see
-[Input methods](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/session.md#input-methods)
+[Input methods](../../../../docs/kdos/03-architecture/session.md#input-methods)
 for how fcitx5 reaches applications. The build is upstream's CMake build with its tests off.
 
 ## Notes

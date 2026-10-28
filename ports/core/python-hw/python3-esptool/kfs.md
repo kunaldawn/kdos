@@ -3,9 +3,10 @@
 line: it reads chip information, and writes, reads and erases flash. The bootloader is in mask
 ROM, so a chip with nothing valid in flash still answers it. The package also installs
 `espefuse` and `espsecure`, for the chips' eFuses and for flash encryption and secure-boot
-signing. [meshtastic-firmware](#port-meshtastic-firmware) depends on it. The serial adapter is
-reached through the `dialout` group; see
-[The device groups and the udev rules](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md#the-device-groups-and-the-udev-rules).
+signing, and `esp_rfc2217_server`, which serves a local serial port over the network (RFC 2217).
+[meshtastic-firmware](#port-meshtastic-firmware) depends on it. The serial adapter is reached
+through the `dialout` group; see
+[The device groups and the udev rules](../../../../docs/kdos/02-user-guide/administration.md#the-device-groups-and-the-udev-rules).
 
 ## Flags
 - `BUILD_EXTENSION=yes` — Read by websockets' `setup.py`: build its C `speedups` extension and
@@ -18,7 +19,7 @@ its runtime closure that are not ports: bitarray, bitstring, esp-pylib, intelhex
 rich-click and websockets, all from the vendor bundle that `pypackages` describes. pyserial,
 cryptography, PyYAML, Pygments, click and rich are ports in `depends`; PyYAML and Pygments are
 named in `pypackages` as well, so the bundle carries their sdists too, and pip installs neither.
-See [The three Python keys](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
+See [The three Python keys](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
 
 Build isolation stays on, pointed at the bundle: it also carries the build backends those
 sdists name (setuptools, setuptools-scm, hatchling, poetry-core, flit_core, Cython and their

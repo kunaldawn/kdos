@@ -12,9 +12,12 @@
  *
  * - It applies only to a view that would otherwise be PLACED by us. A
  *   client that positioned itself (an X11 window with USPosition), a
- *   window rule that placed it, a fixedPosition rule, and anything that
- *   maps maximized, tiled or fullscreen are all left alone: overriding
- *   an explicit intent is worse than having no memory at all.
+ *   fixedPosition rule, and anything that maps maximized, tiled or
+ *   fullscreen are all left alone: overriding an explicit intent is
+ *   worse than having no memory at all. A rule that only moves the
+ *   window (MoveTo, SendToDesktop) runs first and is overridden by a
+ *   record; fixedPosition is the rule that keeps a window where a rule
+ *   put it.
  * - A window with a parent is neither recorded nor restored. Every
  *   window of one guest carries the same app_id, so a remembered file
  *   chooser would be the rectangle the document window opens at next
@@ -30,7 +33,7 @@
  *   history of every application ever run is a file nobody can read and
  *   a linear scan on every map.
  *
- * `window_memory = off` in comp.conf turns it off.
+ * `window_memory = no` in comp.conf turns it off.
  */
 #define _POSIX_C_SOURCE 200809L
 #include <errno.h>

@@ -34,8 +34,10 @@ espeak-ng
 # without this nothing on the image can drive it.
 speech-dispatcher
 
-# BRLTTY reads /dev/vcsa, so what it covers is tty1 and the installer — grids
-# of cells it takes verbatim, with none of the guessing a toolkit tree needs.
+# BRLTTY reads /dev/vcsa, so what it covers is the text consoles: the tty1
+# login prompt before the desktop starts, tty2 and the installer — grids of
+# cells it takes verbatim, with none of the guessing a toolkit tree needs.
+# Once the desktop runs on tty1, that console gives it nothing.
 # It does not read the graphical session: its AtSpi2 screen driver is not
 # built, and the session's reader is Orca, which reaches a braille display
 # through BrlAPI. The statement of record is

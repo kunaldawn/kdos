@@ -368,10 +368,12 @@ static void mic_adjust(int delta)
 /*
  * The panel's half of the microphone: read the state, and flip it.
  *
- * The `●MIC` lamp told you which application was recording and could do
- * nothing about it, which is an indicator people learn to stop looking at.
- * These two make it a control — one click mutes every capture switch on the
- * card, a second click puts it back.
+ * These two make the `●MIC` lamp a control as well as an indicator, because
+ * an indicator that cannot be acted on is one people learn to stop looking at.
+ * One click flips the capture switch of the `default` mixer's first `Capture`
+ * element (or `Mic`, where there is no `Capture`), every channel of it; a
+ * second click flips it back. Other capture elements on the card are left
+ * as they are.
  *
  * CACHED FOR A SECOND, because the panel asks once per frame and this opens
  * the mixer per call by design (the mic is a keypress, not a readout). A

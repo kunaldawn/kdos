@@ -19,7 +19,7 @@
 # BUILD, not a link-time one.
 #
 # libksig is Ed25519 for the binary repository, and it brings Monocypher with it
-# — the one vendored third-party source in the tree, chosen because it is the
+# — the one third-party source vendored verbatim under src/, chosen because it is the
 # only implementation that also links nothing but the C library (see
 # src/libs/libksig/ksig.c).
 

@@ -230,9 +230,11 @@ static int do_reboot(int cmd)
 	 * reboot(2) is the fallback for an init that never acted on the
 	 * request, and the wait before it must outlast init's TERM and KILL of
 	 * the consoles (at most 3 s) plus rcK's walk down to 55_powerd, whose
-	 * stop ends this process: every supervised service ahead of it costs
-	 * ksvc a second. A wait shorter than that powers the machine off
-	 * mid-shutdown, before the mixer is saved or a filesystem unmounted.
+	 * stop ends this process: ksvc waits for each supervised service ahead
+	 * of it until its process group is empty, up to that service's stop
+	 * grace (5 s unless it names another), so a slow service costs its whole
+	 * grace. A wait shorter than that powers the machine off mid-shutdown,
+	 * before the mixer is saved or a filesystem unmounted.
 	 */
 	KbArgv a = {0};
 	kb_argv_add(&a, KP_TELINIT);
@@ -525,10 +527,10 @@ static int fw_verb(const char *arg, char *out, size_t nout)
  * typo.
  *
  * OFF IS A COMMENTED LINE, NOT AN EMPTY VALUE. kdos-login asks for a password
- * when it finds no key, and `autologin =` with nothing after it would be a key
- * naming an account called "", which agetty would be handed. Off comments the
- * line as it stands, so the account it named stays in the file — the form the
- * installer writes — and an already-commented line is left as it is.
+ * when the key is missing or empty, so either form turns autologin off; the
+ * commented line is the one that keeps the account it named in the file — the
+ * form the installer writes — so turning it on again restores a name rather
+ * than inventing one. An already-commented line is left as it is.
  */
 static int set_autologin(const char *who, char *out, size_t nout)
 {
@@ -1177,7 +1179,7 @@ static int usage(void)
  * STDOUT. The kdos-firewall surface reads this through a capture that
  * discards stderr, and a reply sent there is a table it draws empty. The
  * reply is read to EOF into a buffer as large as the daemon's firewall one,
- * or a 13-row table arrives as its first line.
+ * or a table of more than one row arrives as its first line.
  */
 static int request(const char *cmd, bool show)
 {

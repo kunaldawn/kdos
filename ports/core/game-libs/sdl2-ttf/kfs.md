@@ -10,8 +10,8 @@ program using it runs on [sdl3](#port-sdl3).
 
 - `-DSDL2TTF_VENDORED=OFF` — Builds against the root's FreeType and HarfBuzz instead of the
   complete copies of both that the release tarball carries under `external/`. This is upstream's
-  default everywhere but MSVC; named here, it keeps a second FreeType and HarfBuzz out of the
-  library.
+  default everywhere but MSVC and Android; named here, it keeps a second FreeType and HarfBuzz out
+  of the library.
 - `-DSDL2TTF_HARFBUZZ=ON` — Shapes text with HarfBuzz. Upstream's default is off, and without it
   SDL2_ttf places one glyph per character from the font's character map and kerning alone.
 - `-DSDL2TTF_SAMPLES=OFF` — Builds none of the sample programs, which upstream builds by default

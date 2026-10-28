@@ -3,8 +3,8 @@
 networks and their storage through one API, with `virsh` as its command line. In KDOS it drives
 [QEMU](#port-qemu)/KVM guests, and it is what [virt-manager](#port-virt-manager) talks to, through
 `qemu:///system` or `qemu:///session`. The package installs two services, `62_virtlogd` and
-`63_libvirtd`, and upstream's polkit rule that lets members of the `libvirt` group manage system guests (see
-[Services](../../../../docs/kdos/02-user-guide/administration.md#services)).
+`63_libvirtd`, and upstream's polkit rule that lets members of the `libvirt` group manage system
+guests (see [Services](../../../../docs/kdos/02-user-guide/administration.md#services)).
 
 ## Flags
 - `-Dremote_default_mode=legacy` — clients connect to `libvirtd`'s socket. The default, `direct`,
@@ -30,7 +30,8 @@ networks and their storage through one API, with `virsh` as its command line. In
   port; `iscsi-direct` is the iSCSI pool.
 - `-Dstorage_gluster=disabled` — with `-Dstorage_rbd`, `-Dstorage_vstorage` and `-Dstorage_zfs`
   disabled, and `-Dglusterfs`, `-Dnetcf`, `-Dnumad`, `-Dopenwsman`, `-Dsanlock`, `-Daudit`,
-  `-Dselinux`, `-Dapparmor` and `-Ddtrace`: backends and features whose library or tools are not ports.
+  `-Dselinux`, `-Dapparmor` and `-Ddtrace`: backends and features whose library or tools are not
+  ports.
 - `-Dnumactl=disabled` — with `-Dlibssh`, `-Dcurl`, `-Dfuse`, `-Dwireshark_dissector` and
   `-Dbash_completion` disabled: no NUMA placement of guests, no libssh transport (`-Dlibssh2` is
   the SSH transport), no curl or FUSE support, no Wireshark dissector for libvirt's
@@ -39,16 +40,19 @@ networks and their storage through one API, with `virsh` as its command line. In
   its rules into an nftables table of its own beside `/etc/nftables.conf`. nwfilter still runs
   `ebtables`, `iptables` and `ip6tables`, the nftables-backed commands of the
   [iptables](#port-iptables) port.
-- `-Dnbdkit=enabled` — with `-Dnbdkit_config_default=disabled`: [nbdkit](#port-nbdkit), through
-  [libnbd](#port-libnbd), can serve a guest's network disk when the guest's XML or `qemu.conf`
-  asks for it; QEMU's own block drivers stay the default.
+- `-Dnbdkit=enabled` — with `-Dnbdkit_config_default=disabled`: the QEMU driver can start
+  [nbdkit](#port-nbdkit) to serve a guest's network disk to QEMU, and checks its socket through
+  [libnbd](#port-libnbd), when `storage_use_nbdkit` in `qemu.conf` asks for it; QEMU's own block
+  drivers stay the default. `-Dnbdkit=enabled` fails the configure if libnbd is missing.
 - `-Ddocs=enabled` — build the manual pages (`virsh(1)` and the rest) with `rst2man` and
   `xsltproc`, and generate `/usr/share/libvirt/api/libvirt-api.xml`. The Python binding generates
   itself from that file and cannot be built without it.
 - `-Dnss=disabled` — no `libnss_libvirt`, a glibc NSS module; musl has no NSS to load it into.
 - `-Dssh_proxy=disabled` — no ssh-proxy for SSH over vsock, which writes a client configuration
   under `/etc/ssh`.
-- `-Dsysctl_config=disabled` — no sysctl file for post-copy live migration.
+- `-Dsysctl_config=disabled` — no `/usr/lib/sysctl.d/60-libvirtd.conf`, which raises
+  `fs.aio-max-nr` for hosts with many guest disks. `10_sysctl` applies `/etc/sysctl.conf` alone,
+  so the file would install and never take effect.
 - `-Dhost_validate=enabled` — build `virt-host-validate`, which checks the host for what each
   driver needs.
 - `-Dlogin_shell=disabled` — with `-Dpm_utils=disabled`: no `virt-login-shell`, and no pm-utils

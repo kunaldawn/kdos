@@ -40,8 +40,9 @@ FLAGS+=(-Isrc/devtools/kdosbuild)
 # read with their own editor, and an ISO `make run` cannot open. HOST_UID and
 # HOST_GID come in from the Makefile for this; a trap rather than a trailing
 # line, so a build that fails hands its logs back too.
-# build/podman is the pack bake's own container store and is root's by design
-# — podman refuses a store whose ownership does not match the user running it.
+# build/podman is left out of the hand-back as well. No step creates it; a
+# container store there would have to stay root's, since podman refuses a
+# store whose ownership does not match the user running it.
 #
 # AND `build/fs` IS THE TARGET ROOTFS, WHOSE OWNERSHIP IS THE SHIPPED SYSTEM'S.
 # Handing it back does not make a developer's life easier, it corrupts the

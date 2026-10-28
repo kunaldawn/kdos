@@ -5,8 +5,8 @@ opens a display (a DRM render node or a Wayland connection), loads the VA-API dr
 behind it from `/usr/lib/dri` (`iHD` or `i965` for Intel, Mesa's Gallium driver for AMD, nouveau
 and virgl) and passes every call through. ffmpeg, mpv, GStreamer, Kodi, VLC, OBS Studio, Qt
 Multimedia, Qt WebEngine and Chromium reach the hardware decoders through it. Which driver serves
-which GPU, and how to see what a machine offers, is in [Media, colour and
-time](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md#media-colour-and-time).
+which GPU, and how to see what a machine offers, is in
+[Media, colour and time](../../../../docs/kdos/02-user-guide/administration.md#media-colour-and-time).
 
 ## Flags
 

@@ -9,4 +9,4 @@ pydantic pins pydantic-core to one exact version (`pydantic-core==<version>` in 
 `pyproject.toml`), and `import pydantic` raises `SystemError` when the installed one is any
 other. `series` holds this port at the
 version that the pydantic in ocrmypdf's `pypackages` names, so a bump of either is a bump of
-both; see [Filtering](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#filtering).
+both; see [Filtering](../../../../docs/kdos/05-developer/writing-ports.md#filtering).

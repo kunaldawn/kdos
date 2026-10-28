@@ -21,8 +21,8 @@ GStreamer-based players, editors and recorders are built on it.
   tests.
 - `-Dptp-helper=disabled` — Builds no `gst-ptp-helper`, the program behind GStreamer's PTP network
   clock. It is installed setuid root or with network capabilities, so that it can bind PTP's
-  privileged ports, and it is not among the setuid binaries the tree produces (see [setuid
-  binaries](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#setuid-binaries)).
+  privileged ports, and it is not among the setuid binaries the tree produces (see
+  [setuid binaries](../../../../docs/kdos/03-architecture/security-model.md#setuid-binaries)).
 - `-Dlibunwind=enabled` — Walks the stack with libunwind, from
   [libunwind-nongnu](#port-libunwind-nongnu), for `gst_debug_get_stack_trace()` and the leaks
   tracer's stack traces. musl has no `backtrace()`, so without it both print nothing.
@@ -31,8 +31,7 @@ GStreamer-based players, editors and recorders are built on it.
   setup.
 - `-Dbash-completion=enabled` — Installs the bash completion for the tools, which runs
   `gst-completion-helper`, against [bash-completion](#port-bash-completion).
-- `-Dnls=disabled` — Builds and installs no translated messages. KDOS ships English only (see [the
-  size and language
-  policy](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
+- `-Dnls=disabled` — Builds and installs no translated messages. KDOS ships English only
+  (see [the size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
 - `-Dgst_debug=true` — Keeps the debugging subsystem (`GST_DEBUG` categories and logs), upstream's
   default, named here.

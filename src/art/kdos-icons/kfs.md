@@ -12,7 +12,7 @@ from them on every accent switch, and `atlas/atlas.kia`, the pre-rendered pixel 
 draws into the character grid through libkicon, goes beside them. The KDOS marks, the penguin and
 the logo, are installed into `hicolor` as `kdos-launcher`, `start-here` and
 `distributor-logo-kdos`. How the theme is generated and recoloured is in
-[How the theme is generated](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/theming.md#how-the-theme-is-generated).
+[How the theme is generated](../../../docs/kdos/02-user-guide/theming.md#how-the-theme-is-generated).
 
 ## Flags
 - `phosphor` — The accent the system copy is generated in. The packaged themes are always
@@ -30,7 +30,7 @@ The atlas is optional. `build.sh` installs `atlas.kia` only when it exists; with
 desktop draws glyphs for the theme's own icons (folders, devices, file types) and still draws each
 application's icon from hicolor. The atlas covers fewer names than `art/`:
 a name can be in the artwork and still not be drawable on the desktop; see
-[Desktop entries belong to the port](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#desktop-entries-belong-to-the-port).
+[Desktop entries belong to the port](../../../docs/kdos/05-developer/writing-ports.md#desktop-entries-belong-to-the-port).
 
 Nothing in the build rasterises or crops. `vendor.py` re-vendors `art/` from a Papirus release,
 `genmarks.py` cuts `marks/` out of the master artwork with Pillow, and `genatlas.py` renders
@@ -39,4 +39,4 @@ stored in upstream's colours and tinted when libkicon loads it, so one file serv
 
 This port installs before `gtk3`, so it has no `icon-theme.cache` until gtk3 installs
 `gtk-update-icon-cache`, and that install writes one for every theme then present; see
-[Shared indexes](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#shared-indexes).
+[Shared indexes](../../../docs/kdos/05-developer/writing-ports.md#shared-indexes).

@@ -274,8 +274,9 @@ static int register_tiles(pixman_image_t *img, uint64_t key, int cw, int ch)
  *
  * ALL OR NOTHING, and the sprite table enforces it: a picture that registered
  * two thirds of its tiles would draw two thirds of itself over whatever the
- * cells beneath it held. A refusal draws the fallback codepoint instead, which
- * is what a terminal with no pixel path shows anyway.
+ * cells beneath it held. A refusal places nothing, so those cells keep what
+ * they held. The fallback codepoint is registered with the tiles: it is what
+ * a backend with no pixel path draws in place of each of them.
  */
 static void place(pixman_image_t *img, uint64_t key, int cw, int ch)
 {
@@ -762,7 +763,8 @@ static void gif_anim(int i, KimgFrame *fr, int n)
  * `tmux` cannot pass an APC through, so a program inside one transmits the
  * image with `a=t` and then writes `U+10EEEE` cells where it wants it drawn,
  * carrying the image's id in each cell's FOREGROUND COLOUR — the low 24 bits
- * as a truecolor value, or the palette index when the program used one.
+ * of a truecolor value. A palette-index colour names no id here and its cell
+ * is blanked; the reason is at the check below.
  *
  * THE ROW AND COLUMN ARE INFERRED FROM THE RUN. The protocol also allows
  * combining diacritics after the placeholder to state them outright; this

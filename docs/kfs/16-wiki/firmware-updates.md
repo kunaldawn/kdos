@@ -4,8 +4,8 @@ This page covers updating the [firmware]{.idx} inside a machine's devices with [
 controller, a dock, a USB peripheral, and the system firmware itself (the BIOS or [UEFI]{.idx}, the
 embedded controller) where the vendor publishes it as a UEFI capsule. The firmware files the
 kernel loads for its drivers, and CPU microcode, are a different thing; they come with packages
-and are covered in [Microcode and firmware](microcode-and-firmware.md). How fwupd reaches the EFI
-system partition without udisks, and what it writes there, is explained in
+and are covered in [Microcode and firmware](microcode-and-firmware.md). How fwupd finds the EFI
+system partition when udisks does not name it, and what it writes there, is explained in
 [Thunderbolt, phones, smart cards and firmware updates](../../kdos/02-user-guide/administration.md#thunderbolt-phones-smart-cards-and-firmware-updates)
 and [Where the kernel is kept](../../kdos/03-architecture/boot-and-init.md#where-the-kernel-is-kept).
 
@@ -35,11 +35,12 @@ is mounted:
 [`/boot/efi`]{.idx} is where the installer mounts the ESP of an installed system, in the `fstab` it writes
 (`src/system/kdos-installer/install.c`):
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=1629-1634 pin=d44ca257584d -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=1632-1637 pin=d44ca257584d -->
 
-fwupd normally finds the ESP by asking udisks. The recipe patches it to describe the FAT filesystem
-mounted at `EspLocation` from sysfs instead
-(`ports/core/boot/fwupd/esp-mount-path.patch`, first hunk):
+fwupd asks udisks for the ESP. When udisks names none, the recipe's patch describes the FAT
+filesystem mounted at `EspLocation` itself, from sysfs and the udev database; a path that is not a
+FAT mount point is refused, so a machine with nothing mounted there has no ESP rather than a wrong
+one (`ports/core/boot/fwupd/esp-mount-path.patch`, first hunk):
 
 <!-- kfs:include ports/core/boot/fwupd/esp-mount-path.patch lines=1-22 pin=ee4a4116b1a2 -->
 
@@ -192,9 +193,11 @@ firmware setup; with it on, the firmware refuses to start the unsigned `fwupdx64
   what fwupd writes on the ESP
 - [polkit, and why the desktop has no authentication agent](../../kdos/03-architecture/security-model.md#polkit-and-why-the-desktop-has-no-authentication-agent)
 - [Periodic jobs](../../kdos/02-user-guide/administration.md#periodic-jobs): the metadata job
-- `microcode-and-firmware.md`: [Microcode and firmware](microcode-and-firmware.md)
-- `timers.md`: [Timers](timers.md)
-- `boot-menu-and-kernel-parameters.md`: [Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md)
+- [Microcode and firmware](microcode-and-firmware.md): the firmware files drivers load, and CPU
+  microcode
+- [Timers](timers.md): the table the metadata job is in
+- [Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md): the Limine menu the boot
+  after a staged capsule returns to
 
 <!-- book-nav -->
 ---

@@ -74,11 +74,11 @@ void term_mouse(const KtuiEvent *ev)
 	 * word, and Ctrl is the chord every terminal with links already uses.
 	 *
 	 * `kdos-appbox open` is what "open this on this machine" means here —
-	 * the MIME route the portal's OpenURI takes, with a scheme resolving
-	 * to `x-scheme-handler/<scheme>` — and it is handed an argument
-	 * VECTOR, never a command line. The URI was refused at the parser
-	 * unless it is one of four schemes in printable ASCII, so what reaches
-	 * here cannot be an argument to anything else.
+	 * it is `xdg-open` on this image, resolving a scheme as
+	 * `x-scheme-handler/<scheme>` through mimeapps.list — and it is
+	 * handed an argument VECTOR, never a command line. The URI was
+	 * refused at the parser unless it is one of four schemes in printable
+	 * ASCII, so what reaches here cannot be an argument to anything else.
 	 */
 	if (T.hover && ev->btn == KT_MB_LEFT && ev->press == KT_MP_PRESS &&
 	    (ev->mods & KT_MOD_CTRL)) {
@@ -118,7 +118,7 @@ void term_mouse(const KtuiEvent *ev)
  * clipboard is what makes it something other than a thought experiment.
  *
  * The pending text is held rather than dropped: a paste a person meant is one
- * keystroke away, and a paste they did not meant is refused by walking away.
+ * keystroke away, and a paste they did not mean is refused by walking away.
  */
 static char *paste_held;
 

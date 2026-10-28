@@ -122,9 +122,9 @@ static void cat_row_print(char *f[CAT_FIELDS])
 }
 
 /*
- * `--all` is every row; the default is what is INSTALLED. A catalogue of 182
- * applications printed whenever somebody types `kdos app list` buries the
- * handful they actually have.
+ * `--all` is every row; the default is what is INSTALLED. The whole catalogue
+ * printed whenever somebody types `kdos app list` buries the handful they
+ * actually have.
  */
 static int cmd_list(int all)
 {

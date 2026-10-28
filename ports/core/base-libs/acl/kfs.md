@@ -3,8 +3,8 @@ acl is the library and tools for POSIX [access control lists]{.idx}, the per-use
 permissions a file can carry beyond its owner, group and mode bits. `getfacl` and `setfacl` read and
 write them, and `chacl` is an IRIX-compatibility command for the same. libacl is what lets
 [coreutils](#port-coreutils) and [sed](#port-sed) copy a file's ACL along with its data, and
-[libarchive](#port-libarchive) store ACLs in an archive; storage and sharing services such as
-[samba](#port-samba), [cups](#port-cups) and [udisks2](#port-udisks2) link it too.
+[libarchive](#port-libarchive) store ACLs in an archive; [samba](#port-samba), [cups](#port-cups)
+and [udisks2](#port-udisks2) link it too.
 
 ## Flags
 - `--bindir=/bin` — Install the tools in `/bin`, which is a link to `/usr/bin`; the package

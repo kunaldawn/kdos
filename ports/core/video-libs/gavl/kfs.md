@@ -7,7 +7,8 @@ are installed.
 
 ## Flags
 
-- `--without-doxygen` — No Doxygen API reference.
+- `--without-doxygen` — No Doxygen API reference. Without the switch configure looks for
+  `doxygen` and stops with an error when it is not installed.
 - `--with-cpuflags=none` — Add no processor-specific compiler flags. The default, `auto`, runs
   `cpuinfo.sh` over `/proc/cpuinfo` and compiles for the processor of the machine that builds,
   so the library would fault on an older one. The SIMD paths are chosen at run time either way.

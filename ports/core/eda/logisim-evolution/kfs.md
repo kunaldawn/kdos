@@ -23,7 +23,7 @@ files; this port compiles Logisim and every library it uses from their published
   restricted native-access methods without a warning, as upstream's own launchers do.
 
 ## Patches
-- `colorpicker-no-lombok.patch` — The colour picker's sources use Lombok annotations (`@RequiredArgsConstructor`, `@Getter`, `@Slf4j`, `@NonNull`), which generate code at compile time and need Lombok's annotation processor. The patch removes them and writes out what they generate: the constructors, `ColorPickerMode.getMax()`, the SLF4J logger field, and `Objects.requireNonNull` checks where `@NonNull` guarded a field.
+- `colorpicker-no-lombok.patch` — The colour picker's sources use Lombok annotations (`@RequiredArgsConstructor`, `@Getter`, `@Slf4j`, `@NonNull`), which generate code at compile time and need Lombok's annotation processor. The patch removes them and writes out what they generate: the constructors, `ColorPickerMode.getMax()`, the SLF4J logger field, and `Objects.requireNonNull` checks where `@NonNull` guarded a field; the `@NonNull` on `ColorSliderUI`'s constructor parameters is dropped with no check in its place.
 - `javahelp-no-awt-peer.patch` — Removes the unused `import java.awt.dnd.peer.*` from JavaHelp's `BasicFavoritesNavigatorUI`; the JDK does not export that package, so the import fails to compile.
 
 ## Notes

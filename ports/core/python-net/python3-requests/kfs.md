@@ -7,6 +7,8 @@ imports, [python3-charset-normalizer](#port-python3-charset-normalizer),
 trusts the system's CA bundle.
 
 ## Notes
-A `socks5://` proxy needs PySocks, which requests imports only when such a proxy is configured.
-[python3-pysocks](#port-python3-pysocks) is a port, but it is not in requests' `depends`, so it
-is present only where something else has installed it.
+A SOCKS proxy (`socks4://`, `socks4a://`, `socks5://` or `socks5h://`) goes through urllib3's
+`contrib.socks`, which needs PySocks. requests tries that import when it is itself imported and,
+when it fails, raises `InvalidSchema: Missing dependencies for SOCKS support` only once a request
+is sent through such a proxy. [python3-pysocks](#port-python3-pysocks) is a port, but it is not in
+requests' `depends`, so it is present only where something else has installed it.

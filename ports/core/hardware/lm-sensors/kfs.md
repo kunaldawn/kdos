@@ -18,15 +18,15 @@ and installed in another; `ETCDIR`, for one, is compiled into `libsensors` as wh
 
 - `PREFIX=/usr`, `LIBDIR=/usr/lib`, `ETCDIR=/etc`, `MANDIR=/usr/share/man` — Where everything is
   installed. The makefile's own default prefix is `/usr/local`.
-- `PROG_EXTRA=` — Build no extra programs. The one upstream offers, `sensord`, logs readings
-  through rrdtool.
+- `PROG_EXTRA=` — Build no extra programs, which is also the makefile's default. The one upstream
+  offers, `sensord`, logs readings through rrdtool.
 - `BUILD_STATIC_LIB=0` — Build no `libsensors.a`, which the makefile builds and installs by
   default.
 - `LIBICONV=` — Link `sensors` against no separate iconv library; musl's C library has iconv
   built in. `iconv-probe.patch` makes the makefile respect this without running its probe.
 - `EXLDFLAGS="$LDFLAGS"` — Link with the tree's `LDFLAGS`. The makefile's own value is
-  `-Wl,-rpath,$(LIBDIR)` plus its other link flags, so this also leaves the run path out of the
-  programs; `/usr/lib` is on the loader's search path anyway.
+  `-Wl,-rpath,$(LIBDIR)` followed by `LDFLAGS`, so the one difference is that the programs carry
+  no run path; `/usr/lib` is on the loader's search path anyway.
 
 ## Patches
 

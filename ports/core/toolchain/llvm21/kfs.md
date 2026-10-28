@@ -5,7 +5,7 @@ refuses any other. It is the first of the three slot ports, with [clang21](#port
 [lld21](#port-lld21) built on it. Everything it installs, the tools, the libraries, the headers
 and the CMake package, is under the prefix, which is on no default search path, so every other
 port still finds the system LLVM. How the slot is kept apart from the system copy is in
-[A second version beside the first](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#a-second-version-beside-the-first).
+[A second version beside the first](../../../../docs/kdos/05-developer/writing-ports.md#a-second-version-beside-the-first).
 
 The configuration follows the system llvm port's, less the manual pages, the gold plugin
 (`LLVM_BINUTILS_INCDIR`), the perf JIT listener (`LLVM_USE_PERF`) and the separate directory for
@@ -17,7 +17,7 @@ checker on the 21 line.
 - `LLVM_HOST_TRIPLE` — gcc's triple, `$(cc -dumpmachine)`, as in the llvm port. Left to itself,
   LLVM guesses the glibc triple `x86_64-unknown-linux-gnu`, under which this series' clang would
   find no gcc installation and no C++ headers; see
-  [An LLVM that guessed its triple](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/build-troubleshooting.md#an-llvm-that-guessed-its-triple).
+  [An LLVM that guessed its triple](../../../../docs/kdos/05-developer/build-troubleshooting.md#an-llvm-that-guessed-its-triple).
 - `LLVM_DEFAULT_TARGET_TRIPLE` — The same triple, as the default target of the slot's clang.
 - `CMAKE_C_FLAGS_RELEASE` — Replaces CMake's Release flags, `-O3 -DNDEBUG`, with the tree's
   `CFLAGS` and `-DNDEBUG`.
@@ -60,8 +60,8 @@ checker on the 21 line.
 ## Notes
 The 21 series is published as one tarball per component, and the LLVM tarball expects two of its
 siblings beside it under set names: its CMake files read `../cmake` for the shared modules, and
-LLVM's support library compiles SipHash from `../third-party/siphash`. The two `mv` lines give the
-unpacked `cmake-<version>.src` and `third-party-<version>.src` those names.
+LLVM's support library includes the SipHash header from `../third-party/siphash`. The two `mv`
+lines give the unpacked `cmake-<version>.src` and `third-party-<version>.src` those names.
 
 Zig finds this LLVM by `CMAKE_PREFIX_PATH=/usr/lib/llvm21` and records `/usr/lib/llvm21/lib` as
 its run path, so `/usr/bin/zig` loads the slot's libraries directly. Removing the slot breaks

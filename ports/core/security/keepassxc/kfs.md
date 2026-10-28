@@ -19,7 +19,7 @@ and `keepassxc-proxy`, the browser extension's native-messaging helper.
   [asciidoctor](#port-asciidoctor), which is why it is in `depends`.
 - `-D WITH_XC_UPDATECHECK=OFF` — no check for new KeePassXC releases at start-up; upstream's own
   description of the switch says to disable it for controlled distributions, where the package
-  manager brings updates.
+  manager brings updates. CMake also turns it off whenever `WITH_XC_NETWORKING` is off.
 - `-D WITH_XC_NETWORKING=OFF` — leave out all of KeePassXC's own network code: the downloader
   of website icons (favicons) for entries, the download of Have I Been Pwned breach data for the
   database report, and the update checker's code. This is upstream's default. Everything KeePassXC

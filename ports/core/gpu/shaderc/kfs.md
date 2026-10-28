@@ -15,8 +15,9 @@ spirv-tools ports; a bump of either moves this one too.
 ## Flags
 
 - `SHADERC_SYSTEM_DEPS=ON` — The switch `shaderc-system-deps.patch` adds: build against the
-  installed glslang, SPIRV-Tools and SPIRV-Headers through their CMake packages instead of the
-  copies upstream expects in `third_party/`. Off, the build is upstream's.
+  installed glslang and SPIRV-Tools through their CMake packages, and the SPIRV-Headers in
+  `/usr/include`, instead of the copies upstream expects in `third_party/`. Off, the build is
+  upstream's.
 - `SHADERC_SKIP_TESTS=ON` — Build none of the tests, which link googletest's gmock, another of
   the `third_party/` checkouts the release archive does not carry.
 - `SHADERC_SKIP_EXAMPLES=ON` — Build none of the example programs.
@@ -27,7 +28,7 @@ spirv-tools ports; a bump of either moves this one too.
 
 ## Patches
 
-- `shaderc-system-deps.patch` — Adds the `SHADERC_SYSTEM_DEPS` option to the top `CMakeLists.txt`. On, it replaces `add_subdirectory(third_party)` with `find_package` calls for `SPIRV-Tools`, `SPIRV-Tools-opt` and `glslang`, aliases the imported targets to the names shaderc's own targets link (`SPIRV-Tools`, `glslang`, `SPIRV`), and points `glslang_SOURCE_DIR` at the installed `/usr/include/glslang`, since the sources include glslang's headers relative to its source root. It also writes `build-version.inc` directly from the installed versions, because upstream's `update_build_version.py` reads the `CHANGES` files of source trees that are not there. The patch's own header describes the same.
+- `shaderc-system-deps.patch` — Adds the `SHADERC_SYSTEM_DEPS` option to the top `CMakeLists.txt`. On, it replaces `add_subdirectory(third_party)` with `find_package` calls for `SPIRV-Tools`, `SPIRV-Tools-opt` and `glslang`, aliases the imported targets to the names shaderc's own targets link (`SPIRV-Tools`, `glslang`, `SPIRV`), and points `glslang_SOURCE_DIR` at the installed `/usr/include/glslang`, since the sources include glslang's headers relative to its source root. It also writes `build-version.inc` directly, with shaderc's version from its own `CHANGES`, SPIRV-Tools' from its pkg-config file and glslang's from its CMake package, because upstream's `update_build_version.py` reads the `CHANGES` files of source trees that are not there.
 
 ## Notes
 
@@ -36,6 +37,7 @@ sources it expects there are fetched from git by upstream's `utils/git-sync-deps
 with no network cannot run. That is what the patch is for.
 
 Only the shared library ships. `build.sh` removes `libshaderc.a`, `libshaderc_combined.a` and
-their pkg-config files `shaderc_static.pc` and `shaderc_combined.pc`. The two archives are meant to
-carry glslang and SPIRV-Tools inside them; built against the installed packages they carry
-neither, so a program that linked them by their pkg-config files would not link.
+their pkg-config files `shaderc_static.pc` and `shaderc_combined.pc`. `libshaderc_combined.a` is
+meant to carry glslang and SPIRV-Tools inside it, and built against the installed packages it
+carries neither; `shaderc_static.pc` names `-lshaderc_util`, a static library the install does not
+ship. A program that linked either archive by its pkg-config file would not link.

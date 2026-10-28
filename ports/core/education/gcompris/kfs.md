@@ -10,9 +10,9 @@ background music with it, so the activities that use them work with no network.
 - `-D CMAKE_TOOLCHAIN_FILE="$SRC_ROOT/no-qml-rpath.cmake"` — A one-line toolchain file that sets
   `QT_NO_QML_PLUGIN_RPATH`, which stops Qt giving each QML plugin an `$ORIGIN` run path. It is a
   toolchain file and not a `-D` switch because the Box2D plugin is built as a CMake external
-  project that receives from the outer build only its toolchain file, prefix paths and build
-  type (see
-  [What the package lint refuses](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#what-the-package-lint-refuses)).
+  project that receives from the outer build only its toolchain file, `CMAKE_FIND_ROOT_PATH`,
+  `CMAKE_PREFIX_PATH` and build type (see
+  [What the package lint refuses](../../../../docs/kdos/05-developer/writing-ports.md#what-the-package-lint-refuses)).
 - `-D WITH_DOWNLOAD=OFF` — Build without the internal downloader, which is on by default. Nothing
   reaches for the network, and the settings page offers no download.
 - `-D SKIP_TRANSLATIONS=ON` — Do not build the interface catalogues.

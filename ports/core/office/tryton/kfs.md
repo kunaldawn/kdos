@@ -21,7 +21,7 @@ GooCalendar alone. GooCalendar is the widget of the client's calendar view, noth
 tree imports it, and it is not a port, so it is installed into this package beside the client.
 The bundle also holds the build tools the fetch downloaded with it; `build.sh` installs only
 `goocalendar` from it, and the client itself from the source tree. See
-[The three Python keys](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
+[The three Python keys](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
 
 Every interface translation under `tryton/data/locale` except the template `tryton.pot` is deleted
 from the package. `build.sh` renders the SVG logo to a 128-pixel PNG with `rsvg-convert` and writes

@@ -25,14 +25,16 @@ It runs after `40_dbus`, because the daemon is a system-bus service:
 <!-- kfs:include fs/etc/init.d/45_avahi.sh -->
 
 The service is named `avahi` (from the file name) and its supervised process `avahi-daemon` (from
-`NAME`), which is what `service status avahi` reports: `[ OK ] avahi-daemon (pid <n>)`. `avahi-autoipd` and `avahi-dnsconfd` are installed, and no script starts either.
+`NAME`), which is what `service status avahi` reports: `[ OK ] avahi-daemon  (pid <n>)`.
+`avahi-autoipd` and `avahi-dnsconfd` are installed, and no script starts either.
 
 Avahi is a library as well as a daemon. The ports that discover things through it include
 [cups](#port-cups) and [cups-browsed](#port-cups-browsed) (printers), [ipp-usb](#port-ipp-usb) (a
 USB printer presented as a network one), [sane-backends](#port-sane-backends) and
 [sane-airscan](#port-sane-airscan) (scanners), [samba](#port-samba) (which advertises its shares),
-[gvfs](#port-gvfs) (the GTK file managers' network view), [pipewire](#port-pipewire) (network
-audio sinks) and [kdos-mountd](#port-kdos-mountd) (the list of file servers). The port's
+[gvfs](#port-gvfs) (the GTK file managers' network view) and [pipewire](#port-pipewire) (network
+audio sinks). [kdos-mountd](#port-kdos-mountd) links none of it: it runs `avahi-browse` for its
+list of file servers and `avahi-resolve-host-name` for a `.local` server name. The port's
 `--enable-compat-libdns_sd` also builds Avahi's `libdns_sd`, for programs written against
 Apple's DNS-SD interface.
 
@@ -61,7 +63,7 @@ mDNS is UDP port 5353, and the shipped [`/etc/nftables.conf`]{.idx} accepts it i
 any [firewall]{.idx} name is turned on. Beside it is the rule for NetBIOS name replies, which
 `kdos-mount browse` sends alongside its mDNS query:
 
-<!-- kfs:include fs/etc/nftables.conf lines=66-83 pin=de6e7a8fb0a7 -->
+<!-- kfs:include fs/etc/nftables.conf lines=67-84 pin=de6e7a8fb0a7 -->
 
 ### /etc/nsswitch.conf
 
@@ -174,7 +176,13 @@ service status avahi
 cat /run/kdos-init.avahi.log
 ```
 
-**The daemon is restarted every five seconds.** Read its own messages in the supervisor's log:
+`[DOWN] avahi-daemon` with no log at all is a service turned off with `service disable`, which
+the boot skips; `service list` shows it as `[DISABLED]`, and `sudo service enable avahi` followed
+by `sudo service start avahi` brings it back.
+
+**The daemon is restarted every five seconds.** `service status avahi` then reports
+`[FAIL] avahi-daemon` with the daemon's exit code and the number of failed starts in a row. Read the daemon's own messages in the
+supervisor's log:
 
 ```bash
 tail -n 40 /run/kdos-svc.avahi-daemon.log

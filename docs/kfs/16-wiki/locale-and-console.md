@@ -27,7 +27,7 @@ so there is nothing to enable. Typing Chinese, Japanese and Korean is the input 
 
 **`/etc/profile`**, from `fs/etc/profile`, sets the locale of every login shell:
 
-<!-- kfs:include fs/etc/profile lines=32-32 pin=d682fd279e6d -->
+<!-- kfs:include fs/etc/profile lines=33-33 pin=d682fd279e6d -->
 
 **[`/etc/profile.d/00locale.sh`]{.idx}** is installed by musl-locales. Its build names the option that
 installs the file, `LOCALE_PROFILE`, in `ports/core/toolchain/musl-locales/build.sh`:
@@ -41,12 +41,12 @@ from and `locale -a` lists.
 Keyboard page; the image does not ship it, so the live medium uses the kernel's built-in US map.
 `kdos-getty` loads it on every console, in `src/system/kdos-tools/getty.c`:
 
-<!-- kfs:include src/system/kdos-tools/getty.c lines=355-365 pin=1d8052890c4d -->
+<!-- kfs:include src/system/kdos-tools/getty.c lines=354-364 pin=1d8052890c4d -->
 
 The desktop takes its layout from the same file when the session starts, translating the console
 map's name into an XKB layout name, in `fs/usr/local/lib/kdos/session-common.sh`:
 
-<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=43-82 pin=df225c0331e9 -->
+<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=43-82 pin=cd7b9d8e5b23 -->
 
 **`~/.config/kdos-comp/environment`**, not shipped, overrides that for one user: a
 `XKB_DEFAULT_LAYOUT=` line there replaces the value the login exported, for the compositor and
@@ -66,7 +66,7 @@ it; see [accent](../../kdos/04-programs/daemons.md#accent).
 **`/etc/inittab`**, from `fs/etc/inittab`, puts `kdos-getty` in front of the login on `tty1` and
 `tty2`:
 
-<!-- kfs:include fs/etc/inittab lines=33-39 pin=527998a111ea -->
+<!-- kfs:include fs/etc/inittab lines=34-40 pin=527998a111ea -->
 
 ## Usage
 
@@ -188,11 +188,13 @@ cat /run/kdos-getty.tty1.log
 showconsolefont -i
 ```
 
-The log holds what `setfont` and `loadkeys` printed and the window size `kdos-getty` set, and is
-empty when everything loaded and the window size was already right. Without
-`setfont`, from the kbd package, `kdos-getty` loads no font, no colours and no keymap at all; a
-missing `/usr/share/consolefonts/ter-kdos32n.psf.gz`, from terminus-font, leaves the kernel's
-font.
+The log is appended to each time the console's getty starts. It holds `kdos-getty`'s own lines,
+such as `kdos-getty: tty1 winsize -> <columns>x<rows>` when it corrected the window size, and whatever the
+getty it then runs writes to its error output. `setfont` and `loadkeys` run with their output
+thrown away, so a font that did not load shows only as the size `showconsolefont -i` reports.
+Without `setfont`, from the kbd package, `kdos-getty` loads no font, no colours and no keymap at
+all; a missing `/usr/share/consolefonts/ter-kdos32n.psf.gz`, from terminus-font, leaves the
+kernel's font.
 
 **The console keyboard has the wrong layout.** Check the file and load it by hand to see the error
 `kdos-getty` did not show:
@@ -214,7 +216,8 @@ above, or else the console map's first two letters. Check that the file is there
 ls /usr/share/X11/xkb/symbols/de
 ```
 
-When there is no such file the session prints `keymap '<map>' has no XKB layout '<name>'` and
+When there is no such file `kdos-desktop` prints
+`kdos-desktop: keymap '<map>' has no XKB layout '<name>' — leaving the default` on `tty1` and
 leaves the desktop at its default. Set the layout in `~/.config/kdos-comp/environment` as
 [above](#giving-the-desktop-a-layout-of-its-own).
 

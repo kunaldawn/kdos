@@ -21,9 +21,9 @@ Each satellite family, radio and audio sink is a plugin under `/usr/lib/satdump/
 - `-DBUILD_TOOLS=OFF` — No developer tool programs; upstream's default.
 - `-DBUILD_ZIQ=ON`, `-DBUILD_ZIQ2=OFF` — Read and write SatDump's compressed ZIQ baseband format,
   with [zstd](#port-zstd); not the work-in-progress ZIQ2.
-- `-DBUILD_OPENCL=ON`, `-DBUILD_OPENMP=ON` — GPU acceleration through OpenCL, by the
-  [ocl-icd](#port-ocl-icd) loader, which falls back to the CPU when no OpenCL driver is installed,
-  and OpenMP on the CPU.
+- `-DBUILD_OPENCL=ON`, `-DBUILD_OPENMP=ON` — GPU acceleration through OpenCL, linked against the
+  [ocl-icd](#port-ocl-icd) loader, and OpenMP on the CPU. When the loader finds no OpenCL device,
+  SatDump runs the accelerated steps on the CPU instead.
 - `-DBUILD_DOCS=OFF` — No Doxygen documentation.
 - `-DENABLE_INSTALL=ON` — Generate the install target; upstream's default.
 - `-DPLUGINS_ALL=ON` — Build every satellite decoder plugin.

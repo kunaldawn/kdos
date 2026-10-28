@@ -71,6 +71,6 @@ read font`, and `Liberation-Sans`, `Liberation-Serif` and `Liberation-Mono`, met
 Helvetica, Times and Courier, are the names to use instead.
 
 Upstream's release numbers carry a hyphen before the last field, which a KDOS version may not (see
-[kpkgbuild](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#kpkgbuild)). The recipe's
+[kpkgbuild](../../../../docs/kdos/05-developer/writing-ports.md#kpkgbuild)). The recipe's
 `version` is the dotted form, and the `_imver` helper rebuilds the hyphenated one for the
 `source` URL.

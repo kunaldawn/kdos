@@ -18,7 +18,8 @@ compiler and the save-game dumper, as `pioneer-editor`, `pioneer-modelcompiler` 
   `GLEW::GLEW` target before the search, and GLEW's `glew-config.cmake`, finding a target of that
   name it did not create, stops configure with an error. Even without that, `FindGLEW` taking a
   shared GLEW from the package reads its path only from the Windows import-library property and
-  leaves `GLEW_LIBRARIES` empty. Both paths are named because `/lib` is a link to `usr/lib` (see
+  leaves `GLEW_LIBRARIES` empty. All four paths are named because `/lib`, `/lib64` and `/usr/lib64`
+  are links to `/usr/lib`, and CMake reaches the package through any of them (see
   [A graphical application](../../../../docs/kdos/05-developer/writing-ports.md#a-graphical-application)).
 - `-DUSE_SYSTEM_LIBLUA=OFF` — Compiles the Lua in `contrib/lua`, which is Lua 5.2, the version the
   game's scripts are written for. The tree's Lua ports are other versions.
@@ -27,8 +28,10 @@ compiler and the save-game dumper, as `pioneer-editor`, `pioneer-modelcompiler` 
   running more slowly.
 - `-DWITH_DEVKEYS=OFF` — Leaves out the extra key bindings for developer functions, which are on
   by default.
-- `-DBUILD_WITH_OPENAL=ON` — Requires [openal-soft](#port-openal-soft) for sound; named, a missing
-  OpenAL stops configure instead of building a silent game.
+- `-DBUILD_WITH_OPENAL=ON` — Builds the OpenAL sound backend on
+  [openal-soft](#port-openal-soft), which the game then picks by default over its SDL one; the SDL
+  backend is built either way. Named, a missing OpenAL stops configure instead of building a game
+  with the SDL backend alone.
 - `-DUSE_AVX2=OFF`, `-DWITH_OBJECTVIEWER=ON`, `-DREMOTE_LUA_REPL=OFF`, `-DPROFILER_ENABLED=OFF` —
   Upstream's defaults, named: no AVX2 code, the in-game object viewer built, no Lua console on a
   TCP port, and no built-in profiler.

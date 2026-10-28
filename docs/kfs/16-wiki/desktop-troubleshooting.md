@@ -43,7 +43,7 @@ An account whose shell is zsh has the same block in `~/.zprofile`.
 
 `tty2` is a plain login prompt, kept for exactly this page's purpose. From `fs/etc/inittab`:
 
-<!-- kfs:include fs/etc/inittab lines=33-39 pin=527998a111ea -->
+<!-- kfs:include fs/etc/inittab lines=34-40 pin=527998a111ea -->
 
 ### /usr/local/bin/kdos-desktop
 
@@ -52,19 +52,22 @@ The command the login shell runs. It refuses when the compositor is not installe
 
 <!-- kfs:include fs/usr/local/bin/kdos-desktop lines=7-11 pin=382d0335a0d6 -->
 
-On a virtio [GPU]{.idx} it then turns off hardware cursors, and when the GPU does not offer virgl, or
-when there is no render node at all, it sets `WLR_RENDERER=pixman`, so the compositor renders in
-software. Last it prepares the runtime
-directory, the [keymap]{.idx}, the boxes and the session bus, and hands over to `kdos-desktop-start`:
+On a virtio [GPU]{.idx} it then turns off hardware cursors, and sets `WLR_RENDERER=pixman` when that
+GPU does not offer virgl, so the compositor renders in software. It sets the same on any machine
+with no render node in `/dev/dri`. Last it prepares the runtime directory, the [keymap]{.idx}, the
+boxes and the session bus, and hands over to `kdos-desktop-start`:
 
 <!-- kfs:include fs/usr/local/bin/kdos-desktop lines=53-61 pin=ca4700af0db5 -->
 
 ### /usr/local/bin/kdos-desktop-start
 
 Runs the compositor in the foreground with its log in a file, and offers a restart when it crashes.
-From `fs/usr/local/bin/kdos-desktop-start`:
+When nothing chose a renderer and the compositor exits because the render node's GL is software
+(`Software rendering detected` in the log), it runs the compositor once more on pixman and logs
+`kdos-desktop: no hardware GL; starting kdos-comp on the pixman renderer`. From
+`fs/usr/local/bin/kdos-desktop-start`:
 
-<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=163-226 pin=b485a0ab3200 -->
+<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=164-227 pin=b485a0ab3200 -->
 
 ### ~/.config/kdos-comp/rc.xml and ~/.config/kdos/comp.conf
 
@@ -87,7 +90,7 @@ it as `kdos-comp.log.old`. It is a tmpfs file and does not survive a reboot.
 ### Getting a shell when the desktop is no use
 
 1. Press Ctrl+Alt+F2. The compositor handles the key even while the screen is locked. `tty2`
-   shows a plain `kdos login:` prompt.
+   shows a plain `<hostname> login:` prompt, `kdos login:` on the live medium.
 2. Log in on `tty2` as the desktop's account: `kdos` on the live medium, password `kdos`, or the
    account the installer created.
 3. Return to the desktop with Alt+F1.
@@ -106,8 +109,8 @@ tail -n 40 /run/user/1000/kdos-comp.log.old
 ```
 
 The previous session's log is the one to read after a crash and a restart; `kdos-comp.log.old`
-exists only once the desktop has been started a second time since boot. Lines that begin with
-`crt:` are about the phosphor pass. Lines that name `comp.conf` are settings the compositor could
+exists only once the desktop has been started a second time since boot. Each line starts with a
+time and the source file; lines whose message starts with `crt:` are about the phosphor pass. Lines that name `comp.conf` are settings the compositor could
 not use, each with its line number, or changes that wait for the next login.
 
 ### Restarting the desktop
@@ -119,7 +122,8 @@ r=restart session, anything else=exit to tty:
 ```
 
 Type `r` and Enter to start the session again. Anything else leaves a shell prompt on `tty1`; type
-`kdos-desktop` there to start it, or `exit` to log out, after which autologin starts it again.
+`kdos-desktop` there to start it, or `exit` to log out, after which autologin starts it again (with
+autologin off, `tty1` shows a login prompt first).
 
 A third crash within 60 seconds stops the offer: `tty1` prints `kdos-comp: crashed 3 times in
 60s — not restarting again.` and is left at the shell.
@@ -200,7 +204,8 @@ From the shell on `tty1`:
 KDOS_COMP_DEBUG=1 kdos-desktop
 ```
 
-Every late frame is then logged as well, so the log grows quickly. Use it for one session.
+The compositor then logs at debug level, wlroots' own messages and each late frame included, so
+the log grows quickly. Use it for one session.
 
 ## Tips
 
@@ -232,7 +237,7 @@ means `/usr/bin/kdos-comp` is not installed: the root was built without the `50_
 
 ```bash
 service status seatd
-cat /run/kdos-svc.seatd.log
+sudo cat /run/kdos-svc.seatd.log
 id
 ```
 
@@ -266,18 +271,25 @@ terminal from the running desktop, or restart the desktop.
 
 **The desktop is slow and there is no phosphor glow in a virtual machine.**
 Without virgl, `kdos-desktop` sets `WLR_RENDERER=pixman` and the compositor renders in software,
-where the phosphor pass stays off. Give the virtual machine 3D acceleration.
+where the phosphor pass stays off. Give the virtual machine 3D acceleration (virgl). `grep 'crt:'`
+in the log says which renderer the compositor got; see
+[Checking that the desktop is accelerated](graphics-drivers.md#checking-that-the-desktop-is-accelerated).
 
 **The keyboard layout is US whatever `/etc/keymap` says.**
 `kdos-desktop` translates the console keymap's name into an XKB layout name. When no XKB layout of
-that name is installed, it prints `kdos-desktop: keymap '<name>' has no XKB layout '<layout>'` on
-`tty1` and leaves the default, US, for the whole session, the lock screen included. Set a layout
-XKB knows, as described in [Locale and console](locale-and-console.md), and log in again.
+that name is installed, it prints `kdos-desktop: keymap '<name>' has no XKB layout '<layout>' —
+leaving the default` on `tty1`, and the default, US, holds for the whole session, the lock screen
+included. Choose a console keymap whose name translates
+([Changing the keyboard layout](locale-and-console.md#changing-the-keyboard-layout-of-the-consoles-and-the-desktop)),
+or [give the desktop a layout of its own](locale-and-console.md#giving-the-desktop-a-layout-of-its-own),
+and log in again.
 
 **X11-only applications do not open.**
-`kdos doctor` reports the Xwayland socket in its Desktop section. A launcher started outside the
-compositor may have no `DISPLAY`; `kdos-appbox` finds the socket in `/tmp/.X11-unix` itself, a
-shell from SSH does not.
+`kdos doctor` reports the Xwayland socket in its Desktop section, as `Xwayland on :0` or a warning
+that there is none. A launcher started outside the compositor may have no `DISPLAY`; `kdos-appbox`
+finds the socket in `/tmp/.X11-unix` itself, but a program started from `tty2` or SSH needs
+`DISPLAY` set by hand. See
+[Running an X11 program from tty2 or SSH](xwayland-and-x11-apps.md#running-an-x11-program-from-tty2-or-ssh).
 
 **The screen is locked and the password is refused.**
 If `kdos doctor` warns `kdos-checkpass is not setuid root`, the lock screen refuses every

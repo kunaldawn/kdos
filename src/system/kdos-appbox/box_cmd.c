@@ -222,13 +222,8 @@ static int cmd_box_create(int argc, char **argv)
 		fprintf(stderr, "usage: kdos-box create <name> [key=value ...]\n");
 		return 2;
 	}
-	/*
-	 * As with `create`: this verb is a person at a prompt, and when the
-	 * container refuses to start, podman's own sentence is the diagnosis.
-	 * `kb_run` swallows a child's stderr by default, which is right for
-	 * the LAUNCH path and leaves `could not start <box>` as the only thing
-	 * anybody sees here.
-	 */
+	/* podman's stderr reaches the person from the first podman call on —
+	 * see PODMAN'S OWN ERROR below. */
 	kb_proc_verbose = 1;
 	box = argv[0];
 	if (!name_ok(box))
@@ -250,9 +245,9 @@ static int cmd_box_create(int argc, char **argv)
 	 * right for the launch path — a click must not spray container
 	 * plumbing at a desktop — and exactly wrong here: `kdos-box create` is
 	 * a person asking for a box once, and when podman refuses, its
-	 * sentence is the whole diagnosis. Four separate failures in this lane
-	 * presented as `exit 125` and nothing else because of this line.
-	 * `pack_box_ensure`, which is what a launch calls, is left quiet.
+	 * sentence is the whole diagnosis; without this a failed create shows
+	 * only `exit 125`. `pack_box_ensure`, which is what a launch calls, is
+	 * left quiet.
 	 */
 	kb_proc_verbose = 1;
 
@@ -439,13 +434,16 @@ static int cmd_box_apps(const char *box)
  * `<upstream-id>.<box>.desktop` and `Name=GIMP (arch)`. That is a deliberate
  * refinement of the rule that a launcher must be named with upstream's id: the
  * rule exists because a dock matches a toplevel to an entry by file id, and
- * the panel now has a better key than the filename — the box the window's
- * security context names. Nothing that works today changes, because the
- * default box's launchers are untouched.
+ * the panel has a better key than the filename — the box the window's
+ * security context names. The default box's launchers keep upstream's id, so
+ * a dock matching on file id still finds them.
  *
- * The shim gets `@<box>` for the same reason: the busybox-style basename
- * dispatch already accepts any name, and `@` is an ordinary filename
- * character, so `gimp@arch photo.png` costs no new machinery.
+ * The shim gets `@<box>` for the same reason, and is a symlink to
+ * kdos-appbox: the basename dispatch hands `gimp@arch` to run_as_shim, which
+ * looks the whole name up in the alien-apps table. Export writes no row
+ * there and nothing splits the name at `@`, so the shim answers
+ * `unknown alien app` while the desktop entry, which runs
+ * `kdos-box run <box> <app>`, launches.
  */
 static int cmd_box_export(const char *box, const char *app, int undo)
 {

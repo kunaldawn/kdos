@@ -41,7 +41,7 @@ emulation, [libpcap](#port-libpcap) for Ethernet pass-through to the host, and
 `build.sh` deletes every interface translation in `/usr/share/dosbox-x/languages` but
 `en_US.lng`; DOSBox-X falls back to its built-in English strings. These `.lng` files are not
 message catalogs, so the package-wide English-only rule (see
-[Size and language policy](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#size-and-language-policy))
+[Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy))
 does not reach them.
 
 Upstream installs its icon as SVG only, in `hicolor/scalable`. `build.sh` renders

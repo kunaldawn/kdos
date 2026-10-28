@@ -27,7 +27,7 @@
  * generators expand them into CSS, SVG and Xcursor. Nobody gets to keep a
  * second copy of the numbers.
  *
- * Field order is the one `kdos theme` has always used:
+ * Field order, the one `kdos theme` uses:
  *   primary  dim  secondary  urgent  deep  text  variant  pdark  backdrop
  *
  * `deep` is the surface a scheme is read against and `text` is what is read on
@@ -44,8 +44,8 @@
  * both is unusable whichever end its ground is; one that leaves a mix doing
  * both is usable whichever end its ground is.
  *
- * `paper` is the light one and it is what proves the distinction: at 30% its
- * plate separates at the hover floor and carries `text` at 7.51:1. WHAT
+ * `paper` is the light one and it is what proves the distinction: at 35% its
+ * plate separates at the hover floor and carries `text` at 7.08:1. WHAT
  * REFUSES A SCHEME IS ITS PLATES, never which end its ground sits at: the
  * ground is a proxy for the question, and a refusal written on it turns away
  * this palette and admits a dark one whose plates fail.
@@ -217,14 +217,14 @@ int kcol_parse(const char *s, uint32_t *out);
 void kcol_format(uint32_t rgb, char *buf);
 
 /* HLS, in python's `colorsys` field order and with its exact arithmetic —
- * the generators these replace were written against it, and the committed
- * artwork has to come out byte-identical. Do not "clean up" the operation
+ * the committed artwork was generated with that arithmetic and has to come
+ * out byte-identical. Do not "clean up" the operation
  * order in kcolor.c; it is load-bearing. */
 void kcol_to_hls(uint32_t rgb, double *h, double *l, double *s);
 uint32_t kcol_from_hls(double h, double l, double s);
 
-/* Linear blend, pct 0..100 of `b` over `a`. Integer maths, matching the
- * `mix_hex` the shell version used, so generated files do not shift by one. */
+/* Linear blend, pct 0..100 of `b` over `a`. Integer maths, which the
+ * committed generated files were written with, so they do not shift by one. */
 uint32_t kcol_mix(uint32_t a, uint32_t b, int pct);
 
 /*
@@ -247,15 +247,16 @@ uint32_t kcol_mixf(uint32_t a, uint32_t b, double t);
 double kcol_luma(uint32_t rgb);	/* 0..1, Rec.601 */
 
 /* The derived READABLE muted text colour: kcol_mix(deep, text, 56). `dim` is a
- * fill/border colour and sits at ~1.7:1 against `deep` — every generator that
- * used it for text (mc's disabled entries, btop's inactive rows, starship's
- * subtext) was writing labels below any legibility floor. Text roles take
- * this; fills, borders and selection backgrounds keep `dim`.
+ * fill/border colour and sits at ~1.7:1 against `deep`, so text written in it
+ * (mc's disabled entries, btop's inactive rows, starship's subtext) reads
+ * below any legibility floor. Text roles take this; fills, borders and
+ * selection backgrounds keep `dim`.
  *
  * The floor is WCAG AA for normal-size text, 4.5:1 against `deep`, and it is
  * named here so the next change to the mix can be measured rather than
- * guessed: 50% cleared it only in phosphor (4.73) and left amber at 4.22, bone
- * at 4.07 and ice at 4.48. Measured at 56%: 5.73 / 5.07 / 5.35 / 4.82. */
+ * guessed: 50% leaves amber at 4.22, bone at 4.07 and ice at 4.48. At 56%
+ * phosphor, amber, ice and bone measure 5.73 / 5.07 / 5.35 / 4.82 and every
+ * dark scheme clears the floor; `paper`, on its light ground, measures 3.99. */
 uint32_t kcol_muted(const KcolScheme *sc);
 
 /*
@@ -266,7 +267,7 @@ uint32_t kcol_muted(const KcolScheme *sc);
  * exist so a derived tone can be SOLVED against a legibility floor rather than
  * picked: see kch_tone(), where the focused plate walks toward the background
  * until the label on it clears 7:1. The KDOS palette's dark end is compressed
- * enough — deep, backdrop and variant are within 1.07:1 of each other — that
+ * enough — deep, backdrop and variant are within 1.19:1 of each other — that
  * judging any of this by eye gives the wrong answer.
  */
 uint32_t kcol_lum(uint32_t rgb);
@@ -277,8 +278,8 @@ int kcol_contrast(uint32_t a, uint32_t b);
  *
  * The user-level gtk.css (`kdos theme`) and the recoloured stylesheet
  * (kdos-theme's build_names) define the same named colours, and the user layer
- * wins — so the two disagreeing was three surfaces wearing a harsher warning
- * red than the theme's. Both now expand THIS struct, so they agree by
+ * wins — so any disagreement between them puts a different warning red on
+ * some surfaces than the theme's. Both expand THIS struct, so they agree by
  * construction. The mixes are the stylesheet's tuned ones.
  * ──────────────────────────────────────────────────────────────────────── */
 
@@ -305,8 +306,8 @@ void kcol_sem(const KcolScheme *sc, KcolSem *out);
  * Papirus colour-codes mimetypes, so flattening every hue onto one accent
  * turns a folder of files into a wall of identical lozenges. A PDF stays red
  * and an audio file stays amber while folders, devices and places go
- * phosphor. genicons and gengtk both classified hues independently before
- * this existed, and they did not agree.
+ * phosphor. The classification lives here once, so every recolourer that
+ * sorts hues into families sorts a given hue the same way.
  * ──────────────────────────────────────────────────────────────────────── */
 
 enum {

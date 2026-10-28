@@ -19,9 +19,8 @@
  * SIX SOURCES AND ONE MATCHER. A window, an application, a route, a settings
  * page, a file and a chord are six different things to want and one thing to
  * type, so they are searched together and ranked by the same `kb_fuzzy()` the
- * launcher and the Start menu use. Three private matchers is what this
- * replaced, and it meant `sm` found the system monitor in one surface and
- * nothing in another.
+ * launcher and the Start menu use. A private matcher per surface would let
+ * `sm` find the system monitor in one surface and nothing in another.
  *
  * THE ORDER OF THE HEADINGS IS FIXED AND IS NOT THE RANKING. Windows first,
  * because the cheapest thing to want is the window you already had; then
@@ -92,7 +91,7 @@ struct prow {
 	char page[32];			/* P_SETTING: what --page takes      */
 	char path[PATH_MAX];		/* P_FILE                            */
 	char chord[48];			/* P_CHORD: what to press            */
-	char code[3];			/* M.7's two letters, when it has one */
+	char code[3];			/* launch code: a favourite's code= */
 };
 
 static struct prow rows[PA_MAX_ROWS];
@@ -612,7 +611,7 @@ static int code_starts(char c)
 }
 
 /*
- * M.7's codes: BOTH letters with nothing else in the field. A code that fired
+ * LAUNCH CODES: BOTH letters with nothing else in the field. A code that fired
  * while somebody was in the middle of typing a search would open a program at
  * the second keystroke of a word.
  *

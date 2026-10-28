@@ -11,17 +11,16 @@
  *
  * That path touches no fcft and no wlroots — libkwl is stubbed out here, so
  * the front ends link against libktui alone and the layouts can be looked at
- * on a host that has neither. It does now need libwayland-client, because
+ * on a host that has neither. It does need libwayland-client, because
  * shell.c and menu.c reach for wlr-foreign-toplevel and ext-workspace on the
  * INTERACTIVE path and the generated glue is compiled in whether the dump
  * calls it or not.
  *
  * Two things here exist for testing/goldens/:
  *
- *   - Every front end is declared WEAK. New surfaces land one agent at a time
- *     and a harness that named a file which is not on the tree yet would fail
- *     to link; instead the name is simply not dispatchable and selftest.sh
- *     says so out loud.
+ *   - Every front end is declared WEAK. A harness that named a surface whose
+ *     file is not on the tree would fail to link; instead the name is simply
+ *     not dispatchable and selftest.sh says so out loud.
  *   - KDOS_DUMP_SIZE=WxH overrides the geometry a surface asked for, through a
  *     linker --wrap on ktui_offscreen_init. A surface picks its own dump size
  *     (cal 42 columns, pick 64x22) and a golden wants a common one; forcing it
@@ -42,9 +41,9 @@
  * because the same translation units carry the interactive path. */
 /*
  * The stub stands in for libkdisp, not for libkwl: the front ends reach a
- * display through the interface now, so that is what has to be absent here.
- * Returning -1 is what it always did — no compositor — and the front ends take
- * their non-Wayland path exactly as before.
+ * display through that interface, so that is what has to be absent here.
+ * Returning -1 means no compositor, and the front ends take their non-Wayland
+ * path.
  */
 /*
  * EXCEPT UNDER A KEY DRIVE. `$KDOS_DUMP_KEYS` is a script of input events and

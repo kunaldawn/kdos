@@ -54,6 +54,7 @@ login shell (tty1)
             ├─ audio: pipewire, wireplumber, pipewire-pulse
             ├─ (background) wait for the Wayland socket → portal stack
             ├─ (background) wait for the Wayland socket → kdos-ime, fcitx5
+            ├─ (background) wait for the Wayland socket → deja-dup-monitor
             ├─ (background) kdos_session_once → login sound, first-run card,
             │                 mpd, pending-apps offer, timers, session restore
             └─ kdos-comp          in the FOREGROUND, so its exit is caught
@@ -67,7 +68,7 @@ they stay at an ordinary priority, and a missed audio cycle is heard as a gap. N
 the path lowers them, and nothing would raise them instead: shadow is built without PAM, so no
 `limits.d` file is ever read, and the image ships no RTKit. A login on the serial console does
 not pass through `kdos-getty` and does not get these limits. A limit the kernel refuses is
-reported and the login continues.
+reported in `/run/kdos-getty.<tty>.log` and the login continues.
 
 **Resource limits for boxes depend on how the session started.** `kdos-getty` places an
 autologin session in `/sys/fs/cgroup/user.slice/user-<uid>/session`, the cgroup delegated to
@@ -167,8 +168,8 @@ included. Where that directory is absent the layout is exported unchecked.
 
 The compositor talks to `seatd` through libseat. `seatd` is a small daemon that hands the
 compositor access to the display and input devices, the role logind plays on other distributions;
-there is no logind or elogind on the host. How this compares with a systemd-based desktop is in
-[how KDOS differs](../01-philosophy/how-kdos-differs.md#init-and-service-supervision).
+there is no logind or elogind on the host. [No systemd](../01-philosophy/principles.md#no-systemd)
+lists the program that does each of systemd's jobs on KDOS, `seatd` among them.
 
 ### What `kdos-desktop-start` does
 
@@ -176,8 +177,12 @@ there is no logind or elogind on the host. How this compares with a systemd-base
    most specific first). The portal front end and the `mimeapps.list` search both key on the
    first name in that variable, so it has to be the session's own answer.
 2. Runs `kdos_session_open` and `kdos_session_audio`.
-3. Starts the portal stack and the input method in background subshells that first wait (up to
-   30 seconds) for a `wayland-*` socket to appear in `$XDG_RUNTIME_DIR`.
+3. Starts the portal stack, the input method and, when
+   `/usr/libexec/deja-dup/deja-dup-monitor` is installed, Déjà Dup's backup scheduler in
+   background subshells that first wait (up to 30 seconds) for a `wayland-*` socket to appear in
+   `$XDG_RUNTIME_DIR`. The scheduler is started here because upstream starts it from
+   `/etc/xdg/autostart`, which nothing on KDOS reads; without it Déjà Dup's "Back up
+   automatically" never runs a backup.
 4. Starts `kdos_session_once` in the background.
 5. Runs `kdos-comp` in the foreground, with its standard error written to
    `$XDG_RUNTIME_DIR/kdos-comp.log` (the previous session's log is kept as `kdos-comp.log.old`)
@@ -191,13 +196,19 @@ there is no logind or elogind on the host. How this compares with a systemd-base
    of step 3, still waiting for a socket, start the portals and helpers once.
 
 The compositor has start-up hooks of its own, inherited from labwc, the compositor `kdos-comp`
-is forked from: it reads an optional `environment` file and runs optional `autostart` and
-`shutdown` scripts from `~/.config/kdos-comp/` (falling back to `/etc/xdg/kdos-comp/`). When it
-drives the display hardware directly (DRM, rather than running nested in another display), it
-also pushes `WAYLAND_DISPLAY`, `XDG_CURRENT_DESKTOP`, `XDG_SESSION_TYPE`, the cursor variables
-and `DISPLAY` into the bus's activation environment. That push is the compositor's own and is
-separate from the one the start script makes (see [startup ordering](#startup-ordering)); both
-happen. The image ships none of those three files; see [kdos-comp](../04-programs/kdos-comp.md).
+is forked from: it reads an optional
+[`environment`](../06-reference/configuration.md#configkdos-compenvironment) file (and any
+`*.env` file in `environment.d/` beside it) and runs optional `autostart` and `shutdown` scripts
+from `~/.config/kdos-comp/` (falling back to `/etc/xdg/kdos-comp/`). When it drives the display
+hardware directly (DRM, rather than running nested in another display), and
+`DBUS_SESSION_BUS_ADDRESS` is set, it also pushes `WAYLAND_DISPLAY`, `XDG_CURRENT_DESKTOP`,
+`XDG_SESSION_TYPE`, `XCURSOR_THEME`, `XCURSOR_SIZE`, `LABWC_PID` and `LABWC_VER` into the bus's
+activation environment, and `DISPLAY` as well when its Xwayland server was set up.
+`LABWC_UPDATE_ACTIVATION_ENV` set to a boolean forces the push on or off whatever the display
+backend is. That push is the
+compositor's own and is separate from the one the start script makes (see
+[startup ordering](#startup-ordering)); both happen. The image ships none of those three files;
+see [kdos-comp](../04-programs/kdos-comp.md#how-labwcs-documentation-applies).
 
 When the compositor exits:
 
@@ -515,8 +526,8 @@ and access dialog in front of the KDOS ones. It is named for two interfaces only
 **Print** is the print dialog an application with `GTK_USE_PORTAL=1` routes through the portal,
 drawn by the GTK backend and sent to CUPS. **Email** is the "compose a mail with this attached"
 request; the backend hands it to the `x-scheme-handler/mailto` default in
-[`mimeapps.list`](../06-reference/configuration.md). Wallpaper, Inhibit, Notification and the
-rest have no backend. A boxed application can also print through its own print dialog and the
+[`mimeapps.list`](../06-reference/configuration.md#default-handlers). Wallpaper, Inhibit,
+Notification and the rest have no backend. A boxed application can also print through its own print dialog and the
 shared CUPS socket (see [the environment a box receives](#the-environment-a-box-receives)).
 
 `kdos-desktop-start` sets `XDG_CURRENT_DESKTOP` for a graphical session (see [what
@@ -574,6 +585,25 @@ for an Access question it runs `kdos-prompt` and reads its exit status. The choo
 ordinary programs that can be run by hand, scripted or replaced. The backend does no permission
 checking of its own; that is the front end's job.
 
+**FileChooser is three methods, each one run of [`kdos-pick`](../04-programs/kdos-shell.md#kdos-pick).**
+`OpenFile` and `SaveFile` (which adds `--save`) pass the request's options on as flags:
+
+| Request option | `kdos-pick` flag |
+|---|---|
+| the title (default "Open File" or "Save File") | `--title` |
+| `parent_window` | `--parent` (below) |
+| `directory` | `--directory` |
+| `multiple` | `--multiple`, for `OpenFile` only |
+| `current_name` | `--name` |
+| `current_folder` | `--dir` |
+| `filters` | `--filter` (below) |
+
+`SaveFiles`, "save this set of files into a folder", is a folder choice: `kdos-pick --directory`
+with the title (default "Save Files") and `current_folder`, and the application writes the files
+into the folder it is given. `current_filter` and `choices` are not read. A reply carries at most
+64 chosen URIs; `kdos-pick` exiting 0 with nothing printed is answered as a cancellation, not as
+an empty success.
+
 **AppChooser draws no dialog.** The front end passes the handlers it found for the file or URI,
 best first, and the previous choice when there is one; the backend answers with the previous
 choice if it is still in the list, and otherwise with the first. Choosing among handlers
@@ -597,8 +627,13 @@ hang until the dialog was dismissed.
 client name another's window; the backend strips the scheme and passes the handle to
 `kdos-pick --parent`, which asks the compositor to centre the dialog on its parent. An `x11:`
 handle, or anything with no scheme, is dropped. The chooser is always run from an argument
-vector, because filter patterns and file names arrive from other applications. Only the first
-filter a request carries is applied, because `kdos-pick` takes one pattern list.
+vector, because filter patterns and file names arrive from other applications.
+
+One filter reaches the chooser, and only its glob patterns. `kdos-pick` takes one pattern
+list, so the backend passes the first filter in the request that has at least one glob
+(`*.png`), with its label. MIME-type patterns are dropped, because matching them would need a
+shared-mime-info lookup the backend does not do; a filter made only of MIME types is skipped, and
+a request whose filters are all MIME types gets a chooser that shows every file.
 
 **Settings answers two namespaces, and a boxed application needs both.**
 
@@ -636,10 +671,12 @@ portal announces. The override reaches GTK once `glib-compile-schemas` has read 
 
 The accent is read from `${XDG_CACHE_HOME:-~/.cache}/kdos/theme`, the same one-word file the
 panel and the compositor read. A missing file or an unknown name means the first scheme in the
-table, `phosphor`, which is not the desktop's default accent, `bone`. The image ships no such
-file, so on the live system the backend tells boxed applications `KDOS-phosphor` and phosphor's
-colour while the panel and the compositor draw bone, until `kdos theme` writes the file. The
-installer runs `kdos theme` for the new user, so an installed system starts with the file in place.
+table, `phosphor`, which is not the desktop's default accent, `bone`. The image build runs
+`kdos theme bone` into `/etc/skel`, so every home made from it, the live system's included, starts
+with the file in place, and the installer runs `kdos theme` again for the new user with the accent
+chosen during installation. A home that has no file (one not made from `/etc/skel`) is told
+`KDOS-phosphor` and phosphor's colour while the panel and the compositor draw bone, until
+`kdos theme` writes the file.
 
 The colour table is compiled from libkcolor's scheme list, so for any accent the file names, the
 backend and the desktop agree on what that accent looks like. Because both `color-scheme` answers
@@ -654,7 +691,9 @@ why `kdos theme` writes each accent's stylesheet to its own `~/.themes/KDOS-<acc
 **The backend watches the accent and emits `SettingChanged`.** A toolkit reads the settings once
 and then waits for that signal; without it, an accent switched while a boxed editor is open would
 reach only its next launch. The watch is on the *directory*, because the file is replaced rather
-than edited. The signal is held back until `~/.themes/KDOS-<accent>/index.theme` exists:
+than edited, and it is set once, when the backend starts: a backend started before
+`${XDG_CACHE_HOME:-~/.cache}/kdos` existed watches nothing and sends no signal until it is started
+again. The signal is held back until `~/.themes/KDOS-<accent>/index.theme` exists:
 `kdos theme --preview` writes the setting without generating a theme, and an application told the
 name of a theme that is not there falls back to its own default.
 
@@ -666,12 +705,13 @@ application what it guards. The KDOS backend answers with `kdos-prompt`:
 
 - the title and subtitle the front end sends become the question;
 - its grant and deny labels (default "Grant Access" and "Deny Access") become the two buttons;
-- the dialog opens with Deny selected, which is also the answer when nobody answers.
+- the dialog opens with Deny selected, so an Enter pressed without reading refuses. It has no
+  timeout: the request waits until somebody answers.
 
 | `kdos-prompt` result | Portal response |
 |---|---|
 | Grant | 0 |
-| Deny, or Escape | 1 (refused) |
+| Deny, Escape or a right click | 1 (refused) |
 | The prompt could not run | 2 (error) |
 
 The front end's body text is not shown, because it points at a privacy page in a settings
@@ -695,7 +735,8 @@ system component, and the port's `no-agent.patch` treats an empty whitelist as l
 every client at once. Upstream would hold every client until an agent registered, which on this
 image would be never. So GeoClue answers whoever asks on the system bus. The front end asks Access
 before Location only for a sandbox it recognises, which means a boxed application's position is
-given without a question; see [known gaps](../06-reference/known-gaps.md#applications-and-boxes).
+given without a question; see
+[known gaps](../06-reference/known-gaps.md#a-boxed-application-is-given-your-location-without-being-asked).
 
 An icon or a sound an application hands a portal is decoded by
 `xdg-desktop-portal-validate-icon` or `xdg-desktop-portal-validate-sound`, each of which re-runs
@@ -719,6 +760,12 @@ filesink`, with `x264enc` (H.264, `tune=zerolatency speed-preset=veryfast`) when
 exists and `vp8enc` otherwise. It records video only. The `pipewiresrc` element exists because
 the PipeWire port is built with `-Dgstreamer=enabled`.
 
+The output file's directory is created when it is missing (`~/Videos` on a fresh home), one level
+only: a path whose parent's parent does not exist is reported, not created, because it is more
+likely a mistyped path than a wish for a new tree. The program exits 0 when the pipeline ends
+cleanly and 1 otherwise, printing `the pipeline failed`; a refused or unanswered portal call is
+named on standard error and also exits 1.
+
 **Choosing the screen is done by a person.** On this compositor the ScreenCast backend is
 `xdg-desktop-portal-wlr`, whose chooser is `fuzzel`, configured in
 `~/.config/xdg-desktop-portal-wlr/config` (seeded from `/etc/skel`) with `chooser_type=dmenu`: it
@@ -728,7 +775,7 @@ picked. The three portal calls therefore have different deadlines:
 | Call | Deadline | Why |
 |---|---|---|
 | `CreateSession` | 5 s | A local bus answering in milliseconds |
-| `SelectSources` | 120 s | Waiting for somebody to decide; seconds would cancel every recording before the question is answered |
+| `SelectSources` | 120 s | Waiting for somebody to decide; seconds would cancel every recording before the question is answered. At the deadline it prints `no screen was picked` |
 | `Start` | 30 s | The backend binds the capture interface, takes a first frame to learn the format and registers a PipeWire node before it answers |
 
 **Running it again stops it.** There is one screen and one portal session, so a second
@@ -905,10 +952,8 @@ The engine is `fcitx5`, with the Chinese (`fcitx5-chinese-addons`), Anthy (Japan
 `fcitx5-anthy`) and Hangul (Korean, `fcitx5-hangul`) add-ons. It is built Wayland-only and
 started by `kdos-desktop-start` as `fcitx5 -d`, not by an autostart entry, because KDOS runs no
 autostart agent (the port is built `ENABLE_XDGAUTOSTART=Off`). If fcitx5 is not installed the
-session starts without it and prints nothing. `kdos-desktop-start` starts Déjà Dup's backup
-scheduler, `deja-dup-monitor`, the same way in place of its autostart entry, when Déjà Dup is
-installed. The engines available for switching are set in
-`~/.config/fcitx5/profile`, which the image seeds from `/etc/skel`.
+session starts without it, and without `kdos-ime`, and prints nothing. The engines available
+for switching are set in `~/.config/fcitx5/profile`, which the image seeds from `/etc/skel`.
 
 The same text-input activation drives the on-screen keyboard: with `osk = auto`, the compositor
 shows `wvkbd` while an application's text input is active and hides it when none is (see
@@ -1026,25 +1071,33 @@ signal through its event loop and tears down in order:
 
 1. closes the command socket behind [`kdos hey`](../04-programs/kdos-command.md#kdos-hey), so no
    command acts on a session that is already over;
-2. cancels any [render-late](../04-programs/kdos-comp.md#render-late-scheduling) frame timer, then
+2. closes the bus connections of the
+   [keyboard monitor](../04-programs/kdos-comp.md#the-keyboard-monitor) and of the screensaver
+   interface that
+   applications use to hold off the idle dim (releasing every hold still open), and stops the
+   [accessibility](../04-programs/kdos-comp.md#accessibility) timers;
+3. cancels any [render-late](../04-programs/kdos-comp.md#render-late-scheduling) frame timer, then
    plays the CRT power-down animation (bounded by a deadline; skipped with `motion = no` in
    `comp.conf`);
-3. stops the wallpaper, the [frames socket](../04-programs/kdos-comp.md#the-frames-socket),
+4. stops the wallpaper, the [frames socket](../04-programs/kdos-comp.md#the-frames-socket),
    window-position memory, window groups, the
    [box chips](../04-programs/kdos-comp.md#box-identity), the lid handler, the peek view (which
    fades every window to show the desktop), the
    [fades](../04-programs/kdos-comp.md#motion) and the
    [idle policy](../04-programs/kdos-comp.md#idle-dim-lock-and-lid);
-4. removes the phosphor pass;
-5. runs the optional `shutdown` script and clears the variables it pushed into the bus's
+5. removes the phosphor pass;
+6. runs the optional `shutdown` script and clears the variables it pushed into the bus's
    activation environment;
-6. destroys the server.
+7. destroys the server.
 
 The panel and the notification daemon notice the closed compositor socket themselves, because the
 toolkit's event loop uses Wayland's documented prepare-read sequence and sees the socket close
 rather than spinning on it. `kdos-desktop-start` then stops `kdos-ime` and, for a clean exit,
-leaves a shell prompt on tty1 in the logged-in account. The session bus and PipeWire are left
-running for the next session of the same user on this boot, which reuses them.
+leaves a shell prompt on tty1 in the logged-in account. PipeWire, WirePlumber and
+`pipewire-pulse` keep running at that prompt, so a session started again within the same login
+reuses them, and they end with the login. The session bus outlives the login: `dbus-daemon
+--fork` starts a session of its own, so it runs until shutdown and the next login of the same
+user on this boot reuses it.
 
 ## See also
 

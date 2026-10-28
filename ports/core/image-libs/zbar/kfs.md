@@ -9,10 +9,12 @@ becomes text without a phone, and `zbarcam` reads one held up to the camera.
 
 - `autoreconf -f -i` — The source is GitHub's archive of the release tag, which carries
   `configure.ac` and no generated `configure`.
-- `XML_CATALOG_FILES=/etc/xml/catalog` — Names the XML catalogue libxml2 reads. The manual pages
-  are DocBook rendered by `xmlto`, and the stylesheet is named by its sourceforge URL; only
-  [docbook-xsl](#port-docbook-xsl)'s catalogue entry maps that to the installed copy, and without it
-  `xsltproc` tries to fetch it and the build stops inside `xmlto`.
+- `XML_CATALOG_FILES=/etc/xml/catalog` — Names the XML catalogue libxml2 reads, the same file
+  [libxml2](#port-libxml2) reads when the variable is unset, so the export names the default. The
+  manual pages are DocBook rendered by `xmlto`, which names the DocBook stylesheet by its
+  sourceforge URL; only [docbook-xsl](#port-docbook-xsl)'s catalogue entry maps that to the
+  installed copy, and without a catalogue `xsltproc` tries to fetch it and the build stops inside
+  `xmlto`.
 - `--without-gtk`, `--without-qt` — Build no GTK or Qt widgets. They draw zbar's X overlay into an
   X window id, which a Wayland-native GTK or Qt window does not have, and upstream marks its Qt 6
   widget broken.
@@ -22,10 +24,11 @@ becomes text without a phone, and `zbarcam` reads one held up to the camera.
   `zbarcam` runs only with `--nodisplay` and the camera is aimed blind; with it the picture is an
   X window under Xwayland.
 - `--with-xshm` — Use the MIT shared-memory extension of [libXext](#port-libXext), so the picture
-  is not copied through the X socket.
+  is not copied through the X socket. Upstream's default, `check`, uses it only if found; named, a
+  missing extension stops the configure.
 - `--without-xv` — No XVideo; the XImage path draws the picture, and XVideo under Xwayland depends
   on the GPU driver.
-- `--enable-video` — Camera support through Video4Linux 2.
+- `--enable-video` — Camera support through Video4Linux 2; upstream's default, named.
 - `--with-imagemagick`, `--without-graphicsmagick` — Read image files through
   [imagemagick](#port-imagemagick)'s MagickWand. With the GraphicsMagick fallback left at its
   default, `check`, a MagickWand that pkg-config does not find turns image scanning off with only a
@@ -33,8 +36,9 @@ becomes text without a phone, and `zbarcam` reads one held up to the camera.
 - `--with-jpeg` — JPEG image conversions in libzbar, through
   [libjpeg-turbo](#port-libjpeg-turbo); upstream's default, `check`, uses it only if found.
 - `--with-dbus` — Let `zbarcam` and `zbarimg` publish each decoded code on D-Bus, as
-  `org.linuxtv.Zbar`, with the bus policy file installed for it.
-- `--enable-doc` — Build the manual pages.
+  `org.linuxtv.Zbar`, with the bus policy file installed for it. Upstream's default, `check`, uses
+  libdbus only if found; named, a missing one stops the configure.
+- `--enable-doc` — Build the manual pages; upstream's default, named.
 - `XMLTO=xmlto` — Name `xmlto` instead of searching for it. `--enable-doc` only asks, and a
   missing `xmlto` turns the manual pages off with no message; named, the program is run at build
   time and its absence stops the build.

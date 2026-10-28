@@ -31,10 +31,12 @@ bundle.
 meson runs cargo with `CARGO_HOME` set inside the build tree, so cargo never reads a
 `config.toml` from a cargo home. It finds the bundle's `.cargo/config.toml` instead by its upward
 search from the build directory, which is why `build.sh` unpacks the bundle at the top of the
-source tree (see
+source tree. meson's `cargo build` passes neither `--offline` nor `--frozen`, so `build.sh` exports
+`CARGO_NET_OFFLINE=true` to keep cargo off the network (see
 [where the bundle goes](../../../../docs/kdos/05-developer/writing-ports.md#where-the-bundle-goes)).
 
 Ending another user's process and reading memory-module details through `dmidecode` run through
-`pkexec`, which [polkit](#port-polkit) answers; both are in `depends`. Upstream installs its icon
-as SVG only, so the recipe rasterises it to PNGs, and writes its own desktop entry named
-`Resources (GNOME)`, because `Resources` is the name of kdos-res's entry.
+`pkexec`, which [polkit](#port-polkit) answers; polkit and dmidecode are both in `depends`.
+Upstream installs its icon as SVG only, so the recipe rasterises it to PNGs at 48, 64 and 128
+pixels. meson installs upstream's `net.nokyan.Resources.desktop`, and the recipe writes over it
+with an entry named `Resources (GNOME)`, because `Resources` is the name of kdos-res's entry.

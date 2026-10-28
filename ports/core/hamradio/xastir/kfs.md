@@ -13,8 +13,9 @@ messages. It is a Motif program, so it runs under Xwayland
 - `--with-libproj` — Map projections through [proj](#port-proj).
 - `--with-shapelib` — Vector maps (Shapefiles and dbfawk) through [shapelib](#port-shapelib).
 - `--without-ax25` — Leave out the kernel AX.25 socket interface. The [linux](#port-linux)
-  source tree carries no AX.25 protocol (there is no `net/ax25/`), so there are no AX.25 sockets. A TNC is reached through the KISS serial and network interfaces, which is also
-  how direwolf connects.
+  source tree carries no AX.25 protocol (there is no `net/ax25/`), so there are no AX.25
+  sockets. A TNC is reached through the KISS serial and network interfaces, which is also how
+  direwolf connects.
 - `--with-gpsman` — Download from a GPS receiver through [gpsman](#port-gpsman).
 - `--without-festival` — No speech output: Festival is not a port.
 - `--with-geotiff` — GeoTIFF maps through [libgeotiff](#port-libgeotiff) and libtiff.

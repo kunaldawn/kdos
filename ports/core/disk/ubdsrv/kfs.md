@@ -5,7 +5,9 @@ implemented by a user-space program: the kernel creates `/dev/ublkbN` and hands 
 the server through io_uring, and the server answers it from a file, a network service or memory. The
 port installs `libublksrv`, for writing such servers, and the `ublk` tool with its targets: `ublk
 add -t loop` backs a device with a file, `-t nbd` with an NBD server, `-t nfs` with a file on an NFS
-share, and `-t null` with nothing, for testing. It needs the kernel's `ublk_drv` module, which the
+share, `-t sheepdog` with a Sheepdog volume, `-t nvme_vfio` with an NVMe drive driven from user space
+through VFIO (built because the kernel headers carry `linux/vfio.h`), and `-t null` with nothing,
+for testing. It needs the kernel's `ublk_drv` module, which the
 [linux](#port-linux) port builds (`CONFIG_BLK_DEV_UBLK=m`). The upstream repository is
 `ublk-org/ublksrv`; the port and its package are named `ubdsrv`.
 

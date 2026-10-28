@@ -6,8 +6,8 @@ them inexpensive boards with no firmware of their own. Such a board enumerates a
 from `/usr/share/sigrok-firmware` into the chip's RAM; without the file the device is listed by a
 scan and cannot be opened. The firmware is 8051 code, compiled here from source by the
 [sdcc](#port-sdcc) port, whose 8051 back end and device libraries are the whole toolchain it needs.
-See [What is built from
-source](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#what-is-built-from-source).
+See
+[What is built from source](../../../../docs/kdos/05-developer/writing-ports.md#what-is-built-from-source).
 
 ## Patches
 

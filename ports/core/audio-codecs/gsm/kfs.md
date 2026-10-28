@@ -19,7 +19,7 @@ header at `<gsm/gsm.h>`, and `gnuradio` links it for its vocoder blocks.
 
 ## Patches
 
-- `gsm-64bit.patch` — Declares `longword` and `ulongword` in `inc/private.h` as `int` and `unsigned int` instead of `long`. The coder's state assumes the 32-bit integer the comments name; with a 64-bit `long` the arithmetic saturates differently and the bitstream it writes is not GSM.
+- `gsm-64bit.patch` — Declares `longword` and `ulongword` in `inc/private.h` as `int` and `unsigned int` instead of `long`, so on a 64-bit target they are the 32-bit integers the header's comments name, not 64-bit ones.
 
 ## Notes
 

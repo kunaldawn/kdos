@@ -2,12 +2,12 @@
 
 FFmpeg records, converts and streams audio and video: the `ffmpeg` and `ffprobe` programs and the
 `libav*` libraries (codecs, formats, filters, devices, scaling and resampling) that mpv,
-GStreamer's `gst-libav`, PipeWire, Kodi, OBS Studio, Blender and most other media programs here are
+GStreamer's `gst-libav`, PipeWire, OBS Studio, Blender and most other media programs here are
 built on. It is built with the full codec set: H.264, HEVC, VP8/VP9 and AV1 encode and decode, JPEG
 XL, MP3, Opus, Vorbis, FLAC and LC3, with subtitle burn-in, HDR tone mapping, high-quality
 resampling, time-stretch, OCR, QR codes, the OpenCL filters, DVD and Blu-ray input, and hardware
-acceleration through VA-API and Vulkan. What a user gets from it is in [Media, colour and
-time](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/02-user-guide/administration.md#media-colour-and-time).
+acceleration through VA-API and Vulkan. What a user gets from it is in
+[Media, colour and time](../../../../docs/kdos/02-user-guide/administration.md#media-colour-and-time).
 
 The binary and libraries are GPL-3.0-or-later. `LICENSE.notice`, beside the recipe, is the record
 of that choice and of every component's licence, and the notice a redistributor should read.
@@ -16,14 +16,14 @@ of that choice and of every component's licence, and the notice a redistributor 
 
 - `-frandom-seed=ffmpeg` — With LTO, fixes the name GCC gives each object's `.gnu.lto_*` sections,
   which is otherwise random on every build. FFmpeg is one of the hot libraries the tree builds with
-  link-time optimisation, and every one of them carries the seed (see [Every
-  port](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#every-port)).
+  link-time optimisation, and every one of them carries the seed (see
+  [Every port](../../../../docs/kdos/05-developer/writing-ports.md#every-port)).
 - `--enable-lto=auto` — Link-time optimisation, through FFmpeg's own switch.
 - `--disable-debug` — Compiles without `-g`; no port ships DWARF.
 - `--disable-stripping` — Installs the programs and libraries as linked, without running `strip` on
   them: a package carries what the port's flags compiled, and kpkg strips only the symbol table of
-  the largest objects (see [What kpkg does around
-  build.sh](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#what-kpkg-does-around-buildsh)).
+  the largest objects (see
+  [What kpkg does around build.sh](../../../../docs/kdos/05-developer/writing-ports.md#what-kpkg-does-around-buildsh)).
 - `--enable-shared`, `--enable-pic`, `--enable-pthreads` — Shared `libav*` libraries, built as
   position-independent code, with POSIX threads.
 - `--enable-gpl`, `--enable-version3` — Admits the GPL components (x264, x265, rubberband, vid.stab
@@ -36,8 +36,8 @@ of that choice and of every component's licence, and the notice a redistributor 
   `--enable-libdav1d`, `--enable-libopus`, `--enable-libvorbis`, `--enable-libmp3lame`,
   `--enable-liblc3`, `--enable-libjxl` — The external codecs: H.264 and HEVC encoding, VP8/VP9, AV1
   encoding through SVT-AV1 and decoding through dav1d, Opus, Vorbis, MP3 encoding, LC3 and JPEG XL.
-  The set is one encoder per format: libaom would be a second AV1 encoder and libopenjpeg a second
-  JPEG 2000 encoder beside the native one, so neither is enabled.
+  libaom and libopenjpeg are not enabled: libaom would be a second AV1 encoder beside SVT-AV1, and
+  libopenjpeg a second JPEG 2000 encoder beside FFmpeg's native one.
 - `--enable-libfreetype`, `--enable-libfontconfig`, `--enable-libharfbuzz`, `--enable-libfribidi`,
   `--enable-libass` — Text: `drawtext` with font lookup, shaping and bidirectional layout, and
   subtitle burn-in through libass.
@@ -80,7 +80,7 @@ of that choice and of every component's licence, and the notice a redistributor 
 Every autodetected library is named on or off, so what ships does not depend on which ports happen
 to be installed first. FFmpeg's `--enable-libjack` is off unless named, and it stays off: pipewire
 links FFmpeg, so FFmpeg cannot have PipeWire's JACK, and its `jack` capture device is not built
-(see [JACK programs on the
-host](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/session.md#jack-programs-on-the-host)).
+(see
+[JACK programs on the host](../../../../docs/kdos/03-architecture/session.md#jack-programs-on-the-host)).
 
 Everything that links FFmpeg, among them pipewire and gst-libav, takes on its GPL with it.

@@ -75,10 +75,10 @@ The desktop's own fonts, the phosphor pass and the wallpaper are compositor keys
 copy starts as `/etc/skel/.config/kdos/comp.conf`, from `fs/etc/skel/.config/kdos/comp.conf`, with
 each key commented out at its default. The panel's font:
 
-<!-- kfs:include fs/etc/skel/.config/kdos/comp.conf lines=44-57 pin=436c1ca34021 -->
+<!-- kfs:include fs/etc/skel/.config/kdos/comp.conf lines=44-57 pin=7dfac4ae70f0 -->
 
-`chrome_font`, the font of the surfaces the compositor supervises other than the bar and the
-on-screen keyboard, which `panel_font` falls back to when it is empty:
+`chrome_font`, the font of the other surfaces the compositor supervises: the desktop icons, the
+slit, the notifications and the session's prompts. The on-screen keyboard takes neither key:
 
 <!-- kfs:include fs/etc/skel/.config/kdos/comp.conf lines=103-121 pin=83f1ef1455a0 -->
 
@@ -90,6 +90,13 @@ The wallpaper:
 
 <!-- kfs:include fs/etc/skel/.config/kdos/comp.conf lines=22-25 pin=79ff2287a7dd -->
 
+The compositor hands both fonts to its supervised surfaces on their command line when the session
+starts. A line with an empty value is skipped with a note in the log, so neither key can be emptied
+from this file: the bar keeps `Terminus:pixelsize=20` until `panel_font` names another face. The
+menus and popups the panel opens, and the windows the menu or a key binding starts, are given no
+font at all and draw in the built-in `Terminus:pixelsize=32` whatever either key says; see
+[Fonts](../../kdos/02-user-guide/theming.md#fonts).
+
 Which of these apply on a reload and which wait for the next login is in
 [Keys applied on reload](../../kdos/04-programs/kdos-comp.md#keys-applied-on-reload) and
 [Keys applied at the next login](../../kdos/04-programs/kdos-comp.md#keys-applied-at-the-next-login).
@@ -100,7 +107,7 @@ Title bars, the compositor's menus and the window switcher are drawn with pango,
 bitmap face, so they name the scalable `Terminus (TTF)`, in points. From
 `fs/etc/skel/.config/kdos-comp/rc.xml`:
 
-<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=91-95 pin=235701dafef5 -->
+<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=90-94 pin=235701dafef5 -->
 
 ### ~/.config/foot/foot.ini
 
@@ -126,7 +133,7 @@ Three root-owned files follow the accent as well: [`/etc/kdos/accent`]{.idx} (th
 The login shell exports what sends native GTK and Qt applications to the portal and to the KDOS
 palette, from `fs/etc/profile.d/10-wayland.sh`:
 
-<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=92-102 pin=6e24c8e47783 -->
+<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=93-103 pin=6e24c8e47783 -->
 
 A GTK application that does not use the portal reads GSettings, whose defaults KDOS sets in
 `/usr/share/glib-2.0/schemas/90_kdos.gschema.override`, from the same path under `fs/`:
@@ -231,8 +238,9 @@ system the boot menu changes on the next boot and the console palette at the nex
 2. Move the highlight; the picker's own window shows each face. Press Enter.
 3. Log out and back in. The picker writes the family into `chrome_font` and `panel_font` in
    `~/.config/kdos/comp.conf` and keeps the size each key already had. The panel and the other
-   supervised surfaces are given their font when the session starts; a menu or window opened after
-   the change reads the file itself and shows the new family at once.
+   supervised surfaces are given their font when the session starts, so they change at the next
+   login. The menus and popups, Settings and the picker itself read neither key and stay in the
+   built-in `Terminus:pixelsize=32`.
 
 To change a size, edit the value instead, for example `chrome_font = Terminus:pixelsize=64`. The
 sizes Terminus draws exactly are listed in the file's own comment, above. Making text larger on a
@@ -287,8 +295,9 @@ crt_scanlines = 60
 kdos theme style retro.kdos
 ```
 
-It prints `amber (KDOS-Amber) — style applied`, and the compositor keys it sets are appended to
-`~/.config/kdos/comp.conf`. Its keys are listed in
+It prints `amber (KDOS-Amber) — style applied`. Each compositor key it sets is written into
+`~/.config/kdos/comp.conf`: a key the file already sets is rewritten where it stands, and any
+other is added at the end. Its keys are listed in
 [Style files](../../kdos/02-user-guide/theming.md#style-files).
 
 ### Checking that the generated files match the accent
@@ -300,9 +309,9 @@ kdos theme --audit paper
 
 The first compares what is in your home with what the accent in force produces; the second shows
 what switching to `paper` would change. The audit works in a scratch directory and changes nothing
-in your home. Exit status 0 means everything matches and 1 that something differs. To repair a
-drifted file, run `kdos theme <accent>` again, or `kdos update theme` after a package upgrade has
-brought new artwork.
+in your home. Exit status 0 means everything matches, 1 that something differs, and 2 that the
+audit could not run. To repair a drifted file, run `kdos theme <accent>` again, or
+`kdos update theme` after a package upgrade has brought new artwork.
 
 ## Tips
 
@@ -326,7 +335,9 @@ or `kdos theme <accent>` for the accent you want.
 
 **A font change in `comp.conf` did nothing.**
 The panel and the supervised surfaces are given their font when the session starts: log out and
-back in. If it still did nothing, check that fontconfig resolves the name to the face you meant:
+back in. The menus and popups never take it; they draw in the built-in `Terminus:pixelsize=32`
+whatever `comp.conf` says. If the bar or the notifications still did not change, check that
+fontconfig resolves the name to the face you meant:
 
 ```bash
 fc-match 'Terminus:pixelsize=64'
@@ -356,8 +367,10 @@ and nothing outside them can be drawn there at all.
 **There is no phosphor glow.**
 The pass runs only on the GPU renderer. Look for the `crt:` lines in
 `$XDG_RUNTIME_DIR/kdos-comp.log`: they say whether it is off because this is not the GLES2
-renderer (a virtual machine without virgl, for instance), because `crt` was `0` at login, or because
-the shader failed. On the software renderer the session logs
+renderer (a virtual machine without virgl, for instance), because the GL renderer is Mesa's
+software `llvmpipe` (no hardware driver took the GPU; see
+[Graphics drivers](graphics-drivers.md#finding-which-driver-a-gpu-uses)), because `crt` was `0` at
+login, or because the shader failed. On the software renderer the session logs
 `crt: off — this is not the GLES2 renderer, and a fullscreen shader on a software renderer is a slideshow`
 at start-up and `crt: on in comp.conf, but this session could not have it` at every reload. The pass also stands aside while the [magnifier]{.idx} is on, and that writes no log
 line: press Super+= to turn the magnifier off. See

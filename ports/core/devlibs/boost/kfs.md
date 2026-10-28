@@ -14,8 +14,10 @@ all the headers and Boost's CMake package files. Its dependents run from KDE pro
   (to `b2`) — The compiled components to build: iostreams, system, filesystem, regex, date_time,
   test, program_options, thread, atomic, charconv, chrono, container, locale, random, coroutine,
   context, graph, process, log, nowide, serialization, stacktrace and python. They are the
-  components the consumers ask for with `find_package(Boost … REQUIRED COMPONENTS …)`. The list
-  goes to both programs: given to `bootstrap.sh` alone it is not what `b2` builds.
+  components the consumers ask for with `find_package(Boost … REQUIRED COMPONENTS …)`.
+  `bootstrap.sh` writes its list into `project-config.jam` as the default set, and any `--with-*`
+  on `b2`'s command line replaces that set whole, so the `b2` list is the one that decides what is
+  built.
 - `--with-icu=/usr` — Build Boost.Regex's and Boost.Locale's ICU support against
   [icu](#port-icu).
 - `--with-python=/usr/bin/python3` — Build `boost_python` and `boost_numpy` for the system
@@ -33,9 +35,10 @@ all the headers and Boost's CMake package files. Its dependents run from KDE pro
   only.
 
 ## Notes
-`bootstrap.sh` turns on Boost.Regex's ICU side and builds `boost_numpy` whenever it finds ICU and
-numpy, so both are in `depends`: a build root that happened to lack either would produce a
-different Boost without a word.
+`b2` probes at configure time and builds Boost.Regex's and Boost.Locale's ICU support only when
+it can link ICU, and `boost_numpy` only when the configured Python imports numpy; a failed probe
+skips the part without an error. Both are in `depends` for that reason: a build root that happened
+to lack either would produce a different Boost without a word.
 
 After the install `build.sh` checks that no file under `/usr/lib/cmake` names `/var/cache/kpkg`,
 kpkg's work area, so a staging path written into Boost's CMake configuration stops the build

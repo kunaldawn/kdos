@@ -33,10 +33,11 @@ Each filesystem's own tools come from its port:
 | HFS+, JFS, NILFS2 | [hfsprogs](#port-hfsprogs), [jfsutils](#port-jfsutils), [nilfs-utils](#port-nilfs-utils) | modules |
 
 The kernel column is read from `ports/core/boot/linux/kdos.config`, where each driver is `=y`
-(built in) or `=m` (a module). [fuse](#port-fuse) provides `fusermount3`, setuid root, for the
-FUSE filesystems: `ntfs-3g`, e2fsprogs' `fuse2fs`, [sshfs](#port-sshfs) and
-[gocryptfs](#port-gocryptfs). The four filesystems the installer offers for the root, ext4, btrfs,
-xfs and f2fs, are the ones the initramfs can mount; see
+(built in) or `=m` (a module). [fuse](#port-fuse) provides `fusermount3`, setuid root, which the
+FUSE filesystems mount through: e2fsprogs' `fuse2fs`, [sshfs](#port-sshfs) and
+[gocryptfs](#port-gocryptfs). `ntfs-3g` is built `--with-fuse=internal`, with its own copy of the
+FUSE library, so it does not use `fusermount3` and mounts as root. The four filesystems the
+installer offers for the root, ext4, btrfs, xfs and f2fs, are the ones the initramfs can mount; see
 [The root filesystem](../../kdos/02-user-guide/installation.md#the-root-filesystem).
 
 Nothing is started for a filesystem except at boot. `rcS` checks and mounts `/etc/fstab`;
@@ -59,7 +60,7 @@ line of the table names. Every key and line is described in
 **The installer's lines.** On an installed system the installer puts its own lines in front of the
 image's, keeping every shipped one, from `src/system/kdos-installer/install.c`:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=1622-1648 pin=722f1c369b15 -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=1625-1651 pin=722f1c369b15 -->
 
 So an installed `fstab` begins with the root by its filesystem UUID, the EFI system partition at
 `/boot/efi` with `umask=0077` and pass 2, and any [swap]{.idx} partition or swap file. The root's type,
@@ -136,12 +137,14 @@ of date, so ask it as root. See [Known gaps](#known-gaps).
 
 `mount` is not setuid on KDOS (util-linux is built `--disable-makeinstall-setuid`), so a `user` or
 `users` option does not let an ordinary account mount the line; see
-[setuid binaries](../../kdos/03-architecture/security-model.md#setuid-binaries). A removable disk an
+[setuid binaries](../../kdos/03-architecture/security-model.md#setuid-binaries). An NFS share is the
+exception, because nfs-utils' `mount.nfs` is setuid; see
+[Mounting an NFS export](file-sharing.md#mounting-an-nfs-export). A removable disk an
 ordinary account should mount belongs to [`kdos-mountd`]{.idx} instead; see
 [Storage and removable media](storage-and-removable-media.md).
 
 On the live medium the edit lands in the session's overlay and lasts only as long as the session,
-or as long as a persistence store holds it.
+or as long as a persistence store holds it; see [Live persistence](live-persistence.md).
 
 ### Checking a filesystem by hand
 
@@ -217,8 +220,8 @@ sudo mount -o remount /srv/data
   `-t btrfs` tries XFS and fails with `fsconfig() failed: Data consistency error.`
 - The installer mounts ext4 and xfs without `discard`; the daily `fstrim` covers them. btrfs and
   f2fs discard on their own.
-- `kdos why /etc/fstab` prints the reasons recorded against the file, among them why `/tmp` must
-  be mode 1777.
+- `kdos why /etc/fstab` prints the reason recorded against the file: why `/tmp` must be mounted
+  mode 1777.
 
 ## Troubleshooting
 

@@ -6,7 +6,7 @@ into HTML, LaTeX, XML, OpenDocument and manual pages. It installs the `docutils`
 In KDOS it is chiefly a manual-page generator: ports that write their pages in reStructuredText
 run `rst2man` at build time, among them [glib](#port-glib), [gtk4](#port-gtk4) and
 [mpv](#port-mpv), and the tree lists it with the other generators that are ports in
-[Manual pages](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#manual-pages). [python3-sphinx](#port-python3-sphinx) is built on it.
+[Manual pages](../../../../docs/kdos/05-developer/writing-ports.md#manual-pages). [python3-sphinx](#port-python3-sphinx) is built on it.
 docutils highlights the contents of a `code` directive with
 [python3-pygments](#port-python3-pygments), named in `depends`, when it can import it, and leaves
 them plain when it cannot.

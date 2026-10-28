@@ -8,11 +8,19 @@ counterpart of X11 forwarding. The port builds the Rust implementation; the olde
 
 ## Flags
 
+- `--buildtype=release` — Meson's `release` is optimisation level 3 with no debug information, and
+  waypipe's `meson.build` maps that onto the Cargo profile `meson-3-strip`, which it passes to
+  `cargo build`: opt-level 3, LTO, one codegen unit, debug information stripped.
 - `-Dwerror=false` — Override the `werror=true` that upstream's `meson.build` sets in its default
-  options, under which meson treats every compiler warning as an error.
+  options, under which meson treats every compiler warning as an error. It reaches only C that
+  meson compiles itself, which with `-Dbuild_c=false` is none; Cargo's build is a custom target
+  that meson's warning options do not touch.
 - `-Dbuild_rs=true`, `-Dbuild_c=false` — Build the Rust `waypipe` and not `waypipe-c`. Meson only
   drives `cargo` here: it works out which Cargo features to ask for from the options below and
   passes them with `--no-default-features --features`.
+- `-Dtests=false` — Only `waypipe-c`'s `meson.build` reads this option. The Rust build declares its
+  two tests, `cargo test` and a shortened `waypipe bench` run, regardless; they run only under
+  `meson test`, which the build does not call.
 - `-Dman-pages=enabled` — Generate `waypipe.1` with [scdoc](#port-scdoc), failing if it is
   missing.
 - `-Dwith_video=enabled` — The `--video` option, which sends the forwarded buffers as a video
@@ -36,7 +44,7 @@ sees `vendoring = rust`, and the build is offline (`CARGO_NET_OFFLINE=true`). Th
 Zstandard and GBM wrappers are crates inside the source tree whose bindings
 [bindgen](#port-bindgen) generates against the installed headers at build time, which is why
 `LIBCLANG_PATH` is set and [clang](#port-clang) is in `depends`; see
-[rust](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#rust).
+[rust](../../../../docs/kdos/05-developer/writing-ports.md#rust).
 
 The machine at the other end needs waypipe too; [openssh](#port-openssh) is in `depends` because
 `waypipe ssh` runs `ssh`.

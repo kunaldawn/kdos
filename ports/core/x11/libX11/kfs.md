@@ -4,7 +4,7 @@ libX11 (Xlib) is the core X Window System client library: it opens a connection 
 here over [libxcb](#port-libxcb), and provides the requests, events, keyboard mapping, input
 methods and compose tables an X client uses. The one X server on KDOS is Xwayland, which serves
 X clients beside the Wayland desktop, and libX11 is what those programs, and the X11 backends of Mesa, GTK, Qt and
-mpv beside their Wayland ones, link. See [No Xorg server, and one carve-out](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-xorg-server-and-one-carve-out).
+mpv beside their Wayland ones, link. See [No Xorg server, and one carve-out](../../../../docs/kdos/01-philosophy/principles.md#no-xorg-server-and-one-carve-out).
 
 ## Flags
 

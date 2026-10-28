@@ -6,10 +6,10 @@ under their own names.
 
 Two things in KDOS lean on it directly. [cmake](#port-cmake) links the shared library for
 `cmake -E tar` and its packaging, so libarchive and every library it depends on are installed early
-in `30_foundation`, ahead of cmake in the phase's first run, well before the `archiver` shelf's place
-in the list. And the file preview in [kdos-shell](#port-kdos-shell) decides whether a file is an
+in `30_foundation`, ahead of cmake in the order run at the head of the phase's list, well before
+the `archiver` shelf's section. And the file preview in [kdos-shell](#port-kdos-shell) decides whether a file is an
 archive by asking libarchive to open it, and lists its entries if it can (see
-[kdos-peek](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/kdos-shell.md#kdos-peek)).
+[kdos-peek](../../../../docs/kdos/04-programs/kdos-shell.md#kdos-peek)).
 Desktop programs such as [ark](#port-ark), [gvfs](#port-gvfs) and [mpv](#port-mpv) use it too.
 
 ## Flags
@@ -24,8 +24,9 @@ Desktop programs such as [ark](#port-ark), [gvfs](#port-gvfs) and [mpv](#port-mp
 - `--enable-xattr` — Read and restore extended attributes. configure looks for `setxattr()` in
   the C library first, and musl has it, so nothing from [attr](#port-attr) is linked.
 - `--enable-posix-regex-lib=libc` — Take the POSIX regular expressions of `bsdtar -s` (the
-  path-rewriting option) from musl's `regcomp`, and never look for a separate regex, PCRE or PCRE2
-  POSIX library.
+  path-rewriting option) from musl's `regcomp`, and never look for the PCRE or PCRE2 POSIX
+  libraries. configure falls back to a separate `libregex` only when the C library has no
+  `regcomp`, which musl has.
 - `--with-zlib`, `--with-bz2lib`, `--with-lzma`, `--with-zstd`, `--with-lz4` — gzip, bzip2, xz and
   lzma, zstd and lz4 filters, through [zlib](#port-zlib), [bzip2](#port-bzip2), [xz](#port-xz),
   [zstd](#port-zstd) and [lz4](#port-lz4).

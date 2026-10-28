@@ -35,13 +35,13 @@ the firmware boot entry labelled `KDOS` is written by the installer with
 The medium's menu is a heredoc in the ISO step, written into the ISO tree and never into the root
 filesystem:
 
-<!-- kfs:include script/phases/70_image/110_iso.sh lines=311-339 pin=315b5e610a4f -->
+<!-- kfs:include script/phases/70_image/110_iso.sh lines=312-340 pin=315b5e610a4f -->
 
 `$BOOT_THEME` is the output of `kdos-bootctl theme --print` for the [accent]{.idx} the image is built in;
 `$WALLPAPER` and `$FONT_LINES` name the backdrop and the converted Terminus face, when the build
 found them. The memory test entry is appended after it:
 
-<!-- kfs:include script/phases/70_image/110_iso.sh lines=353-367 pin=0c1a7fc58339 -->
+<!-- kfs:include script/phases/70_image/110_iso.sh lines=354-368 pin=0c1a7fc58339 -->
 
 The medium is ISO9660 and read-only, so this file cannot be edited on a written stick. A change
 for one boot is made in Limine's editor (see [Usage](#usage)); a lasting change is a change to
@@ -53,7 +53,7 @@ for one boot is made in Limine's editor (see [Usage](#usage)); a lasting change 
 between `kdos_slot=a` and `root=` become `bootstate=UUID=<esp>` and, on an encrypted install,
 `cryptdevice=UUID=<luks>:kdosroot`:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=2313-2345 pin=49d43fc22fb4 -->
+<!-- kfs:include src/system/kdos-installer/install.c lines=2319-2351 pin=49d43fc22fb4 -->
 
 The file is `/boot/efi/limine.conf`. The ESP is mounted with `umask=0077`, as the installer's
 `fstab` line says, so only root can read or change anything under `/boot/efi`.
@@ -71,12 +71,20 @@ are unaffected.
 the boot state, and writes the file only when the text differs. It builds every `/KDOS` command
 line from the **first** `/KDOS` entry's, less the words it sets per entry:
 
-<!-- kfs:include src/system/kdos-tools/bootctl.c lines=651-704 pin=5b3647ab713f -->
+<!-- kfs:include src/system/kdos-tools/bootctl.c lines=650-703 pin=5b3647ab713f -->
 
 Every other word carries over, so a word you add to the first entry's `cmdline` reaches every
 `/KDOS` entry the next time the menu is regenerated, and a word you add only to another entry is
 dropped. `timeout`, `wallpaper`, `term_font`, the memory test entry and every line that is not part
-of a `/KDOS` entry or a theme key are left as they are. The theme keys are listed in
+of a `/KDOS` entry or a theme key are left as they are.
+
+The theme keys are the ones `kdos-bootctl theme` owns: `interface_branding`,
+`interface_help_hidden`, `interface_help_colour`, `interface_help_colour_bright`, `backdrop`,
+`term_background`, `term_foreground`, `term_palette`, `term_palette_bright`, `term_margin`,
+`term_margin_gradient`, `wallpaper_style` and `term_font_scale`. A restamp also removes
+`interface_branding_colour`, `term_background_bright`, `term_foreground_bright` and the `_color`
+spellings of the colour keys, which the shipped block does not set. A hand edit of any of them
+lasts until the next accent change. How the restamp places them is in
 [Restamping an installed machine](../../kdos/03-architecture/boot-and-init.md#restamping-an-installed-machine).
 
 ### Module options
@@ -135,9 +143,9 @@ theme sets `interface_help_hidden: yes`.
 2. Add the word to the `cmdline:` line of the **first** `/KDOS` entry. Leave `kdos_slot=`,
    `bootstate=`, `root=` and `cryptdevice=` as they are.
 3. Save the file and run `sync`. The ESP is FAT and has no journal.
-4. Reboot. When the boot reaches the end of `rcS`, `kdos-bootctl mark-good` regenerates the other
-   `/KDOS` entries, and they carry the word as well. The regeneration puts the added word in
-   front of the words it sets per entry, so `… console=tty0 quiet loglevel=3 foo=1` comes back as
+4. Reboot. When the boot reaches the end of `rcS`, `kdos-bootctl mark-good` regenerates every
+   `/KDOS` entry from the first, and the others carry the word as well. The regeneration puts the
+   added word in front of the words it sets per entry, so `… console=tty0 quiet loglevel=3 foo=1` comes back as
    `… console=tty0 foo=1 quiet loglevel=3`.
 5. Check it: `cat /proc/cmdline`.
 
@@ -146,19 +154,21 @@ template and sets them per entry.
 
 ### Changing the countdown
 
-Edit `timeout:` in `/boot/efi/limine.conf` as root. `kdos-bootctl` never rewrites it. A value of
-`0` boots the default entry without drawing the menu at all, so the verbose, single-user and
-memory test entries cannot be reached; Limine's `CONFIG.md` describes the key.
+Edit `timeout:` in `/boot/efi/limine.conf` as root. `kdos-bootctl` never rewrites it. The value is
+in seconds. `no` draws the menu and waits with no countdown. A value of `0` boots the default
+entry without drawing the menu at all, so the verbose, single-user and memory test entries cannot
+be reached. Limine's own description of the key is in `/usr/share/doc/limine/CONFIG.md`.
 
 ### Changing the colours
 
 `kdos theme <accent>` repaints the menu along with the rest of the desktop: `kdos-powerd` runs
 `kdos-bootctl theme <accent>` for it, which rewrites only the theme keys of the menu and the
-console palette in `/etc/vtrgb`, and prints `text consoles are now <accent> at the next login prompt`
-and `boot menu is now <accent>`. Between two accents only the seven colour lines differ
+console palette in `/etc/vtrgb`. Between two accents only the seven colour lines differ
 (`interface_help_colour`, `interface_help_colour_bright`, `backdrop`, `term_background`,
-`term_foreground`, `term_palette`, `term_palette_bright`); run as root, the same command does the
-same without the session. To see the block an accent would write without changing anything:
+`term_foreground`, `term_palette`, `term_palette_bright`). Run as root,
+`sudo kdos-bootctl theme <accent>` does the same without the session, and prints
+`text consoles are now <accent> at the next login prompt` and `boot menu is now <accent>`.
+To see the block an accent would write without changing anything:
 
 ```bash
 kdos-bootctl theme --print amber
@@ -176,7 +186,7 @@ for what can be changed and what cannot.
 - On the live medium, the clean-session entry is the way past a persistence store that stops the
   desktop; see [Live persistence](live-persistence.md).
 - `emergency` has no menu entry. Add it in the editor for one boot; see
-  [Recovering an unbootable system](recovering-an-unbootable-system.md).
+  [Emergency mode](recovering-an-unbootable-system.md#emergency-mode).
 - The menu shows a memory test only on UEFI, because the payload is an EFI program and the entry
   carries `if_fw_type: UEFI`.
 - The initramfs reads no `init=` word: it always hands over to `/sbin/init` on the root.
@@ -186,7 +196,9 @@ for what can be changed and what cannot.
 **The firmware finds nothing to boot.** On UEFI, check that Secure Boot is off in the firmware
 setup: Limine's EFI loader is unsigned. Then, from a working system or the live medium, check that
 `EFI/BOOT/BOOTX64.EFI` exists on the ESP and that `efibootmgr` lists a `KDOS` entry, which the
-installer puts first in `BootOrder`, its line ending in `KDOS HD(1,GPT,…)/\EFI\BOOT\BOOTX64.EFI`.
+installer puts first in `BootOrder`, its line ending in `KDOS HD(<n>,GPT,…)/\EFI\BOOT\BOOTX64.EFI`,
+where `<n>` is the ESP's partition number (1 in the installer's erase layout) and the loader is
+`BOOTIA32.EFI` on 32-bit firmware.
 On BIOS, the boot code is written by `limine bios-install <disk> 2`, which puts Limine's stage into
 partition 2, the 1 MiB BIOS boot partition of the installer's layout, and the second stage,
 `limine-bios.sys`, is found by name at the root of the ESP, where the installer puts it; restoring
@@ -202,9 +214,10 @@ ceiling in [The margin ceiling](../../kdos/03-architecture/boot-and-init.md#the-
 `EFI/kdos/wallpaper.png` changes only the face or the backdrop, never the entries.
 
 **The menu shows only `Limine <version> (x86-64, UEFI)` in cyan and `[config file contains no
-valid entries]`.** `limine.conf` is missing or empty, which is what an ESP left unflushed by a
-power cut can show after `rcS`'s `fsck.fat -a` has repaired it. Write the entries back from the
-live medium; see
+valid entries]` or `[config file not found]`.** The first is a `limine.conf` that is empty or has
+no entries, which is what an ESP left unflushed by a power cut can show after the boot's
+`fsck -A -a` has repaired it; the second is a missing `limine.conf`. Write the entries back from
+the live medium; see
 [Putting the boot loader back](recovering-an-unbootable-system.md#putting-the-boot-loader-back).
 
 **The menu is gone: the machine boots straight into KDOS.** `timeout:` is `0`. Set it back as
@@ -214,8 +227,9 @@ root in `/boot/efi/limine.conf`.
 than the first `/KDOS` entry, or it is one of the words `kdos-bootctl` sets per entry, and the
 regeneration at the end of the last boot replaced it. Add it to the first `/KDOS` entry.
 
-**The menu shows `KDOS (slot b)`, or its comment speaks of an update.** An A/B trial is in
-progress, or slot B exists. See [A/B slots and rollback](ab-slots-and-rollback.md).
+**The menu shows a `KDOS (slot <x>)` entry, or its first entry's comment speaks of an update.**
+The other root slot has a root and a kernel, or an A/B trial is in progress. See
+[A/B slots and rollback](ab-slots-and-rollback.md).
 
 **`kdos-bootctl theme` reports no bootloader configuration and an unchanged boot menu.** It printed
 `no bootloader configuration at /boot/efi/limine.conf — boot menu unchanged` (and still exits 0,
@@ -237,11 +251,15 @@ medium and on a machine whose ESP is not mounted. Check `findmnt /boot/efi`.
   from the installer's side
 - [kdos-bootctl](../../kdos/04-programs/kdos-command.md#kdos-bootctl): every verb
 - [Theming](../../kdos/02-user-guide/theming.md#the-boot-menu-the-splash-and-the-text-consoles)
-- `ab-slots-and-rollback.md`: [A/B slots and rollback](ab-slots-and-rollback.md)
-- `initramfs-and-rescue.md`: [The initramfs and the rescue shell](initramfs-and-rescue.md)
-- `recovering-an-unbootable-system.md`: [Recovering an unbootable system](recovering-an-unbootable-system.md)
-- `modules-and-sysctl.md`: [Modules and sysctl](modules-and-sysctl.md)
-- `init-and-runlevels.md`: [Init and runlevels](init-and-runlevels.md)
+- [A/B slots and rollback](ab-slots-and-rollback.md): the boot state behind the slot entries,
+  trials and rolling back
+- [The initramfs and the rescue shell](initramfs-and-rescue.md): what reads the kernel command
+  line first, and the shell it opens when a boot cannot finish
+- [Recovering an unbootable system](recovering-an-unbootable-system.md): finding where a boot
+  stopped and repairing it, including a boot loader that is gone
+- [Modules and sysctl](modules-and-sysctl.md): module options and kernel parameters set from files
+  instead of the command line
+- [Init and runlevels](init-and-runlevels.md): `/etc/inittab`, single-user and emergency mode
 
 <!-- book-nav -->
 ---

@@ -61,12 +61,12 @@ a cgroup2 subtree that the user owns, and on other distributions systemd's user 
 one out. Without a delegated subtree, podman accepts the flag and silently does nothing. KDOS covers
 this in two ways:
 
-1. At boot, `/etc/init.d/15_userdirs.sh` delegates a cgroup2 subtree to every user with a uid of
-   1000 or above, by hand: it enables the `cpu`, `memory` and `pids` controllers at the root and
-   in `/sys/fs/cgroup/user.slice`, creates `user.slice/user-<uid>` owned by that user, and creates
-   a `session` leaf inside it that the login is moved into. The leaf is needed because a cgroup
-   that holds processes cannot enable controllers for its children, and podman creates its
-   container cgroups beside the caller's.
+1. At boot, `/etc/init.d/15_userdirs.sh` delegates a cgroup2 subtree, by hand, to every user
+   whose uid is 1000 or above and below 65534 (`nobody`): it enables the `cpu`, `memory` and
+   `pids` controllers at the root and in `/sys/fs/cgroup/user.slice`, creates
+   `user.slice/user-<uid>` owned by that user, and creates a `session` leaf inside it that the
+   login is moved into. The leaf is needed because a cgroup that holds processes cannot enable
+   controllers for its children, and podman creates its container cgroups beside the caller's.
 2. [`kdos-oomd`](../04-programs/daemons.md#kdos-oomd) watches memory pressure through
    `/proc/pressure/memory` and, when the machine stalls while `MemAvailable` is at most a tenth of
    `MemTotal` ([how it decides](../04-programs/daemons.md#how-it-decides)), kills the largest
@@ -96,8 +96,8 @@ carries them: the `x11` shelf holds the X client libraries (`libXext`, `libXi`, 
 `libXt`, `libXft` and the rest), the `toolkits` shelf holds `motif`, and the X11 backends of Mesa,
 GTK, Qt and mpv are built against them beside their Wayland ones. Xwayland itself depends on
 `xorgproto`, `xtrans`, `libXau`, `libXdmcp`, `libX11`, `libxkbfile`, `xkbcomp`, `libxshmfence`,
-`libXfont2`, `libxcvt` and `libepoxy`. All six `xcb-util` ports are built, and all six are
-named in the `41_system` phase's list, in its `x11` shelf file. What stays out is a second X server, a display manager and anything X on the login path.
+`libXfont2`, `libxcvt`, `libepoxy` and `xkeyboard-config`. All six `xcb-util` ports are built,
+and all six are named in the `41_system` phase's list, in its `x11` shelf file. What stays out is a second X server, a display manager and anything X on the login path.
 
 Two consequences follow for X clients.
 
@@ -136,14 +136,17 @@ keys that set them.
 
 Applications are different. A graphical application on the host is ported with the toolkit it is
 written in: GTK 3 or 4, libadwaita, WebKitGTK, Qt 5 or 6, QtWebEngine, KDE Frameworks, wxWidgets,
-FLTK or Tk. Each toolkit is built with both its Wayland and its X11 backend, and Wayland is the
-run-time default. `/etc/profile.d/10-wayland.sh` sets `QT_QPA_PLATFORM="wayland;xcb"`, so Qt falls
+FLTK or Tk. Each toolkit that has a Wayland backend is built with both it and its X11 backend,
+and Wayland is the run-time default; Tk has only an X11 backend, so a Tk application always runs
+through Xwayland. `/etc/profile.d/10-wayland.sh` sets `QT_QPA_PLATFORM="wayland;xcb"`, so Qt falls
 back to Xwayland only when its Wayland plugin cannot start, and leaves `GDK_BACKEND` unset, because
 GTK already tries Wayland first and a value there would override the `GDK_BACKEND=x11` that an
 X11-only application sets for itself. There is no Plasma or GNOME shell: a KDE or GNOME application
-is one more client of `kdos-comp`. It takes the KDOS palette through `~/.config/kdeglobals`, which
-`kdos theme` writes and the `kde` platform theme reads, through the GTK stylesheets, and through the
-Settings portal, and `GTK_USE_PORTAL=1` sends a GTK application's file chooser to the desktop's own.
+is one more client of `kdos-comp`. It takes the KDOS palette through files that
+[`kdos theme`](../04-programs/kdos-command.md#kdos-theme) writes (`~/.config/kdeglobals`, read by
+the `kde` platform theme in a Qt 6 application, and the `qt5ct` files a Qt 5 application reads),
+through the GTK stylesheets, and through the Settings portal, and `GTK_USE_PORTAL=1` sends a GTK
+application's file chooser to the desktop's own.
 
 The ported applications are recipes under `ports/core` like any other. Most are built in `44_apps`,
 the leaf applications over `43_toolkits`; one that something else depends on (VLC, Wireshark,
@@ -256,7 +259,7 @@ build time needs a *vendor bundle*: a reproducible tarball of those dependencies
 `vendoring =`, and 161 recipes in `ports/core` do: 75 Rust, 39 Go, 42 Python, 4 Haskell and 1
 Node. `python3-lsp-ruff` gets a Python bundle from its `pypackages` line alone, and four more
 (`pdfium`, `libreoffice`, `librepcb` and `surfer`) carry bundles no tool writes, assembled by hand,
-so 164 ports carry a vendor bundle in all. A build with network access would
+so 166 ports carry a vendor bundle in all. A build with network access would
 fetch these dependencies itself. See [Writing ports](../05-developer/writing-ports.md#vendoring)
 and [A bundle no tool writes](../05-developer/writing-ports.md#a-bundle-no-tool-writes).
 
@@ -266,7 +269,8 @@ A package built twice from the same tree is byte-identical. That is a property o
 rather than of some 2,000 recipes: `roll_package()` in `kpkg`, the package manager
 (`src/system/kdos-kpkg/build.c`), runs tar with `--sort=name`, `--format=gnu`, `--owner=0 --group=0
 --numeric-owner`, an `--mtime` taken from `SOURCE_DATE_EPOCH`, and `xz -9 -T0 --block-size=32MiB
---no-adjust` as a pinned compressor with `XZ_OPT` and `XZ_DEFAULTS` removed: xz's bytes follow its
+--no-adjust` as a pinned compressor with `XZ_OPT` and `XZ_DEFAULTS` removed (a package that
+`kpkg install` deletes straight after installing it gets `xz -0` instead): xz's bytes follow its
 preset and block size, not the number of threads, so the compressor uses every core and stays
 reproducible. The build also sets its umask to `022` before a recipe runs. The environment every build
 phase sources, `script/env/common.env`, pins `SOURCE_DATE_EPOCH` to `1735689600`, and with the
@@ -275,8 +279,9 @@ this in one place is why `kpkg` rolls the package archive itself instead of lett
 it.
 
 Reproducibility is what gives the other package mechanisms their meaning. A signed
-[binhost](../06-reference/glossary.md) (a directory of prebuilt packages with a signed index) is
-worth trusting only if its packages can be rebuilt and compared. A delta (a binary difference from
+[binhost](../03-architecture/packaging.md#the-binary-host) (a directory of prebuilt packages with
+a signed index) is worth trusting only if its packages can be rebuilt and compared. A
+[delta](../03-architecture/packaging.md#deltas) (a binary difference from
 one version of a package to the next) can be applied without any trust of its own, because the
 package it produces is checked against the hash the signed index already carries. And
 `kpkg verify --repro <port>` builds the same recipe twice and compares the two packages byte for
@@ -298,8 +303,8 @@ Each of these examples marks a place where two answers could otherwise diverge:
   its colour slots and the theme generators expand it into CSS, SVG and Xcursor, but no program
   keeps a second copy of the colour values.
 - **Deleting a file** is `libkbase`'s trash implementation (`kb_trash_*`), used by both the
-  `kdos trash` command and the desktop's Delete key, so a command and a keypress cannot mean
-  different things.
+  [`kdos trash`](../04-programs/kdos-command.md#kdos-trash) command and the desktop's Delete key,
+  so a command and a keypress cannot mean different things.
 - **Turning an `Exec=` line into an argument vector** is `kxdg_exec_split()` in `libkxdg`. Every
   launch path goes through it, in the panel, the terminal, `kdos-appbox` and the `kdos` command,
   including the path that writes those lines back out.
@@ -401,8 +406,9 @@ to answer a question that a flag would have answered instantly, and sometimes wr
 
 KDOS does not offer confinement it cannot deliver, and where a setting is advisory it says so.
 
-A box profile, printed by `kdos-box profile <box>`, reports what was enforced rather than what the
-file asked for, and names the podman flag or KDOS mechanism behind each line. What it cannot
+A [box profile](../04-programs/kdos-appbox.md#box-profiles), printed by `kdos-box profile <box>`,
+[reports](../04-programs/kdos-appbox.md#how-the-profile-reports-itself) what was enforced rather
+than what the file asked for, and names the podman flag or KDOS mechanism behind each line. What it cannot
 enforce it marks with `!`:
 
 - There is no podman flag that grants a box a speaker and denies it a camera. A box whose devices
@@ -414,7 +420,8 @@ enforce it marks with `!`:
   wherever its container runtime puts them.
 
 A box base that names a container registry is an online operation, and says so before it does
-anything, because it fetches unsigned content from a third-party registry. `kdos sandbox` follows
+anything, because it fetches unsigned content from a third-party registry.
+[`kdos sandbox`](../04-programs/kdos-command.md#kdos-sandbox) follows
 the same rule for Landlock, the kernel's unprivileged file and network sandbox: it offers no option
 that Landlock cannot enforce, and on a kernel too old for network rules its `--explain` says that
 `--no-network` cannot be applied. [The security
@@ -446,15 +453,16 @@ Both comments carry the same warning. Only the second is still true in five year
 second survives the surrounding code being rewritten.
 
 `testing/docscheck.sh` checks the mechanical half of this rule across the book. It reports dead
-relative links, common phrases that narrate the past, pages under `docs/kdos/` that lack a title or
-a `See also` section, and, when run over the whole book, pages that the table of contents does not
-reach and port counts the tree contradicts. It cannot recognise a paragraph that tells a story in its own words.
+relative links, common phrases that narrate the past, and pages in either book that lack a title or
+a `See also` section. Run over a whole book, it also reports pages that the table of contents does
+not reach and, for this book, any exact port count on the status page, the ports catalogue or
+the packaging chapter that the tree contradicts. It cannot recognise a paragraph that tells a story in its own words.
 
 ## Every change updates its documentation, in the same change
 
-A change in behaviour updates every page under `docs/kdos/`, every code comment and every shipped
-configuration file that describes that behaviour, before the change is complete, and not in a
-follow-up.
+A change in behaviour updates every page under `docs/kdos/` and `docs/kfs/`, every code comment
+and every shipped configuration file that describes that behaviour, before the change is complete,
+and not in a follow-up.
 
 The update replaces the old description. It does not append to it, annotate it, or record what the
 description was. The file is rewritten to describe what is true, and the difference lives in the

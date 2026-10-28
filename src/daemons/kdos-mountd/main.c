@@ -49,9 +49,12 @@
  * `exec = yes` in /etc/kdos/mountd.conf is how you say you meant it.
  *
  * THE MOUNTPOINT IS THE DAEMON'S: /media/<user>/<label or device>, created
- * 0700 owned by the caller, and removed on unmount. A label with a slash or a
- * `..` in it is not a label — it is somebody's idea of a joke — so the name is
- * sanitised to [A-Za-z0-9._-] and truncated.
+ * 0700 by root, and removed on unmount. What the caller sees is the mounted
+ * root: a native filesystem's is chown'd to the caller after the mount, and
+ * FAT, exFAT and NTFS are mounted with the caller's uid and gid and 0770
+ * directories. A label with a slash or a `..` in it is not a label — it is
+ * somebody's idea of a joke — so the name is sanitised to [A-Za-z0-9._-] and
+ * truncated.
  */
 
 #ifndef _GNU_SOURCE
@@ -121,8 +124,8 @@ struct kmdev {
 	/* 256, not 64: `/dev/sdb1` fits in a dozen bytes and the FIXTURE's dev
 	 * root is a scratch directory a hundred characters deep — a truncated
 	 * node opens nothing, probes nothing, and drops the device with no
-	 * error anywhere. Found by the fixture reporting `0 eligible` for a
-	 * stick that was plainly there. */
+	 * error anywhere: the fixture reports `0 eligible` for a stick that is
+	 * plainly there. */
 	char node[256];
 	char kname[32];		/* sdb1                                   */
 	/* The PARENT DISK this partition is on — `sdb` for `sdb1`, and its own
@@ -764,10 +767,9 @@ static void scan(void)
 /* ── the allowlist ─────────────────────────────────────────────────────
  *
  * EVERY TOKEN IS CHECKED BEFORE IT MEANS ANYTHING, and the token COUNT is
- * fixed per verb. The dispatch this replaces read an index with `atoi(buf + 6)`
- * and threw the rest of the line away, so `mount 0 anything at all` was a
- * well-formed mount — harmless while the daemon only called `mount(2)`, and
- * not harmless at all now that a verb can reach `mkfs`.
+ * fixed per verb. A dispatch that read an index with `atoi(buf + 6)` and threw
+ * the rest of the line away would take `mount 0 anything at all` for a
+ * well-formed mount, and a verb here can reach `mkfs`.
  * ────────────────────────────────────────────────────────────────────── */
 
 /* 1 to 3 digits and nothing else, and inside the list the daemon just built.
@@ -845,11 +847,14 @@ static bool km_chars(const char *s, const char *extra, size_t lo, size_t hi)
 }
 
 /*
- * A DNS NAME OR AN IP ADDRESS, and nothing else this image can resolve.
- * musl reads `/etc/hosts` and `/etc/resolv.conf`; `nsswitch.conf` is inert and
- * there is no winbind and no mDNS, so a workgroup name would reach the helper
- * and fail inside it with a message nobody can act on. An IPv6 literal is
- * refused with everything else: it cannot be spelled in a UNC, and the `ip=`
+ * A HOST NAME OR AN IPv4 ADDRESS, in the characters a name may hold. musl
+ * reads `/etc/hosts` and `/etc/resolv.conf` and nothing else, since
+ * `nsswitch.conf` is inert and there is no winbind, so the C library alone
+ * resolves neither a `.local` name nor a bare NetBIOS one. km_resolve() asks
+ * avahi for the first and nmblookup for the second before the helper runs,
+ * and refuses a name that gets no answer rather than leave the helper to fail
+ * on it with a message nobody can act on. An IPv6 literal is refused with
+ * everything else: it cannot be spelled in a UNC, and the `ip=`
  * option that would carry one is a second way to say where a share is.
  */
 static bool km_host(const char *s)
@@ -927,9 +932,13 @@ static int km_frame(int c, const char *buf, size_t linelen, size_t have,
 }
 
 /*
- * THE ONE PLACE THIS DAEMON SPAWNS A CHILD, and before J.1 there was none —
- * it mounted with `mount(2)` and unmounted with `umount2()`. That is the real
- * change here, larger than the three verbs.
+ * THE CHILD THAT ACTS ON A DISK OR A SHARE, with km_exec_env below as the
+ * same child given an environment. A plain mount is `mount(2)` and an unmount
+ * `umount2()`; a tool that changes a device or mounts a share is started
+ * here, so this is where a root process run on a client's request is
+ * constrained. Read-only probes (name resolution, browsing, smartctl) capture
+ * their output through `kb_run_capture` instead, under the same absolute-path
+ * rule.
  *
  * ABSOLUTE PATHS ONLY. `kb_run_feed` execs through `execvp`, and a root daemon
  * that resolved a program name through an inherited PATH would run whatever
@@ -1594,9 +1603,9 @@ static int do_cifs(const char *server, const char *share, const char *user,
 	 * THE OPTION STRING HOLDS EVERY FIELD AT ITS CEILING AND THEN SOME. A
 	 * username may be 104 bytes and an NT domain 255, and with `sec=krb5`,
 	 * a `cruid=`, an `ip=` and the ownership tail a legal corporate share
-	 * spells about five hundred and thirty — which at 512 was a silently
-	 * truncated option string, and a truncated `dir_mode=07` is a mount
-	 * with permissions nobody asked for.
+	 * spells about five hundred and thirty, so a 512-byte buffer would
+	 * truncate it silently, and a truncated `dir_mode=07` is a mount with
+	 * permissions nobody asked for.
 	 */
 	char parent[192], dir[352], unc[352], opts[640], ip[46] = "";
 	char err[512] = "";
@@ -2796,11 +2805,10 @@ static int serve(void)
 		 * TRUNCATED.
 		 *
 		 * Stopping the tokeniser at the array's size and dispatching
-		 * anyway is exactly the defect the allowlist was built to
-		 * kill — `mount 0 rm -rf /` parsed as `mount 0`, because the
-		 * tail was thrown away rather than objected to. It was dormant
-		 * only because no verb reached the array's size, and the next
-		 * verb added is what would have woken it.
+		 * anyway would run a different request from the one sent:
+		 * the tail would be thrown away rather than objected to, and
+		 * a verb whose count reaches the array's size would take a
+		 * longer line for itself.
 		 */
 		char *tok[KM_TOK] = {0};
 		int ntok = 0;

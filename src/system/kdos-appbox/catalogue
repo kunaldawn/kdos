@@ -38,10 +38,13 @@
 snapshot = auto
 
 #
-# `env <pack> NAME=VALUE` becomes an `env =` line in that pack's metadata, and
-# kdos-appbox exports the whole stack's worth when it enters a pack box. A pack
-# box is `podman --rootfs`, so there is no image whose labels could carry the
-# fact: it has to travel with the packages it describes.
+# `env <pack> NAME=VALUE` declares a variable for every application on that
+# row's stack. kdos-appbox's store_env() is the one reader: it collects the
+# whole chain's worth for a box built from the catalogue
+# (`base=image:kdos/<id>`), which has no vendor label to carry the fact. But
+# box_env() calls store_env() only for a launch with no pack id, which
+# run_pack never makes, and `kdos-appbox export` writes no `env =` line into
+# a pack's metadata: no launch exports these rows.
 #
 # QT_STYLE_OVERRIDE is only safe where a platform theme is present — Fusion
 # with none falls back to Qt's built-in LIGHT palette, which is worse than
@@ -228,13 +231,13 @@ app app.zathura      rt-gtk       zathura zathura-pdf-poppler zathura-djvu zathu
 app app.foliate      rt-gtk       foliate
 # THE DATA PACKS, and why they are rows of their own. `kind = data` is mounted
 # noexec and grafted rather than composed into a box root, so a 5 GB library
-# is carried once on the medium and installed only by somebody who asked —
-# KiCad's 3D models are the example, which the native kicad port does not
-# carry for exactly that reason. `needs <app> <data>` is the other half for a
-# boxed application: it lands in
-# the app's metadata, `kdos app show` says whether the data is here, and the
-# Start menu can mark an application as half-installed instead of shipping a
-# menu entry that opens onto an empty database.
+# is stored once and installed only by somebody who asked — KiCad's 3D models
+# are the example, which the native kicad port does not carry for exactly that
+# reason. `needs <app> <data>` is the other half for a boxed application:
+# installing the app from the store builds each data row it names first, so
+# the Start menu never offers a launcher onto an empty database. Nothing else
+# reads it: the export writes no `needs` line into a pack's metadata, and
+# `kdos app show` prints no data state.
 data data.kicad-packages3d base   kicad-packages3d
 data data.tesseract-langs  base   tesseract-ocr-eng tesseract-ocr-deu tesseract-ocr-fra tesseract-ocr-spa tesseract-ocr-hin tesseract-ocr-chi-sim tesseract-ocr-jpn
 # WHAT A DATA PACK GRAFTS, AND HOW THE PROGRAM FINDS IT. A data pack is never

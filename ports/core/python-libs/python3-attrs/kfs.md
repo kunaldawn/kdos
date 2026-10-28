@@ -11,6 +11,6 @@ attrs builds with hatchling, hatch-vcs and hatch-fancy-pypi-readme. The first tw
 is the one entry of the recipe's `pypackages`. `build.sh` installs it from the bundle into
 `$SRC_ROOT/backends` and puts that directory on `PYTHONPATH` for the build, so the plugin is
 used and nothing of it lands in the build root or the package; see
-[The three Python keys](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#the-three-python-keys). The other sdists in the bundle are the
+[The three Python keys](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys). The other sdists in the bundle are the
 plugin's own build requirements, which this build does not use, because both installs run with
 `--no-build-isolation`.

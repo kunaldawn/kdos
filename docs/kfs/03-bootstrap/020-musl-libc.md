@@ -32,9 +32,10 @@ musl's `configure` is its own short script, not autoconf, and takes its options 
   so this states it. On KDOS `/lib` is a link to `/usr/lib` (see [The file system](000-file-system.md#merged-usr)),
   and the dynamic linker is a link to `libc.so` itself.
 
-The `CFLAGS` of the environment, `-O2 -pipe`, reach musl's configure, and because they name an
-optimisation level, musl uses them as they are and compiles none of its components at `-O3`. See
-below for the port, which differs here.
+The `CFLAGS` of the environment, `-O2 -pipe -std=gnu99` from `script/env/host.env`, reach musl's
+configure, and because they name an optimisation level, musl uses them as they are and compiles
+none of its components at `-O3`. They come after musl's own flags on every compile line, so
+`-std=gnu99` replaces the `-std=c99` musl asks for. See below for the port, which differs here.
 
 `make DESTDIR=$SYSROOT install` puts the files under `build/fs` while the paths compiled into the
 library stay `/usr` and `/lib`.

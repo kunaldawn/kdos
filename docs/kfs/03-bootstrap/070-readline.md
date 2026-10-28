@@ -22,8 +22,9 @@ applied here.
 ### The meaning of the configure options
 
 `--host=$KDOS_TARGET`
-: Build for KDOS with the cross compiler. readline's configure is given no `--build` and works out
-  the build machine with its own `config.guess`.
+: Build for KDOS with the cross compiler. readline's configure is given no `--build`, works out
+  the build machine with its own `config.guess`, and concludes it is not cross-compiling (see
+  [Part III](intro.md#the-shape-of-a-step)).
 
 `--prefix=/usr`
 : The libraries go to `/usr/lib`, the headers to `/usr/include/readline`.
@@ -52,8 +53,9 @@ The step then removes the source and touches `build/mark/bootstrap/readline`.
 
 ## Built again later
 
-`30_foundation` installs the [readline](#port-readline) port, which adopts both libraries and the
-headers. The port build:
+`20_selfhost` installs the [readline](#port-readline) port as a dependency of gawk, and the package
+adopts both libraries and the headers. `30_foundation` names it again so a changed recipe is rebuilt
+there. The port build:
 
 - applies the upstream patch series in order before configuring;
 - reaches the same link to ncurses through configure instead of `make`, with `--with-curses`,

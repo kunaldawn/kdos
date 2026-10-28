@@ -22,7 +22,9 @@ samurai (`samu`), and the result, `build/muon`, installs itself.
   bundled `meson-docs` subproject, in the binary. Building it runs `python3`, and with `auto` the
   option turns on whenever `python3` is found: python3 is built later in the same run, so a muon
   rebuilt after it would differ. The manual pages, `muon(1)`, `meson.build(5)` and
-  `meson-reference(3)`, are built and installed either way.
+  `meson-reference(3)`, are built and installed either way; without the subproject,
+  `meson-reference(3)` lists each function's signature with only the descriptions muon's own
+  source carries.
 - `-Dmeson-tests=disabled` — Leave out the bundled `meson-tests` subproject, the Meson project's
   test cases that muon's own test suite runs. The recipe runs no tests.
 - `-Dwebsite=disabled` — Do not build muon's website. Off is upstream's default.

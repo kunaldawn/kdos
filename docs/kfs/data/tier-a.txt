@@ -255,6 +255,7 @@ kdos-doc
 kdos-gtk-theme
 kdos-icons
 kdos-installer
+kdos-kfs
 kdos-pack
 kdos-splash
 kdos-theme

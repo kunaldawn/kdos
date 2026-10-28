@@ -33,5 +33,7 @@ The C library and its programs are the whole package: every language binding is 
   is to detect it.
 - `--disable-html-matrix` — Do not generate the HTML feature matrix of the supported radios, which
   needs libgd.
-- `--disable-pytest` — Do not run the Python tests; by default `configure` looks for `pytest` and
-  uses it when found.
+- `--disable-pytest` — Changes nothing in this release: `configure.ac` handles the option by
+  setting it to `check` whatever value is given, so `configure` still looks for `pytest`. The
+  result is harmless here, because `pytest` only runs the Python binding's tests under
+  `make check`, the binding is off, and `build.sh` runs no `make check`.

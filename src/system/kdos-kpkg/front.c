@@ -10,7 +10,7 @@
  * `kpkg install -f` FORCES ONLY WHAT WAS NAMED. Dependencies pulled in behind
  * a forced package keep the ordinary skip-if-installed behaviour. That is not
  * a nicety: kdosbuild passes `-f` for exactly the ports a build plan selected,
- * and a blanket force would rebuild all ~350 packages on every run.
+ * and a blanket force would rebuild every package in the tree on every run.
  *
  * kpkgdepends drops anything already installed, which would make `-f` resolve
  * to nothing at all, so under `-f` resolution runs against an EMPTY database

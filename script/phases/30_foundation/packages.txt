@@ -22,7 +22,7 @@
 # FIRST, AND IN THIS ORDER. These are the build tools recipes reach for without
 # naming them in `depends`: a configure script calls pkg-config through
 # PKG_CHECK_MODULES, a build.sh runs autoreconf, meson or cmake, and libtool's
-# configure runs `file` to tell a shared library from a static one. muon is the
+# configure runs `file` on a test object to learn its ABI. muon is the
 # meson that builds pkgconf: it bootstraps with a C compiler alone, so it is
 # installed before any pkg-config exists. Listed ahead
 # of every shelf section, they are installed before anything else in the phase,

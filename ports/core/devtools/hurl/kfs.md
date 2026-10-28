@@ -12,7 +12,8 @@ uses the CA store the rest of the machine does, and evaluates XPath with
 - `LIBCLANG_PATH=/usr/lib` — Where the `clang-sys` crate looks for `libclang.so`. The `libxml`
   crate generates its binding to libxml2 with bindgen (its `runtime` feature, which loads libclang
   at build time), so [clang](#port-clang) is in `depends`.
-- `--bin hurl --bin hurlfmt` — Build the two programs by name; the workspace's third member, `hurl_core`, is a library they both link.
+- `--bin hurl --bin hurlfmt` — Build the two programs by name; the workspace's third member,
+  `hurl_core`, is a library they both link.
 
 ## Notes
 The manual pages are shipped rendered in the source, under `docs/manual`, and installed as they

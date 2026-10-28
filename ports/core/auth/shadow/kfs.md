@@ -8,7 +8,7 @@ On KDOS it is the only owner of these names. util-linux is built without its own
 util-linux's `agetty` handing over to shadow's `login`. `newuidmap` and `newgidmap` are what every
 boxed application depends on: the container engine runs them to write a rootless container's
 user-namespace map, and without their setuid bits no box starts
-([setuid binaries](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#setuid-binaries)).
+([setuid binaries](../../../../docs/kdos/03-architecture/security-model.md#setuid-binaries)).
 
 The build links no PAM: [pam](#port-pam) is a `41_system` port, and `login`, `su` and `passwd` here
 check `/etc/shadow` themselves.
@@ -16,7 +16,7 @@ check `/etc/shadow` themselves.
 ## Flags
 - `--disable-logind` — Build no logind integration. Left on, which is upstream's default, configure
   stops unless it finds `libsystemd`; KDOS has no systemd
-  ([No systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd)).
+  ([No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)).
 - `--disable-rpath` — Embed no run-time library search path in the installed programs.
 - `--enable-lastlog` — Record each login in `/var/log/lastlog` and install the `lastlog` program.
   Upstream's default is off; it needs `<lastlog.h>`, which musl provides.
@@ -36,21 +36,21 @@ check `/etc/shadow` themselves.
   or library stops configure instead of dropping the feature.
 - `--with-btrfs` — Let `useradd` create a home directory as a btrfs subvolume
   (`--btrfs-subvolume-home`, or `BTRFS_SUBVOLUME_HOME` in `login.defs`). The installer can put the
-  root on btrfs ([kinstall](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/04-programs/kinstall.md)).
+  root on btrfs ([kinstall](../../../../docs/kdos/04-programs/kinstall.md)).
 - `--without-audit`, `--without-selinux`, `--without-tcb` — No Linux audit records, no SELinux
   labels and no per-user `tcb` shadow files. None of the three libraries is in the tree.
 - `--with-group-name-max-length=32` — Refuse group names longer than 32 characters. It is
   upstream's default value, stated.
 - `shadow_cv_maildir=none`, `shadow_cv_mailfile=none` — Compile in no mail spool directory and
-  no mailbox file name. configure otherwise takes the first of `/var/mail`, `/var/spool/mail` and
-  two others that exists in the build root, and the first of `Mailbox`, `mail`, `.mail` and two
-  others that exists in the builder's home, and the tools fall back to them whenever `login.defs`
-  names neither, which with `no-mail-spool.patch` (see Notes) would bring back the mailbox the
-  image has no directory for, or make `login` print `No mail.`.
+  no mailbox file name. configure otherwise takes the first of `/var/mail`, `/var/spool/mail`,
+  `/usr/spool/mail` and `/usr/mail` that exists in the build root, and the first of `Mailbox`,
+  `mailbox`, `Mail`, `mail` and `.mail` that exists in the builder's home, and the tools fall back
+  to them whenever `login.defs` names neither, which with `no-mail-spool.patch` (see Notes) would
+  bring back the mailbox the image has no directory for, or make `login` print `No mail.`.
 - `CPPFLAGS=-I/usr/include/utmps`, `LIBS="-lutmps -lskarnet"` — Build `login` against
   [utmps](#port-utmps), so it writes the login records `who` and `last` read. musl's own `utmpx`
   functions are stubs; see
-  [Login records](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/boot-and-init.md#login-records).
+  [Login records](../../../../docs/kdos/03-architecture/boot-and-init.md#login-records).
 
 ## Notes
 `no-mail-spool.patch` comments out `MAIL_DIR` in `/etc/login.defs`, and `MAIL_FILE` stays
@@ -67,7 +67,7 @@ does.
 bit already, unless shadow is configured `--with-fcaps` to rely on file capabilities instead;
 repeating it means no configure change can leave the two without it. A file capability would not
 survive kpkg's package archive, which is written without extended attributes
-([setuid binaries](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/security-model.md#setuid-binaries)).
+([setuid binaries](../../../../docs/kdos/03-architecture/security-model.md#setuid-binaries)).
 `kdos doctor` checks the two bits, because losing them is silent until a box fails to start.
 
 The hash `passwd` and `chpasswd` write is set by `ENCRYPT_METHOD` in `/etc/login.defs`. The

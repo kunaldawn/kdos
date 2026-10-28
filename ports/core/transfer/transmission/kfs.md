@@ -14,13 +14,14 @@ daemon, `transmission-cli`, which downloads on its own, the `transmission-create
   `transmission-cli` (off by default upstream), the utilities (`transmission-create`, `-edit`,
   `-remote` and `-show`) and the Qt client.
   `-D USE_QT_VERSION=6` builds that client against Qt 6 rather than whichever Qt configure finds
-  first.
+  first. Upstream's defaults are on for the daemon and the utilities and `AUTO` for the Qt
+  client.
 - `-D ENABLE_GTK=OFF` — and `-D ENABLE_MAC=OFF`: no GTK client and no macOS client; the Qt client
   is the desktop one. Both are `AUTO` upstream, which would build the GTK client whenever its
   libraries are installed.
 - `-D REBUILD_WEB=OFF` — do not rebuild the web interface's generated assets, which runs npm and
-  needs network access; the release tarball carries them built under `web/public_html`, and
-  `-D INSTALL_WEB=ON` installs them.
+  needs network access; this is upstream's default. The release tarball carries the assets built
+  under `web/public_html`, and `-D INSTALL_WEB=ON` installs them.
 - `-D INSTALL_DOC=ON` — install the manual pages and documentation.
 - `-D ENABLE_NLS=ON` — native language support. `build.sh` then deletes every Qt translation
   catalogue but the English ones; kpkg's

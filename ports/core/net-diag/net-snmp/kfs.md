@@ -21,17 +21,19 @@ nut's SNMP driver, hplip and powerman link the library.
 - `--enable-blumenthal-aes` — Offer AES-192 and AES-256 privacy as well as AES-128, following the
   Blumenthal draft.
 - `--enable-ipv6` — Build the IPv6 transports.
-- `--with-nl` — Read interface and route tables from the kernel through libnl's netlink.
+- `--with-nl` — Build the netlink code that depends on libnl. Of the default MIB modules, IP-MIB's
+  `ipDefaultRouterTable` is read from the kernel's routing table this way; without libnl, `snmpd`
+  answers that table empty.
 - `--without-pcre` — Build without PCRE. `snmpd.conf`'s `proc` directive then takes no regular
   expression, and the interface and filesystem filters fall back to the C library's POSIX
-  `regex.h`. The configure script looks for PCRE1's `pcre.h`, which is not a port; [pcre2](#port-pcre2) installs `pcre2.h`, which
-  Net-SNMP does not use.
+  `regex.h`. The configure script looks for PCRE1's `pcre.h`, which is not a port;
+  [pcre2](#port-pcre2) installs `pcre2.h`, which Net-SNMP does not use.
 - `--without-elf` — Link no libelf. On Linux configure's ELF check does nothing anyway: Linux is
   among the hosts that do not use `nlist()`, the one thing it would link libelf for.
 - `--without-rpm` — With `--without-mysql`, `--without-libwrap` and `--without-systemd`, build no
   RPM package table in the host MIB, no MySQL trap storage, no TCP wrappers and no systemd
-  notification. None of those is a port, and KDOS has no systemd; see [No
-  systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd).
+  notification. None of those is a port, and KDOS has no systemd; see
+  [No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd).
 - `--without-perl-modules` — With `--disable-embedded-perl`, `--without-python-modules` and
   `--disable-scripts`, build no Perl or Python binding, no Perl interpreter inside `snmpd`, and none
   of the Perl scripts (`mib2c`, `snmpconf`, `tkmib` and others).
@@ -45,6 +47,6 @@ race each other under a parallel make.
 The recipe writes a service script, `/etc/init.d/71_snmpd.sh`. It skips the agent until
 `/etc/snmp/snmpd.conf` exists and is not empty, because the file is not shipped and an agent with no
 access lines answers nobody. Started, `snmpd` runs in the foreground (`-f`) under the supervisor and
-logs to syslog's daemon facility (`-Lsd`); see [rcS and the service
-scripts](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/03-architecture/boot-and-init.md#rcs-and-the-service-scripts).
+logs to syslog's daemon facility (`-Lsd`); see
+[rcS and the service scripts](../../../../docs/kdos/03-architecture/boot-and-init.md#rcs-and-the-service-scripts).
 `snmptrapd` has no script.

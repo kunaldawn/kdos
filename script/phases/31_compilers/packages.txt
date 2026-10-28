@@ -13,7 +13,8 @@
 # The ports whose dependency closure reaches one of the large compilers: LLVM
 # and clang with their runtimes and pinned 21 series, rust, go, ghc, zig and
 # nodejs, and what builds on them. They take most of the hours before 40_lang,
-# so 30_foundation is a restore point in front of them.
+# so in a run that writes snapshots (`--snapshot`) 30_foundation is a restore
+# point in front of them.
 #
 # This list names every port the phase installs and nothing it does not;
 # testing/phaseclosure.py fails when a dependency pulls a port in from outside

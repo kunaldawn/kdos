@@ -29,11 +29,13 @@ burning program, and Brasero picks among the plugins that are present. [K3b](#po
   builds the extension.
 - `--enable-introspection=no` — no GObject introspection data for `libbrasero-burn` and
   `libbrasero-media`, the typelibs that would let another language call them.
-- `--disable-caches` — do not run `update-mime-database`, `update-desktop-database` and
-  `gtk-update-icon-cache` from `make install`. Each of upstream's rules also skips itself in a
-  staged install, the icon cache when `DESTDIR` is set and the other two when the staging
-  directory has no `freedesktop.org.xml` or `defaults.list`; the switch makes that a setting of
-  the recipe rather than a test of what the staging directory holds. Upstream's default runs them.
+- `--disable-caches` — do not run `update-mime-database` and `update-desktop-database` from
+  `make install`. Upstream's rules for both also skip themselves when the staging directory has no
+  `freedesktop.org.xml` or `defaults.list`; the switch makes that a setting of the recipe rather
+  than a test of what the staging directory holds, and matters most for `update-desktop-database`,
+  which upstream runs on the live system's database, not the staged one. Upstream's default runs
+  them. The switch does not reach `gtk-update-icon-cache`, which upstream's icon rule skips on its
+  own whenever `DESTDIR` is set.
 
 ## Patches
 - `gcc14.patch` — upstream's commit for GCC 14, which treats `-Wincompatible-pointer-types` as an error. It casts the plugin list passed to `gst_install_plugins_async()` to the `const gchar *const *` the function takes, in `brasero-metadata.c` and `brasero-pk.c`, and in `brasero-drive-properties.c` drops the local variable that stored `g_value_get_object()` into a `BraseroBurnSession *`.

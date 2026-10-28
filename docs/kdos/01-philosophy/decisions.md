@@ -81,7 +81,7 @@ has only what its media carry, so these are compiled like every other port and s
 filesystem; [The ports catalogue](../06-reference/ports-catalogue.md) lists them by shelf. For
 everything else, the medium carries a catalogue, and podman builds what somebody asks for. A
 catalogue row is a parent chain of apt packages: installing a row builds a podman image per row in
-its chain, each `FROM` the one below, and creates a [box](../06-reference/glossary.md) (a rootless
+its chain, each `FROM` the one below, and creates a [box](../06-reference/glossary.md#box) (a rootless
 podman container one application runs in) over the top one. The catalogue file installs to
 `/usr/share/kdos/appstore/catalogue`, and it is what the store, kinstall (the installer) and `kdos
 app` all read, so adding an application to KDOS is one line in a text file. `kdos-store`, the
@@ -122,12 +122,12 @@ how a set is carried, not how software is distributed.
 
 ## One pack per application, not one image
 
-Each application is its own artefact over a small set of shared
-[runtimes](../06-reference/glossary.md) (layers holding a toolkit or a family of libraries that many
-applications sit on): a podman image per
-catalogue row when the store builds it, and a [pack](../06-reference/glossary.md) per row when a
-set is exported. Installing an application disturbs nothing else, and a shared runtime's layers are
-stored once however many applications sit on it.
+Each application is its own artefact: a podman image per catalogue row when the store builds it,
+built over a small set of shared [runtimes](../06-reference/glossary.md#runtime) (layers holding a toolkit
+or a family of libraries that many applications sit on), and one flattened
+[pack](../06-reference/glossary.md#pack) per chosen application when a set is exported. Installing
+an application disturbs nothing else, and in the store a shared runtime's image is stored once
+however many applications sit on it.
 
 The question was how the catalogue's 73 applications (the `app` rows in
 `src/system/kdos-appbox/catalogue`) reach a machine: as one container image, or as separate
@@ -139,13 +139,17 @@ is ever launched, and it turns adding one application into a rebuild of the whol
 The alternative also hits two limits that have nothing to do with size. Overlayfs cannot add a layer
 to a mounted overlay, so installing an application into a shared box would mean restarting a
 container other applications are running in. And a hundred lower directories do not fit in the 4096
-bytes `mount(2)` allows for its option string. Per application, a stack is two to four layers — the
-base, none, one or two runtimes, and the application — and the pages of a shared runtime are shared
-between boxes because each pack is mounted once.
+bytes `mount(2)` allows for its option string. Per application, a store-built stack is two to four
+images — the base, none, one or two runtimes, and the application, each `FROM` the one below — so a
+runtime's files are one copy on disk under every box built over it. An exported pack gives that
+sharing up: it holds its base and runtimes as well as the application and requires nothing, so it
+can be imported onto a machine that has none of them.
 
 The cost is one `conmon`, podman's container monitor, per running application rather than one for
 all of them, and only for applications that are open. See
-[Packs and boxes](../03-architecture/packs-and-boxes.md) for the stack as built.
+[Packs and boxes](../03-architecture/packs-and-boxes.md#where-a-pack-comes-from) for what an export
+holds and [Composition](../03-architecture/packs-and-boxes.md#composition) for how an imported box's
+root is assembled.
 
 ## Debian inside boxes, not Alpine
 
@@ -192,7 +196,7 @@ upstream code assumes glibc extensions and needs a build flag or a patch. And a 
 glibc does not emit can turn an upstream `-Werror` build fatal.
 
 The application catalogue is glibc, inside boxes built on the Debian base. That is the purpose of
-the [ring](../06-reference/glossary.md) boundary: the host and the boxes need not share a C library.
+the [ring](../06-reference/glossary.md#ring) boundary: the host and the boxes need not share a C library.
 
 ## GNU at every name, no multi-call userland
 
@@ -232,7 +236,8 @@ that stays `ksvc`'s job, so the choice of PID 1 changes nothing about how a daem
 The constraint it brings is that `telinit` is the only way to ask it for a runlevel. It ignores
 `SIGTERM`, and `SIGUSR2` closes its control FIFO for the rest of the boot, so a program that wants
 the machine off runs `telinit 0` and never signals PID 1. See
-[Boot and init](../03-architecture/boot-and-init.md#rcs-and-the-service-scripts).
+[Boot and init](../03-architecture/boot-and-init.md#shutdown) for how the machine is taken down, and
+[Login records](../03-architecture/boot-and-init.md#login-records) for the records `init` writes.
 
 ## No KDE, GNOME or any existing desktop on the host
 
@@ -275,14 +280,15 @@ https://github.com/kunaldawn/kdos/releases/download/sources-1/archiver--zstd-1.5
 ```
 
 The committed file `ports/sources.idx` records the release and the asset for each hash. The
-current recipes name 2,487 distinct files, 38.6 GiB in total: 39 that git carries, and 2,448 that
-belong in the archive, spread over 102 shelves and packed into four volumes of 583 to 646 assets
-each, under GitHub's 1,000 assets per release. Sixty of them exceed the 100 MiB a push to github.com refuses;
-they appear 74 times across the port directories, because a file such as the LLVM source tarball
-serves several ports. The largest, `texlive`'s texmf tree, is 4.96 GB, over GitHub's 2 GiB limit per
-asset, so any file larger than 1,900 MiB is stored as `<asset>.part01` onwards and joined by
-`ports/fetch`. `KDOS_SOURCES_REPO` names a different archive repository, and `KDOS_SOURCES_BASE` a
-different download base; setting `KDOS_SOURCES_BASE` empty makes `make fetch` skip the archive and
+current recipes name 2,572 distinct files, 39.3 GiB in total: 44 that git carries, and 2,528 that
+belong in the archive, spread over 102 shelves. The four volumes hold 596 to 695 assets each, a
+split file's parts counted, under GitHub's 1,000 assets per release. Sixty-one of the archived
+files exceed the 100 MiB a push to github.com refuses; they appear 76 times across the port
+directories, because a file such as the LLVM source tarball serves several ports. The largest,
+`texlive`'s texmf tree, is 4.96 GB, over GitHub's 2 GiB limit per asset, so any file larger than
+1,900 MiB is stored as `<asset>.part01` onwards and joined by `ports/fetch`; the texmf tree and the
+Chromium source tarball are stored that way. `KDOS_SOURCES_REPO` names a different archive
+repository, and `KDOS_SOURCES_BASE` a different download base; setting `KDOS_SOURCES_BASE` empty makes `make fetch` skip the archive and
 go from the local cache straight to upstream.
 
 The hash is the identity and the name is advisory. A recipe names contents, not a location, so a
@@ -348,12 +354,12 @@ whose recipes name a hash the archive cannot be shown to hold. See
 
 Git LFS would make a clone the whole input to a build, and it is not used because the sources do not
 fit in it. A free account has 10 GiB of LFS storage and 10 GiB of monthly bandwidth, shared across
-every repository the account owns. The current sources take 38.6 GiB, nearly four times that
+every repository the account owns. The current sources take 39.3 GiB, nearly four times that
 storage, on their own, before any older version the history names, and a single clone uses most of a
 month's bandwidth. Past the allowance LFS reads are blocked outright, not slowed, so a repository
 that depends on LFS stops checking out. Release assets carry no total-size or bandwidth limit and
-allow 2 GiB per asset, and the one larger file is stored in parts. Plain git objects are not possible at all, since sixty of the files exceed the
-push limit.
+allow 2 GiB per asset, and the files near or over that are stored in parts. Plain git objects are
+not possible at all, since sixty-one of the files exceed the push limit.
 
 ## `-march` measured per machine, not chosen for a population
 
@@ -384,7 +390,8 @@ machine", which is a question with a measurable answer.
 
 Every port from `20_selfhost` on builds with one set of flags, from `script/env/chroot.env`:
 `-O2 -pipe -fPIC -fno-semantic-interposition -fstack-clash-protection -D_FORTIFY_SOURCE=2`, with
-`-D_GLIBCXX_ASSERTIONS` for C++, linked with
+`-std=gnu11` for C, `-D_GLIBCXX_ASSERTIONS` for C++ and `-isystem /usr/include/fortify` for both
+(the fortified headers described below), linked with
 `-Wl,-O1,--sort-common,--as-needed,-z,now,-z,pack-relative-relocs`. Go builds with
 `-buildmode=pie`. The whole set, with the
 defaults for CMake, cargo and Go, is in
@@ -414,7 +421,7 @@ What is ruled out, and why:
   [`kdos march`'s](#-march-measured-per-machine-not-chosen-for-a-population) question, per machine.
 - **No `-Ofast` or `-ffast-math` from the tree**: they break IEEE and `errno` semantics that
   numerical, database and audio code depends on. Where upstream chose one for its own code, as
-  goxel, Hydrogen, Sauerbraten and Routino do, the recipe keeps upstream's choice after the
+  goxel, Hydrogen, Sauerbraten, Routino and SPLAT! do, the recipe keeps upstream's choice after the
   exported flags: that is the configuration upstream tests.
 - **No global `-DNDEBUG`**: some headers change a structure's layout under it, so a library and its
   consumer built with different settings would disagree. CMake's Release sets it for its own
@@ -468,7 +475,8 @@ The limit is stated with every run. The database is keyed by Alpine package name
 named differently needs a `secdb = <alpine-name>` line in its recipe, and a CVE fixed in a version
 Alpine never shipped is invisible. A package with no entry is reported unknown, never clean. The
 data ages, so `kdos cve` warns once it is more than 180 days old, and `ports/update --cve` is the
-separate online cross-check.
+separate online cross-check. See
+[Packaging](../03-architecture/packaging.md#vulnerability-tracking) for the database as built.
 
 ## The build shell lives beside the recipe
 
@@ -545,8 +553,8 @@ The shelves are chosen by rules applied in order, the first that matches decidin
 family stays together, a name-prefix family (`python3-*`, `qt6-*`, `libretro-*`, `font-*`) decides,
 KDE Frameworks go to `kf6`, data and plug-ins follow the program they exist for, an application is
 filed by what a person does with it and never by its toolkit or desktop project, and a library goes
-to its domain shelf when it has one. [Writing ports](../05-developer/writing-ports.md) gives them
-in full.
+to its domain shelf when it has one. [Writing ports](../05-developer/writing-ports.md#choosing-a-shelf)
+gives them in full.
 
 A single recipe key naming a category, read by the tools, was rejected for the hash reason above.
 Listing each shelf on `PORT_REPO` as a repository of its own was rejected because of its eight-entry
@@ -574,7 +582,7 @@ KDOS's own software lives in six areas under `src/`, each one kind of thing:
 |---|---|---|
 | `src/desktop` | Programs that draw the session or serve it over Wayland or D-Bus | 8 |
 | `src/daemons` | Root daemons whose client is the desktop account | 5 |
-| `src/system` | The package manager, the `kdos` command and its services, packs and boxes, and the installer | 5, and `kdos-kpkg`, built by script |
+| `src/system` | The package manager, the `kdos` command and its services, packs and boxes, the installer, and the two books as installed documentation | 7, and `kdos-kpkg`, built by script |
 | `src/art` | Themes, pictures and the programs that generate them | 6 |
 | `src/libs` | The 17 `libk*` libraries | none |
 | `src/devtools` | Programs that run on the build machine and are never installed: `kdosbuild` and `kdos-portup` | none |
@@ -620,14 +628,17 @@ say what a phase builds, so `--phases 43_toolkits` reads as what it does.
 **The userland is split by the dependency graph, not by subject.** Each phase's boundary is a
 property of every port's dependency closure: `31_compilers` holds the large compilers (LLVM and
 Clang with their runtimes, Rust, Go, GHC, Zig, Node.js and Ruby) and a handful of tools built
-with them, and every later phase builds on them; `42_graphics` the ports that reach the graphics
-stack but no toolkit; `43_toolkits` those that reach a toolkit and that something depends on; `44_apps` the
-leaf applications over them. Every port's dependencies sit in its own phase or an earlier one. The
+with them, and every later phase builds on them; `41_system` the ports that reach neither the
+graphics stack nor a toolkit; `42_graphics` those that reach the graphics stack but no toolkit;
+`43_toolkits` those that reach a toolkit; `44_apps` the applications nothing depends on, which reach
+a toolkit or, filed on an application shelf, the graphics stack. Every port's dependencies sit in
+its own phase or an earlier one; [Writing ports](../05-developer/writing-ports.md#which-phase-lists-a-port)
+gives the rule a new port is placed by. The
 split puts a restore point after `30_foundation`, about the first hour of native building, in front
 of the compilers that take most of the hours before `40_lang`, and another after each layer of the
 userland.
 
-`41_system`, 967 ports, is one phase because the graph does not support a finer cut. Any split
+`41_system`, 1,014 ports, is one phase because the graph does not support a finer cut. Any split
 of it by subject pushes a hundred or more ports past their subject's phase, because a system
 library filed on a hardware shelf sits under `openssh`, `gnutls` and `cups`; a split by dependency
 depth is valid but puts `zsh` beside `libpng`. Its `packages.d/` gives it its grouping instead.
@@ -642,8 +653,8 @@ it with both phases.
 **A large list is a directory of shelf files.** The five userland phases, `40_lang` to
 `44_apps`, each read `packages.d/*.txt` in byte order as one list: one `<shelf>.txt` per shelf the
 phase draws on, one `src-<area>.txt` for the ports it builds from an area under `src/`, and, where
-a phase has a run whose order a comment pins (`41_system`), an `00-order.txt` that sorts first and
-holds it. A phase with one short list keeps a single `packages.txt`: its pinned run first and,
+a phase needs a run whose order a comment pins, an `00-order.txt` that sorts first and holds it.
+`41_system` carries that file with its header and no run in it. A phase with one short list keeps a single `packages.txt`: its pinned run first and,
 where the list holds more, the rest grouped by shelf under comment banners. The lists of
 `20_selfhost` and `60_kernel` are a pinned run alone.
 
@@ -657,14 +668,16 @@ in a shared file instead, `CHROOT=1` would run every chroot phase on the host. `
 too, because `testing/phaseclosure.py` reads it from that text in the same way; a phase that sets none
 searches kpkg's default, `/ports/core`.
 
-The pre-push hook sits in `script/hooks/` and nowhere else, because every clone has
-`core.hooksPath` pointing at that directory, and a hook at any other path would silently not run on
-any of them.
+The pre-push hook sits in `script/hooks/` and nowhere else, because a clone is set up once with
+`git config core.hooksPath script/hooks`, and a hook at any other path would silently not run; see
+[The pre-push check](../05-developer/developing.md#the-pre-push-check).
 
-The cost is more phases and more snapshots. Every phase up to `50_desktop` saves a compressed
-layer of what it changed in the tree when it finishes, on top of the whole tree the first phase
-saved, so each restore point is paid for in disk; a phase
-opts out by leaving `KDOS_SNAPSHOT_PATHS` empty, as `60_kernel` and `70_image` do. A list that names every port it installs is also longer
+The cost is more phases and more snapshots. Snapshots are off by default; a build asked for them
+(`--snapshot`, or `S` in the start-up picker) saves, as each phase up to `50_desktop` finishes, a
+compressed layer of what that phase changed in the tree, on top of the whole tree the first phase
+saved, so each restore point is paid for in disk. A phase opts out by leaving
+`KDOS_SNAPSHOT_PATHS` empty, as `60_kernel` and `70_image` do. See
+[Snapshots](../05-developer/build-system.md#snapshots). A list that names every port it installs is also longer
 than one that names only what it wants, and a new dependency that crosses a phase boundary fails
 preflight until a list moves. Some real edges in the graph become visible this way: `podman`,
 `distrobox`, `qemu`, `libvirt` and `sane-backends` build in `43_toolkits`, because `gpgme` reaches
@@ -673,7 +686,7 @@ Wayland through `libxkbcommon`. See [The build system](../05-developer/build-sys
 
 ## Signing the index, not every package
 
-A [binhost](../06-reference/glossary.md) (a directory of prebuilt host packages with a signed
+A [binhost](../06-reference/glossary.md#binhost) (a directory of prebuilt host packages with a signed
 index) is protected by one Ed25519 signature over its index, `PACKAGES.sig` beside `PACKAGES`.
 The index carries every package's SHA-256, so one signature covers all of them transitively. A
 per-package `<file>.sig` sidecar exists for the separate case of a package travelling on a USB
@@ -687,7 +700,7 @@ verifies against a key in the local keyring. During a key rollover both keys sig
 trusting either keeps working. Adding that to a format that holds only one signature would be a
 format change every client has to understand. The key id inside a signature is a label, not a
 selector: every line is tried against every key in the local keyring and against nothing outside
-it, so the id can never supply a key. See [Packaging](../03-architecture/packaging.md).
+it, so the id can never supply a key. See [Packaging](../03-architecture/packaging.md#signing).
 
 ## Updates build a signed tree from source
 
@@ -731,10 +744,12 @@ synchronized output (DECSET 2026), so a terminal that supports it, `kdos-term` i
 whole frames rather than halves of two.
 
 The rest change what the demo shows and how it starts. It starts by itself, with `-nosound` and
-`-mixer` as flags in place of upstream's two start-up questions; the flash words, the closing text
-and two logo beats carry KDOS's mark; and the closing text turns its own pages in time with the
-last module. Every contributor line and every Special Thanks in the credits is upstream's,
-unchanged.
+`-mixer` as flags in place of upstream's two start-up questions; the flash words and the closing
+text carry KDOS's mark, and the mascot fills two beats (the flash word upstream left as an empty
+strobe, and a logo beat before the closing text scrolls); and the closing text turns its own pages
+in time with the last module. Every upstream contributor line and every Special Thanks in the
+credits is kept unchanged; the credits add one KDOS entry, for the musl fix and the threaded mixer,
+and point to `KDOS-FORK` beside `COPYING` for what the fork changed.
 
 A demo written from scratch was the alternative. `bb` is a set of scenes paced against the three
 tracker modules it ships with, and reaching that from nothing would be a project of its own, where
@@ -765,7 +780,7 @@ libtsm borrows an LGPL hash table from CCAN, and the fork replaces it with one w
 because `libkvt` is MIT and a library that put relinking obligations on every binary linking it
 could not be carried.
 
-The terminal's colours reduce onto the palette's [slots](../06-reference/glossary.md) (named colour
+The terminal's colours reduce onto the palette's [slots](../06-reference/glossary.md#slot) (named colour
 roles) by the same rule as every other surface, so `kdos theme` recolours a terminal too; the rule
 is described with the library in [The C libraries](../05-developer/c-libraries.md#libkvt).
 
@@ -782,9 +797,9 @@ The width is not a free parameter. Laid out inside a classic 80-column by 24-row
 64-column dialog leaves eight cells of ground either side of it and two rows below it for the
 taskbar. A sidebar wide enough to read a place name is about sixteen more columns, and a chooser
 needing 80 columns would be a chooser with no frame, no ground and no room for the taskbar at that
-size. The chooser's [goldens](../06-reference/glossary.md) (committed reference frames of a
-surface, compared byte for byte by the tests) are also taken at 56 by 24, where the dialog shrinks
-to the screen.
+size. The chooser's [goldens](../06-reference/glossary.md#golden) (committed reference frames of a
+surface, compared byte for byte by the tests) are taken at 80 by 24 and 132 by 43, and also at 56
+by 24, where the dialog shrinks to the screen.
 
 A third column is what a sidebar would cost. When the selected row is an image, the chooser
 already carves a preview pane from the right-hand third of the list, so a sidebar would take its
@@ -907,8 +922,8 @@ Once installed, nothing may depend on a download an offline machine cannot make.
 ### A library edit rebuilds every in-tree port
 
 Editing a library rebuilds every port of KDOS's own software that builds from the tree, not only its
-consumers. A port under `src/` with no `source =` line builds from the tree, and seventeen of the 24
-ports there compile `libk*` libraries into themselves, each `build.sh` naming the ones it uses as a
+consumers. A port under `src/` with no `source =` line builds from the tree, as all 26 there do,
+and seventeen of them compile `libk*` libraries into themselves, each `build.sh` naming the ones it uses as a
 glob under `$LIBS`. Working out which ports an edit reaches would need a shell parser inside the
 package manager, so `kp_hash.c` puts the whole of `src/libs` into the recipe hash of every such port
 instead. The test is the recipe and where it sits: the hash walks `src/libs` for every port with no
@@ -925,8 +940,8 @@ The initramfs carries util-linux's `switch_root`, which moves the new root onto 
 mount namespace before it `chroot()`s. A `switch_root` that only `chroot()`s leaves every process
 on the booted system chrooted. The kernel refuses a chrooted caller a new user namespace, so every
 rootless container would be refused, and the machine boots normally either way. The initramfs step
-refuses to build an initramfs whose `switch_root`, `mount`, `umount`, `losetup`, `dmesg` or `blkid`
-does not name util-linux in its `--version`. See
+refuses to build an initramfs whose `switch_root`, `mount`, `umount`, `losetup`, `dmesg`, `setsid`
+or `blkid` does not name util-linux in its `--version`. See
 [Boot and init](../03-architecture/boot-and-init.md#switch_root).
 
 ## See also

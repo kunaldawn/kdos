@@ -1,7 +1,7 @@
 ## About
 [LLVM]{.idx}: the code generator libraries and their tools (`llc`, `opt`, `lli`, `llvm-ar`,
-`llvm-objdump`, `llvm-config` and the rest) of the tree's current LLVM series. It is the first
-port `31_compilers` builds, and much of the rest of the phase is built on it:
+`llvm-objdump`, `llvm-config` and the rest) of the tree's current LLVM series. Much of
+`31_compilers` is built on it:
 [clang](#port-clang), [lld](#port-lld), [compiler-rt](#port-compiler-rt), [openmp](#port-openmp)
 and [libunwind](#port-libunwind) configure against its installed CMake package, and
 [rust](#port-rust) links it instead of the LLVM in its own source. Later phases use it for
@@ -12,7 +12,7 @@ and [libunwind](#port-libunwind) configure against its installed CMake package, 
 The port carries upstream's whole `llvm-project` source archive and configures its `llvm`
 directory alone; each other LLVM port carries the same archive and configures its own directory
 (see
-[A second version beside the first](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#a-second-version-beside-the-first)).
+[A second version beside the first](../../../../docs/kdos/05-developer/writing-ports.md#a-second-version-beside-the-first)).
 It is built as one shared library per component, `libLLVMCore.so`, `libLLVMX86CodeGen.so` and so
 on, and there is no `libLLVM.so`.
 
@@ -25,27 +25,27 @@ on, and there is no `libLLVM.so`.
   against glibc's loader; every C++ compile through clang or bindgen then fails on
   `'cstddef' file not found`. clang and libclang compile the default in from LLVM's
   `llvm-config.h`, so a change here needs [clang](#port-clang) rebuilt too; see
-  [An LLVM that guessed its triple](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/build-troubleshooting.md#an-llvm-that-guessed-its-triple).
+  [An LLVM that guessed its triple](../../../../docs/kdos/05-developer/build-troubleshooting.md#an-llvm-that-guessed-its-triple).
 - `CMAKE_C_FLAGS_RELEASE` — Replaces CMake's Release flags, `-O3 -DNDEBUG`, with the tree's
   `CFLAGS` and `-DNDEBUG`: LLVM compiles at the tree's level with its assertions off.
 - `CMAKE_CXX_FLAGS_RELEASE` — The same for C++, with `-include cstdint` added, which includes
   `<cstdint>` at the top of every C++ file. GCC's C++ library headers do not bring it in on the way
   to their own, so a file that uses `uint64_t` and the other fixed-width types without including
   the header fails to compile; see
-  [A standard header the source never includes](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/build-troubleshooting.md#a-standard-header-the-source-never-includes).
+  [A standard header the source never includes](../../../../docs/kdos/05-developer/build-troubleshooting.md#a-standard-header-the-source-never-includes).
 - `LLVM_BINUTILS_INCDIR=/usr/include` — Where binutils' `plugin-api.h` is. With it LLVM builds
   `/usr/lib/LLVMgold.so`, LLVM's link-time optimisation plugin for the plugin interface of
   binutils' linkers, which `ar` and `nm` can also load with `--plugin` to read LLVM bitcode
-  objects. It is not in `/usr/lib/bfd-plugins`, so none of them loads it unasked. Without the header
-  the plugin is skipped without a message, which is why [binutils](#port-binutils) is in
-  `depends`.
+  objects. It is not in `/usr/lib/bfd-plugins`, so none of them loads it unasked. Without the
+  switch the plugin is skipped without a message; with it, the compile needs the header, which is
+  why [binutils](#port-binutils) is in `depends`.
 - `LLVM_BUILD_LLVM_DYLIB=OFF` — Builds no `libLLVM.so`, the single library holding every
   component.
 - `LLVM_LINK_LLVM_DYLIB=OFF` — Links the tools against the component libraries, since there is no
   `libLLVM.so` to link.
 - `BUILD_SHARED_LIBS=ON` — Builds each component as its own shared library. A consumer links the
   components it names; `bcc` and `bpftrace` carry switches for this layout, described in the
-  [ports catalogue](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/06-reference/ports-catalogue.md#devtools).
+  [ports catalogue](../../../../docs/kdos/06-reference/ports-catalogue.md#devtools).
 - `LLVM_PARALLEL_COMPILE_JOBS` — The number of compile jobs Ninja runs at once, taken from the
   `-jN` in `MAKEFLAGS`, which is the build's job count, `KDOS_JOBS`. `script/env/common.env` keeps
   `MAKEFLAGS` exactly `-jN` because this recipe reads the number out of it.
@@ -76,9 +76,10 @@ on, and there is no `libLLVM.so`.
 - `LLVM_USE_PERF=ON` — Builds LLVM's perf JIT event listener, which writes the `jit-<pid>.dump`
   files [perf](#port-perf) reads to name JIT-compiled code in a profile.
 - `LLVM_INSTALL_UTILS=ON` — Installs LLVM's test utilities, `FileCheck`, `not`, `count`,
-  `split-file`, `yaml2obj` and the rest. LLVM's CMake package exports them, and
-  `find_package(LLVM)` fails when an exported file is missing. [rust](#port-rust)'s bootstrap
-  refuses an external LLVM that has no `FileCheck`.
+  `split-file`, `yaml2obj` and the rest, and exports them in LLVM's CMake package; off, they are
+  built for the build tree alone and neither installed nor exported. [rust](#port-rust)'s
+  bootstrap refuses an external LLVM that has no `FileCheck`, and its recipe names
+  `/usr/lib/llvm/utils/FileCheck`.
 - `LLVM_UTILS_INSTALL_DIR=lib/llvm/utils` — Installs those utilities in `/usr/lib/llvm/utils`
   instead of `/usr/bin`, where generic names such as `not` and `count` could collide with another
   port's. A consumer that runs one names its path.
@@ -110,6 +111,7 @@ time. The set is built from every page of the command guide, including the one f
 which this build leaves out, so that page is deleted after the copy.
 
 Every port that builds on LLVM reads its installed CMake package, `/usr/lib/cmake/llvm`, and
-takes from it the choices made here: the target list, RTTI, exception handling and the library
-layout. A consumer that names one of those on its own command line does not override what
-`LLVMConfig.cmake` sets; [clang](#port-clang) and [lld](#port-lld) show the effect.
+takes from it the configuration recorded there: the target list, RTTI, exception handling (off,
+upstream's default) and the library layout. A consumer that names one of those on its own command
+line does not override what `LLVMConfig.cmake` sets; [clang](#port-clang) and [lld](#port-lld)
+show the effect.

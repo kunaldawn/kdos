@@ -9,4 +9,4 @@ The Rust crate is `src/_bcrypt/Cargo.toml`, the `path` in the package's
 `vendordir = src/_bcrypt` makes `ports/fetch` vendor there. `build.sh` unpacks the bundle at
 the top of the tree, where pip, and through it setuptools-rust, runs cargo, so the bundle's
 `.cargo/config.toml` is found by cargo's walk up from that directory; see
-[Where the bundle goes](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#where-the-bundle-goes).
+[Where the bundle goes](../../../../docs/kdos/05-developer/writing-ports.md#where-the-bundle-goes).

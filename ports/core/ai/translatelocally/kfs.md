@@ -52,11 +52,13 @@ All six patch the vendored Marian under `3rd_party/bergamot-translator/3rd_party
 
 ## Notes
 
-GitHub's archive of a commit does not carry its git submodules, so the recipe fetches each one as
-its own source, pinned by the commit in its helper (`_bergamot`, `_marian`, `_intgemm`, `_spm`,
-`_ssplit`), and `build.sh` copies each into the directory the submodule occupies before any patch
-is applied. Bumping translateLocally means reading the submodule commits of the new revision and
-moving every helper with it; a submodule left behind builds a mismatched engine.
+GitHub's archive of a commit does not carry its git submodules, so the recipe fetches each of the
+five the build compiles as its own source, pinned by the commit in its helper (`_bergamot`,
+`_marian`, `_intgemm`, `_spm`, `_ssplit`), and `build.sh` copies each into the directory the
+submodule occupies before any patch is applied. The other submodules stay empty, because this
+x86-64 configuration compiles none of them. Bumping translateLocally means reading the submodule
+commits of the new revision and moving every helper with it; a submodule left behind builds a
+mismatched engine.
 
 After the configure, `build.sh` fails the build unless `CMakeCache.txt` records
 `cblas_openblas_WORKS:INTERNAL=1`. Marian's BLAS search does not stop the configure when it finds no

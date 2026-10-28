@@ -7,11 +7,11 @@ host, and those running in boxes (rootless containers, each with its own distrib
 your home directory; see [Applications](applications.md)). It is written for
 anyone using the desktop; the last sections describe the generators that write the theme files, for
 anyone who wants to audit or rebuild them. [The desktop](desktop.md) introduces the panel and the
-menus this chapter refers to, and [The design language](../03-architecture/design-language.md)
+menus this chapter refers to, and [The design language](../03-architecture/design-language.md#colour)
 explains the colour model underneath it.
 
 To change the accent, press `Super+Ctrl+Shift+Space`, move the highlight to an accent and press
-`Enter`. Every KDOS [surface](../06-reference/glossary.md) (a window or popup KDOS itself draws)
+`Enter`. Every KDOS [surface](../06-reference/glossary.md#surface) (a window or popup KDOS itself draws)
 repaints at once, with no restart and no logout. The rest of this chapter explains what that one key
 changes, when each change reaches each program, and the settings around it.
 
@@ -36,17 +36,17 @@ in `libkcolor` (`KCOL_SCHEMES` in `src/libs/libkcolor/kcolor.h`):
 | Colour | Role |
 |---|---|
 | `primary` | The accent itself: frames, highlights, the phosphor tint |
-| `dim` | A dark version of the primary, used as a fill |
+| `dim` | A muted version of the primary, used as a fill and never for text |
 | `secondary` | A second hue for contrast (warnings, the second colour of a two-colour element) |
 | `urgent` | Errors and destructive actions |
-| `deep` | The background everything is read against |
-| `text` | What is read on `deep` |
+| `deep` | The ground the palette's legibility is measured against: the background of the text console, and of the desktop when no wallpaper is set |
+| `text` | Body text, read on `deep` |
 | `variant` | The surface colour of panels and popups |
-| `pdark` | The dark end of the highlighted-row range |
-| `backdrop` | The colour behind unfocused or inactive areas |
+| `pdark` | Labels and secondary text, and the far end of the mix a highlighted row's plate is chosen from |
+| `backdrop` | The background a window is painted on |
 
 Everything KDOS draws takes its colours from named roles derived from this palette (called
-*slots*; see the [glossary](../06-reference/glossary.md)) rather than from fixed colour values.
+*slots*; see the [glossary](../06-reference/glossary.md#slot)) rather than from fixed colour values.
 That is why changing one word repaints the entire desktop: every program already has all eight
 palettes compiled in and only needs to be told which one is in force.
 
@@ -64,8 +64,9 @@ cannot read:
 Whether an accent's background is dark or light does not decide whether it is usable; the plate
 does. `paper`, the light accent, carries its highlighted label at about 7.1:1, like every accent
 except `bone`. `bone`, the most muted, is the lowest of the eight at about 6.2:1, because the
-separation the plate needs from the bar limits how far its colour can move. How the plate colours are chosen is in
-[The design language](../03-architecture/design-language.md).
+separation the plate needs from the bar limits how far its colour can move. How the plate colours
+are chosen is in
+[The design language](../03-architecture/design-language.md#the-pixel-layer-under-the-cells).
 
 ## Switching the accent
 
@@ -83,9 +84,10 @@ The highlight starts on the accent in force.
 | `Left`, `Right` | Switch between the Accent and Font pages |
 | Click a row | Preview it, as an arrow key would |
 | Click the highlighted row again | Keep it, as `Enter` would |
+| Click **Accent** or **Font** | Switch to that page |
 
 Settings opens the same picker from the **Accent…** row on its Appearance page, and so does the
-`style.theme` route in the menu (`kdos menu summon style.theme`).
+`style.theme` [route](../06-reference/glossary.md#route) (`kdos menu summon style.theme`).
 
 The swatches are the one place on the desktop drawn in fixed colours rather than slots: a swatch
 drawn in the current accent's slots would show eight identical rows.
@@ -208,8 +210,9 @@ theme changes, so rewriting a stylesheet under the same name would reach only th
 [Theming applications inside boxes](#theming-applications-inside-boxes)), and every running GTK3
 application that reads the portal repaints, on the host and in a box.
 
-Everything else picks up the change when you next start it. GTK does not re-read icons or a user
-stylesheet when those files change, and no toolkit offers a way to force it from outside.
+The icons, the cursors, the GTK `settings.ini` files, the libadwaita stylesheet and the Qt files reach an application only when
+you next start it. GTK does not re-read icons or a user stylesheet when those files change, and no
+toolkit offers a way to force it from outside.
 
 ### Files you may edit, and files you may not
 
@@ -329,7 +332,8 @@ The compositor draws the whole desktop through a phosphor shader: optional scanl
 bleed, a vignette, optional barrel distortion, and a faint glow so black is never quite black. The
 glow takes the accent's primary colour. The pass is on by default.
 
-Set these in `~/.config/kdos/comp.conf` or on the Appearance page of Settings:
+Set these in [`~/.config/kdos/comp.conf`](../06-reference/configuration.md#configkdoscompconf) or
+on the Appearance page of Settings:
 
 | Key | Default | Range | What it does |
 |---|---|---|---|
@@ -463,7 +467,7 @@ Three separate settings decide what the desktop is drawn in. They live in differ
 none of them falls back to another.
 
 **The console font** is a 16×32-pixel bitmap font, `ter-kdos32n`, built from Terminus by the
-`terminus-font` [port](../06-reference/glossary.md) and loaded by `kdos-getty` onto each virtual
+`terminus-font` [port](../06-reference/glossary.md#port) and loaded by `kdos-getty` onto each virtual
 terminal before it clears the screen. It has 512 glyphs, which is why parts of KDOS limit themselves
 to a small set of characters: anything outside it shows as a blank on `tty1`.
 
@@ -586,7 +590,7 @@ is written into `$HOME`:
 | `~/.config/qt5ct/`, `~/.config/qt6ct/` | Qt, under the qt5ct or qt6ct platform theme |
 
 A box created with `home = private` has a home of its own and sees none of these files; see
-[kdos-appbox](../04-programs/kdos-appbox.md).
+[Box profiles](../04-programs/kdos-appbox.md#box-profiles).
 
 The generated `settings.ini` also fixes the pointer size for GTK: it names the `KDOS-cursors` theme
 with `gtk-cursor-theme-size=24`, the same 24 pixels that `/etc/profile.d/10-wayland.sh` exports as
@@ -615,7 +619,7 @@ libadwaita stylesheet ported to GTK3 and uses named colours throughout, so rewri
 recolours every widget, and GTK3 applications look the same as GTK4 ones.
 
 **Qt** has two routes, and which one an application takes depends on what its
-[runtime](../06-reference/glossary.md) (a layer shared by many applications that holds a toolkit)
+[runtime](../06-reference/glossary.md#runtime) (a layer shared by many applications that holds a toolkit)
 provides. Where the runtime includes KDE's platform integration, `QT_QPA_PLATFORMTHEME=kde` makes
 Qt applications read `~/.config/kdeglobals` directly. Where it does not, the GTK platform theme
 with the Fusion style is used instead. The runtime declares the variable in the `env =` lines of its
@@ -631,10 +635,11 @@ applications fall back to Qt's defaults instead of the accent. The catalogue's o
 
 **`kdeglobals` is merged, not overwritten.** KDE applications save their own settings in that
 file, so only what the theme owns is replaced and everything else is kept. The theme owns the
-`[Colors:*]` and `[WM]` sections, and eight keys elsewhere: `ColorScheme` and `Name`, the fonts
-`font` (`Noto Sans,10`) and `fixed` (`Noto Sans Mono,10`), and `TerminalApplication=foot` and
-`TerminalService=foot.desktop` under `[General]`, `widgetStyle=Breeze` under `[KDE]`, and
-`Theme=KDOS` under `[Icons]`. The two terminal keys are what a KDE application opens for a
+`[Colors:*]` and `[WM]` sections (but not a nested group such as `[Colors:View][Inactive]`, which
+belongs to an application), and eight keys elsewhere: six under `[General]`, namely `ColorScheme`
+and `Name`, the fonts `font` (`Noto Sans,10`) and `fixed` (`Noto Sans Mono,10`), and
+`TerminalApplication=foot` and `TerminalService=foot.desktop`; `widgetStyle=Breeze` under `[KDE]`;
+and `Theme=KDOS` under `[Icons]`. The two terminal keys are what a KDE application opens for a
 terminal (Dolphin's F4, Kate's terminal, an `ssh:` link): without them it opens Konsole, beside the
 desktop's foot.
 
@@ -705,7 +710,8 @@ kdos-theme accents
 The icons and cursors are recoloured rather than redrawn. A maintenance script (`vendor.py`, beside
 each package's recipe under `src/art/`) prunes an upstream release into a source tree kept in
 the repository, and the generator recolours that tree into the palette. Each colour keeps its own
-lightness, and usually its saturation, and takes a hue from the palette.
+lightness, and usually its saturation, and takes a hue from the palette. Pure black and pure white
+are left as they are, because they are outlines and highlights rather than colour.
 
 Colours are mapped by hue family, not all flattened onto the accent: blues, greens and purples
 become the accent (cyans at reduced saturation, so they read as a shade of it), yellows, oranges
@@ -750,15 +756,15 @@ under `/usr/share`. It writes nothing outside its scratch directory and repairs 
 
 ## See also
 
-- [The design language](../03-architecture/design-language.md): the palette slots and the contrast rules
+- [The design language](../03-architecture/design-language.md#colour): the palette slots and the contrast rules
 - [kdos-comp](../04-programs/kdos-comp.md): the phosphor pass, the wallpaper and the frame theme
 - [kdos-shell](../04-programs/kdos-shell.md#kdos-style): the picker, `kdos-style`, among the other surfaces
 - [The desktop](desktop.md): the picker's shortcut, the panel and its fonts
 - [Accessibility](accessibility.md): the magnifier and the font size for large screens
-- [Configuration](../06-reference/configuration.md): every key named here, with defaults
+- [Configuration](../06-reference/configuration.md#configkdoscompconf): every `comp.conf` key named here, with defaults
 - [Applications](applications.md): why boxed software is themed through `$HOME`
 - [The daemons](../04-programs/daemons.md#kdos-powerd): `kdos-powerd`, which writes the boot and console files
-- [The kdos command](../04-programs/kdos-command.md): `kdos theme` in full
+- [The kdos command](../04-programs/kdos-command.md#kdos-theme): `kdos theme` in full
 - [The ports catalogue](../06-reference/ports-catalogue.md): the theme, icon, cursor and font ports
 - [How KDOS is built](../05-developer/how-kdos-is-built.md): where the default theme is seeded into `/etc/skel`
 

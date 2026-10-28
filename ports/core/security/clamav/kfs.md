@@ -12,28 +12,29 @@ The package ships no signature database. `clamscan` and `clamd` refuse to scan w
 ## Flags
 
 - `export CARGO_HOME="$SRC_ROOT/.cargo"`, `export RUSTFLAGS="-C target-feature=-crt-static"`,
-  `export CARGO_NET_OFFLINE=true` — The tree's [rust](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/05-developer/writing-ports.md#rust)
+  `export CARGO_NET_OFFLINE=true` — The tree's [rust](../../../../docs/kdos/05-developer/writing-ports.md#rust)
   build shape, set in the environment because cargo is run by ClamAV's CMake rather than by the
   recipe. The `RUSTFLAGS` line makes the Rust part link against musl dynamically, as the C part
   does. ClamAV's `FindRust` passes `--offline` to cargo whenever `.cargo/vendor` exists, so the
   crates are taken from the tarball.
-- `-DCMAKE_SKIP_INSTALL_RPATH=ON` — Install the programs and libraries with no `RPATH`; their
-  libraries are in `/usr/lib`.
+- `-DCMAKE_SKIP_INSTALL_RPATH=ON` — Install the programs and libraries with no `RPATH`. Upstream
+  sets the install `RPATH` to the library directory, `/usr/lib`, which the loader searches
+  anyway.
 - `-DAPP_CONFIG_DIRECTORY=/etc/clamav` — Where `clamd.conf`, `freshclam.conf` and the rest are read
   from. Upstream's default is `etc` under the prefix, which would be `/usr/etc`. The certificates
   `freshclam` checks database signatures against follow it, into `/etc/clamav/certs`.
 - `-DDATABASE_DIRECTORY=/var/lib/clamav` — Where the signature databases live. Upstream's default
   is `share/clamav` under the prefix, `/usr/share/clamav`; the databases are files `freshclam`
   downloads and replaces at run time, not files of the package.
-- `-DBYTECODE_RUNTIME=interpreter` — Run bytecode signatures in ClamAV's own interpreter. The
-  alternative, the LLVM JIT, accepts only LLVM 8 to 13, and the tree's [llvm](#port-llvm) is
-  newer.
+- `-DBYTECODE_RUNTIME=interpreter` — Run bytecode signatures in ClamAV's own interpreter;
+  upstream's default, named. The alternative, the LLVM JIT, accepts only LLVM 8 to 13, and the
+  tree's [llvm](#port-llvm) is newer.
 - `-DENABLE_APP=ON`, `-DENABLE_CLAMONACC=ON` — Build the programs, and on Linux `clamonacc`, as
   upstream does by default.
 - `-DENABLE_MILTER=OFF` — Build no `clamav-milter`. It needs sendmail's `libmilter`, which is not
   a port.
 - `-DENABLE_SYSTEMD=OFF` — Install no systemd unit files; KDOS has no systemd (see
-  [No systemd](https://github.com/kunaldawn/kdos/blob/main/docs/kdos/01-philosophy/principles.md#no-systemd)).
+  [No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)).
 - `-DENABLE_UNRAR=ON` — Build and install `libclamunrar`, so ClamAV can look inside RAR archives.
   Upstream's default.
 - `-DENABLE_EXTERNAL_MSPACK=ON` — Link the [libmspack](#port-libmspack) port for CAB and CHM
@@ -41,8 +42,8 @@ The package ships no signature database. `clamscan` and `clamd` refuse to scan w
 - `-DENABLE_JSON_SHARED=ON` — Link [json-c](#port-json-c) as a shared library; upstream's default.
 - `-DHAVE_SYSTEM_LFS_FTS=ON` — Answer in advance the configure test for a working `fts(3)` with
   large-file support. musl has no `fts`, and the test links no `libfts`, so it fails even with
-  musl-fts installed, and `clamonacc` would build its own copy, `misc/fts.c`; set, `clamonacc` uses [musl-fts](#port-musl-fts) instead, which
-  `link-fts.patch` links.
+  musl-fts installed, and `clamonacc` would build its own copy, `misc/fts.c`; set, `clamonacc`
+  uses [musl-fts](#port-musl-fts) instead, which `link-fts.patch` links.
 - `-DENABLE_MAN_PAGES=ON` — Install the manual pages; upstream's default on Linux.
 - `-DENABLE_DOXYGEN=OFF`, `-DENABLE_EXAMPLES=OFF`, `-DENABLE_TESTS=OFF` — No API documentation, no
   example programs, no unit tests.

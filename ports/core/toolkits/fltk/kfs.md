@@ -14,11 +14,13 @@ library: a program uses Wayland when a Wayland display is reachable and X11 othe
   With the environment empty, those outputs carry FLTK's own include and feature flags and none
   of this build's, so a C-only flag such as `-std=gnu11` does not reach a C++ consumer's compile
   line.
-- `-DFLTK_BACKEND_WAYLAND=ON` — with `-DFLTK_BACKEND_X11=ON`: the hybrid library. A hybrid build
-  draws every X11 window with Cairo and lays out text with Pango, so the X11 half needs
-  [cairo](#port-cairo) and [pango](#port-pango)'s `pangoxft`.
+- `-DFLTK_BACKEND_WAYLAND=ON` — with `-DFLTK_BACKEND_X11=ON`: the hybrid library. The Wayland
+  backend draws with [cairo](#port-cairo) and lays out text with [pango](#port-pango); a hybrid
+  build draws its X11 windows the same way, so the X11 half needs pango's `pangoxft` as well.
 - `-DFLTK_USE_SYSTEM_LIBDECOR=ON` — use the [libdecor](#port-libdecor) port instead of compiling
   the copy FLTK carries. Window frames on Wayland come from the plugins that port installs.
+  configure falls back to the bundled copy without failing when the port is older than 0.2.0 or
+  its `libdecor/plugins-1` directory is missing.
 - `-DFLTK_USE_DBUS=ON` — use D-Bus, which FLTK's Wayland backend needs to read the desktop's
   cursor theme.
 - `-DFLTK_BUILD_SHARED_LIBS=ON` — build the shared libraries, which a program links by default,

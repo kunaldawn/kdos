@@ -39,20 +39,22 @@ Applications, the programs a person opens to do work unrelated to the operating 
 either of two places. A natively ported application is a core-ring recipe like any other: Firefox
 ESR, Thunderbird, LibreOffice, GIMP, Inkscape, Krita, KiCad, FreeCAD and VLC are among them. The
 toolkits and the applications build in two phases of their own: `43_toolkits` builds GTK 3 and 4, Qt
-5 and 6 and the other toolkits with every library over them that something else links (VLC is one,
-since other programs depend on it), and `44_apps` builds the applications nothing depends on. Each
-toolkit is built with its Wayland back end as the default and its X11 back end compiled in, and
-Xwayland serves a program that has only an X11 path. Anything not ported natively is in the outer
-ring and runs in a container rather than on the host.
+5 and 6, KDE Frameworks, wxWidgets, FLTK and Motif with every library over them that something
+else links (VLC is one, since other programs depend on it), and `44_apps` builds the applications
+nothing depends on. Tk needs nothing past the X11 libraries and is built earlier, in
+`42_graphics`. A toolkit with a Wayland back end is built with it as the default and its X11 back
+end compiled in; Tk and Motif have only an X11 back end, and Xwayland serves them and any other
+program that has only an X11 path. Anything not ported natively is in the outer ring and runs in a container rather than on
+the host.
 
 The sizes, counted as directories holding a `kpkgbuild` (and, for the catalogue, lines whose
 first field is `app`):
 
 | Where | Count |
 |---|---|
-| `ports/core` | about 2,000 recipes, on 102 shelves |
+| `ports/core` | about 2,100 recipes, on 102 shelves |
 | `src/system`, `src/art`, `src/desktop`, `src/daemons` | about two dozen recipes |
-| All port repositories | about 2,000 recipes; the exact counts are in [Status](../06-reference/status.md#scale) |
+| All port repositories | about 2,100 recipes; the exact counts are in [Status](../06-reference/status.md#scale) |
 | Catalogue `app` rows (outer ring) | 73 |
 
 `ports/core` files each port one level down, on a **shelf** named for its subject:
@@ -65,12 +67,16 @@ line, package or database entry records its shelf.
 The four `src/` areas that hold recipes are port repositories in their own right and use the same
 two-file recipe format as `ports/core`, so building the desktop is not a special case anywhere in
 the build system. Each area holds its ports directly, with no shelves. `kpkg` searches the
-repositories named in `PORT_REPO`, which defaults to `/ports/core`; the environment file of each
-later phase widens it:
+repositories named in `PORT_REPO`, an environment variable that overrides the same key in
+`/etc/kpkg.conf`. The shipped file names `/ports/core` and the four areas under `/ports/src`, which
+is where an installed machine keeps its recipe tree. Inside the build's chroot `/ports` is the
+repository's own `ports/` directory, which has no `src/`, so the early phases see only
+`/ports/core`, and the environment file of each later phase sets the variable to add the areas
+from the repository mounted at `/kdos`:
 
 | Phases (`script/phases/<phase>/phase.env`) | `PORT_REPO` |
 |---|---|
-| `20_selfhost`, `30_foundation`, `31_compilers` | `/ports/core` (the default) |
+| `20_selfhost`, `30_foundation`, `31_compilers` | Not set: `/etc/kpkg.conf`'s list, of which only `/ports/core` exists in the chroot |
 | `40_lang` to `44_apps`, `60_kernel` | `/ports/core /kdos/src/system /kdos/src/art` |
 | `50_desktop` | `/ports/core /kdos/src/system /kdos/src/art /kdos/src/desktop /kdos/src/daemons` |
 
@@ -79,10 +85,11 @@ own binaries. `src/devtools/` holds none either: `kdosbuild` and `kdos-portup` r
 machine and are never installed. `src/system/kdos-kpkg`, the package manager itself, is the one
 directory in a port area without a recipe: the bootstrap step
 `script/phases/10_bootstrap/120_kpkg.sh` compiles it, because it has to exist before any recipe can
-be read. How the phases follow one another, and how the package lists of `40_lang` to `44_apps`
-are split into one file per shelf under `packages.d/`, is the subject of
-[How KDOS is built](../05-developer/how-kdos-is-built.md); every port, listed by shelf, is in
-[The ports catalogue](../06-reference/ports-catalogue.md).
+be read. How the phases follow one another is the subject of
+[How KDOS is built](../05-developer/how-kdos-is-built.md), and how the package lists of `40_lang`
+to `44_apps` are split into one file per shelf under `packages.d/` is in its section
+[The userland](../05-developer/how-kdos-is-built.md#the-userland-40_lang-to-44_apps); every port,
+listed by shelf, is in [The ports catalogue](../06-reference/ports-catalogue.md).
 
 ## From power-on to a drawn window
 
@@ -130,7 +137,8 @@ The terms in that chart, in order:
 | Microcode | The processor vendor's update for the CPU itself. The kernel is built without late loading, so the early initramfs is the only path — see [Microcode](boot-and-init.md#microcode) |
 | initramfs | A small in-memory filesystem the kernel starts first; its `init` finds, unlocks, checks and mounts the real root — see [The initramfs](boot-and-init.md#the-initramfs) |
 | A/B slots | Two root partitions on a machine set up for them: an update is installed into the other slot and tried, and the slot known to work stays the fallback — see [A/B slot selection](boot-and-init.md#ab-slot-selection) |
-| LUKS | Linux disk encryption; an encrypted root is unlocked in the initramfs, before it can be mounted |
+| LUKS | Linux disk encryption; an encrypted root is unlocked in the initramfs, before it can be mounted — see [Unlocking an encrypted root](boot-and-init.md#unlocking-an-encrypted-root) |
+| LVM | The Linux logical volume manager; a root on a logical volume needs its volume group activated before it can be found — see [Activating volume groups](boot-and-init.md#activating-volume-groups) |
 | `switch_root` | The call that makes the real root filesystem `/` and runs its `init`. KDOS uses util-linux's, which moves the new root onto `/`; one that only `chroot()`s leaves a root no container can later start under — see [`switch_root`](boot-and-init.md#switch_root) |
 | Phosphor pass | The compositor's CRT-style shader over the finished frame; it runs only on the GLES2 renderer — see [The phosphor pass](../04-programs/kdos-comp.md#the-phosphor-pass) |
 
@@ -164,24 +172,29 @@ for debugging, and asks for a login on an installed system.
 ### The session
 
 `kdos-desktop` prepares the environment and then replaces itself with `kdos-desktop-start`. Most
-of their steps are shell functions in `/usr/local/lib/kdos/session-common.sh`; the portal and
-input-method steps are in `kdos-desktop-start` itself:
+of their steps are shell functions in `/usr/local/lib/kdos/session-common.sh`; the renderer choice
+is in `kdos-desktop`, and the portal, input-method and backup-monitor steps are in
+`kdos-desktop-start` itself:
 
 | Step | What it does |
 |---|---|
 | Runtime directory | `XDG_RUNTIME_DIR` defaults to `/run/user/<uid>` |
+| Renderer | On a display with no GPU rendering node, or a virtual GPU without 3D acceleration, the compositor is told to use wlroots' software renderer, pixman |
 | Keymap | The VT keymap in `/etc/keymap` becomes `XKB_DEFAULT_LAYOUT` (and a variant), so the desktop and the lock screen use the same layout as the console |
 | Boxes | `kdos-appbox warmup` starts the application container in the background, and every ten minutes `kdos-box gc` stops boxes that have run past their profile's `autostop` and have no window open |
 | Session bus | One `dbus-daemon` per user at `unix:path=$XDG_RUNTIME_DIR/bus`, reused across session restarts |
 | Audio | PipeWire, then WirePlumber, then `pipewire-pulse`, once per user |
-| Portals | Once the compositor's socket exists: `xdg-desktop-portal-wlr`, then the main `xdg-desktop-portal` |
+| Portals | Once the compositor's socket exists: `xdg-desktop-portal-wlr`, then the main `xdg-desktop-portal`, both started through the session bus |
 | Input method | `kdos-ime` and then `fcitx5 -d`, only when `fcitx5` is installed |
-| Once per login | The login sound, the first-run keybinding card, `mpd` when a configuration file exists for it, the offer of applications left pending by the installer, one `snooze` loop per row of the per-user timers in `~/.config/kdos/timers.d/`, and the session restore |
+| Backup monitor | Déjà Dup's `deja-dup-monitor`, only when Déjà Dup is installed |
+| Once the display is up | The login sound, the first-run keybinding card, `mpd` when a configuration file exists for it, the offer of applications left pending by the installer, one `snooze` loop per row of the per-user timers in `~/.config/kdos/timers.d/`, and the session restore when `~/.config/kdos/session-restore` exists |
 
 `kdos-desktop-start` then runs `kdos-comp` in the foreground, with its standard error kept in
-`$XDG_RUNTIME_DIR/kdos-comp.log`. A clean exit of the compositor is a logout. A crash prints the
-log's last 20 lines on the terminal and offers to restart the session; after three crashes within
-60 seconds it stops offering.
+`$XDG_RUNTIME_DIR/kdos-comp.log` (the previous session's is kept as `kdos-comp.log.old`). A clean
+exit of the compositor is a logout. When the compositor fails because wlroots found only software
+GL, it is started once more on the pixman renderer. Any other crash prints the log's last 20 lines
+on the terminal and offers to restart the session; after three crashes within 60 seconds it stops
+offering.
 
 [Boot and init](boot-and-init.md) covers everything up to the login prompt;
 [The session](session.md) covers everything after it.
@@ -200,8 +213,9 @@ box, and runs that command in the right box.
 
 A box shares more with the host than a sandbox built for isolation would. Its defaults are those
 of a plain `distrobox create`, and a per-box profile in `~/.config/kdos/boxes/<box>.conf` takes
-individual namespaces away. A profile is applied when the box is created, so changing one means
-recreating the box.
+individual namespaces away. The namespace keys are applied when the box is created, so changing
+one means recreating the box; the profile's `grant` key, described below, is read by the
+compositor instead.
 
 | Shared by default | Profile key that takes it away |
 |---|---|
@@ -229,7 +243,8 @@ path as the host, so one address is valid on both sides. See
 A box reaches the host's services through portals. Choosing a file, opening a link with
 another application and capturing the screen go through `xdg-desktop-portal`, whose KDOS back end
 (`xdg-desktop-portal-kdos`) answers the file chooser, settings, application chooser and access
-requests, and whose wlroots back end answers screen capture.
+requests, whose wlroots back end answers screen capture and screenshots, and whose GTK back end
+answers printing and e-mail composition.
 
 A boxed Wayland client is tagged by the compositor. `kdos-boxsock` binds one Wayland socket per
 box and registers it with `kdos-comp` through the security-context protocol (the Wayland protocol
@@ -239,29 +254,32 @@ methods and panel surfaces are refused unless the box's `grant` key names them. 
 for clients that connect through that socket; the session's own socket is in the shared runtime
 directory too. See [Sandboxed clients](security-model.md#sandboxed-clients).
 
-`kdos-boxsock` runs as the desktop user, one process per box, started detached by `kdos-appbox`;
-it stays alive holding the security context open for the box's lifetime, so the tag lasts exactly
-as long as the box.
+`kdos-boxsock` runs as the desktop user, one process per box, started detached by `kdos-appbox` at
+the box's first launch in a session. It holds the security context open until the compositor
+exits, so the tagged socket outlives a stopped box and ends with the session that served it; the
+next launch after a restart binds a new one.
 
 ## A running system
 
-This is the process tree of a working desktop. Scripts marked "skipped until configured" are
-installed but start nothing until their configuration file, account or data directory exists;
-those marked "skipped when there is nothing to manage" stand down on a machine without the
-hardware or filesystem they look after.
+This is the process tree of a working desktop, as the live medium runs it. Scripts marked "skipped
+until configured" are installed but start nothing until their configuration file, account or data
+directory exists; those marked "skipped when there is nothing to manage" stand down on a machine
+without the hardware or filesystem they look after.
 
 ```
 init (PID 1, sysvinit)
  │
  ├─ /etc/init.d/rcS ──────────── the numbered service scripts, in order
- │   ├─ 01 udev   02 modules   03 lvm   05 hostname   10 sysctl   12 zram
- │   ├─ 15 userdirs   18 timers   20 dmesg   22 syslog
+ │   ├─ 01 udev   02 modules   03 lvm   05 hostname   06 utmps   10 sysctl
+ │   ├─ 12 zram   15 userdirs   18 timers   20 dmesg   22 syslog
  │   ├─ 25 nftables ── loaded before the network comes up
- │   ├─ 30 network   35 chrony   40 dbus   41 polkitd
+ │   ├─ 35 chrony   40 dbus   41 polkitd
  │   ├─ 42 modemmanager   42 networkmanager   45 avahi   45 seatd
  │   ├─ 47 pcscd   50 alsa   52 smartd   55 tlp   60 bluetooth
  │   ├─ 51 lsmd   61 spacenavd   62 virtlogd   63 libvirtd
- │   ├─ 70 sshd   80 cups   81 cups-browsed   82 ipp-usb
+ │   ├─ 80 cups   81 cups-browsed   82 ipp-usb
+ │   ├─ standing down while NetworkManager runs: 30 network (dhcpcd)
+ │   ├─ disabled as shipped: 70 sshd
  │   ├─ skipped when there is nothing to manage: 43 boltd
  │   │    44 switcheroo-control   51 mdmonitor   53 xfs_healer   54 thermald
  │   │    64 lircd
@@ -278,15 +296,15 @@ init (PID 1, sysvinit)
  │        59 kdos-packd     /run/kdos-packd.sock     mounting application packs
  │
  ├─ dbus-daemon --session   one per user, forked away from the session
- │   └─ xdg-desktop-portal-kdos   started by the bus on first request
+ │   ├─ xdg-desktop-portal-wlr, xdg-desktop-portal   started at the session's request
+ │   └─ xdg-desktop-portal-kdos, xdg-desktop-portal-gtk   started by the bus on first request
  │
- ├─ kdos-boxsock <box>        one per running box, detached from the launch
+ ├─ kdos-boxsock <box>        one per box launched this session, detached from the launch
  │
  ├─ kdos-getty tty1 → kdos-login → agetty → login
  │   └─ bash (login shell)
  │       └─ kdos-desktop → kdos-desktop-start        ← the session
  │           ├─ pipewire, wireplumber, pipewire-pulse
- │           ├─ xdg-desktop-portal-wlr, xdg-desktop-portal
  │           ├─ kdos-ime, fcitx5          if an input method is installed
  │           ├─ mpd, kdos-mpctl watch     if mpd is configured
  │           └─ kdos-comp                 the compositor
@@ -297,6 +315,7 @@ init (PID 1, sysvinit)
  │               ├─ kdos-netagent   one      NetworkManager secrets
  │               ├─ kdos-mediad     one      removable-media toasts
  │               ├─ kdos-clip       one      clipboard history
+ │               ├─ wvkbd-deskintl  one      on-screen keyboard, off by default
  │               ├─ Xwayland        started when the first X11 client connects
  │               └─ application clients, host and boxed
  │
@@ -308,11 +327,14 @@ init (PID 1, sysvinit)
 `rcS` runs every executable `/etc/init.d/NN_name.sh` in the order the shell sorts them, skipping
 any whose name has a marker file in `/etc/service.disabled/`; `rcK`, which `/etc/inittab` runs at
 shutdown, stops the same set in reverse, except the firewall ruleset, which stays loaded through
-shutdown. Forty of the scripts ship in the image's `fs/` tree, and twenty-two more are installed by
-the ports they start, such as `43_boltd` by `bolt` and `83_samba` by `samba`. A script that
-starts a long-running daemon runs it under `ksvc`, KDOS's service supervisor, which keeps the
-daemon in the foreground and restarts it when it exits; the one-shot scripts (modules, sysctl,
-zram, the firewall ruleset and the like) do their work and return. The full list is in
+shutdown. Forty-one of the scripts ship in the image's `fs/` tree, and twenty-two ports install
+twenty-four more, such as `43_boltd` by `bolt` and `83_samba` by `samba`. The image ships `sshd`
+with its marker in place; the installer offers NetworkManager, Bluetooth, the mixer state, CUPS
+and `sshd` as choices, and leaves CUPS and `sshd` off unless they are switched on
+([Answer files](../04-programs/kinstall.md#answer-files) lists them). A script that starts a
+long-running daemon runs it under `ksvc`, KDOS's service supervisor, which keeps the daemon in the
+foreground and restarts it when it exits; the one-shot scripts (modules, sysctl, zram, the
+firewall ruleset and the like) do their work and return. The full list is in
 [rcS and the service scripts](boot-and-init.md#rcs-and-the-service-scripts); see also
 [The daemons](../04-programs/daemons.md).
 
@@ -324,12 +346,13 @@ speaks only X11 can still open a window.
 ### How the screen is drawn
 
 Every surface KDOS paints is a grid of character cells, and the compositor puts those surfaces on
-the screen. `kdos-shell`, `kdos-res`, `kdos-term`, `kdos-lock` and the portal's file chooser each
-paint their own cell buffer through `libkwl`, the toolkit's Wayland back end, and hand it over
-as an ordinary Wayland surface. `libkdisp`, the display-selection library, is the one place a
+the screen. `kdos-shell`, `kdos-res`, `kdos-term`, `kdos-lock` and the portal's file chooser
+(`kdos-pick`, another name for `kdos-shell`) each lay out their cells with `libktui`, KDOS's own
+cell toolkit, paint them into a buffer through `libkwl`, its Wayland back end, and hand the buffer
+over as an ordinary Wayland surface. `libkdisp`, the display-selection library, is the one place a
 program chooses its display server, and one implementation of it ships: Wayland, through
-`libkwl`. The same interface is the seam the test suite renders through
-with no compositor at all.
+`libkwl`. The same interface is the seam the test suite renders through with no compositor at
+all. The libraries are described in [The C libraries](../05-developer/c-libraries.md).
 
 Two things on the screen are not cells:
 
@@ -342,7 +365,7 @@ Two things on the screen are not cells:
 
 ### What the compositor supervises
 
-`kdos-comp` starts and supervises the desktop's own chrome from a table of seven entries in
+`kdos-comp` starts and supervises the desktop's own chrome from a table of eight entries in
 `src/desktop/kdos-comp/src/kdos-child.c`. It respawns an entry when it exits and stops a
 per-output entry when its output goes away. Whether an optional entry runs is read from
 `~/.config/kdos/comp.conf` once, at startup, so switching one on or off takes effect at the next
@@ -357,6 +380,7 @@ login.
 | `kdos-netagent` | One | Always | Registers one secret agent with NetworkManager |
 | `kdos-mediad` | One | Always | Holds one subscription to `kdos-mountd` |
 | `kdos-clip` | One | When clipboard history is on (the default) | Owns one socket and holds the history in memory |
+| `wvkbd-deskintl` | One | When `osk` is not `off` (off by default) | The on-screen keyboard types into the one keyboard focus |
 
 A child that fails more than five times inside thirty seconds is not restarted again, so a crash
 loop cannot bury the log line that explains it. The compositor raises a `kdos-prompt` dialog
@@ -414,19 +438,20 @@ can run, and how to get a piece of it without installing anything into the syste
 | Installed by | `kpkg`, as root, into `/` | `kdos-appbox`, as a box; `kdos-packd` for an imported pack |
 | Verified by | The recipe's `sha256` for the source, and the release key's signature for a fetched recipe tree; a signature when `kpkg binhost` installs from a binary host (a server of prebuilt, signed packages) | Nothing KDOS controls, when built here; the payload hash and then the signature at mount time, when imported |
 | Updated with | `kdos update`: a newer signed ports tree, rebuilt from source on the machine, installed into the other A/B slot where the machine has one | A rebuild against the catalogue's Debian snapshot |
-| Trusted keyring | `/etc/kdos/keys` (empty as shipped) | `/etc/kdos/keys/packs` |
+| Trusted keyring | `/etc/kdos/keys` for prebuilt packages (empty as shipped); `/etc/kdos/keys/tree` for the recipe tree (the build's release key, when the build had one) | `/etc/kdos/keys/packs` |
 
 Building an application fetches from Debian's archive at a pinned snapshot, which apt verifies,
 but nothing KDOS controls attests to the result. An exported set of applications is hashed and
 signature-checked by `kdos-packd` at the point where it is mounted.
 
-The two keyrings are separate by construction. A pack-signing key says who exported a set of
+The three keyrings are separate by construction. A pack-signing key says who exported a set of
 applications; placing it in the host keyring would make it a trusted publisher of host packages
 as well. The keyring loader reads `*.pub` in one directory and does not descend into
-subdirectories, so `/etc/kdos/keys/packs` is a separate policy. The image ships one key there,
-which vouches only that the packs on a medium came from the same build, and ships no key in the
-host keyring, because host packages are built from source on the machine and their integrity
-comes from the recipe's `sha256`.
+subdirectories, so `/etc/kdos/keys/packs` and `/etc/kdos/keys/tree` are separate policies. The
+image ships one key in `packs/`, which vouches only that the packs on a medium came from the same
+build, and the build's release key in `tree/` when the build was given one, which `kdos update`
+checks a fetched recipe tree against. It ships no key in the host keyring, because host packages
+are built from source on the machine and their integrity comes from the recipe's `sha256`.
 
 See [Packaging](packaging.md) and [Packs and boxes](packs-and-boxes.md).
 
@@ -435,6 +460,7 @@ See [Packaging](packaging.md) and [Packs and boxes](packs-and-boxes.md).
 | Path | Holds | Written by |
 |---|---|---|
 | `/var/lib/kpkg/db` | The installed-package database and manifests | `kpkg`, as root |
+| `/ports` | The recipe tree the installed packages were built from: every recipe and patch, and KDOS's own programs under `src/`, with no source archives | The build; replaced whole by `kdos update fetch` |
 | `/var/lib/kdos/packs` | Imported application packs | `kdos-packd`, as root |
 | `/var/lib/kdos/packs/staging` | The one place an unprivileged write may land, mode 01777 | Whoever imports a pack |
 | `/var/lib/kdos/packs/mnt` | Mount points for packs | `kdos-packd` |
@@ -442,8 +468,9 @@ See [Packaging](packaging.md) and [Packs and boxes](packs-and-boxes.md).
 | `/var/lib/kdos/fs-manifest` | Every path the build's `fs/` tree provided | The build |
 | `/var/lib/kdos/apps-pending` | Applications chosen at install time and not yet built | `kinstall`; read by `kdos app install --pending` |
 | `/var/lib/kdos/update.json` | The result of the last update check | The `update-check` timer, through `kdos update check` |
+| `/var/lib/kdos/update.state` | The outcome of the last update fetch and apply | `kdos update` |
 | `/var/lib/kdos/march.ledger` | Measured per-machine optimisation results | `kdos march` |
-| `/etc/kdos/` | Machine configuration (`login.conf`, `packd.conf`, `zram.conf`, `timers.d/`, the system `accent`) and the trusted keys | The administrator, and `kdos-powerd` for the accent and autologin |
+| `/etc/kdos/` | Machine configuration (`login.conf`, `menu.conf`, `packd.conf`, `zram.conf`, `timers.d/`, the system `accent`) and the trusted keys | The administrator, and `kdos-powerd` for the accent and autologin |
 | `/usr/share/kdos/` | Shipped and generated data: icon art, the `alien-apps` table, the application catalogue, the security database, the documentation | The build |
 | `~/.config/kdos/` | Desktop configuration, including `comp.conf` and the box profiles in `boxes/` | The user, and `kdos-settings` |
 | `~/.config/kdos-comp/` | The compositor's `rc.xml` and root menu | The user |

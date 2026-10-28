@@ -8,9 +8,9 @@ program being written for it, and it is built on [libmodbus](#port-libmodbus).
 ## Flags
 
 - `-DMBPOLL_CUSTOM_RTS_GPIO=OFF` — On by default. With it on and libpiduino found (the option's
-  help text says ARM only), mbpoll drives an RS-485 transceiver's direction pin through a GPIO line, and the
-  install marks the program setuid root. The tree has no libpiduino port; the switch keeps a later
-  one from turning either on.
+  help text says ARM only), mbpoll drives an RS-485 transceiver's direction pin through a GPIO
+  line, and the install marks the program setuid root. The tree has no libpiduino port; the
+  switch keeps a later one from turning either on.
 - `-DMBPOLL_VERSION_OVERRIDE=$version` — The variable `version-override.patch` adds. It gives the
   version mbpoll reports, which upstream otherwise takes from `git describe --tags`.
 
