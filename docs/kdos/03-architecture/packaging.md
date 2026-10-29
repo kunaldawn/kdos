@@ -673,6 +673,12 @@ removed rather than left on disk owned by nothing, unless another package claims
 it is that package's file and stays. "Absent" is judged on the canonical path, so `./bin/x` in the
 old version and `./usr/bin/x` in the new are one file.
 
+A path the new version ships as a directory where the root holds a file, such as a zipped Python
+egg the new version ships unpacked, is asked about like a staged file: claimed by another package,
+it is a conflict; otherwise the file is unlinked and `kpkgadd` prints `Replacing file <path> with a
+directory`. Left in place, every path beneath it fails with `Not a directory` and the install
+aborts half-written.
+
 A removal walks the manifest in reverse, so a directory is reached only after everything inside it;
 a directory that still holds another package's files survives. A file another installed package
 claims is left in place. `kpkgdel` does not check reverse dependencies: `kpkgdel bash` removes

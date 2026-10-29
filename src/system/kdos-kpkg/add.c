@@ -27,6 +27,10 @@
  *    otherwise taken without a word and left claimed by two packages. A path
  *    another package claims is taken only from a package the recipe names in
  *    `replaces =`; any other claim refuses the install.
+ *  - A staged directory whose path on the root is a file goes through the
+ *    same scan and, when it passes, the file is unlinked before the directory
+ *    is made. Left there, every path beneath it fails with ENOTDIR and the
+ *    install aborts half-written.
  *  - An upgrade removes orphans: a file present in the old version and absent
  *    from the new otherwise stays on disk forever, owned by nothing. "Absent"
  *    is judged on the canonical spelling, and a path another package claims
@@ -315,10 +319,41 @@ static void read_replaces(const KpConf *c, const char *name, char *out,
 	free(dir);
 }
 
+/* A staged directory whose path on the root is a file — a zipped Python egg
+ * that a new version ships unpacked. Asked about like a file: the path is
+ * replaced only when no other package claims it. */
+static int blocked_dir(const char *root, const char *rel)
+{
+	char *dst = kb_path_join(root, rel);
+	struct stat ds;
+	int blocked = lstat(dst, &ds) == 0 && !S_ISDIR(ds.st_mode) &&
+		      !kb_is_dir(dst);
+	free(dst);
+	return blocked;
+}
+
+typedef struct {
+	const char *root;
+	Paths *p;
+} Blocked;
+
+static int collect_blocked(const char *rel, void *u)
+{
+	Blocked *b = u;
+	if (blocked_dir(b->root, rel))
+		collect(rel, b->p);
+	return 0;
+}
+
 static int mkdirs(const char *rel, void *u)
 {
 	Ctx *x = u;
 	char *dst = kb_path_join(x->root, rel);
+	/* Unlinked first, or every path beneath it fails with ENOTDIR. The
+	 * dirs list is pre-order, so a child of a replaced path is never
+	 * asked: its lstat is ENOTDIR, not a file. */
+	if (blocked_dir(x->root, rel) && unlink(dst) == 0)
+		kp_msg("Replacing file %s with a directory", rel);
 	kb_mkdir_p(dst);
 	free(dst);
 	return 0;
@@ -556,6 +591,8 @@ int add_main(int argc, char **argv)
 	if (!force) {
 		Paths pv = { NULL, 0, 0 };
 		for_each(files.p, collect, &pv);
+		Blocked bl = { root, &pv };
+		for_each(dirs.p, collect_blocked, &bl);
 		KbBuf report = {0};
 		if (pv.n) {
 			/* Loaded once, for exactly the paths it is asked
