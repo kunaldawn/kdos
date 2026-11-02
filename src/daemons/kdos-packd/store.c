@@ -69,8 +69,12 @@ const char *kd_mnt_dir(void)
 
 const char *kd_manifest(void)
 {
+	static char b[KD_PATH];
 	const char *p = getenv("KDOS_PACK_MANIFEST");
-	return p && *p ? p : KD_MANIFEST;
+	if (p && *p)
+		return p;
+	snprintf(b, sizeof(b), "%.480s/" KD_MANIFEST, kd_store_dir());
+	return b;
 }
 
 const char *kd_staging_dir(void)

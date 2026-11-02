@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libetonyek
+version     = 0.1.13
+release     = 1
+source      = $name-$version.tar.xz::https://dev-www.libreoffice.org/src/libetonyek/libetonyek-$version.tar.xz
+sha256      = 032b71cb597edd92a0b270b916188281bc35be55296b263f6817b29adbcb1709  libetonyek-0.1.13.tar.xz
+description = Import filter library and conversion tools for Apple Keynote, Pages and Numbers documents
+homepage    = https://wiki.documentfoundation.org/DLP/Libraries/libetonyek
+license     = MPL-2.0
+depends     = pkgconf gperf boost glm mdds librevenge libxml2 zlib liblangtag

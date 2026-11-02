@@ -24,4 +24,3 @@
 
 libxkbcommon
 libei
-wvkbd

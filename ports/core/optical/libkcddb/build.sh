@@ -21,4 +21,3 @@ cmake -S . -B build -G Ninja \
 grep -q '^#define HAVE_MUSICBRAINZ5 1' build/config-musicbrainz.h
 cmake --build build
 DESTDIR=$PKG cmake --install build
-rm -f "$PKG/usr/share/applications/kcm_cddb.desktop"

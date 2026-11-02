@@ -34,6 +34,7 @@ Comment=Palette, style, fonts and icons of Qt 5 programs
 Exec=qt5ct
 Icon=qt5ct
 Terminal=false
+NoDisplay=true
 StartupWMClass=qt5ct
 Categories=Settings;DesktopSettings;Qt;
 Keywords=settings;desktop;qt;qt5;theme;style;palette;font;icons;

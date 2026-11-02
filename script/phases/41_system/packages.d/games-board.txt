@@ -32,3 +32,5 @@ chess-tui
 # calls err(1) when it cannot open /usr/share/dict/words, and no wordlist
 # exists anywhere on this image.
 bsd-games
+
+gnugo

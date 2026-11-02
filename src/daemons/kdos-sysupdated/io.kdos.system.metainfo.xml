@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- What GetAppStream names when kdos-sysupdated could not write its own
+     copy on /run: the system, with no release, so Discover lists the target
+     and offers nothing rather than dropping it with an error. -->
+<component type="operating-system">
+  <id>io.kdos.system</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <name>KDOS</name>
+  <summary>The KDOS system, updated as a whole into the other root slot</summary>
+  <developer id="io.kdos">
+    <name>KDOS</name>
+  </developer>
+  <description>
+    <p>KDOS installs a system update into the root slot it is not running and starts it at the next restart, keeping the running version to go back to.</p>
+  </description>
+  <url type="homepage">https://github.com/kunaldawn/kdos</url>
+</component>

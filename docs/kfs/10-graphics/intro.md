@@ -25,8 +25,9 @@ port whose closure reaches GTK, Qt, wxWidgets, FLTK or Motif is never here; it i
 [Part XI](../11-toolkits/intro.md)'s or Part XII's.
 
 The [Wayland]{.idx} base is in this phase and not in Part XIII because it is useful without a compositor:
-`foot`, `grim`, `slurp`, `wl-clipboard` and `waypipe` work under any Wayland compositor, and
-[Xwayland]{.idx} is a client of whichever one runs it. The `50_desktop` list says so in its header.
+`wl-clipboard`, `waypipe` and `wev` work under any Wayland compositor, and [Xwayland]{.idx} is
+started by whichever one runs it. The `50_desktop` list says in its header that it holds only what
+the session needs.
 
 ## The list, by shelf
 
@@ -40,9 +41,9 @@ list, with no order file. The chapters that carry the phase are these:
   protocol headers and the XCB libraries under them are Part IX's.
 
 `wl`
-: [wayland](#port-wayland) and [wayland-protocols](#port-wayland-protocols), `libdecor`, the font
-  library `fcft`, and Wayland utilities that need no particular compositor: `wl-clipboard`, `grim`,
-  `slurp`, `waypipe`, `wtype`, `fuzzel`, `wev`. wlroots is on this shelf too, and is Part XIII's.
+: [wayland](#port-wayland) and [wayland-protocols](#port-wayland-protocols), `libdecor`, the C++
+  binding `waylandpp`, and Wayland utilities that need no particular compositor: `wl-clipboard`,
+  `waypipe`, `wev` and `wayland-utils`.
 
 `gpu`
 : `libdrm`, `libglvnd`, [Mesa](#port-mesa), the [Vulkan]{.idx} loader and tools, [VA-API]{.idx} with the Intel
@@ -63,9 +64,8 @@ list, with no order file. The chapters that carry the phase are these:
   framework.
 
 Smaller chapters
-: `input` holds [libxkbcommon](#port-libxkbcommon), whose closure reaches Wayland, with `libei`
-  and the on-screen keyboard `wvkbd`; `base` holds `kbd`, the console key tables and utilities;
-  `shells` holds `foot`; `xdg` holds `xdg-desktop-portal` and AppStream; `lang` holds OpenJDK,
+: `input` holds [libxkbcommon](#port-libxkbcommon), whose closure reaches Wayland, with `libei`;
+  `base` holds `kbd`, the console key tables and utilities; `xdg` holds `xdg-desktop-portal` and AppStream; `lang` holds OpenJDK,
   Tk and R; and the subject shelves from `3d` to `ai` hold the libraries and tools of their fields
   that draw without a toolkit, such as VTK, MuPDF and KOReader.
 
@@ -73,12 +73,18 @@ Smaller chapters
 : [kdos-tools](#port-kdos-tools), one binary installed under many names: the service supervisor
   [`ksvc`]{.idx term="supervisor (ksvc)"}, the [`kdos` command]{.idx term="kdos (command)"} and the console getty [`kdos-getty`]{.idx} among them. It is built here
   because it depends on `kbd`, for the [`loadkeys`]{.idx} the getty runs, and `kbd` depends on
-  libxkbcommon.
+  libxkbcommon. [kdos-boxsock](#port-kdos-boxsock) is beside it: the Wayland socket each box's
+  applications connect through, tagged with the box through KWin's `security-context-v1`, built
+  here because it links `wayland-client`.
+
+`src-art`
+: [kdos-sounds](#port-kdos-sounds), the KDOS sound theme, rendered at build time by `kdos-sfx`
+  from kdos-tools.
 
 ## Which ports have full pages
 
 The [Tier A]{.idx} ports of this phase are the display and audio spine: wayland and wayland-protocols,
-libxkbcommon, Mesa, Xwayland, PipeWire and WirePlumber, and `kdos-tools`. Each has a page with a
+libxkbcommon, Mesa, Xwayland, PipeWire and WirePlumber, and `kdos-tools` and `kdos-boxsock`. Each has a page with a
 hand-written note beside its recipe (see
 [The three tiers](../00-front/reading-a-package-page.md#the-three-tiers)).
 
@@ -91,7 +97,7 @@ rest of the phase is on cards.
 
 - [The userland: `40_lang` to `44_apps`](../../kdos/05-developer/how-kdos-is-built.md#the-userland-40_lang-to-44_apps): the phase among the five userland phases
 - [Audio](../../kdos/03-architecture/session.md#audio): what PipeWire and WirePlumber do in the session
-- [Xwayland](../../kdos/04-programs/kdos-comp.md#xwayland): how the compositor runs the X server built here
+- [Xwayland](../../kdos/04-programs/kwin.md#xwayland): how KWin runs the X server built here
 - [Reading a package page](../00-front/reading-a-package-page.md): how the pages below are laid out
 - [Part XI](../11-toolkits/intro.md): the next phase
 

@@ -2,44 +2,42 @@
 
 <!-- kfs:phase 50_desktop -->
 
-`50_desktop` builds KDOS's desktop: wlroots, and on it the [compositor]{.idx} `kdos-comp`, the [panel]{.idx}
-`kdos-shell`, the terminal, the [lock screen]{.idx}, the resource monitor, the per-box Wayland socket, the
-screen recorder, the portal backends, the [input method]{.idx} with its language engines, and the root
-daemons the desktop account talks to. Most of its ports are programs of KDOS's own, from
-`src/desktop` and `src/daemons`. This part explains why the desktop is a phase of its own and why
-those two directories are searched here and nowhere else, then walks through the phase in the order
-it builds, from the input method and wlroots to the programs, with a link to each port's page and
-to the chapter of *The KDOS book* that describes how the program behaves. The package pages follow,
-in chapters by shelf, in the shelves' own order, and within a shelf in the order [kpkgdepends]{.idx} builds
-them.
+`50_desktop` builds KDOS's desktop: the display manager [SDDM]{.idx}, the [compositor]{.idx}
+KWin, the Plasma shell and its daemons, System Settings, the [portal]{.idx} backend, the
+[input method]{.idx} with its language engines, Discover, KDOS's own Plasma code from
+`src/desktop`, the root daemons from `src/daemons`, and the meta ports that name the KDE install
+set. This part explains why the desktop is a phase of its own and why those two directories are
+searched here and nowhere else, then walks through the phase in the order it builds, with a link
+to each port's page and to the chapter of *The KDOS book* that describes how the program behaves.
+The package pages follow, in chapters by shelf, in the shelves' own order, and within a shelf in
+the order [kpkgdepends]{.idx} builds them.
 
 ## Why the desktop is a phase of its own
 
 The list's header says what the phase is for and what it leaves to the phases before it:
 
-<!-- kfs:include script/phases/50_desktop/packages.txt lines=13-18 pin=f925a6ec8293 -->
+<!-- kfs:include script/phases/50_desktop/packages.txt lines=13-18 pin=f578e095ae03 -->
 
-The Wayland base therefore has its pages in [Part IX](../09-system/intro.md) and
-[Part X](../10-graphics/intro.md). What is left for this phase is what only the desktop needs, and
-the phase table in
+The Qt and KDE Frameworks libraries, and the Plasma libraries that applications link, therefore
+have their pages in [Part XI](../11-toolkits/intro.md), and Wayland's own libraries in
+[Part IX](../09-system/intro.md) and [Part X](../10-graphics/intro.md). What is left for this
+phase is what only the session needs, and the phase table in
 [Which phase lists a port](../../kdos/05-developer/writing-ports.md#which-phase-lists-a-port)
-gives exactly that as its rule. fcitx5's dependencies are all installed by the end of
-[Part XI](../11-toolkits/intro.md), where `plasma-wayland-protocols` is built, so by closure alone
-it could be built there. It is listed here under the second half of that rule: it is the program
-on the other end of the compositor's input-method protocol, and the list's comment above it says
-so.
+gives exactly that as its rule. fcitx5's dependencies are all installed by the end of Part XI, so
+by closure alone it could be built there; it is listed here because it is the program on the
+other end of KWin's input-method protocol, and the list's comment above it says so.
 
 The programs from `src/` have a stronger reason. The phase's [`phase.env`]{.idx} is the only one whose
 [`PORT_REPO`]{.idx} names `src/desktop` and `src/daemons`:
 
-<!-- kfs:include script/phases/50_desktop/phase.env lines=25-28 pin=e2f92d9382dc -->
+<!-- kfs:include script/phases/50_desktop/phase.env lines=25-29 pin=7ed612b2a98f -->
 
 kpkg looks for a port only in the repositories `PORT_REPO` names (see
 [Where kpkg looks for a port](../../kdos/05-developer/build-system.md#where-kpkg-looks-for-a-port)),
 so no earlier phase can build these programs, and [`testing/phaseclosure.py`]{.idx term="phaseclosure.py"} refuses a port in an
 earlier phase that depends on one of them, since that dependency could only be resolved by a later
-phase's `PORT_REPO`. The compositor and the programs that speak wlroots' protocols need wlroots,
-which this phase installs, and the daemons are built beside them.
+phase's `PORT_REPO`. KDOS's settings pages, widgets, KWin plugins and Discover backend link
+libplasma, KWin and libdiscover, which this phase installs, and the daemons are built beside them.
 
 The split also gives the build a restore point. The [snapshot]{.idx} taken at the end of `44_apps` holds
 the whole userland and none of the desktop, so resuming from it re-runs only this phase, the kernel
@@ -49,119 +47,127 @@ and the image (see
 ## The list and its chapters
 
 The list is one file, `script/phases/50_desktop/packages.txt`. A heading of the form
-`# <shelf> — <description>` opens each shelf's ports: `input`, `wl` and `xdg` for the upstream
-ports, then `src-desktop` and `src-daemons` for KDOS's own. No name comes before the first heading,
-so the list has no [pinned run]{.idx} (see
+`# <shelf> — <description>` opens each shelf's ports: `auth`, `sysmon`, `hardware`, `input`,
+`disk`, `filesystem`, `security`, `transfer`, `graphics`, `xdg`, `kde` and `printing` for the
+upstream ports, then `src-art`, `src-desktop` and `src-daemons` for KDOS's own, and `meta` last
+for the ports that only name others. No name comes before the first heading, so the list has no
+[pinned run]{.idx} (see
 [Package lists](../../kdos/05-developer/build-system.md#package-lists)), and under
 [`kdosbuild --port-jobs`]{.idx term="--port-jobs"} no [serial prefix]{.idx} (see
-[Building a package phase by level](../../kdos/05-developer/build-system.md#building-a-package-phase-by-level)). The chapters
-below follow the same shelves, with the two `src-` chapters after the upstream ones, `src-daemons`
-first.
+[Building a package phase by level](../../kdos/05-developer/build-system.md#building-a-package-phase-by-level)).
+The chapters below follow the ports' own shelves, with the `src-` chapters after the upstream
+ones; a meta port sits on the `kde` shelf.
 
 ## A tour of the build
 
 kpkgdepends builds the phase in the order the list gives, each port after what it depends on. Read
-in that order, the phase falls into five groups. The one port out of place below is the KDOS portal
-backend, described with the other portal: it depends on `kdos-shell` and builds after it.
+in that order, the phase falls into six groups.
+
+### The login screen
+
+[sddm](#port-sddm) is the display manager. It is built for Qt 6 with elogind and no systemd, and
+installs three PAM stacks of KDOS's own, `sddm`, `sddm-autologin` and `sddm-greeter`, in place of
+upstream's; the page explains each line. [kwallet-pam](#port-kwallet-pam) opens the user's wallet
+with the password typed at the greeter. The greeter's theme, [kdos-sddm-theme](#port-kdos-sddm-theme),
+is in the `src-art` group below. How SDDM is started and when it gives way to a text prompt is in
+[Login and autologin](../16-wiki/login-and-autologin.md).
 
 ### The input method
 
-[fcitx5](#port-fcitx5) is first, with its engines after it: [libime](#port-libime) and
+[fcitx5](#port-fcitx5) comes with its engines: [libime](#port-libime) and
 [fcitx5-chinese-addons](#port-fcitx5-chinese-addons) for Chinese,
 [anthy-unicode](#port-anthy-unicode) and [fcitx5-anthy](#port-fcitx5-anthy) for Japanese, and
-[libhangul](#port-libhangul) and [fcitx5-hangul](#port-fcitx5-hangul) for Korean. fcitx5 is built
-for Wayland only, with no X11 frontend and no systemd. Its build would download data at build
-time, which the chroot cannot, so the recipe declares the data archive as a second source and
-`build.sh` puts it where the download would have written it; libime and the Chinese engine carry
-their dictionaries the same way. The fcitx5 page explains each switch. How the compositor relays
-the input method to applications is in
+[libhangul](#port-libhangul) and [fcitx5-hangul](#port-fcitx5-hangul) for Korean, then
+[fcitx5-qt](#port-fcitx5-qt), [fcitx5-gtk](#port-fcitx5-gtk) and
+[fcitx5-configtool](#port-fcitx5-configtool).
+[plasma-keyboard](#port-plasma-keyboard) is the on-screen keyboard. fcitx5 is built for Wayland
+only, with no X11 frontend and no systemd. Its build would download data at build time, which the
+chroot cannot, so the recipe declares the data archive as a second source and `build.sh` puts it
+where the download would have written it; libime and the Chinese engine carry their dictionaries
+the same way. How KWin relays the input method to applications is in
 [Input methods](../../kdos/03-architecture/session.md#input-methods).
 
-### wlroots and its patch
+### KWin and Plasma
 
-[wlroots]{.idx} is the library the compositor is built from. Its whole `build.sh` is short:
+The `kde` section is the session itself. [kwin](#port-kwin) is the compositor and window manager,
+with Xwayland for X11 clients; [kglobalacceld](#port-kglobalacceld),
+[kscreenlocker](#port-kscreenlocker), [aurorae](#port-aurorae), [knighttime](#port-knighttime)
+and [kscreen](#port-kscreen) are the parts it loads or serves. KWin carries KDOS patches, each with
+its `Subject:` line on the kwin page. [plasma-workspace](#port-plasma-workspace) is `plasmashell`,
+the session's start and end, KRunner and the notifications, and
+[plasma-desktop](#port-plasma-desktop) the panel and desktop containments and Kickoff;
+[systemsettings](#port-systemsettings) hosts every settings page. The rest of the section is the
+session's services and applets: [powerdevil](#port-powerdevil), [plasma-nm](#port-plasma-nm),
+[plasma-pa](#port-plasma-pa), [bluedevil](#port-bluedevil),
+[polkit-kde-agent-1](#port-polkit-kde-agent-1), [kde-gtk-config](#port-kde-gtk-config),
+[kdeplasma-addons](#port-kdeplasma-addons), [discover](#port-discover),
+[sddm-kcm](#port-sddm-kcm), [plasma-setup](#port-plasma-setup),
+[plasma-welcome](#port-plasma-welcome) and [krohnkite](#port-krohnkite), the auto-tiling script.
+Every one of them is built with its systemd parts turned off or removed, and the classic session
+start is the only one; the pages say how. How the session starts is in
+[The session](../../kdos/03-architecture/session.md).
 
-<!-- kfs:include ports/core/wl/wlroots/build.sh lines=12-32 pin=81802afd47c0 -->
+The sections before `kde` hold the Plasma pieces that belong to a subject shelf: the system
+monitor ([ksystemstats](#port-ksystemstats), [plasma-systemmonitor](#port-plasma-systemmonitor),
+[kinfocenter](#port-kinfocenter)), [plasma-thunderbolt](#port-plasma-thunderbolt),
+[plasma-disks](#port-plasma-disks), [plasma-vault](#port-plasma-vault),
+[ksshaskpass](#port-ksshaskpass), the backup tool [kup](#port-kup), [spectacle](#port-spectacle)
+and, under `xdg`, [xdg-desktop-portal-kde](#port-xdg-desktop-portal-kde), the portal backend.
+`xdg-desktop-portal` itself was built in Part X. [print-manager](#port-print-manager) closes the
+upstream ports.
 
-kpkg applies no patch by itself, so the first line does it. `idle-capture-frame.patch` changes
-wlroots' `ext-image-copy-capture` implementation so that each capture request asks for a new frame
-even when nothing on the screen has changed; without it, a recording of a still screen receives one
-frame and then nothing, and the patch's own header gives the cost. The `meson` switches choose the
-DRM and libinput backends, the GLES2 and Vulkan renderers, the allocators, session, Xwayland and
-colour-management support; the [wlroots](#port-wlroots) page explains each one.
+### KDOS's own artwork and Plasma code
 
-The last two lines are KDOS's addition. They install the protocol XML files from the tarball into
-[`/usr/share/wlroots/protocols/`]{.idx term="/usr/share/wlroots/protocols"}, where `kdos-shell`, `kdos-term`, `kdos-res` and `kdos-lock` read
-the layer-shell and foreign-toplevel-management protocols, and `kdos-shell` output management and
-data control as well, to generate their client code. Those programs depend on
-wlroots for that directory and link none of it; `kdos-comp` is the one port that links the library.
-wlroots changes its API from one release series to the next, so a version bump of this port is a
-change to `kdos-comp` as well.
+The `src-art` and `src-desktop` sections are KDOS's own. They are Qt 6 and KDE Frameworks code,
+QML and generated data, each with an ECM `build.sh` or a short install, and each page shows it:
 
-### The portals
+- the look: [kdos-plasma-look](#port-kdos-plasma-look) (the eight colour schemes and global
+  themes, the `kdos` Plasma style, the three desks), [kdos-sddm-theme](#port-kdos-sddm-theme) and
+  [kdos-addons](#port-kdos-addons), the offline add-on set;
+- System Settings pages: [kcm-kdos-system](#port-kcm-kdos-system) (the two root slots),
+  [kcm-kdos-boxes](#port-kcm-kdos-boxes), [kcm-kdos-firewall](#port-kcm-kdos-firewall),
+  [kcm-kdos-look](#port-kcm-kdos-look) and [kcm-kdos-health](#port-kcm-kdos-health);
+- KWin plugins: [kdos-kwin-motion](#port-kdos-kwin-motion), [kwin-effect-kdos-keys](#port-kwin-effect-kdos-keys),
+  [kwin-script-kdos-runraise](#port-kwin-script-kdos-runraise) and
+  [kwin-script-kdos-window-memory](#port-kwin-script-kdos-window-memory);
+- the shell and its services: [kdos-welcome](#port-kdos-welcome),
+  [plasmoid-kdos-checklist](#port-plasmoid-kdos-checklist),
+  [plasmoid-kdos-privacy](#port-plasmoid-kdos-privacy), [kded-kdos](#port-kded-kdos),
+  [kdos-runner](#port-kdos-runner), [kdos-notice](#port-kdos-notice),
+  [ksystemstats-kdos](#port-ksystemstats-kdos), [kio-library](#port-kio-library) and
+  [kdos-transcribe](#port-kdos-transcribe);
+- [kdos-discover](#port-kdos-discover), the Discover backend for packs, boxes and host ports and
+  the system-update notifier;
+- [kdos-installer-gui](#port-kdos-installer-gui), the graphical installer over the same backend
+  as the terminal one.
 
-[`xdg-desktop-portal`]{.idx} itself was built in Part X. This phase adds its two backends.
-[xdg-desktop-portal-wlr](#port-xdg-desktop-portal-wlr) implements ScreenCast and Screenshot by
-capturing through the compositor's capture protocols and handing the frames to PipeWire.
-`xdg-desktop-portal` has no capture code of its own, so a recorder or a browser, native or boxed,
-that asks the [portal]{.idx} for the screen is served by this backend.
-[xdg-desktop-portal-kdos](#port-xdg-desktop-portal-kdos) implements FileChooser, Settings,
-AppChooser and Access. It is one C file compiled against [`basu`]{.idx}, installed with its `.portal` file
-and its D-Bus service file, and it depends on `kdos-shell` because it answers a file-chooser
-request by running [`kdos-pick`]{.idx} and an access question by running [`kdos-prompt`]{.idx}, two of the shell's
-names. How the session chooses between the backends is in
-[Portals](../../kdos/03-architecture/session.md#portals).
-
-### The compositor and the programs
-
-[kdos-comp](#port-kdos-comp) is a hard fork of [labwc]{.idx}, kept in the tree under
-`src/desktop/kdos-comp` with its upstream licence; the fork's [`KDOS-FORK`]{.idx} file names the labwc
-release and tarball it started from. Its `build.sh` shows the step that most programs of KDOS's
-own have in common, compiling the libraries in:
-
-<!-- kfs:include src/desktop/kdos-comp/build.sh lines=12-25 pin=09a7acfcdeca -->
-
-The first block compiles three of KDOS's libraries, [`libkbase`]{.idx}, [`libkcolor`]{.idx} and [`libkwm`]{.idx}, straight
-from [`src/libs`]{.idx} into a static archive in the build directory, and passes the archive on through
-`LDFLAGS`. The libraries are not packages of their own: each program compiles in the ones it uses
-(see [The C libraries](../../kdos/05-developer/c-libraries.md)). The `meson` switches turn on
-Xwayland support and turn off labwc's window icons, SVG window buttons, native language support,
-manual pages, the `labnag` notification daemon and the systemd user unit.
-
-The other programs have no build system of their own: each `build.sh` is a set of compiler lines
-over the program's files and the libraries it needs, and each page shows it whole:
-
-- [kdos-boxsock](#port-kdos-boxsock), the Wayland socket a box's applications connect through,
-  tagged by the compositor with the box's name. It links only `wayland-client`.
-- [kdos-shell](#port-kdos-shell), the panel and every other surface, one binary installed under
-  many names. Its `build.sh`, the longest of the phase, generates the client code of every
-  protocol the shell speaks before it compiles.
-- [kdos-term](#port-kdos-term), the terminal, with the picture protocols compiled in.
-- [kdos-lock](#port-kdos-lock), the lock screen, and with it [`kdos-checkpass`]{.idx}, installed [setuid]{.idx}
-  root.
-- [kdos-res](#port-kdos-res), the resource monitor, and with it [`kdos-resctl`]{.idx}, the other setuid-root
-  helper.
-- [kdos-record](#port-kdos-record), the screen recorder, which depends on
-  xdg-desktop-portal-wlr and the GStreamer plugin sets.
-
-What each program does once it runs is in *The KDOS book*:
-[kdos-comp](../../kdos/04-programs/kdos-comp.md), [kdos-shell](../../kdos/04-programs/kdos-shell.md),
-[kdos-term](../../kdos/04-programs/kdos-term.md), [kdos-res](../../kdos/04-programs/kdos-res.md),
-[kdos-lock](../../kdos/04-programs/daemons.md#kdos-lock),
-[kdos-boxsock](../../kdos/04-programs/daemons.md#kdos-boxsock),
-[xdg-desktop-portal-kdos](../../kdos/04-programs/daemons.md#xdg-desktop-portal-kdos) and, for
-kdos-record, [Recording](../../kdos/03-architecture/session.md#recording).
+What each does once it runs is in *The KDOS book*: [The Plasma shell](../../kdos/04-programs/plasma-shell.md),
+[KWin](../../kdos/04-programs/kwin.md), [KDOS's settings](../../kdos/04-programs/kdos-settings.md)
+and [Discover](../../kdos/04-programs/discover.md).
 
 ### The root daemons
 
-The phase ends with the root daemons: [kdos-powerd](#port-kdos-powerd),
+The `src-daemons` section is the root daemons: [kdos-powerd](#port-kdos-powerd),
 [kdos-energyd](#port-kdos-energyd), [kdos-oomd](#port-kdos-oomd),
-[kdos-mountd](#port-kdos-mountd) and [kdos-packd](#port-kdos-packd). Each is a small C program
-compiled with `libkbase` and whatever else it needs, installed in `/usr/sbin`, and those with a
-command-line client install it as a link in `/usr/bin` to the same binary. They share one shape,
-a root process under [`ksvc supervise`]{.idx term="supervisor (ksvc)"} that owns one socket in `/run` and authorises each request by
-the caller's credentials, described in
+[kdos-packd](#port-kdos-packd), [kdos-settingsd](#port-kdos-settingsd) and
+[kdos-sysupdated](#port-kdos-sysupdated). Each is a small C program compiled with `libkbase` and
+whatever else it needs, installed in `/usr/sbin`, and those with a command-line client install it
+as a link in `/usr/bin` to the same binary. They share one shape, a root process under
+[`ksvc supervise`]{.idx term="supervisor (ksvc)"} that owns a socket in `/run` or a name on the
+system bus and authorises each request by the caller's credentials or through polkit, described in
 [The shape they share](../../kdos/04-programs/daemons.md#the-shape-they-share).
+
+### The meta ports
+
+The `meta` section closes the phase: [kde-plasma](#port-kde-plasma), the session, and the Gear
+sets [kde-gear-core](#port-kde-gear-core), [kde-gear-games](#port-kde-gear-games),
+[kde-gear-education](#port-kde-gear-education), [kde-gear-pim](#port-kde-gear-pim),
+[kde-gear-multimedia](#port-kde-gear-multimedia), [kde-gear-graphics](#port-kde-gear-graphics),
+[kde-gear-utilities](#port-kde-gear-utilities) and [kde-gear-devtools](#port-kde-gear-devtools),
+then [kde-gear](#port-kde-gear) and [kde-all](#port-kde-all). A meta port has no source and
+installs no file; it only names other ports in `depends`, so `kpkg install kde-all` gives a
+machine the whole desktop. Gear is split by kind so no one recipe names more than kpkg's 128
+dependencies.
 
 ## Changing a desktop program
 
@@ -175,16 +181,16 @@ rebuilt program into a running image without packaging a new one, are in
 
 ## Which ports have full pages
 
-Every port of this phase is [Tier A]{.idx}: `docs/kfs/data/tier-a.txt` names the phase's whole list, and
-each page carries the hand-written note beside its recipe (see
-[The three tiers](../00-front/reading-a-package-page.md#the-three-tiers)).
+The ports of KDOS's own and the core of the session are [Tier A]{.idx}: `docs/kfs/data/tier-a.txt`
+names them, and each page carries the hand-written note beside its recipe (see
+[The three tiers](../00-front/reading-a-package-page.md#the-three-tiers)). The other ports of the
+phase are Tier B or C by the general rule.
 
 ## See also
 
-- [The programs](../../kdos/04-programs/README.md#the-desktop): every desktop program and where it is documented
+- [The programs](../../kdos/04-programs/README.md): every program of KDOS's own and where it is documented
 - [The session](../../kdos/03-architecture/session.md): how the programs built here start and fit together
-- [Writing desktop software](../../kdos/05-developer/writing-desktop-software.md): how a program of this phase draws
-- [The C libraries](../../kdos/05-developer/c-libraries.md): the `libk*` libraries the programs compile in
+- [Writing desktop software](../../kdos/05-developer/writing-desktop-software.md): how KDOS's Plasma code is written
 - [Reading a package page](../00-front/reading-a-package-page.md): how the pages below are laid out
 - [Part XIV](../14-kernel/intro.md): the next phase
 

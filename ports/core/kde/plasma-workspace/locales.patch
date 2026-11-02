@@ -1,0 +1,20 @@
+Subject: read musl-locales definitions from /usr/share/i18n/locales/musl
+
+The Region & Language KCM offers only the locales whose definition files
+it finds in this directory. musl-locales installs them in musl/ below
+it, so the directory holds no file, the KCM lists no format locale, and
+it reports that localectl could not list them.
+
+Chimera Linux carries the same one-line change for the same layout.
+
+--- a/kcms/region_language/glibclocaleconstructor.cpp
++++ b/kcms/region_language/glibclocaleconstructor.cpp
+@@ -156,7 +156,7 @@
+ 
+ QString GlibcLocaleConstructor::localeFileDirPath()
+ {
+-    return QStringLiteral("/usr/share/i18n/locales");
++    return QStringLiteral("/usr/share/i18n/locales/musl");
+ }
+ 
+ QString GlibcLocaleConstructor::failedFindLocalesMessage()

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = rocs
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 0f1f9e641b87d0c872d6e16276f47ea9f46b6b7644a88848251f2603b6efd386  rocs-26.08.2.tar.xz
+description = KDE graph theory IDE — draw graphs and run algorithms on them in JavaScript
+homepage    = https://apps.kde.org/rocs/
+license     = (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND GPL-2.0-or-later AND GPL-2.0-only AND BSD-2-Clause AND BSD-3-Clause AND GFDL-1.2-or-later AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules boost qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qtscxml karchive kconfig kcoreaddons kcrash ki18n kitemviews ktexteditor ktexttemplate ktextwidgets kxmlgui kdoctools

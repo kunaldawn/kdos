@@ -211,8 +211,9 @@ static int generated(const char *rel)
 	/* update-mime-database writes everything under mime/ but the XML in
 	 * packages/, which is what packages ship. */
 	static const char mime[] = "usr/share/mime/";
+	static const char mime_xml[] = "usr/share/mime/packages/";
 	if (!strncmp(rel, mime, sizeof(mime) - 1) &&
-	    strncmp(rel + sizeof(mime) - 1, "packages/", 9))
+	    strncmp(rel, mime_xml, sizeof(mime_xml) - 1))
 		return 1;
 
 	const char *base = strrchr(rel, '/');

@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kinfocenter
+version     = 6.8.2
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = 2782ff66388124529a5dc4ecff28b4c69f2dec4c7658a35c205932cd64e06716  kinfocenter-6.8.2.tar.xz
+description = Info Center — the hardware, graphics, firmware security, network, energy and distribution pages of System Settings
+homepage    = https://invent.kde.org/plasma/kinfocenter
+license     = (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND GPL-2.0-or-later AND LGPL-2.1-or-later
+group       = plasma
+depends     = cmake ninja extra-cmake-modules pkgconf qt6-qtbase qt6-qtdeclarative qt6-qtgraphs qt6-qttools kconfig kcoreaddons ki18n kcmutils kio kservice solid kauth kdoctools kirigami kdeclarative libdrm libglvnd eudev libusb systemsettings aha clinfo dmidecode polkit pciutils lm-sensors util-linux iproute2 vulkan-tools wayland-utils mesa-demos libva-utils libdisplay-info fwupd libpulse

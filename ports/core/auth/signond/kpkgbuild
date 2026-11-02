@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = signond
+version     = 8.61
+release     = 1
+source      = https://gitlab.com/accounts-sso/signond/-/archive/VERSION_$version/signond-VERSION_$version.tar.gz
+sha256      = 3dd57c25e1bf1583b2cb857f96831e38e73d40264ff66ca43e63bb7233f76828  signond-8.61.tar.gz
+description = Single sign-on daemon — stores credentials and runs authentication plugins over D-Bus for its clients
+homepage    = https://gitlab.com/accounts-sso/signond
+license     = LGPL-2.1-only
+depends     = pkgconf qt6-qtbase dbus

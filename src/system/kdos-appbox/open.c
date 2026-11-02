@@ -51,7 +51,7 @@
  * HOW MANY DOCUMENTS ONE OPEN CARRIES. The split writes the substituted paths
  * into a fixed store, and a store that will not hold them yields NO arguments
  * and opens nothing — so the count is a cap the caller's files are clamped to
- * rather than a promise. Four, the same number `sh_launch` clamps to.
+ * rather than a promise.
  */
 #define OPEN_MAX_FILES 4
 
@@ -63,9 +63,16 @@
  */
 #define XDG_OPEN_PROG "/usr/bin/xdg-open"
 
-/* The "open with" chooser, a kdos-shell front end. A tree without
- * kdos-shell has no such program, so every use of it is guarded. */
-#define OPENWITH_PROG "kdos-openwith"
+/*
+ * THE "OPEN WITH" CHOOSER IS THE PORTAL'S. OpenURI with `ask` set puts up the
+ * desktop's own application chooser — xdg-desktop-portal-kde's — and launches
+ * what is picked through its desktop entry, which for a boxed application is
+ * the generated launcher, so the chooser lists host and boxed handlers alike.
+ * This process is not sandboxed, so the portal takes a `file://` URI from it.
+ */
+#define PORTAL_DEST   "org.freedesktop.portal.Desktop"
+#define PORTAL_PATH   "/org/freedesktop/portal/desktop"
+#define PORTAL_METHOD "org.freedesktop.portal.OpenURI.OpenURI"
 
 /* ── path -> MIME ──────────────────────────────────────────────────────── */
 
@@ -82,8 +89,9 @@
 /* ── MIME -> entry ─────────────────────────────────────────────────────── */
 
 /*
- * kxdg_handlers ANSWERS THIS, and the Settings window's Apps page asks the
- * same function, so the handler it shows is the one this starts. `defaulted`
+ * kxdg_handlers ANSWERS THIS, from the same mimeapps.list chain KDE's own
+ * resolution reads, so the handler the Default Applications page shows is the
+ * one this starts. `defaulted`
  * decides whether the chooser appears: a default, or a single candidate,
  * means the answer is known and nothing may interrupt; two or more candidates
  * and no default means nobody has decided yet, and picking the first silently
@@ -102,38 +110,23 @@
  * `%%` is a literal percent.
  */
 /*
- * A NAME, NOT A PROGRAM. `X-KDOS-Term` chooses between the two emulators this
- * image ships and can name nothing else: an entry is a file anything can
- * write, and a key that named an arbitrary program would be a second Exec line
- * with none of the field-code rules. An unknown value is the session's own
- * terminal rather than a refusal, because an entry written for another desktop
- * must still start.
- */
-static const char *term_named(const char *want)
-{
-	if (want && (!strcmp(want, "kdos-term") || !strcmp(want, "foot")))
-		return want;
-	return kb_terminal();
-}
-
-/*
  * THE SPLIT IS kxdg_exec_split'S, NOT A `strtok(" ")`.
  *
  * An Exec line carries quoting as well as field codes, and the two are the
- * format: `Exec=foot --title="Install KDOS" -- sudo kinstall` split on
- * whitespace reaches foot as `--title="Install` with a stray `KDOS"` after it,
+ * format: `Exec=konsole -p tabtitle="Install KDOS" -e sudo kinstall` split on
+ * whitespace reaches konsole as `tabtitle="Install` with a stray `KDOS"`,
  * and `Exec="/usr/bin/gsmartcontrol-root"` execs a file whose name begins with
  * a quote. A code is also not always a word of its own — `--open=%f` is one
  * argument — which a per-word switch cannot express at all.
  */
 static void exec_to_argv(const char *exec, char *const *files, int nfiles,
-			 int terminal, const char *want, KbArgv *a)
+			 int terminal, KbArgv *a)
 {
 	/*
 	 * STATIC, and that is not laziness: kb_argv_add stores the POINTER it
 	 * is given and does not copy, so every word handed to it has to
 	 * outlive the exec. A stack buffer here would be freed at the return
-	 * and the argv would be `foot -e ' ;'`-shaped garbage. `open` is a
+	 * and the argv would be `konsole -e ' ;'`-shaped garbage. `open` is a
 	 * one-shot command, so one buffer is all there ever is.
 	 *
 	 * The store is sized for the line plus a path per document, because a
@@ -148,14 +141,15 @@ static void exec_to_argv(const char *exec, char *const *files, int nfiles,
 		nfiles = OPEN_MAX_FILES;
 
 	if (terminal) {
-		/* THE TERMINAL FOLLOWS THE DESKTOP, unless the entry asked for
-		 * one by name.
+		/* THE TERMINAL FOLLOWS THE DESKTOP — Konsole, which draws sixel,
+		 * iTerm2 and kitty pictures, so a picture-showing terminal
+		 * program needs nothing of its entry but `Terminal=true`.
 		 *
-		 * AND A BARE VIRTUAL TERMINAL HAS NEITHER, so the entry runs
+		 * AND A BARE VIRTUAL TERMINAL HAS NONE, so the entry runs
 		 * where this process already is: `Ctrl+Alt+F2` is a terminal,
 		 * and wrapping a terminal program in an emulator that cannot
 		 * start is the one outcome worse than not wrapping it. */
-		const char *term = term_named(want);
+		const char *term = kb_terminal();
 
 		if (term) {
 			kb_argv_add(a, term);
@@ -172,8 +166,8 @@ static void exec_to_argv(const char *exec, char *const *files, int nfiles,
 	/*
 	 * AN ENTRY WITH NO FIELD CODE STILL OPENS THE FILE. Every launcher
 	 * appends the paths in that case and it is the only way `Exec=xterm`
-	 * can be handed one — the same decision `sh_launch` makes, read off
-	 * the same line, so the opener and the launcher cannot disagree about
+	 * can be handed one — the same decision KIO's launcher makes, read off
+	 * the same line, so the opener and the Start menu cannot disagree about
 	 * where a document goes.
 	 *
 	 * The scan steps TWO bytes past a `%` so a literal `%%` is not read as
@@ -196,24 +190,44 @@ static void exec_to_argv(const char *exec, char *const *files, int nfiles,
 /* ── the command ───────────────────────────────────────────────────────── */
 
 /*
- * Hand the whole question to the chooser. It reads the same chain this file
- * does, so there is nothing to pass but the files — a candidate list on the
- * command line would be a second copy of the resolution, going stale the
- * moment an app is installed.
- *
- * exec, for the same reason the launch below does: `open` is one shot and its
- * caller already decided who owns the process.
+ * Hand the whole question to the portal's chooser. It reads the same
+ * associations this file does, so there is nothing to pass but the files — a
+ * candidate list would be a second copy of the resolution, going stale the
+ * moment an app is installed. One request per file, because OpenURI takes one.
+ * 0 when every request was accepted; the caller falls back to the first
+ * candidate otherwise, because losing a dialog is a worse desktop and losing
+ * the click a broken one.
  */
-static int run_openwith(int argc, char **argv)
+static int portal_choose(int argc, char **argv)
 {
-	KbArgv a = {0};
-	kb_argv_add(&a, OPENWITH_PROG);
-	for (int i = 0; i < argc; i++)
-		kb_argv_add(&a, argv[i]);
-	kb_argv_end(&a);
-	execvp(a.v[0], (char *const *)a.v);
-	kb_die("cannot run %s", OPENWITH_PROG);
-	return 127;
+	for (int i = 0; i < argc; i++) {
+		char m[MIME_MAX], uri[PATH_MAX * 3 + 16], out[256];
+		const char *arg = kxdg_mime_for_arg(argv[i], m, sizeof(m));
+		KbArgv a = {0};
+
+		if (arg[0] == '/')
+			kb_uri_file(arg, uri, sizeof(uri));
+		else
+			kb_strlcpy(uri, arg, sizeof(uri));
+		kb_argv_add(&a, "gdbus");
+		kb_argv_add(&a, "call");
+		kb_argv_add(&a, "--session");
+		kb_argv_add(&a, "--timeout");
+		kb_argv_add(&a, "5");
+		kb_argv_add(&a, "--dest");
+		kb_argv_add(&a, PORTAL_DEST);
+		kb_argv_add(&a, "--object-path");
+		kb_argv_add(&a, PORTAL_PATH);
+		kb_argv_add(&a, "--method");
+		kb_argv_add(&a, PORTAL_METHOD);
+		kb_argv_add(&a, "");
+		kb_argv_add(&a, uri);
+		kb_argv_add(&a, "{'ask': <true>}");
+		kb_argv_end(&a);
+		if (kb_run_capture(&a, out, sizeof(out)) != 0)
+			return -1;
+	}
+	return 0;
 }
 
 int cmd_open(int argc, char **argv)
@@ -226,7 +240,7 @@ int cmd_open(int argc, char **argv)
 	/*
 	 * `--print` resolves and prints instead of executing. Every other
 	 * decision-making program here has one — kinstall's --dump, kdosbuild's
-	 * --preview, kdos-shell's --dump — and for the same reason: the answer
+	 * --preview — and for the same reason: the answer
 	 * is worth checking without launching LibreOffice to find out what it
 	 * was. It is also what testing/selftest.sh can assert on.
 	 *
@@ -279,17 +293,19 @@ int cmd_open(int argc, char **argv)
 	 * rather than failing. Losing a dialog is a worse desktop; losing the
 	 * click entirely is a broken one.
 	 */
-	if ((choose || (ncand > 1 && !defaulted)) && kb_have_prog(OPENWITH_PROG)) {
+	if ((choose || (ncand > 1 && !defaulted)) && kb_have_prog("gdbus")) {
 		/* Under --print the resolution below is still printed: the
 		 * `choose` line says the chooser would run, and what follows is
-		 * what a tree without it would do. Both are worth knowing and
-		 * one of them is what actually happens. */
+		 * what happens when the portal does not answer. Both are worth
+		 * knowing and one of them is what actually happens. */
 		if (print) {
-			printf("choose\t%s\n", OPENWITH_PROG);
+			printf("choose\tportal\n");
 		} else {
 			tracef("open: %d handlers for %s and no default, asking",
 			       ncand, mime);
-			return run_openwith(argc, argv);
+			if (portal_choose(argc, argv) == 0)
+				return 0;
+			tracef("open: the portal did not answer, taking the first");
 		}
 	}
 
@@ -335,15 +351,14 @@ int cmd_open(int argc, char **argv)
 
 	if (kxdg_load(&e, entry, "Desktop Entry") != 0)
 		kb_die("%s is not a desktop entry", entry);
-	/* libkxdg's one reader — the same keys kdos-shell's launch surfaces
-	 * read, so the opener and the launcher cannot come to different
-	 * conclusions about the same entry. See kxdg.h. */
+	/* libkxdg's one reader, so every KDOS program that starts an entry
+	 * comes to the same conclusion about it. See kxdg.h. */
 	if (kxdg_launch_read(&e, &kl) != 0)
 		kb_die("%s has no Exec line", entry);
 
 	KbArgv a = {0};
 
-	exec_to_argv(kl.exec, argv, argc, kl.terminal, kl.term, &a);
+	exec_to_argv(kl.exec, argv, argc, kl.terminal, &a);
 	kb_argv_end(&a);
 	if (!a.v[0])
 		kb_die("%s has an empty Exec line", entry);
@@ -359,10 +374,11 @@ int cmd_open(int argc, char **argv)
 	tracef("open: %s -> %s", mime, kb_basename(entry));
 
 	/*
-	 * RECORDED HERE AND NOWHERE ELSE. Every open on this desktop passes
-	 * through this function — the desktop's icons, the file chooser, a
-	 * menu, `xdg-open` — so this is the one place a recent-files store can
-	 * be written without a second copy of the rule going stale beside it.
+	 * RECORDED HERE, for the opens that pass through this function —
+	 * `xdg-open` from a terminal, a box's link handed to the host, a
+	 * program reading $BROWSER — which KIO's own launcher, recording the
+	 * opens made from Dolphin and the Start menu into the same store,
+	 * never sees.
 	 *
 	 * BEFORE the exec, which never returns. Only an absolute path is
 	 * recorded: a URL has no file to go back to, and a relative one means
@@ -388,7 +404,7 @@ int cmd_open(int argc, char **argv)
 
 	/*
 	 * exec, not fork: `open` is a one-shot command and the caller — a
-	 * double-forked kdos-desk, a menu, a shell — already decided what
+	 * portal, a menu, a shell — already decided what
 	 * should own the process. Wrapping it in another fork would only add
 	 * a pid nobody reaps.
 	 */

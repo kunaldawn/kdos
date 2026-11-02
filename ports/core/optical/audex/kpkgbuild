@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = audex
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 61910209fc38112b00722809bceba34b0f8162106a2028ce2b167fe66e0ebd45  audex-26.08.2.tar.xz
+description = CD ripper — audio CDs to FLAC, Ogg, Opus or MP3, with CDDB lookup and naming schemes
+homepage    = https://apps.kde.org/audex/
+license     = GPL-3.0-or-later AND LGPL-2.0-or-later
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kconfig kcompletion kcoreaddons kcrash ki18n kiconthemes kcmutils kio solid ktextwidgets kwidgetsaddons kxmlgui libkcddb libcdio libcdio-paranoia flac vorbis-tools opus-tools lame

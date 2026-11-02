@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = fcitx5-configtool
+version     = 5.1.16
+release     = 1
+source      = https://download.fcitx-im.org/fcitx5/$name/$name-$version.tar.zst
+sha256      = 0d9b9e023d3aa7056ec185ed9e6ccfb94e5a5b930d3dd742dba7f37a49abd61e  fcitx5-configtool-5.1.16.tar.zst
+description = Fcitx 5 settings — the System Settings input-method page and fcitx5-config-qt
+homepage    = https://github.com/fcitx/fcitx5-configtool
+license     = GPL-2.0-or-later
+depends     = cmake ninja extra-cmake-modules fcitx5 fcitx5-qt qt6-qtbase qt6-qtdeclarative qt6-qtsvg kitemviews kdbusaddons kwindowsystem kcoreaddons ki18n kpackage kdeclarative kiconthemes kirigami libplasma ksvg kcmutils kwidgetsaddons iso-codes libX11 libxkbfile libxkbcommon xkeyboard-config gettext desktop-file-utils

@@ -1,314 +1,130 @@
 # Portals and screen sharing
 
-A [portal]{.idx} is the [D-Bus]{.idx} service an application asks when it needs something done on the
-host: a file chosen, the screen captured, a link opened, the theme read, the camera or the location
-handed over. This page covers which programs answer each portal on KDOS, the files that choose
-them, sharing and recording the screen, the stored answers to the grant-or-deny questions, and what
-to check when an application says there is nothing to capture. How the front end, the backends and
-their start-up order fit together is in [Portals](../../kdos/03-architecture/session.md#portals).
+A [portal]{.idx} is the desktop's answer to a request an application cannot be trusted to carry
+out itself: open a file it was not given, show the screen, take a screenshot, read the colour
+scheme, open a link. On KDOS the portal front end, `xdg-desktop-portal`, passes every request to
+the KDE backend, which asks the person in a KDE dialog and has KWin capture the screen into
+PipeWire. This page covers the portal configuration, screenshots and recordings, sharing the
+screen with another application, sharing the whole desktop over VNC or RDP, and what a boxed
+application reaches through the portals. How the portals fit into the session is in
+[Portals](../../kdos/03-architecture/session.md#portals).
 
 ## Installation
 
 | Port | Provides |
-|:--|:--|
-| [xdg-desktop-portal](#port-xdg-desktop-portal) | The front end, `/usr/lib/xdg-desktop-portal`, which owns the public interfaces, its permission store, and the icon and sound validators |
-| [xdg-desktop-portal-wlr](#port-xdg-desktop-portal-wlr) | The ScreenCast and Screenshot backend, `/usr/lib/xdg-desktop-portal-wlr` |
-| [xdg-desktop-portal-kdos](#port-xdg-desktop-portal-kdos) | The FileChooser, Settings, AppChooser and Access backend, [`/usr/lib/xdg-desktop-portal-kdos`]{.idx} |
-| [xdg-desktop-portal-gtk](#port-xdg-desktop-portal-gtk) | The Print and Email backend |
-| [pipewire](#port-pipewire), [wireplumber](#port-wireplumber) | The media graph a screen capture is delivered through |
-| [fuzzel](#port-fuzzel) | The list the capture backend shows to ask which screen or window to share |
-| [kdos-shell](#port-kdos-shell) | [`kdos-pick`]{.idx}, the file chooser, and [`kdos-prompt`]{.idx}, the grant-or-deny dialog, which the KDOS backend runs |
-| [kdos-record](#port-kdos-record) | [`kdos-record`]{.idx}, the desktop's screen recorder, a ScreenCast client |
-| [geoclue](#port-geoclue) | The location service behind the Location portal |
-| [kdos-tools](#port-kdos-tools) | [`kdos-shot`]{.idx}, the [screenshot]{.idx} tool, which captures through the compositor directly with `grim` rather than through a portal |
+|---|---|
+| [xdg-desktop-portal](#port-xdg-desktop-portal) | The front end, `org.freedesktop.portal.Desktop`, and the permission store |
+| [xdg-desktop-portal-kde](#port-xdg-desktop-portal-kde) | The backend: the file chooser, screen cast, screenshot, remote desktop, settings, app chooser, notification, print, inhibit, global shortcuts and access dialogs |
+| [kwin](#port-kwin) | The screen and window capture the screen cast and screenshot draw on |
+| [kpipewire](#port-kpipewire) | Puts KWin's capture into PipeWire streams |
+| [spectacle](#port-spectacle) | Screenshots and screen recordings |
+| [krfb](#port-krfb), [krdp](#port-krdp) | Sharing the whole desktop over VNC and RDP |
+| [plasmoid-kdos-privacy](#port-plasmoid-kdos-privacy) | The privacy lamps, which show and stop every capture |
 
-Every one is named in a phase list, so all are on the image. None is a system service. `kdos-desktop-start` has D-Bus start the capture backend and then the
-front end once the compositor's socket exists; the KDOS and
-GTK backends are started by D-Bus when first asked, which the front end does as it starts, so both
-are running within seconds of a login; GeoClue is started on the system bus by D-Bus.
-A login on `tty2` or over SSH has no portals of its own, because no compositor is running for it.
+Neither portal is a service. The session bus starts both on the first request.
 
 ## Configuration
 
-### /usr/share/xdg-desktop-portal/kdos-portals.conf
+### Which backend answers
 
-The front end reads `<desktop>-portals.conf` from the lowercased first name in
-`XDG_CURRENT_DESKTOP`, which the session sets to `KDOS`. The file is in the base filesystem, at
-`fs/usr/share/xdg-desktop-portal/kdos-portals.conf`:
+The front end reads `kde-portals.conf`, which [plasma-workspace](#port-plasma-workspace)
+installs, because the session's `XDG_CURRENT_DESKTOP` is `KDE`; it names the KDE backend for every
+interface. A file of your own in `~/.config/xdg-desktop-portal/` overrides it per interface
+(`portals.conf(5)`).
 
-<!-- kfs:include fs/usr/share/xdg-desktop-portal/kdos-portals.conf -->
+### Which application is asking
 
-Each interface names exactly one backend. Why a list such as `wlr;kdos` does not fall through is in
-[Portals](../../kdos/03-architecture/session.md#portals).
-
-### /usr/share/xdg-desktop-portal/portals/kdos.portal
-
-The KDOS backend's own declaration, from `src/desktop/xdg-desktop-portal-kdos/kdos.portal`:
-
-<!-- kfs:include src/desktop/xdg-desktop-portal-kdos/kdos.portal -->
-
-### ~/.config/xdg-desktop-portal-wlr/config
-
-The capture backend's settings are per account, seeded from
-`fs/etc/skel/.config/xdg-desktop-portal-wlr/config`:
-
-<!-- kfs:include fs/etc/skel/.config/xdg-desktop-portal-wlr/config -->
-
-Every key is described in `xdg-desktop-portal-wlr(5)`, which the port installs.
-
-### kdos-desktop-start
-
-The start-up order is set in `fs/usr/local/bin/kdos-desktop-start`, installed as
-`/usr/local/bin/kdos-desktop-start`. Why the capture backend must own its name before the front
-end starts is in [Startup ordering](../../kdos/03-architecture/session.md#startup-ordering):
-
-<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=46-95 pin=9602b31a72c7 -->
+Built without systemd, the front end names a caller's application from the cgroup its process is
+in: the scope systemd's naming would give it, `app-<launcher>-<id>-<n>.scope`. A KDOS box is
+created in `app-kdos-<box>-<n>.scope`, so the portal sees each box's requests under the box's
+launcher id, and the permission store remembers a choice per box. A program started from a
+terminal has no such scope and an empty id, so nothing is remembered for it.
 
 ### The capture keys
 
-The screenshot and recording keys, from `fs/etc/skel/.config/kdos-comp/rc.xml`:
-
-<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=263-268 pin=7e1418ed503a -->
-
-### /etc/geoclue/conf.d/90-kdos.conf
-
-The [geoclue](#port-geoclue) port's `build.sh` writes it:
-
-<!-- kfs:include ports/core/gis/geoclue/build.sh lines=40-48 pin=bfca3189730d -->
-
-An empty whitelist, with the port's `no-agent.patch`, makes GeoClue answer every client at once;
-see [Access, and what it unlocks](../../kdos/03-architecture/session.md#access-and-what-it-unlocks).
-
-### ~/.local/share/flatpak/db/
-
-The front end keeps the answers to its grant-or-deny questions in its permission store,
-`xdg-permission-store`, which writes one file per table here. The camera's answers are the entry
-`camera` in the table `devices`, the screenshot answers the entry `screenshot` in `screenshot`, and
-the location answers the entry `location` in `location`. Nothing on KDOS shows or edits them.
-
-The permission store reads a table's file once, the first time the table is asked for, and keeps
-it in memory. Deleting a file while the store runs changes nothing it answers, and its next write
-puts the old entries back.
-
-### ~/.config/kdos/boxes/&lt;name&gt;.conf
-
-A box is kept off the compositor's capture protocols, so a boxed application captures the screen
-only through the ScreenCast portal. A `grant =` line in its profile can open them to it; the names
-and what each one costs are in
-[Granting a box more than the allowlist](../../kdos/03-architecture/session.md#granting-a-box-more-than-the-allowlist).
+`Print` takes the whole screen, `Shift+Print` a rectangle, `Meta+Shift+S` a rectangle too, and
+`Alt+Print`, `Meta+R` or `Meta+Shift+R` record a rectangle, all in Spectacle; see
+[Shortcuts and window rules](shortcuts-and-window-rules.md#the-kdos-shortcuts).
 
 ## Usage
 
-### Sharing the screen with an application
+### Taking a screenshot or a recording
 
-1. In the application, start the [screen share]{.idx term="screen sharing"} or add its screen-capture source. In OBS that is a
-   **Screen Capture ([PipeWire]{.idx})** or **Window Capture (PipeWire)** source.
-2. A list opens with the prompt `Share:`. It names each screen as
-   `Monitor: <name> <description>` and, when the application asked for windows as well, each
-   window as `Window: <title> (<id>)`.
-3. Type to narrow the list, move to the screen or window, and press Enter. Esc shares nothing.
-4. While the share runs, the panel shows a `SCR` lamp with the application's name. Stop the share
-   from the application.
+1. Press one of the capture keys, or start **Spectacle** from Kickoff.
+2. Choose what to capture: the whole screen, the current screen, the active window or a
+   rectangle; or switch to **Recording**.
+3. Spectacle shows the result, to annotate, copy, save or drag into another application.
 
-The frames reach the application through PipeWire at no more than `max_fps`. A native application
-and a boxed one take the same route. The `Share:` list, its Esc and its Enter have been carried
-out on the live medium through `kdos-record`, below; no share has been made from a browser or a
-video-call program on a KDOS image (see Known gaps), and the `SCR` lamp has not been seen.
+From a terminal: `spectacle -b -n -f -o ~/shot.png` takes the whole screen with no window
+(`-a` the active window, `-r` a rectangle).
 
-### Recording the screen to a file
+### Sharing a screen or a window with an application
 
-1. Press Alt+Print, or run:
+A browser, a video-call program or OBS Studio asks the ScreenCast portal. KDE's dialog lists the
+screens and windows; pick one and **Share**. While it runs, the privacy lamp for the screen is lit
+in the system tray; a click on it stops every screen capture that can be stopped. The program
+receives a PipeWire stream and no access to the rest of the screen.
+
+### Sharing the whole desktop over VNC or RDP
+
+1. Start **Krfb** (VNC) or turn on System Settings → **Remote Desktop** (RDP, krdp), and set a
+   password.
+2. Open the port in the firewall:
 
    ```bash
-   kdos-record
+   kdos-power firewall vnc on      # or: rdp on
    ```
 
-   `kdos-record ~/clip.mkv` names the file instead of the default
-   `~/Videos/YYYY-MM-DD-HHMMSS.mkv`.
+3. Connect from the other machine to port 5900 (VNC) or 3389 (RDP).
+4. Close the port again with `kdos-power firewall vnc off`.
 
-2. Pick the screen from the `Share:` list. `kdos-record` prints
-   `kdos-record: recording node <n> to <file> — run kdos-record again to stop`. Esc instead
-   prints `kdos-record: nothing was shared (1)` and records nothing. With no choice made within
-   two minutes it prints `kdos-record: no screen was picked` and gives up.
-3. Press Alt+Print again, or run `kdos-record` again, to stop. The second run prints
-   `kdos-record: stopping the recording` and signals the first, which ends the stream so the file
-   is closed properly.
+Both serve the session through the RemoteDesktop and ScreenCast portals, so KWin asks before the
+first connection is let in.
 
-The recording is video only, H.264 when GStreamer's `x264enc` is installed, as it is on the image,
-and VP8 otherwise. It works with the compositor on its software renderer: the frames are copied
-into shared memory, with no GPU involved. A recording keeps receiving frames only because of
-`xdg-desktop-portal-wlr`'s `stream-start-retry.patch`. `pipewiresrc` pauses and resumes the
-stream as it starts, while it still holds the stream's buffers, and without the patch the backend
-gives up on capturing at that moment: the file is a header with at most one frame in it.
-Whether frames arrive on a GPU renderer has not been tried
-([Status](../../kdos/06-reference/status.md#libraries-tooling-and-documentation)).
+### Opening files from a boxed application
 
-### Taking a screenshot
-
-| Keys | Takes |
-|:--|:--|
-| Print | The whole screen |
-| Shift+Print, Super+Shift+P | A rectangle dragged with the pointer |
-
-`kdos-shot` saves under `~/Pictures/Screenshots/`, as `kdos-YYYYMMDD-HHMMSS.png`, prints the
-path, and copies the picture to the clipboard as `image/png`. It does not go through a portal. An application that asks the Screenshot portal is answered by
-`xdg-desktop-portal-wlr`; when it asks for a screenshot without letting you choose
-(a non-interactive request), the front end first puts the Access question below.
-
-### Answering an Access question
-
-The first time an application asks for the camera, or for a non-interactive screenshot, a
-`kdos-prompt` dialog asks whether to grant it. Deny is selected when it opens, so Enter denies,
-and Esc or closing the dialog denies as well. The answer is stored and the question is not asked
-again.
-
-Every box looks like the same host program to the front end, so one answer covers every box. A
-boxed application's location is given without a question; see Known gaps.
-
-### Asking again after an answer
-
-Ask the permission store to delete the entry, here the camera's, from a terminal inside the
-session:
-
-```bash
-gdbus call --session --dest org.freedesktop.impl.portal.PermissionStore \
-  --object-path /org/freedesktop/impl/portal/PermissionStore \
-  --method org.freedesktop.impl.portal.PermissionStore.Delete devices camera
-```
-
-It prints `()`; with no answer stored it fails with
-`GDBus.Error:org.freedesktop.portal.Error.NotFound: No entry for camera`, which changes nothing.
-`...PermissionStore.Lookup devices camera`, with the same first three lines, shows the stored
-answers. Use `screenshot screenshot` for the screenshot answers. The next request asks again. Deleting an
-entry forgets the answer for every application, and so for every box. Removing the file under
-`~/.local/share/flatpak/db/` works only while no `xdg-permission-store` is running, for the reason
-given under Configuration.
-
-### Seeing which backend answers
-
-```bash
-grep -v '^#' /usr/share/xdg-desktop-portal/kdos-portals.conf
-ls /usr/share/xdg-desktop-portal/portals/
-gdbus call --session --dest org.freedesktop.portal.Desktop \
-  --object-path /org/freedesktop/portal/desktop \
-  --method org.freedesktop.DBus.Properties.Get org.freedesktop.portal.ScreenCast AvailableSourceTypes
-```
-
-The directory holds `gtk.portal`, `kdos.portal` and `wlr.portal`. The last command answers
-`(<uint32 3>,)` when ScreenCast has a backend: screens (1) and windows (2).
+A boxed application's **Open** and **Save** dialogs are the KDE file dialog, drawn outside the
+box, and the box receives only the file you pick, through the document portal.
 
 ## Tips
 
-- `kdos doctor` checks the capture backend and the configuration file in its Session and Desktop
-  sections: `wlr portal running` and `screen-capture portal installed and selected for KDOS`.
-- A screenshot of a whole screen includes the phosphor pass; a capture of one window does not
-  (see [Screen capture and the clipboard](../../kdos/03-architecture/session.md#screen-capture-and-the-clipboard)).
-- `max_fps=30` bounds what a recording of a still screen costs. Raise it in your copy of the
-  backend's config for smoother capture of fast motion.
-- `kdos explain portal` prints every recorded reason that mentions the portals.
+- `kdos privacy` lists what is capturing the microphone, the camera or the screen right now, and
+  in which box.
+- GTK applications use the portal file chooser because every login shell exports
+  `GTK_USE_PORTAL=1`.
 
 ## Troubleshooting
 
-**OBS lists no PipeWire screen or window capture source, or another application finds nothing to
-share.**
-The front end has no ScreenCast backend. It reads its backends once, when it starts, so a capture
-backend that was not on the bus at that moment is missing for the whole session. Check, from a
-terminal inside the session:
+**A request hangs or fails with no dialog.** The backend did not start. Check from Konsole:
 
 ```bash
-pgrep -af xdg-desktop-portal
-dbus-send --session --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus \
-  org.freedesktop.DBus.NameHasOwner string:org.freedesktop.impl.portal.desktop.wlr
+qdbus6 org.freedesktop.portal.Desktop
+qdbus6 org.freedesktop.impl.portal.desktop.kde
 ```
 
-`-f` is needed: without it `pgrep` matches only the first 15 characters of a process name, so a
-longer pattern draws a warning and matches nothing. A working session lists
-`/usr/lib/xdg-desktop-portal`, `-wlr`, `-kdos` and `-gtk`, and the second command ends
-`boolean true`.
+Each lists its objects when it runs. Their output goes to the session bus's log,
+`$XDG_RUNTIME_DIR/ksvc/kdos-svc.dbus.log`. A dialog whose QML import is missing does not open and
+the request fails; the log names the module.
 
-If the backend is missing, or both run and capture still fails, restart the two in the session's
-order, the backend first:
+**A screen share shows a black picture.** The program asked for a format KWin cannot give on
+software rendering, or for a window that was minimised. Share the screen instead of the window,
+or check `qdbus6 org.kde.KWin /KWin supportInformation` for the renderer.
 
-```bash
-pkill -f '^/usr/lib/xdg-desktop-portal-wlr'
-sleep 1
-dbus-send --session --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus \
-  org.freedesktop.DBus.StartServiceByName string:org.freedesktop.impl.portal.desktop.wlr uint32:0
-sleep 1
-pkill -f '^/usr/lib/xdg-desktop-portal$'
-sleep 1
-dbus-send --session --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus \
-  org.freedesktop.DBus.StartServiceByName string:org.freedesktop.portal.Desktop uint32:0
-```
-
-Both are started by the bus, as the session starts them, so neither is tied to the terminal: a
-backend run as a background job of a shell ends when that terminal is closed. Logging out and in
-again also restarts both in this order.
-
-**`kdos doctor` warns `kdos-portals.conf missing`.**
-Without the file ScreenCast has no backend. It belongs to the base filesystem rather than to a
-package, so no `kpkg` command puts it back: recreate it as root with the contents shown under
-Configuration, then restart the front end as above.
-
-**The `Share:` list never appears.**
-Run the capture backend by hand, replacing the running one, with logging, and make the request
-again to see it arrive:
-
-```bash
-/usr/lib/xdg-desktop-portal-wlr -r -l DEBUG
-```
-
-`-r` replaces the running backend. Ctrl+C ends this one and leaves the session with no capture
-backend, so restart the two afterwards as shown above.
-
-**A recording cannot be seeked, or has no length.**
-The pipeline was killed rather than stopped, so the muxer never wrote the file's index. Stop a
-recording with Alt+Print or a second `kdos-record`, which turns the stop into an end of stream;
-never kill `gst-launch-1.0` itself.
-
-**An application's Open dialog is its own toolkit's, not `kdos-pick`.**
-Either the application does not ask the portal, or the KDOS backend did not answer. D-Bus starts
-the backend from
-`/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.kdos.service`; check that the file
-and `/usr/lib/xdg-desktop-portal-kdos` exist, and that it owns its name once a dialog has been
-asked for:
-
-```bash
-dbus-send --session --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus \
-  org.freedesktop.DBus.NameHasOwner string:org.freedesktop.impl.portal.desktop.kdos
-```
-
-A native GTK application uses the portal because the login shell exports `GTK_USE_PORTAL=1`; one
-started from a shell that did not read `/etc/profile.d/10-wayland.sh` draws its own dialog.
-
-**Front-end messages.** Run the front end in the foreground with its own logging:
-
-```bash
-/usr/lib/xdg-desktop-portal -r -v
-```
-
-`-r` replaces the running front end. After Ctrl+C the bus starts a new one at the next request.
+**A box's dialog does not remember the choice.** The box's process is not in its
+`app-kdos-<box>-<n>.scope`: `cat /proc/<pid>/cgroup` for the program shows where it is.
 
 ## Known gaps
 
-- [A boxed application is given your location without being asked](../../kdos/06-reference/known-gaps.md#a-boxed-application-is-given-your-location-without-being-asked)
-- [A video call has never been placed](../../kdos/06-reference/known-gaps.md#a-video-call-has-never-been-placed)
-- [A box can be granted only the eight named groups of Wayland globals](../../kdos/06-reference/known-gaps.md#a-box-can-be-granted-only-the-eight-named-groups-of-wayland-globals)
-- [An Android screen cannot be mirrored](../../kdos/06-reference/known-gaps.md#an-android-screen-cannot-be-mirrored)
-- [The native applications have not been run](../../kdos/06-reference/known-gaps.md#the-native-applications-have-not-been-run)
+- [Known gaps](../../kdos/06-reference/known-gaps.md): the desktop's open items
 
 ## See also
 
-- [Portals](../../kdos/03-architecture/session.md#portals): the front end, the backends and the start-up order
-- [Recording](../../kdos/03-architecture/session.md#recording): how `kdos-record` drives the portal
-- [Screen capture and the clipboard](../../kdos/03-architecture/session.md#screen-capture-and-the-clipboard):
-  why a box must use the portal
-- [xdg-desktop-portal-kdos](../../kdos/04-programs/daemons.md#xdg-desktop-portal-kdos): the KDOS backend
-- [kdos-shot](../../kdos/04-programs/kdos-command.md#kdos-shot): screenshots
-- [Fonts and theming](fonts-and-theming.md), [Diagnostics](diagnostics.md),
-  [Desktop troubleshooting](desktop-troubleshooting.md)
+- [Portals](../../kdos/03-architecture/session.md#portals): how the session starts and routes them
+- [Boxes](boxes.md): what a box is given, and its launchers
+- [Firewall](firewall.md): the named services `vnc` and `rdp`
+- [Audio](audio.md): PipeWire, which carries every capture
 
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 418.* Previous: [417. Accessibility](accessibility.md) · [Contents](../README.md) · Next: [419. Diagnostics](diagnostics.md)
+*Part XVI. System administration, chapter 442.* Previous: [441. Accessibility](accessibility.md) · [Contents](../README.md) · Next: [443. Diagnostics](diagnostics.md)

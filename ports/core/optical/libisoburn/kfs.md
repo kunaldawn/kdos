@@ -7,9 +7,8 @@ libisoburn joins [libisofs](#port-libisofs), which lays out an ISO 9660 file sys
 KDOS needs it twice. The image step, `script/phases/70_image/110_iso.sh`, runs
 `xorriso -as mkisofs` to write `kdos.iso`, the hybrid image that boots from optical media and
 from a USB stick ([Packaging: `70_image`](../../../../docs/kdos/05-developer/how-kdos-is-built.md#packaging-70_image)),
-and `kdos rebuild` checks for `xorriso` before it promises an ISO. On the desktop, `kdos-burn`
-in [kdos-shell](#port-kdos-shell) writes a folder or an image to a disc by running `xorriso` as
-the logged-in user, and [k3b](#port-k3b) runs `mkisofs` from `$PATH` to build a data image.
+and `kdos rebuild` checks for `xorriso` before it promises an ISO. On the desktop,
+[k3b](#port-k3b) runs `mkisofs` from `$PATH` to build a data image.
 
 `build.sh` adds `mkisofs` and `genisoimage` as links to `xorriso`. Started under one of those
 names, `xorriso` reads `.mkisofsrc` and takes its arguments in `mkisofs` style, so a program that

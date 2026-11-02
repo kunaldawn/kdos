@@ -1,0 +1,23 @@
+# The unit-path check's fixture: each path as a package or fs/ would ship it,
+# and whether the check must let it through. Read by testing/preflight.sh.
+#
+#   <path> <expect>
+
+etc/systemd/system/x.timer                                        refused
+etc/systemd/user/default.target.wants/x.service                   refused
+usr/lib/systemd/user/plasma-kwin_wayland.service                  refused
+lib/systemd/system/foo.service                                    refused
+etc/foo/bar.socket                                                refused
+usr/lib/foo/x.service                                             refused
+usr/share/foo/x.timer                                             refused
+etc/kdos/timers.d/10-update-check.timer                           allowed
+etc/kdos/timers.d/20-fstrim.timer                                 allowed
+etc/kdos/timers.d/30-fwupd-refresh.timer                          allowed
+etc/kdos/user-services/timers.d/40-box-gc.timer                   allowed
+etc/skel/.config/kdos/timers.d/10-backup.timer                    allowed
+etc/skel/.config/kdos/timers.d/20-updatedb.timer                  allowed
+usr/share/dbus-1/services/org.kde.kded6.service                   allowed
+usr/share/dbus-1/system-services/org.freedesktop.login1.service   allowed
+usr/share/recoll/examples/recollindex.service                     allowed
+usr/share/doc/foo/foo.service                                     allowed
+etc/ld-musl-x86_64.path                                           allowed

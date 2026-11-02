@@ -26,8 +26,9 @@ sane-airscan
 
 gimagereader
 skanlite
-system-config-printer
 foomatic-db
 hplip
 splix
 glabels
+
+skanpage

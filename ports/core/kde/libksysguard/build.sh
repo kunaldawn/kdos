@@ -9,6 +9,11 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/aggregate-scope-children.patch"
+patch -p1 -i "$PORT_SRC/login-cgroup-root.patch"
+
+export LDFLAGS="$LDFLAGS -Wl,--strip-debug"
+
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D KDE_INSTALL_LIBDIR=lib \
@@ -16,7 +21,7 @@ cmake -S . -B build -G Ninja \
 	-D BUILD_TESTING=OFF \
 	-D KDE_INSTALL_USE_QT_SYS_PATHS=ON \
 	-D KF_SKIP_PO_PROCESSING=ON \
-	-D ENABLE_KAUTH_HELPER=OFF \
+	-D ENABLE_KAUTH_HELPER=ON \
 	-D CMAKE_DISABLE_FIND_PACKAGE_libpcap=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_UDev=ON \
 	-Wno-dev

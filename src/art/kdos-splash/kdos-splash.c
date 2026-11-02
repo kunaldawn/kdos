@@ -16,14 +16,23 @@
  * framebuffer until a glyph is printed on a virtual terminal. /dev/console is
  * the LAST console=: the serial port on the live entries (`console=tty0
  * console=ttyS0`), so boot messages go there and the screen is the splash's
- * until agetty starts; tty0 on an installed machine, where the initramfs's
- * first echo ends the deferral and fbcon draws every boot message over it.
+ * until the display manager's compositor takes it; tty0 on an installed
+ * machine, where the initramfs's first echo ends the deferral and fbcon draws
+ * every boot message over it.
  *
- * The animation is the window-open shader from the compositor, applied to the
- * whole machine: a flash, then the picture unfolding vertically from a
- * hairline as the deflection settles, scanline banding burning off as the tube
- * warms up. Boot then reports itself as POST lines. Quitting runs it backwards
- * — collapse to a line, pinch to a dot, decay.
+ * TWO MOTIONS, ONE PICTURE. `kdos.splash=phosphor` on the kernel command line
+ * is Phosphor mode's CRT, the power-on a window gets from the desktop's CRT
+ * effect applied to the whole machine: a flash, then the picture unfolding
+ * vertically from a hairline as the deflection settles, scanline banding and a
+ * hum bar drifting down the raster; quitting runs it backwards — collapse to a
+ * line, pinch to a dot, decay. Anything else is Modern: the same picture
+ * fading in from black and back out to it, flat, with no scanlines. Boot
+ * reports itself as POST lines either way. Either way the last frame is full
+ * black, so whatever takes the screen next starts from black; Modern's first
+ * frame is black too, and the CRT's is black but for the hairline it unfolds
+ * from. The command line is the one place the choice can come from: the
+ * power-on runs in the initramfs, before any root filesystem with a setting in
+ * it is mounted.
  *
  * Every failure to reach the display or the running instance exits 0 without
  * drawing. A boot animation that can stop a boot is a bug, not a feature. The
@@ -44,10 +53,15 @@
  *                                   soon as they know it — until the first
  *                                   total arrives the bar sweeps)
  *   kdos-splash accent NAME         switch the running splash's colour scheme
- *   kdos-splash quit                power-off animation, then exit
- *   kdos-splash preview WxH T out.ppm
+ *   kdos-splash quit                power-off animation, then exit; the console
+ *                                   is left in text mode with its cursor shown
+ *   kdos-splash handoff             power-off animation, then exit; tty1 is left
+ *                                   black, in graphics mode, for the display
+ *                                   manager's compositor
+ *   kdos-splash preview WxH T out.ppm [modern|phosphor]
  *                                   render the frame at T seconds to a file,
- *                                   with no framebuffer and no FIFO
+ *                                   with no framebuffer and no FIFO, in the
+ *                                   motion named or the command line's
  *
  * Commands reach the running instance through a FIFO in /dev, which is the
  * one filesystem that survives switch_root intact (devtmpfs is moved, not
@@ -73,6 +87,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <linux/fb.h>
+#include <linux/kd.h>
 
 #include "penguin.h"
 
@@ -153,8 +168,16 @@ static int spl_accent(const char *name)
 }
 
 /* How long the tube takes to warm up. Boot is ~10s; this is the part of it
- * anyone actually watches, so it gets a full second. */
+ * anyone actually watches, so it gets a full second. Modern's fade from black
+ * is half that: there is no tube to warm. */
 #define INTRO_S 1.0
+#define FADE_IN_S 0.5
+/* Power-off, in either motion. */
+#define OUTRO_S 0.45
+
+/* The VT SDDM's first greeter takes (its build's SDDM_INITIAL_VT), and the one
+ * kdos-dm falls back to a prompt on. */
+#define DM_VT "/dev/tty1"
 
 #define MAX_LINES 64
 #define LINE_COLS 40   /* stage name is dotted out to this column */
@@ -177,9 +200,9 @@ struct line {
  * point of having written our own splash.
  *
  * Retry and rollback are NOT here: retry needs an input path the splash does
- * not have (it never reads a key), and rollback needs the A/B slots that do
- * not exist yet. Showing the reason is the part that is buildable now, and it
- * is most of the value.
+ * not have (it never reads a key), and rollback is the A/B attempt counter's,
+ * which a boot that fails before it is confirmed spends. Showing the reason is
+ * the splash's part, and it is most of the value.
  */
 #define MAX_DETAIL 10
 #define DETAIL_COLS 68
@@ -210,6 +233,12 @@ static int total_steps, done_steps;
  * at 99% / one segment short so the user never watches a "100%" boot wait.
  */
 static int finishing;
+
+/* Phosphor's CRT motion rather than Modern's flat one (the header). */
+static int crt;
+
+/* The last stop is a display manager, not a text console (`handoff`). */
+static int handing_off;
 
 static volatile sig_atomic_t stop;
 
@@ -584,16 +613,19 @@ static void compose(int tick)
 		canvas[i] = C_DEEP;
 
 	/*
-	 * The block-art wordmark. Dim copies in four directions first: phosphor
-	 * bleeds around a lit pixel, it does not cast a drop shadow to one side.
+	 * The block-art wordmark. On the CRT, dim copies in four directions
+	 * first: phosphor bleeds around a lit pixel, it does not cast a drop
+	 * shadow to one side. Modern draws the mark flat.
 	 */
-	int bleed = art_cw / 3;
-	if (bleed < 1)
-		bleed = 1;
-	draw_art(art_x - bleed, art_y, C_PHOSDIM, C_PHOSDIM);
-	draw_art(art_x + bleed, art_y, C_PHOSDIM, C_PHOSDIM);
-	draw_art(art_x, art_y - bleed, C_PHOSDIM, C_PHOSDIM);
-	draw_art(art_x, art_y + bleed, C_PHOSDIM, C_PHOSDIM);
+	if (crt) {
+		int bleed = art_cw / 3;
+		if (bleed < 1)
+			bleed = 1;
+		draw_art(art_x - bleed, art_y, C_PHOSDIM, C_PHOSDIM);
+		draw_art(art_x + bleed, art_y, C_PHOSDIM, C_PHOSDIM);
+		draw_art(art_x, art_y - bleed, C_PHOSDIM, C_PHOSDIM);
+		draw_art(art_x, art_y + bleed, C_PHOSDIM, C_PHOSDIM);
+	}
 	draw_art(art_x, art_y, C_PHOS, C_DIM);
 
 	draw_penguin(peng_x, peng_y, peng_scale);
@@ -602,7 +634,7 @@ static void compose(int tick)
 	draw_text((fbw - text_width(sub, body_scale, 0)) / 2, sub_y,
 		  sub, body_scale, 0, C_TEXT);
 
-	const char *tag = "musl . GNU . wlroots . no systemd";
+	const char *tag = "musl . GNU . sysvinit . KDE Plasma";
 	draw_text((fbw - text_width(tag, body_scale, 0)) / 2, tag_y,
 		  tag, body_scale, 0, C_DIM);
 
@@ -712,6 +744,8 @@ static inline uint32_t mix_rgb(uint32_t a, uint32_t b, double t)
  *   gain   overall brightness (the decay at the end, and the idle flicker)
  *   hum    y position of the hum bar (the slow bright band real tubes get
  *          from ripple on the supply rail), or a large negative to disable
+ *
+ * Modern passes a full-open tube, no flash and no hum, so only gain moves.
  */
 static void present(double vopen, double hopen, double flash, double gain,
 		    double hum)
@@ -738,8 +772,9 @@ static void present(double vopen, double hopen, double flash, double gain,
 				seam = 1.0 - d / 0.012;
 		}
 
-		/* Scanlines: every other row is dimmer. This is the whole look. */
-		double scan = (y & 1) ? 0.78 : 1.0;
+		/* Scanlines: every other row is dimmer. This is the whole CRT
+		 * look, and Modern has none. */
+		double scan = (crt && (y & 1)) ? 0.78 : 1.0;
 
 		double hd = fabs(y - hum);
 		if (hd < humw)
@@ -787,6 +822,110 @@ static void present(double vopen, double hopen, double flash, double gain,
 	}
 }
 
+/* ---------------------------------------------------------------- motion */
+
+static double smoothstep(double p)
+{
+	if (p <= 0.0)
+		return 0.0;
+	if (p >= 1.0)
+		return 1.0;
+	return p * p * (3.0 - 2.0 * p);
+}
+
+/* How long the power-on lasts in the motion in force. */
+static double intro_s(void)
+{
+	return crt ? INTRO_S : FADE_IN_S;
+}
+
+/* The tube at t seconds into the power-on. The CRT unfolds from a hairline
+ * through a flash; Modern fades the settled picture in from black. Past the
+ * power-on both are the settled picture. */
+static void intro(double t, double *vopen, double *flash, double *gain)
+{
+	*vopen = 1.0;
+	*flash = 0.0;
+	*gain = 1.0;
+	if (t >= intro_s())
+		return;
+	if (!crt) {
+		*gain = smoothstep(t / FADE_IN_S);
+		return;
+	}
+	double p = t / INTRO_S;
+	double u = p / 0.55;
+	if (u > 1.0)
+		u = 1.0;
+	*vopen = 1.0 - pow(1.0 - u, 3.0);	/* ease out */
+	double f = 1.0 - p / 0.6;
+	*flash = f > 0.0 ? f * f : 0.0;
+}
+
+/* The tube at fraction p of the power-off. The CRT folds to a hairline,
+ * pinches that to a dot and lets it decay; Modern fades the picture out.
+ * Both end on black at p = 1. */
+static void outro(double p, double *vopen, double *hopen, double *flash,
+		  double *gain)
+{
+	*vopen = 1.0;
+	*hopen = 1.0;
+	*flash = 0.0;
+	if (!crt) {
+		*gain = 1.0 - smoothstep(p);
+		return;
+	}
+	double fold = 1.0 - p / 0.55;
+	if (fold < 0.0)
+		fold = 0.0;
+	*vopen = fold * fold;
+
+	double pinch = 1.0 - (p - 0.45) / 0.40;
+	if (pinch > 1.0)
+		pinch = 1.0;
+	if (pinch < 0.0)
+		pinch = 0.0;
+	*hopen = pinch;
+
+	double decay = 1.0 - (p - 0.80) / 0.20;
+	if (decay > 1.0)
+		decay = 1.0;
+	if (decay < 0.0)
+		decay = 0.0;
+	*gain = decay;
+	*flash = p * 0.5;
+}
+
+/*
+ * THE MOTION, FROM THE KERNEL COMMAND LINE: `kdos.splash=phosphor` is the CRT,
+ * any other value or none is Modern, and the last `kdos.splash=` wins, as it
+ * does for the kernel's own parameters. A command line that cannot be read is
+ * Modern too: the splash never stops a boot over a setting.
+ * KDOS_SPLASH_CMDLINE names a file to read in place of /proc/cmdline, so the
+ * choice can be exercised without a boot.
+ */
+static void read_mode(void)
+{
+	const char *path = getenv("KDOS_SPLASH_CMDLINE");
+	char buf[4096];
+	int fd = open(path && *path ? path : "/proc/cmdline",
+		      O_RDONLY | O_CLOEXEC);
+	ssize_t n;
+
+	crt = 0;
+	if (fd < 0)
+		return;
+	n = read(fd, buf, sizeof(buf) - 1);
+	close(fd);
+	if (n <= 0)
+		return;
+	buf[n] = '\0';
+
+	for (char *w = strtok(buf, " \t\n"); w; w = strtok(NULL, " \t\n"))
+		if (!strncmp(w, "kdos.splash=", 12))
+			crt = !strcmp(w + 12, "phosphor");
+}
+
 /* ------------------------------------------------------------------ init */
 
 /*
@@ -810,12 +949,16 @@ static void console_claim(void)
 	(void)!write(ttyfd, seq, sizeof(seq) - 1);
 }
 
+/* The console back, for whoever writes text on it next — unless the next is
+ * the display manager's compositor, where a cursor shown now would blink on
+ * the black until the compositor takes the VT. */
 static void console_release(void)
 {
 	if (ttyfd < 0)
 		return;
 	static const char seq[] = "\033[?25h";
-	(void)!write(ttyfd, seq, sizeof(seq) - 1);
+	if (!handing_off)
+		(void)!write(ttyfd, seq, sizeof(seq) - 1);
 	close(ttyfd);
 	ttyfd = -1;
 }
@@ -895,7 +1038,7 @@ static int handle(const char *cmd)
 		 * a script that fails after pages of output still shows the
 		 * end, which is where the error is. */
 		if (ndetail == MAX_DETAIL) {
-			memmove(detail[0], detail[1],
+			memmove(detail, detail + 1,
 				sizeof(detail) - sizeof(detail[0]));
 			ndetail--;
 		}
@@ -913,6 +1056,7 @@ static int handle(const char *cmd)
 	 */
 	case 'A': spl_accent(cmd + 1); break;
 	case 'Q': finishing = 1; return 1;
+	case 'H': finishing = 1; handing_off = 1; return 1;
 	default: break;
 	}
 	return 0;
@@ -958,15 +1102,9 @@ static int run(void)
 		double t = now_s() - t0;
 		int tick = (int)(t * 10.0);
 
-		double vopen = 1.0, flash = 0.0, gain = 1.0, hum = -1e6;
-		if (t < INTRO_S) {
-			double p = t / INTRO_S;
-			double u = p / 0.55;
-			if (u > 1.0) u = 1.0;
-			vopen = 1.0 - pow(1.0 - u, 3.0);      /* ease out */
-			double f = 1.0 - p / 0.6;
-			flash = f > 0.0 ? f * f : 0.0;
-		} else if (!quit) {
+		double vopen, flash, gain, hum = -1e6;
+		intro(t, &vopen, &flash, &gain);
+		if (crt && t >= INTRO_S && !quit) {
 			/* Idle: a slow, shallow brightness wander. Tubes breathe. */
 			gain = 0.97 + 0.03 * sin(t * 2.1);
 			/* And the hum bar drifts down the raster, forever. */
@@ -981,9 +1119,14 @@ static int run(void)
 			break;
 
 		struct pollfd pfd = { .fd = fifo, .events = POLLIN };
-		int frame_ms = (t < INTRO_S) ? 16 : 90;
+		int frame_ms = (t < intro_s()) ? 16 : 90;
 		if (poll(&pfd, 1, frame_ms) > 0 && (pfd.revents & POLLIN)) {
-			ssize_t n = read(fifo, buf + used, sizeof(buf) - used - 1);
+			/* A line that fills the buffer is dropped whole. Kept,
+			 * it would leave no room to read into, and no later
+			 * command — quit included — could ever arrive. */
+			if (used >= sizeof(buf) - 1)
+				used = 0;
+			ssize_t n = read(fifo, buf + used, sizeof(buf) - 1 - used);
 			if (n > 0) {
 				used += (size_t)n;
 				buf[used] = '\0';
@@ -1001,29 +1144,19 @@ static int run(void)
 	}
 
 	/*
-	 * Power-off: fold to a hairline, pinch that to a dot, let it decay. The
-	 * screen is left black so whatever takes the console next starts clean.
+	 * Power-off, in the motion in force. The screen is left black so
+	 * whatever takes it next starts from black.
 	 */
 	double q0 = now_s();
 	for (;;) {
-		double p = (now_s() - q0) / 0.45;
+		double p = (now_s() - q0) / OUTRO_S;
 		if (p >= 1.0)
 			break;
 
-		double fold = 1.0 - p / 0.55;
-		if (fold < 0.0) fold = 0.0;
-		fold = fold * fold;
-
-		double pinch = 1.0 - (p - 0.45) / 0.40;
-		if (pinch > 1.0) pinch = 1.0;
-		if (pinch < 0.0) pinch = 0.0;
-
-		double decay = 1.0 - (p - 0.80) / 0.20;
-		if (decay > 1.0) decay = 1.0;
-		if (decay < 0.0) decay = 0.0;
-
+		double vopen, hopen, flash, gain;
+		outro(p, &vopen, &hopen, &flash, &gain);
 		compose(0);
-		present(fold, pinch, p * 0.5, decay, -1e6);
+		present(vopen, hopen, flash, gain, -1e6);
 		fb_flush();
 		usleep(16000);
 	}
@@ -1047,10 +1180,11 @@ static int run(void)
  * Render one frame to a PPM instead of to the screen, so the look can be
  * iterated on without booting anything:
  *
- *   kdos-splash preview 1280x800 0.35 out.ppm
+ *   kdos-splash preview 1280x800 0.35 out.ppm [modern|phosphor]
  *
  * The second argument is the intro progress in seconds; anything past the
- * intro gives the settled picture.
+ * intro gives the settled picture. The motion is the one named, or the
+ * command line's when none is.
  */
 static int preview(const char *geom, const char *at, const char *out)
 {
@@ -1113,18 +1247,11 @@ static int preview(const char *geom, const char *at, const char *out)
 
 	add_line("STARTING NETWORK", ST_PENDING);
 
-	double vopen = 1.0, flash = 0.0, gain = 1.0;
-	if (t < INTRO_S) {
-		double p = t / INTRO_S;
-		double u = p / 0.55;
-		if (u > 1.0) u = 1.0;
-		vopen = 1.0 - pow(1.0 - u, 3.0);
-		double f = 1.0 - p / 0.6;
-		flash = f > 0.0 ? f * f : 0.0;
-	}
+	double vopen, flash, gain;
+	intro(t, &vopen, &flash, &gain);
 
 	compose(4);
-	present(vopen, 1.0, flash, gain, h * 0.62);
+	present(vopen, 1.0, flash, gain, crt ? h * 0.62 : -1e6);
 
 	FILE *f = fopen(out, "wb");
 	if (!f)
@@ -1152,16 +1279,25 @@ static int say(const char *fmt, const char *arg, int wait_for_exit)
 		return 0;   /* nothing listening; that is fine */
 	char buf[256];
 	int n = snprintf(buf, sizeof(buf), fmt, arg ? arg : "");
+	/* ONE COMMAND IS ONE LINE. A text too long for the buffer is cut, and
+	 * the cut line still ends in its newline: without it the command runs
+	 * into the next one, and snprintf's return is the length it wanted,
+	 * not the length it wrote. */
+	if (n >= (int)sizeof(buf)) {
+		n = (int)sizeof(buf) - 1;
+		buf[n - 1] = '\n';
+	}
 	if (n > 0)
 		(void)!write(fd, buf, (size_t)n);
 	close(fd);
 
 	/*
-	 * Quitting is synchronous. rcS runs `kdos-splash quit` and returns, and
-	 * init starts agetty straight after; if we did not block here, agetty
-	 * would print to tty1 while the power-off animation was still drawing,
-	 * and the screen would end up as console text interleaved with splash
-	 * pixels.
+	 * Quitting is synchronous. rcS runs `kdos-splash handoff` and returns,
+	 * and init starts the display manager straight after; if we did not
+	 * block here, the greeter's compositor would modeset while the power-off
+	 * animation was still drawing, and the two would race for the screen —
+	 * and on the way to a text console, the console's text would end up
+	 * interleaved with splash pixels.
 	 *
 	 * The daemon is NOT able to announce its own exit by removing the FIFO.
 	 * It started in the initramfs and was never chroot'ed, so after
@@ -1189,6 +1325,36 @@ static int say(const char *fmt, const char *arg, int wait_for_exit)
 	return 0;
 }
 
+/*
+ * tty1 FOR THE DISPLAY MANAGER: black, in graphics mode, its text cleared and
+ * its cursor hidden. A VT in KD_GRAPHICS draws nothing — not the lines rcS and
+ * init print after this, not a kernel message — so the black the splash left
+ * is what shows until the greeter's compositor takes the VT from elogind,
+ * which keeps it in graphics mode. The clear and the hidden cursor are for the
+ * VT's text buffer: whoever puts the VT back into text mode (elogind when the
+ * greeter's session ends, kdos-getty when SDDM cannot run) redraws it, and an
+ * empty buffer with no cursor redraws as black. Escape sequences alone end no
+ * deferred fbcon take-over, so a console fbcon has not claimed stays
+ * unclaimed.
+ *
+ * Done by the client, in the real root: the running splash was started in the
+ * initramfs and resolves every path in that root, which switch_root emptied.
+ * Done whether or not a splash answered, because the VT is the display
+ * manager's either way. O_NOCTTY keeps tty1 free to become the greeter
+ * session's controlling terminal.
+ */
+static void vt_handoff(void)
+{
+	static const char seq[] = "\033[2J\033[H\033[?25l";
+	int fd = open(DM_VT, O_RDWR | O_NOCTTY | O_CLOEXEC);
+
+	if (fd < 0)
+		return;
+	(void)ioctl(fd, KDSETMODE, KD_GRAPHICS);
+	(void)!write(fd, seq, sizeof(seq) - 1);
+	close(fd);
+}
+
 int main(int argc, char **argv)
 {
 	const char *cmd = argc > 1 ? argv[1] : "run";
@@ -1200,10 +1366,19 @@ int main(int argc, char **argv)
 	 * scheme. */
 	spl_accent(KCOL_DEFAULT_NAME);
 
-	if (!strcmp(cmd, "run"))
+	if (!strcmp(cmd, "run")) {
+		read_mode();
 		return run();
-	if (!strcmp(cmd, "preview") && argc > 4)
+	}
+	if (!strcmp(cmd, "preview") && argc > 4 && argc < 7) {
+		if (argc == 6 && strcmp(argv[5], "modern") &&
+		    strcmp(argv[5], "phosphor"))
+			goto usage;
+		read_mode();
+		if (argc == 6)
+			crt = !strcmp(argv[5], "phosphor");
 		return preview(argv[2], argv[3], argv[4]);
+	}
 	if (!strcmp(cmd, "step"))
 		return say("S%s\n", arg, 0);
 	if (!strcmp(cmd, "msg"))
@@ -1220,8 +1395,15 @@ int main(int argc, char **argv)
 		return say("A%s\n", arg, 0);
 	if (!strcmp(cmd, "quit"))
 		return say("Q%s\n", NULL, 1);
+	if (!strcmp(cmd, "handoff")) {
+		say("H%s\n", NULL, 1);
+		vt_handoff();
+		return 0;
+	}
 
+usage:
 	fprintf(stderr, "usage: kdos-splash {run|step TEXT|msg TEXT|ok|fail|detail TEXT|\n"
-		"                    total N|accent NAME|quit}\n");
+		"                    total N|accent NAME|quit|handoff|\n"
+		"                    preview WxH T OUT [modern|phosphor]}\n");
 	return 1;
 }

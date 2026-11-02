@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kcalc
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = de987e8c7bbd261e858ab400089d333e65c5558fcad384214b3097446ff925fa  kcalc-26.08.2.tar.xz
+description = Scientific calculator — arbitrary precision, bases, bit editing, constants and statistics
+homepage    = https://apps.kde.org/kcalc/
+license     = GPL-2.0-or-later
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcoreaddons kcrash kcolorscheme kconfig kconfigwidgets kguiaddons ki18n kiconthemes knotifications kxmlgui kdoctools gmp mpfr mpc breeze-icons

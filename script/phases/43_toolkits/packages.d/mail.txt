@@ -33,3 +33,17 @@ notmuch
 
 kmbox
 mimetreeparser
+
+kmail-account-wizard
+kmailtransport
+kpimtextedit
+akonadi-mime
+kidentitymanagement
+kimap
+ksmtp
+ktnef
+libgravatar
+libksieve
+mailcommon
+mailimporter
+messagelib

@@ -23,3 +23,6 @@
 
 remmina
 virt-manager
+
+krdc
+krfb

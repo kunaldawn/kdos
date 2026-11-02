@@ -1,0 +1,34 @@
+/*
+ * KDOS live medium: the installer, Partition Manager and the welcome tour's
+ * "Keep my changes on this stick", with no password.
+ *
+ * Copied into /etc/polkit-1/rules.d by the live boot step
+ * (/etc/init.d/63_live-installer.sh) on the live medium only, where the
+ * session is the live account's and that account's password is published:
+ * asking it for one protects nothing. kinstall leaves this file out of every
+ * install, so an installed machine asks for an administrator's password for
+ * both actions again.
+ *
+ * ONLY THE SESSION AT THE MACHINE. A local, active subject is the person in
+ * front of it; an SSH login registers no session and gets each action's
+ * allow_any, which is no.
+ */
+
+polkit.addRule(function (action, subject) {
+    if (!subject.local || !subject.active)
+        return polkit.Result.NOT_HANDLED;
+    if (action.id === "io.kdos.installer.run" ||
+        action.id === "org.kde.kpmcore.externalcommand.init")
+        return polkit.Result.YES;
+    /* pkexec's own action, for exactly one command line: the Persist page
+     * runs `pkexec /usr/local/bin/kdos persist create --yes`. pkexec names
+     * the program by its real path (kdos is a link to ksvc) and the command
+     * line as given, so neither another kdos verb nor another program is
+     * covered. */
+    if (action.id === "org.freedesktop.policykit.exec" &&
+        action.lookup("program") === "/usr/sbin/ksvc" &&
+        action.lookup("command_line") ===
+            "/usr/local/bin/kdos persist create --yes")
+        return polkit.Result.YES;
+    return polkit.Result.NOT_HANDLED;
+});

@@ -29,8 +29,7 @@ The engine and its tools are ports on the `containers` shelf:
 
 [`newuidmap`]{.idx} and [`newgidmap`]{.idx}, the setuid helpers that map a range of ids into a rootless container,
 come from [shadow](#port-shadow). The base filesystem supplies [`/etc/subuid`]{.idx} and [`/etc/subgid`]{.idx},
-and the service `userdirs` (`/etc/init.d/15_userdirs.sh`) delegates a cgroup subtree to each
-account at boot.
+and [elogind](#port-elogind) delegates a cgroup subtree to every login's session.
 
 Podman has no daemon, so there is no container service to enable. The API socket that Docker
 clients use is started on demand by `kdos-podman-api`.
@@ -67,13 +66,14 @@ range of its own, as `SUB_UID_MIN`, `SUB_UID_COUNT` and their `SUB_GID_` counter
 ### The delegated cgroup
 
 Rootless Podman applies `--memory`, `--cpus` and `--pids-limit` through a cgroup subtree it owns.
-`15_userdirs.sh` makes one for each account at boot:
+elogind gives every session one, from `fs/etc/elogind/logind.conf.d/50-kdos.conf`:
 
-<!-- kfs:include fs/etc/init.d/15_userdirs.sh lines=30-48 pin=3739f683a6a6 -->
+<!-- kfs:include fs/etc/elogind/logind.conf.d/50-kdos.conf lines=30-35 pin=82a2bc074466 -->
 
-`kdos-getty` moves an [autologin]{.idx} session into `session/`, so containers started from it get limits
-the kernel enforces. A session started any other way, a password login on a virtual terminal or an
-ssh login, stays in the root cgroup, where Podman accepts a limit and nothing applies it.
+The controllers are enabled at the root by `/etc/init.d/15_cgroups.sh` at boot. Every PAM login
+is an elogind session, the desktop's, a console's and the greeter's alike, so a container started
+from any of them gets limits the kernel enforces. An SSH login opens no PAM session and stays
+outside, where Podman accepts a limit and nothing applies it.
 
 ### ~/.config/containers/storage.conf
 
@@ -183,13 +183,12 @@ kdos-podman-api sh -c 'podman-remote --url "$DOCKER_HOST" version'
 
 ```bash
 podman run --rm -it --memory 2g --cpus 2 docker.io/library/alpine:latest sh
-cat /sys/fs/cgroup/user.slice/user-$(id -u)/cgroup.subtree_control
+cat /proc/self/cgroup
 ```
 
-The limit is applied only in a session `kdos-getty` placed in the delegated cgroup, which is the
-autologin session; check which cgroup your shell is in with `cat /proc/self/cgroup`. A terminal
-in the autologin desktop prints `0::/user.slice/user-1000/session`; a shell from `su - <you>` or
-a password login prints `0::/`, and there a `--memory` container has no `memory.max` file at all.
+The limit is applied only inside a session's delegated cgroup: `cat /proc/self/cgroup` in Konsole
+names the session's cgroup, with the shell in its `session` leaf. A shell that prints `0::/` is
+in no session, and there a `--memory` container has no `memory.max` file at all.
 
 ### On the live medium and on an installed system
 
@@ -257,7 +256,8 @@ A container fails to mount its root on the live medium
 
 A `--memory` or `--cpus` limit has no effect
 : The session is not in the delegated cgroup. `cat /proc/self/cgroup` prints `0::/` in the root
-  cgroup; the limits apply only from an autologin session.
+  cgroup; the limits apply only from a shell inside a login session, which elogind gives a
+  delegated cgroup, and not from an SSH login.
 
 `podman-tui` or `lazydocker` shows nothing
 : Run it through `kdos-podman-api`, which starts the API service. When that fails it says
@@ -285,4 +285,4 @@ An image pull refuses to start
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 409.* Previous: [408. Boxes](boxes.md) · [Contents](../README.md) · Next: [410. Virtual machines](virtual-machines.md)
+*Part XVI. System administration, chapter 433.* Previous: [432. Boxes](boxes.md) · [Contents](../README.md) · Next: [434. Virtual machines](virtual-machines.md)

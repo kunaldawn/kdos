@@ -58,3 +58,7 @@ qt6-qtmqtt
 qt6-qtwebengine
 
 python3-pyside6
+
+qt6-qtvirtualkeyboard
+qt6-qthttpserver
+qt6-qtwebview

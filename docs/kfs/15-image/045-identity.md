@@ -3,14 +3,15 @@
 [`/etc/os-release`]{.idx} comes from `fs/etc/os-release` and names the distribution and its version. It
 does not say which tree a particular image was built from.
 `script/phases/70_image/045_identity.sh` adds that: the commit the build ran from, as
-`os-release`'s own [BUILD_ID]{.idx} field, and that commit's date as `KDOS_BUILD_DATE`. [`kdos-about`]{.idx}
-shows both on its Build page.
+`os-release`'s own [BUILD_ID]{.idx} field, and that commit's date as `KDOS_BUILD_DATE`. System
+Settings → **About this System** shows the build beside the version, from
+`/usr/share/kdos/xdg/kcm-about-distrorc`'s `ShowBuild=true`.
 
 ## Where the values come from
 
 The `Makefile` works them out from your clone when it starts the build container:
 
-<!-- kfs:include Makefile lines=179-182 pin=91e0519d3113 -->
+<!-- kfs:include Makefile lines=178-181 pin=91e0519d3113 -->
 
 `KDOS_GIT_COMMIT` is the short hash of `HEAD`, `KDOS_GIT_DIRTY` is `1` when `git status` shows any
 change, `KDOS_GIT_DATE` is the commit date as `YYYY-MM-DD`, and `KDOS_GIT_TIME` the commit time in
@@ -27,7 +28,7 @@ the same file, so its mode and owner are unchanged.
 
 Without `KDOS_GIT_COMMIT`, which is a build not started by `make build`
 ([kdosbuild](../01-preparing/kdosbuild.md) run by hand, for instance), the step stops there, and
-the file carries neither line. `kdos-about` then shows the image as `unstamped`; no commit is made
+the file carries neither line. About this System then shows the image as unstamped; no commit is made
 up.
 
 With it, `BUILD_ID` is the commit, with `-dirty` appended when the tree had changes git had not
@@ -65,4 +66,4 @@ installed system carries the stamp of the medium it was installed from.
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 346.* Previous: [345. Sweeping orphaned packages](040-orphans.md) · [Contents](../README.md) · Next: [347. Seeding the theme](050-theme.md)
+*Part XV. The image, chapter 369.* Previous: [368. Sweeping orphaned packages](040-orphans.md) · [Contents](../README.md) · Next: [370. Seeding the theme](050-theme.md)

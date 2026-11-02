@@ -1,0 +1,12 @@
+[Default Applications]
+text/html=firefox-esr.desktop;
+x-scheme-handler/mailto=thunderbird.desktop;
+application/epub+zip=calibre-ebook-viewer.desktop;
+x-scheme-handler/ssh=ktelnetservice6.desktop;
+application/zip=kdos-openarchive.desktop;
+
+[Added Associations]
+text/calendar=thunderbird.desktop;
+
+[Removed Associations]
+text/html=org.kdos.gone.desktop;

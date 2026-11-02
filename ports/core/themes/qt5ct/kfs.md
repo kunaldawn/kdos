@@ -1,10 +1,11 @@
 ## About
 
-qt5ct is the appearance configuration of Qt 5 programs that run outside KDE: a Qt platform theme
-plugin that applies a palette, widget style, fonts and icon theme from `~/.config/qt5ct/`, and the
-`qt5ct` settings window that edits them. On KDOS, `kdos theme` writes those files, so every native
-Qt 5 program follows the desktop's colours; [qt6ct](#port-qt6ct) is the Qt 6 counterpart (see
-[Theming native applications](../../../../docs/kdos/02-user-guide/theming.md#theming-native-applications)).
+qt5ct is the appearance configuration of Qt 5 programs: a Qt platform theme plugin that applies a
+palette, widget style, fonts and icon theme from `~/.config/qt5ct/qt5ct.conf`. KDE's platform theme
+is built for Qt 6 only, so every Qt 5 program on KDOS (VLC, KeePassXC, LMMS, Mumble and the rest)
+draws through this one. A person with no `qt5ct.conf` of their own gets a copy of
+`/usr/share/kdos/xdg/qt5ct/qt5ct.conf`, the bone accent, the first time a Qt 5 program starts, and
+`kdos theme` merges each accent's palette into it from then on.
 
 ## Flags
 
@@ -28,3 +29,7 @@ app id is `qt5ct`, which the entry names in `StartupWMClass`.
 The interface translations are compiled into the program by `lrelease` from
 [qt5-qttools](#port-qt5-qttools), and the configure reads Qt 5's plugin directory from the
 `qtpaths` beside it; it stops when it cannot find either.
+
+The entry is `NoDisplay=true`: the settings window edits a file `kdos theme` rewrites on every
+accent change, so offering it in the menu offers a change that does not last. `qt5ct` stays
+installed and runs by name; Kickoff, KRunner's application search and Discover do not offer it.

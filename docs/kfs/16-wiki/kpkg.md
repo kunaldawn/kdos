@@ -406,7 +406,7 @@ A `kpkg install` or `kpkg remove` waits and never finishes
 
 ## Known gaps
 
-- [There is no public binary host](../../kdos/06-reference/known-gaps.md#there-is-no-public-binary-host)
+- [The update path has not been run against a published tree](../../kdos/06-reference/known-gaps.md#the-update-path-has-not-been-run-against-a-published-tree)
 - `kpkg help` lists an `update` command that does not exist; see
   [Packaging](../../kdos/06-reference/command-index.md#packaging) in the command index.
 
@@ -421,4 +421,4 @@ A `kpkg install` or `kpkg remove` waits and never finishes
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 404.* Previous: [403. Firmware updates](firmware-updates.md) · [Contents](../README.md) · Next: [405. Updating](updating.md)
+*Part XVI. System administration, chapter 428.* Previous: [427. Firmware updates](firmware-updates.md) · [Contents](../README.md) · Next: [429. Updating](updating.md)

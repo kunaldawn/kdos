@@ -1,0 +1,38 @@
+#!/bin/sh
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   about-accent — About this System's "Accent" row
+#
+# The KDOS accent this user wears; with none recorded, the KDOS scheme
+# Plasma wears, from the first kdeglobals in the cascade that names a scheme
+# at all; and the login screen's when it differs. Always two lines, at once:
+# see about-slot. Files are read by the shell itself; tr is the only
+# program it runs.
+
+PATH=/usr/bin:/bin
+R=${KDOS_ABOUT_ROOT:-}
+name() { a=; read -r a 2>/dev/null <"$1"; case $a in '' | *[!a-z0-9-]*) a= ;; esac; }
+label() { r=${1#?}; L=$(printf '%s' "${1%"$r"}" | tr '[:lower:]' '[:upper:]')$r; }
+cfg=${XDG_CONFIG_HOME:-${HOME:+$HOME/.config}}
+user=
+[ -n "$cfg" ] && name "$cfg/kdos/accent" && user=$a
+if [ -z "$user" ]; then
+	for g in ${cfg:+"$cfg/kdeglobals"} "$R/etc/xdg/kdeglobals" "$R/usr/share/kdos/xdg/kdeglobals"; do
+		s=
+		[ -r "$g" ] && while IFS= read -r l; do case $l in ColorScheme=*) s=${l#ColorScheme=}; break ;; esac; done <"$g"
+		[ -n "$s" ] || continue
+		case ${s#KDOS} in "$s" | '' | *[!A-Za-z]*) ;; *) user=$(printf '%s' "${s#KDOS}" | tr '[:upper:]' '[:lower:]') ;; esac
+		break
+	done
+fi
+name "$R/etc/kdos/accent"
+machine=$a
+v=${user:-$machine}
+if [ -z "$v" ]; then v=Unknown; else label "$v"; v=$L; fi
+if [ -n "$user" ] && [ -n "$machine" ] && [ "$user" != "$machine" ]; then label "$machine"; v="$v (login screen: $L)"; fi
+printf 'Accent\n%s\n' "$v"

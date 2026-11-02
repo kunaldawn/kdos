@@ -37,3 +37,5 @@ abiword
 homebank
 gnucash
 tryton
+
+calligra

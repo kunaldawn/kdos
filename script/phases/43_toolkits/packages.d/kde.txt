@@ -44,3 +44,15 @@ kdegraphics-thumbnailers
 kio-extras
 baloo-widgets
 libksysguard
+
+kio-fuse
+kdecoration
+layer-shell-qt
+kpipewire
+libkscreen
+libplasma
+plasma-activities
+plasma-activities-stats
+plasma5support
+qqc2-breeze-style
+union

@@ -66,7 +66,9 @@ buffer and the system log.
 | A supervised daemon's output | `/run/kdos-svc.<name>.log` (root only, mode 0640), and the system log tagged `<name>` | 64 KiB, one `.old` beside it |
 | The boot-time check of non-root filesystems | `/run/kdos-fsck.log`, when it reported anything | Until reboot |
 | A console's `kdos-getty` | `/run/kdos-getty.<tty>.log` | Until reboot |
-| The compositor | `$XDG_RUNTIME_DIR/kdos-comp.log` | Each session start moves the previous one to `kdos-comp.log.old` |
+| SDDM and the greeter | `/var/log/sddm.log` | The first start of each boot moves the last boot's to `sddm.log.old` |
+| The Plasma session: KWin, plasmashell and everything the session starts | `~/.local/share/sddm/wayland-session.log` | Each login replaces it |
+| A user's own services: the session bus, PipeWire, the user timers | `$XDG_RUNTIME_DIR/ksvc/kdos-svc.<name>.log`, and the system log | Until the user's last logout |
 | The installer | [`/var/log/kinstall.log`]{.idx} on the system it ran from, root only; the copy to the installed system leaves it out | Appended to by every run |
 | Logins, logouts, boots | [`/var/log/wtmp`]{.idx}, read by `last` | Appended |
 
@@ -233,15 +235,15 @@ sudo dmesg -n 1
 file, then check the filesystem unmounted; see
 [Checking a filesystem by hand](filesystems-and-fstab.md#checking-a-filesystem-by-hand).
 
-**The desktop crashed or never appeared.** Log in on `tty2` and read the compositor's log, which
-lives in the desktop user's runtime directory:
+**The desktop crashed or never appeared.** Log in on `tty2` and read the session's log, which
+lives in the desktop user's home, and SDDM's:
 
 ```bash
-tail -n 40 /run/user/1000/kdos-comp.log
+tail -n 40 ~/.local/share/sddm/wayland-session.log
+sudo tail -n 40 /var/log/sddm.log
 ```
 
-`kdos-comp.log.old` is the previous session's. See [Debugging](../../kdos/04-programs/kdos-comp.md#debugging)
-in the compositor's chapter.
+See [Desktop troubleshooting](desktop-troubleshooting.md).
 
 ## Known gaps
 
@@ -259,4 +261,4 @@ in the compositor's chapter.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 362.* Previous: [361. Timers](timers.md) · [Contents](../README.md) · Next: [363. Modules and sysctl](modules-and-sysctl.md)
+*Part XVI. System administration, chapter 386.* Previous: [385. Timers](timers.md) · [Contents](../README.md) · Next: [387. Modules and sysctl](modules-and-sysctl.md)

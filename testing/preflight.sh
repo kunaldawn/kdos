@@ -235,8 +235,11 @@ done
 
 # `name =` is the directory's name; nothing else enforces it. And a `group =`
 # family moves as one: ports/update bumps every member together, so they share
-# a shelf. One awk over every recipe answers both — a process per recipe is
-# half a minute of forks.
+# a shelf. The KDE release sets are the exception: `group = plasma` and
+# `group = gear` join applications filed by what each one does (spectacle on
+# graphics, konsole on shells) into the one bump their release needs, and the
+# release-set check below holds them to one version instead. One awk over every
+# recipe answers both — a process per recipe is half a minute of forks.
 declare -A GSHELF
 while IFS='	' read -r _d _nm _g; do
     if [ "$_nm" != "${_d##*/}" ]; then
@@ -256,6 +259,7 @@ done < <(for _d in "${PORTS_ALL[@]}"; do printf '%s/kpkgbuild\n' "$_d"; done |
          sed 's|/kpkgbuild\t|\t|')
 
 for _g in "${!GSHELF[@]}"; do
+    case "$_g" in plasma|gear) continue ;; esac
     set -- ${GSHELF[$_g]}
     [ "$#" -le 1 ] && continue
     bad "group $_g" "its members sit on several shelves:${GSHELF[$_g]}"
@@ -361,7 +365,8 @@ for pair in "linux perf" "python3 python3-tkinter" "gettext libintl" \
             "glib glib-introspection" "webkitgtk webkitgtk6" "qca qca-qt5" \
             "qscintilla python3-qscintilla" "qwt qwt-qt5" "mgba libretro-mgba" \
             "llvm clang" "llvm lld" "llvm lldb" "llvm compiler-rt" \
-            "llvm libunwind" "llvm openmp" "llvm libclc"; do
+            "llvm libunwind" "llvm openmp" "llvm libclc" \
+            "util-linux util-linux-login" "tlp tlp-pd"; do
     set -- $pair
     a=$1; b=$2
     has_port "$a" && has_port "$b" || continue
@@ -380,7 +385,170 @@ for pair in "linux perf" "python3 python3-tkinter" "gettext libintl" \
     shared=$((shared + 1))
 done
 [ "$shared" = 0 ] && note "shared-tarball ports" "none declared"
+echo
+echo "==> the KDE release set is one version"
+# KDE releases Plasma, Frameworks and Gear each as one set built and tested
+# together: Plasma's modules require each other at their own version, every
+# Gear application is tested against the Gear libraries of its release, and a
+# Framework built from another month's release breaks the ABI the rest were
+# built against. A family bump is one change that rebuilds the family, and a
+# tree holding two releases of one family is refused here, naming each.
+#
+# A port belongs to a family by its source: download.kde.org's stable/plasma,
+# stable/frameworks or stable/release-service, the release directory the
+# tarball comes from. `group = plasma` (or `gear`) places a port whose source
+# is elsewhere, and the kf6 shelf is the Frameworks whatever their source. A
+# Plasma or Gear release is its first three version components and a
+# Frameworks release its first two, so a respin (6.8.2.1, 6.31.1) is part of
+# the release it fixes; Frameworks of another major version (sonnet-qt5's
+# KF5) are a family of their own. Plasma's own side releases — plasma-wayland-protocols,
+# kirigami-addons — come from directories of their own and belong to none.
+#
+# It proves itself on testing/fixtures/releaseset first: the set passes, and
+# each copy with one port moved to another release fails.
+kde_families() {
+    awk '
+        function flush(  fam, p, k, rel) {
+            if (f == "" || v == "") return
+            fam = ""
+            if (src ~ /kde\.org\/(stable|unstable)\/plasma\// || g == "plasma") fam = "plasma"
+            else if (src ~ /kde\.org\/(stable|unstable)\/frameworks\// || shelf == "kf6") fam = "kf"
+            else if (src ~ /kde\.org\/(stable|unstable)\/release-service\// || g == "gear") fam = "gear"
+            if (fam == "") return
+            k = split(v, p, ".")
+            if (fam == "kf") fam = "kf" p[1]
+            rel = (fam ~ /^kf/) ? p[1] "." p[2] : p[1] "." p[2] "." p[3]
+            print fam "\t" rel "\t" n "\t" v
+        }
+        FNR == 1 { flush(); f = FILENAME; n = v = g = src = ""; m = split(FILENAME, q, "/"); shelf = q[m - 2] }
+        /^name[[:blank:]]*=/    && n == "" { n = $0; sub(/^name[[:blank:]]*=[[:blank:]]*/, "", n) }
+        /^version[[:blank:]]*=/ && v == "" { v = $0; sub(/^version[[:blank:]]*=[[:blank:]]*/, "", v) }
+        /^group[[:blank:]]*=/   && g == "" { g = $0; sub(/^group[[:blank:]]*=[[:blank:]]*/, "", g) }
+        /^source[[:blank:]]*=/             { s = $0; sub(/^source[[:blank:]]*=[[:blank:]]*/, "", s); src = src " " s }
+        END { flush() }' "$@"
+}
+release_sets() {
+    kde_families "$@" |
+    awk -F'\t' '
+        { key = $1 FS $2; c[key]++; fam[$1]; if (c[key] <= 6) who[key] = who[key] " " $3 "-" $4 }
+        END {
+            for (k in c) {
+                split(k, a, FS)
+                sets[a[1]]++
+                if (c[k] > most[a[1]]) most[a[1]] = c[k]
+            }
+            for (f in fam) {
+                line = ""
+                for (k in c) {
+                    split(k, a, FS)
+                    if (a[1] != f) continue
+                    line = line "; " c[k] " at " a[2]
+                    if (sets[f] > 1 && c[k] < most[f] || sets[f] > 1 && c[k] <= 6)
+                        line = line " (" substr(who[k], 2) (c[k] > 6 ? " and " c[k] - 6 " more" : "") ")"
+                }
+                print (sets[f] > 1 ? "BAD" : "OK") "\t" f "\t" substr(line, 3)
+            }
+        }' | LC_ALL=C sort
+}
+_rsfix=0
+release_sets $(find testing/fixtures/releaseset/set -name kpkgbuild | LC_ALL=C sort) > "$SP/rsset"
+grep -q '^BAD' "$SP/rsset" && { bad "release set" "the fixture's one-release set fails: $(grep '^BAD' "$SP/rsset" | cut -f2- | tr '\t\n' ': ')"; _rsfix=1; }
+[ "$(grep -c '^OK' "$SP/rsset")" = 3 ] || { bad "release set" "the fixture's set is not read as three families"; _rsfix=1; }
+for _m in "plasma kde/kwin 6.8.3" "kf6 kf6/kcoreaddons 6.32.0" "gear files/dolphin 26.08.3"; do
+    set -- $_m
+    rm -rf "$SP/rsbump"
+    cp -r testing/fixtures/releaseset/set "$SP/rsbump"
+    sed -i "s/^version[[:blank:]]*=.*/version     = $3/" "$SP/rsbump/$2/kpkgbuild"
+    release_sets $(find "$SP/rsbump" -name kpkgbuild | LC_ALL=C sort) > "$SP/rsbumped"
+    [ "$(grep -c '^BAD' "$SP/rsbumped")" = 1 ] && grep -q "^BAD	$1	" "$SP/rsbumped" ||
+        { bad "release set" "moving $2 alone to $3 is not refused as a split $1 release"; _rsfix=1; }
+done
+release_sets $(for _d in "${PORTS_ALL[@]}"; do case "$_d" in ports/core/*) printf '%s/kpkgbuild\n' "$_d" ;; esac; done) > "$SP/rsreal"
+while IFS='	' read -r _k _f _why; do
+    case "$_k" in
+        BAD) bad "release set" "$_f is more than one release: $_why" ;;
+        OK)  [ "$_rsfix" = 0 ] && note "release set" "$_f: $_why" ;;
+    esac
+done < "$SP/rsreal"
+[ -s "$SP/rsreal" ] || note "release set" "no KDE ports"
 
+echo
+echo "==> every Gear application is in exactly one kde-gear meta"
+# The meta ports are KDE as `kpkg install` gives it to a machine, and the phase
+# lists only build it: a Gear application no kde-gear-* meta names is left out
+# of `kpkg install kde-gear`, and one two metas name moves with whichever is
+# removed first. A library arrives through some application's closure and is
+# named by none, so the rule is for the Gear ports no port depends on but the
+# metas (kde-all, kde-plasma, kde-gear and kde-gear-*). A port is Gear by the
+# family rule above. Each meta also stays under the depends limit below.
+#
+# It proves itself on testing/fixtures/gearmeta first: the set passes, a copy
+# with one game dropped from its meta fails it as named by none, and a copy
+# with one game in two metas fails it as named by two.
+gear_metas() {
+    awk '
+        function flush() {
+            if (n == "") return
+            dep[n] = d
+            if (src ~ /kde\.org\/(stable|unstable)\/release-service\// || g == "gear") gear[n] = 1
+        }
+        FNR == 1 { flush(); n = d = g = src = ""; seen = 0 }
+        /^name[[:blank:]]*=/    && n == "" { n = $0; sub(/^name[[:blank:]]*=[[:blank:]]*/, "", n) }
+        /^group[[:blank:]]*=/   && g == "" { g = $0; sub(/^group[[:blank:]]*=[[:blank:]]*/, "", g) }
+        /^source[[:blank:]]*=/             { s = $0; sub(/^source[[:blank:]]*=[[:blank:]]*/, "", s); src = src " " s }
+        /^depends[[:blank:]]*=/ && !seen   { seen = 1; d = $0; sub(/^depends[[:blank:]]*=[[:blank:]]*/, "", d) }
+        END {
+            flush()
+            for (p in dep) {
+                k = split(dep[p], w, / +/)
+                if (p ~ /^kde-gear-/) {
+                    metas++
+                    for (i = 1; i <= k; i++) if (w[i] != "") { cnt[w[i]]++; by[w[i]] = by[w[i]] " " p }
+                } else if (p !~ /^kde-(all|plasma|gear)$/) {
+                    for (i = 1; i <= k; i++) if (w[i] != "") needed[w[i]] = 1
+                }
+            }
+            if (!metas) { print "NONE"; exit }
+            for (p in gear) {
+                if (p in needed || cnt[p] == 1) continue
+                if (!cnt[p]) print "BAD\t" p "\tis a Gear application no kde-gear-* meta names"
+                else print "BAD\t" p "\tis named by " cnt[p] " metas:" by[p]
+            }
+            print "OK\t" metas
+        }' "$@" | LC_ALL=C sort
+}
+_gmfix=0
+gear_metas $(find testing/fixtures/gearmeta/set -name kpkgbuild | LC_ALL=C sort) > "$SP/gmset"
+if grep -q '^BAD' "$SP/gmset" || ! grep -q '^OK	2$' "$SP/gmset"; then
+    bad "gear metas" "the fixture's set is misjudged: $(grep -v '^OK' "$SP/gmset" | cut -f2- | tr '\t\n' ': ')"
+    _gmfix=1
+fi
+for _m in "kapman kde/kde-gear-games bovo" "bovo kde/kde-gear-core dolphin-plugins bovo"; do
+    set -- $_m
+    _gp=$1 _gr=$2
+    shift 2
+    rm -rf "$SP/gmbump"
+    cp -r testing/fixtures/gearmeta/set "$SP/gmbump"
+    sed -i "s/^depends[[:blank:]]*=.*/depends     = $*/" "$SP/gmbump/$_gr/kpkgbuild"
+    gear_metas $(find "$SP/gmbump" -name kpkgbuild | LC_ALL=C sort) > "$SP/gmbumped"
+    [ "$(grep -c '^BAD' "$SP/gmbumped")" = 1 ] && grep -q "^BAD	$_gp	" "$SP/gmbumped" ||
+        { bad "gear metas" "$_gr naming '$*' is not refused for $_gp"; _gmfix=1; }
+done
+gear_metas $(for _d in "${PORTS_ALL[@]}"; do printf '%s/kpkgbuild\n' "$_d"; done) > "$SP/gmreal"
+if grep -q '^NONE' "$SP/gmreal"; then
+    [ "$_gmfix" = 0 ] && note "gear metas" "skipped — no kde-gear-* meta ports yet; fixture judged right"
+else
+    _gm=0
+    while IFS='	' read -r _k _p _why; do
+        [ "$_k" = BAD ] || continue
+        bad "gear metas" "$_p $_why"
+        _gm=$((_gm + 1))
+    done < "$SP/gmreal"
+    [ "$_gm" = 0 ] && [ "$_gmfix" = 0 ] &&
+        note "gear metas" "every Gear application is in one of $(awk -F'\t' '$1 == "OK" { print $2 }' "$SP/gmreal") metas"
+fi
+
+echo
 echo "==> every phase list resolves to a dependency order"
 # Each phase resolves with its own phase.env's PORT_REPO (/ports/core, the
 # one entry of kpkg.conf's default the chroot has, when it sets none), and kpkgdepends passes an unknown name
@@ -432,6 +600,45 @@ for d in "${PORTS_ALL[@]}"; do
     done
 done
 [ "$orphans" = 0 ] && note "all depends resolve" "ok"
+echo
+echo "==> every recipe's depends fits the limit kpkg reads"
+# kpkg refuses a recipe whose `depends =` names more than KP_MAX_DEPS ports
+# ("<port>: depends names N ports; the limit is N"), so a build stops at the
+# first port that reaches it; this refuses it before a build starts, in the
+# same words. Names are counted the way kp_depends counts them: the first
+# depends line, split on spaces. The limit is read out of kpkg.h, so the two
+# cannot disagree, and a recipe one past it, written here, must fail first.
+_dmax=$(sed -n 's/^#define KP_MAX_DEPS[[:blank:]]*\([0-9][0-9]*\).*/\1/p' src/libs/libkpkg/kpkg.h)
+_dlawk='
+        FNR == 1 { done = 0 }
+        !done && /^depends[[:blank:]]*=/ {
+            done = 1
+            s = $0
+            sub(/^depends[[:blank:]]*=[[:blank:]]*/, "", s)
+            n = 0
+            k = split(s, w, / +/)
+            for (i = 1; i <= k; i++) if (w[i] != "") n++
+            if (n > max) { d = FILENAME; sub(/\/kpkgbuild$/, "", d); sub(/.*\//, "", d); print d "\t" n }
+        }'
+deps_over() { awk -v max="$_dmax" "$_dlawk" "$@"; }
+if [ -z "$_dmax" ]; then
+    bad "depends limit" "KP_MAX_DEPS is not readable out of src/libs/libkpkg/kpkg.h"
+else
+    mkdir -p "$SP/deplimit/wide"
+    { printf 'name = wide\nversion = 1\nrelease = 1\ndepends ='
+      seq 0 "$_dmax" | sed 's/^/ d/' | tr -d '\n'; echo; } > "$SP/deplimit/wide/kpkgbuild"
+    if [ "$(deps_over "$SP/deplimit/wide/kpkgbuild")" != "wide	$((_dmax + 1))" ]; then
+        bad "depends limit" "a recipe naming $((_dmax + 1)) depends is not counted as over the limit"
+    else
+        _dl=0
+        while IFS='	' read -r _p _n; do
+            bad "$_p" "depends names $_n ports; the limit is $_dmax"
+            _dl=$((_dl + 1))
+        done < <(for _d in "${PORTS_ALL[@]}"; do printf '%s/kpkgbuild\n' "$_d"; done |
+                 xargs awk -v max="$_dmax" "$_dlawk")
+        [ "$_dl" = 0 ] && note "depends limit" "every recipe names at most $_dmax"
+    fi
+fi
 
 echo
 echo "==> every port of OURS is built by something"
@@ -659,9 +866,9 @@ $(printf '%s' "$flat" \
     # prose — libraqm's explains why matplotlib passes `-Dsystem-libraqm=true`
     # — and reading that as something this port passes reports a defect in the
     # port that documented the fix. `install -Dm644` is not a meson option
-    # either, and `option(` may be followed by a NEWLINE before its name, which
-    # fcft does, so the option file is flattened before it is read; `option (`
-    # with a space, which Impression writes, is the same call.
+    # either, and `option(` may be followed by a NEWLINE before its name, so
+    # the option file is flattened before it is read; `option (` with a
+    # space, which Impression writes, is the same call.
     #
     # A COMPILER FLAG IS NOT A MESON OPTION EITHER. `-D` names a preprocessor
     # macro in a CFLAGS assignment and a project option on a meson line, and
@@ -1114,7 +1321,7 @@ echo "==> shell that ships or builds is syntactically valid"
 _sh=0
 for f in script/*.sh script/*/*.sh script/phases/*/*.sh \
          script/phases/*/phase.env script/env/*.env fs/etc/init.d/* \
-         ports/fetch testing/*.sh \
+         ports/fetch testing/*.sh testing/flows/*.sh \
          ports/core/*/*/build.sh src/*/*/build.sh \
          ports/core/*/*/postinstall.sh src/*/*/postinstall.sh \
          fs/etc/profile fs/etc/profile.d/* fs/usr/local/bin/* \
@@ -1299,45 +1506,910 @@ else
     fi
 fi
 
-# ── the desktop's own programs link no toolkit and no Xlib ────────────────
+# ── KDOS code links only the toolkit its area allows ──────────────────────
 #
-# Applications may link GTK, Qt, wxWidgets, FLTK, Tk and the X11 client
-# libraries; the desktop itself may not. Every ELF that a package built from a
-# port under src/ installs is read for its NEEDED entries, and a toolkit or an
-# Xlib library among them fails: a compositor, panel or daemon that pulls one
-# in makes the session depend on a stack an application is free to leave out.
-# libxcb is not on the list. kdos-comp speaks XCB to Xwayland, the one X
-# carve-out, and loads no Xlib.
+# Applications may link any toolkit and the X11 client libraries. KDOS's own
+# code may not, by area: src/desktop holds the desktop's Qt code (KCMs,
+# plasmoids, KWin plugins, the installer's front end) and may link Qt 6 and
+# KDE Frameworks 6 and the Plasma libraries built on them, and nothing else
+# from the toolkit list — no GTK, no Qt 5, no Xlib. src/system, src/daemons,
+# src/art and src/devtools link no toolkit at all, and neither does a
+# set-id file, anything under sbin or a program rcS starts, whatever its
+# area. Root, early-boot and library code that pulls in a GUI stack makes the
+# login depend on that stack, and a daemon's crash on a toolkit bug takes the
+# session's services with it.
 #
-# Skipped, not failed, when there is no build tree or no readelf.
+# Every ELF a package built from a port under src/ installs is read for its
+# NEEDED entries, and so is each library those name, one level down: a daemon
+# linking a Plasma library links Qt through it. libxcb is not on the list, and
+# Xlib is refused only when named directly: Xwayland speaks XCB, and the KF6
+# libraries the desktop links reach Xlib themselves.
+#
+# The guard reads ELF headers itself, so it needs python3 and no readelf. It
+# proves itself first on testing/fixtures/toolkit/cases, built here with cc,
+# and then reads build/fs; without a build tree only the proof runs.
 echo
-echo "==> the desktop's own programs link no GUI toolkit and no Xlib"
-if [ ! -d build/fs/var/lib/kpkg/db ]; then
-    note "desktop ELF links" "skipped — no build tree"
-elif ! command -v readelf >/dev/null 2>&1; then
-    note "desktop ELF links" "skipped — no readelf on this host"
-else
-    _elf_re='^(libgtk-|libgdk-|libadwaita-|libwebkit|libjavascriptcoregtk|libQt[0-9]|libKF[0-9]|libwx_|libfltk|libtk[0-9]|libX[A-Za-z0-9_-]*\.so)'
-    _elfn=0 _elfp=0 _elfbad=0
-    for _d in src/*/*/; do
-        _pkg=$(sed -n 's/^name[[:space:]]*=[[:space:]]*//p' "$_d/kpkgbuild" 2>/dev/null | head -1)
-        [ -n "$_pkg" ] && [ -f "build/fs/var/lib/kpkg/db/$_pkg" ] || continue
-        _elfp=$((_elfp + 1))
-        while IFS= read -r _f; do
-            _f=build/fs/${_f#./}
-            [ -f "$_f" ] && [ ! -L "$_f" ] || continue
-            [ "$(head -c4 "$_f" 2>/dev/null | od -An -c | tr -d ' \n')" = '177ELF' ] || continue
-            _elfn=$((_elfn + 1))
-            _hit=$(readelf -d "$_f" 2>/dev/null \
-                   | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | grep -E "$_elf_re" | paste -sd' ')
-            [ -z "$_hit" ] && continue
-            bad "desktop ELF links" "$_pkg: ${_f#build/fs} links $_hit"
-            _elfbad=$((_elfbad + 1))
-        done < <(tail -n +2 "build/fs/var/lib/kpkg/db/$_pkg")
+echo "==> KDOS code links only the toolkit its area allows"
+cat > "$SP/toolkitguard.py" <<'PYEOF'
+import os, re, struct, sys
+
+fsroot, srcroot, initdir, inittab = sys.argv[1:5]
+ALWAYS = re.compile(r"^(libgtk-|libgdk-|libadwaita-|libwebkit|libjavascriptcoregtk|"
+                    r"libQt(?:[0-57-9]|6\d)|libKF(?:[0-57-9]|6\d)|libwx_|libfltk|libtk[0-9]|"
+                    r"libX[A-Za-z0-9_-]*\.so)")
+QTKF6 = re.compile(r"^(libQt6|libKF6)")
+TOOLKIT = re.compile(r"^(libgtk-|libgdk-|libadwaita-|libwebkit|libjavascriptcoregtk|libQt[0-9]|"
+                     r"libKF[0-9]|libwx_|libfltk|libtk[0-9])")
+DESKTOP_DEEP = re.compile(r"^(libgtk-|libgdk-|libadwaita-|libwebkit|libjavascriptcoregtk|"
+                          r"libQt(?:[0-57-9]|6\d)|libKF(?:[0-57-9]|6\d)|libwx_|libfltk|libtk[0-9])")
+
+
+def needed(path):
+    """DT_NEEDED of an ELF file, or None when it is not one."""
+    try:
+        with open(path, "rb") as f:
+            if f.read(4) != b"\x7fELF":
+                return None
+            f.seek(0)
+            data = f.read()
+    except OSError:
+        return None
+    if len(data) < 52:
+        return None
+    is64, end = data[4] == 2, "<" if data[5] == 1 else ">"
+    if is64:
+        phoff, shoff = struct.unpack_from(end + "QQ", data, 32)
+        phentsize, phnum, shentsize, shnum = struct.unpack_from(end + "HHHH", data, 54)
+    else:
+        phoff, shoff = struct.unpack_from(end + "II", data, 28)
+        phentsize, phnum, shentsize, shnum = struct.unpack_from(end + "HHHH", data, 42)
+    dyn = strtab = None
+    for i in range(shnum):
+        o = shoff + i * shentsize
+        if is64:
+            _n, typ, _fl, _addr, off, size, link = struct.unpack_from(end + "IIQQQQI", data, o)
+        else:
+            _n, typ, _fl, _addr, off, size, link = struct.unpack_from(end + "IIIIIII", data, o)
+        if typ == 6:
+            dyn = (off, size)
+            lo = shoff + link * shentsize
+            strtab = struct.unpack_from(end + ("Q" if is64 else "I"), data, lo + (24 if is64 else 16))[0]
+            break
+    entsz = 16 if is64 else 8
+    if dyn is None:
+        loads, strvaddr = [], None
+        for i in range(phnum):
+            o = phoff + i * phentsize
+            if is64:
+                typ, _fl, off, vaddr, _pa, filesz = struct.unpack_from(end + "IIQQQQ", data, o)
+            else:
+                typ, off, vaddr, _pa, filesz = struct.unpack_from(end + "IIIII", data, o)
+            if typ == 1:
+                loads.append((vaddr, off, filesz))
+            elif typ == 2:
+                dyn = (off, filesz)
+        if dyn is None:
+            return []
+        for j in range(dyn[1] // entsz):
+            tag, val = struct.unpack_from(end + ("qQ" if is64 else "iI"), data, dyn[0] + j * entsz)
+            if tag == 5:
+                strvaddr = val
+        for vaddr, off, filesz in loads:
+            if strvaddr is not None and vaddr <= strvaddr < vaddr + filesz:
+                strtab = off + (strvaddr - vaddr)
+        if strtab is None:
+            return []
+    out = []
+    for j in range(dyn[1] // entsz):
+        tag, val = struct.unpack_from(end + ("qQ" if is64 else "iI"), data, dyn[0] + j * entsz)
+        if tag == 0:
+            break
+        if tag == 1:
+            s = strtab + val
+            out.append(data[s:data.index(b"\0", s)].decode("ascii", "replace"))
+    return out
+
+
+def inside(rel):
+    """A path in the tree, its symlinks followed inside the tree: an absolute
+    link names the image's root, never this host's."""
+    p, hops = rel.lstrip("/"), 0
+    while hops < 40:
+        full = os.path.join(fsroot, p)
+        if not os.path.islink(full):
+            return full
+        t = os.readlink(full)
+        p = os.path.normpath(t.lstrip("/") if t.startswith("/") else os.path.join(os.path.dirname(p), t))
+        hops += 1
+    return None
+
+
+deep = {}
+
+
+def links_of(soname):
+    if soname not in deep:
+        hit = None
+        for d in ("usr/lib", "lib"):
+            full = inside(os.path.join(d, soname))
+            if full and os.path.isfile(full):
+                try:
+                    hit = needed(full) or []
+                except (struct.error, ValueError, IndexError):
+                    hit = []
+                break
+        deep[soname] = hit or []
+    return deep[soname]
+
+
+started = set()
+for d in (initdir,):
+    if os.path.isdir(d):
+        for n in sorted(os.listdir(d)):
+            try:
+                with open(os.path.join(d, n), encoding="utf-8", errors="replace") as f:
+                    started.update(re.findall(r"(/(?:usr/)?(?:s?bin|lib|libexec)/[A-Za-z0-9._+/-]+)", f.read()))
+            except OSError:
+                pass
+if os.path.isfile(inittab):
+    with open(inittab, encoding="utf-8", errors="replace") as f:
+        started.update(re.findall(r"(/(?:usr/)?(?:s?bin|lib|libexec)/[A-Za-z0-9._+/-]+)", f.read()))
+
+nelf = npkg = 0
+dbdir = os.path.join(fsroot, "var/lib/kpkg/db")
+for area in sorted(os.listdir(os.path.join(srcroot, "src"))):
+    adir = os.path.join(srcroot, "src", area)
+    if not os.path.isdir(adir):
+        continue
+    for port in sorted(os.listdir(adir)):
+        kp = os.path.join(adir, port, "kpkgbuild")
+        if not os.path.isfile(kp):
+            continue
+        pkg = None
+        with open(kp, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                m = re.match(r"name\s*=\s*(\S+)", line)
+                if m:
+                    pkg = m.group(1)
+                    break
+        man = os.path.join(dbdir, pkg or "")
+        if not pkg or not os.path.isfile(man):
+            continue
+        npkg += 1
+        with open(man, encoding="utf-8", errors="replace") as f:
+            paths = [l.strip() for i, l in enumerate(f) if i and l.strip()]
+        for rel in paths:
+            rel = rel[2:] if rel.startswith("./") else rel.lstrip("/")
+            full = os.path.join(fsroot, rel)
+            if rel.endswith("/") or os.path.islink(full) or not os.path.isfile(full):
+                continue
+            # A file that opens like an ELF and whose tables run off its end
+            # is named, not skipped: its links are unknown, and one unread
+            # file must not stop the reading of the rest.
+            try:
+                libs = needed(full)
+            except (struct.error, ValueError, IndexError):
+                print("BAD\t%s\t/%s\tis an ELF whose dynamic section cannot be read" % (pkg, rel))
+                continue
+            if libs is None:
+                continue
+            nelf += 1
+            mode = os.stat(full).st_mode
+            why = []
+            if mode & 0o6000:
+                why.append("set-id")
+            if rel.startswith(("usr/sbin/", "sbin/")):
+                why.append("under sbin")
+            if "/" + rel in started:
+                why.append("started by rcS")
+            strict = area != "desktop" or bool(why)
+            scope = "src/" + area + (", " + " and ".join(why) if why else "")
+            for so in libs:
+                if ALWAYS.match(so):
+                    print("BAD\t%s\t/%s\tlinks %s, which no KDOS code may" % (pkg, rel, so))
+                elif strict and QTKF6.match(so):
+                    print("BAD\t%s\t/%s\tlinks %s; only src/desktop code that is neither set-id, "
+                          "in sbin nor started by rcS may (%s)" % (pkg, rel, so, scope))
+                else:
+                    pat = TOOLKIT if strict else DESKTOP_DEEP
+                    hit = [x for x in links_of(so) if pat.match(x)]
+                    if hit:
+                        print("BAD\t%s\t/%s\tlinks %s, which links %s (%s)" % (pkg, rel, so, hit[0], scope))
+print("OK\t%d\t%d" % (nelf, npkg))
+PYEOF
+
+# The proof: every row of the fixture, built and judged.
+_tk=$SP/toolkit
+rm -rf "$_tk"
+mkdir -p "$_tk/stub" "$_tk/fs/var/lib/kpkg/db" "$_tk/init.d" "$_tk/src"
+_tkerr=""
+_tk_so() {      # <output> <soname or -> <needed sonames...>
+    local _o=$1 _so=$2 _l _libs=()
+    shift 2
+    for _l in "$@"; do
+        if [ -f "$_tk/fs/usr/lib/$_l" ]; then _libs+=("$_tk/fs/usr/lib/$_l")
+        else
+            [ -f "$_tk/stub/$_l" ] || cc -shared -fPIC -o "$_tk/stub/$_l" -Wl,-soname,"$_l" \
+                -x c /dev/null 2>/dev/null || return 1
+            _libs+=("$_tk/stub/$_l")
+        fi
     done
-    [ "$_elfbad" != 0 ] ||
-        note "desktop ELF links" "$_elfn ELF file(s) in $_elfp package(s), none links a toolkit or Xlib"
+    mkdir -p "$(dirname "$_o")"
+    if [ "$_so" = - ]; then
+        cc -shared -fPIC -o "$_o" -x c /dev/null -x none -Wl,--no-as-needed "${_libs[@]}" 2>/dev/null
+    else
+        cc -shared -fPIC -o "$_o" -Wl,-soname,"$_so" -x c /dev/null -x none \
+            -Wl,--no-as-needed "${_libs[@]}" 2>/dev/null
+    fi
+}
+declare -A _tkwant
+while read -r _a _p _x _m _path _sos; do
+    case "$_a" in ''|\#*) continue ;; esac
+    if [ "$_a" = lib ]; then
+        _tk_so "$_tk/fs/$_path" "$(basename "$_path")" $_sos || _tkerr="cannot build $_path"
+        continue
+    fi
+    _tk_so "$_tk/fs/$_path" - $_sos || { _tkerr="cannot build $_path"; continue; }
+    chmod "${_m%%,*}" "$_tk/fs/$_path"
+    case "$_m" in *,rcs) printf 'DAEMON="/%s"\n' "$_path" >> "$_tk/init.d/50_fixture.sh" ;; esac
+    mkdir -p "$_tk/src/src/$_a/$_p"
+    printf 'name = %s\nversion = 1\nrelease = 1\n' "$_p" > "$_tk/src/src/$_a/$_p/kpkgbuild"
+    printf '1 1\n./%s\n' "$_path" > "$_tk/fs/var/lib/kpkg/db/$_p"
+    _tkwant[$_p]=$_x
+done < testing/fixtures/toolkit/cases
+if [ -n "$_tkerr" ]; then
+    bad "toolkit guard" "the fixture does not build: $_tkerr"
+elif ! python3 "$SP/toolkitguard.py" "$_tk/fs" "$_tk/src" "$_tk/init.d" /nonexistent > "$SP/tkfix" 2>&1; then
+    bad "toolkit guard" "the guard crashed on its fixture: $(tail -1 "$SP/tkfix")"
+else
+    _tkbad=0
+    for _p in "${!_tkwant[@]}"; do
+        if grep -q "^BAD	$_p	" "$SP/tkfix"; then _got=refused; else _got=allowed; fi
+        [ "$_got" = "${_tkwant[$_p]}" ] && continue
+        bad "toolkit guard" "fixture $_p should be ${_tkwant[$_p]}, the guard says $_got"
+        _tkbad=$((_tkbad + 1))
+    done
+    [ "$_tkbad" = 0 ] &&
+        note "toolkit guard" "refuses and allows every one of its ${#_tkwant[@]} fixture cases"
 fi
+if [ ! -d build/fs/var/lib/kpkg/db ]; then
+    note "KDOS ELF links" "skipped — no build tree"
+elif ! python3 "$SP/toolkitguard.py" build/fs . fs/etc/init.d fs/etc/inittab > "$SP/tkreal" 2>&1; then
+    bad "KDOS ELF links" "the guard crashed: $(tail -1 "$SP/tkreal")"
+else
+    _tkn=0
+    while IFS='	' read -r _k _pkg _f _why; do
+        [ "$_k" = BAD ] || continue
+        bad "KDOS ELF links" "$_pkg: $_f $_why"
+        _tkn=$((_tkn + 1))
+    done < "$SP/tkreal"
+    [ "$_tkn" = 0 ] && note "KDOS ELF links" "$(awk -F'\t' '$1 == "OK" { print $2 " ELF file(s) in " $3 " package(s), each within its area" }' "$SP/tkreal")"
+fi
+
+# ── KDOS desktop code takes colour from a role, never a literal ───────────
+#
+# The KDOS accents reach Plasma only as the .colors files generated from
+# libkcolor's palette, and every Qt surface reads them back through a role:
+# Kirigami.Theme in QML, KColorScheme in C++. A literal in src/desktop is a
+# colour that no accent, no light/dark switch and no Phosphor mode can reach,
+# and on one of the eight schemes it is unreadable. Each *.qml, *.js, *.cpp
+# and *.h under src/desktop, and each *.qml and *.js under src/art (the
+# add-on plasmoids and scripts; its C is the palette's own writer), is read
+# with its comments removed for a quoted #rgb/#rrggbb/#aarrggbb, a
+# Qt.rgba/hsla/hsva or QColor built from numbers, a string or a
+# Qt::GlobalColor other than transparent, and a named colour assigned to a
+# colour property. A test (under tests/ or autotests/) is not read: its
+# colours are the known values it checks a role mapping against, and nothing
+# draws them.
+#
+# _colour_allow names each literal that is no scheme's to give, by its file
+# and the exact text the check reports, with the reason beside it. A whole
+# file is never let through, so a second literal in the same file fails. A
+# colour the palette owns outside the schemes (the boot splash's screen-off
+# black, its mascot) is not one: genlook.py writes it into the package from
+# libkcolor and kdos-splash, and the QML reads it from there.
+#
+# The check proves itself first on testing/fixtures/colourlit, where every
+# line ending in `// literal` must be reported and no other line may be; the
+# line ending in `// allowed` is let through by an entry made for it alone.
+echo
+echo "==> KDOS desktop code takes colour from a role, never a literal"
+_colour_allow=()
+cat > "$SP/colourlit.py" <<'PYEOF'
+import os, re, sys
+
+qml_only = sys.argv[1] == "--qml-only"
+args = sys.argv[2:] if qml_only else sys.argv[1:]
+root, allow = args[0], set(args[1:])
+HEX = re.compile(r"""["']#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})["']""")
+QML_FN = re.compile(r"\bQt\.(?:rgba|hsla|hsva)\s*\(\s*[-+.\d][^()]*\)?")
+NAMED = re.compile(r"""\b\w*[cC]olor\s*:\s*["'](?!transparent["'])[A-Za-z]+["']""")
+CPP_CTOR = re.compile(r"""\bQColor\s*[({]\s*(?:[-+.\d]|0x|QStringLiteral\s*\(\s*"|QLatin1String\s*\(\s*"|u?"|"""
+                      r"""Qt::(?!transparent\b)[A-Za-z]+)""")
+CPP_FROM = re.compile(r"""\bQColor::from(?:Rgb|RgbF|Rgba64|Hsv|HsvF|Hsl|HslF|Cmyk|CmykF|String)\s*\(\s*"""
+                      r"""(?:[-+.\d]|0x|u?"|QStringLiteral|QLatin1String)""")
+CPP_GLOBAL = re.compile(r"\bQt::(?:white|black|red|darkRed|green|darkGreen|blue|darkBlue|cyan|darkCyan|"
+                        r"magenta|darkMagenta|yellow|darkYellow|gray|darkGray|lightGray|color0|color1)\b")
+RULES = {".qml": (HEX, QML_FN, NAMED), ".js": (HEX, QML_FN), ".mjs": (HEX, QML_FN),
+         ".cpp": (HEX, CPP_CTOR, CPP_FROM, CPP_GLOBAL), ".cc": (HEX, CPP_CTOR, CPP_FROM, CPP_GLOBAL),
+         ".h": (HEX, CPP_CTOR, CPP_FROM, CPP_GLOBAL), ".hpp": (HEX, CPP_CTOR, CPP_FROM, CPP_GLOBAL)}
+
+
+def code(text):
+    """The text with every comment blanked and every string kept, the line
+    breaks where they were."""
+    out, i, n, quote = [], 0, len(text), None
+    while i < n:
+        c = text[i]
+        if quote is None:
+            if text.startswith("//", i):
+                j = text.find("\n", i)
+                j = n if j < 0 else j
+                out.append(" " * (j - i))
+                i = j
+                continue
+            if text.startswith("/*", i):
+                j = text.find("*/", i + 2)
+                j = n if j < 0 else j + 2
+                out.append(re.sub(r"[^\n]", " ", text[i:j]))
+                i = j
+                continue
+            if c in "\"'`":
+                quote = c
+            out.append(c)
+            i += 1
+            continue
+        if c == "\\" and i + 1 < n:
+            out.append(text[i:i + 2])
+            i += 2
+            continue
+        if c == quote or (c == "\n" and quote != "`"):
+            quote = None
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+for dirpath, dirs, files in os.walk(root):
+    dirs[:] = sorted(d for d in dirs if d not in ("tests", "autotests"))
+    for name in sorted(files):
+        ext = os.path.splitext(name)[1]
+        rules = RULES.get(ext) if not qml_only or ext in (".qml", ".js", ".mjs") else None
+        if not rules:
+            continue
+        path = os.path.join(dirpath, name)
+        with open(path, encoding="utf-8", errors="replace") as f:
+            lines = code(f.read()).split("\n")
+        for n, line in enumerate(lines, 1):
+            hit = next((m.group(0).strip() for rule in rules for m in rule.finditer(line)
+                        if "%s\t%s" % (path, m.group(0).strip()) not in allow), None)
+            if hit:
+                print("%s:%d:%s" % (path, n, hit))
+PYEOF
+_clfix=testing/fixtures/colourlit
+if ! python3 "$SP/colourlit.py" "$_clfix" "$_clfix/Fixture.qml"$'\t''Qt.rgba(0, 0, 0, 1)' > "$SP/clfix" 2>&1; then
+    bad "colour literals" "the check crashed on its fixture: $(tail -1 "$SP/clfix")"
+else
+    grep -n '// literal$' "$_clfix"/* | cut -d: -f1,2 | sort > "$SP/clwant"
+    cut -d: -f1,2 "$SP/clfix" | sort > "$SP/clgot"
+    if ! grep -q '// allowed$' "$_clfix/Fixture.qml"; then
+        bad "colour literals" "the fixture has no allowed literal to prove the allowlist on"
+    elif cmp -s "$SP/clwant" "$SP/clgot"; then
+        note "colour literals" "the fixture's $(wc -l < "$SP/clwant") literals reported, nothing else"
+    else
+        bad "colour literals" "the fixture is misjudged — missed: $(comm -23 "$SP/clwant" "$SP/clgot" | tr '\n' ' ')reported: $(comm -13 "$SP/clwant" "$SP/clgot" | tr '\n' ' ')"
+    fi
+fi
+_clok=1
+: > "$SP/clreal"
+for _r in src/desktop "--qml-only src/art"; do
+    # shellcheck disable=SC2086
+    [ -d "${_r#--qml-only }" ] || continue
+    python3 "$SP/colourlit.py" $_r "${_colour_allow[@]}" >> "$SP/clreal" 2> "$SP/clerr" ||
+        { bad "colour literals" "the check could not read ${_r#--qml-only }: $(tail -1 "$SP/clerr")"; _clok=0; }
+done
+_cln=0
+while IFS= read -r _l; do
+    bad "colour literals" "${_l%%:*}:$(printf '%s' "$_l" | cut -d: -f2) sets ${_l#*:*:} — read a Kirigami.Theme or KColorScheme role"
+    _cln=$((_cln + 1))
+done < "$SP/clreal"
+[ "$_clok" = 1 ] && [ "$_cln" = 0 ] &&
+    note "colour literals" "none in src/desktop or src/art's QML, ${#_colour_allow[@]} let through by name"
+
+# ── the Plasma session as KDOS ships it ───────────────────────────────────
+#
+# One helper reads every file format these checks hold to: unit paths, KPackage
+# metadata, window rules, the greeter's configuration and KConfig keys. Each
+# check that parses something proves itself on its fixture under
+# testing/fixtures before it reads the tree.
+cat > "$SP/plasmacheck.py" <<'PYEOF'
+import json, os, re, sys
+
+
+def kconfig(path):
+    """{group: {key: value}} of a KConfig/INI file; "[a][b]" is "a/b"."""
+    groups, cur = {}, None
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for raw in f:
+            s = raw.strip()
+            if not s or s.startswith("#"):
+                continue
+            if re.fullmatch(r"(\[[^\]]*\])+", s):
+                cur = "/".join(p for p in re.findall(r"\[([^\]]*)\]", s) if not p.startswith("$"))
+                groups.setdefault(cur, {})
+            elif "=" in s and cur is not None:
+                k, v = s.split("=", 1)
+                groups[cur][re.sub(r"\[[^\]]*\]$", "", k.strip())] = v.strip()
+            else:
+                raise ValueError("%s: not a group or a key: %r" % (path, s))
+    return groups
+
+
+def units():
+    """Paths on stdin; a systemd unit or path is reported with its rule."""
+    for line in sys.stdin:
+        p = line.strip().lstrip("./")
+        if not p:
+            continue
+        doc = p.startswith("usr/share/doc/") or "/examples/" in "/" + p
+        if re.match(r"(usr/)?lib/systemd/|etc/systemd/", p):
+            print("%s\tis a systemd path; KDOS runs no systemd units" % p)
+        elif p.endswith((".service", ".socket")) and not doc and not p.startswith("usr/share/dbus-1/"):
+            print("%s\tis a systemd unit; only a D-Bus service file under usr/share/dbus-1 is a .service" % p)
+        elif p.endswith(".timer") and not doc and not p.startswith(
+                ("etc/kdos/timers.d/", "etc/kdos/user-services/timers.d/",
+                 "etc/skel/.config/kdos/timers.d/")):
+            print("%s\tis a timer snooze never reads; KDOS timers live in etc/kdos/timers.d" % p)
+
+
+PLUGIN_JSON = re.compile(r'K_PLUGIN_(?:CLASS|FACTORY)_WITH_JSON\s*\([^,]*,\s*"([^"]+)"')
+KDOS_IDS = ("Plasma/Applet", "Plasma/LookAndFeel", "Plasma/LayoutTemplate", "Plasma/Wallpaper")
+
+
+def check_json(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f), None
+    except (OSError, ValueError) as e:
+        return None, "does not parse as JSON: %s" % e
+
+
+def metadata(root):
+    """Every KPackage and plugin JSON under root, held to what Plasma and
+    KCMUtils refuse to load without."""
+    for dirpath, dirs, files in os.walk(root):
+        dirs[:] = sorted(d for d in dirs if d not in ("__pycache__", ".git"))
+        here = set(files)
+        if "metadata.json" in here:
+            path = os.path.join(dirpath, "metadata.json")
+            data, err = check_json(path)
+            if err:
+                print("%s\t%s" % (path, err))
+                continue
+            kp = data.get("KPlugin") if isinstance(data, dict) else None
+            if not isinstance(kp, dict) or not kp.get("Name"):
+                print("%s\thas no KPlugin.Name; Plasma lists it as nothing" % path)
+                continue
+            st = data.get("KPackageStructure", "")
+            if st and not kp.get("Id") and st != "Plasma/Theme":
+                print("%s\thas no KPlugin.Id; kpackagetool6 installs a package by its Id" % path)
+            if st in KDOS_IDS and kp.get("Id") and not kp["Id"].startswith("org.kdos."):
+                print("%s\tis KDOS's %s with Id %s; KDOS plugin ids are org.kdos.*" % (path, st, kp["Id"]))
+            if st == "Plasma/Applet":
+                api = str(data.get("X-Plasma-API-Minimum-Version", ""))
+                if not api.startswith("6"):
+                    print("%s\thas no X-Plasma-API-Minimum-Version 6.x; plasmashell 6 will not load it" % path)
+                if not os.path.isfile(os.path.join(dirpath, "contents/ui/main.qml")):
+                    print("%s\tis a plasmoid with no contents/ui/main.qml" % path)
+        elif "contents" in dirs and os.path.isfile(os.path.join(dirpath, "contents/ui/main.qml")) \
+                and "metadata.json.in" not in here and "metadata.json.cmake" not in here:
+            print("%s\tholds contents/ui/main.qml and no metadata.json" % dirpath)
+        for name in sorted(files):
+            if not name.endswith((".cpp", ".cc", ".h")):
+                continue
+            with open(os.path.join(dirpath, name), encoding="utf-8", errors="replace") as f:
+                text = f.read()
+            for ref in PLUGIN_JSON.findall(text):
+                cands = [os.path.join(dirpath, ref + s) for s in ("", ".in", ".cmake")]
+                hit = next((c for c in cands if os.path.isfile(c)), None)
+                if not hit:
+                    print("%s\tnames %s, which is not beside it" % (os.path.join(dirpath, name), ref))
+                elif hit.endswith(".json"):
+                    data, err = check_json(hit)
+                    if err:
+                        print("%s\t%s" % (hit, err))
+                    elif not isinstance(data.get("KPlugin"), dict) or not data["KPlugin"].get("Name"):
+                        print("%s\thas no KPlugin.Name; System Settings lists it as nothing" % hit)
+
+
+def kwinrules(paths):
+    for path in paths:
+        try:
+            g = kconfig(path)
+        except ValueError as e:
+            print("%s\t%s" % (path, e))
+            continue
+        gen = g.get("General", {})
+        rules = [r for r in gen.get("rules", "").split(",") if r]
+        try:
+            count = int(gen.get("count", "0"))
+        except ValueError:
+            print("%s\t[General] count is not a number" % path)
+            continue
+        if count != len(rules):
+            print("%s\t[General] count=%d but rules names %d" % (path, count, len(rules)))
+        for r in rules:
+            if r not in g:
+                print("%s\t[General] rules names %s, which has no group" % (path, r))
+            elif not g[r].get("Description"):
+                print("%s\t[%s] has no Description; the Window Rules page lists it blank" % (path, r))
+
+
+def sddm(paths):
+    for path in paths:
+        try:
+            g = kconfig(path)
+        except ValueError as e:
+            print("BAD\t%s\t%s" % (path, e))
+            continue
+        ds = g.get("General", {}).get("DisplayServer")
+        if ds is not None and ds != "wayland":
+            print("BAD\t%s\tDisplayServer=%s; the greeter runs on kwin_wayland and there is no X server" % (path, ds))
+        elif ds == "wayland":
+            print("WAYLAND\t%s" % path)
+        for k, v in g.get("X11", {}).items():
+            if k == "SessionDir" and v == "":
+                continue
+            print("BAD\t%s\t[X11] %s configures an X server KDOS does not have" % (path, k))
+
+
+def get(path, group, key):
+    try:
+        print(kconfig(path).get(group, {}).get(key, ""))
+    except ValueError:
+        print("")
+
+
+def sddm_services(paths):
+    for path in paths:
+        try:
+            for g in kconfig(path):
+                if g.startswith("services/"):
+                    print(g[len("services/"):])
+        except ValueError:
+            pass
+
+
+cmd = sys.argv[1]
+if cmd == "units":
+    units()
+elif cmd == "metadata":
+    metadata(sys.argv[2])
+elif cmd == "kwinrules":
+    kwinrules(sys.argv[2:])
+elif cmd == "sddm":
+    sddm(sys.argv[2:])
+elif cmd == "get":
+    get(*sys.argv[2:5])
+elif cmd == "services":
+    sddm_services(sys.argv[2:])
+PYEOF
+
+# Every file named <name> that ships into an XDG config dir: fs/etc/xdg, the
+# distribution layer fs/usr/share/kdos/xdg, and any xdg/ directory a port of
+# ours installs from.
+shipped_cfg() {
+    local _c
+    for _c in "fs/etc/xdg/$1" "fs/usr/share/kdos/xdg/$1"; do
+        [ -f "$_c" ] && printf '%s\n' "$_c"
+    done
+    find src -path "*/xdg/$1" -type f 2>/dev/null | LC_ALL=C sort
+}
+
+echo
+echo "==> no systemd unit ships, and a timer lives only where snooze reads it"
+# kpkg refuses usr/lib/systemd and etc/X11 in a package; this holds fs/ and
+# every installed path to the rest of the rule. A .service is a D-Bus service
+# file under usr/share/dbus-1 and nothing else, a .socket is never needed,
+# and a .timer is a row in one of the tables KDOS hands to snooze — the
+# system's (etc/kdos/timers.d, 18_timers.sh), every user's
+# (etc/kdos/user-services/timers.d, the timers user service) and a person's
+# own (seeded from etc/skel/.config/kdos/timers.d). Anywhere else it is a unit
+# some recipe forgot to drop, which nothing on KDOS runs and the next reader
+# takes for a schedule. A unit kept as documentation (usr/share/doc, an
+# examples/ directory) configures nothing and passes.
+python3 "$SP/plasmacheck.py" units < <(grep -v '^#' testing/fixtures/units/paths | awk 'NF { print $1 }') > "$SP/unitfix"
+_ufbad=0
+while read -r _p _x; do
+    case "$_p" in ''|\#*) continue ;; esac
+    if grep -q "^$_p	" "$SP/unitfix"; then _g=refused; else _g=allowed; fi
+    [ "$_g" = "$_x" ] || { bad "unit paths" "fixture $_p should be $_x, the check says $_g"; _ufbad=1; }
+done < testing/fixtures/units/paths
+{ git ls-files fs 2>/dev/null || find fs -type f; } | sed 's|^fs/||' > "$SP/unitpaths"
+_usrc="fs/"
+if [ -d build/fs/var/lib/kpkg/db ]; then
+    cat build/fs/var/lib/kpkg/db/* 2>/dev/null | grep '^\./' >> "$SP/unitpaths"
+    _usrc="fs/ and every installed package"
+fi
+python3 "$SP/plasmacheck.py" units < "$SP/unitpaths" | sort -u > "$SP/unitbad"
+while IFS='	' read -r _p _why; do
+    bad "unit paths" "$_p $_why"
+done < "$SP/unitbad"
+[ "$_ufbad" = 0 ] && [ ! -s "$SP/unitbad" ] &&
+    note "unit paths" "no unit in $_usrc; fixture judged right"
+
+echo
+echo "==> startplasma is told there is no systemd"
+# startplasma-wayland starts the session through systemd --user unless
+# startkderc says otherwise; on KDOS that path finds no user manager and the
+# login returns to the greeter. The key ships in the distribution layer.
+if has_port plasma-workspace; then
+    _sk=$(shipped_cfg startkderc)
+    _skbad=""
+    for _f in $_sk; do
+        [ "$(python3 "$SP/plasmacheck.py" get "$_f" General systemdBoot)" = false ] || _skbad="$_skbad $_f"
+    done
+    if [ -z "$_sk" ]; then
+        bad "startkderc" "plasma-workspace is a port and no startkderc ships [General] systemdBoot=false"
+    elif [ -n "$_skbad" ]; then
+        bad "startkderc" "[General] systemdBoot is not false in:$_skbad"
+    else
+        note "startkderc" "systemdBoot=false in $(printf '%s ' $_sk)"
+    fi
+else
+    note "startkderc" "skipped — plasma-workspace is not a port"
+fi
+
+echo
+echo "==> every KDOS plasmoid, KCM and look-and-feel carries valid metadata"
+# plasmashell, kpackagetool6 and System Settings drop a package whose
+# metadata.json does not parse, or lacks what they key on, without a message
+# anyone sees: a plasmoid with no X-Plasma-API-Minimum-Version 6 is "not
+# compatible", one with no Id cannot be installed, and a KCM whose plugin
+# JSON is missing does not build. KDOS's own package ids are org.kdos.*.
+python3 "$SP/plasmacheck.py" metadata testing/fixtures/kpackage > "$SP/metafix" 2>&1
+_mfbad=0
+for _d in testing/fixtures/kpackage/*/; do
+    _d=${_d%/}
+    if grep -q "^$_d/" "$SP/metafix" || grep -q "^$_d	" "$SP/metafix"; then _g=bad; else _g=good; fi
+    case "${_d##*/}" in "$_g"-*) ;; *) bad "metadata" "fixture ${_d##*/} misjudged: the check calls it $_g"; _mfbad=1 ;; esac
+done
+python3 "$SP/plasmacheck.py" metadata src > "$SP/metareal" 2>&1
+while IFS='	' read -r _p _why; do
+    bad "metadata" "$_p $_why"
+done < "$SP/metareal"
+[ "$_mfbad" = 0 ] && [ ! -s "$SP/metareal" ] &&
+    note "metadata" "every package and plugin JSON under src/ loads; fixture judged right"
+
+echo
+echo "==> the shipped shortcuts and window rules parse, and every chord has one owner"
+# A kglobalshortcutsrc entry kglobalacceld cannot split into current,default,
+# friendly is ignored without a word, and a chord two owners want goes to the
+# first; testing/chordcheck.py fails both, after proving on its fixtures that
+# it fails Meta+Space bound to KRunner while fcitx5 keeps its default group
+# switch (from files, and from a recorded kglobalaccel session), Meta+Q
+# rebound while plasmashell keeps it, fcitx5's forward switch moved onto
+# its own backward one, and Meta+Q taken by a KDOS KWin effect's QML
+# ShortcutHandler — and passes the set KDOS ships. A [services][<id>]
+# group names a desktop entry, which some port must install. kwinrulesrc's
+# count and rules list must agree with its groups, or the Window Rules page
+# shows rules that apply to nothing.
+_ccf=testing/fixtures/chordcheck
+while read -r _want _args; do
+    # shellcheck disable=SC2086
+    python3 testing/chordcheck.py --quiet $_args >/dev/null 2>&1
+    case "$?:$_want" in
+        0:pass|1:fail) ;;
+        *) bad "chords" "chordcheck $_args should $_want" ;;
+    esac
+done <<EOF
+fail --xdg $_ccf/meta-space
+fail --xdg $_ccf/rebind
+fail --xdg $_ccf/forward-only
+fail --root $_ccf/qml-root
+pass --xdg $_ccf/clean
+fail --live-dump $_ccf/live.gdbus --xdg $_ccf/meta-space
+pass --live-dump $_ccf/live.gdbus --xdg $_ccf/live-clean
+EOF
+_ccroot=""
+[ -f build/fs/var/lib/kpkg/db/kglobalacceld ] && _ccroot="--root build/fs"
+if python3 testing/chordcheck.py --quiet $_ccroot > "$SP/chords" 2>&1; then
+    note "chords" "$(python3 testing/chordcheck.py $_ccroot 2>/dev/null | tail -1 | sed 's/^chordcheck: //')"
+else
+    bad "chords" "$(head -3 "$SP/chords" | sed 's/^ *FAIL *//; s/^ *//' | tr '\n' ' ')"
+fi
+_svc=$(python3 "$SP/plasmacheck.py" services $(shipped_cfg kglobalshortcutsrc) | sort -u)
+if [ -n "$_svc" ]; then
+    if [ -n "$_ccroot" ]; then _mc="--root build/fs"; else _mc=""; fi
+    python3 testing/mimecheck.py --quiet $_mc --ids $_svc > "$SP/svcids" 2>&1 ||
+        bad "shortcut entries" "$(grep FAIL "$SP/svcids" | head -3 | sed 's/^ *FAIL *//' | tr '\n' ' ')"
+fi
+python3 "$SP/plasmacheck.py" kwinrules testing/fixtures/kwinrules/*.kwinrulesrc > "$SP/kwrfix"
+_kwbad=0
+for _f in testing/fixtures/kwinrules/*.kwinrulesrc; do
+    if grep -q "^$_f	" "$SP/kwrfix"; then _g=bad; else _g=good; fi
+    case "${_f##*/}" in "$_g"*) ;; *) bad "window rules" "fixture ${_f##*/} misjudged"; _kwbad=1 ;; esac
+done
+_kwr=$(shipped_cfg kwinrulesrc)
+if [ -n "$_kwr" ]; then
+    python3 "$SP/plasmacheck.py" kwinrules $_kwr > "$SP/kwrreal"
+    while IFS='	' read -r _p _why; do bad "window rules" "$_p: $_why"; done < "$SP/kwrreal"
+    [ ! -s "$SP/kwrreal" ] && [ "$_kwbad" = 0 ] && note "window rules" "$(printf '%s ' $_kwr)parse"
+else
+    [ "$_kwbad" = 0 ] && note "window rules" "none ship; fixture judged right"
+fi
+
+echo
+echo "==> every desk layout script parses"
+# A desk is a layout.js plasmashell evaluates when the desk is applied; one
+# that does not parse leaves the person who picked it with no panel at all.
+# node checks the syntax, and the check is skipped where it is absent.
+if command -v node >/dev/null 2>&1; then
+    if ! node --check testing/fixtures/layoutjs/good.js >/dev/null 2>&1 ||
+            node --check testing/fixtures/layoutjs/bad.js >/dev/null 2>&1; then
+        bad "layout scripts" "node --check misjudges testing/fixtures/layoutjs"
+    fi
+    _ljn=0 _ljbad=0
+    while IFS= read -r _f; do
+        _ljn=$((_ljn + 1))
+        node --check "$_f" > "$SP/lj" 2>&1 ||
+            { bad "layout scripts" "$_f: $(grep -m1 -i 'error' "$SP/lj")"; _ljbad=1; }
+    done < <(find src fs -path '*/contents/layouts/*.js' -o -name layout.js -path '*/contents/*' \
+             -o -path '*/plasmoidsetupscripts/*.js' 2>/dev/null | LC_ALL=C sort)
+    [ "$_ljbad" = 0 ] && note "layout scripts" "$_ljn parse"
+else
+    note "layout scripts" "skipped — no node on this host"
+fi
+
+echo
+echo "==> Get New… is off for every application"
+# D10: nothing downloads at run time. KNewStuff honours the kiosk key
+# [KDE Action Restrictions] ghns=false in a kdeglobals along the XDG config
+# dirs, and greys out every "Get New…" button with it.
+if has_port knewstuff && has_port plasma-workspace; then
+    _gh=""
+    for _f in $(shipped_cfg kdeglobals); do
+        [ "$(python3 "$SP/plasmacheck.py" get "$_f" "KDE Action Restrictions" ghns)" = false ] && _gh="$_gh $_f"
+    done
+    if [ -n "$_gh" ]; then note "ghns" "false in$_gh"
+    else bad "ghns" "no shipped kdeglobals sets [KDE Action Restrictions] ghns=false"; fi
+else
+    note "ghns" "skipped — no KNewStuff or no Plasma port"
+fi
+
+echo
+echo "==> the greeter runs on Wayland, and nothing configures an X server"
+# SDDM's own default display server is X11, and KDOS has none: unless a
+# drop-in sets DisplayServer=wayland, the greeter never appears. An [X11]
+# key is a configuration for a server that does not exist; the one let
+# through is an empty SessionDir, which lists no X session. fs/etc/X11 must
+# not exist (kpkg refuses it in a package for the same reason).
+python3 "$SP/plasmacheck.py" sddm testing/fixtures/sddm/*.conf > "$SP/sddmfix"
+_sdfix=0
+for _f in testing/fixtures/sddm/*.conf; do
+    if grep -q "^BAD	$_f	" "$SP/sddmfix"; then _g=bad; else _g=good; fi
+    case "${_f##*/}" in "$_g"*) ;; *) bad "greeter" "fixture ${_f##*/} misjudged"; _sdfix=1 ;; esac
+done
+[ -e fs/etc/X11 ] && bad "greeter" "fs/etc/X11 exists"
+_sdf=$( { [ -f fs/etc/sddm.conf ] && echo fs/etc/sddm.conf; ls fs/etc/sddm.conf.d/*.conf 2>/dev/null
+          find src -path '*/sddm.conf.d/*.conf' -type f 2>/dev/null; } | LC_ALL=C sort -u)
+if [ -n "$_sdf" ]; then
+    python3 "$SP/plasmacheck.py" sddm $_sdf > "$SP/sddmreal"
+    while IFS='	' read -r _k _p _why; do
+        [ "$_k" = BAD ] && bad "greeter" "$_p: $_why"
+    done < "$SP/sddmreal"
+fi
+if has_port sddm && ! grep -q '^WAYLAND' "$SP/sddmreal" 2>/dev/null; then
+    bad "greeter" "sddm is a port and no shipped drop-in sets [General] DisplayServer=wayland"
+elif [ "$_sdfix" = 0 ] && ! grep -q '^BAD' "$SP/sddmreal" 2>/dev/null && [ ! -e fs/etc/X11 ]; then
+    note "greeter" "$(grep '^WAYLAND' "$SP/sddmreal" 2>/dev/null | cut -f2 | tr '\n' ' ')${_sdf:+sets Wayland; }no X configuration"
+fi
+
+echo
+echo "==> every About-page script kinfocenter runs prints a label and a value"
+# kinfocenter runs each ExtraSoftwareData program from kcm-about-distrorc and
+# stops the whole page with qFatal when one prints fewer than two lines — on a
+# machine with one root, no update and no box, too. Each script is found
+# where fs/ or a port of ours ships it and run here with an empty environment
+# and no KDOS state, which is that machine. A compiled program cannot run
+# here, and is named instead.
+about_run() {   # <fsroot> <installed path> -> prints why, or nothing
+    local _src="" _bn
+    _bn=$(basename "$2")
+    if [ -f "$1$2" ]; then _src=$1$2
+    else _src=$(find src -type f \( -name "$_bn" -o -name "$_bn.sh" \) 2>/dev/null | LC_ALL=C sort | head -1)
+    fi
+    if [ -z "$_src" ]; then
+        grep -rqlF -- "$2" src/*/*/build.sh 2>/dev/null &&
+            { echo "COMPILED"; return; }
+        echo "names $2, which nothing in the tree ships"; return
+    fi
+    local _sh
+    set -- "$1" "$2" $(head -1 "$_src" | sed -n 's/^#![[:space:]]*//p')
+    [ -n "${3:-}" ] || { echo "$_src has no #! line, and kinfocenter execs it directly"; return; }
+    _sh=$(basename "$3")
+    [ "$_sh" = env ] && _sh=${4:-}
+    [ "${_src#fs/}" = "$_src" ] || [ -x "$_src" ] || { echo "$_src is not executable"; return; }
+    mkdir -p "$SP/aboutrun"
+    local _out
+    _out=$(cd "$SP/aboutrun" && env -i PATH=/usr/bin:/bin HOME="$SP/aboutrun" TMPDIR="$SP/aboutrun" \
+           timeout 10 "$_sh" "$OLDPWD/$_src" 2>/dev/null; printf x)
+    _out=${_out%x}
+    case "$_out" in
+        *$'\n'*) [ -n "${_out%%$'\n'*}" ] || echo "$_src prints an empty label" ;;
+        *) echo "$_src prints $( [ -n "$_out" ] && echo one line || echo nothing ); kinfocenter needs two" ;;
+    esac
+}
+_abfix=0
+for _p in $(python3 "$SP/plasmacheck.py" get testing/fixtures/aboutdistro/kcm-about-distrorc General ExtraSoftwareData | tr ';' ' '); do
+    _r=$(about_run testing/fixtures/aboutdistro/fs "$_p")
+    case "$_p" in
+        */about-two) [ -z "$_r" ] || { bad "About page" "fixture about-two misjudged: $_r"; _abfix=1; } ;;
+        *) [ -n "$_r" ] && [ "$_r" != COMPILED ] || { bad "About page" "fixture ${_p##*/} passed"; _abfix=1; } ;;
+    esac
+done
+_abn=0 _abc="" _abbad=0
+for _f in $(shipped_cfg kcm-about-distrorc); do
+    for _p in $(python3 "$SP/plasmacheck.py" get "$_f" General ExtraSoftwareData | tr ';' ' '); do
+        _abn=$((_abn + 1))
+        _r=$(about_run fs "$_p")
+        case "$_r" in
+            '') ;;
+            COMPILED) _abc="$_abc ${_p##*/}" ;;
+            *) bad "About page" "$_f: $_r"; _abbad=1 ;;
+        esac
+    done
+done
+[ "$_abfix" = 0 ] && [ "$_abbad" = 0 ] &&
+    note "About page" "$_abn script(s) print two lines${_abc:+; built, so not run here:$_abc}"
+
+echo
+echo "==> no profile.d script exports the cursor theme KWin would prefer"
+# KWin takes $XCURSOR_THEME and $XCURSOR_SIZE over kcminputrc whenever both
+# are set, so an export in a login script pins every session to it and the
+# global theme's cursor (breeze_cursors) and the Cursors page change nothing.
+if has_port kwin; then
+    _xc=$(grep -nE '^[[:space:]]*(export[[:space:]]+)?XCURSOR_(THEME|SIZE)=|^[[:space:]]*export[[:space:]].*\bXCURSOR_(THEME|SIZE)\b' \
+          fs/etc/profile.d/*.sh fs/etc/profile 2>/dev/null)
+    if [ -n "$_xc" ]; then bad "cursor exports" "$(printf '%s' "$_xc" | tr '\n' ' ')"
+    else note "cursor exports" "none"; fi
+else
+    note "cursor exports" "skipped — kwin is not a port"
+fi
+
+echo
+echo "==> every desktop id the default-applications list names is installed"
+# A desktop id in kde-mimeapps.list that the image does not install is
+# skipped by the lookup without a word, and the next association opens the
+# file. testing/mimecheck.py traces each id to a port, or, once a build tree
+# carries plasma-desktop, to the image itself. It proves both readings on
+# testing/fixtures/mimecheck first: an id no port installs fails, a list with
+# a duplicate key or a misspelt group does not parse, and a fixture tree has
+# the ids it installs (one in the specification's subdirectory form) and
+# lacks the rest.
+_mcf=testing/fixtures/mimecheck
+while read -r _want _args; do
+    # shellcheck disable=SC2086
+    python3 testing/mimecheck.py --quiet $_args >/dev/null 2>&1
+    [ "$?" = "$_want" ] || bad "default applications" "mimecheck $_args should exit $_want"
+done <<EOF
+0 --list $_mcf/good.list
+1 --list $_mcf/dangling.list
+2 --list $_mcf/malformed.list
+0 --root $_mcf/root --list $_mcf/root.list
+1 --root $_mcf/root --list $_mcf/good.list
+EOF
+_mroot=""
+[ -f build/fs/var/lib/kpkg/db/plasma-desktop ] && _mroot="--root build/fs"
+python3 testing/mimecheck.py --quiet $_mroot > "$SP/mime" 2>&1
+case $? in
+    0) note "default applications" "$(python3 testing/mimecheck.py $_mroot 2>/dev/null | tail -1 | sed 's/^mimecheck: //')" ;;
+    3) if has_port plasma-desktop; then bad "default applications" "no kde-mimeapps.list ships"
+       else note "default applications" "skipped — no list and no Plasma"; fi ;;
+    *) while IFS= read -r _l; do
+           case "$_l" in *FAIL*|mimecheck:*) bad "default applications" "$(printf '%s' "$_l" | sed 's/^ *FAIL *//')" ;; esac
+       done < "$SP/mime" ;;
+esac
 
 echo
 echo "==> the build tree's root carries nothing but a root filesystem"
@@ -1356,8 +2428,10 @@ echo "==> the build tree's root carries nothing but a root filesystem"
 # git stores one permission bit, so nothing under fs/ can carry a mode narrower
 # than 644 and the file-system step hands every non-executable file exactly
 # that. `/etc/shadow` at 644 is every password hash on the machine readable by
-# every account on it — and it makes `kdos-checkpass`, which is setuid root
-# precisely so the greeter never opens that file, into decoration.
+# every account on it — and it makes unix_chkpwd, the setuid helper through
+# which pam_unix checks a password for SDDM, the lock screen and every other
+# stack that runs unprivileged, so that none of them opens that file, into
+# decoration.
 #
 # Checked on the BUILT tree, because the source tree cannot express the answer:
 # this asserts what will ship, not what was intended.
@@ -1475,8 +2549,8 @@ fi
 
 # ── the groups a surface's authority comes from ───────────────────────────
 #
-# `kdos-print` runs as the user and administers printers directly, because CUPS
-# defines `lpadmin` as exactly that authority and `fs/etc/group` grants it. The
+# The Printers page runs as the user and administers printers directly, because
+# CUPS defines `lpadmin` as exactly that authority and `fs/etc/group` grants it. The
 # installer carries it to the created account by RENAMING `kdos` in every
 # membership list — so the membership in skel is what the whole arrangement
 # rests on, and dropping it would leave printing silently unadministrable for
@@ -1513,19 +2587,6 @@ else
     fi
 fi
 
-# ── the shipped rc.xml must not throw away labwc's default bindings ────────
-#
-# THE MOST EXPENSIVE ONE-LINE MISTAKE IN THIS TREE.
-#
-# labwc loads its built-in key and mouse bindings only when the user's config
-# defines NONE of that kind (rcxml.c post_processing). A file that binds one
-# key therefore silently discards every default — and the defaults are not
-# conveniences, they are the desktop: `Client Left Press -> Focus/Raise` is
-# what makes CLICKING A WINDOW FOCUS IT (focus_follow_mouse is false), `Title
-# Left Drag` is the titlebar, `Close/Iconify/Maximize` are the three buttons
-# drawn on every frame, `Border Left Drag` is the edges, and `Root Right Press`
-# is the desktop menu.
-#
 # THE BANNER IS "KEEP VERBATIM" IN CLAUDE.md AND NOTHING ENFORCED IT. It is
 # the one marker that says a file is ours rather than upstream's, and it is
 # lost the way every boilerplate is lost: a generator whose header variable
@@ -1555,7 +2616,7 @@ done
 # MODULES; anything else in the table must be there by name.
 echo
 echo "==> every filesystem the installer offers, the initramfs can mount"
-fs_conf=src/system/kdos-installer/conf.c
+fs_conf=src/system/kinstall-core/conf.c
 fs_ini=script/phases/70_image/090_initramfs.sh
 if [ -f "$fs_conf" ] && [ -f "$fs_ini" ]; then
     fs_mods=$(grep -E '^MODULES=' "$fs_ini")
@@ -1616,7 +2677,7 @@ fi
 # about any other edit to the installer's sources.
 echo
 echo "==> the built kinstall is the installer in this tree"
-ki_src=src/system/kdos-installer/install.c
+ki_src=src/system/kinstall-core/install.c
 ki_bin=build/fs/usr/bin/kinstall
 if [ -f "$ki_src" ] && [ -f "$ki_bin" ]; then
     ki_want=$(grep -oE '"[a-z/]*share/limine"' "$ki_src" | head -1 | tr -d '"')
@@ -1777,107 +2838,28 @@ else
     fi
 fi
 
-# KDOS shipped exactly that file for a release. The symptom on a booted ISO is
-# "the mouse does not work" and it is invisible to every other check here: the
-# XML is valid, the recipe parses, the build succeeds.
-echo
-echo "==> the shipped rc.xml keeps labwc's default bindings"
-RC=fs/etc/skel/.config/kdos-comp/rc.xml
-if [ ! -f "$RC" ]; then
-    bad "rc.xml defaults" "$RC is missing"
-else
-    # AND IT HAS TO BE XML A PARSER WILL TAKE. `--` may not appear inside an
-    # XML comment, and this file documents itself in prose that names command
-    # arguments: one `--app-id` in a comment makes the whole document
-    # ill-formed, and a compositor that cannot parse its configuration loads
-    # none of the bindings in it. Nothing else here would notice — every grep
-    # below reads the file as text.
-    if python3 -c "import sys,xml.dom.minidom;xml.dom.minidom.parse(sys.argv[1])" \
-            "$RC" >/dev/null 2>&1; then
-        note "rc.xml XML" "well-formed, so labwc reads every binding in it"
-    else
-        bad "rc.xml XML" "$RC is not well-formed XML — a \`--\` inside a comment is the usual cause"
-    fi
-    # COMMENTS ARE STRIPPED FIRST, and that is not fussiness: this file's own
-    # header explains the trap in prose, so it contains the words <mouse> and
-    # <keyboard> and <default /> as TEXT. A grep over the raw file finds them
-    # there and passes whatever the config actually says — which is a check
-    # that reports on its own documentation.
-    awk '
-        { line = $0
-          while (1) {
-              if (inc) { p = index(line, "-->")
-                         if (!p) { line = ""; break }
-                         line = substr(line, p + 3); inc = 0; continue }
-              p = index(line, "<!--")
-              if (!p) break
-              out = out substr(line, 1, p - 1); line = substr(line, p + 4)
-              inc = 1
-          }
-          out = out line "\n" }
-        END { printf "%s", out }
-    ' "$RC" > "$SP/rc-nocomment.xml"
-
-    for sect in keyboard mouse; do
-        if ! grep -q "<$sect>" "$SP/rc-nocomment.xml"; then
-            note "rc.xml <$sect>" "no section — labwc's defaults load"
-        elif sed -n "/<$sect>/,/<\/$sect>/p" "$SP/rc-nocomment.xml" \
-                | grep -q "<default */>"; then
-            note "rc.xml <$sect>" "<default /> present"
-        else
-            bad "rc.xml <$sect>" \
-                "binds something without <default />: every labwc default in that section is discarded"
-        fi
-    done
-fi
-
-# ── every command the desktop's own config names must exist ────────────────
+# ── every command a KRunner route names must exist ─────────────────────
 #
-# rc.xml and menu.xml are the two files that turn a keystroke or a menu row
-# into a program, and NOTHING checks them: the XML is valid whatever the
-# command says, the recipe parses, the build succeeds, and the failure is a
-# key that does nothing on a booted ISO. This tree has shipped that twice —
-# `<promptCommand>` named `labnag`, which is `-Dlabnag=disabled` and therefore
-# not on the image at all, and `kdos-desk` called `kdos-appbox open` for a
-# release before that subcommand existed.
+# menu.conf turns a route into a program, and NOTHING else checks it: the file
+# parses whatever the command says, the recipe parses, the build succeeds, and
+# the failure is a route that opens nothing on a booted ISO.
 #
 # A command counts as existing when a port of that name is in the tree, when
 # some build.sh installs or links it into a bin directory, or when fs/ ships
 # it. That is the same question the ISO asks, minus the two hours.
 echo
-echo "==> every command in the shipped rc.xml, menu.xml and menu.conf exists"
-{
-for f in fs/etc/skel/.config/kdos-comp/rc.xml \
-         fs/etc/skel/.config/kdos-comp/menu.xml; do
-    [ -f "$f" ] || continue
-    # command="foo -x" and <promptCommand>foo …</promptCommand>; the first
-    # word is the program. `foot --app-id=mc -e mc` also contributes the word
-    # after `-e`, because a terminal wrapper that opens nothing is the same
-    # failure one level down.
-    { sed -n 's/.*command="\([^"]*\)".*/\1/p' "$f"
-      sed -n 's,.*<promptCommand>\([^<]*\)</promptCommand>.*,\1,p' "$f"
-    } | while read -r line; do
-        set -- $line
-        echo "$1"
-        [ "$1" = foot ] || continue
-        while [ $# -gt 0 ] && [ "$1" != "-e" ]; do shift; done
-        [ $# -ge 2 ] && echo "$2"
-    done
-done
-# AND THE ROUTES. `menu.conf` is `route = argv`, so the first word of the
-# value is the program — a route naming a command the image does not carry is
-# a name a script can hold and nothing can open, which is the one failure a
-# route exists to prevent.
-# A key beginning `@` is a SETTING rather than a route: its value is a list
-# of menu row labels, not an argument vector, and reading one as a command
-# reports the first label as a missing program.
+echo "==> every command a menu.conf route names exists"
+# `menu.conf` is `route = argv`, so the first word of the value is the program
+# — a route naming a command the image does not carry is a name a script can
+# hold and nothing can open, which is the one failure a route exists to
+# prevent. A key beginning `@` is a setting rather than a route, and is not
+# read as a command.
 sed -e 's/#.*//' -e '/^[[:space:]]*@/d' -e 's/^[^=]*=//' \
     fs/etc/kdos/menu.conf 2>/dev/null |
     while read -r line; do
         set -- $line
         [ -n "$1" ] && echo "$1"
-    done
-} | sort -u | while read -r cmd; do
+    done | sort -u | while read -r cmd; do
     [ -n "$cmd" ] || continue
     if has_port "$cmd" ||
        [ -e "fs/usr/local/bin/$cmd" ] || [ -e "fs/usr/bin/$cmd" ] ||
@@ -1888,7 +2870,7 @@ sed -e 's/#.*//' -e '/^[[:space:]]*@/d' -e 's/^[^=]*=//' \
        # path form never appears in the file at all. Restricted to those lines
        # ON PURPOSE — a bare word search over the whole recipe passes on a
        # COMMENT, which is exactly how a check like this ends up green against
-       # a desktop that does not work (`-Dlabnag=disabled` matched `labnag`).
+       # a route that opens nothing.
        # CONTINUATIONS ARE JOINED FIRST, the way the mc guard below does it:
        # a backslash-wrapped list puts most of its names on a later line that
        # does not begin with `for`, so every one of them drops out of the
@@ -1904,39 +2886,21 @@ sed -e 's/#.*//' -e '/^[[:space:]]*@/d' -e 's/^[^=]*=//' \
        # file in this tree rather than a guess about one.
        grep -rhE "^Exec=$cmd([[:space:]]|\$)" ports/core/*/*/build.sh \
             src/*/*/build.sh 2>/dev/null |
+            grep -q . ||
+       # ...or as the `Exec=` of a desktop entry one of OUR ports ships. A
+       # Plasma program is installed by cmake from a tarball this tree does
+       # not unpack, so no recipe line names it; a KDOS entry that launches it
+       # is the tree's own assertion that it exists.
+       grep -rhsE --include='*.desktop' "^Exec=$cmd([[:space:]]|\$)" src |
             grep -q .; then
         continue
     fi
     echo "MISSING $cmd"
 done > "$SP/missing-cmds" 2>/dev/null
 if [ -s "$SP/missing-cmds" ]; then
-    bad "desktop commands" "$(tr '\n' ' ' < "$SP/missing-cmds")"
+    bad "route commands" "$(tr '\n' ' ' < "$SP/missing-cmds")"
 else
-    note "desktop commands" "every one is provided by the tree"
-fi
-
-echo
-echo "==> kdos-comp's direct-scanout switch has one writer"
-#
-# The scene's direct_scanout field covers every output, while the phosphor pass
-# is decided per output and per frame, so kdos_crt_scanout() writes it before
-# every build that reads it: off for the pass's own build, allowed for a plain
-# frame. Any other writer holds for the frames after it: an upstream toggle
-# (the magnifier has one) lets the pass build from a scanned-out client buffer
-# or keeps scanout from the frames it was meant for, and the environment
-# variable set in code takes scanout from every frame of the session.
-KC=src/desktop/kdos-comp/src
-if [ -d "$KC" ]; then
-    { grep -rnE 'WLR_PRIVATE\.direct_scanout[[:space:]]*=([^=]|$)' "$KC" |
-          grep -v "^$KC/kdos-crt\.c:"
-      grep -rnF 'WLR_SCENE_DISABLE_DIRECT_SCANOUT"' "$KC" | grep -F 'setenv'
-    } > "$SP/scanout-writers"
-    if [ -s "$SP/scanout-writers" ]; then
-        bad "direct-scanout writers" \
-            "only kdos_crt_scanout() may set it: $(cut -d: -f1,2 "$SP/scanout-writers" | tr '\n' ' ')"
-    else
-        note "direct-scanout writers" "kdos_crt_scanout() only"
-    fi
+    note "route commands" "every one is provided by the tree"
 fi
 
 echo
@@ -1947,12 +2911,18 @@ echo "==> every program fs/etc/inittab names is on the image"
 # that respawns into nothing — and the tty it takes first is tty1, which is
 # the desktop.
 #
-# EVERY ABSOLUTE WORD OF THE PROCESS FIELD, not just the first: tty1's entry is
-# `kdos-getty tty1 /usr/local/sbin/kdos-login tty1` and kdos-getty execs that
-# second path, so a program missing THERE is the exact failure this exists to
-# catch. The field is everything after the third colon, which is why the id and
-# the runlevels are stripped by position rather than by pattern —
-# `ca::ctrlaltdel:` has an empty runlevel list and still names a program.
+# EVERY ABSOLUTE WORD OF THE PROCESS FIELD, not just the first: tty2's entry is
+# `kdos-getty tty2 /sbin/agetty …` and kdos-getty execs that second path, so a
+# program missing THERE is the exact failure this exists to catch. The field
+# is everything after the third colon, which is why the id and the runlevels
+# are stripped by position rather than by pattern — `ca::ctrlaltdel:` has an
+# empty runlevel list and still names a program.
+#
+# AND WHAT A SCRIPT THE ENTRY NAMES EXECS. tty1's entry is kdos-dm, a script
+# fs/ ships, and the login is the program it execs: sddm, or the console login
+# it falls back to (kdos-getty and agetty). So every script an entry names is
+# read for its `exec` lines, a `$VAR` resolved from that script's own
+# `VAR=/path`, one level down.
 #
 # `-L` AS WELL AS `-e`: an installed program may be an absolute symlink into a
 # multi-call binary, which dangles in a staged rootfs and which `-e` alone
@@ -1963,17 +2933,36 @@ echo "==> every program fs/etc/inittab names is on the image"
 # than failing on every line.
 _it_n=0
 _it_bad=0
-for _p in $(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' fs/etc/inittab 2>/dev/null |
+_it_named=$(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' fs/etc/inittab 2>/dev/null |
             awk -F: 'NF>=4 { sub(/^[^:]*:[^:]*:[^:]*:/, ""); print }' |
-            tr ' \t' '\n\n' | grep '^/' | sort -u); do
+            tr ' \t' '\n\n' | grep '^/' | sort -u)
+_it_execd=$(for _p in $_it_named; do
+    [ -f "fs$_p" ] && [ "$(head -c2 "fs$_p")" = '#!' ] || continue
+    awk '
+        match($0, /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=\/[^[:space:]";:]+/) {
+            kv = substr($0, RSTART, RLENGTH); sub(/^[[:space:]]+/, "", kv)
+            n = index(kv, "="); var[substr(kv, 1, n - 1)] = substr(kv, n + 1)
+        }
+        match($0, /^[[:space:]]*exec[[:space:]]+[^[:space:]]+/) {
+            w = substr($0, RSTART, RLENGTH); sub(/^[[:space:]]*exec[[:space:]]+/, "", w); gsub(/"/, "", w)
+            if (w ~ /^\$/) { v = w; gsub(/[${}]/, "", v); w = var[v] }
+            if (w ~ /^\//) print w
+        }' "fs$_p" | sed "s|\$|	$_p|"
+done | sort -u)
+while IFS='	' read -r _p _by; do
+    [ -n "$_p" ] || continue
     _it_n=$((_it_n + 1))
     [ -e "fs$_p" ] || [ -L "fs$_p" ] && continue
     [ -d build/fs/usr/bin ] || continue
     [ -e "build/fs$_p" ] || [ -L "build/fs$_p" ] || {
-        bad "inittab" "$_p is named by fs/etc/inittab and is installed by nothing"
+        if [ -n "$_by" ]; then
+            bad "inittab" "$_p is run by $_by, which fs/etc/inittab names, and is installed by nothing"
+        else
+            bad "inittab" "$_p is named by fs/etc/inittab and is installed by nothing"
+        fi
         _it_bad=$((_it_bad + 1))
     }
-done
+done < <({ printf '%s\n' $_it_named; printf '%s\n' "$_it_execd"; } | awk -F'\t' 'NF && !seen[$1]++')
 if [ "$_it_bad" != 0 ]; then
     :
 elif [ "$_it_n" = 0 ]; then
@@ -1982,79 +2971,6 @@ elif [ -d build/fs/usr/bin ]; then
     note "inittab" "$_it_n programs, every one on the image"
 else
     note "inittab" "$_it_n programs; only the ones fs/ ships checked — no build tree"
-fi
-
-# ── every flag one kdos-shell tool passes another, the other accepts ──────
-#
-# kdos-shell is one binary under two dozen names and they spawn each other by
-# name with flags on the command line. Nothing checked that the far end knew
-# the flag, and an unknown argument in every one of these programs prints a
-# usage line to a stderr nobody is reading and exits 2 BEFORE a surface exists.
-#
-# Three shipped controls were dead that way at once: the panel spawned
-# `kdos-cal --at-bottom X Y`, `kdos-menu system --at-bottom X Y` and
-# `kdos-menu --windows APP --at-bottom X Y`, and neither kdos-cal nor kdos-menu
-# had ever accepted `--at-bottom` — kdos-start and kdos-clip did, which is what
-# made it look like a panel fault rather than a missing flag. Clicking the
-# clock, the System menu and any grouped task button all did nothing at all,
-# silently, and no compile and no golden could see it.
-#
-# The test is deliberately crude: find the argv literals, take every `--word`
-# in them, and require that word to appear as a string in the target's own
-# source. A tool that accepts a flag necessarily compares against it.
-echo
-echo "==> every flag a kdos-shell tool passes another is one it accepts"
-python3 - <<'PY' > "$SP/badflags" 2>/dev/null || true
-import glob, os, re
-
-SRC = "src/desktop/kdos-shell"
-# name -> the file that implements it, from TOOLS[] in main.c
-main = open(os.path.join(SRC, "main.c")).read()
-tools = dict(re.findall(r'\{\s*"(kdos-[a-z]+)"\s*,\s*([a-z_]+)_main\s*\}', main))
-text = {}
-for name, fn in tools.items():
-    for path in glob.glob(os.path.join(SRC, "*.c")):
-        body = open(path).read()
-        if re.search(r'\b(int\s+)?%s_main\s*\(' % re.escape(fn), body):
-            text.setdefault(name, "")
-            text[name] += body
-# A front end on sh_run() takes `--font` and `--dump` in shell.c, not in its own
-# file, so the runner's source is part of the text its flags are looked for in.
-runner = open(os.path.join(SRC, "shell.c")).read()
-for name in text:
-    if re.search(r'\bsh_run\s*\(', text[name]):
-        text[name] += runner
-
-# kdos-res is a separate binary rather than a TOOLS[] name, and the panel and
-# the compositor's keybind both spawn it. Its whole source is the text a flag
-# has to appear in, for the same reason: an unknown option exits 2 before a
-# surface exists, and nothing upstream sees the failure.
-RES = "src/desktop/kdos-res"
-if os.path.isdir(RES):
-    text["kdos-res"] = "".join(open(f).read() for f in glob.glob(os.path.join(RES, "*.c")))
-
-for path in glob.glob(os.path.join(SRC, "*.c")) + glob.glob(os.path.join(RES, "*.c")):
-    src = open(path).read()
-    # const char *argv[] = { "kdos-foo", "--flag", ... };
-    for m in re.finditer(r'argv\[\]\s*=\s*\{(.*?)\}\s*;', src, re.S):
-        body = m.group(1)
-        words = re.findall(r'"([^"]*)"', body)
-        if not words:
-            continue
-        target = words[0]
-        if target not in text:
-            continue
-        for w in words[1:]:
-            if not w.startswith("--"):
-                continue
-            if ('"%s"' % w) not in text[target]:
-                print("%s spawns %s %s — %s never accepts it"
-                      % (os.path.basename(path), target, w, target))
-PY
-if [ -s "$SP/badflags" ]; then
-    bad "shell tool flags" "$(head -3 "$SP/badflags" | tr '\n' ';')"
-else
-    note "shell tool flags" "every spawned flag is accepted"
 fi
 
 echo
@@ -2074,6 +2990,11 @@ for d in src/*/*/; do
     # nearly every recipe carries, which exempts precisely the recipes that
     # hand-list their sources — the only ones where a file can be left out.
     grep -qE '("?\$\{?PORT_SRC\}?"?|\.)/\*\.c' "$b" && continue
+    # A recipe that runs CMake on its own directory compiles what that
+    # directory's CMakeLists.txt names, so a file named there is compiled.
+    _lists=$b
+    [ -f "${d}CMakeLists.txt" ] && grep -qE 'cmake[[:blank:]]+-S[[:blank:]]+"?\$\{?PORT_SRC\}?"?' "$b" &&
+        _lists="$b ${d}CMakeLists.txt"
     for f in "$d"*.c; do
         [ -e "$f" ] || continue
         base=$(basename "$f")
@@ -2084,7 +3005,7 @@ for d in src/*/*/; do
         # noticed. The dot is escaped and the name must sit at a path or quote
         # boundary, so `re.c` no longer matches `core.c` either.
         _esc=$(printf '%s' "$base" | sed 's/\./\\./g')
-        grep -qE "(^|[/\"'\'' ])$_esc([\"'\'' ]|\$)" "$b" ||
+        grep -qE "(^|[/\"'\''( ])$_esc([\"'\'' )]|\$)" $_lists ||
             echo "$d$base" >> "$SP/uncompiled"
     done
 done
@@ -2104,18 +3025,7 @@ done
 note "makefile helpers" "every 'bash <path>' resolves"
 
 echo
-echo "==> the application store is wired everywhere it has to be"
-# A SURFACE WIRED IN FOUR OF FIVE PLACES IS A CHORD THAT OPENS NOTHING. The
-# binary dispatches on its own basename, so a missing symlink, a missing TOOLS
-# row, a missing declaration and a missing menu row each fail differently and
-# none of them at build time.
-for _f in src/desktop/kdos-shell/main.c src/desktop/kdos-shell/build.sh \
-          fs/etc/kdos/menu.conf; do
-    grep -q 'kdos-store' "$_f" ||
-        bad "kdos-store" "not wired in $_f"
-done
-grep -q 'store_main' src/desktop/kdos-shell/shell.h ||
-    bad "kdos-store" "store_main is not declared in shell.h"
+echo "==> the application catalogue ships"
 # THE CATALOGUE MUST BE INSTALLED, not merely present in the tree. A path
 # nothing installs is a store that opens empty with no error on the screen:
 # cat_load() cannot tell "no applications" from "no file".
@@ -2123,7 +3033,7 @@ grep -q 'usr/share/kdos/appstore/catalogue' src/system/kdos-appbox/build.sh ||
     bad "catalogue" "build.sh does not install it"
 [ -f src/system/kdos-appbox/catalogue ] ||
     bad "catalogue" "src/system/kdos-appbox/catalogue is missing"
-note "kdos-store" "the surface is wired in four places and the catalogue ships"
+note "catalogue" "installed by kdos-appbox"
 
 echo
 echo "==> no build script NAMES a command inside double quotes and RUNS it"
@@ -2215,27 +3125,6 @@ for _f in script/*.sh script/*/*.sh script/phases/*/*.sh script/phases/*/phase.e
     done < <(sed -n 's/^[[:space:]]*\(source\|\.\)[[:space:]]\+\([^[:space:];&|]*\).*/\2/p' "$_f")
 done
 [ "$_src" = 0 ] && note "sourced files" "$_srcn source line(s) resolve"
-
-echo
-echo "==> every consumer of a shared library generates the protocols it includes"
-# libkwl is COMPILED INTO each consumer rather than built once, and it includes
-# its protocol headers unconditionally. So a protocol added to the library is a
-# missing header in every build.sh that did not already generate it — a failure
-# that names the library and not the recipe that has to change, and that only
-# appears for the consumers a narrowed build happens to reach.
-_pg=0
-for _p in $(grep -ho '"[a-z0-9-]*-client-protocol\.h"' src/libs/libkwl/*.c 2>/dev/null |
-            tr -d '"' | sed 's/-client-protocol\.h$//' | sort -u); do
-    for _f in src/*/*/build.sh; do
-        [ -f "$_f" ] || continue
-        grep -q 'libkwl/\*\.c\|libkwl/kwl\.c' "$_f" 2>/dev/null || continue
-        if ! grep -q -- "$_p" "$_f" 2>/dev/null; then
-            bad "$(basename "$(dirname "$_f")")" "compiles libkwl but never generates $_p"
-            _pg=$((_pg + 1))
-        fi
-    done
-done
-note "libkwl protocols" "$((_pg)) consumers are missing a protocol the library includes"
 
 echo
 echo "==> the catalogue's rows against the tree"
@@ -2364,7 +3253,7 @@ note "mc rows" "$_mcp program(s) named, each on the image"
 echo
 echo "==> mimeapps rows: every kdos-* handler is shipped"
 _mh=0
-for _f in fs/etc/xdg/mimeapps.list fs/etc/xdg/kdos-mimeapps.list \
+for _f in fs/etc/xdg/mimeapps.list fs/usr/share/kdos/xdg/kde-mimeapps.list \
           fs/etc/skel/.config/mimeapps.list; do
     [ -f "$_f" ] || continue
     for _id in $(sed -n 's/^[^#=][^=]*=//p' "$_f" | tr ';' '\n' |
@@ -2376,26 +3265,6 @@ for _f in fs/etc/xdg/mimeapps.list fs/etc/xdg/kdos-mimeapps.list \
     done
 done
 note "mimeapps handlers" "$_mh kdos-* row(s), each with an entry"
-
-# ── every window of ours has a desktop entry named after its app_id ─────
-#
-# The taskbar, the window switcher and `kdos appid` find a window's name and
-# picture through the entry whose id is its app_id. A toplevel with none is a
-# letter on the taskbar and a MISMATCH in `kdos appid`. Read from the source:
-# every `.app_id` literal in a file that asks for KDISP_ROLE_TOPLEVEL.
-echo
-echo "==> toplevel app_ids: every one has a desktop entry"
-_ta=0
-for _f in $(grep -rl 'KDISP_ROLE_TOPLEVEL' src --include='*.c' |
-            grep -v '^src/libs/'); do
-    for _id in $(sed -n 's/.*\.app_id *= *"\([^"]*\)".*/\1/p' "$_f" | sort -u); do
-        _ta=$((_ta + 1))
-        [ -f "fs/usr/share/applications/$_id.desktop" ] ||
-            find src -name "$_id.desktop" 2>/dev/null | grep -q . ||
-            bad "toplevel $_id" "$_f opens a window as $_id, and no $_id.desktop is shipped"
-    done
-done
-note "toplevel app_ids" "$_ta app_id(s), each with an entry"
 
 # ── AND EVERY OTHER ID, against the build tree ──────────────────────────
 #
@@ -2412,7 +3281,7 @@ if [ ! -d build/fs/usr/share/applications ]; then
 else
     _me=0
     _mebad=0
-    for _f in fs/etc/xdg/mimeapps.list fs/etc/xdg/kdos-mimeapps.list \
+    for _f in fs/etc/xdg/mimeapps.list fs/usr/share/kdos/xdg/kde-mimeapps.list \
               fs/etc/skel/.config/mimeapps.list; do
         [ -f "$_f" ] || continue
         for _id in $(sed -n 's/^[^#=][^=]*=//p' "$_f" | tr ';' '\n' |
@@ -2432,263 +3301,6 @@ else
     done
     [ "$_mebad" = 0 ] &&
         note "mimeapps entries" "$_me row(s), each naming an installed entry"
-fi
-
-# ── every claimed help page exists ──────────────────────────────────────
-#
-# `KtuiKeys.doc` names a document in /usr/share/kdos/doc and F1 opens it. A
-# name with no file there would open an index reading "no such document",
-# which teaches that help is broken — worse than a surface that never offered
-# it. The rule is enforced here rather than trusted, because the two live in
-# different trees and nothing else compares them.
-echo
-echo "==> help pages: every .doc names a document that ships"
-_doc=0
-for _d in $(grep -rho 'keys\.doc = "[a-z0-9_-]*"' src/desktop src/daemons src/system src/art 2>/dev/null |
-            sed 's/.*"\(.*\)"/\1/' | sort -u); do
-    _doc=$((_doc + 1))
-    [ -f "fs/usr/share/kdos/doc/$_d.txt" ] ||
-        bad "help page $_d" "no fs/usr/share/kdos/doc/$_d.txt"
-done
-note "help pages" "$_doc claimed, each in fs/usr/share/kdos/doc"
-
-echo
-echo "==> every icon name a surface asks for is one the image can resolve"
-# A NAME kicon_slot CANNOT RESOLVE RETURNS -1 AND DRAWS A FALLBACK GLYPH, and
-# nothing anywhere says so. The surface renders, the flush succeeds, and a row
-# that was meant to carry a picture carries a dot. The Start button asked for
-# `start-here` that way — the most visible icon on the desktop, silently not an
-# icon, because the logo mark was installed into the theme tree and libkicon
-# searches the atlas and `icons/hicolor` and not `~/.icons/<theme>`.
-#
-# Both sources are checked, because both are real lookup paths. Checked against
-# what is BUILT rather than a list, for the reason the console-font check is:
-# the list is the thing that goes stale.
-_atlas=build/fs/usr/share/kdos/icons/atlas.kia
-if [ -f "$_atlas" ]; then
-    _iconbad=$(python3 - "$_atlas" <<'PYEOF'
-import glob, os, re, struct, subprocess, sys
-
-d = open(sys.argv[1], 'rb').read()
-if d[:4] != b'KIA1':
-    sys.exit(0)
-n, = struct.unpack('<I', d[4:8])
-names, off = set(), 8
-for _ in range(n):
-    nlen, size, noff, boff, blen = struct.unpack('<HHIII', d[off:off + 16])
-    off += 16
-    names.add(d[noff:noff + nlen].decode())
-
-# The other lookup path: hicolor, wherever the build put one.
-for p in glob.glob('build/fs/**/icons/hicolor/*/apps/*.png', recursive=True):
-    names.add(os.path.basename(p)[:-4])
-
-# Every literal name a surface hands to the icon layer. Five spellings,
-# because the name reaches it as an argument to libkicon, as a field
-# assignment, as a designated initialiser, as the argument of any function
-# whose parameter is `const char *icon` or `*icon_name` (kch_header, the
-# panel's applet tiles), or as the column of a positional table whose struct
-# has such a member (the Settings tiles, kdos-res's pages). A check that knew
-# fewer passes the rest: a positional row names its icon with no `icon`
-# anywhere on the line. A literal is read bare or as either arm of a
-# ternary; a computed name is not a literal and is not checked.
-pats = (r'kicon_slot(?:_pad|_ink)?\("([a-z0-9._-]+)"',
-        r'kicon_pixmap\("([a-z0-9._-]+)"',
-        r'(?:->|\.)icon = "([a-z0-9._-]+)"')
-used = set()
-out = subprocess.run(['grep', '-rhoE', '|'.join(pats), 'src/', '--include=*.c'],
-                     capture_output=True, text=True).stdout
-for line in out.splitlines():
-    for pat in pats:
-        m = re.search(pat, line)
-        if m:
-            used.add(m.group(1))
-            break
-
-def skip_lit(s, i):
-    j = i + 1
-    while j < len(s) and s[j] != s[i]:
-        j += 2 if s[j] == '\\' else 1
-    return j + 1
-
-def uncomment(s):
-    out, i = [], 0
-    while i < len(s):
-        if s[i] in '"\'':
-            j = skip_lit(s, i)
-            out.append(s[i:j])
-            i = j
-        elif s.startswith('/*', i):
-            j = s.find('*/', i + 2)
-            i = len(s) if j < 0 else j + 2
-            out.append(' ')
-        elif s.startswith('//', i) or (s[i] == '#' and (i == 0 or s[i - 1] == '\n')):
-            while True:
-                j = s.find('\n', i)
-                if j < 0 or s[j - 1] != '\\':
-                    break
-                i = j + 1
-            i = len(s) if j < 0 else j
-        else:
-            out.append(s[i])
-            i += 1
-    return ''.join(out)
-
-def closing(s, i):
-    depth = 0
-    while i < len(s):
-        if s[i] in '"\'':
-            i = skip_lit(s, i)
-            continue
-        if s[i] in '([{':
-            depth += 1
-        elif s[i] in ')]}':
-            depth -= 1
-            if depth == 0:
-                return i
-        i += 1
-    return -1
-
-def split_top(s):
-    parts, depth, start, i = [], 0, 0, 0
-    while i < len(s):
-        if s[i] in '"\'':
-            i = skip_lit(s, i)
-            continue
-        if s[i] in '([{':
-            depth += 1
-        elif s[i] in ')]}':
-            depth -= 1
-        elif s[i] == ',' and depth == 0:
-            parts.append(s[start:i].strip())
-            start = i + 1
-        i += 1
-    parts.append(s[start:].strip())
-    return parts
-
-ICONP = re.compile(r'\bconst\s+char\s*\*\s*(?:const\s+)?icon(?:_name)?$')
-LIT = r'"[^"\\]*"'
-BARE = re.compile(r'(?:[^"?]*\?\s*)?%s(?:\s*:\s*%s)?' % (LIT, LIT))
-
-def literals(arg):
-    return re.findall(r'"([^"\\]*)"', arg) if BARE.fullmatch(arg) else []
-
-# Function name -> the index of its icon parameter.
-def icon_params(src):
-    found = {}
-    for m in re.finditer(r'\b(\w+)\s*\(', src):
-        e = closing(src, m.end() - 1)
-        if e > 0 and src[e + 1:e + 40].lstrip()[:1] in ('{', ';'):
-            for k, p in enumerate(split_top(src[m.end():e])):
-                if ICONP.search(p):
-                    found[m.group(1)] = k
-    return found
-
-# Struct tag, typedef name, or (for an unnamed struct) the offset of its
-# closing brace -> the column of its icon member. `int a, b;` is two columns.
-def icon_columns(src):
-    found = {}
-    for m in re.finditer(r'\bstruct\s*(\w*)\s*\{', src):
-        e = closing(src, m.end() - 1)
-        if e < 0:
-            continue
-        col, k = None, 0
-        for d in (d.strip() for d in src[m.end():e].split(';')):
-            if not d:
-                continue
-            if ICONP.search(d):
-                col = k
-            k += 1 if '(' in d else 1 + d.count(',')
-        if col is None:
-            continue
-        if m.group(1):
-            found['struct ' + m.group(1)] = col
-        t = re.match(r'\s*(\w+)\s*;', src[e + 1:])
-        if t and src[:m.start()].rstrip().endswith('typedef'):
-            found[t.group(1)] = col
-        found[e] = col
-    return found
-
-def names_in(src, params, columns):
-    for name, k in params.items():
-        for m in re.finditer(r'\b%s\s*\(' % re.escape(name), src):
-            e = closing(src, m.end() - 1)
-            args = split_top(src[m.end():e]) if e > 0 else []
-            if k < len(args):
-                yield from literals(args[k])
-    for m in re.finditer(r'(struct\s+\w+|\w+|\})\s+(?:const\s+)?\w+\s*'
-                         r'\[[^\]]*\]\s*=\s*\{', src):
-        k = columns.get(m.start(1) if m.group(1) == '}' else m.group(1))
-        if k is None:
-            continue
-        e = closing(src, m.end() - 1)
-        for row in split_top(src[m.end():e]):
-            cells = split_top(row[1:-1]) if row.startswith('{') else []
-            if k < len(cells) and not any(c.startswith('.') for c in cells):
-                yield from literals(cells[k])
-
-sources = {p: uncomment(open(p, errors='replace').read())
-           for p in glob.glob('src/**/*.[ch]', recursive=True)}
-params, columns = {}, {}
-for p, s in sources.items():
-    if p.endswith('.h'):
-        params.update(icon_params(s))
-        columns.update({k: v for k, v in icon_columns(s).items()
-                        if isinstance(k, str)})
-for p, s in sources.items():
-    if p.endswith('.c'):
-        for n in names_in(s, {**params, **icon_params(s)},
-                          {**columns, **icon_columns(s)}):
-            if re.fullmatch(r'[a-z0-9._-]+', n):
-                used.add(n)
-
-for name in sorted(used - names):
-    print(name)
-PYEOF
-)
-    if [ -n "$_iconbad" ]; then
-        for _n in $_iconbad; do
-            bad "icon $_n" "resolves in neither the atlas nor hicolor"
-        done
-    else
-        note "icon names" "every name resolves in the atlas or in hicolor"
-    fi
-else
-    note "icon names" "skipped — no build tree"
-fi
-
-echo
-echo "==> every front end that asks for an icon initialises the icon layer"
-# kicon_slot() ANSWERS -1 UNTIL kicon_init() HAS RUN, and -1 is the ordinary
-# answer of a terminal or of `--no-icons`, so a front end that never
-# initialised the layer draws its header band with no picture and nothing
-# says so. The rule is per file because each kdos-shell front end is a file
-# with its own entry: a file that brings up a display (`kdisp_init(` or
-# `sh_run(`) and names an icon (`kicon_slot*(`, `kicon_pixmap(`, or a
-# `kch_header(` whose icon is not NULL) must call `kicon_init(` itself or,
-# on the runner, point `.icons` at its flag so sh_run() does.
-_noinit=$(python3 - <<'PYEOF'
-import glob, re
-
-ASKS = re.compile(r'\bkicon_slot(?:_pad|_ink|_png|_for_path)?\(|\bkicon_pixmap\('
-                  r'|\bkch_header\(\s*[^,()]+,\s*(?!NULL\b)')
-ENTRY = re.compile(r'\b(?:kdisp_init|sh_run)\(')
-INIT = re.compile(r'\bkicon_init\(|\.icons\s*=\s*&')
-for p in sorted(glob.glob('src/**/*.c', recursive=True)):
-    if p.startswith('src/libs/'):
-        continue
-    s = re.sub(r'/\*.*?\*/|//[^\n]*', ' ', open(p, errors='replace').read(),
-               flags=re.S)
-    if ENTRY.search(s) and ASKS.search(s) and not INIT.search(s):
-        print(p)
-PYEOF
-)
-if [ -n "$_noinit" ]; then
-    for _f in $_noinit; do
-        bad "icon layer: $_f" "names an icon and never calls kicon_init()"
-    done
-else
-    note "icon layer" "every front end that names an icon initialises it"
 fi
 
 echo
@@ -2748,35 +3360,6 @@ else
     note "chrome glyphs" "skipped — no build tree"
 fi
 
-echo
-echo "==> a desktop toggle has exactly one flag, and libkbase spells the path"
-# TWO PLACES ONLY. `kb_toggle_on()` reads and `kb_toggle_set()` writes, and a
-# program that builds `kdos/toggles/...` itself is a program looking where
-# nothing wrote — the failure is silent in both directions and reads as a
-# switch that does nothing.
-#
-# The daemon keeping a SECOND flag is the same fault a level up: a private
-# `dnd` OR'd with the toggle is a state the notification centre's own button
-# cannot clear, so Allow Toasts left the toasts silenced and said it had not.
-#
-# A FORMAT STRING, not the words: every page and header names the directory in
-# prose, and only a `%s` beside it is a path being BUILT. libkbase is the two
-# places that may, and the library self-test is the third — it spells the
-# documented path by hand precisely to prove the library uses it.
-_tog=0
-for _f in $(grep -rlE 'kdos/toggles.*%s|%s.*kdos/toggles' src/ 2>/dev/null); do
-    case "$_f" in
-    src/libs/libkbase/*|src/libs/selftest.c) continue ;;
-    esac
-    bad "$_f" "builds the toggle path itself — use kb_toggle_on/kb_toggle_set"
-    _tog=$((_tog + 1))
-done
-if grep -qE '^static int dnd;' src/desktop/kdos-shell/notifyd.c 2>/dev/null; then
-    bad "kdos-notifyd" "keeps a second Do Not Disturb flag beside the toggle"
-    _tog=$((_tog + 1))
-fi
-[ "$_tog" = 0 ] && note "toggles" "one reader, one writer, and no second flag"
-
 echo "==> a frame that opens the synchronized bracket closes it on every path"
 # A terminal left inside `CSI ?2026h` DRAWS NOTHING FURTHER. That is the whole
 # risk of the mode: an unclosed block is not a cosmetic tear, it is a screen
@@ -2807,8 +3390,7 @@ echo "==> no text is drawn in KT_DIM"
 # on a selectable row takes ktui_sel_dim(). The check reads the foreground
 # argument of every text draw (ktui_draw_text, _textf, _text_right, _cell,
 # ktui_kv, ktui_para, ktui_menu_label, ktui_table_text, ktui_textarea_draw,
-# kch_px_text, kch_display_text, kcell_canvas_text, and the slot-taking text
-# wrappers in kdosbuild and the panel) across line breaks, so
+# and the slot-taking text wrappers in kdosbuild) across line breaks, so
 # `on ? KT_SURFACE : KT_DIM` is caught as surely as a bare KT_DIM. A call
 # whose string is a rule, shade or block glyph (ktui_glyph[KT_G_HL], "─") or
 # a blank cell is a fill and passes; a "-" does not, because that is what an
@@ -2825,12 +3407,10 @@ TEXT = {
     'ktui_draw_text': (4, 3), 'ktui_draw_text_right': (4, 3),
     'ktui_draw_textf': (3, None), 'ktui_draw_cell': (3, 2),
     'ktui_kv': (5, 4), 'ktui_para': (4, 3), 'ktui_menu_label': (4, 3),
-    'ktui_table_text': (5, 4), 'kch_px_text': (5, 4),
-    'kch_display_text': (2, 1), 'ktui_textarea_draw': (5, 2),
-    'kcell_canvas_text': (5, 4),
-    # Text wrappers that take a slot (kdosbuild/tui.c, kdos-shell/panel.c).
+    'ktui_table_text': (5, 4), 'ktui_textarea_draw': (5, 2),
+    # Text wrappers that take a slot (kdosbuild/tui.c).
     'centre': (2, 1), 'wrap2': (5, 4), 'hud_cap': (4, 3),
-    'hud_glyph': (3, 2), 'applet': (5, 4), 'applet_w': (5, 4),
+    'hud_glyph': (3, 2),
 }
 FILL_GLYPH = re.compile(r'^ktui_glyph\[KT_G_(?:HL|VL|TL|TR|BL|BR|CROSS|TEE_[TBLR]'
                         r'|D(?:HL|VL|TL|TR|BL|BR)|FULL|SHADE|SHADE_MED)\]$')
@@ -3008,11 +3588,9 @@ fi
 
 echo "==> a literal colour is set at the render boundary and nowhere else"
 # CHROME IS SLOTS, ALWAYS. A cell carrying a literal stops following
-# `kdos theme`, so the bits that say it has one may be SET in exactly four
-# places: the render boundary where a terminal's own colour arrives
-# (kvt_grid.c), the header that defines them, the accent picker — whose swatches ARE the
-# schemes it is offering, so drawing them in slots would show one palette seven
-# times — and the translucency pass in ktui_draw.c, which MIXES TWO SLOTS of
+# `kdos theme`, so the bits that say it has one may be SET in exactly two
+# places: the header that defines them, and the translucency pass in
+# ktui_draw.c, which MIXES TWO SLOTS of
 # the palette in force and does it again on every frame, so a retint moves it
 # like everything else (it sets the FOREGROUND bit too, on a reversed cell,
 # because that is the half of such a cell the painter shows as a background).
@@ -3023,22 +3601,20 @@ _lit=0
 for _f in $(grep -rlE '\|= *\(?(KT_A_FGRGB|KT_A_BGRGB|KT_A_ULCOLOR)|KT_UL_SET\(|attr *= *KT_A_(FGRGB|BGRGB|ULCOLOR)' \
         src/ 2>/dev/null); do
     case "$_f" in
-    src/libs/libkvt/kvt_grid.c) continue ;;
     src/libs/libktui/ktui.h|src/libs/selftest.c) continue ;;
     src/libs/libktui/ktui_draw.c) continue ;;
-    src/desktop/kdos-shell/theme.c) continue ;;
     esac
     bad "$_f" "sets a literal colour bit — chrome draws in slots"
     _lit=$((_lit + 1))
 done
 [ "$_lit" = 0 ] &&
-    note "colour" "at the boundary, in the blend, and in the picker"
+    note "colour" "in the header and in the blend"
 
 echo "==> the generated aerc styleset is one aerc will load"
 # A KEY IS object[.selected].attribute, and aerc refuses the WHOLE FILE on one
 # it cannot parse — so a single wrong key is a mail client that will not start,
 # on a machine where nothing else reads this file and nothing else would say so.
-_akeys=$(sed -n '/^static void write_aerc/,/^}/p' src/system/kdos-tools/kdos.c 2>/dev/null |
+_akeys=$(sed -n '/^static void write_aerc/,/^}/p' src/system/kdos-tools/theme.c 2>/dev/null |
          grep -oE '"[A-Za-z_*][A-Za-z0-9_*.]*=' | tr -d '"=')
 _aerc=0
 for _k in $_akeys; do
@@ -3052,86 +3628,6 @@ done
     note "aerc styleset" "$(printf '%s\n' $_akeys | grep -c .) key(s), each one aerc's grammar"
 
 echo
-echo "==> the control centre's row table is consistent with the files it writes"
-# THREE FAULTS THIS TABLE CAN CARRY AND NOTHING ELSE WOULD REPORT.
-#
-# A DUPLICATE ROW draws twice on its page and edits one value from two places;
-# the Panel page carried `task_labels` and `right` twice for a release.
-#
-# A CHOICE WHOSE DEFAULT IS NOT IN ITS OWN LIST cannot be cycled back to what
-# the file says: the cycler searches the list, misses, and starts from the
-# first entry — so opening the page and pressing Right once silently changes a
-# key nobody touched.
-#
-# A ST_COMP KEY THAT IS NOT IN comp.conf is a control nothing reads. That file
-# is this program's whole contract with the compositor, and a row writing a key
-# the compositor has no lookup for is the "change a thing, see nothing" the
-# surface exists not to be. It is checked against the SHIPPED copy, which is
-# what a fresh account gets and what documents every key.
-_srows=$(python3 - <<'PYEOF'
-import re
-
-src = open('src/desktop/kdos-shell/settings.c').read()
-i = src.index('static struct row rows[] = {')
-body = src[i:src.index('\n};', i)]
-
-lists = dict(re.findall(r'static const char \*const (\w+)\[\] = \{([^}]*)\};', src))
-conf = open('fs/etc/skel/.config/kdos/comp.conf').read()
-
-# One row is a brace at the start of a line down to the `}` that closes it,
-# and its VALUE is the last string literal in it: help, val and orig are all
-# concatenated literals, so a fixed field count cannot find them.
-starts = [m.start() for m in re.finditer(r'^\t\{ CAT_', body, re.M)]
-starts.append(len(body))
-seen, bad = set(), []
-n = 0
-for a, b in zip(starts, starts[1:]):
-    row = body[a:b]
-    head = re.match(r'\t\{\s*(CAT_\w+),\s*(FT_\w+),\s*(ST_\w+),\s*SC_\w+,'
-                    r'\s*(NULL|"[^"]*"),\s*"[^"]*",\s*(NULL|\w+),\s*(-?\d+),',
-                    row)
-    if not head:
-        bad.append('a row does not parse: ' + row.split('\n')[0].strip())
-        continue
-    n += 1
-    cat, ft, st, key, choices, nch = head.groups()
-    lits = re.findall(r'"((?:[^"\\]|\\.)*)"', row)
-    val = lits[-2] if len(lits) >= 2 else ''
-    if key == 'NULL':
-        continue
-    k = key.strip('"')
-    if (cat, st, k) in seen:
-        bad.append('%s %s %s is in the table twice' % (cat, st, k))
-    seen.add((cat, st, k))
-    if ft == 'FT_CHOICE' and choices != 'NULL':
-        items = [x.strip().strip('"') for x in lists.get(choices, '').split(',')
-                 if x.strip()]
-        if items and val not in items:
-            bad.append('%s %s default "%s" is not in %s' % (cat, k, val,
-                                                            choices))
-        if items and int(nch) != len(items):
-            bad.append('%s %s says %s choices, %s has %d'
-                       % (cat, k, nch, choices, len(items)))
-    if st == 'ST_COMP' and not re.search(r'^#?\s*%s\s*=' % re.escape(k), conf,
-                                         re.M):
-        bad.append('ST_COMP %s is not a key in comp.conf' % k)
-
-for x in bad:
-    print('BAD ' + x)
-print('N %d' % n)
-PYEOF
-)
-_sbad=$(printf '%s\n' "$_srows" | grep '^BAD ' | sed 's/^BAD //')
-if [ -n "$_sbad" ]; then
-    while IFS= read -r _l; do bad "settings rows" "$_l"; done <<EOF
-$_sbad
-EOF
-else
-    note "settings rows" "$(printf '%s\n' "$_srows" | sed -n 's/^N //p') row(s), \
-each one key, one list, one comp.conf line"
-fi
-
-echo
 echo "==> every desktop entry's icon and command exist on the image"
 #
 # A ROW WHOSE ICON RESOLVES TO NOTHING QUIETLY LOSES ITS PICTURE while every
@@ -3140,32 +3636,26 @@ echo "==> every desktop entry's icon and command exist on the image"
 # to every other check here: the entry parses, the recipe installs it, and the
 # defect is only in the Start menu.
 #
-# THE ICON RULE IS THE ATLAS'S, NOT THE FREEDESKTOP SPEC'S. genatlas.py takes
-# six contexts at four sizes; `panel/`, `apps/` and 16x16 are deliberately not
-# among them, so `file-manager` and `utilities-terminal` are names the spec
-# blesses and this image cannot draw. After the atlas, libkicon falls back to
-# hicolor's `apps/` PNGs and to `pixmaps/` — SVG there is never read, because
-# nothing in the session rasterises one.
+# THE ICON RULE IS THE FREEDESKTOP SPEC'S, as Plasma's icon loader applies it:
+# a name resolves when some installed theme — KDOS, the Breeze it inherits,
+# hicolor — carries it as SVG or PNG at any size and in any context, or when
+# `pixmaps/` has it.
 if [ ! -d build/fs/usr/share/applications ]; then
     note "desktop entries" "skipped — no build tree"
 else
-    _ATLAS_SIZES="24 32 48 64"
-    _ATLAS_CTX="places devices status mimetypes actions emblems"
+    # Every icon name the image carries, read once: a find per entry would
+    # walk tens of thousands of files several hundred times.
+    find build/fs/usr/share/icons -type f \( -name '*.svg' -o -name '*.svgz' \
+        -o -name '*.png' \) 2>/dev/null |
+        sed 's|.*/||; s/\.svgz\?$//; s/\.png$//' | sort -u > "$SP/icon-names"
     _icon_ok() {
         case "$1" in
             /*) [ -e "build/fs$1" ] || [ -L "build/fs$1" ] && return 0
                 return 1 ;;
         esac
-        for _s in $_ATLAS_SIZES; do
-            for _c in $_ATLAS_CTX; do
-                [ -e "build/fs/usr/share/icons/KDOS/${_s}x${_s}/$_c/$1.svg" ] &&
-                    return 0
-            done
-        done
-        for _h in build/fs/usr/share/icons/hicolor/*/apps/"$1".png; do
-            [ -e "$_h" ] && return 0
-        done
-        [ -e "build/fs/usr/share/pixmaps/$1.png" ]
+        grep -qxF -- "$1" "$SP/icon-names" && return 0
+        [ -e "build/fs/usr/share/pixmaps/$1.png" ] ||
+            [ -e "build/fs/usr/share/pixmaps/$1.svg" ]
     }
     # -e OR -L. Half the commands here are symlinks into /usr/sbin written
     # with an ABSOLUTE target, which resolves inside the image and dangles on
@@ -3191,7 +3681,7 @@ else
         _i=$(sed -n 's/^Icon=//p' "$_f" | head -1)
         _x=$(sed -n 's/^Exec=//p' "$_f" | head -1 | awk '{print $1}')
         if [ -n "$_i" ] && ! _icon_ok "$_i"; then
-            bad "desktop entries" "$_n: Icon=$_i is in no atlas context and no hicolor apps/ PNG"
+            bad "desktop entries" "$_n: Icon=$_i is in no installed icon theme and not in pixmaps/"
             _debad=$((_debad + 1))
         fi
         if [ -n "$_x" ] && ! _exec_ok "$_x"; then

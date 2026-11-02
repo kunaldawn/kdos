@@ -1,0 +1,13 @@
+Subject: set the desktop entry's StartupWMClass to the Wayland app_id, org.kde.kapptemplate
+
+--- a/src/application/org.kde.kapptemplate.desktop
++++ b/src/application/org.kde.kapptemplate.desktop
+@@ -2,7 +2,7 @@
+ [Desktop Entry]
+ Type=Application
+ Exec=kapptemplate
+-StartupWMClass=kapptemplate
++StartupWMClass=org.kde.kapptemplate
+ Icon=kapptemplate
+ X-DocPath=kapptemplate/index.html
+ GenericName=App Code Template Generator

@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = kturtle
-version     = 26.08.1
+version     = 26.08.2
 release     = 1
 source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
-sha256      = 07be25f8754521ddb0d14510133cc0e82227b7a3d659abdc05b2268121df5e1c  kturtle-26.08.1.tar.xz
+sha256      = 9444b5d59afdfb21de0271feb858794a68e8d79d345bd7a5bdbb70a1d2566a2a  kturtle-26.08.2.tar.xz
 description = KDE educational programming environment — steer a turtle with TurtleScript and learn to program
 homepage    = https://apps.kde.org/kturtle/
 license     = GPL-2.0-or-later

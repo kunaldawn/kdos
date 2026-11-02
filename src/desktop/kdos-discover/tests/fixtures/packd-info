@@ -1,0 +1,18 @@
+id          = box.work
+kind        = app
+name        = My work box
+version     = 1735000000
+release     = 1
+arch        = x86_64
+summary     = A frozen box
+category    = Development;
+licence     = MIT
+description = First line.
+description = Second line.
+requires    = rt-gtk
+desktop     = org.example.App.desktop
+mime        = text/plain
+mime        = text/x-c
+state       = installed
+origin      = store
+ok

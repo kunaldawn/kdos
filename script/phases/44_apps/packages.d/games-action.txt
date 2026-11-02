@@ -27,3 +27,8 @@ neverball
 powder-toy
 srb2
 ddnet
+
+bomber
+granatier
+ksnakeduel
+kspaceduel

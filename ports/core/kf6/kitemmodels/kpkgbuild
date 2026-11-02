@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = kitemmodels
-version     = 6.30.0
+version     = 6.31.0
 release     = 1
 source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
-sha256      = f807e5b37aa913d2563ee1a21b2bce7d34495f32f38c7f35f16262d736bdfd55  kitemmodels-6.30.0.tar.xz
+sha256      = bcd5d95bd300c5b8b6400d087bfbf66efec34d3617aef90878e0c90407f6964c  kitemmodels-6.31.0.tar.xz
 description = KDE Frameworks: proxy and helper item models for Qt
 homepage    = https://api.kde.org/frameworks/kitemmodels/html/
 license     = LGPL-2.0-or-later

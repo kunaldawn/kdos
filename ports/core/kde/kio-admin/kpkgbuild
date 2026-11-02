@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kio-admin
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = f12aff98913c91e6eb6a09cafdedbea3ee2e43a6d559e8ec98d0b72b54cc32ea  kio-admin-26.08.2.tar.xz
+description = admin:/ KIO worker — read and write root-owned files from Dolphin through a polkit-authorised helper
+homepage    = https://invent.kde.org/system/kio-admin
+license     = (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND BSD-3-Clause AND FSFAP AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcoreaddons ki18n kio polkit-qt6 polkit dbus

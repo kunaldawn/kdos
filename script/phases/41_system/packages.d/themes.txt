@@ -29,3 +29,7 @@ hicolor-icon-theme
 
 sound-theme-freedesktop
 icon-naming-utils
+
+ocean-sound-theme
+oxygen-sounds
+plasma-workspace-wallpapers

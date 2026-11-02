@@ -68,7 +68,7 @@
     { "type": "shell", "key": "Shell     " },
     // fastfetch identifies the terminal by walking the process tree, which from
     // inside kdos-banner finds the wrapper script and reports "kdos-banner".
-    // $TERM is the honest answer on both the TTY and in foot.
+    // $TERM is the honest answer on both the TTY and in Konsole.
     { "type": "command", "key": "Terminal  ", "text": "printf %s \"${TERM:-unknown}\"" },
     { "type": "display", "key": "Display   ", "compactType": "original" },
     { "type": "command", "key": "Accent    ", "text": "kdos theme 2>/dev/null" },
@@ -89,6 +89,6 @@
     { "type": "localip", "key": "Network   ", "showIpv6": false },
 
     { "type": "custom", "format": "\u001b[0;32m══════════════════════════════════════════════\u001b[0m" },
-    { "type": "custom", "format": "\u001b[2;32m  musl · GNU · wlroots · no systemd\u001b[0m" }
+    { "type": "custom", "format": "\u001b[2;32m  musl · GNU · KDE Plasma · no systemd\u001b[0m" }
   ]
 }

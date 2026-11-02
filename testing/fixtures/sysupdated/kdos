@@ -1,0 +1,101 @@
+#!/bin/bash
+# The half of `kdos update` kdos-sysupdated drives, for the selftest.
+#
+# The real command installs packages as root into a mounted slot; this one
+# reads what to do from $SU_FIX and writes the files the real one writes —
+# update.state, update.json, the slot's release record — under $SU_ROOT and
+# $SU_ESP, so what is under test is the daemon's half of each conversation:
+# the argument vector it builds, the progress lines it reads and what it does
+# with each. `kdos-bootctl` is the real one, on the fixture boot state.
+# Every progress line is the real command's, word for word (update.c,
+# `--progress FD`): a line only this stub writes would pass a daemon the
+# real command leaves waiting. selftest.sh's arm block checks the real
+# arm's lines.
+#
+#   $SU_FIX/version    the version the tree in place is
+#   $SU_FIX/acquire    ok (default), refuse, fail or slow
+#   $SU_FIX/next.json  the document a `check` writes
+#   $SU_FIX/checkdelay seconds a `check` takes
+#   $SU_FIX/calls      every argument vector, one per line
+set -u
+printf '%s\n' "$*" >> "$SU_FIX/calls"
+now=$(date +%s)
+state=$SU_ROOT/var/lib/kdos/update.state
+
+setline() {   # <step> <code> <detail>
+    { grep -v "^$1 " "$state" 2>/dev/null
+      printf '%s %s %s %s\n' "$1" "$2" "$now" "$3"; } > "$state.new"
+    mv "$state.new" "$state"
+}
+
+[ "${1:-}" = update ] || exit 2
+case "${2:-}" in
+check)
+    out=""
+    while [ $# -gt 0 ]; do
+        [ "$1" = --out ] && out=$2
+        [ "$1" = --fetch ] && setline fetch ok "tree current"
+        shift
+    done
+    [ -f "$SU_FIX/checkdelay" ] && sleep "$(cat "$SU_FIX/checkdelay")"
+    if [ -n "$out" ] && [ -f "$SU_FIX/next.json" ]; then
+        cp "$SU_FIX/next.json" "$out.new" && mv "$out.new" "$out"
+    fi
+    exit 1
+    ;;
+apply)
+    mode=acquire
+    for a in "$@"; do
+        [ "$a" = --arm ] && mode=arm
+    done
+    p() { printf '%s\n' "$*" >&3; }
+    ver=$(cat "$SU_FIX/version")
+    if [ "$mode" = acquire ]; then
+        case "$(cat "$SU_FIX/acquire" 2>/dev/null || echo ok)" in
+        refuse)
+            p "refused 2 packages need a source build (gimp, krita): \`kdos update apply --source\`"
+            exit 3
+            ;;
+        fail)
+            p "verified 0123456789abcdef $ver 4 1000"
+            p "item 1 8 zlib"
+            p "error the binhost package of zlib did not install"
+            exit 1
+            ;;
+        slow)
+            trap 'p "error cancelled"; exit 4' TERM
+            p "verified 0123456789abcdef $ver 200 100000"
+            for i in $(seq 1 200); do
+                p "item $i 400 pkg$i"
+                sleep 0.1
+            done
+            exit 1
+            ;;
+        *)
+            p "verified 0123456789abcdef $ver 2 1000"
+            for i in 1 2 3 4; do
+                p "item $i 4 pkg$i"
+                sleep 0.1
+            done
+            setline apply acquired "slot b $ver"
+            p "acquired b $ver"
+            exit 0
+            ;;
+        esac
+    fi
+    if ! grep -q "^apply acquired [0-9]* slot b $ver\$" "$state"; then
+        p "refused slot b holds no acquired update for $ver: run \`kdos update apply --acquire\` first"
+        exit 3
+    fi
+    p "verified - $ver 0 0"
+    printf 'VERSION="%s"\n' "$ver" > "$SU_ESP/EFI/kdos/b/release"
+    if ! kdos-bootctl try b >&2; then
+        p "error slot b could not be marked as the candidate"
+        exit 1
+    fi
+    setline apply ok "slot b $ver"
+    p "armed b $ver"
+    exit 0
+    ;;
+esac
+exit 2

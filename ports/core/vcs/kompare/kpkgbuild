@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kompare
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = b1bee9df5873ef81746d8069255c286c00cae179bb8ab38870f616806f61b776  kompare-26.08.2.tar.xz
+description = Diff and patch viewer — side-by-side differences, applying hunks, and a part other programs embed
+homepage    = https://apps.kde.org/kompare/
+license     = GPL-2.0-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND GFDL-1.2-or-later AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcodecs kconfig kcoreaddons kdoctools ki18n kiconthemes kjobwidgets kparts ktexteditor kwidgetsaddons libkomparediff2

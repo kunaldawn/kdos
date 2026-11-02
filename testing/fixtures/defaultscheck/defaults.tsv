@@ -1,0 +1,143 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   The KDOS defaults, key by key: testing/defaultscheck.py's fixture.
+#
+# One row a key, tab-separated: file, group, key, value, kind, why.
+#
+#   group   KConfig's own spelling of a nested group, a][b][c, so a group
+#           whose name holds a slash (Event/startkde) stays one group
+#   kind    kdos       the shipped config dirs give the key this value
+#           immutable  the same, and no file above can change it ([$i])
+#           kde        no shipped file sets the key, so KDE's compiled-in
+#                      default (the value column) is what a person gets
+#           vm         the value with /usr/share/kdos/xdg-vm in front, as a
+#                      session in a virtual machine reads it
+#           live       the value with /usr/share/kdos/xdg-live in front, as
+#                      the live medium's session reads it
+#
+# The rows are the defaults desktop.md and applications.md describe, row for
+# row: a change to a KDOS default is a change here and on those pages.
+# ---------------------------------
+
+# Look and feel, light and dark, animation, click
+kdeglobals	KDE	LookAndFeelPackage	org.kdos.bone.desktop	kdos	the global theme
+kdeglobals	KDE	DefaultDarkLookAndFeel	org.kdos.bone.desktop	kdos	light/dark pairs a dark accent
+kdeglobals	KDE	DefaultLightLookAndFeel	org.kdos.paper.desktop	kdos	with paper
+kdeglobals	KDE	AutomaticLookAndFeel	false	kdos	offered on Welcome, off
+kdeglobals	KDE	AnimationDurationFactor	0.5	kdos	animations at half length
+kdeglobals	KDE	SingleClick	false	kdos	double-click, as KDE
+kdeglobals	KDE	DndBehavior	MoveIfSameDevice	kdos	same-disk move without a prompt
+kdeglobals	Icons	Theme	KDOS	kdos	the KDOS icon theme
+kdeglobals	Sounds	Theme	kdos	kdos	the KDOS sound theme, over Ocean
+
+# Fonts and rendering
+kdeglobals	General	font	Noto Sans,10	kdos	UI face
+kdeglobals	General	menuFont	Noto Sans,10	kdos	UI face
+kdeglobals	General	toolBarFont	Noto Sans,10	kdos	UI face
+kdeglobals	General	smallestReadableFont	Noto Sans,8	kdos	UI face, small
+kdeglobals	General	fixed	JetBrains Mono,10	kdos	the monospace face
+kdeglobals	WM	activeFont	Noto Sans,10	kdos	window titles stay Noto Sans
+kdeglobals	General	XftAntialias	true	kdos	greyscale antialiasing
+kdeglobals	General	XftHintStyle	hintslight	kdos	slight hinting
+kdeglobals	General	XftSubPixel	none	kdos	no subpixel order
+
+# Terminal
+kdeglobals	General	TerminalApplication	konsole	kdos	Konsole is the terminal
+kdeglobals	General	TerminalService	org.kde.konsole.desktop	kdos	Konsole is the terminal
+konsolerc	Desktop Entry	DefaultProfile	KDOS-Bone.profile	kdos	a profile file
+konsolerc	LightDarkTheme	SyncProfileWithSystemTheme	true	kdos	follows light and dark
+konsolerc	LightDarkTheme	DarkThemeProfile	KDOS Bone	kdos	a profile name
+konsolerc	LightDarkTheme	LightThemeProfile	KDOS Paper	kdos	a profile name
+
+# No store
+kdeglobals	KDE Action Restrictions	ghns	false	immutable	KNewStuff off for everyone
+
+# Discover: offline, no unattended updates
+discoverrc	Software	FetchOdrsRatings	false	kdos	no ratings fetched from the ODRS server
+discoverrc	Software	UseOfflineUpdates	false	kdos	updates go into the other slot, not an offline update
+discoverrc	ResourcesModel	currentApplicationBackend	kdos-backend	kdos	the KDOS backend first
+PlasmaDiscoverUpdates	Global	UseUnattendedUpdates	false	kdos	nothing installs on its own
+PlasmaDiscoverUpdates	Global	RequiredNotificationInterval	86400	kdos	the tray says so at most daily
+PlasmaDiscoverUpdates	Global	RequiredNotificationInterval	-1	live	no update notice on a live medium
+
+# Windows and desktops
+kwinrc	Desktops	Number	4	kdos	four desktops
+kwinrc	Desktops	Rows	1	kdos	in one row
+kwinrc	Plugins	krohnkiteEnabled	false	kdos	auto-tiling bundled, off
+kwinrc	TabBox	ApplicationsMode	1	kdos	Alt+Tab shows one entry per application
+freespacenotifierrc	General	minimumSpacePercentage	10	kdos	warn at 10% free
+freespacenotifierrc	General	minimumSpace	100000	kdos	so the percentage, not 200 MiB, decides
+kwinrc	Wayland	InputMethod	/usr/share/applications/org.fcitx.Fcitx5.desktop	kdos	KWin starts fcitx5
+kwinrc	Windows	Placement	Centered	kde	the global theme says the same
+kwinrc	NightColor	Active	false	kde	Night Light off, offered on Welcome
+breezerc	Common	RoundedCorners	false	kdos	square decoration
+breezerc	Common	OutlineEnabled	true	kdos	1 px outline
+breezerc	Windeco	DrawBackgroundGradient	false	kdos	flat title bar
+breezerc	Windeco	TitleAlignment	AlignLeft	kdos	title on the left
+breezerc	Windeco	ButtonSize	ButtonDefault	kdos	KDE's button size
+
+# Lock, power, a virtual machine
+kscreenlockerrc	Daemon	Autolock	true	kdos	the timed lock is on
+kscreenlockerrc	Daemon	Timeout	10	kdos	locks at 10 minutes
+kscreenlockerrc	Daemon	LockGrace	5	kdos	5 seconds of grace
+kscreenlockerrc	Daemon	LockOnResume	true	kdos	locks on resume
+kscreenlockerrc	Greeter][LnF][General	alwaysShowClock	true	kdos	the lock screen's clock
+kscreenlockerrc	Greeter][Wallpaper][org.kde.image][General	Image	file:///usr/share/wallpapers/KDOS-Bone/	kdos	bone's wallpaper
+powerdevilrc	AC][Display	DimDisplayIdleTimeoutSec	300	kdos	dims at 5 minutes
+powerdevilrc	AC][Display	TurnOffDisplayIdleTimeoutSec	900	kdos	off at 15 minutes
+kscreenlockerrc	Daemon	Autolock	false	vm	no timed lock in a guest
+powerdevilrc	AC][Display	DimDisplayWhenIdle	false	vm	no dimming in a guest
+powerdevilrc	AC][Display	TurnOffDisplayWhenIdle	false	vm	no blank screen in a guest
+
+# Session, search, sounds, monitor, accessibility
+startkderc	General	systemdBoot	false	kdos	no systemd user instance
+baloofilerc	General	only basic indexing	true	kdos	file names only
+baloofilerc	Basic Settings	Indexing-Enabled	true	kdos	the indexer runs
+baloofilerc	Basic Settings	Indexing-Enabled	false	live	no index of a home that lasts one boot
+plasma_workspace.notifyrc	Event/startkde	Action	Sound	kdos	login sound on
+plasma_workspace.notifyrc	Event/startkde	Sound	desktop-login	kdos	from the sound theme
+systemmonitorrc	General	pageOrder	overview.page,kdos.page,applications.page,history.page,processes.page	kdos	boxes as applications
+kaccessrc	ScreenReader	SystemdManaged	false	immutable	Meta+Alt+S keeps starting Orca
+klipperrc	General	KeepClipboardContents	true	kde	history across sessions
+spectaclerc	General	launchAction	TakeFullscreenScreenshot	kdos	Print is the whole screen
+
+# About this System
+kcm-about-distrorc	General	LogoPath	distributor-logo-kdos	kdos	the KDOS mark
+kcm-about-distrorc	General	UseOSReleaseVersion	true	kdos	VERSION, not VERSION_ID
+kcm-about-distrorc	General	ShowBuild	true	kdos	BUILD_ID from 70_image
+
+# Default applications, one row a role
+kde-mimeapps.list	Default Applications	x-scheme-handler/https	firefox-esr.desktop	kdos	Web: Firefox ESR
+kde-mimeapps.list	Default Applications	text/html	firefox-esr.desktop	kdos	Web: Firefox ESR
+kde-mimeapps.list	Default Applications	x-scheme-handler/mailto	thunderbird.desktop	kdos	Mail: Thunderbird
+kde-mimeapps.list	Default Applications	text/calendar	thunderbird.desktop	kdos	Calendar: Thunderbird
+kde-mimeapps.list	Default Applications	text/vcard	thunderbird.desktop	kdos	Contacts: Thunderbird
+kde-mimeapps.list	Default Applications	application/vnd.oasis.opendocument.text	libreoffice-writer.desktop	kdos	Office: LibreOffice
+kde-mimeapps.list	Default Applications	application/vnd.openxmlformats-officedocument.spreadsheetml.sheet	libreoffice-calc.desktop	kdos	Office: LibreOffice
+kde-mimeapps.list	Default Applications	inode/directory	org.kde.dolphin.desktop	kdos	Files: Dolphin
+kde-mimeapps.list	Default Applications	application/zip	org.kde.ark.desktop	kdos	Archives: Ark
+kde-mimeapps.list	Default Applications	text/plain	org.kde.kate.desktop	kdos	Text: Kate
+kde-mimeapps.list	Default Applications	image/png	org.kde.gwenview.desktop	kdos	Images: Gwenview
+kde-mimeapps.list	Default Applications	application/pdf	okularApplication_pdf.desktop	kdos	PDF: Okular
+kde-mimeapps.list	Default Applications	image/vnd.djvu	okularApplication_djvu.desktop	kdos	DjVu: Okular
+kde-mimeapps.list	Default Applications	application/epub+zip	calibre-ebook-viewer.desktop	kdos	E-books: Calibre viewer
+kde-mimeapps.list	Default Applications	video/mp4	org.kde.haruna.desktop	kdos	Video: Haruna
+kde-mimeapps.list	Default Applications	audio/mpeg	org.kde.elisa.desktop	kdos	Music: Elisa
+kde-mimeapps.list	Default Applications	x-scheme-handler/rdp	org.remmina.Remmina.desktop	kdos	Remote desktop: Remmina
+kde-mimeapps.list	Default Applications	x-scheme-handler/spice	org.remmina.Remmina.desktop	kdos	Remote desktop: Remmina
+kde-mimeapps.list	Default Applications	application/x-bittorrent	org.qbittorrent.qBittorrent.desktop	kdos	Torrents: qBittorrent
+kde-mimeapps.list	Default Applications	x-scheme-handler/magnet	org.qbittorrent.qBittorrent.desktop	kdos	Torrents: qBittorrent
+kde-mimeapps.list	Default Applications	application/vnd.efi.iso	org.kde.isoimagewriter.desktop	kdos	Disk images: ISO Image Writer
+kde-mimeapps.list	Default Applications	application/x-openzim	org.kiwix.desktop.desktop	kdos	ZIM: Kiwix
+kde-mimeapps.list	Default Applications	x-scheme-handler/geo	app.organicmaps.desktop.desktop	kdos	geo: Organic Maps
+kde-mimeapps.list	Default Applications	application/x-keepass2	org.keepassxc.KeePassXC.desktop	kdos	Passwords: KeePassXC
+kde-mimeapps.list	Default Applications	x-scheme-handler/tel	org.kde.kdeconnect.handler.desktop	kdos	tel: KDE Connect
+kde-mimeapps.list	Default Applications	image/x-xcf	gimp.desktop	kdos	Raster: GIMP
+kde-mimeapps.list	Default Applications	image/wmf	org.inkscape.Inkscape.desktop	kdos	Vector: Inkscape
+kde-mimeapps.list	Default Applications	image/x-canon-cr3	org.darktable.darktable.desktop	kdos	Photo: darktable
+kde-mimeapps.list	Default Applications	image/x-sun-raster	org.kde.kolourpaint.desktop	kdos	Simple formats: KolourPaint

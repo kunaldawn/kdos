@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libqaccessibilityclient
+version     = 0.6.0
+release     = 1
+source      = https://download.kde.org/stable/$name/$name-$version.tar.xz
+sha256      = 4c50c448622dc9c5041ed10da7d87b3e4e71ccb49d4831a849211d423c5f5d33  libqaccessibilityclient-0.6.0.tar.xz
+description = Qt client library for the AT-SPI accessibility bus, which KWin's zoom uses to follow focus
+homepage    = https://invent.kde.org/libraries/libqaccessibilityclient
+license     = LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL
+depends     = cmake ninja extra-cmake-modules qt6-qtbase

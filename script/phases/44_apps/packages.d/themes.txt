@@ -22,8 +22,3 @@
 # them, or when a shelf file names a port an earlier phase installs.
 
 adwaita-icon-theme
-
-# qt5ct hands the Qt 5 applications the desktop's palette; qt6ct is its Qt 6
-# counterpart.
-qt5ct
-qt6ct

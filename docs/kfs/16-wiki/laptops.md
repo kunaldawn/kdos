@@ -1,222 +1,171 @@
 # Laptops
 
 This page gathers what a laptop needs beyond a desktop machine: the [battery]{.idx} and what happens as it
-runs down, the lid, the [panel]{.idx}'s brightness and the keyboard [backlight]{.idx}, the power button and the
-sleep key, the touchpad, docks over [Thunderbolt]{.idx}, and the power settings that matter on battery.
-Suspend itself, TLP and thermald are on [Power management](power-management.md), external
-monitors on [Displays and scaling](displays-and-scaling.md), and locking on
-[Screen lock](screen-lock.md). Most of what is here is done by the compositor and the panel inside
-the desktop session; nothing below the session acts on the lid, the keys or the battery.
+runs down, the lid, the screen's brightness and the keyboard [backlight]{.idx}, the power button and the
+sleep key, the touchpad, screen rotation, docks over [Thunderbolt]{.idx}, and the power settings
+that matter on battery. Suspend itself, the power profiles, TLP and thermald are on
+[Power management](power-management.md), external monitors on
+[Displays and scaling](displays-and-scaling.md), and locking on [Screen lock](screen-lock.md).
+Inside a Plasma session PowerDevil acts on the lid, the keys and the battery; at the greeter and on
+a console login elogind acts on the lid and the power key alone.
 
 ## Installation
 
 | Port | Provides here |
 |:--|:--|
-| [kdos-comp](#port-kdos-comp) | The [lid]{.idx} policy, and the [key bindings]{.idx term="key binding"} for brightness, power and sleep |
-| [kdos-shell](#port-kdos-shell) | The panel's battery reading and low-battery policy, and [`kdos-osd`]{.idx}, which changes the panel's brightness |
-| [kdos-tools](#port-kdos-tools) | `kdos notify --battery` |
-| [kdos-res](#port-kdos-res) | The Batteries page: charge, health, cycles and draw |
-| [libinput](#port-libinput) | Touchpad handling inside the compositor |
-| [tlp](#port-tlp), [thermald](#port-thermald) | Power settings and Intel thermal control; see [Power management](power-management.md) |
-| [bolt](#port-bolt) | [`boltd`]{.idx} and [`boltctl`]{.idx}, which authorise Thunderbolt docks |
-| [fprintd](#port-fprintd) | Fingerprint readers, for [`sudo`]{.idx} only |
+| [powerdevil](#port-powerdevil) | The [lid]{.idx} and key policy, the low-battery actions, the screen and keyboard brightness, and the **Power Management** page |
+| [plasma-workspace](#port-plasma-workspace) | The battery and brightness applet in the system tray, and the on-screen display for the brightness and volume keys |
+| [elogind](#port-elogind) | The lid and power key outside a session, and the brightness call PowerDevil's helper uses |
+| [upower](#port-upower) | The battery readings PowerDevil and the applet show |
+| [libinput](#port-libinput), [plasma-desktop](#port-plasma-desktop) | Touchpad handling inside KWin, and the **Touchpad** page |
+| [iio-sensor-proxy](#port-iio-sensor-proxy) | The accelerometer and light sensor, for automatic screen rotation and brightness |
+| [kinfocenter](#port-kinfocenter) | The **Energy** page: charge, health, cycles and draw over time |
+| [tlp](#port-tlp), [tlp-pd](#port-tlp-pd), [thermald](#port-thermald) | Power settings, the power profiles and Intel thermal control; see [Power management](power-management.md) |
+| [bolt](#port-bolt), [plasma-thunderbolt](#port-plasma-thunderbolt) | [`boltd`]{.idx} and [`boltctl`]{.idx}, which authorise Thunderbolt docks, and the **Thunderbolt** page |
+| [fprintd](#port-fprintd) | Fingerprint readers, for the lock screen and `sudo` |
 
-All of them are on the image. The one service script among them that is specific to laptops is
-`43_boltd`, which the `bolt` recipe writes. It wakes `boltd` through the system bus at boot when
-the machine has a Thunderbolt controller, and a udev rule from the same recipe wakes it when a
-Thunderbolt device appears later:
+All of them are on the image. The service scripts specific to laptops are `43_boltd`, which the
+`bolt` recipe writes, and `48_iio-sensor-proxy`. `43_boltd` wakes `boltd` through the system bus
+at boot when the machine has a Thunderbolt controller, and a udev rule from the same recipe wakes
+it when a Thunderbolt device appears later:
 
 <!-- kfs:include ports/core/hardware/bolt/build.sh lines=21-63 pin=6ca3544e5101 -->
 
 ## Configuration
 
-### The lid
+### The lid and the keys
 
-What closing the lid does is a compositor setting in `~/.config/kdos/comp.conf`
-(`fs/etc/skel/.config/kdos/comp.conf`):
+Inside a session, System Settings → **Power Management** sets, for each of AC power, battery and
+low battery, what closing the lid does (suspend, lock, turn off the screen, nothing, and whether
+an external monitor changes that), what the power button and the sleep key do, and the idle
+timers. PowerDevil holds elogind's lid and key inhibitors while the session runs. Outside a
+session, elogind acts on them itself, from `fs/etc/elogind/logind.conf.d/50-kdos.conf`:
 
-<!-- kfs:include fs/etc/skel/.config/kdos/comp.conf lines=226-232 pin=dcac7bde5ef9 -->
+<!-- kfs:include fs/etc/elogind/logind.conf.d/50-kdos.conf lines=37-43 pin=021330c2ec8d -->
 
-`suspend` hands the machine to `kdos-power suspend`, which locks first; `lock` locks and powers the
-screens off; `off` only powers them off, for a closed laptop driving an external monitor. Opening
-the lid powers the screens back on and never unlocks. See
-[The lid](../../kdos/04-programs/kdos-comp.md#the-lid).
+So a laptop at the greeter suspends when its lid closes, unless it is docked, and the power button
+powers it off.
 
-### The brightness keys
+### Brightness
 
-The shipped `~/.config/kdos-comp/rc.xml` (`fs/etc/skel/.config/kdos-comp/rc.xml`) binds them to
-`kdos-osd`, which writes the panel's brightness and draws the gauge:
-
-<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=480-481 pin=79ac4a394ad6 -->
-
-The brightness file under `/sys/class/backlight` is root's until udev hands it to `video` at boot,
-with `fs/etc/udev/rules.d/70-kdos-backlight.rules`. The same file covers the keyboard backlight:
-
-<!-- kfs:include fs/etc/udev/rules.d/70-kdos-backlight.rules lines=27-31 pin=a30da97566e9 -->
-
-### The power and sleep key bindings
-
-The kernel reports the power button and the sleep key as keys, and only the compositor listens for
-them; what each press does is under
-[The power button and the sleep key](#the-power-button-and-the-sleep-key):
-
-<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=482-494 pin=6e4bd601eb1e -->
+The brightness keys, the slider in the battery and brightness applet and the Power Management
+timers all go through PowerDevil, which changes `/sys/class/backlight/*/brightness` through
+elogind's `SetBrightness` call for the active session, and the keyboard backlight under
+`/sys/class/leds/*kbd_backlight*` the same way. No group or udev rule is involved.
 
 ### The battery
 
-The panel reads every supply under `/sys/class/power_supply`, sums the laptop's own batteries and
-leaves out a peripheral's. As the battery runs down it warns once and then suspends the machine
-(`src/desktop/kdos-shell/panel.c`):
-
-<!-- kfs:include src/desktop/kdos-shell/panel.c lines=391-418 pin=ad1acd38df86 -->
-
-There is no setting for either threshold. They act only while the panel runs, which is inside a
-graphical session.
-
-### The touchpad
-
-The compositor uses libinput's defaults, with tap-to-click on. The shipped [`rc.xml`]{.idx} carries the
-settings as a commented template:
-
-<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=497-518 pin=8fd2d5fcc198 -->
+PowerDevil reads every supply UPower reports, leaves out a peripheral's, and acts at two levels
+the Power Management page sets: a notification at the low level, and the critical action
+(suspend, power off or nothing) at the critical level. The applet shows the charge and, while
+charging or discharging, the time left.
 
 ### Charge thresholds
 
 On laptops whose firmware supports it, TLP can stop charging short of 100 per cent.
 `START_CHARGE_THRESH_BAT0` and `STOP_CHARGE_THRESH_BAT0` in a drop-in under [`/etc/tlp.d/`]{.idx term="/etc/tlp.d"} set the
 thresholds; no file ships with them set. Which vendors TLP supports is upstream's list, in
-`/usr/share/tlp/bat.d/`.
+`/usr/share/tlp/bat.d/`. The battery page's own limit setting is refused by polkit, because TLP
+would set its own over it at the next profile change.
 
 ## Usage
 
 ### Reading the battery
 
-1. The panel's battery cell shows the charge; click it for the calendar popup.
-2. `Super+Ctrl+Alt+B`, or `kdos notify --battery`, shows the charge, the state and, where the kernel
-   reports it, the wear, as a notification.
-3. `kdos-res` and its Batteries page show the charge in watt-hours, the health (full-charge energy
-   as a share of the design energy), the cycle count and the present draw.
-4. From a prompt: `cat /sys/class/power_supply/BAT0/capacity /sys/class/power_supply/BAT0/status`.
-   The battery's name may differ; `ls /sys/class/power_supply` lists them. On a machine whose
-   kernel reports no battery, such as a virtual machine, `kdos notify --battery` says *On mains*
-   when it sees a mains supply and *No battery* when it sees neither.
+1. The battery and brightness applet in the tray shows the charge and the time left.
+2. System Settings → **Energy** (Info Center) shows the charge, the health (full-charge energy
+   as a share of the design energy), the cycle count and graphs of the charge and the draw.
+3. From a prompt: `upower -i "$(upower -e | grep BAT)"`, or
+   `cat /sys/class/power_supply/BAT0/capacity /sys/class/power_supply/BAT0/status`. The battery's
+   name may differ; `ls /sys/class/power_supply` lists them.
 
 ### Choosing what the lid does
 
-1. Edit `~/.config/kdos/comp.conf` and set `lid_close = suspend`, `lock` or `off`.
-2. Reload the compositor: `kdos-comp -r`. Settings' Session page writes the same key.
-3. Check: close the lid. The compositor logs each close with the policy it applied, such as
-   `lid closed — locking (lid_close = lock)`, in `$XDG_RUNTIME_DIR/kdos-comp.log`. The
-   `lid_close = …` line near the top of that log is the policy the session started with, and says
-   when it is the virtual-machine default; a reload does not write it again.
+System Settings → **Power Management**, then each power profile's **When laptop lid closed**. The
+change applies at once. For the greeter and console logins, change
+`HandleLidSwitch` in a drop-in of your own beside `50-kdos.conf`, for example
+`/etc/elogind/logind.conf.d/60-local.conf`, and restart elogind (`sudo service restart elogind`),
+which ends every session.
 
 ### Brightness
 
-1. Press the brightness keys. Each press moves the panel by ten per cent; the lowest step is one
-   per cent, never off.
-2. From a prompt: `kdos-osd brightness +10` or `kdos-osd brightness -10`. `kdos-osd brightness`
-   with no step shows the level.
-3. Without a key binding, write the file yourself as a member of `video`:
+The brightness keys and the applet's slider. From a prompt in the session:
 
-   ```bash
-   cat /sys/class/backlight/*/max_brightness
-   echo 300 > /sys/class/backlight/intel_backlight/brightness
-   ```
+```bash
+qdbus6 org.kde.Solid.PowerManagement /org/kde/Solid/PowerManagement/Actions/BrightnessControl \
+    org.kde.Solid.PowerManagement.Actions.BrightnessControl.brightness
+```
 
-   The directory name depends on the driver: `intel_backlight`, `amdgpu_bl0`, `acpi_video0` and
-   others.
-
-The keyboard backlight has no key binding; write its file the same way, under
-`/sys/class/leds/*::kbd_backlight/brightness`.
+prints the screen's brightness; `setBrightness <value>` on the same object sets it.
 
 ### The power button and the sleep key
 
-1. A press of the power button opens a prompt: *Shut down the machine? Unsaved work will be lost.*
-   Confirm to power off.
-2. The sleep key, and a key reporting itself as [suspend]{.idx}, suspends at once.
-
-Neither has been pressed on real hardware, and at a text login neither does anything; see
-[Known gaps](#known-gaps).
+Power Management's **When power button pressed** offers the logout screen, shut down, suspend,
+lock or nothing; the sleep key suspends. Outside a session, the power button powers the machine
+off.
 
 ### Changing the touchpad
 
-1. Copy the `<libinput>` block from the comment in `~/.config/kdos-comp/rc.xml` out of the comment,
-   keeping only the lines you want, for example `<naturalScroll>yes</naturalScroll>`.
-2. Reload: `kdos-comp -r`.
+System Settings → **Touchpad**: tap to click, two-finger and edge scrolling, natural scrolling,
+pointer speed and acceleration, and disable while typing, per device. KWin applies them at once.
 
-The block's keys are labwc's; see
-[`~/.config/kdos-comp/rc.xml`](../../kdos/06-reference/configuration.md#configkdos-comprcxml).
+### Screen rotation
+
+On a convertible with an accelerometer, System Settings → **Display Configuration** offers
+**Automatic** orientation for the built-in screen, which follows iio-sensor-proxy. The panel turns
+with the screen.
 
 ### Authorising a Thunderbolt dock
 
 On a laptop whose firmware sets Thunderbolt security to `user` or `secure`, a new dock is detected
 and its ports stay dead until it is enrolled:
 
-1. Plug in the dock and list devices: `boltctl list`. The new one shows as not authorised, with
-   its UUID.
-2. Enrol it: `sudo boltctl enroll <uuid>`. From then on `boltd` authorises it each time it
-   appears.
-3. Check `service status boltd`.
-
-`sudo` is needed because bolt's polkit rule requires an active session, which nothing on KDOS
-provides; see [Thunderbolt, phones, smart cards and firmware updates](../../kdos/02-user-guide/administration.md#thunderbolt-phones-smart-cards-and-firmware-updates).
+1. Plug in the dock. A notification asks whether to authorise it; or open System Settings →
+   **Thunderbolt** and **Authorize** it there.
+2. From a prompt: `boltctl list` shows it as not authorised, with its UUID, and
+   `boltctl enroll <uuid>` enrols it; polkit asks for an administrator's password. From then on
+   `boltd` authorises it each time it appears.
 
 ### Enrolling a fingerprint
 
-1. `sudo fprintd-enroll <user>`, and follow the reader's prompts.
-2. `sudo` asks for the finger first and the password after it. Nothing else does.
+1. System Settings → **Users**, select your account, **Configure Fingerprint Authentication**,
+   and follow the reader's prompts; or `fprintd-enroll` from a prompt.
+2. The lock screen and `sudo` then accept the finger. See
+   [Fingerprints, FIDO keys and smart cards](fingerprint-fido-smartcards.md).
 
 ### Live medium and installed system
 
-On the live medium [`comp.conf`]{.idx} and `rc.xml` changes are in the in-memory home directory, gone at
-power-off unless a persistence store exists
+On the live medium the Power Management and Touchpad settings are in the in-memory home
+directory, gone at power-off unless a persistence store exists
 ([kdos persist](../../kdos/04-programs/kdos-command.md#kdos-persist)); the `/etc/tlp.d` drop-ins
 and Thunderbolt enrolments are in memory too. On an installed system all of them are on disk. In a
-virtual machine `lid_close` defaults to `off`; see
-[In a virtual machine](../../kdos/04-programs/kdos-comp.md#in-a-virtual-machine).
+virtual machine the screen is never dimmed or blanked on a timer.
 
 ## Tips
 
-- `crt = 0` in `comp.conf` turns off the phosphor pass, which costs a second swapchain per output
-  and a shader run over every change on screen; on battery it is worth trying, and
-  `kdos-comp -r` applies it without a new login.
-- A battery held at its charge threshold reports *Not charging* on mains, and the panel does not
-  count that as running down.
-- `kdos toggle stay-awake` (`Super+Ctrl+I`) stops the idle timers for a presentation; it does not
-  change what the lid does.
+- Phosphor mode adds a shader pass over every change on screen; on battery, `kdos phosphor off`
+  saves that.
+- A battery held at its charge threshold reports *Not charging* on mains.
+- The applet's **Manually block sleep and screen locking** holds off the idle actions for a
+  presentation; it does not change what the lid does.
 - The Wi-Fi country comes from the time zone; see
   [Wireless regulatory domain](wireless-regulatory-domain.md).
 
 ## Troubleshooting
 
-**The brightness keys do nothing.** Run `kdos-osd brightness +10` in a terminal; it says which of
-two causes it is:
+**The brightness keys do nothing.** Check that the kernel made a backlight device:
+`ls /sys/class/backlight`. An empty directory on a laptop means the graphics driver made none;
+`dmesg | grep -i backlight` shows its message. On an external monitor the brightness is a DDC/CI
+setting; see [Displays and scaling](displays-and-scaling.md#the-brightness-of-an-external-monitor).
+If the device exists, `wev` shows what the keys send: a laptop whose keys send other keysyms is
+fixed with a key binding on the Shortcuts page.
 
-- `kdos-osd: no panel in /sys/class/backlight`, followed by
-  ``an external monitor is `ddcutil setvcp 10 <0-100>` `` and exit status 1, means the kernel made
-  no backlight device: on a laptop, check `dmesg | grep -i backlight` for the graphics driver's
-  message. On an external monitor the brightness is a DDC/CI setting; see
-  [Displays and scaling](displays-and-scaling.md#the-brightness-of-an-external-monitor).
-- `kdos-osd: brightness refused the write` means the file is not writable by you. `id` must list
-  `video`, and `ls -l /sys/class/backlight/*/brightness` must show group `video` and mode
-  `-rw-rw-r--`. If it does not, the rule did not run at boot; `sudo udevadm trigger
-  --subsystem-match=backlight --action=add` runs it again.
+**Closing the lid does nothing.** Something holds the lid inhibitor, or the setting is **Do
+nothing**. With a second screen attached, PowerDevil by default keeps running; see the Power
+Management page's external-monitor option.
 
-If `kdos-osd` works from a terminal and the keys do not, the keys send other keysyms. `wev` shows
-what a key sends.
-
-**Closing the lid does nothing.** Read the compositor's log:
-
-```bash
-grep -i lid "$XDG_RUNTIME_DIR/kdos-comp.log"
-```
-
-`lid: watching switch device` names the switch it found; with no such line the compositor found
-none. `lid_close = off` is also the default in a virtual machine, and the log says so:
-`lid_close = off (a VM, and no lid_close in comp.conf)`.
-
-**The machine did not suspend at 3 per cent.** The policy runs in the panel. At a text console,
-with `panel = off` in `comp.conf`, or with no session at all, nothing acts on the battery.
+**The machine did not suspend at the critical level.** The critical action runs in PowerDevil,
+inside a session. At a text console or at the greeter, nothing acts on the battery.
 
 **A dock's ports are dead.** `boltctl list`; enrol the dock as in
 [Authorising a Thunderbolt dock](#authorising-a-thunderbolt-dock). If `boltctl` cannot reach the
@@ -227,36 +176,20 @@ daemon, `service start boltd` wakes it. On a machine with no Thunderbolt control
 **`fprintd-enroll` finds no reader.** `fprintd-list <user>` says `No devices available` when
 libfprint drives no reader on this machine; `lsusb` shows whether one is plugged in at all.
 
-**The touchpad change was ignored.** The `<libinput>` block must be outside the comment and inside
-`<labwc_config>`; a line the compositor could not read is logged in
-`$XDG_RUNTIME_DIR/kdos-comp.log`.
-
 ## Known gaps
 
-- [The power button and the sleep key work only inside a graphical session](../../kdos/06-reference/known-gaps.md#the-power-button-and-the-sleep-key-work-only-inside-a-graphical-session)
-- [A touchpad scroll is not one-to-one with the finger](../../kdos/06-reference/known-gaps.md#a-touchpad-scroll-is-not-one-to-one-with-the-finger)
-- [The control centre has no pointer page](../../kdos/06-reference/known-gaps.md#the-control-centre-has-no-pointer-page)
-- [A fingerprint unlocks `sudo` and nothing else](../../kdos/06-reference/known-gaps.md#a-fingerprint-unlocks-sudo-and-nothing-else)
 - [Broad hardware support is not a goal](../../kdos/06-reference/known-gaps.md#broad-hardware-support-is-not-a-goal)
 - [32-bit UEFI is built and has never been booted](../../kdos/06-reference/known-gaps.md#32-bit-uefi-is-built-and-has-never-been-booted),
   which is what the early Atom tablets need
 
 ## See also
 
-- [Idle, dim, lock and lid](../../kdos/04-programs/kdos-comp.md#idle-dim-lock-and-lid) and
-  [The lid](../../kdos/04-programs/kdos-comp.md#the-lid)
-- [kdos-osd](../../kdos/04-programs/kdos-shell.md#kdos-osd)
-- [Batteries](../../kdos/04-programs/kdos-res.md#batteries) and
-  [kdos notify](../../kdos/04-programs/kdos-command.md#kdos-notify)
-- [The device groups and the udev rules](../../kdos/02-user-guide/administration.md#the-device-groups-and-the-udev-rules):
-  the backlight rule
-- [Thunderbolt, phones, smart cards and firmware updates](../../kdos/02-user-guide/administration.md#thunderbolt-phones-smart-cards-and-firmware-updates)
-- [Power management](power-management.md): suspend, TLP and thermald
-- [Screen lock](screen-lock.md): what locks the session and how to unlock it
-- [Displays and scaling](displays-and-scaling.md): external monitors and their brightness
-- [Microcode and firmware](microcode-and-firmware.md): CPU microcode, device firmware and `fwupd`
+- [Power management](power-management.md): suspend, the profiles, TLP and thermald
+- [Locking, idle and power](../../kdos/02-user-guide/desktop.md): the desktop's side
+- [Displays and scaling](displays-and-scaling.md), [Screen lock](screen-lock.md),
+  [Fingerprints, FIDO keys and smart cards](fingerprint-fido-smartcards.md)
 
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 402.* Previous: [401. Power management](power-management.md) · [Contents](../README.md) · Next: [403. Firmware updates](firmware-updates.md)
+*Part XVI. System administration, chapter 426.* Previous: [425. Power management](power-management.md) · [Contents](../README.md) · Next: [427. Firmware updates](firmware-updates.md)

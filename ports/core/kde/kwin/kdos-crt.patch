@@ -1,0 +1,1625 @@
+Subject: Add the kdos_crt full-screen CRT effect
+
+kdos_crt is a built-in effect that paints each output into an offscreen
+texture and draws it back through a CRT shader: a three-tap phosphor bleed,
+scanlines on every third row, a vignette, barrel curvature and a faint floor
+in the accent colour. It plays a 400 ms degauss when the colour scheme's
+accent changes, collapses the screen to a line and a dot when the session
+locks or quits, and exports that power-down as io.kdos.Crt1 at /io/kdos/Crt1.
+
+It is off by default, refuses software rendering and HDR outputs, leaves
+screenshots, screencasts and the colour picker the plain picture, stands
+aside while zoom or the magnifier is active, and with Fullscreen=false hands
+an active fullscreen window's output back to direct scanout. A built-in
+effect is a static plugin and so is not refused at a point release the way
+an out-of-tree effect is.
+
+diff -ruN a/src/plugins/CMakeLists.txt b/src/plugins/CMakeLists.txt
+--- a/src/plugins/CMakeLists.txt
++++ b/src/plugins/CMakeLists.txt
+@@ -70,6 +70,7 @@
+ add_subdirectory(highlightwindow)
+ add_subdirectory(idletime)
+ add_subdirectory(invert)
++add_subdirectory(kdos_crt)
+ add_subdirectory(kpackage)
+ add_subdirectory(kscreen)
+ add_subdirectory(login)
+diff -ruN a/src/plugins/kdos_crt/CMakeLists.txt b/src/plugins/kdos_crt/CMakeLists.txt
+--- /dev/null
++++ b/src/plugins/kdos_crt/CMakeLists.txt
+@@ -0,0 +1,26 @@
++# SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
++# SPDX-License-Identifier: GPL-2.0-only
++
++kwin_add_builtin_effect(kdos_crt)
++
++target_sources(kdos_crt PRIVATE
++    main.cpp
++    kdos_crt.cpp
++    kdos_crt.qrc
++)
++
++kconfig_add_kcfg_files(kdos_crt
++    kdos_crtconfig.kcfgc
++)
++
++target_link_libraries(kdos_crt PRIVATE
++    kwin
++
++    KF6::ColorScheme
++    KF6::ConfigGui
++    Qt::DBus
++)
++
++if (KWIN_BUILD_KCMS)
++    add_subdirectory(kcm)
++endif()
+diff -ruN a/src/plugins/kdos_crt/kcm/CMakeLists.txt b/src/plugins/kdos_crt/kcm/CMakeLists.txt
+--- /dev/null
++++ b/src/plugins/kdos_crt/kcm/CMakeLists.txt
+@@ -0,0 +1,16 @@
++# SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
++# SPDX-License-Identifier: GPL-2.0-only
++
++set(kwin_kdos_crt_config_SOURCES kdos_crt_config.cpp)
++ki18n_wrap_ui(kwin_kdos_crt_config_SOURCES kdos_crt_config.ui)
++kconfig_add_kcfg_files(kwin_kdos_crt_config_SOURCES ../kdos_crtconfig.kcfgc)
++
++kwin_add_effect_config(kwin_kdos_crt_config ${kwin_kdos_crt_config_SOURCES})
++
++target_link_libraries(kwin_kdos_crt_config
++    KF6::KCMUtils
++    KF6::CoreAddons
++    KF6::I18n
++    Qt::DBus
++    KWinEffectsInterface
++)
+diff -ruN a/src/plugins/kdos_crt/kcm/kdos_crt_config.cpp b/src/plugins/kdos_crt/kcm/kdos_crt_config.cpp
+--- /dev/null
++++ b/src/plugins/kdos_crt/kcm/kdos_crt_config.cpp
+@@ -0,0 +1,112 @@
++/*
++    SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
++
++    SPDX-License-Identifier: GPL-2.0-only
++*/
++
++#include "kdos_crt_config.h"
++
++#include "config-kwin.h"
++
++#include "kdos_crtconfig.h"
++
++#include <KPluginFactory>
++#include <kwineffects_interface.h>
++
++#include <QSignalBlocker>
++
++#include <array>
++
++K_PLUGIN_CLASS(KWin::KdosCrtEffectConfig)
++
++namespace KWin
++{
++
++namespace
++{
++
++// A preset is only a set of values for the three settings; nothing stores
++// which one was picked, so the combo shows whichever the values match and
++// Custom when they match none. `kdos phosphor preset` writes the same values.
++struct Preset
++{
++    int strength;
++    int scanlines;
++    int curve;
++};
++
++constexpr std::array<Preset, 2> s_presets = {{
++    {55, 0, 0}, // Subtle
++    {55, 60, 30}, // Retro
++}};
++
++constexpr int s_customIndex = int(s_presets.size());
++
++}
++
++KdosCrtEffectConfig::KdosCrtEffectConfig(QObject *parent, const KPluginMetaData &data)
++    : KCModule(parent, data)
++{
++    m_ui.setupUi(widget());
++    KdosCrtConfig::instance(KWIN_CONFIG);
++    addConfig(KdosCrtConfig::self(), widget());
++
++    connect(m_ui.presetCombo, &QComboBox::activated, this, &KdosCrtEffectConfig::applyPreset);
++    connect(m_ui.kcfg_Strength, &QSpinBox::valueChanged, this, &KdosCrtEffectConfig::showPreset);
++    connect(m_ui.kcfg_Scanlines, &QSpinBox::valueChanged, this, &KdosCrtEffectConfig::showPreset);
++    connect(m_ui.kcfg_Curve, &QSpinBox::valueChanged, this, &KdosCrtEffectConfig::showPreset);
++}
++
++void KdosCrtEffectConfig::load()
++{
++    KCModule::load();
++    showPreset();
++}
++
++void KdosCrtEffectConfig::defaults()
++{
++    KCModule::defaults();
++    showPreset();
++}
++
++void KdosCrtEffectConfig::save()
++{
++    KCModule::save();
++    OrgKdeKwinEffectsInterface interface(QStringLiteral("org.kde.KWin"),
++                                         QStringLiteral("/Effects"),
++                                         QDBusConnection::sessionBus());
++    interface.reconfigureEffect(QStringLiteral("kdos_crt"));
++}
++
++void KdosCrtEffectConfig::applyPreset(int index)
++{
++    if (index < 0 || index >= s_customIndex) {
++        return;
++    }
++    const Preset &preset = s_presets[index];
++    m_ui.kcfg_Strength->setValue(preset.strength);
++    m_ui.kcfg_Scanlines->setValue(preset.scanlines);
++    m_ui.kcfg_Curve->setValue(preset.curve);
++}
++
++void KdosCrtEffectConfig::showPreset()
++{
++    int index = s_customIndex;
++    for (int i = 0; i < s_customIndex; ++i) {
++        const Preset &preset = s_presets[i];
++        if (m_ui.kcfg_Strength->value() == preset.strength
++            && m_ui.kcfg_Scanlines->value() == preset.scanlines
++            && m_ui.kcfg_Curve->value() == preset.curve) {
++            index = i;
++            break;
++        }
++    }
++    const QSignalBlocker blocker(m_ui.presetCombo);
++    m_ui.presetCombo->setCurrentIndex(index);
++}
++
++} // namespace KWin
++
++#include "kdos_crt_config.moc"
++
++#include "moc_kdos_crt_config.cpp"
+diff -ruN a/src/plugins/kdos_crt/kcm/kdos_crt_config.h b/src/plugins/kdos_crt/kcm/kdos_crt_config.h
+--- /dev/null
++++ b/src/plugins/kdos_crt/kcm/kdos_crt_config.h
+@@ -0,0 +1,34 @@
++/*
++    SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
++
++    SPDX-License-Identifier: GPL-2.0-only
++*/
++
++#pragma once
++
++#include "ui_kdos_crt_config.h"
++
++#include <KCModule>
++
++namespace KWin
++{
++
++class KdosCrtEffectConfig : public KCModule
++{
++    Q_OBJECT
++
++public:
++    explicit KdosCrtEffectConfig(QObject *parent, const KPluginMetaData &data);
++
++    void load() override;
++    void save() override;
++    void defaults() override;
++
++private:
++    void applyPreset(int index);
++    void showPreset();
++
++    ::Ui::KdosCrtEffectConfig m_ui;
++};
++
++} // namespace KWin
+diff -ruN a/src/plugins/kdos_crt/kcm/kdos_crt_config.ui b/src/plugins/kdos_crt/kcm/kdos_crt_config.ui
+--- /dev/null
++++ b/src/plugins/kdos_crt/kcm/kdos_crt_config.ui
+@@ -0,0 +1,178 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
++SPDX-License-Identifier: GPL-2.0-only
++-->
++<ui version="4.0">
++ <class>KdosCrtEffectConfig</class>
++ <widget class="QWidget" name="KdosCrtEffectConfig">
++  <property name="geometry">
++   <rect>
++    <x>0</x>
++    <y>0</y>
++    <width>440</width>
++    <height>300</height>
++   </rect>
++  </property>
++  <layout class="QVBoxLayout" name="verticalLayout">
++   <item>
++    <layout class="QFormLayout" name="formLayout">
++     <item row="0" column="0">
++      <widget class="QLabel" name="label_Preset">
++       <property name="text">
++        <string>Preset:</string>
++       </property>
++       <property name="buddy">
++        <cstring>presetCombo</cstring>
++       </property>
++      </widget>
++     </item>
++     <item row="0" column="1">
++      <widget class="QComboBox" name="presetCombo">
++       <property name="accessibleName">
++        <string>Preset</string>
++       </property>
++       <item>
++        <property name="text">
++         <string comment="@item:inlistbox phosphor preset">Subtle</string>
++        </property>
++       </item>
++       <item>
++        <property name="text">
++         <string comment="@item:inlistbox phosphor preset">Retro</string>
++        </property>
++       </item>
++       <item>
++        <property name="text">
++         <string comment="@item:inlistbox phosphor preset">Custom</string>
++        </property>
++       </item>
++      </widget>
++     </item>
++     <item row="1" column="0">
++      <widget class="QLabel" name="label_Strength">
++       <property name="text">
++        <string>Strength:</string>
++       </property>
++       <property name="buddy">
++        <cstring>kcfg_Strength</cstring>
++       </property>
++      </widget>
++     </item>
++     <item row="1" column="1">
++      <widget class="QSpinBox" name="kcfg_Strength">
++       <property name="accessibleName">
++        <string>Strength</string>
++       </property>
++       <property name="accessibleDescription">
++        <string>How much bleed, vignette and phosphor glow the tube adds</string>
++       </property>
++       <property name="suffix">
++        <string> %</string>
++       </property>
++       <property name="maximum">
++        <number>100</number>
++       </property>
++       <property name="singleStep">
++        <number>5</number>
++       </property>
++      </widget>
++     </item>
++     <item row="2" column="0">
++      <widget class="QLabel" name="label_Scanlines">
++       <property name="text">
++        <string>Scanlines:</string>
++       </property>
++       <property name="buddy">
++        <cstring>kcfg_Scanlines</cstring>
++       </property>
++      </widget>
++     </item>
++     <item row="2" column="1">
++      <widget class="QSpinBox" name="kcfg_Scanlines">
++       <property name="accessibleName">
++        <string>Scanlines</string>
++       </property>
++       <property name="accessibleDescription">
++        <string>How dark every third row of pixels is drawn</string>
++       </property>
++       <property name="suffix">
++        <string> %</string>
++       </property>
++       <property name="maximum">
++        <number>100</number>
++       </property>
++       <property name="singleStep">
++        <number>5</number>
++       </property>
++      </widget>
++     </item>
++     <item row="3" column="0">
++      <widget class="QLabel" name="label_Curve">
++       <property name="text">
++        <string>Curvature:</string>
++       </property>
++       <property name="buddy">
++        <cstring>kcfg_Curve</cstring>
++       </property>
++      </widget>
++     </item>
++     <item row="3" column="1">
++      <widget class="QSpinBox" name="kcfg_Curve">
++       <property name="accessibleName">
++        <string>Curvature</string>
++       </property>
++       <property name="accessibleDescription">
++        <string>How far the picture bows like the glass of a tube</string>
++       </property>
++       <property name="suffix">
++        <string> %</string>
++       </property>
++       <property name="maximum">
++        <number>100</number>
++       </property>
++       <property name="singleStep">
++        <number>5</number>
++       </property>
++      </widget>
++     </item>
++     <item row="4" column="1">
++      <widget class="QCheckBox" name="kcfg_Fullscreen">
++       <property name="text">
++        <string>Draw over fullscreen windows</string>
++       </property>
++       <property name="accessibleName">
++        <string>Draw over fullscreen windows</string>
++       </property>
++      </widget>
++     </item>
++    </layout>
++   </item>
++   <item>
++    <widget class="QLabel" name="label_Note">
++     <property name="text">
++      <string>Scanlines lower the contrast of text by up to 45 % on every third row. Drawn over a fullscreen window, the tube costs a game or a video its direct path to the display. Screenshots and screencasts show the picture without the tube. With animations turned off the degauss and the power-down are skipped, and the tube itself stays.</string>
++     </property>
++     <property name="wordWrap">
++      <bool>true</bool>
++     </property>
++    </widget>
++   </item>
++   <item>
++    <spacer name="verticalSpacer">
++     <property name="orientation">
++      <enum>Qt::Vertical</enum>
++     </property>
++     <property name="sizeHint" stdset="0">
++      <size>
++       <width>20</width>
++       <height>40</height>
++      </size>
++     </property>
++    </spacer>
++   </item>
++  </layout>
++ </widget>
++ <resources/>
++ <connections/>
++</ui>
+diff -ruN a/src/plugins/kdos_crt/kdos_crt.cpp b/src/plugins/kdos_crt/kdos_crt.cpp
+--- /dev/null
++++ b/src/plugins/kdos_crt/kdos_crt.cpp
+@@ -0,0 +1,827 @@
++/*
++    KWin - the KDE window manager
++    This file is part of the KDE project.
++
++    SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
++
++    SPDX-License-Identifier: GPL-2.0-only
++*/
++
++#include "kdos_crt.h"
++
++#include "core/backendoutput.h"
++#include "core/colorspace.h"
++#include "core/output.h"
++#include "core/rendertarget.h"
++#include "core/renderviewport.h"
++#include "effect/effecthandler.h"
++#include "effect/effectwindow.h"
++#include "opengl/eglcontext.h"
++#include "opengl/glutils.h"
++#include "scene/scene.h"
++
++#include "kdos_crtconfig.h"
++
++#include <KColorScheme>
++#include <KConfigGroup>
++
++#include <QDBusConnection>
++#include <QImage>
++#include <QLoggingCategory>
++
++#include <algorithm>
++#include <cmath>
++
++Q_LOGGING_CATEGORY(KWIN_KDOS_CRT, "kwin_effect_kdos_crt", QtWarningMsg)
++
++using namespace std::chrono_literals;
++
++static void ensureResources()
++{
++    // A static library's resources are registered by hand.
++    Q_INIT_RESOURCE(kdos_crt);
++}
++
++namespace KWin
++{
++
++static const QString s_dbusPath = QStringLiteral("/io/kdos/Crt1");
++
++// The collapse shrinks the picture to this fraction of the output, never to
++// zero: the shader divides sample space by it.
++static constexpr float s_minScale = 0.006f;
++
++// The degauss is one pulse no longer than 400 ms, and pulses start at least
++// 334 ms apart, so it can never flash more than three times a second
++// (WCAG 2.3.1) however fast the accent is changed.
++static constexpr std::chrono::milliseconds s_degaussTime = 400ms;
++static constexpr std::chrono::milliseconds s_degaussGap = 334ms;
++
++// The power-down: about 350 ms to a bright line, then 100 ms to a dot. The
++// power-on runs the same two stages backwards.
++static constexpr std::chrono::milliseconds s_verticalTime = 350ms;
++static constexpr std::chrono::milliseconds s_horizontalTime = 100ms;
++
++// How long the screen may stay dark once a collapse ends. Nothing this effect
++// does may leave a session black: every hold has a deadline, after which the
++// picture comes back whatever is on it.
++static constexpr std::chrono::milliseconds s_requestHold = 10s;
++static constexpr std::chrono::milliseconds s_lockHold = 2s;
++static constexpr std::chrono::milliseconds s_quitHold = 30s;
++
++// A run-time failure puts that output on the plain picture for a cooldown, 5 s
++// doubling to 60 s and reset by a frame that passes: giving up for good would
++// leave a screen unthemed for the session over one transient failure, and
++// retrying every frame would log sixty lines a second.
++static constexpr std::chrono::seconds s_cooldownMin = 5s;
++static constexpr std::chrono::seconds s_cooldownMax = 60s;
++
++static std::chrono::nanoseconds steadyNow()
++{
++    return std::chrono::steady_clock::now().time_since_epoch();
++}
++
++static double ratio(std::chrono::nanoseconds part, std::chrono::nanoseconds whole)
++{
++    if (whole <= 0ns) {
++        return 1.0;
++    }
++    return std::clamp(double(part.count()) / double(whole.count()), 0.0, 1.0);
++}
++
++// The boot splash's power-on curve: most of the opening in the first frames.
++static double easeOut(double u)
++{
++    return 1.0 - std::pow(1.0 - u, 3.0);
++}
++
++static double easeOutInverse(double x)
++{
++    return 1.0 - std::cbrt(1.0 - std::clamp(x, 0.0, 1.0));
++}
++
++KdosCrtEffect::KdosCrtEffect()
++    : m_kdeglobals(KSharedConfig::openConfig(QStringLiteral("kdeglobals")))
++{
++    ensureResources();
++    KdosCrtConfig::instance(effects->config());
++
++    m_holdDeadline.setSingleShot(true);
++    connect(&m_holdDeadline, &QTimer::timeout, this, &KdosCrtEffect::startUnfold);
++
++    connect(effects, &EffectsHandler::screenAboutToLock, this, &KdosCrtEffect::slotScreenAboutToLock);
++    connect(effects, &EffectsHandler::screenLockingChanged, this, &KdosCrtEffect::slotScreenLockingChanged);
++    connect(effects, &EffectsHandler::sessionStateChanged, this, &KdosCrtEffect::slotSessionStateChanged);
++    connect(effects, &EffectsHandler::windowAdded, this, &KdosCrtEffect::slotWindowAdded);
++    connect(effects, &EffectsHandler::screenRemoved, this, &KdosCrtEffect::slotScreenRemoved);
++    // The fullscreen exemption follows the active window, and an output it
++    // leaves or reaches is redrawn whole.
++    connect(effects, &EffectsHandler::windowActivated, this, [this]() {
++        if (!m_fullscreen && isActive()) {
++            effects->addRepaintFull();
++        }
++    });
++
++    // The tint is the accent, and the accent reaches KWin in two ways: a
++    // KConfig notification on kdeglobals and KGlobalSettings' palette signal.
++    // Either one alone misses some writer; refreshTint() makes the second a
++    // no-op.
++    m_kdeglobalsWatcher = KConfigWatcher::create(m_kdeglobals);
++    connect(m_kdeglobalsWatcher.data(), &KConfigWatcher::configChanged, this, [this](const KConfigGroup &group, const QByteArrayList &names) {
++        if (group.name() == QLatin1StringView("KDE") && names.contains("AnimationDurationFactor")
++            && group.readEntry("AnimationDurationFactor", 1.0) <= 0.0) {
++            stopMotion();
++        }
++        if (group.name().startsWith(QLatin1StringView("Colors:"))
++            || (group.name() == QLatin1StringView("General") && (names.contains("ColorScheme") || names.contains("AccentColor")))) {
++            if (refreshTint()) {
++                degauss();
++            }
++            effects->addRepaintFull();
++        }
++    });
++    QDBusConnection::sessionBus().connect(QString(), QStringLiteral("/KGlobalSettings"), QStringLiteral("org.kde.KGlobalSettings"),
++                                          QStringLiteral("notifyChange"), this, SLOT(slotGlobalSettingsChanged(int, int)));
++
++    m_dbus = std::make_unique<KdosCrtDBusInterface>(this);
++
++    m_dumpPrefix = qEnvironmentVariable("KWIN_KDOS_CRT_DUMP");
++    m_dumpAt = std::max(qEnvironmentVariableIntValue("KWIN_KDOS_CRT_DUMP_FRAME"), 1);
++
++    loadShader();
++    loadConfig();
++    refreshTint();
++    effects->addRepaintFull();
++}
++
++KdosCrtEffect::~KdosCrtEffect()
++{
++    effects->addRepaintFull();
++}
++
++bool KdosCrtEffect::supported()
++{
++    if (!effects->isOpenGLCompositing() || !effects->animationsSupported()) {
++        return false;
++    }
++    // A full-screen pass on a software renderer runs on the CPU over every
++    // pixel of every frame. animationsSupported() asks the EGL device, which
++    // Mesa's kms_swrast does not mark as software, so the renderer's own name
++    // decides as well. KWIN_EFFECTS_FORCE_ANIMATIONS=1, KWin's switch for
++    // animating on a software renderer, lets a test load the effect there.
++    const EglContext *context = effects->openglContext();
++    if (!context) {
++        return false;
++    }
++    return !context->isSoftwareRenderer() || qEnvironmentVariableIntValue("KWIN_EFFECTS_FORCE_ANIMATIONS") == 1;
++}
++
++void KdosCrtEffect::loadShader()
++{
++    m_shader = ShaderManager::instance()->generateShaderFromFile(ShaderTrait::MapTexture, QString(), QStringLiteral(":/effects/kdos_crt/kdos_crt.frag"));
++    if (!m_shader) {
++        qCCritical(KWIN_KDOS_CRT) << "The phosphor shader did not build; the effect draws nothing";
++        return;
++    }
++    m_uRes = m_shader->uniformLocation("u_res");
++    m_uInt = m_shader->uniformLocation("u_int");
++    m_uScan = m_shader->uniformLocation("u_scan");
++    m_uCurve = m_shader->uniformLocation("u_curve");
++    m_uTint = m_shader->uniformLocation("u_tint");
++    m_uFx = m_shader->uniformLocation("u_fx");
++    m_uCollapse = m_shader->uniformLocation("u_collapse");
++}
++
++void KdosCrtEffect::loadConfig()
++{
++    m_strength = std::clamp(KdosCrtConfig::strength(), 0, 100);
++    m_scanlines = std::clamp(KdosCrtConfig::scanlines(), 0, 100);
++    m_curve = std::clamp(KdosCrtConfig::curve(), 0, 100);
++    m_fullscreen = KdosCrtConfig::fullscreen();
++}
++
++bool KdosCrtEffect::refreshTint()
++{
++    // The accent is the selection colour of the scheme in force, which is how
++    // every KDOS scheme carries it (`primary`).
++    const KColorScheme selection(QPalette::Active, KColorScheme::Selection, m_kdeglobals);
++    const QColor tint = selection.background(KColorScheme::NormalBackground).color();
++    if (tint == m_tint) {
++        return false;
++    }
++    const bool first = !m_tint.isValid();
++    m_tint = tint;
++    return !first;
++}
++
++void KdosCrtEffect::reconfigure(ReconfigureFlags flags)
++{
++    Q_UNUSED(flags)
++
++    KdosCrtConfig::self()->read();
++    loadConfig();
++    m_kdeglobals->reparseConfiguration();
++    if (refreshTint()) {
++        degauss();
++    }
++    if (!motionAllowed()) {
++        stopMotion();
++    }
++    effects->addRepaintFull();
++}
++
++void KdosCrtEffect::slotGlobalSettingsChanged(int type, int arg)
++{
++    Q_UNUSED(arg)
++
++    // KGlobalSettings::PaletteChanged
++    if (type != 0) {
++        return;
++    }
++    m_kdeglobals->reparseConfiguration();
++    if (refreshTint()) {
++        degauss();
++        effects->addRepaintFull();
++    }
++}
++
++bool KdosCrtEffect::motionAllowed() const
++{
++    // AnimationDurationFactor=0 is the desktop's reduced-motion switch: no
++    // degauss and no collapse. The still pass is not motion and stays.
++    return effects->animationTimeFactor() > 0.0 && effects->animationsSupported();
++}
++
++bool KdosCrtEffect::passConfigured() const
++{
++    return m_strength > 0 || m_scanlines > 0 || m_curve > 0;
++}
++
++LogicalOutput *KdosCrtEffect::exemptScreen() const
++{
++    // Fullscreen=false hands the output of an active fullscreen window back
++    // to the plain picture, so a game or a video keeps direct scanout.
++    if (m_fullscreen) {
++        return nullptr;
++    }
++    const EffectWindow *window = effects->activeWindow();
++    if (!window || !window->isFullScreen() || window->isMinimized()) {
++        return nullptr;
++    }
++    return window->screen();
++}
++
++KdosCrtEffect::Verdict KdosCrtEffect::verdictFor(const RenderView *view, LogicalOutput *screen) const
++{
++    if (!m_shader) {
++        return Verdict::Off;
++    }
++    // A screenshot, a screencast or the colour picker paints through a view of
++    // its own with no backend output; captures keep the pixels true.
++    if (!view || !view->backendOutput()) {
++        return Verdict::Capture;
++    }
++    if (!screen) {
++        return Verdict::Off;
++    }
++    // The shader works on encoded values with white at 1.0. An HDR output
++    // encodes reference white well below that, so the floor, the bleed and
++    // the collapse's brightening would not mean what they mean in SDR.
++    const TransferFunction::Type encoding = view->backendOutput()->colorDescription()->transferFunction().type;
++    if (encoding == TransferFunction::PerceptualQuantizer || encoding == TransferFunction::HLG || encoding == TransferFunction::linear) {
++        return Verdict::Refused;
++    }
++    // Zoom is read through the plain picture: an accessibility magnifier seen
++    // through scanlines and bleed is harder to read, not easier.
++    if (effects->isEffectActive(QStringLiteral("zoom")) || effects->isEffectActive(QStringLiteral("magnifier"))) {
++        return Verdict::Aside;
++    }
++    if (const auto it = m_outputs.find(screen); it != m_outputs.end() && it->second.brokenUntil > std::chrono::steady_clock::now()) {
++        return Verdict::Cooldown;
++    }
++    if (m_stage != Stage::Live || m_degaussing) {
++        return Verdict::Pass;
++    }
++    if (!passConfigured()) {
++        return Verdict::Off;
++    }
++    if (screen == exemptScreen()) {
++        return Verdict::Exempt;
++    }
++    return Verdict::Pass;
++}
++
++bool KdosCrtEffect::isActive() const
++{
++    return m_shader && (passConfigured() || m_stage != Stage::Live || m_degaussing);
++}
++
++bool KdosCrtEffect::blocksDirectScanout() const
++{
++    // A scanned-out buffer is one client's picture, not the screen's, and the
++    // pass cannot run over it; while the pass runs, the cursor is composited
++    // into the picture and curves with it.
++    if (m_stage != Stage::Live || m_degaussing) {
++        return true;
++    }
++    return exemptScreen() == nullptr;
++}
++
++int KdosCrtEffect::requestedEffectChainPosition() const
++{
++    // The pass must be the last thing drawn over the screen, so it takes the
++    // earliest position; an overlay effect at the same position (click rings,
++    // touch points) may still draw after it.
++    return 0;
++}
++
++void KdosCrtEffect::prePaintScreen(ScreenPrePaintData &data)
++{
++    // Only a frame bound for a display moves the motion on: a capture view's
++    // timestamp is its own, and may be from when the capture began.
++    if (data.view && data.view->backendOutput()) {
++        advance(data.view->nextPresentationTimestamp());
++    }
++    m_frameVerdict = verdictFor(data.view, data.screen);
++
++    if (m_frameVerdict != Verdict::Capture && data.screen) {
++        OutputData &output = m_outputs[data.screen];
++        // The pass reads beside and, with the curve, far from each pixel, so
++        // it redraws the whole output. So does the first plain frame after a
++        // passed one, or the pixels outside its damage keep the tube.
++        if (m_frameVerdict == Verdict::Pass || output.passed) {
++            data.mask |= PAINT_SCREEN_TRANSFORMED;
++        }
++        output.verdict = m_frameVerdict;
++    }
++
++    effects->prePaintScreen(data);
++}
++
++bool KdosCrtEffect::ensureOffscreen(OutputData &data, const RenderTarget &renderTarget, const RenderViewport &viewport)
++{
++    const QSize size = viewport.deviceSize();
++    const GLenum format = renderTarget.colorDescription() == ColorDescription::sRGB ? GL_RGBA8 : GL_RGBA16F;
++    if (data.texture && data.framebuffer && data.texture->size() == size && data.texture->internalFormat() == format) {
++        return true;
++    }
++
++    data.framebuffer.reset();
++    data.texture = GLTexture::allocate(format, size);
++    if (!data.texture) {
++        return false;
++    }
++    // The bleed reads a texel either side and the border must not wrap to the
++    // far edge.
++    data.texture->setFilter(GL_LINEAR);
++    data.texture->setWrapMode(GL_CLAMP_TO_EDGE);
++    data.framebuffer = std::make_unique<GLFramebuffer>(data.texture.get());
++    if (!data.framebuffer->valid()) {
++        data.framebuffer.reset();
++        data.texture.reset();
++        return false;
++    }
++    return true;
++}
++
++void KdosCrtEffect::giveUp(OutputData &data, LogicalOutput *screen, const char *why)
++{
++    data.cooldown = data.cooldown == 0s ? s_cooldownMin : std::min(data.cooldown * 2, s_cooldownMax);
++    data.brokenUntil = std::chrono::steady_clock::now() + data.cooldown;
++    data.framebuffer.reset();
++    data.texture.reset();
++    qCWarning(KWIN_KDOS_CRT).nospace() << why << " on " << screen->name() << ": plain picture for " << data.cooldown.count() << " s";
++}
++
++bool KdosCrtEffect::paintScreen(const RenderTarget &renderTarget, const RenderViewport &viewport, int mask, const Region &deviceRegion, LogicalOutput *screen)
++{
++    if (m_frameVerdict != Verdict::Pass || !screen) {
++        if (m_frameVerdict != Verdict::Capture) {
++            if (const auto it = m_outputs.find(screen); it != m_outputs.end()) {
++                it->second.passed = false;
++            }
++        }
++        return effects->paintScreen(renderTarget, viewport, mask, deviceRegion, screen);
++    }
++
++    OutputData &output = m_outputs[screen];
++
++    // A tube that is off draws nothing; the scene under it is not painted.
++    if (m_frameDark) {
++        glDisable(GL_SCISSOR_TEST);
++        glClearColor(0.0, 0.0, 0.0, 1.0);
++        glClear(GL_COLOR_BUFFER_BIT);
++        output.passed = true;
++        return true;
++    }
++
++    if (!ensureOffscreen(output, renderTarget, viewport)) {
++        giveUp(output, screen, "No offscreen texture");
++        output.passed = false;
++        return effects->paintScreen(renderTarget, viewport, mask, deviceRegion, screen);
++    }
++
++    RenderTarget offscreenTarget(output.framebuffer.get(), renderTarget.colorDescription());
++    RenderViewport offscreenViewport(viewport.renderRect(), viewport.scale(), offscreenTarget, QPoint());
++    GLFramebuffer::pushFramebuffer(output.framebuffer.get());
++    const bool painted = effects->paintScreen(offscreenTarget, offscreenViewport, mask, deviceRegion, screen);
++    GLFramebuffer::popFramebuffer();
++    if (!painted) {
++        return false;
++    }
++
++    const QSize size = output.texture->size();
++    const Rect rect = viewport.scaledRenderRect();
++    QMatrix4x4 projection = viewport.projectionMatrix();
++    projection.translate(rect.x(), rect.y());
++
++    ShaderBinder binder(m_shader.get());
++    GLShader *shader = binder.shader();
++    shader->setUniform(GLShader::Mat4Uniform::ModelViewProjectionMatrix, projection);
++    shader->setUniform(m_uRes, QVector2D(size.width(), size.height()));
++    shader->setUniform(m_uInt, float(m_strength) / 100.0f);
++    shader->setUniform(m_uScan, float(m_scanlines) / 100.0f);
++    shader->setUniform(m_uCurve, float(m_curve) / 100.0f);
++    shader->setUniform(m_uTint, QVector3D(m_tint.redF(), m_tint.greenF(), m_tint.blueF()));
++    shader->setUniform(m_uFx, m_frameFx);
++    shader->setUniform(m_uCollapse, m_frameCollapse);
++    output.texture->render(size);
++
++    output.passed = true;
++    output.cooldown = 0s;
++    if (!m_dumpPrefix.isEmpty() && ++m_passedFrames == m_dumpAt) {
++        dump(output, renderTarget);
++    }
++    return true;
++}
++
++// The framebuffer bound now, read back whole into a PNG. GL hands the rows
++// over bottom first, so a target drawn upright (no vertical flip in its
++// transform) is turned over; any rotation stays the buffer's.
++static void dumpBound(const QSize &size, OutputTransform transform, const QString &path)
++{
++    QImage image(size, QImage::Format_RGBA8888);
++    glReadPixels(0, 0, size.width(), size.height(), GL_RGBA, GL_UNSIGNED_BYTE, image.bits());
++    if (transform.kind() != OutputTransform::FlipY) {
++        image = image.mirrored(false, true);
++    }
++    if (image.save(path)) {
++        qCInfo(KWIN_KDOS_CRT) << "Wrote" << path;
++    } else {
++        qCWarning(KWIN_KDOS_CRT) << "Cannot write" << path;
++    }
++}
++
++// The pass's input is the offscreen picture and its output the frame as it
++// goes to the display. The dump is set only from KWin's own environment, so
++// no client of the session can turn it into a capture that bypasses the
++// screenshot interface's authorisation.
++void KdosCrtEffect::dump(OutputData &data, const RenderTarget &renderTarget)
++{
++    dumpBound(renderTarget.size(), renderTarget.transform(), m_dumpPrefix + QStringLiteral("-out.png"));
++    GLFramebuffer::pushFramebuffer(data.framebuffer.get());
++    dumpBound(data.texture->size(), data.texture->contentTransform(), m_dumpPrefix + QStringLiteral("-in.png"));
++    GLFramebuffer::popFramebuffer();
++}
++
++void KdosCrtEffect::postPaintScreen()
++{
++    if (m_stage == Stage::Collapsing || m_stage == Stage::Unfolding || m_degaussing) {
++        effects->addRepaintFull();
++    }
++    effects->postPaintScreen();
++}
++
++void KdosCrtEffect::advance(std::chrono::nanoseconds now)
++{
++    m_frameFx = QVector2D(0.0f, 0.0f);
++    if (m_degaussing) {
++        const auto elapsed = std::max(now - m_degaussStart, 0ns);
++        if (elapsed >= m_degaussTime) {
++            // The frame after the pulse is drawn still; postPaintScreen() has
++            // already asked for it.
++            m_degaussing = false;
++        } else {
++            // The 400 ms decaying wobble, compressed into m_degaussTime when
++            // animations are faster: x is the amplitude in texture space, y
++            // the phase.
++            const double t = 0.4 * ratio(elapsed, m_degaussTime);
++            m_frameFx = QVector2D(float(0.012 * std::exp(-t * 8.0)), float(t * 40.0));
++        }
++    }
++
++    const auto elapsed = std::max(now - m_stageStart, 0ns);
++    const std::chrono::nanoseconds vertical = m_verticalTime;
++    const std::chrono::nanoseconds horizontal = m_horizontalTime;
++    switch (m_stage) {
++    case Stage::Live:
++        m_frameCollapse = QVector2D(1.0f, 1.0f);
++        m_frameDark = false;
++        return;
++    case Stage::Dark:
++        m_frameCollapse = QVector2D(s_minScale, s_minScale);
++        m_frameDark = true;
++        return;
++    case Stage::Collapsing:
++        m_frameDark = false;
++        if (elapsed >= vertical + horizontal) {
++            enterDark();
++            if (m_stage != Stage::Dark) {
++                advance(now);
++            } else {
++                m_frameCollapse = QVector2D(s_minScale, s_minScale);
++                m_frameDark = true;
++            }
++        } else if (elapsed <= vertical) {
++            m_frameCollapse = QVector2D(float(1.0 - ratio(elapsed, vertical) * (1.0 - s_minScale)), 1.0f);
++        } else {
++            m_frameCollapse = QVector2D(s_minScale, float(1.0 - ratio(elapsed - vertical, horizontal) * (1.0 - s_minScale)));
++        }
++        return;
++    case Stage::Unfolding:
++        m_frameDark = false;
++        if (elapsed >= horizontal + vertical) {
++            finishMotion();
++            m_frameCollapse = QVector2D(1.0f, 1.0f);
++        } else if (elapsed <= horizontal) {
++            m_frameCollapse = QVector2D(s_minScale, float(s_minScale + (1.0 - s_minScale) * easeOut(ratio(elapsed, horizontal))));
++        } else {
++            m_frameCollapse = QVector2D(float(s_minScale + (1.0 - s_minScale) * easeOut(ratio(elapsed - horizontal, vertical))), 1.0f);
++        }
++        return;
++    }
++}
++
++// The point of the collapse that shows `scale`, so a collapse that interrupts
++// an unfold starts from the picture on screen instead of jumping.
++std::chrono::nanoseconds KdosCrtEffect::collapseElapsedFor(const QVector2D &scale) const
++{
++    const std::chrono::nanoseconds vertical = m_verticalTime;
++    const std::chrono::nanoseconds horizontal = m_horizontalTime;
++    const double span = 1.0 - s_minScale;
++    if (scale.y() >= 1.0f) {
++        const double u = std::clamp((1.0 - scale.x()) / span, 0.0, 1.0);
++        return std::chrono::nanoseconds(std::llround(u * vertical.count()));
++    }
++    const double u = std::clamp((1.0 - scale.y()) / span, 0.0, 1.0);
++    return vertical + std::chrono::nanoseconds(std::llround(u * horizontal.count()));
++}
++
++// The point of the unfold that shows `scale`.
++std::chrono::nanoseconds KdosCrtEffect::unfoldElapsedFor(const QVector2D &scale) const
++{
++    const std::chrono::nanoseconds vertical = m_verticalTime;
++    const std::chrono::nanoseconds horizontal = m_horizontalTime;
++    const double span = 1.0 - s_minScale;
++    if (scale.x() <= s_minScale) {
++        const double u = easeOutInverse((scale.y() - s_minScale) / span);
++        return std::chrono::nanoseconds(std::llround(u * horizontal.count()));
++    }
++    const double u = easeOutInverse((scale.x() - s_minScale) / span);
++    return horizontal + std::chrono::nanoseconds(std::llround(u * vertical.count()));
++}
++
++std::chrono::milliseconds KdosCrtEffect::holdTime() const
++{
++    switch (m_hold) {
++    case Hold::Quit:
++        return s_quitHold;
++    case Hold::Lock:
++        return s_lockHold;
++    case Hold::None:
++    case Hold::Request:
++        break;
++    }
++    return s_requestHold;
++}
++
++void KdosCrtEffect::startCollapse(Hold hold)
++{
++    if (!m_shader || !motionAllowed()) {
++        return;
++    }
++    const bool stronger = hold > m_hold;
++    if (stronger) {
++        m_hold = hold;
++    }
++    if (hold == Hold::Lock) {
++        m_lockShown = false;
++    }
++
++    switch (m_stage) {
++    case Stage::Collapsing:
++        // Already going dark: the dark it reaches takes the hold above.
++        return;
++    case Stage::Dark:
++        // A stronger hold, such as a logout behind a lock, keeps the dark for
++        // its own length from now.
++        if (stronger) {
++            m_holdDeadline.start(holdTime());
++        }
++        return;
++    case Stage::Live:
++        m_verticalTime = animationTime(s_verticalTime);
++        m_horizontalTime = animationTime(s_horizontalTime);
++        m_stageStart = steadyNow();
++        break;
++    case Stage::Unfolding:
++        m_stageStart = steadyNow() - collapseElapsedFor(m_frameCollapse);
++        break;
++    }
++    m_stage = Stage::Collapsing;
++    effects->addRepaintFull();
++}
++
++void KdosCrtEffect::enterDark()
++{
++    m_stage = Stage::Dark;
++    if (m_hold == Hold::Lock && m_lockShown) {
++        startUnfold();
++        return;
++    }
++    m_holdDeadline.start(holdTime());
++}
++
++void KdosCrtEffect::startUnfold()
++{
++    m_holdDeadline.stop();
++    switch (m_stage) {
++    case Stage::Live:
++    case Stage::Unfolding:
++        return;
++    case Stage::Dark:
++        m_stageStart = steadyNow();
++        break;
++    case Stage::Collapsing:
++        m_stageStart = steadyNow() - unfoldElapsedFor(m_frameCollapse);
++        break;
++    }
++    m_stage = Stage::Unfolding;
++    m_hold = Hold::None;
++    effects->addRepaintFull();
++}
++
++void KdosCrtEffect::finishMotion()
++{
++    m_holdDeadline.stop();
++    m_stage = Stage::Live;
++    m_hold = Hold::None;
++    m_lockShown = false;
++    effects->addRepaintFull();
++}
++
++void KdosCrtEffect::stopMotion()
++{
++    m_degaussing = false;
++    if (m_stage != Stage::Live) {
++        finishMotion();
++    }
++}
++
++void KdosCrtEffect::slotScreenAboutToLock()
++{
++    startCollapse(Hold::Lock);
++}
++
++void KdosCrtEffect::slotScreenLockingChanged(bool locked)
++{
++    // Unlocked while still collapsing or dark: the lock was refused or is
++    // already over, and no lock screen is coming to unfold onto.
++    if (!locked && m_hold == Hold::Lock) {
++        startUnfold();
++    }
++}
++
++void KdosCrtEffect::slotSessionStateChanged()
++{
++    if (effects->sessionState() == SessionState::Quitting) {
++        startCollapse(Hold::Quit);
++    } else if (m_hold == Hold::Quit) {
++        // The logout was cancelled.
++        startUnfold();
++    }
++}
++
++void KdosCrtEffect::slotWindowAdded(EffectWindow *window)
++{
++    if (!window->isLockScreen() || m_hold != Hold::Lock) {
++        return;
++    }
++    m_lockShown = true;
++    if (m_stage == Stage::Dark) {
++        startUnfold();
++    }
++}
++
++void KdosCrtEffect::slotScreenRemoved(LogicalOutput *screen)
++{
++    if (auto it = m_outputs.find(screen); it != m_outputs.end()) {
++        effects->makeOpenGLContextCurrent();
++        m_outputs.erase(it);
++    }
++}
++
++void KdosCrtEffect::collapse()
++{
++    startCollapse(Hold::Request);
++}
++
++void KdosCrtEffect::unfold()
++{
++    startUnfold();
++}
++
++void KdosCrtEffect::degauss()
++{
++    if (!m_shader || !motionAllowed() || m_degaussing) {
++        return;
++    }
++    const auto now = steadyNow();
++    if (m_lastDegaussStart && now - *m_lastDegaussStart < s_degaussGap) {
++        return;
++    }
++    m_degaussTime = std::min(animationTime(s_degaussTime), s_degaussTime);
++    m_degaussStart = now;
++    m_lastDegaussStart = now;
++    m_degaussing = true;
++    effects->addRepaintFull();
++}
++
++QString KdosCrtEffect::phaseName() const
++{
++    switch (m_stage) {
++    case Stage::Live:
++        return QStringLiteral("live");
++    case Stage::Collapsing:
++        return QStringLiteral("collapsing");
++    case Stage::Dark:
++        return QStringLiteral("dark");
++    case Stage::Unfolding:
++        return QStringLiteral("unfolding");
++    }
++    return QString();
++}
++
++static QString verdictName(int verdict)
++{
++    static const char *const names[] = {"pass", "capture", "off", "refused (hdr)", "exempt (fullscreen)", "aside (zoom)", "cooldown"};
++    return QString::fromLatin1(names[verdict]);
++}
++
++QString KdosCrtEffect::debug(const QString &parameter) const
++{
++    Q_UNUSED(parameter)
++
++    static const char *const holds[] = {"none", "request", "lock", "quit"};
++    QString text;
++    text += QStringLiteral("phase: %1\n").arg(phaseName());
++    text += QStringLiteral("hold: %1\n").arg(QString::fromLatin1(holds[int(m_hold)]));
++    text += QStringLiteral("strength: %1\nscanlines: %2\ncurve: %3\n").arg(m_strength).arg(m_scanlines).arg(m_curve);
++    text += QStringLiteral("fullscreen: %1\n").arg(m_fullscreen ? QStringLiteral("true") : QStringLiteral("false"));
++    text += QStringLiteral("tint: %1\n").arg(m_tint.name());
++    text += QStringLiteral("motion: %1\n").arg(motionAllowed() ? QStringLiteral("on") : QStringLiteral("off"));
++    text += QStringLiteral("degauss: %1\n").arg(m_degaussing ? QStringLiteral("running") : QStringLiteral("idle"));
++    text += QStringLiteral("shader: %1\n").arg(m_shader ? QStringLiteral("ok") : QStringLiteral("failed"));
++    // An effect that is not active is not asked about its frames, so each
++    // output's last verdict would be stale.
++    const bool active = isActive();
++    for (const auto &[screen, data] : m_outputs) {
++        text += QStringLiteral("output %1: %2\n").arg(screen->name(), active ? verdictName(int(data.verdict)) : QStringLiteral("off"));
++    }
++    return text;
++}
++
++KdosCrtDBusInterface::KdosCrtDBusInterface(KdosCrtEffect *effect)
++    : m_effect(effect)
++{
++    QDBusConnection::sessionBus().registerObject(s_dbusPath, this, QDBusConnection::ExportAllSlots | QDBusConnection::ExportAllProperties);
++}
++
++KdosCrtDBusInterface::~KdosCrtDBusInterface()
++{
++    QDBusConnection::sessionBus().unregisterObject(s_dbusPath);
++}
++
++QString KdosCrtDBusInterface::phase() const
++{
++    return m_effect->phaseName();
++}
++
++void KdosCrtDBusInterface::Collapse()
++{
++    m_effect->collapse();
++}
++
++void KdosCrtDBusInterface::Unfold()
++{
++    m_effect->unfold();
++}
++
++void KdosCrtDBusInterface::Degauss()
++{
++    m_effect->degauss();
++}
++
++} // namespace KWin
++
++#include "moc_kdos_crt.cpp"
+diff -ruN a/src/plugins/kdos_crt/kdos_crt.frag b/src/plugins/kdos_crt/kdos_crt.frag
+--- /dev/null
++++ b/src/plugins/kdos_crt/kdos_crt.frag
+@@ -0,0 +1,68 @@
++#version 140
++// SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
++// SPDX-License-Identifier: GPL-2.0-only
++
++// The phosphor pass over one output's composited picture.
++//
++// Every proportion scales with u_int, so u_int = 0 with no scanlines and no
++// curve is the picture unchanged. The curvature is normalised by how far the
++// corners move (r^2 = 2), so no u_curve crops the desktop.
++//
++// The arithmetic is on encoded values, white at 1.0: the effect sends an HDR
++// output the plain picture instead.
++
++uniform sampler2D u_tex;
++uniform vec2 u_res;
++uniform float u_int;
++uniform float u_scan;
++uniform float u_curve;
++uniform vec3 u_tint;
++// degauss: x amplitude in texture space, y phase; both 0 when idle
++uniform vec2 u_fx;
++// power-down: vertical and horizontal scale of the picture, (1, 1) live
++uniform vec2 u_collapse;
++
++in vec2 texcoord0;
++
++out vec4 fragColor;
++
++void main()
++{
++    vec2 c = texcoord0 * 2.0 - 1.0;
++    float k = u_curve * 0.06;
++    c *= (1.0 + k * dot(c, c)) / (1.0 + 2.0 * k);
++    // the collapse widens sample space, so everything off the shrinking band
++    // lands in the black branch below
++    c = vec2(c.x / u_collapse.y, c.y / u_collapse.x);
++    vec2 uv = c * 0.5 + 0.5;
++    uv.x += u_fx.x * sin(uv.y * 90.0 + u_fx.y);
++    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
++        fragColor = vec4(0.0, 0.0, 0.0, 1.0);
++        return;
++    }
++
++    vec3 col = texture(u_tex, uv).rgb;
++
++    // three-tap horizontal bleed, weights 1/4 1/2 1/4
++    vec2 dx = vec2(1.0 / u_res.x, 0.0);
++    vec3 bleed = texture(u_tex, uv + dx).rgb + texture(u_tex, uv - dx).rgb;
++    col = mix(col, 0.5 * col + 0.25 * bleed, 0.5 * u_int);
++
++    // scanlines on every third row of the output's pixels
++    float row = floor(uv.y * u_res.y);
++    float line = mod(row, 3.0) < 1.0 ? 1.0 - 0.45 * u_scan : 1.0;
++    col *= line;
++
++    // vignette
++    vec2 v = uv * 2.0 - 1.0;
++    col *= 1.0 - 0.15 * u_int * dot(v, v);
++
++    // the degauss lifts the picture a little; the collapse concentrates a
++    // screen's worth of light into the band that is left
++    col *= 1.0 + 6.0 * u_fx.x + 1.5 * (2.0 - u_collapse.x - u_collapse.y);
++
++    // the phosphor floor: black is never quite black
++    col += u_tint * 0.02 * u_int;
++
++    fragColor = vec4(col, 1.0);
++}
+diff -ruN a/src/plugins/kdos_crt/kdos_crt.h b/src/plugins/kdos_crt/kdos_crt.h
+--- /dev/null
++++ b/src/plugins/kdos_crt/kdos_crt.h
+@@ -0,0 +1,210 @@
++/*
++    KWin - the KDE window manager
++    This file is part of the KDE project.
++
++    SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
++
++    SPDX-License-Identifier: GPL-2.0-only
++*/
++
++#pragma once
++
++#include "effect/effect.h"
++
++#include <QColor>
++#include <QTimer>
++#include <QVector2D>
++
++#include <KConfigWatcher>
++#include <KSharedConfig>
++
++#include <chrono>
++#include <map>
++#include <memory>
++#include <optional>
++
++namespace KWin
++{
++
++class GLFramebuffer;
++class GLShader;
++class GLTexture;
++class LogicalOutput;
++class RenderView;
++class KdosCrtEffect;
++
++/**
++ * io.kdos.Crt1: the power-down and the degauss, for a test or a KDOS tool.
++ * Every hold it starts has the effect's own deadline, so a caller that goes
++ * away cannot leave the screen dark.
++ */
++class KdosCrtDBusInterface : public QObject
++{
++    Q_OBJECT
++    Q_CLASSINFO("D-Bus Interface", "io.kdos.Crt1")
++    Q_PROPERTY(QString Phase READ phase)
++
++public:
++    explicit KdosCrtDBusInterface(KdosCrtEffect *effect);
++    ~KdosCrtDBusInterface() override;
++
++    QString phase() const;
++
++public Q_SLOTS:
++    void Collapse();
++    void Unfold();
++    void Degauss();
++
++private:
++    KdosCrtEffect *m_effect;
++};
++
++/**
++ * The KDOS phosphor pass: every output drawn through a CRT tube, with a
++ * degauss when the accent changes and a power-down at lock and logout.
++ *
++ * The scene is painted into an offscreen texture per output and drawn back
++ * through kdos_crt.frag. The pass goes only into frames bound for a display:
++ * screenshots, screencasts and the colour picker render through views with no
++ * backend output and get the plain picture.
++ *
++ * The power-down is exported as io.kdos.Crt1 on org.kde.KWin, object
++ * /io/kdos/Crt1, so that a test or a KDOS tool can drive it.
++ */
++class KdosCrtEffect : public Effect
++{
++    Q_OBJECT
++
++public:
++    KdosCrtEffect();
++    ~KdosCrtEffect() override;
++
++    static bool supported();
++
++    void reconfigure(ReconfigureFlags flags) override;
++    void prePaintScreen(ScreenPrePaintData &data) override;
++    bool paintScreen(const RenderTarget &renderTarget, const RenderViewport &viewport, int mask, const Region &deviceRegion, LogicalOutput *screen) override;
++    void postPaintScreen() override;
++    bool isActive() const override;
++    bool blocksDirectScanout() const override;
++    int requestedEffectChainPosition() const override;
++    QString debug(const QString &parameter) const override;
++
++    QString phaseName() const;
++    void collapse();
++    void unfold();
++    void degauss();
++
++private Q_SLOTS:
++    void slotScreenAboutToLock();
++    void slotScreenLockingChanged(bool locked);
++    void slotSessionStateChanged();
++    void slotWindowAdded(KWin::EffectWindow *window);
++    void slotScreenRemoved(KWin::LogicalOutput *screen);
++    void slotGlobalSettingsChanged(int type, int arg);
++
++private:
++    enum class Stage {
++        Live,
++        Collapsing,
++        Dark,
++        Unfolding,
++    };
++    // What keeps the screen dark once a collapse ends, weakest first. A
++    // stronger hold replaces a weaker one and never the reverse, so a lock
++    // during logout cannot unfold the logout.
++    enum class Hold {
++        None,
++        Request,
++        Lock,
++        Quit,
++    };
++    // Why a frame did or did not go through the pass, per output.
++    enum class Verdict {
++        Pass,
++        Capture,
++        Off,
++        Refused,
++        Exempt,
++        Aside,
++        Cooldown,
++    };
++
++    struct OutputData
++    {
++        std::unique_ptr<GLTexture> texture;
++        std::unique_ptr<GLFramebuffer> framebuffer;
++        std::chrono::steady_clock::time_point brokenUntil;
++        std::chrono::seconds cooldown{0};
++        bool passed = false;
++        Verdict verdict = Verdict::Off;
++    };
++
++    void loadConfig();
++    void loadShader();
++    bool refreshTint();
++    bool motionAllowed() const;
++    bool passConfigured() const;
++    LogicalOutput *exemptScreen() const;
++    Verdict verdictFor(const RenderView *view, LogicalOutput *screen) const;
++    bool ensureOffscreen(OutputData &data, const RenderTarget &renderTarget, const RenderViewport &viewport);
++    void giveUp(OutputData &data, LogicalOutput *screen, const char *why);
++    void dump(OutputData &data, const RenderTarget &renderTarget);
++
++    void startCollapse(Hold hold);
++    void startUnfold();
++    void enterDark();
++    void finishMotion();
++    void stopMotion();
++    void advance(std::chrono::nanoseconds now);
++    std::chrono::nanoseconds collapseElapsedFor(const QVector2D &scale) const;
++    std::chrono::nanoseconds unfoldElapsedFor(const QVector2D &scale) const;
++    std::chrono::milliseconds holdTime() const;
++
++    std::unique_ptr<KdosCrtDBusInterface> m_dbus;
++    std::unique_ptr<GLShader> m_shader;
++    int m_uRes = -1;
++    int m_uInt = -1;
++    int m_uScan = -1;
++    int m_uCurve = -1;
++    int m_uTint = -1;
++    int m_uFx = -1;
++    int m_uCollapse = -1;
++
++    int m_strength = 55;
++    int m_scanlines = 0;
++    int m_curve = 0;
++    bool m_fullscreen = false;
++    QColor m_tint;
++
++    KSharedConfigPtr m_kdeglobals;
++    KConfigWatcher::Ptr m_kdeglobalsWatcher;
++
++    std::map<LogicalOutput *, OutputData> m_outputs;
++    Verdict m_frameVerdict = Verdict::Off;
++
++    Stage m_stage = Stage::Live;
++    Hold m_hold = Hold::None;
++    std::chrono::nanoseconds m_stageStart{0};
++    std::chrono::milliseconds m_verticalTime{350};
++    std::chrono::milliseconds m_horizontalTime{100};
++    bool m_lockShown = false;
++    QTimer m_holdDeadline;
++
++    bool m_degaussing = false;
++    std::chrono::nanoseconds m_degaussStart{0};
++    std::optional<std::chrono::nanoseconds> m_lastDegaussStart;
++    std::chrono::milliseconds m_degaussTime{400};
++
++    // KWIN_KDOS_CRT_DUMP=<prefix> writes <prefix>-in.png and <prefix>-out.png
++    // once, KWIN_KDOS_CRT_DUMP_FRAME=<n> on the n-th passed frame.
++    QString m_dumpPrefix;
++    int m_dumpAt = 1;
++    int m_passedFrames = 0;
++
++    QVector2D m_frameCollapse{1.0f, 1.0f};
++    QVector2D m_frameFx{0.0f, 0.0f};
++    bool m_frameDark = false;
++};
++
++} // namespace KWin
+diff -ruN a/src/plugins/kdos_crt/kdos_crt.kcfg b/src/plugins/kdos_crt/kdos_crt.kcfg
+--- /dev/null
++++ b/src/plugins/kdos_crt/kdos_crt.kcfg
+@@ -0,0 +1,31 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<!--
++SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
++SPDX-License-Identifier: GPL-2.0-only
++-->
++<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
++      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
++      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0
++                          http://www.kde.org/standards/kcfg/1.0/kcfg.xsd" >
++    <kcfgfile arg="true"/>
++    <group name="Effect-kdos_crt">
++        <entry name="Strength" type="Int">
++            <default>55</default>
++            <min>0</min>
++            <max>100</max>
++        </entry>
++        <entry name="Scanlines" type="Int">
++            <default>0</default>
++            <min>0</min>
++            <max>100</max>
++        </entry>
++        <entry name="Curve" type="Int">
++            <default>0</default>
++            <min>0</min>
++            <max>100</max>
++        </entry>
++        <entry name="Fullscreen" type="Bool">
++            <default>false</default>
++        </entry>
++    </group>
++</kcfg>
+diff -ruN a/src/plugins/kdos_crt/kdos_crt.qrc b/src/plugins/kdos_crt/kdos_crt.qrc
+--- /dev/null
++++ b/src/plugins/kdos_crt/kdos_crt.qrc
+@@ -0,0 +1,5 @@
++<!DOCTYPE RCC><RCC version="1.0">
++<qresource prefix="/effects/kdos_crt/">
++  <file>kdos_crt.frag</file>
++</qresource>
++</RCC>
+diff -ruN a/src/plugins/kdos_crt/kdos_crtconfig.kcfgc b/src/plugins/kdos_crt/kdos_crtconfig.kcfgc
+--- /dev/null
++++ b/src/plugins/kdos_crt/kdos_crtconfig.kcfgc
+@@ -0,0 +1,8 @@
++# SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
++# SPDX-License-Identifier: GPL-2.0-only
++
++File=kdos_crt.kcfg
++ClassName=KdosCrtConfig
++NameSpace=KWin
++Singleton=true
++Mutators=true
+diff -ruN a/src/plugins/kdos_crt/main.cpp b/src/plugins/kdos_crt/main.cpp
+--- /dev/null
++++ b/src/plugins/kdos_crt/main.cpp
+@@ -0,0 +1,21 @@
++/*
++    KWin - the KDE window manager
++    This file is part of the KDE project.
++
++    SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
++
++    SPDX-License-Identifier: GPL-2.0-only
++*/
++
++#include "kdos_crt.h"
++
++namespace KWin
++{
++
++KWIN_EFFECT_FACTORY_SUPPORTED(KdosCrtEffect,
++                              "metadata.json.stripped",
++                              return KdosCrtEffect::supported();)
++
++} // namespace KWin
++
++#include "main.moc"
+diff -ruN a/src/plugins/kdos_crt/metadata.json b/src/plugins/kdos_crt/metadata.json
+--- /dev/null
++++ b/src/plugins/kdos_crt/metadata.json
+@@ -0,0 +1,10 @@
++{
++    "KPlugin": {
++        "Category": "Appearance",
++        "Description": "Draw the screen through a CRT tube: phosphor bleed, scanlines and curvature, a degauss when the accent changes and a power-down at lock and logout",
++        "EnabledByDefault": false,
++        "License": "GPL",
++        "Name": "KDOS Phosphor"
++    },
++    "X-KDE-ConfigModule": "kwin_kdos_crt_config"
++}

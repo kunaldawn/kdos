@@ -41,7 +41,7 @@ meson setup build \
 	-Dgcrypt=true \
 	-Dgudev=true \
 	-Dkeyring=true \
-	-Dlogind=false \
+	-Dlogind=true \
 	-Dlibusb=true \
 	-Ddevel_utils=false \
 	-Dinstalled_tests=false \

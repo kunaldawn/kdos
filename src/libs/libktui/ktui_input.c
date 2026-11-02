@@ -8,7 +8,7 @@
  *   libktui — keys and pointers
  *
  * Two mouse backends, because a terminal emulator and a bare VT have nothing
- * in common here. Under foot (or any xterm-alike) the terminal reports
+ * in common here. Under Konsole (or any xterm-alike) the terminal reports
  * clicks as SGR-1006 escapes. On tty1 there is no reporting at all — the
  * Linux console never grew it, and gpm is not a KDOS package — so the
  * installer reads /dev/input/event* itself and draws its own pointer. That

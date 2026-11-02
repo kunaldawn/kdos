@@ -139,10 +139,11 @@ int bbupdate()
  * write is the fix precisely because the write cannot be made atomic.
  * Between the set and the reset the terminal keeps showing the screen it
  * already had and composes nothing it receives, so the rows arrive in as many
- * writes as they like and the picture changes once, whole. kdos-term honours
- * it through libkvt's kvt_term_sync_hold(), under a watchdog: a producer that
- * sets the hold and dies must not freeze the window. A terminal that honours neither ignores a
- * private mode it does not know and gets exactly the stream it gets today.
+ * writes as they like and the picture changes once, whole. Konsole honours
+ * it; a terminal that does must keep a watchdog on the hold, because a
+ * producer that sets it and dies must not freeze the window. A terminal that
+ * does not ignores a private mode it does not know and gets exactly the
+ * stream it gets today.
  *
  * ON THE SAME STREAM AS THE FRAME, WHICH IS WHY IT IS stdout AND WHY BOTH
  * ENDS ARE FLUSHED. aalib's curses driver is initscr() on stdout, so
@@ -206,9 +207,9 @@ void bbflush(void)
  * checked against: a grid shorter than the control's falls 666us further
  * behind the tick every frame, and the re-peg below puts it back no closer
  * than 666us behind. A tick is therefore refused only after a stall, never
- * for the jitter of noticing one. kdos-term has no such constant at all,
- * because its draw is gated on the compositor's frame callback, so its floor
- * is the output's -- 16.667 at sixty hertz. A frame
+ * for the jitter of noticing one. A terminal whose draw is gated on the
+ * compositor's frame callback has no such constant at all, so its floor is
+ * the output's -- 16.667 at sixty hertz. A frame
  * produced faster than the floor is not a frame anybody sees: it is bytes
  * the consumer must still read and parse. Nor is the surplus dropped quietly
  * -- a producer beats against its consumer at the difference, and a beat is

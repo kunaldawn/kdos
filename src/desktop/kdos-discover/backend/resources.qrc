@@ -1,0 +1,9 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/kdos">
+        <file>kdos-backend-categories.xml</file>
+        <file alias="KdosNotice.qml">qml/KdosNotice.qml</file>
+        <file alias="KdosBox.qml">qml/KdosBox.qml</file>
+        <file alias="KdosMembers.qml">qml/KdosMembers.qml</file>
+    </qresource>
+</RCC>

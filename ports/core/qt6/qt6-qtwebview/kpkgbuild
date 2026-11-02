@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qt6-qtwebview
+version     = 6.11.2
+release     = 1
+_module     = qtwebview
+source      = $name-$version.tar.xz::https://download.qt.io/official_releases/qt/${version%.*}/$version/submodules/$_module-everywhere-src-$version.tar.xz
+sha256      = 7e21e109ee89dadeef2d3edd786bcb9d64a5562ea546f89dcc79b3f52f881f4c  qt6-qtwebview-6.11.2.tar.xz
+description = Qt 6 WebView — web content in a Qt Quick item, rendered through Qt WebEngine
+homepage    = https://www.qt.io/
+license     = LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+depends     = cmake ninja qt6-qtbase qt6-qtdeclarative qt6-qtwebengine
+group       = qt6

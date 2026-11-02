@@ -1,0 +1,144 @@
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!--
+  io.kdos.Slots1 - the two root slots, their trial and the update channel.
+
+  Bus name io.kdos.Slots1, object /io/kdos/Slots1, on the SYSTEM bus. The
+  server is kdos-sysupdated, which reads the boot state through kdos-bootctl
+  and changes it only through kdos-bootctl, so the state file keeps the one
+  writer that owns its fsync discipline. A client started with
+  KDOS_SLOTS1_BUS=session talks to the same interface on the session bus,
+  where kdos-sysupdated serves it when started for a test without root, and
+  where the KCM's test fixture serves it.
+
+  This file is the contract. The System Versions KCM's test fixture generates
+  its adaptor from it and the KCM's client is tested against that fixture, so
+  a member renamed here and not in the client fails the KCM's tests instead of
+  a user's click; kdos-sysupdated's vtable carries the same members and keys.
+  The client is written by hand rather than generated, because a generated
+  proxy's property getters block the settings window.
+
+  A slot is named "a" or "b", lower case, everywhere.
+-->
+<node>
+  <interface name="io.kdos.Slots1">
+
+    <!-- False on a machine with no boot state: one root, nothing to roll
+         back to. Every other property is empty or zero while it is false. -->
+    <property name="Configured" type="b" access="read"/>
+
+    <!-- The slot this boot runs from (kdos_slot= on the kernel command
+         line), "" when the boot named none. -->
+    <property name="RunningSlot" type="s" access="read"/>
+
+    <!-- The confirmed slot: the one every boot reaches unless a trial is
+         armed. The boot state's `active`. -->
+    <property name="ActiveSlot" type="s" access="read"/>
+
+    <!-- The boot state's `try`, "" when no trial is armed or running, and
+         its `attempts` and `bootnext`. -->
+    <property name="TrySlot" type="s" access="read"/>
+    <property name="TryAttempts" type="u" access="read"/>
+    <property name="TryBootNext" type="b" access="read"/>
+
+    <!-- Where `kdos update` takes a newer tree from: "" for the KDOS
+         releases, else the `tree =` value of /etc/kdos/update.conf, an
+         absolute directory (a medium, a share) or an http, https or file
+         URL. What arrives from any of them is verified against
+         /etc/kdos/keys/tree, so the channel chooses a place, never a key. -->
+    <property name="Channel" type="s" access="read"/>
+
+    <!-- What a notifier and the KCM show without asking twice. Keys:
+           job            s  "", "acquire" or "install"
+           jobDone        u  items finished in the running job
+           jobTotal       u  items in the running job
+           jobProgress    u  0-100
+           rebootRequired b  a trial is armed and its boot has not happened
+           onTrial        b  this boot is the trial: running == try
+           blessUserspace b  /run/kdos/bless/userspace exists
+           blessGraphical b  /run/kdos/bless/graphical exists
+           rolledBack     s  the slot whose last trial was abandoned, ""
+                             once anything has been installed into it since
+           phase          s  "idle", "acquiring", "installing", "acquired"
+                             (an update is prepared in the other slot and
+                             not yet installed), "armed" or "trial"
+           version        s  the version that phase is about: the job's,
+                             the prepared slot's, the armed or running
+                             trial's; "" while idle
+           offer          s  the version an update would bring, "" when
+                             nothing is newer or it cannot be fetched
+           error          s  why the last update job stopped, "" after one
+                             that finished
+         A key the client does not know is ignored, so the server may add
+         keys without a new interface version. -->
+    <property name="State" type="a{sv}" access="read">
+      <annotation name="org.qtproject.QtDBus.QtTypeName" value="QVariantMap"/>
+    </property>
+
+    <!-- Exactly two dictionaries, slot a first. Keys:
+           id         s  "a" or "b"
+           title      s  "KDOS 0.2.13 (slot B)", the same string
+                         kdos-bootctl's JSON entry list gives the logout
+                         screen as showTitle
+           present    b  the slot has a root filesystem
+           version    s  VERSION_ID of the slot's /etc/os-release, ""
+           buildTime  x  unix seconds the slot's tree was made (`time` in
+                         its /ports/TREE), 0 when unknown
+           treeCommit s  `commit` in the slot's /ports/TREE, ""
+           kernel     s  the version of the kernel the slot boots, "" when
+                         the ESP holds none for it
+           uuid       s  the root filesystem's UUID
+           encrypted  b  the root is inside a LUKS container
+           running    b  this boot runs from it
+           confirmed  b  it is ActiveSlot
+           trial      b  it is TrySlot
+           failed     b  its last trial was abandoned (State.rolledBack)
+           bootable   b  Try(id) would be accepted now
+           reason     s  why it is not bootable, "" when it is
+           state      s  "trial", "failed", "confirmed", "installed" or
+                         "empty", first match in that order
+         A slot whose root cannot be read (not mounted, unreadable) is
+         present with an empty version, never left out. -->
+    <method name="ListSlots">
+      <arg name="slotList" type="aa{sv}" direction="out"/>
+      <annotation name="org.qtproject.QtDBus.QtTypeName.Out0" value="QList&lt;QVariantMap&gt;"/>
+    </method>
+
+    <!-- `kdos-bootctl try <slot> 1`: the next boot starts that slot once;
+         a boot that does not reach the session's blessing rolls back.
+         polkit io.kdos.slots.try, interactive authorisation allowed.
+         Errors: org.freedesktop.DBus.Error.InvalidArgs for a name that is
+         not a slot, org.freedesktop.DBus.Error.AccessDenied when polkit
+         refuses, io.kdos.Slots1.Error.Refused with kdos-bootctl's own
+         sentence when it refuses (the active slot, no root, no kernel). -->
+    <method name="Try">
+      <arg name="slot" type="s" direction="in"/>
+    </method>
+
+    <!-- `kdos-bootctl cancel`: forget an armed trial that has not booted,
+         so the next boot starts ActiveSlot. polkit io.kdos.slots.try.
+         io.kdos.Slots1.Error.Refused while this boot IS the trial: only
+         its blessing or its rollback ends that one. -->
+    <method name="CancelTry"/>
+
+    <!-- Writes `tree = <channel>` into /etc/kdos/update.conf, or removes
+         the line for "". polkit io.kdos.slots.channel, interactive.
+         org.freedesktop.DBus.Error.InvalidArgs for anything but "", an
+         absolute path or an http, https or file URL. -->
+    <method name="SetChannel">
+      <arg name="channel" type="s" direction="in"/>
+    </method>
+
+    <!-- Marker 2 of the session-confirmed boot: called by kdos-notice's
+         bless mode from the active session on seat0 once
+         org.kde.plasmashell has answered for 60 s. polkit
+         io.kdos.slots.bless, allow_active only. -->
+    <method name="Bless"/>
+
+    <!-- Anything ListSlots returns changed: a Try, a CancelTry, an
+         Install, a mark-good, a slot mounted or unmounted. Properties
+         announce themselves through org.freedesktop.DBus.Properties. -->
+    <signal name="SlotsChanged"/>
+
+  </interface>
+</node>

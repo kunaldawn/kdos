@@ -1,0 +1,210 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   The palettes of the add-on set, one block each.
+#
+# genaddons.py turns each block into a Konsole colour scheme and a KDE colour
+# scheme of the same name. The values are each palette's published ones;
+# genaddons.py never ships a text colour that fails WCAG AA (4.5:1) on the
+# background it is drawn on, and moves one toward the scheme's own text
+# until it passes, so a palette here may hold a colour too faint to read.
+#
+#   id          the file name of both schemes; never KDOS-prefixed, which is
+#               the accents' namespace that `kdos theme` rewrites
+#   ansi        Color0..Color7, then their intense forms
+#   background  the terminal's ground, foreground its text
+#   window ...  the KDE roles: window, view, alternate, button, header,
+#               selection and its text, link, visited, negative, neutral,
+#               positive; a role left out is derived
+#   licence     an SPDX id, with copyright and source: the pack's kfs.md
+#               lists them
+# ---------------------------------
+
+[vga]
+name = VGA
+copyright = KDOS; the IBM VGA text-mode palette
+licence = MIT
+source = https://github.com/kunaldawn/kdos
+dark = yes
+ansi = 000000 AA0000 00AA00 AA5500 0000AA AA00AA 00AAAA AAAAAA 555555 FF5555 55FF55 FFFF55 5555FF FF55FF 55FFFF FFFFFF
+background = 000000
+foreground = AAAAAA
+window = 0000AA
+view = 0000AA
+alternate = 000080
+button = AAAAAA
+button_text = 000000
+header = 0000AA
+text = FFFFFF
+selection = 00AAAA
+selection_text = 000000
+link = 55FFFF
+visited = FF55FF
+negative = FF5555
+neutral = FFFF55
+positive = 55FF55
+
+[nord]
+name = Nord
+copyright = Arctic Ice Studio and Sven Greb
+licence = MIT
+source = https://www.nordtheme.com
+dark = yes
+ansi = 3B4252 BF616A A3BE8C EBCB8B 81A1C1 B48EAD 88C0D0 E5E9F0 4C566A BF616A A3BE8C EBCB8B 81A1C1 B48EAD 8FBCBB ECEFF4
+background = 2E3440
+foreground = D8DEE9
+window = 2E3440
+view = 3B4252
+alternate = 434C5E
+button = 434C5E
+header = 2E3440
+text = D8DEE9
+selection = 88C0D0
+selection_text = 2E3440
+link = 88C0D0
+visited = B48EAD
+negative = BF616A
+neutral = EBCB8B
+positive = A3BE8C
+
+[dracula]
+name = Dracula
+copyright = Dracula Theme, Zeno Rocha
+licence = MIT
+source = https://draculatheme.com
+dark = yes
+ansi = 21222C FF5555 50FA7B F1FA8C BD93F9 FF79C6 8BE9FD F8F8F2 6272A4 FF6E6E 69FF94 FFFFA5 D6ACFF FF92DF A4FFFF FFFFFF
+background = 282A36
+foreground = F8F8F2
+window = 282A36
+view = 21222C
+alternate = 44475A
+button = 44475A
+header = 21222C
+text = F8F8F2
+selection = BD93F9
+selection_text = 282A36
+link = 8BE9FD
+visited = FF79C6
+negative = FF5555
+neutral = FFB86C
+positive = 50FA7B
+
+[gruvboxdark]
+name = Gruvbox Dark
+copyright = Pavel Pertsev
+licence = MIT
+source = https://github.com/morhetz/gruvbox
+dark = yes
+ansi = 282828 CC241D 98971A D79921 458588 B16286 689D6A A89984 928374 FB4934 B8BB26 FABD2F 83A598 D3869B 8EC07C EBDBB2
+background = 282828
+foreground = EBDBB2
+window = 282828
+view = 32302F
+alternate = 3C3836
+button = 3C3836
+header = 1D2021
+text = EBDBB2
+selection = FABD2F
+selection_text = 282828
+link = 83A598
+visited = D3869B
+negative = FB4934
+neutral = FE8019
+positive = B8BB26
+
+[gruvboxlight]
+name = Gruvbox Light
+copyright = Pavel Pertsev
+licence = MIT
+source = https://github.com/morhetz/gruvbox
+dark = no
+ansi = FBF1C7 CC241D 98971A D79921 458588 B16286 689D6A 7C6F64 928374 9D0006 79740E B57614 076678 8F3F71 427B58 3C3836
+background = FBF1C7
+foreground = 3C3836
+window = EBDBB2
+view = FBF1C7
+alternate = F2E5BC
+button = EBDBB2
+header = D5C4A1
+text = 3C3836
+selection = 076678
+selection_text = FBF1C7
+link = 076678
+visited = 8F3F71
+negative = 9D0006
+neutral = AF3A03
+positive = 79740E
+
+[tokyonight]
+name = Tokyo Night
+copyright = Folke Lemaitre, after enkia's Tokyo Night
+licence = MIT
+source = https://github.com/folke/tokyonight.nvim
+dark = yes
+ansi = 15161E F7768E 9ECE6A E0AF68 7AA2F7 BB9AF7 7DCFFF A9B1D6 414868 F7768E 9ECE6A E0AF68 7AA2F7 BB9AF7 7DCFFF C0CAF5
+background = 1A1B26
+foreground = C0CAF5
+window = 1A1B26
+view = 16161E
+alternate = 292E42
+button = 292E42
+header = 16161E
+text = C0CAF5
+selection = 7AA2F7
+selection_text = 1A1B26
+link = 7DCFFF
+visited = BB9AF7
+negative = F7768E
+neutral = E0AF68
+positive = 9ECE6A
+
+[catppuccinmocha]
+name = Catppuccin Mocha
+copyright = Catppuccin
+licence = MIT
+source = https://github.com/catppuccin/catppuccin
+dark = yes
+ansi = 45475A F38BA8 A6E3A1 F9E2AF 89B4FA F5C2E7 94E2D5 BAC2DE 585B70 F38BA8 A6E3A1 F9E2AF 89B4FA F5C2E7 94E2D5 A6ADC8
+background = 1E1E2E
+foreground = CDD6F4
+window = 1E1E2E
+view = 181825
+alternate = 313244
+button = 313244
+header = 11111B
+text = CDD6F4
+selection = CBA6F7
+selection_text = 1E1E2E
+link = 89B4FA
+visited = F5C2E7
+negative = F38BA8
+neutral = FAB387
+positive = A6E3A1
+
+[catppuccinlatte]
+name = Catppuccin Latte
+copyright = Catppuccin
+licence = MIT
+source = https://github.com/catppuccin/catppuccin
+dark = no
+ansi = 5C5F77 D20F39 40A02B DF8E1D 1E66F5 EA76CB 179299 ACB0BE 6C6F85 D20F39 40A02B DF8E1D 1E66F5 EA76CB 179299 BCC0CC
+background = EFF1F5
+foreground = 4C4F69
+window = E6E9EF
+view = EFF1F5
+alternate = DCE0E8
+button = DCE0E8
+header = CCD0DA
+text = 4C4F69
+selection = 8839EF
+selection_text = EFF1F5
+link = 1E66F5
+visited = 8839EF
+negative = D20F39
+neutral = FE640B
+positive = 40A02B

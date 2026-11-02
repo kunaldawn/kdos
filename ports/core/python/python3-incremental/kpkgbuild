@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-incremental
+version     = 24.11.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/i/incremental/incremental-$version.tar.gz
+sha256      = 87d3480dbb083c1d736222511a8cf380012a8176c2456d01ef483242abbbcf8c  python3-incremental-24.11.0.tar.gz
+description = Version numbering for Python projects, with the setuptools and hatchling plugins that read it
+homepage    = https://github.com/twisted/incremental
+license     = MIT
+depends     = python3 python3-pip python3-hatchling python3-packaging

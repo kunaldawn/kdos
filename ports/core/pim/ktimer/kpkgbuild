@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ktimer
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 3ca309ca39b53b41ab18d404346b9bacb9b99e4b86ef9a2958f366f0eb003076  ktimer-26.08.2.tar.xz
+description = Countdown launcher — run a command or raise a notification once a set delay has passed
+homepage    = https://apps.kde.org/ktimer/
+license     = GPL-2.0-or-later AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase ki18n kwidgetsaddons kio kdbusaddons knotifications kconfigwidgets kcrash kstatusnotifieritem kdoctools

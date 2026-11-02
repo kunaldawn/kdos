@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kidentitymanagement
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = f1448f9ab0de1eaa5a8a52e5938004c61710051ce2994cc3b6d1db9fa159c208  kidentitymanagement-26.08.2.tar.xz
+description = KDE PIM identity library: sender name, address, signature and crypto keys, with widget and QML front ends
+homepage    = https://invent.kde.org/pim/kidentitymanagement
+license     = LGPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.1-or-later AND BSD-2-Clause AND BSD-3-Clause AND CC0-1.0 AND MIT
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kcoreaddons kconfig kcodecs ki18n kio kwidgetsaddons kxmlgui ktextaddons kpimtextedit kirigami kirigami-addons

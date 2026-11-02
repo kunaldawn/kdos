@@ -38,7 +38,9 @@ SECS=${KDOS_BIOS_SECS:-90}
 mkdir -p "$OUT"
 rm -f "$SERIAL" "$OUT"/bios-screen.ppm
 
-docker run --rm --device /dev/kvm -v "$PWD:/kdos" -w /kdos kdos-qemu-py:latest \
+# `-i` carries the heredoc below into the container: without it python3 reads
+# an empty program, qemu never starts, and the run fails with no serial log.
+docker run -i --rm --device /dev/kvm -v "$PWD:/kdos" -w /kdos kdos-qemu-py:latest \
     python3 - "$SECS" <<'PY'
 import socket, subprocess, sys, time
 

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What kdos-discover-catalog writes beside a binhost's index with the
+     origin kdos-binhost: what that binhost can add. kate is installed
+     already and must stay one resource. -->
+<components version="1.0" origin="kdos-binhost">
+  <component type="addon">
+    <id>io.kdos.addons</id>
+    <extends>org.kde.plasmashell</extends>
+    <pkgname>kdos-addons</pkgname>
+    <name>KDOS Add-ons</name>
+    <summary>Wallpapers, colour schemes, window scripts and widgets</summary>
+    <project_license>MIT</project_license>
+    <custom>
+      <value key="KDOS::Version">1.0.0-1</value>
+    </custom>
+  </component>
+  <component type="desktop-application">
+    <id>org.kde.kate</id>
+    <pkgname>kate</pkgname>
+    <name>Kate</name>
+    <summary>Advanced text editor</summary>
+    <custom>
+      <value key="KDOS::Version">26.08.2-1</value>
+    </custom>
+  </component>
+</components>

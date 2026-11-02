@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = krdc
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 862d375f3e1f677ab62ed3b379ee2ff6e90c25fd4d04be6b8b6658c35a8dc196  krdc-26.08.2.tar.xz
+description = Remote desktop client — VNC and RDP viewer with bookmarks, network discovery and SSH tunnels
+homepage    = https://apps.kde.org/krdc/
+license     = GPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND BSD-3-Clause AND GFDL-1.2-or-later AND CC0-1.0
+depends     = cmake ninja pkgconf extra-cmake-modules qt6-qtbase qt6-qtwayland wayland qtkeychain kconfig kcmutils kdnssd knotifyconfig knotifications kbookmarks kiconthemes kxmlgui kcompletion kwidgetsaddons kwindowsystem ki18n kio kcrash kguiaddons kstatusnotifieritem kdoctools libvncserver freerdp libssh kcoreaddons shared-mime-info

@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kde-all
+version     = 1
+release     = 1
+description = All of KDE: the Plasma session and every KDE Gear application, as the two metas kde-plasma and kde-gear
+homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
+depends     = kde-plasma kde-gear

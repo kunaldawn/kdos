@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = kplotting
-version     = 6.30.0
+version     = 6.31.0
 release     = 1
 source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
-sha256      = f5a67be85c21665e052371301889443196b9de5b3927aff353a3d3e27730dd11  kplotting-6.30.0.tar.xz
+sha256      = 74e22750b08fbfec8a96f5cad7382cd8680045a248c017c82ddb5ce76b85e8b6  kplotting-6.31.0.tar.xz
 description = KDE Frameworks: a plotting widget
 homepage    = https://api.kde.org/frameworks/kplotting/html/
 license     = LGPL-2.0-or-later

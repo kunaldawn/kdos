@@ -76,7 +76,7 @@ bash ./configure \
 	--enable-qt6-multimedia \
 	--disable-qt5 \
 	--disable-kf5 \
-	--disable-kf6 \
+	--enable-kf6 \
 	--disable-gtk3-kde5 \
 	--disable-introspection \
 	--with-tls=nss \

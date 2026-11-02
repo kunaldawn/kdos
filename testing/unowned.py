@@ -88,6 +88,7 @@ GENERATED = (
     'usr/share/texmf-local/ls-R',
     'usr/share/kdos/alien-apps',
     'usr/share/kdos/SOURCES',
+    'usr/share/swcatalog/xml/kdos-ports.xml',
     'var/lib/kdos/fs-manifest',
     'boot/initramfs.cpio.gz',
     'boot/initramfs.modules',

@@ -1,0 +1,8 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Id": "org.kdos.fixture.comma",
+        "Name": "Fixture",
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

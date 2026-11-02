@@ -2,8 +2,8 @@
 
 yazi is a terminal file manager written in Rust, with asynchronous I/O and previews of the file
 under the cursor, pictures among them. It is installed for those pictures: in
-[kdos-term](../../../../docs/kdos/04-programs/kdos-term.md), which draws images in its cell grid,
-yazi shows real thumbnails in a window that is otherwise characters. The package installs `yazi`,
+[Konsole](#port-konsole), which draws sixel and kitty graphics, yazi shows real thumbnails in a
+window that is otherwise characters. The package installs `yazi`,
 its command-line helper `ya`, and their shell completions.
 
 ## Flags
@@ -39,6 +39,5 @@ for search and jumping, `7zz` from [7zip](#port-7zip) for archives and disk imag
 [chafa](#port-chafa) where the terminal has no image protocol. A missing one is a blank preview,
 not an error.
 
-The desktop entry is `Terminal=true` with `X-KDOS-Term=kdos-term`, so the launcher opens yazi in
-kdos-term, which speaks sixel and the kitty graphics protocol, rather than in the session's own
-terminal (see [Terminal entries](../../../../docs/kdos/04-programs/kdos-appbox.md#terminal-entries)).
+The desktop entry is `Terminal=true`, so the launcher opens yazi in the session's terminal,
+Konsole, which speaks sixel and the kitty graphics protocol.

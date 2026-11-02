@@ -7,13 +7,24 @@ and `ntlm_auth`, which [libsoup3](#port-libsoup3) tries for NTLM sign-on. A Wind
 or a network printer often speaks SMB and nothing else. The Active Directory domain controller,
 domain membership and winbind are not built.
 
-The package carries a service script, `83_samba`, that runs `smbd` under the supervisor once a
-non-empty `/etc/samba/smb.conf` exists and skips itself before then. It creates `/var/log/samba`
-and `/var/cache/samba` before each start, because `smbd` never makes its log directory and writes
-nothing but the supervisor's log without it. It passes `supervise --stop-grace 15`, so `smbd`
-has time to end its per-client children and close their open files before the supervisor's
-`SIGKILL`; five seconds is the default. Other machines reach the server after
-the firewall's `smb` name is opened (see
+The package carries a service script, `83_samba`, that runs `smbd` under the supervisor only when
+there is something to serve, so a machine that shares nothing listens on nothing. It skips itself
+while `/etc/samba/smb.conf` is missing or empty. Otherwise it first creates `/var/log/samba` and
+`/var/cache/samba`, because `smbd` never makes its log directory and writes nothing but the
+supervisor's log without it, and `testparm` calls a missing cache directory an error until `smbd`
+first writes there; and `/var/lib/samba/usershares`, root's with group `sambashare` and mode 1770,
+the `usershare path` that `smb.conf` names and that `net usershare` (Dolphin's Share tab) writes
+into: a package cannot carry that mode, and without the directory every share fails, so it is made
+at every boot whether or not `smbd` then starts. Then it starts `smbd` only if that directory holds
+a usershare, a regular file and not a symbolic link (`smbd` refuses one), whose name does not
+begin with `:` (`net usershare` writes each share through a
+`:tmp` file it renames), or `smb.conf` has a section other than `[global]`; otherwise it prints
+`[SKIP] samba: nothing is shared`. The first folder shared from Dolphin is served without a
+reboot: [kded-kdos](#port-kded-kdos) sees the new file and asks
+[kdos-powerd](#port-kdos-powerd) to run this script's `start`. It passes `supervise --stop-grace
+15`, so `smbd` has time to end its per-client children and close their open files before the
+supervisor's `SIGKILL`; five seconds is the default. Other machines reach the server after the
+firewall's `smb` name is opened (see
 [Opening a service](../../../../docs/kdos/02-user-guide/administration.md#opening-a-service)).
 
 ## Flags

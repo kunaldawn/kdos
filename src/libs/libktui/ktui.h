@@ -51,7 +51,7 @@ static inline int krect_hit(KRect r, int x, int y)
  * Eight slots and no more. That is not minimalism for its own sake: the
  * console font is 512 glyphs, so the VT steals the foreground intensity bit
  * for the 9th glyph bit and colours 8-15 become unreachable as foreground.
- * Designing to eight means the TTY and a truecolor foot window render the
+ * Designing to eight means the TTY and a truecolor Konsole window render the
  * SAME picture, one with exact hex and one with the palette we install.
  * ──────────────────────────────────────────────────────────────────────── */
 
@@ -93,22 +93,19 @@ int ktui_theme_set(const char *name);
  * temperature is and why a warmed accent still reads as itself.
  *
  * Returns non-zero when the palette actually changed, so a caller can skip a
- * repaint it does not owe. A desktop surface does not call it directly: it
- * calls ktui_theme_load(), which reads the toggle for it.
+ * repaint it does not owe. ktui_theme_load() never turns it on: Night Light
+ * is the compositor's, and it already warms the whole screen.
  */
 int ktui_theme_night(int on);
 
 /*
- * THE PALETTE A DESKTOP SURFACE WEARS — the accent `kdos theme` wrote to the
- * cache (kcol_theme_name) and the `night-light` toggle (kb_toggle_on), applied
- * in the one order that keeps both. No state file means the default scheme.
+ * THE PALETTE A TUI WEARS — the accent `kdos theme` recorded
+ * (kcol_theme_name). No state file means the default scheme.
  *
- * Every surface that follows the desktop's accent loads it through this and
- * nothing else, at startup and again on every retint (the SIGHUP `kdos theme`
- * and `kdos toggle night-light` send, or a poll of the state file). A surface
- * that set the scheme itself and skipped the toggle would draw the cold
- * palette beside a warmed panel. A program that picks its own scheme — the
- * installer, the build screen — calls ktui_theme_set() instead.
+ * Every TUI that follows the person's accent loads it through this and
+ * nothing else, so two of them side by side cannot disagree. A program that
+ * picks its own scheme — the installer, the build screen — calls
+ * ktui_theme_set() instead.
  */
 void ktui_theme_load(void);
 
@@ -467,11 +464,12 @@ extern const char *ktui_glyph[KT_G_N];
  * Backends
  *
  * The cell buffer, the widgets, the glyph tiers and the layout do not care
- * where the cells end up. This vtable is that seam, and it exists so the
- * Wayland backend can live in a DIFFERENT ARCHIVE: libktui links nothing but
- * musl, and it has to keep doing so, because kinstall links it in
- * 10_bootstrap before any library exists to link against. libkwl is where
- * wayland-client, pixman, fcft and xkbcommon go. If libktui ever gains a real
+ * where the cells end up. This vtable is that seam, and it exists so a
+ * backend with real dependencies can live in a DIFFERENT ARCHIVE: libktui
+ * links nothing but musl, and it has to keep doing so, because kinstall links
+ * it in 10_bootstrap before any library exists to link against. A backend
+ * that needs a display or font library carries it in its own archive. If
+ * libktui ever gains a real
  * `-l`, kinstall cannot be built before 42_graphics — which is not a trade
  * anyone wants.
  *
@@ -500,8 +498,8 @@ typedef struct {
 	 *
 	 * A BACKEND THAT KEEPS ITS OWN PREVIOUS FRAME MUST IMPLEMENT THIS, AND
 	 * SPOIL EVERY COPY IT KEEPS. `prev` above is libktui's, and a backend
-	 * is free to diff against copies of its own instead — libkwl keeps one
-	 * per buffer plus the cells the compositor is showing. Spoiling
+	 * is free to diff against copies of its own instead — a pixel backend
+	 * keeps one per buffer plus the cells on screen. Spoiling
 	 * libktui's changes nothing such a backend reads; spoiling some but
 	 * not all of its own repaints pixels into a buffer nothing is told to
 	 * re-read, or damages rows the paint left alone. Either way the screen
@@ -624,7 +622,7 @@ typedef struct {
 } KtuiBackend;
 
 /* NULL selects the built-in tty backend. A backend must outlive the library's
- * use of it; libkwl hands over a pointer to a static. */
+ * use of it, which a static does. */
 void ktui_backend_set(const KtuiBackend *b);
 const KtuiBackend *ktui_backend(void);
 
@@ -644,9 +642,9 @@ const KtuiBackend *ktui_backend(void);
  * frame from the middle of one, tty1 draws the settled state, and a surface
  * must not put anything in a motion that its end state does not also say.
  *
- * MOTION OFF IS comp.conf's `motion = no`, the compositor's own switch, asked
- * through ktui_anim_set_motion_fn() at every start: a backend that can read
- * it registers the question, and one that registers nothing moves.
+ * MOTION OFF IS THE HOST'S reduced-motion switch, asked through
+ * ktui_anim_set_motion_fn() at every start: a backend that can read it
+ * registers the question, and one that registers nothing moves.
  *
  * LIBC ONLY, like the rest of this library: the clock is CLOCK_MONOTONIC and
  * every curve is a polynomial, so nothing links libm.
@@ -716,8 +714,8 @@ int ktui_anim_moving(void);
 int ktui_anim_live(void);
 /*
  * THE REDUCE-MOTION QUESTION, asked at every ktui_anim_start: 1 moves, 0
- * settles at once. NULL (the default) moves. libkwl registers comp.conf's
- * `motion` here.
+ * settles at once. NULL (the default) moves. A host with a reduced-motion
+ * setting registers its reader here.
  */
 void ktui_anim_set_motion_fn(int (*fn)(void));
 /* Replace the clock (a test drives time by hand). NULL is CLOCK_MONOTONIC. */
@@ -948,8 +946,8 @@ enum {
 	/*
 	 * THE KEYS A KEYBOARD HAS AND A TERMINAL DOES NOT. A media key
 	 * produces no character, so a backend reading a terminal never sees one
-	 * and never will: these reach a surface through libkwl and nowhere
-	 * else.
+	 * and never will: these reach a surface only through a backend that
+	 * reads the keyboard itself.
 	 *
 	 * APPENDED, NEVER INSERTED. The enum is positional from
 	 * KT_K_SPECIAL and the NUMBER travels, so a key added in the middle
@@ -1282,8 +1280,8 @@ void ktui_hit(KRect r, int id);
 void ktui_hit_chrome(KRect r, int id);	/* id is caller-local, 0..N        */
 int ktui_chrome_clicked(int id);
 /*
- * THE HIT RECTS OF THE LAST FRAME ENDED, for a developer overlay to outline
- * (libkwl's KDOS_INSPECT). Only a frame control registers one — a surface
+ * THE HIT RECTS OF THE LAST FRAME ENDED, for a developer overlay to outline.
+ * Only a frame control registers one — a surface
  * that runs its own loop and tests the rect it was given has none, and reads
  * 0 here — and the list is dropped by the second ktui_frame_begin() after
  * the frame that made it. ktui_hit_at() is 0 past the end.
@@ -1507,7 +1505,7 @@ int ktui_slider(KRect r, int *val, int min, int max, int step,
  * widget to draw but an answer to "which row is that, and what did they mean
  * by it", and a surface without one drops every pointer event.
  *
- * ONE RULE, AND IT IS `kdos-pick`'S: a press MOVES the caret, a press on the
+ * ONE RULE FOR EVERY LIST: a press MOVES the caret, a press on the
  * row the caret is already on PICKS, the wheel walks, and the right button is
  * Back. One hand learns one thing.
  *
@@ -1597,9 +1595,9 @@ void ktui_term_caret(int x, int y);
 
 /* Queue pasted text; the focused field inserts it at the caret on its next
  * ktui_field_key() or ktui_input(). Control characters are stripped and
- * newlines become spaces, so a multi-line paste cannot fake an Enter. libkwl
- * calls this when an async clipboard receive completes, and the tty decoder
- * when a bracketed paste ends. */
+ * newlines become spaces, so a multi-line paste cannot fake an Enter. The tty
+ * decoder calls this when a bracketed paste ends, and a backend with a
+ * clipboard of its own when a receive completes. */
 void ktui_paste_push(const char *utf8, size_t len);
 
 /* Take the pending paste instead, for a consumer with no text field to insert

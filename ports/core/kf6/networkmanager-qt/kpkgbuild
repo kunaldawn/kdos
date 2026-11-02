@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = networkmanager-qt
-version     = 6.30.0
+version     = 6.31.0
 release     = 1
 source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
-sha256      = f6ba5f54d413ea0b2642207a6ebd0803e7cb8392b91fcf8a1679fd0c21062865  networkmanager-qt-6.30.0.tar.xz
+sha256      = b045f7430f66f16c7bb9ee8c254fe6d3631a74260c1b9be6b4c9ab1873ec9f5e  networkmanager-qt-6.31.0.tar.xz
 description = KDE Frameworks: Qt wrapper for the NetworkManager D-Bus API
 homepage    = https://invent.kde.org/frameworks/networkmanager-qt
 license     = (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL)

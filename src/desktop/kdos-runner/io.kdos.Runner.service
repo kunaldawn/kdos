@@ -1,0 +1,3 @@
+[D-BUS Service]
+Name=io.kdos.Runner
+Exec=/usr/libexec/kdos/kdos-runner

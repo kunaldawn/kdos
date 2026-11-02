@@ -235,7 +235,10 @@ booted image. `kdos-pack verify` with `KDOS_REQUIRE_SIG=1` shows the same check.
 A tree is signed with a `kpkg` key. Make one with `kpkg keygen mytree`, and sign the archive with
 `kpkg sign kdos-ports.tar.xz mytree.key`. `ports/publish --release <tag>`, which publishes a whole
 system release, signs the tree it uploads itself, with the key `--key` names, else
-`$KDOS_RELEASE_KEY`, else `build/keys/kdos-release.key`. The archive must hold the tree's `TREE`
+`$KDOS_RELEASE_KEY`, else `build/keys/kdos-release.key`, and signs the release index
+`kdos-update.idx` with the same key and with `build/binhost-key/kdos-binhost.key` as well, so a
+machine whose `/etc/kdos/keys/` holds either `.pub` reads the index its binhost and slot image are
+found through. The archive must hold the tree's `TREE`
 stamp, `core/` and `sources.idx`, or `fetch` refuses it after the signature has verified.
 
 1. Replace the tree ring's key with the public half of the key you sign trees with:
@@ -332,7 +335,6 @@ anchors directory through p11-kit at once, so `trust list` shows a new root befo
 
 ## Known gaps
 
-- [There is no public binary host](../../kdos/06-reference/known-gaps.md#there-is-no-public-binary-host)
 - [The update path has not been run against a published tree](../../kdos/06-reference/known-gaps.md#the-update-path-has-not-been-run-against-a-published-tree)
 - [Secure Boot is not supported](../../kdos/06-reference/known-gaps.md#secure-boot-is-not-supported):
   the boot loader is unsigned
@@ -355,4 +357,4 @@ anchors directory through p11-kit at once, so `trust list` shows a new root befo
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 386.* Previous: [385. SSH server](ssh-server.md) · [Contents](../README.md) · Next: [387. NetworkManager](networkmanager.md)
+*Part XVI. System administration, chapter 410.* Previous: [409. SSH server](ssh-server.md) · [Contents](../README.md) · Next: [411. NetworkManager](networkmanager.md)

@@ -8,8 +8,14 @@ handles them, boxed or native. One binary dispatches on the name it was started 
 installs and launches applications, `kdos-box` manages boxes, `xdg-open` opens files and links,
 and any other name is a shim, a link named after an application that runs it in its box. The
 `kdos app` subcommands run it, every generated launcher calls it, and the session's warm-up calls
-it at login. Everything it does is
-described in [kdos-appbox](../../../docs/kdos/04-programs/kdos-appbox.md).
+it at login. Under KWin it is also what confines a box: each box sees a private runtime directory
+of its own as `/run/user/<uid>`, holding the tagged Wayland socket
+[kdos-boxsock](#port-kdos-boxsock) serves, a bus filtered by
+[xdg-dbus-proxy](#port-xdg-dbus-proxy) and the audio sockets, and never the session's `wayland-0`
+or `bus`. It writes each boxed launcher under the id KWin gives the box's windows, one KWin window
+rule per box that tints its title bar in the box's accent, a Dolphin service menu that opens a file
+in a throwaway box, and the record that brings a session's boxes back at the next login. Everything
+it does is described in [kdos-appbox](../../../docs/kdos/04-programs/kdos-appbox.md).
 
 The port has no upstream source. `build.sh` compiles the program's own files in this directory
 together with the sources of four KDOS libraries, `libkbase`, `libktui`, `libkcolor` and
@@ -34,8 +40,16 @@ the link without the binary that answers to it.
 
 The catalogue, `/usr/share/kdos/appstore/catalogue`, is data the program reads, and it ships in
 this package for the same reason: with the file missing, `kdos-appbox catalogue`, `install`,
-`export` and `import` stop with `cannot read the catalogue`, and the Store surface lists no
-applications and reports no catalogue. Editing the catalogue is editing this port, and it rebuilds it.
+`export` and `import` stop with `cannot read the catalogue`, and Discover's KDOS backend, which
+asks `kdos-appbox catalogue`, lists no boxed applications. Editing the catalogue is editing this
+port, and it rebuilds it.
+
+Three of its `depends` are programs it runs rather than links: `kdos-boxsock` for every launch's
+tagged socket, `kdos-boxinit`, which every pack box is created with as its init, and
+`xdg-dbus-proxy`, which the box's keeper runs as its bus. Without any one of them a box does not
+start, and the launch says which is missing; there is no unconfined fallback. `kbuildsycoca6` is
+run after the launchers are written when it is installed, and is not a dependency: without it the
+Start menu sees the launchers when kded next rebuilds its cache.
 
 The program is built in the work directory, never in `$PORT_SRC`, which is the program's directory
 in the repository. A port under `src/` hashes its whole directory and all of `src/libs` as its

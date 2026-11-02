@@ -42,3 +42,13 @@ sonnet-qt5
 qscintilla
 python3-qscintilla
 qwt
+
+qcoro
+ktextaddons
+kdiagram
+kirigami-app-components
+kquickimageeditor
+futuresql
+libqaccessibilityclient
+kdsoap
+kdsoap-ws-discovery-client

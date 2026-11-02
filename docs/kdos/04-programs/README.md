@@ -2,24 +2,25 @@
 
 This part of the book documents the programs KDOS writes itself: what each one is, how it is
 invoked, where it is installed and which chapter describes it in depth. It is for anyone who has
-met a `kdos-*` command and wants to know what it does, and for contributors looking for the program
-that owns a piece of behaviour. Software in `ports/core/` comes from upstream projects and is
-documented by them; nothing here repeats a manual page that already exists elsewhere, and
-[The ports catalogue](../06-reference/ports-catalogue.md) lists every such port by shelf, with the phase that builds it.
-That includes the graphical applications ported natively with GTK, Qt, KDE Frameworks, wxWidgets,
-FLTK or Tk: they are upstream programs, and [Applications](../02-user-guide/applications.md)
-describes how to use them. The programs in this part draw with KDOS's own cell libraries and link
-no toolkit. Read the
+met a `kdos-*` command, a KDOS page in System Settings or a KDOS applet in the panel and wants to
+know what it does, and for contributors looking for the program that owns a piece of behaviour.
+
+The desktop is KDE Plasma, and almost everything on screen is KDE's: KWin, the Plasma shell,
+System Settings, Discover, Konsole, Dolphin and the rest of KDE Gear. They are upstream programs,
+documented by KDE and built from ports like any other;
+[The ports catalogue](../06-reference/ports-catalogue.md) lists every port by shelf, with the phase
+that builds it, and [Applications](../02-user-guide/applications.md) describes the applications.
+This part covers what KDOS adds to them and the programs KDOS has of its own: four chapters on the
+KDE programs KDOS extends most ([KWin](kwin.md), [the Plasma shell](plasma-shell.md),
+[the KDOS settings pages](kdos-settings.md) and [Discover](discover.md)), then the box tools, the
+root daemons, the installer, the `kdos` command and a demo. Read the
 [Architecture overview](../03-architecture/overview.md) first if you want to see how these programs
 fit together before meeting them one by one.
 
-One property of the system shapes this whole chapter. Several KDOS binaries dispatch on the name
-they were invoked as, in the manner of BusyBox, so the number of commands on a KDOS machine is much
-larger than the number of binaries: 55 commands come out of `kdos-shell` alone. If you have found a
-command on your `PATH` and want to know where it is documented, the tables below resolve it, and
+Several KDOS binaries dispatch on the name they were invoked as, in the manner of BusyBox, so the
+number of commands is larger than the number of binaries.
 [Binaries that answer to several names](#binaries-that-answer-to-several-names) lists every name
-each of the four binaries behind most commands answers to; the three daemon clients are under
-[Root daemons](#root-daemons). The complete alphabetical list is the
+each of them answers to. The complete alphabetical list is the
 [command index](../06-reference/command-index.md). On an installed machine every `kdos-*` command,
 and each of ours without the prefix such as `kpkg`, `ksvc` and `kinstall`, also has a manual page,
 generated at build time from the section of this book that documents it: see
@@ -27,113 +28,109 @@ generated at build time from the section of this book that documents it: see
 
 ## Where the programs come from
 
-The compiled programs in this chapter are built from the repository's own `src/` tree. Each
-program sits exactly two levels down, in one of five directories chosen by what the program is:
+The programs in this part are built from the repository's own `src/` tree. Each sits exactly two
+levels down, in one of five directories chosen by what the program is:
 
 | Directory | Holds | Built by |
 |---|---|---|
-| `src/desktop/` | The compositor, the panel, the terminal, the resource monitor, the lock screen, the portal backend, the per-box Wayland socket and the screen recorder: the programs that draw the session or serve it over Wayland or D-Bus | The `50_desktop` phase, the only phase whose [port search path](../05-developer/build-system.md#where-kpkg-looks-for-a-port) includes this directory |
-| `src/daemons/` | The five root daemons the desktop account talks to | The `50_desktop` phase, the only other phase that searches here |
-| `src/system/` | The package manager, the `kdos` command and its services, the pack tool, the box manager and the box init, the installer, and the two ports that render this book and *KDOS from Scratch* onto the image | The userland phases: `kdos-pack`, `kdos-boxinit`, `kdos-doc` and `kdos-kfs` in `41_system`, `kdos-tools` in `42_graphics` (its closure reaches Wayland through `kbd`), `kdos-appbox` in `44_apps`. Two are exceptions: `kdos-kpkg` (`kpkg`) and `kdos-installer` (`kinstall`) are compiled by the `120_kpkg.sh` and `130_kinstall.sh` steps of `10_bootstrap` and appear in no package list |
-| `src/art/` | The theme generator, the icon, cursor and GTK themes built from it, the boot splash and the demo | The `41_system` phase |
-| `src/devtools/` | The build orchestrator `kdosbuild` and the upstream version checker `kdos-portup`, neither of which is installed on the target | `kdosbuild` by `script/kdosbuild.sh`, on the build host, at the start of every `make build`; `kdos-portup` by `ports/update`, on the build host, on demand |
+| `src/desktop/` | KDOS's additions to the Plasma desktop: the System Settings pages, the tray applets, the KRunner runner, the notifier, the Discover backend, the KWin effects and scripts, the kded module, the System Monitor plugin, the `library:/` worker, the file-manager action, the welcome tour, the look-and-feel packages and the graphical installer | The `50_desktop` phase, the only phase whose [port search path](../05-developer/build-system.md#where-kpkg-looks-for-a-port) includes this directory, because these ports link KWin, libplasma or libdiscover, which that phase builds |
+| `src/daemons/` | The six root daemons | The `50_desktop` phase, the only other phase that searches here |
+| `src/system/` | The package manager, the `kdos` command and its services, the pack tool, the box manager, the box init and the per-box Wayland socket, the installer and its backend, and the two ports that render this book and *KDOS from Scratch* onto the image | The userland phases: `kdos-pack`, `kdos-boxinit`, `kdos-doc` and `kdos-kfs` in `41_system`, `kdos-tools` and `kdos-boxsock` in `42_graphics`, `kdos-appbox` in `43_toolkits`. `kdos-kpkg` (`kpkg`) and `kdos-installer` (`kinstall`) are compiled by the `120_kpkg.sh` and `130_kinstall.sh` steps of `10_bootstrap` and appear in no package list; `kinstall-core`, the installer's backend, is compiled into `kinstall`, which the graphical installer runs |
+| `src/art/` | The identity generators, the icon themes, wallpapers and sounds, the boot splash, the login screen's theme, the curated add-ons and the demo | The `41_system` and `42_graphics` phases; `kdos-sddm-theme` and `kdos-addons`, which build on Plasma, in `50_desktop` |
+| `src/devtools/` | The build orchestrator `kdosbuild` and the upstream version checker `kdos-portup`, neither installed on the target | `kdosbuild` by `script/kdosbuild.sh`, on the build host, at the start of every `make build`; `kdos-portup` by `ports/update`, on the build host, on demand |
 
-`src/libs/`, the sixth directory, holds the libraries most of these programs link. The phases
-named here are described in the order they run, from the cross toolchain to the ISO, in
-[How KDOS is built](../05-developer/how-kdos-is-built.md); the phase that adds `src/desktop/` and
-`src/daemons/` is [The desktop: `50_desktop`](../05-developer/how-kdos-is-built.md#the-desktop-50_desktop).
+`src/libs/`, the sixth directory, holds the nine `libk*` C libraries the C programs here compile
+in, described in [The C libraries](../05-developer/c-libraries.md). The phases are described in the
+order they run in [How KDOS is built](../05-developer/how-kdos-is-built.md); the phase that adds
+`src/desktop/` and `src/daemons/` is
+[The desktop: `50_desktop`](../05-developer/how-kdos-is-built.md#the-desktop-50_desktop).
 
-The shell scripts in the tables (`kdos-desktop`, `kdos-desktop-start`, `kdos-session-save`,
-`kdos-login`, `kdos-openarchive`, `kdos-updatedb` and `xdg-terminal-exec`) are not compiled: they
-are installed as they stand from `fs/usr/local/`. The build-host scripts live under `ports/`,
-`script/hooks/` and `testing/`.
+A program under `src/` is an ordinary port: a directory holding a `kpkgbuild` and a `build.sh`, with
+no `source =` to fetch because the code is in the tree. The ports under `src/desktop/` are Qt 6 and
+KDE Frameworks code built with CMake and extra-cmake-modules, or Plasma and KWin packages in QML and
+JavaScript, except `kdos-runner` and `kdos-notice`, which are C on basu with no Qt. Everything under
+`src/daemons/` and `src/system/` is C and links no toolkit. The two directories with no recipe files
+are `src/system/kdos-kpkg/`, because the package manager has to exist before anything can be built
+with it, so `120_kpkg.sh` compiles it straight into the sysroot, and `src/system/kinstall-core/`,
+whose sources `kinstall` compiles in. How to write a new desktop component is in
+[Writing desktop software](../05-developer/writing-desktop-software.md).
 
-A program under `src/desktop/`, `src/daemons/`, `src/system/` or `src/art/` is an ordinary port:
-a directory holding a `kpkgbuild` and a `build.sh`, with no `source =` to fetch because the code is
-in the tree. The one exception is `src/system/kdos-kpkg/`, which has neither file: the package
-manager has to exist before anything can be built with it, so `120_kpkg.sh` compiles it straight
-into the sysroot. Most of these programs compile in the `libk*` libraries under `src/libs/`,
-described in [The C libraries](../05-developer/c-libraries.md). Five ports carry no program. Three under
-`src/art/`, `kdos-icons`, `kdos-cursors` and `kdos-gtk-theme`, each run `kdos-theme` at build time
-to generate the icon, cursor or GTK theme they install; they are described in
-[Theming](../02-user-guide/theming.md#how-the-theme-is-generated). Two under `src/system/` render
-the books: `kdos-doc` writes this book to `/usr/share/doc/kdos` with the manual pages described above, and
-`kdos-kfs` writes *KDOS from Scratch* to `/usr/share/doc/kfs` as HTML and one PDF.
+The shell scripts in the tables (`kdos-dm`, `kdos-session-wrapper`, `kdos-openarchive`,
+`kdos-updatedb` and `xdg-terminal-exec`) are not compiled: they are installed as they stand from
+`fs/usr/local/`. The build-host scripts live under `ports/`, `script/hooks/` and `testing/`.
 
-A new program goes in the directory its kind names, and it is built only once a phase's list names
-it: `50_desktop`'s `packages.txt` for `src/desktop/` and `src/daemons/`, and the
-`packages.d/src-system.txt` or `packages.d/src-art.txt` of the earliest userland phase whose ports
-cover its dependencies for `src/system/` and `src/art/`.
-[A program of its own](../05-developer/writing-desktop-software.md#a-program-of-its-own) walks
-through one.
-
-Three terms recur in the tables below; the [glossary](../06-reference/glossary.md) has the full
-definitions. A *surface* is one window or popup of the desktop drawn by KDOS, such as the panel or
-the Start menu. A *pack* is one application, runtime or dataset as a single signed filesystem
-image. A *box* is the rootless podman container an application runs in; a *boxed* application is
-one that runs in a box.
+Three terms recur below; the [glossary](../06-reference/glossary.md) has the full definitions. A
+*KCM* is a page of System Settings. A *pack* is one application, runtime or dataset as a single
+signed filesystem image. A *box* is the rootless podman container an application runs in; a
+*boxed* application is one that runs in a box.
 
 ## The desktop
 
-| Command | What it is | Documented in |
+| Port | What it adds | Documented in |
 |---|---|---|
-| `kdos-comp` | The compositor: a frozen hard fork of labwc 0.20.0; its KDOS additions live mainly in twenty-three `src/kdos-*.c` files | [kdos-comp](kdos-comp.md) |
-| `kdos-shell` | The panel and 53 further surfaces: 55 names in all, since `kdos-launcher` and `kdos-palette` open the same surface. See [below](#kdos-shell--55-names) | [kdos-shell](kdos-shell.md) |
-| `kdos-res` | The resource monitor. The same binary runs as a text program on a virtual terminal and as a window on the desktop | [kdos-res](kdos-res.md) |
-| `kdos-term` | A terminal with three inline-picture protocols: sixel, iTerm2's and kitty's. It ships beside `foot`, which is the default terminal | [kdos-term](kdos-term.md) |
-| `kdos-lock` | The lock screen, an `ext-session-lock-v1` client: the compositor keeps the screen locked if the client dies | [The daemons](daemons.md#kdos-lock) |
-| `kdos-record` | The screen recorder: the ScreenCast portal into a `gst-launch-1.0` pipeline. Running it a second time stops the recording | [The session](../03-architecture/session.md#recording) |
-| `kdos-desktop` | Starts a session from a virtual terminal after login. A shell script in `/usr/local/bin` | [The session](../03-architecture/session.md#what-kdos-desktop-does) |
-| `kdos-desktop-start` | Brings up the audio stack and the portals, then runs the compositor. After a crash it prints the log's tail and offers to restart the session; the third crash within 60 seconds returns to the text console without offering. A clean exit is a logout. A shell script in `/usr/local/bin` | [The session](../03-architecture/session.md#what-kdos-desktop-start-does) |
-| `kdos-session-save` | Records the running applications when the session is ended from the root menu or `Super+Escape`, so that, with session restore turned on, the next login relaunches the boxed ones. A shell script | [The session](../03-architecture/session.md#what-runs-once-after-the-display-exists) |
-| `xdg-desktop-portal-kdos` | The FileChooser, Settings, AppChooser and Access portal backends, installed at `/usr/lib/xdg-desktop-portal-kdos` and started on demand over D-Bus in your session. It answers a file-chooser request by running `kdos-pick`, and an access question by running `kdos-prompt` | [The daemons](daemons.md#xdg-desktop-portal-kdos) |
+| `kdos-kwin-motion` | Phosphor mode's window, login and logout motion: three KWin effects in JavaScript | [KWin](kwin.md#window-motion) |
+| `kwin-effect-kdos-keys` | The key card on Meta+F1 and Meta+/: every global shortcut, searchable | [KWin](kwin.md#the-key-card) |
+| `kwin-script-kdos-runraise` | One key per terminal program, which raises its Konsole window or opens one | [KWin](kwin.md#run-or-raise) |
+| `kwin-script-kdos-window-memory` | A program's window opens where its last one closed | [KWin](kwin.md#window-memory) |
+| `kdos-plasma-look` | The eight colour schemes and global themes, the `kdos` Plasma style, the three desks, KSplash and the distribution's `kdeglobals` | [The Plasma shell](plasma-shell.md#the-desks), [Theming](../02-user-guide/theming.md) |
+| `plasmoid-kdos-privacy` | The privacy lamps in the tray: microphone, camera and screen, naming the box | [The Plasma shell](plasma-shell.md#privacy-lamps) |
+| `plasmoid-kdos-checklist` | The Getting Started checklist that ticks itself | [The Plasma shell](plasma-shell.md#getting-started) |
+| `kdos-runner` | The KDOS command palette and the offline library in KRunner. `/usr/libexec/kdos/kdos-runner`, started by the session bus | [The Plasma shell](plasma-shell.md#krunner-and-the-kdos-runner) |
+| `kdos-notice` | Notices of restarts, vulnerabilities, trials, rollbacks and memory kills, and the session's half of a confirmed boot. `/usr/bin/kdos-notice` | [The Plasma shell](plasma-shell.md#kdos-notice) |
+| `kded-kdos` | The kded6 module that keeps the accent in step with Plasma, offers the sets on a stick and starts Samba for the first shared folder | [The Plasma shell](plasma-shell.md#kded-kdos) |
+| `kdos-welcome` | The KDOS pages of the Welcome Center | [The Plasma shell](plasma-shell.md#the-welcome-tour) |
+| `ksystemstats-kdos` | Sensors for boxes, energy, the slots and Phosphor mode; the KDOS Meters face and System Monitor's KDOS page | [The Plasma shell](plasma-shell.md#system-monitor) |
+| `kio-library` | `library:/`, the offline library as a folder, its Places entry and the menu's Library category | [The Plasma shell](plasma-shell.md#the-library-as-a-folder) |
+| `kdos-transcribe` | Transcribe in the file manager's menu, offline | [The Plasma shell](plasma-shell.md#transcribe) |
+| `kcm-kdos-boxes` | The Boxes page | [KDOS settings pages](kdos-settings.md#boxes) |
+| `kcm-kdos-firewall` | The Firewall page, and `kdos-fwask`, which offers to let a blocked program in | [KDOS settings pages](kdos-settings.md#firewall) |
+| `kcm-kdos-health` | The Health page, and the KDOS rows of About this System | [KDOS settings pages](kdos-settings.md#health) |
+| `kcm-kdos-look` | The KDOS Look page: one accent everywhere, and Phosphor mode | [KDOS settings pages](kdos-settings.md#kdos-look) |
+| `kcm-kdos-system` | The System Versions page: the two root slots | [KDOS settings pages](kdos-settings.md#system-versions) |
+| `kdos-discover` | Discover's backend for packs, boxes and ports, and the system-update notifier | [Discover](discover.md#the-kdos-backend) |
+| `kdos-installer-gui` | Install KDOS, the graphical installer over `kinstall` | [kinstall](kinstall.md) |
+
+KDOS also carries patches against KDE's own programs where no setting reaches what it needs. Each is
+a `.patch` beside its port's recipe, opening with a `Subject:` line, and its port's note describes
+it. The ones a person meets are KWin's ([KWin](kwin.md#what-the-port-builds)), Discover's ratings
+switch ([Discover](discover.md#nothing-downloads-on-its-own)) and Kup's restic backend
+([KDOS settings pages](kdos-settings.md#backups)).
 
 ## Root daemons
 
-Five daemons run as root. Each is started by a script in `/etc/init.d/` (`55_powerd.sh` to
-`59_packd.sh`), runs in the foreground under `ksvc supervise`, which restarts it if it exits, and
-installs into `/usr/sbin`. Each owns one Unix socket in `/run`, named after the daemon (for example
-`/run/kdos-powerd.sock`), and authorises a request by the credentials the kernel attaches to the
-connection (`SO_PEERCRED`), never by anything the message claims. All five are documented in
-[The daemons](daemons.md).
+Six daemons run as root. Each is started by a script in `/etc/init.d/`, runs in the foreground
+under `ksvc supervise`, which restarts it if it exits, and installs into `/usr/sbin`. Each
+authorises a request by who is asking, as the kernel or the bus reports it, never by anything the
+message claims. All six are documented in [The daemons](daemons.md).
 
-| Command | Owns |
-|---|---|
-| `kdos-powerd` | Suspend, power-off and reboot, for root and members of `seat` or `wheel`; the time zone, the [accent](../06-reference/glossary.md#accent) (the colour palette), the autologin account and the firewall service list, for root and `wheel` only |
-| `kdos-energyd` | The CPU energy counter (RAPL), sampled and attributed per application |
-| `kdos-oomd` | Killing a process when memory pressure, as the kernel's pressure-stall information (PSI) reports it, would otherwise leave the desktop unresponsive |
-| `kdos-mountd` | Mounting, unmounting, ejecting and formatting removable media; unlocking LUKS volumes; SMB shares; SMART queries |
-| `kdos-packd` | Mounting, installing and composing application packs, and verifying their signatures |
+| Command | Started by | Owns |
+|---|---|---|
+| `kdos-settingsd` | `43_settingsd.sh` | `org.freedesktop.hostname1`, `timedate1` and `locale1` on the system bus: the machine's name, clock, time zone, language and keyboards, for KDE's pages. See also [KDOS settings pages](kdos-settings.md#kdos-settingsd) |
+| `kdos-sysupdated` | `46_sysupdated.sh` | `org.freedesktop.sysupdate1` and `io.kdos.Slots1` on the system bus: system updates for Discover, the slots for System Versions, and confirming a booted slot. See also [Discover](discover.md#kdos-sysupdated) |
+| `kdos-powerd` | `55_powerd.sh` | The firewall's named services and the look of the machine before a login, on `/run/kdos-powerd.sock` and as `io.kdos.Power1` on the system bus |
+| `kdos-energyd` | `56_energyd.sh` | The CPU energy counter (RAPL), sampled and attributed per application and box, on `/run/kdos-energyd.sock` |
+| `kdos-oomd` | `57_oomd.sh` | Killing a process when memory pressure, as the kernel's pressure-stall information (PSI) reports it, would otherwise leave the desktop unresponsive; `/run/kdos-oomd.sock` |
+| `kdos-packd` | `59_packd.sh` | Mounting, installing and composing application packs, and verifying their signatures; `/run/kdos-packd.sock` |
 
-Three of the daemons have a command-line client. Each client is the daemon's own binary under a
-second name, dispatched on its basename, so the socket path and the command words exist in one
-place. Run by an ordinary user, the client writes a request to the socket and prints the reply.
+Two of the daemons have a command-line client: the daemon's own binary under a second name,
+dispatched on its basename, so the socket path and the command words exist in one place.
 
 | Command | Installed at | Talks to |
 |---|---|---|
-| `kdos-power` | `/usr/bin`, a link to `../sbin/kdos-powerd` | `kdos-powerd` |
+| `kdos-power` | `/usr/bin`, a link to `../sbin/kdos-powerd` | `kdos-powerd`; its `suspend`, `poweroff` and `reboot` run `loginctl` |
 | `kdos-energy` | `/usr/bin`, a link to `../sbin/kdos-energyd` | `kdos-energyd` |
-| `kdos-mount` | `/usr/bin`, a link to `../sbin/kdos-mountd` | `kdos-mountd` |
 
-The same page also describes three programs that run as you rather than as root:
-`xdg-desktop-portal-kdos` and `kdos-lock`, listed under [The desktop](#the-desktop), and
-`kdos-boxsock`, listed under [Packaging and boxes](#packaging-and-boxes).
+## Programs that run as root on request
 
-## Privileged helpers
-
-Two programs of KDOS's own are setuid root. Both are short (`checkpass.c` is 189 lines of C,
-`resctl.c` 285), and neither takes a path from its caller. The image's whole setuid inventory is in
+KDOS installs no setuid program of its own. Two of its programs run as root when somebody asks, each
+through `pkexec`, whose polkit action names the program and never its arguments, so each takes a
+fixed, checked set of words. The image's setuid inventory, all of it upstream's, is in
 [The security model](../03-architecture/security-model.md#setuid-binaries).
 
-| Command | Does | Takes |
+| Program | Run by | Does |
 |---|---|---|
-| `kdos-checkpass` | Checks the caller's own password, by real user ID, against `/etc/shadow`, for `kdos-lock`. Exits 0 when it matches, 1 when it does not and 2 when it cannot tell | No arguments; the password on standard input |
-| `kdos-resctl` | For `kdos-res`: sends `TERM`, `KILL`, `STOP` or `CONT` to a process, renices it, or reads the SMBIOS table from a compiled-in path. The caller must be in `wheel` | Three verbs, `dmi`, `signal` and `renice`; no paths, no options |
-
-Both are installed in `/usr/bin` with mode 4755. The security model gives each its own section,
-[`kdos-checkpass`](../03-architecture/security-model.md#kdos-checkpass) and
-[`kdos-resctl`](../03-architecture/security-model.md#kdos-resctl), and
-[Acting on a process](kdos-res.md#acting-on-a-process) describes when `kdos-res` calls its helper.
+| `/usr/libexec/kdos-discover/kdos-ports-helper` | Discover, under `io.kdos.ports.install`, to install host software | `kdos update install <port>` from the signed binary host. See [Discover](discover.md#host-software) |
+| `/usr/bin/kinstall` | The graphical installer | The install, as `kinstall --unattended --events json`. See [kinstall](kinstall.md) |
 
 ## Packaging and boxes
 
@@ -143,32 +140,35 @@ Both are installed in `/usr/bin` with mode 4755. The security model gives each i
 | `kdos-pack` | Builds, signs, verifies and indexes application packs, and makes and applies deltas between them | [Packs and boxes](../03-architecture/packs-and-boxes.md#building-a-pack) |
 | `kdos-appbox` | Launches boxed applications, opens files and links, and generates launchers | [kdos-appbox](kdos-appbox.md) |
 | `kdos-box` | Manages boxes. The same binary as `kdos-appbox` | [kdos-appbox](kdos-appbox.md#kdos-box) |
-| `kdos-boxsock` | One process per box, running as you, installed in `/usr/bin`. It binds a Wayland socket in your `$XDG_RUNTIME_DIR` that the compositor tags with the box's name, so the compositor knows which box every window on it came from. `kdos-appbox` starts it | [The daemons](daemons.md#kdos-boxsock) |
+| `kdos-boxsock` | One process per box launcher, running as you, installed in `/usr/bin`. It binds a Wayland socket in the box's private runtime directory and registers it with KWin, tagged with the box, so KWin knows which box every window on it came from. `kdos-appbox` starts it | [The daemons](daemons.md#kdos-boxsock), [KWin](kwin.md#boxes-at-the-compositor) |
 | `kdos-boxinit` | Process 1 inside a pack box, in place of `distrobox-init`. Statically linked, installed in `/usr/libexec/kdos` | [Packs and boxes](../03-architecture/packs-and-boxes.md#the-box) |
 
 ## System tools
 
 | Command | Does | Documented in |
 |---|---|---|
-| `kdos` | The system's command-line entry point: thirty subcommands, plus `help` | [The kdos command](kdos-command.md) |
-| `kinstall` | The installer | [kinstall](kinstall.md) |
-| `ksvc` | The service supervisor | [Boot and init](../03-architecture/boot-and-init.md#rcs-and-the-service-scripts) |
+| `kdos` | The system's command-line entry point, and every subcommand | [The kdos command](kdos-command.md) |
+| `kinstall` | The installer: the text front end, and the backend both front ends run | [kinstall](kinstall.md) |
+| `kdos-installer-gui` | Install KDOS, the graphical installer on the live medium | [kinstall](kinstall.md) |
+| `ksvc` | The service supervisor, for the system's services and each user's | [Boot and init](../03-architecture/boot-and-init.md#rcs-and-the-service-scripts) |
 | `service` | The same binary under the conventional name | [Administration](../02-user-guide/administration.md#services) |
-| `kdos-getty` | Loads the virtual-terminal font and the accent's palette, sets up the delegated cgroup and the real-time limits, then runs a getty | [Boot and init](../03-architecture/boot-and-init.md#the-console) |
-| `kdos-login` | Reads `/etc/kdos/login.conf` and hands tty1 to `agetty`, logging in automatically when the file names an account. A shell script in `/usr/local/sbin` | [Boot and init](../03-architecture/boot-and-init.md#the-console) |
+| `kdos-dm` | What `init` runs on tty1: starts SDDM, and falls back to a password prompt, never an automatic login, when SDDM cannot start. A shell script in `/usr/local/sbin` | [Boot and init](../03-architecture/boot-and-init.md) |
+| `kdos-session-wrapper` | SDDM's session command: reads the login shell's profile, checks the session bus, warms the boxes and starts Plasma. A shell script in `/usr/local/bin` | [The session](../03-architecture/session.md) |
+| `kdos-getty` | Loads the virtual-terminal font and the accent's palette, then runs a getty | [Boot and init](../03-architecture/boot-and-init.md#the-console) |
 | `kdos-bootctl` | Chooses and confirms which of the two root filesystem slots, A or B, boots, and writes the console palette for the accent | [Boot and init](../03-architecture/boot-and-init.md#kdos-bootctl) |
 | `kdos-splash` | The boot splash, drawn straight to the framebuffer | [Boot and init](../03-architecture/boot-and-init.md#the-splash) |
 | `kdos-banner` | The login banner | [Boot and init](../03-architecture/boot-and-init.md#the-login-banner) |
-| `kdos-shot` | Screenshots, to the clipboard and to `~/Pictures/Screenshots` | [The kdos command](kdos-command.md#kdos-shot) |
-| `kdos-theme` | Generates the GTK, icon and cursor themes for an accent. The generator, not the picker: the picker is `kdos-style` | [Theming](../02-user-guide/theming.md#how-the-theme-is-generated) |
+| `kdos-doc` | Opens this book at a page, in the Help Center | [The kdos command](kdos-command.md#manual-pages-and-the-book) |
+| `kdos-shot` | Screenshots, through Spectacle | [The kdos command](kdos-command.md#kdos-shot) |
+| `kdos-theme` | The build-time generators of KDOS's identity: the KDE colour schemes, the Konsole schemes, the qt5ct palettes, the wallpapers and the login screen's palette, and the contrast check over them. The picker is `kdos theme` | [Theming](../02-user-guide/theming.md#how-the-theme-is-generated) |
 | `kdos-mpctl` | Music player control, over mpd's protocol or MPRIS: what a media key runs | [The kdos command](kdos-command.md#kdos-mpctl) |
-| `kdos-share` | Sends a file to another machine over `croc` | [The kdos command](kdos-command.md#kdos-share) |
-| `kdos-sfx` | Plays the machine's four sounds: `login`, `notify`, `error`, `degauss` | [The kdos command](kdos-command.md#kdos-sfx) |
+| `kdos-share` | Sends a file to another machine over `croc` | [The kdos command](kdos-command.md) |
+| `kdos-sfx` | Plays the machine's sounds, and renders them into the `kdos` sound theme at build time | [The kdos command](kdos-command.md#kdos-sfx) |
 | `kdos-fetch-app`, `kdos-fetch-static` | Install an [alien application](../06-reference/glossary.md#alien-app) (one not compiled by this repository) into a distrobox container from its distribution's packages, and export it to your desktop; fetch one upstream binary, checked against a SHA-256 you give it, into `/usr/local/bin` | [The kdos command](kdos-command.md#kdos-fetch-app-and-kdos-fetch-static) |
 | `kdos-bb` | A hard fork of bb 1.3rc1, the AAlib ASCII-art demo | [kdos-bb](kdos-bb.md) |
-| `kdos-openarchive` | Extracts an archive that `mc` cannot browse as a directory, with `ouch`, into the directory the archive is in. A shell script | [kdos-shell](kdos-shell.md#kdos-pick) |
+| `kdos-openarchive` | Extracts an archive with `ouch` into the directory the archive is in: the default handler for 7z and rar. A shell script | [Applications](../02-user-guide/applications.md) |
 | `kdos-updatedb` | Rebuilds your own `plocate` index, scoped to your home directory. A shell script | [Administration](../02-user-guide/administration.md#finding-a-file-by-name) |
-| `xdg-terminal-exec` | The first terminal name GLib looks for when it wraps a `Terminal=true` entry, which is how the portal opens a link for a boxed application. It drops a leading `-e` or `--` and runs `foot -e` with the rest, the same terminal `kdos-appbox` chooses. A shell script | [kdos-appbox](kdos-appbox.md#terminal-entries) |
+| `xdg-terminal-exec` | The first terminal name GLib looks for when it wraps a `Terminal=true` entry. It drops a leading `-e` or `--` and runs `konsole -e` with the rest. A shell script | [kdos-appbox](kdos-appbox.md#terminal-entries) |
 
 ## Build and development tools
 
@@ -180,47 +180,22 @@ These run on a build host and never ship on the target.
 | `kdos-portup` | Checks every port for a newer upstream release. Compiled on demand by `ports/update` | [Writing ports](../05-developer/writing-ports.md#checking-for-new-versions) |
 | `ports/update` | The front end to the version checker | [Writing ports](../05-developer/writing-ports.md#checking-for-new-versions) |
 | `ports/fetch` | Fetches every source a recipe names, from the cache, the source archive or upstream, and generates missing vendor bundles. `make fetch` runs it | [Developing](../05-developer/developing.md#where-sources-come-from) |
-| `ports/publish` | Uploads sources the archive lacks into the numbered volumes `ports/shelves` maps each shelf to, plans volumes for new shelves, moves files when a port changes shelf, deletes the per-shelf `src-<name>` releases once they hold nothing, lists and prunes files no recipe names, freezes a release's source list, and puts a system release on GitHub | [Writing ports](../05-developer/writing-ports.md#publishing-sources) |
+| `ports/publish` | Uploads sources the archive lacks into the numbered volumes `ports/shelves` maps each shelf to, plans volumes for new shelves, moves files when a port changes shelf, lists and prunes files no recipe names, freezes a release's source list, and puts a system release on GitHub | [Writing ports](../05-developer/writing-ports.md#publishing-sources) |
 | `script/hooks/pre-push` | Refuses a push that breaks the ports layout (every recipe at `ports/core/<shelf>/<name>/` on a listed shelf, every port name used once across `ports/core` and `src/`), that adds or changes a patch with no `Subject:` line, whose working copy fails `testing/docscheck.sh` or `testing/kfscheck.py`, or whose recipes name a source the archive does not hold. Enabled with `git config core.hooksPath script/hooks` | [Developing](../05-developer/developing.md#the-pre-push-check) |
-| `testing/*` | The test harnesses, including the rig, which boots the ISO in QEMU and photographs it over VNC | [Testing](../05-developer/testing.md) |
+| `testing/*` | The test harnesses: `selftest.sh` for the C, `plasmatest.sh` for the Qt and QML code in the development container, and the rig, which boots the ISO in QEMU and photographs it over VNC | [Testing](../05-developer/testing.md) |
 
 ## Binaries that answer to several names
 
-Four binaries provide most of the commands on the system. Each dispatches on its own basename: it
-is installed once, with a symbolic link for each further name. In `kdos-shell`, `ksvc` and `kpkg`
-a table in `main.c` maps each name to an entry point, and the table and the installed links must
-agree. A name in the table with no matching entry point fails the link; a name with no link
-installed is a program nothing can reach. Run under a name missing from its table, each of the
-three takes its first argument as the name instead, so the freshly compiled `kdos-tools` binary
-runs as `kdos-tools service list` before any link exists. When that does not match either,
-`kdos-shell` or `ksvc` prints the names it does know, and `kpkg` reports that it has no tool of
-that name.
-`kdos-appbox` has no such table: it treats any name it does not recognise as the name of a boxed
-application to launch (an application shim, described below). Three root daemons also answer to a
-second name; see [Root daemons](#root-daemons).
-
-### `kdos-shell` — 55 names
-
-The panel and every surface reachable from it or from a key chord. One name, `kdos-launcher`,
-opens the same surface as `kdos-palette`, so the 55 names resolve to 54 distinct programs. All are
-installed in `/usr/bin`, and each is described in [kdos-shell](kdos-shell.md).
-
-| | | | |
-|---|---|---|---|
-| `kdos-shell` | `kdos-start` | `kdos-launcher` | `kdos-palette` |
-| `kdos-menu` | `kdos-desk` | `kdos-pick` | `kdos-ascii` |
-| `kdos-run` | `kdos-prompt` | `kdos-notifyd` | `kdos-notify` |
-| `kdos-mediad` | `kdos-netagent` | `kdos-osd` | `kdos-cal` |
-| `kdos-display` | `kdos-keys` | `kdos-teams` | `kdos-saver` |
-| `kdos-about` | `kdos-style` | `kdos-calc` | `kdos-chars` |
-| `kdos-connect` | `kdos-traymenu` | `kdos-contacts` | `kdos-disks` |
-| `kdos-print` | `kdos-time` | `kdos-users` | `kdos-update` |
-| `kdos-store` | `kdos-firewall` | `kdos-backup` | `kdos-note` |
-| `kdos-slit` | `kdos-doc` | `kdos-settings` | `kdos-openwith` |
-| `kdos-audio` | `kdos-net` | `kdos-bt` | `kdos-devices` |
-| `kdos-clip` | `kdos-status` | `kdos-tip` | `kdos-ime` |
-| `kdos-trash` | `kdos-peek` | `kdos-find` | `kdos-pix` |
-| `kdos-rec` | `kdos-burn` | `kdos-verify` | |
+Three binaries provide most of KDOS's own commands. Each dispatches on its own basename: it is
+installed once, with a symbolic link for each further name. In `ksvc` and `kpkg` a table in the
+source maps each name to an entry point, and the table and the installed links must agree: a name in
+the table with no entry point fails the link, and a name with no link installed is a program nothing
+can reach. Run under a name missing from its table, each takes its first argument as the name
+instead, so the freshly compiled `kdos-tools` binary runs as `kdos-tools service list` before any
+link exists; when that does not match either, `ksvc` prints the names it knows and `kpkg` reports
+that it has no tool of that name. `kdos-appbox` has no such table: it treats any name it does not
+recognise as the name of a boxed application to launch (an application shim, described below). Two
+root daemons also answer to a second name; see [Root daemons](#root-daemons).
 
 ### `ksvc` — 12 names
 
@@ -236,10 +211,10 @@ link to it.
 | `kdos-getty` | `/usr/local/sbin` | The font-and-palette wrapper around a getty |
 | `kdos-bootctl` | `/usr/bin` | A/B slot selection. The initramfs carries its own copy |
 | `kdos-banner` | `/usr/local/bin` | The login banner |
-| `kdos-shot` | `/usr/local/bin` | Screenshots |
-| `kdos-sfx` | `/usr/local/bin` | Sound effects |
-| `kdos-mpctl` | `/usr/local/bin` | Music player control |
-| `kdos-share` | `/usr/local/bin` | A file to another machine, over `croc`. An open-with list offers its Share row only when this name is on `PATH` |
+| `kdos-shot` | `/usr/local/bin` | Screenshots, a front end to Spectacle |
+| `kdos-sfx` | `/usr/local/bin` | Sound effects, and rendering the sound theme |
+| `kdos-mpctl` | `/usr/local/bin` | Music player control, and the bridge that puts mpd on MPRIS |
+| `kdos-share` | `/usr/local/bin` | A file to another machine, over `croc` |
 | `kdos-fetch-app` | `/usr/local/bin` | Installs an alien application into a distrobox container and exports it |
 | `kdos-fetch-static` | `/usr/local/bin` | Installs one upstream binary, checked against a given SHA-256 |
 
@@ -276,22 +251,23 @@ each application in a pack the medium carries, and the default medium carries no
 application writes its shim in `~/.local/bin`, so after `kdos app install app.hugin`, `hugin` on
 your `PATH` is `kdos-appbox` dispatching on that name. `kdos-appbox genlaunchers` rewrites the
 system set, and `kdos-box export` adds a `<app>@<box>` shim in `~/.local/bin` for an application in a
-box other than the default one. See
-[kdos-appbox](kdos-appbox.md#launcher-generation).
+box other than the default one. See [kdos-appbox](kdos-appbox.md#launcher-generation).
 
 ## See also
 
-- [Command index](../06-reference/command-index.md) — every command, alphabetically
-- [Architecture overview](../03-architecture/overview.md) — how these programs fit together
-- [How KDOS differs](../01-philosophy/how-kdos-differs.md#the-desktop) — why the desktop is KDOS's own
-  programs rather than an existing desktop environment
-- [How KDOS is built](../05-developer/how-kdos-is-built.md) — the phases that compile these programs
-- [The ports catalogue](../06-reference/ports-catalogue.md) — the upstream software beside them
-- [Repository layout](../06-reference/repository-layout.md) — where each one's source lives
-- [The C libraries](../05-developer/c-libraries.md) — the libraries these programs are built on
-- [Configuration](../06-reference/configuration.md) — every configuration key, with defaults
+- [Command index](../06-reference/command-index.md): every command, alphabetically
+- [Architecture overview](../03-architecture/overview.md): how these programs fit together
+- [How KDOS differs](../01-philosophy/how-kdos-differs.md): how KDOS ships Plasma compared with
+  other distributions
+- [How KDOS is built](../05-developer/how-kdos-is-built.md): the phases that compile these programs
+- [The ports catalogue](../06-reference/ports-catalogue.md): the upstream software beside them
+- [Repository layout](../06-reference/repository-layout.md): where each one's source lives
+- [The C libraries](../05-developer/c-libraries.md): the libraries the C programs are built on
+- [Writing desktop software](../05-developer/writing-desktop-software.md): writing a new KDOS
+  component for the desktop
+- [Configuration](../06-reference/configuration.md): every configuration key, with defaults
 
 <!-- book-nav -->
 ---
 
-*Part IV — Programs, chapter 20.* Previous: [19. The window model](../03-architecture/window-model.md) · [Contents](../README.md) · Next: [21. kdos-comp](kdos-comp.md)
+*Part IV — Programs, chapter 20.* Previous: [19. The window model](../03-architecture/window-model.md) · [Contents](../README.md) · Next: [21. KWin](kwin.md)

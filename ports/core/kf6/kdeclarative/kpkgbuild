@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = kdeclarative
-version     = 6.30.0
+version     = 6.31.0
 release     = 1
 source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
-sha256      = 7ec3583a2cf2cd7143e39936ffb39e22d20563f4c87a8462e0e9d12c59ea89a6  kdeclarative-6.30.0.tar.xz
+sha256      = 458eb2b6e15cd368292fb2a9a6c49621d006c306d7c37ca3bd3090520989401e  kdeclarative-6.31.0.tar.xz
 description = KDE Frameworks: QML integration and controls
 homepage    = https://invent.kde.org/frameworks/kdeclarative
 license     = LGPL-2.0-or-later AND MIT AND LGPL-2.1-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL)

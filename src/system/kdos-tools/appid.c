@@ -5,39 +5,29 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   kdos appid — does the icon match the window?
+ *   kdos appid — does every open window have the launcher it claims?
  *
- * A shell matches a running window to its launcher by the desktop entry's FILE
- * ID: `firefox-esr.desktop` matches a toplevel whose app_id is `firefox-esr`.
- * When they differ by so much as a capital letter the launcher and the running
- * window become two separate icons, the second one a grey cog. It is endemic
- * upstream — Bitwarden #17760, Godot #96074, Mozilla bug 1782448, Firefox
- * shipping `Firefox-esr` against `firefox-esr.desktop` — and every desktop's
- * answer is a hand-written per-app rule after a user complains.
+ * The Task Manager matches a window to its launcher by FILE ID: the window's
+ * app id, which KWin reports as the desktop file name the application set or
+ * else its resource class, must be the basename of an installed .desktop
+ * entry. A window whose app id names no entry shows as a second, unnamed icon
+ * beside the launcher it came from, with no pin and no name — and nothing
+ * reports it, because the window works.
  *
- * The seam exists because the app author, the toolkit, the packager and the
- * shell author are four different people. On KDOS three of them are us, so the
- * mismatch is checkable rather than reportable.
+ * So this asks KWin for every window open now (windows.c, as `kdos hey`
+ * does) and looks for `<app id>.desktop` in the applications
+ * directory of $XDG_DATA_HOME and of each $XDG_DATA_DIRS entry:
  *
- * WHAT MAKES THIS DIFFERENT FROM GUESSING. The right-hand side is
- * `~/.local/share/kdos/observed-app-ids`, which kdos-comp appends to every time
- * a window actually maps. It is a MEASUREMENT. KDOS learned that the hard way:
- * GIMP's own entry declares `StartupWMClass=gimp-3.0` while its Wayland
- * toplevel calls `set_app_id("gimp")`, and nothing short of WAYLAND_DEBUG=1
- * would have told anyone. A checker built on StartupWMClass would confidently
- * have blessed the broken case.
+ *   <app id> TAB OK|MISMATCH TAB <title>
  *
- * Hence three verdicts, and `unknown` is never folded into `ok`:
+ * NoDisplay=true IS A MATCH: it keeps an entry out of the menu, not out of the
+ * Task Manager, which resolves a window to it all the same. Hidden=true is the
+ * spec's "this entry is deleted" and matches nothing.
  *
- *   ok       an entry whose id was observed on a real window
- *   MISMATCH an app_id was observed that no installed entry is named after
- *   unknown  a menu entry never yet observed — it may be perfect, or it may be
- *            broken and simply not have been launched since the file was last
- *            emptied. Reporting it as ok would be a confident wrong answer,
- *            which is the one thing this must not give.
+ * Exit 0 with no MISMATCH, 1 with any, 2 when there is no session to ask.
+ * ---------------------------------
  */
 
-#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -46,228 +36,66 @@
 #include "kdos-tools.h"
 #include "kxdg.h"
 
-#define OBSERVED_REL "/.local/share/kdos/observed-app-ids"
-
-/* ANSI, but only when someone is looking — the same rule kdos.c follows. */
-static const char *C_A = "", *C_D = "", *C_W = "", *C_0 = "";
-
-static void colours(void)
+/* An entry loads and is not deleted. */
+static int entry_ok(const char *dir, const char *id)
 {
-	if (!isatty(STDOUT_FILENO))
-		return;
-	C_A = "\033[1;32m";
-	C_D = "\033[2;32m";
-	C_W = "\033[1;33m";
-	C_0 = "\033[0m";
-}
+	char leaf[512], *path;
+	KxdgEntry ent = { 0 };
+	int ok = 0;
 
-/* Where launchers live. The alien apps' are seeded into the user's tree from
- * /etc/skel, so both are real and both are checked. */
-static const char *const ENTRY_DIRS[] = {
-	"/usr/share/applications",
-	"/usr/local/share/applications",
-};
-
-typedef struct {
-	char **v;
-	int n, cap;
-} StrList;
-
-static void sl_add(StrList *l, const char *s)
-{
-	for (int i = 0; i < l->n; i++)
-		if (!strcmp(l->v[i], s))
-			return;			/* deduplicated on the way in */
-	if (l->n == l->cap) {
-		int cap = l->cap ? l->cap * 2 : 32;
-		char **grown = kb_calloc((size_t)cap, sizeof(*grown));
-		for (int i = 0; i < l->n; i++)
-			grown[i] = l->v[i];
-		free(l->v);
-		l->v = grown;
-		l->cap = cap;
-	}
-	l->v[l->n++] = kb_strdup(s);
-}
-
-static int sl_has(const StrList *l, const char *s)
-{
-	for (int i = 0; i < l->n; i++)
-		if (!strcmp(l->v[i], s))
-			return 1;
-	return 0;
-}
-
-static void sl_free(StrList *l)
-{
-	for (int i = 0; i < l->n; i++)
-		free(l->v[i]);
-	free(l->v);
-}
-
-/* The desktop FILE ID: the basename with `.desktop` removed. That — not Name,
- * not Exec, not StartupWMClass — is what a shell matches on. */
-static int entry_id(const char *fname, char *out, size_t len)
-{
-	size_t n = strlen(fname);
-	if (n < 9 || strcmp(fname + n - 8, ".desktop"))
-		return -1;
-	if (n - 8 >= len)
-		return -1;
-	memcpy(out, fname, n - 8);
-	out[n - 8] = '\0';
-	return 0;
-}
-
-/*
- * Every entry that loads is a match for a window, NoDisplay or not: NoDisplay
- * keeps an entry out of the menu, not out of the taskbar and the switcher,
- * which resolve a window to it by file ID all the same — every kdos-shell
- * front end's entry is NoDisplay, and skipping those would call each of its
- * windows a MISMATCH. Hidden=true is the spec's "this entry is deleted", and
- * is no match. `listed` gets the entries a menu shows, the only ones the "not
- * yet observed" count is about: a NoDisplay helper nobody launches by hand is
- * not news.
- */
-static void collect_entries(StrList *ids, StrList *listed, const char *dir)
-{
-	DIR *d = opendir(dir);
-	struct dirent *e;
-	char id[256], path[1024];
-
-	if (!d)
-		return;
-	while ((e = readdir(d))) {
-		KxdgEntry ent = {0};
-		if (entry_id(e->d_name, id, sizeof(id)) != 0)
-			continue;
-		snprintf(path, sizeof(path), "%s/%s", dir, e->d_name);
-		if (kxdg_load(&ent, path, "Desktop Entry") != 0)
-			continue;
-		if (!kxdg_bool(&ent, "Hidden", 0)) {
-			sl_add(ids, id);
-			if (!kxdg_bool(&ent, "NoDisplay", 0))
-				sl_add(listed, id);
-		}
+	if (strchr(id, '/') || !strcmp(id, ".") || !strcmp(id, ".."))
+		return 0;
+	snprintf(leaf, sizeof(leaf), "applications/%s.desktop", id);
+	path = kb_path_join(dir, leaf);
+	if (kb_path_exists(path) && kxdg_load(&ent, path, "Desktop Entry") == 0) {
+		ok = !kxdg_bool(&ent, "Hidden", 0);
 		kxdg_free(&ent);
 	}
-	closedir(d);
+	free(path);
+	return ok;
 }
 
-static void collect_observed(StrList *seen)
+static int has_entry(const char *id)
 {
-	char path[1024], *buf, *line, *save;
-	const char *home = kb_home_dir();
+	const char *dh = getenv("XDG_DATA_HOME");
+	const char *dirs = getenv("XDG_DATA_DIRS");
+	char *home = dh && *dh ? kb_strdup(dh)
+			       : kb_path_join(kb_home_dir(), ".local/share");
+	char *copy, *save = NULL;
+	int ok = *id && entry_ok(home, id);
 
-	snprintf(path, sizeof(path), "%s%s", home, OBSERVED_REL);
-	buf = kb_read_all(path, NULL);
-	if (!buf)
-		return;
-	for (line = strtok_r(buf, "\n", &save); line;
-	     line = strtok_r(NULL, "\n", &save)) {
-		char *t = line;
-		while (*t == ' ' || *t == '\t')
-			t++;
-		if (*t)
-			sl_add(seen, t);
-	}
-	free(buf);
+	free(home);
+	copy = kb_strdup(dirs && *dirs ? dirs : "/usr/local/share:/usr/share");
+	for (char *d = strtok_r(copy, ":", &save); d && !ok;
+	     d = strtok_r(NULL, ":", &save))
+		ok = *d && *id && entry_ok(d, id);
+	free(copy);
+	return ok;
 }
 
 int appid_main(int argc, char **argv)
 {
-	StrList ids = {0}, listed = {0}, seen = {0};
-	int quiet = 0, mismatches = 0, ok = 0, unknown = 0;
+	KdtWindow *w;
+	int n, bad = 0;
 
-	colours();
-
-	for (int i = 1; i < argc; i++) {
-		if (!strcmp(argv[i], "--quiet") || !strcmp(argv[i], "-q")) {
-			quiet = 1;
-		} else {
-			fprintf(stderr, "usage: kdos appid [--quiet]\n");
-			return 2;
-		}
+	(void)argv;
+	if (argc > 1) {
+		fprintf(stderr, "usage: kdos appid\n");
+		return 2;
 	}
-
-	for (size_t i = 0; i < sizeof(ENTRY_DIRS) / sizeof(ENTRY_DIRS[0]); i++)
-		collect_entries(&ids, &listed, ENTRY_DIRS[i]);
-	{
-		char user_dir[1024];
-		snprintf(user_dir, sizeof(user_dir), "%s/.local/share/applications",
-			 kb_home_dir());
-		collect_entries(&ids, &listed, user_dir);
+	n = kdt_windows(&w);
+	if (n < 0) {
+		fprintf(stderr, "kdos appid: there is no Plasma session to "
+				"ask\n");
+		return 2;
 	}
-	collect_observed(&seen);
+	for (int i = 0; i < n; i++) {
+		int ok = has_entry(w[i].app_id);
 
-	/*
-	 * THE LEDGER IS THE ANSWER; THE LIVE SESSION IS THE FALLBACK. A home
-	 * that has not run this compositor yet has no file, and refusing to
-	 * report on the windows that are on the screen at that moment would be
-	 * a checker that cannot check anything on a fresh boot. What the live
-	 * route cannot do is speak for an application that is not running, so
-	 * it is used only when the recorded set is empty and it says which one
-	 * it used — the two answer different questions and reporting them as
-	 * one would be the confident wrong answer this tool exists to avoid.
-	 */
-	if (seen.n == 0) {
-		char **live = NULL;
-		int n = hey_app_ids(&live);
-
-		for (int i = 0; i < n; i++) {
-			sl_add(&seen, live[i]);
-			free(live[i]);
-		}
-		free(live);
-		if (seen.n)
-			printf("%sNo ledger yet — reporting on the %d window%s "
-			       "open right now.%s\n\n", C_D, seen.n,
-			       seen.n == 1 ? "" : "s", C_0);
+		printf("%s\t%s\t%s\n", *w[i].app_id ? w[i].app_id : "-",
+		       ok ? "OK" : "MISMATCH", w[i].title);
+		bad |= !ok;
 	}
-
-	if (seen.n == 0) {
-		printf("%sNo windows have been observed yet.%s\n", C_D, C_0);
-		printf("kdos-comp records an app_id the first time each window "
-		       "maps; launch some apps and run this again.\n");
-		sl_free(&ids);
-		sl_free(&listed);
-		sl_free(&seen);
-		return 0;
-	}
-
-	/*
-	 * The direction that matters is observed -> entry, not entry ->
-	 * observed. An app_id with no entry named after it is a window that
-	 * WILL show up as a second, unnamed icon; an entry never observed is
-	 * merely an app nobody has opened.
-	 */
-	for (int i = 0; i < seen.n; i++) {
-		if (sl_has(&ids, seen.v[i])) {
-			ok++;
-			if (!quiet)
-				printf("  %sok%s        %s\n", C_A, C_0, seen.v[i]);
-			continue;
-		}
-		mismatches++;
-		printf("  %sMISMATCH%s  %s — observed on a window, but no "
-		       "%s.desktop is installed\n",
-		       C_W, C_0, seen.v[i], seen.v[i]);
-	}
-	for (int i = 0; i < listed.n; i++)
-		if (!sl_has(&seen, listed.v[i]))
-			unknown++;
-
-	printf("\n%d matched, %d mismatched, %d entries not yet observed\n",
-	       ok, mismatches, unknown);
-	if (mismatches)
-		printf("%sA mismatch shows in the shell as a second, unnamed "
-		       "icon beside the launcher.%s\n"
-		       "Rename the .desktop file to the observed app_id — the "
-		       "file ID is what is matched on,\nnot Name and not "
-		       "StartupWMClass.\n", C_D, C_0);
-
-	sl_free(&ids);
-	sl_free(&listed);
-	sl_free(&seen);
-	return mismatches ? 1 : 0;
+	kdt_windows_free(w, n);
+	return bad ? 1 : 0;
 }

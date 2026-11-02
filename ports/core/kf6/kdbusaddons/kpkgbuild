@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = kdbusaddons
-version     = 6.30.0
+version     = 6.31.0
 release     = 1
 source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
-sha256      = 063ef80460f76d86dc4b033ef04b65b69ba82ee0de410440fe609465e7f5a997  kdbusaddons-6.30.0.tar.xz
+sha256      = 7110f9f07b6cef50a238b01b23f2adcb23552ea1e91e2a9c84f96c5d94a69036  kdbusaddons-6.31.0.tar.xz
 description = KDE Frameworks: convenience classes for Qt D-Bus
 homepage    = https://api.kde.org/frameworks/kdbusaddons/html/
 license     = LGPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL)

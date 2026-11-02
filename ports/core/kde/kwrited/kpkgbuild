@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kwrited
+version     = 6.8.2
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = b4a5fd4f807ec394bea5b49d8f0079143183ac1e4628182bac254a8b7ad31650  kwrited-6.8.2.tar.xz
+description = KDE write daemon — shows messages sent with write and wall as desktop notifications
+homepage    = https://invent.kde.org/plasma/kwrited
+license     = CC0-1.0 AND GPL-2.0-or-later
+group       = plasma
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcoreaddons ki18n knotifications kpty

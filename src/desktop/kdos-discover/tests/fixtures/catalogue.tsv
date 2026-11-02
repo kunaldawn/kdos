@@ -1,0 +1,4 @@
+app.kcalc	KCalc	Utility	4200000	rt-kde	installed	Scientific calculator
+app.scribus	Scribus	Office	99000000	rt-gtk	available	Page layout	with a tab
+not an id	x	x	1	-	available	x
+data.tess	Tesseract languages	Office	30000000	base	available	OCR models

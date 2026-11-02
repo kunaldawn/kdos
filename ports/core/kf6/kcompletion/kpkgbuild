@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = kcompletion
-version     = 6.30.0
+version     = 6.31.0
 release     = 1
 source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
-sha256      = 96ad9c429ca53b830359c45614ca4c32ed6b759f3023f1b3db1650ba1c19bd58  kcompletion-6.30.0.tar.xz
+sha256      = b9b0023059c09fadfd9aa5d6cf40b3fb0a72d9b45e73b2146c29c20dfab35689  kcompletion-6.31.0.tar.xz
 description = KDE Frameworks: text completion helpers and widgets
 homepage    = https://invent.kde.org/frameworks/kcompletion
 license     = LGPL-2.0-or-later AND LGPL-2.1-or-later

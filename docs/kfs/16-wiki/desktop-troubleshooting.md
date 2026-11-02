@@ -1,328 +1,140 @@
 # Desktop troubleshooting
 
-This page is for a desktop that does not come up, comes up wrong, or stops answering. It covers
-the path from the login on `tty1` to the [compositor]{.idx}, the files on that path, how to reach a shell
-when the screen is no use, where the compositor writes what went wrong, and the faults that have a
-known cause. How a session is started, step by step, is in
-[Starting a session](../../kdos/03-architecture/session.md#starting-a-session); this page links to
-it rather than repeating it.
+This page is for a desktop that does not come up, comes up wrong, or stops: what each stage from
+the end of the boot to a working Plasma session leaves behind, where its log is, and how to get a
+working desktop back from the recovery console. The stages themselves are described in
+[The session](../../kdos/03-architecture/session.md); the settings each problem leads to are on the
+other pages of this part.
 
 ## Installation
 
-The desktop is a handful of ports and a few scripts from the base filesystem:
+Nothing is installed for this page. The tools it uses are on every image:
 
-| Piece | From | Is |
-|:--|:--|:--|
-| `kdos-comp` | [kdos-comp](#port-kdos-comp) | The compositor, a fork of labwc, which also starts and supervises the [panel]{.idx} and the session daemons |
-| `kdos-shell` and its other names | [kdos-shell](#port-kdos-shell) | The panel, menus, Settings, notifications and the other surfaces |
-| `kdos-lock` | [kdos-lock](#port-kdos-lock) | The [lock screen]{.idx} |
-| [`seatd`]{.idx} | [seatd](#port-seatd) | Hands the compositor the display and input devices; the service `seatd`, from [`/etc/init.d/45_seatd.sh`]{.idx} |
-| `dbus-daemon` | [dbus](#port-dbus) | The system bus (service `dbus`) and the [session bus]{.idx} the desktop starts |
-| [Xwayland]{.idx} | [xwayland](#port-xwayland) | The X server for applications with no Wayland path, started on demand |
-| `kdos-getty` | [kdos-tools](#port-kdos-tools) | Loads the console font and palette before each console's getty |
-| `kdos-login` | The base filesystem, `fs/usr/local/sbin/` | Logs `tty1` in, as `/etc/kdos/login.conf` says |
-| [`kdos-desktop`]{.idx}, `kdos-desktop-start`, `session-common.sh` | The base filesystem, `fs/usr/local/` | Bring the session up and run the compositor |
-
-Both services ship enabled. The desktop itself is not a service: it is started by
-the login shell on `tty1`. The live medium logs `kdos` in on `tty1` with no password asked; an
-installed system logs in the account the installer created, or asks for a password if [autologin]{.idx} was
-turned off. See [Login and autologin](login-and-autologin.md).
+| Tool | From | Used for |
+|---|---|---|
+| `kdos doctor` | [kdos-tools](#port-kdos-tools) | One report on the whole machine; its Session section checks the session bus, elogind and, inside a session, KWin, plasmashell and the KDE portal; its Desktop section the lock screen's PAM stack and setuid helpers, Xwayland and fcitx5 |
+| `loginctl` | [elogind](#port-elogind) | Which sessions exist, which is active, and unlocking or ending one |
+| `qdbus6` | [qt6-qttools](#port-qt6-qttools) | Asking KWin, plasmashell and the other session programs over the bus |
+| `service --user` | [kdos-tools](#port-kdos-tools) | The user's own services: the session bus, PipeWire, the timers |
 
 ## Configuration
 
-### ~/.bash_profile
+### Where each stage logs
 
-The login shell starts the desktop on `tty1` only, and does not `exec` it, so a session that fails
-leaves a shell. From `fs/etc/skel/.bash_profile`:
+| Stage | Log |
+|---|---|
+| `kdos-dm`, which starts SDDM or falls back to a text prompt | syslog, `grep kdos-dm /var/log/messages` |
+| SDDM and the greeter, the greeter's KWin included | `/var/log/sddm.log`, the previous boot's in `/var/log/sddm.log.old` |
+| The session wrapper, startplasma, KWin, plasmashell and everything they print | `~/.local/share/sddm/wayland-session.log` |
+| The user's services, and every program the session bus starts | `$XDG_RUNTIME_DIR/ksvc/kdos-svc.<name>.log` |
+| elogind | `/run/kdos-svc.elogind.log` and syslog |
+| A crash of KWin or of an application | The session log; the crash handler DrKonqi is not installed |
 
-<!-- kfs:include fs/etc/skel/.bash_profile lines=15-26 pin=30881d056419 -->
+### The recovery console
 
-An account whose shell is zsh has the same block in `~/.zprofile`.
-
-### /etc/inittab
-
-`tty2` is a plain login prompt, kept for exactly this page's purpose. From `fs/etc/inittab`:
-
-<!-- kfs:include fs/etc/inittab lines=34-40 pin=527998a111ea -->
-
-### /usr/local/bin/kdos-desktop
-
-The command the login shell runs. It refuses when the compositor is not installed, from
-`fs/usr/local/bin/kdos-desktop`:
-
-<!-- kfs:include fs/usr/local/bin/kdos-desktop lines=7-11 pin=382d0335a0d6 -->
-
-On a virtio [GPU]{.idx} it then turns off hardware cursors, and sets `WLR_RENDERER=pixman` when that
-GPU does not offer virgl, so the compositor renders in software. It sets the same on any machine
-with no render node in `/dev/dri`. Last it prepares the runtime directory, the [keymap]{.idx}, the
-boxes and the session bus, and hands over to `kdos-desktop-start`:
-
-<!-- kfs:include fs/usr/local/bin/kdos-desktop lines=53-61 pin=ca4700af0db5 -->
-
-### /usr/local/bin/kdos-desktop-start
-
-Runs the compositor in the foreground with its log in a file, and offers a restart when it crashes.
-When nothing chose a renderer and the compositor exits because the render node's GL is software
-(`Software rendering detected` in the log), it runs the compositor once more on pixman and logs
-`kdos-desktop: no hardware GL; starting kdos-comp on the pixman renderer`. From
-`fs/usr/local/bin/kdos-desktop-start`:
-
-<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=167-230 pin=b485a0ab3200 -->
-
-### ~/.config/kdos-comp/rc.xml and ~/.config/kdos/comp.conf
-
-The compositor's two files. [`rc.xml`]{.idx} holds the bindings, and two rules in it break the whole
-desktop without a message; the file's own header states the first:
-
-<!-- kfs:include fs/etc/skel/.config/kdos-comp/rc.xml lines=7-18 pin=8523e302d495 -->
-
-The second is that `--` may not appear inside an XML comment. [`comp.conf`]{.idx} holds the KDOS keys; a
-line in it that does not take effect is named in the log with its line number. Both are described
-in [Configuration](../../kdos/04-programs/kdos-comp.md#configuration).
-
-### $XDG_RUNTIME_DIR/kdos-comp.log
-
-The compositor's log, usually `/run/user/1000/kdos-comp.log`, with the previous session's beside
-it as `kdos-comp.log.old`. It is a tmpfs file and does not survive a reboot.
+`tty2` is a plain login prompt that nothing on `tty1` can take away; see
+[Login and autologin](login-and-autologin.md#logging-in-on-the-recovery-console). Every procedure
+below starts there: `Ctrl+Alt+F2` from the desktop or the greeter, or `Alt+F2` at a text console.
 
 ## Usage
 
-### Getting a shell when the desktop is no use
+### Finding which stage stopped
 
-1. Press Ctrl+Alt+F2. The compositor handles the key even while the screen is locked. `tty2`
-   shows a plain `<hostname> login:` prompt, `kdos login:` on the live medium.
-2. Log in on `tty2` as the desktop's account: `kdos` on the live medium, password `kdos`, or the
-   account the installer created.
-3. Return to the desktop with Alt+F1.
-
-If Ctrl+Alt+F2 does nothing, the compositor is not reading the keyboard. Log in over [SSH]{.idx} from
-another machine if the SSH server is enabled ([SSH server](ssh-server.md)), or hold the power
-button.
-
-### Reading what went wrong
-
-From `tty2`:
-
-```bash
-tail -n 40 /run/user/1000/kdos-comp.log
-tail -n 40 /run/user/1000/kdos-comp.log.old
-```
-
-The previous session's log is the one to read after a crash and a restart; `kdos-comp.log.old`
-exists only once the desktop has been started a second time since boot. Each line starts with a
-time and the source file; lines whose message starts with `crt:` are about the phosphor pass. Lines that name `comp.conf` are settings the compositor could
-not use, each with its line number, or changes that wait for the next login.
-
-### Restarting the desktop
-
-After a crash, `tty1` shows the last 20 lines of the log and asks:
-
-```text
-r=restart session, anything else=exit to tty:
-```
-
-Type `r` and Enter to start the session again. Anything else leaves a shell prompt on `tty1`; type
-`kdos-desktop` there to start it, or `exit` to log out, after which autologin starts it again (with
-autologin off, `tty1` shows a login prompt first).
-
-A third crash within 60 seconds stops the offer: `tty1` prints `kdos-comp: crashed 3 times in
-60s — not restarting again.` and is left at the shell.
-
-To stop a desktop that is still running but useless, from `tty2`:
-
-```bash
-pkill -x kdos-comp
-```
-
-The compositor takes `SIGTERM` as a request to end the session, so it exits as a logout does and
-`tty1` is left at the shell prompt, with no restart question. The session bus and PipeWire stay
-up, and a desktop started again on `tty1` uses them. If it does not exit, kill it:
-
-```bash
-pkill -KILL -x kdos-comp
-```
-
-A killed compositor counts as a crash, and `tty1` shows the restart question. Either way, return
-to `tty1` with Alt+F1 and answer the question, or run `kdos-desktop` at the shell.
-
-### Restarting one part of the desktop
-
-The panel, the desktop icons, notifications and the other supervised programs are restarted by the
-compositor when they exit. To restart the panel, from a terminal in the session:
-
-```bash
-pkill -x kdos-shell
-```
-
-A supervised program that keeps exiting is given up on, and a dialog names it; the limit is in
-[When a child keeps crashing](../../kdos/04-programs/kdos-comp.md#when-a-child-keeps-crashing).
-`kdos-comp -r` resets the count and gives it another run.
-
-### Reloading the configuration
-
-From a terminal inside the session:
-
-```bash
-kdos-comp -r
-```
-
-From `tty2` or SSH the command fails with `LABWC_PID not set`; send the signal instead:
-
-```bash
-pkill -HUP -x kdos-comp
-```
-
-Keys that apply at the next login, such as the fonts and `panel`, wait for a new session whatever
-the reload; see [Keys applied at the next login](../../kdos/04-programs/kdos-comp.md#keys-applied-at-the-next-login).
-
-### Starting again from the shipped configuration
-
-1. From `tty2`, move your copies aside:
+1. Log in on `tty2` as the user whose desktop failed.
+2. Ask the machine:
 
    ```bash
-   mv ~/.config/kdos-comp ~/.config/kdos-comp.mine
-   mv ~/.config/kdos/comp.conf ~/.config/kdos/comp.conf.mine
+   kdos doctor
+   loginctl list-sessions        # a session of `sddm` is the greeter; one of yours is the desktop
+   service status sddm 2>/dev/null; pgrep -a sddm
    ```
 
-2. Copy the shipped ones back:
+3. Read the log of the last stage that ran, from the table above.
 
-   ```bash
-   cp -r /etc/skel/.config/kdos-comp ~/.config/
-   cp /etc/skel/.config/kdos/comp.conf ~/.config/kdos/
-   ```
-
-3. Restart the desktop as above.
-
-The theme files under `~/.config/kdos-comp/themerc-override` and the rest are written by
-`kdos theme`; run `kdos theme <accent>` after step 2 to put them back.
-
-### A session with debug logging
-
-From the shell on `tty1`:
+### Starting the greeter again
 
 ```bash
-KDOS_COMP_DEBUG=1 kdos-desktop
+sudo pkill -x sddm
 ```
 
-The compositor then logs at debug level, wlroots' own messages and each late frame included, so
-the log grows quickly. Use it for one session.
+`init` runs `kdos-dm` again, which starts SDDM. Three exits within a minute put a text prompt on
+`tty1` instead; it tries SDDM again once the minute is past.
+
+### Starting the desktop by hand from tty2
+
+To see what a session prints, start one on `tty2` itself:
+
+```bash
+startplasma-wayland 2>&1 | tee ~/plasma.log
+```
+
+It runs as the `tty2` session; leave it with Log Out.
+
+### Resetting the desktop's configuration
+
+A setting that keeps the session from starting is in `~/.config`. Move the suspects aside from
+`tty2`, then log in again:
+
+```bash
+mkdir -p ~/config-aside
+mv ~/.config/plasma-org.kde.plasma.desktop-appletsrc ~/.config/plasmashellrc ~/config-aside/   # the panels
+mv ~/.config/kwinrc ~/.config/kwinoutputconfig.json ~/config-aside/                            # KWin and the screens
+```
+
+The KDOS defaults in `/usr/share/kdos/xdg` take their place. Moving the whole of `~/.config` aside
+starts the account as new.
 
 ## Tips
 
-- `kdos doctor`, run in a terminal inside the session, checks the compositor's socket, the panel,
-  the portals, the setuid helpers and the session daemons in one go. See
-  [Diagnostics](diagnostics.md).
-- Keep `tty2` in mind before editing `rc.xml`: a broken file can leave a desktop with no working
-  keys, and `tty2` is how you put it back.
-- Check `rc.xml` after every edit:
-
-  ```bash
-  xmllint --noout ~/.config/kdos-comp/rc.xml
-  ```
-
-- `Super+F1` shows the key-binding card generated from your own `rc.xml`; `kdos help` prints the
-  sheet built into the program.
-- In a [virtual machine]{.idx} the idle timers default to off, so a blank screen there is not the idle
-  policy.
+- A virtual machine with a plain virtual display runs KWin on software rendering: it works, more
+  slowly, and Phosphor mode is not available. `qdbus6 org.kde.KWin /KWin supportInformation |
+  grep -i renderer` says which renderer is in use.
+- A desktop that freezes while the pointer still moves is plasmashell, not KWin:
+  `plasmashell --replace &` from KRunner (`Alt+Space`) or Konsole.
+- A desktop that freezes with the pointer is KWin; switch to `tty2` and back, which makes KWin
+  take the display again, before anything else.
 
 ## Troubleshooting
 
-**`tty1` shows a shell prompt and no desktop.**
-Read what was printed above the prompt. `kdos-desktop: no desktop installed (kdos-comp missing).`
-means `/usr/bin/kdos-comp` is not installed: the root was built without the `50_desktop` phase. Otherwise the compositor exited: read
-`/run/user/1000/kdos-comp.log` and type `kdos-desktop` to try again.
+**A black screen after the splash, and `tty2` answers.** The greeter is not drawing. Read
+`/var/log/sddm.log`. A line about the display (no DRM device, a permission refused) means KWin
+could not take the screen: `ls -l /dev/dri/` and [Graphics drivers](graphics-drivers.md). A
+greeter that SDDM keeps restarting shows the restarts there.
 
-**The compositor exits at once, and its log names libseat or seatd.**
-`seatd` is not running, or the account is not in the `seat` group:
+**`tty1` shows a text password prompt.** `kdos-dm` gave up on SDDM; see
+[Login and autologin](login-and-autologin.md#troubleshooting).
 
-```bash
-service status seatd
-sudo cat /run/kdos-svc.seatd.log
-id
-```
+**The greeter comes back after every login.** The session ended at once. The last lines of
+`~/.local/share/sddm/wayland-session.log` name why; a refusal from `kdos-session-wrapper` names the
+session bus or the runtime directory. See [Session and environment](session-and-environment.md#troubleshooting).
 
-Start it with `sudo service start seatd`; add the account with `sudo usermod -a -G seat <user>`
-and log in again.
+**The session starts with no panel.** plasmashell failed: `plasmashell --replace &` and read what
+it prints. A broken layout is fixed with `kdos desk kdos`.
 
-**Clicking a window does not focus it, title bars cannot be dragged, the window buttons do
-nothing.**
-`<default />` is missing from the `<keyboard>` or `<mouse>` section of `~/.config/kdos-comp/rc.xml`,
-so every built-in binding is gone. Put it back as the first child of each, then `kdos-comp -r`. See
-[The one line that must not be lost](../../kdos/04-programs/kdos-comp.md#the-one-line-that-must-not-be-lost).
+**Everything is very slow and Phosphor mode refuses.** KWin is on software rendering. Check the
+renderer as in [Tips](#tips) and see [Graphics drivers](graphics-drivers.md).
 
-**Some or all key bindings do nothing.**
-`rc.xml` does not parse, and a compositor that cannot parse it loads none of its bindings. Run
-`xmllint --noout ~/.config/kdos-comp/rc.xml`; the usual cause is `--` inside a comment. See
-[The double hyphen may not appear inside an XML comment](../../kdos/04-programs/kdos-comp.md#---may-not-appear-inside-an-xml-comment).
+**Applications start without the KDOS look, or notifications never appear.** The session runs
+with the wrong environment or bus; see
+[Session and environment](session-and-environment.md#troubleshooting).
 
-**There is no panel.**
-Check `panel` in `~/.config/kdos/comp.conf` is not `off`, then whether it is running:
+**The screen is locked and the password is refused.** See
+[Screen lock](screen-lock.md#troubleshooting).
 
-```bash
-pgrep -a kdos-shell
-```
-
-If a dialog said the panel was given up on, read the log for its last lines, then run
-`kdos-comp -r` to give it another run.
-
-**`kdos doctor` warns `WAYLAND_DISPLAY=… but … does not exist`.**
-The shell was started in a session that has ended, and the variable outlived it. Open a new
-terminal from the running desktop, or restart the desktop.
-
-**The desktop is slow and there is no phosphor glow in a virtual machine.**
-Without virgl, `kdos-desktop` sets `WLR_RENDERER=pixman` and the compositor renders in software,
-where the phosphor pass stays off. Give the virtual machine 3D acceleration (virgl). `grep 'crt:'`
-in the log says which renderer the compositor got; see
-[Checking that the desktop is accelerated](graphics-drivers.md#checking-that-the-desktop-is-accelerated).
-
-**The keyboard layout is US whatever `/etc/keymap` says.**
-`kdos-desktop` translates the console keymap's name into an XKB layout name. When no XKB layout of
-that name is installed, it prints `kdos-desktop: keymap '<name>' has no XKB layout '<layout>' —
-leaving the default` on `tty1`, and the default, US, holds for the whole session, the lock screen
-included. Choose a console keymap whose name translates
-([Changing the keyboard layout](locale-and-console.md#changing-the-keyboard-layout-of-the-consoles-and-the-desktop)),
-or [give the desktop a layout of its own](locale-and-console.md#giving-the-desktop-a-layout-of-its-own),
-and log in again.
-
-**X11-only applications do not open.**
-`kdos doctor` reports the Xwayland socket in its Desktop section, as `Xwayland on :0` or a warning
-that there is none. A launcher started outside the compositor may have no `DISPLAY`; `kdos-appbox`
-finds the socket in `/tmp/.X11-unix` itself, but a program started from `tty2` or SSH needs
-`DISPLAY` set by hand. See
-[Running an X11 program from tty2 or SSH](xwayland-and-x11-apps.md#running-an-x11-program-from-tty2-or-ssh).
-
-**The screen is locked and the password is refused.**
-If `kdos doctor` warns `kdos-checkpass is not setuid root`, the lock screen refuses every
-password. Repair it from `tty2`; see [Screen lock](screen-lock.md).
-
-**A change in Settings or `comp.conf` seems to do nothing.**
-Read the log for a line naming `comp.conf` and the line number. A key that applies at the next
-login says so there.
-
-**Screen sharing finds no screen.**
-See [Portals and screen sharing](portals-and-screen-sharing.md).
+**No sound in the session.** See [Audio](audio.md).
 
 ## Known gaps
 
-- [There is no graphical login screen (greeter)](../../kdos/06-reference/known-gaps.md#there-is-no-graphical-login-screen-greeter)
-- [Two menu routes show nothing](../../kdos/06-reference/known-gaps.md#two-menu-routes-show-nothing)
-- [Only two ways of ending the session save the list of open windows](../../kdos/06-reference/known-gaps.md#only-two-ways-of-ending-the-session-save-the-list-of-open-windows)
-- [A tray menu does not update while it is open](../../kdos/06-reference/known-gaps.md#a-tray-menu-does-not-update-while-it-is-open)
-- [Workspace occupancy is inferred, not reported](../../kdos/06-reference/known-gaps.md#workspace-occupancy-is-inferred-not-reported)
-- [The power button and the sleep key work only inside a graphical session](../../kdos/06-reference/known-gaps.md#the-power-button-and-the-sleep-key-work-only-inside-a-graphical-session)
+- [Known gaps](../../kdos/06-reference/known-gaps.md): the desktop's open items
 
 ## See also
 
-- [Starting a session](../../kdos/03-architecture/session.md#starting-a-session): every step from `tty1` to the compositor
-- [Supervised chrome](../../kdos/03-architecture/session.md#supervised-chrome) and
-  [When a child keeps crashing](../../kdos/04-programs/kdos-comp.md#when-a-child-keeps-crashing)
-- [Debugging](../../kdos/04-programs/kdos-comp.md#debugging): the compositor's log and debug switches
-- [The console](../../kdos/03-architecture/boot-and-init.md#the-console): `tty1`, `tty2` and `kdos-getty`
-- [Diagnostics](diagnostics.md), [Logs](logs.md), [Login and autologin](login-and-autologin.md),
-  [Screen lock](screen-lock.md), [Displays and scaling](displays-and-scaling.md),
-  [Portals and screen sharing](portals-and-screen-sharing.md)
+- [The session](../../kdos/03-architecture/session.md): every stage from the greeter to the desktop
+- [Login and autologin](login-and-autologin.md), [Session and environment](session-and-environment.md),
+  [Screen lock](screen-lock.md), [Graphics drivers](graphics-drivers.md),
+  [Diagnostics](diagnostics.md), [Recovering an unbootable system](recovering-an-unbootable-system.md)
 
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 420.* Previous: [419. Diagnostics](diagnostics.md) · [Contents](../README.md) · Next: [421. Recovering an unbootable system](recovering-an-unbootable-system.md)
+*Part XVI. System administration, chapter 444.* Previous: [443. Diagnostics](diagnostics.md) · [Contents](../README.md) · Next: [445. Recovering an unbootable system](recovering-an-unbootable-system.md)

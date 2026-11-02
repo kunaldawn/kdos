@@ -2,10 +2,11 @@
 
 This chapter is for anyone who wants graphical software on a KDOS machine: a browser, an office
 suite, an image editor, a CAD package. It describes the applications KDOS compiles natively,
-arranged by what you want to do, and then the software it does not compile: how to find, install,
-launch, update and remove that software, how to carry a set of it to another machine without a
+arranged by what you want to do, which application opens which kind of file, and Discover, where
+software is found, installed and updated. Then it covers the software KDOS does not compile: how to
+find, install, launch, update and remove it, how to carry a set of it to another machine without a
 network, how files and links reach it, and how to manage the *boxes* it runs in. Read
-[The desktop](desktop.md) first if you have not used the Start menu; for the file format and the
+[The desktop](desktop.md) first if you have not used Kickoff, the Start menu; for the file format and the
 machinery underneath boxed software, see [Packs and boxes](../03-architecture/packs-and-boxes.md)
 and [kdos-appbox](../04-programs/kdos-appbox.md).
 
@@ -16,8 +17,8 @@ Applications reach a KDOS machine by two routes.
 **Native applications** are compiled from source by the KDOS build, from recipes in the ports tree,
 and installed into the system image like every other program. They are on the medium you boot
 from, they are copied to the disk by the installer, and they need no network at any point. This is
-where the everyday software lives: Firefox ESR, Thunderbird, LibreOffice, GIMP, Krita, Inkscape,
-Kdenlive, KiCad, FreeCAD, Blender, QGIS, GNU Radio and many more.
+where the everyday software lives: every application of KDE Gear, Firefox ESR, Thunderbird,
+LibreOffice, GIMP, Krita, Inkscape, KiCad, FreeCAD, Blender, QGIS, GNU Radio and many more.
 
 **Boxed applications**, also called *alien apps*, are software KDOS does not compile. A *catalogue*
 shipped on the medium describes each one, and your machine builds it on demand, in containers, from
@@ -25,7 +26,8 @@ Debian packages, which needs a network. The catalogue carries what is not ported
 alternatives to what is.
 
 The line between the two follows one question: does a machine with no network need it? What it
-needs is ported natively, and the catalogue carries the rest. See
+needs is ported natively, and the catalogue carries the rest. Discover shows both, side by side
+(see [Discover](#discover)). See
 [Decisions](../01-philosophy/decisions.md#native-applications-on-the-medium-a-store-that-builds-the-rest)
 for the reasoning, and [How KDOS differs](../01-philosophy/how-kdos-differs.md#applications) for how
 other distributions deliver the same software. How far along each part is, is recorded in
@@ -38,17 +40,16 @@ A native application is a *port*: a recipe that the build compiles and packages 
 `ports/core/<shelf>/<name>/`, such as `browsers`, `office`, `graphics`, `video-players` or
 `games-board`; the closed list of shelves, each with a line saying what belongs on it, is the file
 `ports/shelves`. The section below groups the applications by need instead, since one need often
-spans several shelves. KDOS's own programs, such as `kdos-term` and `kdos-res`, are ports under
-`src/<area>/<name>/` instead. [The ports catalogue](../06-reference/ports-catalogue.md) lists every port
+spans several shelves. KDOS's own programs, such as `kdos-appbox` and KDOS's System Settings pages,
+are ports under `src/<area>/<name>/` instead. [The ports catalogue](../06-reference/ports-catalogue.md) lists every port
 by shelf, with the phase that builds it, libraries included, and [How KDOS is built](../05-developer/how-kdos-is-built.md)
 tells how the build runs.
 
 Because a native application is part of the system, it behaves like any other installed program. An
-application with a window of its own brings its desktop entry in its package, so it has a row in the
-Start menu and the launcher, it answers the search, it can be pinned, and it opens the file types it
-claims. Its command is on your `PATH`. It starts at once, with no container to bring up, and the
-Start menu does not mark it `[box]`. It is updated with the rest of the system (see [Keeping it
-current](administration.md#keeping-it-current)), not with `kdos app`.
+application with a window of its own brings its desktop entry in its package, so it has a row in
+Kickoff, it answers KRunner, it can be pinned, and it opens the file types it claims. Its command is
+on your `PATH`. It starts at once, with no container to bring up. It is updated with the rest of the
+system (see [Keeping it current](administration.md#keeping-it-current)), not with `kdos app`.
 
 Data an application needs is ported too, so it is on the medium rather than fetched on first use:
 KiCad's symbol, footprint and template libraries, the GIMP manual, Celestia's star catalogues and
@@ -60,10 +61,10 @@ packages are not among them; see
 ### Toolkits, Wayland and X11
 
 Applications are ported with the toolkit their upstream uses: GTK 3 and GTK 4 with libadwaita,
-WebKitGTK (both its GTK 3 and its GTK 4 API), Qt 5 and Qt 6, QtWebEngine, KDE Frameworks 6 (without
-the Plasma desktop), wxWidgets, FLTK and Tk, plus OpenJDK for the Java programs. The desktop itself
-links none of them: the compositor, the panel, the daemons and the portals draw character cells
-through KDOS's own libraries (see [The design language](../03-architecture/design-language.md)).
+WebKitGTK (both its GTK 3 and its GTK 4 API), Qt 5 and Qt 6, QtWebEngine, KDE Frameworks 6,
+Kirigami, wxWidgets, FLTK and Tk, plus OpenJDK for the Java programs. The desktop itself is Qt 6 and
+KDE Frameworks 6: Plasma, KWin and KDOS's own settings pages, widgets and installer window (see
+[Principles](../01-philosophy/principles.md#the-desktop-is-kde-plasma)).
 
 GTK, Qt and FLTK are built with both their Wayland and their X11 backends, and wxWidgets is built
 on GTK 3. SDL is built with its Wayland backend alone, so an SDL program that asks for X11 opens no
@@ -79,26 +80,33 @@ Motif have no Wayland backend, so their programs always run on Xwayland, describ
 | Java (AWT and Swing) | Runs on Xwayland; `_JAVA_AWT_WM_NONREPARENTING=1` tells it there is no reparenting window manager |
 
 A program with no Wayland path at all, such as Xastir (a Motif program) or a Tk or Swing program,
-runs on *Xwayland*, the X server that runs as a client of the compositor. So does VLC 3: its Qt
-interface starts on X11 whatever `QT_QPA_PLATFORM` says, and only `cvlc`, run with `DISPLAY` unset,
-opens a Wayland video window. Xwayland is the only X server on the system: it serves native and
-boxed X11 programs alike, it is built with GLX so an X11 program that draws through OpenGL works,
-and the system carries the X core fonts
-(`misc-fixed`, Adobe's 75 dpi set and the cursor font) that Motif and Xt programs ask it for. There
-is no Xorg server and no display manager.
+runs on *Xwayland*, the X server KWin starts for the session and runs as one of its clients. So does
+VLC 3: its Qt interface starts on X11 whatever `QT_QPA_PLATFORM` says, and only `cvlc`, run with
+`DISPLAY` unset, opens a Wayland video window. Xwayland is the only X server on the system: it
+serves native and boxed X11 programs alike, it is built with GLX so an X11 program that draws
+through OpenGL works, and the system carries the X core fonts (`misc-fixed`, Adobe's 75 dpi set and
+the cursor font) that Motif and Xt programs ask it for. There is no Xorg server, and the login
+screen is SDDM's Wayland greeter, on KWin, with no X server behind it.
 
-Native GTK applications open their file dialogs through the desktop's file-chooser portal, because
-the login profile sets `GTK_USE_PORTAL=1`; Firefox ESR does the same through its shipped
-preferences. Open and Save dialogs are therefore `kdos-pick`, the desktop's own file browser, in
-native and boxed applications alike. Qt 6 applications read the palette, fonts and icons that
-`kdos theme` writes (`QT_QPA_PLATFORMTHEME=kde`); how each toolkit takes the accent is in
-[Theming](theming.md).
+Open and Save dialogs are KDE's in every application. Qt applications draw them through KDE's
+platform theme. Native GTK applications ask the desktop's file-chooser portal for theirs, because
+the login profile sets `GTK_USE_PORTAL=1`, and Firefox ESR does the same through its shipped
+preferences; the portal is `xdg-desktop-portal-kde`, so they get KDE's dialog too. A boxed
+application reaches the same portal. Qt applications read the palette, fonts and icons of the global
+theme in force (`QT_QPA_PLATFORMTHEME=kde`), and GTK applications take the same colours through
+Breeze's GTK theme; how each toolkit takes the accent is in [Theming](theming.md).
 
 ## Native applications by need
 
 Each table names the applications ported for one kind of work. The names are the applications'
 own, and the command that starts each is its upstream name. Those with a window of their own have a
-row in the Start menu; the rest, such as llama.cpp, Waypipe or ClamAV, run from a prompt. So does
+row in Kickoff; the rest, such as llama.cpp, Waypipe or ClamAV, run from a prompt.
+
+Every application of KDE Gear is installed, apart from four that cannot work here (KJournald, which
+reads systemd's journal; KMag and KMouseTool, which need X11; and Plasma Mobile's settings shell)
+and seven whose third-party stacks are not yet ported (the online-accounts integration and its
+providers, colord-kde, AudioTube, Kajongg and Kigo). The tables name the Gear applications beside
+the rest; the [ports catalogue](../06-reference/ports-catalogue.md) lists every one. So does
 a terminal program that would exit at once from a Start row, with no argument and no setup: `tig`
 outside a repository, `ledger` without a journal, `presenterm` without a file, `taskwarrior-tui`
 before `task` has written `~/.taskrc`, and `rmpc` while no mpd is running.
@@ -107,10 +115,11 @@ before `task` has written `~/.taskrc`, and `rmpc` while no mpd is running.
 
 | Application | What it is for |
 |---|---|
-| Firefox ESR | The default web browser, on GTK 3. Its shipped policies file turns off telemetry and update checks |
+| Firefox ESR | The default web browser, on GTK 3. Its shipped policies file turns off telemetry and update checks, and the Plasma Browser Integration extension is installed from the medium, so its media and downloads reach Plasma's applets |
 | Chromium | Chromium's browser, on GTK 3 |
 | LibreWolf | A Firefox derivative with privacy defaults |
 | Falkon | KDE's browser, on QtWebEngine |
+| Konqueror, Angelfish | KDE's web browser and file manager in one; a small browser for phone and desktop |
 | qutebrowser | A keyboard-driven browser with vim-like keys, on QtWebEngine |
 | NetSurf | A small browser with its own layout engine, for old or slow machines |
 | Lagrange | Gemini, Gopher, Spartan and Finger |
@@ -121,12 +130,14 @@ before `task` has written `~/.taskrc`, and `rmpc` while no mpd is running.
 
 | Application | What it is for |
 |---|---|
-| Thunderbird | Mail, calendar, contacts and feeds; the default handler for `mailto:` links. Its telemetry and update checks are off, as Firefox's are |
+| Thunderbird | Mail, calendar, contacts and feeds; the default handler for `mailto:` links, invitations and contact cards. Its telemetry and update checks are off, as Firefox's are |
+| KMail, Kontact, KOrganizer, KAddressBook, Merkuro | KDE's mail, calendar and contacts, over Akonadi with its SQLite store. Akonadi starts only when one of them is opened, so a session that uses Thunderbird runs none of it |
 | Dino | XMPP chat with OMEMO encryption, file transfer, and voice and video calls (GTK 4) |
-| Nheko | Matrix chat with end-to-end encryption and calls (Qt 6) |
+| Nheko, NeoChat | Matrix chat with end-to-end encryption |
+| Tokodon | Mastodon and the fediverse |
 | Konversation, Quassel IRC | IRC. Quassel's core can stay connected while the client is closed |
 | Mumble | Low-latency group voice chat, with the Mumble server for a LAN |
-| KDE Connect | Files, clipboard, notifications and media control between this machine and a phone |
+| KDE Connect | Files, clipboard, notifications and media control between this machine and a phone, and the handler for `tel:` links |
 
 In a terminal, `aerc` reads mail over a local `notmuch` index, `profanity` is an XMPP client and
 `newsboat` reads feeds; [Administration](administration.md#mail) sets mail up.
@@ -135,10 +146,14 @@ In a terminal, `aerc` reads mail over a local `notmuch` index, `profanity` is an
 
 | Application | What it is for |
 |---|---|
-| qBittorrent, Transmission, Deluge | BitTorrent clients; each also has a web or headless mode |
+| qBittorrent | The default BitTorrent client, for `magnet:` links and `.torrent` files |
+| KTorrent, Transmission, Deluge | Other BitTorrent clients |
+| KGet | Queued, resumable downloads |
 | FileZilla | FTP, FTPS and SFTP with a two-pane site manager |
 | Syncthing Tray | Status and control of a local Syncthing |
-| Remmina | Remote desktop over RDP, VNC, SPICE and SSH |
+| Remmina | The default remote-desktop client, over RDP, VNC, SPICE and SSH |
+| KRDC | KDE's VNC and RDP client |
+| krfb, krdp | Share this desktop with another machine, over VNC or RDP; open the `vnc` or `rdp` name in [the firewall](administration.md#opening-a-service) first |
 | FreeRDP | The RDP engine under Remmina, with its own SDL client, `sdl-freerdp` |
 | wlvncc | A Wayland-native VNC client |
 | Waypipe | Runs a Wayland program on another machine and shows its window here |
@@ -154,17 +169,21 @@ network once the `kdeconnect` firewall name is on ([Administration](administrati
 
 | Application | What it is for |
 |---|---|
-| LibreOffice | Documents, spreadsheets, presentations, drawings and databases |
+| LibreOffice | The default for documents, spreadsheets, presentations, drawings and databases |
+| Calligra | KDE's office suite: Words, Sheets, Stage and Karbon |
 | Gnumeric | A spreadsheet with careful statistics, reading Excel and OpenDocument |
 | AbiWord | A word processor that reads and writes Word, OpenDocument and RTF |
-| Okular | The default PDF viewer; also PostScript, DjVu, EPUB, XPS and comics |
+| Okular | The default PDF viewer; also PostScript, DjVu, XPS and comics |
 | PDF4QT | View and edit PDFs: annotate, redact, sign, compare, split and merge |
 | Calibre | E-book library, converter and editor; its viewer is the default for EPUB, MOBI and FB2 |
+| Arianna | KDE's EPUB reader and library |
 | KOReader | An e-book and document reader with no toolkit, suited to small or old machines |
 | GnuCash | Double-entry accounting for a household or a small business |
 | HomeBank | Personal finance: accounts, budgets and reports |
-| Qalculate! | A calculator with units, currencies and symbolic algebra |
+| KCalc | The default calculator, on the Calculator key |
+| Qalculate!, Kalk | Calculators with units, currencies and symbolic algebra |
 | GoldenDict-ng | Dictionary lookup over StarDict, DSL, MDict and other formats |
+| Skanpage | Scan a document's pages, recognise the text and save a searchable PDF |
 
 `typst` and `ledger` run from a prompt; `ocrmypdf` adds a searchable text layer to a scanned PDF.
 
@@ -172,7 +191,8 @@ network once the `kdeconnect` firewall name is on ([Administration](administrati
 
 | Application | What it is for |
 |---|---|
-| Kate | The default text editor: tabs, split views, projects and language servers |
+| Kate | The default text editor: tabs, split views, projects, a terminal panel and language servers |
+| Ghostwriter | Distraction-free Markdown with a live preview |
 | Geany | A lightweight programmer's editor (GTK) |
 | Lite XL | A small editor with no toolkit, drawn through SDL |
 | Zim | A desktop wiki of linked notebook pages, with a journal and tasks |
@@ -181,16 +201,19 @@ network once the `kdeconnect` firewall name is on ([Administration](administrati
 | TeXstudio | A LaTeX editor with a live PDF preview |
 | LyX | A structure-first document processor that writes LaTeX |
 
-Konsole, KDE's terminal emulator, is ported too; the desktop's own terminals are `foot` and
-[kdos-term](../04-programs/kdos-term.md).
+Konsole is the terminal, on `Meta+Return`, with Yakuake, a Konsole that drops down from the top of
+the screen. Konsole shows pictures in the terminal through the sixel, iTerm2 and kitty protocols,
+which the image viewers and file managers of the terminal use. Its KDOS profile follows the
+accent (see [Theming](theming.md#konsole-and-the-terminal-programs)).
 
 ### Scanning, OCR and printing
 
 | Application | What it is for |
 |---|---|
 | Skanlite | Scan through SANE: preview, select and save |
+| Skanpage | Multi-page document scanning with text recognition |
 | gImageReader | OCR through Tesseract, from a scan, an image or a PDF |
-| system-config-printer | Add and configure CUPS printers |
+| Printers, in System Settings | Add and configure CUPS printers, and watch the queue; system-config-printer does the same |
 
 The printer drivers are ported with them: HPLIP for HP printers and scanners, `brlaser` for
 Brother monochrome lasers, SpliX for Samsung, Xerox, Dell and Lexmark SPL printers, Gutenprint, and
@@ -205,10 +228,13 @@ the Foomatic database. [Administration](administration.md#printing) covers the p
 | Inkscape | Vector drawing in SVG, with PDF import |
 | darktable, RawTherapee | RAW photo development |
 | digiKam | Photo library: tagging, face recognition and RAW import, with showFoto |
-| Gwenview | The default picture viewer |
+| Gwenview | The default picture viewer, RAW files included |
+| Koko | A photo and video gallery by folder, place and date |
 | gThumb | Browse, tag and edit photos and videos (GTK 4) |
 | KolourPaint | A simple paint program |
+| Spectacle | Screenshots and screen recordings, with an annotation editor; on the `Print` keys |
 | Flameshot | Screenshots with an annotation editor |
+| KColorChooser, KRuler, Kontrast | A colour picker, a screen ruler, and a contrast checker for text and background colours |
 | Glaxnimate | Vector animation and motion design |
 | Pencil2D | Hand-drawn 2D animation |
 | Converseen | Batch image conversion and resizing |
@@ -216,16 +242,19 @@ the Foomatic database. [Administration](administration.md#printing) covers the p
 | swayimg | An image viewer with no toolkit |
 | GrafX2, Goxel | Pixel art in the Deluxe Paint tradition, and a 3D voxel editor |
 
-`Print` takes a screenshot with the desktop's own `kdos-shot`; ImageMagick, `vips` and `exiftool`
-work from a prompt.
+ImageMagick, `vips` and `exiftool` work from a prompt.
 
 ### Music and audio
 
 | Application | What it is for |
 |---|---|
-| Strawberry | The default music player and collection organiser |
-| Rhythmbox, Elisa, Audacious | Other music players |
+| Elisa | The default music player, over the music collection the file indexer finds |
+| Strawberry | A music player with stronger tag and collection tools |
+| JuK, Rhythmbox, Audacious | Other music players |
+| Kasts | Podcasts |
 | Audacity, Tenacity, Kwave | Recording and audio editing |
+| KRecorder | Voice clips |
+| Audex | Rip an audio CD to FLAC, Ogg, Opus or MP3 |
 | Ardour | A digital audio workstation: multitrack recording, editing and mixing |
 | LMMS | Pattern-based music production with synthesizers and samples |
 | Hydrogen | A drum machine and sequencer |
@@ -242,17 +271,17 @@ In a terminal, `mpd` with `rmpc`, `termusic` and `cmus` play music; `sox` conver
 | Haruna | The default video player, over mpv |
 | mpv | A player with no toolkit, with the `uosc` on-screen controls |
 | VLC | VLC 3 with its Qt 5 interface; it runs on Xwayland |
-| SMPlayer, Celluloid | Other players over mpv |
+| SMPlayer, Celluloid, Dragon Player | Other players |
+| PlasmaTube | YouTube through Invidious or Piped, and PeerTube |
 | Kodi | A full-screen media centre for local and network media |
 | Kdenlive, Shotcut | Multitrack video editing |
 | OBS Studio | Screen recording and live streaming |
 | HandBrake | Video transcoding, with `HandBrakeCLI` |
 | Avidemux | Simple cuts, filters and re-encodes |
 | MKVToolNix | Create, split and edit Matroska files |
-| Kamoso | Pictures and video from a webcam |
+| Kamoso, Camera | Pictures and video from a webcam |
 
-`Alt+Print` records the screen with the desktop's own `kdos-record`; `ffmpeg` and `mediainfo` work
-from a prompt.
+Spectacle records the screen (`Alt+Print`); `ffmpeg` and `mediainfo` work from a prompt.
 
 ### Burning discs
 
@@ -265,21 +294,26 @@ are simpler burners, on GTK. From a prompt, `cdrdao` writes audio CDs disc-at-on
 | Application | What it is for |
 |---|---|
 | Dolphin | The file manager a double-clicked folder opens in |
-| Ark | The default archive manager for zip, tar and 7z |
-| Filelight, QDirStat | What is using the disk |
-| GParted | Create, resize, move and check partitions; the filesystem tools it drives are ported with it |
+| Ark | The default archive manager for zip, tar and 7z; rar and comic books packed as 7z or rar open in `kdos-openarchive`, which extracts them |
+| Filelight, QDirStat, KDiskFree | What is using the disk |
+| KFind | Search for files by name, type, date, size and contents |
+| Partition Manager, GParted | Create, resize, move and check partitions; the filesystem tools they drive are ported with them |
 | GNOME Disks | Partition, format, encrypt, image and benchmark disks |
+| ISO Image Writer | The default for disk images: writes one to a USB stick, checking a known distribution's signature |
 | Impression | Write a disk image to a USB stick or memory card, or a Windows installer ISO to a bootable stick |
-| Déjà Dup | Scheduled, encrypted backups |
-| KeePassXC | A password manager for KeePass databases, with one-time codes |
-| VeraCrypt | Encrypted volumes and containers |
-| Kleopatra | OpenPGP and S/MIME certificates, over GnuPG |
+| Kup, Déjà Dup, KBackup | Scheduled backups; Kup is the one on System Settings' Backups page (see [Backups](administration.md#backups)) |
+| KeePassXC | The default password manager for KeePass databases, with one-time codes. Its own Secret Service is off, because KWallet serves that name (see [Passwords and one-time codes](administration.md#passwords-and-one-time-codes)) |
+| KWallet Manager, KeepSecret | Browse the passwords the session's secret store keeps |
+| Keysmith | One-time codes for two-factor sign-in |
+| VeraCrypt, Plasma Vaults | Encrypted volumes and folders |
+| Kleopatra, KGpg | OpenPGP and S/MIME certificates, over GnuPG; Kleopatra is the default for OpenPGP keys, encrypted files and signatures |
+| Sweeper | Clear recent documents, histories, cookies, caches and thumbnails |
 | ClamAV | Virus scanning. It ships no signature database: run `sudo freshclam` once, with a network, before the first scan |
 | ImHex | A hex editor for reverse engineering |
-| Resources | A system monitor for processors, memory, GPUs, disks and network |
+| System Monitor, Resources | System monitors for processors, memory, GPUs, disks and network; System Monitor has the KDOS page of boxes, energy and slots |
+| KSystemLog | The system log, the kernel's and the authentication log in tabs, with filters |
 
-The desktop's own tools for the same jobs are `mc`, `kdos-pick --browse`, `kdos-res` and `btop`; see
-[The desktop](desktop.md#files).
+In a terminal, `mc` and `btop` do the same jobs; see [The desktop](desktop.md#files).
 
 ### Virtual machines and remote consoles
 
@@ -292,8 +326,10 @@ services these need, `62_virtlogd` and `63_libvirtd`, are listed in
 
 | Application | What it is for |
 |---|---|
-| Organic Maps | Offline maps with search and turn-by-turn routing |
+| Organic Maps | Offline maps with search and turn-by-turn routing; the default for `geo:` links |
 | Marble | A virtual globe and world atlas |
+| KTrip, Itinerary | Public transport journeys and departures; travel bookings and tickets |
+| KWeather | Weather forecasts for saved places |
 | GPXSee | View and analyse GPS tracks over offline maps |
 | QMapShack | Topographic maps, elevation models and GPS tracks |
 | Viking | Manage GPS tracks, waypoints and routes on maps |
@@ -311,8 +347,16 @@ services these need, `62_virtlogd` and `63_libvirtd`, are listed in
 | Stellarium | A planetarium |
 | Celestia | A 3D space simulator |
 | Kalzium | The periodic table of the elements |
-| KAlgebra, KTurtle, KGeography, KTouch, KWordQuiz, Parley | KDE's education set: graphing, programming, geography, typing and vocabulary |
+| KAlgebra, KmPlot, Kig, KBruch | Graphing, function plots, interactive geometry and fractions |
+| Step, Rocs | A physics simulator; graph theory |
+| KTurtle, KGeography, KTouch | Programming, geography and touch typing |
+| KWordQuiz, Parley, Kanagram, KHangMan, KLettres, Artikulate, Kiten | Vocabulary, letters, pronunciation and a Japanese reference |
+| Minuet, Blinken | Ear training; a memory game |
+| Kalm | Breathing exercises |
 | GCompris, Tux Paint | Activities and drawing for young children |
+
+The KDOS and *KDOS from Scratch* books open in the Help Center, KHelpCenter, beside every KDE
+application's handbook; `kdos-doc` opens them from a prompt.
 
 ### Local AI, speech and translation
 
@@ -320,8 +364,8 @@ These run on this machine's processor and send nothing to a remote service:
 
 | Program | What it is for |
 |---|---|
-| llama.cpp | Local language models, from a prompt or as a local server |
-| whisper.cpp | Speech to text; the `base.en` model is a port of its own and is installed too |
+| llama.cpp | Local language models, from a prompt, as a local server, and from KRunner as [`ask <question>`](../04-programs/plasma-shell.md#ask) |
+| whisper.cpp | Speech to text; the `base.en` model is a port of its own and is installed too, and Dolphin's **Transcribe** action uses it |
 | Piper | Text to speech |
 | translateLocally | Machine translation |
 
@@ -385,8 +429,11 @@ The Meshtastic and RNode firmware images are ported as well, to flash a LoRa rad
 | QGIS | Desktop GIS |
 | JupyterLab | Notebooks served on this machine |
 | Spyder | A scientific Python IDE |
-| Qt Creator, KDevelop | IDEs for C, C++ and Qt |
-| KDiff3, Git Cola | Compare and merge files; a Git GUI |
+| Qt Creator, KDevelop | IDEs for C, C++ and Qt; KDevelop with PHP and Python support |
+| KDiff3, Kompare, Git Cola | Compare and merge files; view a patch; a Git GUI |
+| Umbrello | UML diagrams, with code import and generation |
+| KCachegrind, Massif-Visualizer | Valgrind's profiles and heap snapshots |
+| Accessibility Inspector, Kirigami Gallery | The accessibility tree a program publishes; every Kirigami component, for developers |
 | DB Browser for SQLite | Create, browse and query SQLite databases |
 
 ### Clinic, shop and family
@@ -397,10 +444,9 @@ client and GNU Health run a clinic's records.
 
 ### Accessibility
 
-Orca is the screen reader, Dasher enters text by steering a pointer or a switch, `wvkbd` is an
-on-screen keyboard, `wl-kbptr` (the menu's Keyboard Pointer) moves the pointer and clicks from the
-keyboard, and `wtype` types a given string into the focused window from a script. What
-each can and cannot reach on this desktop is in [Accessibility](accessibility.md).
+Orca is the screen reader, and reads the whole desktop; Dasher enters text by steering a pointer or
+a switch; KMouth speaks typed sentences and phrase books; Kontrast checks a pair of colours against
+the contrast guidelines. What each does on this desktop is in [Accessibility](accessibility.md).
 
 ### Windows programs
 
@@ -412,7 +458,8 @@ program that asks for .NET or for Wine's HTML engine does not wait for a downloa
 The games are native ports, each with its free data set: OpenTTD, The Battle for Wesnoth, SuperTux,
 SuperTuxKart, Luanti, Warzone 2100, Endless Sky, Freeciv, Widelands, Xonotic, Cube 2: Sauerbraten,
 Pioneer, Cataclysm: Dark Days Ahead, Dungeon Crawl Stone Soup, Brogue, Neverball, The Powder Toy,
-Flare and DDraceNetwork; Freedoom with the Chocolate Doom, Crispy Doom and dsda-doom engines; KDE's
+Flare and DDraceNetwork; Freedoom with the Chocolate Doom, Crispy Doom and dsda-doom engines; every
+KDE game (KPatience, KMines, Knights against Stockfish, KSudoku, Kolf, Bomber, KSirK and the rest)
 and GNOME's card and puzzle games; and `chess-tui`, chess in a terminal against Stockfish. Engines
 for games you own are ported too: Yamagi Quake II, Ironwail, ioquake3, DevilutionX, OpenRCT2, fheroes2 and ScummVM.
 
@@ -433,9 +480,76 @@ firewall rule other machines need to reach it.
 
 These programs use no GTK or Qt, which suits the oldest hardware and software rendering: Lite XL,
 KOReader, the `uosc` controls for mpv, GrafX2, Goxel, the trackers, Sniffnet
-(network traffic by host and program), Inlyne (a Markdown viewer), Surfer (a waveform viewer for
-simulation traces), `wl-mirror` (an output mirrored into a window, for a projector) and the
-`fuzzel` launcher. mpv and `swayimg`, listed above, need no toolkit either.
+(network traffic by host and program), Inlyne (a Markdown viewer) and Surfer (a waveform viewer for
+simulation traces). mpv and `swayimg`, listed above, need no toolkit either.
+
+## Default applications
+
+Which application opens a kind of file or link is decided by one list,
+`/usr/share/kdos/xdg/kde-mimeapps.list`: the KDE application by default, unless an application
+already on the image is clearly better at the job. Your own choice, made with **Open With** and
+*Remember application association* in Dolphin or on System Settings' Default Applications page,
+lands in `~/.config/mimeapps.list` and outranks it.
+
+| Role | Default | Also installed |
+|---|---|---|
+| Web, `http:` and `https:` links | Firefox ESR | Falkon, Konqueror, Chromium, LibreWolf |
+| Mail (`mailto:`), invitations and contact cards | Thunderbird | KMail, Kontact, KOrganizer, KAddressBook, Merkuro |
+| Office documents, spreadsheets, presentations, drawings | LibreOffice | Calligra |
+| Folders | Dolphin | |
+| Archives | Ark; rar, and comic books packed as 7z or rar, in `kdos-openarchive` | |
+| Text and source code | Kate | |
+| Pictures, camera RAW | Gwenview; Canon CR3 and Nikon NRW in darktable; JPEG 2000, DDS, OpenEXR and HDR in Okular; Windows metafiles in Inkscape; GIMP's own `.xcf` in GIMP | KolourPaint, GIMP, Krita, Inkscape, darktable |
+| PDF, PostScript, DjVu, XPS, comics | Okular | PDF4QT |
+| E-books | Calibre's viewer | Arianna, Okular |
+| Video | Haruna | mpv, VLC, SMPlayer, Dragon Player |
+| Music | Elisa | Strawberry, JuK |
+| Terminal | Konsole | Yakuake |
+| Screenshots and screen recording | Spectacle, on the `Print` keys | Flameshot |
+| Calculator | KCalc, on the Calculator key | Qalculate!, Kalk |
+| Remote desktop, `rdp:`, `vnc:` and `spice:` links | Remmina | KRDC |
+| `ssh:` links | A shell in Konsole | |
+| Torrents, `magnet:` links | qBittorrent | KTorrent |
+| Disk images | ISO Image Writer | Impression |
+| Offline library, `.zim` | Kiwix | |
+| Map locations, `geo:` links | Organic Maps | Marble |
+| Password databases, `.kdbx` | KeePassXC | KeepSecret |
+| OpenPGP keys, encrypted files and signatures | Kleopatra | KGpg |
+| Phone numbers, `tel:` links | KDE Connect | |
+
+A row whose application is removed falls through to the next application that claims the type, and
+`testing/mimecheck.py` holds the list against the image so that every row names an application
+that is installed.
+
+## Discover
+
+Discover is where software is found, installed, updated and removed. On KDOS it shows what KDOS
+has, and only that: no Flatpak, no Flathub, no ratings or reviews from a server, and no "Get New…"
+downloads anywhere in the desktop. Opening it downloads nothing; each source below reaches the
+network only when you press a button that says it will.
+
+| Origin | Lists | Installing |
+|---|---|---|
+| `kdos-packs` | The catalogue's applications and groups, and every pack in the pack store | A catalogue row whose pack is already in the store or on the medium becomes a box over that pack, offline. A row with no pack anywhere is built from Debian packages in a box, over the network, and says so before it starts |
+| `medium` | The packs and application sets on the boot medium | Offline, verified as each pack mounts |
+| `kdos-store` | Debian's desktop applications that the catalogue does not name, from the Debian catalogue shipped on the image | Built in a box of its own, `deb.<package>`, over the network |
+| `kdos-boxes` | Boxes that no application above accounts for, such as one you made with `kdos-box create` | Removal only |
+| `kdos-ports` | The host's own software, every installed port | Ports arrive and leave with the system version. Once `kdos update fetch` has fetched a release's signed binary index, a port it lists can be installed from it, with what it lacks, as an administrator |
+| The system update | The next KDOS release, as an A/B update (see [Keeping it current](administration.md#keeping-it-current)) | Written into the other slot; **Restart** starts it |
+| Firmware | Firmware updates fwupd knows for this machine's devices, from the metadata snapshot each release carries | Applied by fwupd; system firmware at the next restart |
+
+An application in a box carries a *Runs in a box* badge on its page, which opens the box's page in
+System Settings. Double-clicking a `.ktar` set or a `.kpack` pack in Dolphin opens it in Discover,
+which installs it offline, and a stick holding a set is offered in a notification when it is
+plugged in. **Check for updates** fetches the newest signed release information, at most once an
+hour; nothing else in Discover touches the network until an install says so.
+
+The update tray in the panel is Discover's: it says when a system update is ready, when one is
+installed and waiting for a restart, and how many known vulnerabilities the update closes, and it
+never installs anything by itself. On the live medium it shows the state and raises no
+notification.
+
+`kdos app` is the same catalogue from a prompt; see [Finding and installing](#finding-and-installing).
 
 ## What an alien app is
 
@@ -458,7 +572,7 @@ gets:
   *pack box*, is that pack with a writable layer composed over it, kept under
   `~/.local/share/kdos/boxes/<name>/`.
 
-Either way the application behaves like a native one. It has a launcher in the Start menu, it opens
+Either way the application behaves like a native one. It has a row in Kickoff, it opens
 the file types it claims, it can be your default handler for a type, and it has a command you can
 type at a prompt. The container shows only on the first launch of a session, which is slower.
 
@@ -467,8 +581,8 @@ type at a prompt. The container shows only on the first launch of a session, whi
 The catalogue is the file `/usr/share/kdos/appstore/catalogue` (in the source tree,
 `src/system/kdos-appbox/catalogue`). It describes software rather than containing it: nothing is
 baked into the ISO, and an application is built by Podman on the machine that asks for it. The
-store, the installer and `kdos app` all read this one file, so a row added to it is offered by all
-three.
+Discover, the installer and `kdos app` all read this one file, so a row added to it is offered by
+all three.
 
 Counted in the shipped file:
 
@@ -505,7 +619,7 @@ reconstruction, electronics viewers and logic analysis, audio routing and effect
 tools, and a wide range of science (chemistry and materials codes, astronomy, GIS, statistics,
 biology and numerical computing), with a few utilities and games.
 
-Groups are how the store and the installer offer the catalogue:
+Groups are how Discover and the installer offer the catalogue:
 
 | Group | What it holds |
 |---|---|
@@ -522,7 +636,7 @@ they are never chosen on their own.
 
 ## Finding and installing
 
-`kdos app` is the command-line half of the store:
+`kdos app` is the catalogue at a prompt:
 
 ```sh
 kdos app list                        # what is installed here
@@ -537,8 +651,7 @@ kdos app install --pending           # the applications chosen during installati
 ```
 
 `kdos app show` is another name for `info`. Every verb that builds, removes, exports or imports runs
-`kdos-appbox` to do the work, so the command line and the store cannot disagree about what
-installing means.
+`kdos-appbox` to do the work.
 
 Installing builds the application on this machine, one image per layer: installing Scribus builds
 `kdos/base`, then `kdos/rt-qt`, then `kdos/app.scribus`, in that order, and then creates the box.
@@ -586,32 +699,15 @@ Two limits apply before you start:
   [Boot and init](../03-architecture/boot-and-init.md#the-live-medium-and-persistence)). Install
   KDOS to disk to keep them. `kdos doctor` reports a `$HOME` on an overlay.
 
-### The store
+### In Discover
 
-`kdos-store` is the same catalogue as a window, titled *Applications*. Open it from the Start menu,
-or with `kdos menu summon setup.applications`. Its tabs are `Groups`, `All`, up to nine category
-tabs ordered most-populated first, and `Installed`. The tab row holds twelve tabs at most, `Other`
-never gets one, and an application whose category has no tab is found under `All`. Each row shows
-the application's name, the runtime it is built on and an estimate of its size; on the `Groups` tab
-each row shows the group, how many applications it holds and their size. An application that is
-already installed is marked `[·]` and cannot be ticked. The footer keeps a running size estimate of what you
-have ticked.
-
-| Key | Action |
-|---|---|
-| `Left`, `Right` | Previous or next tab |
-| `Space` | Tick or untick the row; on the `Groups` tab, every application in the group |
-| `Enter` | Install the application under the cursor; on the `Groups` tab, tick or untick the group |
-| `F5` | Install everything ticked |
-| `F6` | Import the set at `~/apps.ktar` |
-| `F7` | Export everything ticked to `~/apps.ktar` |
-| `r` | Refresh, after an install finishes |
-
-The store builds nothing itself. An install, import or export runs `kdos-appbox` in a terminal
-window of its own, so you can read the package manager's output and close the store while it works.
-On a virtual console with no terminal emulator to open, the store says so and points you to
-`kdos app install`. The store takes no file name: to export to or import from another path, use
-`kdos app` at a prompt.
+Discover's `kdos-packs` origin is the same catalogue with a window: each application with its
+summary, the runtime it is built on and an estimate of its size, its groups as categories, and a
+page per application with **Install** and **Remove** (see [Discover](#discover)). Discover builds
+nothing itself: an install, an import or a removal runs `kdos-appbox` and `kdos-packd` with the
+same arguments `kdos app` uses, one at a time, so the command line and Discover cannot disagree
+about what installing means. An install that has to build from Debian packages says so, and that
+it needs the network, before it starts.
 
 ## Carrying a set to another machine
 
@@ -656,18 +752,16 @@ imported application runs, but its box's writable layer is held in memory and lo
 
 ## Launching
 
-A native application starts like any program: from its row in the Start menu or the launcher, or
-by typing its command. The rest of this section is about boxed applications.
+A native application starts like any program: from its row in Kickoff, from KRunner, or by typing
+its command. The rest of this section is about boxed applications.
 
-Start an installed boxed application from its row in the Start menu or the launcher, by typing its
-command, or by id with `kdos app launch`:
+Start an installed boxed application from its row in Kickoff, from KRunner, by typing its command,
+or by id with `kdos app launch`:
 
 ```sh
 scribus                      # the command on your PATH
 kdos app launch app.scribus  # by id; installs it first if it is not installed
 ```
-
-![The launcher: full-screen search over the same application index the Start menu uses](../../screenshots/launcher.png)
 
 The command is a *shim*: a symbolic link named after the application that points at `kdos-appbox`,
 which reads its own name, looks the application up and starts it in its box. Shims for applications
@@ -679,8 +773,13 @@ has no launcher, because it is a command-line tool, says so and names `kdos app 
 A first launch is slow, because a container has to be created or started and its first process
 has to finish setting the box up before anything runs in it. A cold launch, with no container at
 all, has been measured at about 18 seconds; a launch into a box that is already running skips all
-of that. That is why the Start menu marks boxed applications `[box]`, and why a "Starting
-app" notification appears while a box comes up.
+of that. That is why a "Starting app" notification appears while a box comes up.
+
+Each application a box carries gets a launcher of its own in `~/.local/share/applications`, with
+its own icon, and KWin knows the box's windows by that launcher's id. So a boxed window shows the
+application's icon in the task manager, groups with its launcher, can be pinned, and wears its box's
+title-bar colour. Installing or removing an application rewrites the launchers and asks Plasma to
+read them again at once.
 
 It is also why, when you log in, the session runs `kdos-appbox warmup` in the background at
 `nice` 10. The warmup reads your pinned applications from `~/.config/kdos/favorites`, where each
@@ -693,8 +792,8 @@ timestamped line per stage.
 
 ### Adding a terminal program to the menu
 
-`kdos app tui` gives a terminal program a Start-menu entry of its own, without editing a desktop
-file by hand. The Start menu's route `setup.tui` runs the same command.
+`kdos app tui` gives a terminal program a Kickoff entry of its own, without editing a desktop file by
+hand. The entry opens the program in Konsole.
 
 ```sh
 kdos app tui add "Disk usage" ncdu                     # prints the entry's name, kdos-tui-disk-usage
@@ -705,14 +804,8 @@ kdos app tui rm disk-usage                             # remove one
 
 | Option | Effect |
 |---|---|
-| `--float` | Write `X-KDOS-Float=true`: ask for an unanchored window |
-| `--size COLSxROWS` | Write `X-KDOS-Size`: the terminal's size, at least `4x2` |
 | `--icon NAME` | The menu icon (default `system-run`) |
 | `--category X` | The menu category (default `Utility`) |
-
-`--float` and `--size` are hints that only `kdos-term` honours. An entry this command writes names
-no terminal (it carries no `X-KDOS-Term` key), so the desktop opens it in `foot`, which is not
-given either hint: the window opens at `foot`'s default size and the compositor places it.
 
 The display name becomes the file name: lower case, with every run of characters other than
 letters and digits turned into one dash. Entries are written to
@@ -736,16 +829,15 @@ kdos-appbox open --choose report.pdf    # pick a handler
 ```
 
 When more than one program claims the type and none is set as the default, `kdos-appbox open` asks,
-with `kdos-openwith`; `--choose` asks whatever the defaults say. `kdos-openwith` is also the "Open
-with" dialog of the desktop, and its *Always use this application* box makes the choice the default
-for that type. A boxed application can be the default handler for a type. When nothing claims a
+with the desktop portal's application chooser, the same "Open With" dialog Dolphin shows, which
+lists host and boxed applications alike; `--choose` asks whatever the defaults say. Its *Remember*
+choice makes the answer the default for that type. A boxed application can be the default handler
+for a type. When nothing claims a
 type, the request goes to the system's `xdg-open` script. One call opens up to four files, all with
 the handler chosen for the first.
 
-The shipped defaults send each everyday type to a native application:
-folders to Dolphin, PDF to Okular, books to Calibre's viewer, text to Kate, pictures to Gwenview,
-video to Haruna, music to Strawberry, web links to Firefox ESR and mail links to Thunderbird. The
-full table is in [the desktop guide](desktop.md#opening-a-file).
+The shipped defaults send each everyday type to a native application; the table is under
+[Default applications](#default-applications).
 
 `xdg-open` on KDOS is another name for the same program, so links from any program go to your chosen
 handler. Links clicked *inside* a box open on the host: a boxed application asks the desktop portal
@@ -912,8 +1004,9 @@ with `kdos-box profile <name>` and pass it to `kdos-box create`.
 ### Profiles
 
 A box's settings live in `~/.config/kdos/boxes/<name>.conf`, its *profile*. `kdos-box profile
-<name>` shows it, and `kdos-box profile <name> key=value` changes it. The Boxes page of
-`kdos-settings` edits the same file. Most keys map onto a container flag or a namespace, and the
+<name>` shows it, and `kdos-box profile <name> key=value` changes it. The Boxes page of System
+Settings, under Security & Privacy → Application Permissions, edits the same file through the same
+command, and shows beside each control what enforces it and why a value cannot be delivered. Most keys map onto a container flag or a namespace, and the
 printed profile shows each of them beside the flag that enforces it. A few enforce nothing:
 `persistence` and `export` are only recorded, and `wayland = no` cannot take the display away,
 because the box shares the session's runtime directory; the printed profile adds a `!` line under
@@ -937,47 +1030,51 @@ with `kdos-box stop <name>`, or pass `--force`. Then:
 
 ### Idle boxes
 
-Your session runs `kdos-box gc` every ten minutes, from one loop per login however often the
-desktop is restarted within it. It stops a running box whose profile sets
-`autostop` and which has been running for longer than that `autostop` time. It asks the compositor
-first: a box with a window on the screen is never stopped, and when there is no session to ask,
-nothing is stopped. `autostop` is off (`0`) unless you set it, for example with `kdos-box profile
-app.scribus autostop=30m` or on the Boxes page of `kdos-settings`.
+Your user services run `kdos-box gc` every ten minutes, for as long as you are logged in. It stops
+a running box whose profile sets `autostop` and which has been running for longer than that
+`autostop` time. It asks KWin first which boxes have a window open: a box with a window on the
+screen is never stopped, and when there is no session to ask, nothing is stopped. `autostop` is off
+(`0`) unless you set it, for example with `kdos-box profile app.scribus autostop=30m` or on the
+box's page in System Settings.
+
+Boxes that were running when you logged out are started again at your next login, and a box is
+stopped when your last login ends, unless you linger (`loginctl enable-linger`), in which case your
+boxes and user services keep running with no login at all.
 
 ## Accessibility inside a box
 
-The desktop's own surfaces cannot be read by a screen reader. A boxed application offers whatever
-accessibility support its own toolkit has, and the catalogue ships no screen reader to run beside
-it. For a boxed GTK application that support is off by default: `kdos-appbox` sets `NO_AT_BRIDGE=1`
-and `GTK_A11Y=none` in the box, so that the application does not spend its start-up probing for an
-accessibility bus. `touch ~/.config/kdos/a11y` leaves those variables out for every box, and
-`KDOS_A11Y=1` does so for one launch; see
-[Accessibility](accessibility.md#a-containerised-application-can-be-read). Native applications are
-read by Orca on the host; see [Accessibility](accessibility.md#the-desktop-itself-is-not-read).
+A boxed application offers whatever accessibility support its own toolkit has, and the screen
+reader on the host reads it, as it reads the rest of the desktop. The box reaches the accessibility
+bus through its bus filter whenever assistive technology is in use: the screen reader is switched
+on in System Settings, a reader or other assistive program is attached to the accessibility bus, or
+`~/.config/kdos/a11y` exists. Otherwise the box is told not to look for the bus (`NO_AT_BRIDGE=1`
+and `GTK_A11Y=none`), so that a GTK application does not spend its start-up probing for it.
+`KDOS_A11Y=1` or `0` decides one launch. A box takes the choice when it starts, so a screen reader
+switched on later reaches a running box from its next start; see
+[Accessibility](accessibility.md#boxed-applications).
 
 ## What does not work
 
 - **Applications that need raw block devices**: partitioners, SMART tools, disk utilities. A
   rootless container cannot open a disk, so their launchers are left out even when a package
-  carries them. Those jobs belong to the native tools on the host (`parted`, `testdisk`,
-  `ddrescue`, `partclone`), which run as root.
-- **Applications that require a particular compositor's private protocols**, such as KDE's
-  screenshot tool Spectacle, which needs KWin. Screenshots are the host's `kdos-shot`.
+  carries them. Those jobs belong to the native tools on the host (Partition Manager, `parted`,
+  `testdisk`, `ddrescue`, `partclone`), which run as root.
 - **Microsoft core fonts for Wine**, and `winetricks`. Both download Windows components at run
   time, which an offline system cannot promise, so a Windows program asking for Arial gets a
   substitute.
-- **Data sets reaching their applications from the store.** The catalogue's `graft` and `boxgraft`
-  rows say where a data set should appear, and `kdos-appbox import` applies them to an imported
-  data pack, but `kdos app install` does not: a data set installed from the catalogue is built as an
-  image of its own, so KiCad does not see the 3D model library and Tesseract does not see the extra
-  languages until the set has been exported and imported as packs.
+- **Data sets reaching their applications from the store lane.** The catalogue's `graft` and
+  `boxgraft` rows say where a data set should appear, and `kdos-appbox import` applies them to an
+  imported data pack, but `kdos app install` does not: a data set installed from the catalogue is
+  built as an image of its own, so KiCad does not see the 3D model library and Tesseract does not
+  see the extra languages until the set has been exported and imported as packs.
 
 ## See also
 
 - [Packs and boxes](../03-architecture/packs-and-boxes.md) — the pack format, composition and the
   catalogue's machinery
 - [kdos-appbox](../04-programs/kdos-appbox.md) — the launcher, the box manager, and every profile key
-- [The desktop](desktop.md) — the Start menu, the launcher and the file manager
+- [The desktop](desktop.md) — Kickoff, KRunner, Dolphin and the default applications in use
+- [Discover](../04-programs/discover.md) — the KDOS backend, the system update and the firmware
 - [Theming](theming.md) — how native and boxed applications get the palette
 - [The kdos command](../04-programs/kdos-command.md) — `kdos app` and `kdos doctor` in full
 - [The ports catalogue](../06-reference/ports-catalogue.md) — every native port, by shelf and phase

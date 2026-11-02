@@ -6,13 +6,6 @@ and highlights code with the syntax and theme sets the [bat](#port-bat) port com
 package adds a desktop entry, "Slides", which opens a file in a terminal. It is `NoDisplay=true`:
 presenterm given no file exits at once, so Start does not list it.
 
-## Flags
-- `X-KDOS-Term=kdos-term` — In the desktop entry `build.sh` writes: open the program in
-  [kdos-term](../../../../docs/kdos/04-programs/kdos-term.md)
-  whatever terminal the session uses, because presenterm draws its pictures with the sixel and
-  kitty graphics protocols kdos-term speaks. See
-  [Terminal entries](../../../../docs/kdos/04-programs/kdos-appbox.md#terminal-entries).
-
 ## Notes
 presenterm embeds bat's serialized syntax and theme sets, `bat/syntaxes.bin` and
 `bat/themes.bin`, with `include_bytes!`, and upstream ships them prebuilt from a bat checkout.

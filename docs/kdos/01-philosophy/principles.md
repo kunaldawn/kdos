@@ -15,89 +15,130 @@ price it charges.
 
 | Principle | What it prevents | What it costs |
 |---|---|---|
-| [No systemd](#no-systemd) | One component owning init, logins, devices, logging and the network | Container resource limits need a hand-built cgroup delegation |
-| [No Xorg server](#no-xorg-server-and-one-carve-out) | A second display stack on the login path | X-only applications run through Xwayland |
-| [Toolkits are for applications](#toolkits-are-for-applications-not-the-desktop) | A desktop that cannot be built in one sitting or read in full | Every desktop surface has to be expressible in cells |
+| [No systemd init, units or service manager](#no-systemd-init-units-or-service-manager) | One component owning init, services, logging, devices and the network | elogind's systemd-derived C on the host; no socket activation and no per-application scopes |
+| [No Xorg server](#no-xorg-server-and-one-carve-out) | A second display stack on the login path | X-only applications run through Xwayland, and there is no X11 session |
+| [The desktop is KDE Plasma](#the-desktop-is-kde-plasma) | A desktop KDOS maintains alone, and a GUI stack under KDOS's code that runs as root or before the login | Qt and KDE Frameworks under the desktop; KDOS's Plasma plugins rebuilt with every Plasma release |
 | [Built from source](#everything-that-runs-on-the-host-is-built-from-source) | Binaries nobody can read or rebuild | Features that exist only as upstream binaries are absent |
-| [Offline by construction](#offline-by-construction) | Builds that work once and fail a year later | Every dependency a build would download must be bundled with the sources in advance |
+| [Offline by construction](#offline-by-construction) | Builds that work once and fail a year later, and a machine that needs the network to stay complete | Every dependency a build would download is bundled in advance; there is no Flathub and no "Get New…" |
 | [Reproducible by construction](#reproducible-by-construction) | Signatures and deltas over packages nobody can re-derive | A recipe never rolls its own archive |
 | [One implementation of an idea](#one-implementation-of-an-idea) | Two answers to one question that drift apart | Indirection |
 | [Absent, never partial](#a-thing-that-does-not-parse-whole-is-absent-never-partial) | Confident action on half-read data | No salvage of a damaged file |
-| [Never invent a number](#never-invent-a-number) | A missing reading presented as a real one | The interface shows dashes where others show guesses |
+| [Never invent a number](#never-invent-a-number) | A missing reading presented as a real one | Reports leave out what other tools would guess |
 | [Measure rather than assume](#measure-rather-than-assume) | Claims nobody checked | Measuring is slow |
 | [Say what cannot be enforced](#say-what-cannot-be-enforced) | Confinement that exists only in a settings file | A shorter feature list |
 | [Documentation describes the present](#documentation-describes-the-present) | Comments that narrate a past nobody can act on | History lives only in git |
 | [Documentation changes with the code](#every-change-updates-its-documentation-in-the-same-change) | Pages that contradict the tree | No change is ever only a code change |
 
-## No systemd
+<a id="no-systemd"></a>
 
-Nothing named `systemd-*` runs on the host, and no component depends on one. Each job that systemd
-would do is done by a separate program that does only that job, and each of those programs is a
-port (a directory holding the recipe that describes how to build one package) that can be read
-and replaced on its own.
+## No systemd init, units or service manager
+
+PID 1 is sysvinit, the system's services are numbered shell scripts that `ksvc` supervises, and a
+user's services run under `ksvc` too. No unit file is installed anywhere: `kpkg` refuses a package
+that puts anything under `usr/lib/systemd` or `lib/systemd`, so a recipe whose upstream installs
+units deletes them. Each job systemd would do is done by a separate program that does only that
+job, and each of those programs is a port (a directory holding the recipe that describes how to
+build one package) that can be read and replaced on its own.
 
 | Function | KDOS uses | Not |
 |---|---|---|
 | Init and service supervision | sysvinit's `init` as PID 1, with runlevels in `/etc/inittab`; `/etc/init.d/rcS` running the numbered scripts in `/etc/init.d`, with daemons kept alive by `ksvc` | units and targets |
-| Seat management | `seatd` | `systemd-logind` |
+| Logins, seats and sessions | `elogind`, which serves `org.freedesktop.login1` | `systemd-logind` |
+| Per-user services | `turnstile`, whose backend runs the scripts in `/etc/kdos/user-services/` under `ksvc`: the session bus at `$XDG_RUNTIME_DIR/bus`, PipeWire, WirePlumber, `pipewire-pulse` and the user's timers | `systemd --user` |
 | sd-bus API for programs that want one | `basu` | `libsystemd` |
 | Device management | `eudev` | `systemd-udevd` |
 | Message bus | `dbus` | `dbus-broker` |
+| Host name, time zone, locale and keyboard layout | `kdos-settingsd`, serving `org.freedesktop.hostname1`, `timedate1` and `locale1` | `systemd-hostnamed`, `-timedated`, `-localed` |
+| Operating-system updates | `kdos-sysupdated`, serving `org.freedesktop.sysupdate1` over the two root slots | `systemd-sysupdate` |
 | Network | NetworkManager with `wpa_supplicant`; `dhcpcd` when NetworkManager is turned off | `systemd-networkd` |
 | DNS | `dnsmasq`, which NetworkManager starts as a local caching resolver on `127.0.0.1` and `::1` | `systemd-resolved` |
 | Time synchronisation | `chrony` | `systemd-timesyncd` |
 | System log | `sysklogd` | `journald` |
-| Scheduled jobs | one `snooze` per job, supervised by `ksvc` | timer units |
+| Crash records | a core dump; KCrash runs with no crash handler | `systemd-coredump` and DrKonqi |
+| Scheduled jobs | one `snooze` per job, supervised by `ksvc`: the system's started by `rcS`, a user's by their own services; `cronie` for the crontabs users write, which System Settings' Task Scheduler edits | timer units |
 
 `ksvc` is part of `kdos-tools`. It makes each supervisor the leader of its own process group, with
 the daemon inside it, so that stopping a service signals the whole group and reaches the daemon and
 not only its supervisor, and it passes the daemon command as an argument vector rather than as a
 string for a shell to split. The init scripts are shell, because a list of services and their
 start order reads most clearly as a script, and `ksvc` supplies the process handling a script
-cannot. See [Boot and init](../03-architecture/boot-and-init.md#rcs-and-the-service-scripts).
+cannot. Run by a user, it keeps its state under `$XDG_RUNTIME_DIR/ksvc` rather than `/run`. See
+[Boot and init](../03-architecture/boot-and-init.md#rcs-and-the-service-scripts).
 
-The price is paid around containers. Rootless podman applies a `--memory` or `--cpus` limit through
-a cgroup2 subtree that the user owns, and on other distributions systemd's user slice is what hands
-one out. Without a delegated subtree, podman accepts the flag and silently does nothing. KDOS covers
-this in two ways:
+Three programs on the host come out of systemd's source tree and run on their own: `eudev` for
+device events, `basu` as the sd-bus library, and `elogind` for logins. elogind is the large one,
+about 226,000 lines of C, built with the patches Alpine carries for musl, and it is there because
+Plasma is built on `login1`. SDDM records each session through it and switches users through it;
+KWin opens the display and the input devices through the session elogind records, and has no other
+session backend that works here; PowerDevil suspends the machine and owns the lid through it; and
+the lock screen locks when elogind announces a sleep. elogind runs under `ksvc` like any
+daemon, and its power-off and reboot paths are sysvinit's, so leaving Plasma with Shut Down still
+goes through runlevel 0 and `rcK`.
 
-1. At boot, `/etc/init.d/15_userdirs.sh` delegates a cgroup2 subtree, by hand, to every user
-   whose uid is 1000 or above and below 65534 (`nobody`): it enables the `cpu`, `memory` and
-   `pids` controllers at the root and in `/sys/fs/cgroup/user.slice`, creates
-   `user.slice/user-<uid>` owned by that user, and creates a `session` leaf inside it that the
-   login is moved into. The leaf is needed because a cgroup that holds processes cannot enable
-   controllers for its children, and podman creates its container cgroups beside the caller's.
-2. [`kdos-oomd`](../04-programs/daemons.md#kdos-oomd) watches memory pressure through
-   `/proc/pressure/memory` and, when the machine stalls while `MemAvailable` is at most a tenth of
-   `MemTotal` ([how it decides](../04-programs/daemons.md#how-it-decides)), kills the largest
-   process that is neither the desktop nor its plumbing. A box over the `memory` budget its profile declares is chosen
-   first, so the profile key still means something where the limit itself could not be applied.
-   Otherwise the largest boxed process is preferred to a host one whenever it holds at least half
-   the memory of the largest candidate.
+turnstile does the part of `systemd --user` that Plasma needs. It counts a user's logins across
+SDDM and the text consoles, creates `/run/user/<uid>` at the first and removes it at the last
+(unless the user lingers), and has its backend start that user's services and report them ready
+before the login continues, so the session bus and PipeWire answer before Plasma starts. Plasma
+then takes its classic start-up path, `systemdBoot=false` in `startkderc`, and starts its own
+processes, as it does wherever systemd's user manager is absent.
 
-A service that expects socket activation or a user slice of its own has to be run without them.
+A KDOS daemon may serve a freedesktop D-Bus interface that systemd also serves, and it documents
+the subset it answers. `kdos-settingsd` serves `hostname1`, `timedate1` and `locale1`, because the
+Date & Time settings page saves only through `timedate1`, plasma-setup uses all three, and the login
+screen's compositor reads the keyboard layout from `locale1`. `kdos-sysupdated` serves
+`sysupdate1`, which is how Discover offers an update of the operating system. Owning such a name is
+not running systemd: no unit, generator or service manager stands behind it.
+
+Rootless podman applies a `--memory` or `--cpus` limit through a cgroup2 subtree that the user
+owns, and without one it accepts the flag and silently does nothing. elogind hands that subtree out:
+with `DelegateSessionCgroups=yes` each session's cgroup is `/sys/fs/cgroup/<session>`, and the user
+owns the `session` and `delegated` cgroups inside it, so a box started from the session gets a
+limit it can enforce. At boot, `/etc/init.d/15_cgroups.sh` enables the `cpu`, `memory` and `pids`
+controllers at the root, so the delegated subtree has them to hand on.
+[`kdos-oomd`](../04-programs/daemons.md#kdos-oomd) stays as the second line: it watches memory
+pressure through `/proc/pressure/memory` and, when the machine stalls while `MemAvailable` is at
+most a tenth of `MemTotal` ([how it decides](../04-programs/daemons.md#how-it-decides)), kills the
+largest process that is neither the desktop nor its plumbing. A box over the `memory` budget its
+profile declares is chosen first, so the profile key still means something where the limit itself
+could not be applied. Otherwise the largest boxed process is preferred to a host one whenever it
+holds at least half the memory of the largest candidate.
+
+The price is elogind's systemd-derived code on the host, and what Plasma does without systemd's user
+manager. There is no socket activation. The systemd user units KDE's packages install are deleted,
+and KIO starts applications without systemd scopes, so System Monitor cannot group processes by
+application. DrKonqi, KDE's crash reporter, needs `systemd-coredump` and is not ported, so a crashed
+program leaves a core dump and no dialog. A service that expects socket activation or a unit of its
+own has to be run without them.
 
 ## No Xorg server, and one carve-out
 
-There is no `xorg-server` port, no display manager, and nothing X on the login path. The system
-files under `fs/` contain no `/etc/X11/` directory, and a change that creates one is rejected in
-review.
+There is no `xorg-server` port, nothing X on the login path and no X11 session. The system files
+under `fs/` contain no `/etc/X11/` directory, a change that creates one is rejected in review, and
+`kpkg` refuses a port whose package installs anything under `etc/X11`.
 
-One display server, the Wayland compositor, owns the screen, the input devices and the login
-path. An Xorg server would be a second complete display stack, with its own input handling, its
-own drivers and its own privileges, to build, secure and keep consistent with the first. See
+The display manager is SDDM, built against elogind, and its greeter runs on `kwin_wayland`
+(`DisplayServer=wayland` in `/etc/sddm.conf.d/00-kdos.conf`). The greeter's KWin is started without
+`--xwayland`, so no X server runs before somebody logs in, and SDDM's X11 session directory is
+empty, so the session list offers Plasma on Wayland and nothing else. SDDM itself links `libxcb`,
+an X client library, which the rule allows.
+
+One display server, KWin, owns the screen, the input devices and the login path. An Xorg server
+would be a second complete display stack, with its own input handling, its own drivers and its own
+privileges, to build, secure and keep consistent with the first. See
 [How KDOS differs](how-kdos-differs.md#the-display-stack) for how other distributions carry both.
 
-Xwayland is the single exception, and the one X server. The compositor runs it rootlessly for every
-X11 client: applications inside boxes (the rootless containers the catalogue's applications run in)
-and host applications that have no Wayland path, such as Xastir, VLC 3 and programs written in
-Motif, Tk or Java's Swing. Any application may link the X client libraries it needs, and the host
-carries them: the `x11` shelf holds the X client libraries (`libXext`, `libXi`, `libXrandr`,
-`libXt`, `libXft` and the rest), the `toolkits` shelf holds `motif`, and the X11 backends of Mesa,
-GTK, Qt and mpv are built against them beside their Wayland ones. Xwayland itself depends on
-`xorgproto`, `xtrans`, `libXau`, `libXdmcp`, `libX11`, `libxkbfile`, `xkbcomp`, `libxshmfence`,
-`libXfont2`, `libxcvt`, `libepoxy` and `xkeyboard-config`. All six `xcb-util` ports are built,
-and all six are named in the `41_system` phase's list, in its `x11` shelf file. What stays out is a second X server, a display manager and anything X on the login path.
+Xwayland is the single exception, and the one X server. KWin starts it in a user's session, and runs
+it rootlessly for every X11 client: applications inside boxes (the rootless containers the
+catalogue's applications run in) and host applications that have no Wayland path, such as Xastir,
+VLC 3 and programs written in Motif, Tk or Java's Swing. Any application may link the X client
+libraries it needs, and the host carries them: the `x11` shelf holds the X client libraries
+(`libXext`, `libXi`, `libXrandr`, `libXt`, `libXft` and the rest), the `toolkits` shelf holds
+`motif`, and the X11 backends of Mesa, GTK, Qt and mpv are built against them beside their Wayland
+ones. Xwayland itself depends on `xorgproto`, `xtrans`, `libXau`, `libXdmcp`, `libX11`,
+`libxkbfile`, `xkbcomp`, `libxshmfence`, `libXfont2`, `libxcvt`, `libepoxy` and `xkeyboard-config`.
+All six `xcb-util` ports are built, and all six are named in the `41_system` phase's list, in its
+`x11` shelf file. What stays out is a second X server, an X11 session and anything X on the login
+path.
 
 Two consequences follow for X clients.
 
@@ -113,45 +154,71 @@ Two consequences follow for X clients.
   `-adobe-helvetica`, and a font directory inside a box is invisible to a server running outside
   it.
 
-## Toolkits are for applications, not the desktop
+## The desktop is KDE Plasma
 
-The desktop links no widget toolkit: not `kdos-comp`, not `kdos-shell`, not the root daemons and not
-the portal. Every surface KDOS draws is a grid of character cells produced by [libraries written for
-it](../05-developer/c-libraries.md), which link no toolkit either: the panel and all its surfaces,
-the file chooser, the resource monitor, the terminal, the lock screen, the installer and `tty1`.
-`libktui` composes the cells and knows nothing about where they go. `libkwl` paints them into a
-`wl_shm` buffer as an ordinary Wayland surface, and a terminal receives them as escape sequences.
-The boot splash, `kdos-splash`, runs from the initramfs before any of that exists and links none of
-the libraries: its own code writes PSF glyphs and pixels straight to `/dev/fb0`, taking only the
-colour table from the `libkcolor` header.
+The desktop is KDE Plasma on KWin, Wayland only, with KDE Frameworks under it and KDE Gear beside
+it. KDOS does not write a desktop of its own. What it adds goes where Plasma already loads code
+from: System Settings modules (KCMs), plasmoids, a KRunner runner, KWin effects and scripts, the
+window decoration's settings, Discover backends, the look-and-feel, Plasma style and SDDM theme
+packages, and the graphical front end of the installer. That code lives under `src/desktop/`, is
+written in C++ and QML against Qt 6, KDE Frameworks 6 and Plasma's own libraries, and links no other
+toolkit. [Decisions](decisions.md#kde-plasma-and-all-of-gear-as-the-desktop) says why Plasma and
+not a desktop of KDOS's own.
 
-The compositor is the one exception inside the desktop. `kdos-comp`, a fork of labwc, links `cairo`
-and `pangocairo` and draws its own chrome (titlebars, the root menu and the on-screen window
-switcher) with pango rather than with cells. It draws in `Terminus (TTF)` at a size that makes a
-titlebar one cell tall, because pango cannot render the bitmap Terminus the cell surfaces use. See
-[The design
-language](../03-architecture/design-language.md#the-compositors-decoration-is-part-of-the-set) and
-[Theming](../02-user-guide/theming.md#fonts) for the fonts each part of the desktop draws in and the
-keys that set them.
+The line runs between the desktop and what has to keep working without it. KDOS's own code under
+`src/system/`, `src/daemons/` and `src/art/`, every `libk*` library, and every KDOS program that
+runs as root or before the login links no toolkit at all: `kpkg`, the `kdos` command and `ksvc`,
+the root daemons, `kdos-boxsock`, the boot splash and the installer's backend. These are what a
+person repairs the machine with when the desktop is broken, from the text console on the second
+virtual terminal or a serial line, so a broken Qt must not take them down with it; and a root
+process that linked a toolkit would put that toolkit's parsers on the privileged side. The root
+side of every KDOS settings page is one of those daemons, reached over its socket or D-Bus and
+authorised through polkit, never a Qt helper running as root. The login screen and the helpers
+KDE's own settings pages start as root are upstream's, and they do link Qt.
 
-Applications are different. A graphical application on the host is ported with the toolkit it is
-written in: GTK 3 or 4, libadwaita, WebKitGTK, Qt 5 or 6, QtWebEngine, KDE Frameworks, wxWidgets,
-FLTK or Tk. Each toolkit that has a Wayland backend is built with both it and its X11 backend,
-and Wayland is the run-time default; Tk has only an X11 backend, so a Tk application always runs
-through Xwayland. `/etc/profile.d/10-wayland.sh` sets `QT_QPA_PLATFORM="wayland;xcb"`, so Qt falls
-back to Xwayland only when its Wayland plugin cannot start, and leaves `GDK_BACKEND` unset, because
-GTK already tries Wayland first and a value there would override the `GDK_BACKEND=x11` that an
-X11-only application sets for itself. There is no Plasma or GNOME shell: a KDE or GNOME application
-is one more client of `kdos-comp`. It takes the KDOS palette through files that
-[`kdos theme`](../04-programs/kdos-command.md#kdos-theme) writes (`~/.config/kdeglobals`, read by
-the `kde` platform theme in a Qt 6 application, and the `qt5ct` files a Qt 5 application reads),
-through the GTK stylesheets, and through the Settings portal, and `GTK_USE_PORTAL=1` sends a GTK
-application's file chooser to the desktop's own.
+KDOS's terminal programs draw a grid of character cells with [libraries written for
+it](../05-developer/c-libraries.md): the installer's text front end, used on a serial console and
+for unattended installs, the build's start-up picker, `kdosbuild`, and `kdos-appbox`. `libktui`
+composes the cells and knows nothing about where they go, and a terminal receives them as escape
+sequences. The boot splash, `kdos-splash`, runs from the initramfs before any of that exists and
+links none of the libraries: its own code writes PSF glyphs and pixels straight to `/dev/fb0`,
+taking only the colour table from the `libkcolor` header.
+
+Where Plasma has to behave differently on KDOS, its own configuration is used first. KDOS's
+defaults are files in `/usr/share/kdos/xdg`, which comes after `/etc/xdg` in the configuration
+search path, so the machine owner's files and each user's own override them. A `.patch` against a
+KDE module is carried only where no option exists, under the rule for patches in [Writing
+ports](../05-developer/writing-ports.md), and it is offered upstream at the same time; the port's
+notes name the merge request. The CRT effect behind Phosphor mode is one: KWin refuses an effect
+built outside it for any other KWin version, point releases included, so the effect is built into
+KWin by a patch and can only fail to build, never fail to load.
+
+The cost is weight and a release lock. Qt, KDE Frameworks and Plasma are more code than the rest
+of the host, and they sit under the desktop. The KDOS code that uses Plasma's internal interfaces,
+the Discover backend, the System Monitor plugin and the KWin effect, is rebuilt and tested again
+for every Plasma minor release.
+
+### Applications bring their own toolkit
+
+A graphical application on the host is ported with the toolkit it is written in: GTK 3 or 4,
+libadwaita, WebKitGTK, Qt 5 or 6, QtWebEngine, KDE Frameworks, wxWidgets, FLTK or Tk. Each toolkit
+that has a Wayland backend is built with both it and its X11 backend, and Wayland is the run-time
+default; Tk has only an X11 backend, so a Tk application always runs through Xwayland.
+`/etc/profile.d/10-wayland.sh` sets `QT_QPA_PLATFORM="wayland;xcb"`, so Qt falls back to Xwayland
+only when its Wayland plugin cannot start, and leaves `GDK_BACKEND` unset, because GTK already
+tries Wayland first and a value there would override the `GDK_BACKEND=x11` that an X11-only
+application sets for itself. A KDE application is at home. A GTK application takes the Breeze GTK
+theme, which kde-gtk-config keeps in step with the Plasma colour scheme, and `GTK_USE_PORTAL=1`
+sends its file chooser to xdg-desktop-portal-kde. A Qt 5 application has no KDE platform theme to
+load, because no KDE Frameworks 5 are built, so it loads `qt5ct`, patched to answer to the `kde`
+platform-theme name, with the colours [`kdos theme`](../04-programs/kdos-command.md#kdos-theme)
+writes for the accent.
 
 The ported applications are recipes under `ports/core` like any other. Most are built in `44_apps`,
 the leaf applications over `43_toolkits`; one that something else depends on (VLC, Wireshark,
-FontForge, GNU Radio) is built in `43_toolkits` or earlier. Each is filed on the shelf of what a person does with it, never by its toolkit
-or the desktop project that wrote it: `browsers` (Firefox ESR, Chromium), `mail` (Thunderbird),
+FontForge, GNU Radio) is built in `43_toolkits` or earlier. Each is filed on the shelf of what a
+person does with it, never by its toolkit or the desktop project that wrote it, and KDE Gear's
+applications are filed the same way: `browsers` (Firefox ESR, Chromium), `mail` (Thunderbird),
 `office` (LibreOffice), `documents` (Okular), `editors` (Kate), `graphics` (GIMP, Inkscape, Krita,
 darktable), and on through `studio`, `video-tools`, `cad`, `eda`, `education` and the `games-*`
 shelves. The phase's list is split by the same shelves, one `packages.d/<shelf>.txt` each, and [The
@@ -166,24 +233,29 @@ none does, so what a library installs does not depend on what happened to be bui
 are built. `ghostscript` is configured with `--disable-gtk`, and `avahi` with every toolkit off:
 its GTK 3 front end cannot be built at all, because GTK 3 depends on CUPS, which depends on avahi.
 
-The line keeps the desktop small enough to compile in one sitting and to reason about in full,
-whatever the applications above it weigh. The cost is that anything a KDOS surface draws has to be
-expressible in cells.
-
 ## Everything that runs on the host is built from source
 
 Every program, library and module that the host installs and runs on its own processor is compiled
-in this tree from pinned source: about 2,000 recipes under `ports/core` for upstream software, each
-pinned by hash, and some two dozen under `src/` for the software kept in this repository, most of it
-written for KDOS. [The ports catalogue](../06-reference/ports-catalogue.md) lists every one of them by shelf,
-with the phase that builds it, and [How KDOS is built](../05-developer/how-kdos-is-built.md) follows
-the build from the first source fetch to a bootable ISO. The application catalogue is outside the
-rule. It is Debian's packaging, built by podman into a box on the machine that asks for it, and it
-is never part of the host.
+in this tree from pinned source: about 2,400 recipes under `ports/core` for upstream software, KDE
+Plasma, KDE Frameworks and KDE Gear among them, each pinned by hash, and a few dozen under `src/`
+for the software kept in this repository, most of it written for KDOS. [The ports
+catalogue](../06-reference/ports-catalogue.md) lists every one of them by shelf, with the phase
+that builds it, and [How KDOS is built](../05-developer/how-kdos-is-built.md) follows the build from
+the first source fetch to a bootable ISO. The application catalogue is outside the rule. It is
+Debian's packaging, built by podman into a box on the machine that asks for it, and it is never part
+of the host.
 
-A binary taken on trust cannot be read, cannot be rebuilt from the source tree by
-[`kdos rebuild`](../04-programs/kdos-command.md#kdos-rebuild), and carries whatever its builder put
-in it. A single prebuilt binary on the host is enough to make end-to-end inspection impossible.
+The binaries a machine installs after that are the ones this build produced. A KDOS release builds
+every package from these recipes and publishes the result, as packages on a signed binhost and as
+whole-slot images, signed with the release key. A machine installs a package or an image only once
+its signature verifies against the release key its own image carries, and nothing in a release is
+built anywhere else.
+`kdos update apply --source` builds the same recipes on the machine instead of installing them, and
+[`kdos rebuild`](../04-programs/kdos-command.md#kdos-rebuild) builds the whole system.
+
+A binary taken on trust cannot be read, cannot be rebuilt from the source tree, and carries
+whatever its builder put in it. A single prebuilt binary on the host is enough to make end-to-end
+inspection impossible.
 
 Five classes are exempt, and nothing outside them is:
 
@@ -256,17 +328,42 @@ resolving a system tool from PyPI. Each has a standard fix in
 The cost lands on whoever adds a port. A language ecosystem that downloads its dependencies at
 build time needs a *vendor bundle*: a reproducible tarball of those dependencies, produced by
 `make fetch` and then held in the archive like any other source. A recipe asks for one with
-`vendoring =`, and 161 recipes in `ports/core` do: 75 Rust, 39 Go, 42 Python, 4 Haskell and 1
+`vendoring =`, and 168 recipes in `ports/core` do: 80 Rust, 39 Go, 43 Python, 4 Haskell and 2
 Node. `python3-lsp-ruff` gets a Python bundle from its `pypackages` line alone, and four more
 (`pdfium`, `libreoffice`, `librepcb` and `surfer`) carry bundles no tool writes, assembled by hand,
-so 166 ports carry a vendor bundle in all. A build with network access would
+so 173 ports carry a vendor bundle in all. A build with network access would
 fetch these dependencies itself. See [Writing ports](../05-developer/writing-ports.md#vendoring)
 and [A bundle no tool writes](../05-developer/writing-ports.md#a-bundle-no-tool-writes).
+
+The running machine keeps the same rule. Nothing KDOS ships downloads anything of its own accord:
+
+- **No "Get New…".** KNewStuff, KDE's service for fetching themes, wallpapers and scripts from
+  store.kde.org, is switched off for every program by `ghns=false` under `[KDE Action
+  Restrictions]` in the distribution's `kdeglobals`, and Discover is built without its KNewStuff
+  backend. What KDOS offers instead is a curated add-on pack on the medium: wallpapers, colour and
+  Konsole schemes, KWin scripts and a few plasmoids.
+- **No Flatpak.** There is no Flathub remote and no Flatpak backend in Discover, which lists the
+  ports, packs and boxes this repository describes, and firmware. Discover fetches no ratings or
+  reviews (`FetchOdrsRatings=false` in its shipped `discoverrc`), and its featured list is a file on
+  the machine.
+- **No browser extension store.** Plasma Browser Integration's extension for Firefox ESR and
+  LibreWolf is installed from the medium with the browsers.
+- **No telemetry.** KUserFeedback is not ported, and every KDE module that can use it is built
+  without it.
+- **No shipped timer touches the network.** The nightly update check compares what is installed
+  with the tree, cache or medium already on the machine, and fwupd lists firmware from the LVFS
+  metadata snapshot each release carries.
+
+The network is used when the person at the machine asks for it: Discover's "Check for updates",
+`kdos update fetch`, `kdos update apply`, `fwupdmgr refresh`, and installing a catalogue
+application, which builds its box from Debian's archive. The cost is freshness: firmware metadata is
+as new as the last release or the last refresh somebody ran, and what "Get New…" would have offered
+is whatever the add-on pack carries.
 
 ## Reproducible by construction
 
 A package built twice from the same tree is byte-identical. That is a property of one function
-rather than of some 2,000 recipes: `roll_package()` in `kpkg`, the package manager
+rather than of some 2,400 recipes: `roll_package()` in `kpkg`, the package manager
 (`src/system/kdos-kpkg/build.c`), runs tar with `--sort=name`, `--format=gnu`, `--owner=0 --group=0
 --numeric-owner`, an `--mtime` taken from `SOURCE_DATE_EPOCH`, and `xz -9 -T0 --block-size=32MiB
 --no-adjust` as a pinned compressor with `XZ_OPT` and `XZ_DEFAULTS` removed (a package that
@@ -300,23 +397,24 @@ Each of these examples marks a place where two answers could otherwise diverge:
 
 - **The palette** is a table in `libkcolor`, written as an X-macro: a list of macro calls that each
   consumer expands at compile time with its own definition of the macro. `libktui` projects it onto
-  its colour slots and the theme generators expand it into CSS, SVG and Xcursor, but no program
-  keeps a second copy of the colour values.
-- **Deleting a file** is `libkbase`'s trash implementation (`kb_trash_*`), used by both the
-  [`kdos trash`](../04-programs/kdos-command.md#kdos-trash) command and the desktop's Delete key,
-  so a command and a keypress cannot mean different things.
+  its colour slots, the boot splash and the text consoles take their colours from it, and the
+  theme generator expands it into every KDE colour scheme, Konsole scheme, `qt5ct` palette and
+  login-screen palette the image ships, but no program keeps a second copy of the colour values.
 - **Turning an `Exec=` line into an argument vector** is `kxdg_exec_split()` in `libkxdg`. Every
-  launch path goes through it, in the panel, the terminal, `kdos-appbox` and the `kdos` command,
-  including the path that writes those lines back out.
-- **What a pin is**: `~/.config/kdos/favorites` has one writer, `sh_fav_set()` in `kdos-shell`'s
-  `fav.c`, even though pinning happens in a menu and the quick-launch row is drawn by the panel,
-  which is a separate process.
+  launch path of KDOS's own goes through it, in `kdos-appbox` and the `kdos` command, including the
+  path that writes those lines back out.
+- **What is out of date** is `/var/lib/kdos/update.json`, which `kdos update check` writes.
+  `kdos-sysupdated` answers Discover from it rather than comparing versions itself, so the command
+  line and the software centre cannot disagree about what is behind.
+- **Which slot boots next** is `kdos-bootctl`'s to write. `kdos update` and `kdos-sysupdated`,
+  which the settings page for system versions asks, both run it rather than touching the boot
+  state on the EFI partition themselves.
 - **Which pack a command belongs to**, a pack being the single read-only filesystem image an
   imported application runs from (an application built from the catalogue has none), is
   `app_pack_by_exec()` in `kdos-appbox`, reading the `alien-apps`
   table (one row per boxed application: its name, its command and, where it has one, its pack) that
-  the launcher generator writes. `kdos-appbox run` and the warmup that starts pinned applications'
-  boxes at login both ask it rather than each deciding.
+  the launcher generator writes. `kdos-appbox run` and the warm-up that starts, at login, the boxes
+  of the applications `~/.config/kdos/favorites` lists both ask it rather than each deciding.
 
 When you are about to write the second implementation, make the first one reachable instead. The
 cost is indirection: reaching a library function from a place that would rather hold a local copy.
@@ -359,25 +457,17 @@ Where the machine does not publish a value, the interface says so. It does not s
 
 A `0` in place of an unavailable reading reports a sensor that does not exist as a machine that is
 idle, which is worse than an empty cell because it looks like information.
-[`kdos-res`](../04-programs/kdos-res.md#missing-and-discontinuous-readings) renders `-` for any
-reading it cannot take, leaves out a GPU line (memory, clock, sensors) that the driver does not
-publish, and draws a counter that went backwards as a gap rather than as a spike. Where a driver has
-no utilisation counter, as `i915` and `xe` do not, it shows engine time labelled as such and does
-not convert it into a percentage.
 
 The same rule governs what a measurement is allowed to claim.
 [`kdos-energy`](../04-programs/daemons.md#kdos-energyd) reports relative shares of attributable CPU
 energy and states that it gives no watt-hours, because RAPL, the processor's energy counters, cannot
-see the panel, the radio or the disk; a driver with no per-client GPU accounting gets no GPU column
-at all. [`kdos stutter`](../04-programs/kdos-command.md#kdos-stutter) names what each process was
-doing during a dropped frame and never says which one caused it, because attribution from a 500 ms
-sample cannot prove causation. The one causal claim it makes is about the compositor's own render
-time, where it has both halves of the evidence. [`kdos
-cve`](../04-programs/kdos-command.md#kdos-cve) reports a package its database does not carry as
-unknown, never as clean.
+see the panel, the radio or the disk. Its GPU column is engine time from the driver's per-client
+counters, labelled as time and never turned into energy, and a driver with no per-client GPU
+accounting gets no GPU column at all. [`kdos cve`](../04-programs/kdos-command.md#kdos-cve) reports
+a package its database does not carry as unknown, never as clean.
 
-The cost is that KDOS looks less capable than a tool willing to guess. The interface shows `-`
-where another tool would show an estimate.
+The cost is that KDOS looks less capable than a tool willing to guess. A report leaves a column out
+where another tool would fill it with an estimate.
 
 ## Measure rather than assume
 
@@ -414,8 +504,6 @@ enforce it marks with `!`:
 - There is no podman flag that grants a box a speaker and denies it a camera. A box whose devices
   are shared has the host's whole `/dev`, so an `audio` or `gpu` key that would subtract one of
   them is reported as not enforceable separately.
-- `wayland = no` cannot be enforced, because the box shares `$XDG_RUNTIME_DIR` and the session's
-  socket is in it.
 - A `persistence` other than `persistent` is recorded but not imposed, because a box's writes land
   wherever its container runtime puts them.
 
@@ -488,6 +576,8 @@ The price is that no change is ever only a code change.
   by shelf and phase
 - [The design language](../03-architecture/design-language.md) — these principles applied to what
   you see
+- [Session](../03-architecture/session.md) — the login, elogind and the per-user services that
+  stand in for systemd's
 - [The security model](../03-architecture/security-model.md) — the enforcement behind the box
   profile, including what is not protected
 - [Packaging](../03-architecture/packaging.md) — reproducible packages, the binhost and deltas

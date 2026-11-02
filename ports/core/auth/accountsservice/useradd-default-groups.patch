@@ -1,0 +1,49 @@
+Subject: Keep useradd's default groups for a new administrator
+
+--- a/src/daemon.c	2026-06-30 00:42:00.000000000 +0530
++++ b/src/daemon.c	2026-11-02 11:31:40.268680742 +0530
+@@ -1837,23 +1837,36 @@
+         argv[i++] = "-m";
+         argv[i++] = "-c";
+         argv[i++] = cd->real_name;
+-
+-        if (admin_groups_array != NULL) {
+-                admin_groups = g_strjoinv (",", admin_groups_array);
+-
+-                argv[i++] = "-G";
+-                argv[i++] = admin_groups;
+-        }
+-
+         argv[i++] = "--";
+         argv[i++] = cd->user_name;
+         argv[i++] = NULL;
+ 
++        /* useradd's -G replaces the GROUPS= of /etc/default/useradd, so an
++         * administrator would miss the groups every other account gets.
++         * The administrator groups are appended afterwards instead. */
+         if (!spawn_sync (argv, &inner_error)) {
+                 g_propagate_prefixed_error (error, inner_error, "Failed to run useradd: ");
+                 return NULL;
+         }
+ 
++        if (admin_groups_array != NULL) {
++                const gchar *usermod_argv[7] = { NULL };
++
++                admin_groups = g_strjoinv (",", admin_groups_array);
++
++                usermod_argv[0] = "/usr/sbin/usermod";
++                usermod_argv[1] = "-a";
++                usermod_argv[2] = "-G";
++                usermod_argv[3] = admin_groups;
++                usermod_argv[4] = "--";
++                usermod_argv[5] = cd->user_name;
++
++                if (!spawn_sync (usermod_argv, &inner_error)) {
++                        g_propagate_prefixed_error (error, inner_error, "Failed to run usermod: ");
++                        return NULL;
++                }
++        }
++
+         user = daemon_local_find_user_by_name (daemon, cd->user_name);
+         user_update_local_account_property (user, TRUE);
+         user_update_system_account_property (user, FALSE);

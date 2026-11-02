@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   No password store on the live medium.
+#
+# The live account logs in with no password, so a wallet would ask, the first
+# time a program stores a secret, for a new password to guard secrets that
+# are gone at the next boot. Programs keep what they would have stored for
+# this session only. The directory goes first in XDG_CONFIG_DIRS, and only on
+# the live medium; an installed system's wallet opens with the login.
+# ---------------------------------
+
+[Wallet]
+Enabled=false

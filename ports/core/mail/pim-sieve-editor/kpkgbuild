@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = pim-sieve-editor
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = f7f24d4c0496ee4565abc6821a3b353f7d6b7d5994f247820427243ecafd551c  pim-sieve-editor-26.08.2.tar.xz
+description = Editor for Sieve mail-filter scripts on ManageSieve servers
+homepage    = https://apps.kde.org/sieveeditor/
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later AND BSD-3-Clause AND CC0-1.0 AND MIT
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kbookmarks kcoreaddons kcrash kdbusaddons kdoctools ki18n kiconthemes kio kwindowsystem kxmlgui ktextaddons qtkeychain kimap kmailtransport libksieve pimcommon

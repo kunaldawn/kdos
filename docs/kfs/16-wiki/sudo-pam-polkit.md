@@ -2,12 +2,13 @@
 
 An administrator on KDOS is an account in the [`wheel`]{.idx} group, and three pieces of software turn
 that membership into rights: [`sudo`]{.idx} runs a command as root after asking for the account's own
-[password]{.idx}, [PAM]{.idx} is the library `sudo` and a few other programs check that password through, and
-[polkit]{.idx} answers the system daemons that ask whether a user may perform an action. This page
-shows the files of all three, how to give an account rights and check what it has, how to add a
-rule of your own, and what to look at when a request is refused. Why polkit here grants a set
-list of actions with no password prompt is in the KDOS book's
-[polkit, and why the desktop has no authentication agent](../../kdos/03-architecture/security-model.md#polkit-and-why-the-desktop-has-no-authentication-agent).
+[password]{.idx}, [PAM]{.idx} is the library every login, the lock screen and `sudo` check a password through, and
+[polkit]{.idx} answers the system daemons that ask whether a user may perform an action, asking for
+a password through Plasma's authentication agent where an action's policy says so. This page shows
+the files of all three, how to give an account rights and check what it has, how to add a rule of
+your own, and what to look at when a request is refused. Who polkit answers and how is in the KDOS
+book's
+[polkit and the authentication agent](../../kdos/03-architecture/security-model.md#polkit-and-the-authentication-agent).
 
 ## Installation
 
@@ -15,7 +16,9 @@ list of actions with no password prompt is in the KDOS book's
 |---|---|
 | `sudo`, [`sudoedit`]{.idx}, [`visudo`]{.idx} | [sudo](#port-sudo) |
 | `libpam`, `pam_unix` and the other modules, the shared PAM stacks | [pam](#port-pam) |
-| `polkitd`, [`pkexec`]{.idx}, [`pkaction`]{.idx}, [`pkcheck`]{.idx} | [polkit](#port-polkit) |
+| `polkitd`, [`pkexec`]{.idx}, [`pkaction`]{.idx}, [`pkcheck`]{.idx} | [polkit](#port-polkit), built with elogind as its session tracker |
+| The authentication agent, the password dialog for polkit in a Plasma session | [polkit-kde-agent-1](#port-polkit-kde-agent-1) |
+| `pam_elogind` and `pam_turnstile`, which register a login as a session and start the user's services | [elogind](#port-elogind), [turnstile](#port-turnstile) |
 | `pam_fprintd`, the fingerprint module in `sudo`'s stack | [fprintd](#port-fprintd), over [libfprint](#port-libfprint) |
 
 All of them are on the image. `polkitd` is started by [`/etc/init.d/41_polkitd.sh`]{.idx},
@@ -33,14 +36,17 @@ Not every password check goes through PAM. These do, each with the PAM service f
 | polkit's password helper, `polkit-agent-helper-1`, and `pkexec` | `polkit-1` | the polkit port |
 | `vlock` | `vlock` | the [kbd](#port-kbd) port |
 | CUPS | `cups` | the [cups](#port-cups) port |
-| [`wayvnc`]{.idx} | `wayvnc` | the [wayvnc](#port-wayvnc) port |
+| The console `login` on `tty2` and the serial line | `login` | the [util-linux-login](#port-util-linux-login) port |
+| SDDM: a password login, an automatic login and the greeter's own session | `sddm`, `sddm-autologin`, `sddm-greeter` | the [sddm](#port-sddm) port |
+| The lock screen: a password, and a fingerprint | `kde`, `kde-fingerprint` | the [kscreenlocker](#port-kscreenlocker) port |
+| turnstile's own session for the user's services | `turnstiled` | the [turnstile](#port-turnstile) port |
 
 PostgreSQL is built with PAM as well, and uses it only for a `pg_hba.conf` line whose method is
 `pam`; it has no file in `/etc/pam.d`, so `other` answers for it and refuses.
 
-The console `login`, `su` and `passwd` are shadow's, built without PAM, and the lock screen checks
-the password with `kdos-checkpass`; neither reads `/etc/pam.d`. See
-[Users and groups](users-and-groups.md).
+`su` and `passwd` are shadow's, built without PAM, and read `/etc/shadow` themselves. A process
+that is not root, such as the lock screen, checks a password through `pam_unix`, which asks the
+setuid helper `unix_chkpwd`. See [Users and groups](users-and-groups.md).
 
 ## Configuration
 
@@ -66,30 +72,37 @@ installed and the account has one enrolled; the password follows:
 ### PAM
 
 **[`/etc/pam.d/system-auth`]{.idx}**, **`system-account`**, **`system-session`**, **`system-password`** and
-**`other`** are written by `ports/core/auth/pam/build.sh`. The first four are the shared stacks the
-service files include; `other` is used by any program that has no file of its own, and refuses
-everything:
+**`system-login`** and **`other`** are written by `ports/core/auth/pam/build.sh`. The first four are
+the shared stacks the service files include; `system-login` is the stack of every login, and adds
+`pam_turnstile` and `pam_elogind` to the session; `other` is used by any program that has no file
+of its own, and refuses everything:
 
-<!-- kfs:include ports/core/auth/pam/build.sh lines=34-76 pin=fea3f258648f -->
+<!-- kfs:include ports/core/auth/pam/build.sh lines=34-87 pin=dee44e2e5aad -->
 
 [`/etc/pam.d/polkit-1`]{.idx} is installed by polkit's build and includes the four shared stacks.
 
 ### polkit
 
-**`/etc/polkit-1/rules.d/50-kdos.rules`**, from `fs/etc/polkit-1/rules.d/50-kdos.rules`, is the
-whole of what KDOS grants. It answers for members of `wheel` only, and only for the action ids it
-names; for anything else it returns nothing, and the action's own policy decides. The build sets
-the file and its directory to root and mode 644 and 755; see
+polkit asks elogind about the caller: a process in the active local session at the machine is
+`active`, and an action's `allow_active` answer applies to it, so the person at the machine
+suspends, joins a network, mounts a stick or sets the time with no password. Where an action asks
+for an administrator, Plasma's agent shows the dialog, and the password of any member of `wheel`
+answers it.
+
+**`/etc/polkit-1/rules.d/50-kdos.rules`**, from `fs/etc/polkit-1/rules.d/50-kdos.rules`, is what
+KDOS changes. It refuses a few actions this system does not do, holds a few at a password for
+everyone, and grants a member of `wheel` at the machine a short list without one; for anything
+else it returns nothing, and the action's own policy decides. The build sets the file and its
+directory to root and mode 644 and 755; see
 [The mode of `/etc/shadow`](../../kdos/03-architecture/security-model.md#the-mode-of-etcshadow).
 
 <!-- kfs:include fs/etc/polkit-1/rules.d/50-kdos.rules -->
 
 Ports install rules of their own in `/usr/share/polkit-1/rules.d`, and polkitd reads that
 directory and `/etc/polkit-1/rules.d` as one list, in order of file name. polkit's own
-`50-default.rules` names `wheel` as the administrators, which matters only for a password
-challenge, and nothing here can answer one. `50-libvirt.rules` grants libvirt's group, which no
-account is in until one is added to it. The rules of fwupd, bolt and gvfs grant `wheel` only to a subject in an active
-local session, which no process here is in, so they never answer.
+`50-default.rules` names `wheel` as the administrators, whose password answers an
+`auth_admin` challenge. `50-libvirt.rules` grants libvirt's group, which no account is in until
+one is added to it. The rules of fwupd, bolt and gvfs grant `wheel` in an active local session.
 
 **`/etc/init.d/41_polkitd.sh`**, from `fs/etc/init.d/41_polkitd.sh`:
 
@@ -193,29 +206,30 @@ On a machine with a reader that libfprint drives; fprintd's own configuration is
 answers `No devices available`, and `fprintd-enroll` prints it as
 `Impossible to enroll: GDBus.Error:net.reactivated.Fprint.Error.NoSuchDevice: No devices available`.
 
-1. Enrol a finger for the account, as root, because fprintd's polkit actions allow enrolment only
-   to an active session, which no process here is in:
+1. Enrol a finger, from the desktop on System Settings → **Users** → **Configure Fingerprint
+   Authentication**, or from Konsole in the session:
 
    ```bash
-   sudo fprintd-enroll <user>
+   fprintd-enroll
    ```
 
 2. Check it:
 
    ```bash
-   sudo fprintd-verify <user>
+   fprintd-verify
    ```
 
 3. The next `sudo` waits for the finger, and falls back to the password when the finger does not
    match.
 
-`sudo fprintd-delete <user>` removes the enrolled prints. Nothing else on the machine asks for a
-finger ([Known gaps](#known-gaps)).
+`fprintd-delete $USER` removes the enrolled prints. The lock screen accepts the finger as well,
+through its `kde-fingerprint` stack.
 
 ### Checking what polkit grants
 
-1. Read an action's own policy, including its `implicit any` answer, which is the one that applies
-   to every caller here:
+1. Read an action's own policy: its `implicit any`, `implicit inactive` and `implicit active`
+   answers, for a caller outside any session, in a session switched away from, and in the active
+   session at the machine:
 
    ```bash
    pkaction --action-id org.freedesktop.NetworkManager.network-control --verbose
@@ -229,15 +243,10 @@ finger ([Known gaps](#known-gaps)).
    pkcheck --action-id org.freedesktop.NetworkManager.network-control --process $$; echo $?
    ```
 
-   `0` is allowed, `1` refused. `2` means the answer was a password challenge, which nothing on
-   this machine can answer, so it is a refusal too. For a member of `wheel` this action prints
-   `polkit\56result=yes` and `0`. For an account outside `wheel`, or for an action
-   `50-kdos.rules` does not name, it prints the policy's answer and the reason, then `2`:
-
-   ```text
-   polkit\56result=auth_admin
-   Authorization requires authentication and -u wasn't passed.
-   ```
+   `0` is allowed, `1` refused, `2` a password challenge. `--allow-user-interaction` lets
+   `pkcheck` answer the challenge through the session's agent. Run from Konsole in the session, an
+   `allow_active` action answers `0`; run over SSH, the same action prints the policy's answer for
+   a caller outside the session and `2`.
 
 ### Adding a polkit rule of your own
 
@@ -279,12 +288,11 @@ other group is a new right.
   directory, the target user and the command, as in
   `sudo:     kdos : PWD=/home/kdos ; USER=root ; COMMAND=/usr/bin/true`. A refusal is logged on the
   same kind of line, with the reason before `PWD`.
-- An action left out of `50-kdos.rules`, such as changing the hostname through NetworkManager or a
-  firmware update through fwupd, is done with `sudo`, as root, whom polkit allows everything; the
-  KDOS book lists them under
-  [What is granted instead](../../kdos/03-architecture/security-model.md#what-is-granted-instead-50-kdosrules).
-- `50-kdos.rules` does not grant `org.freedesktop.policykit.exec`, the action `pkexec` asks for
-  to run an arbitrary command. Use `sudo`.
+- Over SSH no agent answers, so an action that asks for a password is refused there; run the
+  command with `sudo`, as root, whom polkit allows everything. The KDOS book lists the answers
+  under [What `50-kdos.rules` changes](../../kdos/03-architecture/security-model.md#what-50-kdosrules-changes).
+- `pkexec <command>` runs a command as root after the agent asks for an administrator's
+  password, as `sudo` does in a terminal.
 - polkitd logs no allow or deny decision. A rule of your own can record one with `polkit.log()`,
   which writes a line to `/var/log/auth.log` tagged `polkitd`, once. Put the rule in a file of its
   own sorting after `50-kdos.rules`, such as `/etc/polkit-1/rules.d/60-log.rules`; polkitd reads
@@ -335,9 +343,10 @@ sudo service start polkitd
 ```
 
 **A program says it is not authorised, and the account is in `wheel`.** Run `pkcheck` for the
-action, as [above](#checking-what-polkit-grants). `1` or `2` means the action is not in
-`50-kdos.rules` and its own policy refuses it or asks for a password: do it with `sudo`, or add a
-rule. polkitd writes an error in a rules file, and every `polkit.log()` line, to
+action, as [above](#checking-what-polkit-grants). `1` means the policy refuses it; `2` that it asks
+for a password and no agent answered, as outside the session. Check that the agent runs in the
+session, `pgrep -a polkit-kde-auth`, and that the session is active: `loginctl show-session
+$XDG_SESSION_ID -p Active`. polkitd writes an error in a rules file, and every `polkit.log()` line, to
 `/var/log/auth.log`, tagged `polkitd`:
 
 ```bash
@@ -348,21 +357,17 @@ sudo grep polkitd /var/log/auth.log
 polkitd[880]: Error compiling script /etc/polkit-1/rules.d/61-bad.rules: SyntaxError: unterminated statement (line 1)
 ```
 
-Each start of polkitd also writes
-`polkitd: Error loading /var/run/ConsoleKit/database: ... No such file or directory`. That one is
-expected: there is no ConsoleKit here, which is why no subject is ever in an active session.
 
 ## Known gaps
 
-- [A fingerprint unlocks `sudo` and nothing else](../../kdos/06-reference/known-gaps.md#a-fingerprint-unlocks-sudo-and-nothing-else)
 - [Security](../../kdos/06-reference/known-gaps.md#security): membership of `wheel` is effectively root
 
 ## See also
 
-- [polkit, and why the desktop has no authentication agent](../../kdos/03-architecture/security-model.md#polkit-and-why-the-desktop-has-no-authentication-agent): who asks polkit, what is granted and what is not
+- [polkit and the authentication agent](../../kdos/03-architecture/security-model.md#polkit-and-the-authentication-agent): who asks polkit, what is granted and what is not
 - [How polkit and ModemManager are started](../../kdos/03-architecture/security-model.md#how-polkit-and-modemmanager-are-started): why `polkitd` has a service script
 - [setuid binaries](../../kdos/03-architecture/security-model.md#setuid-binaries): `sudo`, `unix_chkpwd` and the rest
-- [Users and groups](../../kdos/02-user-guide/administration.md#users-and-groups): the `sudo` grant and what `wheel` and `seat` mean
+- [Users and groups](../../kdos/02-user-guide/administration.md#users-and-groups): the `sudo` grant and what `wheel` means
 - [Users and groups](users-and-groups.md): adding accounts and groups
 - [Time and NTP](time-and-ntp.md): an example of a package-owned file edited with `sudoedit`
 - [Fingerprints, FIDO keys and smart cards](fingerprint-fido-smartcards.md): enrolling a finger and the other devices
@@ -372,4 +377,4 @@ expected: there is no ConsoleKit here, which is why no subject is ever in an act
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 380.* Previous: [379. Backups](backups.md) · [Contents](../README.md) · Next: [381. Login and autologin](login-and-autologin.md)
+*Part XVI. System administration, chapter 404.* Previous: [403. Backups](backups.md) · [Contents](../README.md) · Next: [405. Login and autologin](login-and-autologin.md)

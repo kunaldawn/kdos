@@ -3,8 +3,8 @@
 libwebp is Google's [WebP]{.idx} codec: `libwebp`, the decoder-only `libwebpdecoder`, `libwebpmux`
 and `libwebpdemux` for animated and annotated files, and `libsharpyuv`, its RGB to YUV converter,
 which libavif and libheif also use. The tools are `cwebp`, `dwebp`, `gif2webp`, `img2webp`,
-`webpinfo` and `webpmux`. The browsers, the toolkits' image loaders, imagemagick, ffmpeg and the
-desktop's own `kdos-shell` and `kdos-term` link it.
+`webpinfo` and `webpmux`. The browsers, the toolkits' image loaders, imagemagick and ffmpeg link
+it.
 
 ## Flags
 

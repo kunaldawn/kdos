@@ -25,6 +25,8 @@
 volume_key
 libblockdev
 
-# Comes in for gvfs: it gives the toolkit applications removable media beside
-# kdos-mountd, which stays the authority for kdos-shell.
+# Removable media for the desktop: Solid, the Device Notifier and Dolphin mount
+# through it, and gvfs gives the GTK applications the same devices.
 udisks2
+
+kpmcore

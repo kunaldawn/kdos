@@ -2,7 +2,7 @@
 
 This chapter is the reference for the recipe format: how a piece of upstream software is described
 so that KDOS can fetch it, verify it, build it offline and package it. A
-[port](../06-reference/glossary.md#port) is the recipe for one host package. The tree holds about 2,000 of them
+[port](../06-reference/glossary.md#port) is the recipe for one host package. The tree holds about 2,400 of them
 under `ports/core`, filed on 102 shelves by subject, and the ports of KDOS's own under `src/` are
 written in the same format. The chapter is for anyone adding a port, changing one, or bumping one to a new
 upstream release. Read [How KDOS is built](how-kdos-is-built.md) for where ports sit in the build,
@@ -111,20 +111,21 @@ KDOS's own programs are ports whose sources live in git beside the recipe, each 
 `src/<area>/<name>/`, exactly two levels below `src/`. None of the recipes under `src/system`,
 `src/art`, `src/desktop` and `src/daemons` has a `source =` line. With no
 source there is nothing to fetch or hash, `$SRC` is created empty, and `build.sh` compiles out of
-`$PORT_SRC`. `src/art/kdos-theme` is the smallest; its `kpkgbuild`, after the banner, is
-six lines:
+`$PORT_SRC`. `src/art/kdos-theme`, the generators of the KDOS look, is a small one; its
+`kpkgbuild`, after the banner, is seven lines:
 
 ```ini
 name        = kdos-theme
-version     = 1.0.0
-release     = 2
-description = KDOS theme generators — GTK stylesheet, icons, cursors
+version     = 2.0.0
+release     = 1
+description = KDOS identity generators — KDE colour schemes, Konsole, qt5ct, wallpapers, greeter palette
 homepage    = https://github.com/kunaldawn/kdos
 license     = MIT
+depends     = libpng
 ```
 
 and its `build.sh` compiles the program together with the two shared libraries it uses, straight
-from `src/libs`:
+from `src/libs`, and links the one external library it needs itself:
 
 ```bash
 LIBS="$PORT_SRC/../../libs"
@@ -132,12 +133,15 @@ LIBS="$PORT_SRC/../../libs"
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-I"$LIBS/libkbase" -I"$LIBS/libkcolor" -I"$PORT_SRC" \
 	-o kdos-theme \
-	"$PORT_SRC"/main.c "$PORT_SRC"/gtk.c "$PORT_SRC"/icons.c \
-	"$PORT_SRC"/cursors.c \
-	"$LIBS"/libkbase/*.c "$LIBS"/libkcolor/*.c $LDFLAGS
+	"$PORT_SRC"/*.c \
+	"$LIBS"/libkbase/*.c "$LIBS"/libkcolor/*.c -lpng $LDFLAGS
 
 install -Dm755 kdos-theme "$PKG/usr/bin/kdos-theme"
 ```
+
+A Qt piece under `src/desktop` has the same two files with a CMake `build.sh` configured from
+`$PORT_SRC`; its shape is in
+[Writing desktop software](writing-desktop-software.md#the-buildsh).
 
 For such a port the [recipe hash](../06-reference/glossary.md#recipe-hash) covers the whole port
 directory, subdirectories included, and the whole of `src/libs`, because nothing else records what
@@ -146,6 +150,38 @@ library rebuilds every port of KDOS's own, not only the ones that use it (see
 [Decisions](../01-philosophy/decisions.md#a-library-edit-rebuilds-every-in-tree-port)). How to write the program
 itself is in [Writing desktop software](writing-desktop-software.md) and
 [The C libraries](c-libraries.md).
+
+### A meta port
+
+A meta port has no source and installs no file. Its recipe names other ports in `depends` and
+nothing else, and its `build.sh` is the banner alone, so its package is empty and installing it
+installs everything it names. `kde-all` is one:
+
+```ini
+name        = kde-all
+version     = 1
+release     = 1
+description = All of KDE: the Plasma session and every KDE Gear application, as the two metas kde-plasma and kde-gear
+homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
+depends     = kde-plasma kde-gear
+```
+
+The KDE install set is eleven metas on the `kde` shelf, listed in the `meta` section of
+`50_desktop`'s list: `kde-plasma`, the session; eight `kde-gear-*` metas, one per kind of Gear
+application (core, devtools, education, games, graphics, multimedia, PIM and utilities);
+`kde-gear`, the eight as one; and `kde-all`, Plasma and all of Gear, which is what
+`kpkg install kde-all` gives a machine. The phase lists are what the build builds, and the metas
+are what a machine installs; the image is the built tree.
+
+Three rules shape a meta. A `depends` line names at most 128 ports and a longer one is refused (see
+[Keys the package manager reads](#keys-the-package-manager-reads)), which is why Gear is split
+by kind. Every Gear application that no other port depends on is named by exactly one
+`kde-gear-*` meta, which `testing/preflight.sh` checks, so `kpkg install kde-gear` leaves none out
+and removing one meta takes none of another's. And a port may not share a shelf's name, which is
+why the whole set is `kde-all` and not `kde`. Because the metas are listed in `50_desktop`, a
+Gear application they name is still a port nothing depends on as far as the phase rule is
+concerned, and stays in `44_apps` (see [Which phase lists a port](#which-phase-lists-a-port)).
 
 ## kpkgbuild
 
@@ -186,7 +222,7 @@ recipe helper (see [Recipe helpers](#recipe-helpers)).
 | `description` | preflight | | One line. `kpkg info` prints it and the binary-package index carries it; it is not a comment. It reads exactly as the port's row in [the ports catalogue](../06-reference/ports-catalogue.md) |
 | `homepage` | preflight | | Upstream's home page. The version checker reads it |
 | `license` | preflight | | Upstream's licence as an SPDX expression: `MIT`, `GPL-2.0-or-later`, `MIT OR Apache-2.0`, `GPL-2.0-only WITH Linux-syscall-note`. `kpkg info` prints it. The licence texts themselves are copied into the package by `kpkg` (see [What kpkg does around build.sh](#what-kpkg-does-around-buildsh)) |
-| `depends` | | | One line of space-separated port names. The solver, which decides build order, reads the first `depends` line and ignores any other |
+| `depends` | | | One line of space-separated port names, at most 128. The solver, which decides build order, reads the first `depends` line and ignores any other |
 | `replaces` | | | One line of space-separated package names whose paths this package may take. `kpkgadd` refuses to install a path another package owns unless its owner is named here, and then moves the path from the owner's manifest to this package's; see [Who owns a file](../03-architecture/packaging.md#who-owns-a-file). Name a package only when this one is meant to supersede some of its files, and name it in `depends` too: the named package installing after this one, a reinstall included, is refused while this one holds the paths. A path claimed by accident is fixed in the build, by not installing it |
 | `vendoring` | | | `rust`, `go`, `python`, `haskell` or `node`. See [Vendoring](#vendoring) |
 | `pypackages` | | yes | An explicit list of Python packages to vendor: the package and everything it depends on, directly or indirectly |
@@ -203,8 +239,12 @@ entirely, so a fact written as a comment reaches nothing.
 
 `source`, `sha256` and `pypackages` accumulate across lines. `depends` does not: the solver and
 `kpkg info` both take the first `depends` line and stop, so a second line is a dependency the build order does not know
-about. Keep every dependency on one line. The solver reads at most 128 names from it
-(`KP_MAX_DEPS` in `libkpkg`); the longest line in the tree, `vlc`'s, has 77.
+about. Keep every dependency on one line, of at most 128 names (`KP_MAX_DEPS` in `libkpkg`). A
+longer line is refused, never read short: `kpkg` stops with
+`<port>: depends names N ports; the limit is 128`, and `testing/preflight.sh` fails the recipe
+before a build reads it, because the first 128 names alone would be a closure the build trusts. A
+meta port that would outgrow the limit is split into metas that each fit (see
+[A meta port](#a-meta-port)).
 
 `build.sh` does not receive `description`, `homepage`, `license`, `depends` or `replaces` as variables. `kpkg info`, the
 version checker, `kdos cve`, `kdos march` and `kpkgadd` read `description`, `homepage`, `license`, `depends`,
@@ -224,7 +264,7 @@ them to `build.sh`), but another tool gives each a defined meaning:
 | `pyrequirements` | `ports/fetch` | `no`: a requirements file is *not* the dependency set here |
 | `pyruntime` | `ports/fetch` | `no`: do not vendor the runtime dependencies |
 | `npmflags` | `ports/fetch` | Words added to the `npm install` that writes a node bundle, such as `--legacy-peer-deps`; see [Vendoring](#vendoring) |
-| `group` | `ports/update` | Override the derived version-check grouping; see [Outcomes](#outcomes) |
+| `group` | `ports/update`, `testing/preflight.sh` | Override the derived version-check grouping (see [Outcomes](#outcomes)); `plasma` and `gear` also place a port in a KDE release set (see [KDE Frameworks, Plasma and Gear](#kde-frameworks-plasma-and-gear)) |
 | `devseries` | `ports/update` | Upstream's development-series convention: `odd-minor`, `preview-minor`, or both; see [Filtering](#filtering) |
 | `series` | `ports/update` | The line the port stays on, as a version prefix matched on whole components: `21` for `llvm21`, `5.4` for `lua54`; see [Filtering](#filtering) |
 | `watch` | `ports/update` | Where upstream lists its releases when nothing reached from the source URL does: a forge repository, whose tags are read, or a page, listing, JSON index or manifest that names the release files; see [Discovery](#discovery) |
@@ -478,8 +518,10 @@ executables, which keeps `.symtab` (`zls`, and the native tools `ocaml` builds w
 
 Each build system has one shape that works on this tree. Start from it and change only what the
 project needs; most of the failures in [Build troubleshooting](build-troubleshooting.md) come from
-leaving one of these flags out. Of the recipes under `ports/core`, about 610 run a `configure`
-script, 620 run CMake, 250 run meson and 58 run `cargo build`.
+leaving one of these flags out. Of the recipes under `ports/core`, about 890 run CMake (every KDE
+module among them), 620 run a `configure` script, 240 run meson and 58 run `cargo build`. The KDE
+modules add ECM's flags to the CMake shape; see
+[KDE Frameworks, Plasma and Gear](#kde-frameworks-plasma-and-gear).
 
 Every shape below builds a release: optimised, with no debug information, with assertions compiled
 out where the build system's release mode does that, and with upstream's SIMD and assembly on. How
@@ -591,11 +633,12 @@ not use are refused, each with its fix:
 | `usr/var`, `usr/com` | `--localstatedir=/var`; `--sharedstatedir=/var/lib`, or `/usr/share` for data shipped beside the package's own (`units` keeps `currency.units` with its definitions) |
 | `usr/doc` | `--docdir=/usr/share/doc/$name`, or move it in `build.sh` |
 | `usr/lib64`, `lib64` | `-DCMAKE_INSTALL_LIBDIR=lib`, `--libdir=/usr/lib` |
-| `usr/lib/systemd`, `lib/systemd` | the build system's switch to skip units, or `rm -rf` after the install |
+| `usr/lib/systemd`, `lib/systemd` | the build system's switch to skip units, or `rm -rf` after the install: KDOS runs no systemd units, and a KDE module's user units are started by the session's autostart and D-Bus activation instead |
 | `etc/grub.d` | the switch that skips it, or `rm -rf` after the install |
 | `etc/bash_completion.d` | move each file to `usr/share/bash-completion/completions`, named after the command it completes; a file that must load when the shell starts, such as one that only extends another command's completion (`pass-otp`), goes to `usr/share/bash-completion/startup` as `<name>.bash` |
 | `run`, `var/run` | `rm -rf`: both are tmpfs at run time and a staged file is lost |
-| `usr/local`, `etc/X11` | `--prefix=/usr`; KDOS has no X server configuration. Only a `kdos-*` program may ship either |
+| `usr/local` | `--prefix=/usr`. Only a `kdos-*` program may ship it |
+| `etc/X11` | the build system's switch, or `rm -rf` after the install: KDOS has no X server configuration, and no package ships it |
 
 The same rule fails an ELF file that names `/usr/etc` or `/usr/var` as a path: a configure run
 without `--sysconfdir=/etc` compiles that directory in, and the program then never reads `/etc`.
@@ -806,7 +849,7 @@ recipe leaves them on. In a library that parses a file, a peer's message or a ke
 assertion is the last check between bad input and memory corruption, and outside an inner loop it
 costs nothing that can be measured. The security- and hardware-facing libraries — p11-kit,
 pcsc-lite, ccid, libdrm, libepoxy, libglvnd, libva, libva-intel-driver, libplacebo, wayland,
-wlroots, bubblewrap and xdg-dbus-proxy — never turn them off.
+bubblewrap and xdg-dbus-proxy — never turn them off.
 
 `-Db_ndebug=if-release` is for a port whose assertions sit in a hot path it spends its time in,
 and only these pass it:
@@ -1087,12 +1130,13 @@ it on the command line, `make CFLAGS="$CFLAGS"`.
 An application with a window of its own is ported natively the same way as any other program, with
 the shape of its build system above. The toolkits it may build on are ports built in `43_toolkits` (`tk`
 in `42_graphics`): GTK 3 and 4 (`gtk3`, `gtk4`), `libadwaita`, WebKitGTK (`webkitgtk`, `webkitgtk6`), Qt 5 and 6
-(`qt5-qtbase`, `qt6-qtbase` and their modules), KDE Frameworks 6, `wxwidgets`, `fltk` and `tk`.
+(`qt5-qtbase`, `qt6-qtbase` and their modules), KDE Frameworks 6 and the Plasma libraries
+applications link, `wxwidgets`, `fltk` and `tk`.
 Each toolkit that has a Wayland backend is built with it as the default and with its X11 backend as
 well, so a program that has only an X11 path runs under Xwayland with no change to the recipe. Tk
-has one windowing system on Linux, X11, so every Tk window is an Xwayland client. These toolkits are
-for applications only; KDOS's own desktop programs link none of them (see
-[Writing desktop software](writing-desktop-software.md)).
+has one windowing system on Linux, X11, so every Tk window is an Xwayland client. Of KDOS's own
+code, only the Plasma pieces under `src/desktop` may link a toolkit, and only Qt 6 and KF6 (see
+[Writing desktop software](writing-desktop-software.md#the-toolkit-rule)).
 
 The recipe does not choose the backend at run time; the session does, from
 `fs/etc/profile.d/10-wayland.sh`:
@@ -1110,7 +1154,7 @@ A few habits recur in the tree's application recipes, and a new one should follo
 - **Pin every optional dependency.** An option left on auto turns a feature on or off according to
   whatever happens to be installed when the port builds. A meson recipe sets each feature option
   explicitly; a CMake recipe names what it wants with `CMAKE_REQUIRE_FIND_PACKAGE_<Name>=ON` and
-  what it must not pick up with `CMAKE_DISABLE_FIND_PACKAGE_<Name>=ON` (128 build scripts use one
+  what it must not pick up with `CMAKE_DISABLE_FIND_PACKAGE_<Name>=ON` (about 260 build scripts use one
   or both). The requirement also applies to any config-package search a find module makes under
   the same name, so a module that first asks for a config file the library does not install stops
   the configure. Requiring curl takes `-DCURL_NO_CURL_CMAKE=ON` as well: CMake's FindCURL first
@@ -1126,18 +1170,16 @@ A few habits recur in the tree's application recipes, and a new one should follo
   matches the path it searched, not the directory it reached: CMake's FindGLEW prefers `glew-config.cmake`, then reads a shared GLEW's path
   from it only as a Windows import library, so `GLEW_LIBRARY` is NOTFOUND and generation stops.
   Ignored, FindGLEW finds `libGLEW.so` itself.
-- **KDE applications install into Qt's own paths.** `-D KDE_INSTALL_USE_QT_SYS_PATHS=ON` with
-  `-D BUILD_TESTING=OFF` is the shape `kate`, `dolphin`, `okular` and about 135 other build scripts use.
-  ECM's `KDEInstallDirs` picks `lib64` by itself, apart from the tree's `GNUInstallDirs` default,
-  so a KDE recipe names `-D KDE_INSTALL_LIBDIR=lib`. `-D CMAKE_INSTALL_LIBDIR=lib` reaches it
-  too, but with a warning at every configure. A project that takes only ECM's find modules and
-  includes `GNUInstallDirs` itself (`fcitx5`, `obs-studio`, `flameshot`) keeps
-  `CMAKE_INSTALL_LIBDIR`, since it never reads the `KDE_` name.
-- **Ship a desktop entry and an icon the launcher can draw.** A graphical program with no entry
-  cannot be started from the Start menu; see
+- **KDE software installs into Qt's own paths.** Every Framework, Plasma module and Gear
+  application is built with ECM's flags; the shape and the reason for each flag are in
+  [KDE Frameworks, Plasma and Gear](#kde-frameworks-plasma-and-gear). A project that takes only
+  ECM's find modules and includes `GNUInstallDirs` itself (`fcitx5`, `obs-studio`, `flameshot`)
+  keeps `CMAKE_INSTALL_LIBDIR`, since it never reads the `KDE_` name.
+- **Ship a desktop entry and an icon Plasma can draw.** A graphical program with no entry cannot
+  be started from the application launcher; see
   [Desktop entries belong to the port](#desktop-entries-belong-to-the-port). `celluloid`'s recipe
-  writes its own entry and rasterises its SVG icon to 48, 64 and 128 pixel PNGs under
-  `/usr/share/icons/hicolor`.
+  writes its own entry. An icon upstream installs as SVG is drawn as it is; nothing needs
+  rasterising.
 
 These applications are named in `44_apps`, the phase after the toolkits and libraries they need,
 each in the list file of its shelf. An application another port depends on is named in
@@ -1165,9 +1207,9 @@ Every module other than `qt6-qtbase` inherits its install layout from `qt6-qtbas
   platform plugin, so `xcb` is reached only by a program that asks for it and then runs under
   Xwayland. Each backend's `FEATURE_` switch is named, so a missing `xkbcommon-x11` or GLX stops
   the configure instead of dropping the backend.
-- **No EGLFS, LinuxFB or VNC.** A Qt program started outside `kdos-comp` would otherwise take the
-  card and the input devices from the compositor drawing on them; without them it says it found no
-  platform and exits.
+- **No EGLFS, LinuxFB or VNC.** A Qt program started outside the Plasma session would otherwise
+  take the card and the input devices from KWin, which is drawing on them; without them it says it
+  found no platform and exits.
 - **Named, so their absence stops the configure:** the AT-SPI accessibility bridge (without it every
   Qt program is invisible to a screen reader), ICU, OpenSSL linked, GSSAPI, CUPS and the system
   copies of every library the tree ports. The bundled md4c and BLAKE2 are used because neither is a
@@ -1184,6 +1226,96 @@ Every module other than `qt6-qtbase` inherits its install layout from `qt6-qtbas
 Qt WebEngine is released on its own schedule, after the rest of a Qt release or under a version
 of its own, so `qt6-qtwebengine` holds the newest stable Qt WebEngine release and is built against
 whichever `qt6-qtbase` the set is at.
+
+### KDE Frameworks, Plasma and Gear
+
+KDE releases its software as three sets, and the tree holds all three: KDE Frameworks 6, the
+libraries; Plasma, the desktop session and its libraries; and KDE Gear, the applications and the
+libraries they share. Each set is built and tested upstream as one release, and the tree keeps each
+at one version. A Framework's source comes from
+`download.kde.org/stable/frameworks/<major.minor>/` (`${version%.*}` in the recipe's URL), a
+Plasma module's from `stable/plasma/<version>/`, and a Gear module's from
+`stable/release-service/<version>/src/`.
+
+Every KDE recipe is the CMake shape with ECM's flags. From `kcoreaddons`:
+
+```bash
+cmake -S . -B build -G Ninja \
+	-D CMAKE_INSTALL_PREFIX=/usr \
+	-D KDE_INSTALL_LIBDIR=lib \
+	-D CMAKE_BUILD_TYPE=Release \
+	-D BUILD_TESTING=OFF \
+	-D KDE_INSTALL_USE_QT_SYS_PATHS=ON \
+	-D KF_SKIP_PO_PROCESSING=ON \
+	-D BUILD_PYTHON_BINDINGS=OFF \
+	-D CMAKE_REQUIRE_FIND_PACKAGE_UDev=ON \
+	-Wno-dev
+cmake --build build
+DESTDIR=$PKG cmake --install build
+```
+
+| Flag | Why |
+|---|---|
+| `KDE_INSTALL_LIBDIR=lib` | ECM's `KDEInstallDirs` picks `lib64` by itself, apart from the tree's `GNUInstallDirs` default, and a `usr/lib64` payload path is refused. `CMAKE_INSTALL_LIBDIR=lib` reaches it too, with a warning at every configure |
+| `KDE_INSTALL_USE_QT_SYS_PATHS=ON` | Plugins, QML modules and mkspecs go into Qt's own directories (`/usr/lib/qt6/plugins`, `/usr/lib/qt6/qml`), which is where Qt, Plasma and KIO look for them |
+| `BUILD_TESTING=OFF` | The test programs are not built or installed |
+| `KF_SKIP_PO_PROCESSING=ON` | The interface translations are not built. The image is English only and the package prune removes every other language anyway (see [Size and language policy](#size-and-language-policy)), so the flag saves build time. It also leaves out the few English catalogues some Frameworks ship, which hold only plural forms, so a count those Frameworks spell out reads as the source writes it (`5 millisecond(s)`); each such port's `kfs.md` says so. A module whose `CMakeLists.txt` depends on the translations target without checking that it exists stops the configure under it; `minuet` carries upstream's fix for that as a patch |
+| `CMAKE_REQUIRE_FIND_PACKAGE_<Name>=ON` | ECM's feature summary drops an optional component that is not found and the build carries on, so every optional dependency the port has is named, and one that is missing stops the configure. `CMAKE_DISABLE_FIND_PACKAGE_<Name>=ON` names what must not be picked up, such as `KF6UserFeedback` and `PackageKitQt6` |
+| `-Wno-dev` | CMake's developer warnings about upstream's own CMake code fill the log and say nothing about the build |
+
+A module that installs systemd user units under `KDE_INSTALL_SYSTEMDUSERUNITDIR` has them deleted
+after the install (`rm -rf "$PKG/usr/lib/systemd"`), because the package lint refuses that
+directory: Plasma's session is started with `startkderc`'s `systemdBoot=false`, and the services
+those units describe are started through XDG autostart and D-Bus activation instead (see
+[The session](../03-architecture/session.md)).
+
+**One release per set.** `testing/preflight.sh` refuses a tree that holds two releases of one set,
+and names the ports at each. A port belongs to a set by the release directory its source comes
+from; a port on the `kf6` shelf is a Framework whatever its source; and `group = plasma` or
+`group = gear` places a port whose source is somewhere else. A Plasma or Gear release is the first
+three components of its version and a Frameworks release the first two, so a respin (`6.8.2.1`,
+`6.31.1`) is part of the release it fixes. Plasma's side releases from directories of their own,
+such as `plasma-wayland-protocols` and `kirigami-addons`, belong to no set. The check proves itself
+first on `testing/fixtures/releaseset`, where moving one port of each set to the next release must
+be refused.
+
+**A bump is the whole set.** Every Plasma recipe carries `group = plasma`, so the version checker
+offers the Plasma modules as one bump (see [Outcomes](#outcomes)). Frameworks and Gear carry no
+`group` key, and `download.kde.org` is not a forge the checker groups by, so each of their ports
+is offered on its own: pass the set's ports to `ports/update` by name and accept every bump in one
+review. A group bump rewrites no `sha256 =` line, so record each member's hashes by hand. A Plasma
+bump also rebuilds and retests the KDOS pieces tied to a Plasma release (see
+[Writing desktop software](writing-desktop-software.md#pieces-tied-to-a-plasma-release)) and
+rebases every patch carried on a Plasma module.
+
+**Shelves.** A Framework goes to `kf6`. A Plasma or Gear module that is platform rather than
+subject (KWin, the Plasma shell, the session's daemons, KIO workers, thumbnailers, Plasma
+integration) goes to `kde`, as do the meta ports. An application goes to the shelf of what it does,
+whatever its set: `dolphin` on `files`, `konsole` on `shells`, `spectacle` on `graphics`. A
+release set spans shelves, which is why `group = plasma` is the one family the shelf rule lets
+split (see [Choosing a shelf](#choosing-a-shelf)).
+
+**Phases.** The Frameworks, the Plasma libraries applications link (`libplasma`, `kpipewire`,
+`plasma-activities`, `union` and the rest), the Gear libraries, and a Gear application another port
+depends on (`konsole`) are in `43_toolkits`. A Gear application nothing depends on is in
+`44_apps`. The Plasma session itself (KWin, `plasma-workspace`, `plasma-desktop`, SDDM, the portal,
+the input method, Discover, KDOS's own Plasma code and daemons) and the meta ports are in
+`50_desktop`, and no port from `41_system` to `44_apps` may depend on one of them (see
+[Which phase lists a port](#which-phase-lists-a-port)).
+
+**Patches.** A KDE module is patched only where no flag does the job, like any other port, and
+every patch is proposed upstream as well as carried here. Its `Subject:` says what it changes, and
+the port's `kfs.md` says why KDOS needs it and where upstream stands. Most fall into a few kinds: a
+desktop entry corrected so Plasma can match a window to it (`dolphin`'s `app-id.patch` and the
+same patch on thirteen other KDE applications, setting `StartupWMClass` to the Wayland app id); a "Get New…"
+entry hidden when KNewStuff is turned off (`plasma-systemmonitor`, `kalzium`, `klettres`,
+`kwordquiz`); a path musl's layout differs on (`plasma-workspace`'s `locales.patch`); an upstream
+fix not yet released (`minuet`); and KDOS's own features where they must live inside a module
+(`kwin`'s sandbox policy and CRT effect, the sandbox badge in `kdecoration`, `breeze`,
+`plasma-workspace` and `plasma-desktop`, the boot entries on `plasma-workspace`'s logout screen,
+`discover`'s offline ratings, `plasma-welcome`'s early pages, `libksysguard`'s scope
+aggregation). The last kind is rebased on every release of its
+module, so each such patch is kept as small as the feature allows.
 
 ## Worked example: frotz
 
@@ -1257,7 +1389,7 @@ to the section that explains it.
    the line (`sha256 = <hash>  <file>`) straight away: `kpkg` refuses to extract an unhashed
    source, and nothing else can verify it. For a port with `vendoring =`, the same run generates
    `<name>-vendor-<version>.tar.xz`; hash and record that file too. `make fetch` takes no port name
-   and walks the whole tree of about 2,000 ports, so use `ports/fetch <port>` here. When you do want the whole tree,
+   and walks the whole tree of about 2,400 ports, so use `ports/fetch <port>` here. When you do want the whole tree,
    `make fetch FETCH_JOBS=8` works on eight ports at once; each port's lines then print together
    when it finishes.
 5. **Write `build.sh`** from the [canonical shape](#canonical-build-shapes) for its build system,
@@ -1310,7 +1442,11 @@ line saying what belongs on each. Apply these rules in order; the first that mat
 1. **A `group =` family stays together.** Every port sharing a `group =` key sits on the shelf of
    the family's lead port, so that `ports/update` bumps ports of one directory: `python3-pyside6`
    is on `qt6` with Qt, `python3-qscintilla` on `qt-extra` with `qscintilla`, `stk-assets` on
-   `games-action` with `supertuxkart`. Preflight fails a family split over two shelves.
+   `games-action` with `supertuxkart`. Preflight fails a family split over two shelves. The KDE
+   release sets are the exception: `group = plasma` joins modules filed by what each one does
+   (`spectacle` on `graphics`, `plasma-systemmonitor` on `sysmon`) into the one bump their release
+   needs, and the release-set check holds them to one version instead (see
+   [KDE Frameworks, Plasma and Gear](#kde-frameworks-plasma-and-gear)).
 2. **A name-prefix family decides, over the port's domain.** `python3-*` goes to a `python*` shelf
    (rule 7), `perl` and `perl-*` to `perl-cpan`, `qt6-*` to `qt6` and `qt5-*` to `qt5`,
    `libretro-*` and `retroarch*` to `libretro`, `sdl*-*` to `game-libs`, `font-*`, `noto-*`,
@@ -1326,8 +1462,9 @@ line saying what belongs on each. Apply these rules in order; the first that mat
    that exists for one program, follows that program: `gimp-help` is on `graphics`, `mpv-mpris` on
    `video-players`, and `flare-engine`, an engine for one game, on `games-rpg`.
 5. **An application is filed by what it does**, never by its toolkit or desktop project. There is no
-   KDE or GNOME shelf: `dolphin` is on `files`, `konsole` on `shells`, `okular` on `documents`, and
-   `kpat` and `gnome-mines` on `games-board`.
+   GNOME shelf, and the `kde` shelf holds KDE's platform pieces, never an application that has a
+   subject: `dolphin` is on `files`, `konsole` on `shells`, `okular` on `documents`, and `kpat` and
+   `gnome-mines` on `games-board`.
 6. **A library goes to its domain's shelf when it has one**: `libsoup3` to `net-libs`, `librsvg` to
    `graphics-libs`, `libksane` to `printing`, `libkdegames` to `game-libs`. Only a library whose
    job is the toolkit or the desktop platform itself goes to that stack's shelf (`gtk`, `qt-extra`,
@@ -1401,8 +1538,8 @@ So a new port goes in the earliest phase its dependencies allow and its kind adm
 | `41_system` | Nothing graphical and no toolkit is in its closure: services, networking, storage, command-line programs, codecs, science and hardware libraries |
 | `42_graphics` | Its closure reaches Wayland, libX11, Mesa, libdrm, cairo, pango, GStreamer, FFmpeg or PipeWire but no toolkit, and it is not a port nothing depends on that sits on an application shelf |
 | `43_toolkits` | Its closure reaches GTK, Qt, wxWidgets, FLTK or Motif, and it is a library (a toolkit, a KDE Framework, or something an application links) or an application another port depends on (`konsole`, `vlc`) |
-| `44_apps` | Nothing depends on it, and its closure reaches a toolkit, or it sits on an application shelf and its closure reaches the graphics stack |
-| `50_desktop` | It is part of KDOS's desktop, or something only the desktop needs |
+| `44_apps` | Nothing installed by `44_apps` or an earlier phase depends on it, and its closure reaches a toolkit, or it sits on an application shelf and its closure reaches the graphics stack |
+| `50_desktop` | It is part of the Plasma session (KWin, the shell and its daemons, SDDM, the portal, the input method), KDOS's own Plasma code or root daemons, or a meta port. No port from `41_system` to `44_apps` names it in `depends` |
 | `60_kernel` | It is the kernel or what the kernel build needs |
 
 The application shelves are `3d`, `browsers`, `cad`, `chat`, `editors`, `emulators`, `files`,
@@ -1411,6 +1548,12 @@ The application shelves are `3d`, `browsers`, `cad`, `chat`, `editors`, `emulato
 A port on any other shelf whose closure reaches the graphics stack but no toolkit stays in
 `42_graphics` even when nothing depends on it, as `koreader` on `documents` and `nvtop` on
 `sysmon` do.
+
+"Nothing depends on it" counts only the `depends` lines of ports that `44_apps` or an earlier
+phase installs. A later phase builds after every phase in the table and orders nothing in them, so
+the meta ports in `50_desktop`, which name every Gear application, leave each one a `44_apps` port.
+The reverse never holds: a port from `41_system` to `44_apps` that named a `50_desktop` port in
+`depends` would need a port its phase cannot reach, and the closure check fails it.
 
 `20_selfhost` installs `fortify-headers`, rebuilds the toolchain once inside the chroot, and takes
 no other port. A dependency a
@@ -1422,12 +1565,14 @@ the dependency's phase or later.
 `script/phases/<phase>/packages.txt`. Its order run is the names ahead of the first shelf banner,
 a comment line `# <shelf> — <description>`; after it the ports sit under the banner of their shelf,
 or, for a port of KDOS's own, under a `# src-<area> — <description>` banner (`50_desktop`'s
-`src-desktop` and `src-daemons`). A new port goes under its shelf's or its area's banner, added in
-the same form when the list has none. The
+`src-art`, `src-desktop` and `src-daemons`), and `50_desktop`'s meta ports under a
+`# meta` banner at the end. A new port goes under its shelf's or its area's banner, added in the
+same form when the list has none. The
 five userland phases, `40_lang` to `44_apps`, split their list into
 `script/phases/<phase>/packages.d/`: one file per shelf, `<shelf>.txt`, holding the phase's ports
 from that shelf; `src-<area>.txt` for ports of KDOS's own, where the phase installs any
-(`src-system.txt` in `41_system`, `42_graphics` and `44_apps`, and `src-art.txt` in `41_system`);
+(`src-system.txt` in `41_system`, `42_graphics` and `43_toolkits`, and `src-art.txt` in
+`41_system` and `42_graphics`);
 and, in `41_system`, `00-order.txt`, the order run, which sorts first and holds the runs whose
 order a comment pins. The files
 are read in byte order as one list, so which file a port is in changes nothing but where a reader
@@ -1464,10 +1609,10 @@ checked by `testing/preflight.sh`.
 | Every meson `-D` is an option the port defines | meson stops at setup on an unknown option. Preflight checks each one against the tarball's own option file, and checks the two option types that take a closed set of values |
 | A command named in a diagnostic is in single quotes | A backtick inside double quotes is a command substitution, not a name: an `echo` telling somebody to run something runs it instead. Preflight checks the build system's own scripts under `script/` |
 | Nothing reaches the network | The build runs with no network. A meson subproject fallback, a CMake download call, or a Python build backend fetching a tool from a package index all fail hours in. See [Build troubleshooting](build-troubleshooting.md#a-build-that-reaches-the-network) |
-| Shipped configuration uses only glyphs the console font has | The console font holds 512 glyphs, a kernel limit; a Nerd Font icon renders as a blank cell on `tty1` |
+| Shipped configuration uses only glyphs the console font has | The console font holds 512 glyphs, a kernel limit; a Nerd Font icon renders as a blank cell on the Linux console |
 
-A Nerd Font icon is a private-use codepoint the console font cannot carry, so on `tty1` it appears
-as a blank cell in front of every name. Turn icons off where the program has a switch (`yazi`'s
+A Nerd Font icon is a private-use codepoint the console font cannot carry, so on the Linux console
+(`Ctrl+Alt+F2`) it appears as a blank cell in front of every name. Turn icons off where the program has a switch (`yazi`'s
 `[icon]`, `starship`'s `format`, `eza --icons=never`), and check the default before writing
 anything (`lazygit` 0.65's is already off). Where a program draws them with no way to turn them
 off, add it to [known gaps](../06-reference/known-gaps.md). The answer is never a patched console
@@ -1476,8 +1621,9 @@ font.
 ## Patches
 
 A patch is the last resort after a build flag, and it is a file, never an edit made in place: a
-unified diff kept beside the recipe as `<topic>.patch`, where it can be read and reviewed. 620 of
-them sit in port directories under `ports/core`. `kpkg` does not apply them. `build.sh` does, from
+unified diff kept beside the recipe as `<topic>.patch`, where it can be read and reviewed. About
+670 of them sit in port directories under `ports/core`; those carried on KDE modules follow the
+rules in [KDE Frameworks, Plasma and Gear](#kde-frameworks-plasma-and-gear). `kpkg` does not apply them. `build.sh` does, from
 the unpacked source it starts in, normally before it configures:
 
 ```bash
@@ -1603,10 +1749,10 @@ to name.
 | Class | What it covers | Why it cannot be compiled here |
 |---|---|---|
 | Code for another processor | `linux-firmware`, `intel-ucode`, `sof-firmware`; the closed EU kernels `intel-media-driver` compiles in with `ENABLE_KERNELS=ON` and `BUILD_KERNELS=OFF`; the assembled i965 shader kernels `libva-intel-driver` includes from `src/shaders`; the SOF coefficient `.bin` files in `alsa-ucm-conf`; the flasher stubs and flash algorithms inside `espflash`, `probe-rs`, `python3-esptool` and `openfpgaloader`; the riscv64 EDK2 image `qemu` installs from its `pc-bios/` (every other guest firmware it ships is compiled from its `roms/`); the radio firmware images `meshtastic-firmware` and `rnode-firmware` install for flashing; the Perseus FX2 firmware and FPGA bitstreams `libperseus-sdr` compiles in; the guest ROMs and programs the emulators install (`fuse-emulator`'s Spectrum ROMs, `vice`'s Commodore ROMs, `openmsx`'s C-BIOS, `amiberry`'s AROS Kickstart and WHDLoad boot binaries, `dosbox-staging`'s DOS utilities and FreeDOS keyboard drivers), and the replacement console BIOSes compiled in as byte arrays (`libretro-melonds`'s `FreeBIOS.h`; `mgba`'s and `libretro-mgba`'s `hle-bios.c`); `wine-mono` and `wine-gecko`, the Windows .NET runtime and HTML engine Wine installs into a prefix | It runs on a DSP, a GPU, a microcontroller, a radio or a guest (an emulated machine, or a Windows program under Wine), not as a host program. For most of it no source is published; the rest needs a cross toolchain this tree does not carry (an ARM assembler for the GBA BIOS, MinGW and a .NET SDK for Wine's two) |
-| Compiled font data | `noto-fonts`, `noto-fonts-extra`, `noto-cjk`, `nerd-fonts-symbols`, `font-carlito`, `font-caladea`; the Type 1, OpenType and TFM files in `texlive`'s texmf tree; the faces bundled inside `mupdf`, `matplotlib`, `seqkit`, `kodi`, `koreader`, `qcad`, `freecad`, `solvespace`, `stellarium`, `mupen64plus`, `ppsspp`, `dosbox-x`, `retroarch-assets` and `uosc`; the Fork Awesome face `qtforkawesome` compiles into its library | Upstream publishes the built face, and the sources compile through a toolchain or a source tree this one does not carry. A face whose upstream build runs on ports is compiled: `ttf-dejavu`, `terminus-ttf`, `noto-emoji`, `font-liberation`, and the X.org bitmap fonts (`font-adobe-75dpi`, `font-cursor-misc`, `font-misc-misc`) from BDF |
+| Compiled font data | `noto-fonts`, `noto-fonts-extra`, `noto-cjk`, `nerd-fonts-symbols`, `font-carlito`, `font-caladea`; the Type 1, OpenType and TFM files in `texlive`'s texmf tree; `ttf-jetbrains-mono`, the desktop's monospace face, which upstream compiles from its Glyphs sources with `gftools builder`; the faces bundled inside `mupdf`, `matplotlib`, `seqkit`, `kodi`, `koreader`, `qcad`, `freecad`, `solvespace`, `stellarium`, `mupen64plus`, `ppsspp`, `dosbox-x`, `retroarch-assets` and `uosc`; the Fork Awesome face `qtforkawesome` compiles into its library | Upstream publishes the built face, and the sources compile through a toolchain or a source tree this one does not carry. A face whose upstream build runs on ports is compiled: `ttf-dejavu`, `terminus-ttf`, `noto-emoji`, `font-liberation`, and the X.org bitmap fonts (`font-adobe-75dpi`, `font-cursor-misc`, `font-misc-misc`) from BDF |
 | Bootstrap seeds | The `rust` stage-0 `rustc`, `rust-std` and `cargo`; the `go` bootstrap toolchain; `zig`'s `stage1/zig1.wasm`; the upstream musl GHC `ghc` builds with; the Adoptium musl JDK `openjdk` boots from; `ocaml`'s `boot/ocamlc` and `boot/ocamllex` bytecode images; the Apache Groovy and Commons jars `kodi`'s add-on binding generator runs on | A compiler written in its own language needs a working one first, and Kodi's generator is a Groovy script, which is not a port. Each seed is used only to build, and never ships |
 | Data with no other source form | The `tessdata-eng` OCR models for `tesseract`, `whisper-model-base-en`'s speech model, `fluidr3-gm-sf3`'s SoundFont, the `perl-xml-parser` `.enc` encoding maps, the `fcitx5-chinese-addons` pinyin and stroke tables, `john`'s `.chr` files, the RP2350 boot-ROM tails `picotool` embeds from `model/`, recorded audio such as the `speaker-test` samples in `alsa-utils`; trained network weights (`digikam`'s face models, `piper`'s diacritisation models, `stockfish`'s NNUE network, `rnnoise`'s `rnnoise_data.c`, `freedv-gui`'s Opus, RNNoise and RADE weights); map and lookup data (`organicmaps`' world maps and style tables, `sniffnet`'s country and ASN databases, `josm`'s tag2link index, `koreader`'s certifi CA bundle); game and learning content (`gcompris`' word, voice and music archives, `openttd-opengfx`, `openttd-opensfx` and `openttd-openmsx`, `xonotic-data`, `stk-assets`, `devilutionx.mpq`, `retroarch-assets`) | The file is the form upstream maintains, or the tool that made it (a trainer, a map generator, nml and grfcodec, a 3D map compiler, each package's own TeX setup) is not something this tree runs; there is nothing earlier to build it from here |
-| Built JavaScript | The JavaScript of `libkiwix`'s server skin; the web clients `transmission` (`web/public_html`), `deluge` (its ExtJS library), `kolibri` (its webpack bundles), `pat` (`web/dist`) and `kodi` (`webinterface.default`) ship; `yarn`'s `cli-dist` bundle, which inlines an emscripten build of libzip | Each is the output of a JavaScript toolchain over an npm dependency tree. Rebuilding one takes a node vendor bundle of its own (`cncjs` is the port that carries one) and upstream's bundler, so each ships as upstream released it |
+| Built JavaScript | The JavaScript of `libkiwix`'s server skin; the web clients `transmission` (`web/public_html`), `deluge` (its ExtJS library), `kolibri` (its webpack bundles), `pat` (`web/dist`) and `kodi` (`webinterface.default`) ship; `yarn`'s `cli-dist` bundle, which inlines an emscripten build of libzip; the React and MathJax bundles `ghostwriter`'s preview loads, and the foliate-js renderer with the built `pdf.js`, `zip.js`, `fflate.js` and `jszip.min.js` that `arianna` compiles into its resources | Each is the output of a JavaScript toolchain over an npm dependency tree. Rebuilding one takes a node vendor bundle of its own (`cncjs` is the port that carries one) and upstream's bundler, so each ships as upstream released it |
 
 Every exempt payload is still a `source =` line with a `sha256`, so the offline build and the
 checksum hold for it exactly as for a tarball of C.
@@ -1633,115 +1779,104 @@ What follows for a recipe:
 
 A program that draws in a terminal is an application on this desktop, and almost none of them ship
 a `.desktop` file: upstream writes one for a GUI or writes none at all. Write it in `build.sh`,
-into `$PKG/usr/share/applications/`. A package owns its entry, so installing the port adds the menu
-row and removing the port takes it away; the same file under `fs/` is owned by nothing and outlives
-the program it names.
+into `$PKG/usr/share/applications/`. A package owns its entry, so installing the port adds the
+row to the application launcher and removing the port takes it away; the same file under `fs/` is
+owned by nothing and outlives the program it names.
 
-The entries under `fs/usr/share/applications/` are all `NoDisplay=true`.
+The two entries under `fs/usr/share/applications/` are both `NoDisplay=true`.
 `kdos-openarchive.desktop` is a handler that exists for its `MimeType=` line and names a script
 that is itself under `fs/` (`fs/usr/local/bin/kdos-openarchive`), so entry and program have the
-same lifetime. The other twenty-four, one per window-opening front end from `kdos-audio.desktop`
-to `kdos-verify.desktop`, name front ends that the `kdos-shell` port installs as links to
-`kdos-shell`, and give each window its name and picture on the taskbar; `kdos-peek`, `kdos-pix`
-and `kdos-burn` also carry a `MimeType=` line. They are the exception to this rule, and without
-`kdos-shell` they would name programs that are not there.
+same lifetime. `kdos-doc.desktop` names `kdos-doc`, the book viewer the `kdos-doc` port installs;
+it is the exception to this rule, and without that port it would name a program that is not there.
 
 ```bash
 install -d "$PKG/usr/share/applications"
-cat > "$PKG/usr/share/applications/btop.desktop" <<'EOF'
+cat > "$PKG/usr/share/applications/calcurse.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=System Monitor
-GenericName=Resource Monitor
-Comment=Processes, CPU, memory, disks and network
-Exec=btop
-Icon=speedometer
+Name=Calendar (calcurse)
+GenericName=Calendar and Todo
+Comment=Appointments, todos and reminders
+Exec=calcurse
+Icon=x-office-calendar
 Terminal=true
-Categories=System;Monitor;
-Keywords=process;cpu;memory;task;monitor;btop;
+Categories=Office;Calendar;
+Keywords=calendar;appointment;todo;reminder;calcurse;
 EOF
-chmod 644 "$PKG/usr/share/applications/btop.desktop"
+chmod 644 "$PKG/usr/share/applications/calcurse.desktop"
 ```
 
 What each line of an entry has to get right, and what goes wrong otherwise:
 
-**`Terminal=true` and a bare `Exec`.** The launcher picks the terminal emulator and supplies the
-window's identity (see [`kdos-shell`](../04-programs/kdos-shell.md)). Naming an emulator in `Exec`
-pins the entry to that one emulator and defeats `X-KDOS-Term`.
-
-**`X-KDOS-Float=true` and `X-KDOS-Size=COLSxROWS`, when the program wants its own window size.** A
-float is an unanchored window at the size the entry asks for, rather than one the session places
-among the rest. The size is in cells, and anything smaller than 4x2 is ignored. `kdos app tui`
-writes both keys for entries it makes, and a recipe writes them for the same reason (see
-[`kdos app tui`](../04-programs/kdos-command.md#kdos-app-tui)).
+**`Terminal=true` and a bare `Exec`.** Whoever starts the entry wraps it in the desktop's
+terminal: Plasma's launcher in the one `kdeglobals` names (`TerminalApplication=konsole`),
+`kdos-appbox open` and `xdg-open` in the one `kb_terminal()` names, and GLib's launcher, which a
+portal uses to open a link for a boxed application, in `/usr/local/bin/xdg-terminal-exec`, which
+names the same. All three answer Konsole in the session; on a bare console `kdos-appbox open` runs
+the program where it already is. Naming an emulator in `Exec` pins the entry to that one emulator
+and breaks it on the console. Konsole draws sixel, iTerm2 and kitty pictures, so a terminal program
+that shows pictures (`yazi`'s previews) needs nothing beyond `Terminal=true`.
 
 **Never `X-KDOS-TUI=true`.** That key is `kdos app tui`'s own marker. It means "this command wrote
 this file", which is what makes `kdos app tui rm` safe to run. A shipped entry carrying it would be
 an application that command could delete.
 
-**`X-KDOS-Term=kdos-term` only where the program draws pictures.** The key names the emulator the
-entry needs rather than the one the session runs, and the launcher honours it: `kdos-term` links
-the image decoders and speaks sixel and the kitty graphics protocol, so `yazi`'s previews are
-pictures rather than a file name. Without the key the session's own terminal is used, which is
-lighter. The value is a name, never a program: only `kdos-term` and `foot`, the two emulators this
-image ships, are accepted, and any other value falls back to the session's own. An entry is a file
-anything can write, and a key that named a program would be a second `Exec` line with none of its
-rules.
+**An `Icon=` the image can draw.** Plasma resolves an icon name the freedesktop way: a name
+resolves when some installed theme (KDOS, the Breeze theme it inherits from, or `hicolor`) carries
+it as SVG or PNG, at any size and in any context, or when `/usr/share/pixmaps` has it; an absolute
+path must exist. An SVG is drawn as it is, so a port installs upstream's icons and rasterises
+nothing. When a build tree exists, `testing/preflight.sh` resolves every visible entry's `Icon=`
+and `Exec=` by these rules against `build/fs` and names the ones that miss.
 
-**An `Icon=` the image can draw.** The shipped atlas is narrower than the artwork.
-`src/art/kdos-icons/genatlas.py` takes six contexts (`places`, `devices`, `status`,
-`mimetypes`, `actions`, `emblems`) at four sizes (24, 32, 48 and 64). There is no `apps` context
-and no `panel` one: `panel/` holds about 2,400 third-party tray marks at each of 16, 22 and 24 px,
-and an application's own icon comes from hicolor at run time instead. A name can therefore be
-present in `src/art/kdos-icons/art` and still be undrawable: `file-manager` is only in
-`panel/`, and `utilities-terminal` is not there at all, though both are what the freedesktop naming
-specification suggests. After the atlas, `libkicon` falls back to hicolor's `apps/` PNGs and to
-`pixmaps/`. An SVG in either place is never read, because nothing in the session rasterises one.
-When a build tree exists, `testing/preflight.sh` resolves every shipped entry's `Icon=` and `Exec=`
-by these rules against `build/fs` and names the ones that miss.
+**A file name, or a `StartupWMClass=`, equal to the window's app id.** Plasma's task manager finds
+a window's icon, its name and its pinned launcher by matching the window's Wayland app id to an
+entry: the entry's file name without `.desktop`, or its `StartupWMClass=`. A window whose app id
+matches neither shows a generic icon and opens a second task beside a pinned launcher. Where
+upstream's entry names a class the program never uses, a patch corrects it (see
+[KDE Frameworks, Plasma and Gear](#kde-frameworks-plasma-and-gear)).
 
-**A `Name=` no other visible entry uses.** The Start menu, the launcher and the search all list
-entries by name, so two rows both reading `Calendar` are two rows nobody can choose between. The
-program filling a role (the file manager, the agenda) keeps the plain name, and every alternative
-is qualified: `Files (lf)`, `Files (yazi)`, `Calendar (calcurse)`. An entry with `NoDisplay=true`
-is not visible and does not count. When a build tree exists, `testing/preflight.sh` refuses a
+**A `Name=` no other visible entry uses.** The application launcher and KRunner list entries by
+name, so two rows both reading `Calendar` are two rows nobody can choose between. The program
+filling a role (the file manager, the agenda) keeps the plain name, and every alternative is
+qualified: `Files (lf)`, `Files (yazi)`, `Calendar (calcurse)`. An entry with `NoDisplay=true` is
+not visible and does not count. When a build tree exists, `testing/preflight.sh` refuses a
 collision.
 
-**`NoDisplay=true` on an entry that is not how a person starts the program.** Start, the launcher
-and the search list every visible entry, so an entry for something the session, another program or
-a configuration step starts is a row that opens nothing a person wanted. Six kinds are hidden: a
-server and a client that needs one nothing starts (`foot --server` and `footclient`,
-`freeciv-server`, and `rmpc`, whose mpd runs only once somebody configures it), a session picker
-(`kdevelop --ps`, which the main entry already offers as an action), a launch pad that only lists
-the program's other entries (PDF4QT's), a diagnostic (LinuxCNC's latency test), a tray helper that
-something else starts, and a terminal program that exits at once when started from Start, with no
-argument, in the home directory (`tig` needs a repository, `ledger` a journal, `presenterm` a file,
-`taskwarrior-tui` a `~/.taskrc`). A terminal program that has a way to stay open on its own is
-given it instead and stays visible: `w3m -v` opens w3m's welcome page.
-The entry stays installed, for its `MimeType=` and its actions. Write the key into an
-entry the recipe writes; on one upstream installs, run
+**`NoDisplay=true` on an entry that is not how a person starts the program.** The application
+launcher and KRunner list every visible entry, so an entry for something the session, another
+program or a configuration step starts is a row that opens nothing a person wanted. Six kinds are
+hidden: a server, and a client that needs one nothing starts (`freeciv-server`, and `rmpc`, whose
+mpd runs only once somebody configures it), a session picker (`kdevelop --ps`, which the main
+entry already offers as an action), a launch pad that only lists the program's other entries
+(PDF4QT's), a diagnostic (LinuxCNC's latency test), a tray helper that something else starts, and a
+terminal program that exits at once when started from the launcher, with no argument, in the home
+directory (`tig` needs a repository, `ledger` a journal, `presenterm` a file, `taskwarrior-tui` a
+`~/.taskrc`). A terminal program that has a way to stay open on its own is given it instead and
+stays visible: `w3m -v` opens w3m's welcome page. The entry stays installed, for its `MimeType=`
+and its actions. Write the key into an entry the recipe writes; on one upstream installs, run
 `desktop-file-edit --set-key=NoDisplay --set-value=true` on the file under `$PKG`, with
 `desktop-file-utils` in `depends`. A server or tray program that is itself what a person opens,
 with no other way in, keeps its entry visible: `cncjs`'s entry starts the server its browser
-interface is served from, and `syncthingtray` is the Syncthing interface. When a build tree exists,
-`testing/preflight.sh` matches every visible entry's `Name=` and `Exec=` against the words the
-first five kinds carry (server, daemon, session, launch pad, tray, latency, diagnostic) and refuses a
-match that `testing/visible-entries.allow` does not name. That file is the reviewed list of
-entries that match and are launchable, one file name per line.
+interface is served from, and `syncthingtray` is the Syncthing interface. When a build tree
+exists, `testing/preflight.sh` matches every visible entry's `Name=` and `Exec=` against the words
+the first five kinds carry (server, daemon, session, launch pad, tray, latency, diagnostic) and
+refuses a match that `testing/visible-entries.allow` does not name. That file is the reviewed list
+of entries that match and are launchable, one file name per line.
 
 **`MimeType=` only where nothing else claims the type.** When two entries claim one type, the
 machine opens those files in whichever entry sorted first, which is not a decision anybody made.
-`mimeapps.list` is where a default is chosen.
+`mimeapps.list` is where a default is chosen, and KDOS's defaults are in
+`/usr/share/kdos/xdg/kde-mimeapps.list`.
 
-**`MimeType=` only for a type that exists.** The field names a type in the shared MIME database, and
-a name with nothing behind it resolves to nothing and reports that nowhere. The desktop's type
-lookup, in `libkxdg`, reads `/usr/share/mime/globs`, which is generated from
-`/usr/share/mime/packages`. A port that introduces a type installs its own XML there, and `kpkg`
-regenerates the database (see [Shared indexes](#shared-indexes)). `frotz` is the [worked
-example](#worked-example-frotz).
+**`MimeType=` only for a type that exists.** The field names a type in the shared MIME database,
+and a name with nothing behind it resolves to nothing and reports that nowhere. Plasma (through
+Qt's MIME database) and `kdos-appbox open` (through `libkxdg`, which reads
+`/usr/share/mime/globs`) both read the database generated from `/usr/share/mime/packages`. A port
+that introduces a type installs its own XML there, and `kpkg` regenerates the database (see
+[Shared indexes](#shared-indexes)). `frotz` is the [worked example](#worked-example-frotz).
 
-**`Keywords=` with the words people will search for.** The menu searches this field, and a program
-is found by the words people know it by, which are often not its name.
+**`Keywords=` with the words people will search for.** The launcher and KRunner search this field,
+and a program is found by the words people know it by, which are often not its name.
 
 For the game ports (`nethack`, `frotz`, `bsd-games` and `moon-buggy`), `testing/selftest.sh` reads
 the entries out of the `build.sh` heredocs and fails a missing `Terminal=true`, a `Categories=`
@@ -1758,16 +1893,17 @@ records it either.
 |---|---|
 | Static archives | Every `.a` a build installs ships, `libpython3.14.a` and the archives nothing in the tree links included |
 | Symbol tables | `.symtab` and `.strtab` are removed from every ELF executable and shared object over 32 MiB, with `objcopy --strip-all --keep-section=.debug_*`: that removes the two sections and nothing a loader, a debugger's link or a build ID reads (`.dynsym`, `.gnu_debuglink` and the notes stay). This catches Chromium's `chromium` and the `libxul.so` of LibreWolf, Firefox ESR and Thunderbird. Everything smaller keeps its symbols, so a backtrace names its functions. Relocatable objects, kernel modules and static archives are never touched: their symbol table is what a link reads. Nor is a file with bytes after its last section and its section header table, which is a program carrying an appended payload that `objcopy` would drop. A port whose upstream strips on install keeps that switched off (`--disable-strip`, `--disable-install-strip`) |
-| Manuals | HTML and PDF manuals are removed under `usr/share/doc` and `usr/share/texmf-dist/doc`: every `*.html`, `*.htm` and `*.pdf`, and every directory named `html`. Manual pages and info pages ship, and so do the API references gtk-doc installs under `usr/share/gtk-doc/html`, which is outside both trees. Exempt is the HTML a program opens itself, where the prune would break a feature rather than drop a manual: `usr/share/doc/mednafen`, whose manual upstream writes only in HTML; `usr/share/doc/kdos`, this book; `usr/share/doc/kfs`, *KDOS from Scratch* in HTML and its PDF; `usr/share/doc/R/html`, the index of R's `help.start()` and the `R.css` every page of its dynamic help links; the manuals behind a Help menu, `usr/share/doc/geany/html`, `usr/share/doc/gimagereader`, `usr/share/doc/texstudio`, `usr/share/doc/wsjtx`, `usr/share/doc/wireshark` (Help > Manual Pages) and `usr/share/doc/hatari`; and the pages an About dialog shows, `usr/share/doc/freecad` and `usr/share/doc/packages/smplayer`. The list is `DOC_KEEP` in `src/system/kdos-kpkg/prune.c`; a port whose program opens HTML from another path adds that path there. TeX Live's package manuals are the `texlive-doc` port, which no phase builds and whose PDFs this prune would remove, so `texdoc` finds nothing |
+| Manuals | HTML and PDF manuals are removed under `usr/share/doc` and `usr/share/texmf-dist/doc`: every `*.html`, `*.htm` and `*.pdf`, and every directory named `html`. Manual pages and info pages ship, and so do the API references gtk-doc installs under `usr/share/gtk-doc/html`, which is outside both trees. Exempt is the HTML a program opens itself, where the prune would break a feature rather than drop a manual: `usr/share/doc/mednafen`, whose manual upstream writes only in HTML; `usr/share/doc/kdos`, this book; `usr/share/doc/kfs`, *KDOS from Scratch* in HTML and its PDF; `usr/share/doc/HTML/en/kdos`, the link through which KIO's `help:` worker finds this book; `usr/share/doc/R/html`, the index of R's `help.start()` and the `R.css` every page of its dynamic help links; the manuals behind a Help menu, `usr/share/doc/geany/html`, `usr/share/doc/gimagereader`, `usr/share/doc/texstudio`, `usr/share/doc/wsjtx`, `usr/share/doc/wireshark` (Help > Manual Pages) and `usr/share/doc/hatari`; and the pages an About dialog shows, `usr/share/doc/freecad` and `usr/share/doc/packages/smplayer`. The list is `DOC_KEEP` in `src/system/kdos-kpkg/prune.c`; a port whose program opens HTML from another path adds that path there. TeX Live's package manuals are the `texlive-doc` port, which no phase builds and whose PDFs this prune would remove, so `texdoc` finds nothing |
 | Languages | English only. Removed: every message catalog (`.mo`, `.gmo`, `.qm`) in a `<lang>/LC_MESSAGES/` directory, whatever holds it (`usr/share/locale`, `usr/lib/locale`, R's `po/` and `translations/`, a Python package's `locales/`); any `.mo`, `.gmo` or `.qm` elsewhere, Qt's and `usr/share/<program>/translations/` among them, whose file name ends in a language tag (`de.mo`, `app_pt_BR.qm`), while one with no tag (`app.qm`, the source language) stays; every translated KDE handbook (`usr/share/doc/HTML/<lang>/`); and every directory in `usr/share/man` that is not a `man<section>` one, which removes translated manual pages and empty `cat*` directories alike. A tag is a language, then optionally a region, script or UN area, a codeset after a region and a variant (`pt_BR`, `zh_Hant`, `es_419`, `zh_TW.Big5`, `sr@latin`). A tag that is `en`, or starts with `en_`, `en-` or `en@`, is English and stays: some programs keep their English plural forms in their catalog |
 | What the language rule keeps | Input-method engines and dictionaries, fonts for every script, keyboard layouts, X11's compose tables, `locale.alias`, and any data a program reads that is not a catalog (TeX's babel files, gnucash's tax tables) |
 | Licences | `usr/share/licenses` is never pruned |
 
 A directory the prune empties is removed with it, up to the package root, so a port whose
 manuals were all HTML leaves no empty `usr/share/doc/<name>`. A recipe therefore deletes none of
-this itself. Turning translations off at configure time (`--disable-nls`,
-`-DKF_SKIP_PO_PROCESSING=ON`) is welcome where it saves build time and changes nothing else, but it
-is not needed for the result.
+this itself. Turning translations off at configure time (`--disable-nls`) is welcome where it saves
+build time and changes nothing else, but it is not needed for the result. A KDE recipe passes
+`-DKF_SKIP_PO_PROCESSING=ON` as part of its shape (see
+[KDE Frameworks, Plasma and Gear](#kde-frameworks-plasma-and-gear)).
 
 The same rule holds for a file no package owns, such as a copy `10_bootstrap` installed that its
 port does not adopt: `70_image` removes it, and fails the image on anything unowned left under
@@ -1887,15 +2023,16 @@ expand while the recipe runs rather than while the script does.
 `postinstall.sh` is an optional hook that runs on the target machine each time the package is
 installed. It travels inside the package as `.POSTINSTALL`, a bash script that begins with the
 recipe's keys and helpers as variable assignments and then carries the hook verbatim, so a hook can
-read `$name` and `$version`. Twenty-seven ports have one:
+read `$name` and `$version`. Twenty-eight ports have one:
 
-- `avahi`, `clamav`, `geoclue`, `gnuhealth`, `kolibri`, `libstoragemgmt`, `maddy`, `minidlna`,
-  `mosquitto`, `mumble`, `networkmanager-openvpn`, `ngircd`, `nut`, `pcsc-lite`, `polkit`,
-  `postgresql`, `prosody`, `radicale`, `tcpdump` and `usbmuxd` create their system accounts.
+- `avahi`, `clamav`, `colord`, `geoclue`, `gnuhealth`, `kolibri`, `libstoragemgmt`, `maddy`,
+  `minidlna`, `mosquitto`, `mumble`, `networkmanager-openvpn`, `ngircd`, `nut`, `pcsc-lite`,
+  `polkit`, `postgresql`, `prosody`, `radicale`, `tcpdump` and `usbmuxd` create their system
+  accounts.
   `avahi` makes two, `avahi` and `avahi-autoipd`; `mumble`'s is `mumble-server`, `usbmuxd`'s is
   `usbmux`, the account its udev rule starts `usbmuxd` as, and `nut`'s is also in `dialout`.
-  `clamav`, `kolibri`, `maddy`, `prosody`, `postgresql` and `radicale` also give their `/var/lib`
-  directories to their accounts; `gnuhealth` gives `/var/lib/gnuhealth` and its `attach/`
+  `clamav`, `colord`, `kolibri`, `maddy`, `prosody`, `postgresql` and `radicale` also give their
+  `/var/lib` directories to their accounts; `gnuhealth` gives `/var/lib/gnuhealth` and its `attach/`
   directory to its account; `minidlna` gives `/var/lib/minidlna` and `/var/log/minidlna`;
   `mumble` gives `/var/lib/mumble-server` to its account and `mumble-server.ini` to its group; and
   `networkmanager-openvpn` gives its chroot to its account. `gnuhealth`, `maddy`, `mumble`,
@@ -1972,7 +2109,7 @@ removed and rebuild each index whose directory it touched, once, from what is th
 | `/usr/share/man/` | `makewhatis`, the `mandoc.db` that `apropos` and `whatis` search; skipped during the build, where `70_image` writes it once over the finished tree |
 | `/usr/share/fonts/` | `mkfontdir`, the `fonts.dir` of every subdirectory holding PCF or BDF faces, which Xwayland's core font path reads |
 | `/usr/share/texmf-dist/`, `/usr/share/texmf-local/` | `mktexlsr` over those two trees and `/usr/share/texmf-var`, the `ls-R` files through which every TeX program finds a file |
-| `/usr/share/applications/` | `update-desktop-database`, the `mimeinfo.cache` that `kdos-appbox open` and the shell's Open With read for a type no `mimeapps.list` names |
+| `/usr/share/applications/` | `update-desktop-database`, the `mimeinfo.cache` that `kdos-appbox open` reads for a type no `mimeapps.list` names |
 | `/usr/share/icons/<theme>/` | `gtk-update-icon-cache -q -t -f`, the `icon-theme.cache` of each theme the package touched that holds an `index.theme`; without one, every GTK program walks the theme's directories at start |
 | `/usr/lib/vlc/plugins/` | `/usr/lib/vlc/vlc-cache-gen`, the `plugins.dat` libvlc reads each plugin's description from; without it libvlc loads every plugin into the program that starts it, and a Qt 6 program such as Elisa crashes in VLC's Qt 5 interface. Under `--root` it runs inside the root, which needs root; a root whose `vlc-cache-gen` has gone loses the cache |
 
@@ -2038,8 +2175,8 @@ The build has no network, so a program whose language fetches its dependencies a
 (Rust crates, Go modules, Python packages, Hackage packages) needs them downloaded in advance. That
 is vendoring: `ports/fetch` runs the language's own tool against the port's source and packs what
 it downloads into `<name>-vendor-<version>.tar.xz` beside the tarball. `build.sh` unpacks that
-bundle and builds offline. Set `vendoring =` in the recipe to ask for it; 161 ports do (75 Rust,
-39 Go, 42 Python, 4 Haskell, 1 Node).
+bundle and builds offline. Set `vendoring =` in the recipe to ask for it; 168 ports do (80 Rust,
+39 Go, 43 Python, 4 Haskell, 2 Node).
 
 A bundle with a `sha256 =` line is an archived source like any other: `ports/fetch` takes it from
 the port directory, the cache or the source archive first, and generates it only when none of them
@@ -2057,7 +2194,7 @@ instead.
 | `go` | The module `vendor/` tree, from `go mod vendor` | `go build -mod=vendor` |
 | `python` | Source distributions only (`pip download --no-binary :all:`), including each one's build requirements, followed recursively | Install from the local directory |
 | `haskell` | Hackage source tarballs and their revised `.cabal` files, as a local repository | `cabal v2-install` against that repository alone, or upstream's bootstrap script |
-| `node` | `node_modules/` and the `package-lock.json` npm writes, from `npm install --ignore-scripts` plus the recipe's `npmflags` | `npm` with `--offline` and the same `npmflags`; `cncjs` is the example |
+| `node` | `node_modules/` and the `package-lock.json` npm writes, from `npm install --ignore-scripts` plus the recipe's `npmflags` | `npm` with `--offline` and the same `npmflags`; `cncjs` and `krohnkite` are the two |
 
 A recipe with `pypackages` gets a Python bundle whether or not it sets `vendoring`. A Python fetch
 that ends with an empty `vendor/` is a failure, not an empty bundle.
@@ -2082,10 +2219,15 @@ build. `python3-keyring` is the example; a `src/` layout, or a `packages` list i
 configuration, is safe with `vendor/` in the tree.
 
 `vendordir` is the other half: it says where the vendoring tool must run, which is beside the
-manifest. The two directories are not always the same place. Seven ports set it: `chromium`
+manifest. The two directories are not always the same place. Eleven ports set it: `chromium`
 (`tools/crates/gnrt`), `gopls` (`gopls`), `libdovi` (`dolby_vision`), `lnav`
 (`src/third-party/lnav-rs-ext`), `python3-bcrypt` (`src/_bcrypt`), `python3-cryptography`
-(`src/rust`) and `ghc` (`hadrian/bootstrap`).
+(`src/rust`), `ghc` (`hadrian/bootstrap`), and four KDE ports whose Rust half sits in a
+subdirectory of a CMake tree that Corrosion builds: `kdeplasma-addons`
+(`kdeds/kameleon/qmk/kameleon-qmk-helper`), `cxx-rust-cssparser` (`rust`), `akonadi-search`
+(`agent/rs/htmlparser`) and `kdepim-addons` (`plugins/webengineurlinterceptor/adblock`). Corrosion
+runs `cargo` from CMake's build, so the recipe unpacks the bundle into that subdirectory and sets
+`CARGO_NET_OFFLINE=true` before the configure.
 
 `vendorsync` names every other Cargo manifest the build runs, space-separated and relative to
 `vendordir`. A helper crate outside the workspace, such as an `xtask` that generates a manual page,
@@ -2259,7 +2401,8 @@ installed, and a bump of `bat` or `presenterm` checks that both `Cargo.lock` fil
 syntect.
 
 Five more bundles are made by hand, each packed with the flag set above, recorded by its hash and
-published with `ports/publish <port>` on every version bump:
+published with `ports/publish <port>` on every version bump, and one source is made by a tool of
+its own:
 
 | Bundle | What it is, and how to rebuild it |
 |---|---|
@@ -2268,6 +2411,7 @@ published with `ports/publish <port>` on every version bump:
 | `surfer-vendor-<version>.tar.xz` | `cargo vendor` run by the fetch container's cargo over the tag tree with the `f128` and `instruction-decoder` submodule tarballs unpacked in place; `ports/fetch` vendors from the first source alone, where those path dependencies are missing |
 | `libreoffice-vendor-<version>.tar.xz` | Every file LibreOffice's `download.lst` names, at the name and sha256 it gives, fetched from `dev-www.libreoffice.org/src` or `/extern` into `externals/` and packed with `--mode=go-w` as well. `--with-external-tar` points the build at them and `--disable-fetch-external` makes a missing one an error; the `--with-system-*` flags decide which are unpacked |
 | `librepcb-vendor-<version>.tar.xz` | `cargo vendor --sync libs/slint/Cargo.toml`, run in `libs/librepcb/rust-core` by the fetch container's cargo, one bundle for both Cargo workspaces; `ports/fetch` unpacks only tarballs, and LibrePCB's source is a zip |
+| `fwupd-snapshot-<date>.tar.xz` | The `fwupd-snapshot` port's source: the LVFS firmware metadata and the signature over it, made by `ports/fwupd-snapshot` when a release is cut. The tool checks the signature against the LVFS certificates in the hash-checked `fwupd` tarball before it writes anything, packs both files reproducibly (sorted, owner 0, every time the snapshot's date) and writes the recipe's `version` and `sha256` lines; `ports/publish fwupd-snapshot` follows. fwupd trusts a local remote outright, so a snapshot that was not the LVFS's own would be believed on every machine |
 
 ### Archives preflight accepts
 
@@ -2417,6 +2561,23 @@ It carries `python3-$version.tar.xz` with `python3`'s checksum, its `version`
 must equal `python3`'s because the module is compiled for that interpreter's ABI, and both recipes
 carry `group = python3`.
 
+`util-linux` is split the same way for PAM. It is a `30_foundation` port, built before `pam`
+exists, and its `login` needs PAM's headers. `util-linux-login` configures the same tarball again
+in `41_system`, once `pam` is installed, with `--disable-all-programs --enable-login`, and packages
+only `login`, its manual page and the `/etc/pam.d/login` stack. It carries
+`util-linux-$version.tar.xz` with `util-linux`'s checksum, and both recipes carry
+`group = util-linux`. It is also the example of `replaces`: `shadow` installs no `login`, and the
+recipe names `shadow` in `replaces` and `depends` so that on a tree whose installed `shadow`
+package still holds `/usr/bin/login`, the path moves to the new package instead of the install
+being refused.
+
+`tlp` is split the same way for its power-profiles daemon. `tlp` is shell over `/sys` and stays in
+`41_system`; `tlp-pd`, the daemon that answers `org.freedesktop.UPower.PowerProfiles` for
+PowerDevil, is Python on GLib's bindings and needs `python3-gobject`, which `42_graphics` builds.
+`tlp-pd` builds `tlp`'s tarball under `tlp`'s file name and checksum with `tlp`'s own `make`
+variables, installs only the `install-pd` and `install-man-pd` targets, and both recipes carry
+`group = tlp`.
+
 The bare-metal C++ runtimes are split the same way. `gcc-arm-none-eabi` is built with no C
 library and installs only the compiler and `libgcc`; `picolibc-arm-none-eabi` is compiled with
 that compiler; `libstdcxx-arm-none-eabi` configures the same gcc tarball again with the
@@ -2547,7 +2708,7 @@ Most ports need nothing: the checker works from the recipe's first `source` URL 
 | `watch` | Upstream lists its releases somewhere nothing reached from the source URL leads: a forge repository, or a page, listing, JSON index or manifest naming the release files. See [Discovery](#discovery) |
 | `series` | The port stays on one line (`21` for `llvm21`, `5.4` for `lua54`), so a release past it is never offered. See [Filtering](#filtering) |
 | `devseries` | Upstream marks development releases by number: `odd-minor`, `preview-minor`, or both. See [Filtering](#filtering) |
-| `group` | Ports the derived grouping would not join must be bumped together: the pairs in [A second build of the same source](#a-second-build-of-the-same-source), the Qt modules, and the other pairs built from one release (`qca`, `qwt`, `qscintilla`, `mgba`, `supertuxkart`, `webkitgtk`, `texlive`). See [Outcomes](#outcomes) |
+| `group` | Ports the derived grouping would not join must be bumped together: the pairs in [A second build of the same source](#a-second-build-of-the-same-source), the Qt modules, the Plasma modules (`group = plasma`), and the other pairs built from one release (`qca`, `qwt`, `qscintilla`, `mgba`, `supertuxkart`, `webkitgtk`, `texlive`). See [Outcomes](#outcomes) |
 
 ### Outcomes
 
@@ -2583,7 +2744,9 @@ family whose repository is named differently, while all of them resolve to the s
 and version. A `group` key overrides the derived one. The pairs in
 [A second build of the same source](#a-second-build-of-the-same-source) set it, and so does a
 family released from a host the derivation does not read, such as the Qt modules from
-`download.qt.io`.
+`download.qt.io` and the Plasma modules from `download.kde.org`. KDE Frameworks and Gear are not
+grouped: see [KDE Frameworks, Plasma and Gear](#kde-frameworks-plasma-and-gear) for how a whole
+set is bumped.
 
 The reasons behind each outcome are under [How the checker decides](#how-the-checker-decides).
 
@@ -2857,7 +3020,7 @@ ports/publish --rehome [--dry-run] [port…]
 ports/publish --retire [--dry-run]
 ports/publish --orphans [--prune=yes-delete]
 ports/publish --freeze <kdos-tag> [--dry-run | --check]
-ports/publish --release <kdos-tag> [--iso <path>] [--key <path> | --unsigned] [--publish] [--dry-run]
+ports/publish --release <kdos-tag> [--iso <path>] [--key <path> | --unsigned] [--binhost <dir>] [--image <dir>] [--publish] [--dry-run]
 ```
 
 `ports/publish` uploads every file a `sha256 =` line names that git does not carry and the archive
@@ -2950,7 +3113,7 @@ each part), size and SHA-256; a file sits under the shelf its asset name starts 
 | `--retire` | Delete every emptied `src-<shelf>` release of the older layout, and its tag; see below |
 | `--orphans` | List index lines no current recipe names; see below |
 | `--freeze <tag>` | Write `build/freeze/sources-<tag>.sha256` for the tag's recipes, found one shelf down or directly under `ports/core`, require every hash in it to be archived, and attach it as `sources.sha256` to release `<tag>` on `$KDOS_REPO`, creating a draft release when there is none. With `--dry-run`, only the list is written. See [Cutting a release](developing.md#cutting-a-release) |
-| `--release <tag>` | Build and attach the system release of `<tag>`. See [Cutting a release](developing.md#cutting-a-release) |
+| `--release <tag>` | Build and attach the system release of `<tag>`, and publish its updates the way sources are published: the binhost in releases `binhost-<tag>-NN` of at most 1,000 flat assets, the slot image in `image-<tag>`, and the signed `kdos-update.idx` that maps every path to its release, asset, hash and size. See [Cutting a release](developing.md#cutting-a-release) and [Publishing a release](../03-architecture/packaging.md#publishing-a-release) |
 
 Exit status is 0 when everything wanted is archived, 1 when something is missing or an upload
 failed, and 2 when every name for a file is held by other bytes, or an asset's digest disagrees
@@ -3030,7 +3193,7 @@ retries. An upload that meets a 5xx or a dropped connection is retried twice; th
 | `KDOS_PUBLISH_DELAY` | `8` | Seconds between creating, changing and deleting calls |
 | `KDOS_PUBLISH_JOBS` | `16` | Presence `HEAD`s run at once |
 | `KDOS_SOURCES_INDEX` | `ports/sources.idx` | The index read and written |
-| `KDOS_RELEASE_CAP` | `1000` | Assets per archive release, parts counted; a file whose volume would pass it spills into another volume. GitHub's limit is 1000 |
+| `KDOS_RELEASE_CAP` | `1000` | Assets per archive release, parts counted; a file whose volume would pass it spills into another volume, and `--release` cuts a binhost into releases of at most this many. GitHub's limit is 1000 |
 | `KDOS_VOLUME_FILL` | `650` | The planned assets per volume that `--plan` packs shelves to |
 | `KDOS_PART_SIZE` | `1992294400` (1900 MiB) | A file larger than this is uploaded in parts of this size |
 | `KDOS_LFS_STORE` | `<git dir>/lfs/objects` | The LFS store read for bytes and by `--history` |

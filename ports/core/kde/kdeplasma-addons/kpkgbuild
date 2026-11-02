@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdeplasma-addons
+version     = 6.8.2
+release     = 1
+vendordir   = kdeds/kameleon/qmk/kameleon-qmk-helper
+source      = $name-$version.tar.xz::https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = 89458bb18c2d055f582467d920c413712aa5b639404a36d37643475b22bbf364  kdeplasma-addons-6.8.2.tar.xz
+sha256      = b87e525953b3b25e2892b819b7ac0ca425a459dcd3b63b126bfe19165929dd1f  kdeplasma-addons-vendor-6.8.2.tar.xz
+description = Extra Plasma widgets, runners, wallpapers, window switchers, the desktop cube and accent-coloured keyboard lights
+homepage    = https://invent.kde.org/plasma/kdeplasma-addons
+license     = GPL-2.0-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.1-or-later AND LGPL-2.0-or-later AND LGPL-2.0-only AND BSD-3-Clause AND GPL-3.0-or-later AND LicenseRef-KDE-Accepted-GPL AND LGPL-3.0-or-later
+group       = plasma
+vendoring   = rust
+depends     = cmake ninja extra-cmake-modules pkgconf qt6-qtbase qt6-qtdeclarative qt6-qtwebengine qt6-qtquick3d qt6-qt5compat kconfig kcoreaddons kdbusaddons kconfigwidgets kdeclarative kglobalaccel kguiaddons kholidays ki18n kauth kio kcmutils knotifications krunner kservice sonnet kunitconversion kxmlgui knewstuff kjobwidgets kpackage ksvg kwidgetsaddons kiconthemes kwindowsystem kirigami kirigami-addons kitemmodels libplasma plasma-workspace kwin icu eudev rust corrosion

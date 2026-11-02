@@ -15,14 +15,21 @@ writing and copies, and `mkisofs`, which [libisoburn](#port-libisoburn) installs
   three are upstream's defaults.
 - `-D K3B_ENABLE_DVD_RIPPING=ON`, `-D K3B_ENABLE_TAGLIB=ON` — Video DVD ripping through
   [libdvdread](#port-libdvdread), and audio-file metadata through [taglib](#port-taglib).
-- `-D K3B_BUILD_FFMPEG_DECODER_PLUGIN=ON` — and the other `K3B_BUILD_*_PLUGIN=ON` switches: the
+- `-D K3B_BUILD_FFMPEG_DECODER_PLUGIN=ON` — With `-D K3B_BUILD_OGGVORBIS_DECODER_PLUGIN=ON`,
+  `-D K3B_BUILD_OGGVORBIS_ENCODER_PLUGIN=ON`, `-D K3B_BUILD_MAD_DECODER_PLUGIN=ON`,
+  `-D K3B_BUILD_FLAC_DECODER_PLUGIN=ON`, `-D K3B_BUILD_SNDFILE_DECODER_PLUGIN=ON`,
+  `-D K3B_BUILD_LAME_ENCODER_PLUGIN=ON`, `-D K3B_BUILD_SOX_ENCODER_PLUGIN=ON`,
+  `-D K3B_BUILD_EXTERNAL_ENCODER_PLUGIN=ON` and `-D K3B_BUILD_WAVE_DECODER_PLUGIN=ON`: the
   decoder plugins for FFmpeg, Ogg Vorbis, MP3 (libmad), FLAC, libsndfile and WAV, and the encoder
   plugins for Ogg Vorbis, LAME, SoX and external programs. These decide which audio files can go
   onto an audio CD and which formats a ripped CD can be saved in. The SoX and external-program
   encoders run programs at run time and link no codec library.
 - `-D K3B_BUILD_MUSE_DECODER_PLUGIN=OFF` — No Musepack decoder; libmpcdec is not a port.
-- `-D CMAKE_REQUIRE_FIND_PACKAGE_DvdRead=ON` — and the other `CMAKE_REQUIRE_FIND_PACKAGE_*=ON`
-  switches, for Taglib, FFmpeg, Flac, Flac++, Mad, Sndfile, Lame and OggVorbis. Upstream marks
+- `-D CMAKE_REQUIRE_FIND_PACKAGE_DvdRead=ON` — With `-D CMAKE_REQUIRE_FIND_PACKAGE_Taglib=ON`,
+  `-D CMAKE_REQUIRE_FIND_PACKAGE_FFmpeg=ON`, `-D CMAKE_REQUIRE_FIND_PACKAGE_Flac=ON`,
+  `-D CMAKE_REQUIRE_FIND_PACKAGE_Flac++=ON`, `-D CMAKE_REQUIRE_FIND_PACKAGE_Mad=ON`,
+  `-D CMAKE_REQUIRE_FIND_PACKAGE_Sndfile=ON`, `-D CMAKE_REQUIRE_FIND_PACKAGE_Lame=ON` and
+  `-D CMAKE_REQUIRE_FIND_PACKAGE_OggVorbis=ON`. Upstream marks
   each of these libraries optional and drops its plugin when it is absent; required, a missing
   library stops the configuration instead of shipping a K3b that cannot burn an MP3 or a FLAC file
   as an audio CD.

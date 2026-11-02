@@ -60,4 +60,4 @@ every directory as `skipping, existing cache is valid`.
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 351.* Previous: [350. The manual index](080-whatis.md) · [Contents](../README.md) · Next: [352. The image gates](087-gates.md)
+*Part XV. The image, chapter 374.* Previous: [373. The manual index](080-whatis.md) · [Contents](../README.md) · Next: [375. The software catalogue](086-swcatalog.md)

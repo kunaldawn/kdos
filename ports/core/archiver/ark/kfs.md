@@ -21,7 +21,3 @@ ports, so the RAR, unarchiver and ARJ plugins find nothing to run.
   libzip plugin only when it is found. Made required, a missing libzip stops the configure instead
   of quietly leaving zip to the command-line plugin alone (see
   [a graphical application](../../../../docs/kdos/05-developer/writing-ports.md#a-graphical-application)).
-
-## Patches
-
-- `app-id.patch` — In `app/org.kde.ark.desktop.cmake`, the template of the installed desktop entry, changes `StartupWMClass=ark` to `StartupWMClass=org.kde.ark`, the entry's own desktop id. The panel looks an entry up by its file name and, when that misses, by `StartupWMClass`; with the patch both lookups name the one id.

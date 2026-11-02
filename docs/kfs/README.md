@@ -94,154 +94,155 @@ Chapters 64–76, the generated package chapters, one per shelf: `toolchain`, `b
 
 ### [Part IX. System](09-system/intro.md)
 
-Chapters 77–171, the generated package chapters, one per shelf: `base`, `base-libs`, `auth`, `boot`, `toolchain`, `lang`, `devtools`, `editors`, `doctools`, `devlibs`, `formats`, `database`, `archiver`, `shells`, `cli`, `files`, `sysmon`, `hardware`, `input`, `mobile`, `disk`, `filesystem`, `optical`, `crypto`, `security`, `containers`, `virt`, `net-libs`, `network`, `net-diag`, `servers`, `transfer`, `mail`, `chat`, `browsers`, `web-engines`, `x11`, `wl`, `gpu`, `graphics-libs`, `image-libs`, `graphics`, `3d`, `cad`, `fabrication`, `fonts`, `themes`, `xdg`, `accessibility`, `i18n`, `spelling`, `gtk`, `qt-extra`, `kf6`, `toolkits`, `audio-io`, `audio-codecs`, `audio-dsp`, `music-libs`, `music-players`, `video-libs`, `media-frameworks`, `video-tools`, `game-libs`, `games-action`, `games-shooter`, `games-strategy`, `games-rpg`, `games-board`, `emulators`, `libretro`, `education`, `office`, `documents`, `pim`, `printing`, `math`, `sci-libs`, `astronomy`, `bioscience`, `gis`, `eda`, `embedded`, `sdr-hw`, `sdr`, `hamradio`, `ai`, `python-libs`, `python-sci`, `python-gui`, `python-dev`, `python-hw`, `perl-cpan`, `src-art`, `src-system`.
+Chapters 77–173, the generated package chapters, one per shelf: `base`, `base-libs`, `auth`, `boot`, `toolchain`, `buildtools`, `lang`, `devtools`, `editors`, `doctools`, `devlibs`, `formats`, `database`, `archiver`, `shells`, `cli`, `files`, `sysmon`, `hardware`, `input`, `mobile`, `disk`, `filesystem`, `optical`, `crypto`, `security`, `containers`, `virt`, `net-libs`, `network`, `net-diag`, `servers`, `transfer`, `mail`, `chat`, `browsers`, `web-engines`, `x11`, `wl`, `gpu`, `graphics-libs`, `image-libs`, `graphics`, `3d`, `cad`, `fabrication`, `fonts`, `themes`, `xdg`, `accessibility`, `i18n`, `spelling`, `gtk`, `qt-extra`, `kf6`, `kde`, `toolkits`, `audio-io`, `audio-codecs`, `audio-dsp`, `music-libs`, `music-players`, `video-libs`, `media-frameworks`, `video-tools`, `game-libs`, `games-action`, `games-shooter`, `games-strategy`, `games-rpg`, `games-board`, `emulators`, `libretro`, `education`, `office`, `documents`, `pim`, `printing`, `math`, `sci-libs`, `astronomy`, `bioscience`, `gis`, `eda`, `embedded`, `sdr-hw`, `sdr`, `hamradio`, `ai`, `python-libs`, `python-sci`, `python-gui`, `python-dev`, `python-hw`, `perl-cpan`, `src-art`, `src-system`.
 
 ### [Part X. The graphics stack](10-graphics/intro.md)
 
-Chapters 172–225, the generated package chapters, one per shelf: `base`, `boot`, `lang`, `devtools`, `doctools`, `devlibs`, `formats`, `shells`, `sysmon`, `hardware`, `input`, `mobile`, `security`, `virt`, `net-libs`, `net-diag`, `servers`, `browsers`, `x11`, `wl`, `gpu`, `graphics-libs`, `image-libs`, `3d`, `cad`, `fabrication`, `xdg`, `accessibility`, `gtk`, `audio-io`, `audio-dsp`, `music-libs`, `music-players`, `video-libs`, `media-frameworks`, `video-players`, `game-libs`, `games-shooter`, `games-rpg`, `documents`, `printing`, `sci-libs`, `astronomy`, `bioscience`, `gis`, `eda`, `sdr`, `hamradio`, `ai`, `python`, `python-libs`, `python-gui`, `python-hw`, `src-system`.
+Chapters 174–227, the generated package chapters, one per shelf: `base`, `boot`, `lang`, `devtools`, `doctools`, `devlibs`, `formats`, `sysmon`, `hardware`, `input`, `mobile`, `security`, `virt`, `net-libs`, `net-diag`, `servers`, `browsers`, `x11`, `wl`, `gpu`, `graphics-libs`, `image-libs`, `3d`, `cad`, `fabrication`, `xdg`, `accessibility`, `gtk`, `audio-io`, `audio-dsp`, `music-libs`, `music-players`, `video-libs`, `media-frameworks`, `video-players`, `game-libs`, `games-shooter`, `games-rpg`, `documents`, `printing`, `sci-libs`, `astronomy`, `bioscience`, `gis`, `eda`, `sdr`, `hamradio`, `ai`, `python`, `python-libs`, `python-gui`, `python-hw`, `src-art`, `src-system`.
 
 ### [Part XI. Toolkits](11-toolkits/intro.md)
 
-Chapters 226–272, the generated package chapters, one per shelf: `devtools`, `vcs`, `shells`, `disk`, `optical`, `crypto`, `security`, `containers`, `virt`, `net-diag`, `mail`, `web-engines`, `graphics-libs`, `image-libs`, `cad`, `fabrication`, `fonts`, `themes`, `xdg`, `spelling`, `gtk`, `qt6`, `qt5`, `qt-extra`, `kf6`, `kde`, `toolkits`, `audio-io`, `audio-dsp`, `music-players`, `media-frameworks`, `video-players`, `game-libs`, `education`, `office`, `documents`, `printing`, `math`, `astronomy`, `bioscience`, `gis`, `eda`, `sdr`, `hamradio`, `ai`, `python-libs`, `python-gui`.
+Chapters 228–282, the generated package chapters, one per shelf: `auth`, `devtools`, `vcs`, `editors`, `shells`, `files`, `disk`, `optical`, `crypto`, `security`, `containers`, `virt`, `net-diag`, `transfer`, `mail`, `chat`, `web-engines`, `graphics-libs`, `image-libs`, `graphics`, `cad`, `fabrication`, `fonts`, `themes`, `xdg`, `spelling`, `gtk`, `qt6`, `qt5`, `qt-extra`, `kf6`, `kde`, `toolkits`, `audio-io`, `audio-dsp`, `music-players`, `media-frameworks`, `video-players`, `game-libs`, `education`, `office`, `documents`, `pim`, `printing`, `math`, `astronomy`, `bioscience`, `gis`, `eda`, `sdr`, `hamradio`, `ai`, `python-libs`, `python-gui`, `src-system`.
 
 ### [Part XII. Applications](12-apps/intro.md)
 
-Chapters 273–330, the generated package chapters, one per shelf: `devtools`, `vcs`, `editors`, `doctools`, `database`, `archiver`, `cli`, `files`, `sysmon`, `mobile`, `disk`, `optical`, `security`, `containers`, `virt`, `net-diag`, `transfer`, `mail`, `chat`, `browsers`, `wl`, `graphics-libs`, `image-libs`, `graphics`, `3d`, `cad`, `fabrication`, `fonts`, `themes`, `accessibility`, `spelling`, `studio`, `music-players`, `media-frameworks`, `video-players`, `video-tools`, `games-action`, `games-shooter`, `games-strategy`, `games-rpg`, `games-board`, `emulators`, `libretro`, `education`, `office`, `documents`, `pim`, `printing`, `math`, `astronomy`, `gis`, `eda`, `embedded`, `sdr-hw`, `sdr`, `hamradio`, `ai`, `src-system`.
+Chapters 283–343, the generated package chapters, one per shelf: `devtools`, `vcs`, `editors`, `doctools`, `database`, `archiver`, `shells`, `cli`, `files`, `sysmon`, `mobile`, `disk`, `optical`, `security`, `containers`, `virt`, `net-diag`, `transfer`, `mail`, `chat`, `browsers`, `graphics-libs`, `image-libs`, `graphics`, `3d`, `cad`, `fabrication`, `fonts`, `themes`, `xdg`, `accessibility`, `i18n`, `spelling`, `kde`, `audio-io`, `studio`, `music-players`, `media-frameworks`, `video-players`, `video-tools`, `games-action`, `games-shooter`, `games-strategy`, `games-rpg`, `games-board`, `emulators`, `libretro`, `education`, `office`, `documents`, `pim`, `printing`, `math`, `astronomy`, `gis`, `eda`, `embedded`, `sdr-hw`, `sdr`, `hamradio`, `ai`.
 
 ### [Part XIII. The desktop](13-desktop/intro.md)
 
-Chapters 331–335, the generated package chapters, one per shelf: `input`, `wl`, `xdg`, `src-daemons`, `src-desktop`.
+Chapters 344–358, the generated package chapters, one per shelf: `auth`, `sysmon`, `hardware`, `input`, `disk`, `filesystem`, `security`, `transfer`, `graphics`, `xdg`, `kde`, `printing`, `src-art`, `src-daemons`, `src-desktop`.
 
 ### [Part XIV. The kernel](14-kernel/intro.md)
 
-336. [Configuring the kernel](14-kernel/configuring.md)
-337. [Building the kernel](14-kernel/building.md)
-338. [Installing the kernel](14-kernel/installing.md)
+359. [Configuring the kernel](14-kernel/configuring.md)
+360. [Building the kernel](14-kernel/building.md)
+361. [Installing the kernel](14-kernel/installing.md)
 
-Chapters 339–340, the generated package chapters, one per shelf: `boot`, `devtools`.
+Chapters 362–363, the generated package chapters, one per shelf: `boot`, `devtools`.
 
 ### [Part XV. The image](15-image/intro.md)
 
-341. [The binary host](15-image/010-binhost.md)
-342. [The package store](15-image/015-pkgstore.md)
-343. [Cleaning up the root](15-image/020-cleanup.md)
-344. [The application launchers](15-image/030-launchers.md)
-345. [Sweeping orphaned packages](15-image/040-orphans.md)
-346. [Stamping the build identity](15-image/045-identity.md)
-347. [Seeding the theme](15-image/050-theme.md)
-348. [The udev hardware database](15-image/060-udev-hwdb.md)
-349. [Creating the homes](15-image/070-user.md)
-350. [The manual index](15-image/080-whatis.md)
-351. [The font cache](15-image/085-fontcache.md)
-352. [The image gates](15-image/087-gates.md)
-353. [The initramfs](15-image/090-initramfs.md)
-354. [The initramfs init](15-image/091-initramfs-init.md)
-355. [The pack store and the base pack](15-image/100-packs.md)
-356. [The recipe tree and the source offer](15-image/105-ports.md)
-357. [The ISO](15-image/110-iso.md)
+364. [The binary host](15-image/010-binhost.md)
+365. [The package store](15-image/015-pkgstore.md)
+366. [Cleaning up the root](15-image/020-cleanup.md)
+367. [The application launchers](15-image/030-launchers.md)
+368. [Sweeping orphaned packages](15-image/040-orphans.md)
+369. [Stamping the build identity](15-image/045-identity.md)
+370. [Seeding the theme](15-image/050-theme.md)
+371. [The udev hardware database](15-image/060-udev-hwdb.md)
+372. [Creating the homes](15-image/070-user.md)
+373. [The manual index](15-image/080-whatis.md)
+374. [The font cache](15-image/085-fontcache.md)
+375. [The software catalogue](15-image/086-swcatalog.md)
+376. [The image gates](15-image/087-gates.md)
+377. [The initramfs](15-image/090-initramfs.md)
+378. [The initramfs init](15-image/091-initramfs-init.md)
+379. [The pack store and the base pack](15-image/100-packs.md)
+380. [The recipe tree and the source offer](15-image/105-ports.md)
+381. [The ISO](15-image/110-iso.md)
 
 ### [Part XVI. System administration](16-wiki/intro.md)
 
 #### System
 
-358. [Init and runlevels](16-wiki/init-and-runlevels.md)
-359. [Services](16-wiki/services.md)
-360. [Writing a service](16-wiki/writing-a-service.md)
-361. [Timers](16-wiki/timers.md)
-362. [Logs](16-wiki/logs.md)
-363. [Modules and sysctl](16-wiki/modules-and-sysctl.md)
-364. [zram and swap](16-wiki/zram-and-swap.md)
-365. [Out of memory](16-wiki/out-of-memory.md)
-366. [Time and NTP](16-wiki/time-and-ntp.md)
-367. [Locale and console](16-wiki/locale-and-console.md)
-368. [Users and groups](16-wiki/users-and-groups.md)
+382. [Init and runlevels](16-wiki/init-and-runlevels.md)
+383. [Services](16-wiki/services.md)
+384. [Writing a service](16-wiki/writing-a-service.md)
+385. [Timers](16-wiki/timers.md)
+386. [Logs](16-wiki/logs.md)
+387. [Modules and sysctl](16-wiki/modules-and-sysctl.md)
+388. [zram and swap](16-wiki/zram-and-swap.md)
+389. [Out of memory](16-wiki/out-of-memory.md)
+390. [Time and NTP](16-wiki/time-and-ntp.md)
+391. [Locale and console](16-wiki/locale-and-console.md)
+392. [Users and groups](16-wiki/users-and-groups.md)
 
 #### Boot
 
-369. [Boot menu and kernel parameters](16-wiki/boot-menu-and-kernel-parameters.md)
-370. [The initramfs and the rescue shell](16-wiki/initramfs-and-rescue.md)
-371. [Microcode and firmware](16-wiki/microcode-and-firmware.md)
-372. [A/B slots and rollback](16-wiki/ab-slots-and-rollback.md)
-373. [Live persistence](16-wiki/live-persistence.md)
+393. [Boot menu and kernel parameters](16-wiki/boot-menu-and-kernel-parameters.md)
+394. [The initramfs and the rescue shell](16-wiki/initramfs-and-rescue.md)
+395. [Microcode and firmware](16-wiki/microcode-and-firmware.md)
+396. [A/B slots and rollback](16-wiki/ab-slots-and-rollback.md)
+397. [Live persistence](16-wiki/live-persistence.md)
 
 #### Storage
 
-374. [Filesystems and fstab](16-wiki/filesystems-and-fstab.md)
-375. [Storage and removable media](16-wiki/storage-and-removable-media.md)
-376. [Encrypted root](16-wiki/encrypted-root.md)
-377. [LVM and RAID](16-wiki/lvm-and-raid.md)
-378. [Disk health](16-wiki/disk-health.md)
-379. [Backups](16-wiki/backups.md)
+398. [Filesystems and fstab](16-wiki/filesystems-and-fstab.md)
+399. [Storage and removable media](16-wiki/storage-and-removable-media.md)
+400. [Encrypted root](16-wiki/encrypted-root.md)
+401. [LVM and RAID](16-wiki/lvm-and-raid.md)
+402. [Disk health](16-wiki/disk-health.md)
+403. [Backups](16-wiki/backups.md)
 
 #### Security
 
-380. [sudo, PAM and polkit](16-wiki/sudo-pam-polkit.md)
-381. [Login and autologin](16-wiki/login-and-autologin.md)
-382. [Screen lock](16-wiki/screen-lock.md)
-383. [Fingerprints, FIDO keys and smart cards](16-wiki/fingerprint-fido-smartcards.md)
-384. [Firewall](16-wiki/firewall.md)
-385. [SSH server](16-wiki/ssh-server.md)
-386. [Signing keys and trust](16-wiki/signing-keys-and-trust.md)
+404. [sudo, PAM and polkit](16-wiki/sudo-pam-polkit.md)
+405. [Login and autologin](16-wiki/login-and-autologin.md)
+406. [Screen lock](16-wiki/screen-lock.md)
+407. [Fingerprints, FIDO keys and smart cards](16-wiki/fingerprint-fido-smartcards.md)
+408. [Firewall](16-wiki/firewall.md)
+409. [SSH server](16-wiki/ssh-server.md)
+410. [Signing keys and trust](16-wiki/signing-keys-and-trust.md)
 
 #### Networking
 
-387. [NetworkManager](16-wiki/networkmanager.md)
-388. [DNS](16-wiki/dns.md)
-389. [VPN](16-wiki/vpn.md)
-390. [Mobile broadband](16-wiki/mobile-broadband.md)
-391. [Access point](16-wiki/access-point.md)
-392. [Wireless regulatory domain](16-wiki/wireless-regulatory-domain.md)
-393. [File sharing](16-wiki/file-sharing.md)
-394. [Avahi and mDNS](16-wiki/avahi-and-mdns.md)
+411. [NetworkManager](16-wiki/networkmanager.md)
+412. [DNS](16-wiki/dns.md)
+413. [VPN](16-wiki/vpn.md)
+414. [Mobile broadband](16-wiki/mobile-broadband.md)
+415. [Access point](16-wiki/access-point.md)
+416. [Wireless regulatory domain](16-wiki/wireless-regulatory-domain.md)
+417. [File sharing](16-wiki/file-sharing.md)
+418. [Avahi and mDNS](16-wiki/avahi-and-mdns.md)
 
 #### Hardware
 
-395. [udev and device groups](16-wiki/udev-and-device-groups.md)
-396. [Bluetooth](16-wiki/bluetooth.md)
-397. [Printing and scanning](16-wiki/printing-and-scanning.md)
-398. [Audio](16-wiki/audio.md)
-399. [Displays and scaling](16-wiki/displays-and-scaling.md)
-400. [Graphics drivers](16-wiki/graphics-drivers.md)
-401. [Power management](16-wiki/power-management.md)
-402. [Laptops](16-wiki/laptops.md)
-403. [Firmware updates](16-wiki/firmware-updates.md)
+419. [udev and device groups](16-wiki/udev-and-device-groups.md)
+420. [Bluetooth](16-wiki/bluetooth.md)
+421. [Printing and scanning](16-wiki/printing-and-scanning.md)
+422. [Audio](16-wiki/audio.md)
+423. [Displays and scaling](16-wiki/displays-and-scaling.md)
+424. [Graphics drivers](16-wiki/graphics-drivers.md)
+425. [Power management](16-wiki/power-management.md)
+426. [Laptops](16-wiki/laptops.md)
+427. [Firmware updates](16-wiki/firmware-updates.md)
 
 #### Packages and applications
 
-404. [kpkg](16-wiki/kpkg.md)
-405. [Updating](16-wiki/updating.md)
-406. [Local rebuilds and kdos march](16-wiki/local-rebuilds-and-march.md)
-407. [Packs](16-wiki/packs.md)
-408. [Boxes](16-wiki/boxes.md)
-409. [Containers](16-wiki/containers.md)
-410. [Virtual machines](16-wiki/virtual-machines.md)
+428. [kpkg](16-wiki/kpkg.md)
+429. [Updating](16-wiki/updating.md)
+430. [Local rebuilds and kdos march](16-wiki/local-rebuilds-and-march.md)
+431. [Packs](16-wiki/packs.md)
+432. [Boxes](16-wiki/boxes.md)
+433. [Containers](16-wiki/containers.md)
+434. [Virtual machines](16-wiki/virtual-machines.md)
 
 #### Desktop
 
-411. [Session and environment](16-wiki/session-and-environment.md)
-412. [Compositor keybindings](16-wiki/compositor-keybindings.md)
-413. [The panel and the launcher](16-wiki/panel-and-launcher.md)
-414. [Xwayland and X11 applications](16-wiki/xwayland-and-x11-apps.md)
-415. [Input methods](16-wiki/input-methods.md)
-416. [Fonts and theming](16-wiki/fonts-and-theming.md)
-417. [Accessibility](16-wiki/accessibility.md)
-418. [Portals and screen sharing](16-wiki/portals-and-screen-sharing.md)
+435. [Session and environment](16-wiki/session-and-environment.md)
+436. [Shortcuts and window rules](16-wiki/shortcuts-and-window-rules.md)
+437. [The panel and the launcher](16-wiki/panel-and-launcher.md)
+438. [Xwayland and X11 applications](16-wiki/xwayland-and-x11-apps.md)
+439. [Input methods](16-wiki/input-methods.md)
+440. [Fonts and theming](16-wiki/fonts-and-theming.md)
+441. [Accessibility](16-wiki/accessibility.md)
+442. [Portals and screen sharing](16-wiki/portals-and-screen-sharing.md)
 
 #### Troubleshooting
 
-419. [Diagnostics](16-wiki/diagnostics.md)
-420. [Desktop troubleshooting](16-wiki/desktop-troubleshooting.md)
-421. [Recovering an unbootable system](16-wiki/recovering-an-unbootable-system.md)
+443. [Diagnostics](16-wiki/diagnostics.md)
+444. [Desktop troubleshooting](16-wiki/desktop-troubleshooting.md)
+445. [Recovering an unbootable system](16-wiki/recovering-an-unbootable-system.md)
 
 ### [Part XVII. Appendices](17-appendices/intro.md)
 
-422. [Canonical build shapes](17-appendices/build-shapes.md)
-423. [Flag glossary](17-appendices/flag-glossary.md)
-424. [Build times](17-appendices/sbu.md)
-425. [Licences](17-appendices/licences.md)
-426. [Glossary](17-appendices/glossary.md)
+446. [Canonical build shapes](17-appendices/build-shapes.md)
+447. [Flag glossary](17-appendices/flag-glossary.md)
+448. [Build times](17-appendices/sbu.md)
+449. [Licences](17-appendices/licences.md)
+450. [Glossary](17-appendices/glossary.md)
 
-Chapter 427, the generated package chapter: Ports no phase builds.
+Chapter 451, the generated package chapter: Ports no phase builds.
 
 <!-- /book-contents -->
 

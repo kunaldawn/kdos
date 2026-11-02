@@ -21,8 +21,8 @@ Three programs write a `limine.conf`, and nothing else does:
 | Writer | File | When |
 |---|---|---|
 | `script/phases/70_image/110_iso.sh` | `boot/limine/limine.conf` on the ISO9660 filesystem of the medium | Image build |
-| `kinstall`, from [kdos-installer](#port-kdos-installer) | `limine.conf` at the root of the installed machine's EFI system partition (ESP), [`/boot/efi/limine.conf`]{.idx} on the running system | Install |
-| [`kdos-bootctl`]{.idx}, from [kdos-tools](#port-kdos-tools) | The `/KDOS` entries, `default_entry` and the [theme]{.idx} keys of that same file; during a UEFI update trial, also a copy at `EFI/kdos/trial/limine.conf` | Every change of the [A/B]{.idx term="A/B slots"} boot state (`set-slot`, `try`, `deploy`, `select` in the initramfs, `mark-good` at the end of `rcS`), and every `kdos theme` |
+| `kinstall`, from [kdos-installer](#port-kdos-installer) and its backend `src/system/kinstall-core` | `limine.conf` at the root of the installed machine's EFI system partition (ESP), [`/boot/efi/limine.conf`]{.idx} on the running system | Install |
+| [`kdos-bootctl`]{.idx}, from [kdos-tools](#port-kdos-tools) | The `/KDOS` entries, `default_entry` and the [theme]{.idx} keys of that same file; during a UEFI update trial, also a copy at `EFI/kdos/trial/limine.conf` | Every change of the [A/B]{.idx term="A/B slots"} boot state (`set-slot`, `try`, `deploy`, `select` in the initramfs, `mark-good` once the boot is confirmed), and every `kdos theme` |
 
 The memory test entry is added only when [memtest86plus](#port-memtest86plus) is installed, and
 the firmware boot entry labelled `KDOS` is written by the installer with
@@ -51,9 +51,14 @@ for one boot is made in Limine's editor (see [Usage](#usage)); a lasting change 
 
 `kinstall` writes the installed menu at the root of the ESP. In each `cmdline:` line, the two `%s`
 between `kdos_slot=a` and `root=` become `bootstate=UUID=<esp>` and, on an encrypted install,
-`cryptdevice=UUID=<luks>:kdosroot`:
+`cryptdevice=UUID=<luks>:kdosroot`, from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=2319-2351 pin=ab2726a5310b -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=2616-2648 pin=a862490fe7d7 -->
+
+`KI_QUIET` is `quiet loglevel=3 vt.global_cursor_default=0`: no kernel message below an error and
+no text cursor is drawn between the splash and the login screen.
+The next-to-last `%s` is a `/KDOS (slot b)` entry, written only on the A/B layout, which boots the
+second root once with nothing confirmed; the last is the memory test entry.
 
 The file is `/boot/efi/limine.conf`. The ESP is mounted with `umask=0077`, as the installer's
 `fstab` line says, so only root can read or change anything under `/boot/efi`.
@@ -71,7 +76,7 @@ are unaffected.
 the boot state, and writes the file only when the text differs. It builds every `/KDOS` command
 line from the **first** `/KDOS` entry's, less the words it sets per entry:
 
-<!-- kfs:include src/system/kdos-tools/bootctl.c lines=650-703 pin=5b3647ab713f -->
+<!-- kfs:include src/system/kdos-tools/bootctl.c lines=877-930 pin=2202937c55ec -->
 
 Every other word carries over, so a word you add to the first entry's `cmdline` reaches every
 `/KDOS` entry the next time the menu is regenerated, and a word you add only to another entry is
@@ -97,7 +102,7 @@ those drivers' tools:
 
 <!-- kfs:include fs/etc/modprobe.d/kdos-sdr.conf -->
 
-The installer and `kdos-power timezone` write an `options` file, `/etc/modprobe.d/kdos-regdom.conf`,
+The installer and kdos-settingsd, on a time-zone change, write an `options` file, `/etc/modprobe.d/kdos-regdom.conf`,
 described on [Microcode and firmware](microcode-and-firmware.md#the-regulatory-database-and-the-country).
 
 ## Usage
@@ -143,14 +148,19 @@ theme sets `interface_help_hidden: yes`.
 2. Add the word to the `cmdline:` line of the **first** `/KDOS` entry. Leave `kdos_slot=`,
    `bootstate=`, `root=` and `cryptdevice=` as they are.
 3. Save the file and run `sync`. The ESP is FAT and has no journal.
-4. Reboot. When the boot reaches the end of `rcS`, `kdos-bootctl mark-good` regenerates every
-   `/KDOS` entry from the first, and the others carry the word as well. The regeneration puts the
-   added word in front of the words it sets per entry, so `… console=tty0 quiet loglevel=3 foo=1` comes back as
-   `… console=tty0 foo=1 quiet loglevel=3`.
+4. Reboot. Once the boot is confirmed, `kdos-bootctl mark-good` regenerates every `/KDOS` entry
+   from the first, and the others carry the word as well. A boot is confirmed when `rcS` has
+   finished and the desktop session, or the login screen on a machine nobody logs in to, has
+   answered for a minute; `kdos-sysupdated` runs the command then (see
+   [A/B slots and rollback](ab-slots-and-rollback.md)). The regeneration puts the added word in
+   front of the words it sets per entry, so `… console=tty0 quiet loglevel=3
+   vt.global_cursor_default=0 foo=1` comes back as `… console=tty0 foo=1 quiet loglevel=3
+   vt.global_cursor_default=0`.
 5. Check it: `cat /proc/cmdline`.
 
-Do not add `quiet`, `single` or a `loglevel=` there: `kdos-bootctl` removes those words from the
-template and sets them per entry.
+Do not add `quiet`, `single`, a `loglevel=` or a `vt.global_cursor_default=` there:
+`kdos-bootctl` removes those words from the template and sets them per entry. `kdos.splash=` is
+`kdos-bootctl splash`'s to write (see [Theming](../../kdos/02-user-guide/theming.md)).
 
 ### Changing the countdown
 
@@ -264,4 +274,4 @@ medium and on a machine whose ESP is not mounted. Check `findmnt /boot/efi`.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 369.* Previous: [368. Users and groups](users-and-groups.md) · [Contents](../README.md) · Next: [370. The initramfs and the rescue shell](initramfs-and-rescue.md)
+*Part XVI. System administration, chapter 393.* Previous: [392. Users and groups](users-and-groups.md) · [Contents](../README.md) · Next: [394. The initramfs and the rescue shell](initramfs-and-rescue.md)

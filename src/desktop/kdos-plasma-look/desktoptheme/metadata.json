@@ -1,0 +1,19 @@
+{
+    "KPackageStructure": "Plasma/Theme",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "KDOS"
+            }
+        ],
+        "Category": "",
+        "Description": "Square, opaque plates ruled in the accent; follows every colour scheme",
+        "EnabledByDefault": true,
+        "Id": "kdos",
+        "License": "MIT",
+        "Name": "KDOS",
+        "Version": "1.0",
+        "Website": "https://github.com/kunaldawn/kdos"
+    },
+    "X-Plasma-API": "5.0"
+}

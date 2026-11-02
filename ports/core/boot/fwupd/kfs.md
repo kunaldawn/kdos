@@ -12,13 +12,14 @@ person uses it, and where the capsule goes on the ESP, is in
   build root without [libxmlb](#port-libxmlb) or [fwupd-efi](#port-fwupd-efi) would make meson
   clone and build a private copy. With the switch a missing one is a configure error, and fwupd
   links the libxmlb the rest of the image links.
-- `-Dsystemd=disabled`, `-Dlogind=disabled` — Build without systemd's unit files and
-  libsystemd, and without the logind support, which meson finds through `systemd` or
-  `libelogind`; the tree has neither, so `enabled` would stop the configure
-  ([No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)). Without logind the
-  daemon takes no inhibitor lock while it flashes, so nothing delays a shutdown requested in
-  the middle of an update, and `fwupdmgr` cannot reboot or power off the machine itself when an
-  update needs it: it answers "No way to perform the operation", and the restart is done by hand.
+- `-Dsystemd=disabled` — Build without systemd's unit files and libsystemd
+  ([No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd-init-units-or-service-manager)).
+- `-Dlogind=enabled` — Build the `logind` plugin, which meson finds through `systemd` or, here,
+  [elogind](#port-elogind)'s `libelogind`, and which speaks to `org.freedesktop.login1` over
+  D-Bus. While a device is being flashed the daemon holds a shutdown and sleep inhibitor, so a
+  power-off or suspend requested in the middle of an update waits for it, and `fwupdmgr` can
+  reboot or power off the machine itself when an update needs it. Without it, a shutdown cuts a
+  flash short and `fwupdmgr` answers "No way to perform the operation".
 - `-Dintrospection=disabled` — Generate no GObject Introspection data for `libfwupd`, so no
   language binding can load it through GI. Turning it on needs
   [gobject-introspection](#port-gobject-introspection) and
@@ -71,6 +72,13 @@ person uses it, and where the capsule goes on the ESP, is in
   then prints "This package has not been validated, it may not work properly." unless
   `FWUPD_SUPPORTED` is set in the environment, and reports sent to the LVFS carry
   `FwupdSupported=false`.
+- `-Dlvfs=disabled` — Install the LVFS remote, `/etc/fwupd/remotes.d/lvfs.conf`, switched off.
+  Discover's firmware backend refreshes every enabled download remote each time Discover starts
+  and after every transaction, so an enabled LVFS remote is a download at every start of the
+  software centre. Firmware is listed instead from the `kdos-snapshot` local remote, the LVFS
+  metadata a release carries ([fwupd-snapshot](#port-fwupd-snapshot)); `fwupdmgr enable-remote
+  lvfs` turns live metadata on, after which Discover refreshes it at each start and `fwupdmgr
+  refresh` fetches it by hand.
 - `-Dvendor_ids_dir=/usr/share/hwdata` — Where fwupd reads `usb.ids`, `pci.ids` and `pnp.ids` to
   name vendors. [hwdata](#port-hwdata) installs them there. Left empty, meson probes a list of
   fixed paths at configure time for `usb.ids` and stops with "could not auto-detect
@@ -87,19 +95,20 @@ person uses it, and where the capsule goes on the ESP, is in
   ESP, and the patch refuses a path that is not a FAT mount point, so there fwupd reports no ESP
   rather than a wrong one. The file keeps mode `0640`, the mode upstream installs it with,
   because `fwupd.conf` may hold a remote's credentials.
-- **Updating takes `sudo`.** The daemon is started as root by `dbus-daemon-launch-helper` on the
-  first client call and exits when idle; there is no init script. polkit sees no subject in an
-  active session on KDOS, so every check falls to an action's `allow_any`, which is `auth_admin`
-  for each of fwupd's actions, and the rule fwupd installs for `wheel` requires an active
-  session as well. `fwupdmgr update` is therefore run with `sudo`; the reasoning is in
-  `/etc/polkit-1/rules.d/50-kdos.rules`.
-- **The metadata refresh is a KDOS timer.** Upstream's `fwupd-refresh.timer` is a systemd unit
-  and is not installed; without a refresh, `fwupdmgr get-updates` compares against whatever was
-  last downloaded by hand, which on a new machine is nothing. `build.sh` ships
-  `/etc/kdos/timers.d/30-fwupd-refresh.timer`, which runs `fwupdmgr refresh` daily at 13:43, with
-  a 20-hour slack for a machine that was asleep through the slot. The slot is at midday because
-  a slot missed while the machine is off is not run later, and a desktop switched off every
-  night would never reach an overnight one. The timer format is in
-  [Periodic jobs](../../../../docs/kdos/02-user-guide/administration.md#periodic-jobs).
+- **Who may update.** The daemon is started as root by `dbus-daemon-launch-helper` on the first
+  client call and exits when idle; there is no init script. polkit answers each request from the
+  caller's elogind session: fwupd's own rule, installed under `/usr/share/polkit-1/rules.d`, lets
+  `wheel` do everything, and `/etc/polkit-1/rules.d/50-kdos.rules`, read first, holds
+  `org.freedesktop.fwupd.update-internal`, the system firmware flash, at an administrator's
+  password even for the person at the machine. Plasma's polkit agent asks for it in Discover and
+  in `fwupdmgr` alike.
+- **No timer refreshes the metadata.** Upstream's `fwupd-refresh.timer` is a systemd unit and is
+  not installed, and KDOS ships no timer in its place, because nothing the system ships reaches
+  the network on its own. `fwupdmgr get-updates` and Discover answer from the `kdos-snapshot`
+  local remote, the signed LVFS metadata of the release ([fwupd-snapshot](#port-fwupd-snapshot)),
+  installed under `/usr/share/fwupd/remotes.d/`, so firmware is listed offline and is as fresh as
+  the release. A person who wants firmware published since the release turns on the LVFS remote
+  (`fwupdmgr enable-remote lvfs`) and runs `fwupdmgr refresh`. See
+  [Offline by construction](../../../../docs/kdos/01-philosophy/principles.md#offline-by-construction).
 - **No GRUB snippet.** The capsule plugin installs `/etc/grub.d/35_fwupd`, a GRUB menu entry for
   the loader; `build.sh` removes it, because KDOS boots with Limine and carries no GRUB.

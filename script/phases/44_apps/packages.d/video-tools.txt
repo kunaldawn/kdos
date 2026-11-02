@@ -23,9 +23,6 @@
 
 blind
 
-# Record the screen from a prompt, through the wlr-screencopy the fork serves.
-wf-recorder
-
 obs-studio
 kdenlive
 shotcut
@@ -33,3 +30,5 @@ handbrake
 avidemux
 mkvtoolnix
 kamoso
+
+plasma-camera

@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = plasma-nm
+version     = 6.8.2
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = e1b41433bf2d4e6d60f63f6c6e3d466c242b5be46f87fecc178de0fe845c12a0  plasma-nm-6.8.2.tar.xz
+description = Plasma network applet, connection editor and Wi-Fi, mobile broadband and VPN settings over NetworkManager
+homepage    = https://invent.kde.org/plasma/plasma-nm
+license     = (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND GPL-2.0-or-later AND LGPL-2.0-or-later
+group       = plasma
+depends     = cmake ninja extra-cmake-modules pkgconf qt6-qtbase qt6-qtdeclarative qtkeychain kcolorscheme kcompletion kconfig kcoreaddons kdbusaddons kdeclarative kio ki18n kjobwidgets knotifications kservice solid kwidgetsaddons kwindowsystem kcmutils networkmanager-qt modemmanager-qt libplasma kirigami kirigami-addons prison kquickcharts qcoro openssl networkmanager mobile-broadband-provider-info

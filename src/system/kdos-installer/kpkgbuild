@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = kdos-installer
-version     = 4.0
+version     = 5.0
 release     = 1
-description = KDOS installer — the disk wizard, C with no libraries
+description = KDOS installer — the terminal wizard and the headless backend, C with no libraries
 homepage    = https://github.com/kunaldawn/kdos
 license     = MIT
 depends     = sysvinit

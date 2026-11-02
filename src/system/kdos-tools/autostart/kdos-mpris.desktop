@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=mpd for the Media Controls
+Comment=Answers for mpd over MPRIS, so Plasma's media keys and applet reach it
+Exec=kdos-mpctl mpris
+TryExec=mpd
+OnlyShowIn=KDE;
+NoDisplay=true
+X-KDE-autostart-phase=2

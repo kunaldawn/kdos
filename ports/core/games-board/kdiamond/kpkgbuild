@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdiamond
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = c6a73eb6d101623c9cd7d3ac0ea9155c6e256b0c6db7de4a2c809310add27109  kdiamond-26.08.2.tar.xz
+description = Match three: swap neighbouring diamonds into lines of three or more
+homepage    = https://apps.kde.org/kdiamond/
+license     = GPL-2.0-or-later AND GFDL-1.2-or-later AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kconfig kconfigwidgets kcoreaddons kcrash kdbusaddons kdoctools ki18n kiconthemes knotifications knotifyconfig kwidgetsaddons kxmlgui libkdegames gzip

@@ -10,6 +10,9 @@ Behaim globe of 1492, and `marble-maps`, a Kirigami map-and-navigation front end
 - `-DKDE_INSTALL_USE_QT_SYS_PATHS=ON`, `-DKDE_INSTALL_LIBDIR=lib` — The install layout every KDE
   application here shares (see
   [A graphical application](../../../../docs/kdos/05-developer/writing-ports.md#a-graphical-application)).
+- `-DCMAKE_INSTALL_SYSCONFDIR=/etc` — Names `/etc` as the configuration directory, so anything
+  the install puts there lands in `/etc` and not under `/usr`. This release installs nothing
+  there.
 - `-DKF_SKIP_PO_PROCESSING=ON` — Makes `ki18n_install` return at once, so the `.mo` catalogs in
   `po/` are not built. It does not reach Marble's Qt catalogs in `poqm/` or the translated
   handbooks `kdoctools_install` builds from `po/`; both are built, and kpkg's language rule keeps
@@ -35,15 +38,22 @@ Behaim globe of 1492, and `marble-maps`, a Kirigami map-and-navigation front end
   is not found: without gpsd or shapelib the feature is left out, and without zlib the copy in
   `src/3rdparty/zlib` is built instead. Named here: positions from [gpsd](#port-gpsd), shapefiles
   through [shapelib](#port-shapelib), and the system [zlib](#port-zlib).
-  The loop after configure checks that gpsd's and shapelib's libraries and `protoc` were found,
-  so a missing one fails the build instead of shipping a Marble without it.
+  The loop after configure checks that gpsd's and shapelib's libraries, `protoc` and KRunner were
+  found, so a missing one fails the build instead of shipping a Marble without it.
 - `-DWITH_Phonon4Qt6=OFF` — No Phonon, which gives the routing plugin spoken turn instructions.
-- `-DWITH_Plasma=OFF` — No Plasma applets and wallpaper. They build against libplasma, which is
-  not a port, and the desktop has no Plasma shell to show them.
+- `-DWITH_Plasma=ON` — Searches for [libplasma](#port-libplasma), upstream's default, named;
+  `-DCMAKE_REQUIRE_FIND_PACKAGE_Plasma=ON` makes it a requirement. With it Marble installs the
+  World Clock widget and the World Map wallpaper, both QML packages over Marble's own QML module,
+  which `src/plasma` otherwise skips without an error.
 - `-DWITH_libwlocate=OFF` — No position from nearby WLAN networks through libwlocate, which is not
   a port.
 
 ## Notes
+
+The `KF6Runner_DIR` check stands for the KRunner plugin, which looks up places and coordinates
+typed into KRunner and opens them in Marble. `src/plasmarunner` builds it only when
+[krunner](#port-krunner) is found, through the same quiet macro as the options above, so no
+`CMAKE_REQUIRE_FIND_PACKAGE_` switch reaches it.
 
 The `protoc` check stands for the OpenStreetMap PBF reader, which Marble builds only when
 [protobuf](#port-protobuf) is found, with [abseil-cpp](#port-abseil-cpp) beside it in `depends`.

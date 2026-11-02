@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kfind
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 9640e7cd647da25c4b5b1549016f424a3d5b722751b23366d710849cd14d05c5  kfind-26.08.2.tar.xz
+description = File finder — search by name, type, date, size and contents, with a results view
+homepage    = https://apps.kde.org/kfind/
+license     = GPL-2.0-or-later
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qt5compat karchive kcoreaddons kfilemetadata ki18n kio kwidgetsaddons kxmlgui kcrash kdoctools

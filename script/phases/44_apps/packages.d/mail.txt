@@ -37,3 +37,10 @@ sfeed
 
 # Ships a policies file that turns off its telemetry and update checks.
 thunderbird
+
+akregator
+grantlee-editor
+kmail
+mbox-importer
+pim-sieve-editor
+alligator

@@ -14,7 +14,7 @@ chroot and the orchestrator that the entries below refer to, and
 Start with [Reading a failure](#reading-a-failure), then find your message in the
 [symptom index](#symptom-index) and follow its link. The entries are grouped by where the failure
 arises: fetching and publishing sources, the orchestrator and the build tree, toolchains and
-language runtimes, the base userland, and upstream build systems. If nothing matches, work
+language runtimes, the base userland, upstream build systems, and KDE's modules. If nothing matches, work
 through [When the failure is not here](#when-the-failure-is-not-here) at the end.
 
 ## Reading a failure
@@ -180,6 +180,17 @@ lists everything preflight checks.
 | `binary file matches` where `grep` should print a line, or a version a configure script extracted with `grep` comes back empty; or, in `00_cross` or `10_bootstrap`, `invalid or incomplete multibyte or wide character` from a tool reading a file | [A file that is not UTF-8](#a-file-that-is-not-utf-8) |
 | A submodule directory present but empty | [An empty submodule in a release archive](#an-empty-submodule-in-a-release-archive) |
 | A downloaded archive that does not exist, or unpacks oddly | [Source URLs and archive layouts](#source-urls-and-archive-layouts) |
+| Preflight: `release set` fails, `<family> is more than one release` | [A KDE family at two releases](#a-kde-family-at-two-releases) |
+| `Could not find a configuration file for package "KF6<Name>" that is compatible with requested version` | [A Frameworks version the configure refuses](#a-frameworks-version-the-configure-refuses) |
+| `module "org.kde.<name>" is not installed` at run time, or a QML module under `RUNTIME packages have not been found` | [A QML module missing at run time](#a-qml-module-missing-at-run-time) |
+| `fatal error: qwayland-<name>.h: No such file or directory`, or another generated protocol header, in a parallel build | [A generated Wayland header missing in a parallel build](#a-generated-wayland-header-missing-in-a-parallel-build) |
+| `ERROR: lint: usr/lib/systemd/…: outside the layout: KDOS runs no systemd units` | [Systemd user units refused by the lint](#systemd-user-units-refused-by-the-lint) |
+| A Region & Language action that fails, or a configure asking for polkit-qt6 for `localegenhelper` | [The locale generator on musl](#the-locale-generator-on-musl) |
+| `<port>: depends names <N> ports; the limit is 128` | [A recipe that names too many dependencies](#a-recipe-that-names-too-many-dependencies) |
+| Preflight: `gear metas` fails, `is a Gear application no kde-gear-* meta names` or `is named by 2 metas` | [A Gear application no meta names](#a-gear-application-no-meta-names) |
+| Preflight: `KDOS ELF links` fails, `links <library>, which no KDOS code may` or `only src/desktop code … may` | [KDOS code that links a toolkit its area does not allow](#kdos-code-that-links-a-toolkit-its-area-does-not-allow) |
+| `kdos-discover is written against discover <version>` | [A Discover plugin built against another Discover](#a-discover-plugin-built-against-another-discover) |
+| `attempting to make an HTTP request, but --offline was specified` from cargo under Corrosion, in a KDE module with Rust | [A vendor bundle in the wrong place](#a-vendor-bundle-in-the-wrong-place) |
 
 ---
 
@@ -535,7 +546,10 @@ chain of dependencies that pulled it in, and the later phase that names it, if o
   `packages.txt`.
 - **`but named by <later phase>`.** A dependency reaches forward, into a later phase. Either move the port to the
   earlier phase's list, which also moves everything that needs it into order, or remove the new
-  dependency. The port cannot stay in the later phase: the earlier one would build it anyway.
+  dependency. The port cannot stay in the later phase: the earlier one would build it anyway. The one
+  exception is a `50_desktop` port named by an application phase's port, usually a Plasma module
+  a Gear application talks to at run time: the session is never moved into an application phase,
+  so remove the dependency, and let the application find the session's service when it runs.
 - **`so the phase table puts it in <phase>`.** The four phases from `41_system` to `44_apps` are
   split by what a port's dependency closure reaches: neither the graphics stack nor a toolkit, the
   graphics stack, a toolkit, or, for a port nothing depends on, an application. The port is listed
@@ -1907,6 +1921,167 @@ These rarely fail a build outright, but each can cost a fetch or an unpack round
   source, so an archive with no wrapping directory, or one whose members are written `./dir/…`,
   lands in the wrong place. Verify with `tar -tf` when the build reports the source is not where it
   should be; preflight checks both shapes.
+
+## KDE Frameworks, Plasma and Gear
+
+KDE's modules are built with CMake and KDE's Extra CMake Modules (ECM), against Qt 6, and they
+arrive in three release sets: KDE Frameworks on the `kf6` shelf, the Plasma modules, and KDE Gear.
+Most of their failures here are the general CMake ones above. These are the ones that come from
+KDE itself, or from building it on musl without systemd.
+
+### A KDE family at two releases
+
+```text
+  release set                                                FAIL
+      plasma is more than one release: …
+```
+
+Each family is released as one set and tested as one: Plasma's modules require each other at their
+own version, a Gear application is tested against the Gear libraries of its release, and the
+Frameworks share one ABI per release. Preflight reads every recipe's source and refuses a tree in
+which one family has ports at two releases, naming them. A port belongs to a family by the
+directory its tarball comes from on `download.kde.org` (`stable/frameworks`, `stable/plasma` or
+`stable/release-service`), or by `group = plasma` or `group = gear` when it comes from elsewhere;
+every port on the `kf6` shelf is a Framework. A respin (`6.8.2.1`) is part of the release it fixes.
+Bump the whole family in one change; [Developing](developing.md#rebuilding-one-thing) says which
+phases a bump rebuilds.
+
+### A Frameworks version the configure refuses
+
+```text
+Could not find a configuration file for package "KF6Config" that is compatible with requested
+version "6.31.0".
+  The following configuration files were considered but not accepted:
+    /usr/lib/cmake/KF6Config/KF6ConfigConfig.cmake, version: 6.30.0
+```
+
+A Plasma or Gear module asks for at least the Frameworks release it was made against, and the
+tree holds an older one. The module was bumped ahead of its Frameworks, or the Frameworks were
+bumped in the recipes and not yet rebuilt. Preflight's release-set check catches the first before
+a build; for the second, build the Frameworks first, which the phase order does by itself when the
+build runs from `41_system`. `extra-cmake-modules` is a Framework too, in `41_system`, and an older
+ECM fails the same way with `ECM` as the package.
+
+### A QML module missing at run time
+
+```text
+module "org.kde.kirigami" is not installed
+```
+
+printed by a KDE program as it starts, and at the end of its configure, in the feature summary:
+
+```text
+-- The following RUNTIME packages have not been found:
+ * org.kde.kirigami-QMLModule, QML module 'org.kde.kirigami' is a runtime dependency.
+```
+
+A KDE program's interface is QML, and it imports QML modules other ports install. CMake looks for
+them only to report them: a missing one never stops the build, and the program then fails, or
+draws an empty window, when it runs. Read the runtime section of the feature summary in the port's
+log, find the port that installs each module the summary names (`ls
+build/fs/usr/lib/qt6/qml/org/kde/` shows what is installed), and put it in the recipe's `depends`.
+A module the session provides, such as one of Plasma's, comes from the session at run time, and a
+port in `40_lang` to `44_apps` never names a `50_desktop` port to get one; the port's `kfs.md` says
+so instead. The same holds for a D-Bus service a program talks to.
+
+### A generated Wayland header missing in a parallel build
+
+```text
+fatal error: qwayland-plasma-shell.h: No such file or directory
+```
+
+A target uses a header another target generates, and the project records no dependency between
+the two, so a parallel build can compile the user first. In `plasma-workspace` the two headers are
+generated for `plasmashell_osd` and included by `plasmashell`. Build the generating targets before
+the rest, with build commands rather than a source edit:
+
+```sh
+cmake --build build --target shell/qwayland-plasma-shell.h shell/wayland-plasma-shell-client-protocol.h
+cmake --build build
+```
+
+The same shape fixes any module that fails this way: name the generated files as targets first.
+
+### Systemd user units refused by the lint
+
+```text
+ERROR: lint: usr/lib/systemd/user/plasma-kwin_wayland.service: outside the layout: KDOS runs no systemd units
+```
+
+Most Plasma modules, and many Frameworks and Gear modules, install systemd user units for
+`systemd --user` to start the session with. KDOS has no systemd, so the package lint refuses
+anything under `usr/lib/systemd` or `lib/systemd`. Remove the directory at the end of `build.sh`:
+
+```sh
+rm -rf "$PKG/usr/lib/systemd"
+```
+
+The session starts each program through its XDG autostart entry instead, and
+`startplasma-wayland` is told there is no systemd through `startkderc` (`[General]
+systemdBoot=false`, in `/usr/share/kdos/xdg`), which preflight checks. The lint refuses
+`etc/X11` and `etc/grub.d` the same way: KDOS has no X server configuration and boots with Limine.
+
+### The locale generator on musl
+
+`plasma-workspace` builds by default a polkit helper the Region & Language page runs to add a
+locale to `/etc/locale.gen` and run `locale-gen`. musl has neither file nor tool; its locales are
+the files `musl-locales` installs. Without `-D GLIBC_LOCALE_GEN=OFF` the page offers an action that
+fails, and the configure requires polkit-qt6 for it. The page also looks for locale definitions in
+`/usr/share/i18n/locales`, where musl-locales has none: the recipe's `locales.patch` points it at
+`/usr/share/i18n/locales/musl`, and without it the page lists no format and says it could not list
+them.
+
+### A recipe that names too many dependencies
+
+```text
+<port>: depends names 129 ports; the limit is 128
+```
+
+`kpkg` reads at most `KP_MAX_DEPS` names from a `depends =` line, 128, and refuses a recipe that
+names more rather than build with part of its closure; preflight refuses it before a build starts.
+A list that long is a meta port's: split it, the way the `kde-gear-*` sets split KDE Gear, and
+name the parts from one meta above them.
+
+### A Gear application no meta names
+
+```text
+  gear metas                                                 FAIL
+      <port> is a Gear application no kde-gear-* meta names
+```
+
+Every Gear application nothing else depends on is named by exactly one `kde-gear-*` meta port, so
+`kpkg install kde-gear` gives a machine all of Gear. A new Gear application goes into the meta of
+its kind in the same change that adds its recipe; one named by two metas fails too, as named by
+both. A Gear library is not named by any: it arrives through an application's closure.
+
+### KDOS code that links a toolkit its area does not allow
+
+```text
+  KDOS ELF links                                             FAIL
+      kdos-tools: /usr/local/bin/kdos links libQt6Core.so.6; only src/desktop code that is neither
+      set-id, in sbin nor started by rcS may (src/system)
+```
+
+Preflight reads every ELF file a port under `src/` installs, and each library it links one level
+down. Code under `src/desktop` may link Qt 6, KDE Frameworks 6 and the Plasma libraries, and nothing
+else of a toolkit: no GTK, no Qt 5, no Xlib. Code under `src/system`, `src/daemons`, `src/art` and
+`src/devtools`, and any set-id program, anything under `sbin` and any program `rcS` starts, links
+no toolkit at all. Move the code that needs Qt into a `src/desktop` port and have the program
+under the stricter area talk to it, over D-Bus or a command line; see
+[The security model](../03-architecture/security-model.md).
+
+### A Discover plugin built against another Discover
+
+```text
+kdos-discover is written against discover 6.8.2; /usr/include/discover/DiscoverConfig.h is discover '6.8.3'.
+```
+
+Discover's plugin interfaces carry its full version in their identifiers, and its loader skips a
+plugin built for any other release without a message. `kdos-discover` therefore configures only
+against the exact Discover its `CMakeLists.txt` names. After a Plasma bump, test the backend and the
+notifier against the new Discover, then change `KDOS_DISCOVER_VERSION`. The `discover` recipe
+installs `libdiscover`'s headers under `/usr/include/discover` for the same reason; upstream
+installs none.
 
 ## When the failure is not here
 

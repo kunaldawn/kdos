@@ -12,15 +12,15 @@
  * THE ONE CONTROL A NUMBER NEEDED AND DID NOT HAVE. Every other shape in this
  * toolkit already exists — a button, a check, a radio, a list, a table, a tab
  * strip, a dropdown, a text field, a progress bar — and a number was the one
- * thing a surface had to invent for itself: kdos-settings changed an integer
- * with Left and Right and with nothing else, so a knob on this desktop could
- * not be turned with a mouse at all.
+ * thing a surface had to invent for itself, and one invented that way answers
+ * Left and Right and nothing else, so it cannot be turned with a mouse at
+ * all.
  *
  * DRAW / KEY / HIT, AND THE FRAME CONTROL ON TOP OF THEM. That is the shape
  * `ktui_dropdown_*` already has, and it is what lets a surface with an event
- * loop of its own — kdos-settings, kdos-display — use the same control as one
- * written in the immediate-mode frame. A control that existed only inside
- * ktui_frame_begin() would be a control those surfaces had to write twice.
+ * loop of its own use the same control as one written in the immediate-mode
+ * frame. A control that existed only inside ktui_frame_begin() would be a
+ * control such a surface had to write twice.
  *
  * ONE LAYOUT FUNCTION, READ BY BOTH HALVES. The cell a value lands on and the
  * value a cell means are the same arithmetic in opposite directions; computed
@@ -318,15 +318,14 @@ int ktui_slider(KRect r, int *val, int min, int max, int step,
 /* ────────────────────────────────────────────────────────────────────────
  * A LIST OF ROWS, POINTED AT
  *
- * FOR THE SURFACES WHOSE OWN EVENT LOOP DRAWS ITS ROWS — `kdos-style`,
- * `kdos-find`, `kdos-rec` and `kdos-palette` pass their pointer events here.
- * A loop that ends in `if (ev.type != KT_EVT_KEY) continue;` with nothing
+ * FOR THE SURFACES WHOSE OWN EVENT LOOP DRAWS ITS ROWS, which pass their
+ * pointer events here. A loop that ends in `if (ev.type != KT_EVT_KEY) continue;` with nothing
  * before it leaves a person holding a mouse unable to choose an accent or
  * pick a row at all.
  *
  * ONE IMPLEMENTATION OF WHAT A PRESS ON A ROW MEANS, because one per surface
- * would be a desktop of different answers. The rule is `kdos-pick`'s and
- * every other list here already keeps it: a press MOVES the caret, and a press on the row the
+ * would be a desktop of different answers. The rule is the one every list
+ * here keeps: a press MOVES the caret, and a press on the row the
  * caret is already on PICKS. One hand learns one thing.
  *
  * IT IS NOT A FRAME CONTROL, and that is the point: these surfaces run their

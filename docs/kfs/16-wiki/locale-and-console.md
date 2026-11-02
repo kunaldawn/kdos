@@ -18,14 +18,23 @@ the font is loaded where it is, is in the KDOS book's
 | The [console font]{.idx}, `ter-kdos32n` | [terminus-font](#port-terminus-font) |
 | [`kdos-getty`]{.idx}, which loads the font, the colours and the keymap on each console | [kdos-tools](#port-kdos-tools) |
 | `kdos-power accent`, which recolours the console | [kdos-powerd](#port-kdos-powerd) |
+| `org.freedesktop.locale1`: the system locale and the keyboard layout of the login screen and new sessions | [kdos-settingsd](#port-kdos-settingsd) |
 
-All of them are on the image. `kdos-getty` is started by [`/etc/inittab`]{.idx}, not by a service script,
-so there is nothing to enable. Typing Chinese, Japanese and Korean is the input method's job; see
+All of them are on the image. `kdos-getty` is started by [`/etc/inittab`]{.idx} on `tty2`, and on
+`tty1` when the display manager cannot run, not by a service script, so there is nothing to
+enable. Typing Chinese, Japanese and Korean is the input method's job; see
 [Input methods](../../kdos/02-user-guide/administration.md#input-methods).
 
 ## Configuration
 
-**`/etc/profile`**, from `fs/etc/profile`, sets the locale of every login shell:
+**[`/etc/locale.conf`]{.idx}**, from `fs/etc/locale.conf`, is the system locale. `kdos-dm` hands it
+to SDDM, which gives it to the login screen and to every session it starts; kdos-settingsd
+rewrites it when the locale is set through locale1, from System Settings → **Region & Language**
+or plasma-setup:
+
+<!-- kfs:include fs/etc/locale.conf -->
+
+**`/etc/profile`**, from `fs/etc/profile`, sets the locale of every login shell that has none:
 
 <!-- kfs:include fs/etc/profile lines=33-33 pin=d682fd279e6d -->
 
@@ -41,21 +50,19 @@ from and `locale -a` lists.
 Keyboard page; the image does not ship it, so the live medium uses the kernel's built-in US map.
 `kdos-getty` loads it on every console, in `src/system/kdos-tools/getty.c`:
 
-<!-- kfs:include src/system/kdos-tools/getty.c lines=357-367 pin=1d8052890c4d -->
+<!-- kfs:include src/system/kdos-tools/getty.c lines=256-266 pin=1d8052890c4d -->
 
-The desktop takes its layout from the same file when the session starts, translating the console
-map's name into an XKB layout name, in `fs/usr/local/lib/kdos/session-common.sh`:
-
-<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=43-82 pin=cd7b9d8e5b23 -->
-
-**`~/.config/kdos-comp/environment`**, not shipped, overrides that for one user: a
-`XKB_DEFAULT_LAYOUT=` line there replaces the value the login exported, for the compositor and
-everything it starts; see
-[`~/.config/kdos-comp/environment`](../../kdos/06-reference/configuration.md#configkdos-compenvironment).
+**[`/etc/kdos/xkb.conf`]{.idx}** is the graphical layout of the login screen and of every new
+session, which kdos-settingsd serves as locale1's `X11Layout` and the rest. Its `XKBLAYOUT` is
+empty as shipped, which follows the console: the layout nearest the map in `/etc/keymap`. The file
+and how to change it are on
+[Session and environment](session-and-environment.md#the-keyboard-layout). A person's own layout,
+on System Settings → **Keyboard**, is saved in `~/.config/kxkbrc` and wins in that person's
+sessions.
 
 **The console font** is compiled into `kdos-getty` and has no setting:
 
-<!-- kfs:include src/system/kdos-tools/getty.c lines=54-55 pin=e884f1c51cdf -->
+<!-- kfs:include src/system/kdos-tools/getty.c lines=60-61 pin=e884f1c51cdf -->
 
 **[`/etc/vtrgb`]{.idx}**, shipped from `fs/etc/vtrgb`, holds the sixteen console colours as three lines of
 red, green and blue values. `kdos-getty` loads it with `setvtrgb`, and setting the accent rewrites
@@ -63,10 +70,9 @@ it; see [accent](../../kdos/04-programs/daemons.md#accent).
 
 <!-- kfs:include fs/etc/vtrgb -->
 
-**`/etc/inittab`**, from `fs/etc/inittab`, puts `kdos-getty` in front of the login on `tty1` and
-`tty2`:
+**`/etc/inittab`**, from `fs/etc/inittab`, puts `kdos-getty` in front of the login on `tty2`:
 
-<!-- kfs:include fs/etc/inittab lines=34-40 pin=527998a111ea -->
+<!-- kfs:include fs/etc/inittab lines=36-45 pin=9c6ed9e54510 -->
 
 ## Usage
 
@@ -90,7 +96,8 @@ Every program's menus and messages stay in English whatever is set
 ([Known gaps](#known-gaps)). musl-locales' files translate the C library's own messages and its
 date and time strings.
 
-1. Add the setting to the account's `~/.bash_profile`, above the block that starts the desktop:
+1. Add the setting to the account's `~/.bash_profile`, or for the desktop alone set it on System
+   Settings → **Region & Language**, which writes `~/.config/plasma-localerc`:
 
    ```bash
    export LC_TIME=de_DE.UTF-8
@@ -99,7 +106,7 @@ date and time strings.
    The name must be one that `locale -a` lists: `C`, `C.UTF-8` and seventeen musl-locales
    files, `cs_CZ.UTF-8` to `sv_SE.UTF-8`. With this one `date` prints `Mi Okt 21 19:14:39 UTC 2026`.
 
-2. Log out and in again. The desktop inherits the login shell's environment.
+2. Log out and in again. The session wrapper runs a login shell, so the desktop inherits it.
 
 ### Changing the keyboard layout of the consoles and the desktop
 
@@ -117,37 +124,31 @@ date and time strings.
    sudo loadkeys de-latin1
    ```
 
-3. Keep it:
+3. Keep it, for the consoles and the desktop together, through locale1:
 
    ```bash
-   echo de-latin1 | sudo tee /etc/keymap
+   dbus-send --system --print-reply --dest=org.freedesktop.locale1 \
+       /org/freedesktop/locale1 org.freedesktop.locale1.SetVConsoleKeyboard \
+       string:de-latin1 string: boolean:true boolean:true
    ```
 
-   Every console loads it from the next time its login prompt starts.
+   kdos-settingsd checks the name, writes `/etc/keymap`, loads it, and with the second `true`
+   sets the nearest graphical layout in `/etc/kdos/xkb.conf` as well, which the login screen takes
+   at once. Every console loads the map from the next time its login prompt starts; writing
+   `/etc/keymap` by hand does the same for the consoles alone.
 
-4. Log out of the desktop and in again. The session reads `/etc/keymap` as it starts and gives the
-   compositor the matching layout, here `de`.
+4. Log out of the desktop and in again, or set the layout on System Settings → **Keyboard**, which
+   applies at once.
 
 On the live medium, `/etc/keymap` lasts until power-off unless the medium has a persistence store
 ([kdos persist](../../kdos/04-programs/kdos-command.md#kdos-persist)).
 
 ### Giving the desktop a layout of its own
 
-When the desktop needs a layout or variant that the console map does not translate to, set it for
-one user:
-
-1. Create `~/.config/kdos-comp/environment` with, for example:
-
-   ```text
-   XKB_DEFAULT_LAYOUT=de
-   XKB_DEFAULT_VARIANT=nodeadkeys
-   ```
-
-   The names are XKB's: the layouts are the files in `/usr/share/X11/xkb/symbols`.
-
-2. Log out and in again.
-
-The consoles keep `/etc/keymap`.
+System Settings → **Keyboard** → **Layouts**: turn on **Configure layouts**, add the layout and
+variant, and **Apply**. It applies at once, to your sessions only. The machine's own layout, the
+login screen's, is set through locale1's `SetX11Keyboard`, as `/etc/kdos/xkb.conf`'s comment
+shows. The consoles keep `/etc/keymap`.
 
 ### Reading the console font
 
@@ -158,9 +159,9 @@ showconsolefont -i
 prints the size of the font loaded on the console you are on, as width, height and glyph count:
 `16x32x512` for `ter-kdos32n`, which `kdos-getty` loads and checks for the `16x32` at the start.
 From another console or as root, name the console with `-C`: `showconsolefont -i -C /dev/tty2`.
-On `tty1` while the desktop holds it the answer is
-`showconsolefont: ERROR kdfontop.c:38 is_kd_text_mode: Console is not in text mode`, because the
-compositor has switched that console to graphics.
+On `tty1` while the greeter or the desktop holds it the answer is
+`showconsolefont: ERROR kdfontop.c:38 is_kd_text_mode: Console is not in text mode`, because KWin
+has switched that console to graphics.
 
 `setfont` loads another font for the current console. The fonts in `/usr/share/consolefonts` are
 the Terminus faces from terminus-font; the kbd port removes kbd's own. The console keeps the font
@@ -173,10 +174,10 @@ setfont ter-124n
 ## Tips
 
 - `C.UTF-8` is built into musl and needs no file under `MUSL_LOCPATH`.
-- `Ctrl+Alt+F2` from the desktop reaches `tty2`, the recovery console, and `Alt+F1` there comes
-  back; see [The console](../../kdos/03-architecture/boot-and-init.md#the-console).
-- The console font has no emoji and no Nerd Font icons, so a program that prints them on `tty1`
-  shows blank cells there; the same program in a desktop terminal shows them.
+- `Ctrl+Alt+F2` from the desktop reaches `tty2`, the recovery console, and `Ctrl+Alt+F1` there
+  comes back; see [The console](../../kdos/03-architecture/boot-and-init.md#the-console).
+- The console font has no emoji and no Nerd Font icons, so a program that prints them on `tty2`
+  shows blank cells there; the same program in Konsole shows them.
 
 ## Troubleshooting
 
@@ -184,12 +185,12 @@ setfont ter-124n
 console, then the size actually loaded:
 
 ```bash
-cat /run/kdos-getty.tty1.log
+cat /run/kdos-getty.tty2.log
 showconsolefont -i
 ```
 
 The log is appended to each time the console's getty starts. It holds `kdos-getty`'s own lines,
-such as `kdos-getty: tty1 winsize -> <columns>x<rows>` when it corrected the window size, and whatever the
+such as `kdos-getty: tty2 winsize -> <columns>x<rows>` when it corrected the window size, and whatever the
 getty it then runs writes to its error output. `setfont` and `loadkeys` run with their output
 thrown away, so a font that did not load shows only as the size `showconsolefont -i` reports.
 Without `setfont`, from the kbd package, `kdos-getty` loads no font, no colours and no keymap at
@@ -207,19 +208,16 @@ sudo loadkeys "$(cat /etc/keymap)"
 A name that `loadkeys` cannot find is not under `/usr/share/keymaps`, and `loadkeys` says so:
 `loadkeys: Unable to open file: <name>: No such file or directory`.
 
-**The consoles have the right layout and the desktop is US.** The session exports a layout only
-when XKB has a file by the translated name: the name from the `case` table in `session-common.sh`
-above, or else the console map's first two letters. Check that the file is there, here for
-`de-latin1`, whose name is `de`:
+**The consoles have the right layout and the desktop is US.** The desktop follows
+`/etc/kdos/xkb.conf`, and when its layout is empty, the nearest layout to `/etc/keymap`; a map with
+no near XKB layout leaves US. Ask locale1 what it serves, and set the layout through it:
 
 ```bash
-ls /usr/share/X11/xkb/symbols/de
+dbus-send --system --print-reply --dest=org.freedesktop.locale1 /org/freedesktop/locale1 \
+    org.freedesktop.DBus.Properties.Get string:org.freedesktop.locale1 string:X11Layout
 ```
 
-When there is no such file `kdos-desktop` prints
-`kdos-desktop: keymap '<map>' has no XKB layout '<name>' — leaving the default` on `tty1` and
-leaves the desktop at its default. Set the layout in `~/.config/kdos-comp/environment` as
-[above](#giving-the-desktop-a-layout-of-its-own).
+A layout set on the Keyboard page in `~/.config/kxkbrc` outranks it.
 
 **The console colours are wrong or half black.** `/etc/vtrgb` must be readable and hold three lines
 of sixteen numbers each. Setting the accent again rewrites it; see
@@ -233,9 +231,6 @@ of sixteen numbers each. Setting the accent again rewrites it; see
 - [Every program speaks English](../../kdos/06-reference/known-gaps.md#every-program-speaks-english)
 - [Emoji draw everywhere except the text console on `tty1`](../../kdos/06-reference/known-gaps.md#emoji-draw-everywhere-except-the-text-console-on-tty1)
 - [Nerd Font icons are blank on `tty1`, and the shipped configurations turn them off everywhere](../../kdos/06-reference/known-gaps.md#nerd-font-icons-are-blank-on-tty1-and-the-shipped-configurations-turn-them-off-everywhere)
-- [There is no graphical login screen (greeter)](../../kdos/06-reference/known-gaps.md#there-is-no-graphical-login-screen-greeter)
-- [X11 and Qt 5 applications get no input method](../../kdos/06-reference/known-gaps.md#x11-and-qt-5-applications-get-no-input-method)
-- [There is no input-method configuration tool](../../kdos/06-reference/known-gaps.md#there-is-no-input-method-configuration-tool)
 
 ## See also
 
@@ -243,13 +238,14 @@ of sixteen numbers each. Setting the accent again rewrites it; see
 - [Language](../../kdos/02-user-guide/administration.md#language): the English-only rule
 - [Size and language policy](../../kdos/05-developer/writing-ports.md#size-and-language-policy): why no translations ship
 - [2. Keyboard](../../kdos/02-user-guide/installation.md#2-keyboard): the installer's Keyboard page and the console-to-XKB names
-- [`/etc/keymap`](../../kdos/06-reference/configuration.md#etckeymap): the file's reference entry
+- [`/etc/keymap`](../../kdos/06-reference/configuration.md#etclocaleconf-etckeymap-and-etckdosxkbconf): the file's reference entry
 - [Input methods](../../kdos/02-user-guide/administration.md#input-methods): typing Chinese, Japanese and Korean
 - [Time and NTP](time-and-ntp.md): the time zone, the other setting the profile carries
 - [Login and autologin](login-and-autologin.md): what runs on `tty1` and `tty2`
+- [Session and environment](session-and-environment.md#the-keyboard-layout): `/etc/kdos/xkb.conf`
 - [Live persistence](live-persistence.md): keeping the keymap on the live medium
 
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 367.* Previous: [366. Time and NTP](time-and-ntp.md) · [Contents](../README.md) · Next: [368. Users and groups](users-and-groups.md)
+*Part XVI. System administration, chapter 391.* Previous: [390. Time and NTP](time-and-ntp.md) · [Contents](../README.md) · Next: [392. Users and groups](users-and-groups.md)

@@ -25,3 +25,8 @@
 # /usr/sbin/service and /usr/local/sbin/kdos-getty come from this port, not
 # from fs/.
 kdos-tools
+
+# The security-context-v1 sandbox engine: one tagged Wayland socket per box.
+# Separate from kdos-appbox because `run` execs distrobox and cannot hold the
+# context's close fd, and because kdos-appbox links no libraries.
+kdos-boxsock

@@ -1,6 +1,6 @@
 # System administration
 
-<!-- kfs:order [System] init-and-runlevels services writing-a-service timers logs modules-and-sysctl zram-and-swap out-of-memory time-and-ntp locale-and-console users-and-groups [Boot] boot-menu-and-kernel-parameters initramfs-and-rescue microcode-and-firmware ab-slots-and-rollback live-persistence [Storage] filesystems-and-fstab storage-and-removable-media encrypted-root lvm-and-raid disk-health backups [Security] sudo-pam-polkit login-and-autologin screen-lock fingerprint-fido-smartcards firewall ssh-server signing-keys-and-trust [Networking] networkmanager dns vpn mobile-broadband access-point wireless-regulatory-domain file-sharing avahi-and-mdns [Hardware] udev-and-device-groups bluetooth printing-and-scanning audio displays-and-scaling graphics-drivers power-management laptops firmware-updates [Packages and applications] kpkg updating local-rebuilds-and-march packs boxes containers virtual-machines [Desktop] session-and-environment compositor-keybindings panel-and-launcher xwayland-and-x11-apps input-methods fonts-and-theming accessibility portals-and-screen-sharing [Troubleshooting] diagnostics desktop-troubleshooting recovering-an-unbootable-system -->
+<!-- kfs:order [System] init-and-runlevels services writing-a-service timers logs modules-and-sysctl zram-and-swap out-of-memory time-and-ntp locale-and-console users-and-groups [Boot] boot-menu-and-kernel-parameters initramfs-and-rescue microcode-and-firmware ab-slots-and-rollback live-persistence [Storage] filesystems-and-fstab storage-and-removable-media encrypted-root lvm-and-raid disk-health backups [Security] sudo-pam-polkit login-and-autologin screen-lock fingerprint-fido-smartcards firewall ssh-server signing-keys-and-trust [Networking] networkmanager dns vpn mobile-broadband access-point wireless-regulatory-domain file-sharing avahi-and-mdns [Hardware] udev-and-device-groups bluetooth printing-and-scanning audio displays-and-scaling graphics-drivers power-management laptops firmware-updates [Packages and applications] kpkg updating local-rebuilds-and-march packs boxes containers virtual-machines [Desktop] session-and-environment shortcuts-and-window-rules panel-and-launcher xwayland-and-x11-apps input-methods fonts-and-theming accessibility portals-and-screen-sharing [Troubleshooting] diagnostics desktop-troubleshooting recovering-an-unbootable-system -->
 
 This part is about running a KDOS machine rather than building one. Each chapter takes one
 subject, such as the firewall, a [printer]{.idx} or a system that will not boot, and gives the
@@ -106,10 +106,10 @@ Installing and updating packages, rebuilding them, and running applications in p
 
 ## Desktop
 
-The session, the compositor's keys, the panel, X11 programs, input methods, fonts, accessibility and portals.
+The Plasma session, shortcuts and window rules, the panel, X11 programs, input methods, fonts, accessibility and portals.
 
 - [Session and environment](session-and-environment.md)
-- [Compositor keybindings](compositor-keybindings.md)
+- [Shortcuts and window rules](shortcuts-and-window-rules.md)
 - [The panel and the launcher](panel-and-launcher.md)
 - [Xwayland and X11 applications](xwayland-and-x11-apps.md)
 - [Input methods](input-methods.md)
@@ -134,4 +134,4 @@ Finding out what is wrong, and getting a desktop or a whole system back.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration.* Previous: [357. The ISO](../15-image/110-iso.md) · [Contents](../README.md) · Next: [358. Init and runlevels](init-and-runlevels.md)
+*Part XVI. System administration.* Previous: [381. The ISO](../15-image/110-iso.md) · [Contents](../README.md) · Next: [382. Init and runlevels](init-and-runlevels.md)

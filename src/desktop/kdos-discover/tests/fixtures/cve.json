@@ -1,0 +1,13 @@
+{
+  "source": "alpine-secdb",
+  "generated": "2026-08-12",
+  "age_days": 77,
+  "scope": "installed",
+  "checked": 1800,
+  "unknown": 400,
+  "findings": [
+    {"port": "curl", "version": "8.9.0", "fixed_in": "8.10.0-r0", "cves": "CVE-2026-0001"},
+    {"port": "expat", "version": "2.6.0", "fixed_in": "2.6.3-r0", "cves": "CVE-2026-0002"}
+  ],
+  "bundled": []
+}

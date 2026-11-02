@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ksshaskpass
+version     = 6.8.2
+release     = 1
+source      = https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = 7ec5bb7db2da000097536ffe4081028967289af4fc564f40cff54100966e5445  ksshaskpass-6.8.2.tar.xz
+description = SSH passphrase prompt for ssh-add and git, keeping passphrases in the session's secret store
+homepage    = https://invent.kde.org/plasma/ksshaskpass
+license     = GPL-2.0-or-later AND BSD-3-Clause AND CC0-1.0
+group       = plasma
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qtkeychain kconfig kcoreaddons ki18n kwidgetsaddons kdoctools

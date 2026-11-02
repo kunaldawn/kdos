@@ -11,7 +11,7 @@
  *     KDOS energy  —  2.1 h of samples, RAPL package-0
  *
  *       firefox (appbox kdos-apps)          41.2%  ████████        gpu 22.1%
- *       kdos-comp                            9.4%  ██              gpu 61.0%
+ *       kwin_wayland                         9.4%  ██              gpu 61.0%
  *
  * Windows 11, macOS and Android all ship per-app battery attribution. No Linux
  * desktop does, and the reason is not the measurement — RAPL and the cycle-share
@@ -27,8 +27,10 @@
  * closed PLATYPUS (CVE-2020-8694/8695) — fine-grained unprivileged reads
  * recover AES keys — so something privileged has to hold it either way. This is
  * the smallest such thing: a sampler, a ledger, and a socket that serves the
- * ledger to root and wheel. It is a SAMPLER ONLY. It sets no power limit, has
- * no write path into powercap at all, and takes no argument from any client.
+ * ledger to root and wheel — `kdos-energy` in a terminal, and System Monitor's
+ * KDOS energy page, which reads `report-json`. It is a SAMPLER ONLY. It sets
+ * no power limit, has no write path into powercap at all, and takes no
+ * argument from any client.
  *
  * WHY THE SOCKET IS NOT AN ORACLE. What leaves this process is a per-app
  * percentage accumulated over minutes; the raw counter and the sampling
@@ -52,6 +54,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/un.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "energyd.h"
@@ -67,6 +70,21 @@
 #define KE_INTERVAL 10.0
 
 static volatile sig_atomic_t g_stop;
+
+/*
+ * How far CLOCK_BOOTTIME has run ahead of CLOCK_MONOTONIC: the seconds this
+ * machine has spent suspended since boot. The difference between two readings
+ * is how long it slept between them.
+ */
+static double slept_total(void)
+{
+	struct timespec b, m;
+
+	clock_gettime(CLOCK_BOOTTIME, &b);
+	clock_gettime(CLOCK_MONOTONIC, &m);
+	return (double)(b.tv_sec - m.tv_sec) +
+	       (double)(b.tv_nsec - m.tv_nsec) / 1e9;
+}
 
 static void on_signal(int sig)
 {
@@ -142,6 +160,7 @@ static int serve(void)
 	ke_sample_take(prev);
 	ke_rapl_delta(&rapl);		/* prime: the first call has no delta */
 	double next = kb_now_s() + KE_INTERVAL;
+	double asleep = slept_total();
 
 	while (!g_stop) {
 		double now = kb_now_s();
@@ -219,7 +238,9 @@ static int serve(void)
 		if (kb_now_s() >= next) {
 			ke_sample_take(cur);
 			long long e = ke_rapl_delta(&rapl);
-			ke_ledger_add(&ledger, prev, cur, e);
+			double now_asleep = slept_total();
+			ke_ledger_add(&ledger, prev, cur, e, now_asleep - asleep);
+			asleep = now_asleep;
 			KeSample *t = prev;
 			prev = cur;
 			cur = t;
@@ -249,7 +270,9 @@ static int serve(void)
  * root-only counter and a machine that has to be busy in a particular way, and
  * a test that needed both would never run. `<dir>/0`, `<dir>/1`, … each hold a
  * `proc` tree, a `powercap` tree and an optional `dt` in seconds — the same
- * trick as `kdos stutter --fixture` and KDOS_PRIVACY_PROC.
+ * seam as `kdos-oomd --fixture` and `kdos-packd --fixture`. An optional
+ * `<dir>/<n>/slept` holds the seconds the machine was suspended inside that
+ * step's window, which is the daemon's CLOCK_BOOTTIME reading replayed.
  */
 static int fixture(const char *dir, bool json)
 {
@@ -262,20 +285,23 @@ static int fixture(const char *dir, bool json)
 	int steps = 0;
 
 	for (int step = 0;; step++) {
-		char proc[512], power[512], dtpath[512];
+		char proc[512], power[512], dtpath[512], slpath[512];
 		snprintf(proc, sizeof(proc), "%s/%d/proc", dir, step);
 		snprintf(power, sizeof(power), "%s/%d/powercap", dir, step);
 		snprintf(dtpath, sizeof(dtpath), "%s/%d/dt", dir, step);
+		snprintf(slpath, sizeof(slpath), "%s/%d/slept", dir, step);
 		if (!kb_is_dir(proc))
 			break;
 
 		setenv("KDOS_ENERGY_PROC", proc, 1);
 		setenv("KDOS_ENERGY_POWERCAP", power, 1);
 
-		double dt = 10.0;
+		double dt = 10.0, slept = 0.0;
 		char buf[32];
 		if (kb_read_line_file(dtpath, buf, sizeof(buf)) > 0)
 			dt = atof(buf);
+		if (kb_read_line_file(slpath, buf, sizeof(buf)) > 0)
+			slept = atof(buf);
 
 		if (first) {
 			if (ke_rapl_open(&rapl) != 0) {
@@ -303,7 +329,7 @@ static int fixture(const char *dir, bool json)
 		clock += dt;
 		ke_sample_take(cur);
 		cur->when = clock;
-		ke_ledger_add(&ledger, prev, cur, ke_rapl_delta(&rapl));
+		ke_ledger_add(&ledger, prev, cur, ke_rapl_delta(&rapl), slept);
 		KeSample *t = prev;
 		prev = cur;
 		cur = t;

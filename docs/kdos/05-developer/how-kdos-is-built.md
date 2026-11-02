@@ -48,9 +48,9 @@ own tools.
                                       ├─ 40_lang        chroot     language modules and developer tools
                                       ├─ 41_system      chroot     services, networking, storage, the command line
                                       ├─ 42_graphics    chroot     Wayland, X11 libraries, Mesa, media frameworks
-                                      ├─ 43_toolkits    chroot     GTK, Qt, KDE Frameworks
-                                      ├─ 44_apps        chroot     graphical applications
-                                      ├─ 50_desktop     chroot     the compositor, shell and daemons
+                                      ├─ 43_toolkits    chroot     GTK, Qt, KDE Frameworks, Plasma libraries
+                                      ├─ 44_apps        chroot     graphical applications, KDE Gear
+                                      ├─ 50_desktop     chroot     KDE Plasma, SDDM, KDOS integration, daemons
                                       ├─ 60_kernel      chroot     the kernel
                                       └─ 70_image       chroot     initramfs, squashfs, ISO
                                                                    → build/iso-build/kdos.iso
@@ -59,7 +59,7 @@ own tools.
 Six terms recur throughout:
 
 - A **port** is the recipe for one piece of software: a `kpkgbuild` file of metadata and a
-  `build.sh` script beside it. Upstream software has its ports under `ports/core/`, about 2,000 of them;
+  `build.sh` script beside it. Upstream software has its ports under `ports/core/`, about 2,400 of them;
   KDOS's own programs have theirs under four areas of `src/`: `src/system/`, `src/art/`,
   `src/desktop/` and `src/daemons/`.
 - A **shelf** is the subject directory an upstream port is filed in, `ports/core/<shelf>/<port>/`:
@@ -144,11 +144,14 @@ git, and 2,528 are fetched. A complete cache holds those 2,528 files; its size i
 **Vendor bundles.** Rust, Go, Python, Haskell and Node software usually downloads its own dependencies
 while it builds, which a build with no network cannot allow. For those ports the dependencies are
 collected in advance into a *vendor bundle*, `<name>-vendor-<version>.tar.xz`, made by the
-language's own package manager and held to its own `sha256 =` line like any other source. 161
-recipes in `ports/core` declare one with a `vendoring =` key: 75 Rust, 39 Go, 42 Python, 4 Haskell
-and 1 Node. Five more name a vendor bundle with no `vendoring =` key (`python3-lsp-ruff` through its
+language's own package manager and held to its own `sha256 =` line like any other source. 168
+recipes in `ports/core` declare one with a `vendoring =` key: 80 Rust, 39 Go, 43 Python, 4 Haskell
+and 2 Node. Five more name a vendor bundle with no `vendoring =` key (`python3-lsp-ruff` through its
 `pypackages` line, and the hand-made bundles of `pdfium`, `libreoffice`, `librepcb` and `surfer`),
-so 166 ports carry one in all. A bundle is normally fetched from the archive like everything else.
+so 173 ports carry one in all. KDE's Rust is vendored the same way: `cxx-rust-cssparser`, `kdeplasma-addons`,
+`akonadi-search` and `kdepim-addons` build their Rust parts with cargo, through CMake or
+Corrosion, and cargo finds every crate in the bundle; `krohnkite`, the tiling script, is one of
+the two Node ports. A bundle is normally fetched from the archive like everything else.
 When none of the first four locations has it, `ports/fetch` generates it inside a separate
 container, `kdos-fetch`, whose toolchains are pinned to the versions this tree compiles with, and
 builds the tarball reproducibly so the result matches its recipe hash. How to write such a recipe is
@@ -502,30 +505,42 @@ depending on which ports happened to be installed.
 
 ## The userland: `40_lang` to `44_apps`
 
-The bulk of the system is five phases, 1,919 ports between them, split by what each port's
+The bulk of the system is five phases, 2,174 ports between them, split by what each port's
 dependencies reach. Every port's dependencies are in its own phase or an earlier one:
 
 | Phase | Installs | Holds | Largest shelves |
 |---|---|---|---|
-| `40_lang` | 177 | Language modules and developer tools whose dependencies need nothing past the compilers: the `python3-*` and `perl-*` modules, build, documentation and debugging tools, version control | `python-libs`, `devtools`, `python-net`, `python` |
-| `41_system` | 1,014 | Everything with no graphics and no toolkit among its dependencies: services, networking, storage, the command line, codecs, firmware, fonts, science and hardware libraries | `image-libs`, `devlibs`, `formats`, `embedded`, `network` |
-| `42_graphics` | 194 | What reaches Wayland, the X11 libraries, Mesa, cairo, pango, GStreamer, FFmpeg or PipeWire but no toolkit: the graphics and media stacks, Xwayland, `foot` | `x11`, `gpu`, `wl`, `game-libs`, `graphics-libs` |
-| `43_toolkits` | 250 | GTK, Qt 5 and 6, KDE Frameworks, wxWidgets, FLTK and WebKitGTK, and the libraries and services built on them | `kf6`, `qt6`, `qt-extra`, `gtk`, `qt5` |
-| `44_apps` | 284 | The natively ported graphical applications | `graphics`, `emulators`, `games-board`, `studio`, `hamradio` |
+| `40_lang` | 184 | Language modules and developer tools whose dependencies need nothing past the compilers: the `python3-*` and `perl-*` modules, build, documentation and debugging tools, version control | `python-libs`, `python-net`, `devtools`, `python` |
+| `41_system` | 1,040 | Everything with no graphics and no toolkit among its dependencies: services, networking, storage, the command line, codecs, firmware, fonts, science and hardware libraries, and data-only KDE ports such as the sound themes | `image-libs`, `devlibs`, `formats`, `net-libs`, `embedded` |
+| `42_graphics` | 188 | What reaches Wayland, the X11 libraries, Mesa, cairo, pango, GStreamer, FFmpeg or PipeWire but no toolkit: the graphics and media stacks, Xwayland | `x11`, `gpu`, `game-libs`, `graphics-libs`, `3d` |
+| `43_toolkits` | 339 | GTK, Qt 5 and 6, KDE Frameworks, wxWidgets, FLTK and WebKitGTK, the Plasma libraries KDE Gear applications link, the Gear libraries, and the services built on them | `kf6`, `qt6`, `qt-extra`, `pim`, `kde` |
+| `44_apps` | 423 | The natively ported graphical applications, KDE Gear's among them on their subject shelves | `games-board`, `graphics`, `education`, `pim`, `emulators` |
 
 Their environment adds `src/system` and `src/art` to the repositories `kpkg` searches, so KDOS's
-own tools, theme, icons, cursors, splash, pack tools, box launcher and `kdos-bb` are built here as
-ordinary ports alongside upstream software, each in the phase its dependencies put it in:
-`kdos-tools` in `42_graphics`, because its keyboard support reaches Wayland, and `kdos-appbox` in
-`44_apps`. The dependency graph also puts `podman`, `distrobox` and `qemu` in `43_toolkits`:
-`podman` and `distrobox` because GnuPG's passphrase prompt, which they reach through `gpgme`, builds
-against Qt; `qemu` because its display backend depends on GTK 3 (`gtk3`, `vte3`) directly.
+own tools, identity generators, icon marks, wallpapers, sounds, splash, pack tools, box launcher
+and `kdos-bb` are built here as ordinary ports alongside upstream software, each in the phase its
+dependencies put it in: `kdos-tools` and `kdos-sounds` in `42_graphics`, because the tools'
+keyboard support reaches Wayland and the sound theme is rendered with them, and `kdos-appbox` in
+`43_toolkits`, because it depends on `podman`. The
+dependency graph also puts `podman`, `distrobox` and `qemu` in `43_toolkits`: `podman` and
+`distrobox` because GnuPG's passphrase prompt, which they reach through `gpgme`, builds against Qt;
+`qemu` because its display backend depends on GTK 3 (`gtk3`, `vte3`) directly.
 
-The toolkits serve applications only: each is built with its Wayland backend as the default and its
-X11 backend compiled in for Xwayland, and none of them is linked by the desktop that `50_desktop`
-builds. A **box** is a rootless podman container that one application, or one working environment,
-runs in, which is how the catalogue's applications run without being ported; the box launcher,
-`kdos-appbox`, starts and manages them.
+KDE arrives in three releases, each built as one set: KDE Frameworks 6.31 on the `kf6` shelf, the
+Plasma 6.8.2 modules, and KDE Gear 26.08.2. Preflight refuses a tree holding two releases of one
+of them, so a bump moves a whole family at once. The Frameworks and every library a Gear
+application links are `43_toolkits`; the KDE ports with no toolkit below them
+(`extra-cmake-modules`, `cxx-rust-cssparser`, `kdeedu-data`, Plasma's sound themes and
+wallpapers) are `41_system`; a Gear application nothing else depends on is `44_apps`, on
+the shelf of its subject (`games-board`, `education`, `pim`), not on a KDE shelf. A Plasma module
+that is part of the session is `50_desktop`, below.
+
+The toolkits serve applications only, each built with its Wayland backend as the default and its
+X11 backend compiled in for Xwayland. KDOS's own desktop code links only Qt 6, KDE Frameworks 6
+and the Plasma libraries, and preflight refuses any other toolkit in it. A **box** is a rootless
+podman container that one application, or one working environment, runs in, which is how the
+catalogue's applications run without being ported; the box launcher, `kdos-appbox`, starts and
+manages them.
 
 Each of the five phases keeps its list as a directory, `packages.d/`, with one file per shelf:
 `41_system/packages.d/network.txt` holds the `network` shelf's ports that phase installs. A file
@@ -538,32 +553,51 @@ and it names no port. Every file, with its ports, is in
 of the phase its subject and its dependencies place it in; the rule is in
 [Package lists](build-system.md#package-lists).
 
-Shelves are distinct from the `group =` key a recipe may carry, which only the upstream version
-checker reads, to offer related version bumps together; see
+Shelves are distinct from the `group =` key a recipe may carry, which the upstream version
+checker reads to offer related version bumps together, and which places a KDE port in its release
+family when its source is not on KDE's own release directories; see
 [The group key](../03-architecture/packaging.md#the-group-key).
 
 ## The desktop: `50_desktop`
 
-`50_desktop` names and installs 22 ports, with an order of 414 once dependencies are followed,
-all but those 22 installed and skipped by this point. Its environment adds `src/desktop` and
-`src/daemons` to the repositories, because that is where the compositor, the shell and the root
-daemons live, and no earlier phase can build them. It installs wlroots; the compositor `kdos-comp`;
-`kdos-boxsock`, which gives each box its own Wayland socket; the panel `kdos-shell`; the terminal
-`kdos-term`; the lock screen `kdos-lock`; the resource monitor `kdos-res`; the daemons
-`kdos-powerd`, `kdos-energyd`, `kdos-oomd`, `kdos-mountd` and `kdos-packd`; the input method
-`fcitx5` with three language engines; the desktop portals `xdg-desktop-portal-wlr` and
-`xdg-desktop-portal-kdos`; and the screen recorder `kdos-record`.
+`50_desktop` names and installs 90 ports. Its environment adds `src/desktop` and `src/daemons` to
+the repositories, because that is where KDOS's Plasma code and its root daemons live: the code
+links `libplasma`, KWin and `libdiscover`, which this phase installs, so no earlier phase can
+build it. The list holds:
+
+- **The Plasma session**: KWin with Xwayland for X11 clients, `plasma-workspace` (plasmashell,
+  KRunner, the notification server, the session start), `plasma-desktop`, System Settings, the
+  screen locker, PowerDevil, the network, audio and Bluetooth applets, Discover, Welcome Center,
+  Spectacle, System Monitor, the KDE portal and the rest of Plasma's session modules.
+- **The login**: SDDM with its settings page and `kwallet-pam`, which opens the wallet with the
+  password typed at login.
+- **The input method**: `fcitx5` with three language engines, its Qt 6 module and its settings
+  page, and the on-screen keyboard.
+- **KDOS's own Plasma code** from `src/desktop` and its login theme and add-ons from `src/art`: the
+  KDOS Modern look and its desks, the System Settings pages for boxes, slots, the firewall, the
+  look and Health, the tray widgets, the KWin effects and scripts, the Discover backend, the KRunner
+  plugin, the notices, the `library:/` folder and the graphical installer, `kdos-installer-gui`.
+- **The root daemons**: `kdos-powerd`, `kdos-energyd`, `kdos-oomd`, `kdos-packd`,
+  `kdos-settingsd` (the hostname, time and locale services System Settings and the greeter ask)
+  and `kdos-sysupdated` (the system-update service Discover drives).
+- **The meta ports**, last: `kde-plasma`, the eight `kde-gear-*` sets, `kde-gear` and `kde-all`,
+  which build nothing and name what `kpkg install` gives a machine.
+
+A port of an earlier phase never names a `50_desktop` port in its `depends`, so the session stays
+out of every application phase; a Gear application that talks to a session daemon finds it at run
+time. Each Plasma module drops the systemd user units upstream installs, which the package lint
+refuses, and starts through its XDG autostart entry instead.
 
 A **pack** is one application, runtime or base as a single signed file, an EROFS filesystem image
 with its metadata appended; packs are how a set of applications exported on one machine is
 imported on another, and `kdos-packd` installs and mounts them.
 
-The desktop is its own phase because the Wayland base in `42_graphics` is useful without a
-compositor, and because keeping it separate gives the userland a snapshot, `44_apps`, that holds
-none of the desktop: resuming from it re-runs the desktop's list, the kernel phase and the image,
-and nothing below them. A change to one desktop program is cheaper still as a build plan on the
-current tree. The programs themselves are described in
-[The programs](../04-programs/README.md).
+The desktop is its own phase because the libraries below it are useful without a session, and
+because keeping it separate gives the userland a snapshot, `44_apps`, that holds none of the
+desktop: resuming from it re-runs the desktop's list, the kernel phase and the image, and nothing
+below them. A change to one desktop component is cheaper still as a build plan on the current
+tree. The session and KDOS's part in it are described in
+[The session](../03-architecture/session.md) and [The programs](../04-programs/README.md).
 
 ## The kernel: `60_kernel`
 
@@ -645,17 +679,18 @@ Its sixteen scripts run inside the chroot in the order their numbers give:
 
 | Step | Does |
 |---|---|
-| `010_binhost.sh` | With `KDOS_MAKE_BINHOST=1`, copies the packages this build made into a signed binhost under `build/binhost/`; otherwise does nothing |
+| `010_binhost.sh` | With `KDOS_MAKE_BINHOST=1`, copies the packages this build made into a signed binhost under `build/binhost/`, every name flat, with its AppStream catalogue and its signed release index `kdos-update.idx`; otherwise does nothing |
 | `015_pkgstore.sh` | With the package store on, evicts `build/pkgstore` down to `KDOS_PKG_STORE_MAX`, least recently used first; otherwise does nothing |
 | `020_cleanup.sh` | Removes build-only files: the build user's caches, the kpkg work and package caches, podman's stores, and Python bytecode no package owns, then fails if a packaged Python module has no bytecode (each package carries its own, compiled by `kpkg` as hash-checked bytecode); removes the translations and HTML manuals no package owns, which the packages themselves never carry; resets `/root` to what `fs/root` holds, mode 0700 |
 | `030_launchers.sh` | Reconciles the generated application launchers in `/etc/skel` with the packs the image carries; with none, it removes every one |
 | `040_orphans.sh` | Removes every installed package that has no recipe in the tree, or whose port `ports/unbuilt` lists |
-| `045_identity.sh` | Stamps `/etc/os-release` with the commit the image was built from (`BUILD_ID`) and that commit's date (`KDOS_BUILD_DATE`), which `kdos-about` shows |
-| `050_theme.sh` | Seeds the default theme into `/etc/skel`, after checking that the accent the phase names is the one compiled into `libkcolor` |
+| `045_identity.sh` | Stamps `/etc/os-release` with the commit the image was built from (`BUILD_ID`) and that commit's date (`KDOS_BUILD_DATE`), which About this System shows |
+| `050_theme.sh` | Seeds the default accent into `/etc/skel` (the global theme the first login applies, and the palettes of the programs that read only a home), after checking that the accent the phase names is the one compiled into `libkcolor`, and stops the image when a KDOS colour scheme falls below a contrast floor |
 | `060_udev_hwdb.sh` | Compiles the udev hardware database, `/etc/udev/hwdb.bin` |
 | `070_user.sh` | Creates each ordinary user's home directory from `/etc/skel`, and removes the account files' backups (`/etc/passwd-` and its kin), which carry the live accounts' password hashes |
 | `080_whatis.sh` | Builds the manual-page index `apropos` and `whatis` search |
 | `085_fontcache.sh` | Writes the fontconfig cache into `/usr/lib/fontconfig/cache` and checks that fontconfig accepts it |
+| `086_swcatalog.sh` | Writes `/usr/share/swcatalog/xml/kdos-ports.xml`, the AppStream catalogue of the installed ports that Discover lists, with `kdos-discover-catalog`, and stops the image when it lists no application |
 | `087_gates.sh` | Checks the finished tree: reports the files no package owns (`testing/unowned.py`) and stops the build on one under `/usr/share/locale`, `man`, `doc` or `info`, and on an undeclared library owner, an interpreter that does not resolve or OpenSSL 3 and 4 in one process (`testing/linkcheck.py`), or on a dangling link, a dead `Exec=`, a missing icon or udev program (`testing/entrycheck.py`) |
 | `090_initramfs.sh` | Builds the initramfs, `build/initramfs.cpio.gz` |
 | `100_packs.sh` | Creates the pack store's directories; with `KDOS_PACK_KDOS=1`, also packs the system as the base pack `kdos` |
@@ -664,8 +699,8 @@ Its sixteen scripts run inside the chroot in the order their numbers give:
 
 The order carries dependencies: the binhost is written before the cleanup empties the package
 cache, the launchers and theme are written into `/etc/skel` before `070_user.sh` copies it into
-homes, and the orphan sweep runs before the three indexes are built so a removed package's rules,
-manual pages and fonts are not indexed. `087_gates.sh` runs after the sweep and every index, so it
+homes, and the orphan sweep runs before the indexes are built so a removed package's rules,
+manual pages, fonts and applications are not indexed. `087_gates.sh` runs after the sweep and every index, so it
 checks what the image carries; the files later steps write (the initramfs and its module list, the
 source offer) are generated ones the unowned report subtracts. It runs every check before it
 decides, so one failed build prints every finding; re-running `70_image` alone is enough once the
@@ -734,22 +769,23 @@ for it. What the initramfs does at boot is in
 5. The script checks the result: an EFI system partition is present, the MBR carries its boot
    signature, and its boot code area is not empty. Any failure fails the build.
 
-The medium carries no applications: podman builds each one from the catalogue on the machine that
+The medium carries every natively built application, KDE Gear among them, and no boxed one: podman builds each catalogue application on the machine that
 wants it, and a set exported elsewhere can be imported as packs; see
 [Two lanes, one box](../03-architecture/packs-and-boxes.md#two-lanes-one-box). Two opt-in
 switches change what it carries, `KDOS_ISO_SOURCES=1` (the tree's sources under `/sources`) and
 `KDOS_PACK_KDOS=1` (the base pack); see [The first build](developing.md#the-first-build). How the
 medium boots is in [Boot and init](../03-architecture/boot-and-init.md).
 
-**What the medium needs.** Every package is in `system.sfs`, and there is no smaller image. On the last measured build the ISO was 23,853,701,120 bytes, with `system.sfs`
-at 22,693 MiB, and an install about 53 GB. That sets four requirements, stated wherever a reader
-meets them ([Getting started](../02-user-guide/getting-started.md#what-you-need),
+**What the medium needs.** Every package is in `system.sfs`, KDE Plasma and all of KDE Gear
+included, and there is no smaller image. The ISO is over 23 GB and an install over 53 GB; the exact
+sizes of an image with the whole KDE set are not measured. That sets four requirements, stated
+wherever a reader meets them ([Getting started](../02-user-guide/getting-started.md#what-you-need),
 [Installation](../02-user-guide/installation.md), [kinstall](../04-programs/kinstall.md) and the
-release notes `ports/publish --release` writes): a USB stick of 32 GB or more; a BD-R for optical
-boot, since the image does not fit a DVD; about 56 GB of disk for an install, because `kinstall`
-refuses a disk smaller than the install size plus 768 MiB; and a release published in several
-parts, because GitHub holds no asset of 2 GiB or more. `make run` gives its virtual machine a
-sparse 96 GB disk for the same reason.
+release notes `ports/publish --release` writes): a USB stick of 32 GB or more; a Blu-ray disc for
+optical boot, since the image does not fit a DVD; a disk larger than the install, because
+`kinstall` refuses one smaller than the install size plus 768 MiB; and a release published in
+several parts, because GitHub holds no asset of 2 GiB or more. `make run` gives its virtual machine
+a sparse 96 GB disk for the same reason.
 
 ### The security pass before an image
 
@@ -795,13 +831,14 @@ other port in the order is installed and current, so kdosbuild marks it `install
 step for it; `pv` is forced with `kpkg install -f` and rebuilt; its dependencies are not forced. `70_image` then produces a new ISO
 from the updated tree. A plan that narrows the build writes no snapshots unless `--snapshot` is
 given, because a snapshot of a partly re-run tree would be filed under a phase whose contents it
-does not match. The recipe for each kind of change (a file under `fs/`, a port, a desktop program, a
+does not match. The recipe for each kind of change (a file under `fs/`, a port, a desktop component, a
 library) is the table in
 [Rebuilding one thing](developing.md#rebuilding-one-thing), and the rules of a plan are in
 [Build plans](build-system.md#build-plans).
 
-For a desktop program there is a faster loop still, `testing/quick.sh`, which builds the program
-and patches it into an already booted ISO without repacking the medium; see
+For a desktop component (a System Settings page, a widget, a KWin effect or KWin itself) there is
+a faster loop still, `testing/quick.sh`, which builds the port, patches its files into an already
+booted ISO without repacking the medium, and restarts what reads them; see
 [The fast loop](testing.md#the-fast-loop).
 
 ## What a build costs
@@ -811,10 +848,10 @@ These figures come from the chapters that measure them:
 | Cost | Figure | Source |
 |---|---|---|
 | Upstream sources, fetched once | About 42.2 GB (39.3 GiB), each file held once in `ports/.srccache` | [Developing](developing.md#what-a-development-machine-needs) |
-| A build from nothing | Most of a day | [Building from scratch](developing.md#building-from-scratch) |
+| A build from nothing | More than a day; not measured with the KDE set | [Building from scratch](developing.md#building-from-scratch) |
 | A complete set of phase snapshots | Not yet measured for the eleven phases that take one. On a synthetic ten-phase tree of about 4.4 GB, layers took 1.86 GB against 7.99 GB for full snapshots, 23% | [Snapshots](build-system.md#layers-and-full-snapshots), [Developing](developing.md#what-a-development-machine-needs) |
 | One program rebuilt, with packaging | Not yet measured with the zstd image; most of it is writing the ISO, and `KDOS_ISO_COMP=zstd:3` shortens that part | [The fast loop](testing.md#the-fast-loop) |
-| One program rebuilt without packaging, patched into a booted ISO | About three minutes, or 1m37s when nothing is rebuilt and the session is not restarted (`KDOS_QUICK_NOBUILD=1 KDOS_QUICK_KEEP=1`) | [The fast loop](testing.md#the-fast-loop) |
+| One desktop component rebuilt without packaging, patched into a booted ISO | A few minutes: the port's own build, one boot to the Plasma session, and the restart of what reads it | [The fast loop](testing.md#the-fast-loop) |
 
 Snapshots are written only when a run asks for them, with `--snapshot` or the startup picker's `S`. A build from scratch also needs
 the progress markers emptied first: `--fresh` runs every phase on the tree already in `build/`, and

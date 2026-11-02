@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-hyperlink
+version     = 21.0.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/h/hyperlink/hyperlink-$version.tar.gz
+sha256      = 427af957daa58bc909471c6c40f74c5450fa123dd093fc53efd2e91d2705a56b  python3-hyperlink-21.0.0.tar.gz
+description = Immutable URL objects for Python, with parsing, joining and IRI to URI conversion
+homepage    = https://github.com/python-hyper/hyperlink
+license     = MIT
+depends     = python3 python3-pip python3-setuptools python3-idna

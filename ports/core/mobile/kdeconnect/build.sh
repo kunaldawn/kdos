@@ -70,6 +70,7 @@ Icon=kdeconnect
 Terminal=false
 StartupWMClass=org.kde.kdeconnect-indicator
 Categories=Qt;KDE;Network;
+NotShowIn=KDE;
 Keywords=phone;tray;kdeconnect;
 DESKTOP
 chmod 644 "$_apps/org.kde.kdeconnect.app.desktop" \

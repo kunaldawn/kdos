@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = plasma-keyboard
+version     = 6.8.2
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = 4a48f97a1aa1c58fa9f1ae3160f770f5a223f73d66b3e7306c01318a2a562479  plasma-keyboard-6.8.2.tar.xz
+description = Plasma's on-screen keyboard — a Wayland input method over Qt Virtual Keyboard, for the session and the login screen
+homepage    = https://invent.kde.org/plasma/plasma-keyboard
+license     = (LicenseRef-Qt-Commercial OR GPL-3.0-only) AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.1-only AND GPL-2.0-or-later
+group       = plasma
+depends     = cmake ninja extra-cmake-modules pkgconf qt6-qtbase qt6-qtdeclarative qt6-qtvirtualkeyboard qt6-qtwayland kcoreaddons ki18n kcmutils kconfig kcrash kirigami kirigami-addons kitemmodels libplasma libxkbcommon wayland wayland-protocols

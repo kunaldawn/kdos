@@ -2,9 +2,9 @@
 
 KDOS ships its own diagnostic commands beside the usual process and log tools. This page covers
 them: `kdos doctor`, which checks the faults KDOS is known to have; `kdos why` and `kdos explain`,
-which say what owns a file and why it is the way it is; `kdos restarts`, `kdos stutter`,
-`kdos cve`, `kdos hey` and `kdos appid`; `kpkg check`, which compares the root with what was
-installed; and the resource monitor. Where each kind of log is written, and how to read it, is a separate page:
+which say what owns a file and why it is the way it is; `kdos restarts`, `kdos cve`, `kdos hey`
+and `kdos appid`; `kpkg check`, which compares the root with what was installed; KWin's own
+report; and System Monitor. Where each kind of log is written, and how to read it, is a separate page:
 [Logs](logs.md). Each command is described in full in
 [The kdos command](../../kdos/04-programs/kdos-command.md).
 
@@ -12,9 +12,9 @@ installed; and the resource monitor. Where each kind of log is written, and how 
 
 | Port | Provides |
 |:--|:--|
-| [kdos-tools](#port-kdos-tools) | [`kdos`]{.idx term="kdos (command)"}, whose diagnostic subcommands are `status`, `version`, `doctor`, `why`, `explain`, `oracle`, `restarts`, `stutter`, `cve`, `appid` and `hey`; the reasons corpus under [`/usr/share/kdos/reasons`]{.idx}; the vulnerability database [`/usr/share/kdos/secdb.txt`]{.idx} and the list of bundled libraries [`/usr/share/kdos/bundled.txt`]{.idx} |
-| [kdos-res](#port-kdos-res) | [`kdos-res`]{.idx}, the resource monitor, and its setuid helper [`kdos-resctl`]{.idx} |
-| [kdos-comp](#port-kdos-comp) | The frames socket `kdos stutter` reads and the command socket `kdos hey` uses |
+| [kdos-tools](#port-kdos-tools) | [`kdos`]{.idx term="kdos (command)"}, whose diagnostic subcommands are `status`, `version`, `doctor`, `why`, `explain`, `oracle`, `restarts`, `cve`, `appid` and `hey`; the reasons corpus under [`/usr/share/kdos/reasons`]{.idx}; the vulnerability database [`/usr/share/kdos/secdb.txt`]{.idx} and the list of bundled libraries [`/usr/share/kdos/bundled.txt`]{.idx} |
+| [plasma-systemmonitor](#port-plasma-systemmonitor), [ksystemstats](#port-ksystemstats), [ksystemstats-kdos](#port-ksystemstats-kdos) | System Monitor, its sensor daemon, and the KDOS sensors |
+| [kwin](#port-kwin) | `supportInformation`, and the window list `kdos hey` and `kdos appid` ask for |
 | [btop](#port-btop), [htop](#port-htop), [bottom](#port-bottom), [procs](#port-procs), [iotop](#port-iotop), [nvtop](#port-nvtop) | Terminal process, I/O and GPU monitors |
 | [lsof](#port-lsof), [strace](#port-strace) | Open files, and system calls, of a running process |
 | [util-linux](#port-util-linux) | `dmesg`, [`lsblk`]{.idx}, `findmnt` |
@@ -35,11 +35,11 @@ them. `kdos` is installed as
 constraint in the system and its consequence. The [kdos-tools](#port-kdos-tools) port installs it,
 with the vulnerability database, from `src/system/kdos-tools/build.sh`:
 
-<!-- kfs:include src/system/kdos-tools/build.sh lines=40-44 pin=9fb84a77f3e2 -->
+<!-- kfs:include src/system/kdos-tools/build.sh lines=51-55 pin=9fb84a77f3e2 -->
 
 Each document begins with a header. One from `src/system/kdos-tools/reasons/`:
 
-<!-- kfs:include src/system/kdos-tools/reasons/default-first-in-rc-xml.txt lines=1-4 pin=407096c976a5 -->
+<!-- kfs:include src/system/kdos-tools/reasons/session-bus-fixed-path.txt lines=1-4 pin=3fb898f63a39 -->
 
 `path:` and `port:` are what `kdos why` matches. Three variables point the commands elsewhere:
 
@@ -49,27 +49,21 @@ Each document begins with a header. One from `src/system/kdos-tools/reasons/`:
 | `KDOS_SECDB` | `/usr/share/kdos/secdb.txt` |
 | `KDOS_BUNDLED` | `/usr/share/kdos/bundled.txt` |
 
-### The compositor's sockets
+### KWin's own state
 
-`kdos stutter` connects to `$XDG_RUNTIME_DIR/kdos-frames.sock` and `kdos hey` to
-`$XDG_RUNTIME_DIR/kdos-cmd.sock`. Both exist only while the compositor runs, and only for the
-account whose session it is. [The frames socket](../../kdos/04-programs/kdos-comp.md#the-frames-socket)
-and [The command socket](../../kdos/04-programs/kdos-comp.md#the-command-socket) give the formats.
+`qdbus6 org.kde.KWin /KWin supportInformation` prints the compositor's version, renderer, options,
+loaded effects and outputs; [Debugging](../../kdos/04-programs/kwin.md#debugging) lists the rest of
+what KWin answers on the session bus.
 
-### ~/.local/share/kdos/observed-app-ids
+### System Monitor's KDOS sensors
 
-The compositor appends every application identifier a window presents, once each. `kdos appid`
-compares it with the installed launchers.
-
-### ~/.config/kdos/res.conf
-
-The resource monitor's settings, which ship absent; the keys are in
-[Configuration](../../kdos/04-programs/kdos-res.md#configuration).
+The `kdos` sensors (boxes, energy by application, the slots) come from the `ksystemstats-kdos`
+plugin; they are listed in [System Monitor](../../kdos/04-programs/plasma-shell.md#system-monitor).
 
 ## Usage
 
-Every command below has been run on the live medium, from a login shell and from the desktop's
-own environment. The self-test also runs `doctor`, `cve` and `stutter` against fixtures.
+The self-test runs `doctor` and `cve` against fixtures; the commands that ask KWin have not been
+run on a booted Plasma image.
 
 ### A first look at a machine
 
@@ -130,7 +124,7 @@ kdos doctor >/dev/null || echo "kdos doctor found something"
 2. Ask about a port by name:
 
    ```bash
-   kdos why kdos-comp
+   kdos why dbus
    ```
 
 3. Search the reasons for a word:
@@ -141,7 +135,7 @@ kdos doctor >/dev/null || echo "kdos doctor found something"
    ```
 
    Each title is followed, on the next line, by the reason's file name in brackets, such as
-   `(default-first-in-rc-xml)`; with a word, each reason's text follows its title. A word no
+   `(session-bus-fixed-path)`; with a word, each reason's text follows its title. A word no
    reason contains prints `nothing recorded about '<word>'`, and a path or port that `kdos why`
    finds in no reason gets `no recorded reason`.
 
@@ -190,19 +184,10 @@ same report as `kdos cve`. The exit status is 1 when any package is behind a rec
 
 ### A desktop that hiccups
 
-1. In a terminal inside the session, start the watcher and leave it running:
-
-   ```bash
-   kdos stutter
-   ```
-
-   It prints `Watching for late frames. Ctrl-C to stop.` and then nothing until a frame is late.
-
-2. Use the machine until the hiccup happens again. Each late frame is reported with its output, how
-   late it was, the compositor's own render time, the pressure figures and the busiest processes.
-3. Stop it with Ctrl+C.
-
-A static screen produces no frames, so start something that moves before waiting for a hiccup.
+KWin's **Show FPS** effect (System Settings → **Desktop Effects**) draws the frame rate and each
+frame's paint time on the screen; turn it on, use the machine until the hiccup happens again, and
+read which frames were late. `top` or System Monitor at the same time shows what was busy. A
+static screen produces no frames, so start something that moves before waiting for a hiccup.
 
 ### Windows and launchers
 
@@ -212,20 +197,20 @@ kdos hey outputs
 kdos appid
 ```
 
-`kdos hey list` gives each window's id, workspace, state, application id, box and title, and
-`(no windows)` when there are none; `kdos hey outputs` gives each screen's name, size, scale and
-position; `kdos hey run Close <id>` acts on one window. `kdos appid` reports each application
-identifier that matches no launcher file name, which is what puts a second icon beside a pinned
-one on the panel. It reads the identifiers the compositor has recorded in this home; with none
-recorded yet it reports on the windows open at that moment, and with no window open either it
-says `No windows have been observed yet.`
+`kdos hey list` gives each window's application id, box and title, asked of KWin; `kdos hey boxes`
+the boxes with a window open; `kdos hey outputs` each screen's name, size, scale and position;
+`kdos hey run <action> <id>` closes, activates, minimises or maximises one window. `kdos appid`
+asks KWin for every window open now and prints `<app id> TAB OK|MISMATCH TAB <title>`: a window
+whose application id names no installed desktop entry shows in the Task Manager as a second,
+unnamed icon beside the launcher it came from. Both exit 2 when there is no session to ask.
 
 ### Processes and resources
 
-1. Press Ctrl+Shift+Escape, or Super+Ctrl+T, for **Resources**, or run `kdos-res`. On `tty2` or
-   over SSH it draws full screen in the terminal.
-2. The **Processes** page lists everything; **Boxes** groups processes by box; **Energy** shows
-   relative use by application. Its keys are in [Keys](../../kdos/04-programs/kdos-res.md#keys).
+1. Open **System Monitor** from the application menu, or run `plasma-systemmonitor`. On `tty2` or over
+   SSH, run `btop`.
+2. The **Processes** page lists everything; the **KDOS** page shows each box's processor, memory
+   and disk use, energy by application and the two system slots. Its sensors are described in
+   [System Monitor](../../kdos/04-programs/plasma-shell.md#system-monitor).
 
 `btop`, `htop` and the others above work in any terminal. `sudo iotop` shows which process holds
 the disk.
@@ -238,8 +223,8 @@ the disk.
 - `kdos oracle` prints one reason, the same line the login banner shows. It stays the same all day
   and changes after a reboot.
 - `kdos doctor` checks the setuid bit on the helpers that need one. A lost bit fails silently
-  elsewhere: the lock screen refuses every password, or no box starts. Its Desktop section names
-  the repair.
+  elsewhere: the lock screen refuses every password (`unix_chkpwd`), or no box starts
+  (`newuidmap`). It names the repair.
 - `kdos status --bar` prints one line of running boxes and exported applications, for a script or
   a status bar.
 - A skip from `kdos doctor` says the check could not answer, not that it passed.
@@ -247,20 +232,13 @@ the disk.
 ## Troubleshooting
 
 **`kdos doctor` warns `WAYLAND_DISPLAY=… but … does not exist`.**
-The shell inherited the variable from a session that has ended. The compositor it names is gone;
+The shell inherited the variable from a session that has ended. The KWin it names is gone;
 see [Desktop troubleshooting](desktop-troubleshooting.md).
 
-**`kdos stutter` exits at once with status 2.**
-There is no frames socket: the compositor is not running, or the command was run from a shell whose
-`XDG_RUNTIME_DIR` is not the session's. The message names the path it tried, as in
-`nothing is reporting frame timing on /run/user/0/kdos-frames.sock` for root. A shell with no
-`XDG_RUNTIME_DIR` at all, such as one reached through `sudo`, gets `no XDG_RUNTIME_DIR — this is
-not a desktop session`.
-
-**`kdos hey` exits 1.**
-The compositor cannot be reached, or refused the request, for instance an id that names no window,
-which prints `kdos hey: no view with that id`.
-`kdos doctor` checks the command socket in its Desktop section.
+**`kdos hey` or `kdos appid` exits 2.**
+There is no session to ask: the command ran outside the desktop, from a shell with no
+`WAYLAND_DISPLAY` and no session bus. Run it in Konsole, or from a login of the same user, which
+shares the session bus.
 
 **`kdos explain` prints `no reasons installed` and exits 1, and `kdos why` finds no reason for
 anything.**
@@ -271,11 +249,11 @@ directory. `kpkg check kdos-tools` shows whether the files are missing.
 `/usr/share/kdos/secdb.txt` is missing, or `KDOS_SECDB` names a file that is not there; the message
 is `kdos: no security database at <path>`.
 
-**`kdos-res` cannot end or renice a process another account owns.**
-`kdos-resctl` has lost its setuid bit. `kdos doctor` warns `kdos-resctl is not setuid root` and
-prints the fix; see
-[Acting on a process](../../kdos/04-programs/kdos-res.md#acting-on-a-process) for what the helper is
-allowed to do.
+**System Monitor cannot end or renice a process another account owns.**
+Its helper asks polkit for an administrator's password, which the session's agent asks for in a
+dialog; an account that cannot give one cannot act on another account's process, and an
+administrator can also use `sudo kill` or `sudo renice` from a terminal. See
+[System Monitor](../../kdos/04-programs/plasma-shell.md#system-monitor).
 
 **`lsblk` shows no filesystem type, label or UUID.**
 Those columns are filled for root only; run `sudo lsblk -f`.
@@ -285,14 +263,14 @@ Those columns are filled for root only; run `sudo lsblk -f`.
 - [kdos doctor cannot check hardware a machine does not have](../../kdos/06-reference/known-gaps.md#kdos-doctor-cannot-check-hardware-a-machine-does-not-have)
 - [lsblk shows a filesystem's type, label and UUID to root only](../../kdos/06-reference/known-gaps.md#lsblk-shows-a-filesystems-type-label-and-uuid-to-root-only)
 - [btop's GPU panel is empty on Intel graphics unless btop runs as root](../../kdos/06-reference/known-gaps.md#btops-gpu-panel-is-empty-on-intel-graphics-unless-btop-runs-as-root)
-- [kdos-res draws its selected row in the accent colour](../../kdos/06-reference/known-gaps.md#kdos-res-draws-its-selected-row-in-the-accent-colour)
 
 ## See also
 
 - [Diagnosis](../../kdos/04-programs/kdos-command.md#diagnosis) and
   [kdos doctor](../../kdos/04-programs/kdos-command.md#kdos-doctor): every diagnostic subcommand
 - [Vulnerability tracking](../../kdos/03-architecture/packaging.md#vulnerability-tracking): how `kdos cve` compares versions
-- [kdos-res](../../kdos/04-programs/kdos-res.md): the resource monitor
+- [System Monitor](../../kdos/04-programs/plasma-shell.md#system-monitor): the KDOS sensors and
+  page
 - [When a boot stops](../../kdos/03-architecture/boot-and-init.md#when-a-boot-stops): which file explains each boot stage
 - [Logs](logs.md), [Services](services.md), [kpkg](kpkg.md), [Out of memory](out-of-memory.md),
   [Desktop troubleshooting](desktop-troubleshooting.md)
@@ -300,4 +278,4 @@ Those columns are filled for root only; run `sudo lsblk -f`.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 419.* Previous: [418. Portals and screen sharing](portals-and-screen-sharing.md) · [Contents](../README.md) · Next: [420. Desktop troubleshooting](desktop-troubleshooting.md)
+*Part XVI. System administration, chapter 443.* Previous: [442. Portals and screen sharing](portals-and-screen-sharing.md) · [Contents](../README.md) · Next: [444. Desktop troubleshooting](desktop-troubleshooting.md)

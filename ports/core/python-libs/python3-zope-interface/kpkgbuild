@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-zope-interface
+version     = 8.7
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/z/zope.interface/zope_interface-$version.tar.gz
+sha256      = 0b47b62e8d0d99b24bcdd32f4f2120425e5019c3bee2ad69a0e1d75737487a96  python3-zope-interface-8.7.tar.gz
+description = Interfaces for Python: declared contracts that objects provide and adapters look up
+homepage    = https://github.com/zopefoundation/zope.interface
+license     = ZPL-2.1
+depends     = python3 python3-pip python3-setuptools

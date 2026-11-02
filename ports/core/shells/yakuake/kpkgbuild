@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = yakuake
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 7f0ce86218ed13c43e0cd544c11583a9700995953cbe8642daa3e0d67585ba36  yakuake-26.08.2.tar.xz
+description = Drop-down terminal — a Konsole that slides down from the top of the screen on a global shortcut
+homepage    = https://apps.kde.org/yakuake/
+license     = (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND LGPL-2.0-or-later AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg qt6-qtwayland wayland karchive kconfig kcoreaddons kcrash kdbusaddons kglobalaccel ki18n kiconthemes kio knewstuff knotifications knotifyconfig kparts kwidgetsaddons kwindowsystem kstatusnotifieritem kcolorscheme plasma-wayland-protocols kwayland konsole

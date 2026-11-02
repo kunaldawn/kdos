@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kmplot
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 7820b60f3a3186de626b1c1af6c010270dd001aacd5a06914949120cd96133cf  kmplot-26.08.2.tar.xz
+description = KDE function plotter — Cartesian, parametric, polar, implicit and differential plots
+homepage    = https://apps.kde.org/kmplot/
+license     = GPL-2.0-or-later AND GFDL-1.2-or-later AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg kcompletion kconfig kcrash kdbusaddons kguiaddons ki18n kjobwidgets kio kparts kwidgetsaddons ktextwidgets kdoctools kdeedu-data

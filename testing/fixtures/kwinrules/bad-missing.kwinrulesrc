@@ -1,0 +1,8 @@
+[General]
+count=2
+rules=1f3c,dead
+
+[1f3c]
+Description=A rule list naming a group that does not exist
+wmclass=org.kde.konsole
+wmclassmatch=1

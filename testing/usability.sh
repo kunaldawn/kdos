@@ -9,24 +9,22 @@
 #   The desktop, driven the way a person drives it.
 #
 #   testing/usability.sh              # the ISO, 1280x800
-#   testing/usability.sh 1920x1080    # a size whose cell count is not the same
+#   testing/usability.sh 1920x1080    # another size, so another panel length
 #
 # WHAT THIS IS FOR, AND WHY IT IS NOT selftest.sh. `preflight.sh` proves the
-# wiring and `selftest.sh` proves the decisions; neither has ever hovered a
-# button. Every defect this file exists to catch was invisible to both — a
-# taskbar two rows above the bottom of the screen, a tooltip that swallowed the
-# click on the button it was describing, a Start button whose label vanished
-# when the pointer touched it, an icon layer eighty columns wide on a
-# hundred-and-sixty column screen. They are all SCREEN bugs, and the only thing
-# that finds a screen bug is a screen with a hand on it.
+# wiring, `selftest.sh` and `plasmatest.sh` prove the decisions; none of them
+# has ever hovered a button. A panel that does not reach the screen edge, a
+# popup that opens across the panel, a tooltip that takes the click meant for
+# its button, a toast that steals the keyboard: those are SCREEN defects, and
+# the only thing that finds one is a screen with a hand on it.
 #
 # IT ASSERTS NOTHING. It produces a numbered contact sheet and a checklist to
 # read it against — testing/usability.md, one heading per shot. A pass is a
 # person looking; what is automated here is the driving, which is the part
 # nobody does twice the same way.
 #
-# EVERY STEP IS THE POINTER OR A CHORD, never a command typed on a console:
-# the bugs live between the hit map and the draw, and a command reaches neither.
+# EVERY STEP IS THE POINTER OR A CHORD, never a command typed on a console,
+# except the one notification, typed into the Konsole the run opened.
 # ---------------------------------
 set -eu
 
@@ -41,71 +39,64 @@ mkdir -p "$OUT"
 rm -f "$OUT"/*.png "$OUT"/*.ppm
 
 #
-# WHERE THE BAR IS, IN PIXELS, AT THIS SIZE.
+# WHERE THE PANEL IS, IN PIXELS, AT THIS SIZE.
 #
-# The cell is 10x20: comp.conf's `panel_font` defaults to Terminus:pixelsize=20
-# and a cell is half as wide as the font is tall. The bar is `panel_cells` rows
-# of it — two by default, a 40-pixel bar — and every one of them is content:
-# the backdrop draws the edge between the bar and the desktop, so there is no
-# edge row to skip. The row worth aiming at is `ROWS - 2`, the applet row the
-# Start button and the clock sit on; `ROWS - 1` is the detail line under it.
+# The KDOS desk (src/desktop/kdos-plasma-look/desks/org.kdos.desk.kdos) puts
+# one opaque, non-floating panel on the bottom edge, 2 * ceil(gridUnit * 2.5 / 2)
+# pixels tall: forty-odd at the default 10-point font and scale 1. Its centre
+# line is aimed at as PANEL_Y, twenty pixels above the bottom edge, which stays
+# inside the panel at any font size the desk is laid out with. Left to right it
+# holds Kickoff (the mark and the word Start), the pager, the pinned apps, the
+# meters, the tray, the clock and Show Desktop, one panel-height square, at the
+# right edge; the clock is aimed at just left of that square.
 #
-# DERIVED, NOT WRITTEN DOWN, so a run at another size aims at the same button.
-# A run at a non-default `panel_font` or `panel_cells` has a different grid and
-# the number has to come back out of a fresh 01-welcome shot — the session
-# picks its face through fcft and prints no grid, so the picture is the only
-# place it exists. The tell is a --click on the bar that opens nothing.
+# A run at another font size, scale or desk has a different panel, and the
+# numbers come back out of a fresh 02-desktop shot. The tell is a --click on
+# the panel that opens nothing.
 #
-CELL_H=20
+W=${SIZE%x*}
 H=${SIZE#*x}
-ROWS=$((H / CELL_H))
-START_Y=$(((ROWS - 2) * CELL_H + CELL_H / 2))	# the bar's applet row
-BELOW_Y=$(((ROWS - 1) * CELL_H + CELL_H / 2))	# its detail line
-START_X=45					# on the Start button's plate
-CLOCK_X=$(( ${SIZE%x*} - 60 ))			# inside the clock
+PANEL_Y=$((H - 20))				# the panel's centre line
+START_X=40					# on Kickoff's mark and label
+CLOCK_X=$((W - 110))				# inside the clock
+DESK_X=$((W / 2))				# bare desktop, above the panel
+DESK_Y=$((H / 3))
 
-echo "==> $SIZE: $ROWS rows, the bar's content at y=$START_Y and y=$BELOW_Y"
+echo "==> $SIZE: the panel at y=$PANEL_Y, Start at x=$START_X, the clock at x=$CLOCK_X"
 
 exec docker run --rm --device /dev/kvm -v "$PWD:/kdos" -w /kdos \
 	kdos-qemu-py:latest python3 testing/vnc-shot.py --size "$SIZE" \
-	--no-session --sleep 45 \
 	\
-	--shot "/kdos/$OUT/01-welcome.png" \
-	--keys esc --sleep 2 --shot "/kdos/$OUT/02-desktop.png" \
+	--sleep 5 --shot "/kdos/$OUT/01-welcome.png" \
+	--dismiss-picker --sleep 2 --shot "/kdos/$OUT/02-desktop.png" \
 	\
-	--mouse "$START_X,$START_Y" --sleep 2 \
+	--mouse "$START_X,$PANEL_Y" --sleep 2 \
 	--shot "/kdos/$OUT/03-start-hover.png" \
-	--click "$START_X,$START_Y" --sleep 3 \
+	--click "$START_X,$PANEL_Y" --sleep 3 \
 	--shot "/kdos/$OUT/04-start-menu.png" \
-	--mouse 300,600 --sleep 2 --shot "/kdos/$OUT/05-menu-hover.png" \
-	--mouse "$START_X,$BELOW_Y" --sleep 2 \
-	--shot "/kdos/$OUT/06-menu-survives-the-bar.png" \
+	--mouse "200,$((H / 2))" --sleep 2 --shot "/kdos/$OUT/05-menu-hover.png" \
+	--mouse "$((START_X + 200)),$PANEL_Y" --sleep 2 \
+	--shot "/kdos/$OUT/06-menu-over-the-panel.png" \
 	--keys esc --sleep 2 --shot "/kdos/$OUT/07-menu-closed.png" \
 	\
-	--mouse "$CLOCK_X,$START_Y" --sleep 2 \
+	--mouse "$CLOCK_X,$PANEL_Y" --sleep 2 \
 	--shot "/kdos/$OUT/08-clock-hover.png" \
-	--click "$CLOCK_X,$START_Y" --sleep 3 \
+	--click "$CLOCK_X,$PANEL_Y" --sleep 3 \
 	--shot "/kdos/$OUT/09-calendar.png" \
 	--keys esc --sleep 2 \
 	\
-	--keys meta_l-ret --sleep 4 --shot "/kdos/$OUT/10-terminal.png" \
-	--mouse "$START_X,$BELOW_Y" --sleep 1 \
-	--shot "/kdos/$OUT/11-bar-with-a-window.png" \
+	--chord meta+ret --sleep 4 --shot "/kdos/$OUT/10-terminal.png" \
+	--mouse "$((W / 2)),$PANEL_Y" --sleep 2 \
+	--shot "/kdos/$OUT/11-panel-with-a-window.png" \
 	\
-	--keys meta_l-f10 --sleep 3 --shot "/kdos/$OUT/12-root-menu.png" \
+	--click "$DESK_X,$DESK_Y,3" --sleep 2 --shot "/kdos/$OUT/12-desktop-menu.png" \
 	--keys esc --sleep 1 \
-	--chord super+space --sleep 3 --shot "/kdos/$OUT/13-search.png" \
+	--chord meta+space --sleep 3 --shot "/kdos/$OUT/13-search.png" \
 	--keys esc --sleep 1 \
 	\
-	--click 900,300 --sleep 1 --shot "/kdos/$OUT/14-desktop-click.png" \
-	--mouse 900,700 --sleep 1 --shot "/kdos/$OUT/15-desktop-lower.png" \
-	\
-	`# THE TERMINAL HAS TO BE GIVEN THE FOCUS BACK FIRST. The two steps` \
-	`# above click bare desktop, which focuses the ICON LAYER — and a` \
-	`# --type then goes to the icon layer's own type-ahead, so the` \
-	`# notification is never raised and the shot below is of a desktop` \
-	`# with nothing on it, every run.` \
-	--click 400,300 --sleep 1 \
+	`# THE KONSOLE HAS TO BE GIVEN THE FOCUS BACK FIRST: the desktop menu` \
+	`# and the search above took it, and a --type then goes nowhere.` \
+	--click "$((W / 2)),$((H / 2))" --sleep 1 \
 	--type 'kdos notify "Usability" "a toast takes no keyboard"' \
-	--shot "/kdos/$OUT/16-toast.png" \
-	--sleep 8 --shot "/kdos/$OUT/17-toast-gone.png"
+	--shot "/kdos/$OUT/14-toast.png" \
+	--sleep 8 --shot "/kdos/$OUT/15-toast-gone.png"

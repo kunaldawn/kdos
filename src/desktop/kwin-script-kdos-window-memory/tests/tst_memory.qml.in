@@ -1,0 +1,149 @@
+/*
+    SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
+    SPDX-License-Identifier: MIT
+*/
+
+// Window memory's rules, against window-shaped objects. CMake writes the
+// absolute path of memory.js in.
+
+import QtQuick
+import QtTest
+
+import "@MEMORY_JS@" as Memory
+
+TestCase {
+    name: "WindowMemory"
+
+    function win(extra) {
+        const w = {
+            desktopFileName: "org.kde.kate",
+            resourceClass: "kate",
+            deleted: false,
+            managed: true,
+            normalWindow: true,
+            transient: false,
+            specialWindow: false,
+            skipTaskbar: false,
+            moveable: true,
+            maximizeMode: 0,
+            fullScreen: false,
+            tile: null,
+        };
+        for (const k in extra || {}) {
+            w[k] = extra[k];
+        }
+        return w;
+    }
+
+    function record(app, x, y) {
+        return { app: app, x: x, y: y, width: 800, height: 600, max: 0, desk: "" };
+    }
+
+    function test_appKey() {
+        compare(Memory.appKey(win()), "org.kde.kate");
+        compare(Memory.appKey(win({ desktopFileName: "" })), "kate");
+        compare(Memory.appKey(win({ desktopFileName: "", resourceClass: "" })), "");
+        compare(Memory.appKey(win({ desktopFileName: "has space" })), "");
+    }
+
+    function test_eligible_data() {
+        return [
+            { tag: "ordinary", w: win(), r: true },
+            { tag: "dialog", w: win({ transient: true }), r: false },
+            { tag: "not normal", w: win({ normalWindow: false }), r: false },
+            { tag: "special", w: win({ specialWindow: true }), r: false },
+            { tag: "skips the taskbar", w: win({ skipTaskbar: true }), r: false },
+            { tag: "fixed in place", w: win({ moveable: false }), r: false },
+            { tag: "unmanaged", w: win({ managed: false }), r: false },
+            { tag: "excluded", w: win({ desktopFileName: "org.kde.spectacle" }), r: false },
+            { tag: "no name", w: win({ desktopFileName: "", resourceClass: "" }), r: false },
+        ];
+    }
+
+    function test_eligible(data) {
+        compare(Memory.eligible(data.w, Memory.defaultExclude), data.r);
+    }
+
+    function test_isFloating() {
+        verify(Memory.isFloating(win()));
+        verify(!Memory.isFloating(win({ maximizeMode: 3 })));
+        verify(!Memory.isFloating(win({ fullScreen: true })));
+        verify(!Memory.isFloating(win({ tile: {} })));
+    }
+
+    function test_parse() {
+        compare(Memory.parse(""), []);
+        compare(Memory.parse("not json"), []);
+        compare(Memory.parse("{}"), []);
+        const list = Memory.parse(JSON.stringify([
+            record("a", 10, 20),
+            { app: "bad", x: 0, y: 0, width: 0, height: 10 },
+            { app: "space here", x: 0, y: 0, width: 10, height: 10 },
+            record("a", 99, 99),
+            { app: "b", x: 1.4, y: 2.6, width: 300, height: 200 },
+        ]));
+        compare(list.length, 2, "a bad record and the older duplicate are dropped");
+        compare(list[0].x, 10, "the first of two records for one program is the newer");
+        compare(list[1], { app: "b", x: 1, y: 3, width: 300, height: 200, max: 0, desk: "" });
+    }
+
+    function test_parseCap() {
+        const many = [];
+        for (let i = 0; i < Memory.cap + 50; i++) {
+            many.push(record("app" + i, i, i));
+        }
+        compare(Memory.parse(JSON.stringify(many)).length, Memory.cap);
+    }
+
+    function test_remember() {
+        let list = [record("a", 0, 0), record("b", 0, 0)];
+        let r = Memory.remember(list, record("a", 0, 0));
+        verify(!r.changed, "the newest record, unchanged, is no write");
+        r = Memory.remember(list, record("b", 5, 5));
+        verify(r.changed);
+        compare(r.records.map(x => x.app), ["b", "a"]);
+        compare(r.records[0].x, 5);
+        r = Memory.remember(list, record("c", 1, 1));
+        compare(r.records.map(x => x.app), ["c", "a", "b"]);
+    }
+
+    function test_rememberCap() {
+        let list = [];
+        for (let i = 0; i < Memory.cap; i++) {
+            list.push(record("app" + i, i, i));
+        }
+        const r = Memory.remember(list, record("new", 0, 0));
+        compare(r.records.length, Memory.cap);
+        compare(r.records[0].app, "new");
+        compare(r.records[Memory.cap - 1].app, "app" + (Memory.cap - 2), "the oldest goes");
+    }
+
+    function test_nearestScreen() {
+        const screens = [{ x: 0, y: 0, width: 1920, height: 1080 }, { x: 1920, y: 0, width: 1366, height: 768 }];
+        compare(Memory.nearestScreen({ x: 100, y: 100, width: 400, height: 300 }, screens), 0);
+        compare(Memory.nearestScreen({ x: 2000, y: 100, width: 400, height: 300 }, screens), 1);
+        compare(Memory.nearestScreen({ x: 5000, y: 100, width: 400, height: 300 }, screens), 1, "a screen that is gone: the nearest");
+        compare(Memory.nearestScreen({ x: 0, y: 0, width: 1, height: 1 }, []), -1);
+    }
+
+    function test_clamp() {
+        const area = { x: 0, y: 0, width: 1366, height: 728 };
+        compare(Memory.clamp({ x: 100, y: 100, width: 400, height: 300 }, area), { x: 100, y: 100, width: 400, height: 300 });
+        compare(Memory.clamp({ x: 1700, y: 900, width: 400, height: 300 }, area), { x: 966, y: 428, width: 400, height: 300 });
+        compare(Memory.clamp({ x: -50, y: -50, width: 400, height: 300 }, area), { x: 0, y: 0, width: 400, height: 300 });
+        compare(Memory.clamp({ x: 10, y: 10, width: 1920, height: 1080 }, area), { x: 0, y: 0, width: 1366, height: 728 });
+        compare(Memory.clamp({ x: 2000, y: 10, width: 400, height: 300 }, { x: 1920, y: 32, width: 1366, height: 736 }), { x: 2000, y: 32, width: 400, height: 300 });
+    }
+
+    function test_originTaken() {
+        verify(Memory.originTaken({ x: 100, y: 100 }, [{ x: 104, y: 96 }]));
+        verify(!Memory.originTaken({ x: 100, y: 100 }, [{ x: 140, y: 100 }]));
+        verify(!Memory.originTaken({ x: 100, y: 100 }, []));
+    }
+
+    function test_excludeList() {
+        compare(Memory.excludeList(undefined), Memory.defaultExclude);
+        compare(Memory.excludeList(""), []);
+        compare(Memory.excludeList(" a, b ,,c"), ["a", "b", "c"]);
+    }
+}

@@ -1,0 +1,13 @@
+[General]
+count=2
+rules=1f3c,9a20
+
+[1f3c]
+Description=Konsole opens on the current desktop
+wmclass=org.kde.konsole
+wmclassmatch=1
+
+[9a20]
+Description=Boxed windows keep their size
+wmclass=app.
+wmclassmatch=3

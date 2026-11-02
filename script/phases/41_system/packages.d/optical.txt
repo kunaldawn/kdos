@@ -30,3 +30,5 @@ cdrdao
 dvd+rw-tools
 libdiscid
 libcue
+
+cdparanoia

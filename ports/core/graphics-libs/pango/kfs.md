@@ -2,8 +2,7 @@
 
 pango lays out and renders text: it splits a paragraph into runs by script, direction and font,
 shapes each run with [harfbuzz](#port-harfbuzz), breaks lines, and draws the result through cairo.
-GTK 3 and 4 and every program built on them lay out their text with it, and so does the compositor,
-[kdos-comp](#port-kdos-comp), for its window titles. Besides `libpango` this build installs
+GTK 3 and 4 and every program built on them lay out their text with it. Besides `libpango` this build installs
 `pangocairo`, `pangoft2`, `pangoxft`, the introspection data, and the `pango-view`, `pango-list`
 and `pango-segmentation` tools with their manual pages.
 

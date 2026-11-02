@@ -10,10 +10,8 @@
  * THE LONGEST MATCHING SUFFIX WINS. Get it backwards and every `.tar.gz`
  * resolves to the decompressor rather than to the archiver — the rule
  * `kdos-appbox open` was written around, and the reason this is a library
- * function now rather than a third private copy of it. `openwith.c` had one,
- * `open.c` in kdos-appbox has one it cannot share (a different binary), and
- * libkicon needed a third to put a picture next to a file name. Two copies in
- * one binary is one too many.
+ * function rather than a private copy in each program that opens a file: two
+ * copies of the rule are two answers for one file name.
  *
  * `/usr/share/mime/globs` is COMPILED ON THE TARGET by update-mime-database, in
  * shared-mime-info's postinstall — the port builds -D update-mimedb=false and

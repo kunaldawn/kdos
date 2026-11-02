@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = akonadi-import-wizard
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 9bc59de4ff00b6486ded21a52b96d334128ad7b283266da81be23da9ebde53bd  akonadi-import-wizard-26.08.2.tar.xz
+description = Wizard that imports mail, accounts, contacts and calendars from other mail clients into KDE PIM
+homepage    = https://apps.kde.org/akonadiimportwizard/
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later AND GFDL-1.2-or-later AND BSD-3-Clause AND CC0-1.0 AND MIT
+depends     = cmake ninja extra-cmake-modules qt6-qtbase karchive kconfig kcontacts kcoreaddons kcrash kdbusaddons kdoctools ki18n kiconthemes kio kwidgetsaddons kxmlgui qtkeychain akonadi kidentitymanagement kmailtransport mailcommon mailimporter messagelib pimcommon

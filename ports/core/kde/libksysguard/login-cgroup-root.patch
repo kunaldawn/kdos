@@ -1,0 +1,61 @@
+Subject: processcore: root the application model at an elogind login cgroup
+
+diff --git a/processcore/application_data_model.cpp b/processcore/application_data_model.cpp
+--- a/processcore/application_data_model.cpp
++++ b/processcore/application_data_model.cpp
+@@ -9,6 +9,8 @@
+ #include <KUser>
+ 
+ #include <QDebug>
++#include <QFile>
++#include <QFileInfo>
+ 
+ #include "cgroup.h"
+ #include "process_data_model.h"
+@@ -16,8 +18,45 @@
+ using namespace KSysGuard;
+ using namespace Qt::StringLiterals;
+ 
++// The cgroup that holds this login's applications. Under a systemd user
++// manager that is user@<uid>.service. Under elogind with delegated session
++// cgroups there is no user manager: the login runs in /<session>/session and
++// the user may create application scopes only in /<session>/delegated, so the
++// root is /<session>, the parent of the cgroup this process runs in. Any
++// other layout keeps the systemd root, which the model reports unavailable.
++static QString applicationRoot()
++{
++    const QString systemdRoot = QStringLiteral("/user.slice/user-%1.slice/user@%1.service").arg(KUserId::currentEffectiveUserId().toString());
++    const QString base = CGroup::cgroupSysBasePath();
++    if (base.isEmpty() || QFileInfo::exists(base + systemdRoot)) {
++        return systemdRoot;
++    }
++
++    QFile self(QStringLiteral("/proc/self/cgroup"));
++    if (!self.open(QIODevice::ReadOnly | QIODevice::Text)) {
++        return systemdRoot;
++    }
++    QString own;
++    while (!self.atEnd()) {
++        const QString line = QString::fromUtf8(self.readLine()).trimmed();
++        if (line.startsWith(QLatin1String("0::"))) {
++            own = line.mid(3);
++            break;
++        }
++    }
++    const QLatin1String session("/session");
++    if (!own.endsWith(session) || own.size() <= session.size()) {
++        return systemdRoot;
++    }
++    const QString login = own.left(own.size() - session.size());
++    if (!QFileInfo(base + login + QLatin1String("/delegated")).isDir()) {
++        return systemdRoot;
++    }
++    return login;
++}
++
+ ApplicationDataModel::ApplicationDataModel(QObject *parent)
+-    : CGroupDataModel(QStringLiteral("/user.slice/user-%1.slice/user@%1.service").arg(KUserId::currentEffectiveUserId().toString()), parent)
++    : CGroupDataModel(applicationRoot(), parent)
+ {
+ }
+ 

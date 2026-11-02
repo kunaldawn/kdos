@@ -15,12 +15,10 @@
  *     $ kdos trash --restore notes.txt
  *     restored to /home/kdos/notes.txt
  *
- * `kdos-desk` has had a Trash icon since it had icons and the CLI had no verb
- * for it, so `rm` at a prompt and Delete on the desktop were two different
+ * Without a verb, `rm` at a prompt and Delete in Dolphin are two different
  * operations on one machine — one recoverable, one not. THE IMPLEMENTATION IS
- * libkbase's (`kb_trash_*`) and is shared with kdos-desk verbatim: two copies
- * of the freedesktop spec would be two answers to what deleting means, and the
- * one nobody is looking at is the one that drifts.
+ * libkbase's (`kb_trash_*`) and follows the freedesktop spec Dolphin follows:
+ * two readings of the spec would be two answers to what deleting means.
  *
  * `--empty` is the only irreversible verb here and is the only one that asks.
  */
@@ -42,7 +40,7 @@ static int usage(void)
 		"       kdos trash --restore <name> put one back where it came from\n"
 		"       kdos trash --rm <name>      delete one for good\n"
 		"       kdos trash --empty [-y]     delete all of it\n"
-		"\nThe same trash kdos-desk shows: ~/.local/share/Trash.\n");
+		"\nThe same trash Dolphin shows: ~/.local/share/Trash.\n");
 	return 2;
 }
 

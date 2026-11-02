@@ -44,19 +44,8 @@
 #include <time.h>
 #include <unistd.h>
 
-/* A box name is a container name, a profile filename and a path component. */
-static int name_ok(const char *s)
-{
-	if (!s || !*s || strlen(s) >= 64)
-		return 0;
-	if (*s == '.' || *s == '-')
-		return 0;
-	for (const char *c = s; *c; c++)
-		if (!isalnum((unsigned char)*c) && *c != '.' && *c != '_' &&
-		    *c != '-')
-			return 0;
-	return 1;
-}
+/* box.c's rule: a container name, a profile filename and a path component. */
+#define name_ok box_name_ok
 
 static char *box_dir(const char *box)
 {
@@ -97,48 +86,84 @@ static unsigned long long dir_bytes(const char *path)
 	return total;
 }
 
-static int cmd_box_list(void)
+/* The confinement the box's last launch recorded, or "" for none. */
+static void box_confinement(const char *box, char *out, size_t n)
+{
+	char sd[MAX_LINE], path[MAX_LINE + 80], text[2048];
+
+	out[0] = '\0';
+	if (box_state_dir(sd, sizeof(sd)) != 0)
+		return;
+	snprintf(path, sizeof(path), "%s/%s.state", sd, box);
+	if (kb_read_file(path, text, sizeof(text)) <= 0)
+		return;
+	for (char *l = text, *nl; l && *l; l = nl) {
+		nl = strchr(l, '\n');
+		if (nl)
+			*nl++ = '\0';
+		if (!strncmp(l, "confinement", 11)) {
+			const char *v = strchr(l, '=');
+
+			if (v) {
+				v++;
+				while (*v == ' ')
+					v++;
+				kb_strlcpy(out, v, n);
+			}
+			return;
+		}
+	}
+}
+
+typedef struct {
+	char name[64];
+	char state[32];
+	long long created;
+} ListRow;
+
+/*
+ * `kdos-box list [--json]`. The table is for a person; the JSON array is for
+ * the Boxes page, one object per box with `name`, `base`, `state`,
+ * `persistence`, `accent`, `disk` (bytes), `created` (seconds since the
+ * epoch, 0 for a box with no container) and `confinement` (what the box's
+ * last launch recorded, "" when nothing is recorded).
+ */
+static int cmd_box_list(int json)
 {
 	char *buf = kb_calloc(1, 1 << 16);
 	KbArgv a = {0};
 	char *line, *save;
 	char **profiles;
 	char *pdir = kb_calloc(1, MAX_LINE);
-	int seen[64] = {0};
-	int nseen = 0;
-	char names[64][64];
-
-	printf("%-16s %-24s %-10s %-11s %8s  %s\n", "BOX", "BASE", "STATE",
-	       "PERSIST", "DISK", "ACCENT");
+	ListRow *rows = kb_calloc(256, sizeof(*rows));
+	int nrows = 0;
+	KbBuf j = {0};
 
 	kb_argv_add(&a, "podman");
 	kb_argv_add(&a, "ps");
 	kb_argv_add(&a, "--all");
 	kb_argv_add(&a, "--format");
-	kb_argv_add(&a, "{{.Names}}\t{{.State}}");
+	kb_argv_add(&a, "{{.Names}}\t{{.State}}\t{{.Created.Unix}}");
 	kb_argv_end(&a);
 	if (kb_run_capture(&a, buf, 1 << 16) != 0)
 		buf[0] = 0;
 
-	for (line = strtok_r(buf, "\n", &save); line;
+	for (line = strtok_r(buf, "\n", &save); line && nrows < 256;
 	     line = strtok_r(NULL, "\n", &save)) {
-		char *tab = strchr(line, '\t');
-		Profile p;
-		char *bd;
+		char *tab = strchr(line, '\t'), *tab2;
 
 		if (!tab)
 			continue;
 		*tab++ = 0;
-		profile_load(&p, line);
-		bd = box_dir(line);
-		printf("%-16s %-24s %-10s %-11s %8s  %s\n", line,
-		       p.base[0] ? p.base : p.image[0] ? p.image : "-",
-		       tab, persist_name(p.persist),
-		       kb_human_size(dir_bytes(bd)),
-		       p.accent[0] ? p.accent : "session");
-		free(bd);
-		if (nseen < 64)
-			kb_strlcpy(names[nseen++], line, 64);
+		tab2 = strchr(tab, '\t');
+		if (tab2)
+			*tab2++ = 0;
+		if (!name_ok(line))
+			continue;
+		kb_strlcpy(rows[nrows].name, line, sizeof(rows[0].name));
+		kb_strlcpy(rows[nrows].state, tab, sizeof(rows[0].state));
+		rows[nrows].created = tab2 ? atoll(tab2) : 0;
+		nrows++;
 	}
 	free(buf);
 
@@ -149,33 +174,72 @@ static int cmd_box_list(void)
 	 */
 	snprintf(pdir, MAX_LINE, "%s/.config/kdos/boxes", kb_home_dir());
 	profiles = kb_listdir(pdir, NULL);
-	for (char **f = profiles; f && *f; f++) {
+	for (char **f = profiles; f && *f && nrows < 256; f++) {
 		char nm[64];
 		size_t l = strlen(*f);
 		int known = 0;
-		Profile p;
 
-		if (l < 6 || strcmp(*f + l - 5, ".conf"))
-			continue;
-		if (l - 5 >= sizeof(nm))
+		if (l < 6 || strcmp(*f + l - 5, ".conf") || l - 5 >= sizeof(nm))
 			continue;
 		memcpy(nm, *f, l - 5);
 		nm[l - 5] = 0;
-		for (int i = 0; i < nseen; i++)
-			if (!strcmp(names[i], nm))
-				known = 1;
-		if (known)
+		for (int i = 0; i < nrows && !known; i++)
+			known = !strcmp(rows[i].name, nm);
+		if (known || !name_ok(nm))
 			continue;
-		profile_load(&p, nm);
-		printf("%-16s %-24s %-10s %-11s %8s  %s\n", nm,
-		       p.base[0] ? p.base : p.image[0] ? p.image : "-",
-		       "not created",
-		       persist_name(p.persist), "-",
-		       p.accent[0] ? p.accent : "session");
+		kb_strlcpy(rows[nrows].name, nm, sizeof(rows[0].name));
+		kb_strlcpy(rows[nrows].state, "not created", sizeof(rows[0].state));
+		rows[nrows].created = 0;
+		nrows++;
 	}
 	kb_strv_free(profiles);
 	free(pdir);
-	(void)seen;
+
+	if (!json)
+		printf("%-16s %-24s %-10s %-11s %8s  %s\n", "BOX", "BASE",
+		       "STATE", "PERSIST", "DISK", "ACCENT");
+	else
+		kb_buf_str(&j, "[");
+	for (int i = 0; i < nrows; i++) {
+		Profile p;
+		char *bd = box_dir(rows[i].name);
+		int created = strcmp(rows[i].state, "not created") != 0;
+		unsigned long long disk = created ? dir_bytes(bd) : 0;
+		const char *base;
+		char conf[32];
+
+		free(bd);
+		profile_load(&p, rows[i].name);
+		base = p.base[0] ? p.base : p.image[0] ? p.image : "-";
+		if (!json) {
+			printf("%-16s %-24s %-10s %-11s %8s  %s\n", rows[i].name,
+			       base, rows[i].state, persist_name(p.persist),
+			       created ? kb_human_size(disk) : "-",
+			       p.accent[0] ? p.accent : "session");
+			continue;
+		}
+		box_confinement(rows[i].name, conf, sizeof(conf));
+		kb_buf_str(&j, i ? ",{\"name\":" : "{\"name\":");
+		kb_json_str(&j, rows[i].name);
+		kb_buf_str(&j, ",\"base\":");
+		kb_json_str(&j, strcmp(base, "-") ? base : "");
+		kb_buf_str(&j, ",\"state\":");
+		kb_json_str(&j, rows[i].state);
+		kb_buf_str(&j, ",\"persistence\":");
+		kb_json_str(&j, persist_name(p.persist));
+		kb_buf_str(&j, ",\"accent\":");
+		kb_json_str(&j, p.accent[0] ? p.accent : "session");
+		kb_buf_printf(&j, ",\"disk\":%llu,\"created\":%lld,\"confinement\":",
+			      disk, rows[i].created);
+		kb_json_str(&j, conf);
+		kb_buf_str(&j, "}");
+	}
+	if (json) {
+		kb_buf_str(&j, "]\n");
+		fputs(j.p, stdout);
+		kb_buf_free(&j);
+	}
+	free(rows);
 	return 0;
 }
 
@@ -272,6 +336,12 @@ static int cmd_box_create(int argc, char **argv)
 		profile_save(&p);
 	}
 
+	/* The box's private runtime directory is a volume source of every
+	 * create below but distrobox's, and podman refuses a missing one. */
+	if (box_lane(&p) != BOX_LANE_DISTROBOX &&
+	    rundir_prepare(&p, !strncmp(p.base, "pack:", 5) ? p.base + 5 : "",
+			   1) != 0)
+		return 1;
 	if (!strncmp(p.base, "pack:", 5)) {
 		rc = pack_compose(box, p.base + 5, merged, sizeof(merged));
 		if (rc != 0) {
@@ -279,7 +349,7 @@ static int cmd_box_create(int argc, char **argv)
 				kb_die("kdos-packd is not running");
 			kb_die("%s", merged);
 		}
-		rc = pack_box_create(&p, merged);
+		rc = pack_box_create(&p, merged, NULL, 0, 0);
 		if (rc != 0) {
 			pack_decompose(box);
 			/*
@@ -311,7 +381,11 @@ static int cmd_box_create(int argc, char **argv)
 		if (base_pull(p.base + 6) != 0)
 			kb_die("could not fetch %s", p.base + 6);
 		kb_strlcpy(p.image, p.base + 6, sizeof(p.image));
-		rc = box_create(&p);
+		/* An image this machine built for the store is made the way a
+		 * pack box is, with its own runtime directory; anybody else's
+		 * image is distrobox's, whose init expects the session's. */
+		rc = box_lane(&p) == BOX_LANE_STORE
+			? pack_box_create(&p, NULL, NULL, 0, 0) : box_create(&p);
 	} else {
 		kb_die("%s: a box is made of something — base=pack:<id>, "
 		       "base=image:<ref> or base=box:<name>", box);
@@ -326,13 +400,20 @@ static int cmd_box_create(int argc, char **argv)
 
 /* ── enter ─────────────────────────────────────────────────────────────── */
 
+/* `--window`: the accent's Konsole window even when this process has no
+ * terminal, which is how KRunner and other launchers open a box's shell. */
+static int enter_window;
+
 /*
- * A TERMINAL THAT SAYS WHERE IT IS. foot cannot reload its configuration, but
- * it takes a --config at start and `kdos theme` already generates a palette
- * per accent — so a box with `accent = amber` opens an amber terminal titled
- * with the box's name, and there is never a question about which window is
- * which. Inside, KDOS_BOX carries the name for a prompt to show; the shipped
- * starship.toml does not read it.
+ * A TERMINAL THAT SAYS WHERE IT IS. Konsole takes a profile at start, and the
+ * identity kit installs one per accent (`KDOS-<Title>.profile`, from
+ * kdos-theme's generator) — so a box with `accent = amber` opens an amber
+ * Konsole whose tab is titled with the box's name, and there is never a
+ * question about which window is which. `--separate` gives it a process of
+ * its own, so the window is started with this environment and this profile
+ * rather than handed to a Konsole already running with another. Inside,
+ * KDOS_BOX carries the name for a prompt to show; the shipped starship.toml
+ * does not read it.
  */
 static int cmd_box_enter(int argc, char **argv)
 {
@@ -342,7 +423,8 @@ static int cmd_box_enter(int argc, char **argv)
 	char theme[MAX_LINE];
 
 	if (argc < 1) {
-		fprintf(stderr, "usage: kdos-box enter <name> [command ...]\n");
+		fprintf(stderr, "usage: kdos-box enter <name> [command ...] "
+				"| --window\n");
 		return 2;
 	}
 	box = argv[0];
@@ -358,10 +440,11 @@ static int cmd_box_enter(int argc, char **argv)
 		box_wait_ready(box, 30);
 
 	/* In place when there is no terminal to replace (input is not a tty),
-	 * when a command is given, or under the foot window this opens below
+	 * when a command is given, or under the Konsole window this opens below
 	 * (KDOS_BOX_NOTERM). A bare `enter` typed at a terminal opens a new
-	 * foot window in the box's accent and re-enters there. */
-	if (!isatty(STDIN_FILENO) || argc > 1 || getenv("KDOS_BOX_NOTERM")) {
+	 * Konsole window in the box's accent and re-enters there. */
+	if (!enter_window &&
+	    (!isatty(STDIN_FILENO) || argc > 1 || getenv("KDOS_BOX_NOTERM"))) {
 		kb_argv_add(&a, "podman");
 		kb_argv_add(&a, "exec");
 		kb_argv_add(&a, "--interactive");
@@ -384,20 +467,28 @@ static int cmd_box_enter(int argc, char **argv)
 		kb_die("podman: not found");
 	}
 
-	kb_argv_add(&a, "foot");
-	kb_argv_addf(&a, "--title=%s — KDOS box", box);
-	if (p.accent[0]) {
-		/* `kdos theme` writes a foot palette per accent into
-		 * ~/.config/foot/themes; naming it here is the one way a
-		 * terminal can wear an accent foot cannot reload into. */
-		snprintf(theme, sizeof(theme), "%s/.config/foot/themes/%s",
-			 kb_home_dir(), p.accent);
-		if (kb_path_exists(theme)) {
-			kb_argv_add(&a, "--config");
-			kb_argv_add(&a, theme);
+	kb_argv_add(&a, "konsole");
+	kb_argv_add(&a, "--separate");
+	{
+		/* The accent's profile by its file name, which Konsole looks up
+		 * in its profile directories; a scheme name derived from the
+		 * same libkcolor row the generator wrote it from, so the two
+		 * cannot disagree. */
+		char scheme[64];
+
+		rules_scheme(p.accent, scheme, sizeof(scheme));
+		if (strcmp(scheme, "KDOSBox")) {
+			snprintf(theme, sizeof(theme),
+				 "/usr/share/konsole/KDOS-%s.profile", scheme + 4);
+			if (kb_path_exists(theme)) {
+				kb_argv_add(&a, "--profile");
+				kb_argv_add(&a, kb_basename(theme));
+			}
 		}
 	}
-	kb_argv_add(&a, "--");
+	kb_argv_add(&a, "-p");
+	kb_argv_addf(&a, "LocalTabTitleFormat=%s — KDOS box", box);
+	kb_argv_add(&a, "-e");
 	kb_argv_add(&a, "kdos-box");
 	kb_argv_add(&a, "enter");
 	kb_argv_add(&a, box);
@@ -405,7 +496,7 @@ static int cmd_box_enter(int argc, char **argv)
 	kb_argv_end(&a);
 	setenv("KDOS_BOX_NOTERM", "1", 1);
 	execvp(a.v[0], (char *const *)a.v);
-	kb_die("foot: not found");
+	kb_die("konsole: not found");
 	return 1;
 }
 
@@ -436,26 +527,29 @@ static int cmd_box_apps(const char *box)
 }
 
 /*
- * THE DEFAULT BOX KEEPS UPSTREAM'S OWN DESKTOP ID; a secondary box's app gets
- * `<upstream-id>.<box>.desktop` and `Name=GIMP (arch)`. That is a deliberate
- * refinement of the rule that a launcher must be named with upstream's id: the
- * rule exists because a dock matches a toplevel to an entry by file id, and
- * the panel has a better key than the filename — the box the window's
- * security context names. The default box's launchers keep upstream's id, so
- * a dock matching on file id still finds them.
+ * AN EXPORTED LAUNCHER IS NAMED WITH ITS LAUNCHER ID, `<box>.<stem>.desktop`,
+ * the stem being the command it runs: KWin gives every window of the launch
+ * that id as its desktopFileName, and the Task Manager, the window's icon and
+ * the box's window rule all look for a desktop entry of exactly that name. The
+ * entry says `Name=GIMP (arch)`, carries `X-KDOS-Box` and `X-KDOS-Export`,
+ * and its Exec passes the id with `-l`. Its one category is X-KDOS-Box: the
+ * box's own categories are guesses about another system, and
+ * /etc/xdg/menus/applications-merged/kdos-boxes.menu files X-KDOS-Box under
+ * the menu's Boxes, where it would otherwise land in Lost & Found.
  *
- * The shim gets `@<box>` for the same reason, and is a symlink to
- * kdos-appbox: the basename dispatch hands `gimp@arch` to run_as_shim, which
- * finds no alien-apps row of that name (export writes none) and splits it at
- * the last `@` into a command and a box, running what
- * `kdos-box run <box> <command>` runs. A shim name is therefore a COMMAND:
- * for an exported desktop id it is the program the entry's Exec runs.
+ * The shim gets `@<box>`, and is a symlink to kdos-appbox: the basename
+ * dispatch hands `gimp@arch` to run_as_shim, which finds no alien-apps row of
+ * that name (export writes none) and splits it at the last `@` into a command
+ * and a box, running what `kdos-box run <box> <command>` runs — and that launch
+ * finds this entry among the box's launchers by its command, so its windows
+ * take the same id. A shim name is therefore a COMMAND: for an exported
+ * desktop id it is the program the entry's Exec runs.
  *
  * <app> IS A DESKTOP ID OR A COMMAND. `kdos-box apps` lists the box's desktop
  * ids, and an id is not a program — `org.gnome.TextEditor` runs
  * `gnome-text-editor` — so an id that names an entry in the box's
- * /usr/share/applications has its Exec, Name, Icon and StartupWMClass read
- * from that entry. A word that names no entry is taken as the command itself.
+ * /usr/share/applications has its Exec, Name and Icon read from that entry. A
+ * word that names no entry is taken as the command itself.
  */
 struct box_entry {
 	char exec[512];
@@ -518,7 +612,7 @@ static int box_read_entry(const char *box, const char *app,
 static int cmd_box_export(const char *box, const char *app, int undo)
 {
 	char *skel, *entry, *shim, *bin;
-	char id[512], key[256];
+	char id[512], key[256], lid[192];
 	struct box_entry be;
 	int found;
 
@@ -545,41 +639,34 @@ static int cmd_box_export(const char *box, const char *app, int undo)
 						  ".local/share/applications");
 	}
 	kb_mkdir_p(skel);
-	snprintf(id, sizeof(id), "%s.%s.desktop", app, box);
-	entry = kb_path_join(skel, id);
-	/* A stopped box's unexport takes the command from the entry export
-	 * wrote — `kdos-box run <box> <command> ...` — so the shim named after
-	 * that command goes too rather than outliving its launcher. */
+	launcher_id(box, key, 1, lid, sizeof(lid));
+	/*
+	 * A STOPPED BOX'S UNEXPORT FINDS THE ENTRY AMONG THE BOX'S OWN, by the
+	 * desktop id it was exported as or by the command it runs, and takes
+	 * the command from it — `kdos-box run -l <id> <box> <command> ...` —
+	 * so the shim named after that command goes too rather than outliving
+	 * its launcher.
+	 */
 	if (undo && !found) {
-		KxdgEntry ke;
+		BoxLauncher *bl = kb_calloc(64, sizeof(*bl));
+		int nb = box_launchers(box, bl, 64);
+		char want[192], k2[256];
 
-		if (kxdg_load(&ke, entry, "Desktop Entry") == 0) {
-			char st[1024];
-			const char *w[KB_MAX_ARGV];
-			int nw = kxdg_exec_split(kxdg_get(&ke, "Exec", ""),
-						 NULL, 0, st, sizeof(st), w,
-						 KB_MAX_ARGV);
-
-			/* Quoted back into one line, so the key comes out of
-			 * app_exec_key exactly as the export's did. */
-			if (nw >= 4 && !strcmp(w[0], "kdos-box") &&
-			    !strcmp(w[1], "run")) {
-				KbBuf cl = {0};
-
-				for (int i = 3; i < nw; i++) {
-					char q[512];
-					if (kxdg_exec_quote(w[i], q, sizeof(q)) == 0)
-						kb_buf_printf(&cl, "%s%s",
-							      cl.p ? " " : "", q);
-				}
-				app_exec_key(cl.p ? cl.p : "", key, sizeof(key));
-				kb_buf_free(&cl);
-				if (!key[0] || strchr(key, '/'))
-					kb_strlcpy(key, app, sizeof(key));
-			}
-			kxdg_free(&ke);
+		launcher_id(box, app, 1, want, sizeof(want));
+		for (int i = 0; i < nb; i++) {
+			app_exec_key(bl[i].exec, k2, sizeof(k2));
+			if (strcmp(bl[i].upstream, app) && strcmp(bl[i].id, want) &&
+			    strcmp(k2, app))
+				continue;
+			kb_strlcpy(lid, bl[i].id, sizeof(lid));
+			if (k2[0] && !strchr(k2, '/'))
+				kb_strlcpy(key, k2, sizeof(key));
+			break;
 		}
+		free(bl);
 	}
+	snprintf(id, sizeof(id), "%s.desktop", lid);
+	entry = kb_path_join(skel, id);
 	bin = kb_path_join(kb_home_dir(), ".local/bin");
 	kb_mkdir_p(bin);
 	snprintf(id, sizeof(id), "%s@%s", key, box);
@@ -602,7 +689,7 @@ static int cmd_box_export(const char *box, const char *app, int undo)
 		KbBuf line = {0};
 		char store[1024];
 		const char *cmdv[KB_MAX_ARGV];
-		const char *words[KB_MAX_ARGV + 3];
+		const char *words[KB_MAX_ARGV + 5];
 		int nw = 0, nc = 0;
 
 		if (found)
@@ -615,6 +702,8 @@ static int cmd_box_export(const char *box, const char *app, int undo)
 		}
 		words[nw++] = "kdos-box";
 		words[nw++] = "run";
+		words[nw++] = "-l";
+		words[nw++] = lid;
 		words[nw++] = box;
 		for (int i = 0; i < nc; i++)
 			words[nw++] = cmdv[i];
@@ -640,9 +729,12 @@ static int cmd_box_export(const char *box, const char *app, int undo)
 		kb_buf_printf(&d, "Exec=%s %%U\n", line.p ? line.p : "");
 		kb_buf_printf(&d, "Icon=%s\n", be.icon[0] ? be.icon : app);
 		kb_buf_printf(&d, "Terminal=false\n");
-		kb_buf_printf(&d, "StartupWMClass=%s\n",
-			      be.wmclass[0] ? be.wmclass : app);
+		kb_buf_printf(&d, "StartupWMClass=%s\n", lid);
 		kb_buf_printf(&d, "Categories=X-KDOS-Box;\n");
+		kb_buf_printf(&d, "Keywords=box;%s;\n", box);
+		kb_buf_printf(&d, "X-KDOS-Box=%s\nX-KDOS-Export=true\n", box);
+		if (strchr(app, '.'))
+			kb_buf_printf(&d, "X-KDOS-Upstream=%s\n", app);
 		kb_write_all(entry, d.p, d.n);
 		kb_buf_free(&d);
 		kb_buf_free(&line);
@@ -1018,45 +1110,60 @@ static int cmd_box_remove(const char *box, int force)
 }
 
 /*
- * gc — an idle box costs a conmon, a shell and its page cache. One `waitpid`
- * and a clock, on the ksvc timer the session already runs, rather than a
- * seventh root daemon for a job this size.
+ * gc — an idle box costs a conmon, its keeper, its bus proxy and its page
+ * cache. One question and a clock, on the user's ten-minute timer, rather than
+ * a root daemon for a job this size.
  *
- * A BOX WITH A MAPPED WINDOW IS NEVER IDLE, whatever its clock says.
+ * A BOX WITH A MAPPED WINDOW IS NEVER IDLE, whatever its clock says. KWin is
+ * asked through `kdos hey boxes`, which lists the boxes that have a window on
+ * the screen: a window belongs to the box its app id names (the box, or the
+ * box and one more component — the launcher ids kdos-boxsock tagged its
+ * socket with) or, for an X11 window, whose box its process runs in. It is
+ * asked ONCE per run, not once per box.
  *
  * THREE ANSWERS, NOT TWO: 1 has a window, 0 has none, -1 there was nothing to
  * ask. The third is not the second. A collector that read "cannot tell" as "no
  * window" would stop every warmed box on a desktop it could not question.
+ *
+ * AT THE SESSION'S END there is nothing to ask and no window to find: the
+ * shutdown scripts run after KWin has closed every window, so `--session-end`
+ * takes every box as windowless and stops the ones past their `autostop`. A
+ * box with no `autostop` keeps running past the logout.
  */
+static char *g_windowed;	/* `kdos hey boxes`, once; NULL: not asked */
+static int g_windowed_rc = 1;
+
 static int box_has_window(const char *box)
 {
-	KbArgv a = {0};
-	char *buf, *save;
-	int found;
+	char *copy, *save = NULL;
+	int found = 0;
 
-	buf = kb_calloc(1, 1 << 16);
-	kb_argv_add(&a, "kdos");
-	kb_argv_add(&a, "hey");
-	kb_argv_add(&a, "boxes");
-	kb_argv_end(&a);
-	if (kb_run_capture(&a, buf, 1 << 16) != 0) {
-		free(buf);
-		return -1;	/* no session to ask */
+	if (!g_windowed && g_windowed_rc) {
+		KbArgv a = {0};
+
+		g_windowed = kb_calloc(1, 1 << 16);
+		kb_argv_add(&a, "kdos");
+		kb_argv_add(&a, "hey");
+		kb_argv_add(&a, "boxes");
+		kb_argv_end(&a);
+		g_windowed_rc = kb_run_capture(&a, g_windowed, 1 << 16);
 	}
+	if (g_windowed_rc != 0)
+		return -1;	/* no session to ask */
 	/* One box per line, indented. Matched whole: a substring test would
 	 * read `app.xyz`'s window as one of `app.x`'s and never collect it. */
-	found = 0;
-	for (char *line = strtok_r(buf, "\n", &save); line && !found;
+	copy = kb_strdup(g_windowed);
+	for (char *line = strtok_r(copy, "\n", &save); line && !found;
 	     line = strtok_r(NULL, "\n", &save)) {
 		while (*line == ' ' || *line == '\t')
 			line++;
 		found = !strcmp(line, box);
 	}
-	free(buf);
+	free(copy);
 	return found;
 }
 
-static int cmd_box_gc(int dry)
+static int cmd_box_gc(int dry, int session_end)
 {
 	char *buf = kb_calloc(1, 1 << 16);
 	KbArgv a = {0};
@@ -1077,6 +1184,7 @@ static int cmd_box_gc(int dry)
 		char *t1 = strchr(line, '\t'), *t2;
 		Profile p;
 		long started;
+		int win;
 
 		if (!t1)
 			continue;
@@ -1085,7 +1193,7 @@ static int cmd_box_gc(int dry)
 		if (!t2)
 			continue;
 		*t2++ = 0;
-		if (strcmp(t1, "running"))
+		if (strcmp(t1, "running") || !name_ok(line))
 			continue;
 		profile_load(&p, line);
 		if (!p.autostop_s)
@@ -1093,7 +1201,7 @@ static int cmd_box_gc(int dry)
 		started = atol(t2);
 		if (started <= 0 || time(NULL) - started < p.autostop_s)
 			continue;
-		int win = box_has_window(line);
+		win = session_end ? 0 : box_has_window(line);
 
 		if (win > 0) {
 			printf("  %-16s has a window open — left alone\n", line);
@@ -1120,6 +1228,8 @@ static int cmd_box_gc(int dry)
 		stopped++;
 	}
 	free(buf);
+	free(g_windowed);
+	g_windowed = NULL;
 	if (!stopped)
 		printf("  nothing to stop\n");
 	return 0;
@@ -1130,10 +1240,10 @@ static int cmd_box_gc(int dry)
 static int box_usage(void)
 {
 	fprintf(stderr,
-"usage: kdos-box list\n"
+"usage: kdos-box list [--json]\n"
 "       kdos-box create <name> [base=pack:<id>|image:<ref>|box:<name>] [key=value ...]\n"
-"       kdos-box enter  <name> [command ...]\n"
-"       kdos-box run    <name> <app> [args ...]\n"
+"       kdos-box enter  <name> [command ...] | --window\n"
+"       kdos-box run    [-l <launcher-id>] <name> <app> [args ...]\n"
 "       kdos-box apps   <name>\n"
 "       kdos-box export <name> <app>        also: unexport\n"
 "       kdos-box freeze <name> [out.kpack]  the writable layer, as one pack\n"
@@ -1143,7 +1253,7 @@ static int box_usage(void)
 "       kdos-box start | stop | restart <name>\n"
 "       kdos-box remove <name> [--force]   --force removes a running box\n"
 "       kdos-box profile <name> [key=value ...]\n"
-"       kdos-box gc [--dry-run]\n"
+"       kdos-box gc [--dry-run] [--session-end]\n"
 "\nAn app box and a dev box differ in three profile keys, not in kind:\n"
 "`persistence`, `base` and `export`.\n");
 	return 2;
@@ -1159,21 +1269,39 @@ int box_main(int argc, char **argv)
 
 #define BCMD(s) (!strcmp(cmd, s))
 	if (BCMD("list") || BCMD("ls"))
-		return cmd_box_list();
+		return cmd_box_list(argc > 1 && !strcmp(argv[1], "--json"));
 	if (BCMD("create"))
 		return cmd_box_create(argc - 1, argv + 1);
 	if (BCMD("enter")) {
-		/* `--shell` is what the foot wrapper re-enters with; it means
-		 * "you are already in a terminal, do not open another". */
+		/* `--shell` is what the terminal wrapper re-enters with; it
+		 * means "you are already in a terminal, do not open another". */
 		if (argc > 2 && !strcmp(argv[2], "--shell")) {
 			setenv("KDOS_BOX_NOTERM", "1", 1);
 			return cmd_box_enter(1, argv + 1);
 		}
+		if (argc == 3 && !strcmp(argv[2], "--window")) {
+			enter_window = 1;
+			unsetenv("KDOS_BOX_NOTERM");
+			return cmd_box_enter(1, argv + 1);
+		}
 		return cmd_box_enter(argc - 1, argv + 1);
 	}
-	if (BCMD("run") && argc > 2) {
-		g_box = argv[1];
-		return cmd_run(argc - 2, argv + 2);
+	if (BCMD("run")) {
+		int at = 1;
+
+		/* `-l <id>` is the launcher id the windows take, which is what
+		 * an exported launcher passes; see resolve_launcher(). */
+		if (argc > 3 && !strcmp(argv[1], "-l")) {
+			g_launcher = argv[2];
+			at = 3;
+		}
+		if (argc > at + 1) {
+			if (!name_ok(argv[at]))
+				kb_die("a box name is [A-Za-z0-9._-]");
+			g_box = argv[at];
+			return cmd_run(argc - at - 1, argv + at + 1);
+		}
+		return box_usage();
 	}
 	if (BCMD("apps") && argc > 1)
 		return cmd_box_apps(argv[1]);
@@ -1238,9 +1366,16 @@ int box_main(int argc, char **argv)
 			kb_die("a box name is [A-Za-z0-9._-]");
 		profile_load(&p, argv[1]);
 		if (argc > 2) {
+			char before[sizeof(p.accent)];
+
+			kb_strlcpy(before, p.accent, sizeof(before));
 			for (int i = 2; i < argc; i++)
 				profile_set(&p, argv[i]);
 			profile_save(&p);
+			/* The title-bar colour is a KWin rule, not a create
+			 * flag: it is written again now, and KWin told. */
+			if (strcmp(before, p.accent))
+				box_rules_refresh();
 			/* Only a box with a container is removed and made
 			 * again: removing one without a container deletes the
 			 * profile just written. */
@@ -1256,7 +1391,18 @@ int box_main(int argc, char **argv)
 		profile_print(&p);
 		return 0;
 	}
-	if (BCMD("gc"))
-		return cmd_box_gc(argc > 1 && !strcmp(argv[1], "--dry-run"));
+	if (BCMD("gc")) {
+		int dry = 0, end = 0;
+
+		for (int i = 1; i < argc; i++) {
+			if (!strcmp(argv[i], "--dry-run"))
+				dry = 1;
+			else if (!strcmp(argv[i], "--session-end"))
+				end = 1;
+			else
+				return box_usage();
+		}
+		return cmd_box_gc(dry, end);
+	}
 	return box_usage();
 }

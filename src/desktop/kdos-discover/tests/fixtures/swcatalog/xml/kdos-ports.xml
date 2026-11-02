@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What kdos-discover-catalog writes over an image: the host's installed
+     applications, origin kdos-ports. -->
+<components version="1.0" origin="kdos-ports">
+  <component type="desktop-application">
+    <id>org.kde.kate</id>
+    <pkgname>kate</pkgname>
+    <name>Kate</name>
+    <summary>Advanced text editor</summary>
+    <description>
+      <p>Kate is a multi-document editor.</p>
+    </description>
+    <categories>
+      <category>Utility</category>
+      <category>TextEditor</category>
+    </categories>
+    <icon type="stock">kate</icon>
+    <launchable type="desktop-id">org.kde.kate.desktop</launchable>
+    <project_license>LGPL-2.0-or-later</project_license>
+    <custom>
+      <value key="KDOS::Version">26.08.2-1</value>
+    </custom>
+  </component>
+</components>

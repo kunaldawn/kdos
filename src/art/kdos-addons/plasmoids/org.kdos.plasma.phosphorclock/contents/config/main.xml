@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0
+      http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+  <group name="General">
+    <entry name="showSeconds" type="Bool">
+      <label>Show the seconds.</label>
+      <default>false</default>
+    </entry>
+    <entry name="use24Hour" type="Bool">
+      <label>Show the time on a 24-hour dial.</label>
+      <default>true</default>
+    </entry>
+    <entry name="blinkSeparator" type="Bool">
+      <label>Blink the separator once a second.</label>
+      <default>true</default>
+    </entry>
+    <entry name="showDate" type="Bool">
+      <label>Show the date under the time in the panel.</label>
+      <default>false</default>
+    </entry>
+  </group>
+</kcfg>

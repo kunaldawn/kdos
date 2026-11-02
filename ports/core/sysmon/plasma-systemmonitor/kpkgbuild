@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = plasma-systemmonitor
+version     = 6.8.2
+release     = 1
+source      = https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = d3d795edd70579a967f0b146864610c2cb58379f283356eaadd18fd7e57e4524  plasma-systemmonitor-6.8.2.tar.xz
+description = Plasma System Monitor — sensor pages, history charts and the process table, over ksystemstats
+homepage    = https://invent.kde.org/plasma/plasma-systemmonitor
+license     = (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND LGPL-2.0-or-later AND LGPL-3.0-or-later AND BSD-3-Clause AND CC0-1.0
+group       = plasma
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative ki18n kconfig kcoreaddons kcrash kservice kglobalaccel kio kdbusaddons knewstuff kitemmodels kwindowsystem kpackage kiconthemes kdeclarative libksysguard kirigami-addons kirigami kquickcharts ksystemstats python3

@@ -43,8 +43,8 @@ running, as `[ OK ] udev is running`. What the script printed at boot is in
 
 ### The groups
 
-The shipped [`/etc/group`]{.idx}. The `kdos` account is in `wheel` and `seat`, which administer and run the
-machine, in `users`, and in the hardware groups `tty`, `dialout`, `audio`, `video`, `cdrom`,
+The shipped [`/etc/group`]{.idx}. The `kdos` account is in `wheel`, which administers the machine, in
+`users`, and in the hardware groups `tty`, `dialout`, `audio`, `video`, `cdrom`,
 `render`, `input`, `kvm` and `lpadmin`:
 
 <!-- kfs:include fs/etc/group -->
@@ -58,9 +58,9 @@ What each hardware group makes usable, and what removing it stops, is in
 ### /etc/udev/rules.d
 
 KDOS's rules are the `70-kdos-*.rules` files here, one per family of device. Each grants a
-device node to a group with mode 0660, except the backlight rule: a backlight has no node, so the
-rule makes its sysfs `brightness` file writable by `video` instead (see [Tips](#tips)). One more
-file, `99-qemu-tablet.rules`, grants nothing: it marks QEMU's emulated USB tablet as a pointer. The
+device node to a group with mode 0660; some also tag it `uaccess`, which elogind turns into an
+access-control entry for the user of the active session on the seat, moved at every session
+switch, so a device the person at the machine uses needs no group. One more file, `99-qemu-tablet.rules`, grants nothing: it marks QEMU's emulated USB tablet as a pointer. The
 GPS receivers' rule, `70-kdos-gpsd.rules`, comes with the gpsd package and is in
 `/lib/udev/rules.d`. The serial rule is the shape of most of them:
 
@@ -201,12 +201,11 @@ sudo udevadm trigger --action=add
 - Use only the groups that exist in `/etc/group`. udev turns a group it does not know into root:
   it logs `specified group '…' unknown` in `/var/log/messages` when it reads the rules, and the
   node still appears with the rule's mode, owned by `root:root`. A rule copied from elsewhere that names `plugdev` therefore gives the device to
-  root. The upstream rules that grant through `plugdev` or `uaccess` are not installed for that
-  reason.
+  root. The upstream rules that grant through `plugdev` are not installed for that reason.
 - A device with no node in `/dev`, such as a [backlight]{.idx}, cannot take `GROUP=` or `MODE=`: eudev
-  skips the whole line for it, `RUN+=` included, and reports nothing. The shipped backlight rule sets
-  the permission with `chgrp` and `chmod` instead, in
-  [`/etc/udev/rules.d/70-kdos-backlight.rules`]{.idx}.
+  skips the whole line for it, `RUN+=` included, and reports nothing. The screen's brightness is
+  set through elogind's `SetBrightness` for the active session instead, which PowerDevil calls.
+- `getfacl /dev/<node>` shows the access-control entry `uaccess` gave the active session's user.
 - Match `ACTION=="add"` in a rule that should also run for devices present at boot: `01_udev`
   replays them with the action `add`, never `change`. `kdos explain coldplug` prints the reason.
 - `kdos why /etc/udev/rules.d/70-kdos-serial.rules` says what provides a file; a rule from the
@@ -266,7 +265,7 @@ mode 0600, since the programs that open them (`bluetoothd`, an input remapper) r
 - [A SPICE viewer redirects only the USB devices you can already open](../../kdos/06-reference/known-gaps.md#a-spice-viewer-redirects-only-the-usb-devices-you-can-already-open)
 - [Smart cards, drawing tablets and software radios have not met hardware](../../kdos/06-reference/known-gaps.md#smart-cards-drawing-tablets-and-software-radios-have-not-met-hardware):
   their rules are written and not tried against the devices
-- [A phone is mounted by hand](../../kdos/06-reference/known-gaps.md#a-phone-is-mounted-by-hand)
+- [A phone has not been reached over MTP](../../kdos/06-reference/known-gaps.md#a-phone-has-not-been-reached-over-mtp)
 - [`kdos doctor` cannot check hardware a machine does not have](../../kdos/06-reference/known-gaps.md#kdos-doctor-cannot-check-hardware-a-machine-does-not-have)
 
 ## See also
@@ -283,4 +282,4 @@ mode 0600, since the programs that open them (`bluetoothd`, an input remapper) r
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 395.* Previous: [394. Avahi and mDNS](avahi-and-mdns.md) · [Contents](../README.md) · Next: [396. Bluetooth](bluetooth.md)
+*Part XVI. System administration, chapter 419.* Previous: [418. Avahi and mDNS](avahi-and-mdns.md) · [Contents](../README.md) · Next: [420. Bluetooth](bluetooth.md)

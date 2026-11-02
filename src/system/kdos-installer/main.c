@@ -395,12 +395,16 @@ static void usage(void)
 {
 	printf("kinstall %s — the KDOS installer\n\n"
 	       "usage: kinstall [options]\n\n"
-	       "  --config FILE     read answers from FILE\n"
+	       "  --config FILE     read answers from FILE; - reads standard input\n"
 	       "  --save FILE       write the current answers and exit\n"
 	       "  --unattended      skip the wizard and install from --config\n"
+	       "  --events json     with --unattended: no screen, one JSON\n"
+	       "                    event per line on standard output\n"
 	       "  --dry-run         log every command, execute none\n"
 	       "  --dump probe      what the installer sees on this machine\n"
 	       "  --dump plan       the steps these answers would run\n"
+	       "  --dump apps       the application groups, ticked as answered\n"
+	       "  --dump look       the accents and desks the answers may name\n"
 	       "  --json            render --dump as JSON instead of text\n"
 	       "  --theme NAME      phosphor | amber | ice | bone | norton | borland |\n"
 	       "                    perfect | paper\n"
@@ -414,7 +418,7 @@ static void usage(void)
 
 int main(int argc, char **argv)
 {
-	int want_mouse = 1, unattended = 0, json = 0;
+	int want_mouse = 1, unattended = 0, json = 0, events = 0;
 	const char *save_to = NULL, *dump = NULL;
 
 	/* An allocation failure has to drop the terminal before it prints, or
@@ -446,6 +450,13 @@ int main(int argc, char **argv)
 			json = 1;
 		} else if (!strcmp(a, "--unattended")) {
 			unattended = 1;
+		} else if (!strcmp(a, "--events") && i + 1 < argc) {
+			if (strcmp(argv[++i], "json")) {
+				fprintf(stderr, "kinstall: --events takes "
+						"'json'\n");
+				return 1;
+			}
+			events = 1;
 		} else if (!strcmp(a, "--dry-run")) {
 			cfg.dry_run = 1;
 		} else if (!strcmp(a, "--no-mouse")) {
@@ -468,6 +479,17 @@ int main(int argc, char **argv)
 	 * stdout and only stdout. */
 	if (dump)
 		return ki_dump(dump, json);
+
+	/* THE INSTALL WITH NO SCREEN. Nothing of libktui is touched — no
+	 * terminal is taken over and nothing is drawn — because the reader is a
+	 * pipe and the screen belongs to the program reading it. */
+	if (events) {
+		if (!unattended) {
+			fprintf(stderr, "kinstall: --events needs --unattended\n");
+			return 1;
+		}
+		return ki_events_run();
+	}
 
 	if (ktui_theme_set(cfg.theme) < 0)
 		ktui_theme_set(KCOL_DEFAULT_NAME);

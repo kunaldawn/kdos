@@ -268,6 +268,6 @@ int restarts_main(int argc, char **argv)
 
 	kp_owned_free(owned);
 	/* Exit 1 when something needs restarting, so this can gate a script and
-	 * so the panel can call it without parsing anything. */
+	 * so the update tray can call it without parsing anything. */
 	return 1;
 }

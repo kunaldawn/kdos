@@ -2,7 +2,7 @@
 
 Resources is a GNOME system monitor written in Rust on GTK 4 and [libadwaita](#port-libadwaita):
 it graphs CPU, memory, GPU, NPU, disks, network and battery, and lists and manages applications
-and processes. KDOS's own monitor is [kdos-res](../../../../docs/kdos/04-programs/kdos-res.md);
+and processes. The desktop's own monitor is [Plasma System Monitor](#port-plasma-systemmonitor);
 this is the GTK one beside it. Its Rust crates come from a vendor bundle, and meson drives the
 cargo build.
 
@@ -39,4 +39,5 @@ Ending another user's process and reading memory-module details through `dmideco
 `pkexec`, which [polkit](#port-polkit) answers; polkit and dmidecode are both in `depends`.
 Upstream installs its icon as SVG only, so the recipe rasterises it to PNGs at 48, 64 and 128
 pixels. meson installs upstream's `net.nokyan.Resources.desktop`, and the recipe writes over it
-with an entry named `Resources (GNOME)`, because `Resources` is the name of kdos-res's entry.
+with an entry named `Resources (GNOME)`, which tells it apart from Plasma System Monitor in the
+launcher.

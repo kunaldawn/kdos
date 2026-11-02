@@ -32,8 +32,3 @@ libcamera
 
 gst-plugins-ugly
 gst-libav
-
-# A still out of a video, which is what a file manager shows for one. It is the
-# video backend `kdos thumb` forks; the chooser's preview asks that command for
-# a P6 rather than decoding anything itself.
-ffmpegthumbnailer

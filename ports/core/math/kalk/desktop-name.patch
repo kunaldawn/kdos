@@ -1,0 +1,17 @@
+Subject: name the desktop entry Kalk, with Calculator as its generic name
+
+numbat's entry is already named Calculator, and two visible entries that share
+a name cannot be told apart in the launcher.
+
+--- a/org.kde.kalk.desktop
++++ b/org.kde.kalk.desktop
+@@ -2,7 +2,8 @@
+ # SPDX-License-Identifier: CC0-1.0
+ 
+ [Desktop Entry]
+-Name=Calculator
++Name=Kalk
++GenericName=Calculator
+ Name[ar]=حاسبة
+ Name[ast]=Calculadora
+ Name[az]=Hesablayıcı

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = dolphin-plugins
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = e9a921523cb17df79db27c81d6c31d08be1f78bd937dc9394d9aafd2ca3a1143  dolphin-plugins-26.08.2.tar.xz
+description = Dolphin plugins — Git status overlays and actions, Makefile targets and ISO image mounting
+homepage    = https://invent.kde.org/sdk/dolphin-plugins
+license     = GPL-2.0-or-later AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kconfig kcoreaddons ki18n kio ktextwidgets kxmlgui solid dolphin git udisks2

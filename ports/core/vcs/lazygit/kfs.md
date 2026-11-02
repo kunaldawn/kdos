@@ -24,3 +24,7 @@ version of 1.14 or later, as lazygit's does, the go command builds from `vendor/
 `build.sh` writes the package's own desktop entry, `lazygit.desktop`, named *Git* in the menu, with
 `Terminal=true`, so the launcher opens lazygit in the session's terminal (see
 [Desktop entries belong to the port](../../../../docs/kdos/05-developer/writing-ports.md#desktop-entries-belong-to-the-port)).
+It also writes a Dolphin service menu, `/usr/share/kio/servicemenus/lazygit.desktop`, which adds
+*Git Status Here* to a folder's right-click menu and opens lazygit in Konsole in that folder.
+KIO does not check a service menu's `TryExec`, so the menu ships with the program it runs rather
+than with the desktop.

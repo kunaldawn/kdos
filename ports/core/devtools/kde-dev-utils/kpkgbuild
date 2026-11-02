@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kde-dev-utils
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 35180c8cb58b5604e2a4c0828cc9a866857d22c405bcf4aa233e5692dfa55985  kde-dev-utils-26.08.2.tar.xz
+description = KUIViewer for Qt Designer .ui files, its part and thumbnailer, and the kpartloader test tool
+homepage    = https://invent.kde.org/sdk/kde-dev-utils
+license     = LGPL-2.0-only AND (LGPL-2.0-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qttools kcoreaddons ki18n kio kparts kwidgetsaddons

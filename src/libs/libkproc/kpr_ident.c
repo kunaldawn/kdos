@@ -125,9 +125,9 @@ int kpr_conmon_name(int pid, char *out, size_t cap)
 
 /*
  * The same answer for a caller with no sample in hand, reading /proc as it
- * climbs. kdos stutter, kdos-oomd and kdos-teams all walk this way — none of
- * them holds a table of every pid — and they share this walk rather than each
- * carrying a copy, so they cannot disagree about where a box begins.
+ * climbs. kdos-oomd walks this way, because it holds no table of every pid;
+ * the walk stays beside kpr_conmon_name() so the sampled answer and this one
+ * cannot disagree about where a box begins.
  *
  * KPR_BOX_HOPS is one number rather than four: an app in a box sits two or
  * three below conmon, and the bound is what stops a /proc that is lying from

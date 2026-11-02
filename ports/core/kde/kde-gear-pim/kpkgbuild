@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kde-gear-pim
+version     = 1
+release     = 1
+description = KDE Gear personal information management: KMail, Kontact, KOrganizer, KAddressBook, Akregator, Merkuro, the Akonadi resources and tools, KGpg and Itinerary
+homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
+depends     = kmail kontact korganizer kaddressbook akregator merkuro kalarm zanshin kdepim-runtime kdepim-addons akonadi-import-wizard akonadi-calendar-tools akonadiconsole grantlee-editor kmail-account-wizard mbox-importer pim-data-exporter pim-sieve-editor kgpg itinerary kongress

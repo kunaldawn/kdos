@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kpipewire
+version     = 6.8.2
+release     = 1
+source      = https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = 80d5bb3a95018f67f7476570ac8aad91872188cf2e6536cf81e9347b4adfefec  kpipewire-6.8.2.tar.xz
+description = Qt and QML components for PipeWire screen-cast streams: display, DMA-BUF import and recording
+homepage    = https://invent.kde.org/plasma/kpipewire
+license     = (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND GPL-2.0-or-later AND Apache-2.0
+group       = plasma
+depends     = cmake ninja extra-cmake-modules pkgconf qt6-qtbase qt6-qtdeclarative kcoreaddons ki18n pipewire ffmpeg libva libdrm mesa libglvnd libepoxy

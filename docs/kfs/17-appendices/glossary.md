@@ -166,8 +166,8 @@ version of some software beside the tree's main one, under names or a prefix of 
 [A second version beside the first](../../kdos/05-developer/writing-ports.md#a-second-version-beside-the-first).
 On an installed disk, one of the two root filesystems, A and B; see
 [root slot in the KDOS glossary](../../kdos/06-reference/glossary.md#root-slot) and
-[A/B slots and rollback](../16-wiki/ab-slots-and-rollback.md). In the desktop's drawing code, a named
-colour role; see [slot in the KDOS glossary](../../kdos/06-reference/glossary.md#slot).
+[A/B slots and rollback](../16-wiki/ab-slots-and-rollback.md). In libkcolor and the terminal tools drawn with it, a
+named colour role; see [slot in the KDOS glossary](../../kdos/06-reference/glossary.md#slot).
 
 ### snapshot
 
@@ -230,4 +230,4 @@ Haskell packages or npm packages, made in advance so that the build needs no net
 <!-- book-nav -->
 ---
 
-*Part XVII. Appendices, chapter 426.* Previous: [425. Licences](licences.md) · [Contents](../README.md)
+*Part XVII. Appendices, chapter 450.* Previous: [449. Licences](licences.md) · [Contents](../README.md)

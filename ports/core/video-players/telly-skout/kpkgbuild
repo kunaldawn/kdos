@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = telly-skout
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 9797f13d7a9bb37b6f79695e94a757d03895a332bb911b85abb10d3b6db5bb0d  telly-skout-26.08.2.tar.xz
+description = TV guide — programme listings by channel from TV Spielfilm or any XMLTV source
+homepage    = https://apps.kde.org/telly-skout/
+license     = LGPL-2.1-or-later AND BSD-2-Clause AND CC-BY-SA-4.0 AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kcoreaddons kconfig ki18n kcrash kirigami kirigami-addons qqc2-desktop-style

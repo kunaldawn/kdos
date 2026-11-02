@@ -5,7 +5,7 @@ AA-project's 1997 demo: a sequence of animated scenes drawn entirely in text cha
 the ASCII-art library, and set to three tracker modules played by libmikmod. A tracker module
 stores music as instrument samples plus patterns of notes, and the player renders it into audio in
 real time; all three tracks are in the S3M format (`.s3m`). It runs in any text terminal, whether
-a bare virtual console, a `kdos-term` window under the compositor or an ssh session.
+a bare virtual console, a Konsole window on the desktop or an ssh session.
 
 The chapter has two audiences. To watch the demo you need only [Running it](#running-it),
 [Synopsis](#synopsis) and [Files](#files), and, for sound outside a desktop session,
@@ -15,10 +15,10 @@ pseudo-terminal between the program and the screen). It explains how the fork pa
 how it keeps a frame from tearing, how it keeps the picture in step with the music, and the
 measurements that set each limit. Start that part at
 [How the code is organised](#how-the-code-is-organised), which says where each piece lives and
-defines the terms the later sections use. The chapters on the
-[session](../03-architecture/session.md#audio) (for audio routing) and on
-[kdos-term](kdos-term.md#focus-and-holding-a-frame) (for the terminal that honours synchronized
-output) are useful background.
+defines the terms the later sections use. The chapter on the
+[session](../03-architecture/session.md#audio) (for audio routing) is useful background, and
+[Every frame is bracketed in synchronized output](#every-frame-is-bracketed-in-synchronized-output)
+says what a terminal has to honour.
 
 ## Running it
 
@@ -279,9 +279,10 @@ it leaves below `1000000 / 60` is the margin, and the margin guarantees that the
 further behind the tick every frame, and is never re-pegged closer than 666 µs behind. A tick is
 refused only after a stall, never because of the jitter of noticing one.
 
-The consumer states no such constant. `kdos-term`'s draw is gated on the compositor's frame
-callback, so its floor is whatever the output runs at: 16.667 ms at sixty hertz. A frame produced
-faster than the floor is bytes the consumer must read and parse for a picture nobody sees.
+The consumer states no such constant. A terminal window is shown no more often than the
+compositor composes the output, so its floor is whatever the output runs at: 16.667 ms at sixty
+hertz. A frame produced faster than the floor is bytes the consumer must read and parse for a
+picture nobody sees.
 
 Producing faster than the consumer does not add smoothness. The surplus is not dropped evenly; it
 beats against the consumer's rate at the difference, and a beat is what an eye reads as judder. A
@@ -312,13 +313,12 @@ Measured across the same window of the same run, at a terminal grid of 192x54:
 | | Uncapped | Capped |
 |---|---|---|
 | Demo writes | 17 MiB/s | 0.09 MiB/s |
-| Terminal reads | 17 MiB/s | 0.09 MiB/s |
-| Terminal CPU | 44% of a core | 1.6% |
 | Demo CPU | 100% of a core | 0.7% |
 | Frames the display is sent | 62/s | 62/s |
 | Cells the display is sent | 33,000/s | 33,000/s |
 
-The picture is identical and the cost of producing it has almost disappeared. The same holds for
+Every byte the demo writes is a byte the terminal must read and parse. The picture is identical
+and the cost of producing it has almost disappeared. The same holds for
 any program of this kind: frames produced faster than the display refreshes are not shown, and
 they tear the frames that are.
 
@@ -339,13 +339,14 @@ had and composes nothing it receives, so the rows may arrive in as many writes a
 picture changes once, whole.
 
 The mode is a contract with two ends, and one end alone changes nothing: the producer brackets its
-frames and the consumer honours the mode. In this tree the consumer is `kdos-term`, which asks
-`libkvt`'s `kvt_term_sync_hold()` before each draw. That function holds the frame back for at most
-150 ms after the mode is set, so a producer that sets the hold and then dies cannot freeze the
-window.
+frames and the consumer honours the mode. Any terminal that implements DEC private mode 2026 is a
+consumer. Konsole, the desktop's terminal, does in its emulation: while the mode is set it holds
+back every screen update it would otherwise show, shows the screen at once when the mode is reset,
+and shows it anyway one second after the mode was set when nothing resets it, so a producer that
+sets the hold and then dies cannot freeze the window.
 
-The arrangement degrades safely in both directions. A producer that never sets the mode is composed
-exactly as before; a hold that outlives the watchdog is composed anyway; and a terminal that does
+The arrangement degrades safely in both directions. A producer that never sets the mode is shown as
+its bytes arrive; a hold that outlives the watchdog is composed anyway; and a terminal that does
 not know the mode ignores it, as it ignores any private mode it does not recognise.
 
 The escape sequences go out on the same stream as the frame, which is why they are written to
@@ -540,9 +541,10 @@ often enough to keep the sound card's ring buffer full. Upstream's `bb` calls it
 ten-millisecond timer in the same timer group the frame loop pumps, which puts it behind a caller
 that has just flushed a whole frame to the terminal and is blocked while the terminal drains it.
 
-On a bare console that coupling is invisible. Under a compositor the terminal is shaping a
-screenful of cells and uploading a texture every frame, so the pseudo-terminal backs up, the flush
-sits in a write, no timer runs, the ring empties, and the music stutters. Minimising the same window
+On a bare console that coupling is invisible. In a terminal window on the desktop the terminal is
+shaping a screenful of text and handing the compositor a new picture every frame, so the
+pseudo-terminal backs up, the flush sits in a write, no timer runs, the ring empties, and the music
+stutters. Minimising the same window
 makes the sound perfect, which shows that the fault is neither in the mixer nor in the buffer size.
 
 The mixer therefore gets a thread with its own clock, which the render loop cannot reach. The
@@ -646,16 +648,16 @@ make sound work at all, and neither is specific to this program:
   at zero. `alsactl init` returns a distinct status when it matched a generic rule rather than a
   card-specific one, which is a success here, so its status is ignored.
 
-In a desktop session the sound server is PipeWire, which the session starts (`kdos_session_audio`
-in `/usr/local/lib/kdos/session-common.sh`, called from `kdos-desktop-start`). ALSA routes its
+In a desktop session the sound server is PipeWire, one of your user services, which turnstile
+starts at your first login (`/etc/kdos/user-services/20_pipewire.sh`). ALSA routes its
 `default` device to PipeWire only because `/etc/alsa/conf.d/99-kdos-pipewire.conf` says so, since
 the directory PipeWire installs its own drop-in into is not one alsa-lib reads. See
 [the session](../03-architecture/session.md#reaching-the-graph-from-a-plain-alsa-program-on-the-host).
 
 That matters to this demo more than to most programs. libmikmod's ALSA driver opens the literal PCM
-name `default` and accepts no options, so it goes wherever that name points. A login with no session
-(a plain getty on another virtual console, a serial console, an ssh login) has no PipeWire, and
-`default` then fails to open. The same configuration file lets an environment variable choose the
+name `default` and accepts no options, so it goes wherever that name points. A login with no user
+services (an ssh login, or root on the serial console) has no PipeWire, and `default` then fails to
+open. The same configuration file lets an environment variable choose the
 device instead. `kdos_card` is the sound card itself, reached through alsa-lib's own software chain:
 format and sample-rate conversion (`plug`), software volume (`softvol`) and software mixing of
 several streams (`dmix`), as
@@ -760,8 +762,6 @@ the table above.
   scripts named above
 - [Administration](../02-user-guide/administration.md#services) — what `01_udev` and `50_alsa` do
   among the other service scripts
-- [kdos-term](kdos-term.md#focus-and-holding-a-frame) — the terminal that honours synchronized
-  output
 - [The kdos command](kdos-command.md#kdos-why-and-kdos-explain) — `kdos why`, which carries the
   library rules above
 - [Testing](../05-developer/testing.md#the-flags) — the rig flag that gives a guest a sound device

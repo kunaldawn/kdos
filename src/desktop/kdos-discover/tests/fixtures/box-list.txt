@@ -1,0 +1,4 @@
+BOX              BASE                     STATE      PERSIST         DISK  ACCENT
+app.kcalc        image:kdos/app.kcalc     running    persistent        0B  session
+work             pack:box.work            exited     persistent      1.0M  amber
+deb.gimp         image:kdos/deb.gimp      not created persistent        -  session

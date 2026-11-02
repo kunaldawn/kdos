@@ -23,8 +23,8 @@ that is built into the library.
 - `-DALSOFT_RTKIT=ON`, `-DALSOFT_REQUIRE_RTKIT=ON` — Build the RTKit fallback, and fail the
   configure if its D-Bus support is missing. The mixer thread first raises itself to real-time
   priority with `pthread_setschedparam` and asks RTKit over D-Bus only when that fails. The image
-  ships no RTKit daemon; the direct call succeeds because `kdos-getty` raises `RLIMIT_RTPRIO`
-  before the login (see
+  ships no RTKit daemon; the direct call succeeds for a member of `audio`, every human account,
+  because `pam_limits` gives that group `RLIMIT_RTPRIO` 95 at login (see
   [Starting a session](../../../../docs/kdos/03-architecture/session.md#starting-a-session)).
 - `-DALSOFT_BACKEND_PIPEWIRE=ON` — This switch and the other three backends turned on with it,
   PulseAudio, ALSA and JACK, each with its `ALSOFT_REQUIRE_` switch also on (`-DALSOFT_REQUIRE_PIPEWIRE=ON`

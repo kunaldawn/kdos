@@ -1,0 +1,77 @@
+Subject: Decide a turnstile session's processes by the user's graphical session
+
+turnstiled registers each user's services as one session of their own,
+with the PAM service name "turnstiled" and no seat. On KDOS the session
+bus is one of those services, so every program the bus starts
+(plasma-shutdown among them) is in that session, and polkit answers
+for it as for a session with no seat: allow_any, never allow_active.
+Without this, Plasma's Shut Down and Restart ask for an administrator's
+password, because logind's PowerOff is allow_any=auth_admin_keep.
+
+A turnstile session is shared by every login of its user. Ignore it
+when looking up a process's session, so the lookup falls through to
+the user's display session (sd_uid_get_display), the answer a systemd
+user unit gets by being in no session at all. Every other session is
+used as before. The same change as Chimera Linux's polkit
+turnstile.patch, extended to the pidfd lookup polkit 128 tries first.
+---
+--- a/src/polkitbackend/polkitbackendsessionmonitor-systemd.c	2026-11-01 17:38:24.563910171 +0530
++++ b/src/polkitbackend/polkitbackendsessionmonitor-systemd.c	2026-11-01 17:38:24.587994836 +0530
+@@ -330,6 +330,25 @@
+   return ret;
+ }
+ 
++/* Whether @session_id is the session turnstiled opens for a user's services.
++ * It has no seat, so a check answered from it is never local, and it is
++ * shared by every login of the user: a process started by the user's session
++ * bus or a user service is decided by the user's graphical session instead,
++ * as a systemd user unit, which is in no session, is.
++ */
++static gboolean
++session_is_turnstile (const char *session_id)
++{
++  char *service = NULL;
++  gboolean ret;
++
++  if (sd_session_get_service (session_id, &service) < 0)
++    return FALSE;
++  ret = g_strcmp0 (service, "turnstiled") == 0;
++  free (service);
++  return ret;
++}
++
+ /**
+  * polkit_backend_session_monitor_get_session_for_subject:
+  * @monitor: A #PolkitBackendSessionMonitor.
+@@ -384,8 +403,13 @@
+     {
+       if (sd_pidfd_get_session (pidfd, &session_id) >= 0)
+         {
+-          session = polkit_unix_session_new (session_id);
+-          goto out;
++          if (!session_is_turnstile (session_id))
++            {
++              session = polkit_unix_session_new (session_id);
++              goto out;
++            }
++          free (session_id);
++          session_id = NULL;
+         }
+     }
+ #endif
+@@ -396,8 +420,13 @@
+ 
+   if (sd_pid_get_session (pid, &session_id) >= 0)
+     {
+-      session = polkit_unix_session_new (session_id);
+-      goto out;
++      if (!session_is_turnstile (session_id))
++        {
++          session = polkit_unix_session_new (session_id);
++          goto out;
++        }
++      free (session_id);
++      session_id = NULL;
+     }
+ 
+ #if HAVE_SD_PIDFD_GET_SESSION

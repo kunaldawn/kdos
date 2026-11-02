@@ -1,0 +1,140 @@
+Subject: app-info: read a host app's id from its cgroup without libsystemd
+
+A host process's app id comes from the systemd unit it runs in,
+app[-<launcher>]-<id>-<n>.scope and the like, read with
+sd_pid_get_user_unit(); built without libsystemd, no host app has an id and
+the permission store records nothing per application. Without libsystemd
+the unit is the deepest component of the process's cgroup2 path
+(/proc/<pid>/cgroup) named the way systemd names an application's unit, and
+the same parser turns it into the id. The unit-name parser and
+sd-escape are built whatever the libsystemd option says.
+
+diff -ruN a/src/meson.build b/src/meson.build
+--- a/src/meson.build	2026-11-01 16:42:48.036091464 +0530
++++ b/src/meson.build	2026-11-01 16:42:48.068484737 +0530
+@@ -77,8 +77,8 @@
+   'xdp-utils.c',
+ )
+ 
++xdp_utils_sources += sd_escape_sources
+ if have_libsystemd
+-  xdp_utils_sources += sd_escape_sources
+   xdp_utils_deps += [libsystemd_dep]
+ endif
+ 
+diff -ruN a/src/xdp-app-info-host.c b/src/xdp-app-info-host.c
+--- a/src/xdp-app-info-host.c	2026-11-01 16:42:48.035967528 +0530
++++ b/src/xdp-app-info-host.c	2026-11-01 16:42:48.069421588 +0530
+@@ -21,8 +21,8 @@
+ 
+ #if HAVE_LIBSYSTEMD
+ #include <systemd/sd-login.h>
+-#include "sd-escape.h"
+ #endif
++#include "sd-escape.h"
+ 
+ #include "xdp-app-info-host-private.h"
+ #include "xdp-usb-query.h"
+@@ -110,7 +110,6 @@
+     g_ptr_array_add (app_info_host->usb_queries, g_steal_pointer (&query));
+ }
+ 
+-#if HAVE_LIBSYSTEMD
+ char *
+ _xdp_app_info_host_parse_app_id_from_unit_name (const char *unit)
+ {
+@@ -159,7 +158,50 @@
+ 
+   return g_steal_pointer (&app_id);
+ }
+-#endif /* HAVE_LIBSYSTEMD */
++
++#if !HAVE_LIBSYSTEMD
++/*
++ * Without systemd, the unit a process belongs to is read from its cgroup: the
++ * deepest component of its cgroup2 path named the way systemd names an
++ * application's unit (app-*.scope, app-*.slice, app-*.service). A desktop or
++ * a sandbox that places applications in such cgroups itself gets the same
++ * app ids systemd's would; a process in no such cgroup has none.
++ */
++static char *
++get_unit_from_cgroup (pid_t pid)
++{
++  g_autofree char *path = NULL;
++  g_autofree char *contents = NULL;
++  g_auto(GStrv) lines = NULL;
++
++  path = g_strdup_printf ("/proc/%d/cgroup", (int) pid);
++  if (!g_file_get_contents (path, &contents, NULL, NULL))
++    return NULL;
++
++  lines = g_strsplit (contents, "\n", -1);
++  for (size_t i = 0; lines[i] != NULL; i++)
++    {
++      g_auto(GStrv) components = NULL;
++
++      if (!g_str_has_prefix (lines[i], "0::"))
++        continue;
++
++      components = g_strsplit (lines[i] + 3, "/", -1);
++      for (size_t j = g_strv_length (components); j > 0; j--)
++        {
++          const char *c = components[j - 1];
++
++          if (g_str_has_prefix (c, "app-") &&
++              (g_str_has_suffix (c, ".scope") ||
++               g_str_has_suffix (c, ".slice") ||
++               g_str_has_suffix (c, ".service")))
++            return g_strdup (c);
++        }
++    }
++
++  return NULL;
++}
++#endif /* !HAVE_LIBSYSTEMD */
+ 
+ static gboolean
+ get_app_from_pid (pid_t      pid,
+@@ -197,7 +239,30 @@
+   return TRUE;
+ 
+ #else
+-  return FALSE;
++  g_autofree char *unit = NULL;
++  g_autofree char *desktop_id = NULL;
++  g_autofree char *app_id = NULL;
++  g_autoptr(GDesktopAppInfo) desktop_app_info = NULL;
++
++  unit = get_unit_from_cgroup (pid);
++  if (!unit)
++    return FALSE;
++
++  app_id = _xdp_app_info_host_parse_app_id_from_unit_name (unit);
++  if (app_id[0] == '\0')
++    return FALSE;
++
++  desktop_id = g_strconcat (app_id, ".desktop", NULL);
++  desktop_app_info = g_desktop_app_info_new (desktop_id);
++
++  if (!desktop_app_info)
++    return FALSE;
++
++  if (app_id_out)
++    *app_id_out = g_steal_pointer (&app_id);
++  if (app_info_out)
++    *app_info_out = G_APP_INFO (g_steal_pointer (&desktop_app_info));
++  return TRUE;
+ #endif /* HAVE_LIBSYSTEMD */
+ }
+ 
+diff -ruN a/src/xdp-app-info-host-private.h b/src/xdp-app-info-host-private.h
+--- a/src/xdp-app-info-host-private.h	2026-11-01 16:42:48.036042611 +0530
++++ b/src/xdp-app-info-host-private.h	2026-11-01 16:42:48.068669639 +0530
+@@ -43,7 +43,5 @@
+                                   const char  *app_id,
+                                   GError     **error);
+ 
+-#if HAVE_LIBSYSTEMD
+ XDP_EXPORT_TEST
+ char * _xdp_app_info_host_parse_app_id_from_unit_name (const char *unit);
+-#endif

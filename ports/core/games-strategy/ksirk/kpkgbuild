@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ksirk
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 1f2b3fd9031094748b6830e384fafc6a67ab81df0ffb55ab970f05621512e6e3  ksirk-26.08.2.tar.xz
+description = World-domination strategy game in the style of Risk, with a skin editor
+homepage    = https://apps.kde.org/ksirk/
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later AND GFDL-1.2-or-later AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qt5compat qt6-qtmultimedia qt6-qtsvg kcompletion kconfig kconfigwidgets kcoreaddons kcrash kdbusaddons kdoctools ki18n knewstuff kwidgetsaddons kxmlgui libkdegames

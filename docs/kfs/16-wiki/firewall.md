@@ -19,8 +19,9 @@ the installer offers no choice about it. It is not supervised: `nft` hands the r
 kernel and exits. It is also the one service [`/etc/init.d/rcK`]{.idx} does not stop at shutdown.
 
 Opening a named service goes through [kdos-powerd](#port-kdos-powerd), which owns the list of
-names, and its two clients: `kdos-power firewall` on the command line and `kdos-firewall`, the
-Firewall tool of [kdos-shell](#port-kdos-shell). [iptables](#port-iptables) is installed too,
+names, and its two clients: `kdos-power firewall` on the command line and the **Firewall** page of
+System Settings, from [kcm-kdos-firewall](#port-kcm-kdos-firewall), which also raises the
+notification that offers to let a blocked program in. [iptables](#port-iptables) is installed too,
 built over the nftables kernel interface; the firewall does not use it.
 
 ## Configuration
@@ -85,7 +86,7 @@ to `/run/nftables-fallback.nft`. Either way the script reports `[FAIL]`. `stop` 
    sudo nft list ruleset              # with the tables other programs add
    ```
 
-3. List the named services and whether each is open (members of `wheel`):
+3. List the named services and whether each is open (any account):
 
    ```bash
    kdos-power firewall list
@@ -98,11 +99,12 @@ to `/run/nftables-fallback.nft`. Either way the script reports `[FAIL]`. `stop` 
 ### Opening a named service
 
 The names, and the ports each one opens, are compiled into `kdos-powerd`; the table is in
-[firewall](../../kdos/04-programs/daemons.md#firewall). Turning one on or off needs `wheel`.
+[firewall](../../kdos/04-programs/daemons.md#firewall). Turning one on or off needs `wheel`, or
+the person at the machine if polkit allows it; the shipped policy allows nobody outside `wheel`.
 
-1. With the desktop: open Settings, go to **System**, and choose **Firewall…** under *Security and
-   updates*. Select the service's row and press Enter or Space, or click **Open** (**Close** for
-   one that is open). The *STATE* column shows `open` or `closed`.
+1. With the desktop: System Settings → **Firewall**. Turn the service's switch on or off and
+   **Apply**; the page asks polkit, and the session's agent asks for an administrator's password
+   when the policy says so.
 
 2. From a shell:
 
@@ -272,4 +274,4 @@ It was in `50-kdos-services.nft`, which `kdos-powerd` rewrites whole. Move it to
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 384.* Previous: [383. Fingerprints, FIDO keys and smart cards](fingerprint-fido-smartcards.md) · [Contents](../README.md) · Next: [385. SSH server](ssh-server.md)
+*Part XVI. System administration, chapter 408.* Previous: [407. Fingerprints, FIDO keys and smart cards](fingerprint-fido-smartcards.md) · [Contents](../README.md) · Next: [409. SSH server](ssh-server.md)

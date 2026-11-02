@@ -2,8 +2,7 @@
 
 libdrm is the user-space side of the kernel's Direct Rendering Manager: `libdrm` wraps the DRM and
 KMS ioctls (devices, connectors, modes, planes, buffers), and one library per GPU family wraps that
-driver's own command-submission and memory ioctls. Mesa's drivers, the compositor's DRM backend
-through wlroots, VA-API, Xwayland and every program that opens `/dev/dri` sit on it. This build
+driver's own command-submission and memory ioctls. Mesa's drivers, KWin's DRM backend, VA-API, Xwayland and every program that opens `/dev/dri` sit on it. This build
 keeps the driver libraries for PC hardware and none of the ARM SoC ones.
 
 ## Flags

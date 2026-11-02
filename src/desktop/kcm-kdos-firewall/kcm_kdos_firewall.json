@@ -1,0 +1,11 @@
+{
+    "KPlugin": {
+        "Description": "Choose which of this computer's services answer the network",
+        "Icon": "security-high",
+        "Name": "Firewall"
+    },
+    "X-DocPath": "kdos/04-programs/kdos-settings.html#firewall",
+    "X-KDE-Keywords": "firewall,nftables,incoming,service,open,closed,port,ssh,KDE Connect,remote desktop,rdp,vnc,krdp,krfb,kiwix,sharing,network",
+    "X-KDE-System-Settings-Parent-Category": "network",
+    "X-KDE-Weight": 60
+}

@@ -32,3 +32,6 @@ nheko
 konversation
 quassel
 mumble
+
+neochat
+tokodon

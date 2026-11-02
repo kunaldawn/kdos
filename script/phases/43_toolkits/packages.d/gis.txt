@@ -26,3 +26,8 @@
 gdal
 
 pdal
+
+kopeninghours
+kosmindoormap
+kpublictransport
+kweathercore

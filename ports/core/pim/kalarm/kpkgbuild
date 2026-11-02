@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kalarm
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = b8b68cf4c20903adecdacf867df0fe3c538593fca0506a3719fe7d249dd917c4  kalarm-26.08.2.tar.xz
+description = Personal alarm scheduler — message, sound, command and email reminders
+homepage    = https://apps.kde.org/kalarm/
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later AND GFDL-1.2-or-later AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kauth kcalendarcore kcodecs kcompletion kconfig kconfigwidgets kcontacts kcoreaddons kcrash kdbusaddons kdoctools kglobalaccel kguiaddons kholidays ki18n kiconthemes kio kitemmodels kjobwidgets kmime knotifications knotifyconfig kservice kstatusnotifieritem ktextwidgets kwidgetsaddons kwindowsystem kxmlgui ktextaddons akonadi akonadi-contacts akonadi-mime kcalutils kidentitymanagement kmailtransport mpv vlc kdepim-runtime

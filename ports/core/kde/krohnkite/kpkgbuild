@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = krohnkite
+version     = 0.9.10.0
+release     = 1
+_rev        = d900ce4
+source      = $name-$version.tar.gz::https://codeberg.org/anametologin/Krohnkite/archive/$version.tar.gz
+sha256      = aea49af7dae5216026e1c9d5d66edef5bc842cb0c662e484a3e1cd9afbb6d241  krohnkite-0.9.10.0.tar.gz
+sha256      = 8c8f44f91c71914ebb22ba329617ae63793c7af82e0a0f60d46b8e7c6d3e078f  krohnkite-vendor-0.9.10.0.tar.xz
+description = Dynamic tiling for KWin, a KWin script with twelve layouts, shipped disabled
+homepage    = https://codeberg.org/anametologin/Krohnkite
+license     = MIT
+vendoring   = node
+depends     = nodejs make kwin libplasma plasma5support plasma-workspace python3 xdg-utils

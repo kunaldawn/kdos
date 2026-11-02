@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = print-manager
+version     = 6.8.2
+release     = 1
+source      = https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = 648dc29862b49fc9eb62e0bda89016ec6b76e1236f0285f3450c8ea9c5a00cf5  print-manager-6.8.2.tar.xz
+description = Plasma printing — the Printers page of System Settings, the print queue, the tray applet and new-printer notices
+homepage    = https://invent.kde.org/plasma/print-manager
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND (GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND BSD-3-Clause AND BSD-2-Clause AND CC0-1.0
+group       = plasma
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kconfig kconfigwidgets kcoreaddons kdbusaddons ki18n kcmutils kirigami kio knotifications kwidgetsaddons kwindowsystem kitemmodels kdeclarative libplasma kirigami-addons cups kded system-config-printer

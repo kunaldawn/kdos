@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = kpmcore
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 7e2ff31c59404fee030360c16be87706e3e94c3322d174c33a32fb49b13d5d59  kpmcore-26.08.2.tar.xz
+description = KDE Partition Manager core: partition and filesystem backend with a polkit root helper
+homepage    = https://invent.kde.org/system/kpmcore
+license     = GPL-3.0-or-later AND MIT AND CC0-1.0 AND CC-BY-4.0
+depends     = cmake ninja extra-cmake-modules pkgconf qt6-qtbase kcoreaddons ki18n kwidgetsaddons polkit-qt6 polkit dbus util-linux eudev e2fsprogs dosfstools exfatprogs btrfs-progs xfsprogs f2fs-tools ntfs-3g udftools nilfs-utils jfsutils cryptsetup lvm2 mdadm smartmontools

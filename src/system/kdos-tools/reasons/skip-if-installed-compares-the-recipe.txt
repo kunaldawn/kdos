@@ -1,6 +1,6 @@
 title: skip-if-installed compares the recipe during a build, and presence alone otherwise
-cite: kpkg
-port: wlroots
+cite: kpkg kp_hash.c
+port: kdos-installer
 
 The build exports KPKG_STRICT_RECIPE=1 (script/env/common.env), so the
 solver's kp_installed_current() treats an installed package whose recipe hash

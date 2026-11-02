@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ghostwriter
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 03ad5d604205bc6a33f6dcd0cc4c1e04e7c4a4e0ba88ef3169e2aaf971d21700  ghostwriter-26.08.2.tar.xz
+description = Markdown editor — distraction-free writing with a live preview, outline, statistics and export
+homepage    = https://ghostwriter.kde.org/
+license     = GPL-3.0-or-later AND BSD-2-Clause AND MIT AND Apache-2.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg qt6-qtwebchannel qt6-qtwebengine kconfigwidgets kcoreaddons sonnet kwidgetsaddons kxmlgui kdoctools cmark pandoc

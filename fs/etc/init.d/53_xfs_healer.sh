@@ -11,7 +11,7 @@ DAEMON="/usr/libexec/xfsprogs/xfs_healer"
 # template unit per mount; this script does that job here.
 #
 # The filesystems are the ones mounted when this runs — the root and every
-# fstab line. An XFS stick mounted later by kdos-mountd has no healer.
+# fstab line. An XFS stick mounted later through udisks2 has no healer.
 #
 # `--supported` is asked first, per mount: a kernel without the health monitor,
 # or a filesystem whose `autofsck` property is `none`, makes the daemon exit 1

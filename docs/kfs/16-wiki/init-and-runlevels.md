@@ -19,10 +19,11 @@ The pieces come from these ports and from the base filesystem:
 
 - [util-linux](#port-util-linux) installs [`agetty`]{.idx}, which runs every console login, and [`sulogin`]{.idx},
   the single-user login.
-- [kdos-tools](#port-kdos-tools) installs [`kdos-getty`]{.idx}, a second name of `ksvc`, which the `tty1`
-  and `tty2` entries run first.
-- The base filesystem supplies `/usr/local/sbin/kdos-login`, which the `tty1` entry runs to choose
-  between an automatic login and a login prompt.
+- [kdos-tools](#port-kdos-tools) installs [`kdos-getty`]{.idx}, a second name of `ksvc`, which the `tty2`
+  entry runs first.
+- The base filesystem supplies `/usr/local/sbin/kdos-dm`, which the `tty1` entry runs to start the
+  display manager, SDDM, or a password prompt when SDDM cannot run; see
+  [Login and autologin](login-and-autologin.md).
 - [utmps](#port-utmps) keeps the login records init writes; see
   [Login records](../../kdos/03-architecture/boot-and-init.md#login-records).
 - The base filesystem, `fs/` in the tree, supplies `/etc/inittab` and the scripts it names under
@@ -60,7 +61,7 @@ and this is the loop that does it:
 `rcK` is the first entry of runlevels 0 and 6. It stops the same set of services in reverse order,
 leaving the firewall loaded:
 
-<!-- kfs:include fs/etc/init.d/rcK lines=38-59 pin=b1f33d37e9bd -->
+<!-- kfs:include fs/etc/init.d/rcK lines=41-62 pin=b1f33d37e9bd -->
 
 ### /etc/init.d/serial-getty
 
@@ -167,16 +168,15 @@ Every way in is described in
    sudo shutdown -r now
    ```
 
-2. Without `sudo`, a member of the `seat` or `wheel` group asks `kdos-powerd`, which runs
-   `telinit 0` or `telinit 6` itself:
+2. Without `sudo`, from the session at the machine, ask elogind, which polkit allows for the active
+   session; elogind runs `/sbin/poweroff` or `/sbin/reboot`, which take the same runlevel path:
 
    ```bash
-   kdos-power poweroff
-   kdos-power reboot
+   loginctl poweroff
+   loginctl reboot
    ```
 
-   The panel's and the Start menu's power items send the same request. Who may send it is in
-   [Who may ask for what](../../kdos/04-programs/daemons.md#who-may-ask-for-what).
+   The Leave buttons of the Application Launcher and the logout screen send the same request.
 
 3. At a text console, `Ctrl+Alt+Del` runs `shutdown -r now`, the `ca` entry of the table.
 
@@ -241,14 +241,11 @@ sudo reboot -f
 `-f` calls the kernel's reboot directly and skips `rcK`, so no service stops cleanly.
 
 **The screen is black after the splash.** The session did not start. Log in on `tty2` and follow
-[The session](../../kdos/03-architecture/session.md); `kdos doctor` checks the compositor's socket
-and the session's processes.
+[Desktop troubleshooting](desktop-troubleshooting.md); `kdos doctor` checks the session's
+processes.
 
 ## Known gaps
 
-- [There is no graphical login screen (greeter)](../../kdos/06-reference/known-gaps.md#there-is-no-graphical-login-screen-greeter)
-- [The power button and the sleep key work only inside a graphical session](../../kdos/06-reference/known-gaps.md#the-power-button-and-the-sleep-key-work-only-inside-a-graphical-session):
-  at a text console or in single-user mode, shut down with a command
 - The live image's serial console is a root shell with no password: see
   [Security](../../kdos/06-reference/known-gaps.md#security)
 
@@ -265,4 +262,4 @@ and the session's processes.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 358.* Previous: [Part XVI. System administration](intro.md) · [Contents](../README.md) · Next: [359. Services](services.md)
+*Part XVI. System administration, chapter 382.* Previous: [Part XVI. System administration](intro.md) · [Contents](../README.md) · Next: [383. Services](services.md)

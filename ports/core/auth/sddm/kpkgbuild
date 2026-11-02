@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = sddm
+version     = 0.21.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/sddm/sddm/archive/v$version/sddm-v$version.tar.gz
+sha256      = f895de2683627e969e4849dbfbbb2b500787481ca5ba0de6d6dfdae5f1549abf  sddm-0.21.0.tar.gz
+description = Display manager — the QML login greeter, run on kwin_wayland
+homepage    = https://github.com/sddm/sddm
+license     = GPL-2.0-or-later AND MIT AND CC-BY-3.0
+depends     = cmake ninja qt6-qtbase qt6-qtdeclarative qt6-qttools pam elogind turnstile dbus utmps libxcb libXau python3-docutils kwin

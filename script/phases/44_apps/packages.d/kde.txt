@@ -1,0 +1,37 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#   44_apps: Applications
+# ---------------------------------
+#   kde — KDE Plasma and Gear platform pieces outside Frameworks that have no
+#   other domain: KIO workers, thumbnailers, Plasma integration, KDE Wayland
+#   glue
+# ---------------------------------
+#
+# Leaf applications whose dependency closure reaches a toolkit, or the graphics
+# stack on an application shelf.
+#
+# The files in packages.d are read in sorted order as one list. Together they
+# name every port the phase installs and nothing it does not;
+# testing/phaseclosure.py fails when a dependency pulls a port in from outside
+# them, or when a shelf file names a port an earlier phase installs.
+
+kdesdk-kio
+kio-admin
+kio-gdrive
+kio-zeroconf
+colord-kde
+kde-inotify-survey
+kdenetwork-filesharing
+markdownpart
+svgpart
+kdesdk-thumbnailers
+kcron
+keditbookmarks
+khelpcenter

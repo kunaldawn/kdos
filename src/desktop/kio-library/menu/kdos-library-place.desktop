@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Library Place
+Comment=Adds the offline Library to the file manager's Places, once
+Exec=/usr/libexec/kdos/kdos-library-place
+TryExec=/usr/libexec/kdos/kdos-library-place
+NoDisplay=true
+OnlyShowIn=KDE;
+X-KDE-autostart-phase=2

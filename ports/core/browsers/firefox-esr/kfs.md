@@ -2,7 +2,7 @@
 
 Firefox ESR is Mozilla's Extended Support Release of Firefox, and it is KDOS's default web
 browser: web pages and the `http` and `https` schemes open in it through
-`/etc/xdg/kdos-mimeapps.list`. It is built from Mozilla's source tarball with clang, lld and Rust,
+`/usr/share/kdos/xdg/kde-mimeapps.list`. It is built from Mozilla's source tarball with clang, lld and Rust,
 on GTK 3 with both its Wayland and X11 backends; the session's `MOZ_ENABLE_WAYLAND=1` puts it on Wayland (see
 [toolkits, Wayland and X11](../../../../docs/kdos/02-user-guide/applications.md#toolkits-wayland-and-x11)).
 [librewolf](#port-librewolf) is built from the same recipe shape.

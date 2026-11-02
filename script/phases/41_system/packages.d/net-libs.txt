@@ -61,3 +61,4 @@ libsrt
 librist
 libmaxminddb
 libsmi
+libproxy

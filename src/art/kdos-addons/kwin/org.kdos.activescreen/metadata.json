@@ -1,0 +1,21 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "KDOS"
+            }
+        ],
+        "Category": "Window Management",
+        "Description": "Opens every new window on the screen the pointer is on",
+        "EnabledByDefault": false,
+        "Icon": "video-display",
+        "Id": "org.kdos.activescreen",
+        "License": "MIT",
+        "Name": "Open on the Pointer's Screen",
+        "Version": "1.0",
+        "Website": "https://github.com/kunaldawn/kdos"
+    },
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js"
+}

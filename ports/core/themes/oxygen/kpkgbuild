@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = oxygen
+version     = 6.8.2
+release     = 1
+source      = https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = 487ac7441c5242e5b5fd4259bfaf78920f56338ba4b071d2a26e37750226b65c  oxygen-6.8.2.tar.xz
+description = Oxygen widget style, window decoration, cursors, colour schemes, Plasma theme and global themes
+homepage    = https://invent.kde.org/plasma/oxygen
+license     = MIT AND GPL-2.0-or-later AND LGPL-2.0-only AND LGPL-2.0-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-3.0-only
+group       = plasma
+depends     = cmake ninja extra-cmake-modules gzip qt6-qtbase qt6-qtdeclarative ki18n kconfig kcoreaddons kguiaddons kcmutils kwidgetsaddons kservice kcompletion frameworkintegration kwindowsystem kconfigwidgets kiconthemes kdecoration libplasma libxcb

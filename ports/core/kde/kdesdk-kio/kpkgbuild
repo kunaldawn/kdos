@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdesdk-kio
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = d6e7fc3e5f7b6b432337074c91faf229aeec14a11597c572ef12e92ae0d148d9  kdesdk-kio-26.08.2.tar.xz
+description = perldoc:/ KIO worker that renders Perl POD documentation as HTML
+homepage    = https://invent.kde.org/sdk/kdesdk-kio
+license     = GPL-2.0-or-later AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase ki18n kio perl

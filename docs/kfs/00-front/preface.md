@@ -8,7 +8,8 @@ source tree a copy of it describes.
 
 KDOS is a Linux distribution that builds itself from source. A build starts from a container with a
 stock compiler in it, makes a cross compiler, uses that to make a minimal root filesystem, and then
-compiles about two thousand packages one at a time inside that root, ending in a bootable image.
+compiles about two and a half thousand packages one at a time inside that root, KDE Plasma and
+all of KDE Gear among them, ending in a bootable image.
 This book follows the build in the order it happens. It starts with the container every phase runs
 in and the sources the build needs. It shows the two cross-toolchain scripts and the twenty-two
 bootstrap scripts command by command. It explains how the new root is entered as a chroot and what

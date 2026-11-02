@@ -7,56 +7,57 @@ security, or changes one of its privileged programs. It assumes the vocabulary o
 and a *pack* is the read-only image a box is composed from (both are defined in the
 [glossary](../06-reference/glossary.md) and described in [Packs and boxes](packs-and-boxes.md)).
 
-The chapter runs in this order: the threat model, the setuid binaries and the two KDOS wrote,
-the system accounts, the root daemons, the firewall, polkit, the containers and the compositor's
-filter for boxed clients, the kernel, mount options, signing and trust, and the two paths by which
-untrusted bytes reach a terminal. Its last section, [What is not protected](#what-is-not-protected), is part
-of the specification rather than a footnote: a model that lists only its defences gets relied on
-for things it does not do. A reader with time for one section should read that one.
+The chapter runs in this order: the threat model, the setuid binaries, the login stacks and how a
+password is checked, the system accounts, the root daemons, the firewall, polkit, the containers
+and KWin's filter for boxed clients, the kernel, mount options, and signing and trust. Its last
+section, [What is not protected](#what-is-not-protected), is part of the specification rather than
+a footnote: a model that lists only its defences gets relied on for things it does not do. A
+reader with time for one section should read that one.
 
 ## What this model is for
 
-KDOS is a single-user workstation. One human account ships (`kdos`, uid 1000), that account is in
-the `wheel` group, and `wheel` is trusted. The design defends against four things:
+KDOS is a single-user workstation. The person who installs it makes one account, that account is
+in the `wheel` group, and `wheel` is trusted: it is the administrator. The live medium's account is
+`kdos` (uid 1000), in the same groups. The design defends against four things:
 
 - **Outside software misbehaving.** An application from another distribution, run in a box, doing
   what a desktop application has no reason to do.
-- **A tampered artefact.** A package, an index or an application image that is not what it claims
-  to be.
+- **A tampered artefact.** A package, an index, a system image or an application image that is not
+  what it claims to be.
 - **Privilege escalation** through the small number of programs that need privilege.
 - **A catastrophic mistake** by a `wheel` user, made through an interface that should never have
   let it be expressed.
 
 It does not defend against the person at the keyboard, or against software running as that
 person. A recurring pattern in what follows is that a mechanism is not made safe where it can be
-made unnecessary: the lock screen needs no privileged daemon, `locate` needs no setgid binary, and
-no root daemon accepts a path.
+made unnecessary: KDOS ships no setuid program of its own, `locate` needs no setgid binary, and no
+root daemon accepts a path.
 
 ## setuid binaries
 
 A *setuid* binary runs as its owner, here root, whoever starts it. The recipes in the ports tree
-produce nineteen setuid-root binaries, two of them KDOS's own:
+produce eighteen setuid-root binaries, none of them KDOS's own:
 
 | Binary | From | What it is for |
 |---|---|---|
-| `kdos-checkpass` | KDOS | Checking the caller's own password against `/etc/shadow` for the lock screen |
-| `kdos-resctl` | KDOS | Signalling and renicing another user's process for the resource monitor |
 | `sudo` | sudo | Running a command as another user |
 | `su` | shadow | Switching to another account. util-linux's `su` is not built (`--disable-su`), so shadow's is the only one |
 | `passwd`, `chage`, `gpasswd`, `chfn`, `chsh`, `newgrp` | shadow | Account management |
 | `newuidmap`, `newgidmap` | shadow | Writing a rootless container's user-namespace map |
-| `pkexec`, `polkit-agent-helper-1` | polkit | polkit's privileged actions |
+| `pkexec`, `polkit-agent-helper-1` | polkit | polkit's privileged actions, and checking a password typed into the authentication agent |
 | `ssh-keysign` | OpenSSH | Host-based authentication |
 | `dbus-daemon-launch-helper` | dbus | System-bus activation. Owned `root:messagebus`, mode `4110`, so only the bus daemon can run it |
 | `mount.nfs` | nfs-utils | Mounting an NFS share listed in `fstab` as an ordinary user |
-| `unix_chkpwd` | pam | Lets `pam_unix` check a password for a caller that is not root; without it every unprivileged PAM check fails, `vlock` and `wayvnc` included |
-| `fusermount3` | fuse | Mounting a userspace filesystem from a session with no user namespace: sshfs, gocryptfs, fuse-overlayfs, the document portal, `rclone mount`, and `restic mount` through the `fusermount` link beside it |
+| `unix_chkpwd` | pam | Lets `pam_unix` check a password for a caller that is not root. The lock screen depends on it (see [How a password is checked](#how-a-password-is-checked)) |
+| `fusermount3` | fuse | Mounting a userspace filesystem from a session with no user namespace: kio-fuse, sshfs, gocryptfs, fuse-overlayfs, the document portal, `rclone mount`, and `restic mount` through the `fusermount` link beside it |
+| `crontab` | cronie | Writing the caller's own crontab into `/var/spool/cron`, which is mode 0700 and root's; it drops back to the caller for everything else |
 
-Most of these bits come from the upstream `make install`. Four recipes set a bit themselves:
-`kdos-lock` and `kdos-res` install their helpers with mode 4755, `shadow` repeats the mode on
-`newuidmap` and `newgidmap` so that a configure change cannot drop it, and `pam` sets it on
-`unix_chkpwd`. The `dbus` port's `postinstall.sh` restores the helper's group and mode after the
-package manager has installed it as `root:root`.
+Most of these bits come from the upstream `make install`. Three recipes set a bit themselves:
+`shadow` repeats the mode on `newuidmap` and `newgidmap` so that a configure change cannot drop
+it, `pam` sets it on `unix_chkpwd`, and `cronie` sets it on `crontab`, which its install leaves
+0755. The `dbus` port's `postinstall.sh` restores the helper's group and mode after the package
+manager has installed it as `root:root`. shadow's `login` is not installed: the console's `login`
+is util-linux's, which needs no setuid bit because `agetty` runs it as root.
 
 `newuidmap` and `newgidmap` are the reason every boxed application starts. The container engine
 (podman) runs them to write a process's user-namespace map, which the kernel allows only from a
@@ -66,8 +67,11 @@ bits no boxed application starts.
 
 These are deliberately not setuid:
 
-- util-linux's `mount` and `umount` (built `--disable-makeinstall-setuid`). Removable media go
-  through `kdos-mountd` instead.
+- util-linux's `mount` and `umount` (built `--disable-makeinstall-setuid`). Removable media are
+  mounted by `udisksd`, which runs as root and asks polkit.
+- `kwrited`, which upstream installs setuid root so that it can write its own utmp record. The
+  `kwrited` recipe clears the bit: its terminal library writes the record with musl's `utmpx`
+  functions, which record nothing, so the bit would buy a setuid-root program and no record.
 - `bwrap` (bubblewrap). It sandboxes through an unprivileged user namespace, which is how
   `xdg-desktop-portal` runs its validators.
 - `ksu`, Kerberos's `su`. The `krb5` recipe deletes it: accounts are local and privilege
@@ -100,14 +104,15 @@ inside a kpkg package, and the package archive is a GNU-format tar written witho
 mode bit survives that archive; a file capability, which is an extended attribute, does not. The
 later copies (the squashfs system image, the installer's `rsync -aHAX`, and a pack built with
 `mkfs.erofs` as root) would all carry an extended attribute, but by then it has already been lost.
+The same is why KWin, which upstream gives `CAP_SYS_NICE` as a file capability, gets its real-time
+priority from a resource limit instead (see [The login stacks](#the-login-stacks)).
 
 Losing a setuid bit is a silent failure: one `chown` or one archive copy without the right flag
-is enough, and nothing reports it. `kdos doctor` checks the five that matter most
-(`kdos-checkpass`, `kdos-resctl`, `newuidmap`, `newgidmap`, and `dbus-daemon-launch-helper` with
-its `messagebus` group) and prints the repair when one is wrong:
-`chown root` and `chmod 4755` for the first four, `chown root:messagebus` and `chmod 4110` for the
-bus helper. The same check confirms that `/etc/subuid` and `/etc/subgid` exist, because without
-them no rootless box can map a user.
+is enough, and nothing reports it. `kdos doctor` checks the four that matter most (`unix_chkpwd`,
+`newuidmap`, `newgidmap`, and `dbus-daemon-launch-helper` with its `messagebus` group) and prints
+the repair when one is wrong: `chown root` and `chmod 4755` for the first three,
+`chown root:messagebus` and `chmod 4110` for the bus helper. The same check confirms that
+`/etc/subuid` and `/etc/subgid` exist, because without them no rootless box can map a user.
 
 ### No setgid binaries, and a per-user locate index
 
@@ -128,7 +133,7 @@ directory, into their own cache:
 |---|---|
 | The builder | `/usr/local/bin/kdos-updatedb`, which runs `/usr/sbin/updatedb --require-visibility no --prune-bind-mounts yes --database-root "$HOME" --output <index>` |
 | The index | `${XDG_CACHE_HOME:-$HOME/.cache}/kdos/plocate.db` |
-| The schedule | `~/.config/kdos/timers.d/20-updatedb.timer`, one of the per-user timers the session runs (seeded from `/etc/skel`) |
+| The schedule | `~/.config/kdos/timers.d/20-updatedb.timer`, a row of the user's own `timers` service (seeded from `/etc/skel`; see [The session](session.md#the-users-services)) |
 | How `locate` finds it | `$LOCATE_PATH`, exported by `/etc/profile.d/40-plocate.sh` |
 
 An index built this way can contain only paths its owner could already list, so the visibility
@@ -141,48 +146,76 @@ its compiled-in `/var/lib` database first and exits on the first database it can
 machine with no shared database every search would fail before reaching the user's own. With the
 patch, a set and non-empty `$LOCATE_PATH` replaces the default instead of following it.
 
-## kdos-checkpass
+## The login stacks
 
-`kdos-checkpass` is the lock screen's password check, and the only privileged part of the lock
-screen. If it is wrong, the user is locked out of their own session, so its behaviour is specified
-exactly:
+Every login on the machine is a PAM login, and the stacks in `/etc/pam.d` are where an account is
+checked, its resource limits are set, and its session is registered. The shared stacks come from
+the `pam` port; each login program's own stack comes from that program's port.
 
-```sh
-printf '%s' "$password" | kdos-checkpass    # exit 0 = correct
-```
+| Stack | Used by | What it does |
+|---|---|---|
+| `system-auth`, `system-account`, `system-password`, `system-session` | Everything below, and `sudo`, `su`, polkit's `polkit-1` | `pam_unix` (password hashes in `/etc/shadow`, SHA-512 for a new password; `nullok`, so an account with an empty password logs in with an empty field) and `pam_limits` |
+| `system-login` | Every login that starts a session | The four above, then `pam_turnstile` and `pam_elogind`, in that order, both optional |
+| `login` | util-linux's `login`, on tty2, the serial line and the fallback prompt on tty1 | `pam_faildelay` (three seconds after a failure) and `pam_nologin` (`/etc/nologin` refuses everyone but root), then `system-login` |
+| `sddm` | A password at the login screen | `system-login`, then `pam_kwallet5` in the auth and session phases |
+| `sddm-autologin` | SDDM's automatic login | No password. Refuses every account below uid 1000 except `plasma-setup`, the first-boot wizard's, so a `kde_settings.conf` naming `root` or a service account starts nothing. Then `system-login`, `pam_env` with `/etc/security/sddm-autologin.conf`, and the session half of `pam_kwallet5` |
+| `sddm-greeter` | The login screen itself, as the `sddm` account | `pam_permit` for auth, `pam_limits`, `pam_unix`, `pam_elogind`, and `pam_turnstile` as `required`: turnstile is the only thing that makes the greeter's runtime directory, and its KWin will not start without one |
+| `kde`, `kde-fingerprint` | The lock screen | `system-auth`; `pam_fprintd` for a fingerprint, used only when it is turned on in the lock screen's settings |
+| `turnstiled` | The session `turnstiled` opens for a user's services | turnstile's own: `pam_limits` and `pam_elogind`, so PipeWire gets the audio group's limits and elogind sees the session |
+| `other` | Any PAM service with no file | Refuses everything and logs it (`pam_warn`, `pam_deny`) |
 
-- It takes no arguments, not even a user name. It always checks the account of the caller's
-  real user id, so it cannot be aimed at root or used as an oracle for another account.
-- The password arrives on standard input, never on the command line, because a process's
-  command line is readable by every user through `/proc/<pid>/cmdline` for as long as it runs. At
-  most 511 bytes are read, and one trailing newline is stripped, so `printf '%s\n'` and
-  `printf '%s'` mean the same thing.
-- It reads `/etc/shadow` directly, with a plain file parse rather than `getspnam()`, so no
-  name-service module runs as root.
-- A locked (`!`, `*`) or empty hash is refused with exit 2 before any password is read, so an
-  account with no password cannot be unlocked by pressing Enter.
-- It drops root before hashing. Once the hash and the password are in memory it calls
-  `setuid()` to the caller, and `crypt()` runs unprivileged.
-- The comparison is constant time over the whole hash, and both buffers are cleared after use.
-- A wrong password costs one second, spent inside `kdos-checkpass` itself, so a loop that drives
-  it directly instead of through the lock screen is rate-limited too.
+`pam_turnstile` comes before `pam_elogind` in `system-login`, the order Chimera Linux uses: turnstile
+makes the runtime directory and exports it before elogind registers the session. What the two do
+for a session is in [The session](session.md#starting-a-session).
 
-| Exit code | Meaning |
-|---|---|
-| 0 | Correct |
-| 1 | Wrong |
-| 2 | Could not tell: an argument was given, no passwd or shadow entry for the caller, an unreadable shadow file, a locked or empty hash, or an internal failure (reading standard input, dropping privilege, or `crypt()` refusing the hash) |
+**Resource limits.** `pam_limits` reads `/etc/security/limits.d` at every login. PipeWire's
+`25-pw-rlimits.conf` gives the `audio` group real-time priority 95, nice −19 and 4 MiB of locked
+memory, which PipeWire's threads need. KDOS's `30-kdos.conf` gives every login real-time priority
+1, the lowest, which is what KWin asks for its input and frame-commit threads, and SDDM's
+`30-sddm.conf` gives the same to the `sddm` account for the login screen's KWin. A group entry
+outranks `*` whatever the file order, so a member of `audio` keeps 95. The kernel's real-time
+throttle (`kernel.sched_rt_runtime_us`) keeps a process at priority 1 from taking more than 95% of
+a CPU.
 
-A caller must treat 2 as a failure and say why: reporting "wrong password" on a machine with a
-broken shadow file sends the user looking in the wrong place. Without its setuid bit the program
-cannot read the shadow file, answers 2 to every attempt, and locks the user out.
+### How a password is checked
+
+The login screen, `login`, `sudo`, `su`, polkit's agent and the lock screen all check a password
+through `pam_unix`. A program running as root reads `/etc/shadow` itself; one running as the user
+(the lock screen, which kscreenlocker runs inside the session) has `pam_unix` call the setuid
+`unix_chkpwd`, which checks only the calling user's own password and is the one privileged step.
+Without its setuid bit the lock screen refuses every password, and the session can be left only
+from another console. kscreenlocker is built with the password service `kde` and the fingerprint
+service `kde-fingerprint`; smart-card, face and second-factor unlocking are built off.
+
+An account with an empty password (the live medium's) unlocks the lock screen with an empty field,
+because `system-auth` carries `nullok`. The live medium also turns the timed lock off
+(`/usr/share/kdos/xdg-live/kscreenlockerrc`), so its screen locks only when asked.
+
+**An automatic login can start behind the lock screen.** `sddm-autologin` runs `pam_env` with
+`/etc/security/sddm-autologin.conf`, which puts `/etc/kdos/autologin-xdg` first in
+`XDG_CONFIG_DIRS`. The image ships no such directory, so on its own the line changes nothing. The
+installer creates it on a single-account machine with an encrypted root that asked for an
+automatic login, holding a `kscreenlockerrc` of `[Daemon] LockOnStart=true`: the session then
+comes up locked, and the lock screen is that machine's login after the disk passphrase. The
+installer's "no password after the disk passphrase" answer leaves the directory out. The setting
+lives with the stack rather than in `/etc/xdg` or a home directory because it belongs to the
+automatic login, not to the account: a password login never reads the directory, so turning the
+automatic login off later does not leave every password login locked as well.
+
+**The wallet.** `pam_kwallet5`, from kwallet-pam, keeps the password typed at the login screen in
+the auth phase and, in the session phase, starts the user's secret store, `ksecretd`, with a hash
+of it, which unlocks the default wallet without a second prompt. Nothing unlocks it when there was
+no password to keep: after an automatic login, or a login that was not a graphical one, the wallet
+asks for its own password the first time something opens it. Unlocking the lock screen runs no
+session phase, so it never unlocks the wallet. The live medium turns the wallet off
+(`/usr/share/kdos/xdg-live/kwalletrc`), since its account has no password.
 
 ### The mode of `/etc/shadow`
 
 `/etc/shadow` must be mode 0600, and the build has to set that explicitly. Git records one
 permission bit (executable or not), so a file under `fs/` cannot carry a mode narrower than 644,
 and the file-system build step gives every non-executable file exactly that. A world-readable
-shadow file hands every password hash to every account and makes `kdos-checkpass`'s setuid bit
+shadow file hands every password hash to every account and makes `unix_chkpwd`'s setuid bit
 pointless.
 
 `script/phases/10_bootstrap/000_file_system.sh` therefore carries a table (the `FSMODES` block near its end)
@@ -203,49 +236,6 @@ ownership check, so a rules directory the desktop user could write would let tha
 themselves any polkit action, or run any command as root on the next device event through a udev
 `RUN+=`.
 
-## kdos-resctl
-
-`kdos-resctl` is the second KDOS setuid binary, used by the resource monitor `kdos-res`. Its
-security argument is that there is nothing to aim: three verbs, no paths and no options.
-
-```
-kdos-resctl dmi
-kdos-resctl signal <pid> <TERM|KILL|STOP|CONT>
-kdos-resctl renice <pid> <-20..19>
-```
-
-- Nothing in the argument vector is ever opened. The hardware-table path
-  (`/sys/firmware/dmi/tables/DMI`) is compiled in.
-- The caller must be in `wheel`, by real user id. The group is fixed at build time, never read
-  from the environment. The effective user id is root by construction, so testing it would
-  authorise everybody.
-- Standard input, output and error are opened on `/dev/null` if they arrive closed, so output
-  cannot land in a file the program opens later.
-- It signals through a process handle (a pidfd) taken before the signal is sent, so the
-  process it opened is the one it signals even if the number is reused in between. When no handle
-  can be taken, as on a kernel without pidfd support, it falls back to `kill(2)`, which has no
-  such guarantee.
-- Process ids 1 and below are refused. That covers init, and 0 and negative ids, which
-  `kill(2)` reads as process groups.
-- Root is dropped before the hardware table is parsed. The table is opened as root, then
-  `setresuid()` returns to the caller, and the SMBIOS parser never runs privileged.
-- It is never on the sampling path. `kdos-res` calls it only when you act on a process, and
-  only for a process you do not own or a renice below zero; your own processes are signalled and
-  reniced directly. When the helper is missing or has lost its setuid bit, `kdos-res` disables the
-  action and puts the reason on the button.
-
-The `dmi` verb prints the populated memory slots (size and speed, from SMBIOS type 17). The
-Memory page of `kdos-res` calls it once, the first time the page is drawn, and keeps the answer
-for its per-slot table; a refusal or an unreadable table is written on the page in place of the
-table.
-
-| Exit code | Meaning |
-|---|---|
-| 0 | Done |
-| 1 | Refused |
-| 2 | Usage error (any other argument vector) |
-| 3 | The operation itself failed |
-
 ## System accounts
 
 Every daemon that drops privilege drops to an account of its own. None of these accounts can log
@@ -260,18 +250,25 @@ in: each has `/sbin/nologin` as its shell and `!` as its password. The image shi
 | `tss` | 993:993 | The TPM: tpm2-tss's udev rules give `/dev/tpm*` to the user and `/dev/tpmrm*` to the group |
 | `lp` | 10:10 | CUPS |
 | `utmp` | 14:14 | `utmpd` and `wtmpd`, which own `/run/utmps` and `/var/log/wtmp` ([Login records](boot-and-init.md#login-records)) |
+| `sddm` | 64:64 | The login screen. Home `/var/lib/sddm`, which `kdos-dm` makes and hands to the account at every start. The id is fixed below 101 because `useradd -r` hands out ids from 999 downwards, and a fixed id in that range could be one a tree that already holds those accounts gave to somebody else |
 | `nobody` | 99:99 | `kiwix-serve` and `llama-server`, which only read, and anything that asks for an unprivileged account by that name |
 
+The group `sambashare` (gid 65) has no member until somebody is put in it: it is the group Samba
+lets publish a share of their own from Dolphin.
+
 More are created when their port is installed, by the port's `postinstall.sh` with `groupadd -r` and
-`useradd -r`, which pick a free id: `polkitd`, `avahi`, `avahi-autoipd`, `clamav`, `geoclue`,
-`gnuhealth`, `kolibri`, `libstoragemgmt`, `maddy`, `minidlna`, `mosquitto`, `mumble-server`,
-`ngircd`, `nm-openvpn`, `nut`, `pcscd`, `postgres`, `prosody`, `radicale`, `tcpdump` and `usbmux`.
-`lsmd`, the storage-management daemon, starts as root and runs every plugin that does not need root
-as `libstoragemgmt`. `nut` is also put in `dialout`, for a UPS on a serial line. `libvirt`'s hook
-creates the account `qemu`, whose primary group is the shipped `kvm`, so the guests `libvirtd` starts can open `/dev/kvm`, and the group
+`useradd -r`, which pick a free id: `polkitd`, `avahi`, `avahi-autoipd`, `clamav`, `colord` (which
+is given `/var/lib/colord`), `geoclue`, `gnuhealth`, `kolibri`, `libstoragemgmt`, `maddy`,
+`minidlna`, `mosquitto`, `mumble-server`, `ngircd`, `nm-openvpn`, `nut`, `pcscd`, `postgres`,
+`prosody`, `radicale`, `tcpdump` and `usbmux`. `lsmd`, the storage-management daemon, starts as
+root and runs every plugin that does not need root as `libstoragemgmt`. `nut` is also put in
+`dialout`, for a UPS on a serial line. `libvirt`'s hook creates the account `qemu`, whose primary
+group is the shipped `kvm`, so the guests `libvirtd` starts can open `/dev/kvm`, and the group
 `libvirt`, which libvirt's own polkit rule admits and which has no member. `brltty`'s hook creates
 the group `brlapi` and adds the desktop account to it; that is the group brltty's own polkit rule
-admits to its braille display interface. The file-system build step merges these files rather than
+admits to its braille display interface. `/etc/init.d/62_plasma-setup.sh` creates the system
+account `plasma-setup` with `useradd --system` on a machine installed for somebody else, as the
+account the first-boot wizard runs as. The file-system build step merges these files rather than
 overwriting them, so accounts a hook added survive a rebuild of `fs/`; where the repository and the
 image disagree about an entry, the repository wins.
 
@@ -284,132 +281,106 @@ Two rules keep the tables consistent:
   carries on with gid 0, and grants nothing. `testing/preflight.sh` checks the rules under `fs/`
   for this.
 
-The desktop account belongs to `wheel`, `seat`, `lpadmin`, `audio`, `video`, `render`, `input`,
-`kvm`, `cdrom`, `dialout`, `tty` and `users`. It is not in `tss`, so the TPM is root's: run the
-`tpm2_*` tools under `sudo`.
+The desktop account belongs to `wheel`, `lpadmin`, `audio`, `video`, `render`, `input`, `kvm`,
+`cdrom`, `dialout`, `tty` and `users`. An account the installer makes for a non-administrator is
+left out of `wheel`, and so of `sudo`, the polkit grants and every root daemon's configuration
+verbs. Neither is in `tss`, so the TPM is root's: run the `tpm2_*` tools under `sudo`. Every account
+made later joins `audio` whichever tool makes it, because its members carry PipeWire's real-time
+limits: `/etc/default/useradd` sets `GROUPS=audio`, which System Settings' Users page and Plasma
+Setup reach through `useradd`, and AccountsService is patched to add an administrator's `wheel`
+after `useradd` rather than with `-G`, which would replace that default. The person at
+the machine needs no group for the display, the input devices or a removable drive: elogind gives
+the active session access to the devices udev tags `uaccess`, and takes it away when the session is
+switched away from.
 
 ## Root daemons
 
-Five KDOS daemons run as root, each started by its own init script, and each answers a socket in
-`/run`:
+Six KDOS daemons run as root, each started by its own init script under `ksvc` and never by D-Bus
+activation:
 
-| Daemon | Socket | What it does |
+| Daemon | Answers on | What it does |
 |---|---|---|
-| `kdos-powerd` | `/run/kdos-powerd.sock` | Suspend, power-off, reboot, and four system settings: the firewall, the autologin account, the accent, the time zone |
+| `kdos-powerd` | `/run/kdos-powerd.sock`, and `io.kdos.Power1` on the system bus | The firewall's named services, the accent everything drawn before a login wears, and the splash's motion |
 | `kdos-energyd` | `/run/kdos-energyd.sock` | Per-application energy use |
 | `kdos-oomd` | `/run/kdos-oomd.sock` | Kills a process under memory pressure, sparing the desktop |
-| `kdos-mountd` | `/run/kdos-mountd.sock` | Removable media, encrypted volumes, network shares, disk health |
 | `kdos-packd` | `/run/kdos-packd.sock` | Mounts, verifies, installs and composes application packs |
+| `kdos-settingsd` | `org.freedesktop.hostname1`, `timedate1` and `locale1` on the system bus | The machine's name, clock, time zone, locale and keyboard, for System Settings and the first-boot wizard |
+| `kdos-sysupdated` | `org.freedesktop.sysupdate1` and `io.kdos.Slots1` on the system bus | System updates for Discover, the A/B slots for System Settings, and the boot confirmation |
 
-Their verbs are in [the daemons](../04-programs/daemons.md). They share one authorisation design.
+Their verbs are in [the daemons](../04-programs/daemons.md). Suspend, power-off and reboot are not
+among them: they are elogind's, and polkit decides who may ask.
 
 ### Who may talk to them
 
-The check is on who is connecting, not on the socket's permissions. Every socket is mode 0666 and
+A socket is checked on who is connecting, not on its permissions. Every socket is mode 0666 and
 anyone may connect. The daemon asks the kernel for the connecting process's user id
 (`SO_PEERCRED`, which the client cannot forge) and answers `err not permitted` to anyone it does
 not admit. A mode that looked like the authorisation would be a mode somebody eventually loosens.
+A bus interface asks polkit about the calling process instead, and may prompt through the
+session's agent.
 
 | Daemon | Admits |
 |---|---|
-| `kdos-powerd` | root and `wheel`: every verb. `seat`: `ping`, `suspend`, `poweroff` and `reboot` only |
-| `kdos-mountd` | root, `seat` and `wheel`: every verb |
-| `kdos-oomd` | root, `seat` and `wheel` (its only verbs are `ping` and `status`) |
-| `kdos-energyd` | root and `wheel` |
-| `kdos-packd` | root and `wheel` |
+| `kdos-powerd`, socket | Anyone: `ping`, `firewall list` and `firewall knocks`. Root and `wheel`: the changes (`firewall`, `accent`, `splash`) with no prompt. Anyone else: whatever polkit answers about the same action for that process, asked without a prompt, so the person at the machine may set the accent and the splash and nobody outside `wheel` may open a port |
+| `kdos-powerd`, `io.kdos.Power1` | polkit for every caller: `io.kdos.firewall.set` is an administrator's password at the machine and no elsewhere; `io.kdos.accent.set` (the accent and the splash) and `io.kdos.filesharing.start` (starting Samba for shares that already exist) are yes at the machine and no elsewhere |
+| `kdos-oomd` | Root, `wheel`, and any account elogind reports as `active` (in the foreground of a seat); its only verbs are `ping` and `status` |
+| `kdos-energyd` | Root and `wheel` |
+| `kdos-packd` | Root and `wheel` |
+| `kdos-settingsd` | polkit, under systemd's own action ids: setting the time zone and switching network time are yes at the machine; the hostname, the locale, the keyboard and setting the clock are an administrator's password, kept for a few minutes, everywhere |
+| `kdos-sysupdated` | polkit: checking for an update is yes at the machine; installing one, trying the other slot and changing the update channel are an administrator's password, kept for a few minutes; installing a version picked by hand asks every time; the boot confirmation (`io.kdos.slots.bless`) is yes for the active local session and no for anything else |
 
-`seat` is the group to which seatd, the seat daemon, hands the display and input devices: it
-means the person at the machine. The installer keeps the desktop account in `seat` and, for a
-non-administrator, takes it out of `wheel`. Such an account keeps the lid and the power keys and
-every `kdos-mountd` verb, and loses `sudo`, the polkit grants and every `kdos-powerd`
-configuration verb. `kdos-powerd`'s `seat` list names what is allowed, so a configuration verb
-added later belongs to administrators without anyone having to remember to say so.
-
-The test lives in one function, `kb_uid_allowed()` in `libkbase`, and no daemon keeps a copy of
-it. It admits uid 0, refuses a uid with no passwd entry, and otherwise checks the account's
-primary and supplementary groups. This is the authorisation boundary of the whole system; five
-copies would be a rule tightened on one socket and left loose on the others. To see how
-`kdos-powerd` would treat an account:
+The socket test lives in one function, `kb_uid_allowed()` in `libkbase`, and no daemon keeps a
+copy of it. It admits uid 0, refuses a uid with no passwd entry, and otherwise checks the account's
+primary and supplementary groups. Several copies would be a rule tightened on one socket and left
+loose on the others. To see how `kdos-powerd`'s socket would treat an account:
 
 ```sh
 kdos-powerd --explain <user>
 ```
 
 It asks the same function the socket does, so its answer cannot drift from the daemon's.
+`kdos-oomd` asks elogind whether an account is active through `libelogind`, opened the first time
+it is needed rather than linked: the daemon exists for the minute memory runs out, and a session
+library that failed to load must cost the read tier, never the killer.
 
-`kdos-mountd --fixture-serve` is a test mode that admits anybody and grants nothing: its paths are
-a scratch directory, and every command it would run is printed instead. The init script starts
-the daemon with no arguments, so a running system never reaches it.
+`kdos-energyd` answering only root and `wheel` leaves the energy sensors of System Monitor empty
+for an account outside `wheel`. The daemon exists because the CPU energy counter (RAPL) is
+root-only: fine-grained unprivileged reads can recover cryptographic keys through a side channel.
+What leaves the daemon is a per-application percentage accumulated over minutes. It samples every
+ten seconds, an interval compiled in and not configurable, the raw counter is never republished,
+and a client cannot drive the interval towards a fine-grained one. There is no write path into the
+power interface at all.
 
 ### Clients never name a path
 
-Every block-device verb takes an index into a list the daemon published a moment earlier, and
-every configuration verb takes a name from a list compiled into it. A daemon that accepted a device
-and a mount point would let anyone at the seat mount a USB stick over `/etc`.
+Every configuration verb takes a name from a list compiled into the daemon: a firewall service, an
+accent, a splash motion. A daemon that accepted a path would let anyone it admits write wherever
+root can. `kdos-settingsd` checks every value before it asks polkit, so a bad value is refused
+without a password prompt, and writes only its own files (`/etc/hostname`, `/etc/machine-info`,
+`/etc/localtime`, `/etc/locale.conf`, `/etc/keymap`, `/etc/kdos/xkb.conf` and the few beside them);
+every program it runs, such as `loadkeys`, is an argument vector, because every argument came over
+a bus.
 
-There are two exceptions. Installing a pack names a file name, not a path, in a staging directory
-the daemon owns (`/var/lib/kdos/packs/staging`, mode 01777). The name must match `[A-Za-z0-9._-]`
-and contain no slash. That directory is the single place an unprivileged download may land, and
-the daemon publishes its location so clients do not derive it. `kdos-mountd`'s `cifs` and `krb5`
-verbs name a server, a share, a user and a domain, because a network share is not a row the daemon
-can list in advance. The daemon still chooses the mount point (under `/media/<user>/`) and the
-options, and it checks each field's characters, and resolves the server, before anything is
-created or mounted.
+The one exception is installing a pack, which names a file name, not a path, in a staging
+directory the daemon owns (`/var/lib/kdos/packs/staging`, mode 01777). The name must match
+`[A-Za-z0-9._-]` and contain no slash. That directory is the single place an unprivileged download
+may land, and the daemon publishes its location so clients do not derive it.
 
 ### What each daemon refuses
 
 | Daemon | Refuses |
 |---|---|
-| `kdos-powerd` | Anything but `ping`, `suspend`, `poweroff`, `reboot`, and four verbs whose argument is checked before use: `firewall` (a service name from a table compiled into the daemon), `autologin` (an existing human account, or `off`), `accent` (one of the eight colour schemes in `libkcolor`'s table), `timezone` (a zone name of at most 64 characters from `[A-Za-z0-9+_/-]`, with no leading, trailing or doubled slash) |
-| `kdos-mountd` | A block device that is not removable, with the checks listed below the table; a network share is mounted only through `cifs` or `krb5`, at a mount point the daemon chooses |
+| `kdos-powerd` | Anything but `ping`, `firewall list`, `firewall knocks`, and three verbs whose argument is checked before use: `firewall` (a service name from a table compiled into the daemon, then `on` or `off`), `accent` (one of the eight colour schemes in `libkcolor`'s table), `splash` (`phosphor` or `modern`) |
 | `kdos-packd` | Paths as arguments; a staged name outside `[A-Za-z0-9._-]`; a pack whose hash or signature fails; replacing or removing a pack that is composed into a running box |
 | `kdos-oomd` | Any argument at all: killing is its own decision or it does not happen |
 | `kdos-energyd` | Republishing the raw energy counter; a client-chosen sampling interval |
+| `kdos-settingsd` | A hostname, zone, locale or keymap that does not parse, before polkit is asked; switching network time on where there is no `chrony` |
+| `kdos-sysupdated` | Writing the inactive slot while the running boot is itself a trial; any work of its own: it runs `kdos update apply` and answers only once the child has said `verified` or `refused` |
 
-`kdos-mountd` refuses:
-
-- internal disks, loop, RAM, zram and device-mapper nodes, filesystems it does not recognise, and
-  anything listed in `fstab`;
-- every partition of the disk the system booted from, and of the disk holding the persistence
-  store in use;
-- anything currently mounted, for a verb that writes;
-- a request with more or fewer arguments than its verb takes, and a device index that is not a
-  number or not in the list;
-- a device node that differs from the one the scan recorded;
-- any format request unless `format = yes` is set in `/etc/kdos/mountd.conf`. With it set, a
-  format request must repeat the device's kernel name (for example `sdb1`) exactly as
-  confirmation, and only `ext4`, `btrfs`, `vfat` and `exfat` are written;
-- any image write unless `write = yes` is set there. With it set, a write request must repeat the
-  whole disk's name (for example `sdb`), must carry the image as an open file descriptor rather than
-  a path, and is refused for a descriptor that is not a regular file, an image larger than the disk,
-  a disk with any partition mounted or unlocked, and a disk with any partition that `/etc/fstab`
-  names or that holds the running system, including partitions the device list leaves out.
-
-**The image travels as a descriptor so that the daemon never opens a file on the caller's behalf.**
-The caller opens the image as itself and passes the open file over the socket (`SCM_RIGHTS`); the
-daemon reads only what that descriptor already grants. A root daemon that accepted a path would
-open it as root, and a request naming `/etc/shadow` would copy a file the caller cannot read onto a
-stick the caller can. The disk is opened with `O_EXCL`, the kernel's exclusive claim on a block
-device, so the write cannot start while anything on the disk is in use, and nothing else can open
-the disk for writing or mount it until the write ends.
-
-The image does not ship `/etc/kdos/mountd.conf`, so formatting and image writes are off and
-removable media mount `noexec` until an administrator writes the file with `format = yes`,
-`write = yes` or `exec = yes`. The daemon looks for each of those strings anywhere in the file, so
-a commented-out line such as `# format = yes` turns the verb on as well; remove a setting rather
-than comment it out.
-
-`kdos-energyd` exists because the CPU energy counter (RAPL) is root-only: fine-grained
-unprivileged reads can recover cryptographic keys through a side channel. What leaves the daemon
-is a per-application percentage accumulated over minutes. It samples every ten seconds, an
-interval compiled in and not configurable, the raw counter is never republished, and a client
-cannot drive the interval towards a fine-grained one. There is no write path into the power
-interface at all.
-
-`kdos-boxsock` is not a root daemon: it is installed in `/usr/bin`, runs as the desktop user,
-binds one tagged Wayland socket per box and compositor, and holds that socket's security context
-open until the compositor exits or the process is killed. Stopping the box does not end it; every
-later launch of the same box in that session reuses the socket.
+`kdos-boxsock` is not a root daemon: it is installed in `/usr/bin` and runs as the desktop user, one
+process per box launcher. It binds the box's tagged Wayland socket in the box's private runtime
+directory and holds that socket's security context open until KWin exits or the process is killed;
+see [Sandboxed clients](#sandboxed-clients).
 
 ## The firewall
 
@@ -425,144 +396,155 @@ The shipped `inet filter` table:
 
 | Chain | Policy | Accepted |
 |---|---|---|
-| `input` | drop | Established and related traffic; loopback; the ICMP and ICMPv6 types that keep a network working (unreachable, too big, time exceeded, parameter problem, echo request, and IPv6 neighbour and router discovery); mDNS (UDP 5353); NetBIOS name service (UDP from port 137 to port 137); the DHCPv6 client (UDP 546); DNS and DHCP from `10.42.0.0/16`, the range NetworkManager gives a hotspot's clients |
+| `input` | drop | Established and related traffic; loopback; the ICMP and ICMPv6 types that keep a network working (unreachable, too big, time exceeded, parameter problem, echo request, and IPv6 neighbour and router discovery); mDNS (UDP 5353); NetBIOS name service answers (UDP from port 137 to port 137); WS-Discovery answers (UDP from port 3702, from a private or link-local address, to the kernel's ephemeral port range); the DHCPv6 client (UDP 546); DNS and DHCP from `10.42.0.0/16`, the range NetworkManager gives a hotspot's clients |
 | `forward` | drop | Established and related traffic, and anything to or from `10.42.0.0/16` |
 | `output` | accept | Everything |
+
+The NetBIOS and WS-Discovery rules exist for Dolphin's network view. A NetBIOS name query is a
+broadcast and a WS-Discovery probe is multicast, and each host answers from its own address, so
+connection tracking holds no entry for the answers and the first rule does not match them. Each is
+scoped to the shape of an answer rather than opening the service: nothing on the image listens on
+137 or 3702.
 
 Every `*.nft` file in `/etc/nftables.d/` is included after it. `40-podman.nft` lets containers on
 a `podman*` bridge reach DNS and be forwarded; `40-libvirt.nft`, from the libvirt package, does the
 same for guests on a `virbr*` bridge and lets them reach the network's dnsmasq for DHCP.
-`50-kdos-services.nft` is written by `kdos-powerd`
-and holds the services an administrator has opened.
+`50-kdos-services.nft` is written by `kdos-powerd` and holds the services an administrator has
+opened.
 
 Opening a port goes through the same rule as every other daemon verb: the client names a service,
-never a port. `kdos-powerd` carries the table of twenty-four names (`ssh`, `http`, `https`, `ipp`,
-`smb`, `kiwix`, `mqtt`, `xmpp`, `nfs`, `babel`, `nut`, `snmp`, `mumble`, `caldav`, `mail`,
-`irc`, `dlna`, `tryton`, `caddy`, `mosh`, `syncthing`, `kdeconnect`, `vnc`, `xonotic`), each with the one rule it adds, so a client that
-can only say `ssh` can open exactly TCP 22 and nothing else. `ssh` is also the switch for the SSH
-server: turning it on removes `/etc/service.disabled/sshd` and starts `sshd`, and turning it off
-puts the marker back and stops it. mDNS has no name in the table: the base input chain accepts
-UDP 5353 on its own. The daemon rewrites
-`50-kdos-services.nft` whole from the names that are on, checks the full ruleset with `nft --check`,
-and then reloads it. When the check refuses the ruleset or the reload fails, the daemon puts the
-previous file back, so the file on disk is the ruleset the kernel runs. A rule written by hand into that file is dropped on the
-next change; a hand-written rule belongs in a file of its own beside it.
+never a port. `kdos-powerd` carries the table of twenty-five names (`ssh`, `http`, `https`, `ipp`,
+`smb`, `kiwix`, `mqtt`, `xmpp`, `nfs`, `babel`, `nut`, `snmp`, `mumble`, `caldav`, `mail`, `irc`,
+`dlna`, `tryton`, `caddy`, `mosh`, `syncthing`, `kdeconnect`, `vnc`, `rdp`, `xonotic`), each with
+the one rule it adds, so a client that can only say `ssh` can open exactly TCP 22 and nothing else.
+`vnc` is TCP 5900, where krfb shares the desktop, and `rdp` TCP 3389, where krdp does. `ssh` is also
+the switch for the SSH server: turning it on removes `/etc/service.disabled/sshd` and starts `sshd`,
+and turning it off puts the marker back and stops it. mDNS has no name in the table: the base input
+chain accepts UDP 5353 on its own. The daemon rewrites `50-kdos-services.nft` whole from the names
+that are on, checks the full ruleset with `nft --check`, and then reloads it. When the check refuses
+the ruleset or the reload fails, the daemon puts the previous file back, so the file on disk is the
+ruleset the kernel runs. A rule written by hand into that file is dropped on the next change; a
+hand-written rule belongs in a file of its own beside it.
 
 ```sh
-kdos-power firewall list          # root or wheel
-kdos-power firewall ssh on
+kdos-power firewall list          # anyone
+kdos-power firewall ssh on        # root or wheel
 ```
 
-## polkit, and why the desktop has no authentication agent
+System Settings' Firewall page does the same through `io.kdos.Power1`. `kdos-fwask`, started with
+each Plasma session, asks every ten seconds how many packets each closed service has turned away,
+and when the count rises for a service whose program runs in this session (KDE Connect, say) and
+nobody has answered for this network, it asks once whether to open it. "Allow" opens the name for
+every network, through the same polkit check; it can open nothing the settings page could not.
 
-*polkit* is the system service that other daemons ask whether a user may perform an action. On a
-mainstream desktop it raises a password prompt through an *authentication agent*. KDOS has no
-agent and no prompt, for reasons that follow from having no session manager.
+Samba's `smbd` runs only while something is shared: shares a user publishes from Dolphin
+(usershares, in `/var/lib/samba/usershares`, mode 1770, writable by the `sambashare` group) or a
+share written into `smb.conf`. Its service script starts it at boot only when one exists, and the
+first share made in a session starts it through `kdos-powerd`'s `StartFileSharing`, which takes no
+argument and runs that script; see
+[Starting Samba for a shared folder](../04-programs/daemons.md#starting-samba-for-a-shared-folder).
+The `smb` name in the firewall is separate and stays the administrator's choice: TCP 445 is closed
+until `smb` is opened, whether `smbd` runs or not, and opened with `smbd` down it reaches nothing.
+The firewall file holds what an administrator chose, not what is running, so no rule follows
+`smbd`.
+
+## polkit and the authentication agent
+
+*polkit* is the system service that other daemons ask whether a user may perform an action. Each
+action's `.policy` file gives three answers, and polkit picks one by asking elogind where the
+caller is:
+
+| Caller | Answer read | Who that is |
+|---|---|---|
+| In the active local session | `allow_active` | The person at the machine, in the foreground session |
+| In a local session switched away from | `allow_inactive` | Another account's session on another terminal |
+| Anything else | `allow_any` | An SSH login (OpenSSH opens no session), a cron job, a daemon |
+
+An answer of `auth_self` or `auth_admin` is a *challenge*: polkit asks the session's
+authentication agent, `polkit-kde-authentication-agent-1`, which Plasma starts from an autostart
+entry and which shows a password dialog. `auth_admin` takes the password of a member of `wheel`, and
+a `_keep` answer is remembered for a few minutes. A caller with no session has no agent to ask, so
+a challenge there is a refusal; in a terminal, `pkttyagent` asks instead.
+
+polkit is built `-Dsession_tracking=elogind` and carries `turnstile-session.patch`. turnstile
+registers each user's services as a session of their own with no seat, and the user's session bus
+is one of those services, so every program the bus starts (Plasma's `plasma-shutdown` among them)
+would be judged as a seatless caller and get `allow_any`. The patch skips such a session and judges
+the process by the user's graphical session instead, which is the answer a systemd user unit gets by
+being in no session at all. Without it, Plasma's Shut Down and Restart would ask for an
+administrator's password.
 
 ### Who asks polkit
 
-polkit is installed and `polkitd` is started by the init system. NetworkManager, ModemManager,
-`bolt`, `fwupd`, `upower`, `fprintd`, `pcscd` and brltty's braille server ask it, and GeoClue asks
-it on ModemManager's behalf. NetworkManager's actions are the only ones a KDOS program calls. The
-native applications add their own askers: `udisksd`, `libvirtd`, `pkexec` on behalf of GParted and
-Resources, and the KAuth helpers of K3b and KTextEditor, which KAuth's polkit backend checks.
+polkit is installed and `polkitd` is started by the init system. elogind (suspend, power-off,
+reboot), NetworkManager, ModemManager, `udisksd`, `accounts-daemon`, `kdos-settingsd`,
+`kdos-sysupdated`, `kdos-powerd`'s bus face, `bolt`, `fwupd`, `upower`, `fprintd`, `pcscd`,
+`libvirtd`, `colord` and brltty's braille server ask it, and GeoClue asks it on ModemManager's
+behalf. `pkexec` runs GParted, the installer and Discover's ports helper as root through it, and
+the KAuth helpers of Plasma and KDE applications (Kate's save as root, K3b, kio-admin, KDE
+Partition Manager, the process list's kill of another user's process, PowerDevil's charge limits
+and the rest) are checked through KAuth's polkit backend.
 
-### Why a password prompt cannot work here
+Most of these need no rule: the shipped defaults already give the person at the machine what a
+desktop needs. Mounting a removable drive, joining Wi-Fi and switching it off, a hotspot, a smart
+card, a modem, suspend and power-off, brightness, power profiles, the time zone, network time and
+the accent are `allow_active` upstream. So are KAuth actions such as reading a drive's SMART data,
+the hardware tables Info Center shows and a keyboard's colour profile.
 
-polkit never sees an *active* session on this machine. It finds a process's session by calling
-`org.freedesktop.ConsoleKit` on the system bus; neither ConsoleKit nor elogind is installed (see
-[principles](../01-philosophy/principles.md#no-systemd)), so the lookup fails and every check falls
-to the `allow_any` column of the action's `.policy` file. The `allow_active` and `allow_inactive`
-columns are never read.
+### What `50-kdos.rules` changes
 
-An action with no `<allow_any>` element is then a flat refusal. polkit consults an agent only
-when the result is a *challenge*, and a flat refusal is not one. NetworkManager's policy has no
-`<allow_any>` for `enable-disable-wifi`, `enable-disable-network` or either `wifi.share` action, so
-no agent (one written for KDOS, or the `pkttyagent` polkit ships) could ever be asked about the
-Wi-Fi switch. An agent would also have nothing to register as: with no session it can register
-only for one exact process, matched by pid and start time, so a session-long agent would never be
-found for a program it did not start itself.
+`/etc/polkit-1/rules.d/50-kdos.rules` changes an answer only where KDOS wants another, and names
+the action each time. Every grant to `wheel` also tests `subject.local && subject.active`, so it
+reaches the administrator in the foreground session and never an SSH login, a background job or a
+session switched away from; those get the defaults, and a `wheel` member there has `sudo`, which
+asks.
 
-The same applies to `bolt`, `fwupd` and `upower`. Their actions are `auth_admin`, a challenge, and
-a challenge with no agent is a refusal. `bolt` and `fwupd` ship their own rules granting `wheel`,
-but both test `subject.active` and `subject.local`, which are never true here, so neither fires.
-`fprintd`'s enrol and verify actions are `allow_active` only. A Thunderbolt enrolment, a firmware
-update or a fingerprint enrolment is therefore done with `sudo`; polkit authorises root for every
-action without reading a rule.
+| Action | Answer | For |
+|---|---|---|
+| `org.freedesktop.NetworkManager.settings.modify.system` | Yes, for `wheel` at the machine | Editing and deleting a system connection, and reading its passphrase back (see [below](#why-settingsmodifysystem-is-granted)) |
+| `org.freedesktop.udisks2.filesystem-mount-system`, `…filesystem-unmount-others`, `…filesystem-take-ownership`, `…encrypted-unlock-system`, `…encrypted-lock-others`, `…eject-media-system`, `…loop-delete-others`, `…open-device`, `…open-device-system`, `…modify-device-system` | Yes, for `wheel` at the machine | Dolphin and the device notifier mounting a second internal disk and unlocking its container, unmounting what another login mounted, an image writer or GNOME Disks reaching the raw device, formatting and partitioning an internal drive. Their removable twins are `allow_active` already |
+| `org.gnome.gparted`, `org.kde.k3b.updatepermissions`, `org.kde.ktexteditor6.katetextbuffer.savefile`, `org.libvirt.unix.manage`, `net.nokyan.Resources.kill` | An administrator's password, kept, for `wheel` at the machine | GParted, K3b setting the burner's permissions, Kate saving a root-owned file, virt-manager on `qemu:///system`, Resources ending another user's process |
+| `org.freedesktop.fwupd.update-internal`, `org.freedesktop.bolt.enroll`, `…authorize`, `…manage`, `org.gtk.vfs.file-operations`, `…file-operations-helper` | An administrator's password, kept, for anybody at the machine | Flashing system firmware, letting a Thunderbolt device onto the PCIe bus, gvfs's `admin://`. Held at a password whatever a later rules file says; away from the machine the defaults apply, and each is stricter there |
+| `local.kcron.crontab.save` | No | The system crontab: `crond` is built not to read `/etc/crontab`, so a save there would write a file nothing reads. A user's own crontab needs no polkit |
+| `org.kde.powerdevil.chargethresholdhelper.setthreshold`, `…setconservationmode` | No | Battery charge limits are TLP's, which sets them at boot and each time it applies a profile, so a limit PowerDevil wrote would not last |
 
-### What is granted instead: `50-kdos.rules`
+A `YES` is a grant nobody is asked about, so one exists only for something an administrator at the
+keyboard does as a matter of course. An `AUTH_ADMIN_KEEP` written out is a prompt a broader rules
+file sorted after this one cannot turn into a silent yes. A `NO` is something this system does not
+do, refused where the defaults would have asked. Left at the defaults, and so a password: the
+storage layout under a running system (`fstab`, `crypttab`, RAID, LVM, btrfs, swap), the firmware
+erases, NetworkManager's hostname and machine-wide DNS, and `pkexec` of an arbitrary command.
+`testing/fixtures/polkit` holds the defaults measured from the shipped `.policy` files and the
+table of answers this file must give, and `testing/selftest.sh` evaluates it against both.
 
-`/etc/polkit-1/rules.d/50-kdos.rules` grants a short, named list of actions to members of
-`wheel`, and nothing to anyone else:
-
-| Action | Used by |
-|---|---|
-| `org.freedesktop.NetworkManager.network-control` | `kdos-net`: connecting and disconnecting |
-| `org.freedesktop.NetworkManager.wifi.scan` | `kdos-net`: the network list |
-| `org.freedesktop.NetworkManager.enable-disable-wifi` | The Wi-Fi switch |
-| `org.freedesktop.NetworkManager.enable-disable-network` | The networking switch |
-| `org.freedesktop.NetworkManager.settings.modify.own` | Profiles another tool created with an owner |
-| `org.freedesktop.NetworkManager.settings.modify.system` | Joining, forgetting, and reading a saved passphrase back (see below) |
-| `org.freedesktop.NetworkManager.wifi.share.open`, `…wifi.share.protected` | A hotspot |
-| `org.freedesktop.ModemManager1.Device.Control`, `…Messaging` | `mmcli`: unlocking a SIM, enabling a modem, reading its text messages |
-| `org.debian.pcsc-lite.access_pcsc`, `…access_card` | Smart cards (gpg's scdaemon, opensc, ykman, openconnect's certificate login) |
-| `org.freedesktop.udisks2.filesystem-mount`, `…filesystem-mount-system`, `…filesystem-unmount-others`, `…filesystem-take-ownership` | Mounting from Dolphin's and the file choosers' device lists, and from GNOME Disks |
-| `org.freedesktop.udisks2.encrypted-unlock`, `…encrypted-unlock-system`, `…encrypted-lock-others`, `…encrypted-change-passphrase` | Unlocking and locking an encrypted volume, and changing its passphrase |
-| `org.freedesktop.udisks2.eject-media`, `…eject-media-system`, `…power-off-drive` | Ejecting a disc or a card, and powering off a USB drive |
-| `org.freedesktop.udisks2.loop-setup`, `…loop-delete-others` | Attaching and detaching a disk image |
-| `org.freedesktop.udisks2.open-device`, `…open-device-system` | Raw access to a block device: Impression and GNOME Disks writing or reading an image |
-| `org.freedesktop.udisks2.modify-device`, `…modify-device-system` | Formatting and partitioning in GNOME Disks |
-| `org.freedesktop.udisks2.rescan`, `…cancel-job`, `…ata-check-power`, `…ata-smart-update`, `…nvme-smart-update` | Re-reading a device, cancelling a job, and reading a drive's health |
-| `org.gnome.gparted` | GParted, whose wrapper re-runs itself through `pkexec` |
-| `org.kde.k3b.updatepermissions` | K3b's helper, which sets the group and permissions of the burner device and of the burning programs, making a program setuid root when K3b's settings ask for it |
-| `org.kde.ktexteditor6.katetextbuffer.savefile` | Kate and KDevelop saving a file the user cannot write |
-| `net.nokyan.Resources.kill` | Resources ending another user's process |
-| `org.libvirt.unix.manage` | virt-manager managing `qemu:///system` |
-
-Deliberately not granted, and so left to `sudo`:
-
-| Action | Why not |
-|---|---|
-| `settings.modify.hostname` | The hostname belongs to the installer and `/etc/hostname` |
-| `settings.modify.global-dns` | A machine-wide resolver is not a per-user decision |
-| `checkpoint-rollback` | Nothing here creates a checkpoint, so a rollback could only undo somebody else's |
-| `sleep-wake` | `kdos-powerd` owns suspend, with its own check |
-| `reload` | Re-reading NetworkManager's configuration is administration |
-| udisks2's `filesystem-fstab`, `encrypted-unlock-crypttab`, `modify-system-configuration`, `read-system-configuration-secrets` | `/etc/fstab` and `/etc/crypttab` belong to the installer |
-| udisks2's `manage-md-raid`, `manage-swapspace`, `lvm2.manage-lvm`, `btrfs.manage-btrfs` | The storage layout under a running system is administration |
-| udisks2's `ata-secure-erase`, `nvme-sanitize`, `nvme-format-namespace` | An irreversible firmware erase stays one deliberate `sudo` away |
-| udisks2's `…-other-seat` actions | Never asked: `udisksd` is built without logind and treats every drive as on the caller's seat |
-| `org.kde.k3b.addtogroup` | It edits `/etc/group` |
-| `org.gtk.vfs.file-operations` (gvfs `admin://`), `org.kde.ksysguard.processlisthelper.*` | No shipped surface depends on them |
-| `org.freedesktop.policykit.exec` | `pkexec` of an arbitrary command, which Resources' memory-module view asks for, would be `sudo` with no password |
-
-libvirt's own rule, `/usr/share/polkit-1/rules.d/50-libvirt.rules`, grants `org.libvirt.unix.manage`
-to the `libvirt` group its `postinstall.sh` creates; no account is placed in that group, so the
-grant to `wheel` is the one that applies. `org.libvirt.unix.monitor`, read-only access, is
-`allow_any` yes in libvirt's policy and needs no rule.
-
-Two further consumers work without a KDOS rule. brltty's own rule grants
-`org.a11y.brlapi.write-display` to the `brlapi` group with no session test. GeoClue's rule grants
-ModemManager's `Device.Control` and `Location` to the `geoclue` account alone, so the location
-service can switch on a modem's GPS; nobody logs in as that account.
-
-The grant is a rules file of named actions, not a D-Bus policy that lets `wheel` onto
-NetworkManager's write interfaces, because a bus policy cannot scope a `Properties.Set` to one
-property and cannot leave out the hostname or the machine-wide resolver. The rules file and an
-agent are alternatives: if an agent were ever added, this file is what would have to go.
+Two more rules files ship with packages. plasma-setup's
+`/usr/share/polkit-1/rules.d/plasma-setup-polkit.rules` lets the `plasma-setup` account, and nobody
+else, take the actions the first-boot wizard needs with no password: making the first account,
+setting the hostname, locale, keyboard and time zone, and joining a network. On the live medium,
+`63_live-installer` installs `/etc/polkit-1/rules.d/49-kdos-installer-live.rules`, which lets the
+live session at the machine run the installer (`io.kdos.installer.run`), KDE Partition Manager's
+helper, and exactly one `pkexec` command line, `/usr/local/bin/kdos persist create --yes`, matched
+by the program's real path (`/usr/sbin/ksvc`) and the whole command line, so no other `kdos` verb
+and no other program is covered. The live account's password is published, so asking for it would
+protect nothing; `kinstall` leaves the file out of every install. libvirt's own rule grants
+`org.libvirt.unix.manage` to the `libvirt` group, which has no member, and brltty's grants the
+braille display to `brlapi`.
 
 ### Why `settings.modify.system` is granted
 
-On this build it is the only permission a saved network can be under. NetworkManager is compiled
-`-Dsession_tracking=no`, so its check "does this user have a session?" always answers no. A
-connection profile that names an owner in its `permissions` list is therefore permanently
-invisible, and an invisible profile never connects automatically: a Wi-Fi network you joined would
-not come back after a reboot. So `kdos-net` writes no owner, everything it creates is a system
-connection, and forgetting one or reading its passphrase back needs `settings.modify.system`.
+A *system connection* is a NetworkManager profile every user of the machine may join: what the
+network applet makes when "all users may connect" is ticked, what `nmcli` makes, and every profile
+the installer wrote. Changing or deleting one, or reading its passphrase back, is
+`settings.modify.system`, whose default is a password even at the machine. The rule grants it to
+`wheel` at the machine, so the administrator can forget a network or show a saved Wi-Fi passphrase
+without one. A profile kept to its own user (`permissions` naming an owner) needs no grant: its
+owner may change it, and NetworkManager, built with elogind session tracking, connects it
+automatically while that user has a session.
 
-That grant lets anybody in `wheel` read every stored Wi-Fi passphrase. It is a shortcut, not a new
-capability: the shipped sudoers line (`/etc/sudoers.d/00-sudo`) is `%wheel ALL=(ALL) ALL`, and the
-passphrases are files under `/etc/NetworkManager` that `sudo cat` prints.
+That grant lets anybody in `wheel` at the machine read every stored Wi-Fi passphrase. It is a
+shortcut, not a new capability: the shipped sudoers line (`/etc/sudoers.d/00-sudo`) is
+`%wheel ALL=(ALL) ALL`, and the passphrases are files under `/etc/NetworkManager` that `sudo cat`
+prints.
 
 ### How polkit and ModemManager are started
 
@@ -575,32 +557,25 @@ machine's network authorisation off that dependency. When activation fails it fa
 service never starts, every call is refused, and the only trace is a `Spawn.ExecFailed` in the
 log. `kdos doctor` checks the helper's owner, group and mode for that reason.
 
-A daemon the supervisor runs is never activatable as well. The polkit and ModemManager ports
-delete the activation file their builds install, and NetworkManager's build installs none. With a
-file, a caller that asked for the name before the supervised daemon held it would make the bus
-start a second copy outside the supervisor, and whichever lost the name would exit. A supervised
-daemon that lost would be restarted every five seconds and fail to take the name each time.
-NetworkManager asks for ModemManager as it
-starts and ModemManager asks for polkit, so the race would be run at every boot. Without the
-files, a call to a name nobody owns fails with `ServiceUnknown` and starts nothing. Each of `40_dbus.sh`,
-`41_polkitd.sh` and `42_modemmanager.sh` waits, through `wait_bus_name` in
-`/etc/init.d/service_helper`, until its daemon owns its name (`org.freedesktop.DBus`,
-`org.freedesktop.PolicyKit1`, `org.freedesktop.ModemManager1`) before the next script starts, at
+A daemon the supervisor runs is never activatable as well. The polkit, ModemManager and elogind
+ports delete the activation file their builds install, and NetworkManager, `accounts-daemon`,
+`kdos-settingsd` and `kdos-sysupdated` install none. With a file, a caller that asked for the name
+before the supervised daemon held it would make the bus start a second copy outside the supervisor,
+and whichever lost the name would exit. A supervised daemon that lost would be restarted every five
+seconds and fail to take the name each time. NetworkManager asks for ModemManager as it starts and
+ModemManager asks for polkit, so the race would be run at every boot. Without the files, a call to
+a name nobody owns fails with `ServiceUnknown` and starts nothing. `40_dbus.sh`, `40_elogind.sh`,
+`41_polkitd.sh`, `42_modemmanager.sh` and `44_accounts.sh` each wait, through `wait_bus_name` in
+`/etc/init.d/service_helper`, until their daemon owns its name before the next script starts, at
 most ten seconds, so the order the scripts sort in is the order the names appear.
 
 Left to D-Bus activation, and so dependent on the helper: `wpa_supplicant`, `fprintd`, `fwupd`,
-`boltd`, `upower`, `geoclue`, `udisksd`, the KAuth helpers of K3b and KTextEditor, and
+`boltd`, `upower`, `udisksd`, `geoclue`, `colord`, kio-admin's worker, the KAuth helpers, and
 NetworkManager's dispatcher and privileged helper. None of these is also supervised.
 
-### What the grant allows
+### What polkit logs
 
-Anybody in `wheel` reconfigures networking with no prompt, and mounts, formats, partitions and
-images disks, manages system virtual machines and saves root-owned files from Kate the same way.
-That is the same group that can already change the firewall through `kdos-powerd`, so it is the
-existing boundary applied to these actions too. It is not a password prompt, because this system cannot
-produce one; a design that pretended otherwise would be a control that fails silently.
-
-The list of action ids is the entire boundary, and the only record of its use is a log line.
+The list of action ids is the boundary, and the only record of its use is a log line.
 NetworkManager is built `-Dlibaudit=no`, so an authorised change leaves no audit record beyond
 NetworkManager's own message to syslog.
 
@@ -616,11 +591,11 @@ is logged twice.
 
 Boxes are rootless: the container engine runs as you, maps your identity into the container,
 and uses the setuid mapping helpers above for the one privileged step. A pack box is created with
-`podman create --rootfs` over the overlay `kdos-packd` composed, with the flags distrobox uses for
-the same job. A box built from an OCI image (a container image in the Open Container Initiative
-format, as a registry such as Docker Hub serves it) goes through distrobox itself, the upstream
-tool that wraps podman to make a container behave like part of the host; it also shares the host's
-root at `/run/host`.
+`podman create --rootfs` over the overlay `kdos-packd` composed, and a store box from the
+catalogue's container image, both by `kdos-appbox`. A box built from somebody else's OCI image (a
+container image in the Open Container Initiative format, as a registry such as Docker Hub serves
+it) goes through distrobox, the upstream tool that wraps podman to make a container behave like
+part of the host; it also shares the host's root at `/run/host`.
 
 - Inside the box you are a mapped non-root user (`--userns keep-id`: uid 1000 inside is uid
   1000 outside). That is because applications refuse to run as root, not because it is a
@@ -629,11 +604,10 @@ root at `/run/host`.
 - No mandatory access control applies. Boxes are created with `label=disable` and
   `apparmor=unconfined`; the host runs neither SELinux nor AppArmor.
 
-What a box shares with the host is set by its profile, `~/.config/kdos/boxes/<name>.conf`. For a
-pack box each key below maps onto one podman flag that the kernel enforces, and applies when the
-box is created. For a box built from an OCI image, `memory`, `cpus` and `pids` are not applied,
-and `network = none` gives a private namespace with an interface, as `private` does.
-`kdos-box profile` prints the podman flag for those keys whichever kind of box it is.
+What a box shares with the host is set by its profile, `~/.config/kdos/boxes/<name>.conf`. Each
+namespace key maps onto one podman flag that the kernel enforces, and applies when the box is
+created; `kdos-box profile <name>` prints the flag for each, and says beside a key when that key
+enforces nothing for this box.
 
 | Key | Default | Private or `none` means |
 |---|---|---|
@@ -643,26 +617,58 @@ and `network = none` gives a private namespace with an interface, as `private` d
 | `processes` | the host's pid namespace | A private pid namespace |
 | `devices` | `/dev` and `/sys` bind-mounted from the host | No host `/dev`; `gpu = yes` binds `/dev/dri` back alone |
 | `gpu` | `yes` | With `devices = private`, `yes` binds `/dev/dri` back and `no` leaves the box without it; with `devices` shared it follows `devices` |
-| `audio` | `yes` | Not enforced: sound reaches the box through the PipeWire socket in `/run/user/<uid>`, which every box shares |
+| `wayland`, `audio`, `x11` | `yes`, `yes`, `auto` | Which sockets the box's private runtime directory holds: the tagged Wayland socket, links to the PipeWire and PulseAudio sockets, the X11 cookie |
 | `memory`, `cpus`, `pids` | unlimited | `--memory`, `--cpus`, `--pids-limit` |
+| `grant` | none | Named sets of KWin's refused protocols, and the password store on the bus (see [Sandboxed clients](#sandboxed-clients)) |
 
-Whatever the profile says, every box shares `/tmp`, `/dev/shm`, `/run/user/<uid>` (the session
-bus, the PipeWire socket and the session's Wayland socket live there) and, when it exists,
-`/run/cups`. A box is therefore not a security boundary against you. It is a boundary against
-some of the desktop's interfaces (the compositor globals in
-[Sandboxed clients](#sandboxed-clients)) and a way of packaging software. There is no engine flag
-that grants a box a speaker and denies it a camera, so `gpu = no` cannot be enforced while
-`devices` is shared, and `audio = no` is never enforced, because the PipeWire socket is in the
-shared runtime directory. `kdos-box profile <name>` and `kdos-box create` print a warning beside
-`audio` and `gpu` only while `devices` is shared; with `devices = private`, `audio = no` is
-accepted without a warning and changes nothing.
+**The runtime directory is the boundary.** A pack box or a store box sees
+`$XDG_RUNTIME_DIR/kdos/box/<box>` as its `/run/user/<uid>`, and what a launch puts there is all of
+the session it can reach: its own tagged Wayland sockets, its bus proxy, links to the audio sockets
+when `audio` allows them, the accessibility bus only while assistive technology is in use, the
+document portal's mount, and the X11 cookie only for a box handed X11. The session's own
+`wayland-0` and `bus` are never in it, and nothing in `kdos-appbox` falls back to them. A box
+`distrobox` made from somebody else's image shares the session's runtime directory instead, and
+every socket in it is reachable whatever `wayland`, `audio` and `x11` say.
 
-Resource limits (`memory =`, `cpus =`) become real cgroup limits when the desktop was started by
-autologin: `kdos-getty` places that session in the user's delegated cgroup
-(`/sys/fs/cgroup/user.slice/user-<uid>/session`), and each pack box gets a sibling cgroup with
-`memory.max` set. A session started any other way (a password login on a tty, an ssh login) stays
-in the root cgroup, where podman accepts the limit and ignores it. In either case `kdos-oomd`
-reads the profiles and prefers a box that is over its declared `memory` budget as a victim.
+**The session bus is filtered.** A box's `DBUS_SESSION_BUS_ADDRESS` is its keeper's
+`xdg-dbus-proxy`, which passes the portals (`org.freedesktop.portal.*`), notifications, the tray's
+status-notifier watcher and the screensaver interface, each scoped to its own interface and path,
+lets the box own its application's id (so a single-instance application works) and
+`org.mpris.MediaPlayer2.*`, adds the accessibility bus while it is in use and the password store
+(`org.freedesktop.secrets`) with `grant = secrets`, and hides every other name. Hidden among them:
+`org.kde.KWin`, whose `ScreenShot2` answers any caller and whose scripting interface loads code
+into the compositor; kglobalaccel; plasmashell, whose `evaluateScript` runs code in the shell;
+Klipper; KRunner; and ksmserver. A call scoped to notifications cannot reach plasmashell's other
+interfaces through its unique name, because the proxy gives a unique name only the rules of the
+well-known names its owner holds.
+
+**The three states.** Which boundary held is recorded when a box is started, in its `.state` file,
+and shown on its windows:
+
+| State | When | Engine on its windows | Badge |
+|---|---|---|---|
+| Confined | The tag, the private runtime directory and the filtered bus all held, and no X11 display was handed over | `io.kdos.appbox+private` | A solid box before the caption |
+| Tagged | KWin tags its clients, but something else is in reach: the session's runtime directory (a distrobox box), an unfiltered bus, or an X11 display, which bypasses the tag because Xwayland is one client to KWin | `io.kdos.appbox+tagged` | A dashed box |
+| Unconfined | Not even the tag held | — | A warning triangle |
+
+A launch that would run untagged is refused rather than started, so an unconfined window is one
+that should not exist. The Task Manager's tooltip names the box as well ("In box: www"), and a
+box's colour, when it has one, tints its server-side title bar. A program that draws its own title
+bar takes no colour, and the badge is then the only mark. How KWin draws each is in
+[KWin](../04-programs/kwin.md#boxes-at-the-compositor).
+
+**Resource limits** (`memory`, `cpus`, `pids`) become real cgroup limits only when the box's cgroup
+is a scope in the login's delegated subtree. elogind, with `DelegateSessionCgroups=yes`, runs a
+login in `/sys/fs/cgroup/<session>/session` and gives the user `/sys/fs/cgroup/<session>/delegated`,
+and `15_cgroups.sh` has enabled the `cpu`, `memory` and `pids` controllers at the root for it to
+pass on. `kdos-appbox` creates a pack box under `<session>/delegated/app-kdos-<box>-<n>.scope`, the
+name the portal and System Monitor read an application id from, but only when the user may write
+the `cgroup.procs` of `/sys/fs/cgroup/<session>` itself: cgroup2 refuses an unprivileged move
+between two cgroups unless the mover can write their common ancestor's. Where that file is root's,
+the box is created under podman's own default instead, `memory`, `cpus` and `pids` are accepted and
+enforced by nothing, and `kdos-box profile` says so. A store box and a distrobox box are never
+placed in a scope. In every case `kdos-oomd` reads the profiles and prefers a box that is over its
+declared `memory` budget as a victim.
 
 A pulled image is not verified. `/etc/containers/policy.json`, written by the
 `containers-common` port, is upstream's default, `insecureAcceptAnything`, which checks no
@@ -671,88 +677,77 @@ signature. `/etc/containers/registries.conf` resolves an unqualified image name 
 
 ## Sandboxed clients
 
-A client in a box is meant to reach the compositor through a socket that `kdos-boxsock` created
-for that box, `$XDG_RUNTIME_DIR/kdos-box-<box>@<display>.sock`; `kdos-appbox` sets
-`WAYLAND_DISPLAY` to it before anything in the box starts. The compositor tags every client on
-that socket with a *security context* naming the box (engine `io.kdos.appbox`, the box name as the
-app id). The client cannot see, choose or forge the tag. The compositor's global filter then
-offers such clients a fixed allowlist of Wayland protocols:
+A client in a box reaches KWin through a socket that `kdos-boxsock` created for its launcher in the
+box's private runtime directory; `kdos-appbox` sets `WAYLAND_DISPLAY` to that socket before
+anything in the box starts. `kdos-boxsock` registers the socket with KWin through
+`wp_security_context_v1`: the engine `io.kdos.appbox+private` or `+tagged`, the launcher's id as
+the application id, and the box as the instance id. KWin tags every client that connects on it.
+The client cannot see, choose or forge the tag, and KWin gives each of its windows the tag's
+application id.
 
-| Allowed | Denied |
-|---|---|
-| Surfaces, subsurfaces, shared memory, `wl_fixes` and the xdg shell | Screen capture, both generations (wlr screencopy; ext image-copy-capture and its output and toplevel sources) |
-| The seat, relative pointer, pointer gestures, pointer constraints, cursor shape | Buffer export (wlr export-dmabuf) |
-| Outputs and xdg-output, dmabuf and `wl_drm`, viewporter, presentation time, fractional scale | Data control (clipboard manipulation), both generations |
-| Both decoration managers, activation, tablet, toplevel icon, dialog | Foreign-toplevel management and the ext toplevel list |
-| Text input (text-input-v3) | Input method and virtual keyboard |
-| The primary selection, and the ordinary data device (the clipboard and drag-and-drop) | Output management, output power, gamma control, DRM leasing |
-| Colour management, colour representation, alpha modifier, syncobj, single-pixel buffer | The layer shell, session lock, virtual pointer, idle notification, workspaces |
-| Idle inhibit, tearing control, xdg-foreign both ways | The security-context manager itself |
+Upstream KWin refuses a tagged client seven globals: `org_kde_plasma_window_management` (the list
+of every window, and acting on them), `org_kde_kwin_fake_input` (emulated pointer and key events),
+`zkde_screencast_unstable_v1` (streaming outputs and windows), `org_kde_plasma_activation_feedback`,
+`kde_lockscreen_overlay_v1`, `ext_data_control_manager_v1` (every clipboard, as a clipboard manager
+sees it) and `wp_security_context_manager_v1`. KDOS's `sandbox-policy.patch` refuses it the rest of
+the desktop shell as well: `zwlr_layer_shell_v1` (panels and overlays), `kde_output_management_v2`
+and `kde_external_brightness_v1` (the displays' modes, layout and brightness),
+`wp_drm_lease_device_v1`, `org_kde_kwin_dpms_manager`, `org_kde_plasma_shell` (placing a window
+anywhere), `kde_screen_edge_manager_v1`, `org_kde_kwin_keystate` and
+`org_kde_plasma_virtual_desktop_management`. Everything a client needs for its own windows stays
+offered: surfaces, the XDG shell, the seat, buffers, outputs, decorations, text input, the ordinary
+clipboard and drag-and-drop, and the rest.
 
-The list is an allowlist, so a protocol the compositor gains later is denied to boxes until
-somebody adds it. Three entries matter most:
+The input-method interfaces are offered only to the input method KWin itself started, fcitx5, and
+to no other client, host or boxed. Text input, the application's half of an input method, is
+offered to a box, because denying it would deny input methods to the applications that need one
+most.
 
-- Text input is allowed. It is the application half of the input-method protocol; denying it
-  would deny input methods to exactly the applications that need one most.
-- Input method and virtual keyboard are denied, because a client that can be an input method
-  receives every keystroke on the seat.
-- The security-context manager is denied to any client already carrying a context, and no
-  grant unlocks it, so a box cannot mint a context of its own.
-
-The capture denial is what makes the portal the sanctioned route. A boxed screen recorder cannot
-bind the capture interfaces through its tagged socket, so it asks the screen-cast portal, which
-runs on the host and asks you which output to share. See [the session](session.md#portals).
+The capture refusal is what makes the portal the sanctioned route. A boxed screen recorder cannot
+bind the capture interfaces through its tagged socket, so it asks the ScreenCast portal, which runs
+on the host and asks which screen to share. See [the session](session.md#screen-capture-and-the-clipboard).
 
 A client with no security context, which is every program started on the host, is offered every
-global. The compositor also supports the `<privilegedInterfaces>` list of labwc (the compositor
-kdos-comp is built from) in `rc.xml`, which would restrict the privileged protocols for all
-clients, but the shipped configuration does not set it.
+global, the capture and fake-input interfaces included. KWin's own check is the tag; KWin is built
+without libsystemd, so it does not also judge a client by its cgroup.
 
-The tag holds only for a client that uses the socket it was given. A box shares
-`$XDG_RUNTIME_DIR` with the session (see [Containers](#containers) above), and the session's own
-`wayland-0` socket is in it, so a program in a box that opens `wayland-0` by name connects
-untagged and is offered everything. The profile key `wayland = no` cannot take the display away
-for the same reason, and `kdos-box profile` prints that it is not enforced. The filter stops a
-well-behaved application from being handed capture, clipboard or input-method globals it did not
-ask for; it does not contain a hostile one.
+The tag holds only for a client that uses the socket it was given. In a confined box that is the
+only Wayland socket there is. A box that can reach the session's `wayland-0` (a distrobox box, or
+one handed the X11 display, whose Xwayland is a host client) can connect untagged and is offered
+everything, which is why such a box is at most `tagged` and its badge says so.
 
 ### Granting a box past the allowlist
 
-The fixed list is the default, not the only answer: without a grant, a screen recorder in a box of
-its own could never be given the screen, even by the person who installed it. Add a `grant` line to
-the box's profile, `~/.config/kdos/boxes/<name>.conf`:
+Without a grant, a screen recorder in a box of its own could never be given the screen, even by the
+person who installed it. The `grant` key of the box's profile names sets of the refused globals,
+which KWin's patch reads once per client whose engine is `io.kdos.appbox` or starts with
+`io.kdos.appbox+`, and for no other client:
 
 ```ini
-grant = screencopy, data-control
+grant = screencast, data-control
 ```
 
-Eight names can be granted. A name that is not in this map grants nothing; the map is the whole
-policy.
+| Grant | Unlocks | What it puts at risk |
+|---|---|---|
+| `window-list` | Window management, activation feedback, virtual-desktop management | The title of every window, and closing, moving and raising any of them |
+| `fake-input` | `org_kde_kwin_fake_input` | Typing and clicking into every other window |
+| `screencast` | `zkde_screencast_unstable_v1` | Recording any screen or window without being asked |
+| `data-control` | `ext_data_control_manager_v1` | Reading and setting the clipboard at any time, passwords copied from a password manager included |
+| `layer-shell` | `zwlr_layer_shell_v1` | Drawing over everything, a fake lock screen or login prompt included |
+| `output-management` | Output management, external brightness, DRM leases | Changing or turning off the displays |
+| `dpms` | `org_kde_kwin_dpms_manager` | Turning the displays off |
+| `plasma-shell` | The Plasma shell surface, screen edges, the keyboard state | Placing a window anywhere, under the panel or over it |
+| `input-method` | Nothing | KWin still offers the input-method interfaces only to its own input method |
+| `secrets` | `org.freedesktop.secrets` on the box's bus | Every secret in the unlocked wallet |
 
-| Grant | Unlocks |
-|---|---|
-| `screencopy` | wlr screencopy, plus the ext image-copy-capture manager and its output source |
-| `toplevel-capture` | The ext foreign-toplevel image-capture source |
-| `export-dmabuf` | wlr export-dmabuf |
-| `data-control` | Both generations of data control |
-| `foreign-toplevel` | wlr foreign-toplevel management and the ext toplevel list |
-| `layer-shell` | wlr layer shell |
-| `input-method` | The input-method and virtual-keyboard managers |
-| `output-power` | wlr output power management |
-
-Where a protocol has two generations (screen copy, data control and the toplevel list) the short
-name unlocks both, because granting the older protocol and not the newer one would strand every
-client written against the newer.
-
-Names are separated by commas or spaces; the first `grant` line in the file is read and at most
-sixteen names are taken from it. The compositor reads the file from `$HOME/.config`, not from
-`$XDG_CONFIG_HOME`, because `kdos-appbox` resolves the profile the same way and the two must not
-disagree. Grants are read at the first bind that reaches the filter and cached against the box
-name, because the filter runs for every global for every client. The cache holds eight boxes;
-when a ninth arrives the whole cache is emptied, and every box's profile is read again at its next
-bind. `SIGHUP` to the compositor (its Reconfigure) drops the cache with the rest of the
-configuration, so an edited profile takes effect for the next client; a running one keeps what it
-already bound.
+A name that is not in the table grants nothing, and `kdos-box profile` says so beside it. The
+security-context manager and the lock-screen overlay are never granted, so a box cannot mint a
+context of its own or draw over the lock screen. The profile is read once per client, so a changed
+grant reaches the box's next client and no running client's rights change under it. The profile
+directory, `~/.config/kdos/boxes`, is bound read-only into a pack box or a store box over the
+shared home, so such a box cannot grant itself what its profile withholds. The path is
+`$HOME/.config`, not `$XDG_CONFIG_HOME`, in KWin's reader and in `kdos-appbox` alike, because the
+two resolving it differently is the one failure this design must not have.
 
 ## The kernel
 
@@ -765,7 +760,7 @@ the kernel's own default, so the build fails if a later kernel stops honouring i
 |---|---|---|
 | `CONFIG_X86_X32_ABI` | off | The x32 system-call ABI: a second entry path into every system call, which no program on KDOS uses |
 | `CONFIG_UEVENT_HELPER` | off | A program the kernel forks as root for every device event, named by a writable `/sys/kernel/uevent_helper`; `udevd` reads events from netlink and needs none |
-| `CONFIG_PM_AUTOSLEEP` | off | Suspend started by the kernel itself whenever no wakeup source is held; on KDOS suspend is always asked for from user space, by `kdos-powerd` writing `/sys/power/state` |
+| `CONFIG_PM_AUTOSLEEP` | off | Suspend started by the kernel itself whenever no wakeup source is held; on KDOS suspend is always asked for from user space, by elogind writing `/sys/power/state` when Plasma, the lid or the power key asks |
 | `CONFIG_LDISC_AUTOLOAD` | off | Any user loading a line-discipline module by setting it on a terminal they opened. A process with `CAP_SYS_MODULE` still loads one, so `pppd` and `hciattach`, which run as root, are unaffected |
 | `CONFIG_PROC_MEM_FORCE_PTRACE` | on | Writing to another process's read-only memory through `/proc/<pid>/mem` merely by having the right to trace it; only a debugger actually attached with `ptrace` may |
 | `CONFIG_BUG_ON_DATA_CORRUPTION` | on | Running on after a kernel list or reference-count check has found corrupted memory: the kernel stops the offending task with a `BUG` instead of logging a warning and continuing |
@@ -811,15 +806,14 @@ own default instead: a fresh key generated for that one build.
 |---|---|
 | Application packs | `ro,nosuid,nodev` |
 | Data packs | `ro,nosuid,nodev,noexec`, and never composed into a box's root |
-| Removable media (`kdos-mountd`) | `nosuid,nodev`, and `noexec` unless `exec = yes` is set in `/etc/kdos/mountd.conf` |
+| Removable media (`udisksd`) | udisks2's defaults, which always include `nosuid,nodev` |
 | `/tmp` | tmpfs, `mode=1777,nosuid,nodev` |
 | `/run` | tmpfs, `mode=0755,nosuid,nodev` |
 | `/sys/kernel/tracing`, `/sys/kernel/debug` | `nosuid,nodev,noexec` |
 | `/sys/fs/bpf` | `nosuid,nodev,noexec,mode=0700` |
 
-`exec = yes` is how an administrator says executables on removable media were meant to run.
-`nosuid` is not configurable: a setuid-root binary on a USB stick from another machine would give
-any local user root.
+`nosuid` is the one that matters: a setuid-root binary on a USB stick from another machine would
+give any local user root.
 
 `/tmp` is one directory shared by every user and written by every root job: init scripts, timers
 and package hooks. `/etc/sysctl.conf` sets `fs.protected_symlinks`, `fs.protected_hardlinks` and
@@ -842,7 +836,7 @@ KDOS uses three keyrings, and keeping them apart is structural rather than a con
 
 | Directory | Attests | Used for | Shipped with |
 |---|---|---|---|
-| `/etc/kdos/keys` | Who built a host package | The binary-package host (binhost) index and package signature files | No key |
+| `/etc/kdos/keys` | Who built a release | The release index (`kdos-update.idx`), the binary-package host (binhost) index, package signature files, and the slot image manifest | No key |
 | `/etc/kdos/keys/packs` | That whoever holds the matching secret key signed a pack or a pack index | Pack indexes and packs' own signatures, read by `kdos-packd` and `kdos-pack verify` | `kdos-packs.pub` (see below) |
 | `/etc/kdos/keys/tree` | That a published ports tree came from whoever holds the release key the image was built with | `kdos-ports.tar.xz.sig`, read by `kdos update fetch` before the tree is unpacked | `kdos-release.pub`, when the build found `build/keys/kdos-release.pub`; otherwise no key |
 
@@ -890,11 +884,41 @@ The rest of the signing design is in [Packaging](packaging.md#signing).
 The key in `/etc/kdos/keys/tree` is the one choice of trust an image makes for you: the recipe tree
 is the trust root for everything built on the machine, since every source is checked against a
 hash the tree names, so the image trusts the next tree from the same key as the tree it carries.
-`ports/publish --release` signs each release's `kdos-ports.tar.xz` with `build/keys/kdos-release.key`
-(or the key `$KDOS_RELEASE_KEY` names), and the build copies `build/keys/kdos-release.pub` into the
+`ports/publish --release` signs each release's `kdos-ports.tar.xz` and its release index,
+`kdos-update.idx`, with `build/keys/kdos-release.key` (or the key `$KDOS_RELEASE_KEY` names), and
+the build copies `build/keys/kdos-release.pub` into the
 ring; a build that finds no `.pub` there ships an empty ring, and that image refuses every fetched
 tree. `kdos update fetch` refuses a tree whose signature does not verify, and a tree whose `TREE`
 stamp is older than the installed one, so a replayed old tree cannot pin old versions. Replace the key to follow a tree you publish yourself.
+
+### Signed updates
+
+An update arrives as one of three things, and each is checked before anything is kept. The slot
+image and the binhost are found only through the release's
+[release index](packaging.md#the-release-index), `kdos-update.idx`, verified against
+`/etc/kdos/keys` before a line of it is read: every file is taken from where it says and kept only
+with the size and SHA-256 it gives, and an index for another release is refused. It is signed with
+the release key and the binhost key, so a machine trusting either reads it.
+
+| Lane | What is signed | What is checked against it |
+|---|---|---|
+| Slot image | The manifest, `kdos-image.manifest`, with its signature beside it, verified against `/etc/kdos/keys` before a line of it is read | Every file the manifest lists, by size and SHA-256, after it is written into the slot; the bundles that carry the files, full or delta, are unsigned, and a file whose hash differs is thrown away and fetched again from the full image |
+| Binhost | The index, `PACKAGES` with `PACKAGES.sig`, verified against `/etc/kdos/keys` | Every package, by the hash the index records; a binhost delta is rebuilt and then checked against the hash of the package it stands for |
+| Source (`--source`) | The ports tree, verified against `/etc/kdos/keys/tree` | Every source tarball, by the `sha256` in its recipe |
+
+So a tampered bundle or delta costs a download, never a file. A manifest names its version, and an
+image is offered only when it is newer than the running system (by its release time when both have
+one, by version otherwise), so an older signed release cannot be offered as an update. Every
+download is made with `curl --proto =https,file --proto-redir =https`: HTTPS or a local file, and
+no redirect to plain HTTP. `kdos image make` refuses a root that holds a file capability or an
+access-control list, which a manifest cannot represent, rather than dropping it silently. The
+formats and the update path are in
+[Packaging](packaging.md#updating-a-machine).
+
+The image ships with no key in `/etc/kdos/keys`, so a fresh machine verifies no binhost index and
+no slot image until a key is put there; until then `kdos update` can only build from source, with
+the tree checked against the release key. A machine that should take a release's prebuilt packages
+or images needs that release's `.pub` copied into `/etc/kdos/keys`.
 
 ### TLS trust anchors
 
@@ -1024,78 +1048,6 @@ the caller's environment. `kdos-packd` reads it from its own, and the shipped in
 `/etc/init.d/59_packd.sh`, sets none, so turning it on for installs means exporting the variable in
 that script before its `supervise` line and restarting the daemon.
 
-## Untrusted image bytes
-
-Anything that can write to a terminal can reach an image decoder: a shell script, a program inside
-a box, `cat` on a file somebody sent you. Three escape sequences carry a picture (sixel, a DCS
-sequence; iTerm2's OSC 1337; and kitty's graphics protocol, an APC sequence), and behind them are
-five formats, each decoded by a large C library with a long memory-safety history: sixel
-(libsixel), PNG (libpng), JPEG (libjpeg), WebP (libwebp) and GIF (libnsgif). HEIF and AVIF are not
-accepted, because both are containers around a video codec and would put a video decoder on that
-path.
-
-`libkimg` is therefore the only place KDOS decodes untrusted image bytes. `kimg_decode_all()` is
-the one decode path (`kimg_decode()` is the same call for a single frame), so the budget, the audit
-and any new format all live in one function. Its rules:
-
-- The budget is enforced before any allocation, from the size the format itself declares. A
-  length field is an allocation request from an untrusted peer: a decompression bomb is four lines
-  of sixel, and a PNG claiming 65535×65535 is eight bytes on the wire and sixteen gigabytes in
-  memory. The budget bounds width, height and decoded bytes.
-- A declared type that disagrees with the bytes is refused, not re-sniffed. Sixel, which has
-  no magic number, is the one exception.
-- libpng's and libjpeg's diagnostics are suppressed. Both write to standard error by default,
-  which would let untrusted bytes decide what appears on a terminal.
-- Every failure returns the same nothing. The caller cannot tell a truncated file from an
-  unsupported format from a budget refusal, on purpose: there is nothing useful to do differently,
-  and a reason string in a log is a string an attacker chose.
-- It is tested under mutation. Wherever pixman and the decoder libraries are installed,
-  `testing/selftest.sh` checks a fixture corpus (`testing/fixtures/img/`) for the right answers,
-  then builds `testing/fixtures/img/fuzz.c` and runs every fixture truncated at every length and
-  with every byte changed three ways. Run it as
-  `CC="cc -fsanitize=address,undefined -g" testing/selftest.sh` to do so under the address and
-  undefined-behaviour sanitizers.
-
-The terminal library `libkvt` adds its own limit before `libkimg` sees anything:
-
-- The payload is capped, and a payload over the cap is dropped entirely rather than truncated.
-  A truncated payload is a malformed file, the input a decoder is least likely to survive.
-- A consumer that registers no image callback leaves all three protocols off: sixel goes to
-  the ordinary DCS handling and an APC is ignored up to its terminator.
-
-In `kdos-term` the relevant settings go in `~/.config/kdos/term.conf` (see
-[kdos-term's configuration](../04-programs/kdos-term.md#configuration)). A value outside the range is clamped to it:
-
-| Key | Default | Range | Meaning |
-|---|---|---|---|
-| `images` | `yes` | `yes`, `no` | `no` decodes nothing and discards every payload (the parser's cap drops to 4 KiB); a kitty query is answered with a refusal so the program falls back at once |
-| `image_max` | `1024` | 4–65536 | Largest single payload, in KiB |
-| `image_cells` | `200` | 1–1000 | Largest picture, in cells along either side; the decode budget is 64 pixels per cell |
-
-## Hyperlinks in terminal output
-
-`OSC 8` marks a run of terminal text as a hyperlink. Following one is the one place a terminal
-hands an address it was given by a child process to a program that opens things, and its reach is
-the same as an image payload's: a shell script, a program in a box, `cat` on a file somebody sent
-you. `libkvt` and `kdos-term` apply these rules:
-
-- Four schemes and nothing else: `http://`, `https://`, `file://` and `mailto:`, matched
-  without regard to case. These are the ones whose worst case is a window appearing. A scheme
-  handler is chosen by the `x-scheme-handler/<scheme>` MIME type, so an unlisted scheme would be a
-  program of the attacker's choosing asked to start.
-- Every byte must be printable ASCII (32–126), and an address is shorter than 2048 bytes. A
-  control byte would reach an argument vector, and a byte above 126 lets the same address read two
-  ways depending on who decodes it, which is how an allowlist gets walked around.
-- The address is refused when it is parsed, not when it is clicked. What is not in the table
-  cannot be followed by any path, including one written later.
-- The table holds at most 128 distinct addresses per terminal. A child emitting a new address
-  for every cell is the shape of the attack; past the cap, text is plain text.
-- Only Ctrl+click follows a link, so selecting a word never opens anything.
-- It runs as an argument vector, never a command line: `kdos-appbox open <uri>`, with the URI
-  as one element. There is no shell anywhere on the path.
-- A refused link is silent. The characters draw normally and nothing says "refused", because a
-  message naming the address would put the attacker's string on screen.
-
 ## What is not protected
 
 This section lists what the mechanisms above do not do. A reader who assumes a protection that is
@@ -1106,68 +1058,73 @@ not there is worse off than one who knows it is missing.
   as you can do anything you can do.
 - **There is no verified boot and no signed kernel.** The boot chain is not measured or attested.
   Anyone with physical access can boot a modified kernel or initramfs and take control of the
-  machine.
+  machine. The signed slot image protects what an update writes into the inactive slot, not what
+  is on the disk afterwards.
 - **Module signatures are not enforced.** Modules are signed, but `CONFIG_MODULE_SIG_FORCE` is off
   and lockdown runs in its `none` mode, so root loads any module, signed or not, and the kernel
   only marks itself tainted (see [Module signing](#module-signing)).
 - **The live image's serial console is a root shell.** `/etc/inittab` runs
   `agetty --autologin root` on `ttyS0` (through `/etc/init.d/serial-getty`, which skips a machine
-  with no serial port), so anyone with a serial connection to a machine running
-  the live medium is root, with no password. The installer removes `--autologin root` from the
-  installed copy, where `ttyS0` asks for a login.
+  with no serial port), so anyone with a serial connection to a machine running the live medium is
+  root, with no password. The installer removes `--autologin root` from the installed copy, where
+  `ttyS0` asks for a login.
 - **Single-user mode asks for root's password.** The installed menu's `KDOS (single user)` entry
   and `telinit S` reach `sulogin`, which opens a root shell only for root's password. With root
-  locked, as the installer leaves it by default, it opens no shell at all and the
-  boot continues to the desktop. Anyone who can edit the kernel command line at the boot menu still
-  gets a root shell with `rdinit=/bin/sh`, which runs the initramfs's bash: the physical-access gap
-  above.
-- **The live image has known passwords.** Both `root` and `kdos` have the password `kdos` (see
-  [Getting started](../02-user-guide/getting-started.md)), so `sshd` does not start until it is
-  enabled: the image ships the marker `/etc/service.disabled/sshd`, which `rcS` obeys. Opening
-  port 22 is what enables it: `kdos-power firewall ssh on`, and the `ssh` row of `kdos-firewall`,
-  remove the marker and start `sshd`, and turning `ssh` off puts the marker back and stops it, so a
-  closed port never hides a listening daemon. Nothing advertises SSH while port 22 is closed:
-  the `avahi` package ships no `ssh` or `sftp-ssh` service file, so mDNS never names a
-  server the firewall drops. The installer offers the SSH server, off by default,
-  and removes the marker on the installed system when it is chosen. It also asks for a new password
-  for the account and, by default, locks root (it can set a root password instead), so an
-  installed system does not carry the known passwords.
-- **The live image logs in automatically.** Its `/etc/kdos/login.conf` names `kdos` for
-  autologin, so whoever boots it reaches the desktop as that account. An installed system asks for
-  a password at `tty1` unless its answer file set `autologin = yes` or an administrator later ran
-  `kdos-power autologin <user>`. Either way, the lock screen protects a session only once it has
-  been locked.
+  locked, as the installer leaves it by default, it opens no shell at all and the boot continues to
+  the login screen. Anyone who can edit the kernel command line at the boot menu still gets a root
+  shell with `rdinit=/bin/sh`, which runs the initramfs's bash: the physical-access gap above.
+- **The live image has known passwords and logs in by itself.** Both `root` and `kdos` have the
+  password `kdos` (see [Getting started](../02-user-guide/getting-started.md)), and SDDM logs the
+  `kdos` account in at boot and again after a Log Out (`/etc/sddm.conf.d/kde_settings.conf`). So
+  `sshd` does not start until it is enabled: the image ships the marker
+  `/etc/service.disabled/sshd`, which `rcS` obeys. Opening port 22 is what enables it:
+  `kdos-power firewall ssh on`, and the SSH row of the Firewall settings page, remove the marker
+  and start `sshd`, and turning `ssh` off puts the marker back and stops it, so a closed port never
+  hides a listening daemon. Nothing advertises SSH while port 22 is closed: the `avahi` package
+  ships no `ssh` or `sftp-ssh` service file, so mDNS never names a server the firewall drops. The
+  installer offers the SSH server, off by default, and removes the marker on the installed system
+  when it is chosen. It also asks for a new password for the account and, by default, locks root
+  (it can set a root password instead), so an installed system does not carry the known passwords.
+- **An automatic login is a login nobody typed.** An installed machine logs in by itself only when
+  it has an encrypted root, one account and the answer asked for it, and then the disk passphrase
+  is what stands in front of the session; with the default "lock at start" the lock screen asks for
+  the account's password as well. Either way the lock screen protects a session only once it has
+  been locked, and the wallet is not opened by an automatic login.
 - **Disk encryption protects data at rest only.** It is a passphrase typed into the initramfs, not
   a TPM-sealed key, and it does nothing once the machine is running.
 - **A box is not a jail.** By default it shares your home directory, your network, your process
-  table, `/dev`, `/sys`, `/tmp` and your runtime directory. A malicious application in a box can
-  read and destroy your files exactly as a native one could, reach the session bus, and connect to
-  the compositor untagged through `wayland-0`. The sandbox limits what a cooperating application
-  is offered by the desktop, not what a hostile one can reach.
+  table, `/dev`, `/sys` and `/tmp`. A malicious application in a box can read and destroy your
+  files exactly as a native one could, write `~/.config/autostart` or `~/.bashrc` and so decide what
+  your next login runs outside every box, and use any device node your account can open. The
+  private runtime directory and the filtered bus keep it away from the desktop's interfaces; they
+  do not keep it away from your data. `home = private` is the key that does.
+- **A box from somebody else's image, or one handed X11, reaches past its tag.** A distrobox box
+  shares the session's runtime directory, with `wayland-0` and the unfiltered bus in it, and any box
+  handed the X11 display can talk to Xwayland, which is one host client to KWin. Such a box is
+  `tagged`, not `confined`, and its badge is dashed.
 - **A native application is not sandboxed at all.** An application built from a port, a browser
-  or an office suite included, runs as you with no box around it, connects to the compositor on
-  the untagged `wayland-0`, and is offered the protocols the allowlist in
-  [Sandboxed clients](#sandboxed-clients) denies to a box, screen capture and the virtual keyboard
-  among them; the shipped `rc.xml` restricts none of them. Chromium's renderer sandbox and
-  QtWebEngine's confine their own web content; nothing confines the application itself unless you
-  start it under [`kdos sandbox`](../04-programs/kdos-command.md#kdos-sandbox), which limits its
-  files and its TCP traffic through Landlock; Landlock does not police a Unix socket reached by
-  path, so the program still reaches the compositor and the session bus.
-- **A box can widen its own grant.** The profile that holds `grant =` lives under the home
-  directory a box shares by default, so a program in the box can add `input-method` to its own
-  profile, and the compositor honours it the next time it reads that profile: after a `SIGHUP`, a
-  restart, the box's first bind of a session, or whenever the eight-entry grant cache fills and
-  is emptied. `home = private` closes this for that box.
-- **A granted box is as privileged as its grant.** `grant = input-method` hands that box every
-  keystroke on the seat, and nothing warns at the moment a key is pressed. The profile is the only
-  record.
-- **`wheel` is effectively root.** `sudo` and polkit both grant it, polkit through
-  `/etc/polkit-1/rules.d/50-kdos.rules`, unconditionally, because this system cannot ask for a
-  password. With no session provider, `subject.active` and `subject.local` are always false, so a
-  rule granting `wheel` covers a member logged in over SSH, or a background process running as
-  them, exactly as it covers somebody at the console. Adding a session provider would not narrow
-  it; the rule would have to be rewritten. Every root daemon answers `wheel` on every verb, so
-  there is no separation between "can change the accent colour" and "can format a disk".
+  or an office suite included, runs as you with no box around it and is offered every Wayland
+  global, screen capture and fake input among them. Chromium's renderer sandbox and QtWebEngine's
+  confine their own web content; nothing confines the application itself unless you start it under
+  [`kdos sandbox`](../04-programs/kdos-command.md#kdos-sandbox), which limits its files and its TCP
+  traffic through Landlock; Landlock does not police a Unix socket reached by path, so the program
+  still reaches KWin and the session bus.
+- **The session bus trusts everything on it.** Every program running as you on the host shares one
+  session bus, and several services on it answer any caller: KWin's `ScreenShot2` takes a
+  screenshot without asking, KWin's scripting interface loads a script into the compositor, which
+  then sees and moves every window, kglobalaccel registers and fires global shortcuts, and once the
+  wallet is unlocked the Secret Service hands any caller any secret in it. A box's proxy hides all
+  of these; nothing hides them from a native program.
+- **A granted box is as privileged as its grant.** `grant = fake-input` hands that box every
+  window to type into, `data-control` every clipboard and `screencast` every screen, and nothing
+  warns at the moment it is used. The profile, and System Settings' Boxes page, are the only
+  record. A box whose home is shared cannot change its own grant, because the profile directory is
+  bound read-only into it, but a native program running as you can.
+- **`wheel` is effectively root.** `sudo` grants it everything with its own password, and every
+  root daemon's socket answers it on every configuration verb, so there is no separation between
+  "can change the accent colour" and "can open a port". The polkit rules grant it only at the
+  machine, and only the actions named in `50-kdos.rules`; anywhere else it gets the defaults, which
+  ask for an administrator's password, and an administrator's password is its own.
 - **An OCI base pulled from a registry is unsigned content** from somebody else's server. It is an
   online operation, `KDOS_REQUIRE_SIG` does not cover it, and the tool says so before doing
   anything.
@@ -1179,11 +1136,12 @@ not there is worse off than one who knows it is missing.
   in its recipe. That makes the recipe, and so this repository, the trust root for everything on
   the host.
 - **Updates are never installed automatically, and there is no security-advisory service.** A
-  system timer (`/etc/kdos/timers.d/10-update-check.timer`) runs `kdos update check --fetch` once a
-  day, which installs the latest release's signed ports tree and records what is behind in
-  `/var/lib/kdos/update.json`; building it is `kdos update apply`, which you run, and which needs
-  the network for every source and compiles on the machine. A fix reaches a machine only once a
-  release carries it. `kdos cve` tells you what is behind a known fix.
+  system timer (`/etc/kdos/timers.d/10-update-check.timer`) runs `kdos update check` once a day
+  against what was last fetched, and `kdos-sysupdated` fetches the signed tree and release index,
+  and through it the binhost index and image manifest, at most once an hour when Discover asks; Discover's unattended updates are off
+  (`UseUnattendedUpdates=false`). Writing the update into the inactive slot is somebody's decision,
+  in Discover or with `kdos update apply`, and an administrator's password. A fix reaches a machine
+  only once a release carries it. `kdos cve` tells you what is behind a known fix.
 - **`kdos-oomd`'s choice between several large processes is tested only against recorded
   process tables.** `kdos-oomd --fixture` exercises victim selection offline, and
   `testing/oomd-fire.sh` makes the daemon fire in a virtual machine against a single memory hog;
@@ -1193,11 +1151,13 @@ not there is worse off than one who knows it is missing.
 
 - [How KDOS differs](../01-philosophy/how-kdos-differs.md#the-security-model) — this model set against
   the ones other distributions use
-- [Packaging](packaging.md) — signing, the binhost index, and how ports are verified
+- [Boot and init](boot-and-init.md) — the display manager, the consoles and the boot confirmation
+- [The session](session.md) — the user's services, the portals and what a box receives
+- [KWin](../04-programs/kwin.md#boxes-at-the-compositor) — how the compositor tags and badges a box
+- [Packaging](packaging.md) — signing, the binhost index, slot images and how ports are verified
 - [Packs and boxes](packs-and-boxes.md) — the pack format, verification, mounting and box profiles
 - [kdos-appbox](../04-programs/kdos-appbox.md) — box profiles, the launch path and what a box receives
 - [The daemons](../04-programs/daemons.md) — each root daemon's verbs, clients and refusals
-- [The session](session.md) — the portal route and the session bus a box shares
 - [Known gaps](../06-reference/known-gaps.md) — everything else that does not exist
 
 <!-- book-nav -->

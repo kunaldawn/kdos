@@ -1,0 +1,10 @@
+id          = app.notes
+kind        = app
+name        = Notes
+version     = 1735000000
+release     = 2
+arch        = x86_64
+summary     = Take notes
+category    = Office;
+licence     = MIT
+description = A notes application, frozen from a box.

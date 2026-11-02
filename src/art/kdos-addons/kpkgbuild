@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdos-addons
+version     = 1.0.0
+release     = 1
+description = KDOS's curated offline add-ons — wallpapers, Plasma and Konsole colour schemes, KWin scripts and widgets
+homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
+depends     = python3

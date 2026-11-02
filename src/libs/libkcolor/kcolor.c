@@ -393,6 +393,99 @@ uint32_t kcol_from_hls(double h, double l, double s)
 	return (uint32_t)chan(r) << 16 | (uint32_t)chan(g) << 8 | chan(b);
 }
 
+/* ── the sixteen terminal colours ──────────────────────────────────────── */
+
+static double ansi_wrap1(double x)
+{
+	while (x >= 1.0)
+		x -= 1.0;
+	while (x < 0.0)
+		x += 1.0;
+	return x;
+}
+
+/* `anchor`'s relation to `from`, transplanted onto `to`. Identity when
+ * from == to, which is what makes phosphor byte-exact. */
+static uint32_t ansi_derive(uint32_t anchor, uint32_t from, uint32_t to)
+{
+	double ah, al, as, fh, fl, fs, th, tl, ts;
+
+	kcol_to_hls(anchor, &ah, &al, &as);
+	kcol_to_hls(from, &fh, &fl, &fs);
+	kcol_to_hls(to, &th, &tl, &ts);
+	double h = ansi_wrap1(th + (ah - fh));
+	double l = tl + (al - fl);
+
+	/* A clip here is not a bright colour, it is WHITE: bone's primary
+	 * already sits at l=0.92 and phosphor's +0.14 bright offset lands past
+	 * 1.0, so a clipped bright-green would be #ffffff — the only pure white
+	 * in any palette, out-brightening the bright-white slot beside it. The
+	 * offset is rescaled into whatever headroom the destination has. */
+	if (l > 1.0)
+		l = tl + (1.0 - tl) * (al - fl) / (1.0 - fl);
+	if (l < 0.0)
+		l = 0.0;
+	if (l > 1.0)
+		l = 1.0;
+	double s = fs > 0.0 ? ts * (as / fs) : as;
+
+	if (s < 0.0)
+		s = 0.0;
+	if (s > 1.0)
+		s = 1.0;
+	return kcol_from_hls(h, l, s);
+}
+
+/* Hue and saturation are the anchor's own; lightness follows the scheme's
+ * text, so the hues the palette does not name sit in its brightness
+ * envelope. */
+static uint32_t ansi_fixed(uint32_t anchor, uint32_t ref_text, uint32_t text)
+{
+	double ah, al, as, dh, dl, ds, th, tl, ts;
+
+	kcol_to_hls(anchor, &ah, &al, &as);
+	kcol_to_hls(ref_text, &dh, &dl, &ds);
+	kcol_to_hls(text, &th, &tl, &ts);
+	double l = dl > 0.0 ? al * (tl / dl) : al;
+
+	if (l > 1.0)
+		l = 1.0;
+	return kcol_from_hls(ah, l, as);
+}
+
+void kcol_ansi(const KcolScheme *sc, KcolAnsi *o)
+{
+	/* PHOSPHOR IS THE REFERENCE these anchors were tuned against, not the
+	 * default scheme: the palette names no blue, magenta or cyan, so the
+	 * fixed anchors were chosen on phosphor's ground and are carried to
+	 * every other scheme by ratio. Moving the default accent must not move
+	 * them. */
+	const KcolScheme *ph = kcol_find("phosphor");
+
+	if (!ph)
+		ph = sc;
+	o->normal[0] = sc->variant;
+	o->normal[1] = sc->urgent;
+	o->normal[2] = sc->primary;
+	o->normal[3] = sc->secondary;
+	o->normal[4] = ansi_fixed(0x2f8fff, ph->text, sc->text);
+	o->normal[5] = ansi_fixed(0xc77dff, ph->text, sc->text);
+	o->normal[6] = ansi_fixed(0x25d0c0, ph->text, sc->text);
+	o->normal[7] = sc->text;
+
+	/* Bright black is kcol_muted, never `dim`: it is what ls and vim write
+	 * de-emphasised TEXT in, and `dim` is a fill that reads at about
+	 * 1.7:1. */
+	o->bright[0] = kcol_muted(sc);
+	o->bright[1] = ansi_derive(0xff6b6b, ph->urgent, sc->urgent);
+	o->bright[2] = ansi_derive(0x7dff5c, ph->primary, sc->primary);
+	o->bright[3] = ansi_derive(0xffd166, ph->secondary, sc->secondary);
+	o->bright[4] = ansi_fixed(0x6bb6ff, ph->text, sc->text);
+	o->bright[5] = ansi_fixed(0xe0aaff, ph->text, sc->text);
+	o->bright[6] = ansi_fixed(0x68f5e6, ph->text, sc->text);
+	o->bright[7] = ansi_derive(0xe8ffee, ph->text, sc->text);
+}
+
 uint32_t kcol_mix(uint32_t a, uint32_t b, int pct)
 {
 	uint32_t out = 0;
@@ -736,23 +829,25 @@ char *kcol_retint_text(const char *in, size_t len, const KcolScheme *sc,
 }
 
 /*
- * The accent in force, from the one word `kdos theme` writes to
- * $XDG_CACHE_HOME/kdos/theme.
+ * The accent in force, from the one word `kdos theme` writes first, to
+ * $XDG_CONFIG_HOME/kdos/accent (~/.config/kdos/accent when unset). kded-kdos
+ * compares Plasma's colour scheme against the same file, so a second place
+ * for the name is a second answer to which accent is in force.
  *
- * READING BELONGS HERE, APPLYING DOES NOT. The two paths and the order they
- * are tried in are a contract with `kdos theme`, and a front end resolving
- * them itself drifts from this one the first time the fallback moves. What a
- * front end then does with the name differs — every cell surface goes through
- * ktui_theme_load, the compositor rebuilds its own tables — so only the read
- * is here. No colours are read: the palette is compiled in, and this file names
- * which of its schemes is in force.
+ * READING BELONGS HERE, APPLYING DOES NOT. The path is a contract with `kdos
+ * theme`, and a front end resolving it itself drifts from this one the first
+ * time it moves. What a front end then does with the name differs, so only
+ * the read is here. No colours are read: the palette is compiled in, and this
+ * file names which of its schemes is in force.
  *
- * Returns 0 and leaves `out` empty when there is no state file, which means
- * the default scheme and is not an error.
+ * Returns 0 and leaves `out` empty when there is no such file, which means
+ * the default scheme and is not an error. `kdos theme` falls back further,
+ * to the KDOS colour scheme kdeglobals names; a cell front end that ran
+ * before any `kdos theme` takes the default instead.
  */
 int kcol_theme_name(char *out, size_t cap)
 {
-	const char *cache = getenv("XDG_CACHE_HOME");
+	const char *conf = getenv("XDG_CONFIG_HOME");
 	const char *home = getenv("HOME");
 	char path[512];
 	FILE *f;
@@ -762,10 +857,10 @@ int kcol_theme_name(char *out, size_t cap)
 		return 0;
 	out[0] = '\0';
 
-	if (cache && *cache)
-		snprintf(path, sizeof(path), "%s/kdos/theme", cache);
+	if (conf && *conf)
+		snprintf(path, sizeof(path), "%s/kdos/accent", conf);
 	else if (home && *home)
-		snprintf(path, sizeof(path), "%s/.cache/kdos/theme", home);
+		snprintf(path, sizeof(path), "%s/.config/kdos/accent", home);
 	else
 		return 0;
 

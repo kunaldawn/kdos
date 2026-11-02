@@ -21,7 +21,8 @@
 #define KE_MAX_PROC	4096
 #define KE_MAX_APP	256
 #define KE_MAX_DOMAIN	8
-#define KE_NAME		96
+/* `app (appbox box)`: two 63-byte names and the words between them, whole. */
+#define KE_NAME		144
 
 /* ── RAPL ──────────────────────────────────────────────────────────────── */
 
@@ -83,7 +84,9 @@ void ke_sample_free(KeSample *s);
  * floor as it finally stands. Same arithmetic, applied once, to everything.
  */
 typedef struct {
-	char name[KE_NAME];
+	char name[KE_NAME];		/* the app, and its box when it has one  */
+	char app[64];			/* the app alone                        */
+	char box[64];			/* the box alone; empty when unboxed    */
 	double we;			/* Σ share × window energy   (µJ)       */
 	double wt;			/* Σ share × window duration (s)        */
 	double gpu_ns;
@@ -100,18 +103,33 @@ typedef struct {
 	double started;			/* CLOCK_MONOTONIC seconds                */
 	double window;			/* seconds of samples folded in           */
 	int samples;
+	int suspended;			/* windows left out: the machine slept    */
 	bool gpu_seen;
 } KeLedger;
 
-/* Fold one window into the ledger. `energy_uj` is the RAPL delta over it. */
+/*
+ * A window longer than this in CLOCK_BOOTTIME than in CLOCK_MONOTONIC had the
+ * machine asleep inside it. RAPL counters run from wherever the firmware left
+ * them after a resume, so the delta across one is a wrap that never happened,
+ * or a reset read as one, and is dropped rather than charged to whatever ran
+ * in the ten seconds around the lid.
+ */
+#define KE_SLEPT_S	1.0
+
+/* Fold one window into the ledger. `energy_uj` is the RAPL delta over it, and
+ * `slept_s` how long the machine was suspended inside it. */
 void ke_ledger_add(KeLedger *l, const KeSample *prev, const KeSample *cur,
-		   long long energy_uj);
+		   long long energy_uj, double slept_s);
 void ke_ledger_report(const KeLedger *l, const KeRapl *r, KbBuf *out,
 		      bool json);
 
 /* ── identity ──────────────────────────────────────────────────────────── */
 
-/* Names the app a pid belongs to. Public for the sake of the selftest. */
+/* Names the app a pid belongs to, and its box: `app` always, `box` empty
+ * when the process is in none. Public for the sake of the selftest. */
+void ke_identity_of(const KeSample *s, int idx, char *app, size_t appcap,
+		    char *box, size_t boxcap);
+/* The two as one ledger name: `app (appbox box)`, or `app`. */
 void ke_name_of(const KeSample *s, int idx, char *out, size_t cap);
 void ke_apps_load(void);
 long ke_hz(void);

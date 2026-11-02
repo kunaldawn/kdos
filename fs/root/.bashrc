@@ -8,7 +8,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# ~/.bashrc — read by every interactive non-login bash (foot, distrobox enter).
+# ~/.bashrc — read by every interactive non-login bash (Konsole, distrobox enter).
 #
 # $HOME is bind-mounted into every distrobox, so this one file configures both
 # sides. On the host it sources /etc/bash.bashrc; inside a box that path is the

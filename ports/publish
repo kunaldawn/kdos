@@ -18,7 +18,7 @@
 #   ports/publish --orphans [--prune=yes-delete]
 #   ports/publish --freeze <kdos-tag> [--dry-run | --check]
 #   ports/publish --release <kdos-tag> [--iso <path>] [--key <path> | --unsigned]
-#                 [--publish] [--dry-run]
+#                 [--binhost <dir>] [--image <dir>] [--publish] [--dry-run]
 #
 # THE ARCHIVE is a run of numbered volumes on $KDOS_SOURCES_REPO, GitHub
 # pre-releases tagged sources-1, sources-2, …; ports/shelves gives each shelf
@@ -132,9 +132,32 @@
 #               SHA256SUMS over the whole ISO, each part and the rest;
 #               SHA256SUMS.sig, signed by `kpkg sign` with --key,
 #               $KDOS_RELEASE_KEY or build/keys/kdos-release.key; and that
-#               key's kdos-release.pub. --unsigned leaves the three signature
-#               files out, and no machine then takes the tree. The files are written to
-#               build/release/<tag>/ (the parts are removed when the run ends).
+#               key's kdos-release.pub. --unsigned leaves the signature files
+#               out, and no machine then takes the tree or the updates. The
+#               files are written to build/release/<tag>/ (the parts are
+#               removed when the run ends).
+#               THE UPDATES go up beside it, published like the sources: the
+#               binhost (--binhost, default build/binhost, as 010_binhost.sh
+#               writes it) into public pre-releases binhost-<tag>-01,
+#               binhost-<tag>-02, … of at most $SRC_RELEASE_CAP assets each,
+#               its files sorted by path; the slot image (--image, default
+#               build/release/<tag>/image, as script/release-image.sh writes
+#               it, made for version <tag>) into the pre-release
+#               image-<tag>. Every name is flat, as each directory's own
+#               kdos-update.idx lists it, and each file is hashed against
+#               that list before it goes. Then the release's own
+#               kdos-update.idx is written into the system release: one line
+#               per file, `<sha256> <size> <release> <asset> <path>`, with the
+#               asset name GitHub stored, under a `releases` line naming this
+#               repository's download root; signed with the release key and,
+#               when build/binhost-key/kdos-binhost.key is there, the binhost
+#               key as a second line, so a machine trusting either verifies
+#               it. `kdos update` finds every package, delta, catalogue,
+#               manifest and bundle through it and through nothing else
+#               (src/system/kdos-tools/relidx.c). A directory without a
+#               kdos-update.idx publishes no lane, and the run says so.
+#               The recipe tree's TREE carries `version <tag>`, which is how a
+#               machine finds this release's index again.
 #               The release is a DRAFT until --publish makes it public and
 #               Latest, which is then confirmed by an anonymous query. Assets
 #               are append-only here too: a same-name asset with other bytes
@@ -206,12 +229,12 @@ usage: ports/publish [--dry-run | --check] [--history] [--all | port…]
        ports/publish --orphans [--prune=yes-delete]
        ports/publish --freeze <kdos-tag> [--dry-run | --check]
        ports/publish --release <kdos-tag> [--iso <path>] [--key <path> | --unsigned]
-                     [--publish] [--dry-run]
+                     [--binhost <dir>] [--image <dir>] [--publish] [--dry-run]
 EOF
 }
 
 DRY=0 CHECK=0 HISTORY=0 ALL=0 DESCRIBE=0 FREEZE="" REHOME=0 ORPHANS=0 PRUNE="" PLAN=0 RETIRE=0
-RELEASE="" ISO="" KEY="" UNSIGNED=0 PUBLISH=0
+RELEASE="" ISO="" KEY="" UNSIGNED=0 PUBLISH=0 BINHOST_DIR="" IMAGE_DIR=""
 PORTS=()
 while [ $# -gt 0 ]; do
     case $1 in
@@ -235,6 +258,10 @@ while [ $# -gt 0 ]; do
         --key)      [ -n "${2:-}" ] || die "--key needs a path"
                     KEY=$2; shift ;;
         --unsigned) UNSIGNED=1 ;;
+        --binhost)  [ -n "${2:-}" ] || die "--binhost needs a directory"
+                    BINHOST_DIR=$2; shift ;;
+        --image)    [ -n "${2:-}" ] || die "--image needs a directory"
+                    IMAGE_DIR=$2; shift ;;
         --publish)  PUBLISH=1 ;;
         -h|--help)  usage; exit 0 ;;
         -*)         die "unknown option $1" ;;
@@ -250,8 +277,8 @@ if [ -n "$PRUNE" ]; then
     [ "$ORPHANS" = 1 ] || die "--prune works only with --orphans"
     [ "$PRUNE" = yes-delete ] || die "--prune=$PRUNE: deleting orphans takes exactly --prune=yes-delete"
 fi
-if [ -z "$RELEASE" ] && { [ -n "$ISO$KEY" ] || [ "$UNSIGNED" = 1 ] || [ "$PUBLISH" = 1 ]; }; then
-    die "--iso, --key, --unsigned and --publish go with --release"
+if [ -z "$RELEASE" ] && { [ -n "$ISO$KEY$BINHOST_DIR$IMAGE_DIR" ] || [ "$UNSIGNED" = 1 ] || [ "$PUBLISH" = 1 ]; }; then
+    die "--iso, --key, --unsigned, --binhost, --image and --publish go with --release"
 fi
 [ -z "$KEY" ] || [ "$UNSIGNED" = 0 ] || die "--key and --unsigned contradict each other"
 [ "$CHECK" = 0 ] || [ "$MODES" = 0 ] || [ -n "$FREEZE" ] || die "--check works alone or with --freeze"
@@ -1600,10 +1627,12 @@ if [ -n "$FREEZE" ]; then
     exit 0
 fi
 
-# release_tree <commit> <out> — the recipe-only ports tree at <commit>, laid
-# out as an image's /ports: ports/core, ports/shelves and ports/sources.idx at
-# the top, src/, docs/ and script/book beside them, and a TREE stamp naming the
-# commit and its time, which `kdos update fetch` orders two trees by.
+# release_tree <commit> <out> <tag> — the recipe-only ports tree at <commit>,
+# laid out as an image's /ports: ports/core, ports/shelves and
+# ports/sources.idx at the top, src/, docs/ and script/book beside them, and a
+# TREE stamp naming the commit and its time, which `kdos update fetch` orders
+# two trees by, and the release <tag>, under which a machine holding the tree
+# finds the release index of its binhost.
 # script/book is there because kdos-kfs's `book` link (../../../script/book)
 # points into it: the recipe hash follows that link, and with the link
 # dangling the fetched tree hashes kdos-kfs differently from the tree its
@@ -1612,7 +1641,7 @@ fi
 # file a checkout happens to hold. The tar is reproducible: sorted names, the
 # commit's time, uid 0.
 release_tree() {
-    local c=$1 out=$2 d=$TMP/tree t
+    local c=$1 out=$2 tag=$3 d=$TMP/tree t
     rm -rf "$d"; mkdir -p "$d/raw" "$d/ports/script"
     git -C "$REPO_ROOT" archive --format=tar "$c" ports/core ports/shelves ports/sources.idx src docs script/book |
         tar -x -C "$d/raw" || return 1
@@ -1621,10 +1650,101 @@ release_tree() {
     mv "$d/raw/docs" "$d/ports/docs" || return 1
     mv "$d/raw/script/book" "$d/ports/script/book" || return 1
     t=$(git -C "$REPO_ROOT" log -1 --format=%ct "$c") || return 1
-    printf 'kdos-tree 1\ncommit %s\ntime %s\n' "$c" "$t" > "$d/ports/TREE"
+    printf 'kdos-tree 1\ncommit %s\ntime %s\nversion %s\n' "$c" "$t" "$tag" > "$d/ports/TREE"
     tar --sort=name --mtime="@$t" --owner=0 --group=0 --numeric-owner \
         --format=gnu -C "$d/ports" -cf - . | xz -9 -T1 > "$out" || return 1
     rm -rf "$d"
+}
+
+# ── the updates: a release's binhost and slot image ──────────────────────
+#
+# lane_plan <lane> <dir> <prefix> <whole> — one line per file of the lane's
+# directory, "<sha256> <size> <release> <asset> <path> <file>", into
+# $TMP/plan.<lane>: every entry of <dir>/kdos-update.idx, checked against the
+# file it names (beside it, by size and hash), given the release it goes to
+# (<prefix>-NN by ports/releaselib.sh's shard rule, or <prefix> itself when
+# <whole> is 1, which refuses more than one release's worth) and the asset
+# name GitHub will store. 1 when the directory has no index: the lane is not
+# published.
+lane_plan() {
+    local lane=$1 dir=$2 prefix=$3 whole=$4 idx=$2/$REL_INDEX_FILE
+    local sha size rel asset path f n
+    [ -f "$idx" ] || return 1
+    [ "$(head -n1 "$idx")" = "$REL_INDEX_MARKER" ] || die "$idx is not a release index"
+    LANE_VERSION=$(awk '/^version / { print $2; exit }' "$idx")
+    rel_entries "$idx" > "$TMP/entries.$lane"
+    [ -s "$TMP/entries.$lane" ] || die "$idx names no file"
+    while read -r sha size rel asset path; do
+        [ "$rel" = - ] || die "$idx: $path is not beside the index"
+        case $path in "$lane"/*) ;; *) die "$idx: $path is not under $lane/" ;; esac
+        case $asset in */*|.*|"") die "$idx: $asset is not a flat name" ;; esac
+        f=$dir/$asset
+        [ -f "$f" ] && [ "$(stat -c %s "$f")" = "$size" ] && src_hash_ok "$f" "$sha" ||
+            die "$f is not the file $idx names for $path"
+    done < "$TMP/entries.$lane"
+    if [ "$whole" = 1 ]; then
+        n=$(wc -l < "$TMP/entries.$lane")
+        [ "$n" -le "$REL_CAP" ] || die "$lane holds $n files; one release holds $REL_CAP"
+        awk -v r="$prefix" '{ $3 = r; print }' "$TMP/entries.$lane"
+    else
+        rel_shard "$prefix" "$REL_CAP" < "$TMP/entries.$lane"
+    fi | while read -r sha size rel asset path; do
+        printf '%s %s %s %s %s %s\n' "$sha" "$size" "$rel" "$(rel_gh_name "$asset")" "$path" "$dir/$asset"
+    done > "$TMP/plan.$lane"
+    n=$(awk '{ print $3, tolower($4) }' "$TMP/plan.$lane" | sort | uniq -d | head -n1)
+    [ -z "$n" ] || die "two files of $lane are stored under one name in ${n% *}: ${n#* }"
+    return 0
+}
+
+# lane_print <lane> — the plan of a lane, release by release.
+lane_print() {
+    awk '{ n[$3]++; b[$3] += $2 } END { for (r in n) printf "%s %d %d\n", r, n[r], b[r] }' \
+        "$TMP/plan.$1" | LC_ALL=C sort | while read -r r n b; do
+        printf '  release  %-28s %4d assets, %s\n' "$r" "$n" "$(human "$b")"
+    done
+}
+
+# lane_upload <lane> — every file of the plan into its release, created as a
+# public pre-release when missing so its assets download anonymously (the
+# system release stays a draft until --publish; these are never Latest).
+# Each line goes to $TMP/published with the name GitHub stored.
+lane_upload() {
+    local r sha size rel name path f rc extra
+    for r in $(awk '{ print $3 }' "$TMP/plan.$1" | LC_ALL=C sort -u); do
+        printf '{"tag_name":"%s","target_commitish":"%s","name":"KDOS %s: %s","draft":false,"prerelease":true,"body":%s}' \
+            "$r" "$commit" "$tag" "$r" \
+            "$(printf 'Update files of KDOS %s: `kdos update` finds each through `kdos-update.idx` on the release %s, never by its name here.\n' "$tag" "$tag" > "$TMP/lane.md"; json_text "$TMP/lane.md")" \
+            > "$TMP/create.json"
+        release_by_tag_any "$r" "$TMP/create.json"
+        if [ "$REL_DRAFT" = 1 ]; then
+            pace
+            gh PATCH "$GH_API/repos/$KDOS_REPO/releases/$REL_ID" -H 'Content-Type: application/json' \
+                --data '{"draft":false,"prerelease":true}'
+            [ "$HTTP" = 200 ] || die "making $r public: HTTP $HTTP $(json_str message)"
+        fi
+        release_assets "$KDOS_REPO" "$REL_ID" || die "cannot list the assets of release $r"
+        # A run resumed over a lane directory that changed shards its files
+        # differently, and the assets an earlier run left in this release
+        # would push it past what one release holds.
+        awk -v r="$r" '$3 == r { print tolower($4) }' "$TMP/plan.$1" > "$TMP/names.$r"
+        extra=$(grep -vxF -f "$TMP/names.$r" <<< "${RA_KEYS[$REL_ID]:-}" | grep -c . || true)
+        [ $(( extra + $(wc -l < "$TMP/names.$r") )) -le "$REL_CAP" ] ||
+            die "release $r holds $extra assets this $1 does not name; its files are published once per tag — release them under a new tag"
+        while read -r sha size rel name path f; do
+            [ "$rel" = "$r" ] || continue
+            rc=0 PUT_NAME=""
+            put_asset "$KDOS_REPO" "$REL_ID" "$name" "$f" "$sha" application/octet-stream 0 || rc=$?
+            case $rc in
+                0) ;;
+                2) echo "ports/publish: release $r already carries a different $name;" >&2
+                   echo "               delete it by hand, then run again" >&2
+                   exit 2 ;;
+                *) die "uploading $name to release $r failed" ;;
+            esac
+            printf '%s %s %s %s %s\n' "$sha" "$size" "$r" "${PUT_NAME:-$name}" "$path" >> "$TMP/published"
+        done < "$TMP/plan.$1"
+        printf '  stored   %-28s %s assets\n' "$r" "$(awk -v r="$r" '$3 == r' "$TMP/plan.$1" | wc -l)"
+    done
 }
 
 # ── --release ─────────────────────────────────────────────────────────────
@@ -1640,6 +1760,12 @@ release_tree() {
 if [ -n "$RELEASE" ]; then
     tag=$RELEASE
     safe=${tag//\//-}
+    # The tag names the releases of its updates and is read back from a
+    # machine's /ports/TREE, where `kdos update` accepts only this alphabet.
+    [[ $tag =~ ^[A-Za-z0-9_+~][A-Za-z0-9._+~-]{0,39}$ ]] ||
+        die "$tag cannot name a release: letters, digits and . _ + ~ - only, at most 40"
+    # shellcheck source=ports/releaselib.sh
+    . "$SCRIPT_DIR/releaselib.sh"
     commit=$(git -C "$REPO_ROOT" rev-parse -q --verify "refs/tags/$tag^{commit}") ||
         die "no such tag: $tag (tag the commit, push the tag, then release it)"
     # The release names a commit people can check out; a tag that exists
@@ -1673,6 +1799,22 @@ if [ -n "$RELEASE" ]; then
         pub=${key%.key}.pub
     fi
     out="$REPO_ROOT/build/release/$safe"
+    bhdir=${BINHOST_DIR:-$REPO_ROOT/build/binhost}
+    imdir=${IMAGE_DIR:-$out/image}
+    # The two lanes, planned and every file hashed before anything is sent.
+    : > "$TMP/published"
+    LANES=()
+    if lane_plan binhost "$bhdir" "binhost-$safe" 0; then
+        LANES+=(binhost)
+    else
+        echo "==> no kdos-update.idx in ${bhdir#"$REPO_ROOT"/}: no binhost is published"
+    fi
+    if lane_plan image "$imdir" "image-$safe" 1; then
+        [ "$LANE_VERSION" = "$tag" ] || die "the slot image in $imdir is version $LANE_VERSION, not $tag"
+        LANES+=(image)
+    else
+        echo "==> no kdos-update.idx in ${imdir#"$REPO_ROOT"/}: no slot image is published"
+    fi
 
     if [ "$DRY" = 1 ]; then
         echo "==> would release $tag on $KDOS_REPO as a $([ "$PUBLISH" = 1 ] && echo "PUBLISHED, Latest" || echo DRAFT) release"
@@ -1689,6 +1831,16 @@ if [ -n "$RELEASE" ]; then
         fi
         printf '  asset    %-28s %s\n' sources.sha256 "$(human "$(stat -c %s "$FREEZE_FILE")")"
         printf '  asset    %-28s the recipe tree at %s\n' kdos-ports.tar.xz "$tag"
+        for l in "${LANES[@]}"; do
+            echo "  $l: $(wc -l < "$TMP/plan.$l") files"
+            lane_print "$l"
+        done
+        if [ "${#LANES[@]}" -gt 0 ]; then
+            printf '  asset    %-28s %d paths, signed like SHA256SUMS%s\n' kdos-update.idx \
+                "$(cat "${LANES[@]/#/$TMP/plan.}" | wc -l)" \
+                "$([ -f "$REPO_ROOT/build/binhost-key/kdos-binhost.key" ] && echo " and by the binhost key")"
+            [ "$UNSIGNED" = 1 ] || printf '  asset    %s\n' kdos-update.idx.sig
+        fi
         [ "$UNSIGNED" = 1 ] || printf '  asset    %s\n' kdos-ports.tar.xz.sig
         printf '  asset    %s\n' SHA256SUMS
         if [ "$UNSIGNED" = 1 ]; then
@@ -1709,8 +1861,10 @@ if [ -n "$RELEASE" ]; then
     fi
 
     # The parts are 2 GiB copies of the ISO; they are cut again on every run
-    # and never outlive it.
-    rm -rf "$out"; mkdir -p "$out"
+    # and never outlive it. Only the files are cleared: the slot image under
+    # $out/image is an input, and the next release's --prev.
+    mkdir -p "$out"
+    find "$out" -maxdepth 1 -type f -delete
     trap 'rm -f "$out"/*.part[0-9][0-9]; cleanup' EXIT
     echo "==> hashing $iso ($(human "$iso_size"))"
     iso_hash=$(sha256sum "$iso" | cut -d' ' -f1)
@@ -1732,7 +1886,7 @@ if [ -n "$RELEASE" ]; then
     # The recipe tree goes up signed with the release key; an image built
     # with build/keys/kdos-release.pub in its /etc/kdos/keys/tree takes it.
     echo "==> the recipe tree at $tag"
-    release_tree "$commit" "$out/kdos-ports.tar.xz" || die "cannot make the recipe tree of $tag"
+    release_tree "$commit" "$out/kdos-ports.tar.xz" "$tag" || die "cannot make the recipe tree of $tag"
     ASSETS+=("kdos-ports.tar.xz|$out/kdos-ports.tar.xz|$(sha256sum "$out/kdos-ports.tar.xz" | cut -d' ' -f1)|application/x-xz")
     if [ "$UNSIGNED" = 0 ]; then
         src_kpkg_ensure || die "cannot build kpkg"
@@ -1741,6 +1895,38 @@ if [ -n "$RELEASE" ]; then
         KPKG_KEYRING="$TMP/ring" "$KPKG" verify-pkg "$out/kdos-ports.tar.xz" >/dev/null 2>&1 ||
             die "kdos-ports.tar.xz.sig does not verify against $pub"
         ASSETS+=("kdos-ports.tar.xz.sig|$out/kdos-ports.tar.xz.sig|$(sha256sum "$out/kdos-ports.tar.xz.sig" | cut -d' ' -f1)|text/plain")
+    fi
+
+    # The updates, then the index that finds them: written only from what
+    # GitHub reported stored, so every asset name in it is one a download
+    # reaches. It goes into this release and into SHA256SUMS like any asset.
+    if [ "${#LANES[@]}" -gt 0 ]; then
+        load_token
+        for l in "${LANES[@]}"; do
+            echo "==> the $l of $tag"
+            lane_upload "$l"
+        done
+        rel_write "$out/$REL_INDEX_FILE" "$tag" "https://github.com/$KDOS_REPO/releases/download" \
+            < "$TMP/published"
+        if [ "$UNSIGNED" = 0 ]; then
+            src_kpkg_ensure || die "cannot build kpkg"
+            signed=$("$KPKG" sign "$out/$REL_INDEX_FILE" "$key" 2>&1) || die "signing the release index: $signed"
+            bkey=$REPO_ROOT/build/binhost-key/kdos-binhost.key
+            if [ -f "$bkey" ]; then
+                mkdir -p "$TMP/second"
+                cp "$out/$REL_INDEX_FILE" "$TMP/second/idx"
+                signed=$("$KPKG" sign "$TMP/second/idx" "$bkey" 2>&1) ||
+                    die "signing the release index with the binhost key: $signed"
+                cat "$TMP/second/idx.sig" >> "$out/$REL_INDEX_FILE.sig"
+            fi
+            mkdir -p "$TMP/ring"; cp "$pub" "$TMP/ring/kdos-release.pub"
+            KPKG_KEYRING="$TMP/ring" "$KPKG" verify-pkg "$out/$REL_INDEX_FILE" >/dev/null 2>&1 ||
+                die "kdos-update.idx.sig does not verify against $pub"
+        fi
+        ASSETS+=("$REL_INDEX_FILE|$out/$REL_INDEX_FILE|$(sha256sum "$out/$REL_INDEX_FILE" | cut -d' ' -f1)|text/plain")
+        [ "$UNSIGNED" = 1 ] ||
+            ASSETS+=("$REL_INDEX_FILE.sig|$out/$REL_INDEX_FILE.sig|$(sha256sum "$out/$REL_INDEX_FILE.sig" | cut -d' ' -f1)|text/plain")
+        echo "==> kdos-update.idx names $(rel_entries "$out/$REL_INDEX_FILE" | wc -l) files"
     fi
 
     # SHA256SUMS names the whole ISO even when only its parts are assets: it
@@ -1809,14 +1995,20 @@ if [ -n "$RELEASE" ]; then
       fi
       echo "## Updating an installed system"
       echo
-      echo "\`kdos-ports.tar.xz\` is the recipe tree at $tag: every recipe, patch and program of our own, and no source. \`kdos update fetch\` downloads it from the latest release, checks \`kdos-ports.tar.xz.sig\` against the keys in \`/etc/kdos/keys/tree\` and installs it as \`/ports\`; \`kdos update apply\` then builds every package that is behind, from source, on the machine."
+      echo "\`kdos-ports.tar.xz\` is the recipe tree at $tag: every recipe, patch and program of our own, and no source. \`kdos update fetch\` downloads it from the latest release, checks \`kdos-ports.tar.xz.sig\` against the keys in \`/etc/kdos/keys/tree\` and installs it as \`/ports\`."
+      echo
+      if [ "${#LANES[@]}" -gt 0 ]; then
+          echo "\`kdos-update.idx\` says where every file of this release's updates is and what it hashes to: the prebuilt packages in the pre-releases \`binhost-$safe-NN\` and the slot image in \`image-$safe\`, whichever this release carries. \`kdos update\` reads it, checked against \`kdos-update.idx.sig\` and the keys in \`/etc/kdos/keys\`, and takes no file it does not name. \`kdos update apply\` writes the slot image into the inactive slot, or else installs the prebuilt packages there; \`kdos update apply --source\` builds what is behind on the machine instead."
+      else
+          echo "This release publishes no prebuilt packages and no slot image: \`kdos update apply --source\` builds what is behind on the machine."
+      fi
       echo
       echo "## Sources"
       echo
       echo "\`sources.sha256\` lists every upstream source file the recipes at $tag name, as \`<sha256>  <port>/<file>\`. Each is kept in the numbered \`sources-N\` pre-releases of this repository, and \`ports/fetch\` finds it through \`ports/sources.idx\`."
     } > "$out/notes.md"
 
-    load_token
+    [ -s "$TMP/auth" ] || load_token
     printf '{"tag_name":"%s","target_commitish":"%s","name":"KDOS %s","draft":true,"prerelease":false,"body":%s}' \
         "$tag" "$commit" "$tag" "$(json_text "$out/notes.md")" > "$TMP/create.json"
     release_by_tag_any "$tag" "$TMP/create.json"

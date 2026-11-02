@@ -1,0 +1,8 @@
+== /kglobalaccel org.kde.KGlobalAccel.allComponents
+([objectpath '/component/kwin', '/component/org_kde_krunner_desktop', '/component/empty'],)
+== /component/kwin org.kde.kglobalaccel.Component.allShortcutInfos
+([('Window Close', 'Close Window', 'kwin', 'KWin', 'default', 'Default Context', [150994995], [150994995]), ('Switch to Desktop 1', 'Switch to Desktop 1', 'kwin', "KWin's desktops", 'default', 'Default Context', [67108912], [268435504, 67108912])],)
+== /component/org_kde_krunner_desktop org.kde.kglobalaccel.Component.allShortcutInfos
+([('_launch', 'KRunner', 'org.kde.krunner.desktop', 'KRunner', 'default', 'Default Context', [268435488, 134217760], [134217760])],)
+== /component/empty org.kde.kglobalaccel.Component.allShortcutInfos
+(@a(ssssssaiai) [],)

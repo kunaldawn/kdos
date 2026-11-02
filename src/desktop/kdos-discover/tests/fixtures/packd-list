@@ -1,0 +1,5 @@
+app.scribus	1730000000-1	app	installed	91234567	store
+app.scribus	1740000000-1	app	available	91234999	medium
+rt-gtk	1730000000-1	runtime	mounted	300000000	store
+box.work	1735000000-1	app	installed	1000	store
+ok

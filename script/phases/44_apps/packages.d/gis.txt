@@ -27,3 +27,6 @@ marble
 qgis
 opencpn
 viking
+
+ktrip
+kweather

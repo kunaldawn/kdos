@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ktorrent
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 5b85388c87ae6173cf8744ce43a34b1d04f3e0c21e0af413f270c927de3a19fb  ktorrent-26.08.2.tar.xz
+description = BitTorrent client — downloads with search, RSS feeds, IP filtering, bandwidth scheduling, UPnP and a media player
+homepage    = https://apps.kde.org/ktorrent/
+license     = GPL-2.0-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND (LGPL-2.0-only WITH Qt-Commercial-exception-1.0) AND LGPL-2.0-only AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtwebengine qt6-qtmultimedia qt6-qt5compat kconfig kconfigwidgets kcoreaddons kcrash kdbusaddons kglobalaccel ki18n kiconthemes kio knotifications knotifyconfig kcmutils kparts kstatusnotifieritem kwidgetsaddons kwindowsystem kxmlgui kdoctools ktextwidgets kplotting syndication kdnssd kcompletion libktorrent boost taglib karchive

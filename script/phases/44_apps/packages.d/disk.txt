@@ -29,3 +29,6 @@ gparted
 impression
 veracrypt
 gnome-disk-utility
+
+isoimagewriter
+partitionmanager

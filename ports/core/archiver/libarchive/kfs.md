@@ -7,10 +7,7 @@ under their own names.
 Two things in KDOS lean on it directly. [cmake](#port-cmake) links the shared library for
 `cmake -E tar` and its packaging, so libarchive and every library it depends on are installed early
 in `30_foundation`, ahead of cmake in the order run at the head of the phase's list, well before
-the `archiver` shelf's section. And the file preview in [kdos-shell](#port-kdos-shell) decides whether a file is an
-archive by asking libarchive to open it, and lists its entries if it can (see
-[kdos-peek](../../../../docs/kdos/04-programs/kdos-shell.md#kdos-peek)).
-Desktop programs such as [ark](#port-ark), [gvfs](#port-gvfs) and [mpv](#port-mpv) use it too.
+the `archiver` shelf's section. Desktop programs such as [ark](#port-ark), [gvfs](#port-gvfs) and [mpv](#port-mpv) use it too.
 
 ## Flags
 - `--enable-bsdtar`, `--enable-bsdcpio`, `--enable-bsdcat`, `--enable-bsdunzip` — Build and install

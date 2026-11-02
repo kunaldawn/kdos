@@ -1,0 +1,11 @@
+{
+  "app": "plasma-welcome --pages 80-Help.qml",
+  "settle": 4,
+  "mask": [
+    {
+      "name": "\\b\\d+\\.\\d+(\\.\\d+)*\\b"
+    }
+  ],
+  "steps": [],
+  "allow_unnamed": []
+}

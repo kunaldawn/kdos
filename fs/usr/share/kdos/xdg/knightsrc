@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   Knights' computer opponent: Stockfish.
+#
+# Knights' compiled-in opponent is GNU Chess, which is not on this image, so a
+# new game against the computer would start an engine that is not there and
+# fail. Stockfish is, and its entry is in Knights' own engine list as
+# `Stockfish`; the values are entry NAMES from that list, not commands. A
+# choice made in the new-game dialog lands in ~/.config/knightsrc and wins.
+# ---------------------------------
+
+[Protocols]
+player1Program=Stockfish
+player2Program=Stockfish

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "https://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+
+<!--
+  The actions kdos-settingsd checks for org.freedesktop.locale1, with
+  systemd-localed's ids and defaults: plasma-setup's rule grants its user
+  set-locale and set-keyboard by these names. set-keyboard covers both the
+  console keymap and the graphical layout.
+-->
+
+<policyconfig>
+	<vendor>KDOS</vendor>
+	<vendor_url>https://github.com/kunaldawn/kdos</vendor_url>
+
+	<action id="org.freedesktop.locale1.set-locale">
+		<description>Set the system locale</description>
+		<message>Authentication is required to set the system locale.</message>
+		<defaults>
+			<allow_any>auth_admin_keep</allow_any>
+			<allow_inactive>auth_admin_keep</allow_inactive>
+			<allow_active>auth_admin_keep</allow_active>
+		</defaults>
+		<annotate key="org.freedesktop.policykit.imply">org.freedesktop.locale1.set-keyboard</annotate>
+	</action>
+
+	<action id="org.freedesktop.locale1.set-keyboard">
+		<description>Set the system keyboard</description>
+		<message>Authentication is required to set the system keyboard settings.</message>
+		<defaults>
+			<allow_any>auth_admin_keep</allow_any>
+			<allow_inactive>auth_admin_keep</allow_inactive>
+			<allow_active>auth_admin_keep</allow_active>
+		</defaults>
+	</action>
+</policyconfig>

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=KDOS Notices
+Comment=Tells you when updated programs need a restart, about known vulnerabilities, a trial system version, a rollback, programs closed to free memory and applications chosen during install that are not installed yet
+Exec=kdos-notice
+TryExec=kdos-notice
+Icon=start-here-kdos
+NoDisplay=true
+OnlyShowIn=KDE;
+X-KDE-autostart-phase=2
+X-KDE-StartupNotify=false

@@ -2,8 +2,9 @@
 #
 # ptouch-print drives the printer over raw USB through libusb, never through
 # CUPS, so the /dev/bus/usb node needs a grant. Upstream's rule tags these ids
-# `uaccess`, which only logind acts on; here they go to lpadmin, the group
-# that already administers this machine's printers. The ids are upstream's
+# `uaccess`, which elogind turns into an ACL for the user of the active
+# session only; here they go to lpadmin, the group that already administers
+# this machine's printers, whichever login prints. The ids are upstream's
 # list, every model ptouch-print knows.
 SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="2001", GROUP="lpadmin", MODE="0660"
 SUBSYSTEM=="usb", ATTR{idVendor}=="04f9", ATTR{idProduct}=="2002", GROUP="lpadmin", MODE="0660"

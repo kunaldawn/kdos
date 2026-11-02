@@ -9,8 +9,7 @@
 # ---------------------------------
 #   41_system: System
 # ---------------------------------
-#   wl — Wayland libraries and protocols, wlroots, and Wayland-only desktop
-#   utilities
+#   wl — Wayland libraries and protocols, and Wayland-only desktop utilities
 # ---------------------------------
 #
 # Everything with no graphics and no toolkit in its dependency closure:

@@ -26,3 +26,7 @@ transmission
 deluge
 filezilla
 deja-dup
+
+kbackup
+kget
+ktorrent

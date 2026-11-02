@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   What Spectacle does when it starts.
+#
+# Print starts Spectacle, and Spectacle then takes the shot its launch action
+# names. KDOS's capture keys are Print for the whole screen and Shift+Print
+# for a rectangle (kglobalshortcutsrc beside this file), so the launch action
+# is the whole screen; opening Spectacle from the menu takes the same shot,
+# and its window offers every other mode. Changed on Spectacle's General page,
+# it lands in ~/.config/spectaclerc.
+# ---------------------------------
+
+[General]
+launchAction=TakeFullscreenScreenshot

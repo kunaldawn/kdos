@@ -15,3 +15,8 @@ window link it, and [kparts](#port-kparts) is built on it.
   configure then requires Shiboken6 and PySide6, which this port's `depends` does not name.
 - `-D BUILD_DESIGNERPLUGIN=OFF` — Build no Qt Designer plugin for the widgets, which upstream
   builds by default.
+- `-D KF_SKIP_PO_PROCESSING=ON` — Build none of the gettext catalogues under `po/`, which
+  `ki18n_install()` would compile into `.mo` files. The strings in the source are English, and the
+  package-wide English-only rule (see
+  [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy))
+  would remove every catalogue in another language.

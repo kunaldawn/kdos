@@ -26,3 +26,5 @@
 # directory of PDFs, reports success, and produces an index containing none of
 # them. It rides the xapian the kiwix stack already needs.
 poppler
+
+okular

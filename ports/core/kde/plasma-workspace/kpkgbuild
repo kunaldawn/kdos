@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = plasma-workspace
+version     = 6.8.2
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = 52bee29adbac15d0e2f8db98e6440d4ae042fc38340423ed736ac20189778b64  plasma-workspace-6.8.2.tar.xz
+description = KDE Plasma workspace — plasmashell, session start and shutdown, KRunner, notifications, the panel applets and the workspace settings
+homepage    = https://invent.kde.org/plasma/plasma-workspace
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND MIT AND LGPL-2.1-or-later AND CC0-1.0 AND LGPL-2.0-only AND BSD-2-Clause AND BSD-3-Clause AND GPL-2.0-only AND (GPL-2.0-only OR GPL-3.0-only) AND (GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND GPL-3.0-or-later AND (LGPL-2.0-only OR GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND LGPL-3.0-or-later AND ISC
+group       = plasma
+depends     = cmake ninja extra-cmake-modules pkgconf qt6-qtbase qt6-qtdeclarative qt6-qtlocation qt6-qtpositioning qt6-qtshadertools qt6-qtsvg qt6-qtwayland qt6-qt5compat karchive kauth kbookmarks kcmutils kcolorscheme kcompletion kconfig kconfigwidgets kcoreaddons kcrash kdbusaddons kdeclarative kded kdoctools kglobalaccel kguiaddons kholidays ki18n kiconthemes kidletime kio kirigami kirigami-addons kitemmodels kjobwidgets knewstuff knotifications kpackage kparts kquickcharts krunner kservice kstatusnotifieritem ksvg ktexteditor ktextwidgets kwallet kwidgetsaddons kwindowsystem kxmlgui prison solid baloo libplasma plasma-activities plasma-activities-stats kwayland libksysguard libkscreen layer-shell-qt kpipewire knighttime union kwin kscreenlocker plasma-wayland-protocols wayland qcoro libqalculate libcanberra dbus eudev icu zlib freetype2 fontconfig libxkbcommon libX11 libICE libSM libXau libXcursor libXfixes libXft libXrender libXtst libxcb xcb-util xcb-util-cursor xcb-util-image xcb-util-wm libkexiv2 appstream accountsservice fprintd kio-extras kio-fuse milou kactivitymanagerd kde-cli-tools plasma-integration breeze musl-locales tzdata

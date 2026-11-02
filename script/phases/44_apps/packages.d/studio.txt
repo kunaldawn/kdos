@@ -33,3 +33,5 @@ furnace
 ft2-clone
 pt2-clone
 milkytracker
+
+krecorder

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "https://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+
+<!--
+  The actions kdos-sysupdated checks for io.kdos.Slots1.
+
+  try (Try and CancelTry) and channel change what the next boot starts and
+  where updates come from: an administrator's, once per authentication.
+
+  bless writes the second mark that confirms a trial slot, and is called by
+  kdos-notice from the Plasma session once it has answered for a minute. It
+  is granted to the active local session and to nobody else, and never with
+  a prompt: a session that cannot reach that state must not be able to talk
+  its way into confirming the boot that failed it.
+-->
+
+<policyconfig>
+	<vendor>KDOS</vendor>
+	<vendor_url>https://github.com/kunaldawn/kdos</vendor_url>
+
+	<action id="io.kdos.slots.try">
+		<description>Choose the system version the next start uses</description>
+		<message>Authentication is required to choose which system version the computer starts.</message>
+		<defaults>
+			<allow_any>auth_admin</allow_any>
+			<allow_inactive>auth_admin</allow_inactive>
+			<allow_active>auth_admin_keep</allow_active>
+		</defaults>
+	</action>
+
+	<action id="io.kdos.slots.channel">
+		<description>Change where system updates come from</description>
+		<message>Authentication is required to change where system updates come from.</message>
+		<defaults>
+			<allow_any>auth_admin</allow_any>
+			<allow_inactive>auth_admin</allow_inactive>
+			<allow_active>auth_admin_keep</allow_active>
+		</defaults>
+	</action>
+
+	<action id="io.kdos.slots.bless">
+		<description>Confirm that this system version starts</description>
+		<message>Only the session at the computer can confirm the system version.</message>
+		<defaults>
+			<allow_any>no</allow_any>
+			<allow_inactive>no</allow_inactive>
+			<allow_active>yes</allow_active>
+		</defaults>
+	</action>
+</policyconfig>

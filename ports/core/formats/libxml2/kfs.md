@@ -2,9 +2,7 @@
 
 libxml2 is GNOME's XML library: a parser with DTD and schema validation, XPath, XInclude, XML
 catalogues and an HTML parser, with `xmllint` and `xmlcatalog` as its command-line tools. Many of
-the desktop's applications read XML through it, and so does the compositor:
-[kdos-comp](#port-kdos-comp) is a fork of labwc and reads `rc.xml` and `menu.xml` with it (see
-[Configuration](../../../../docs/kdos/04-programs/kdos-comp.md#configuration)).
+the desktop's applications read XML through it.
 [libxslt](#port-libxslt), and with it every manual page rendered from DocBook, is built on it.
 
 Its catalogue support is what lets the documentation builds run with no network. libxml2 reads

@@ -2,7 +2,7 @@
 fontconfig is how programs find fonts: it indexes every face under the font directories into a
 cache, and answers a request such as "monospace, bold, able to draw this character" with an ordered
 list of matching faces, following the rules in `/etc/fonts/conf.d`. Almost every program that draws
-text asks it, cairo, Pango, Qt and fcft among them. The font ports install their own rules beside
+text asks it, cairo, Pango and Qt among them. The font ports install their own rules beside
 upstream's, and the numbers in their file names fix the order in which faces are preferred; see
 [noto-fonts](#port-noto-fonts) and [nerd-fonts-symbols](#port-nerd-fonts-symbols).
 

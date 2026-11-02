@@ -80,3 +80,6 @@ freeipmi
 powerman
 nut
 libusb-compat
+
+iio-sensor-proxy
+libgusb

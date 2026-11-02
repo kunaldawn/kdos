@@ -2,10 +2,8 @@
 
 timg shows images, animations, PDF pages and video in a terminal. It draws with the kitty or
 iTerm2 graphics protocols or sixel where the terminal speaks one, and with coloured Unicode block
-characters everywhere else. Its desktop entry opens PNG, JPEG, GIF, WebP, BMP and TIFF in
-[kdos-term](#port-kdos-term), which draws them as pictures; GIF, BMP and TIFF are the three of
-those that `kdos-pix` does not open (see
-[`kdos-pix`](../../../../docs/kdos/04-programs/kdos-shell.md#kdos-pix)).
+characters everywhere else. Its desktop entry opens PNG, JPEG, GIF, WebP, BMP and TIFF in the
+session's terminal, [Konsole](#port-konsole), which draws them as pictures.
 
 ## Flags
 
@@ -40,8 +38,7 @@ that cannot open that format; STB and QOI need none.
 
 ## Notes
 
-The desktop entry is written in `build.sh`. It is `Terminal=true` with
-`X-KDOS-Term=kdos-term`, so the launcher opens it in the terminal that draws pictures rather
-than the session's own (see
-[Desktop entries belong to the port](../../../../docs/kdos/05-developer/writing-ports.md#desktop-entries-belong-to-the-port)),
-and its menu name is `Image Viewer (timg)`.
+The desktop entry is written in `build.sh` (see
+[Desktop entries belong to the port](../../../../docs/kdos/05-developer/writing-ports.md#desktop-entries-belong-to-the-port)).
+It is `Terminal=true`, so the launcher opens it in Konsole, which draws pictures, and its menu
+name is `Image Viewer (timg)`.

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kcron
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 3137518aaa710a46ff0974f1f206084b9dde608f3ebc9f3f48c06ad478d30deb  kcron-26.08.2.tar.xz
+description = Task Scheduler — a System Settings page for user and system crontabs
+homepage    = https://apps.kde.org/kcron/
+license     = GPL-2.0-or-later
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kconfigwidgets kcoreaddons kauth ki18n kcmutils kirigami kirigami-addons kdoctools polkit cronie konsole

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libwps
+version     = 0.4.14
+release     = 1
+source      = $name-$version.tar.bz2::https://downloads.sourceforge.net/project/libwps/libwps/libwps-$version/libwps-$version.tar.bz2
+sha256      = c5511d9409e03b8e3a179d0465c1cc296eda06fc8371356ef4482cda868869d1  libwps-0.4.14.tar.bz2
+description = Import filter library and conversion tools for Microsoft Works documents
+homepage    = https://sourceforge.net/projects/libwps/
+license     = MPL-2.0 OR LGPL-2.1-or-later
+depends     = pkgconf librevenge

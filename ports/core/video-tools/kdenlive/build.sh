@@ -9,13 +9,12 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-patch -p1 -i "$PORT_SRC/no-qmllint-in-build.patch"
-
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D KDE_INSTALL_LIBDIR=lib \
 	-D CMAKE_BUILD_TYPE=Release \
 	-D KDE_INSTALL_USE_QT_SYS_PATHS=ON \
+	-D KF_SKIP_PO_PROCESSING=ON \
 	-D RELEASE_BUILD=ON \
 	-D USE_DBUS=ON \
 	-D BUILD_TESTING=OFF \
@@ -23,6 +22,7 @@ cmake -S . -B build -G Ninja \
 	-D BUILD_FUZZING=OFF \
 	-D CRASH_AUTO_TEST=OFF \
 	-D BUILD_DESIGNERPLUGIN=OFF \
+	-D BUILD_RUN_QMLLINT=OFF \
 	-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build

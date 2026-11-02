@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = svgpart
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 9f6a7a4d93e702102cf9c303feddc87e54deeef6642be165ec7fb16819db321a  svgpart-26.08.2.tar.xz
+description = KParts viewer for SVG images, embedded by Konqueror, Ark's preview and other part hosts
+homepage    = https://invent.kde.org/graphics/svgpart
+license     = GPL-2.0-or-later AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg kconfig kconfigwidgets kcoreaddons ki18n kparts kxmlgui

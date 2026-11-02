@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kgpg
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 31d9c98e353882eff6b8218572eec1918f7fb4d1d4b6ce595a02c877be3d985c  kgpg-26.08.2.tar.xz
+description = GnuPG key manager — keys, signing, trust, key servers, and an editor that encrypts text
+homepage    = https://apps.kde.org/kgpg/
+license     = GPL-2.0-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL)
+depends     = cmake ninja extra-cmake-modules qt6-qtbase karchive kcodecs kcoreaddons kcrash kdbusaddons ki18n kjobwidgets kio knotifications kservice ktextwidgets kxmlgui kwidgetsaddons kwindowsystem kcontacts kstatusnotifieritem akonadi-contacts gpgme gnupg kdoctools

@@ -28,4 +28,4 @@ compact card.
 <!-- book-nav -->
 ---
 
-*Part XIV. The kernel.* Previous: [Part XIII. The desktop](../13-desktop/intro.md) · [Contents](../README.md) · Next: [336. Configuring the kernel](configuring.md)
+*Part XIV. The kernel.* Previous: [Part XIII. The desktop](../13-desktop/intro.md) · [Contents](../README.md) · Next: [359. Configuring the kernel](configuring.md)

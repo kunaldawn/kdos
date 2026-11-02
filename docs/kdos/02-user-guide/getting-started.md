@@ -8,25 +8,30 @@ what KDOS is before you build it, read [Why KDOS](../01-philosophy/why-kdos.md) 
 [How KDOS differs](../01-philosophy/how-kdos-differs.md) first. The installer has a chapter of its
 own, [Installation](installation.md).
 
+The desktop you arrive at is KDE Plasma 6.8 with the whole of KDE Gear, compiled by the same build
+as everything else on the medium and dressed in the KDOS look. [The desktop](desktop.md) describes
+it as KDOS ships it.
+
 The chapter follows these steps in order:
 
 1. Fetch the upstream sources and build an ISO image on your own machine.
 2. Boot the image in a virtual machine to see that it works.
 3. Write the image to a USB stick.
-4. Boot the stick and log in.
+4. Boot the stick and arrive at the desktop.
 5. Optionally, create a persistence store so that a live session keeps its changes.
-6. Install to a disk with `kinstall`.
+6. Install to a disk.
 7. Try the first commands on the running desktop.
 
 ## Before you build
 
 The project does not publish an image built from this tree. The releases page of
 [github.com/kunaldawn/kdos](https://github.com/kunaldawn/kdos/releases) carries the source archive
-(the numbered pre-releases `sources-1`, `sources-2` and on, described below) and one ISO from an earlier line of KDOS that
-this book does not describe. The system this book describes is one you compile from the repository.
-That follows from what KDOS is: a distribution built from source, where every program on the image
-was compiled by the build you ran, apart from a short, named list of exceptions: firmware, bootstrap
-seeds, compiled font files, data with no other source form and built JavaScript (see
+(the numbered pre-releases `sources-1`, `sources-2` and on, described below) and one ISO from an
+earlier line of KDOS that this book does not describe. The system this book describes is one you
+compile from the repository. That follows from what KDOS is: a distribution built from source,
+where every program on the image was compiled by the build you ran, apart from a short, named list
+of exceptions: firmware, bootstrap seeds, compiled font files, data with no other source form and
+built JavaScript (see
 [What is not built from source](../01-philosophy/why-kdos.md#what-is-not-built-from-source)).
 [How KDOS is built](../05-developer/how-kdos-is-built.md) follows the build from `git clone` to the
 finished ISO, and [The build system](../05-developer/build-system.md) describes its orchestrator in
@@ -36,15 +41,15 @@ Plan for the cost before you start:
 
 | | |
 |---|---|
-| Wall time, first build | Many hours; budget a day or more. Every package is compiled, including GCC several times over and the kernel. The build container uses every thread the host leaves idle; `make build KDOS_JOBS=N` caps it |
-| Disk | About 42.2 GB (39.3 GiB) of upstream source archives, fetched by `make fetch`. The build tree under `build/` needs room of its own, and a complete set of phase snapshots gigabytes more, the tree compressed once plus a layer per phase; its size is not yet measured. Snapshots are optional |
+| Wall time, first build | Many hours; budget a day or more. Every package is compiled, including GCC several times over, the kernel, Qt, KDE Frameworks, Plasma and every Gear application. The build container uses every thread the host leaves idle; `make build KDOS_JOBS=N` caps it |
+| Disk | Tens of gigabytes of upstream source archives, fetched by `make fetch`; `make fetch-check` reports what is still missing. The build tree under `build/` needs room of its own, and a complete set of phase snapshots more again, the tree compressed once plus a layer per phase. Snapshots are optional |
 | Network | Needed to clone, to run `make fetch`, and for the first `make build` on a machine, which builds its container image from Alpine Linux packages. The compile itself runs with networking switched off |
 | Software on your machine | Docker, plus a few small tools listed in the next section. Every compiler runs inside a container |
 
-Later builds are much shorter. The build runs in thirteen *phases*, stages that each run in order
-(see [The build system](../05-developer/build-system.md#phases)); after each one it can save a
-*snapshot* of the tree, when asked to, so a later build can resume from that point. Most changes need only a
-narrow rebuild of one port or one phase. [Developing](../05-developer/developing.md)
+Later builds are much shorter. The build runs in *phases*, stages that each run in order (see
+[The build system](../05-developer/build-system.md#phases)); after each one it can save a
+*snapshot* of the tree, when asked to, so a later build can resume from that point. Most changes
+need only a narrow rebuild of one port or one phase. [Developing](../05-developer/developing.md)
 describes those targeted loops.
 
 ## What you need
@@ -56,8 +61,8 @@ describes those targeted loops.
 | A C compiler (`$CC`, default `cc`) | `make fetch`, `make fetch-check` | Optional for `make fetch`, which compiles a small recipe reader on the host. Without a compiler, `make fetch` hands the whole fetch to a container of its own (Docker or Podman, whichever is on your `PATH`). `make fetch-check` has no container fallback |
 | `fuser` (from psmisc) | `make build` | Guards the finished ISO against being rewritten while a virtual machine has it open; without `fuser` the guard is skipped |
 | `qemu-system-x86_64`, OVMF firmware at `/usr/share/ovmf/OVMF.fd`, `/dev/kvm` | `make run`, `make rundisk` | Only to boot the result in a virtual machine |
-| A USB stick of 32 GB or more, or a BD-R | Booting the image on a machine | Every package is on the medium, so the ISO is about 24 GB (23,853,701,120 bytes on the last measured build). It does not fit a DVD, so optical boot means a BD-R. A published release splits the image into parts of under 2 GiB, about twelve, joined with `cat` before writing |
-| About 56 GB of disk on the target machine | [Installing](installation.md) | The installed system is about 53 GB, and the installer refuses a disk smaller than that plus 768 MiB |
+| A USB stick at least as large as the ISO, or a BD-R | Booting the image on a machine | Every package is on the medium, so the ISO is tens of gigabytes; `ls -l build/iso-build/kdos.iso` gives the figure for your build. It does not fit a DVD, so optical boot means a BD-R. A published release splits the image into parts of under 2 GiB, joined with `cat` before writing |
+| A target disk for an installed system | [Installing](installation.md) | The installer's Welcome page reports the *install size*, the amount it copies. The default layout keeps two copies of the system plus room for each to grow, so the disk needs several times that; the Disk page says what a chosen disk holds and what the install needs |
 
 The full list, with the tools that only development work needs, is in
 [What a development machine needs](../05-developer/developing.md#what-a-development-machine-needs).
@@ -78,14 +83,14 @@ reads nothing but what the fetch left in the port directories and runs offline.
 ### Fetching the sources
 
 A clone carries the recipes, not the upstream source archives. Each recipe (also called a *port*: a
-directory holding a declarative `kpkgbuild` file and a `build.sh`; about 2,100 live under
-`ports/core/`, each on one of 102 subject shelves as `ports/core/<shelf>/<name>/`, and about two
-dozen under `src/`; see the [glossary](../06-reference/glossary.md#port)) names its source files with a
-`sha256 =` line, and `make fetch` downloads every such file that git does not carry.
-Measured across the tree, that is 2,577 file names in 2,076 ports; a further 44 named files, such
-as bash's upstream patches, are committed beside their recipes. Several ports share one archive, so
-they are 2,528 distinct files and about 42.2 GB (39.3 GiB); the LLVM tarball alone serves eight
-ports. [The ports catalogue](../06-reference/ports-catalogue.md) lists every port by shelf, with the phase that builds it.
+directory holding a declarative `kpkgbuild` file and a `build.sh`; about 2,400 live under
+`ports/core/`, each on one of about a hundred subject shelves as `ports/core/<shelf>/<name>/`, and
+about forty under `src/`; see the [glossary](../06-reference/glossary.md#port)) names its source
+files with a `sha256 =` line, and `make fetch` downloads every such file that git does not carry.
+A few named files, such as bash's upstream patches, are committed beside their recipes instead.
+Several ports share one archive (the LLVM tarball alone serves eight), so the distinct files are
+fewer than the names. [The ports catalogue](../06-reference/ports-catalogue.md) lists every port by
+shelf, with the phase that builds it.
 
 For each file, `make fetch` takes the first copy it finds whose hash matches the recipe: the
 download cache under `ports/.srccache/`, then the KDOS source archive (the `sources-<N>` pre-releases),
@@ -131,12 +136,13 @@ A few variables change what the build produces:
 | `KDOS_ISO_SOURCES=1` | Copies the ports tree with its fetched sources, `src/`, `script/`, `fs/`, the `Makefile` and the `Dockerfile` onto the ISO under `sources/`, together with a `SOURCES` stamp that `kdos rebuild` prints. No rebuild from such a medium has been run through every phase; see [KDOS can build KDOS](../01-philosophy/why-kdos.md#kdos-can-build-kdos) |
 | `KDOS_PACK_KDOS=1` | Also packs the finished system as a base pack named `kdos`, written to `build/kdos-base/kdos.kpack` and carried on the medium under `packs/` |
 
-The graphical applications KDOS ports natively, from Firefox ESR and LibreOffice to KiCad and
-GNU Radio, are compiled by the same build and installed into the image like any other port. For
-software that is not ported, the ISO ships the *catalogue*, which describes each application as a
-stack of container image layers built from Debian packages; the machine that wants one builds it in
-a rootless Podman container. See [Applications](applications.md) for both, and
-[Packs and boxes](../03-architecture/packs-and-boxes.md) for the container format.
+The graphical applications KDOS ports natively, from Firefox ESR, LibreOffice and every KDE Gear
+application to KiCad and GNU Radio, are compiled by the same build and installed into the image
+like any other port. For software that is not ported, the ISO ships the *catalogue*, which
+describes each application as a stack of container image layers built from Debian packages; the
+machine that wants one builds it in a rootless Podman container. Discover offers both. See
+[Applications](applications.md), and [Packs and boxes](../03-architecture/packs-and-boxes.md) for
+the container format.
 
 When a build fails, read the failing step's log under `build/logs/` and check
 [Build troubleshooting](../05-developer/build-troubleshooting.md), which lists the recurring
@@ -160,13 +166,18 @@ missing, but QEMU cannot start with those options and no KVM, so treat `/dev/kvm
 The screen comes up at 1920x1080. Set `KDOS_RES` to change it, for example
 `make run KDOS_RES=2560x1440`.
 
-`make run` attaches a plain `virtio-vga` adapter, on which the compositor falls back to software
-rendering. The desktop works, but the *phosphor pass*, the compositor's CRT-style post-processing
-shader, does not run: the compositor applies it only on its GLES2 renderer. `make run-hw` boots
-the ISO, and `make rundisk-hw` the disk, through a containerised QEMU with virgl on your GPU, which
-is the configuration where the shader is on. It needs Docker with the NVIDIA Container Toolkit and
-`/dev/udmabuf`. See [The phosphor pass](theming.md#the-phosphor-pass) and
+`make run` attaches a plain `virtio-vga` adapter, on which KWin, the compositor, draws through
+Mesa's software renderer. The desktop works, but *Phosphor mode*, KDOS's optional CRT look, cannot
+be turned on there: its full-screen effect refuses software rendering, because a pass over every
+pixel of every frame would take the whole processor. `make run-hw` boots the ISO, and
+`make rundisk-hw` the disk, through a containerised QEMU with virgl on your GPU, where KWin renders
+on the GPU and Phosphor mode works. It needs Docker with the NVIDIA Container Toolkit and
+`/dev/udmabuf`. See [Phosphor mode](theming.md#phosphor-mode) and
 [Running the result](../05-developer/developing.md#running-the-result).
+
+In a virtual machine the screen never dims, blanks or locks by itself: KDOS puts a set of
+virtual-machine defaults in front of its usual ones when the session finds it is a guest (see
+[Locking, idle and power](desktop.md#locking-idle-and-power)).
 
 ## Write the medium
 
@@ -177,11 +188,12 @@ your stick. Everything on that device is lost:
 sudo dd if=build/iso-build/kdos.iso of=/dev/sdX bs=4M status=progress conv=fsync
 ```
 
-The stick must hold 32 GB or more. The same image boots four ways: BIOS and UEFI, from an optical
-drive (a BD-R; the image does not fit a DVD) and from a stick. It carries
-two El Torito boot records for optical drives, one for each firmware, and for a stick a partition
-table with an EFI System Partition plus BIOS boot code in its first sector, so the `dd` above is the
-whole job and there is no separate step to make the stick bootable.
+The stick must be at least as large as the ISO. The same image boots four ways: BIOS and UEFI, from
+an optical drive (a BD-R; the image does not fit a DVD) and from a stick. It carries two El Torito
+boot records for optical drives, one for each firmware, and for a stick a partition table with an
+EFI System Partition plus BIOS boot code in its first sector, so the `dd` above is the whole job and
+there is no separate step to make the stick bootable. ISO Image Writer, on any KDOS machine, does
+the same from a window.
 
 Once you have one working stick, a running KDOS system can copy itself to another without a second
 computer:
@@ -220,8 +232,9 @@ line.
 
 ### Reading the splash
 
-What you see during boot is the KDOS splash: a CRT power-on animation drawn directly to the
-framebuffer, with a progress bar and the name of each stage as it starts. The initramfs, the small
+What you see during boot is the KDOS splash, drawn directly to the framebuffer: the KDOS mark
+fading in, with a progress bar and the name of each stage as it starts. With Phosphor mode on it
+plays a CRT power-on instead (see [Phosphor mode](theming.md#phosphor-mode)). The initramfs, the small
 early filesystem the kernel starts from, runs the first stages; the service scripts of the real
 system run the rest. If a boot stops, the last stage named tells you where:
 
@@ -251,13 +264,20 @@ describes what happens at each stage.
 
 ## Log in
 
+When the service scripts have finished, the splash fades to black and hands the screen to the
+login screen, SDDM, in the KDOS look. The live medium logs in by itself; an installed machine
+shows the login screen and asks for a password, except on the one kind of installation that asks
+for automatic login (see [6. Accounts](installation.md#6-accounts)). After the login the KDOS
+splash for the session, KSplash, shows the same penguin in the same place while Plasma starts, so
+the boot, the login and the desktop read as one continuous start.
+
 The image ships one human account:
 
 | | |
 |---|---|
 | User name | `kdos` |
 | Password | `kdos` |
-| Groups | `wheel` (which grants `sudo`), plus `tty`, `dialout`, `audio`, `video`, `cdrom`, `render`, `input`, `kvm`, `users`, `seat` and `lpadmin` |
+| Groups | `wheel` (which grants `sudo` and the administrator's actions in System Settings), plus `tty`, `dialout`, `audio`, `video`, `cdrom`, `render`, `input`, `kvm`, `users` and `lpadmin` |
 
 On the live image the root password is also `kdos`. The [installer](installation.md) asks for your
 own user name and password, locks the root account by default, and never carries the live image's
@@ -267,39 +287,45 @@ The consoles are laid out like this:
 
 | Console | What it gives you |
 |---|---|
-| `tty1` | The desktop. On the live medium it logs in as `kdos` without asking; an installed system asks for a password unless it was installed with automatic login (see [Installation](installation.md)) |
-| `tty2` | An ordinary login prompt: the recovery console |
+| `tty1` | The login screen, and the desktop of an automatic login |
+| `tty2` | An ordinary text login prompt: the recovery console |
+| `tty3` and on | A desktop started from the login screen takes the next free console, normally `tty3` |
 | `ttyS0` | On the live medium, root logged in on the serial line, with no password. An installed system asks for a login there |
 
-At a text console, switch with `Alt+F1` and `Alt+F2`. From the desktop, `Ctrl+Alt+F2` reaches the
-recovery console, and `Alt+F1` returns to the desktop.
+From the desktop, `Ctrl+Alt+F2` reaches the recovery console; `Ctrl+Alt+F1` returns to the login
+screen, or to the desktop when it was an automatic login, and `Ctrl+Alt+F3` to a desktop the login
+screen started. At a text console, `Alt+F1` to `Alt+F3` do the same.
 
 ### How the desktop starts
 
-KDOS has no display manager and no graphical greeter. On `tty1`, `kdos-getty` loads the console
-font and the sixteen console colours of the current *accent* (the colour scheme the whole session
-is tinted with; see [Theming](theming.md)), then hands over to `kdos-login`, which starts
-`agetty` and logs in the account named by `autologin` in `/etc/kdos/login.conf` without asking for
-a password. The login shell's `~/.bash_profile` then starts the session with `kdos-desktop`, on
-`tty1` and nowhere else. The session is not started with `exec`, so if it fails to come up you are
-left at a shell on `tty1` rather than at a black screen, and the machine can still be repaired.
-`tty2` is a plain login whatever `tty1` does.
+`/etc/inittab` gives `tty1` to `kdos-dm`, which starts SDDM once the boot scripts have finished.
+SDDM's greeter runs on KWin with no X server anywhere on the path. When you log in, SDDM runs the
+KDOS session wrapper as you: it reads your login shell's profile, checks that your session bus
+answers, and starts Plasma. If SDDM cannot start, or exits three times within a minute, `kdos-dm`
+puts a text password prompt on `tty1` instead, never an automatic login, so the machine can still
+be repaired. `tty2` is a plain login whatever `tty1` does.
+[Boot and init](../03-architecture/boot-and-init.md#the-console) describes the console and the
+handover, and [The session](../03-architecture/session.md) everything that starts after the login.
 
-To be asked for a password on `tty1` instead, comment out the `autologin` line in
-`/etc/kdos/login.conf`:
+A text-console login opens with the KDOS banner, drawn one raster line at a time. It is printed
+only by the first shell of a terminal (`SHLVL` 1): a nested shell, or a shell inside a container,
+does not repeat it. Any keypress skips the rest of the animation, and setting `KDOS_NO_ANIM` prints it
+without one.
 
-```ini
-# autologin = kdos
-```
+![The KDOS banner at a text-console login](../../screenshots/tty-banner.png)
 
-Every console login and every new terminal window opens with the KDOS banner, drawn one raster
-line at a time. It appears once per terminal: a nested shell, or a shell inside a container, does
-not repeat it. Any keypress skips the rest of the animation, and setting
-`KDOS_NO_ANIM` prints it without one.
+The text console uses the KDOS console font, `ter-kdos32n`, at 16x32 pixels, in the colours of the
+machine's accent (see [The boot menu, the splash and the text consoles](theming.md#the-boot-menu-the-splash-and-the-text-consoles)).
 
-The text console uses the KDOS console font, `ter-kdos32n`, at 16x32 pixels. It has 512 glyphs,
-which is why parts of the system restrict themselves to a small set of symbols when they draw on a
-console; see [The design language](../03-architecture/design-language.md).
+### The first session
+
+The first login of an account opens the Welcome Center on the KDOS tour: pages for accessibility,
+the look (the accent, light or dark, Phosphor mode, Night Light and reduced motion), the *desk*
+(how the panels are laid out; see [The desks](desktop.md#the-desks)), the system, software and
+boxes, the offline library, the keys, privacy and the network, and help. Every choice there takes
+effect at once and can be changed later. On the live medium the tour opens at every login, on a
+page with a large **Install KDOS** button, and a second page offers to keep the session's changes
+on the stick.
 
 ## Keep what you change
 
@@ -313,10 +339,10 @@ sudo kdos persist create /dev/sdb   # on another device
 kdos persist                        # does a store exist, and is this session using it?
 ```
 
-`kdos persist create` adds one partition in the free space after the last partition on the device,
-by default the stick you booted from. Nothing already on the device is moved or rewritten. It asks
-you to type `yes` before it writes; `--yes` skips the question. It refuses to make a second store
-when one already exists.
+The live Welcome tour's persistence page runs the same command. `kdos persist create` adds one
+partition in the free space after the last partition on the device, by default the stick you
+booted from. Nothing already on the device is moved or rewritten. It asks you to type `yes` before
+it writes; `--yes` skips the question. It refuses to make a second store when one already exists.
 
 The store is found by its label rather than by a device name, so it can equally live on a second
 stick or an internal disk, and it keeps working when USB devices come up in a different order.
@@ -339,10 +365,14 @@ container an application runs in (see [Packs and boxes](../03-architecture/packs
 composed from an imported pack is worse off: the kernel will not stack its writable layer on the
 overlay, so that layer is always a tmpfs, persistence store or not (see
 [A live session cannot create a persistent box](../06-reference/known-gaps.md#a-live-session-cannot-create-a-persistent-box)).
-An installed system keeps both. It also boots faster, and it can be set up for A/B
-updates: two root partitions, where an update is written to the idle one and a boot that fails
-returns to the one known to work (see
-[A/B slot selection](../03-architecture/boot-and-init.md#ab-slot-selection)).
+An installed system keeps both. It also boots faster, and by default it is laid out for A/B
+updates: two root slots, where an update is written to the idle one and a boot that fails returns
+to the one known to work (see [A/B root slots](installation.md#ab-root-slots)).
+
+Start the installer from the **Install KDOS** icon on the live desktop, the Welcome tour's live
+page or Kickoff. It is a window that asks for the time zone, the keyboard, the disk, encryption,
+your account, the look and the applications, shows what it will do, and then does it. The same
+installer runs full-screen on a text console, a serial line or unattended from an answer file:
 
 ```sh
 sudo kinstall
@@ -355,47 +385,47 @@ this is a known defect (see
 [Applications imported or built during an install stay in the live session](../06-reference/known-gaps.md#applications-imported-or-built-during-an-install-stay-in-the-live-session)).
 Only a recorded choice reaches the new disk. To get applications onto the installed machine,
 install with no network and no exported set attached, so that the installer records the choice, or
-install them from the store after the first login (see
+install them from Discover after the first login (see
 [Installation, 8. Applications](installation.md#8-applications)). The installer is described in
 full in [Installation](installation.md), and the program itself in
 [kinstall](../04-programs/kinstall.md).
 
 ## First things to try
 
-Open a terminal with `Super+Return` (the default terminal is `foot`) and run:
+Open a terminal with `Meta+Return` or `Ctrl+Alt+T` (Konsole; `Meta` is the key with the Windows or
+Command logo) and run:
 
 ```sh
 kdos help                # the system's commands, and where each kind of software lives
 kdos doctor              # checks for the things that commonly break on this system
-kdos status              # packages, containers and exported applications
-kdos app list --all      # the application catalogue on your medium
-kdos theme amber         # retint the entire session, live
+kdos status              # packages, boxes, exported applications and the session
+kdos theme amber         # retint the entire machine, live
+kdos desk dock           # lay the panels out as the Dock desk; `kdos desk undo` puts them back
 ```
 
-`kdos theme amber` shows the desktop's colour system at work. The panel, the desktop icons, the
-window frames, the wallpaper and the phosphor shader all change colour at once, with nothing
-restarted. `kdos theme bone` restores the default, and `Super+Ctrl+Shift+Space` opens a picker that
-previews each accent as you move over it. [Theming](theming.md) lists all eight accents.
+`kdos theme amber` shows the colour system at work. Plasma, every KDE application, the open
+Konsole windows, the wallpaper, the lock and login screens, the boot menu and the text consoles all
+take the amber accent, with nothing restarted. `kdos theme bone` restores the default. The same
+choice is a swatch on System Settings' KDOS Look page, and picking a KDOS global theme on the
+Global Theme page carries it to the rest of the machine as well. [Theming](theming.md) lists all
+eight accents.
 
-![The amber accent across the panel, the desktop and the windows](../../screenshots/theme-amber.png)
-
-![The keybinding card, which opens on first login; Super+F1 brings it back](../../screenshots/keys.png)
-
-The keybinding card above opens by itself on your first login. `Super+F1` opens it again at any
-time; it is generated from the compositor's own key bindings, so it matches the bindings in force.
+`Meta+Space` (or `Alt+Space`) opens KRunner, which is also KDOS's command palette: type `accent
+amber`, `desk tiling`, `doctor`, `previous version` or `keys tile` and press `Enter`. `Meta+F1`
+opens the key card, every global shortcut the session holds, read from the live bindings each
+time, so it matches what you have rebound. [The desktop](desktop.md) describes both.
 
 When the installer recorded your choice of applications, which it does when the machine has no
 network and no exported set during the install, or when an import or a build fails, your first
 session shows a notification saying they are ready to install rather than starting a long build
-unannounced. Run
-`kdos app install --pending` when you are ready, or open the application store, `kdos-store`, from
-the Start menu (see [Applications](applications.md#the-store)).
+unannounced. Run `kdos app install --pending` when you are ready, or open Discover (see
+[Applications](applications.md#discover)).
 
 ## See also
 
 - [Installation](installation.md): the installer, page by page
-- [The desktop](desktop.md): the panel, menus, windows and keybindings
-- [Applications](applications.md): the catalogue, boxes and installing applications
+- [The desktop](desktop.md): the desks, the panel, KRunner, windows and keyboard shortcuts
+- [Applications](applications.md): native applications, Discover, the catalogue and boxes
 - [Administration](administration.md): services, networking, hardware and updates
 - [How KDOS is built](../05-developer/how-kdos-is-built.md): what `make build` does, phase by phase
 - [Developing](../05-developer/developing.md): build targets and the fast iteration loops

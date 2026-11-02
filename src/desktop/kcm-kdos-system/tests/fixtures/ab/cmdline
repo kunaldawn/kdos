@@ -1,0 +1,1 @@
+BOOT_IMAGE=/EFI/kdos/a/vmlinuz root=UUID=5f0c8a1e-2b44-4c1d-9a51-0d7e3b9c1a01 kdos_slot=a quiet loglevel=3

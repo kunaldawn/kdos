@@ -1,0 +1,25 @@
+Subject: Hide "Download New Molecules" when KNewStuff is not allowed
+
+The molecule viewer's button opens a KNSWidgets::Dialog directly, so it
+stays visible under [KDE Action Restrictions] ghns=false and opens a dialog
+that only says it is not allowed. The button now takes the visibility
+KNewStuff's own buttons take from the same kiosk check.
+
+--- a/src/tools/moleculeview.cpp
++++ b/src/tools/moleculeview.cpp
+@@ -16,6 +16,7 @@
+ #include <QFileInfo>
+ #include <QUrl>
+ 
++#include <KAuthorized>
+ #include <KIO/FileCopyJob>
+ #include <KIO/Job>
+ #include <KJob>
+@@ -66,6 +67,7 @@
+     KGuiItem::assign(user1Button, KGuiItem(i18n("Load Molecule")));
+ 
+     KGuiItem::assign(user2Button, KGuiItem(i18n("Download New Molecules")));
++    user2Button->setVisible(KAuthorized::authorize(KAuthorized::GHNS));
+ 
+     KGuiItem::assign(user3Button, KGuiItem(i18n("Save Molecule")));
+ 

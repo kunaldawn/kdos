@@ -1,8 +1,8 @@
 # Access point
 
 This page covers making a KDOS machine's wireless card an [access point]{.idx} that other devices
-join. There are two ways. The **[hotspot]{.idx}** shares the machine's own connection: [`kdos-net`]{.idx} or
-`nmcli` asks NetworkManager for it, and NetworkManager runs everything it needs. **hostapd** makes
+join. There are two ways. The **[hotspot]{.idx}** shares the machine's own connection: the network applet, System
+Settings or `nmcli` asks NetworkManager for it, and NetworkManager runs everything it needs. **hostapd** makes
 the machine itself the network, an access point that stays up across reboots with or without an
 uplink, configured by hand.
 
@@ -15,7 +15,7 @@ uplink, configured by hand.
 | [nftables](#port-nftables) | The [firewall]{.idx}, and the address translation NetworkManager installs for a hotspot |
 | [hostapd](#port-hostapd) | `hostapd` and `hostapd_cli` |
 | [iw](#port-iw) | `iw`, which shows what a card can do |
-| [kdos-shell](#port-kdos-shell) | `kdos-net`, whose `h` key starts and stops the hotspot |
+| [plasma-nm](#port-plasma-nm) | The network applet's **Hotspot** button, and the hotspot's name and passphrase in System Settings → **Wi-Fi & Networking** |
 
 All are on every image. `hostapd` has a service script, [`/etc/init.d/46_hostapd.sh`]{.idx}, which is
 enabled but starts nothing until [`/etc/hostapd/hostapd.conf`]{.idx} exists: at boot it writes
@@ -31,7 +31,8 @@ iw list
 
 Under `Supported interface modes`, the list must include `* AP`. `iw list` prints nothing on a
 machine with no wireless card, and `nmcli device wifi hotspot` there answers *Error: No Wi-Fi
-device found.* `kdos-net` offers its `h` key only for a radio that reports the capability.
+device found.* The network applet offers its Hotspot button only for a radio that reports the
+capability.
 
 ## Configuration
 
@@ -40,11 +41,11 @@ device found.* `kdos-net` offers its `h` key only for a radio that reports the c
 The shipped firewall drops incoming and forwarded traffic by default. These lines of
 [`/etc/nftables.conf`]{.idx}, from `fs/`, let a hotspot's clients get an address and a resolver:
 
-<!-- kfs:include fs/etc/nftables.conf lines=89-102 pin=fe5a9ae7c603 -->
+<!-- kfs:include fs/etc/nftables.conf lines=105-118 pin=de6e257bf90b -->
 
 and let their traffic through the machine:
 
-<!-- kfs:include fs/etc/nftables.conf lines=116-130 pin=648bdf43390b -->
+<!-- kfs:include fs/etc/nftables.conf lines=132-146 pin=648bdf43390b -->
 
 Both are scoped to `10.42.0.0/16`, the range NetworkManager gives shared connections. A network of
 your own made with `hostapd` gets none of this; see
@@ -54,10 +55,11 @@ NetworkManager's own tables survive a reload is in
 
 ### The hotspot profile
 
-`kdos-net` creates a profile named *KDOS hotspot* for the network `KDOS`, with WPA-PSK and
-`autoconnect` off, so a hotspot never takes the radio at the next boot. The passphrase must be
-eight characters or more. `nmcli device wifi hotspot` creates a profile named *Hotspot*, also with
-`autoconnect` off. Both are kept in `/etc/NetworkManager/system-connections/`.
+The network applet creates a profile named *Hotspot*, with the name and passphrase set under
+System Settings → **Wi-Fi & Networking** → **Wi-Fi Hotspot**, and `autoconnect` off, so a hotspot
+never takes the radio at the next boot. The passphrase must be eight characters or more.
+`nmcli device wifi hotspot` creates a profile named *Hotspot* as well, also with `autoconnect`
+off. Both are kept in `/etc/NetworkManager/system-connections/`.
 
 NetworkManager starts a separate [`dnsmasq`]{.idx} for each shared connection. It reads any files in
 [`/etc/NetworkManager/dnsmasq-shared.d/`]{.idx term="/etc/NetworkManager/dnsmasq-shared.d"}, and keeps its leases in
@@ -80,11 +82,13 @@ Every key is described in [`/etc/hostapd/hostapd.conf.example`]{.idx} itself; `h
 
 ### Sharing the connection from the desktop
 
-1. Open `kdos-net` with `Super+F4`.
-2. Press `h`, type a passphrase of at least eight characters, and press `Enter`. Once the
-   access point is up, the `h` hint on the bottom row reads *hotspot off*.
-3. On the other device, join the network `KDOS` with that passphrase.
-4. Press `h` again to stop. The radio then goes back to the saved network it is normally on.
+1. Set the hotspot's name and a passphrase of at least eight characters once, on System Settings →
+   **Wi-Fi & Networking** → **Wi-Fi Hotspot**.
+2. Click the network applet in the tray, then **Hotspot**. The applet shows the network's name
+   and passphrase while it runs.
+3. On the other device, join that network with that passphrase.
+4. Click **Hotspot** again to stop. The radio then goes back to the saved network it is normally
+   on.
 
 ### Sharing the connection from a terminal
 
@@ -182,7 +186,7 @@ boot.
 
 ## Troubleshooting
 
-**`kdos-net` says "no radio here can be an access point".**
+**The network applet offers no Hotspot button.**
 No wireless device reported the access-point capability. `iw list` shows whether the card lists
 `AP` among its interface modes; if it does not, the card or its driver cannot serve.
 
@@ -223,8 +227,8 @@ in a virtual machine there is no wireless device to check.
 ## See also
 
 - [An access point with hostapd](../../kdos/02-user-guide/administration.md#an-access-point-with-hostapd)
-- [kdos-net](../../kdos/04-programs/kdos-shell.md#kdos-net): the hotspot key and why its NAT survives
-  a firewall change
+- [Firewall](../../kdos/04-programs/kdos-settings.md#firewall): the named services the access point
+  needs open
 - [The firewall](../../kdos/02-user-guide/administration.md#the-firewall)
 - [NetworkManager](networkmanager.md), [DNS](dns.md),
   [Wireless regulatory domain](wireless-regulatory-domain.md)
@@ -233,4 +237,4 @@ in a virtual machine there is no wireless device to check.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 391.* Previous: [390. Mobile broadband](mobile-broadband.md) · [Contents](../README.md) · Next: [392. Wireless regulatory domain](wireless-regulatory-domain.md)
+*Part XVI. System administration, chapter 415.* Previous: [414. Mobile broadband](mobile-broadband.md) · [Contents](../README.md) · Next: [416. Wireless regulatory domain](wireless-regulatory-domain.md)

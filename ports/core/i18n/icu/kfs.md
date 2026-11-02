@@ -6,10 +6,6 @@ time zones, and conversion between character sets. In KDOS it sits under
 [harfbuzz](#port-harfbuzz), [libxml2](#port-libxml2), boost, both Qt series, the web engines,
 [nodejs](#port-nodejs)'s `Intl`, and postgresql's collation, among others.
 
-[kdos-shell](#port-kdos-shell) depends on it without linking it: it runs a small program against
-ICU at build time to write `/usr/share/kdos/charnames.idx`, the index of Unicode character names
-the character picker searches, and ships that file instead of the library.
-
 The source is upstream's archive of the release tag, which holds ICU for C, ICU for Java and the
 tools beside them; the build uses `icu4c/source` alone. The tag archive carries the locale data
 in source form, so configure runs python3's `icutools.databuilder` to write the data build's

@@ -1,0 +1,17 @@
+Subject: Hide the "Download Deck" card when KNewStuff is not allowed
+
+Under [KDE Action Restrictions] ghns=false the card's NewStuff.Action
+disables itself, but the card that carries it stays on the welcome page
+and does nothing when clicked. The card now takes the visibility of the
+kiosk check the action reads.
+
+--- a/src/qml/WelcomePage.qml
++++ b/src/qml/WelcomePage.qml
+@@ -82,6 +82,7 @@
+             },
+             FormCard.FormGridContainer.InfoCard {
+                 title: i18n("Download Deck")
++                visible: NewStuff.Settings.allowedByKiosk
+                 action: NewStuff.Action {
+                     id: newStuffButton
+                     configFile: "kwordquiz.knsrc"

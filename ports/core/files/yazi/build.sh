@@ -38,7 +38,6 @@ Comment=Browse files with yazi
 Exec=yazi %f
 Icon=folder
 Terminal=true
-X-KDOS-Term=kdos-term
 Categories=System;FileTools;FileManager;
 Keywords=file;manager;browser;yazi;preview;
 EOF

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kde-inotify-survey
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = f20daceb85f945ea8ffe33b6e32eeab260da80fa79332cc99bae7a5a47ae6741  kde-inotify-survey-26.08.2.tar.xz
+description = Warns when the inotify watch and instance limits run out, and raises them on request
+homepage    = https://invent.kde.org/system/kde-inotify-survey
+license     = (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND BSD-3-Clause AND FSFAP AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kauth kcoreaddons kdbusaddons kded ki18n knotifications polkit procps-ng

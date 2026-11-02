@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kblackbox
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 72eab8cb7f50586193bfd3a9f810450bd770d5d894e867e181aa86a88969aa21  kblackbox-26.08.2.tar.xz
+description = Black Box logic game: find the hidden balls by firing laser rays into the box
+homepage    = https://apps.kde.org/kblackbox/
+license     = GPL-2.0-or-later AND GFDL-1.2-or-later AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg karchive kconfig kcoreaddons kcrash kdbusaddons kdoctools ki18n kiconthemes ktextwidgets kwidgetsaddons kxmlgui libkdegames gzip

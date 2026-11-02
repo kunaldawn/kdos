@@ -1,0 +1,27 @@
+Subject: start KMix at login only when the user asks for it
+
+The autostart entry and the AutoStart setting both default to off, so a
+Plasma session keeps plasma-pa as its one volume control in the tray.
+
+--- a/core/settings.kcfg
++++ b/core/settings.kcfg
+@@ -57,7 +57,7 @@
+     <!-- Set by KMixPrefDlg, read by kmix_autostart.desktop	-->
+ 
+     <entry name="AutoStart" type="Bool">
+-      <default>true</default>
++      <default>false</default>
+     </entry>
+ 
+     <!-- Saved by KMixWindow::saveBaseConfig() and loaded	-->
+--- a/desktop/kmix_autostart.desktop
++++ b/desktop/kmix_autostart.desktop
+@@ -7,7 +7,7 @@
+ X-KDE-autostart-after=pulseaudio
+ X-KDE-StartupNotify=false
+ X-DBUS-StartupType=Unique
+-X-KDE-autostart-condition=kmixrc:Global:AutoStart:true
++X-KDE-autostart-condition=kmixrc:Global:AutoStart:false
+ Icon=kmix
+ GenericName=Sound Mixer
+ GenericName[ar]=مازج الصوت

@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = angelfish
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 0ba812724148200a738e063989467412082285f08c93178288cc447a6c64027a  angelfish-26.08.2.tar.xz
+sha256      = 18f87b26969b293a77bc84ac52d3bba69ba06f7455f019d6267502fbee72e0d3  angelfish-vendor-26.08.2.tar.xz
+description = KDE web browser for phone and desktop — QtWebEngine tabs, a built-in ad blocker and web-app launchers
+homepage    = https://apps.kde.org/angelfish/
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later AND LGPL-2.0-only AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND BSD-2-Clause AND BSD-3-Clause AND MIT AND CC0-1.0 AND MPL-2.0 AND (MIT OR Apache-2.0) AND Apache-2.0 AND Unicode-3.0 AND Zlib
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qtwebengine qt6-qt5compat kirigami kirigami-addons purpose ki18n kconfig kcoreaddons kdbusaddons kwindowsystem knotifications kcrash qqc2-desktop-style futuresql qcoro corrosion rust
+vendoring   = rust

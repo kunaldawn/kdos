@@ -57,7 +57,9 @@ xauth
 xhost
 
 # A program with no Wayland path — Xastir, VLC 3, a Motif, Tk or Swing program,
-# native or boxed — runs on Xwayland, the one X server. kdos-comp runs it
-# rootlessly itself (wlroots does the work). The client libraries those
+# native or boxed — runs on Xwayland, the one X server. KWin starts it
+# rootless when the first X11 client connects. The client libraries those
 # programs link are on the x11 shelf.
 xwayland
+
+xsettingsd

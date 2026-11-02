@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = plasmoid-kdos-privacy
+version     = 1.0.0
+release     = 1
+description = Privacy lamps for the system tray: microphone, camera and screen, naming the program and its box
+homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kcoreaddons ki18n kirigami libplasma plasma-workspace kdos-tools

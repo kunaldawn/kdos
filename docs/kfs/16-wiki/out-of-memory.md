@@ -32,12 +32,12 @@ stall amount in microseconds and the window it is measured over, `KO_COOLDOWN` i
 time between two scans, and `KO_AVAIL_PCT` is the share of `MemTotal` that `MemAvailable` in
 `/proc/meminfo` must be at or under before a stall kills anything:
 
-<!-- kfs:include src/daemons/kdos-oomd/main.c lines=64-70 pin=80fc432106d5 -->
+<!-- kfs:include src/daemons/kdos-oomd/main.c lines=67-73 pin=80fc432106d5 -->
 
 The programs it never chooses, matched by process name; every process whose name starts with
 `pipewire` is spared as well:
 
-<!-- kfs:include src/daemons/kdos-oomd/main.c lines=240-253 pin=86589480a7f6 -->
+<!-- kfs:include src/daemons/kdos-oomd/main.c lines=255-271 pin=5aab71029e8c -->
 
 **`/etc/init.d/57_oomd.sh`**, from `fs/etc/init.d/57_oomd.sh`:
 
@@ -76,8 +76,8 @@ Two settings outside the daemon change its choice:
 
 ### Finding out what it has done
 
-1. Ask the daemon. The socket answers root and members of `seat` and `wheel`, which the desktop
-   account is in:
+1. Ask the daemon. The socket answers root, members of `wheel`, and a user with an active elogind
+   session on the seat, which the person at the desktop has:
 
    ```bash
    echo status | socat - UNIX-CONNECT:/run/kdos-oomd.sock
@@ -195,8 +195,8 @@ cat /run/kdos-init.oomd.log
 
 Start it with `sudo service start oomd`, the command the doctor's warning names.
 
-**`socat` prints `err not permitted`.** The account is in neither `seat` nor `wheel`. Run it with
-`sudo`, or see [Users and groups](users-and-groups.md).
+**`socat` prints `err not permitted`.** The account is not in `wheel` and has no active session on
+the seat, as over SSH. Run it with `sudo`; `kdos-oomd --explain <user>` says which applies.
 
 **The desktop froze and no kill was logged.** Check the count with the `status` query above, then
 the pressure: a machine whose `full` stall stays under `KO_TRIGGER` does not fire it, and one whose
@@ -240,4 +240,4 @@ lowered score, as *Keeping one process out of its reach* under [Usage](#usage) s
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 365.* Previous: [364. zram and swap](zram-and-swap.md) · [Contents](../README.md) · Next: [366. Time and NTP](time-and-ntp.md)
+*Part XVI. System administration, chapter 389.* Previous: [388. zram and swap](zram-and-swap.md) · [Contents](../README.md) · Next: [390. Time and NTP](time-and-ntp.md)

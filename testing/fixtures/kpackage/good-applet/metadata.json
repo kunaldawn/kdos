@@ -1,0 +1,9 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Id": "org.kdos.fixture",
+        "Name": "Fixture",
+        "Description": "A plasmoid whose metadata passes"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

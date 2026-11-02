@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = umbrello
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 3ec1e7e7bf167fde51313a709635cd946fd27fb62e7d3255f1844c76afaa0acf  umbrello-26.08.2.tar.xz
+description = UML modeller — class, sequence, state and entity diagrams, code import and code generation
+homepage    = https://apps.kde.org/umbrello/
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND LGPL-2.0-only AND GPL-3.0-only AND GPL-3.0-or-later AND MIT AND BSD-3-Clause AND GFDL-1.2-or-later AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg karchive kcompletion kconfig kcoreaddons kcrash kdoctools ki18n kiconthemes kio ktexteditor kwidgetsaddons kwindowsystem kxmlgui libxml2 libxslt graphviz

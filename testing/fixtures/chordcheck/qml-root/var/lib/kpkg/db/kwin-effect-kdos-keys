@@ -1,0 +1,4 @@
+kwin-effect-kdos-keys 1.0.0-1
+./usr/share/kwin/effects/kdos_keys/
+./usr/share/kwin/effects/kdos_keys/metadata.json
+./usr/share/kwin/effects/kdos_keys/contents/ui/main.qml

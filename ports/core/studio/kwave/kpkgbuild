@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = kwave
-version     = 26.08.1
+version     = 26.08.2
 release     = 1
 source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
-sha256      = 7f64ac6a23a8e3d7600451f05e610e7d028220a1f0aedcbdcf7e249c3bab3f15  kwave-26.08.1.tar.xz
+sha256      = d4ff633303e870e0e9c59eb7adfc4b2f5ad82b6cfb34a4b36de6548c70845a78  kwave-26.08.2.tar.xz
 description = KDE sound editor — record, cut, filter and convert WAV, FLAC, MP3, Ogg Vorbis and Opus
 homepage    = https://apps.kde.org/kwave/
 license     = GPL-2.0-or-later

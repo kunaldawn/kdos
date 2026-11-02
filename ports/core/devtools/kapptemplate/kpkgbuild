@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kapptemplate
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 1fa05808863df97682959280eb7b3bc5255099a10e1507e66dbed50a83f30521  kapptemplate-26.08.2.tar.xz
+description = Project template generator — KDE Frameworks, Kirigami, plasmoid and KParts skeletons for a new program
+homepage    = https://apps.kde.org/kapptemplate/
+license     = GPL-2.0-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND LGPL-2.1-or-later AND CC-BY-SA-4.0 AND GFDL-1.2-or-later AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative karchive kconfig kconfigwidgets kcoreaddons kdoctools ki18n kiconthemes kirigami kirigami-addons kitemmodels qqc2-desktop-style

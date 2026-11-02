@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ksquares
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = cc9bd384f0225b8c2fbba21b3b9d19d8aa03244dbca66b91b669586570fd3e5f  ksquares-26.08.2.tar.xz
+description = Dots and Boxes: draw lines and complete squares, against the computer or friends
+homepage    = https://apps.kde.org/ksquares/
+license     = GPL-2.0-or-later AND GFDL-1.2-or-later AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcompletion kconfig kconfigwidgets kcoreaddons kcrash kdbusaddons kdoctools ki18n kwidgetsaddons kxmlgui libkdegames

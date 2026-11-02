@@ -17,16 +17,16 @@ Read the map below before touching anything.
 | Why the system is shaped this way | [`01-philosophy/why-kdos.md`](docs/kdos/01-philosophy/why-kdos.md), [`principles.md`](docs/kdos/01-philosophy/principles.md), [`decisions.md`](docs/kdos/01-philosophy/decisions.md) |
 | How KDOS differs from other distributions, and why | [`01-philosophy/how-kdos-differs.md`](docs/kdos/01-philosophy/how-kdos-differs.md) |
 | The boot path, initramfs, splash, A/B slots, the login | [`03-architecture/boot-and-init.md`](docs/kdos/03-architecture/boot-and-init.md) |
-| The session bus, portals, audio, supervised chrome, the box environment | [`03-architecture/session.md`](docs/kdos/03-architecture/session.md) |
+| The login, elogind, per-user services (bus, PipeWire), portals, the box environment | [`03-architecture/session.md`](docs/kdos/03-architecture/session.md) |
 | Ports, packages, the solver, reproducibility, the binhost, deltas | [`03-architecture/packaging.md`](docs/kdos/03-architecture/packaging.md) |
 | The pack format, the bake, mounting, composition, grafts | [`03-architecture/packs-and-boxes.md`](docs/kdos/03-architecture/packs-and-boxes.md) |
 | Signing, setuid, daemon authorisation, the sandbox | [`03-architecture/security-model.md`](docs/kdos/03-architecture/security-model.md) |
 | Where a window goes, tiling, snapping, workspaces | [`03-architecture/window-model.md`](docs/kdos/03-architecture/window-model.md) |
-| **Drawing anything** — colour, chrome, the pointer contract, glyph tiers | [`03-architecture/design-language.md`](docs/kdos/03-architecture/design-language.md) |
-| The compositor and its grafts | [`04-programs/kdos-comp.md`](docs/kdos/04-programs/kdos-comp.md) |
-| The panel and its 54 surfaces | [`04-programs/kdos-shell.md`](docs/kdos/04-programs/kdos-shell.md) |
-| The resource monitor | [`04-programs/kdos-res.md`](docs/kdos/04-programs/kdos-res.md) |
-| The terminal, its keys and clipboards, and pictures in one | [`04-programs/kdos-term.md`](docs/kdos/04-programs/kdos-term.md) |
+| **Drawing anything** — the KDOS look kit: accents and colour schemes, Plasma style, decoration, fonts, Phosphor mode | [`03-architecture/design-language.md`](docs/kdos/03-architecture/design-language.md) |
+| KWin, its effects and the KDOS decoration | [`04-programs/kwin.md`](docs/kdos/04-programs/kwin.md) |
+| The Plasma shell, layouts, KDOS plasmoids and the runner | [`04-programs/plasma-shell.md`](docs/kdos/04-programs/plasma-shell.md) |
+| KDOS settings pages (KCMs) | [`04-programs/kdos-settings.md`](docs/kdos/04-programs/kdos-settings.md) |
+| Discover, updates and the A/B slots | [`04-programs/discover.md`](docs/kdos/04-programs/discover.md) |
 | Launching boxed apps, launcher generation, box profiles | [`04-programs/kdos-appbox.md`](docs/kdos/04-programs/kdos-appbox.md) |
 | Any root daemon | [`04-programs/daemons.md`](docs/kdos/04-programs/daemons.md) |
 | The installer | [`04-programs/kinstall.md`](docs/kdos/04-programs/kinstall.md) |
@@ -38,8 +38,8 @@ Read the map below before touching anything.
 | Choosing a port's shelf (`ports/core/<shelf>/<name>/`, the closed list in `ports/shelves`) | [`05-developer/writing-ports.md`](docs/kdos/05-developer/writing-ports.md) |
 | **A build that failed** | [`05-developer/build-troubleshooting.md`](docs/kdos/05-developer/build-troubleshooting.md) |
 | The `libk*` libraries | [`05-developer/c-libraries.md`](docs/kdos/05-developer/c-libraries.md) |
-| **Writing a new surface** | [`05-developer/writing-desktop-software.md`](docs/kdos/05-developer/writing-desktop-software.md) |
-| Tests, fixtures, goldens, the rig | [`05-developer/testing.md`](docs/kdos/05-developer/testing.md) |
+| **Writing KDOS desktop code** — a KCM, plasmoid, runner or KWin effect | [`05-developer/writing-desktop-software.md`](docs/kdos/05-developer/writing-desktop-software.md) |
+| Tests, fixtures, AT-SPI and QtTest, the rig | [`05-developer/testing.md`](docs/kdos/05-developer/testing.md) |
 | Every command / config key / socket / path | [`06-reference/`](docs/kdos/06-reference/command-index.md) |
 | Every port, by shelf and phase | [`06-reference/ports-catalogue.md`](docs/kdos/06-reference/ports-catalogue.md) |
 | What does not exist | [`06-reference/known-gaps.md`](docs/kdos/06-reference/known-gaps.md) |
@@ -85,23 +85,38 @@ stale-pessimistic one makes them re-verify something that already works.
    Both carry the same warning. Only the second is still true in five years, and
    only the second survives the surrounding code being rewritten.
 
-3. **No systemd.** No `systemd-*` on the host. See
-   [principles](docs/kdos/01-philosophy/principles.md#no-systemd) for the
-   replacements and what the choice costs.
+3. **No systemd init, unit files or service manager.** PID 1 is sysvinit;
+   services are `rcS` scripts supervised by `ksvc`, and per-user services run
+   under turnstile's `ksvc` backend. `elogind` is the one logind provider and
+   `basu` the one sd-bus library. A KDOS daemon may serve a documented subset
+   of a freedesktop D-Bus API that systemd also serves (`sysupdate1`,
+   `hostname1`, `timedate1`, `locale1`); `kpkg` refuses `usr/lib/systemd`, so
+   no recipe installs a unit. See
+   [principles](docs/kdos/01-philosophy/principles.md#no-systemd-init-units-or-service-manager)
+   for each replacement and what the choice costs.
 
-4. **No Xorg server.** No `xorg-server`, no display manager, nothing X on the
-   login path, and `fs/etc/X11/` must never exist. Xwayland is the one X
-   server: it serves boxed applications and host applications that have no
-   Wayland path. X client libraries may be linked by any application that
-   needs them.
+4. **No Xorg server.** No `xorg-server` and nothing X on the login path. SDDM
+   is the display manager, built against `elogind`, and runs its greeter on
+   `kwin_wayland` (`DisplayServer=wayland`); there is no X11 session.
+   `fs/etc/X11/` must never exist and `kpkg` refuses `etc/X11`. Xwayland is
+   the one X server: KWin starts it for boxed applications and host
+   applications that have no Wayland path. X client libraries may be linked
+   by any application that needs them.
 
-5. **Toolkits are for applications, never for the desktop.** Applications may
-   be ported natively with GTK 3/4, libadwaita, Qt 5/6, KDE Frameworks,
-   wxWidgets, FLTK or Tk, built with their Wayland backend as the run-time
-   default. The desktop itself (`kdos-comp`, `kdos-shell`, the daemons and
-   portals) draws cells and links no toolkit, and there is no Plasma or GNOME
-   shell. Why, and what is ported, is in
-   [`principles.md`](docs/kdos/01-philosophy/principles.md#toolkits-are-for-applications-not-the-desktop)
+5. **The desktop is KDE Plasma; KDOS's desktop code is Qt 6 and KDE
+   Frameworks.** Plasma, KWin and KDE Gear run Wayland-only. KDOS code that
+   is part of the desktop (KCMs, plasmoids, the KRunner runner, KWin effects
+   and scripts, the window decoration, Discover backends, the SDDM theme and
+   the graphical installer front end) lives under `src/desktop/` and may link
+   Qt 6, KDE Frameworks 6 and Plasma's libraries, and no other toolkit. Code
+   under `src/system/`, `src/daemons/` and `src/art/`, every `libk*` library
+   and every program that runs as root or before the login links no toolkit.
+   Applications may be ported natively with GTK 3/4, libadwaita, Qt 5/6, KDE
+   Frameworks, wxWidgets, FLTK or Tk, built with their Wayland backend as the
+   run-time default. A `.patch` against a KDE module is allowed under rule 9
+   when no flag exists; it is offered upstream at the same time, and its
+   `kfs.md` names the merge request. Why, and what is ported, is in
+   [`principles.md`](docs/kdos/01-philosophy/principles.md#the-desktop-is-kde-plasma)
    and [`applications.md`](docs/kdos/02-user-guide/applications.md).
 
 6. **No rationale comments in a recipe.** Banner header plus the metadata keys
@@ -161,12 +176,19 @@ end-to-end walkthrough are in
 
 - **Prefixed symbols.** Every exported symbol in a `libk*` library carries its
   library's prefix. Unprefixed generic names have already made two of our own
-  programs unlinkable together.
+  programs unlinkable together. KDOS Qt code is in the C++ namespace `Kdos`;
+  its D-Bus names and polkit actions are `io.kdos.*`, its KCM ids `kcm_kdos_*`,
+  its plugin ids `org.kdos.*` and its translation domains `kdos-<name>`.
 - **No `system()` and no shell** in a program that handles names from desktop
   entries or from a command line. Everything executes through the argument-vector
-  builder.
-- **Colour comes from a slot, never a literal.** `KT_MID` for labels; `KT_DIM`
-  is a fill.
+  builder, and Qt code through `QProcess` with a program and an argument list,
+  never `sh -c` or a command string.
+- **Colour comes from a slot or a role, never a literal.** In `libktui` code
+  `KT_MID` is for labels and `KT_DIM` is a fill. In Qt code QML reads
+  `Kirigami.Theme` roles and C++ reads `KColorScheme`, and a shader takes its
+  colours as uniforms; the KDOS accents reach Plasma only as the `.colors`
+  files generated from `libkcolor`'s palette, and a colour literal in
+  `src/desktop` QML or C++ fails preflight.
 - **Match the surrounding code** — its comment density, its naming, its idiom.
 
 ### Comments
@@ -184,8 +206,8 @@ make fetch-check                                 # offline: what is missing or w
 make build                                       # everything — no network
 make build BUILD_ARGS=--fresh                    # skip the picker
 make build BUILD_ARGS="--continue-from 41_system"
-make run            # plain graphics: no phosphor pass
-make run-hw         # accelerated: the pass is on
+make run            # plain graphics: KWin on llvmpipe, Phosphor mode cannot load
+make run-hw         # virgl: Phosphor mode and the motion effects run
 make book BUILDFS=build/fs     # KDOS from Scratch into build/kfs: html/, kfs.pdf, kfs-html.tar.zst (~2 min)
 make book-data BUILDFS=build/fs  # rewrite docs/kfs/data from a built tree; after a build
 make book-stamp                  # rewrite docs/kfs/data/recipes.stamp alone; no built tree
@@ -206,7 +228,8 @@ with `python3 testing/kfscheck.py --repin`.
 |---|---|
 | Something under `fs/` | `make build BUILD_ARGS="--phases 10_bootstrap,70_image --steps 10_bootstrap:000_file_system.sh"` |
 | One port | `make build BUILD_ARGS="--phases <phase>,70_image --rebuild <port>"` — `<phase>` is the one whose list names the port (`grep -rlx <port> script/phases/*/packages*`), e.g. `41_system` |
-| A desktop program | `make build BUILD_ARGS="--phases 50_desktop --rebuild <port>"` |
+| KDOS desktop code (`src/desktop`) | `make build BUILD_ARGS="--phases 50_desktop --rebuild <port>"` |
+| A KDE module | `make build BUILD_ARGS="--phases <phase>,70_image --rebuild <port>"`; a Plasma, KDE Frameworks or Gear version bump moves the whole release set, so it rebuilds every port of that family |
 | Only packaging | `make build BUILD_ARGS="--phases 70_image"` |
 
 **Rules while building:**
@@ -238,6 +261,10 @@ with `python3 testing/kfscheck.py --repin`.
   with a cleared environment, so a variable must be named in `script/chroot/exec.sh`
   as well as passed by the `Makefile`, or it reaches every host step and no
   chroot one.
+- **A Plasma, KDE Frameworks or Gear port at a version other than its release
+  set's fails preflight.** Bump the whole family in one change; Plasma's
+  modules require each other at one version, and Gear's PIM modules pin each
+  other exactly.
 
 **Before believing a change:**
 
@@ -250,6 +277,7 @@ bash testing/docscheck.sh                # either book's pages; --book docs/kfs 
 python3 testing/anchorcheck.py           # every #fragment in both books lands on a heading
 python3 testing/booknav.py               # chapter footers and docs/kfs contents; --write after adding or moving a page
 make check                               # every check above but the ASan selftest, plus phaseclosure
+make plasmatest                          # KDOS Qt code: QtTest, qmllint, package installs; the devdeps container only
 ```
 
 A new or changed `.patch` without a `Subject:` line fails preflight and the
@@ -264,20 +292,26 @@ pre-push hook. "New or changed" means on no remote yet; `--base REF` or
 testing/rig-image.sh          # builds kdos-qemu-py:latest; network, once
 R="docker run --rm --device /dev/kvm -v $PWD:/kdos -w /kdos kdos-qemu-py:latest \
    python3 testing/vnc-shot.py --audio --size 1920x1080"
-$R --wait 24 --cmd 'kdos-res' --sleep 4 --shot build/shots/x.png
+$R --wait <boot> --cmd 'plasma-systemmonitor' --sleep 4 --shot build/shots/x.png
+$R --gl --wait <boot> --cmd 'kdos phosphor on' --sleep 4 --shot build/shots/x.png
 ```
 
-**Do not rebuild the ISO to look at a changed program.** Packaging is five and a half of a
-seven-and-a-half-minute build, to carry a 200 KB binary:
+`<boot>` is the seconds from power-on to a settled Plasma session, measured on the image you
+boot.
+
+**Do not rebuild the ISO to look at a changed program.** Packaging is most of an image build, to
+carry a binary of a few hundred kilobytes:
 
 ```sh
-testing/quick.sh kdos-shell -- --keys meta_l-ctrl-q --sleep 3 --shot build/shots/x.png
-KDOS_QUICK_KEEP=1 KDOS_QUICK_NOBUILD=1 testing/quick.sh kdos-shell -- ...   # 1m37s
+testing/quick.sh kcm-kdos-boxes -- --cmd 'systemsettings kcm_kdos_boxes' --sleep 3 --shot build/shots/x.png
+KDOS_QUICK_KEEP=1 KDOS_QUICK_NOBUILD=1 testing/quick.sh kcm-kdos-boxes -- ...
 ```
 
-It builds without packaging, tars what the port owns and patches a booted ISO's RAM overlay. It
-cannot carry anything under `fs/`, a new port, or anything owning a D-Bus name, and it is not
-evidence about the shipped image — see
+It builds without packaging, tars what the port owns, patches a booted ISO's RAM overlay and
+restarts whatever loaded the old copy: `plasmashell` for a plasmoid, `kwin_wayland --replace` for
+a KWin plugin, a D-Bus unload and load for an effect or a KWin script; a KCM, Discover or the
+installer is simply started again. It cannot carry anything under `fs/`, a new port, an SDDM
+theme or a daemon that owns a D-Bus name, and it is not evidence about the shipped image — see
 [`testing.md`](docs/kdos/05-developer/testing.md).
 
 Boot the **ISO** (`build/iso-build/kdos.iso`), not the installed disk images
@@ -287,25 +321,36 @@ tree. The ISO is the pristine shipped system.
 **Traps, each a rule with its consequence:**
 
 - **The rig writes raw PPM despite the `.png` extension.** Convert before use.
-- **The welcome card is open on first login.** Dismiss it before any other shot.
+- **plasma-welcome, with the desk picker, opens on first login.** Close it
+  before any other shot.
 - **A pattern kill matching a monitoring loop's own search term kills the
   monitor.**
 - **An exact-name kill cannot match a name past 15 characters**, so a restart
   using one restarts nothing and the stale program keeps answering.
+  `xdg-desktop-portal-kde` and `polkit-kde-authentication-agent-1` are two of
+  them.
 - **The harness kills the emulator without a shutdown**, so a root script must
   `sync` after writing to the disk or the filesystem leaves the rewritten files
   zero-length on the next boot.
 - **A supervised daemon's output is not on the pipe that started it**: `service
   start x | cat` returns when the script does, and the daemon's lines are in
-  `/run/kdos-svc.<name>.log` and syslog.
+  `/run/kdos-svc.<name>.log` and syslog; a user service's are under
+  `$XDG_RUNTIME_DIR/ksvc`.
 - **A static screen produces no frame events**, so anything about dropped frames
   needs something animating first.
-- **A plain virtual display puts the compositor on software rendering**, so the
-  phosphor pass is never in a rig photograph.
-- **Driving the session means a *login* shell** (`su - kdos -c`), or the
-  container tooling resolves the home directory to `/` and every call fails.
-- **Goldens regenerate only where the Wayland dependencies exist** — the
-  development image (`testing/devdeps-image.sh`), not a bare host.
+- **A plain virtual display puts KWin on llvmpipe**, where Phosphor mode and
+  the CRT motion refuse to load; photograph them with `vnc-shot.py --gl`.
+- **Driving the session means a *login* shell** (`su - kdos -c`). It sets the
+  home directory, without which the container tooling resolves it to `/` and
+  every box call fails, and `/etc/profile` points it at the session bus
+  (`/run/user/<uid>/bus`), without which `qdbus6` and `plasma-apply-*` reach
+  no session.
+- **A port's autostart file is part of every session.** Plasma runs each entry
+  in `/etc/xdg/autostart` at login, and the session bus starts any service a
+  `.service` file names on its first call, so a port that installs either
+  changes what every login runs; a recipe deletes the ones KDOS does not want.
+- **AT-SPI goldens and `plasmatest.sh` run only in the development image**
+  (`testing/devdeps-image.sh`), not on a bare host.
 
 Everything else about the harnesses is in
 [`testing.md`](docs/kdos/05-developer/testing.md).
@@ -339,13 +384,17 @@ bash testing/docscheck.sh                              # both books: links, pros
   [`writing-ports.md`](docs/kdos/05-developer/writing-ports.md), and wire it into
   `depends` and the list of the phase its dependencies put it in
   (`packages.d/<shelf>.txt` in `40_lang`…`44_apps`, `packages.txt` elsewhere);
-  `python3 testing/phaseclosure.py` says when the phase is wrong. A program of
-  our own goes at `src/<area>/<name>/` in one of the four areas that hold
-  ports (`system`, `art`, `desktop`, `daemons`), listed in
-  `packages.d/src-<area>.txt` of its phase, or in `50_desktop`'s `packages.txt`
-  for `desktop` and `daemons`. Put the reasons for its flags and patches in a
-  `kfs.md` beside the recipe, and run `make book-stamp` (`make book-data`
-  once it is built) so the book's recipe stamp matches.
+  `python3 testing/phaseclosure.py` says when the phase is wrong. A KDE module
+  joins its family's release set at the set's version (KDE Frameworks on the
+  `kf6` shelf, Plasma's modules at the Plasma version, Gear's at the Gear
+  version), and a Gear application is shelved by what it is for, like any
+  application. A program of our own goes at `src/<area>/<name>/` in one of the
+  four areas that hold ports (`system`, `art`, `desktop`, `daemons`; `desktop`
+  holds the Qt code of rule 5), listed in `packages.d/src-<area>.txt` of its
+  phase, or in `50_desktop`'s `packages.txt` for `desktop` and `daemons`. Put
+  the reasons for its flags and patches in a `kfs.md` beside the recipe, and
+  run `make book-stamp` (`make book-data` once it is built) so the book's
+  recipe stamp matches.
 - **"why is X off"** → usually because dependencies weren't present when the port
   was added. Name the missing dependencies and offer to add them; don't pretend
   it was a deliberate choice.

@@ -1,33 +1,44 @@
 #!/usr/bin/env python3
 """Boot the ISO headless, drive it over serial, and photograph the screen.
 
-WHY THIS EXISTS. Six geometry defects have shipped in this toolkit and not one
-was visible to a compiler; `testing/goldens` catches the ones a dump can see,
-and everything a dump CANNOT see — the compositor, the wallpaper under the
-desktop, the icon layer, a menu anchored to the wrong corner — is only visible
-by looking at the screen. This is how the screen gets looked at without a
-human in front of it.
+WHY THIS EXISTS. A desktop is checked by looking at it: a panel on the wrong
+edge, a window that never maps, a greeter that draws nothing and a lock screen
+in the wrong colours are invisible to a compiler and to every unit test. This
+is how the screen gets looked at without a human in front of it.
 
-    testing/vnc-shot.py                       boot, wait for the desktop, shoot
-    testing/vnc-shot.py --keys meta_l-a       press something first
-    testing/vnc-shot.py --cmd 'kdos-net &'    run something in the session first
+    testing/vnc-shot.py                       boot, wait for Plasma, shoot
+    testing/vnc-shot.py --keys meta_l         press something first
+    testing/vnc-shot.py --cmd 'konsole &'     run something in the session first
+    testing/vnc-shot.py --until greeter       stop at the SDDM greeter instead
     testing/vnc-shot.py --keep                leave the VM up afterwards
 
-`--keys`, `--cmd`, `--root-cmd`, `--sleep` and `--shot` are ONE ORDERED LIST in
-the order they appear on the command line, so a boot can photograph a dozen
-surfaces instead of one:
+`--keys`, `--cmd`, `--root-cmd`, `--sleep`, `--shot` and the other steps are
+ONE ORDERED LIST in the order they appear on the command line, so a boot can
+photograph a dozen surfaces instead of one:
 
-    testing/vnc-shot.py --size 1920x1080 --gl \
-        --shot bare.ppm --keys meta_l-d --shot launcher.ppm --keys esc
+    testing/vnc-shot.py --size 1920x1080 --gl --dismiss-picker \
+        --shot bare.ppm --keys meta_l --shot kickoff.ppm --keys esc
 
-`--gl` is what puts the CRT pass in the picture: it asks for virtio-vga-gl on
-an egl-headless display, so wlroots gets its GLES2 renderer instead of pixman.
-It needs /dev/dri, and the host may have no qemu at all — both are reasons to
-run this inside testing/qemu-hw's image, which carries QEMU 10 and its own
-firmware. That image reaches the host GPU through the container toolkit, so it
-wants --gpus all the way testing/qemu-hw/run.sh passes it; run without that and
-the only device inside the container is llvmpipe, which the guest never sees and
-cannot be told apart from a slow one. `--gl` gives the guest GL and no Vulkan:
+THE BOOT IT WAITS FOR. inittab starts SDDM on tty1 once rcS has returned, and
+the live medium's /etc/sddm.conf.d/kde_settings.conf logs `kdos` in with no
+greeter; an installed disk shows the greeter. Before any step runs the run
+passes a READINESS GATE, polled in the guest over the serial console: for
+`--until plasma` (the default) org.kde.plasmashell is owned on the user's bus,
+/run/user/<uid>/bus, and KSplash has reached its last stage (or is gone); for
+`--until greeter` sddm-greeter and its KWin run as the `sddm` account. A gate
+that is not passed within `--gate-timeout` FAILS THE RUN with the processes,
+SDDM's log and the session log printed, instead of photographing a black
+screen; `--until shell` skips it, for a run whose root script is the test.
+
+`--gl` asks for virtio-vga-gl on an egl-headless display, so KWin composites
+with OpenGL on the host's GPU through virgl. Without it KWin renders on
+llvmpipe, which it treats as software GL, and an effect that refuses software
+GL — Phosphor mode's kdos_crt — is not loaded and not in the picture. The
+rig image (testing/Dockerfile.qemu) carries QEMU's OpenGL module and
+virglrenderer for it; the container reaches the host GPU only when it is run
+with --gpus all and --device /dev/dri, as testing/session-cost.sh --gl runs
+it. Without those the only device inside the container is llvmpipe, which the
+guest never sees and cannot be told apart from a slow one. `--gl` gives the guest GL and no Vulkan:
 `--venus` adds the Vulkan capset, and WITHOUT IT every Vulkan tool in the guest
 measures lavapipe on the CPU without saying so. On an NVIDIA host `--venus`
 itself is measured dead at both ends — the flag's own help says how.
@@ -42,16 +53,19 @@ rig section:
     blocks forever.
   - The serial console is a ROOT login on this image, and driving the session
     means `su - kdos -c` — a LOGIN shell, because a plain `su kdos -c` leaves
-    podman resolving HOME to `/` and every call fails.
-  - `-display none -vnc` with plain virtio-vga puts wlroots on the pixman
-    renderer, so the CRT pass declines and the phosphor shader is NOT in the
-    picture. That is what `--gl` is for; without it the shot is of the cell
-    grid underneath the pass.
+    podman resolving HOME to `/` and every call fails. `--cmd` then takes the
+    rest of its environment from the running plasmashell, so a program it
+    starts is on the session's bus and display.
+  - Keys go to the ACTIVE VT. tty1 is KWin's, through logind, so `--keys`,
+    `--chord` and `--type` reach the focused window of the session; Ctrl+Alt+F2
+    is the text console, and `--console-cmd` logs in there.
 """
 
 import argparse
 import base64
 import os
+import re
+import shlex
 import socket
 import struct
 import subprocess
@@ -129,26 +143,25 @@ class Monitor:
         self.drain()
 
     def type(self, text, ret=True):
-        """Type on the VT, one `sendkey` per character.
+        """Type on the active VT, one `sendkey` per character.
 
         `ret` sends Return at the end, which is what a command line wants and
         what a FIELD does not: a search box, a rename or a filter is answered
         while it is being typed, and a Return there has already moved on to
         whatever the first match does.
 
-        Typing goes to tty1, which reaches whatever owns it: tty1 autologins
-        and `.bash_profile` starts kdos-desktop there, so that is the desktop
-        unless a window has the focus. Nothing about the display is driven
-        from the serial root shell instead, and that is not a stylistic
-        choice: wlroots' DRM backend needs a seat, and seatd grants one to a
-        session that is ON a VT. A compositor launched from ttyS0 gets no seat
-        and never opens the display.
+        The keys reach whatever holds the active VT: on tty1 that is KWin, and
+        KWin hands them to the focused window — the greeter's password field,
+        KRunner, a Konsole — so a run that types must first put the focus where
+        the text belongs. On tty2 they reach the text console's login. Nothing
+        about the display is driven from the serial root shell instead: a key
+        sent there reaches a shell, not a window.
         """
         # A character with no qemu keyname is sent VERBATIM, which the monitor
         # rejects — silently, from this side — so the line arrives with that
-        # character simply missing. `clear; kdos-banner` typed as
-        # `clear kdos-banner` runs clear with an argument and photographs an
-        # empty screen. Anything reachable on a US layout is named here.
+        # character simply missing. `clear; ls` typed as `clear ls` runs clear
+        # with an argument and photographs an empty screen. Anything reachable
+        # on a US layout is named here.
         names = {" ": "spc", "-": "minus", "=": "equal", "[": "bracket_left",
                  "]": "bracket_right", ";": "semicolon", "'": "apostrophe",
                  "\\": "backslash", ",": "comma", ".": "dot", "/": "slash",
@@ -179,7 +192,7 @@ def rfb_pointer(host, port, moves):
     this image presents a usb-tablet, which is ABSOLUTE — the two disagree
     about what a coordinate means and the pointer ends up somewhere nobody
     asked for. RFB's PointerEvent is absolute by definition and lands on the
-    pixel it names, which is the whole point: HOVER is a state half this
+    pixel it names, which is the whole point: HOVER is a state half of every
     desktop's chrome has, and a photograph of it is the only way to see it.
 
     `moves` is a list of (x, y, button_mask). A click is three of them —
@@ -274,10 +287,11 @@ def rfb_drop(host, port, x, y):
 
 # The keysyms a chord can name. X11's numbering, which is what RFB carries.
 CHORD_KEYS = {
-    "super": 0xffeb, "shift": 0xffe1, "ctrl": 0xffe3, "alt": 0xffe9,
-    "space": 0x0020, "tab": 0xff09, "ret": 0xff0d, "esc": 0xff1b,
-    "up": 0xff52, "down": 0xff54, "left": 0xff51, "right": 0xff53,
-    "home": 0xff50, "end": 0xff57, "backspace": 0xff08, "delete": 0xffff,
+    "super": 0xffeb, "meta": 0xffeb, "shift": 0xffe1, "ctrl": 0xffe3,
+    "alt": 0xffe9, "space": 0x0020, "tab": 0xff09, "ret": 0xff0d,
+    "esc": 0xff1b, "up": 0xff52, "down": 0xff54, "left": 0xff51,
+    "right": 0xff53, "home": 0xff50, "end": 0xff57, "backspace": 0xff08,
+    "delete": 0xffff, "print": 0xff61,
 }
 for _i in range(1, 13):
     CHORD_KEYS["f%d" % _i] = 0xffbd + _i
@@ -288,10 +302,11 @@ def rfb_chord(host, port, spec):
 
     WHY NOT `sendkey`. qemu's monitor presses and releases a whole combination
     in one command, and a chord with TWO modifiers in it does not arrive:
-    `W-Return` opens a terminal and `W-S-space` and `W-C-h` reach the
-    compositor as nothing at all. RFB's KeyEvent is one key and one direction,
-    so the modifiers are genuinely DOWN while the key is tapped — which is what
-    a keyboard does and what xkb's modifier state is built to see.
+    KWin sees Ctrl+Alt+F2 or Meta+Shift+T as nothing at all. RFB's KeyEvent is
+    one key and one direction, so the modifiers are genuinely DOWN while the
+    key is tapped — which is what a keyboard does and what xkb's modifier state
+    is built to see. Ctrl+Alt+F<n> reaches xkb as XF86Switch_VT_<n>, which KWin
+    turns into a logind VT switch.
     """
     names = [n.strip().lower() for n in spec.split("+") if n.strip()]
     if not names:
@@ -445,8 +460,202 @@ def rfb_shot(host, port, out):
     return w, h
 
 
-def send_script(ser, path, timeout=600):
-    """Run a LOCAL script inside the guest, as root, and return what it said.
+# ── what runs in the guest ──────────────────────────────────────────────
+#
+# Each of these is sent down the serial console by guest_run() and run by
+# root's shell there. They are POSIX sh, because the serial login is whatever
+# shell root has, and they print what they found as well as deciding: a gate
+# that fails says why on the same console the run prints.
+
+# THE READINESS GATE. $1 the session account, $2 plasma or greeter, $3 the
+# seconds it may take.
+#
+# PLASMA IS UP WHEN TWO THINGS HOLD. org.kde.plasmashell is owned on the user's
+# bus — and that alone is not enough, because plasmashell takes its name early
+# in main(), long before a panel is drawn. The shell says it has finished by
+# calling org.kde.KSplash setStage("desktop"), the splash's last stage, so the
+# gate watches for that call with dbus-monitor once the bus exists. A gate that
+# started after the call has been made cannot see it, and then the splash
+# having exited stands in for it: ksplashqml exits on its sixth stage or after
+# its own 30-second timer, and a session configured with no splash has none.
+#
+# THE BUS IS ASKED AS THE USER. A session bus admits only the account that
+# owns it — root's connection is dropped before Hello is answered — so every
+# dbus-send and the monitor run under setpriv with the account's ids: no PAM,
+# so no poll opens a login session of its own.
+GATE_SH = r"""
+set -u
+user=$1 until=$2 limit=$3
+uid=$(id -u "$user" 2>/dev/null) || { echo "KDOSGATE fail: no account $user"; exit 1; }
+gid=$(id -g "$user")
+as_user() { setpriv --reuid="$uid" --regid="$gid" --init-groups "$@"; }
+home=$(awk -F: -v u="$user" '$1 == u { print $6 }' /etc/passwd)
+bus=/run/user/$uid/bus
+addr=unix:path=$bus
+mkdir -p /run/kdos-rig
+log=/run/kdos-rig/ksplash.log
+: > "$log"
+now() { read -r _t _ < /proc/uptime; echo "$_t"; }
+t0=$(now)
+since() { awk -v a="$t0" -v b="$(now)" 'BEGIN { printf "%.1f", b - a }'; }
+over() { awk -v a="$t0" -v b="$(now)" -v l="$limit" 'BEGIN { exit !(b - a > l) }'; }
+owned() {
+	as_user dbus-send --bus="$addr" --print-reply=literal --dest=org.freedesktop.DBus \
+		/org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner string:"$1" \
+		2>/dev/null | grep -q true
+}
+greeter() { pgrep -u sddm -f '^[^ ]*sddm-greeter' >/dev/null 2>&1; }
+diagnose() {
+	echo "--- processes"
+	pgrep -a 'sddm|kwin_wayland|plasmashell|ksplashqml|startplasma|plasma_session|ksmserver|kded6|kdos-dm|getty' 2>/dev/null
+	if [ -r /run/kdos/kdos-dm.starts ]; then
+		echo "--- kdos-dm starts (seconds since boot)"
+		cat /run/kdos/kdos-dm.starts
+	fi
+	echo "--- /var/log/sddm.log"
+	tail -n 40 /var/log/sddm.log 2>/dev/null
+	if [ -n "$home" ] && [ -r "$home/.local/share/sddm/wayland-session.log" ]; then
+		echo "--- $home/.local/share/sddm/wayland-session.log"
+		tail -n 60 "$home/.local/share/sddm/wayland-session.log"
+	fi
+	echo "--- KSplash stages seen"
+	grep -o 'string "[^"]*"' "$log" 2>/dev/null
+}
+mon=""
+why=""
+while :; do
+	if over; then
+		[ -n "$mon" ] && kill "$mon" 2>/dev/null
+		case $until in
+		plasma)
+			if greeter; then
+				echo "KDOSGATE note: the SDDM greeter is up — no autologin on this boot; use --until greeter and log in with --type"
+			fi
+			echo "KDOSGATE fail: no Plasma session for $user after ${limit}s"
+			;;
+		greeter) echo "KDOSGATE fail: no SDDM greeter after ${limit}s" ;;
+		esac
+		diagnose
+		exit 1
+	fi
+	case $until in
+	greeter)
+		if greeter && pgrep -u sddm -x kwin_wayland >/dev/null 2>&1; then
+			why="sddm-greeter and its KWin run as sddm"
+			break
+		fi
+		;;
+	plasma)
+		if [ -z "$mon" ] && [ -S "$bus" ]; then
+			setpriv --reuid="$uid" --regid="$gid" --init-groups dbus-monitor --address "$addr" \
+				"type='method_call',interface='org.kde.KSplash',member='setStage'" \
+				> "$log" 2>&1 &
+			mon=$!
+		fi
+		if [ -S "$bus" ] && owned org.kde.plasmashell; then
+			if grep -q 'string "desktop"' "$log" 2>/dev/null; then
+				why="plasmashell owns its name and KSplash reached its last stage"
+				break
+			fi
+			if ! pgrep -u "$uid" -x ksplashqml >/dev/null 2>&1; then
+				why="plasmashell owns its name and no KSplash is running"
+				break
+			fi
+		fi
+		;;
+	esac
+	sleep 0.25
+done
+[ -n "$mon" ] && kill "$mon" 2>/dev/null
+echo "KDOSGATE ok $(since)s: $why"
+"""
+
+# THE ENVIRONMENT A --cmd RUNS IN, sourced by the session user's login shell.
+#
+# A login shell reads the profile and nothing of the session: no
+# WAYLAND_DISPLAY, no DISPLAY for Xwayland, no XDG_CONFIG_DIRS with KDOS's
+# defaults in it, no XDG_SESSION_ID. Plasma has all of them, so they are read
+# from the running plasmashell's own environment (KWin's when there is no
+# shell yet) — what that process was started with is what anything it launches
+# would get. Only the login's own identity is kept: HOME, USER, SHELL and the
+# working directory are the login shell's. A value holding a newline arrives
+# split, and its continuation is skipped unless it reads as NAME=value.
+ENV_SH = r"""
+_kdos_rig_pid=$(pgrep -u "$(id -u)" -x plasmashell 2>/dev/null | head -n 1)
+[ -n "$_kdos_rig_pid" ] || _kdos_rig_pid=$(pgrep -u "$(id -u)" -x kwin_wayland 2>/dev/null | head -n 1)
+if [ -n "$_kdos_rig_pid" ] && [ -r "/proc/$_kdos_rig_pid/environ" ]; then
+	while IFS= read -r _kdos_rig_kv; do
+		case $_kdos_rig_kv in
+		*=*) ;;
+		*) continue ;;
+		esac
+		case ${_kdos_rig_kv%%=*} in
+		'' | [0-9]* | *[!A-Za-z0-9_]*) continue ;;
+		HOME | PWD | OLDPWD | SHLVL | _ | USER | LOGNAME | SHELL | MAIL | TERM) continue ;;
+		esac
+		# shellcheck disable=SC2163 # the line is NAME=value: export it as given
+		export "$_kdos_rig_kv"
+	done <<KDOS_RIG_ENV
+$(tr '\0' '\n' < "/proc/$_kdos_rig_pid/environ")
+KDOS_RIG_ENV
+fi
+: "${XDG_RUNTIME_DIR:=/run/user/$(id -u)}"
+: "${DBUS_SESSION_BUS_ADDRESS:=unix:path=$XDG_RUNTIME_DIR/bus}"
+: "${WAYLAND_DISPLAY:=wayland-0}"
+export XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS WAYLAND_DISPLAY
+unset _kdos_rig_pid _kdos_rig_kv
+"""
+
+# THE FIRST-RUN WINDOW. $1 the session account, $2 how many seconds to wait
+# for it.
+#
+# plasma-welcome is the desk picker and the welcome tour, and its kded module
+# opens it on every live session and on an account's first login — over
+# whatever a run meant to photograph. It is closed the way its own Quit is:
+# QCoreApplication.quit on its KDBusService name, which lets it write its
+# settings; a window that will not quit is sent TERM. A run that does not see
+# the window within the wait says so and carries on, because a second login
+# and a session with its kded module removed never open it.
+DISMISS_SH = r"""
+set -u
+user=$1 limit=$2
+uid=$(id -u "$user" 2>/dev/null) || { echo "dismiss: no account $user"; exit 1; }
+gid=$(id -g "$user")
+addr=unix:path=/run/user/$uid/bus
+n=0
+pid=""
+while [ "$n" -lt $((limit * 4)) ]; do
+	pid=$(pgrep -u "$uid" -x plasma-welcome 2>/dev/null | head -n 1)
+	[ -n "$pid" ] && break
+	sleep 0.25
+	n=$((n + 1))
+done
+if [ -z "$pid" ]; then
+	echo "dismiss: no plasma-welcome window within ${limit}s"
+	exit 0
+fi
+# The window maps after the process starts; a quit before it has is a quit of
+# a window the run never saw.
+sleep 2
+setpriv --reuid="$uid" --regid="$gid" --init-groups \
+	dbus-send --bus="$addr" --print-reply --dest=org.kde.plasma-welcome \
+	/MainApplication org.qtproject.Qt.QCoreApplication.quit >/dev/null 2>&1
+n=0
+while kill -0 "$pid" 2>/dev/null && [ "$n" -lt 20 ]; do
+	sleep 0.25
+	n=$((n + 1))
+done
+if kill -0 "$pid" 2>/dev/null; then
+	kill -TERM "$pid" 2>/dev/null
+	echo "dismiss: plasma-welcome ($pid) did not quit; sent TERM"
+else
+	echo "dismiss: plasma-welcome ($pid) closed"
+fi
+"""
+
+
+def guest_run(ser, body, args=(), name="step", timeout=600):
+    """Run a script inside the guest, as root, and return (output, status).
 
     There is no shared filesystem with the guest — the repo is not on the ISO
     unless KDOS_ISO_SOURCES was set — so the file travels down the serial
@@ -456,23 +665,45 @@ def send_script(ser, path, timeout=600):
     payload contains nothing the shell would act on before `base64 -d` hands it
     back, which a heredoc of arbitrary text does not promise.
 
-    The marker is echoed by the guest, so what comes back is delimited by the
-    guest's own output rather than by a timeout: a step that takes four minutes
-    to install a pack is waited for rather than truncated.
+    The END marker is echoed by the guest with the script's exit status after
+    it, so what comes back is delimited by the guest's own output rather than
+    by a timeout: a step that takes four minutes to install a pack is waited
+    for rather than truncated. The empty quote inside the typed marker keeps a
+    terminal's echo of the command line from ever reading as the guest's
+    answer. `name` keeps two scripts of one run from overwriting each other.
     """
-    blob = base64.b64encode(open(path, "rb").read()).decode()
-    ser.send(": > /tmp/kdos-step.b64")
+    if isinstance(body, str):
+        body = body.encode()
+    blob = base64.b64encode(body).decode()
+    path = "/tmp/kdos-rig-%s" % name
+    ser.send(": > %s.b64" % path)
     for i in range(0, len(blob), 512):
-        ser.send("printf %%s '%s' >> /tmp/kdos-step.b64" % blob[i:i + 512],
+        ser.send("printf %%s '%s' >> %s.b64" % (blob[i:i + 512], path),
                  pace=0.05)
     ser.buf = b""
-    ser.send("base64 -d /tmp/kdos-step.b64 > /tmp/kdos-step.sh; "
-             "echo ===KDOSSCRIPT-BEGIN===; sh /tmp/kdos-step.sh 2>&1; "
-             "echo ===KDOSSCRIPT-END===")
-    if not ser.expect("===KDOSSCRIPT-END===", timeout=timeout):
-        return ser.tail(60000) + "\n[rig] the script never finished"
-    ser.pump()
-    return ser.tail(60000)
+    argv = " ".join(shlex.quote(a) for a in args)
+    ser.send("base64 -d %s.b64 > %s.sh; "
+             "echo ===KDOSSCRIPT-''BEGIN===; sh %s.sh %s 2>&1; "
+             "echo ===KDOSSCRIPT-''END=== rc=$?" % (path, path, path, argv))
+    done = ser.expect("===KDOSSCRIPT-END===", timeout=timeout)
+    # The status follows the marker on the same line, and may arrive in the
+    # next read.
+    status_re = re.compile(rb"===KDOSSCRIPT-END=== rc=\d+\s")
+    settle = time.time() + 3
+    while done and not status_re.search(ser.buf) and time.time() < settle:
+        ser.pump()
+    out = ser.buf.decode("utf-8", "replace")
+    cut = out.rfind("===KDOSSCRIPT-BEGIN===")
+    if cut >= 0:
+        out = out[cut + len("===KDOSSCRIPT-BEGIN==="):]
+    status = None
+    m = re.search(r"===KDOSSCRIPT-END=== rc=(\d+)", out)
+    if m:
+        status = int(m.group(1))
+        out = out[:m.start()]
+    if not done:
+        out += "\n[rig] the script never finished"
+    return out.strip("\r\n"), status
 
 
 class Step(argparse.Action):
@@ -499,17 +730,17 @@ def main():
     ap.add_argument("--sleep", action=Step, type=float,
                     help="wait this many seconds before the next step")
     ap.add_argument("--keys", action=Step,
-                    help="monitor sendkey, e.g. meta_l-a")
+                    help="monitor sendkey, e.g. meta_l or ctrl-esc")
     ap.add_argument("--chord", action=Step,
                     help="hold the modifiers and tap the key, over RFB — "
-                         "`super+shift+space`. Use this for anything with two "
-                         "modifiers in it: qemu's sendkey presses and releases "
-                         "the whole combination at once and such a chord never "
-                         "arrives")
+                         "`meta+shift+t`, `ctrl+alt+f2`. Use this for "
+                         "anything with two modifiers in it: qemu's sendkey "
+                         "presses and releases the whole combination at once "
+                         "and such a chord never arrives")
     ap.add_argument("--type", action=Step,
                     help="type this into whatever has the focus, then Return "
-                         "— unlike --console-cmd this is a step, so it can "
-                         "follow a --keys that opened a window")
+                         "— the greeter's password field, KRunner, a Konsole "
+                         "the run has opened")
     ap.add_argument("--text", action=Step,
                     help="type this and stop — no Return. A search field, a "
                          "filter or a rename is answered as it is typed, and "
@@ -542,20 +773,32 @@ def main():
                          "one coordinate, so no motion ever arrives with the "
                          "button down, and a drag begins on motion")
     ap.add_argument("--cmd", action=Step,
-                    help="run in the kdos session")
+                    help="run in the session: a login shell of --user with "
+                         "the running plasmashell's environment, in the "
+                         "background")
     ap.add_argument("--root-cmd", action=Step,
                     help="run as root on the serial console, wait for it to "
                          "finish and print what it said")
     ap.add_argument("--root-script", action=Step,
-                    help="send this LOCAL file into the guest and run it as "
-                         "root — the form for a check too long to be one line")
+                    help="'FILE [ARGS...]' — send this LOCAL file into the "
+                         "guest and run it as root with these arguments; the "
+                         "form for a check too long to be one line. A script "
+                         "that exits non-zero fails the run (exit 3) once "
+                         "every step has run")
+    ap.add_argument("--dismiss-picker", action=Step, nargs="?", const=30.0,
+                    type=float, metavar="SECONDS",
+                    help="close the first-run plasma-welcome window (the desk "
+                         "picker and the tour) once it opens, waiting up to "
+                         "SECONDS (30) for it. It opens over every live "
+                         "session, so put this before the first --shot")
     ap.add_argument("--size", default="1280x800",
                     help="the guest's screen, WxH — the virtio-gpu default is "
                          "1280x800 and nothing in the guest overrides it")
     ap.add_argument("--gl", action="store_true",
-                    help="virtio-vga-gl on an egl-headless display, so wlroots "
-                         "gets GLES2 and the CRT pass RUNS. Needs /dev/dri; "
-                         "without it the shot is of the cell grid underneath")
+                    help="virtio-vga-gl on an egl-headless display, so KWin "
+                         "composites with OpenGL on the host GPU and Phosphor "
+                         "mode's kdos_crt can load. Needs /dev/dri; without "
+                         "it KWin is on llvmpipe and the effect stays out")
     ap.add_argument("--venus", action="store_true",
                     help="with --gl, publish a Vulkan capset (venus + blob "
                          "resources over a memfd), the only way a guest Vulkan "
@@ -565,18 +808,41 @@ def main():
                          "vkCreateInstance without it. Without --venus the "
                          "tools measure lavapipe on the CPU and say nothing, "
                          "so check vulkaninfo before trusting a number")
+    ap.add_argument("--until", choices=("plasma", "greeter", "shell"),
+                    default="plasma",
+                    help="what the readiness gate waits for before the first "
+                         "step: plasma (the default) is the autologin "
+                         "session with its shell up and KSplash done; "
+                         "greeter is SDDM's greeter, for a disk with no "
+                         "autologin; shell is the serial root shell alone, "
+                         "for a run whose root script is the test")
+    ap.add_argument("--no-session", dest="until", action="store_const",
+                    const="shell",
+                    help="the same as --until shell")
+    ap.add_argument("--gate-timeout", type=int, default=300,
+                    help="seconds from the serial shell to a passed gate "
+                         "before the run fails (300)")
+    ap.add_argument("--user", default="kdos",
+                    help="the session's account, for the gate, --cmd and "
+                         "--dismiss-picker (kdos)")
     ap.add_argument("--console-cmd", default=None,
-                    help="type this on tty1 during start-up, before any step. "
-                         "tty1 is the desktop, so it reaches the icon layer's "
-                         "type-ahead and not a shell — to land a command in a "
-                         "terminal window use --keys meta_l-ret then --type")
+                    help="switch to tty2 with Ctrl+Alt+F2 after the gate, log "
+                         "in there as --console-login and type this, before "
+                         "any step. The screen stays on tty2; `--chord "
+                         "ctrl+alt+f1` returns to the session")
+    ap.add_argument("--console-login", default="kdos:kdos",
+                    help="USER[:PASSWORD] for --console-cmd's login on tty2; "
+                         "the live medium's kdos password is kdos. With no "
+                         "password nothing is typed at the prompt")
     ap.add_argument("--soak", type=int, default=0,
                     help="seconds to let the session run once, after the "
                          "last step and before the --out shot, for a load "
                          "test that has to last; --sleep is the same wait "
                          "placed by hand between steps")
-    ap.add_argument("--wait", type=int, default=25,
-                    help="seconds to let the session settle")
+    ap.add_argument("--wait", type=int, default=4,
+                    help="seconds to let the screen settle once the gate has "
+                         "passed: the splash fades and the panel finishes "
+                         "laying out after the shell reports itself done")
     ap.add_argument("--script-timeout", type=int, default=900,
                     help="how long a --root-script or a --root-cmd may "
                          "take. Installing a "
@@ -607,24 +873,19 @@ def main():
                     help="attach a raw file as a virtio disk the GUEST writes "
                          "a tar onto, which is how files come back out. "
                          "--data-disk is input only")
-    ap.add_argument("--no-session", action="store_true",
-                    help="accepted and ignored: tty1 autologins and starts "
-                         "kdos-desktop itself, so the desktop the steps drive "
-                         "is the one the boot brought up either way")
     ap.add_argument("--usb", default=None,
                     help="attach a raw disk image as a USB stick")
     ap.add_argument("--data-disk", default=None,
                     help="attach a raw file as a plain virtio disk — how a "
-                         "large artefact reaches a guest with no network. Far "
-                         "faster than --usb, and not removable. The session "
-                         "starts at boot, so its environment is the boot's: a "
-                         "variable for the compositor or the panel goes in on "
-                         "this disk and is exported before kdos-desktop runs")
+                         "large artefact, or a tar of files the guest "
+                         "unpacks itself, reaches a guest with no network. "
+                         "Far faster than --usb, and not removable. "
+                         "testing/quick.sh carries its patch this way")
     ap.add_argument("--keep", action="store_true")
     ap.add_argument("--serial-log", default="/tmp/kdos-serial.log")
     args = ap.parse_args()
 
-    if not os.path.exists(ISO):
+    if not os.path.exists(ISO) and not args.no_cdrom:
         sys.exit("no ISO at %s — run make build first" % ISO)
 
     run = "/tmp/kdos-vnc-%d" % os.getpid()
@@ -650,8 +911,8 @@ def main():
         raise SystemExit("--size wants WxH, e.g. 1920x1080")
 
     # The screen is the DEVICE's, not the guest's: nothing in KDOS asks for a
-    # mode, so virtio-gpu's own 1280x800 default is what the desktop lays
-    # itself out for unless xres/yres say otherwise.
+    # mode, so virtio-gpu's own 1280x800 default is what KWin and the greeter
+    # lay themselves out for unless xres/yres say otherwise.
     video = "virtio-vga-gl" if args.gl else "virtio-vga"
     video += ",xres=%d,yres=%d" % (sw, sh)
     display = "egl-headless" if args.gl else "none"
@@ -715,9 +976,9 @@ def main():
         # AN HDA CONTROLLER, AND THE SAMPLES GO SOMEWHERE REAL WHERE THEY CAN.
         # `-audiodev none` is a real backend as far as the guest is concerned:
         # the kernel binds snd_hda_intel, ALSA opens the PCM, and anything that
-        # asks "is there a sound card" gets yes. Without it MikMod_Init fails,
-        # kdos-bb sets bbsound = 0, and every audio path in the guest is
-        # untestable — which is not the same as untested.
+        # asks "is there a sound card" gets yes. Without it PipeWire has no
+        # sink, Plasma's volume applet shows none, and every audio path in the
+        # guest is untestable — which is not the same as untested.
         #
         # A null sink consumes samples on a timer, though, and a host one
         # consumes them as a device does: a guest whose pacing follows its own
@@ -741,11 +1002,12 @@ def main():
     if args.scratch:
         # A RAW DISK THE GUEST WRITES A TAR ONTO, and the only path OUT of a
         # guest with no network. `--data-disk` carries files IN; nothing
-        # carried them back, and 183 screenshots do not fit through a serial
-        # console. The guest runs `tar cf /dev/vdX <dir>` — no filesystem and
-        # no mkfs, because tar on a block device starts at offset 0 and the
-        # host reads it with a plain `tar xf`, which stops at the archive's own
-        # end marker and never looks at the trailing megabytes.
+        # carried them back, and a hundred screenshots do not fit through a
+        # serial console. The guest runs `tar cf /dev/vdX <dir>` — no
+        # filesystem and no mkfs, because tar on a block device starts at
+        # offset 0 and the host reads it with a plain `tar xf`, which stops at
+        # the archive's own end marker and never looks at the trailing
+        # megabytes.
         qemu += ["-drive", "if=none,id=scr0,format=raw,file=%s" % args.scratch,
                  "-device", "virtio-blk-pci,drive=scr0"]
     if args.data_disk:
@@ -761,15 +1023,16 @@ def main():
         qemu += ["-drive", "if=none,id=dd0,format=raw,file=%s" % args.data_disk,
                  "-device", "virtio-blk-pci,drive=dd0"]
     if args.usb:
-        # A real removable device, because kdos-mountd's whole job is one and
-        # a fixture cannot mount anything. usb-storage lands as /dev/sdX with
-        # `removable = 1`, which is exactly what the daemon looks for.
+        # A real removable device, for udisks2, Solid and the Device Notifier:
+        # usb-storage lands as /dev/sdX with `removable = 1`, which is what
+        # they treat as a stick rather than as a fixed disk.
         qemu += ["-drive", "if=none,id=stick,format=raw,file=%s" % args.usb,
                  "-device", "usb-storage,drive=stick,removable=on"]
     print("+", " ".join(qemu), flush=True)
     vm = subprocess.Popen(qemu, stdout=subprocess.DEVNULL,
                           stderr=subprocess.STDOUT)
 
+    failed = []
     try:
         if not wait_for(ser_sock) or not wait_for(mon_sock):
             raise SystemExit("qemu did not create its sockets")
@@ -849,39 +1112,59 @@ def main():
         time.sleep(1)
         ser.pump()
 
-        # TTY1 IS THE DESKTOP, not a prompt. It autologins as `kdos` through
-        # kdos-login, and .bash_profile starts kdos-desktop there — so the
-        # compositor is up before any step runs and NOTHING HERE STARTS ONE.
-        #
-        # A second compositor is not a session: it would be launched inside the
-        # first one's seat, and a readiness gate that greps for a `kdos-comp`
-        # pid is answered by the one that booted whatever the launch did — a
-        # check that cannot fail is a check that is not there.
-        #
-        # `--keys` drives the session that booted, because sendkey goes to the
-        # active VT; a compositor needs a seat and seatd grants one only to a
-        # session ON a VT, which is why nothing about the display is ever done
-        # down the serial line.
+        # THE READINESS GATE. The serial shell arrives with SDDM, not after
+        # the session, so a fixed sleep here either wastes a minute or
+        # photographs a splash — and when the session never comes up it
+        # photographs a black screen and calls that the result. The gate asks
+        # the guest what is running instead, and a run that does not pass it
+        # stops here with the reason. GATE_SH says what each answer means.
+        if args.until != "shell":
+            what = "Plasma session" if args.until == "plasma" else "SDDM greeter"
+            print("waiting for the %s (up to %ds)…" % (what, args.gate_timeout),
+                  flush=True)
+            out, rc = guest_run(ser, GATE_SH,
+                                [args.user, args.until, str(args.gate_timeout)],
+                                name="gate", timeout=args.gate_timeout + 60)
+            print(out, flush=True)
+            if rc != 0:
+                raise SystemExit("[rig] the readiness gate failed: no %s"
+                                 % what)
+            time.sleep(args.wait)
+
+        # The session account's environment, for every --cmd; ENV_SH says
+        # where it comes from. Written once, readable by the account.
+        guest_run(ser, "mkdir -p /run/kdos-rig\nchmod 0755 /run/kdos-rig\n"
+                       "cat > /run/kdos-rig/env.sh <<'KDOS_RIG_ENV_FILE'\n%s\n"
+                       "KDOS_RIG_ENV_FILE\nchmod 0644 /run/kdos-rig/env.sh\n"
+                       % ENV_SH.strip("\n"),
+                  name="env", timeout=30)
+
         if args.console_cmd:
-            # Typing on tty1 reaches whatever OWNS it, which is the desktop:
-            # this lands in the icon layer's type-ahead, not in a shell, and it
-            # fires before the step loop so no `--keys meta_l-ret` can precede
-            # it. A command that needs a shell is `--keys meta_l-ret` followed
-            # by `--type`, or `--cmd` on the serial console.
-            print("typing on tty1: %s" % args.console_cmd, flush=True)
+            # tty1 IS KWIN'S, so a text console is tty2: Ctrl+Alt+F2 asks
+            # KWin to have logind switch to it, the getty there asks for a
+            # login, and the command goes in once the shell has had time to
+            # read the profile. The screen stays on tty2 for the steps.
+            login, _, password = args.console_login.partition(":")
+            print("logging in on tty2 as %s: %s" % (login, args.console_cmd),
+                  flush=True)
+            rfb_chord("127.0.0.1", args.vnc_port, "ctrl+alt+f2")
+            time.sleep(2)
+            mon.type(login)
+            time.sleep(2)
+            if password:
+                mon.type(password)
+            time.sleep(3)
             mon.type(args.console_cmd)
-            time.sleep(args.wait)
-        else:
-            print("letting the desktop settle…", flush=True)
-            time.sleep(args.wait)
+            time.sleep(2)
 
         shots = 0
         for kind, value in args.steps:
             if kind == "cmd":
                 # A LOGIN shell: a plain `su kdos -c` leaves HOME unset for
-                # podman and every appbox call fails.
-                ser.send("su - kdos -c 'export WAYLAND_DISPLAY=wayland-0; "
-                         "export XDG_RUNTIME_DIR=/run/user/1000; %s' &" % value)
+                # podman and every appbox call fails. env.sh then gives it the
+                # session's display, bus and config directories.
+                ser.send("su - %s -c '. /run/kdos-rig/env.sh; %s' &"
+                         % (args.user, value))
                 time.sleep(4)
             elif kind == "keys":
                 mon.cmd("sendkey " + value)
@@ -891,10 +1174,8 @@ def main():
                 time.sleep(3)
             elif kind == "type":
                 # TYPED AS A STEP, so it reaches whatever has the focus AT
-                # THIS POINT of the run. `--console-cmd` types during
-                # start-up, before any step, so it can only reach the desktop
-                # itself; this is the only way into a window the run has just
-                # opened, which is what every check on a terminal window needs.
+                # THIS POINT of the run — a window the run has just opened,
+                # the greeter's password field, KRunner.
                 mon.type(value)
                 time.sleep(2)
             elif kind == "text":
@@ -903,8 +1184,8 @@ def main():
             elif kind == "mouse":
                 mx, my = (int(v) for v in value.split(","))
                 rfb_pointer("127.0.0.1", args.vnc_port, [(mx, my, 0)])
-                # Longer than the panel's 700 ms tooltip dwell, so a shot
-                # after a move photographs the tip as well as the hover.
+                # Longer than a tooltip's dwell, so a shot after a move
+                # photographs the tooltip as well as the hover.
                 time.sleep(2)
             elif kind == "click":
                 parts = value.split(",")
@@ -946,12 +1227,10 @@ def main():
                 time.sleep(2.0)
             elif kind == "drag":
                 # TWELVE INTERPOLATED POINTS AND NOT ONE. A drag is a press,
-                # then MOTION with the button held, then a release: the window
-                # manager fires on any non-zero delta, but the session needs an
-                # enter before a motion before a release, and each RFB event is
-                # its own tick. A jump straight to the far point is a press and
-                # a release at two places with nothing in between, which is not
-                # a drag anywhere in this tree.
+                # then MOTION with the button held, then a release, and each
+                # RFB event is its own tick. A jump straight to the far point
+                # is a press and a release at two places with nothing in
+                # between, which KWin and Qt both read as a click.
                 p = value.split(",")
                 x0, y0, x1, y1 = (int(v) for v in p[:4])
                 mask = 1 << ((int(p[4]) if len(p) > 4 else 1) - 1)
@@ -970,6 +1249,12 @@ def main():
                     time.sleep(min(2.0, max(0.1, end - time.time())))
                     ser.pump()
                     ser.buf = ser.buf[-8000:]
+            elif kind == "dismiss_picker":
+                out, _rc = guest_run(ser, DISMISS_SH,
+                                     [args.user, str(int(value))],
+                                     name="dismiss", timeout=int(value) + 60)
+                print(out, flush=True)
+                time.sleep(1.5)
             elif kind == "root_cmd":
                 # THE MARKERS ARE TYPED WITH AN EMPTY QUOTE INSIDE THEM, so the
                 # terminal's echo of the typed line never holds what the guest
@@ -993,8 +1278,17 @@ def main():
                     out += "\n[rig] the command never finished"
                 print("$ %s\n%s" % (value, out[-60000:]), flush=True)
             elif kind == "root_script":
-                out = send_script(ser, value, timeout=args.script_timeout)
+                argv = shlex.split(value)
+                path, rest = argv[0], argv[1:]
+                body = open(path, "rb").read()
+                name = re.sub(r"[^A-Za-z0-9_.-]", "_",
+                              os.path.basename(path)) or "step"
+                out, rc = guest_run(ser, body, rest, name=name,
+                                    timeout=args.script_timeout)
                 print("$ sh %s\n%s" % (value, out), flush=True)
+                if rc is None or rc != 0:
+                    print("[rig] %s exited %s" % (path, rc), flush=True)
+                    failed.append("%s (%s)" % (path, rc))
             elif kind == "shot":
                 w, h = rfb_shot("127.0.0.1", args.vnc_port, value)
                 print("wrote %s (%dx%d)" % (value, w, h), flush=True)
@@ -1023,7 +1317,7 @@ def main():
             w, h = rfb_shot("127.0.0.1", args.vnc_port, args.out)
             print("wrote %s (%dx%d)" % (args.out, w, h))
 
-        ser.send("pgrep -a 'kdos-' | head -20")
+        ser.send("pgrep -a 'sddm|kwin_wayland|plasmashell|kdos-' | head -20")
         time.sleep(1)
         ser.pump()
         with open(args.serial_log, "w") as f:
@@ -1038,6 +1332,14 @@ def main():
                 vm.kill()
         else:
             print("VM left running (pid %d); sockets in %s" % (vm.pid, run))
+    # A FAILED ROOT SCRIPT FAILS THE RUN, after every step has run and the VM
+    # is down: a probe's verdict is the run's exit status, so `make` and a
+    # loop can act on it, and the photographs taken around it are still
+    # written.
+    if failed:
+        print("[rig] root scripts that failed: " + ", ".join(failed),
+              flush=True)
+        sys.exit(3)
 
 
 if __name__ == "__main__":

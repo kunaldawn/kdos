@@ -1,0 +1,23 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = plasma-browser-integration
+version     = 6.8.2
+release     = 1
+_xpi        = 2.1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+source      = $name-extension-$_xpi.xpi::https://addons.mozilla.org/firefox/downloads/file/4614817/plasma_integration-$_xpi.xpi
+sha256      = 8d6c9fc4222be13070fe20cb690f22a6b1c00da9cc1e197821127d9bf0321507  plasma-browser-integration-6.8.2.tar.xz
+sha256      = 35bfa3766e097160e74f525bde54d97bbba90d725daa425b9de6fef6ec5e9d44  plasma-browser-integration-extension-2.1.xpi
+description = Native-messaging host joining Firefox and Chromium to Plasma — media controls, tab search in KRunner, downloads and sharing
+homepage    = https://invent.kde.org/plasma/plasma-browser-integration
+license     = MIT AND GPL-3.0-or-later AND GPL-2.0-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND GPL-3.0-only
+group       = plasma
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kio ki18n kcoreaddons kconfig kcrash kdbusaddons knotifications krunner purpose kfilemetadata kjobwidgets kservice kstatusnotifieritem plasma-activities plasma-workspace

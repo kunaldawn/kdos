@@ -1,0 +1,3 @@
+[Default Applications]
+application/x-shellscript=org.kde.konsole.desktop;
+text/x-foo=kde4-foo.desktop;

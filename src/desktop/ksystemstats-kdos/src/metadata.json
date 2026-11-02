@@ -1,0 +1,8 @@
+{
+    "KPlugin": {
+        "Description": "KDOS boxes, energy by application, the A/B slots and Phosphor mode",
+        "License": "MIT",
+        "Name": "KDOS"
+    },
+    "providerName": "kdos"
+}

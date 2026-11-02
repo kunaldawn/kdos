@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = kdesu
-version     = 6.30.0
+version     = 6.31.0
 release     = 1
 source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
-sha256      = 9bf244884b09ce38ad84d00e5879e798b02e1610ec8f3d9ee6c93e7502b356e2  kdesu-6.30.0.tar.xz
+sha256      = 4e3ed141d538f6d3ee02d5ebad6dd08c260fa38fd0005317d0cd15c23ee7c676  kdesu-6.31.0.tar.xz
 description = KDE Frameworks: running programs as another user through sudo
 homepage    = https://invent.kde.org/frameworks/kdesu
 license     = GPL-2.0-only AND LGPL-2.0-or-later

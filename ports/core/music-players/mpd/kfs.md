@@ -2,9 +2,10 @@
 
 mpd, the Music Player Daemon, is the playing half of a music player: it holds the library and the
 queue and drives the sound card, and separate client programs such as [rmpc](#port-rmpc) attach
-to its socket to control it. The port ships no configuration file. The login session starts mpd
-only when a configuration exists in one of the places mpd itself reads, and then starts the
-panel's now-playing watcher beside it; the media keys reach it through `kdos-mpctl`, described in
+to its socket to control it. The port ships no configuration file. The per-user service
+`/etc/kdos/user-services/25_mpd.sh` starts mpd from a user's first login to the last logout, and
+only when a configuration exists in one of the places mpd itself reads. Plasma's media controls
+and the media keys reach it over MPRIS through `kdos-mpctl mpris`, described in
 [kdos-mpctl](../../../../docs/kdos/04-programs/kdos-command.md#kdos-mpctl).
 
 Every feature option is named on or off. A meson feature option left at its default is `auto`, which

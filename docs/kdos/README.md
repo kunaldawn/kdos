@@ -1,17 +1,18 @@
 # The KDOS Book
 
 A complete description of KDOS: what it is, how to install and run it, how it works from firmware
-handoff to the panel clock, how it is built from source, and how to extend it. This page is the
+handoff to the Plasma desktop, how it is built from source, and how to extend it. This page is the
 book's front matter: a preface, reading paths for four kinds of reader, and the full table of
 contents. Every chapter it lists describes the system as it is in this source tree.
 
 ## Preface
 
 KDOS is a Linux distribution for x86_64 machines, compiled in this repository from upstream source
-with a musl C library, no systemd and no Xorg server. Its desktop is its own, every surface of it
-drawn as a grid of character cells with no GUI toolkit under it. The graphical applications people
-expect are ported natively on top of it, each with the toolkit it is written in (GTK, Qt, KDE
-Frameworks, wxWidgets, FLTK or Tk), or run beside it in containers called *boxes*.
+with a musl C library, sysvinit and no systemd init, and no Xorg server. Its desktop is KDE Plasma
+6.8 with all of KDE Gear, built unforked and made KDOS through its own settings pages, widgets,
+KWin effects, Discover backend, look and updates. The graphical applications people expect are
+ported natively, each with the toolkit it is written in (Qt, KDE Frameworks, GTK, wxWidgets, FLTK
+or Tk), or run beside them in containers called *boxes*.
 
 The book is written for people: anyone deciding whether to try KDOS, installing it, looking after a
 machine that runs it, or building and changing it. It assumes a working knowledge of Linux (a
@@ -62,7 +63,8 @@ For someone who wants an image on hardware and a working desktop:
 1. Ch 1, [Why KDOS](01-philosophy/why-kdos.md): what the system is and what it deliberately lacks
 2. Ch 5, [Getting started](02-user-guide/getting-started.md): build an image, write a medium, boot it
 3. Ch 6, [Installation](02-user-guide/installation.md): the installer, page by page
-4. Ch 7, [The desktop](02-user-guide/desktop.md): panel, menus, windows and keyboard shortcuts
+4. Ch 7, [The desktop](02-user-guide/desktop.md): the desks, the panel, KRunner, windows and
+   keyboard shortcuts
 5. Ch 8, [Applications](02-user-guide/applications.md): which applications are native, and the
    catalogue and boxes for the rest
 6. Ch 9, [Theming](02-user-guide/theming.md), and ch 11, [Accessibility](02-user-guide/accessibility.md)
@@ -91,8 +93,8 @@ For a developer who builds the distribution, adds or changes a port, or writes d
 4. Ch 31, [Developing](05-developer/developing.md): the first build, and the loops that avoid one
 5. Ch 32, [The build system](05-developer/build-system.md): phases, the chroot, snapshots, build plans
 6. Ch 33, [Writing ports](05-developer/writing-ports.md), and ch 34, [Build troubleshooting](05-developer/build-troubleshooting.md)
-7. Ch 35, [The C libraries](05-developer/c-libraries.md), and ch 18, [The design language](03-architecture/design-language.md)
-8. Ch 36, [Writing desktop software](05-developer/writing-desktop-software.md): drawing a KDOS surface
+7. Ch 36, [Writing desktop software](05-developer/writing-desktop-software.md), and ch 18, [The design language](03-architecture/design-language.md)
+8. Ch 35, [The C libraries](05-developer/c-libraries.md): the `libk*` libraries the daemons and tools share
 9. Ch 37, [Testing](05-developer/testing.md): what each harness proves, and what it cannot
 10. Ch 42, [Repository layout](06-reference/repository-layout.md), and ch 38, [The ports catalogue](06-reference/ports-catalogue.md)
 
@@ -114,9 +116,9 @@ chapters stay at the level of ideas and link to the chapters that describe each 
    applications, updates and hardware support
 3. [Principles](01-philosophy/principles.md): the rules that constrain every change, each with the
    failure it prevents and the price it charges
-4. [Decisions](01-philosophy/decisions.md): the choices where an alternative was reasonable (the
-   compositor fork, native applications beside the catalogue, packs, musl, the source archive,
-   `-march` and more), and why the alternative lost
+4. [Decisions](01-philosophy/decisions.md): the choices where an alternative was reasonable
+   (Plasma as the desktop, elogind, SDDM, slot-image updates, native applications beside the
+   catalogue, packs, musl, the source archive, `-march` and more), and why the alternative lost
 
 ### Part II — Using KDOS
 
@@ -129,19 +131,21 @@ are written for the person at the keyboard and name the file behind each behavio
    keeping a live session's changes, and installing
 6. [Installation](02-user-guide/installation.md): the installer page by page, the root filesystem,
    encryption, A/B root slots, unattended installs and every file the installer writes
-7. [The desktop](02-user-guide/desktop.md): the panel, the Start menu, windows, keyboard
-   shortcuts, notifications, files, the clipboard, locking, displays and removable media
+7. [The desktop](02-user-guide/desktop.md): the Plasma desktop as KDOS ships it: the desks, the
+   panel, the Start menu, KRunner, windows and workspaces, keyboard shortcuts, notifications, files,
+   the clipboard, locking, displays, removable media and the privacy lamps
 8. [Applications](02-user-guide/applications.md): which applications are ported natively, then
    finding, installing, launching, updating and removing boxed applications, carrying a set to
    another machine, and managing boxes
-9. [Theming](02-user-guide/theming.md): the eight accents, fonts, the phosphor pass, wallpaper,
-   the boot menu and consoles, and theming native applications and applications inside a box
+9. [Theming](02-user-guide/theming.md): the eight accents and what switching one changes,
+   Konsole, the boot menu and consoles, Phosphor mode, wallpaper, sounds, fonts, and theming native
+   applications and applications inside a box
 10. [Administration](02-user-guide/administration.md): services, users, storage, networking, the
     firewall, hardware, updates and diagnosis, then each user's backups, mail, passwords and input
     methods
-11. [Accessibility](02-user-guide/accessibility.md): braille and speech at a text console, the
-    magnifier, larger text, a boxed application's own assistive stack, and what the desktop does
-    not expose
+11. [Accessibility](02-user-guide/accessibility.md): the screen reader, braille and speech at a
+    text console, the magnifier, larger text, keyboard aids, the on-screen keyboard, colour and
+    motion, and boxed applications
 
 ### Part III — Architecture
 
@@ -154,9 +158,11 @@ region of it.
     window, the host and a box, a running process map, the root daemons, the two packaging systems
     and where state lives
 13. [Boot and init](03-architecture/boot-and-init.md): Limine, microcode, the initramfs and its
-    splash, A/B slot selection, unlocking an encrypted root, `rcS`, the console and the login
-14. [The session](03-architecture/session.md): what a login starts: the session bus, audio,
-    portals, the supervised chrome, capture, the clipboard, input methods and a box's environment
+    splash, A/B slot selection, unlocking an encrypted root, `rcS`, the display manager and the
+    console
+14. [The session](03-architecture/session.md): what a login starts: the Plasma session, the
+    user's services and the session bus, audio, portals, capture, the clipboard, input methods and
+    a box's environment
 15. [Packaging](03-architecture/packaging.md): the ports tree, its shelves and its phases, where
     sources come from, `kpkg`, what a build verifies, reproducible packages, the binary host,
     deltas and vulnerability tracking
@@ -165,35 +171,36 @@ region of it.
 17. [The security model](03-architecture/security-model.md): setuid binaries, system accounts,
     root daemons, the firewall, polkit, containers, signing, untrusted bytes, and what is not
     protected
-18. [The design language](03-architecture/design-language.md): the character grid as a
-    specification: the frame, chrome, shared keys, colour, the pointer contract, touch, glyph tiers
-    and pictures
-19. [The window model](03-architecture/window-model.md): the rules `libkwm` keeps with the
-    compositor: focus, tiling, placement, windows that belong to other windows, the edge search and
-    occupancy
+18. [The design language](03-architecture/design-language.md): KDOS's identity on Plasma: colour,
+    type, the pieces of the look, one look from power-on to the lock screen, motion, Phosphor mode,
+    the desks, and the text tools' glyph tiers
+19. [The window model](03-architecture/window-model.md): KWin as KDOS sets it: focus, placement,
+    window memory, snapping and tiles, auto-tiling, workspaces, the window rules KDOS writes and
+    more than one screen
 
 ### Part IV — Programs
 
-A chapter for each program KDOS writes itself, from the compositor and the panel to the installer
-and the command-line front door. Software built from upstream ports is documented by its upstream;
-these chapters cover only what this repository writes.
+What KDOS adds to the KDE programs it extends most, and a chapter for each program KDOS writes
+itself, from the box tools and the root daemons to the installer and the command-line front door.
+Software built from upstream ports is documented by its upstream; these chapters cover only what
+this repository writes or changes.
 
-20. [The programs](04-programs/README.md): every KDOS binary, what it does, and every name it
-    answers to
-21. [kdos-comp](04-programs/kdos-comp.md): the compositor: configuration, bindings, decorations,
-    frame pacing, the phosphor pass, idle and lock, its sockets, box identity and working on its
-    code
-22. [kdos-shell](04-programs/kdos-shell.md): one binary under 55 names and 54 surfaces: the panel,
-    the Start menu, the file chooser, settings, device managers, notifications, the store and the
-    small surfaces
-23. [kdos-res](04-programs/kdos-res.md): the resource monitor: its eleven pages, keys, acting on a
-    process through `kdos-resctl`, identity by box, and what it refuses to infer
-24. [kdos-term](04-programs/kdos-term.md): the terminal: keys, the two clipboards, the paste guard,
-    per-window fonts, hyperlinks, prompt marks, the escape layer and three picture protocols
+20. [The programs](04-programs/README.md): every KDOS program and desktop component, what it does,
+    and every name it answers to
+21. [KWin](04-programs/kwin.md): the compositor as KDOS ships it: its defaults, the carried patches,
+    shortcuts, the key card, window memory, tiling, boxes at the compositor, Phosphor mode, idle and
+    lock, and debugging
+22. [The Plasma shell](04-programs/plasma-shell.md): the three desks, the Start menu, the tray and
+    its privacy lamps, the KDOS runner in KRunner, notices, the kded module, the welcome tour, System
+    Monitor's KDOS sensors and the offline library
+23. [KDOS settings pages](04-programs/kdos-settings.md): the Boxes, Firewall, Health, KDOS Look,
+    System Versions and Backups pages, and the daemon behind KDE's date, time and language pages
+24. [Discover](04-programs/discover.md): the KDOS backend for ports, packs and boxes, what keeps
+    Discover offline, system updates through `kdos-sysupdated`, the update notifier and firmware
 25. [kdos-appbox](04-programs/kdos-appbox.md): `kdos-appbox`, `kdos-box` and `xdg-open`: the launch
     path, launcher generation, the open path, box profiles, warmup and storage drivers
-26. [The daemons](04-programs/daemons.md): the five root daemons, the per-box Wayland socket, the
-    portal backend and the lock screen, and how to add a root daemon
+26. [The daemons](04-programs/daemons.md): the six root daemons, the per-box Wayland socket, the
+    other services `ksvc` runs, and how to add a root daemon
 27. [kinstall](04-programs/kinstall.md): the installer's reference: keys, pages, install steps,
     answer files, dry-run dumps, LVM, encryption, the applications step and its design
 28. [The kdos command](04-programs/kdos-command.md): the front door to a KDOS machine, every
@@ -219,12 +226,14 @@ failures that recur, the C libraries, desktop software and the test harnesses.
     sources
 34. [Build troubleshooting](05-developer/build-troubleshooting.md): recurring fetch, build and push
     failures, indexed by the message you see, each with its cause and fix
-35. [The C libraries](05-developer/c-libraries.md): the seventeen `libk*` libraries, the
+35. [The C libraries](05-developer/c-libraries.md): the nine `libk*` libraries, the
     dependency direction, and the invariants each one keeps
-36. [Writing desktop software](05-developer/writing-desktop-software.md): building a KDOS surface:
-    the frame protocol, roles, input, drawing, chrome, pictures, and testing without a screen
-37. [Testing](05-developer/testing.md): preflight, the self-test, goldens, fixtures, the QEMU rig,
-    checking the sources, the book checks, measuring frame rate, and what is not tested
+36. [Writing desktop software](05-developer/writing-desktop-software.md): KDOS's Plasma code:
+    settings modules, widgets, the runner, KWin effects and scripts, names, the toolkit rule,
+    conventions, and the Qt test suite
+37. [Testing](05-developer/testing.md): preflight, the self-test, the Qt suite, fixtures, the QEMU
+    rig and its Plasma harnesses, AT-SPI goldens, checking the sources, the book checks, measuring
+    frame rate, and what is not tested
 
 ### Part VI — Reference
 
@@ -240,7 +249,7 @@ the book.
 40. [Configuration](06-reference/configuration.md): every configuration file and key, with its
     default and when a change takes effect
 41. [Filesystem and IPC](06-reference/filesystem-and-ipc.md): KDOS-owned paths, every socket and
-    its verbs, files used as an interface, and environment variables
+    its verbs, the D-Bus names KDOS serves, files used as an interface, and environment variables
 42. [Repository layout](06-reference/repository-layout.md): the source tree directory by
     directory: the port repositories, the shelves of `ports/core` and the areas of `src/`, the
     `script/` directory, the library rule, where upstream sources are, and what git ignores

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kruler
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = e5a5544da043b067feeff386890cb9c0a5292627493559dc7c649dc94e201f67  kruler-26.08.2.tar.xz
+description = Screen ruler — measure distances on screen in pixels, from the tray
+homepage    = https://apps.kde.org/kruler/
+license     = GPL-2.0-or-later AND GFDL-1.2-or-later
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcoreaddons ki18n knotifications kstatusnotifieritem kwindowsystem kxmlgui kcrash kdoctools

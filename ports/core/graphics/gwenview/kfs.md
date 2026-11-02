@@ -30,11 +30,13 @@ the KDE Frameworks.
   [cfitsio](#port-cfitsio), libtiff, which Gwenview links only to silence libtiff's log messages,
   and libX11 (see
   [A graphical application](../../../../docs/kdos/05-developer/writing-ports.md#a-graphical-application)).
-- `-D CMAKE_DISABLE_FIND_PACKAGE_KF6Purpose=ON` — Leaves out the Share menu, which Gwenview builds
-  on KDE's Purpose framework whenever [purpose](#port-purpose) is installed; its plugins send
-  images to online services.
-- `-D CMAKE_DISABLE_FIND_PACKAGE_PlasmaActivities=ON` — Leaves out Plasma Activities, the
-  Plasma shell's activity tracking, which is not a port.
+- `-D CMAKE_REQUIRE_FIND_PACKAGE_KF6Purpose=ON` — Requires [purpose](#port-purpose) for the Share
+  menu, which sends pictures to other applications, to KDE Connect and over Bluetooth. Upstream
+  looks for Purpose as an optional component and drops the menu without it.
+- `-D CMAKE_REQUIRE_FIND_PACKAGE_PlasmaActivities=ON` — Requires
+  [plasma-activities](#port-plasma-activities), through which Gwenview reports the pictures it
+  opens, so they appear in the session's recent files. Upstream looks for it quietly and leaves the
+  reporting out without it.
 
 ## Notes
 

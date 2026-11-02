@@ -155,6 +155,40 @@ static int cmd_status(void)
 	return 0;
 }
 
+/*
+ * THE SAME ANSWER FOR A PAGE: whether this is a live session at all (a boot
+ * medium is mounted), and the store's state in the three words the Welcome
+ * page switches on. One line, so a reader needs no stream parser.
+ */
+static int cmd_status_json(void)
+{
+	char store[128], medium[128];
+	const char *state = "none";
+	KbBuf b = { 0 };
+
+	find_store(store, sizeof(store));
+	boot_medium(medium, sizeof(medium));
+	if (store[0]) {
+		char *mounts = kb_read_all("/proc/mounts", NULL);
+		struct statvfs vfs;
+
+		state = mounts && strstr(mounts, " " PERSIST_MNT " ") &&
+				statvfs(PERSIST_MNT, &vfs) == 0
+			? "in-use" : "present";
+		free(mounts);
+	}
+	kb_buf_printf(&b, "{\"live\": %s, \"store\": \"%s\", \"device\": ",
+		      medium[0] ? "true" : "false", state);
+	if (store[0])
+		kb_json_str(&b, store);
+	else
+		kb_buf_str(&b, "null");
+	kb_buf_str(&b, "}\n");
+	fwrite(b.p, 1, b.n, stdout);
+	kb_buf_free(&b);
+	return 0;
+}
+
 /* ── create ─────────────────────────────────────────────────────────────── */
 
 /* The partitions of a disk, newest last, as /sys knows them. */
@@ -328,10 +362,11 @@ static int cmd_create(const char *want, int assume_yes)
 
 static int usage(void)
 {
-	printf("usage: kdos persist [create [<device>]] [--yes]\n"
+	printf("usage: kdos persist [--json] | create [<device>] [--yes]\n"
 	       "\n"
 	       "  With no arguments, report whether a persistence store\n"
 	       "  exists and whether this session is writing to it.\n"
+	       "  --json        the same, as one line for a settings page\n"
 	       "\n"
 	       "  create        make the store in the free space after the\n"
 	       "                image, on the boot medium unless a device is\n"
@@ -347,7 +382,7 @@ static int usage(void)
 int persist_main(int argc, char **argv)
 {
 	const char *dev = NULL;
-	int create = 0, yes = 0;
+	int create = 0, yes = 0, json = 0;
 
 	for (int i = 1; i < argc; i++) {
 		const char *a = argv[i];
@@ -355,6 +390,8 @@ int persist_main(int argc, char **argv)
 			return usage();
 		if (!strcmp(a, "--yes") || !strcmp(a, "-y")) {
 			yes = 1;
+		} else if (!strcmp(a, "--json")) {
+			json = 1;
 		} else if (!strcmp(a, "create")) {
 			create = 1;
 		} else if (a[0] == '-') {
@@ -368,5 +405,11 @@ int persist_main(int argc, char **argv)
 		}
 	}
 
+	if (json && create) {
+		fprintf(stderr, "kdos persist: --json is a status\n");
+		return 1;
+	}
+	if (json)
+		return cmd_status_json();
 	return create ? cmd_create(dev, yes) : cmd_status();
 }

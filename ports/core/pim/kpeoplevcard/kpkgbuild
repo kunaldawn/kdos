@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kpeoplevcard
+version     = 0.1.git20241202
+release     = 1
+_commit     = d4acaa3038f6b030d0d6390e628c39e9f8d87903
+source      = $name-$version.tar.gz::https://invent.kde.org/pim/kpeoplevcard/-/archive/$_commit/kpeoplevcard-$_commit.tar.gz
+sha256      = 2e6d03795cf999bce1f730e93723fe86ffbbc98e42f6f6cf5ae1f831eb033fb9  kpeoplevcard-0.1.git20241202.tar.gz
+description = KPeople data source that reads contacts from vCard files under ~/.local/share/kpeoplevcard
+homepage    = https://invent.kde.org/pim/kpeoplevcard
+license     = LGPL-2.1-or-later AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcoreaddons ki18n kpeople kcontacts

@@ -1,0 +1,86 @@
+/*
+    SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
+    SPDX-License-Identifier: MIT
+*/
+
+// Which window a run-or-raise key means, against window-shaped objects.
+// CMake writes the absolute path of raise.js in.
+
+import QtQuick
+import QtTest
+
+import "@RAISE_JS@" as Raise
+
+TestCase {
+    name: "RunOrRaise"
+
+    function win(app, caption, order, extra) {
+        const w = {
+            desktopFileName: app,
+            resourceClass: app,
+            caption: caption,
+            stackingOrder: order,
+            normalWindow: true,
+            deleted: false,
+        };
+        for (const k in extra || {}) {
+            w[k] = extra[k];
+        }
+        return w;
+    }
+
+    function test_tabTitle() {
+        compare(Raise.tabTitle("rmpc — Konsole"), "rmpc");
+        compare(Raise.tabTitle("~ : rmpc — Konsole"), "~ : rmpc");
+        compare(Raise.tabTitle("a - b : rmpc — Konsole"), "a - b : rmpc", "a hyphen is not the separator");
+        compare(Raise.tabTitle("a — b : rmpc — Konsole"), "a — b : rmpc", "only the last em dash is");
+        compare(Raise.tabTitle("rmpc"), "rmpc");
+    }
+
+    function test_isProgramWindow_data() {
+        return [
+            { tag: "launcher tab title", w: win("org.kde.konsole", "rmpc — Konsole", 1), p: "rmpc", r: true },
+            { tag: "Konsole's own format", w: win("org.kde.konsole", "~/Music : rmpc — Konsole", 1), p: "rmpc", r: true },
+            { tag: "a shell", w: win("org.kde.konsole", "~ : bash — Konsole", 1), p: "rmpc", r: false },
+            { tag: "a longer name", w: win("org.kde.konsole", "~ : xrmpc — Konsole", 1), p: "rmpc", r: false },
+            { tag: "the name inside a path", w: win("org.kde.konsole", "rmpc : bash — Konsole", 1), p: "rmpc", r: false },
+            { tag: "own window", w: win("rmpc", "Music", 1), p: "rmpc", r: true },
+            { tag: "not a terminal", w: win("org.kde.kate", "rmpc — Kate", 1), p: "rmpc", r: false },
+            { tag: "a dialog", w: win("org.kde.konsole", "rmpc — Konsole", 1, { normalWindow: false }), p: "rmpc", r: false },
+            { tag: "closing", w: win("org.kde.konsole", "rmpc — Konsole", 1, { deleted: true }), p: "rmpc", r: false },
+            { tag: "X11 class", w: win("", "mc — Konsole", 1, { resourceClass: "konsole" }), p: "mc", r: true },
+        ];
+    }
+
+    function test_isProgramWindow(data) {
+        compare(Raise.isProgramWindow(data.w, data.p), data.r);
+    }
+
+    function test_pick() {
+        const a = win("org.kde.konsole", "rmpc — Konsole", 3);
+        const b = win("org.kde.konsole", "~ : rmpc — Konsole", 7);
+        const c = win("org.kde.konsole", "~ : rmpc — Konsole", 5);
+        const other = win("org.kde.kate", "x — Kate", 9);
+        compare(Raise.pick([], other), null, "nothing to raise");
+        verify(Raise.pick([a, b, c], other) === b, "the one used last");
+        verify(Raise.pick([a, b, c], a) === b, "the next one from the first");
+        verify(Raise.pick([a, b, c], c) === a, "and round again");
+        compare(Raise.pick([a], a), null, "the only window, already active");
+    }
+
+    function test_matching() {
+        const list = [
+            win("org.kde.konsole", "rmpc — Konsole", 1),
+            win("org.kde.konsole", "~ : bash — Konsole", 2),
+            win("org.kde.konsole", "~ : rmpc — Konsole", 3),
+        ];
+        compare(Raise.matching(list, "rmpc").length, 2);
+        compare(Raise.matching(list, "micro").length, 0);
+    }
+
+    function test_launcher() {
+        compare(Raise.launcherComponent("rmpc"), "org.kdos.runraise.rmpc.desktop");
+        compare(Raise.componentPath("org.kdos.runraise.rmpc.desktop"), "/component/org_kdos_runraise_rmpc_desktop");
+        compare(Raise.componentPath("KDE Keyboard Layout Switcher"), "/component/KDE_Keyboard_Layout_Switcher");
+    }
+}

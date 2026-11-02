@@ -30,14 +30,14 @@ path = ~/.local/share/calendars/*
 type = discover
 
 [locale]
-# ISO, AND THAT IS A DECISION kdos-cal DEPENDS ON. khal parses the dates on its
-# command line with THIS format and prints them with it too, so the desktop's
-# calendar can pass `2026-09-01 30d` and read back `2026-09-14` without
-# guessing at anybody's locale. Change it and the day marks stop appearing.
+# ISO, AND THAT IS A DECISION SCRIPTS DEPEND ON. khal parses the dates on its
+# command line with THIS format and prints them with it too, so a script can
+# pass `2026-09-01 30d` and read back `2026-09-14` without guessing at
+# anybody's locale. Change it and every such script misreads its dates.
 dateformat = %Y-%m-%d
 longdateformat = %Y-%m-%d
 datetimeformat = %Y-%m-%d %H:%M
 longdatetimeformat = %Y-%m-%d %H:%M
 timeformat = %H:%M
-# Monday, which is what the ISO week is and what `kdos-cal` draws.
+# Monday, which is what the ISO week is.
 firstweekday = 0

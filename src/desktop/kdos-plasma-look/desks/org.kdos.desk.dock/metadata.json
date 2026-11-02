@@ -1,0 +1,21 @@
+{
+    "KPackageStructure": "Plasma/LayoutTemplate",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "KDOS"
+            }
+        ],
+        "Category": "",
+        "Description": "A top bar with the application menu, and a floating dock of pinned apps",
+        "Id": "org.kdos.desk.dock",
+        "License": "MIT",
+        "Name": "KDOS Dock",
+        "Website": "https://github.com/kunaldawn/kdos"
+    },
+    "NoDisplay": true,
+    "X-Plasma-ContainmentCategories": [
+        "panel"
+    ],
+    "X-Plasma-Shell": "plasmashell"
+}

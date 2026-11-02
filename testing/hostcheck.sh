@@ -70,11 +70,13 @@ echo "== and something actually STARTS the session manager =="
 # naming the old `pipewire-media-session` starts NOTHING — a graph with
 # nothing connected to anything, which is a machine with working hardware
 # and no sound. That failure is invisible to "is the binary installed".
-S=/usr/local/lib/kdos/session-common.sh
-if grep -q "wireplumber" "$S" 2>/dev/null; then ok "the session script starts wireplumber"
-else bad "the session script does not start wireplumber"; fi
-if grep -q "pipewire-media-session" "$S" 2>/dev/null; then
-    bad "the session script still calls pipewire-media-session, which is not built"
+# The audio stack is the user services turnstile starts at the first login.
+S=/etc/kdos/user-services/21_wireplumber.sh
+if [ -x "$S" ] && grep -q "/usr/bin/wireplumber" "$S"; then
+    ok "the user service 21_wireplumber starts wireplumber"
+else bad "no user service starts wireplumber"; fi
+if grep -rq "pipewire-media-session" /etc/kdos/user-services 2>/dev/null; then
+    bad "a user service still calls pipewire-media-session, which is not built"
 else ok "and names no session manager that is not built"; fi
 # The same question asked of the whole image rather than one file.
 if grep -rl "pipewire-media-session" /usr/local /etc 2>/dev/null | head -1 | grep -q .; then

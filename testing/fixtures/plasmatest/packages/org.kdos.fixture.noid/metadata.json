@@ -1,0 +1,7 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Name": "Fixture"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

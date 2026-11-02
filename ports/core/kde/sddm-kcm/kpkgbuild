@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = sddm-kcm
+version     = 6.8.2
+release     = 1
+source      = https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = dcd2cdf1210e12eaad78f88819d36a21e05573939f1765552c4f57477d10003e  sddm-kcm-6.8.2.tar.xz
+description = Login Screen (SDDM) page of System Settings — greeter theme, autologin, sessions and the Plasma settings sync
+homepage    = https://invent.kde.org/plasma/sddm-kcm
+license     = GPL-2.0-or-later AND (GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND CC0-1.0
+group       = plasma
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kcoreaddons kconfig ki18n kauth kio karchive knewstuff kcmutils kservice kwidgetsaddons kirigami kitemmodels qt6-qtmultimedia sddm systemsettings

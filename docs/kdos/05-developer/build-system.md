@@ -88,11 +88,11 @@ chroot phases put first on the search path (see [The phase environment](#the-pha
 | `30_foundation` | Build Foundation | Chroot | `packages.txt`: build systems, perl and python3, base libraries, archive, TLS and documentation tooling, ccache | `fs` |
 | `31_compilers` | Compilers | Chroot | `packages.txt`: LLVM, clang, lld and their pinned 21 series, compiler-rt, libunwind, openmp, rust, cargo-c, bindgen, cbindgen, go, ghc, cabal-install, pandoc, zig, nodejs, ruby, asciidoctor, the ccache manual page | `fs` |
 | `40_lang` | Languages | Chroot | `packages.d/`: language modules, language implementations, build, documentation and developer tools, version control | `fs` |
-| `41_system` | System | Chroot | `packages.d/`: everything with no graphics and no toolkit in its dependency closure, among it services, networking, storage, command-line tools, codecs, firmware, fonts, science and hardware libraries, and KDOS's theme, icons, cursors, splash, the two books and the pack tools | `fs` |
-| `42_graphics` | Graphics Stack | Chroot | `packages.d/`: the Wayland and X11 libraries, Xwayland, Mesa, the media frameworks, and `kdos-tools` | `fs` |
-| `43_toolkits` | Toolkits | Chroot | `packages.d/`: GTK, Qt 5 and 6, KDE Frameworks and the libraries built on them | `fs` |
-| `44_apps` | Applications | Chroot | `packages.d/`: the natively ported graphical applications, and `kdos-appbox` | `fs` |
-| `50_desktop` | Desktop | Chroot | `packages.txt`: wlroots, `kdos-comp`, `kdos-shell`, `kdos-term`, `kdos-lock`, `kdos-res`, `kdos-boxsock`, `kdos-record`, the five root daemons, fcitx5 and its engines, the portals | `fs` |
+| `41_system` | System | Chroot | `packages.d/`: everything with no graphics and no toolkit in its dependency closure, among it services, networking, storage, command-line tools, codecs, firmware, fonts, science and hardware libraries, the KDE ports with no toolkit in their closure (`extra-cmake-modules`, `cxx-rust-cssparser`, `kdeedu-data`, Plasma's sound themes and wallpapers), and KDOS's identity generators, icon marks, wallpapers, boot splash, `kdos-bb`, the two books and the pack tools | `fs` |
+| `42_graphics` | Graphics Stack | Chroot | `packages.d/`: the Wayland and X11 libraries, Xwayland, Mesa, the media frameworks, and `kdos-tools`, `kdos-boxsock` and the sound theme `kdos-sounds` | `fs` |
+| `43_toolkits` | Toolkits | Chroot | `packages.d/`: GTK, Qt 5 and 6, KDE Frameworks, the Plasma libraries Gear applications link (`libplasma`, `kpipewire`, `plasma-activities`, `union` and the rest), the KDE Gear libraries, and `kdos-appbox` | `fs` |
+| `44_apps` | Applications | Chroot | `packages.d/`: the natively ported graphical applications, KDE Gear's among them, on their subject shelves | `fs` |
+| `50_desktop` | Desktop | Chroot | `packages.txt`: the KDE Plasma session (KWin, `plasma-workspace`, `plasma-desktop`, System Settings, Discover and the other session modules), SDDM, the KDE portal, fcitx5 and its engines, KDOS's own Plasma integration from `src/art` and `src/desktop`, the six root daemons, and the eleven meta ports | `fs` |
 | `60_kernel` | Kernel | Chroot | `packages.txt`: `dwarves` and `linux` | none |
 | `70_image` | Image | Chroot | 16 scripts: see [The packaging steps](#the-packaging-steps) | none |
 
@@ -116,18 +116,30 @@ The first two phases build a cross toolchain and use it to cross-compile a minim
 directly from `src/system/kdos-kpkg` and `src/system/kdos-installer` rather than installed as
 ports, because nothing can be installed as a port until `kpkg` exists. `kdos-kpkg` has no recipe
 at all, and `kdos-installer`'s recipe is named in no phase's list. The other ports of `src/system`
-and `src/art` are built in `41_system`, `42_graphics` and `44_apps`, each where its dependencies
-first exist. From `20_selfhost` on, the
+and `src/art` are built in `41_system`, `42_graphics`, `43_toolkits` and `50_desktop`, each where
+its dependencies first exist. From `20_selfhost` on, the
 build is self-hosting: the package phases are lists of ports that `kpkg` builds inside `build/fs`
 with the compilers `20_selfhost` rebuilt there, and `70_image` runs its scripts in the same chroot.
 
 The desktop is a phase of its own for two reasons. It is the only phase whose package search path
-includes `src/desktop` and `src/daemons`, which hold the compositor, the shell and the root daemons.
-And it gives the userland phases a snapshot of their own below the desktop: restoring `44_apps`
-re-runs the 22 ports the desktop's list installs, then `60_kernel`'s `dwarves` and `linux`, which
-that tree does not yet hold, then `70_image`. A change to one desktop program needs none of that; a
-build plan, `--phases 50_desktop,70_image --rebuild <port>`, rebuilds that port on the current tree.
-The kernel is the last port phase before the image.
+includes `src/desktop` and `src/daemons`, which hold KDOS's Plasma code (its System Settings pages,
+widgets, KWin effects and scripts, the Discover backend and the graphical installer) and the root
+daemons; that code links `libplasma`, KWin and `libdiscover`, which this phase installs. And it
+gives the userland phases a snapshot of their own below the desktop: restoring `44_apps` re-runs
+every port the desktop's list installs, then `60_kernel`'s `dwarves` and `linux`, which that tree
+does not yet hold, then `70_image`. A change to one desktop component needs none of that; a build
+plan, `--phases 50_desktop,70_image --rebuild <port>`, rebuilds that port on the current tree. The
+kernel is the last port phase before the image.
+
+The desktop's list is the session and nothing an application needs at build time. A port of
+`40_lang` to `44_apps` never names a `50_desktop` port in its `depends`, which would pull the
+session into an application phase: a Gear application that talks to a session daemon at run time,
+such as the alarm clock waking the machine through PowerDevil, finds it because the session is
+installed, not because its recipe names it. The list ends in a `meta` section of eleven
+source-less ports, `kde-plasma`, `kde-gear`, the eight `kde-gear-*` sets and `kde-all`, which name
+other ports and build nothing. They are what `kpkg install kde-gear-games` gives a machine; the
+image is the whole built tree, whatever the metas name. See
+[Packaging](../03-architecture/packaging.md).
 
 ### Package lists
 
@@ -160,7 +172,8 @@ and in that phase's file for its shelf:
 `src-<area>.txt` for one of KDOS's own. In a phase with a single `packages.txt` it goes under its
 shelf's heading, and a shelf the list has no heading for yet gets one. A port whose dependencies
 reach Wayland but no toolkit belongs in `42_graphics`, a graphical application built on a toolkit
-in `44_apps`, and a port an earlier phase's port depends on in that earlier phase;
+in `44_apps`, a library such an application links in `43_toolkits`, a part of the Plasma session
+in `50_desktop`, and a port an earlier phase's port depends on in that earlier phase;
 `testing/phaseclosure.py` names the phases involved when the choice is wrong. See
 [Writing ports](writing-ports.md) for the rest of adding a port.
 
@@ -193,14 +206,19 @@ the table in [Which phase lists a port](writing-ports.md#which-phase-lists-a-por
 the graphics stack and no toolkit and is not an application (a port nothing depends on, filed on
 an application shelf), a `43_toolkits` port reaches a toolkit, and a `44_apps` port
 is one nothing depends on whose closure reaches a toolkit, or the graphics stack from an
-application shelf. A port listed against its row fails with the phase the table gives it.
+application shelf. "Nothing depends on" counts the `depends` of the ports `44_apps` and the phases
+before it install: a later phase's port builds after all four and orders nothing in them, so the
+`50_desktop` meta ports, which name every Gear application, leave each one in `44_apps`. A port
+listed against its row fails with the phase the table gives it. `50_desktop` is not held to the
+table, since every port of the session reaches a toolkit, but its list is held to its closure like
+every other.
 
 The rule is what makes a phase mean something. A port cannot quietly move into an earlier phase
 because something there started depending on it, and a list cannot reach forward into a later one.
 A new `depends =` entry that breaks the layering fails preflight, naming the port and both phases,
 instead of changing what a snapshot holds.
 
-Between them the lists hold about 2,100 names. A port already installed from the same recipe is
+Between them the lists hold about 2,400 names. A port already installed from the same recipe is
 skipped when a later list names it again, so a repeated name costs nothing unless its recipe
 changed, and then it rebuilds that port at the point the list names it. `30_foundation` uses this
 on purpose, and is the only list that does. Its pinned run opens with `fortify-headers`, then the
@@ -741,13 +759,17 @@ service accounts long after this step runs, and a plain copy on a later sync wou
 Entries from `fs/` win; accounts that exist only in the tree are appended back.
 
 Home directories are created later, by `70_image/070_user.sh`, for each ordinary user (UID 1000
-to 65533) with a home directory in `/etc/passwd`. It clears the generated trees that `/etc/skel`
-owns outright (`.icons`, `.themes`, `.config/kdos-comp`, `.config/cosmic`, `.config/kdos-con`,
-`.local/share/applications` and `.local/share/color-schemes`) before copying `/etc/skel` in, so
-something `/etc/skel` stops providing does not linger in a home. An edit made by hand to one of
-those trees in a home under `build/fs` is lost on the next packaging run. The same step creates the
-XDG user directories, the mail, calendar and contact stores, and sets `.msmtprc` and `.mbsyncrc` to
-mode 600.
+to 65533) with a home directory in `/etc/passwd`. Skel wins: every file `/etc/skel` provides is
+copied over the home's copy. A copy never deletes, so the step first removes the one tree skel owns
+outright, `.local/share/applications`, where the generated box launchers live: a launcher whose
+file name changed would otherwise stay under its old name too, and the application menu would list
+it twice. It also removes the empty directories under `/etc/skel/.config`, which the `fs/`
+manifest leaves behind when it removes their last file. The same step creates the XDG user
+directories, the folders `/etc/xdg/user-dirs.defaults` lists (`Desktop`, `Documents`,
+`Downloads`, `Music`, `Pictures`, `Projects`, `Public`, `Templates` and `Videos`), so that
+Dolphin's Places shows them before the first login's `xdg-user-dirs-update` records them; it adds
+`Pictures/Screenshots`, where Spectacle saves, `~/.local/bin`, the mail, calendar and contact
+stores, and sets `.msmtprc` and `.mbsyncrc` to mode 600.
 
 ## Sweeping orphaned packages
 
@@ -777,15 +799,15 @@ the initramfs and ISO carry it into the image.
 
 | Step | Does |
 |---|---|
-| `010_binhost.sh` | With `KDOS_MAKE_BINHOST=1`, copies the packages this build made into `build/binhost/` and signs an index over them with `kpkg index --sign`, making the key in `build/binhost-key/` on first use; without it, does nothing. The directory accumulates across runs and nothing empties it, and the index gives every package file the `E:` recipe hash of the port as it stands now, so a file an earlier run left is indexed as if built from the current recipe. A complete binhost needs `build/binhost/` emptied by hand and then a build from nothing with the flag set: `--fresh` alone builds no port already installed in `build/fs`, so it makes no package for one (see [Building from scratch](developing.md#building-from-scratch)) |
+| `010_binhost.sh` | With `KDOS_MAKE_BINHOST=1`, copies the packages this build made into `build/binhost/` and signs an index over them with `kpkg index --sign`, making the key in `build/binhost-key/` on first use, then writes the AppStream catalogue and the directory's signed release index, `kdos-update.idx`, every name flat; without it, does nothing. The directory accumulates across runs and nothing empties it, and the index gives every package file the `E:` recipe hash of the port as it stands now, so a file an earlier run left is indexed as if built from the current recipe. A complete binhost needs `build/binhost/` emptied by hand and then a build from nothing with the flag set: `--fresh` alone builds no port already installed in `build/fs`, so it makes no package for one (see [Building from scratch](developing.md#building-from-scratch)) |
 | `015_pkgstore.sh` | With the package store on, runs `kpkg store gc` over `build/pkgstore` down to `KDOS_PKG_STORE_MAX`, least recently used entries first; with it off, does nothing |
 | `020_cleanup.sh` | Removes build caches, `/tmp` and `/var/tmp` contents, the `kpkg` work directory, and the built-package cache with its `.pending` records, and any podman container store left in `/home/kdos/.local/share/containers` or `/var/lib/containers/storage` (applications are built on the machine that wants them). Resets `/root` to exactly what `fs/root` holds, mode 0700, so no CMake package registry, git setting or log a build wrote there ships. Removes Python bytecode no package owns and checks that every packaged module has its own (see below). Removes every file no package owns that the [size and language policy](writing-ports.md#size-and-language-policy) prunes from a package (a non-English message catalog, a translated manual page, an HTML or PDF manual under `/usr/share/doc`) and the gawk and binutils manuals those ports leave out, so a copy `10_bootstrap` installed and its port does not adopt never ships |
 | `030_launchers.sh` | Reconciles the generated application launchers in `/etc/skel` with the packs the image carries, through `kdos-appbox genlaunchers` |
 | `040_orphans.sh` | Removes installed packages that have no recipe in the tree, or whose recipe `ports/unbuilt` lists |
 | `045_identity.sh` | Writes `BUILD_ID` (the commit, `-dirty` when the tree had unrecorded changes) and `KDOS_BUILD_DATE` (that commit's date) into `/etc/os-release`, replacing any earlier pair; with no `KDOS_GIT_COMMIT` it writes neither. The commit's date and not the clock's, so two builds of one commit stamp the same file. It runs before `100_packs.sh` so the base pack carries the stamp |
-| `050_theme.sh` | Checks that `KDOS_ACCENT` is libkcolor's compiled default, then seeds that theme into `/etc/skel` with `kdos theme` and checks the files it writes; compiles the GLib schemas and the desktop-file database where their tools are installed |
+| `050_theme.sh` | Checks that `KDOS_ACCENT` is libkcolor's compiled default, then seeds that accent into `/etc/skel` with `kdos theme`: the accent file, the global theme `org.kdos.<accent>.desktop` the first login applies, and the files of the programs that read only a home (qt5ct's palette, btop and the other terminal programs). It checks that `kdeglobals` names the global theme and that qt5ct's configuration names a palette the image carries, fails the image when an installed KDOS colour scheme drops a role below its contrast floor (`kdos-theme contrast`), and compiles the GLib schemas and the desktop-file database where their tools are installed |
 | `060_udev_hwdb.sh` | Compiles `/etc/udev/hwdb.bin` |
-| `070_user.sh` | Removes empty directories under `/etc/skel/.config`, then creates the home directory of each ordinary user (UID 1000–65533) from `/etc/skel`, first clearing the generated trees skel owns outright (see [Syncing `fs/`](#syncing-fs)). Removes `/etc/passwd-`, `group-`, `shadow-` and `gshadow-`, the backups shadow's tools write, which carry the live accounts' password hashes |
+| `070_user.sh` | Removes empty directories under `/etc/skel/.config`, then creates the home directory of each ordinary user (UID 1000–65533) from `/etc/skel`, first clearing the launcher tree skel owns outright (see [Syncing `fs/`](#syncing-fs)). Removes `/etc/passwd-`, `group-`, `shadow-` and `gshadow-`, the backups shadow's tools write, which carry the live accounts' password hashes |
 | `080_whatis.sh` | Builds the manual-page index for `apropos` and `whatis` |
 | `085_fontcache.sh` | Clamps the font directories' times to `SOURCE_DATE_EPOCH` and writes the fontconfig cache, failing unless fontconfig accepts it (see below) |
 | `087_gates.sh` | Runs `testing/unowned.py`, then `testing/linkcheck.py` and `testing/entrycheck.py` over the finished tree, and fails the phase when linkcheck or entrycheck reports or a file no package owns is left under `/usr/share/locale`, `/usr/share/man`, `/usr/share/doc` or `/usr/share/info`; any other unowned file is a report. See [Testing](testing.md#files-nothing-owns) and [Testing](testing.md#run-time-references) |
@@ -794,9 +816,9 @@ the initramfs and ISO carry it into the image.
 | `105_ports.sh` | Stages the recipe-only ports tree in `build/image-ports`: every port's recipe files without the sources it hashes or any archive, `ports/shelves`, `ports/sources.idx`, `src/`, `docs/kdos`, `docs/screenshots`, `docs/kfs`, `script/book` and a `TREE` stamp; puts `build/keys/kdos-release.pub` in `/etc/kdos/keys/tree`; writes the source offer `/usr/share/kdos/SOURCES` (see [How KDOS is built](how-kdos-is-built.md#packaging-70_image)) |
 | `110_iso.sh` | Squashes the tree into `system.sfs`, a read-only squashfs image in 1 MiB blocks compressed with zstd at level 15, or with the codec `KDOS_ISO_COMP` names (`xz` or `zstd:<1-22>`; anything else is fatal), appends the staged ports tree as `/ports`, assembles `iso_root` with the kernel, the initramfs and Limine (the bootloader), and writes `build/iso-build/kdos.iso`. With `KDOS_PACK_KDOS=1` it also copies the base pack onto the ISO9660 filesystem at `/packs/kdos.kpack`. It draws the boot menu in the console's own font, converted by `psf2limine.py`, which sits beside it in `70_image/` |
 
-The ISO carries no applications. `100_packs.sh` always creates `/var/lib/kdos/packs/staging` (mode
+The ISO carries no boxed applications; the natively built ones are in `system.sfs` with the rest of the tree. `100_packs.sh` always creates `/var/lib/kdos/packs/staging` (mode
 01777) and `/var/lib/kdos/packs/mnt`; the only pack a medium can carry is the opt-in base pack
-`kdos`, beside `system.sfs` rather than inside it. Applications are built by podman on the machine
+`kdos`, beside `system.sfs` rather than inside it. Boxed applications are built by podman on the machine
 that wants them. See [Packs and boxes](../03-architecture/packs-and-boxes.md). The boot path the
 initramfs and Limine set up is described in [Boot and init](../03-architecture/boot-and-init.md).
 

@@ -13,6 +13,13 @@
 # no wheel to pin — the only versions that matter are QEMU's and OVMF's, and
 # they come from the distribution.
 #
+# `vnc-shot.py --gl` runs here too: virtio-vga-gl on an egl-headless display
+# needs QEMU's OpenGL module, virglrenderer and an EGL/GBM stack to render the
+# guest's GL on the host GPU. Without them QEMU refuses the device, and the
+# only Plasma a run can photograph is KWin on llvmpipe, which leaves Phosphor
+# mode's effect unloaded. The GPU itself comes in at `docker run` (--gpus all
+# and /dev/dri, as testing/session-cost.sh --gl passes them).
+#
 # Built by testing/rig-image.sh, which is also what CLAUDE.md's `$R` line
 # assumes has been run. Keeping the definition here is what makes a rig
 # photograph reproducible from a clone rather than from one machine's history.
@@ -21,6 +28,11 @@ FROM debian:trixie-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         qemu-system-x86 \
+        qemu-system-modules-opengl \
+        libvirglrenderer1 \
+        libegl1 \
+        libgbm1 \
+        libgles2 \
         qemu-utils \
         ovmf \
         python3 \
@@ -36,6 +48,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # `qemu-utils` IS `qemu-img`, and it is here because the Makefile creates the
 # qcow2 that testing/install-to-disk.sh writes into. `qemu-system-x86` does not
 # carry it, so without this the rig can boot the ISO and can never install
-# from it — which is the whole of the Wave 10 gate.
+# from it.
 WORKDIR /kdos
 CMD ["python3", "testing/vnc-shot.py", "--help"]

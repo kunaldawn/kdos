@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = calendarsupport
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 2c59bc7e9fd7834145de0a5f3dd8f7dbf4a6244d5f286e0edf68cc486e642f14  calendarsupport-26.08.2.tar.xz
+description = KDE PIM calendar support library: printing, incidence helpers and calendar selection for KOrganizer
+homepage    = https://invent.kde.org/pim/calendarsupport
+license     = GPL-2.0-or-later WITH LicenseRef-Qt-Commercial-exception-1.0 AND LGPL-2.0-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND BSD-3-Clause AND CC0-1.0 AND MIT
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kconfig kcompletion ki18n kguiaddons kio kmime kcodecs kcalendarcore kholidays kcalutils kidentitymanagement akonadi akonadi-calendar ktextaddons

@@ -864,13 +864,43 @@ int kp_db_drop_paths(const KpConf *c, const char *pkg, char *const *paths,
 }
 
 /*
+ * The port a directory holds, for a message: its last component. A caller that
+ * builds in the recipe's own directory passes "." or a path ending in a slash,
+ * and neither names anything, so those resolve to the real directory first.
+ */
+static void port_label(const char *portdir, char *out, size_t cap)
+{
+	char buf[512];
+	kb_strlcpy(buf, portdir, sizeof(buf));
+	size_t n = strlen(buf);
+	while (n > 1 && buf[n - 1] == '/')
+		buf[--n] = 0;
+	const char *b = kb_basename(buf);
+	if (!*b || !strcmp(b, ".") || !strcmp(b, "..")) {
+		char *real = realpath(portdir, NULL);
+		if (real) {
+			kb_strlcpy(out, kb_basename(real), cap);
+			free(real);
+			return;
+		}
+	}
+	kb_strlcpy(out, *b ? b : portdir, cap);
+}
+
+/*
  * `depends = a b c`.
  *
  * Split on SPACES only: a TAB inside the list stays part of its token. Every
  * recipe in the tree uses single spaces, so a recipe that separated two names
  * with a tab would depend on one port whose name holds the tab.
+ *
+ * Every name is counted, not only the ones that fit: a line naming more than
+ * `max` is an error rather than its first `max` names, because a closure cut
+ * short builds the port without the rest of what it needs, while
+ * testing/phaseclosure.py, which reads every name, passes the same recipe.
  */
-int kp_depends(const char *portdir, char out[][128], int max)
+int kp_depends_scan(const char *portdir, char out[][128], int max, char *err,
+		    size_t errcap)
 {
 	char *recipe = kb_path_join(portdir, "kpkgbuild");
 	size_t len = 0;
@@ -880,7 +910,7 @@ int kp_depends(const char *portdir, char out[][128], int max)
 		return 0;
 
 	int n = 0;
-	for (char *line = data, *next; line && *line && n < max; line = next) {
+	for (char *line = data, *next; line && *line; line = next) {
 		char *nl = strchr(line, '\n');
 		next = nl ? nl + 1 : NULL;
 		if (nl)
@@ -897,12 +927,15 @@ int kp_depends(const char *portdir, char out[][128], int max)
 		while (*p == ' ' || *p == '\t')
 			p++;
 
-		for (char *t = p; *t && n < max;) {
+		for (char *t = p; *t;) {
 			char *sp = strchr(t, ' ');
 			if (sp)
 				*sp = 0;
-			if (*t)
-				kb_strlcpy(out[n++], t, 128);
+			if (*t) {
+				if (n < max)
+					kb_strlcpy(out[n], t, 128);
+				n++;
+			}
 			if (!sp)
 				break;
 			t = sp + 1;
@@ -910,6 +943,26 @@ int kp_depends(const char *portdir, char out[][128], int max)
 		break;		/* no recipe has a second depends line */
 	}
 	free(data);
+
+	if (n > max) {
+		if (err && errcap) {
+			char port[256];
+			port_label(portdir, port, sizeof(port));
+			snprintf(err, errcap,
+				 "%s: depends names %d ports; the limit is %d",
+				 port, n, max);
+		}
+		return -1;
+	}
+	return n;
+}
+
+int kp_depends(const char *portdir, char out[][128], int max)
+{
+	char err[512];
+	int n = kp_depends_scan(portdir, out, max, err, sizeof(err));
+	if (n < 0)
+		kb_die("%s", err);
 	return n;
 }
 

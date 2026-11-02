@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = qcoro
+version     = 0.13.0
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/qcoro/qcoro/archive/refs/tags/v$version.tar.gz
+sha256      = 4bff7513c5c8e301b66308df05795043b1792ed16381a484e5c990171b8ff19e  qcoro-0.13.0.tar.gz
+description = C++20 coroutines for Qt — co_await on network replies, D-Bus calls, processes, timers and QML
+homepage    = https://qcoro.dvratil.cz/
+license     = MIT AND BSD-3-Clause
+depends     = cmake ninja qt6-qtbase qt6-qtdeclarative qt6-qtwebsockets

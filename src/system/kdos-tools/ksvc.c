@@ -36,6 +36,15 @@
  *   passed on to its process group before it exits (see forward_term), so a
  *   `kill <supervisor pid>` ends the daemon too rather than leaving it running
  *   where no pid file names it.
+ *
+ * - **Two tables, and root only ever runs one.** The system table is
+ *   INIT_DIR's scripts with their files in RUN_DIR. A user's table is
+ *   USER_INIT_DIR's scripts with their files in that user's run directory,
+ *   chosen by `--user` or by KSVC_RUN_DIR in the environment, which the
+ *   turnstile backend exports to the scripts it runs at the first login.
+ *   Root ignores KSVC_RUN_DIR and refuses `--user` (see select_table): a path
+ *   a root tool took from its caller's environment would let that caller name
+ *   the pid file the next `stop` kills.
  * ---------------------------------
  */
 
@@ -81,13 +90,124 @@
  * client started into that gap exits and waits out RESPAWN_DELAY. */
 #define WITH_SETTLE_MS 1000
 
+/* Where a user's services live: the scripts the turnstile backend runs at the
+ * first login, in the same NN_name.sh shape as INIT_DIR's. Overridable at
+ * compile time for the same reason as the three in kdos-tools.h. */
+#ifndef USER_INIT_DIR
+#define USER_INIT_DIR "/etc/kdos/user-services"
+#endif
+
+/* The longest run directory a user table may name. Every path built from it
+ * has to fit the fixed buffers below (the stop marker is copied into one
+ * before the SIGTERM handler that reads it is installed). */
+#define RUN_DIR_MAX 256
+
 /* ──────────────────────────────────────────────────────────────────────── */
+
+/*
+ * THE TABLE THIS RUN WORKS ON. The system table unless select_table() chose
+ * a user's; g_owner is the uid a supervisor must run as to count as one of
+ * this table's (see is_supervisor), which is the owner of its run directory:
+ * root for /run.
+ */
+static char g_run_dir[RUN_DIR_MAX] = RUN_DIR;
+static char g_init_dir[RUN_DIR_MAX] = INIT_DIR;
+static char g_disabled_dir[1024] = DISABLED_DIR;
+static int g_user;
+static uid_t g_owner;
+
+/*
+ * A user's run directory: KSVC_RUN_DIR when it is set, $XDG_RUNTIME_DIR/ksvc
+ * otherwise, and /run/user/<uid>/ksvc when neither is, which is the runtime
+ * directory turnstile makes. It must be absolute, short enough for the
+ * buffers, a directory, the caller's own and writable by nobody else: the
+ * pid files in it decide what `stop` signals, so a directory another account
+ * can write into is one in which that account picks the target.
+ */
+static void user_run_dir(char *out, size_t n)
+{
+	const char *env = getenv("KSVC_RUN_DIR");
+	const char *xdg = getenv("XDG_RUNTIME_DIR");
+	int w;
+
+	if (env && *env)
+		w = snprintf(out, n, "%s", env);
+	else if (xdg && *xdg == '/')
+		w = snprintf(out, n, "%s/ksvc", xdg);
+	else
+		w = snprintf(out, n, "/run/user/%u/ksvc", (unsigned)getuid());
+	if (w < 0 || (size_t)w >= n)
+		kb_die("the run directory path is longer than %zu bytes", n - 1);
+	if (out[0] != '/')
+		kb_die("KSVC_RUN_DIR must be an absolute path, got '%s'", out);
+	if (mkdir(out, 0700) < 0 && errno != EEXIST)
+		kb_die("%s: %s", out, strerror(errno));
+	struct stat st;
+	if (stat(out, &st) < 0 || !S_ISDIR(st.st_mode))
+		kb_die("%s is not a directory", out);
+	if (st.st_uid != getuid())
+		kb_die("%s belongs to uid %u, not to you", out,
+		       (unsigned)st.st_uid);
+	if (st.st_mode & 022)
+		kb_die("%s is writable by others; a user table needs a "
+		       "directory only its owner can write", out);
+}
+
+/*
+ * Choose the table. `want_user` is `--user`. Root always gets the system
+ * table. Anyone else gets their own when they asked for it or when
+ * KSVC_RUN_DIR is set, and the system table otherwise, which they can read
+ * (`service list`, `ksvc check sshd`) but not supervise into or stop
+ * (table_writable). A user table exports its run directory as KSVC_RUN_DIR,
+ * so the scripts `service --user` runs reach the same table through
+ * service_helper's plain `ksvc` calls.
+ */
+static void select_table(int want_user)
+{
+	struct stat st;
+	const char *env = getenv("KSVC_RUN_DIR");
+
+	if (geteuid() == 0) {
+		if (want_user)
+			kb_die("root has no user services; the system table is "
+			       "`service` without --user");
+	} else if (want_user || (env && *env)) {
+		user_run_dir(g_run_dir, sizeof(g_run_dir));
+		kb_strlcpy(g_init_dir, USER_INIT_DIR, sizeof(g_init_dir));
+		const char *cfg = getenv("XDG_CONFIG_HOME");
+		if (cfg && *cfg == '/')
+			snprintf(g_disabled_dir, sizeof(g_disabled_dir),
+				 "%s/kdos/user-services.disabled", cfg);
+		else
+			snprintf(g_disabled_dir, sizeof(g_disabled_dir),
+				 "%s/.config/kdos/user-services.disabled",
+				 kb_home_dir());
+		setenv("KSVC_RUN_DIR", g_run_dir, 1);
+		g_user = 1;
+	}
+	g_owner = stat(g_run_dir, &st) == 0 ? st.st_uid : 0;
+}
+
+/*
+ * A supervisor that cannot write its pid file where `stop` and `check` look
+ * is one nothing can find again, its daemon running with no way to end it but
+ * a pkill; and a `stop` that cannot remove the files cannot signal the daemon
+ * either, so it would report a stop that did not happen. An ordinary user
+ * reaches the system table's /run only to read it, and supervises into their
+ * own table.
+ */
+static void table_writable(void)
+{
+	if (access(g_run_dir, W_OK) != 0)
+		kb_die("%s is not writable here; a user's own services are "
+		       "`ksvc --user`", g_run_dir);
+}
 
 static char *pidfile(const char *name)
 {
 	char leaf[128];
 	snprintf(leaf, sizeof(leaf), "%s.pid", name);
-	return kb_path_join(RUN_DIR, leaf);
+	return kb_path_join(g_run_dir, leaf);
 }
 
 /*
@@ -114,7 +234,7 @@ static char *statefile(const char *name)
 {
 	char leaf[160];
 	snprintf(leaf, sizeof(leaf), "kdos-svc.%s.state", name);
-	return kb_path_join(RUN_DIR, leaf);
+	return kb_path_join(g_run_dir, leaf);
 }
 
 static long boot_secs(void)
@@ -133,7 +253,7 @@ static void write_state(const char *name, const char *phase, pid_t daemon,
 		 boot_secs(), fails, last, grace);
 	/* SIGTERM held off for the write: the supervisor exits in its handler,
 	 * and one caught between the temporary file and the rename would leave
-	 * the temporary file in /run for good. */
+	 * the temporary file in the run directory for good. */
 	sigset_t term, was;
 	sigemptyset(&term);
 	sigaddset(&term, SIGTERM);
@@ -167,15 +287,28 @@ static int alive(pid_t pid)
 	return pid > 1 && kill(pid, 0) == 0;
 }
 
+/* The real uid `pid` runs as, or -1 when /proc no longer has it. */
+static long proc_uid(pid_t pid)
+{
+	char path[48], buf[2048];
+	snprintf(path, sizeof(path), "/proc/%d/status", (int)pid);
+	if (kb_read_file(path, buf, sizeof(buf)) <= 0)
+		return -1;
+	const char *u = strstr(buf, "\nUid:");
+	return u ? strtol(u + 5, NULL, 10) : -1;
+}
+
 /*
  * Whether `pid` is the supervisor of `name`: its command line is
- * `ksvc supervise [--option VALUE]... <name> ...`. A pid file outlives a
- * supervisor killed by SIGKILL, and its number can by then belong to anything,
- * so a live pid alone does not make the service running.
+ * `ksvc [--user] supervise [--option VALUE]... <name> ...` and it runs as
+ * this table's owner. A pid file outlives a supervisor killed by SIGKILL, and
+ * its number can by then belong to anything — another account's supervisor of
+ * a service with the same name included, which every user with a `pipewire`
+ * has — so a live pid alone does not make the service running.
  */
 static int is_supervisor(pid_t pid, const char *name)
 {
-	if (!alive(pid))
+	if (!alive(pid) || proc_uid(pid) != (long)g_owner)
 		return 0;
 	char path[48], buf[4096];
 	snprintf(path, sizeof(path), "/proc/%d/cmdline", (int)pid);
@@ -186,9 +319,10 @@ static int is_supervisor(pid_t pid, const char *name)
 	int na = 0;
 	for (int i = 0; i < n && na < 64; i += (int)strlen(buf + i) + 1)
 		arg[na++] = buf + i;
-	if (na < 3 || strcmp(arg[1], "supervise"))
+	int i = na > 1 && !strcmp(arg[1], "--user") ? 2 : 1;
+	if (na < i + 2 || strcmp(arg[i], "supervise"))
 		return 0;
-	int i = 2;
+	i++;
 	while (i + 1 < na && !strncmp(arg[i], "--", 2))
 		i += 2;
 	return i < na && !strcmp(arg[i], name);
@@ -329,18 +463,18 @@ static const char *script_name(const char *file)
  * service can never be shadowed by a longer one that contains it. */
 static char *find_script(const char *want)
 {
-	char **files = kb_listdir(INIT_DIR, NULL);
+	char **files = kb_listdir(g_init_dir, NULL);
 	char *hit = NULL;
 
 	for (char **f = files; f && *f && !hit; f++) {
 		const char *n = script_name(*f);
 		if (n && !strcmp(n, want))
-			hit = kb_path_join(INIT_DIR, *f);
+			hit = kb_path_join(g_init_dir, *f);
 	}
 	for (char **f = files; f && *f && !hit; f++) {
 		const char *n = script_name(*f);
 		if (n && strstr(n, want))
-			hit = kb_path_join(INIT_DIR, *f);
+			hit = kb_path_join(g_init_dir, *f);
 	}
 	kb_strv_free(files);
 	return hit;
@@ -372,11 +506,13 @@ static int run_script(const char *script, const char *action)
 /*
  * A supervised daemon's stdout and stderr, and the supervisor's own Starting
  * and Exited lines, go to syslog under the service's name — the daemon
- * facility unless `--facility` names another, one message per line, at info —
- * and to /run/kdos-svc.<name>.log, which holds at most LOG_CAP bytes and one
- * previous generation beside it. syslog.conf routes by facility, so a daemon
- * whose own syslog() calls use authpriv needs its forwarded lines under
- * authpriv too, or they land in /var/log/messages instead of auth.log.
+ * facility, or user in a user's table, unless `--facility` names another, one
+ * message per line, at info — and to kdos-svc.<name>.log in the table's run
+ * directory (/run/kdos-svc.<name>.log for the system table), which holds at
+ * most LOG_CAP bytes and one previous generation beside it. syslog.conf
+ * routes by facility, so a daemon whose own syslog() calls use authpriv needs
+ * its forwarded lines under authpriv too, or they land in /var/log/messages
+ * instead of auth.log.
  *
  * Never the descriptors the supervisor was started with. Under rcS those are
  * the boot step's capture file on the /run tmpfs, open for as long as the
@@ -411,8 +547,8 @@ static int facility_by_name(const char *name)
 
 static void forward_lines(const char *name, int facility, int fd)
 {
-	char path[160], old[168];
-	snprintf(path, sizeof(path), RUN_DIR "/kdos-svc.%s.log", name);
+	char path[RUN_DIR_MAX + 96], old[RUN_DIR_MAX + 100];
+	snprintf(path, sizeof(path), "%s/kdos-svc.%s.log", g_run_dir, name);
 	snprintf(old, sizeof(old), "%s.old", path);
 
 	openlog(name, LOG_NDELAY, facility);
@@ -511,7 +647,8 @@ static void route_output(const char *name, int facility)
  * respawned.
  *
  * `--facility NAME` is the syslog facility the forwarded output is sent
- * under (see forward_lines); daemon when it is not given.
+ * under (see forward_lines); daemon when it is not given, or user in a
+ * user's table.
  *
  * `--stop-grace SECS` is how long `stop` gives the service's processes to
  * exit after SIGTERM before it sends SIGKILL; STOP_GRACE when it is not
@@ -542,14 +679,14 @@ static void route_output(const char *name, int facility)
  * signalled by its pid as well, as `stop` does; g_daemon is set only while a
  * daemon is unreaped, so the pid cannot belong to anything else.
  */
-static char g_stopping[192];
+static char g_stopping[RUN_DIR_MAX + 96];
 static volatile pid_t g_daemon;
 
 static char *stopmark(const char *name)
 {
 	char leaf[160];
 	snprintf(leaf, sizeof(leaf), "kdos-svc.%s.stopping", name);
-	return kb_path_join(RUN_DIR, leaf);
+	return kb_path_join(g_run_dir, leaf);
 }
 
 static void forward_term(int sig)
@@ -569,7 +706,7 @@ static int cmd_supervise(int argc, char **argv)
 {
 	int final[MAX_FINAL];
 	int nfinal = 0;
-	int facility = LOG_DAEMON;
+	int facility = g_user ? LOG_USER : LOG_DAEMON;
 	int grace = STOP_GRACE;
 	const char *with = NULL;
 
@@ -617,6 +754,8 @@ static int cmd_supervise(int argc, char **argv)
 		kb_die("bad service name '%s'", name);
 	if (with && !strcmp(with, name))
 		kb_die("--restart-with names the service itself");
+
+	table_writable();
 
 	/* A second supervisor of a running name would overwrite the pid file
 	 * with its own id: `stop` would then end the second alone, and the
@@ -724,6 +863,13 @@ static int cmd_supervise(int argc, char **argv)
 			if (d == 0) {
 				signal(SIGTERM, SIG_DFL);
 				sigprocmask(SIG_SETMASK, &was, NULL);
+				/* The table is the supervisor's business. A
+				 * daemon that inherited KSVC_RUN_DIR would put
+				 * every `service` call it or its children make
+				 * into this user's table — the session bus
+				 * activates programs that answer `service
+				 * status sshd` from it with [DOWN]. */
+				unsetenv("KSVC_RUN_DIR");
 				execvp(argv[1], argv + 1);
 				_exit(127);
 			}
@@ -850,6 +996,7 @@ static int cmd_stop_supervised(const char *name)
 {
 	if (!name_ok(name))
 		kb_die("bad service name '%s'", name);
+	table_writable();
 
 	char *p = pidfile(name);
 	pid_t pid = read_pid(name);
@@ -964,7 +1111,7 @@ static int cmd_check(const char *name)
 
 static int is_disabled(const char *name)
 {
-	char *p = kb_path_join(DISABLED_DIR, name);
+	char *p = kb_path_join(g_disabled_dir, name);
 	int off = kb_path_exists(p);
 	free(p);
 	return off;
@@ -1047,18 +1194,19 @@ static void list_status(const char *name, const char *out, int width)
 static int cmd_list(void)
 {
 	int width = list_width();
-	printf("\nKDOS Services\n"
+	printf("\nKDOS %s\n"
 	       "─────────────────────────────────────────────────────────\n"
 	       "  %-20s %-12s %s\n"
 	       "─────────────────────────────────────────────────────────\n",
+	       g_user ? "User Services" : "Services",
 	       "SERVICE", "AUTOSTART", "STATUS");
 
-	char **files = kb_listdir(INIT_DIR, NULL);
+	char **files = kb_listdir(g_init_dir, NULL);
 	for (char **f = files; f && *f; f++) {
 		const char *n = script_name(*f);
 		if (!n)
 			continue;
-		char *path = kb_path_join(INIT_DIR, *f);
+		char *path = kb_path_join(g_init_dir, *f);
 		if (access(path, X_OK) != 0) {
 			free(path);
 			continue;
@@ -1091,7 +1239,7 @@ static int cmd_list(void)
 
 static void usage(void)
 {
-	printf("Usage: service <command> [service-name]\n"
+	printf("Usage: service [--user] <command> [service-name]\n"
 	       "\n"
 	       "Commands:\n"
 	       "  list              List all available services and their status\n"
@@ -1103,19 +1251,31 @@ static void usage(void)
 	       "  disable <name>    Disable a service from starting at boot\n"
 	       "  help              Show this help message\n"
 	       "\n"
+	       "--user works on your own services instead, the ones in\n"
+	       USER_INIT_DIR " that start at your first login and stop\n"
+	       "at your last; enable and disable then decide whether they start.\n"
+	       "\n"
 	       "Examples:\n"
 	       "  service list\n"
 	       "  service status sshd\n"
 	       "  service disable bluetooth\n"
-	       "  service enable network\n");
+	       "  service enable network\n"
+	       "  service --user restart pipewire\n");
 }
 
 int ksvc_main(int argc, char **argv)
 {
+	int want_user = argc > 1 && !strcmp(argv[1], "--user");
+	if (want_user) {
+		argv[1] = argv[0];
+		argc--;
+		argv++;
+	}
 	if (argc < 2) {
 		usage();
 		return 1;
 	}
+	select_table(want_user);
 	const char *cmd = argv[1];
 
 	/* The three the init.d scripts call through service_helper. */
@@ -1157,12 +1317,12 @@ int ksvc_main(int argc, char **argv)
 			return 1;
 		}
 		free(script);
-		char *flag = kb_path_join(DISABLED_DIR, name);
+		char *flag = kb_path_join(g_disabled_dir, name);
 		if (!strcmp(cmd, "enable")) {
 			unlink(flag);
 			printf("Service '%s' enabled.\n", name);
 		} else {
-			kb_mkdir_p(DISABLED_DIR);
+			kb_mkdir_p(g_disabled_dir);
 			kb_write_file(flag, "");
 			printf("Service '%s' disabled.\n", name);
 		}

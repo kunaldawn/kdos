@@ -22,7 +22,7 @@
 #
 # The values come from the Makefile through script/chroot/exec.sh. A build run
 # without them (kdosbuild.sh called by hand) writes neither line, and
-# kdos-about shows the image as unstamped rather than inventing a commit.
+# About this System shows the image as unstamped rather than inventing a commit.
 #
 # Runs before 100_packs.sh so the base pack carries the stamped file.
 

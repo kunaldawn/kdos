@@ -2,6 +2,14 @@
 # its value, this file's or the compiled one. `useradd -D -s SHELL` and its
 # other flags write every key into this file, keeping these comments.
 
+# Every ordinary account joins audio, whose members get PipeWire's real-time
+# limits (/etc/security/limits.d/25-pw-rlimits.conf); without them sound
+# drops out under load. This is what puts accounts made by System Settings,
+# AccountsService and Plasma Setup in audio, as the installer's account is.
+# useradd -G replaces this list instead of adding to it, and a system account
+# (useradd -r) never gets it.
+GROUPS=audio
+
 # No mailbox: login.defs names no MAIL_DIR, nothing delivers local mail and the
 # image has no spool directory, so this says what useradd does.
 CREATE_MAIL_SPOOL=no

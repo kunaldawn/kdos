@@ -9,7 +9,7 @@ what is in `fs/`, what that step does with it, and what does not belong there.
 ## What fs/ holds
 
 `fs/` mirrors the root filesystem. A file at `fs/etc/inittab` becomes `/etc/inittab` in the root,
-and one at `fs/usr/local/bin/kdos-desktop` becomes `/usr/local/bin/kdos-desktop`. The main areas are:
+and one at `fs/usr/local/sbin/kdos-dm` becomes `/usr/local/sbin/kdos-dm`. The main areas are:
 
 `fs/etc/`
 :   The system's own configuration: `inittab`, which sysvinit reads, and the boot scripts under
@@ -17,18 +17,20 @@ and one at `fs/usr/local/bin/kdos-desktop` becomes `/usr/local/bin/kdos-desktop`
     `service.disabled/` naming those that must not start; `passwd`, `group` and [`shadow`]{.idx}
     with the accounts every machine has; `profile`, `bash.bashrc` and `profile.d/`; `fstab`,
     `hostname`, `hosts`, `nsswitch.conf` and `resolv.conf`; the firewall in `nftables.conf` and
-    `nftables.d/`; KDOS's own settings under `kdos/`, such as `login.conf` and `zram.conf`, and the
-    directories of trusted signing keys under `kdos/keys/`; and configuration for udev, polkit, PipeWire, ALSA
-    and the XDG menus.
+    `nftables.d/`; KDOS's own settings under `kdos/`, such as `xkb.conf` and `zram.conf`, the per-user services
+    under `kdos/user-services/`, and the
+    directories of trusted signing keys under `kdos/keys/`; and configuration for udev, polkit, PipeWire, ALSA,
+    SDDM (`sddm.conf.d/`), turnstile and the XDG menus and autostart entries.
 
 `fs/etc/skel/`
 :   The skeleton of a user's home directory, copied into each home when the image phase creates the
     users. `fs/root/` holds root's own `.bashrc` and `.bash_profile`.
 
 `fs/usr/local/`
-:   KDOS's own scripts that belong to no port: the desktop's start-up script `bin/kdos-desktop` and
-    a few helpers beside it, the tty1 login script `sbin/kdos-login`, and the session bring-up that
-    `kdos-desktop` and `kdos-desktop-start` share, `lib/kdos/session-common.sh`.
+:   KDOS's own scripts that belong to no port: `sbin/kdos-dm`, which starts the display manager on
+    tty1, the session wrapper SDDM starts Plasma through, `bin/kdos-session-wrapper`, a few helpers
+    beside it, and the functions the wrapper and Plasma's environment script share,
+    `lib/kdos/session-common.sh`.
 
 `fs/usr/share/`
 :   Data files: the boot menu's pictures, the in-system help pages, the logo and the screensaver

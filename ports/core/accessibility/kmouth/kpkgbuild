@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kmouth
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 41c863591c44657d26ed241292dd68e641d15326b2d0a3e425a1e779c1623cf2  kmouth-26.08.2.tar.xz
+description = Speech synthesiser front end — type sentences or pick them from phrase books and have them spoken
+homepage    = https://apps.kde.org/kmouth/
+license     = GPL-2.0-or-later AND GFDL-1.2-only
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtspeech kcrash kcompletion kconfig kconfigwidgets kcoreaddons ki18n kio kwidgetsaddons kxmlgui kdoctools speech-dispatcher espeak-ng

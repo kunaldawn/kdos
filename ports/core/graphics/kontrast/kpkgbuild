@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kontrast
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 9cb739637f4aa57ac50ac0f7fd371935fe0a7ea1d324b9e7b58ffbac2044ad48  kontrast-26.08.2.tar.xz
+description = Colour contrast checker — WCAG contrast ratios for text and background pairs, with saved favourites
+homepage    = https://apps.kde.org/kontrast/
+license     = GPL-3.0-or-later AND BSD-2-Clause AND BSD-3-Clause AND CC-BY-SA-4.0 AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtsvg kirigami ki18n kcoreaddons kconfig kcrash kdoctools kirigami-addons futuresql qcoro

@@ -9,11 +9,11 @@
 # ---------------------------------
 
 name        = marble
-version     = 26.08.1
+version     = 26.08.2
 release     = 1
 source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
-sha256      = a8d5fbfb6b8cc4a8517df6e75143afcdaebcd7995f88f7a459d6b17c9bae1a98  marble-26.08.1.tar.xz
+sha256      = e336e4dd45612700a492420ae9e8d46a4847dfc4142fce19f89126d979483064  marble-26.08.2.tar.xz
 description = Marble: virtual globe and world atlas, with offline Atlas, satellite and OpenStreetMap vector views
 homepage    = https://marble.kde.org/
 license     = LGPL-2.1-or-later AND GPL-3.0-or-later
-depends     = cmake ninja extra-cmake-modules librsvg qt6-qtbase qt6-qtsvg qt6-qtdeclarative qt6-qt5compat qt6-qtwebengine qt6-qtwebchannel qt6-qtpositioning qt6-qtserialport kcoreaddons ki18n kconfig kcrash kparts kio kdoctools kirigami kirigami-addons protobuf abseil-cpp zlib gpsd shapelib shared-mime-info hicolor-icon-theme
+depends     = cmake ninja extra-cmake-modules librsvg qt6-qtbase qt6-qtsvg qt6-qtdeclarative qt6-qt5compat qt6-qtwebengine qt6-qtwebchannel qt6-qtpositioning qt6-qtserialport kcoreaddons ki18n kconfig kcrash kparts kio kdoctools kirigami kirigami-addons libplasma krunner protobuf abseil-cpp zlib gpsd shapelib shared-mime-info hicolor-icon-theme

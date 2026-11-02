@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "https://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+
+<!--
+  The action the graphical installer's `pkexec /usr/bin/kinstall` checks.
+
+  pkexec takes the action whose exec.path names the program it is asked to
+  run, so this binary and no other is covered. An administrator's password is
+  the default everywhere. The live medium's boot step adds a rule granting it
+  to the local active session, whose account's password is published; kinstall
+  leaves that rule out of every install.
+-->
+
+<policyconfig>
+	<vendor>KDOS</vendor>
+	<vendor_url>https://github.com/kunaldawn/kdos</vendor_url>
+	<icon_name>system-software-install</icon_name>
+
+	<action id="io.kdos.installer.run">
+		<description>Install KDOS on a disk</description>
+		<message>Authentication is required to erase a disk and install KDOS on it</message>
+		<defaults>
+			<allow_any>no</allow_any>
+			<allow_inactive>no</allow_inactive>
+			<allow_active>auth_admin</allow_active>
+		</defaults>
+		<annotate key="org.freedesktop.policykit.exec.path">/usr/bin/kinstall</annotate>
+	</action>
+</policyconfig>

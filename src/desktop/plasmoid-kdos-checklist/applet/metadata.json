@@ -1,0 +1,19 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "KDOS"
+            }
+        ],
+        "Category": "System Information",
+        "Description": "A short first-run checklist that ticks itself as things get done",
+        "EnabledByDefault": true,
+        "Icon": "checkmark-symbolic",
+        "License": "MIT",
+        "Name": "Getting Started",
+        "Website": "https://github.com/kunaldawn/kdos"
+    },
+    "Keywords": "checklist;first run;getting started;backup;phone;box;firmware;encryption;",
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-NotificationAreaCategory": "SystemServices"
+}

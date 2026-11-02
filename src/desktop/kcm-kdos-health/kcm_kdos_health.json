@@ -1,0 +1,12 @@
+{
+    "KPlugin": {
+        "Description": "Checks of this system's kernel, hardware, session and boxes",
+        "Icon": "checkmark",
+        "Name": "Health"
+    },
+    "X-DocPath": "kdos/04-programs/kdos-settings.html#health",
+    "X-KDE-KInfoCenter-Category": "basic_information",
+    "X-KDE-Keywords": "health,doctor,kdos doctor,check,diagnose,problem,landlock,microcode,firmware,session,boxes,podman",
+    "X-KDE-System-Settings-Parent-Category": "system-administration",
+    "X-KDE-Weight": 1
+}

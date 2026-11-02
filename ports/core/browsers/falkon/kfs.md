@@ -32,7 +32,3 @@ and adds a *Share page* menu through Purpose, and its Python plugin support thro
   `-D CMAKE_REQUIRE_FIND_PACKAGE_Shiboken6Tools=ON` — The same for the Python plugin support,
   which is built only when PySide6, Shiboken6 and its tools are all found
   ([python3-pyside6](#port-python3-pyside6)).
-
-## Patches
-
-- `app-id.patch` — Edits `linux/applications/org.kde.falkon.desktop`. It changes `StartupWMClass=Falkon` to `StartupWMClass=org.kde.falkon`, the entry's own desktop id, so the panel's lookup by file name and its lookup by window class find the one entry. It also deletes the `MimeType=` line, which claimed `text/html`, `application/xhtml+xml`, `http`, `https` and `application/x-mimearchive`: the web types are Firefox ESR's, their default in `/etc/xdg/kdos-mimeapps.list`, and an entry claims a type only where nothing else does (see [desktop entries](../../../../docs/kdos/05-developer/writing-ports.md#desktop-entries-belong-to-the-port)).

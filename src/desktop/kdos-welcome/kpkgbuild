@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdos-welcome
+version     = 1.0.0
+release     = 1
+description = The KDOS tour in Welcome Center — accessibility, accent, Phosphor mode, desk, system and help pages
+homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
+depends     = plasma-welcome kdos-plasma-look kdos-tools kdos-icons plasmoid-kdos-checklist kconfig kcmutils dbus polkit

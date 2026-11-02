@@ -1,0 +1,9 @@
+{
+  "truncated": false,
+  "processes": [
+    {"pid": 1201, "comm": "kwin_wayland", "exe": "/usr/bin/kwin_wayland", "packages": ["qt6-base"]},
+    {"pid": 1250, "comm": "plasmashell", "exe": "/usr/bin/plasmashell", "packages": ["qt6-base"]},
+    {"pid": 3122, "comm": "konsole", "exe": "/usr/bin/konsole", "packages": ["qt6-base"]}
+  ],
+  "count": 3
+}

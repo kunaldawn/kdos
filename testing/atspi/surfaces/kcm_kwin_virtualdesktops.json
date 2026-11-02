@@ -1,0 +1,10 @@
+{
+  "app": "kcmshell6 kcm_kwin_virtualdesktops",
+  "settle": 3,
+  "steps": [],
+  "mask": [],
+  "allow_unnamed": [
+    "button",
+    "spin_button"
+  ]
+}

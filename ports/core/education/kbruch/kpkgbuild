@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kbruch
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 3ffa56674d13436414c4a5097b61ebe3daefd9019b971d47a02ba3cf367dfa1f  kbruch-26.08.2.tar.xz
+description = KDE fraction trainer — exercises on fractions, ratios, percentages and factorisation
+homepage    = https://apps.kde.org/kbruch/
+license     = GPL-2.0-or-later AND GFDL-1.2-only AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kconfig kcoreaddons kcrash ki18n kwidgetsaddons kxmlgui kdoctools

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = tokodon
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 28d8e392fd93c7a8fe59822c07894b49ca76fbd00471f3ca6ce5984d12dbfb25  tokodon-26.08.2.tar.xz
+description = Mastodon and fediverse client — timelines, posting with media and polls, notifications and push
+homepage    = https://apps.kde.org/tokodon/
+license     = GPL-3.0-or-later AND GPL-3.0-only AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND GPL-2.0-or-later AND AGPL-3.0-or-later AND LGPL-2.0-or-later AND LGPL-2.1-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND BSD-2-Clause AND BSD-3-Clause AND MIT AND CC-BY-SA-4.0 AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qtwebsockets qt6-qtmultimedia qt6-qtwebview kirigami ki18n knotifications kconfig kcoreaddons kcolorscheme kirigami-addons qtkeychain kunifiedpush openssl qqc2-desktop-style kio purpose qcoro kdbusaddons kwindowsystem kitemmodels kdeclarative prison sonnet

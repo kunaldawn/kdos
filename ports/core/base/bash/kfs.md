@@ -13,8 +13,7 @@ separate source of the recipe, and `build.sh` applies them in order before confi
 - `-DSYS_BASHRC` — Compile in `/etc/bash.bashrc` as the system-wide startup file of an interactive
   shell. Bash reads it before `~/.bashrc` only when this is defined; upstream leaves the definition
   commented out in `config-top.h`. KDOS ships that file, with the history settings, the aliases and
-  the prompt marks described in
-  [Prompt marks](../../../../docs/kdos/04-programs/kdos-term.md#prompt-marks).
+  the OSC 133 prompt marks Konsole reads to jump between commands.
 - `--with-curses` — Take the terminal-capability functions from ncurses rather than a separate
   termcap library.
 - `--enable-readline` — Build the interactive line editor in. It is upstream's default, stated.

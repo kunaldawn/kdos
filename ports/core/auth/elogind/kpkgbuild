@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = elogind
+version     = 255.24
+release     = 1
+source      = https://github.com/elogind/elogind/archive/v$version/elogind-v$version.tar.gz
+sha256      = 7737e13f409bdf6041bd1a1f5580ab197790f6641e26faf93e09c19c68f5dab8  elogind-255.24.tar.gz
+description = Standalone logind: seats, sessions, login1 on the system bus, pam_elogind and libelogind
+homepage    = https://github.com/elogind/elogind
+license     = GPL-2.0-or-later AND LGPL-2.1-or-later
+depends     = meson ninja pkgconf coreutils gperf python3-jinja2 libxslt docbook-xsl docbook-xml libcap acl eudev util-linux dbus pam

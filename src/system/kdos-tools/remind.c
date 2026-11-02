@@ -5,20 +5,22 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   kdos remind — a toast, later
+ *   kdos remind — a notification, later
  *
- * ONE snooze PER REMINDER, AND NO SCHEDULER OF OURS. J.13's per-user table is
- * where the job lives, so a reminder survives a logout and comes back with the
- * session; `snooze` is what waits.
+ * ONE snooze PER REMINDER, AND NO SCHEDULER OF OURS. The per-user timer table
+ * is where the job lives, so a reminder survives a logout and comes back with
+ * the session; `snooze` is what waits.
  *
- * IT IS ARMED TWICE AND FIRES ONCE, and both halves are needed. The per-user
- * table is read ONCE, at login — nothing watches the directory — so a file
- * written now would wait for the next login before anything looked at it;
- * `kdos remind` therefore starts its own `snooze` as well. The next login
- * starts a second one from the same file. They cannot both deliver, because
- * `kdos remind fire` REMOVES the reminder before it returns and the other one
- * then finds nothing: the file's presence is the reminder, and its absence is
- * the record that it has been given.
+ * THE RUNNER IS TOLD, NOT RACED. The per-user timer runner reads the table
+ * when it starts and again on SIGUSR1, so after a reminder's file is written
+ * or removed the runner named in $XDG_RUNTIME_DIR/kdos/user-timers.pid is
+ * sent exactly that signal — never SIGHUP, which restarts every job it runs.
+ * Only when no runner of this user is alive does `kdos remind` start a
+ * `snooze` of its own, and the next login's runner then arms the same file a
+ * second time. Both cannot deliver, because `kdos remind fire` REMOVES the
+ * reminder before it returns and the other one then finds nothing: the
+ * file's presence is the reminder, and its absence is the record that it has
+ * been given.
  *
  * THE TEXT IS A COMMENT LINE AND NOT AN ARGUMENT. Both timer parsers split a
  * row by leaving an expansion unquoted, with no `eval` and no quoting — so
@@ -38,6 +40,7 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -72,8 +75,8 @@ static int usage(void)
 	return 2;
 }
 
-/* ~/.config/kdos/timers.d, made if it is not there: it is J.13's table and a
- * reminder is one of its rows. */
+/* ~/.config/kdos/timers.d, made if it is not there: it is the per-user timer
+ * table and a reminder is one of its rows. */
 static char *timers_dir(void)
 {
 	const char *cfg = getenv("XDG_CONFIG_HOME");
@@ -229,9 +232,41 @@ static void spec_of(const time_t *at, const char *path, char *out, size_t n)
 }
 
 /*
- * ARM IT NOW, as well as writing the row. Nothing re-reads the per-user table
- * between logins, so a reminder that only wrote a file would wait for the next
- * one. Detached, because this command returns and a reminder does not.
+ * THE RUNNER, when one of this user's is alive: its pid from the file it
+ * keeps, checked against /proc so a stale file or a recycled pid that now
+ * belongs to somebody else is never signalled.
+ */
+static pid_t runner(void)
+{
+	char *pf = kb_path_join(kb_runtime_dir(), "kdos/user-timers.pid");
+	char buf[32] = "", path[64];
+	struct stat st;
+	pid_t pid = 0;
+
+	if (kb_read_line_file(pf, buf, sizeof(buf)) > 0)
+		pid = (pid_t)atol(buf);
+	free(pf);
+	if (pid <= 1)
+		return 0;
+	snprintf(path, sizeof(path), "/proc/%ld", (long)pid);
+	if (stat(path, &st) != 0 || st.st_uid != getuid())
+		return 0;
+	return pid;
+}
+
+/* The table changed: the runner re-reads it. 0 when one was told. */
+static int tell_runner(void)
+{
+	pid_t pid = runner();
+
+	return pid && kill(pid, SIGUSR1) == 0 ? 0 : -1;
+}
+
+/*
+ * ARM IT NOW, as well as writing the row: the runner re-reads the table on
+ * its signal, and with no runner a reminder that only wrote a file would wait
+ * for the next login. Detached, because this command returns and a reminder
+ * does not.
  */
 static void arm(const char *spec, const char *id)
 {
@@ -239,6 +274,8 @@ static void arm(const char *spec, const char *id)
 	char buf[REMIND_SPEC];
 	char *p, *save;
 
+	if (tell_runner() == 0)
+		return;
 	if (!kb_have_prog("snooze"))
 		return;
 	kb_argv_add(&a, "snooze");
@@ -430,6 +467,8 @@ static int cmd_clear(void)
 	 * the reminder that has already been given, and one rule is better
 	 * than a second one that hunts processes.
 	 */
+	if (n)
+		tell_runner();
 	snprintf(body, sizeof(body), "%d removed", n);
 	if (isatty(STDOUT_FILENO))
 		printf("%s\n", body);
@@ -463,6 +502,7 @@ static int fire_one(const char *path, const char *id, void *u)
 	/* REMOVED BEFORE RETURNING, and that is what makes it fire once: the
 	 * other snooze armed against the same file finds nothing. */
 	unlink(path);
+	tell_runner();
 	f->done = 1;
 	return 1;
 }
@@ -481,9 +521,10 @@ static int cmd_fire(int argc, char **argv)
 /*
  * THE ONE-ROW PROMPT, AND WHY IT IS A VERB.
  *
- * A chord runs ONE command and there is no shell anywhere on that path, so
- * `kdos-prompt --input | kdos remind` cannot be a chord. This is the pipe,
- * inside the program that would have been on the right of it.
+ * A shortcut runs ONE command and there is no shell anywhere on that path, so
+ * a dialog piped into `kdos remind` cannot be a shortcut. This is the pipe,
+ * inside the program that would have been on the right of it: KDE's own
+ * input dialog, kdialog, asks.
  *
  * THE WHOLE LINE IS THE ARGUMENT. A person types `in 20m tea`, which is what
  * they would have typed at a prompt — a dialog with a field for the time and a
@@ -497,16 +538,18 @@ static int cmd_ask(void)
 	int n = 0;
 	char *p, *save;
 
-	if (!kb_have_prog("kdos-prompt"))
-		kb_die("kdos-prompt is not installed");
-	kb_argv_add(&a, "kdos-prompt");
-	kb_argv_add(&a, "--input");
-	kb_argv_add(&a, "--message");
-	kb_argv_add(&a, "Remind me to…");
-	kb_argv_add(&a, "--placeholder");
-	kb_argv_add(&a, "in 20m tea");
+	if (!kb_have_prog("kdialog")) {
+		fprintf(stderr, "kdos remind: kdialog is not installed\n");
+		return 1;
+	}
+	kb_argv_add(&a, "kdialog");
+	kb_argv_add(&a, "--title");
+	kb_argv_add(&a, "Remind me");
+	kb_argv_add(&a, "--inputbox");
+	kb_argv_add(&a, "Remind me to… (for example: in 20m tea)");
+	kb_argv_add(&a, "in 20m ");
 	kb_argv_end(&a);
-	/* 254 is Escape and 0 with nothing is an empty box; neither is an
+	/* Cancel is exit 1 and an empty box is nothing typed; neither is an
 	 * error and neither says anything. */
 	if (kb_run_capture(&a, line, sizeof(line)) != 0 || !line[0])
 		return 0;

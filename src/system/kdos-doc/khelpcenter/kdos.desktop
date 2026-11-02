@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=KDOS
+Comment=The KDOS book: how this system works and why, from the first boot to every command
+Icon=distributor-logo-kdos
+X-DocPath=file:///usr/share/doc/kdos/index.html
+X-DOC-Identifier=kdos
+X-DOC-Weight=-100

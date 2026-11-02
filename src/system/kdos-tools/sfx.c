@@ -5,14 +5,18 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   kdos-sfx — the machine's four noises, synthesized
+ *   kdos-sfx — the machine's noises, synthesized
  *
  *   kdos-sfx login | notify | error | degauss
+ *   kdos-sfx render <dir> [--format oga|wav]
  *
- * NO SAMPLE FILES, no sound theme, no decoder and no `freedesktop` lookup —
- * the same derive-everything shape genlogo.py has for the mascot. Four
- * waveforms are four functions, the whole corpus is under a kilobyte of C, and
- * there is nothing to install, ship, theme or keep in step with an accent.
+ * NO SAMPLE FILES IN THE TREE — the same derive-everything shape genlogo.py
+ * has for the mascot. Each sound is a few lines of waveform, and `render`
+ * writes them out once, at build time, as the KDOS sound theme's files
+ * (kdos-sounds runs it): the freedesktop names Plasma plays —
+ * desktop-login, desktop-logout, message-new-instant, dialog-error,
+ * dialog-warning, complete, device-added, device-removed — so the session
+ * and this command make the same noise from the same numbers.
  *
  * Square and triangle only, integer phase accumulators, integer envelopes: no
  * libm. That is not an aesthetic — kdos-tools is compiled by the host selftest
@@ -31,6 +35,7 @@
  */
 
 #include <fcntl.h>
+#include <stdint.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -88,7 +93,7 @@ static void tone(int16_t *buf, int nbuf, int off, int freq, int ms, int amp,
 	}
 }
 
-/* Four voices, and what each one is FOR is why it sounds the way it does. */
+/* The voices, and what each one is FOR is why it sounds the way it does. */
 static int synth(const char *what, int16_t *buf, int nbuf)
 {
 	memset(buf, 0, (size_t)nbuf * sizeof(*buf));
@@ -112,6 +117,36 @@ static int synth(const char *what, int16_t *buf, int nbuf)
 		tone(buf, nbuf, 0, 110, 220, 6000, 128);
 		tone(buf, nbuf, 0, 111, 220, 3000, 128);	/* beating */
 		return RATE * 230 / 1000;
+	}
+	if (!strcmp(what, "logout")) {
+		/* The login chime backwards: the same fifths, descending. */
+		tone(buf, nbuf, 0,               495, 170, 5500, 128);
+		tone(buf, nbuf, RATE * 165 / 1000, 330, 170, 5000, 128);
+		tone(buf, nbuf, RATE * 330 / 1000, 220, 200, 5000, 128);
+		return RATE * 530 / 1000;
+	}
+	if (!strcmp(what, "warning")) {
+		/* Two of the notify blip's kind, lower: asks for a look, not
+		 * for alarm. */
+		tone(buf, nbuf, 0,                660, 60, 4500, 0);
+		tone(buf, nbuf, RATE * 100 / 1000, 660, 60, 4500, 0);
+		return RATE * 165 / 1000;
+	}
+	if (!strcmp(what, "complete")) {
+		/* A rising pair: something finished, and finished well. */
+		tone(buf, nbuf, 0,               660, 70, 4200, 0);
+		tone(buf, nbuf, RATE * 70 / 1000, 990, 70, 4200, 0);
+		return RATE * 145 / 1000;
+	}
+	if (!strcmp(what, "added") || !strcmp(what, "removed")) {
+		/* Up for a device arriving, down for one leaving, so the two
+		 * can be told apart without looking. */
+		int up = !strcmp(what, "added");
+
+		tone(buf, nbuf, 0, up ? 440 : 660, 60, 4000, 128);
+		tone(buf, nbuf, RATE * 60 / 1000, up ? 660 : 440, 60, 4000,
+		     128);
+		return RATE * 125 / 1000;
 	}
 	if (!strcmp(what, "degauss")) {
 		/* 40 Hz, decaying — the thoomp a CRT makes when it demagnetises
@@ -217,17 +252,157 @@ static void player_argv(KbArgv *a, const char *r)
 	kb_argv_end(a);
 }
 
+/* ── the sound theme ─────────────────────────────────────────────────── */
+
+/* The freedesktop name each voice is installed under. */
+static const struct {
+	const char *file, *voice;
+} THEME[] = {
+	{ "desktop-login", "login" },
+	{ "desktop-logout", "logout" },
+	{ "message-new-instant", "notify" },
+	{ "dialog-error", "error" },
+	{ "dialog-warning", "warning" },
+	{ "complete", "complete" },
+	{ "device-added", "added" },
+	{ "device-removed", "removed" },
+};
+
+static void le32(unsigned char *p, uint32_t v)
+{
+	p[0] = (unsigned char)v;
+	p[1] = (unsigned char)(v >> 8);
+	p[2] = (unsigned char)(v >> 16);
+	p[3] = (unsigned char)(v >> 24);
+}
+
+/* RIFF/WAVE, PCM s16le mono: the 44-byte header and the samples, nothing
+ * else, so two renders of one voice are the same bytes. */
+static int write_wav(const char *path, const int16_t *buf, int n)
+{
+	unsigned char h[44];
+	uint32_t data = (uint32_t)n * 2;
+	FILE *f;
+	int ok;
+
+	memcpy(h, "RIFF", 4);
+	le32(h + 4, 36 + data);
+	memcpy(h + 8, "WAVEfmt ", 8);
+	le32(h + 16, 16);
+	h[20] = 1; h[21] = 0;			/* PCM */
+	h[22] = 1; h[23] = 0;			/* mono */
+	le32(h + 24, RATE);
+	le32(h + 28, RATE * 2);
+	h[32] = 2; h[33] = 0;			/* block align */
+	h[34] = 16; h[35] = 0;			/* bits */
+	memcpy(h + 36, "data", 4);
+	le32(h + 40, data);
+	if (!(f = fopen(path, "wbe")))
+		return -1;
+	ok = fwrite(h, 1, sizeof(h), f) == sizeof(h);
+	for (int i = 0; ok && i < n; i++) {
+		unsigned char s[2] = { (unsigned char)(buf[i] & 0xff),
+				       (unsigned char)((buf[i] >> 8) & 0xff) };
+
+		ok = fwrite(s, 1, 2, f) == 2;
+	}
+	return fclose(f) == 0 && ok ? 0 : -1;
+}
+
+/*
+ * THE BUILD'S FORM IS OGG VORBIS, through oggenc fed the raw samples. A fixed
+ * stream serial keeps two builds of the package byte-identical; oggenc picks
+ * a random one otherwise. It runs inside a build.sh, so a failure is loud.
+ */
+static int render(int argc, char **argv)
+{
+	const char *dir = NULL, *fmt = "oga";
+	static int16_t buf[MAXSAMP];
+
+	for (int i = 2; i < argc; i++) {
+		if (!strcmp(argv[i], "--format") && i + 1 < argc)
+			fmt = argv[++i];
+		else if (argv[i][0] != '-' && !dir)
+			dir = argv[i];
+		else
+			dir = NULL, i = argc;
+	}
+	if (!dir || (strcmp(fmt, "oga") && strcmp(fmt, "wav"))) {
+		fprintf(stderr, "usage: kdos-sfx render <dir> "
+				"[--format oga|wav]\n");
+		return 2;
+	}
+	if (kb_mkdir_p(dir) != 0) {
+		fprintf(stderr, "kdos-sfx: cannot create %s\n", dir);
+		return 1;
+	}
+	for (size_t i = 0; i < sizeof(THEME) / sizeof(THEME[0]); i++) {
+		int n = synth(THEME[i].voice, buf, MAXSAMP);
+		char path[4096];
+
+		snprintf(path, sizeof(path), "%s/%s.%s", dir, THEME[i].file,
+			 fmt);
+		if (!strcmp(fmt, "wav")) {
+			if (write_wav(path, buf, n) != 0) {
+				fprintf(stderr, "kdos-sfx: cannot write %s\n",
+					path);
+				return 1;
+			}
+			continue;
+		}
+		{
+			KbArgv a = { 0 };
+			int was = kb_proc_verbose, rc;
+
+			kb_argv_add(&a, "oggenc");
+			kb_argv_add(&a, "-Q");
+			kb_argv_add(&a, "-r");
+			kb_argv_add(&a, "-B");
+			kb_argv_add(&a, "16");
+			kb_argv_add(&a, "-C");
+			kb_argv_add(&a, "1");
+			kb_argv_add(&a, "-R");
+			kb_argv_addf(&a, "%d", RATE);
+			kb_argv_add(&a, "-q");
+			kb_argv_add(&a, "4");
+			kb_argv_add(&a, "--serial");
+			kb_argv_add(&a, "1");
+			kb_argv_add(&a, "-o");
+			kb_argv_add(&a, path);
+			kb_argv_add(&a, "-");
+			kb_argv_end(&a);
+			kb_proc_verbose = 1;
+			rc = kb_run_feed(&a, (const char *)buf,
+					 (size_t)n * sizeof(*buf));
+			kb_proc_verbose = was;
+			if (rc != 0 || !kb_path_exists(path)) {
+				fprintf(stderr, "kdos-sfx: oggenc could not "
+						"write %s\n", path);
+				return 1;
+			}
+		}
+	}
+	return 0;
+}
+
 /* ── the front end ─────────────────────────────────────────────────────── */
 
 int sfx_main(int argc, char **argv)
 {
 	const char *what = argc > 1 ? argv[1] : NULL;
 	if (!what || !strcmp(what, "-h") || !strcmp(what, "--help")) {
-		fprintf(stderr, "usage: kdos-sfx {login|notify|error|degauss}\n"
+		fprintf(stderr, "usage: kdos-sfx {login|notify|error|degauss|"
+				"logout|warning|complete|added|removed}\n"
 				"       kdos-sfx --route   what it would play "
-				"through\n");
+				"through\n"
+				"       kdos-sfx render <dir> "
+				"[--format oga|wav]\n");
 		return 2;
 	}
+	/* The mute does not apply: rendering is a build writing files, not
+	 * a machine making a noise. */
+	if (!strcmp(what, "render"))
+		return render(argc, argv);
 	if (!strcmp(what, "--route")) {
 		printf("%s\n", route());
 		return 0;

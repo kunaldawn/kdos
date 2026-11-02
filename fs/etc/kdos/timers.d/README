@@ -17,9 +17,9 @@ A LINE THAT DOES NOT PARSE IS REPORTED AND SKIPPED, never guessed at: a timer
 that silently did not start is indistinguishable from one that has not fired
 yet, and the difference can be months.
 
-The per-user table is ~/.config/kdos/timers.d/ and has the same shape. It is
-started by the session at login, as loops that are the session's children
-and not a supervised service. Leaving the desktop does not stop them: they run
-on at the tty1 prompt Log Out leaves, until the next desktop start stops the
-previous set before starting its own, or the login itself ends and its hangup
-ends them.
+The per-user tables have the same shape and the same parser
+(/usr/local/lib/kdos/timers.sh): ~/.config/kdos/timers.d/ for each user's own
+jobs, and /etc/kdos/user-services/timers.d/ for jobs every user runs as
+themselves. Both run under that user's `timers` service
+(/etc/kdos/user-services/30_timers.sh), from the user's first login to the
+user's last, or for good once the user lingers.

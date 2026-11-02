@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = baloo-widgets
-version     = 26.08.1
+version     = 26.08.2
 release     = 1
 source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
-sha256      = b4af5cc65d886ab9d2a807254e11295e585d7cedd993d2b3b78f2f17e3a7f544  baloo-widgets-26.08.1.tar.xz
+sha256      = 445efd6a8e9aafcd2a86dd47ecc5459c39054303ba650c898893cde8db2f5bf6  baloo-widgets-26.08.2.tar.xz
 description = File metadata panel, tag and rating editors used by Dolphin
 homepage    = https://invent.kde.org/libraries/baloo-widgets
 license     = LGPL-2.1-or-later AND LGPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.0-only

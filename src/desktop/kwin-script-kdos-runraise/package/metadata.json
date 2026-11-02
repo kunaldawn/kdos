@@ -1,0 +1,19 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "kunal.dawn@gmail.com",
+                "Name": "Kunal Dawn"
+            }
+        ],
+        "Description": "One key per terminal program: raise its Konsole window, or open one when none is open",
+        "EnabledByDefault": true,
+        "Icon": "utilities-terminal",
+        "Id": "kdos_runraise",
+        "License": "MIT",
+        "Name": "KDOS Run or Raise",
+        "Website": "https://github.com/kunaldawn/kdos"
+    },
+    "X-Plasma-API": "declarativescript"
+}

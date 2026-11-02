@@ -27,8 +27,12 @@ directory as no packs and still sweeps. No step of the phase extracts a pack int
 link with a relative target or the target `/usr/local/bin/kdos-appbox`, except under a name it
 reserves, such as `kdos-box` and `xdg-open`), and rewrites the table and the MIME cache whole,
 from the packs it found. Against an empty source that is the clean-out; against one holding packs
-it is the population. The four outputs and their naming
-rules are in [Launcher generation](../../kdos/04-programs/kdos-appbox.md#launcher-generation).
+it is the population. Run against the image, it also writes the skeleton's KWin window rules,
+`/etc/skel/.config/kwinrulesrc`: one rule per pack box the image ships, in the neutral box colour
+scheme, because no box has a profile yet. Run by a user, the same command writes that user's rules
+with each box's accent and runs `kbuildsycoca6`, so the application menu and KRunner see the
+launchers at once. The four outputs and their naming rules are in
+[Launcher generation](../../kdos/04-programs/kdos-appbox.md#launcher-generation).
 
 `kdos-appbox` installs in `/usr/local/bin`, which is last on the chroot's `PATH`. Without the
 `kdos-appbox` package the step prints that it is not installed and exits 0 before it creates
@@ -47,8 +51,8 @@ means the sweep did not happen, and the phase stops.
 ## Why it runs before 070_user.sh
 
 The desktop entries are written into [`/etc/skel`]{.idx}, the template for every home. `070_user.sh`
-copies `/etc/skel` into `/home/kdos`, and the Start menu reads the home's entries before the
-system's. Run after that step, the reconcile would clean `/etc/skel` and leave the old launchers
+copies `/etc/skel` into `/home/kdos`, and the application menu reads the home's entries before
+the system's. Run after that step, the reconcile would clean `/etc/skel` and leave the old launchers
 in `/home/kdos`, offering applications whose packs the medium does not have.
 
 The launchers are generated, not copied from `fs/`, so the `fs/` manifest that removes files `fs/`
@@ -77,4 +81,4 @@ On a standard build the first and last hold no generated launcher.
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 344.* Previous: [343. Cleaning up the root](020-cleanup.md) · [Contents](../README.md) · Next: [345. Sweeping orphaned packages](040-orphans.md)
+*Part XV. The image, chapter 367.* Previous: [366. Cleaning up the root](020-cleanup.md) · [Contents](../README.md) · Next: [368. Sweeping orphaned packages](040-orphans.md)

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kmail
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 107c5b3a4c605250f76073c01e0e8eb73cfac969bd853d2e1fddd011c94f4e78  kmail-26.08.2.tar.xz
+description = KDE email client — IMAP, POP3 and local mail on Akonadi, with OpenPGP and S/MIME
+homepage    = https://apps.kde.org/kmail2/
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later AND GPL-2.0-only AND GPL-2.0-or-later WITH LicenseRef-Qt-Commercial-exception-1.0 AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND LGPL-2.0-only AND GFDL-1.2-or-later AND BSD-3-Clause AND CC0-1.0 AND MIT
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtwebengine kbookmarks kcalendarcore kcmutils kcodecs kcompletion kconfig kcontacts kcoreaddons kcrash kdbusaddons kdoctools kguiaddons ki18n kiconthemes kio kitemmodels kitemviews kjobwidgets kmime knotifications knotifyconfig kparts kservice kstatusnotifieritem kwidgetsaddons kwindowsystem kxmlgui sonnet syntax-highlighting ktextaddons gpgmepp libgpg-error qtkeychain libkleo akonadi akonadi-contacts akonadi-mime akonadi-search kcalutils kidentitymanagement kldap kmailtransport kontactinterface kpimtextedit ktnef libgravatar libkdepim libksieve mailcommon messagelib pimcommon plasma-activities gnupg kdepim-runtime kmail-account-wizard akonadi-import-wizard

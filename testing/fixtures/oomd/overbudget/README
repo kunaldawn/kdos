@@ -1,11 +1,12 @@
 oomd/overbudget — a declared budget is a policy the system acts on.
 
-`memory = 4G` in a box profile becomes `podman --memory`, and rootless podman
-on a machine with no systemd frequently has no cgroup delegation to enforce it
-with: the flag is accepted and does nothing. KDOS does not offer a key it
-cannot enforce, so THIS is the enforcement — a box over the budget its own
-profile declared is preferred as a victim, ahead of the general rule that boxed
-processes are preferred.
+`memory = 4G` in a box profile becomes `podman --memory`, which the kernel
+enforces only where rootless podman can write the box a cgroup of its own,
+inside an elogind session's delegated subtree. Anywhere else the flag is
+accepted and does nothing. KDOS does not offer a key it cannot enforce, so
+THIS is the enforcement there and the backstop everywhere — a box over the
+budget its own profile declared is preferred as a victim, ahead of the general
+rule that boxed processes are preferred.
 
 The tree is arranged so that only the budget can produce the right answer:
 

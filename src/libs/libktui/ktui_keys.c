@@ -128,8 +128,8 @@ int ktui_hint_row(const KtuiKeys *k, KRect r, int bg)
 	/*
 	 * CLEARED FIRST, on every path. A `--dump` path draws one frame and
 	 * never flushes, so a pool emptied at flush time would carry one
-	 * surface's hints into the next dump in the same process — and
-	 * kdos-shell is one binary holding every surface's front end.
+	 * surface's hints into the next dump in the same process — and one
+	 * binary may hold several surfaces' front ends.
 	 */
 	int n = npool;
 	struct { char key[HINT_KEY]; char verb[HINT_VERB]; } mine[HINT_MAX];

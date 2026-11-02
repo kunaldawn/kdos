@@ -10,8 +10,8 @@
 #
 # HOST-ONLY, run by hand with network. Nothing on the target and nothing in the
 # build ever runs this; what ships is `secdb.txt` beside it, which is committed.
-# Same shape as kdos-icons' and kdos-cursors' vendoring, and for the same
-# reasons: the prune is a KDOS decision, and the artefact is diffable.
+# Host-side vendoring with a committed artefact, because the prune is a KDOS
+# decision and the artefact is diffable.
 #
 # WHY ALPINE. It is the closest distro to KDOS that publishes a machine-readable
 # security database: musl, the same upstream tarballs, comparable pins. OSV's

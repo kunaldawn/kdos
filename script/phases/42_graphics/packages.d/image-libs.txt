@@ -28,8 +28,8 @@ libgd
 # the honest answer to "show me this image" on tty1, where no compositor is.
 libsixel
 
-# THE OTHER HALF OF THE PICTURE PATH. kdos-term decodes sixel, kitty and iTerm2
-# pictures and nothing else in the tree emits one, so an image in a terminal is
+# THE OTHER HALF OF THE PICTURE PATH. Konsole decodes sixel, kitty and iTerm2
+# pictures and few programs in the tree emit one, so an image in a terminal is
 # a filename without this or timg. chafa converts anything to whichever of
 # those the terminal admits to. A photograph in a message is drawn by the same
 # program that draws one in a file manager.

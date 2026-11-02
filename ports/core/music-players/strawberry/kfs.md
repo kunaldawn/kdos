@@ -1,8 +1,9 @@
 ## About
 [Strawberry]{.idx} is a music player and collection organiser: it indexes a local music collection,
 edits tags, keeps playlists, play counts and ratings, normalises loudness, and plays audio CDs and
-music on MTP and iPod devices. It plays through [gstreamer](#port-gstreamer). It is the program
-audio files open in on KDOS, in `/etc/xdg/kdos-mimeapps.list`.
+music on MTP and iPod devices. It plays through [gstreamer](#port-gstreamer). Audio files open
+in [elisa](#port-elisa) on KDOS, by `/usr/share/kdos/xdg/kde-mimeapps.list`; Strawberry is
+offered beside it.
 
 ## Flags
 Strawberry declares each feature as an optional component, `ENABLE_<NAME>`, and every one is on by

@@ -18,7 +18,7 @@
 # TWO THINGS IT DOES THAT THE GUEST CANNOT:
 #
 #   - THE BLANK CHECK. A window that mapped and painted nothing passes every
-#     test the guest can run — the compositor reported it, grim wrote a file,
+#     test the guest can run — the compositor reported it, Spectacle wrote a file,
 #     the bytes are non-zero. Only the PIXELS say otherwise, and a PNG of one
 #     flat colour still compresses to a few KB. `-format %k` is the unique
 #     colour count; a screenshot of a real application is in the thousands and

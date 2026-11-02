@@ -11,7 +11,7 @@
 # /etc/bash.bashrc — interactive shell setup for every bash, not just login ones.
 #
 # /etc/profile is read by login shells only (tty, serial, ssh). A terminal like
-# foot starts a NON-login interactive shell, which reads ~/.bashrc instead — so
+# Konsole starts a NON-login interactive shell, which reads ~/.bashrc instead — so
 # anything interactive (aliases, prompt) belongs here, and gets picked up by
 # both: bash reads this file directly (SYS_BASHRC), ~/.bashrc sources it as a
 # fallback, and /etc/profile sources it for login shells.
@@ -114,14 +114,13 @@ export VISUAL="$EDITOR"
 GPG_TTY=$(tty 2>/dev/null) && export GPG_TTY || unset GPG_TTY
 
 # With no GNUTERM, gnuplot's terminal is `qt`, a window of its own. Where the
-# terminal is known to decode sixel — kdos-term, which names itself in
-# TERM_PROGRAM, and foot — the plot is drawn inline instead. Nowhere else: on
-# the console or over ssh a sixel stream is a screenful of junk and qt has no
+# terminal is known to decode sixel — Konsole, which names itself in
+# KONSOLE_VERSION — the plot is drawn inline instead. Nowhere else: on the
+# console or over ssh a sixel stream is a screenful of junk and qt has no
 # display to open a window on, and `set term dumb` is the answer there.
-if [ -z "${GNUTERM:-}" ] && command -v gnuplot >/dev/null 2>&1; then
-    case "${TERM_PROGRAM:-}:${TERM:-}" in
-        kdos-term:*|*:foot*) export GNUTERM=sixelgd ;;
-    esac
+if [ -z "${GNUTERM:-}" ] && [ -n "${KONSOLE_VERSION:-}" ] &&
+   command -v gnuplot >/dev/null 2>&1; then
+    export GNUTERM=sixelgd
 fi
 
 # ── KDOS shorthands ──────────────────────────────────────────────────
@@ -204,7 +203,7 @@ __kdos_mark_prompt() {
 PROMPT_COMMAND="__kdos_mark_prompt${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
 
 # ── Banner ───────────────────────────────────────────────────────────
-# Once per terminal, not once per shell: SHLVL is 1 for the shell a tty or foot
+# Once per terminal, not once per shell: SHLVL is 1 for the shell a tty or Konsole
 # starts and higher for anything nested, so `bash` inside a session stays quiet.
 # Skipped inside a container, where the host's specs would be a lie.
 if [ "${SHLVL:-1}" -le 1 ] && [ -z "${CONTAINER_ID:-}" ] && [ -t 1 ]; then

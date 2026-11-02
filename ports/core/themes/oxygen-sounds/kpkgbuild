@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = oxygen-sounds
+version     = 6.8.2
+release     = 1
+source      = https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = 89cfad4b243cdd6e031739566693df77ffdc7a29cedc10dad0b96507a2b3ea62  oxygen-sounds-6.8.2.tar.xz
+description = Oxygen sound theme — the classic KDE event sounds
+homepage    = https://invent.kde.org/plasma/oxygen-sounds
+license     = LGPL-3.0-or-later AND CC-BY-3.0 AND BSD-2-Clause AND CC0-1.0
+group       = plasma
+depends     = cmake ninja extra-cmake-modules

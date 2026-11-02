@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdev-python
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 5e87eb114f4ebceb8adeb28a25165c52293702a69c13ef2e5fb7f18b20b0a6b0  kdev-python-26.08.2.tar.xz
+description = Python 3 language support for KDevelop — parser, code completion, the pdb debugger and documentation files
+homepage    = https://invent.kde.org/kdevelop/kdev-python
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later AND LGPL-2.0-only AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND MIT AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qt5compat kconfig kcoreaddons ki18n kparts kservice ktexteditor threadweaver kwidgetsaddons kxmlgui kdevelop python3

@@ -12,8 +12,13 @@
 #     anchorcheck.py [--root DIR] [--book DIR]... [FILE]...
 #
 # With no --book and no FILE it reads every page of docs/kdos and docs/kfs and
-# the repository README.md; --book narrows it to one book (repeatable), and a
-# FILE checks only that page's links. Exit status 1 when any link fails.
+# the repository's README.md and CLAUDE.md; --book narrows it to one book
+# (repeatable), and a FILE checks only that page's links. Exit status 1 when
+# any link fails.
+#
+# README.md and CLAUDE.md are read by people before either book, so in them
+# an HTML `<img src="…">` must name a file that exists as well: the title
+# page's picture is a raw tag no Markdown link check sees.
 #
 # A link is checked when it carries a fragment: `#x` on its own page,
 # `page.md#x` on another page of either book, or `x.md#x` on any Markdown file
@@ -31,6 +36,16 @@
 # renamed heading breaks every link to it with nothing else noticing. A link
 # into a heading that a page carries under a fence is not a heading: fences
 # and inline code are skipped on both sides.
+#
+# A KDOS SETTINGS PAGE NAMES ITS SECTION OF THE BOOK. Every X-DocPath a src/
+# port ships (a KCM's metadata JSON, a desktop file) naming
+# kdos/<page>.html#<id>, the form System Settings' Help button opens as
+# help:/kdos/<page>.html#<id>, or file:///usr/share/doc/kdos/<page>.html#<id>
+# is checked as a link to docs/kdos/<page>.md#<id>, in the default run:
+# kdos-doc installs the book's pages under /usr/share/doc/kdos, which
+# /usr/share/doc/HTML/en/kdos links to, so a renamed heading is a help
+# address that names nothing. Any other X-DocPath into the book must name a
+# page that exists.
 #
 # THE PACKAGE PAGES OF docs/kfs ARE GENERATED and never committed, so their
 # anchors are not in any file. On a docs/kfs page a bare `#port-<name>` must
@@ -208,6 +223,59 @@ class Found(list):
     checked = 0
 
 
+IMG_RE = re.compile(r"<img\s+(?:[^>]*\s)?src=\"([^\"]+)\"", re.I)
+
+
+def check_images(root, rel, bad):
+    """Every relative <img src> of a top-level page names a file."""
+    path = os.path.join(root, rel)
+    with open(path, encoding="utf-8", errors="replace") as f:
+        text = f.read()
+    for ln, line in prose_lines(text):
+        for m in IMG_RE.finditer(line):
+            src = m.group(1)
+            if SCHEME_RE.match(src) or src.startswith("/"):
+                continue
+            bad.checked += 1
+            target = os.path.normpath(os.path.join(os.path.dirname(path), src.split("#")[0]))
+            if not os.path.isfile(target):
+                bad.append("%s:%d -> %s (no such image)" % (rel, ln, src))
+
+
+DOCPATH_RE = re.compile(r'"?X-DocPath"?\s*[:=]\s*"?((?:file:///usr/share/doc/)?kdos/[^"\s,]*)')
+BOOK_URLS = ("file:///usr/share/doc/kdos/", "kdos/")
+
+
+def check_docpaths(root, bad):
+    """X-DocPath of every src/ port's KCM metadata and desktop files."""
+    for dp, dn, fn in os.walk(os.path.join(root, "src")):
+        dn[:] = sorted(d for d in dn if d not in ("tests", "build"))
+        for f in sorted(fn):
+            if not f.endswith((".json", ".desktop")):
+                continue
+            path = os.path.join(dp, f)
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+            for m in DOCPATH_RE.finditer(text):
+                url = m.group(1)
+                base = next(b for b in BOOK_URLS if url.startswith(b))
+                page, _, frag = url[len(base):].partition("#")
+                where = "%s X-DocPath" % os.path.relpath(path, root)
+                bad.checked += 1
+                if page in ("", "index.html"):
+                    page = "README.html"
+                if not page.endswith(".html"):
+                    bad.append("%s -> %s (not a page of the book)" % (where, url))
+                    continue
+                md = os.path.join(root, "docs/kdos", page[:-5] + ".md")
+                ids = ids_of(md)
+                if ids is None:
+                    bad.append("%s -> %s (no docs/kdos/%s.md)" % (where, url, page[:-5]))
+                elif frag and frag not in ids:
+                    bad.append("%s -> %s (docs/kdos/%s.md has no heading with that id)"
+                               % (where, url, page[:-5]))
+
+
 def main():
     ap = argparse.ArgumentParser(description="check every #fragment link in the books")
     ap.add_argument("--root", default=None)
@@ -223,8 +291,9 @@ def main():
             for f in sorted(fn):
                 if f.endswith(".md"):
                     pages.append(os.path.relpath(os.path.join(dp, f), root))
-    if not a.book and not a.files and os.path.isfile(os.path.join(root, "README.md")):
-        pages.append("README.md")
+    tops = [] if a.book or a.files else \
+        [t for t in ("README.md", "CLAUDE.md") if os.path.isfile(os.path.join(root, t))]
+    pages += tops
     for f in a.files:
         pages.append(os.path.relpath(os.path.abspath(f), root))
     gen = Generated(root)
@@ -234,6 +303,10 @@ def main():
             bad.append("%s (no such page)" % rel)
             continue
         check_page(root, rel, gen, bad)
+    if not a.book and not a.files:
+        check_docpaths(root, bad)
+    for rel in tops:
+        check_images(root, rel, bad)
     for b in bad:
         print("BADANCHOR " + b)
     print("anchorcheck: %d pages, %d fragment links, %s"

@@ -31,3 +31,7 @@ zbar
 
 libkexiv2
 libkdcraw
+
+# Image processing that STREAMS rather than loads, so a 20000x20000 scan is a
+# few megabytes of memory instead of a few gigabytes.
+libvips

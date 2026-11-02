@@ -32,6 +32,8 @@ The path from a clone to a running system has five steps:
 | A C compiler (`$CC`, default `cc`) | `make fetch-check`, `make snapshots`, `ports/fetch --tree`, `ports/publish`, `testing/preflight.sh`, `testing/selftest.sh`, `make updates` | Optional for `make fetch`: without one, the whole fetch runs inside the `kdos-fetch` container. `testing/preflight.sh` and `make updates` (`ports/update`) always run `cc` and ignore `$CC` |
 | `fuser` (from psmisc) | `check-iso-free`, which `make build` runs first | Without it the check is skipped, and nothing stops a build rewriting an ISO a virtual machine is booted from |
 | QEMU, OVMF firmware at `/usr/share/ovmf/OVMF.fd`, and `/dev/kvm` | `make run`, `make rundisk` | Only to boot the result. Both pass `-enable-kvm -cpu host`, so without `/dev/kvm` they print a warning and QEMU then refuses to start |
+| Docker and `/dev/kvm` | The rig: `make quick`, `make session-probe`, `make shots`, `make atspi` | The rig carries its own QEMU in the `kdos-qemu-py` image (`make rig-image`, network once); see [The QEMU rig](testing.md#the-qemu-rig) |
+| Docker | `make plasmatest`, through `testing/devdeps-image.sh plasmatest` | The development image `kdos-devdeps` carries Qt 6, KDE Frameworks 6 and Plasma's development files, which the Qt suite needs and no bare host has; building it needs the network |
 | Disk space | Everything | See below |
 
 No language toolchain (Rust, Go, Node, Python, Haskell) is needed on your machine. The one step
@@ -101,11 +103,11 @@ finished ISO is `build/iso-build/kdos.iso`.
 
 Two things to know before the first run:
 
-- **The ISO carries no applications.** The medium ships the application
-  [catalogue](../06-reference/glossary.md#catalogue), and an application is built by podman on the machine
-  that wants it, from the *Applications* window in the Start menu
-  ([Applications](../02-user-guide/applications.md#the-store)) or with `kdos app install`. An
-  exported set of packs imports offline.
+- **The ISO carries no boxed applications.** The natively ported applications, KDE Gear among
+  them, are in the image. The application [catalogue](../06-reference/glossary.md#catalogue)'s
+  boxed applications are not: each is built by podman on the machine that wants it, from Discover
+  ([Applications](../02-user-guide/applications.md)) or with `kdos app install`, and an exported
+  set of packs imports offline.
 - **The build refuses to overwrite an ISO a virtual machine is using.** QEMU reads the image lazily,
   so rewriting it under a running guest turns every block the guest has not cached into an I/O
   error. Shut the guest down first, or override with `make build ALLOW_ISO_IN_USE=1`.
@@ -192,8 +194,11 @@ any. What each phase contains, and how one runs, is in [The build system](build-
 | `cleanbuild` | Delete everything in `build/` except `snapshots`, `ccache`, `pkgstore`, `keys` and `binhost-key`, and except what only root can remove (see below) | |
 | `clean` | Delete everything in `build/` except `keys` and `binhost-key`, and except what only root can remove | |
 | `help` | List every target that carries a one-line description; `check-iso-free` and `check-hw` carry none | |
-| `check` | Run `preflight`, `selftest`, `docscheck`, `anchorcheck`, `booknav`, `kfscheck` and `phaseclosure` in turn | |
+| `check` | Run `preflight`, `selftest`, `docscheck`, `anchorcheck`, `booknav`, `kfscheck`, `phaseclosure`, `defaultscheck`, `xdgcheck`, `lnfcheck`, `aboutcheck` and `atspi-selftest` in turn | |
 | `preflight`, `selftest`, `docscheck`, `phaseclosure` | Run that check alone; see [Working without a build at all](#working-without-a-build-at-all) | A C compiler for `preflight` and `selftest`; Python 3 for `preflight`, `docscheck` and `phaseclosure` |
+| `defaultscheck`, `xdgcheck` | Read every KDOS default for a KDE program back through the XDG configuration cascade against `testing/fixtures/defaultscheck/defaults.tsv`; check that KDOS's defaults stay in `/usr/share/kdos/xdg` and out of `/etc/xdg`. See [Testing](testing.md#the-desktops-defaults) | Python 3; bash |
+| `lnfcheck`, `aboutcheck` | Hold the KDOS global themes and desks to what Plasma reads, and prove each of that check's verdicts can fail; prove each verdict of the About-page check can fail, the check itself needing a booted tree. See [Testing](testing.md#the-desktops-defaults) | Python 3; bash |
+| `plasmatest` | The Qt half of the checks: build every KDOS Qt port with its QtTest suites, load its plugins, install its Plasma packages into a scratch root and lint its QML (`PLASMATEST_ARGS` reaches it, e.g. `--selftest`). Not part of `check`; it refuses on a host without the tools. See [Testing](testing.md#plasmatestsh) | The development image: `testing/devdeps-image.sh plasmatest` |
 | `anchorcheck`, `booknav`, `kfscheck` | Check every `#fragment` link in both books; every chapter footer and *KDOS from Scratch*'s contents; that book's port notes, includes, patch headers, kernel option table and recipe stamp against the tree, and that its whole source generates without a warning (`KFSCHECK_ARGS` reaches it, e.g. `--strict`). See [Testing](testing.md#kfscheckpy) | Python 3 |
 | `booknav-write` | Rewrite every chapter footer of both books, and *KDOS from Scratch*'s contents | Python 3 |
 | `selftest-asan` | `selftest` compiled with `SELFTEST_CC`, by default AddressSanitizer and UBSan | A compiler with the sanitizers |
@@ -205,7 +210,10 @@ any. What each phase contains, and how one runs, is in [The build system](build-
 | `book-data` | Rewrite the book's committed snapshot, `docs/kfs/data`, from `BUILDFS`'s package database and `build/snapshots/timings.json`, with the recipe stamp beside it | Python 3; read access to a built tree's `var/lib/kpkg/db` |
 | `book-stamp` | Rewrite the book's recipe stamp, `docs/kfs/data/recipes.stamp`, alone, from the checkout | Python 3 |
 | `quick` | The fast loop: rebuild the ports named by `QUICK` and patch them into a booted ISO; `QUICK_ARGS` reaches the rig | Docker, `/dev/kvm`, the rig image, a finished ISO |
-| `rig-image`, `devdeps-image` | Build the rig container, or the development container and run `testing/selftest.sh` in it | Docker, network once |
+| `session-probe` | Boot the ISO on the rig, measure the time to the Plasma panel and the idle memory (`testing/session-cost.sh`, given `SESSION_ARGS`), then check the session is whole (`testing/plasma-probe.sh`, given `PROBE_ARGS`) | Docker, `/dev/kvm`, the rig image, a finished ISO |
+| `shots` | Boot the ISO and photograph the desktop, Kickoff, KRunner and the Overview into `build/shots` | The same |
+| `atspi`, `atspi-selftest` | Dump every KDOS surface's accessibility tree on the booted ISO and compare it with its golden (`ATSPI_ARGS=--update` writes the goldens); the dump format and the gate on fixtures, with no ISO. See [Testing](testing.md#goldens) | The same for `atspi`; Python 3 for `atspi-selftest` |
+| `rig-image`, `devdeps-image` | Build the rig container, or the development container and run `testing/selftest.sh` in it (`testing/devdeps-image.sh plasmatest` runs the Qt suite there instead) | Docker, network once |
 
 Every archive target except `publish-retire`, and also `freeze`, `release` and `release-publish`,
 compiles the recipe reader first, so each needs a C compiler as well.
@@ -297,15 +305,19 @@ success and fails only on status 2 or higher.
 ## Running the result
 
 ```sh
-make run          # plain graphics: the desktop works, the phosphor pass does not
-make run-hw       # accelerated: the phosphor pass is on
+make run          # plain graphics: KWin on software GL, Phosphor mode refused
+make run-hw       # accelerated: KWin on the host GPU, Phosphor mode available
 ```
 
-The *phosphor pass* is the compositor's CRT-style post-processing shader. `make run` uses a plain
-virtual display (`virtio-vga` with QEMU's GTK window), on which the compositor falls back to
-software rendering, and the phosphor pass turns itself off there because a full-screen shader in
-software is far too slow. `make run-hw` runs a containerised QEMU 10 with GPU-accelerated graphics
-(virgl) through `testing/qemu-hw/run.sh`, which is the configuration where the shader is visible.
+`make run` uses a plain virtual display (`virtio-vga` with QEMU's GTK window), on which KWin
+composites with OpenGL on llvmpipe, Mesa's software rasteriser. Everything in the session works
+there except an effect that refuses software rendering, which Phosphor mode's full-screen CRT
+effect, `kdos_crt`, does: a pass over every pixel of every frame would be the whole budget of a
+software renderer. Turning Phosphor mode on there is refused before anything is changed, with
+`phosphor mode needs GPU rendering (this session renders in software)`. `make run-hw` runs a containerised QEMU 10 with
+GPU-accelerated graphics (virgl) through `testing/qemu-hw/run.sh`, on which KWin composites on the
+host's GPU and the effect loads. [Phosphor mode](../03-architecture/design-language.md) is the
+look the effect belongs to.
 
 `make run` and `make rundisk` give the guest 4 GB of memory and as many CPUs as your machine has,
 put the serial console on your terminal, and use QEMU's user-mode networking. `make run` also
@@ -319,14 +331,15 @@ All run targets come up at 1920x1080. `KDOS_RES` changes that:
 make run KDOS_RES=2560x1440
 ```
 
-KDOS never asks for a display mode; the desktop takes the one the virtual screen says it prefers.
-For QEMU's virtio GPU that is whatever its `xres` and `yres` properties say, and left unset they
-default to 1280x800, which is too small to lay out the Start menu's three columns. `KDOS_RES` sets
+KDOS never asks for a display mode; KWin and the login screen take the one the virtual screen says
+it prefers. For QEMU's virtio GPU that is whatever its `xres` and `yres` properties say, and left
+unset they default to 1280x800, at which Plasma sizes its panel, Kickoff and its windows for a
+screen no 1080p machine has. `KDOS_RES` sets
 those two properties, the `Makefile` passes it to `testing/qemu-hw/run.sh`, and
 `testing/vnc-shot.py` sets the same properties from its own `--size` (whose default is 1280x800).
 
 The accelerated run scales the picture to fit its window instead of resizing the guest
-(`zoom-to-fit=on`). Otherwise QEMU's window would report its own size to the guest, and the desktop
+(`zoom-to-fit=on`). Otherwise QEMU's window would report its own size to the guest, and the session
 would follow whatever size the window happened to open at. `KDOS_QEMU_DISPLAY` overrides the display
 option: `KDOS_QEMU_DISPLAY=gtk,gl=es` makes the guest follow the window, and
 `KDOS_QEMU_DISPLAY=egl-headless` runs with no window at all.
@@ -369,7 +382,7 @@ no firmware.
 | `build/image-ports/` | The recipe-only ports tree `70_image/105_ports.sh` stages, which `110_iso.sh` appends to `system.sfs` as `/ports` | Rewritten by every image build |
 | `build/fetch-home` | The fetch container's home and toolchain caches | Written as your user |
 | `build/freeze/` | `sources-<tag>.sha256`, written by `ports/publish --freeze` | |
-| `build/release/<tag>/` | What `ports/publish --release` uploads besides the ISO: `SHA256SUMS`, `SHA256SUMS.sig`, `kdos-release.pub`, `sources.sha256` and the notes | The ISO's parts are cut here and deleted when the run ends |
+| `build/release/<tag>/` | What `ports/publish --release` uploads besides the ISO: `SHA256SUMS`, `SHA256SUMS.sig`, `kdos-release.pub`, `sources.sha256`, `kdos-ports.tar.xz`, `kdos-update.idx` and their signatures, and the notes; and `image/`, the slot image `script/release-image.sh` writes | The ISO's parts are cut here and deleted when the run ends; each run clears the files and keeps `image/` |
 
 `build/` is ignored by git in its entirety.
 
@@ -399,9 +412,9 @@ leaves those paths owned by root, so remove them from a container rather than wi
 source cache, `ports/.srccache`, is plain data and does not need clearing.
 
 `build/fs` is deliberately not handed back to your user. Changing ownership across that tree would
-clear every setuid bit (the password checker, the resource helper, and the two user-namespace mapping
-helpers without which no container can start), and would leave the account and privilege files
-owned by an ordinary user. Reading it from your machine needs a container or root.
+clear every setuid bit (pam_unix's password checker `unix_chkpwd`, without which the lock screen and
+the login refuse every password, and the two user-namespace mapping helpers without which no
+container can start), and would leave the account and privilege files owned by an ordinary user. Reading it from your machine needs a container or root.
 
 ## Where sources come from
 
@@ -499,7 +512,7 @@ bundle*: a tarball of their dependencies, generated by the language's own packag
 Go, Node and Haskell that toolchain is the version this tree compiles with; Python bundles are resolved by
 the `python3` and `pip` of the fetch image's Debian release, not by the tree's own Python. A recipe
 asks for one with `vendoring =` (`rust`, `go`, `node`, `haskell` or `python`) or with `pypackages
-=`. In the current tree 75 recipes use `rust`, 39 `go`, 42 `python`, 4 `haskell` and 1 `node`, and
+=`. In the current tree 80 recipes use `rust`, 39 `go`, 43 `python`, 4 `haskell` and 2 `node`, and
 one more asks for a Python bundle with `pypackages =` alone.
 A default `make fetch` runs in two passes. Your machine resolves everything it
 can from the first four locations with `curl` and `sha256sum`. Only a port whose vendor bundle is
@@ -595,9 +608,10 @@ A full build takes hours, and almost no change needs one. Find what you changed 
 |---|---|
 | Something under `fs/` | `make build BUILD_ARGS="--phases 10_bootstrap,70_image --steps 10_bootstrap:000_file_system.sh"` |
 | One port's recipe | `make build BUILD_ARGS="--phases <its phase>,70_image --rebuild <port>"`, for example `--phases 41_system,70_image --rebuild pv` |
-| A desktop program | `make build BUILD_ARGS="--phases 50_desktop --rebuild <port>"` |
+| A Plasma module, or a KDOS desktop component (`src/desktop`, `src/daemons`, or `src/art`'s login theme and add-ons) | `make build BUILD_ARGS="--phases 50_desktop,70_image --rebuild <port>"`; leave `70_image` out to look at it with `testing/quick.sh` instead |
+| A KDE Frameworks, Plasma or Gear release | Every recipe of that family in one change, then `make build BUILD_ARGS="--continue-from 41_system"`; see below |
 | The book under `docs/` | `make build BUILD_ARGS="--phases 41_system,70_image"`; see below |
-| A library under `src/libs/` | `make build BUILD_ARGS="--phases 10_bootstrap,41_system,42_graphics,44_apps,50_desktop,70_image --steps 10_bootstrap:120_kpkg.sh,10_bootstrap:130_kinstall.sh"`; see below |
+| A library under `src/libs/` | `make build BUILD_ARGS="--phases 10_bootstrap,41_system,42_graphics,43_toolkits,50_desktop,70_image --steps 10_bootstrap:120_kpkg.sh,10_bootstrap:130_kinstall.sh"`; see below |
 | The installer (`src/system/kdos-installer`, or `kdos-appbox`'s `catalogue.c`) | `make build BUILD_ARGS="--phases 10_bootstrap,70_image --steps 10_bootstrap:130_kinstall.sh"`; see below |
 | Only packaging | `make build BUILD_ARGS="--phases 70_image"` |
 | Only packaging, for the rig | `make build KDOS_ISO_COMP=zstd:3 BUILD_ARGS="--phases 70_image"` |
@@ -648,8 +662,9 @@ Such a recipe has no upstream tarball, so its recipe hash covers its own directo
 `src/libs`; working out which libraries a `build.sh` actually compiles would need a shell parser
 inside the package manager. Each of these ports takes seconds to compile. Upstream ports are
 unaffected. The phase lists install every one but `kdos-installer`, in `41_system`,
-`42_graphics`, `44_apps` and `50_desktop`, and their changed hash is enough to rebuild them, so they
-need no `--rebuild`. `kdos-installer` is in no phase list, so `--rebuild kdos-installer` reaches no phase and
+`42_graphics`, `43_toolkits` and `50_desktop`, and their changed hash is enough to rebuild them, so
+they need no `--rebuild`. The Qt ports of `src/desktop` compile in minutes rather than seconds; a
+change to a library none of them links still rebuilds them. `kdos-installer` is in no phase list, so `--rebuild kdos-installer` reaches no phase and
 rebuilds nothing; the installer on the image comes from the `10_bootstrap` step `130_kinstall.sh`
 instead, which also compiles in `catalogue.c` from `src/system/kdos-appbox`. An edit to that file
 rebuilds the `kdos-appbox` port through its directory hash but leaves `kinstall` as it was until the
@@ -699,10 +714,36 @@ them. `120_kpkg.sh` recompiles whenever its sources' hash differs from the one i
 suppresses and why only the named ports are forced. Leave the `10_bootstrap` part out when your
 change touches neither program's libraries.
 
-For a desktop program there is a faster loop still: `testing/quick.sh` builds only the named ports
-into `build/fs`, with no packaging, and patches the files they own into the RAM overlay of a booted
-ISO. It cannot carry anything under `fs/`, a new port, or a program that owns a D-Bus name, and what
-it shows is not evidence about the shipped image. See [Testing](testing.md#the-fast-loop).
+**A KDE release is bumped as a family.** KDE Frameworks, Plasma and KDE Gear are each released
+as one set built and tested together, and preflight refuses a tree holding two releases of one
+family ([preflight.sh](testing.md#preflightsh)). A bump therefore changes every recipe of the
+family in one change, each with its new `sha256 =` line published, and rebuilds from the earliest
+phase that holds one of its ports. Each family has members in `41_system` (`extra-cmake-modules`,
+the Plasma sound themes and wallpapers, `kdeedu-data`), so a bump runs from there; a port whose
+recipe did not change is skipped as installed and current, and every one that did is rebuilt where
+its list names it.
+
+KDOS's version-locked components follow their family, and a bump is not done until each of them
+builds and passes its tests against the new release:
+
+| Family | Component | Locked to |
+|---|---|---|
+| Plasma | `kdos-discover`: the backend, the update notifier's plugin and the model | The exact Discover release; its CMake refuses any other |
+| Plasma | `ksystemstats-kdos` | libksysguard's sensor plugin interface, which is not stable |
+| Plasma | `plasmoid-kdos-privacy` | Plasma's applet interface (`find_package(Plasma 6.8)`) |
+| Plasma | Patches to `kwin` (`kdos-crt`, `sandbox-policy`, `sandbox-badge`), `kdecoration`, `plasma-desktop` and `plasma-workspace` (`sandbox-badge`, `kdos-bootctl-entry`, `locales`), `libksysguard` (`aggregate-scope-children`, `login-cgroup-root`), `discover` (`odrs-offline`), `kde-gtk-config` (`libadwaita-colors`), `plasma-setup` and `plasma-welcome` | The sources of that release; each is rebased |
+| Frameworks | The `kio` patch `kiod6-desktop-exec-path` | The same |
+| — | The `kup` patch `restic-backend` | Kup's own release |
+
+`ls ports/core/kde/*/*.patch ports/core/kf6/*/*.patch` lists the patches the tree carries, and
+`testing/plasmatest.sh` builds and tests every Qt port of KDOS's own against the Frameworks and
+Plasma in the development image.
+
+For a desktop component there is a faster loop still: `testing/quick.sh` builds only the named
+ports into `build/fs`, with no packaging, patches the files they own into the RAM overlay of a
+booted ISO and restarts what reads them, KWin or plasmashell or nothing. It cannot carry anything
+under `fs/`, a new port, an SDDM theme, or a program that owns a D-Bus name, and what it shows is
+not evidence about the shipped image. See [Testing](testing.md#the-fast-loop).
 
 ### Building from scratch
 
@@ -749,7 +790,8 @@ machine:
 
 ```sh
 testing/preflight.sh                              # the wiring: a few minutes
-testing/selftest.sh                               # libraries and their consumers: a few minutes
+testing/selftest.sh                               # libraries, daemons and their consumers: a few minutes
+testing/devdeps-image.sh plasmatest               # the Qt code, in the development image
 make snapshots                                    # compiles build/.kdosbuild for this machine if needed
 build/.kdosbuild --preview build 132x43 vt        # a build screen, drawn as text
 ```
@@ -757,14 +799,15 @@ build/.kdosbuild --preview build 132x43 vt        # a build screen, drawn as tex
 `testing/preflight.sh` checks the wiring a full build would otherwise fail on: that the ports tree
 is shelved and every name is one port, that every package phase from `30_foundation` on installs exactly the ports its list names,
 that every recipe parses, that the phase scripts are valid shell, and similar. `testing/selftest.sh`
-compiles `kdosbuild`, `kinstall` and the other programs it tests into a temporary directory, which
+compiles `kdosbuild`, `kinstall` and the other C programs it tests into a temporary directory, which
 it deletes when it exits, and runs their assertions. Among other things it resolves the installer's
-plan over the shipped catalogue (`kinstall --dump plan`) and, where the Wayland libraries are
-installed, draws the resource monitor's pages as text from recorded `/proc` trees
-(`kdos-res --fixture testing/fixtures/res --dump`). Neither program is installed on a development
-machine, so those forms are what the self-test runs, not commands to type. On one development
-machine each script took about two and a half minutes. What each harness proves is in
-[Testing](testing.md#what-each-tool-proves).
+plan over the shipped catalogue (`kinstall --dump plan`), and runs the root daemons against
+recorded `/proc` trees and on a private bus with stand-ins for their peers. It needs a short
+`TMPDIR`, because some of its blocks make Unix sockets under it; see
+[A short TMPDIR](testing.md#a-short-tmpdir). On one development machine each script took about two and a
+half minutes. `testing/plasmatest.sh` is the Qt half: no bare host has Qt 6, KDE Frameworks 6 and
+Plasma's development files, so it runs in the development image and refuses anywhere else. What
+each harness proves is in [Testing](testing.md#what-each-tool-proves).
 
 `build/.kdosbuild` runs on your machine only when your machine's compiler built it, which `make
 snapshots` does. `make build` replaces it with a musl binary compiled in the build image, which a
@@ -775,10 +818,6 @@ separate copy with `KDOSBUILD_BIN=build/.kdosbuild-host script/kdosbuild.sh --li
 draws one of the screens `build`, `activity`, `failure`, `pinned`, `complete`, `startup`, `plan` or
 `packages` at the given size, in one of the [glyph tiers](../06-reference/glossary.md#glyph-tier) `rich`, `vt`
 or `ascii` (which set of drawing characters the screen may use).
-The window model needs no display at all. `libkwm` links nothing but the C library, so the self-test
-replays `testing/fixtures/wm/geometry.txt` against it on any machine in milliseconds. It is the
-fastest way to answer a question about where a window lands, what a tiled window becomes, or which
-edge a moving edge stops against.
 
 ## When a build fails
 
@@ -823,7 +862,9 @@ with no key takes no tree.
 kpkg keygen build/keys/kdos-release          # once; build/keys survives both cleans
 git tag <tag> && git push origin <tag>
 git switch --detach <tag>                     # build from the tag, not the working tree
-make fetch && make build
+make fetch && make build KDOS_MAKE_BINHOST=1   # the binhost in build/binhost, with its index
+script/release-image.sh --root build/fs --out build/release/<tag>/image \
+    --key build/keys/kdos-release.key --version <tag> --prev <an earlier image directory>   # as root
 make release TAG=<tag> PUBLISH_ARGS=--dry-run   # the plan: no network, no token
 make release TAG=<tag>                          # a DRAFT release with every asset
 make release-publish TAG=<tag>                  # make it public and Latest
@@ -843,32 +884,68 @@ The three are `ports/publish --release <tag>` with `--dry-run`, with nothing, an
 4. Makes `build/release/<tag>/kdos-ports.tar.xz`, the tag's recipe tree as an image's `/ports`
    holds it, from `git archive`: `ports/core`, `ports/shelves`, `ports/sources.idx`, `src/`,
    `docs/` and `script/book`, placed at `script/book` so that `kdos-kfs`'s `book` link resolves, and
-   a `TREE` stamp naming the commit and its time, as a reproducible tar compressed with
-   `xz -9 -T1`. It signs the tree with the release key as `kdos-ports.tar.xz.sig` and checks that
-   signature against the public key.
-5. Writes `build/release/<tag>/SHA256SUMS` in `sha256sum` format. It names the whole ISO even when
-   only its parts are uploaded, each part, `sources.sha256`, the tree, its signature and
-   `kdos-release.pub`.
-6. Signs it with `kpkg sign`, which writes `SHA256SUMS.sig`. The key is `--key <path>`, else
+   a `TREE` stamp naming the commit, its time and `version <tag>`, as a reproducible tar compressed
+   with `xz -9 -T1`. It signs the tree with the release key as `kdos-ports.tar.xz.sig` and checks
+   that signature against the public key. A tag outside letters, digits and `. _ + ~ -`, or longer
+   than 40 characters, is refused before anything else: it names the update releases and is read
+   back from a machine's `/ports/TREE`.
+5. Publishes the updates, when their directories carry a `kdos-update.idx`: the binhost from
+   `--binhost <dir>` (default `build/binhost`) into public pre-releases `binhost-<tag>-01`,
+   `binhost-<tag>-02`, … of at most 1,000 assets each, its files sorted by path, and the slot image
+   from `--image <dir>` (default `build/release/<tag>/image`, which must be version `<tag>`) into the
+   pre-release `image-<tag>`. Every file is hashed against its directory's index before anything is
+   sent, every name is flat, and every upload is append-only and resumable. It then writes
+   `build/release/<tag>/kdos-update.idx`, naming each file by path with the release and asset name
+   GitHub stored, its size and its SHA-256, and signs it with the release key and, when
+   `build/binhost-key/kdos-binhost.key` is there, the binhost key as well. `kdos update` finds every
+   update file through it; see
+   [Publishing a release](../03-architecture/packaging.md#publishing-a-release).
+6. Writes `build/release/<tag>/SHA256SUMS` in `sha256sum` format. It names the whole ISO even when
+   only its parts are uploaded, each part, `sources.sha256`, the tree, its signature, the release
+   index and its signature, and `kdos-release.pub`.
+7. Signs it with `kpkg sign`, which writes `SHA256SUMS.sig`. The key is `--key <path>`, else
    `$KDOS_RELEASE_KEY`, else `build/keys/kdos-release.key`, and its public half is the `.pub` beside
    it, uploaded as `kdos-release.pub`. The signature is checked against that public key before
    anything is uploaded. A missing key stops the run; `--unsigned` releases without the signatures
    and the key, and no machine then takes its tree.
-7. Finds the release among all of the repository's releases, drafts included, and creates it as a
+8. Finds the release among all of the repository's releases, drafts included, and creates it as a
    **draft** named `KDOS <tag>` when there is none. While it is a draft its notes are rewritten on
    every run: the download, the joining of the parts, the check and the signature check.
-8. Uploads the ISO or its parts, `sources.sha256`, `kdos-ports.tar.xz` and its `.sig`,
-   `SHA256SUMS`, `SHA256SUMS.sig` and `kdos-release.pub`, hashing each again immediately before its upload. An asset already there
+9. Uploads the ISO or its parts, `sources.sha256`, `kdos-ports.tar.xz` and its `.sig`,
+   `kdos-update.idx` and its `.sig`, `SHA256SUMS`, `SHA256SUMS.sig` and `kdos-release.pub`, hashing each again immediately before its upload. An asset already there
    with the same bytes is kept, so an interrupted run is resumed by running it again. One with
    other bytes stops the run with exit 2; delete it by hand, and only while the release is still a
    draft.
-9. With `--publish`, makes the release public and Latest, then asks GitHub anonymously which
+10. With `--publish`, makes the release public and Latest, then asks GitHub anonymously which
    release is the latest, and exits 1 with a warning unless the answer is `<tag>`.
 
 The draft is visible only to the repository's writers, so the assets go out together when you
-publish it. Once it is Latest, every installed machine's nightly `kdos update check --fetch` takes
-its tree. The archive's `sources-<N>` volumes are pre-releases created with `make_latest`
-false, so none of them ever takes Latest from a system release.
+publish it. Once it is Latest, an installed machine takes its tree the next time someone asks for
+updates: Discover's *Check for updates*, or `kdos update fetch` at a shell. The nightly update
+check reads only what is already on the machine and fetches nothing. The archive's `sources-<N>`
+volumes are pre-releases created with `make_latest` false, so none of them ever takes Latest from a
+system release.
+
+**The slot image.** A release can also carry the signed whole-slot image an installed machine
+writes into its inactive A/B slot, with a delta from each earlier release it may still run.
+`script/release-image.sh` makes it from the root the ISO's `system.sfs` is made from, as root,
+because that root holds files only root can read:
+
+```sh
+script/release-image.sh --root build/fs --out build/release/<tag>/image \
+    --key build/keys/kdos-release.key --prev <an earlier release's image directory> [--prev-root <its root>]
+```
+
+It writes `kdos-image.manifest` and its signature, the full bundle cut into parts under 2 GiB, one
+`.delta` per `--prev`, and the directory's `kdos-update.idx` with its signature, which names each
+of them; with `--prev-root` a changed file travels as a zstd patch against the earlier copy,
+without it whole. `--version <tag>` makes the image the release's, which `ports/publish --release`
+requires. It compiles the image code from this checkout's `src/system/kdos-tools`, the code every
+machine runs to read the image, and verifies the result against the key's public half before it
+ends. `ports/publish --release` publishes the directory as `image-<tag>` (step 5), and the files at
+the top of `build/release/<tag>/` are cleared on each run while `image/` is kept, as the next
+release's `--prev`. What a machine does with them is in
+[Packaging](../03-architecture/packaging.md#slot-images).
 
 Someone who downloads the release checks it with:
 

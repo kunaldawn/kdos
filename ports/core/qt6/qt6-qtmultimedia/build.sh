@@ -18,7 +18,7 @@ cmake .. -G Ninja \
 	-DQT_BUILD_TESTS=OFF \
 	-DQT_BUILD_EXAMPLES=OFF \
 	-DFEATURE_ffmpeg=ON \
-	-DFEATURE_gstreamer=OFF \
+	-DFEATURE_gstreamer=ON \
 	-DFEATURE_pipewire=ON \
 	-DFEATURE_pipewire_screencapture=ON \
 	-DFEATURE_pulseaudio=ON \

@@ -1,0 +1,14 @@
+testing/plasmatest.sh --selftest runs its whole pipeline on this directory and
+inverts the verdicts it expects, because a suite that cannot fail proves
+nothing:
+
+  ports/fx-qttest       a Qt port shaped like every src/desktop port: its
+                        QtTest passes and the plugin it installs loads.
+  ports/fx-qttest-fail  the same port with a failing QCOMPARE and a plugin
+                        that names a symbol nothing defines; both must fail.
+  ports/fx-buildfail    a configure that fails, followed in build.sh by a
+                        line that succeeds; the build must still fail.
+  qml/Good.qml          lints clean at the suite's level.
+  qml/Bad.qml           binds a property its type does not have; must fail.
+  packages/             a plasmoid that installs with kpackagetool6, and one
+                        whose metadata has no Id, which must not.

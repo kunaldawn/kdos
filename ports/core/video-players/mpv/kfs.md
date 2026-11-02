@@ -46,8 +46,8 @@ build and turns a missing library into a failed configure.
   [libva](#port-libva), presented on DRM and on Wayland.
 - `-Dcuda-hwaccel=disabled`, `-Dcuda-interop=disabled` — NVIDIA CUDA decoding, whose toolkit is
   not a port.
-- `-Dsixel=enabled` — `--vo=sixel`, video drawn as sixel pictures in a terminal that supports them
-  ([Picture capabilities](../../../../docs/kdos/04-programs/kdos-term.md#picture-capabilities)).
+- `-Dsixel=enabled` — `--vo=sixel`, video drawn as sixel pictures in a terminal that supports
+  them, Konsole among them.
   It reaches a terminal where no compositor runs: a serial line, an ssh login or a console
   terminal. mpv builds its other terminal outputs, `--vo=tct` and `--vo=kitty`, with no switch.
 - `-Dcaca=disabled` — The libcaca text-art output, which is not a port.

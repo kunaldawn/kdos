@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libgravatar
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = bd71ec6fefd98402683dd00447e0cab8c29f1f690784462dbfaab1ec95234069  libgravatar-26.08.2.tar.xz
+description = KDE PIM library that looks up Gravatar and Libravatar pictures for mail addresses
+homepage    = https://invent.kde.org/pim/libgravatar
+license     = LGPL-2.0-or-later AND BSD-3-Clause AND MIT AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcoreaddons ki18n kconfig kwidgetsaddons kconfigwidgets

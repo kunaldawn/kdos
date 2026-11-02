@@ -1,0 +1,109 @@
+Subject: Never clear a runtime directory through a mount point inside it
+
+Clearing a runtime directory at the last logout descends into every
+subdirectory, including one that is the root of another mount. A
+filesystem still mounted there (an overlay a root daemon composed for a
+container, a FUSE mount the user left behind) is then emptied through the
+mount: its files are deleted, and on an overlay the deletions are written
+to the upper directory as whiteouts, which loses the data the mount shows.
+
+Leave a mount point, and every directory that holds one, in place, and
+report the directory as not empty so it is not removed. A mount root is a
+directory on another device than its parent, or one statx() marks with
+STATX_ATTR_MOUNT_ROOT, which also catches a bind mount of the same
+filesystem.
+---
+--- a/src/fs_utils.cc	2025-10-12 21:19:04.000000000 +0530
++++ b/src/fs_utils.cc	2026-10-28 22:48:10.904476562 +0530
+@@ -7,6 +7,7 @@
+ #include <fcntl.h>
+ #include <unistd.h>
+ #include <dirent.h>
++#include <sys/stat.h>
+ 
+ #include "turnstiled.hh"
+ 
+@@ -152,7 +153,33 @@
+     }
+ }
+ 
+-bool dir_clear_contents(int dfd) {
++/* whether the directory open at fd is the root of a mount: on another
++ * device than its parent, or a bind mount the kernel marks as a mount root
++ */
++static bool is_mount_root(int fd, struct stat const &st, dev_t pdev) {
++    if (st.st_dev != pdev) {
++        return true;
++    }
++#ifdef STATX_ATTR_MOUNT_ROOT
++    struct statx stx;
++    if (
++        !statx(fd, "", AT_EMPTY_PATH | AT_SYMLINK_NOFOLLOW, 0, &stx) &&
++        (stx.stx_attributes_mask & STATX_ATTR_MOUNT_ROOT)
++    ) {
++        return (stx.stx_attributes & STATX_ATTR_MOUNT_ROOT);
++    }
++#endif
++    return false;
++}
++
++/* clear the directory open at dfd, never descending into or removing a
++ * mount point inside it: a filesystem still mounted in a runtime directory
++ * (an overlay a root daemon composed there, a FUSE mount a user left) would
++ * otherwise be emptied through the mount, deleting what it shows rather
++ * than the directory entry; such an entry and every directory holding one
++ * are kept, and *kept says so
++ */
++static bool dir_clear_at(int dfd, dev_t dev, bool &kept) {
+     if (dfd < 0) {
+         /* silently return if an invalid file descriptor */
+         return false;
+@@ -198,15 +225,30 @@
+         struct stat st;
+         if (fstat(efd, &st) < 0) {
+             print_err("dir_clear: fstat failed (%s)", strerror(errno));
++            close(efd);
+             closedir(d);
+             return false;
+         }
+ 
+         if (S_ISDIR(st.st_mode)) {
+-            if (!dir_clear_contents(efd)) {
++            if (is_mount_root(efd, st, dev)) {
++                print_err(
++                    "dir_clear: %s is a mount point, leaving it", dent->d_name
++                );
++                close(efd);
++                kept = true;
++                continue;
++            }
++            bool subkept = false;
++            if (!dir_clear_at(efd, dev, subkept)) {
+                 closedir(d);
+                 return false;
+             }
++            if (subkept) {
++                /* it holds a mount point, so it stays */
++                kept = true;
++                continue;
++            }
+             ufl = AT_REMOVEDIR;
+         } else {
+             close(efd);
+@@ -223,3 +265,16 @@
+     closedir(d);
+     return true;
+ }
++
++bool dir_clear_contents(int dfd) {
++    struct stat st;
++    if ((dfd < 0) || (fstat(dfd, &st) < 0)) {
++        if (dfd >= 0) {
++            close(dfd);
++        }
++        return false;
++    }
++    bool kept = false;
++    /* a directory left holding a mount point is not empty */
++    return dir_clear_at(dfd, st.st_dev, kept) && !kept;
++}

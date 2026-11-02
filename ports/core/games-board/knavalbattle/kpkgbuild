@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = knavalbattle
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 418caa4eeb3f69c8a935aa45d91fa681303f591fd1443aa645bb33786e5a0e0f  knavalbattle-26.08.2.tar.xz
+description = Battleship: sink the hidden fleet, against the computer or over the network
+homepage    = https://apps.kde.org/knavalbattle/
+license     = GPL-2.0-or-later AND GFDL-1.2-or-later AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcompletion kconfig kcoreaddons kcrash kdbusaddons kdnssd kdoctools ki18n ktextwidgets kwidgetsaddons kxmlgui libkdegames gzip

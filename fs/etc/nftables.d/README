@@ -16,9 +16,13 @@ and rebuilds only that table, so that netavark's and NetworkManager's NAT
 tables survive a reload; a table declared here would survive it too, keeping
 its old rules alongside the new ones.
 
-50-kdos-services.nft is `kdos-firewall`'s and is rewritten whole on every
-toggle. Anything you write by hand belongs in a file of your own, which the
-surface never touches.
+50-kdos-services.nft is kdos-powerd's, for System Settings' Firewall page and
+`kdos-power firewall`, and is rewritten whole on every toggle: an open service
+is its accept rule, and a closed one counts its packets in the named counter
+kdos_knock_<name> and leaves them to the chain's drop. Anything you write by
+hand belongs in a file of your own, which the daemon never touches; a port
+such a file opens is still counted in 50-kdos-services.nft, whose rules come
+first.
 
 40-podman.nft ships here and re-opens the forward chain as well as input: it
 lets rootful podman's bridge networks (podman0, podman1, ...) route and reach

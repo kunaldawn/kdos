@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = juk
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = a96650739b5192e6d767ee0dab558257d2d0a59543e6b29cb4eceb9d924eeb8a  juk-26.08.2.tar.xz
+description = Jukebox and music manager — a tagged collection, playlists, a tag editor and file renamer
+homepage    = https://apps.kde.org/juk/
+license     = GPL-2.0-or-later
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg qt6-qtmultimedia kcoreaddons kcompletion kconfig kcrash kglobalaccel ki18n kiconthemes kdbusaddons kdoctools kio kjobwidgets knotifications ktextwidgets kxmlgui kwallet kwidgetsaddons kwindowsystem kstatusnotifieritem taglib

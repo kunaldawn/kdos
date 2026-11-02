@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = dolphin
-version     = 26.08.1
+version     = 26.08.2
 release     = 1
 source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
-sha256      = f5635feff84e7070d35342d6defb46e9b42ff1c44e3896635f4bd9f43da947c1  dolphin-26.08.1.tar.xz
+sha256      = 8bb1bdfcab19dd62d7625270fc6cc3c81145600d67b0599fc9fe89d711cc6730  dolphin-26.08.2.tar.xz
 description = File manager — tabs, split views, places, previews, a terminal panel and devices
 homepage    = https://apps.kde.org/dolphin/
 license     = GPL-2.0-or-later

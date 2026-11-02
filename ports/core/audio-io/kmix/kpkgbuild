@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kmix
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 25e52a2f513afdec3b6c742bd5a279f227bcfe174555dcb288b6c61e088091a2  kmix-26.08.2.tar.xz
+description = Sound mixer — per-channel volume over PulseAudio and ALSA, with a tray icon and media keys
+homepage    = https://apps.kde.org/kmix/
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later AND GFDL-1.2-only
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kconfig kconfigwidgets kcrash kcoreaddons kdbusaddons kdoctools kglobalaccel ki18n knotifications solid kstatusnotifieritem kwidgetsaddons kwindowsystem kxmlgui libpulse alsa-lib libcanberra

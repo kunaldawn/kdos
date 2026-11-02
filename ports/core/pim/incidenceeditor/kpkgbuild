@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = incidenceeditor
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 72dda66668811e612dd3b63b047130e4ac242d98f3c8262a7b810f13c5612c78  incidenceeditor-26.08.2.tar.xz
+description = KDE PIM library of the event, to-do and journal editor dialogs
+homepage    = https://invent.kde.org/pim/incidenceeditor
+license     = LGPL-2.0-or-later AND GPL-2.0-or-later WITH LicenseRef-Qt-Commercial-exception-1.0 AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND GPL-2.0-or-later AND BSD-3-Clause AND CC0-1.0 AND MIT
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kguiaddons kcalendarcore kcodecs ki18n kiconthemes kio ktextwidgets kwidgetsaddons kxmlgui kcompletion kcontacts kmime kdiagram akonadi akonadi-mime akonadi-calendar kldap calendarsupport eventviews libkdepim kcalutils pimcommon kpimtextedit kidentitymanagement

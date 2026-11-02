@@ -21,7 +21,7 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 
-for t in imgur youtube nextcloud reviewboard phabricator bluetooth; do
+for t in imgur youtube nextcloud reviewboard phabricator; do
 	[ -n "$(find "$PKG" -name "${t}plugin.so")" ] || {
 		echo "purpose: no ${t}plugin.so to remove" >&2
 		exit 1

@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = plasma-workspace-wallpapers
+version     = 6.8.2
+release     = 1
+source      = https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = 8f281e2b2c6f2259f0c38e7c6a6be0b53013c25593e7d214d7be563a7afedc37  plasma-workspace-wallpapers-6.8.2.tar.xz
+description = Plasma wallpapers — the artwork of every Plasma release, at every screen size
+homepage    = https://invent.kde.org/plasma/plasma-workspace-wallpapers
+license     = LGPL-3.0-only AND CC-BY-SA-4.0 AND GPL-2.0-or-later
+group       = plasma
+depends     = cmake ninja extra-cmake-modules

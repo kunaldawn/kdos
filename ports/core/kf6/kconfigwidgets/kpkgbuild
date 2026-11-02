@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = kconfigwidgets
-version     = 6.30.0
+version     = 6.31.0
 release     = 1
 source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
-sha256      = 6efd9fc7786a7e979b32904aeadf1d2d8e69a5da110f8ebd45f95ec02de41f77  kconfigwidgets-6.30.0.tar.xz
+sha256      = a9aa37565702ac1353c36cf16cc968c8aa336d33bcab9d0ff5419dd0b1dc92df  kconfigwidgets-6.31.0.tar.xz
 description = KDE Frameworks: widgets for configuration dialogs
 homepage    = https://invent.kde.org/frameworks/kconfigwidgets
 license     = LGPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.0-only AND (LGPL-2.0-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL)

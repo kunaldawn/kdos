@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libproxy
+version     = 0.5.12
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/libproxy/libproxy/archive/refs/tags/$version.tar.gz
+sha256      = a1fa55991998b80a567450a9e84382421a7176a84446c95caaa8b72cf09fa86f  libproxy-0.5.12.tar.gz
+description = Proxy configuration library: which proxy a URL goes through, from the environment, the desktop's settings or a PAC script
+homepage    = https://libproxy.github.io/libproxy/
+license     = LGPL-2.1-or-later
+depends     = meson ninja pkgconf glib duktape curl

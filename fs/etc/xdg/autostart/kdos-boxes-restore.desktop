@@ -1,0 +1,15 @@
+# The boxes of the last session, back: `kdos-appbox session restore` starts
+# the boxes recorded at the last logout (plasma-workspace/shutdown/kdos-boxes.sh)
+# and launches the boxed applications KDE's own restore does not, when
+# ksmserverrc's loginMode is "restore the previous session". Phase 2, after the
+# shell, so a launch lands on a desktop that can show it.
+[Desktop Entry]
+Type=Application
+Name=KDOS Box Restore
+Comment=Starts the boxes that were running when the last session ended
+Exec=kdos-appbox session restore
+TryExec=kdos-appbox
+NoDisplay=true
+OnlyShowIn=KDE;
+X-KDE-autostart-phase=2
+X-KDE-StartupNotify=false

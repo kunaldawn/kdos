@@ -1,7 +1,7 @@
 # The ports catalogue
 
-This chapter lists every port KDOS can build: each of the 2,083 recipes under `ports/core` and the
-26 recipes KDOS writes itself under `src/`, 2,109 in all, each exactly once. It is a reference for
+This chapter lists every port KDOS can build: each of the 2,390 recipes under `ports/core` and the
+43 recipes KDOS writes itself under `src/`, 2,433 in all, each exactly once. It is a reference for
 anyone who needs to know whether a piece of software is in the tree, which version it is at, where
 its recipe lives, and which phase of the build installs it. Read
 [Packaging](../03-architecture/packaging.md) first for what a port and a package are, and
@@ -15,12 +15,12 @@ version, sources, their hashes, a one-line description, dependencies) and a `bui
 compiles the unpacked source. `kpkg` turns a port into a **package**, the archive it installs.
 
 **Shelves.** Upstream software lives one level down in `ports/core`, on a **shelf**: a directory
-named for a subject, holding the ports that belong to it. `wlroots` is at `ports/core/wl/wlroots/`,
+named for a subject, holding the ports that belong to it. `kwin` is at `ports/core/kde/kwin/`,
 `ffmpeg` at `ports/core/media-frameworks/ffmpeg/`. The 102 shelves form a closed list,
 `ports/shelves`, one line per shelf giving its name, its source-archive volume and what belongs
 on it, and the order of that file is the order this chapter uses. A shelf is only a place to file a port. A port's identity is
 its bare name: `depends =`, the package lists, `kpkg install` and the package database all use
-`wlroots`, never `wl/wlroots`, and no name appears twice anywhere in the tree. `kpkg` finds a port
+`kwin`, never `kde/kwin`, and no name appears twice anywhere in the tree. `kpkg` finds a port
 by looking for `<name>/` and then `<shelf>/<name>/` in each directory on `PORT_REPO`, and refuses a
 name filed twice in one of them.
 
@@ -108,18 +108,18 @@ leaving out any an earlier phase installed.
 | `20_selfhost` | Self-Hosting Bootstrap | `packages.txt` | 9 | 15 |
 | `30_foundation` | Build Foundation | `packages.txt` | 138 | 127 |
 | `31_compilers` | Compilers | `packages.txt` | 22 | 22 |
-| `40_lang` | Languages | `packages.d/`, 13 files | 177 | 177 |
-| `41_system` | System | `packages.d/`, 96 files | 1,014 | 1,014 |
-| `42_graphics` | Graphics Stack | `packages.d/`, 54 files | 194 | 194 |
-| `43_toolkits` | Toolkits | `packages.d/`, 47 files | 250 | 250 |
-| `44_apps` | Applications | `packages.d/`, 58 files | 284 | 284 |
-| `50_desktop` | Desktop | `packages.txt` | 22 | 22 |
+| `40_lang` | Languages | `packages.d/`, 13 files | 184 | 184 |
+| `41_system` | System | `packages.d/`, 98 files | 1,040 | 1,040 |
+| `42_graphics` | Graphics Stack | `packages.d/`, 54 files | 188 | 188 |
+| `43_toolkits` | Toolkits | `packages.d/`, 55 files | 339 | 339 |
+| `44_apps` | Applications | `packages.d/`, 61 files | 423 | 423 |
+| `50_desktop` | Desktop | `packages.txt` | 91 | 91 |
 | `60_kernel` | Kernel | `packages.txt` | 2 | 2 |
 | `70_image` | Image | none: steps | — | — |
-| Total | | | 2,112 | 2,107 |
+| Total | | | 2,436 | 2,431 |
 
-The lists hold 2,112 lines naming 2,103 distinct ports; 9 of those ports are named by more than one
-phase. Following `depends =` from the lists reaches 2,107 ports. With `kdos-installer`, which
+The lists hold 2,436 lines naming 2,427 distinct ports; 9 of those ports are named by more than one
+phase. Following `depends =` from the lists reaches 2,431 ports. With `kdos-installer`, which
 `10_bootstrap` builds by script, that is every recipe but 1, listed in `ports/unbuilt`: `texlive-doc`,
 a recipe kept for `kpkg install` that no phase builds, marked `not built` in its table.
 `testing/bookcounts.py` fails on any other recipe no phase builds.
@@ -167,113 +167,113 @@ Every recipe, counted by where it lives.
 
 | Shelf or area | Ports |
 |---|---|
-| [`base`](#base) | 32 |
+| [`base`](#base) | 33 |
 | [`base-libs`](#base-libs) | 17 |
-| [`auth`](#auth) | 14 |
-| [`boot`](#boot) | 14 |
+| [`auth`](#auth) | 28 |
+| [`boot`](#boot) | 15 |
 | [`toolchain`](#toolchain) | 39 |
-| [`buildtools`](#buildtools) | 21 |
+| [`buildtools`](#buildtools) | 22 |
 | [`lang`](#lang) | 27 |
-| [`devtools`](#devtools) | 37 |
-| [`vcs`](#vcs) | 10 |
-| [`editors`](#editors) | 12 |
+| [`devtools`](#devtools) | 48 |
+| [`vcs`](#vcs) | 11 |
+| [`editors`](#editors) | 16 |
 | [`doctools`](#doctools) | 28 |
 | [`devlibs`](#devlibs) | 36 |
 | [`formats`](#formats) | 35 |
 | [`database`](#database) | 15 |
 | [`archiver`](#archiver) | 31 |
-| [`shells`](#shells) | 10 |
-| [`cli`](#cli) | 19 |
-| [`files`](#files) | 11 |
-| [`sysmon`](#sysmon) | 8 |
-| [`hardware`](#hardware) | 29 |
-| [`input`](#input) | 16 |
-| [`mobile`](#mobile) | 14 |
-| [`disk`](#disk) | 30 |
-| [`filesystem`](#filesystem) | 20 |
-| [`optical`](#optical) | 13 |
+| [`shells`](#shells) | 11 |
+| [`cli`](#cli) | 20 |
+| [`files`](#files) | 14 |
+| [`sysmon`](#sysmon) | 12 |
+| [`hardware`](#hardware) | 33 |
+| [`input`](#input) | 19 |
+| [`mobile`](#mobile) | 15 |
+| [`disk`](#disk) | 34 |
+| [`filesystem`](#filesystem) | 21 |
+| [`optical`](#optical) | 16 |
 | [`crypto`](#crypto) | 31 |
-| [`security`](#security) | 26 |
+| [`security`](#security) | 32 |
 | [`containers`](#containers) | 18 |
-| [`virt`](#virt) | 25 |
-| [`net-libs`](#net-libs) | 38 |
+| [`virt`](#virt) | 26 |
+| [`net-libs`](#net-libs) | 39 |
 | [`network`](#network) | 28 |
 | [`net-diag`](#net-diag) | 16 |
 | [`servers`](#servers) | 10 |
-| [`transfer`](#transfer) | 14 |
-| [`mail`](#mail) | 13 |
-| [`chat`](#chat) | 16 |
-| [`browsers`](#browsers) | 10 |
+| [`transfer`](#transfer) | 19 |
+| [`mail`](#mail) | 32 |
+| [`chat`](#chat) | 19 |
+| [`browsers`](#browsers) | 12 |
 | [`web-engines`](#web-engines) | 14 |
-| [`x11`](#x11) | 44 |
-| [`wl`](#wl) | 17 |
-| [`gpu`](#gpu) | 26 |
-| [`graphics-libs`](#graphics-libs) | 27 |
-| [`image-libs`](#image-libs) | 47 |
-| [`graphics`](#graphics) | 23 |
+| [`x11`](#x11) | 45 |
+| [`wl`](#wl) | 9 |
+| [`gpu`](#gpu) | 27 |
+| [`graphics-libs`](#graphics-libs) | 28 |
+| [`image-libs`](#image-libs) | 48 |
+| [`graphics`](#graphics) | 29 |
 | [`3d`](#3d) | 17 |
 | [`cad`](#cad) | 17 |
 | [`fabrication`](#fabrication) | 13 |
-| [`fonts`](#fonts) | 25 |
-| [`themes`](#themes) | 8 |
-| [`xdg`](#xdg) | 16 |
-| [`accessibility`](#accessibility) | 9 |
-| [`i18n`](#i18n) | 15 |
+| [`fonts`](#fonts) | 26 |
+| [`themes`](#themes) | 12 |
+| [`xdg`](#xdg) | 20 |
+| [`accessibility`](#accessibility) | 10 |
+| [`i18n`](#i18n) | 20 |
 | [`spelling`](#spelling) | 10 |
 | [`gtk`](#gtk) | 28 |
-| [`qt6`](#qt6) | 29 |
+| [`qt6`](#qt6) | 32 |
 | [`qt5`](#qt5) | 11 |
-| [`qt-extra`](#qt-extra) | 21 |
-| [`kf6`](#kf6) | 67 |
-| [`kde`](#kde) | 9 |
+| [`qt-extra`](#qt-extra) | 30 |
+| [`kf6`](#kf6) | 71 |
+| [`kde`](#kde) | 72 |
 | [`toolkits`](#toolkits) | 4 |
-| [`audio-io`](#audio-io) | 15 |
+| [`audio-io`](#audio-io) | 16 |
 | [`audio-codecs`](#audio-codecs) | 28 |
 | [`audio-dsp`](#audio-dsp) | 27 |
 | [`music-libs`](#music-libs) | 18 |
-| [`studio`](#studio) | 12 |
-| [`music-players`](#music-players) | 10 |
+| [`studio`](#studio) | 13 |
+| [`music-players`](#music-players) | 13 |
 | [`video-libs`](#video-libs) | 23 |
-| [`media-frameworks`](#media-frameworks) | 18 |
-| [`video-players`](#video-players) | 8 |
+| [`media-frameworks`](#media-frameworks) | 17 |
+| [`video-players`](#video-players) | 11 |
 | [`video-tools`](#video-tools) | 10 |
 | [`game-libs`](#game-libs) | 18 |
-| [`games-action`](#games-action) | 9 |
+| [`games-action`](#games-action) | 13 |
 | [`games-shooter`](#games-shooter) | 11 |
-| [`games-strategy`](#games-strategy) | 12 |
+| [`games-strategy`](#games-strategy) | 13 |
 | [`games-rpg`](#games-rpg) | 8 |
-| [`games-board`](#games-board) | 18 |
+| [`games-board`](#games-board) | 48 |
 | [`emulators`](#emulators) | 18 |
 | [`libretro`](#libretro) | 12 |
-| [`education`](#education) | 16 |
-| [`office`](#office) | 23 |
-| [`documents`](#documents) | 22 |
-| [`pim`](#pim) | 12 |
-| [`printing`](#printing) | 26 |
-| [`math`](#math) | 27 |
+| [`education`](#education) | 28 |
+| [`office`](#office) | 27 |
+| [`documents`](#documents) | 23 |
+| [`pim`](#pim) | 49 |
+| [`printing`](#printing) | 28 |
+| [`math`](#math) | 31 |
 | [`sci-libs`](#sci-libs) | 21 |
 | [`astronomy`](#astronomy) | 14 |
 | [`bioscience`](#bioscience) | 12 |
-| [`gis`](#gis) | 20 |
+| [`gis`](#gis) | 26 |
 | [`eda`](#eda) | 29 |
 | [`embedded`](#embedded) | 30 |
 | [`sdr-hw`](#sdr-hw) | 19 |
 | [`sdr`](#sdr) | 24 |
 | [`hamradio`](#hamradio) | 26 |
 | [`ai`](#ai) | 7 |
-| [`python`](#python) | 36 |
-| [`python-libs`](#python-libs) | 67 |
-| [`python-net`](#python-net) | 22 |
+| [`python`](#python) | 37 |
+| [`python-libs`](#python-libs) | 70 |
+| [`python-net`](#python-net) | 25 |
 | [`python-sci`](#python-sci) | 13 |
-| [`python-gui`](#python-gui) | 16 |
+| [`python-gui`](#python-gui) | 17 |
 | [`python-dev`](#python-dev) | 14 |
 | [`python-hw`](#python-hw) | 12 |
 | [`perl-cpan`](#perl-cpan) | 20 |
-| [`src/system`](#srcsystem) | 7 |
-| [`src/art`](#srcart) | 6 |
-| [`src/desktop`](#srcdesktop) | 8 |
-| [`src/daemons`](#srcdaemons) | 5 |
-| Total | 2,109 |
+| [`src/system`](#srcsystem) | 8 |
+| [`src/art`](#srcart) | 8 |
+| [`src/desktop`](#srcdesktop) | 21 |
+| [`src/daemons`](#srcdaemons) | 6 |
+| Total | 2,433 |
 
 ## The shelves
 
@@ -282,7 +282,7 @@ own description from `ports/shelves`.
 
 ### base
 
-The minimal userland and system daemons that every KDOS image boots with. 32 ports, under
+The minimal userland and system daemons that every KDOS image boots with. 33 ports, under
 `ports/core/base/`.
 
 | Port | Version | Description | Phase |
@@ -291,6 +291,7 @@ The minimal userland and system daemons that every KDOS image boots with. 32 por
 | `bc` | 1.08.2 | An arbitrary precision calculator language | `30_foundation` |
 | `ca-certificates` | 3.130 | Bundle of CA Root Certificates from Mozilla | `30_foundation` |
 | `coreutils` | 9.12 | The GNU core utilities — the file, text and shell commands, one program each | `30_foundation` |
+| `cronie` | 1.7.2 | Cron daemon and crontab: the scheduler for the crontabs users write | `41_system` |
 | `dbus` | 1.16.2 | Message bus system for communication between processes | `41_system` |
 | `diffutils` | 3.12 | Utility programs for comparing files | `20_selfhost`, named again by `30_foundation` |
 | `eudev` | 3.2.14 | Programs for dynamic creation of device nodes | `30_foundation` |
@@ -310,7 +311,6 @@ The minimal userland and system daemons that every KDOS image boots with. 32 por
 | `procps-ng` | 4.0.7 | Programs for monitoring processes | `41_system` |
 | `psmisc` | 23.7 | Programs for displaying information about running processes | `41_system` |
 | `s6` | 2.15.1.0 | skarnet's process supervision suite — s6-ipcserver and s6-setuidgid run utmpd and wtmpd | `41_system` |
-| `seatd` | 0.9.3 | Minimal seat management daemon for non-systemd Wayland setups | `41_system` |
 | `sed` | 4.10 | GNU stream editor, with the extensions upstream build systems assume | `30_foundation` |
 | `snooze` | 0.6 | Runs a command at a given time — one process per job in place of a cron daemon | `41_system` |
 | `sysklogd` | 2.7.2 | System logging daemon with built-in rotation | `41_system` |
@@ -318,6 +318,7 @@ The minimal userland and system daemons that every KDOS image boots with. 32 por
 | `tar` | 1.35 | Creates, lists and extracts tar archives | `20_selfhost`, named again by `30_foundation` |
 | `tzdata` | 2026d | IANA time zone database — musl reads /usr/share/zoneinfo natively | `41_system` |
 | `util-linux` | 2.42.4 | Miscellaneous system utilities for Linux | `30_foundation` |
+| `util-linux-login` | 2.42.4 | util-linux's login, built against PAM: the console login that registers an elogind session | `41_system` |
 | `which` | 2.25 | Shows the full path of a command | `30_foundation` |
 
 Notes:
@@ -371,23 +372,37 @@ Notes:
 
 ### auth
 
-Authentication, authorisation, accounts and directory services. 14 ports, under `ports/core/auth/`.
+Authentication, authorisation, accounts and directory services. 28 ports, under `ports/core/auth/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
+| `accountsservice` | 26.27.3 | D-Bus service for querying and changing user accounts (org.freedesktop.Accounts) | `41_system` |
 | `cracklib` | 2.10.3 | Password-strength checking library, with its small English word dictionary packed | `41_system` |
 | `cyrus-sasl` | 2.1.28 | SASL authentication library — the mechanism loader mbsync authenticates through | `30_foundation` |
 | `cyrus-sasl-xoauth2` | 0.2 | The XOAUTH2 SASL mechanism — what mbsync authenticates with where a provider has withdrawn app passwords | `41_system` |
+| `elogind` | 255.24 | Standalone logind: seats, sessions, login1 on the system bus, pam_elogind and libelogind | `41_system` |
 | `fprintd` | 1.94.5 | The fingerprint daemon and its PAM module, so a reader can unlock a session | `41_system` |
+| `kaccounts-integration` | 26.08.2 | Online accounts for KDE: the KAccounts library, its QML module, the Online Accounts settings page and the kded module | `43_toolkits` |
+| `kaccounts-providers` | 26.08.2 | Online account providers for KAccounts — Google, ownCloud and Nextcloud | `43_toolkits` |
+| `kldap` | 26.08.2 | KDE PIM LDAP client libraries for address lookup, and the ldap:// KIO worker | `43_toolkits` |
 | `krb5` | 1.22.2 | Kerberos 5 authentication libraries and tools | `41_system` |
+| `kwallet-pam` | 6.8.2 | PAM module that unlocks the KDE wallet with the login password | `50_desktop` |
+| `libaccounts-glib` | 1.27.git20250603 | Accounts database library for GLib — accounts, providers and services that applications share | `41_system` |
+| `libaccounts-qt` | 1.17 | Accounts database library for Qt 6 — the Qt interface to libaccounts-glib | `43_toolkits` |
 | `libfprint` | 1.94.100 | Fingerprint reader drivers | `41_system` |
 | `libpwquality` | 1.4.5 | Password quality checking and random password generation library, over cracklib | `41_system` |
 | `oath-toolkit` | 2.6.14 | One-time passwords from the command line — HOTP and TOTP | `41_system` |
 | `openldap` | 2.6.15 | The LDAP client library and the ldapsearch family of tools | `30_foundation` |
 | `pam` | 1.7.3 | Linux Pluggable Authentication Modules (libpam + pam_unix against /etc/shadow) | `41_system` |
 | `polkit` | 128 | Authorization framework for unprivileged processes (NetworkManager, fwupd, bolt, fprintd) | `41_system` |
+| `sddm` | 0.21.0 | Display manager — the QML login greeter, run on kwin_wayland | `50_desktop` |
 | `shadow` | 4.20.3 | Password and user-account management programs | `30_foundation` |
+| `signon-kwallet-extension` | 26.08.2 | signond extension that keeps the credentials of online accounts in KWallet | `43_toolkits` |
+| `signon-plugin-oauth2` | 0.25 | OAuth 1.0 and 2.0 authentication plugin for signond | `43_toolkits` |
+| `signon-ui` | 0.17.git20231016 | signond's browser dialog: shows a provider's sign-in page for an OAuth login | `43_toolkits` |
+| `signond` | 8.61 | Single sign-on daemon — stores credentials and runs authentication plugins over D-Bus for its clients | `43_toolkits` |
 | `sudo` | 1.9.17p2 | Runs commands as root or another user by policy, logging each command and its arguments | `41_system` |
+| `turnstile` | 0.1.11 | Per-user service manager launcher: login tracking, the runtime directory and a backend per user | `41_system` |
 | `utmps` | 0.1.3.4 | utmp and wtmp for musl — the utmpx library and the utmpd and wtmpd daemons behind it | `30_foundation` |
 
 Notes:
@@ -410,7 +425,7 @@ Notes:
 ### boot
 
 Everything before userspace: the kernel, microcode, firmware for the host, bootloader and EFI
-tooling. 14 ports, under `ports/core/boot/`.
+tooling. 15 ports, under `ports/core/boot/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -420,6 +435,7 @@ tooling. 14 ports, under `ports/core/boot/`.
 | `efivar` | 39 | Read and write EFI variables — the library efibootmgr needs | `41_system` |
 | `fwupd` | 2.1.7 | Daemon and client for updating device firmware | `42_graphics` |
 | `fwupd-efi` | 1.8 | The EFI program fwupd boots into to hand a firmware capsule to the machine's firmware | `41_system` |
+| `fwupd-snapshot` | 20261028 | The LVFS firmware metadata as of a KDOS release, for fwupd's offline kdos-snapshot remote | `42_graphics` |
 | `gnu-efi` | 4.0.4 | GNU EFI library | `41_system` |
 | `intel-ucode` | 20260812 | Intel processor microcode, bundled for early loading | `41_system` |
 | `limine` | 12.9.0 | BIOS and UEFI bootloader and boot manager | `41_system` |
@@ -545,7 +561,7 @@ Notes:
 
 ### buildtools
 
-Build systems and build helpers. 21 ports, under `ports/core/buildtools/`.
+Build systems and build helpers. 22 ports, under `ports/core/buildtools/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -566,6 +582,7 @@ Build systems and build helpers. 21 ports, under `ports/core/buildtools/`.
 | `muon` | 0.7.0 | An implementation of the meson build system in C99, with a built-in ninja — the build system pkgconf is built with | `30_foundation` |
 | `ninja` | 1.13.2 | Low-level build system that runs generated build files | `30_foundation` |
 | `pkgconf` | 3.0.9 | Package compiler and linker metadata toolkit | `30_foundation` |
+| `sassc` | 3.6.2 | Sass compiler command line, over libsass | `41_system` |
 | `scons` | 4.11.1 | Python-based build tool (gpsd builds with it) | `40_lang` |
 | `setconf` | 0.7.7 | Utility for changing settings in configuration files | `40_lang` |
 | `unifdef` | 2.12 | Selectively remove C preprocessor conditionals | `40_lang` |
@@ -662,11 +679,12 @@ Notes:
 
 ### devtools
 
-Debuggers, tracers, profilers, analysers, linters, language servers and developer utilities. 37
+Debuggers, tracers, profilers, analysers, linters, language servers and developer utilities. 48
 ports, under `ports/core/devtools/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
+| `accessibility-inspector` | 26.08.2 | Accessibility inspector — browse the AT-SPI tree a program shows to screen readers | `44_apps` |
 | `antlr2` | 2.7.7 | ANTLR 2 parser generator — the antlr tool and the C++ runtime library | `42_graphics` |
 | `bcc` | 0.37.0 | The BPF Compiler Collection library, USDT probe support and the libbpf-tools tracers | `40_lang` |
 | `bpftool` | 7.7.0 | Inspect and manage BPF programs and maps, and generate BPF skeletons | `40_lang` |
@@ -684,21 +702,31 @@ ports, under `ports/core/devtools/`.
 | `hyperfine` | 1.20.0 | Statistical command-line benchmarking with warmup and outliers | `40_lang` |
 | `imhex` | 1.38.1 | Hex editor for reverse engineering — pattern language, disassembler, diffing and data inspectors | `42_graphics` |
 | `just` | 1.58.0 | A command runner for project-specific recipes | `40_lang` |
+| `kapptemplate` | 26.08.2 | Project template generator — KDE Frameworks, Kirigami, plasmoid and KParts skeletons for a new program | `44_apps` |
+| `kcachegrind` | 26.08.2 | Profile data visualiser for Callgrind and Cachegrind — call graphs, treemaps and annotated source | `44_apps` |
+| `kde-dev-scripts` | 26.08.2 | KDE developer scripts — include and moc fixers, extractrc, export-header generation and uncrustify settings | `44_apps` |
+| `kde-dev-utils` | 26.08.2 | KUIViewer for Qt Designer .ui files, its part and thumbnailer, and the kpartloader test tool | `44_apps` |
+| `kdebugsettings` | 26.08.2 | Turns the Qt logging categories of KDE programs on and off | `44_apps` |
 | `kdevelop-pg-qt` | 2.4.0 | LL(1) parser generator, for KDevelop's QMake project manager | `43_toolkits` |
+| `kirigami-gallery` | 26.08.2 | Gallery of every Kirigami component, for developers of Kirigami applications | `44_apps` |
 | `libbpf` | 1.7.0 | The userspace side of BPF — load a program, read a map | `40_lang` |
 | `libtraceevent` | 1.9.0 | Parser for the kernel's ftrace event format | `40_lang` |
 | `libtracefs` | 1.8.3 | API for the tracefs filesystem | `40_lang` |
 | `ltrace` | 0.8.1 | Library call tracer | `40_lang` |
+| `massif-visualizer` | 26.08.2 | Viewer for Valgrind Massif heap profiles — memory use over time, peak snapshots and allocation trees | `44_apps` |
 | `perf` | 7.2.11 | The kernel's own profiler: sampling, counters, tracepoints and BPF | `41_system` |
+| `plasma-sdk` | 6.8.2 | Plasma development tools — plasmoidviewer, lookandfeelexplorer, themeexplorer, iconexplorer, engineexplorer and kqml | `44_apps` |
 | `rizin` | 0.9.1 | Reverse-engineering framework — disassembler and binary analysis in the terminal | `41_system` |
 | `ruff` | 0.16.9 | The Python linter and formatter, as the ruff command and the Python module that runs it | `40_lang` |
 | `rust-analyzer` | 2026.09.21 | The Rust language server | `40_lang` |
+| `selenium-webdriver-at-spi` | 0.git20261013 | KDE's WebDriver over AT-SPI2: drives and reads Qt applications through their accessibility tree | `44_apps` |
 | `shellcheck` | 0.11.0 | Static analysis for sh and bash scripts — quoting, word splitting and portability | `41_system` |
 | `shfmt` | 3.14.1 | Shell parser, formatter and linter | `40_lang` |
 | `strace` | 7.2 | System call tracer | `40_lang` |
 | `tinyxxd` | 1.3.17 | xxd — hex dump and its reverse, as a small standalone program | `40_lang` |
 | `tokei` | 15.0.0 | Counts lines of code by language | `40_lang` |
 | `tree-sitter` | 0.27.0 | The parser library and CLI — grammars compiled here, never fetched | `40_lang` |
+| `umbrello` | 26.08.2 | UML modeller — class, sequence, state and entity diagrams, code import and code generation | `44_apps` |
 | `universal-ctags` | 6.2.1 | Source-code tag index generator | `41_system` |
 | `valgrind` | 3.27.1 | Instrumentation framework for memory debugging and profiling | `40_lang` |
 | `xh` | 0.26.2 | Command-line HTTP client | `41_system` |
@@ -748,7 +776,7 @@ Notes:
 
 ### vcs
 
-Version control and diff/merge tools. 10 ports, under `ports/core/vcs/`.
+Version control and diff/merge tools. 11 ports, under `ports/core/vcs/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -758,9 +786,10 @@ Version control and diff/merge tools. 10 ports, under `ports/core/vcs/`.
 | `git-lfs` | 3.8.0 | Git extension that stores large files out of band | `40_lang` |
 | `jujutsu` | 0.45.1 | Git-compatible version control system with an operation log | `40_lang` |
 | `kdiff3` | 1.12.6 | Two- and three-way file and folder comparison and merge | `44_apps` |
+| `kompare` | 26.08.2 | Diff and patch viewer — side-by-side differences, applying hunks, and a part other programs embed | `44_apps` |
 | `lazygit` | 0.65.1 | Terminal UI for git commands | `40_lang` |
 | `libgit2` | 1.9.7 | Portable, linkable C implementation of the Git core methods | `30_foundation` |
-| `libkomparediff2` | 26.08.1 | Diff parsing and models, for KDevelop's patch review | `43_toolkits` |
+| `libkomparediff2` | 26.08.2 | Diff parsing and models, for KDevelop's patch review | `43_toolkits` |
 | `tig` | 2.6.1 | ncurses interface for reading a git repository | `40_lang` |
 
 Notes:
@@ -777,16 +806,20 @@ Notes:
 
 ### editors
 
-Text editors, IDEs, notebooks and REPLs. 12 ports, under `ports/core/editors/`.
+Text editors, IDEs, notebooks and REPLs. 16 ports, under `ports/core/editors/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
 | `geany` | 2.1 | GTK programmer's editor — syntax highlighting, symbols, build commands | `44_apps` |
+| `ghostwriter` | 26.08.2 | Markdown editor — distraction-free writing with a live preview, outline, statistics and export | `44_apps` |
 | `helix` | 25.07.1 | Modal terminal text editor with tree-sitter syntax and language-server support (Rust) | `41_system` |
 | `ipython` | 9.17.1 | Interactive Python shell | `41_system` |
 | `jupyterlab` | 4.6.4 | JupyterLab and Jupyter Notebook — computational notebooks served locally to the web browser | `44_apps` |
-| `kate` | 26.08.1 | KDE advanced text editor — tabs, split views, LSP, projects, search, terminal | `44_apps` |
-| `kdevelop` | 26.08.1 | The KDE IDE for C, C++ and more, with libclang code analysis | `44_apps` |
+| `kate` | 26.08.2 | KDE advanced text editor — tabs, split views, LSP, projects, search, terminal | `44_apps` |
+| `kdev-php` | 26.08.2 | PHP language support for KDevelop — parser, semantic highlighting, code completion and PHPUnit tests | `44_apps` |
+| `kdev-python` | 26.08.2 | Python 3 language support for KDevelop — parser, code completion, the pdb debugger and documentation files | `44_apps` |
+| `kdevelop` | 26.08.2 | The KDE IDE for C, C++ and more, with libclang code analysis | `43_toolkits` |
+| `kimagemapeditor` | 26.08.2 | HTML image-map editor — draw clickable regions over an image and write the map markup | `44_apps` |
 | `lite-xl` | 2.1.8 | Text editor written in Lua, drawn with SDL3 and no toolkit | `44_apps` |
 | `micro` | 2.0.15 | Terminal text editor with familiar keybindings and mouse support (Go) | `41_system` |
 | `nano` | 9.2 | Small terminal text editor in the manner of Pico, with syntax colouring | `41_system` |
@@ -909,6 +942,7 @@ General-purpose C and C++ utility libraries with no domain. 36 ports, under `por
 | `jemalloc` | 5.4.0 | A malloc that holds fragmentation down under many threads | `41_system` |
 | `lager` | 0.1.3 | Value-oriented unidirectional data-flow architecture for C++ (headers) | `41_system` |
 | `libdaemon` | 0.14 | C library for writing UNIX daemons (avahi dependency) | `41_system` |
+| `libsass` | 3.6.6 | C/C++ implementation of the Sass stylesheet compiler | `41_system` |
 | `libtommath` | 1.3.0 | Multiple-precision integers — tcl bundles a renamed copy and yosys needs the real one | `41_system` |
 | `liburcu` | 0.15.7 | Userspace RCU — required by xfsprogs, no --disable option exists | `41_system` |
 | `mustache` | 4.1 | Kainjow Mustache, a header-only Mustache template engine for C++11 | `41_system` |
@@ -925,7 +959,6 @@ General-purpose C and C++ utility libraries with no domain. 36 ports, under `por
 | `spdlog` | 1.17.0 | C++ logging library, over the system fmt | `41_system` |
 | `talloc` | 2.5.0 | Hierarchical reference-counted memory pool library from Samba | `41_system` |
 | `tevent` | 0.17.2 | Samba's event loop library on talloc — samba-util and the ndr libraries build on it | `41_system` |
-| `tllist` | 1.1.0 | C header-only typed linked list library (foot/fcft dep) | `41_system` |
 | `uthash` | 2.4.0 | A hash table for C structures (header-only) | `41_system` |
 | `xxhash` | 0.8.4 | Non-cryptographic hash algorithm library | `20_selfhost` (as a dependency) |
 | `zug` | 0.1.2 | Transducers for C++ (headers) | `41_system` |
@@ -965,7 +998,7 @@ data query and convert tools. 35 ports, under `ports/core/formats/`.
 | `expat` | 2.9.0 | A stream oriented C library for parsing XML | `30_foundation` |
 | `fx` | 39.2.0 | Interactive viewer and processor for JSON and YAML | `41_system` |
 | `gumbo-parser` | 0.14.1 | HTML5 parsing library in C | `41_system` |
-| `inih` | r62 | Tiny C library for parsing INI files (used by xdg-desktop-portal-wlr config) | `41_system` |
+| `inih` | r62 | Tiny C library for parsing INI files (exiv2, xfsprogs and imv read their configuration with it) | `41_system` |
 | `iniparser` | 4.3.0 | Small C library for parsing INI files | `41_system` |
 | `jansson` | 2.15.1 | C library for encoding/decoding/manipulating JSON (NetworkManager dep) | `41_system` |
 | `jq` | 1.8.2 | Command-line JSON processor | `41_system` |
@@ -1068,7 +1101,7 @@ Compression libraries and archive tools. 31 ports, under `ports/core/archiver/`.
 | Port | Version | Description | Phase |
 |---|---|---|---|
 | `7zip` | 26.03 | Packs and unpacks 7z, zip, rar, tar, iso, cab, deb, rpm and disk images, with 7-Zip's 7zz | `41_system` |
-| `ark` | 26.08.1 | Archive manager — browse, extract and create tar, zip, 7z and compressed archives | `44_apps` |
+| `ark` | 26.08.2 | Archive manager — browse, extract and create tar, zip, 7z and compressed archives | `44_apps` |
 | `brotli` | 1.2.0 | Brotli compression library | `30_foundation` |
 | `bzip2` | 1.0.8 | Block-sorting compressor: libbz2 and the bzip2, bunzip2 and bzcat commands | `30_foundation` |
 | `c-blosc` | 1.21.6 | Blosc: a blocking, shuffling compressor for binary data — OpenVDB's grid codec | `41_system` |
@@ -1133,7 +1166,7 @@ Notes:
 
 ### shells
 
-Interactive shells and their add-ons, terminal multiplexers, and terminal emulators. 10 ports, under
+Interactive shells and their add-ons, terminal multiplexers, and terminal emulators. 11 ports, under
 `ports/core/shells/`.
 
 | Port | Version | Description | Phase |
@@ -1142,10 +1175,11 @@ Interactive shells and their add-ons, terminal multiplexers, and terminal emulat
 | `bash-completion` | 2.18.0 | Programmable completion for the bash shell | `41_system` |
 | `byobu` | 7.19 | Text-based window manager and terminal multiplexer | `41_system` |
 | `direnv` | 2.37.1 | Loads and unloads environment variables per directory | `41_system` |
-| `foot` | 1.28.0 | Wayland terminal emulator | `42_graphics` |
-| `konsole` | 26.08.1 | KDE terminal emulator — tabs, split views, profiles, SSH manager | `43_toolkits` |
+| `konsole` | 26.08.2 | KDE terminal emulator — tabs, split views, profiles, SSH manager | `43_toolkits` |
+| `qmlkonsole` | 26.08.2 | Touch terminal emulator — a Kirigami terminal with a toolbar of special keys | `44_apps` |
 | `starship` | 1.26.0 | Configurable shell prompt | `41_system` |
 | `tmux` | 3.7c | Terminal multiplexer | `41_system` |
+| `yakuake` | 26.08.2 | Drop-down terminal — a Konsole that slides down from the top of the screen on a global shortcut | `44_apps` |
 | `zoxide` | 0.10.0 | A cd command that ranks directories by use | `41_system` |
 | `zsh` | 5.9.2 | Z shell, with an extensive completion system | `41_system` |
 
@@ -1162,11 +1196,12 @@ Notes:
 
 ### cli
 
-Command-line productivity utilities: search, view, navigation and text wrangling in the terminal. 19
+Command-line productivity utilities: search, view, navigation and text wrangling in the terminal. 20
 ports, under `ports/core/cli/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
+| `aha` | 0.5.1 | ANSI colour escapes to HTML converter | `41_system` |
 | `bat` | 0.26.1 | Cat clone with syntax highlighting and Git integration | `41_system` |
 | `bitwise` | 0.70 | Bit-level manipulation and base conversion, watched live in the terminal | `41_system` |
 | `chezmoi` | 2.72.2 | Manage dotfiles across machines from one source of truth | `41_system` |
@@ -1216,15 +1251,18 @@ Notes:
 
 ### files
 
-File managers, disk-usage analysers, duplicate finders and file locators. 11 ports, under
+File managers, disk-usage analysers, duplicate finders and file locators. 14 ports, under
 `ports/core/files/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
-| `dolphin` | 26.08.1 | File manager — tabs, split views, places, previews, a terminal panel and devices | `44_apps` |
+| `dolphin` | 26.08.2 | File manager — tabs, split views, places, previews, a terminal panel and devices | `43_toolkits` |
+| `dolphin-plugins` | 26.08.2 | Dolphin plugins — Git status overlays and actions, Makefile targets and ISO image mounting | `44_apps` |
 | `duf` | 0.9.1 | Disk usage and free space, in the manner of df | `41_system` |
 | `dust` | 1.2.6 | Disk usage as a tree, a du alternative (Rust) | `41_system` |
-| `filelight` | 26.08.1 | Disk usage — folders drawn as concentric rings, sized by what they hold | `44_apps` |
+| `filelight` | 26.08.2 | Disk usage — folders drawn as concentric rings, sized by what they hold | `44_apps` |
+| `kdf` | 26.08.2 | Disk free — mounted filesystems, their usage and mount points, with a tray mounter | `44_apps` |
+| `kfind` | 26.08.2 | File finder — search by name, type, date, size and contents, with a results view | `44_apps` |
 | `lf` | 42 | Terminal file manager (Go, single binary) | `41_system` |
 | `mc` | 4.8.33 | Norton-style two-panel terminal file manager (GNU Midnight Commander) | `41_system` |
 | `ncdu` | 2.11.1 | Disk usage analyser with an ncurses interface | `41_system` |
@@ -1244,7 +1282,7 @@ Notes:
 
 ### sysmon
 
-Process, resource and system-information monitors. 8 ports, under `ports/core/sysmon/`.
+Process, resource and system-information monitors. 12 ports, under `ports/core/sysmon/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -1253,7 +1291,11 @@ Process, resource and system-information monitors. 8 ports, under `ports/core/sy
 | `fastfetch` | 2.68.1 | System information tool, with the KDOS banner config | `44_apps` |
 | `htop` | 3.5.3 | Interactive process viewer | `41_system` |
 | `iotop` | 1.31 | A top-like utility for I/O (C rewrite) | `41_system` |
+| `kinfocenter` | 6.8.2 | Info Center — the hardware, graphics, firmware security, network, energy and distribution pages of System Settings | `50_desktop` |
+| `ksystemlog` | 26.08.2 | System log viewer — syslog, kernel, authentication, cron, CUPS and Samba logs in tabs, with filters | `44_apps` |
+| `ksystemstats` | 6.8.2 | Plasma's sensor daemon — CPU, memory, disks, network, GPUs, power and hardware sensors over D-Bus | `50_desktop` |
 | `nvtop` | 3.3.2 | GPU utilisation from DRM fdinfo — top for every vendor's GPU | `42_graphics` |
+| `plasma-systemmonitor` | 6.8.2 | Plasma System Monitor — sensor pages, history charts and the process table, over ksystemstats | `50_desktop` |
 | `procs` | 0.14.12 | A ps replacement | `41_system` |
 | `resources` | 1.10.2 | System monitor for CPU, memory, GPU, NPU, disks, network, battery and processes (GTK 4) | `44_apps` |
 
@@ -1271,7 +1313,7 @@ Notes:
 
 ### hardware
 
-Device access, bus and sensor tools, power management, and Bluetooth. 29 ports, under
+Device access, bus and sensor tools, power management, and Bluetooth. 33 ports, under
 `ports/core/hardware/`.
 
 | Port | Version | Description | Phase |
@@ -1286,9 +1328,11 @@ Device access, bus and sensor tools, power management, and Bluetooth. 29 ports, 
 | `hwdata` | 0.411 | Hardware identification and configuration data | `41_system` |
 | `hwloc` | 2.15.0 | Portable hardware locality — the CPU, cache, NUMA and device topology, with lstopo | `42_graphics` |
 | `i2c-tools` | 4.4 | i2cdetect, i2cget, i2cset and the SMBus library, over /dev/i2c-* | `41_system` |
+| `iio-sensor-proxy` | 3.9 | IIO sensors to D-Bus — accelerometer, ambient light, compass and proximity for screen rotation and auto-brightness | `41_system` |
 | `libcec` | 8.1.7 | HDMI-CEC control library for Pulse-Eight adapters and the kernel CEC framework, with cec-client | `41_system` |
 | `libftdi` | 1.5 | Library for FTDI USB serial and JTAG bridge chips | `41_system` |
 | `libgpiod` | 2.3.1 | The chardev GPIO ABI — gpioset, gpioget and gpiomon | `41_system` |
+| `libgusb` | 0.4.9 | GLib wrapper around libusb, with a GObject device and context API | `41_system` |
 | `libpciaccess` | 0.19 | Generic PCI device access library | `41_system` |
 | `libserialport` | 0.1.2 | Enumerate and open a serial port, portably | `41_system` |
 | `libusb` | 1.0.30 | User-space USB device access library | `41_system` |
@@ -1298,11 +1342,13 @@ Device access, bus and sensor tools, power management, and Bluetooth. 29 ports, 
 | `numactl` | 2.0.19 | NUMA policy library (libnuma) and the numactl, numastat and migratepages tools | `41_system` |
 | `nut` | 2.8.5 | UPS and inverter monitoring that shuts the machine down before the battery runs out | `41_system` |
 | `pciutils` | 3.15.0 | Set of programs for listing PCI devices | `41_system` |
+| `plasma-thunderbolt` | 6.8.2 | Thunderbolt page of System Settings and the new-device notifier, over boltd | `50_desktop` |
 | `powerman` | 2.4.4 | Controls remote power distribution units and BMCs over telnet, serial, HTTP, Redfish and SNMP | `41_system` |
 | `powertop` | 2.16 | Power consumption diagnosis and tuning tool | `41_system` |
 | `switcheroo-control` | 3.0 | D-Bus service that tells launchers which GPU is discrete, so an application can be started on it | `42_graphics` |
 | `thermald` | 2.5.13 | Intel thermal daemon — keeps a laptop off its throttle point under load | `41_system` |
 | `tlp` | 1.10.2 | Laptop power saving — pure shell over /sys, no daemon | `41_system` |
+| `tlp-pd` | 1.10.2 | TLP's power-profiles daemon — serves org.freedesktop.UPower.PowerProfiles over TLP's profiles | `42_graphics` |
 | `upower` | 1.91.4 | D-Bus daemon for power-related stats and policy (battery, AC, suspend hints) | `41_system` |
 | `usbutils` | 019 | Utilities used to display information about USB devices | `41_system` |
 
@@ -1335,7 +1381,7 @@ Notes:
 
 ### input
 
-Input-device libraries, keyboard data, input methods and on-screen keyboards. 16 ports, under
+Input-device libraries, keyboard data, input methods and on-screen keyboards. 19 ports, under
 `ports/core/input/`.
 
 | Port | Version | Description | Phase |
@@ -1344,7 +1390,10 @@ Input-device libraries, keyboard data, input methods and on-screen keyboards. 16
 | `fcitx5` | 5.1.22 | Input method framework, Wayland only on KDOS | `50_desktop` |
 | `fcitx5-anthy` | 5.1.11 | Japanese input for fcitx5, via anthy-unicode | `50_desktop` |
 | `fcitx5-chinese-addons` | 5.1.14 | Pinyin, shuangpin and table input for fcitx5 | `50_desktop` |
+| `fcitx5-configtool` | 5.1.16 | Fcitx 5 settings — the System Settings input-method page and fcitx5-config-qt | `50_desktop` |
+| `fcitx5-gtk` | 5.1.7 | Fcitx 5 input-method modules for GTK 3 and GTK 4 | `50_desktop` |
 | `fcitx5-hangul` | 5.1.11 | Korean input for fcitx5, via libhangul | `50_desktop` |
+| `fcitx5-qt` | 5.1.16 | Fcitx 5 input-method module and helper libraries for Qt 6 | `50_desktop` |
 | `libei` | 1.6.0 | Emulated input: libei for clients, libeis for compositors, liboeffis for the RemoteDesktop portal | `42_graphics` |
 | `libevdev` | 1.13.7 | Wrapper library for kernel evdev input devices | `41_system` |
 | `libhangul` | 0.2.0 | Hangul input processing library | `50_desktop` |
@@ -1353,8 +1402,8 @@ Input-device libraries, keyboard data, input methods and on-screen keyboards. 16
 | `libwacom` | 2.20.0 | The tablet database libinput reads to pair a stylus with its pad and tell a pen display from a tablet | `41_system` |
 | `libxkbcommon` | 1.13.2 | Keymap compiler and support library, with its Wayland tools and xkbcommon-x11 | `42_graphics` |
 | `mtdev` | 1.1.7 | Translates every kernel multitouch event variant to the slotted type B protocol | `41_system` |
+| `plasma-keyboard` | 6.8.2 | Plasma's on-screen keyboard — a Wayland input method over Qt Virtual Keyboard, for the session and the login screen | `50_desktop` |
 | `spacenavd` | 1.3.1 | The 6-DoF 3D mouse daemon — serves 3Dconnexion devices to libspnav clients over /run/spnav.sock | `41_system` |
-| `wvkbd` | 0.20 | On-screen keyboard for Wayland — layer-shell and virtual-keyboard, drawn with cairo and pango | `42_graphics` |
 | `xkeyboard-config` | 2.48 | Keyboard configuration database (keymap data, used by libxkbcommon) | `41_system` |
 
 Notes:
@@ -1370,19 +1419,17 @@ Notes:
   pinyin stays off: it sends what the user types to a remote service.
 - `libime`: the language model, dictionary and table set are recipe sources copied into `data/`;
   without them the build reaches for 49 MB of downloads.
-- `libinput`: `autoload-plugins` stays on: wlroots never asks libinput to load plugins, so without
+- `libinput`: `autoload-plugins` stays on: KWin never asks libinput to load plugins, so without
   it a Lua plugin in `/etc/libinput/plugins` is never read.
 - `libwacom`: the udev directory is `/usr/lib/udev`, where kpkg rebuilds the hwdb from; a hwdb file
   elsewhere never tags a tablet `ID_INPUT_TABLET`. `libwacom-show-stylus` is removed, since the
   Python modules it imports have no port.
 - `libxkbcommon`: `enable-x11` builds libxkbcommon-x11, which Qt's xcb platform plugin needs for
   every Qt program under Xwayland.
-- `wvkbd`: the compiler flags ride in `CC`, because `config.mk` assigns `CFLAGS`, and a `CFLAGS` on
-  the `make` line would drop the Makefile's own pkg-config flags.
 
 ### mobile
 
-Phones, media players and cameras over USB or the network. 14 ports, under `ports/core/mobile/`.
+Phones, media players and cameras over USB or the network. 15 ports, under `ports/core/mobile/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -1390,7 +1437,8 @@ Phones, media players and cameras over USB or the network. 14 ports, under `port
 | `android-tools` | 37.0.0 | Android platform tools — adb, fastboot, and the sparse-image and boot-image utilities | `41_system` |
 | `gphoto2` | 2.5.32 | Tethered capture and card download from a prompt | `44_apps` |
 | `ifuse` | 1.2.1 | FUSE filesystem that mounts an iPhone's or iPad's media and app documents | `41_system` |
-| `kdeconnect` | 26.08.1 | Files, clipboard, notifications and media control between this machine and a phone, over the LAN or Bluetooth | `44_apps` |
+| `kamera` | 26.08.2 | camera:/ KIO worker and settings module for gPhoto2 digital cameras | `44_apps` |
+| `kdeconnect` | 26.08.2 | Files, clipboard, notifications and media control between this machine and a phone, over the LAN or Bluetooth | `44_apps` |
 | `libgphoto2` | 2.5.34 | Drive a camera over PTP — the udev rules already grant the class | `42_graphics` |
 | `libgpod` | 0.8.3 | Library to read and write the music database of an iPod classic, nano and shuffle | `41_system` |
 | `libimobiledevice` | 1.4.0 | Library and idevice* tools that speak the iPhone and iPad protocols: pairing, backup, files, syslog | `41_system` |
@@ -1414,7 +1462,7 @@ Notes:
 ### disk
 
 Block devices: partitioning, RAID, LVM, block encryption, SMART, NVMe, recovery, image writing and
-async I/O. 30 ports, under `ports/core/disk/`.
+async I/O. 34 ports, under `ports/core/disk/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -1427,6 +1475,8 @@ async I/O. 30 ports, under `ports/core/disk/`.
 | `gptfdisk` | 1.0.10 | A text-mode partitioning tool that works on GUID Partition Table (GPT) disks | `41_system` |
 | `hdparm` | 9.65 | Set and read ATA power management, spindown and secure erase | `41_system` |
 | `impression` | 3.8.0 | Write a disk image to a USB drive or memory card | `44_apps` |
+| `isoimagewriter` | 26.08.2 | ISO Image Writer — writes a disk image to a USB stick, checking a known distribution's signature | `44_apps` |
+| `kpmcore` | 26.08.2 | KDE Partition Manager core: partition and filesystem backend with a polkit root helper | `43_toolkits` |
 | `libaio` | 0.3.113 | The Linux-native asynchronous I/O facility (aio) library | `41_system` |
 | `libatasmart` | 0.19 | ATA S.M.A.R.T. reading and parsing library | `41_system` |
 | `libblockdev` | 3.5.0 | Library for manipulating block devices: partitions, filesystems, LVM, MD RAID, crypto, NVMe | `43_toolkits` |
@@ -1441,6 +1491,8 @@ async I/O. 30 ports, under `ports/core/disk/`.
 | `nvme-cli` | 3.1 | NVMe management — the drive's log pages, SMART data and self-tests | `41_system` |
 | `partclone` | 0.3.50 | Filesystem-aware imaging — copies the used blocks and skips the rest | `41_system` |
 | `parted` | 3.8 | Disk partitioning and partition resizing tool | `41_system` |
+| `partitionmanager` | 26.08.2 | Partition editor — create, resize, move, copy, check and format partitions and file systems | `44_apps` |
+| `plasma-disks` | 6.8.2 | Drive health monitor — reads SMART through smartctl and warns before a disk fails | `50_desktop` |
 | `smartmontools` | 7.5 | SMART attribute reporting and disk self-tests | `41_system` |
 | `testdisk` | 7.3pre20260819 | Recover lost partitions and, as photorec and the QPhotoRec window, deleted files | `44_apps` |
 | `thin-provisioning-tools` | 1.3.4 | thin_check and its family, without which LVM refuses to activate a thin pool | `41_system` |
@@ -1476,7 +1528,7 @@ Notes:
 
 ### filesystem
 
-Filesystem utilities, FUSE, and network or encrypted filesystems. 20 ports, under
+Filesystem utilities, FUSE, and network or encrypted filesystems. 21 ports, under
 `ports/core/filesystem/`.
 
 | Port | Version | Description | Phase |
@@ -1497,6 +1549,7 @@ Filesystem utilities, FUSE, and network or encrypted filesystems. 20 ports, unde
 | `nfs-utils` | 3.1.1 | NFS client and server utilities | `41_system` |
 | `nilfs-utils` | 2.3.1 | NILFS2 filesystem utilities — mkfs.nilfs2, the cleaner daemon, nilfs-resize and snapshot tools | `41_system` |
 | `ntfs-3g` | 2026.9.18 | NTFS driver and the ntfsprogs filesystem utilities | `41_system` |
+| `plasma-vault` | 6.8.2 | Plasma Vaults — encrypted gocryptfs folders opened and closed from the tray, with offline-only vaults | `50_desktop` |
 | `squashfs-tools` | 4.7.5 | Tools to create and extract squashfs filesystems | `41_system` |
 | `sshfs` | 3.7.6 | Mount a remote directory over SSH with FUSE | `41_system` |
 | `udftools` | 2.3 | UDF filesystem tools — mkudffs, udffsck, udflabel, wrudf and the packet-writing helpers | `41_system` |
@@ -1520,15 +1573,18 @@ Notes:
 
 ### optical
 
-CD, DVD and Blu-ray burning, mastering and CD reading or ripping. 13 ports, under
+CD, DVD and Blu-ray burning, mastering and CD reading or ripping. 16 ports, under
 `ports/core/optical/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
+| `audex` | 26.08.2 | CD ripper — audio CDs to FLAC, Ogg, Opus or MP3, with CDDB lookup and naming schemes | `44_apps` |
+| `audiocd-kio` | 26.08.2 | audiocd:/ KIO worker — browse audio CDs and rip them to WAV, FLAC, Ogg Vorbis, Opus or MP3 | `44_apps` |
 | `brasero` | 3.12.3 | GNOME disc burner and copier — data, audio and video CDs and DVDs | `43_toolkits` |
+| `cdparanoia` | 10.2 | Paranoia III audio CD ripper and its libcdda_interface and libcdda_paranoia libraries | `41_system` |
 | `cdrdao` | 1.2.6 | Disc-at-once CD writer — audio CDs, CD-TEXT and exact copies | `41_system` |
 | `dvd+rw-tools` | 7.1 | growisofs and friends — DVD and Blu-ray writing, formatting and media inspection | `41_system` |
-| `k3b` | 26.08.1 | KDE disc burner — data, audio and video CDs, DVDs and Blu-ray, copies and rips | `44_apps` |
+| `k3b` | 26.08.2 | KDE disc burner — data, audio and video CDs, DVDs and Blu-ray, copies and rips | `44_apps` |
 | `libburn` | 1.5.8 | Library for writing data to optical media | `41_system` |
 | `libcdio` | 2.4.0 | CD-ROM and ISO 9660 access — audio CDs for mpv, mpd and GStreamer | `41_system` |
 | `libcdio-paranoia` | 10.2+2.0.2 | Audio CD reading that verifies and repairs — cd-paranoia, and CD audio in mpv and mpd | `41_system` |
@@ -1536,7 +1592,7 @@ CD, DVD and Blu-ray burning, mastering and CD reading or ripping. 13 ports, unde
 | `libdiscid` | 0.7.0 | MusicBrainz disc ID library — reads an audio CD's table of contents | `41_system` |
 | `libisoburn` | 1.5.8.pl02 | Frontend for libburn and libisofs which enables creation and expansion of ISO-9660 filesystems | `41_system` |
 | `libisofs` | 1.5.8.pl02 | Library for creating and manipulating ISO 9660 filesystem images | `41_system` |
-| `libkcddb` | 26.08.1 | KDE CDDB client library — audio CD track names for K3b | `43_toolkits` |
+| `libkcddb` | 26.08.2 | KDE CDDB client library — audio CD track names for K3b | `43_toolkits` |
 | `xfburn` | 0.8.0 | GTK 3 disc burner over libburn — data and audio CDs, DVDs and ISO images | `44_apps` |
 
 Notes:
@@ -1632,7 +1688,7 @@ Notes:
 ### security
 
 Security applications: GnuPG and front-ends, password and secret managers, certificates, scanners,
-forensics and audit. 26 ports, under `ports/core/security/`.
+forensics and audit. 32 ports, under `ports/core/security/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -1643,10 +1699,15 @@ forensics and audit. 26 ports, under `ports/core/security/`.
 | `gnupg` | 2.5.24 | GNU Privacy Guard — OpenPGP encryption and signing | `43_toolkits` |
 | `john` | 1.9.0.jumbo1 | John the Ripper password hash cracker | `41_system` |
 | `keepassxc` | 2.7.12 | Password manager — KeePass databases, TOTP, SSH agent, browser integration and the Secret Service | `44_apps` |
-| `kleopatra` | 26.08.1 | Certificate manager and graphical front end to GnuPG — OpenPGP and S/MIME keys, signing and encryption | `44_apps` |
+| `keepsecret` | 26.08.2 | Secret Service browser — the collections and passwords any provider keeps for the session | `44_apps` |
+| `keysmith` | 26.08.2 | One-time password generator — TOTP and HOTP codes for two-factor sign-in, kept encrypted | `44_apps` |
+| `kgpg` | 26.08.2 | GnuPG key manager — keys, signing, trust, key servers, and an editor that encrypts text | `44_apps` |
+| `kleopatra` | 26.08.2 | Certificate manager and graphical front end to GnuPG — OpenPGP and S/MIME keys, signing and encryption | `44_apps` |
+| `ksshaskpass` | 6.8.2 | SSH passphrase prompt for ssh-add and git, keeping passphrases in the session's secret store | `50_desktop` |
+| `kwalletmanager` | 26.08.2 | KWallet manager — browse, create and edit wallets and their passwords, with the wallet settings page | `44_apps` |
 | `libbfio` | 20260623 | libyal basic file input/output abstraction library — the I/O layer of the libyal image and volume readers | `41_system` |
 | `libewf` | 20240506 | Expert Witness Format (E01, Ex01) forensic image library, the ewf tools and ewfmount | `41_system` |
-| `libkleo` | 26.08.1 | KDE PIM library for key management and cryptography widgets over GnuPG | `43_toolkits` |
+| `libkleo` | 26.08.2 | KDE PIM library for key management and cryptography widgets over GnuPG | `43_toolkits` |
 | `libsecret` | 0.21.8.2 | Secret Service client library — stores and looks up passwords over D-Bus | `41_system` |
 | `libvhdi` | 20260901 | Virtual Hard Disk (VHD, VHDX) image library, vhdiinfo and vhdimount | `41_system` |
 | `libvmdk` | 20260714 | VMware Virtual Disk (VMDK) image library, vmdkinfo and vmdkmount | `41_system` |
@@ -1660,6 +1721,7 @@ forensics and audit. 26 ports, under `ports/core/security/`.
 | `sleuthkit` | 4.15.0 | Filesystem forensics tools that read disk images directly | `41_system` |
 | `step-ca` | 0.30.2 | Private certificate authority with ACME | `41_system` |
 | `step-cli` | 0.30.6 | The step command — creates a CA for step-ca, and requests, renews and inspects certificates | `41_system` |
+| `sweeper` | 26.08.2 | Privacy cleaner — clear recent documents, activity history, web history, cookies, caches and thumbnails | `44_apps` |
 | `yara` | 4.5.8 | Rule-based pattern matching for classifying files | `41_system` |
 | `zenmap` | 7.991 | The GTK front end to nmap: scan profiles, saved results, topology map and scan comparison | `44_apps` |
 
@@ -1740,14 +1802,17 @@ Notes:
 
 ### virt
 
-Virtual machines, their tooling, and remote-desktop and VNC protocols. 25 ports, under
+Virtual machines, their tooling, and remote-desktop and VNC protocols. 26 ports, under
 `ports/core/virt/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
 | `aml` | 1.0.0 | Event loop library for main-loop driven Wayland services | `41_system` |
-| `freerdp` | 3.32.0 | Remote Desktop Protocol library and the SDL3 client sdl-freerdp; the RDP engine of Remmina | `42_graphics` |
+| `freerdp` | 3.32.0 | Remote Desktop Protocol libraries, client and server, and the SDL3 client sdl-freerdp; the RDP engine of Remmina and krdp | `42_graphics` |
 | `gtk-vnc` | 1.5.0 | VNC client library and GTK 3 viewer widget, with its PulseAudio bridge — virt-manager's VNC console | `43_toolkits` |
+| `krdc` | 26.08.2 | Remote desktop client — VNC and RDP viewer with bookmarks, network discovery and SSH tunnels | `44_apps` |
+| `krdp` | 6.8.2 | RDP server library and krdpserver, which shares a Plasma desktop over the Remote Desktop Protocol | `43_toolkits` |
+| `krfb` | 26.08.2 | Desktop sharing — serve this screen over VNC, through the PipeWire screencast portal on Wayland | `44_apps` |
 | `libcacard` | 2.8.2 | Virtual CAC smartcard emulation — the card a SPICE or QEMU guest sees, backed by NSS or a real reader | `41_system` |
 | `libnbd` | 1.24.3 | NBD client library and the nbdsh, nbdcopy, nbdinfo, nbddump and nbdfuse tools | `41_system` |
 | `libosinfo` | 1.12.0 | Library of operating-system facts for virtualisation — installer media, devices, requirements | `41_system` |
@@ -1756,7 +1821,6 @@ Virtual machines, their tooling, and remote-desktop and VNC protocols. 25 ports,
 | `libvirt-glib` | 5.0.0 | GLib, GObject and GConfig wrappers of the libvirt API, with introspection data and Vala bindings | `43_toolkits` |
 | `libvncserver` | 0.9.15 | VNC server and client libraries | `41_system` |
 | `nbdkit` | 1.48.1 | NBD server toolkit with pluggable plugins and filters; serves disks to libvirt and QEMU | `41_system` |
-| `neatvnc` | 1.0.1 | VNC server library | `42_graphics` |
 | `osinfo-db` | 20260812 | The osinfo database: every operating system, installer and virtual device libosinfo knows | `41_system` |
 | `osinfo-db-tools` | 1.12.0 | Tools that import, export, validate and locate the osinfo operating-system database | `41_system` |
 | `phodav` | 3.0 | WebDAV server library on libsoup, with chezdav — the folder sharing behind spice-gtk's shared directory | `41_system` |
@@ -1768,14 +1832,13 @@ Virtual machines, their tooling, and remote-desktop and VNC protocols. 25 ports,
 | `usbredir` | 0.15.0 | USB-over-network redirection protocol libraries and usbredirect, for SPICE and QEMU | `41_system` |
 | `virt-manager` | 5.1.0 | Creates, runs and connects to libvirt/QEMU virtual machines, with virt-install, virt-clone and virt-xml | `44_apps` |
 | `virtiofsd` | 1.14.0 | The virtio-fs daemon — shares a host directory with a qemu guest | `41_system` |
-| `wayvnc` | 0.10.1 | VNC server for wlroots compositors, serving the session over the network | `42_graphics` |
 | `wlvncc` | 0.1.0.20260429 | Wayland-native VNC client drawing through EGL/GLES2, with H.264 decoding by FFmpeg | `42_graphics` |
 
 Notes:
 
 - `aml`: the header is `<aml1/aml.h>`, the pkg-config file `aml1.pc`, and the soname follows the
-  library version. neatvnc and wayvnc ask for `aml1` by those names, so a build that flattens them
-  leaves both unbuildable.
+  library version. wlvncc asks for `aml1` by those names, so a build that flattens them leaves it
+  unbuildable.
 - `freerdp`: the client is `sdl-freerdp`, on SDL3. `CMAKE_DISABLE_FIND_PACKAGE_X11` keeps its
   optional X11 helpers from linking libX11 because it is installed. The smartcard channel loads
   libpcsclite at run time, so pcsc-lite in `depends` is what makes reader redirection work.
@@ -1791,10 +1854,6 @@ Notes:
 - `nbdkit`: the libvirt plugin stays off, because libvirt's nbdkit backend runs this server and
   linking both ways is a dependency cycle. The torrent plugin stays off, so libtorrent-rasterbar is
   not put under libvirt.
-- `neatvnc`: `tls` and `nettle` are `enabled`: an `auto` feature that misses its library turns
-  itself off, and wayvnc then offers cleartext RFB only. `gbm` is `enabled` because `neatvnc.h`
-  declares the gbm functions unconditionally, and a gbm-less library fails its consumers at link
-  time.
 - `qemu`: three targets, x86_64, aarch64 and riscv64. The guest firmware is built from `roms/`
   (`--disable-install-blobs`), except the riscv64 EDK2 image, which is upstream's (see
   [firmware and code for another
@@ -1809,16 +1868,12 @@ Notes:
 - `virtiofsd`: libvirt finds it only through the vhost-user descriptor in
   `/usr/share/qemu/vhost-user`, which names the installed binary; without one libvirt refuses a
   guest with a virtiofs share.
-- `wayvnc`: the package owns the PAM service file `wayvnc`; with none, every login is refused. The
-  stack names `pam_unix` with `nodelay` and never includes `system-auth`, whose `nullok` would
-  admit a passwordless account from the network. pam_unix's fail delay would sleep in wayvnc's one
-  event loop and stall every other client.
 - `wlvncc`: every optional library is probed with `required: false` and dropped silently when
   absent, so each is in `depends`.
 
 ### net-libs
 
-Networking and protocol libraries. 38 ports, under `ports/core/net-libs/`.
+Networking and protocol libraries. 39 ports, under `ports/core/net-libs/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -1838,6 +1893,7 @@ Networking and protocol libraries. 38 ports, under `ports/core/net-libs/`.
 | `libnice` | 0.1.24 | ICE — how two WebRTC peers find a path to each other through NAT | `42_graphics` |
 | `libnl` | 3.12.0 | Netlink protocol library (kernel <-> userspace networking) | `41_system` |
 | `libpcap` | 1.11.0 | A system-independent interface for user-level packet capture | `41_system` |
+| `libproxy` | 0.5.12 | Proxy configuration library: which proxy a URL goes through, from the environment, the desktop's settings or a PAC script | `41_system` |
 | `libpsl` | 0.23.3 | Library for accessing and resolving information from the Public Suffix List | `30_foundation` |
 | `librist` | 0.2.20 | Reliable Internet Stream Transport — the RIST protocol library, with ristsender and ristreceiver | `41_system` |
 | `libsmi` | 0.5.0 | SNMP MIB and SMI module library — smilint, smidump, smiquery and the IETF and IANA MIBs | `41_system` |
@@ -1934,8 +1990,9 @@ Notes:
 - `ldns`: GOST stays off: it needs an OpenSSL engine, which OpenSSL 4 cannot load. No port
   installs the compiled-in trust anchor `/etc/unbound/root.key`, so `drill -S` needs `-k`.
 - `networkmanager`: every tool path is named, because an empty one is a build-time
-  `find_program()` guess. `suspend_resume=consolekit` is named because `auto` would pick elogind
-  once a libelogind exists. The Bluetooth PAN and DUN plugin is compiled only inside the WWAN
+  `find_program()` guess. Session tracking and suspend go through elogind
+  (`session_tracking=elogind`, `suspend_resume=elogind`), so NetworkManager follows the active
+  session and hears `PrepareForSleep`. The Bluetooth PAN and DUN plugin is compiled only inside the WWAN
   switch, so turning WWAN off also drops phone tethering.
 - `openconnect`: `--with-vpnc-script` and `--with-external-browser` name absolute paths; left to
   configure, they become `/etc/vpnc/vpnc-script`, which nothing installs, and whichever `xdg-open`
@@ -2030,7 +2087,7 @@ Notes:
 
 ### transfer
 
-File transfer, synchronisation, backup and BitTorrent. 14 ports, under `ports/core/transfer/`.
+File transfer, synchronisation, backup and BitTorrent. 19 ports, under `ports/core/transfer/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -2039,7 +2096,12 @@ File transfer, synchronisation, backup and BitTorrent. 14 ports, under `ports/co
 | `deluge` | 2.2.0 | BitTorrent client with a daemon, a GTK 3 interface, a web UI and a console UI | `44_apps` |
 | `filezilla` | 3.71.0 | FTP, FTPS and SFTP client (wxWidgets, GTK 3) with a two-pane site manager | `44_apps` |
 | `fzssh` | 1.4.0 | FileZilla's SSH and SFTP client library | `41_system` |
+| `kbackup` | 26.08.2 | Backup program — profiles of folders archived to a local or remote tar, full or incremental | `44_apps` |
+| `kget` | 26.08.2 | Download manager — queued, resumable, segmented HTTP and FTP downloads, Metalink and BitTorrent | `44_apps` |
+| `ktorrent` | 26.08.2 | BitTorrent client — downloads with search, RSS feeds, IP filtering, bandwidth scheduling, UPnP and a media player | `44_apps` |
+| `kup` | 6.8.2 | Backup scheduler for Plasma — rsync, bup and encrypted restic plans run on a timer or when a drive is plugged in | `50_desktop` |
 | `libfilezilla` | 0.57.0 | FileZilla's C++ platform library: events, sockets, TLS over GnuTLS, hashing and time | `41_system` |
+| `libktorrent` | 26.08.2 | BitTorrent protocol library behind KTorrent: DHT, uTP, encryption, magnet links and UPnP | `43_toolkits` |
 | `libtorrent-rasterbar` | 2.1.2 | Arvid Norberg's BitTorrent library, with its Python binding — the engine of qBittorrent and Deluge | `41_system` |
 | `qbittorrent` | 5.2.3 | BitTorrent client (Qt 6) with a web UI, plus qbittorrent-nox for a machine with no display | `44_apps` |
 | `rclone` | 1.75.1 | Syncs files between local disks and remote storage, and verifies copies with rclone check | `41_system` |
@@ -2071,21 +2133,40 @@ Notes:
 
 ### mail
 
-Email clients, fetch and send tools, mail libraries, and feed readers. 13 ports, under
+Email clients, fetch and send tools, mail libraries, and feed readers. 32 ports, under
 `ports/core/mail/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
 | `aerc` | 0.22.0 | A terminal mail client that speaks IMAP, Maildir and notmuch | `44_apps` |
+| `akonadi-mime` | 26.08.2 | KDE PIM library that stores mail in Akonadi: message models, the mail serializer and the standard mail actions | `43_toolkits` |
+| `akregator` | 26.08.2 | KDE feed reader — RSS and Atom feeds with a built-in article viewer | `44_apps` |
+| `alligator` | 26.08.2 | KDE feed reader — RSS and Atom subscriptions in a Kirigami window for desktop and phone | `44_apps` |
 | `gmime` | 3.2.15 | MIME parsing and generation — notmuch reads every message through it | `43_toolkits` |
+| `grantlee-editor` | 26.08.2 | Theme editors for KMail message headers and KAddressBook contact views and printouts | `44_apps` |
 | `isync` | 1.5.1 | mbsync — synchronises IMAP mailboxes with a local Maildir, XOAUTH2 included | `41_system` |
-| `kmbox` | 26.08.1 | KDE PIM library for reading and writing mbox mail folders | `43_toolkits` |
+| `kidentitymanagement` | 26.08.2 | KDE PIM identity library: sender name, address, signature and crypto keys, with widget and QML front ends | `43_toolkits` |
+| `kimap` | 26.08.2 | KDE PIM IMAP client library used by the Akonadi IMAP resource and KMail | `43_toolkits` |
+| `kmail` | 26.08.2 | KDE email client — IMAP, POP3 and local mail on Akonadi, with OpenPGP and S/MIME | `44_apps` |
+| `kmail-account-wizard` | 26.08.2 | Account setup wizard for KMail — looks up the IMAP and SMTP settings for an address | `43_toolkits` |
+| `kmailtransport` | 26.08.2 | KDE PIM library that configures mail transports and sends mail over SMTP | `43_toolkits` |
+| `kmbox` | 26.08.2 | KDE PIM library for reading and writing mbox mail folders | `43_toolkits` |
+| `kpimtextedit` | 26.08.2 | KDE PIM library of rich-text editor widgets for the mail composer | `43_toolkits` |
+| `ksmtp` | 26.08.2 | KDE PIM SMTP client library with SASL authentication, for KMail and Akonadi | `43_toolkits` |
+| `ktnef` | 26.08.2 | KDE PIM library that reads and writes Outlook TNEF (winmail.dat) attachments | `43_toolkits` |
 | `libetpan` | 1.10.1 | Mail protocol library — IMAP, SMTP, POP3, NNTP, MIME and mailbox formats | `41_system` |
+| `libgravatar` | 26.08.2 | KDE PIM library that looks up Gravatar and Libravatar pictures for mail addresses | `43_toolkits` |
+| `libksieve` | 26.08.2 | KDE PIM Sieve libraries: ManageSieve client, script parser and the sieve script editor | `43_toolkits` |
 | `libpst` | 0.6.76 | Outlook PST and OST reader — readpst, lspst and the libpst library | `41_system` |
-| `mimetreeparser` | 26.08.1 | KDE PIM library that parses and renders signed and encrypted MIME messages | `43_toolkits` |
+| `mailcommon` | 26.08.2 | KDE PIM mail library: folder tree, mail filters and filter manager, and shared Akonadi mail utilities | `43_toolkits` |
+| `mailimporter` | 26.08.2 | KDE PIM library that imports mail from Thunderbird, Evolution, Claws, mbox and others into Akonadi | `43_toolkits` |
+| `mbox-importer` | 26.08.2 | Imports an mbox mail file into an Akonadi mail folder | `44_apps` |
+| `messagelib` | 26.08.2 | KDE PIM message libraries: viewer, composer, message list, templates and the MIME tree parser | `43_toolkits` |
+| `mimetreeparser` | 26.08.2 | KDE PIM library that parses and renders signed and encrypted MIME messages | `43_toolkits` |
 | `msmtp` | 1.8.34 | SMTP client — sends a message from standard input to an SMTP server | `41_system` |
 | `newsboat` | 2.44 | RSS and Atom feed reader for the terminal | `41_system` |
 | `notmuch` | 0.40 | Mail indexer with tag-based search | `43_toolkits` |
+| `pim-sieve-editor` | 26.08.2 | Editor for Sieve mail-filter scripts on ManageSieve servers | `44_apps` |
 | `pizauth` | 1.1.0 | Obtains and refreshes OAuth2 tokens for mail clients | `41_system` |
 | `sfeed` | 2.4 | RSS and Atom feeds as a tab-separated file, and the programs that read it | `44_apps` |
 | `thunderbird` | 153.5.0 | Mail, calendar, contacts and feeds, offline-first, on GTK 3 for Wayland and X11 | `44_apps` |
@@ -2118,7 +2199,7 @@ Notes:
 ### chat
 
 Instant messaging, IRC, XMPP, Matrix, fediverse and voice clients, with their protocol and E2E
-libraries. 16 ports, under `ports/core/chat/`.
+libraries. 19 ports, under `ports/core/chat/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -2126,16 +2207,19 @@ libraries. 16 ports, under `ports/core/chat/`.
 | `dino` | 0.5.1 | XMPP chat (GTK 4, libadwaita) with OMEMO and OpenPGP encryption, file transfer, and voice and video calls | `44_apps` |
 | `iamb` | 0.0.12 | Terminal Matrix client with vim key bindings | `41_system` |
 | `ii` | 2.0 | An IRC client that is a directory of FIFOs and text files | `41_system` |
-| `konversation` | 26.08.1 | IRC client (Qt 6, KDE Frameworks) with TLS, DCC transfers and Blowfish-encrypted channels | `44_apps` |
+| `konversation` | 26.08.2 | IRC client (Qt 6, KDE Frameworks) with TLS, DCC transfers and Blowfish-encrypted channels | `44_apps` |
 | `libomemo-c` | 0.5.1 | The Signal double ratchet with OMEMO's wire format — end-to-end encryption for XMPP clients | `41_system` |
+| `libquotient` | 0.9.6.1 | Qt library for Matrix clients: sync, rooms, events and end-to-end encryption over libolm | `43_toolkits` |
 | `libre` | 4.11.0 | The SIP, RTP and STUN protocol stack baresip is built on | `41_system` |
 | `libstrophe` | 0.14.0 | The XMPP client library profanity speaks the protocol with | `41_system` |
 | `mtxclient` | 0.10.1 | Client library for the Matrix protocol, with olm end-to-end encryption | `41_system` |
 | `mumble` | 1.5.939 | Low-latency voice chat — the Mumble client and mumble-server, for group voice on a LAN | `44_apps` |
+| `neochat` | 26.08.2 | Matrix chat client — end-to-end encrypted rooms, spaces, threads and push notifications | `44_apps` |
 | `nheko` | 0.12.1 | Matrix chat client (Qt 6) — rooms, end-to-end encryption, voice and video calls | `44_apps` |
 | `olm` | 3.2.16 | The olm and megolm end-to-end encryption ratchets of Matrix | `41_system` |
 | `profanity` | 0.18.2 | Console XMPP client | `44_apps` |
 | `quassel` | 0.14.0 | IRC client (Qt 5) — the monolithic client, the core that stays connected, and the client for it | `44_apps` |
+| `tokodon` | 26.08.2 | Mastodon and fediverse client — timelines, posting with media and polls, notifications and push | `44_apps` |
 | `toot` | 0.52.1 | The Fediverse from a terminal, as a TUI and as a command | `41_system` |
 | `weechat` | 4.10.1 | Extensible IRC client for the terminal, with a relay and scripting | `41_system` |
 
@@ -2164,14 +2248,16 @@ Notes:
 
 ### browsers
 
-Web, Gemini and text-mode browsers. 10 ports, under `ports/core/browsers/`.
+Web, Gemini and text-mode browsers. 12 ports, under `ports/core/browsers/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
+| `angelfish` | 26.08.2 | KDE web browser for phone and desktop — QtWebEngine tabs, a built-in ad blocker and web-app launchers | `44_apps` |
 | `chromium` | 155.0.8059.84 | Chromium web browser, on GTK 3 with Wayland and X11 | `44_apps` |
-| `falkon` | 26.08.1 | Qt WebEngine web browser from KDE, with KWallet and KIO integration | `44_apps` |
+| `falkon` | 26.08.2 | Qt WebEngine web browser from KDE, with KWallet and KIO integration | `44_apps` |
 | `firefox-esr` | 153.5.0 | Firefox Extended Support Release web browser, on GTK 3 with Wayland and X11 | `44_apps` |
 | `inlyne` | 0.5.3 | GPU-drawn Markdown and HTML viewer with live reload and no browser engine | `44_apps` |
+| `konqueror` | 26.08.2 | Web browser and file manager — QtWebEngine pages and KIO folders in one window, with tabs, split views and a sidebar | `44_apps` |
 | `lagrange` | 1.21.1 | Gemini, Gopher, Spartan and Finger browser, with a terminal build (clagrange) beside the SDL one | `44_apps` |
 | `librewolf` | 158.0.1 | LibreWolf, the privacy-hardened Firefox fork, on GTK 3 with Wayland and X11 | `44_apps` |
 | `lynx` | 2.9.3 | Text-based web browser | `41_system` |
@@ -2187,16 +2273,16 @@ Notes:
   the environment's flags last, where it would override the C standard Chromium picks. `gn gen`
   rejects a tab anywhere in `--args`, so the argument list is indented with spaces.
 - `firefox-esr`, `librewolf`: the binary, `/usr/lib/<name>`, the desktop entry, the Wayland app_id
-  (`MOZ_APP_REMOTINGNAME`) and `StartupWMClass` carry the one name; when they differ the panel
-  groups the window under no entry.
+  (`MOZ_APP_REMOTINGNAME`) and `StartupWMClass` carry the one name; when they differ the Task
+  Manager groups the window under no entry.
 - `firefox-esr`, `librewolf`: libxul is linked with a run path into `/usr/lib/<name>`: musl does
   not resolve a bare-name `DT_NEEDED` against an already-loaded library, so without it libxul
   fails to load. `-crt-static` reaches every rustc call through `RUSTC_WRAPPER`, because
   `RUSTFLAGS` covers only the target's crates when mach passes `--target`, and a statically
   linked build script cannot dlopen libclang.
 - `w3m`: no `/etc/w3m/config` ships. Any `inline_img_protocol` makes each start ask the terminal
-  for its cell size, which kdos-term and the Linux console do not answer, holding every start for
-  two seconds. `--with-browser=xdg-open` is a bare name, so `PATH` finds kdos-appbox's resolver
+  for its cell size, and a terminal that does not answer, the Linux console among them, holds every
+  start for two seconds. `--with-browser=xdg-open` is a bare name, so `PATH` finds kdos-appbox's resolver
   in `/usr/local/bin` first.
 
 ### web-engines
@@ -2209,7 +2295,7 @@ Browser engines and the libraries that make them up. 14 ports, under `ports/core
 | `libdom` | 0.4.2 | NetSurf W3C DOM implementation, with HTML (hubbub) and XML (expat) parser bindings | `41_system` |
 | `libhubbub` | 0.3.8 | NetSurf HTML5 parser, conforming to the WHATWG tokenisation and tree-building rules | `41_system` |
 | `libnsbmp` | 0.1.7 | NetSurf BMP and ICO decoding library (imv decodes BMP with it) | `41_system` |
-| `libnsgif` | 1.0.0 | NetSurf GIF decoding library (libkimg and imv decode GIF with it) | `41_system` |
+| `libnsgif` | 1.0.0 | NetSurf GIF decoding library (imv, NetSurf and GEGL decode GIF with it) | `41_system` |
 | `libnslog` | 0.1.3 | NetSurf logging library — categorised logging with a filter language | `41_system` |
 | `libnspsl` | 0.1.7 | NetSurf Public Suffix List library — a compiled-in copy of the list for cookie and domain checks | `41_system` |
 | `libnsutils` | 0.1.1 | NetSurf utility library — base64, time and unistd helpers shared by the browser and its libraries | `41_system` |
@@ -2231,7 +2317,7 @@ Notes:
 
 ### x11
 
-X11 protocol, client libraries and data, plus Xwayland, the one X server. 44 ports, under
+X11 protocol, client libraries and data, plus Xwayland, the one X server. 45 ports, under
 `ports/core/x11/`.
 
 | Port | Version | Description | Phase |
@@ -2274,10 +2360,11 @@ X11 protocol, client libraries and data, plus Xwayland, the one X server. 44 por
 | `xcb-util-image` | 0.4.1 | XCB port of Xlib XImage | `41_system` |
 | `xcb-util-keysyms` | 0.4.1 | XCB keysym and keycode conversion library (libxcb-keysyms) | `41_system` |
 | `xcb-util-renderutil` | 0.3.10 | XCB convenience functions for the Render extension | `41_system` |
-| `xcb-util-wm` | 0.4.2 | ICCCM and EWMH helpers for XCB — wlroots' Xwayland xwm needs both | `41_system` |
+| `xcb-util-wm` | 0.4.2 | ICCCM and EWMH helpers for XCB — KWin's Xwayland window manager needs both | `41_system` |
 | `xhost` | 1.0.10 | X server access control tool — admits a local account such as root to Xwayland | `42_graphics` |
 | `xkbcomp` | 1.5.0 | XKB keymap compiler, invoked by Xwayland at runtime | `42_graphics` |
 | `xorgproto` | 2025.1 | X.Org protocol headers | `41_system` |
+| `xsettingsd` | 1.0.2 | XSETTINGS daemon — serves the GTK theme, fonts and cursor to X11 programs under Xwayland | `42_graphics` |
 | `xtrans` | 1.6.0 | X transport library (headers only, build-time) | `41_system` |
 | `xwayland` | 24.1.14 | Rootless X server that runs X11 clients on a Wayland compositor | `42_graphics` |
 
@@ -2291,17 +2378,13 @@ Notes:
 
 ### wl
 
-Wayland libraries and protocols, wlroots, and Wayland-only desktop utilities. 17 ports, under
+Wayland libraries and protocols, and Wayland-only desktop utilities. 9 ports, under
 `ports/core/wl/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
-| `fcft` | 3.3.3 | Small library for font loading and glyph rasterization (foot/fuzzel dep) | `42_graphics` |
-| `fuzzel` | 1.15.0 | Application launcher and dmenu replacement for wlroots compositors | `42_graphics` |
-| `grim` | 1.5.0 | Screenshot tool for wlroots-based Wayland compositors | `42_graphics` |
 | `libdecor` | 0.2.5 | Client-side window decorations for Wayland clients | `42_graphics` |
 | `libdisplay-info` | 0.4.0 | EDID and DisplayID parser used by Wayland compositors | `41_system` |
-| `slurp` | 1.5.0 | Region selector for Wayland compositors (pairs with grim for area screenshots) | `42_graphics` |
 | `wayland` | 1.26.0 | Core Wayland protocol library (libwayland-server / libwayland-client) | `42_graphics` |
 | `wayland-protocols` | 1.49 | Wayland protocol XML definitions (xdg-shell, layer-shell, etc.) | `42_graphics` |
 | `wayland-utils` | 1.3.0 | Lists the globals, outputs, seats and formats a compositor offers (wayland-info) | `42_graphics` |
@@ -2309,32 +2392,15 @@ Wayland libraries and protocols, wlroots, and Wayland-only desktop utilities. 17
 | `waypipe` | 0.11.2 | Network proxy for Wayland clients — run a program on another machine and show it here, over SSH | `42_graphics` |
 | `wev` | 1.1.0 | Wayland event viewer — print every input event a window receives | `42_graphics` |
 | `wl-clipboard` | 2.3.0 | Wayland clipboard utilities (wl-copy, wl-paste) | `42_graphics` |
-| `wl-kbptr` | 0.4.1 | Move and click the pointer from the keyboard — labelled screen regions over a layer-shell overlay | `44_apps` |
-| `wl-mirror` | 0.18.5 | Mirror a Wayland output into a window, for a projector or a second screen | `42_graphics` |
-| `wlroots` | 0.20.2 | Modular Wayland compositor library — the base kdos-comp is built on | `50_desktop` |
-| `wtype` | 0.4 | xdotool type for Wayland — types text and presses keys through the virtual-keyboard protocol | `42_graphics` |
-
-Notes:
-
-- `wlroots`: every release breaks API, so a version bump is a `kdos-comp` port as well. The source
-  comes from GitLab's `/-/archive/` path; the release download URL is refused. `-Dbackends` and
-  `-Drenderers` accept no `headless` or `pixman`: both are always built and chosen at run time
-  (`WLR_BACKENDS=headless`, `WLR_RENDERER=pixman`), and naming either fails configure. The recipe
-  installs `protocol/*.xml` to `/usr/share/wlroots/protocols/`, which upstream does not;
-  `kdos-shell`, `kdos-term`, `kdos-res` and `kdos-lock` generate their wlr protocol headers from
-  there.
-- `wtype`: `GIT_DIR=/nonexistent` stops meson's `git describe` from stamping an enclosing checkout's
-  description into the version string.
-- `wl-mirror`: `wl-present` is not installed; it drives wl-mirror through `pipectl`, which no port
-  provides.
 
 ### gpu
 
-The GPU stack: Mesa, DRM, GL and Vulkan loaders and headers, shader compilers, VA-API, OpenCL. 26
+The GPU stack: Mesa, DRM, GL and Vulkan loaders and headers, shader compilers, VA-API, OpenCL. 27
 ports, under `ports/core/gpu/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
+| `clinfo` | 3.1.26.09.26 | Prints every property of every OpenCL platform and device | `41_system` |
 | `freeglut` | 3.8.0 | The OpenGL Utility Toolkit (libglut), X11 and GLX, for GLUT programs run under Xwayland | `42_graphics` |
 | `glew` | 2.3.1 | The OpenGL Extension Wrangler — libGLEW, GLX mode, with glewinfo and visualinfo | `42_graphics` |
 | `glfw` | 3.5.1 | A window, a GL or Vulkan context and input — Wayland first, X11 under Xwayland as the fallback | `42_graphics` |
@@ -2364,7 +2430,7 @@ ports, under `ports/core/gpu/`.
 
 Notes:
 
-- `freeglut`: the Wayland backend binds `wl_shell` only, which kdos-comp does not offer, and the
+- `freeglut`: the Wayland backend binds `wl_shell` only, which KWin does not offer, and the
   backend is chosen at compile time, so the X11 backend is built and GLUT programs run under
   Xwayland.
 - `glew`: `GLEW_EGL` swaps GLX for EGL under the same soname, so one build serves one of them;
@@ -2391,7 +2457,7 @@ Notes:
 
 ### graphics-libs
 
-2D rendering, vector and SVG, text layout, colour management and graph drawing libraries. 27 ports,
+2D rendering, vector and SVG, text layout, colour management and graph drawing libraries. 28 ports,
 under `ports/core/graphics-libs/`.
 
 | Port | Version | Description | Phase |
@@ -2401,6 +2467,7 @@ under `ports/core/graphics-libs/`.
 | `cairo` | 1.18.6 | 2D graphics library, with its Xlib and XCB surfaces | `42_graphics` |
 | `cairomm` | 1.18.1 | C++ bindings for cairo, the 1.16 API (cairomm-1.16) that gtkmm 4 builds on | `42_graphics` |
 | `cairomm1.14` | 1.14.6 | C++ bindings for cairo, the 1.0 API (cairomm-1.0) that gtkmm 3 builds on | `42_graphics` |
+| `colord` | 1.4.8 | System daemon that manages colour devices and their ICC profiles, with libcolord | `41_system` |
 | `gdk-pixbuf` | 2.44.8 | Image-loading library used by GTK and many notification daemons | `41_system` |
 | `gegl` | 0.4.72 | Graph-based image processing framework, the engine under GIMP | `43_toolkits` |
 | `goocanvas` | 3.0.0 | Cairo canvas widget for GTK 3, with introspection data | `44_apps` |
@@ -2442,7 +2509,7 @@ Notes:
 
 ### image-libs
 
-Raster image formats, codecs, metadata, processing, barcodes, and terminal image output. 47 ports,
+Raster image formats, codecs, metadata, processing, barcodes, and terminal image output. 48 ports,
 under `ports/core/image-libs/`.
 
 | Port | Version | Description | Phase |
@@ -2471,15 +2538,15 @@ under `ports/core/image-libs/`.
 | `libiptcdata` | 1.0.5 | IPTC photo metadata library and the iptc tool | `41_system` |
 | `libjpeg-turbo` | 3.2.0 | A fork of the original IJG libjpeg which uses SIMD to accelerate baseline JPEG compression and decompression | `41_system` |
 | `libjxl` | 0.12.0 | JPEG XL reference implementation — libjxl, cjxl, djxl and the gdk-pixbuf loader | `41_system` |
-| `libkdcraw` | 26.08.1 | Qt 6 wrapper around LibRaw for decoding camera raw files | `43_toolkits` |
-| `libkexiv2` | 26.08.1 | Qt 6 wrapper around exiv2 for reading and writing picture metadata | `43_toolkits` |
+| `libkdcraw` | 26.08.2 | Qt 6 wrapper around LibRaw for decoding camera raw files | `43_toolkits` |
+| `libkexiv2` | 26.08.2 | Qt 6 wrapper around exiv2 for reading and writing picture metadata | `43_toolkits` |
 | `libmypaint` | 1.6.1 | MyPaint brush engine library, used by GIMP and Krita | `41_system` |
 | `libpng` | 1.6.59 | A collection of routines used to create PNG format graphics files | `41_system` |
 | `libraw` | 0.22.2 | Camera raw file decoding library | `41_system` |
 | `libsixel` | 1.10.5 | Sixel encoder and decoder library, for pictures in a terminal | `42_graphics` |
 | `libspng` | 0.7.4 | Simple, fast PNG decoding and encoding library | `41_system` |
 | `libtiff` | 4.7.2 | TIFF libraries and associated utilities | `41_system` |
-| `libvips` | 8.18.6 | Streaming image-processing library with low memory use | `44_apps` |
+| `libvips` | 8.18.6 | Streaming image-processing library with low memory use | `43_toolkits` |
 | `libwebp` | 1.6.0 | Library and support programs to encode and decode images in WebP format | `41_system` |
 | `libyuv` | 0.0.1971 | YUV conversion, scaling and rotation — libavif converts colour through it | `41_system` |
 | `mypaint-brushes` | 2.0.2 | MyPaint brush collection, version 2 data set | `41_system` |
@@ -2488,6 +2555,7 @@ under `ports/core/image-libs/`.
 | `openexr` | 3.5.0 | High dynamic range image format library | `41_system` |
 | `openimageio` | 3.1.17.0 | Image reading, writing and processing for film pipelines — Blender's image I/O, with oiiotool | `42_graphics` |
 | `openjpeg` | 2.5.4 | JPEG 2000 codec — what scanners, archives and PDFs put images in | `41_system` |
+| `qrca` | 26.08.2 | QR and barcode scanner — read codes through the camera, join Wi-Fi networks or import contacts from them, and make codes | `44_apps` |
 | `qrencode` | 4.1.1 | Write a QR code, including as terminal characters | `41_system` |
 | `webp-pixbuf-loader` | 0.2.7 | WebP loader for gdk-pixbuf, so GTK programs open and thumbnail WebP images | `41_system` |
 | `zbar` | 0.23.93 | Read a QR or barcode from an image or a camera | `43_toolkits` |
@@ -2526,7 +2594,7 @@ Notes:
 ### graphics
 
 Graphics applications: painting, vector, photo development and management, image viewers, screenshot
-and image optimisers. 23 ports, under `ports/core/graphics/`.
+and image optimisers. 29 ports, under `ports/core/graphics/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -2541,16 +2609,22 @@ and image optimisers. 23 ports, under `ports/core/graphics/`.
 | `glaxnimate` | 0.6.0 | Glaxnimate: vector animation and motion design, Lottie, SVG and video export, for Qt 6 | `44_apps` |
 | `grafx2` | 2.9 | Pixel-art paint program in the Deluxe Paint tradition, on SDL2 with no toolkit | `44_apps` |
 | `gthumb` | 4.0 | gThumb: browse, view, tag and edit photos and videos, for GTK 4 and libadwaita | `44_apps` |
-| `gwenview` | 26.08.1 | Image viewer and browser — RAW, annotation, slideshow and a camera importer | `44_apps` |
+| `gwenview` | 26.08.2 | Image viewer and browser — RAW, annotation, slideshow and a camera importer | `44_apps` |
 | `imv` | 5.0.1 | Image viewer for Wayland (Wayland-only build, meson) | `44_apps` |
 | `inkscape` | 1.4.4 | Vector graphics editor — SVG drawing, PDF import, CorelDRAW and Visio files | `44_apps` |
-| `kolourpaint` | 26.08.1 | Paint program — draw, crop, recolour and scan | `44_apps` |
+| `kcolorchooser` | 26.08.2 | Colour chooser — a colour dialog with a screen picker that can print the chosen colour | `44_apps` |
+| `kgraphviewer` | 26.08.2 | Graphviz viewer — DOT graphs laid out and drawn, with zoom, a bird's-eye view and printing | `43_toolkits` |
+| `koko` | 26.08.2 | Photo and video gallery — browse by folder, place and date, with slideshows and basic image editing | `44_apps` |
+| `kolourpaint` | 26.08.2 | Paint program — draw, crop, recolour and scan | `44_apps` |
+| `kontrast` | 26.08.2 | Colour contrast checker — WCAG contrast ratios for text and background pairs, with saved favourites | `44_apps` |
 | `krita` | 6.0.4 | Krita: digital painting, illustration and frame-by-frame animation, for Qt 6 | `44_apps` |
+| `kruler` | 26.08.2 | Screen ruler — measure distances on screen in pixels, from the tray | `44_apps` |
 | `optipng` | 7.9.1 | Lossless PNG optimiser | `41_system` |
 | `oxipng` | 10.2.1 | Lossless PNG optimiser | `41_system` |
 | `pencil2d` | 0.7.2 | Pencil2D: hand-drawn 2D animation with bitmap and vector layers, for Qt 6 | `44_apps` |
 | `pngquant` | 2.18.0 | Lossy PNG compressor — reduces a truecolour PNG to a palette | `41_system` |
 | `rawtherapee` | 5.13 | RAW photo developer with non-destructive, per-image processing profiles | `44_apps` |
+| `spectacle` | 6.8.2 | Screenshot and screen recording tool — regions, windows, annotations, OCR and video | `50_desktop` |
 | `swayimg` | 5.6 | Image viewer for Wayland and the console — no toolkit, Lua-configured | `44_apps` |
 | `timg` | 1.6.3 | Terminal image and video viewer | `44_apps` |
 
@@ -2725,7 +2799,7 @@ Notes:
 
 ### fonts
 
-Font packages, and font libraries and tooling. 25 ports, under `ports/core/fonts/`.
+Font packages, and font libraries and tooling. 26 ports, under `ports/core/fonts/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -2747,12 +2821,13 @@ Font packages, and font libraries and tooling. 25 ports, under `ports/core/fonts
 | `mkfontscale` | 1.2.4 | Create an index of scalable font files for X | `41_system` |
 | `nerd-fonts-symbols` | 3.5.1 | Symbols Nerd Font — the icon codepoints a patched font carries, as a fallback face | `41_system` |
 | `noto-cjk` | 2.004 | Noto Sans CJK — Chinese, Japanese and Korean coverage in one collection | `41_system` |
-| `noto-emoji` | 2.051 | Noto Color Emoji — the desktop's colour emoji face | `44_apps` |
+| `noto-emoji` | 2.051 | Noto Color Emoji — the desktop's colour emoji face | `43_toolkits` |
 | `noto-fonts` | 2.015 | Noto Sans and Noto Sans Mono — the desktop's proportional and fixed faces | `41_system` |
 | `noto-fonts-extra` | 1 | Noto Sans coverage for Arabic, Hebrew, Indic, Sinhala, Thai, Lao, Khmer, Myanmar, Ethiopic, Georgian and Armenian | `41_system` |
 | `terminus-font` | 4.49.1 | Monospace bitmap console font | `41_system` |
 | `terminus-ttf` | 4.49.3 | Scalable TTF build of Terminus, for the consumers that cannot draw a bitmap font | `44_apps` |
 | `ttf-dejavu` | 2.37 | Font family based on the Bitstream Vera Fonts with a wider range of characters | `43_toolkits` |
+| `ttf-jetbrains-mono` | 2.304 | JetBrains Mono — the desktop's monospace face, with its no-ligature NL family | `41_system` |
 | `woff2` | 1.0.2 | Web Open Font Format 2 reference implementation: the WOFF2 codec libraries and tools | `41_system` |
 
 Notes:
@@ -2779,8 +2854,8 @@ Notes:
   have. `BYPASS_SEQUENCE_CHECK` stays while the pinned nototools carries a newer emoji list than
   the artwork draws.
 - `noto-fonts`: `56-noto-preferred.conf` must sort before the `57-dejavu-*.conf` set. Noto Sans
-  Mono lacks arrows, dingbats and most symbols, and fcft finds them in DejaVu, the next face down
-  the list.
+  Mono lacks arrows, dingbats and most symbols, and fontconfig finds them in DejaVu, the next face
+  down the list.
 - `noto-fonts-extra`: `version` is a meta-version and each face is pinned in its own helper.
   `ports/update` reads notofonts/arabic, whose newest tag can be a NotoNaskhArabic release with no
   NotoSansArabic asset, so it offers an upgrade the port must not take; bump the helpers by hand.
@@ -2789,7 +2864,7 @@ Notes:
   face goes on its lists only if its cmap carries no symbol or Latin coverage (Gurmukhi and
   Sinhala are installed but kept off), and no CJK face is ever named there.
 - `terminus-font`: `75-yes-terminus.conf` exempts Terminus from fontconfig's `70-no-bitmaps.conf`;
-  without it foot falls through to DejaVu.
+  without it a request for Terminus falls through to DejaVu.
 - `terminus-ttf`: `build.sh` runs the steps of upstream's `mkttf.sh` itself, because that script
   stamps the build year into every face; the year comes from `SOURCE_DATE_EPOCH` instead, so two
   builds of one recipe give the same files.
@@ -2798,18 +2873,22 @@ Notes:
 
 ### themes
 
-Icon, cursor, sound and widget themes, and theme-configuration tools. 8 ports, under
+Icon, cursor, sound and widget themes, and theme-configuration tools. 12 ports, under
 `ports/core/themes/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
 | `adwaita-icon-theme` | 51.0 | GNOME's Adwaita icon and cursor theme — the symbolic-icon fallback GTK applications expect | `44_apps` |
 | `adwaita-icon-theme-legacy` | 46.2 | AdwaitaLegacy, the full-colour icons Adwaita inherits for applications that look up the old icon names | `43_toolkits` |
-| `breeze` | 6.7.5 | Breeze widget style and colour schemes for Qt 6 applications | `43_toolkits` |
+| `breeze` | 6.8.2 | Breeze widget style, window decoration, colour schemes, cursors and the Next wallpaper | `43_toolkits` |
+| `breeze-gtk` | 6.8.2 | Breeze GTK 2, 3 and 4 themes, light and dark, rendered from the Breeze colour schemes | `43_toolkits` |
 | `hicolor-icon-theme` | 0.18 | Freedesktop.org Hicolor icon theme | `41_system` |
 | `icon-naming-utils` | 0.8.90 | Perl script used for maintaining backwards compatibility with current desktop icon themes | `41_system` |
-| `qt5ct` | 1.9 | Qt 5 appearance settings — the palette, style, fonts and icon theme of every Qt 5 program, as a platform theme plugin | `44_apps` |
-| `qt6ct` | 0.11 | Qt 6 appearance settings — the palette, style, fonts and icon theme of every Qt 6 program, as a platform theme plugin | `44_apps` |
+| `ocean-sound-theme` | 6.8.2 | Ocean sound theme — Plasma's login, notification, alert and alarm sounds | `41_system` |
+| `oxygen` | 6.8.2 | Oxygen widget style, window decoration, cursors, colour schemes, Plasma theme and global themes | `43_toolkits` |
+| `oxygen-sounds` | 6.8.2 | Oxygen sound theme — the classic KDE event sounds | `41_system` |
+| `plasma-workspace-wallpapers` | 6.8.2 | Plasma wallpapers — the artwork of every Plasma release, at every screen size | `41_system` |
+| `qt5ct` | 1.9 | Qt 5 appearance settings — the palette, style, fonts and icon theme of every Qt 5 program, as a platform theme plugin | `43_toolkits` |
 | `sound-theme-freedesktop` | 0.8 | The freedesktop default sound theme — event sounds libcanberra plays | `41_system` |
 
 Notes:
@@ -2822,14 +2901,17 @@ Notes:
 ### xdg
 
 freedesktop desktop integration: portals, MIME, desktop entries, AppStream, tray and indicators,
-notifications, event sounds, script dialogs. 16 ports, under `ports/core/xdg/`.
+notifications, event sounds, script dialogs. 20 ports, under `ports/core/xdg/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
-| `appstream` | 1.2.0 | AppStream metadata library and appstreamcli — reads and validates software component data | `42_graphics` |
+| `appstream` | 1.2.0 | AppStream metadata library and appstreamcli — reads and validates software component data | `43_toolkits` |
 | `ayatana-ido` | 0.10.4 | Ayatana Indicator Display Objects — the GTK 3 menu widgets indicator menus are built from | `43_toolkits` |
 | `chemical-mime-data` | 0.1.94 | MIME types for chemistry file formats — CML, PDB, MDL Molfile, XYZ, Gaussian and about 70 more | `41_system` |
+| `debian-dep11` | 20261028 | Debian trixie's AppStream catalogue, for Discover's Debian lane offline | `41_system` |
 | `desktop-file-utils` | 0.28 | Command line utilities for working with Desktop entries | `41_system` |
+| `kdialog` | 26.08.2 | Script dialogs — message boxes, prompts, file pickers and progress bars from the shell | `44_apps` |
+| `kunifiedpush` | 26.08.2 | UnifiedPush client library, push distributor daemon and its System Settings page | `43_toolkits` |
 | `libayatana-appindicator` | 0.6.0 | Ayatana application indicators — a GTK 3 program's tray icon and menu as a StatusNotifierItem | `43_toolkits` |
 | `libayatana-indicator` | 0.9.5 | Ayatana indicator library — the shared object behind application and system indicators | `43_toolkits` |
 | `libcanberra` | 0.30 | XDG sound theme event sounds over ALSA, PulseAudio and GStreamer, with the GTK 3 module | `43_toolkits` |
@@ -2839,7 +2921,8 @@ notifications, event sounds, script dialogs. 16 ports, under `ports/core/xdg/`.
 | `shared-mime-info` | 2.5.1 | The freedesktop.org shared MIME database and update-mime-database | `41_system` |
 | `xdg-desktop-portal` | 1.22.1 | Desktop portal D-Bus framework (Wayland screencast / file-picker integration) | `42_graphics` |
 | `xdg-desktop-portal-gtk` | 1.15.3 | GTK backend for xdg-desktop-portal — the Print and Email portals | `43_toolkits` |
-| `xdg-desktop-portal-wlr` | 0.8.4 | wlroots backend for xdg-desktop-portal (ScreenCast and Screenshot) | `50_desktop` |
+| `xdg-desktop-portal-kde` | 6.8.2 | KDE backend for xdg-desktop-portal — file chooser, screen cast, screenshots, settings and the rest under Plasma | `50_desktop` |
+| `xdg-user-dirs` | 0.20 | Well-known user directories (Desktop, Documents, Music…) and their names in user-dirs.dirs | `41_system` |
 | `xdg-utils` | 1.2.1 | Command line tools that assist applications with a variety of desktop integration tasks | `41_system` |
 | `zenity` | 4.2.2 | GTK dialog boxes from the command line, and the file chooser other programs call | `43_toolkits` |
 
@@ -2859,7 +2942,7 @@ Notes:
 
 ### accessibility
 
-Screen readers, speech, braille and alternative input. 9 ports, under `ports/core/accessibility/`.
+Screen readers, speech, braille and alternative input. 10 ports, under `ports/core/accessibility/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -2867,6 +2950,7 @@ Screen readers, speech, braille and alternative input. 9 ports, under `ports/cor
 | `brltty` | 6.9.1 | Braille display and console speech — the screen reader | `41_system` |
 | `dasher` | 5.0.0.beta.20200420 | Text entry by steering a pointer, eye tracker or switch through a predictive language model | `44_apps` |
 | `espeak-ng` | 1.52.0 | Speech synthesis for over 100 languages, in about 15 MB | `41_system` |
+| `kmouth` | 26.08.2 | Speech synthesiser front end — type sentences or pick them from phrase books and have them spoken | `44_apps` |
 | `liblouis` | 3.39.0 | Braille translation — contracted and uncontracted tables for well over a hundred languages | `41_system` |
 | `orca` | 51.0 | The screen reader: speech and braille over the AT-SPI accessibility tree | `44_apps` |
 | `pcaudiolib` | 1.3 | The audio output layer espeak-ng speaks through | `41_system` |
@@ -2899,7 +2983,7 @@ Notes:
 
 ### i18n
 
-Unicode, locale, text shaping and segmentation, conversion, and translation. 15 ports, under
+Unicode, locale, text shaping and segmentation, conversion, and translation. 20 ports, under
 `ports/core/i18n/`.
 
 | Port | Version | Description | Phase |
@@ -2908,13 +2992,18 @@ Unicode, locale, text shaping and segmentation, conversion, and translation. 15 
 | `gettext` | 1.0 | Utilities for internationalization and localization | `30_foundation` |
 | `icu` | 78.3 | International Components for Unicode library | `30_foundation` |
 | `iso-codes` | 4.20.1 | List of country, language and currency names | `41_system` |
+| `kcharselect` | 26.08.2 | Character selector — every Unicode block, searchable, with each character's details | `44_apps` |
 | `libdatrie` | 0.2.14 | Double-array trie — the dictionary structure libthai looks words up in | `41_system` |
 | `libgrapheme` | 3.0.0 | Unicode string segmentation — grapheme clusters, words, sentences and line breaks | `41_system` |
+| `liblangtag` | 0.6.8 | Library for parsing, matching and canonicalising BCP 47 language tags | `41_system` |
+| `libphonenumber` | 9.0.42 | Google's library for parsing, formatting and validating international phone numbers (C++) | `41_system` |
 | `libthai` | 0.1.30 | Thai word segmentation — where pango may wrap a line of Thai | `41_system` |
 | `libunibreak` | 8.0 | Unicode line, word and grapheme breaking — where libass may wrap a subtitle | `41_system` |
 | `libunistring` | 1.4.2 | Library for manipulating Unicode strings and C strings | `30_foundation` |
+| `lokalize` | 26.08.2 | Translation editor — Gettext PO and XLIFF files with translation memory, glossary and quality checks | `44_apps` |
 | `oniguruma` | 6.9.10 | Regular expression library with Ruby, Perl and POSIX syntaxes over many character encodings | `41_system` |
 | `opencc` | 1.4.2 | Conversion between Traditional and Simplified Chinese | `41_system` |
+| `poxml` | 26.08.2 | Translates DocBook XML through gettext PO files — xml2pot, po2xml, split2po and swappo | `44_apps` |
 | `snowball` | 3.1.1 | Snowball stemming compiler and libstemmer, the stemmers for 30 languages | `41_system` |
 | `uchardet` | 0.0.8 | Guesses the character encoding of a text file — how mpv reads a subtitle that is not UTF-8 | `41_system` |
 | `utf8proc` | 2.11.3 | Unicode normalization, case folding and grapheme segmentation library | `41_system` |
@@ -3012,7 +3101,7 @@ Notes:
 
 ### qt6
 
-The Qt 6 modules, and everything in `group = qt6`. 29 ports, under `ports/core/qt6/`.
+The Qt 6 modules, and everything in `group = qt6`. 32 ports, under `ports/core/qt6/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -3024,11 +3113,12 @@ The Qt 6 modules, and everything in `group = qt6`. 29 ports, under `ports/core/q
 | `qt6-qtconnectivity` | 6.12.0 | Qt 6 Bluetooth and NFC — QtBluetooth over BlueZ and QtNfc over PC/SC | `43_toolkits` |
 | `qt6-qtdeclarative` | 6.12.0 | Qt 6 QML and Qt Quick — the language, the engine, Qt Quick Controls and the qml tools | `43_toolkits` |
 | `qt6-qtgraphs` | 6.12.0 | Qt 6 Graphs — 2D and 3D data visualisation for QML and widgets | `43_toolkits` |
+| `qt6-qthttpserver` | 6.12.0 | Qt 6 HTTP Server — an embeddable HTTP server with request routing and WebSocket upgrades | `43_toolkits` |
 | `qt6-qtimageformats` | 6.12.0 | Qt 6 image format plugins — TIFF, WebP, ICNS, TGA and WBMP | `43_toolkits` |
 | `qt6-qtlanguageserver` | 6.12.0 | Qt 6 Language Server Protocol and JSON-RPC library, used by qmlls | `43_toolkits` |
 | `qt6-qtlocation` | 6.12.0 | Qt 6 Location — maps, places and routing for QML | `43_toolkits` |
 | `qt6-qtmqtt` | 6.12.0 | Qt 6 MQTT — MQTT 3.1, 3.1.1 and 5 client, for LabPlot's live data sources | `43_toolkits` |
-| `qt6-qtmultimedia` | 6.12.0 | Qt 6 Multimedia — audio, video playback and capture through FFmpeg and PipeWire | `43_toolkits` |
+| `qt6-qtmultimedia` | 6.12.0 | Qt 6 Multimedia — audio, video playback and capture through FFmpeg and PipeWire, with a GStreamer backend | `43_toolkits` |
 | `qt6-qtnetworkauth` | 6.12.0 | Qt 6 Network Authorization — OAuth 1 and OAuth 2 clients | `43_toolkits` |
 | `qt6-qtpositioning` | 6.12.0 | Qt 6 Positioning — position sources from GeoClue and NMEA | `43_toolkits` |
 | `qt6-qtquick3d` | 6.12.0 | Qt 6 Quick 3D — 3D scenes in QML | `43_toolkits` |
@@ -3041,10 +3131,12 @@ The Qt 6 modules, and everything in `group = qt6`. 29 ports, under `ports/core/q
 | `qt6-qtsvg` | 6.12.0 | Qt 6 SVG rendering — QSvgRenderer, QSvgWidget and the SVG image and icon engine plugins | `43_toolkits` |
 | `qt6-qttools` | 6.12.0 | Qt 6 tools — Designer, Linguist, Assistant, Qt Help, UiTools, lrelease, qdbus and qtdiag | `43_toolkits` |
 | `qt6-qttranslations` | 6.12.0 | Qt 6 English catalogues: the plural forms of the Qt libraries and tools | `43_toolkits` |
+| `qt6-qtvirtualkeyboard` | 6.12.0 | Qt 6 Virtual Keyboard — an on-screen keyboard input method with word prediction for Qt applications | `43_toolkits` |
 | `qt6-qtwayland` | 6.12.0 | Qt 6 Wayland compositor library and the client decoration and shell plugins | `43_toolkits` |
 | `qt6-qtwebchannel` | 6.12.0 | Qt 6 WebChannel — QObjects shared with HTML and JavaScript clients | `43_toolkits` |
 | `qt6-qtwebengine` | 6.11.2 | Qt 6 WebEngine and Qt PDF — the Chromium web engine as Qt widgets and Qt Quick types | `43_toolkits` |
 | `qt6-qtwebsockets` | 6.12.0 | Qt 6 WebSockets — RFC 6455 client and server | `43_toolkits` |
+| `qt6-qtwebview` | 6.11.2 | Qt 6 WebView — web content in a Qt Quick item, rendered through Qt WebEngine | `43_toolkits` |
 
 Notes:
 
@@ -3121,25 +3213,34 @@ Notes:
 
 ### qt-extra
 
-Third-party and KDE-hosted Qt add-on libraries that are not in KF6. 21 ports, under
+Third-party and KDE-hosted Qt add-on libraries that are not in KF6. 30 ports, under
 `ports/core/qt-extra/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
 | `cpp-utilities` | 5.37.0 | Martchus's C++ utility library: argument parsing, conversions, I/O and the CMake modules his programs build with | `41_system` |
+| `futuresql` | 0.1.1 | Asynchronous, non-blocking SQLite access for Qt, with results returned as futures | `43_toolkits` |
 | `kcolorpicker` | 0.3.1 | Qt colour picker button with a palette popup, used by kImageAnnotator | `43_toolkits` |
 | `kddockwidgets` | 2.4.1 | KDAB dock widget framework for Qt 6, with the Widgets and Qt Quick front ends | `43_toolkits` |
+| `kdiagram` | 3.0.1 | KDE charting widgets: KChart for business charts and KGantt for Gantt diagrams | `43_toolkits` |
 | `kdsingleapplication` | 1.2.1 | KDAB helper class for single-instance Qt 6 applications | `43_toolkits` |
+| `kdsoap` | 2.3.0 | KDAB's Qt SOAP library, client and server, with the kdwsdl2cpp code generator | `43_toolkits` |
+| `kdsoap-ws-discovery-client` | 0.4.0 | WS-Discovery client over KDSoap, which finds SMB hosts on the local network for KIO's smb worker | `43_toolkits` |
 | `kimageannotator` | 0.7.2 | Qt image annotation widgets — arrows, text, blur and stickers — used by Gwenview | `43_toolkits` |
 | `kirigami-addons` | 1.14.2 | Additional Kirigami components: form cards, dialogs and pickers | `43_toolkits` |
-| `kqtquickcharts` | 26.08.1 | KDE QtQuick chart components — the line and bar charts in KTouch's statistics | `43_toolkits` |
+| `kirigami-app-components` | 1.1.1 | Kirigami application components: an action collection with a shortcut editor and a command bar | `43_toolkits` |
+| `kqtquickcharts` | 26.08.2 | KDE QtQuick chart components — the line and bar charts in KTouch's statistics | `43_toolkits` |
+| `kquickimageeditor` | 0.7.0.1 | QML image editing components: crop, rotate, resize and annotate, with Highway-vectorised filters | `43_toolkits` |
+| `ktextaddons` | 2.2.0 | KDE text add-ons: translation, grammar check, autocorrection, emoji and text-to-speech for text editors | `43_toolkits` |
 | `libdbusmenu-lxqt` | 0.4.0 | DBusMenu for Qt 6 — exports and imports the menus of tray icons over D-Bus | `43_toolkits` |
 | `libdbusmenu-qt5` | 0.9.3.20160218 | DBusMenu for Qt 5 — exports and imports the menus of tray icons over D-Bus | `43_toolkits` |
+| `libqaccessibilityclient` | 0.6.0 | Qt client library for the AT-SPI accessibility bus, which KWin's zoom uses to follow focus | `43_toolkits` |
 | `mpvqt` | 1.2.0 | Qt Quick item that renders libmpv, used by Haruna | `43_toolkits` |
 | `phonon` | 4.12.0 | KDE multimedia API for Qt 6; playback goes through a backend port | `43_toolkits` |
 | `phonon-backend-vlc` | 0.12.0 | Phonon backend that plays through libvlc | `43_toolkits` |
 | `polkit-qt6` | 0.201.1 | Qt 6 wrapper around the polkit client and agent libraries | `43_toolkits` |
 | `python3-qscintilla` | 2.14.1 | QScintilla for Python as PyQt6.Qsci, for QGIS's console and script editor | `43_toolkits` |
+| `qcoro` | 0.13.0 | C++20 coroutines for Qt — co_await on network replies, D-Bus calls, processes, timers and QML | `43_toolkits` |
 | `qscintilla` | 2.14.1 | The Scintilla editor widget for Qt 6, in Octave and QGIS | `43_toolkits` |
 | `qtforkawesome` | 0.3.4 | The Fork Awesome icon font as a Qt 6 library, icon engine plugin and Qt Quick image provider | `43_toolkits` |
 | `qtutilities` | 6.22.2 | Martchus's Qt 6 utility library: settings dialogs, about dialog, notifications and resources | `43_toolkits` |
@@ -3165,78 +3266,82 @@ Notes:
 
 ### kf6
 
-KDE Frameworks 6: every port whose homepage is under invent.kde.org/frameworks, whatever it does. 67
+KDE Frameworks 6: every port whose homepage is under invent.kde.org/frameworks, whatever it does. 71
 ports, under `ports/core/kf6/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
-| `attica` | 6.30.0 | KDE Frameworks: Open Collaboration Services client library | `43_toolkits` |
-| `baloo` | 6.30.0 | KDE Frameworks: file search and tagging library, without the indexer service | `43_toolkits` |
-| `bluez-qt` | 6.30.0 | KDE Frameworks: Qt wrapper for the BlueZ 5 D-Bus API | `43_toolkits` |
-| `breeze-icons` | 6.30.0 | Breeze icon theme, light and dark, and its Qt resource library | `43_toolkits` |
-| `extra-cmake-modules` | 6.30.0 | Extra modules and scripts for CMake (KDE) | `41_system` |
-| `frameworkintegration` | 6.30.0 | KDE Frameworks: platform integration plugins and KPackage install handlers | `43_toolkits` |
-| `karchive` | 6.30.0 | KDE Frameworks: reading and writing compressed archives | `43_toolkits` |
-| `kauth` | 6.30.0 | KDE Frameworks: execute actions as a privileged user through polkit | `43_toolkits` |
-| `kbookmarks` | 6.30.0 | KDE Frameworks: bookmark storage and menus | `43_toolkits` |
-| `kcalendarcore` | 6.30.0 | KDE Frameworks: iCalendar data model and parser | `43_toolkits` |
-| `kcmutils` | 6.30.0 | KDE Frameworks: configuration modules for widget and QML settings pages | `43_toolkits` |
-| `kcodecs` | 6.30.0 | KDE Frameworks: string encodings and charset detection | `43_toolkits` |
-| `kcolorscheme` | 6.30.0 | KDE Frameworks: colour-scheme loading and roles | `43_toolkits` |
-| `kcompletion` | 6.30.0 | KDE Frameworks: text completion helpers and widgets | `43_toolkits` |
-| `kconfig` | 6.30.0 | KDE Frameworks: persistent application configuration | `43_toolkits` |
-| `kconfigwidgets` | 6.30.0 | KDE Frameworks: widgets for configuration dialogs | `43_toolkits` |
-| `kcontacts` | 6.30.0 | KDE Frameworks: vCard address book data model | `43_toolkits` |
-| `kcoreaddons` | 6.30.0 | KDE Frameworks: core non-GUI utilities, plugins and jobs | `43_toolkits` |
-| `kcrash` | 6.30.0 | KDE Frameworks: crash handler that restarts or reports a crashed application | `43_toolkits` |
-| `kdbusaddons` | 6.30.0 | KDE Frameworks: convenience classes for Qt D-Bus | `43_toolkits` |
-| `kdeclarative` | 6.30.0 | KDE Frameworks: QML integration and controls | `43_toolkits` |
-| `kded` | 6.30.0 | KDE Frameworks: kded6, the daemon that hosts session modules | `43_toolkits` |
-| `kdesu` | 6.30.0 | KDE Frameworks: running programs as another user through sudo | `43_toolkits` |
-| `kdnssd` | 6.30.0 | KDE Frameworks: DNS-SD service discovery through Avahi | `43_toolkits` |
-| `kdoctools` | 6.30.0 | KDE Frameworks: DocBook to HTML and manual page tools (meinproc6) | `43_toolkits` |
-| `kfilemetadata` | 6.30.0 | KDE Frameworks: file metadata and text extraction | `43_toolkits` |
-| `kglobalaccel` | 6.30.0 | KDE Frameworks: global keyboard shortcuts through kglobalacceld | `43_toolkits` |
-| `kguiaddons` | 6.30.0 | KDE Frameworks: colours, fonts, clipboard and key helpers for Qt GUIs | `43_toolkits` |
-| `kholidays` | 6.30.0 | KDE Frameworks: public holiday, season and astronomical calendars | `43_toolkits` |
-| `ki18n` | 6.30.0 | KDE Frameworks: gettext-based translation for Qt programs | `43_toolkits` |
-| `kiconthemes` | 6.30.0 | KDE Frameworks: icon theme lookup and icon dialogs | `43_toolkits` |
-| `kidletime` | 6.30.0 | KDE Frameworks: user idle-time reporting | `43_toolkits` |
-| `kimageformats` | 6.30.0 | KDE Frameworks: QImage plugins for AVIF, HEIF, JPEG XL, JPEG 2000, EXR, RAW, PSD, XCF, Krita and more | `43_toolkits` |
-| `kio` | 6.30.0 | KDE Frameworks: network-transparent file access, workers and file dialogs | `43_toolkits` |
-| `kirigami` | 6.30.0 | KDE Frameworks: QtQuick components for convergent applications | `43_toolkits` |
-| `kitemmodels` | 6.30.0 | KDE Frameworks: proxy and helper item models for Qt | `43_toolkits` |
-| `kitemviews` | 6.30.0 | KDE Frameworks: widget add-ons for Qt item views | `43_toolkits` |
-| `kjobwidgets` | 6.30.0 | KDE Frameworks: widgets that track the progress of KJob tasks | `43_toolkits` |
-| `kmime` | 6.30.0 | KDE Frameworks: MIME message parsing and assembly | `43_toolkits` |
-| `knewstuff` | 6.30.0 | KDE Frameworks: downloading and installing add-on content | `43_toolkits` |
-| `knotifications` | 6.30.0 | KDE Frameworks: desktop notifications through the freedesktop D-Bus interface | `43_toolkits` |
-| `knotifyconfig` | 6.30.0 | KDE Frameworks: configuration dialog for desktop notifications | `43_toolkits` |
-| `kpackage` | 6.30.0 | KDE Frameworks: loading and installing non-binary content packages | `43_toolkits` |
-| `kparts` | 6.30.0 | KDE Frameworks: document-centric embeddable components | `43_toolkits` |
-| `kpeople` | 6.30.0 | KDE Frameworks: a unified address book of contacts | `43_toolkits` |
-| `kplotting` | 6.30.0 | KDE Frameworks: a plotting widget | `43_toolkits` |
-| `kpty` | 6.30.0 | KDE Frameworks: pseudo-terminal devices for terminal emulators | `43_toolkits` |
-| `kquickcharts` | 6.30.0 | KDE Frameworks: GPU-drawn charts for QtQuick | `43_toolkits` |
-| `kservice` | 6.30.0 | KDE Frameworks: desktop entry and plugin lookup (kbuildsycoca6) | `43_toolkits` |
-| `kstatusnotifieritem` | 6.30.0 | KDE Frameworks: StatusNotifierItem tray icons over D-Bus | `43_toolkits` |
-| `ktexteditor` | 6.30.0 | KDE Frameworks: the KatePart text editor component | `43_toolkits` |
-| `ktexttemplate` | 6.30.0 | KDE Frameworks: text template engine, for KDevelop's templates | `43_toolkits` |
-| `ktextwidgets` | 6.30.0 | KDE Frameworks: rich text editing widgets with spell checking and speech | `43_toolkits` |
-| `kunitconversion` | 6.30.0 | KDE Frameworks: unit conversion | `43_toolkits` |
-| `kwallet` | 6.30.0 | KDE Frameworks: the KWallet client API and kwalletd6, which keeps wallets in the Secret Service | `43_toolkits` |
-| `kwidgetsaddons` | 6.30.0 | KDE Frameworks: add-on widgets and classes for Qt Widgets | `43_toolkits` |
-| `kwindowsystem` | 6.30.0 | KDE Frameworks: access to the windowing system, Wayland and X11 | `43_toolkits` |
-| `kxmlgui` | 6.30.0 | KDE Frameworks: XML-described menus, toolbars and shortcut editors | `43_toolkits` |
-| `modemmanager-qt` | 6.30.0 | KDE Frameworks: Qt wrapper for the ModemManager D-Bus API | `43_toolkits` |
-| `networkmanager-qt` | 6.30.0 | KDE Frameworks: Qt wrapper for the NetworkManager D-Bus API | `43_toolkits` |
-| `prison` | 6.30.0 | KDE Frameworks: barcode generation and scanning | `43_toolkits` |
-| `purpose` | 6.30.0 | KDE Frameworks: the share menu and its local share targets | `43_toolkits` |
-| `qqc2-desktop-style` | 6.30.0 | KDE Frameworks: QtQuick Controls style that follows the desktop palette and icons | `43_toolkits` |
-| `solid` | 6.30.0 | KDE Frameworks: hardware discovery through udev, UDisks2 and UPower | `43_toolkits` |
-| `sonnet` | 6.30.0 | KDE Frameworks: spell checking through Hunspell and Aspell | `43_toolkits` |
-| `syntax-highlighting` | 6.30.0 | KDE Frameworks: syntax highlighting engine for structured text | `43_toolkits` |
-| `threadweaver` | 6.30.0 | KDE Frameworks: high-level job-based multithreading | `43_toolkits` |
+| `attica` | 6.31.0 | KDE Frameworks: Open Collaboration Services client library | `43_toolkits` |
+| `baloo` | 6.31.0 | KDE Frameworks: file search and tagging, with the per-user file indexer baloo_file | `43_toolkits` |
+| `bluez-qt` | 6.31.0 | KDE Frameworks: Qt wrapper for the BlueZ 5 D-Bus API | `43_toolkits` |
+| `breeze-icons` | 6.31.0 | Breeze icon theme, light and dark, and its Qt resource library | `43_toolkits` |
+| `extra-cmake-modules` | 6.31.0 | Extra modules and scripts for CMake (KDE) | `41_system` |
+| `frameworkintegration` | 6.31.0 | KDE Frameworks: KStyle and the platform integration plugin | `43_toolkits` |
+| `karchive` | 6.31.0 | KDE Frameworks: reading and writing compressed archives | `43_toolkits` |
+| `kauth` | 6.31.0 | KDE Frameworks: execute actions as a privileged user through polkit | `43_toolkits` |
+| `kbookmarks` | 6.31.0 | KDE Frameworks: bookmark storage and menus | `43_toolkits` |
+| `kcalendarcore` | 6.31.0 | KDE Frameworks: iCalendar data model and parser | `43_toolkits` |
+| `kcmutils` | 6.31.0 | KDE Frameworks: configuration modules for widget and QML settings pages | `43_toolkits` |
+| `kcodecs` | 6.31.0 | KDE Frameworks: string encodings and charset detection | `43_toolkits` |
+| `kcolorscheme` | 6.31.0 | KDE Frameworks: colour-scheme loading and roles | `43_toolkits` |
+| `kcompletion` | 6.31.0 | KDE Frameworks: text completion helpers and widgets | `43_toolkits` |
+| `kconfig` | 6.31.0 | KDE Frameworks: persistent application configuration | `43_toolkits` |
+| `kconfigwidgets` | 6.31.0 | KDE Frameworks: widgets for configuration dialogs | `43_toolkits` |
+| `kcontacts` | 6.31.0 | KDE Frameworks: vCard address book data model | `43_toolkits` |
+| `kcoreaddons` | 6.31.0 | KDE Frameworks: core non-GUI utilities, plugins and jobs | `43_toolkits` |
+| `kcrash` | 6.31.0 | KDE Frameworks: crash handler that restarts or reports a crashed application | `43_toolkits` |
+| `kdav` | 6.31.0 | KDE Frameworks: WebDAV, CalDAV and CardDAV client jobs | `43_toolkits` |
+| `kdbusaddons` | 6.31.0 | KDE Frameworks: convenience classes for Qt D-Bus | `43_toolkits` |
+| `kdeclarative` | 6.31.0 | KDE Frameworks: QML integration and controls | `43_toolkits` |
+| `kded` | 6.31.0 | KDE Frameworks: kded6, the daemon that hosts session modules | `43_toolkits` |
+| `kdesu` | 6.31.0 | KDE Frameworks: running programs as another user through sudo | `43_toolkits` |
+| `kdnssd` | 6.31.0 | KDE Frameworks: DNS-SD service discovery through Avahi | `43_toolkits` |
+| `kdoctools` | 6.31.0 | KDE Frameworks: DocBook to HTML and manual page tools (meinproc6) | `43_toolkits` |
+| `kfilemetadata` | 6.31.0 | KDE Frameworks: file metadata and text extraction | `43_toolkits` |
+| `kglobalaccel` | 6.31.0 | KDE Frameworks: global keyboard shortcuts through kglobalacceld | `43_toolkits` |
+| `kguiaddons` | 6.31.0 | KDE Frameworks: colours, fonts, clipboard and key helpers for Qt GUIs | `43_toolkits` |
+| `kholidays` | 6.31.0 | KDE Frameworks: public holiday, season and astronomical calendars | `43_toolkits` |
+| `ki18n` | 6.31.0 | KDE Frameworks: gettext-based translation for Qt programs | `43_toolkits` |
+| `kiconthemes` | 6.31.0 | KDE Frameworks: icon theme lookup and icon dialogs | `43_toolkits` |
+| `kidletime` | 6.31.0 | KDE Frameworks: user idle-time reporting | `43_toolkits` |
+| `kimageformats` | 6.31.0 | KDE Frameworks: QImage plugins for AVIF, HEIF, JPEG XL, JPEG 2000, EXR, RAW, PSD, XCF, Krita and more | `43_toolkits` |
+| `kio` | 6.31.0 | KDE Frameworks: network-transparent file access, workers and file dialogs | `43_toolkits` |
+| `kirigami` | 6.31.0 | KDE Frameworks: QtQuick components for convergent applications | `43_toolkits` |
+| `kitemmodels` | 6.31.0 | KDE Frameworks: proxy and helper item models for Qt | `43_toolkits` |
+| `kitemviews` | 6.31.0 | KDE Frameworks: widget add-ons for Qt item views | `43_toolkits` |
+| `kjobwidgets` | 6.31.0 | KDE Frameworks: widgets that track the progress of KJob tasks | `43_toolkits` |
+| `kmime` | 6.31.0 | KDE Frameworks: MIME message parsing and assembly | `43_toolkits` |
+| `knewstuff` | 6.31.0 | KDE Frameworks: downloading and installing add-on content | `43_toolkits` |
+| `knotifications` | 6.31.0 | KDE Frameworks: desktop notifications through the freedesktop D-Bus interface | `43_toolkits` |
+| `knotifyconfig` | 6.31.0 | KDE Frameworks: configuration dialog for desktop notifications | `43_toolkits` |
+| `kpackage` | 6.31.0 | KDE Frameworks: loading and installing non-binary content packages | `43_toolkits` |
+| `kparts` | 6.31.0 | KDE Frameworks: document-centric embeddable components | `43_toolkits` |
+| `kpeople` | 6.31.0 | KDE Frameworks: a unified address book of contacts | `43_toolkits` |
+| `kplotting` | 6.31.0 | KDE Frameworks: a plotting widget | `43_toolkits` |
+| `kpty` | 6.31.0 | KDE Frameworks: pseudo-terminal devices for terminal emulators | `43_toolkits` |
+| `kquickcharts` | 6.31.0 | KDE Frameworks: GPU-drawn charts for QtQuick | `43_toolkits` |
+| `krunner` | 6.31.0 | KDE Frameworks: the runner plugin framework behind KRunner, Plasma search and the application launcher | `43_toolkits` |
+| `kservice` | 6.31.0 | KDE Frameworks: desktop entry and plugin lookup (kbuildsycoca6) | `43_toolkits` |
+| `kstatusnotifieritem` | 6.31.0 | KDE Frameworks: StatusNotifierItem tray icons over D-Bus | `43_toolkits` |
+| `ksvg` | 6.31.0 | KDE Frameworks: themed SVG images and nine-part frames, cached, for Plasma and its widgets | `43_toolkits` |
+| `ktexteditor` | 6.31.0 | KDE Frameworks: the KatePart text editor component | `43_toolkits` |
+| `ktexttemplate` | 6.31.0 | KDE Frameworks: text template engine, for KDevelop's templates | `43_toolkits` |
+| `ktextwidgets` | 6.31.0 | KDE Frameworks: rich text editing widgets with spell checking and speech | `43_toolkits` |
+| `kunitconversion` | 6.31.0 | KDE Frameworks: unit conversion | `43_toolkits` |
+| `kwallet` | 6.31.0 | KDE Frameworks: the KWallet client API, kwalletd6 and ksecretd, the session Secret Service that keeps the wallets | `43_toolkits` |
+| `kwidgetsaddons` | 6.31.0 | KDE Frameworks: add-on widgets and classes for Qt Widgets | `43_toolkits` |
+| `kwindowsystem` | 6.31.0 | KDE Frameworks: access to the windowing system, Wayland and X11 | `43_toolkits` |
+| `kxmlgui` | 6.31.0 | KDE Frameworks: XML-described menus, toolbars and shortcut editors | `43_toolkits` |
+| `modemmanager-qt` | 6.31.0 | KDE Frameworks: Qt wrapper for the ModemManager D-Bus API | `43_toolkits` |
+| `networkmanager-qt` | 6.31.0 | KDE Frameworks: Qt wrapper for the NetworkManager D-Bus API | `43_toolkits` |
+| `prison` | 6.31.0 | KDE Frameworks: barcode generation and scanning | `43_toolkits` |
+| `purpose` | 6.31.0 | KDE Frameworks: the share menu and its local share targets | `43_toolkits` |
+| `qqc2-desktop-style` | 6.31.0 | KDE Frameworks: QtQuick Controls style that follows the desktop palette and icons | `43_toolkits` |
+| `solid` | 6.31.0 | KDE Frameworks: hardware discovery through udev, UDisks2 and UPower | `43_toolkits` |
+| `sonnet` | 6.31.0 | KDE Frameworks: spell checking through Hunspell and Aspell | `43_toolkits` |
+| `syndication` | 6.31.0 | KDE Frameworks: RSS and Atom feed parser | `43_toolkits` |
+| `syntax-highlighting` | 6.31.0 | KDE Frameworks: syntax highlighting engine for structured text | `43_toolkits` |
+| `threadweaver` | 6.31.0 | KDE Frameworks: high-level job-based multithreading | `43_toolkits` |
 
 Notes:
 
@@ -3245,37 +3350,110 @@ Notes:
   prune theirs the same way.
 - `ktexteditor`: saving a file the user cannot write goes through the KAuth helper, which polkit
   refuses unless `50-kdos.rules` grants it.
-- `kwallet`: `/etc/xdg/kwalletrc` sets `[KSecretD] Enabled=false`. With ksecretd not built,
-  kwalletd6 otherwise sends to a name nothing owns, and every wallet fails to open.
-- `purpose`: the upload share targets (imgur, YouTube, Nextcloud, Review Board, Phabricator) and
-  Bluetooth are deleted after the install, and a target whose plugin is not found fails the build,
+- `kwallet`: ksecretd is built and owns `org.freedesktop.secrets` and
+  `org.kde.secretservicecompat` on the session bus; kwalletd6 is the compatibility front end that
+  forwards the KWallet API to it, so a wallet opened by either API is the same store.
+- `purpose`: the upload share targets (imgur, YouTube, Nextcloud, Review Board, Phabricator) are
+  deleted after the install, and Bluetooth is kept, and a target whose plugin is not found fails the build,
   so a renamed plugin cannot ship its target silently.
 
 ### kde
 
 KDE Plasma and Gear platform pieces outside Frameworks that have no other domain: KIO workers,
-thumbnailers, Plasma integration, KDE Wayland glue. 9 ports, under `ports/core/kde/`.
+thumbnailers, Plasma integration, KDE Wayland glue. 72 ports, under `ports/core/kde/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
-| `baloo-widgets` | 26.08.1 | File metadata panel, tag and rating editors used by Dolphin | `43_toolkits` |
-| `ffmpegthumbs` | 26.08.1 | KIO thumbnailer for video files, through FFmpeg | `43_toolkits` |
-| `kdegraphics-mobipocket` | 26.08.1 | Mobipocket (.mobi, .prc, .azw) reader library Okular and the thumbnailers open e-books through | `43_toolkits` |
-| `kdegraphics-thumbnailers` | 26.08.1 | KIO thumbnailers for PostScript, PDF, Blender and camera raw files | `43_toolkits` |
-| `kio-extras` | 26.08.1 | Extra KIO workers and thumbnailers: archives, man pages, MTP and iOS devices, file previews | `43_toolkits` |
-| `kwayland` | 6.7.5 | Qt-style client library for the Wayland and Plasma Wayland protocols | `43_toolkits` |
-| `libksysguard` | 6.7.5 | Process list, sensors and system statistics libraries, for KDevelop's attach to process | `43_toolkits` |
-| `plasma-integration` | 6.7.5 | Qt platform theme that gives every Qt 6 and KF6 application the KDE palette, fonts, icons and file dialogs | `43_toolkits` |
-| `plasma-wayland-protocols` | 1.22.0 | KDE Plasma Wayland protocol definitions | `43_toolkits` |
+| `aurorae` | 6.8.2 | Themeable SVG window decoration engine for KWin, with the Plastik theme | `50_desktop` |
+| `baloo-widgets` | 26.08.2 | File metadata panel, tag and rating editors used by Dolphin | `43_toolkits` |
+| `bluedevil` | 6.8.2 | Plasma Bluetooth — the tray applet, the settings page, pairing wizard, file sending and OBEX browsing | `50_desktop` |
+| `colord-kde` | 26.08.2 | Colour management settings for colord devices and ICC profiles, with an ICC profile importer | `44_apps` |
+| `cxx-rust-cssparser` | 1.1.0 | C++ library over Mozilla's Rust cssparser crate, for Union's style sheets | `41_system` |
+| `discover` | 6.8.2 | Software centre — system updates over the A/B slots and firmware updates through fwupd | `50_desktop` |
+| `ffmpegthumbs` | 26.08.2 | KIO thumbnailer for video files, through FFmpeg | `43_toolkits` |
+| `kactivitymanagerd` | 6.8.2 | KDE activity manager — the daemon behind activities, recent documents and resource scoring | `50_desktop` |
+| `kcron` | 26.08.2 | Task Scheduler — a System Settings page for user and system crontabs | `44_apps` |
+| `kde-all` | 1 | All of KDE: the Plasma session and every KDE Gear application, as the two metas kde-plasma and kde-gear | `50_desktop` |
+| `kde-cli-tools` | 6.8.2 | KDE command-line tools — kde-open, kioclient, kstart, kdesu, keditfiletype, kinfo and plasma-open-settings | `50_desktop` |
+| `kde-gear` | 1 | Every KDE Gear application, as the eight kde-gear-* metas | `50_desktop` |
+| `kde-gear-core` | 1 | The KDE Gear applications every desktop starts with: Dolphin, Konsole, Kate, Okular, Gwenview, Ark, Spectacle, KDE Connect, their KIO workers, plugins and thumbnailers | `50_desktop` |
+| `kde-gear-devtools` | 1 | KDE Gear developer tools: KDevelop and its language plugins, profiler front ends, diff and UML tools, and the Plasma SDK | `50_desktop` |
+| `kde-gear-education` | 1 | Every KDE Gear education application and the data they share | `50_desktop` |
+| `kde-gear-games` | 1 | Every KDE Gear game | `50_desktop` |
+| `kde-gear-graphics` | 1 | KDE Gear graphics: painting, scanning, image browsing, colour tools and camera access | `50_desktop` |
+| `kde-gear-multimedia` | 1 | KDE Gear audio and video: players, recorders, editors, CD ripping and burning | `50_desktop` |
+| `kde-gear-pim` | 1 | KDE Gear personal information management: KMail, Kontact, KOrganizer, KAddressBook, Akregator, Merkuro, the Akonadi resources and tools, KGpg and Itinerary | `50_desktop` |
+| `kde-gear-utilities` | 1 | The remaining KDE Gear applications: desktop utilities, network and chat clients, the convergent mobile applications, Calligra and Lokalize | `50_desktop` |
+| `kde-gtk-config` | 6.8.2 | Plasma's settings bridge to GTK — theme, fonts, icons, cursor and window buttons for GTK 3 and 4 applications | `50_desktop` |
+| `kde-inotify-survey` | 26.08.2 | Warns when the inotify watch and instance limits run out, and raises them on request | `44_apps` |
+| `kde-plasma` | 1 | The KDE Plasma session: KWin, the shell and its daemons, SDDM, the portal, the input method, and KDOS's own Plasma code, artwork and daemons | `50_desktop` |
+| `kdecoration` | 6.8.2 | KDecoration3 — the plugin library KWin's window decorations are written against | `43_toolkits` |
+| `kdegraphics-mobipocket` | 26.08.2 | Mobipocket (.mobi, .prc, .azw) reader library Okular and the thumbnailers open e-books through | `43_toolkits` |
+| `kdegraphics-thumbnailers` | 26.08.2 | KIO thumbnailers for PostScript, PDF, Blender and camera raw files | `43_toolkits` |
+| `kdenetwork-filesharing` | 26.08.2 | Dolphin properties pages that share a folder over Samba and edit its access control list | `44_apps` |
+| `kdeplasma-addons` | 6.8.2 | Extra Plasma widgets, runners, wallpapers, window switchers, the desktop cube and accent-coloured keyboard lights | `50_desktop` |
+| `kdesdk-kio` | 26.08.2 | perldoc:/ KIO worker that renders Perl POD documentation as HTML | `44_apps` |
+| `kdesdk-thumbnailers` | 26.08.2 | Thumbnailer for gettext PO files — Dolphin shows each catalogue's translation progress | `44_apps` |
+| `keditbookmarks` | 26.08.2 | Bookmark editor — the bookmarks every KDE application's Bookmarks menu shares | `44_apps` |
+| `kglobalacceld` | 6.8.2 | Global shortcut registry library that KWin loads to serve org.kde.kglobalaccel | `50_desktop` |
+| `khelpcenter` | 26.08.2 | Help centre — application handbooks, manual and info pages, with full-text search | `44_apps` |
+| `kio-admin` | 26.08.2 | admin:/ KIO worker — read and write root-owned files from Dolphin through a polkit-authorised helper | `44_apps` |
+| `kio-extras` | 26.08.2 | Extra KIO workers, thumbnailers and settings modules: SMB, SFTP, archives, man pages, MTP and iOS devices, recent files, file previews | `43_toolkits` |
+| `kio-fuse` | 5.1.1 | FUSE bridge that mounts KIO locations so programs without KIO can open remote files by path | `43_toolkits` |
+| `kio-gdrive` | 26.08.2 | gdrive:/ KIO worker for Google Drive, with a share plugin and file properties page | `44_apps` |
+| `kio-zeroconf` | 26.08.2 | zeroconf:/ KIO worker — browse the DNS-SD services advertised on the local network | `44_apps` |
+| `kmenuedit` | 6.8.2 | KDE menu editor — edits the application launcher's menu entries, categories and shortcuts | `50_desktop` |
+| `knighttime` | 6.8.2 | Day and night schedule library and session daemon, for Night Light and automatic light and dark themes | `50_desktop` |
+| `kpipewire` | 6.8.2 | Qt and QML components for PipeWire screen-cast streams: display, DMA-BUF import and recording | `43_toolkits` |
+| `krohnkite` | 0.9.10.0 | Dynamic tiling for KWin, a KWin script with twelve layouts, shipped disabled | `50_desktop` |
+| `kscreen` | 6.8.2 | Plasma display settings: the Display Configuration page, the output-switching OSD and applet, kscreenctl and the HDR calibrator | `50_desktop` |
+| `kscreenlocker` | 6.8.2 | Plasma's screen locker: the locking library KWin links, the PAM unlock greeter and the Screen Locking settings page | `50_desktop` |
+| `kwayland` | 6.8.2 | Qt-style client library for the Wayland and Plasma Wayland protocols | `43_toolkits` |
+| `kwin` | 6.8.2 | KDE Plasma's Wayland compositor and window manager, with Xwayland for X11 clients | `50_desktop` |
+| `kwrited` | 6.8.2 | KDE write daemon — shows messages sent with write and wall as desktop notifications | `50_desktop` |
+| `layer-shell-qt` | 6.8.2 | Qt integration of the wlr layer-shell protocol, for panels, on-screen displays and lock screens | `43_toolkits` |
+| `libkscreen` | 6.8.2 | Display configuration library over KWin's output protocols, and kscreen-doctor | `43_toolkits` |
+| `libksysguard` | 6.8.2 | Process list, sensors and system statistics libraries behind System Monitor, ksystemstats and KDevelop's attach to process | `43_toolkits` |
+| `libplasma` | 6.8.2 | Plasma's library of applets, containments and desktop themes, and its QML components | `43_toolkits` |
+| `markdownpart` | 26.08.2 | KParts viewer for Markdown documents, behind Kate's Markdown preview and Konqueror | `44_apps` |
+| `milou` | 6.8.2 | KRunner search results view, as a QML module and a Plasma search applet | `50_desktop` |
+| `plasma-activities` | 6.8.2 | Client library and QML bindings for Plasma activities, and the plasma-activities-cli6 tool | `43_toolkits` |
+| `plasma-activities-stats` | 6.8.2 | Library that queries the activity manager's record of recently and often used files and applications | `43_toolkits` |
+| `plasma-browser-integration` | 6.8.2 | Native-messaging host joining Firefox and Chromium to Plasma — media controls, tab search in KRunner, downloads and sharing | `50_desktop` |
+| `plasma-desktop` | 6.8.2 | KDE Plasma desktop shell — the desktop and panel containments, Kickoff, the task manager, the emoji selector and the input and session settings | `50_desktop` |
+| `plasma-integration` | 6.8.2 | Qt platform theme that gives every Qt 6 and KF6 application the KDE palette, fonts, icons and file dialogs | `43_toolkits` |
+| `plasma-nm` | 6.8.2 | Plasma network applet, connection editor and Wi-Fi, mobile broadband and VPN settings over NetworkManager | `50_desktop` |
+| `plasma-pa` | 6.8.2 | Plasma volume applet, audio settings page and volume keys, over PulseAudio's protocol | `50_desktop` |
+| `plasma-setup` | 6.8.2 | First-boot setup wizard — creates the first account and sets language, keyboard, time zone and network | `50_desktop` |
+| `plasma-wayland-protocols` | 1.23.0 | KDE Plasma Wayland protocol definitions | `43_toolkits` |
+| `plasma-welcome` | 6.8.2 | Plasma Welcome Center — the first-login tour, the post-update page and distribution pages | `50_desktop` |
+| `plasma-workspace` | 6.8.2 | KDE Plasma workspace — plasmashell, session start and shutdown, KRunner, notifications, the panel applets and the workspace settings | `50_desktop` |
+| `plasma5support` | 6.8.2 | Plasma 5's data engines and services, kept for the Plasma 6 widgets that read them | `43_toolkits` |
+| `polkit-kde-agent-1` | 6.8.2 | KDE polkit authentication agent — the password dialog for actions an administrator must approve | `50_desktop` |
+| `powerdevil` | 6.8.2 | KDE power management — idle dimming and suspend, lid and power-key policy, brightness, the battery applet and the Power settings | `50_desktop` |
+| `qqc2-breeze-style` | 6.8.2 | Breeze style for Qt Quick Controls, drawn in QML for Kirigami applications | `43_toolkits` |
+| `sddm-kcm` | 6.8.2 | Login Screen (SDDM) page of System Settings — greeter theme, autologin, sessions and the Plasma settings sync | `50_desktop` |
+| `svgpart` | 26.08.2 | KParts viewer for SVG images, embedded by Konqueror, Ark's preview and other part hosts | `44_apps` |
+| `systemsettings` | 6.8.2 | KDE System Settings — the window that hosts every settings module, with its search and KRunner entry | `50_desktop` |
+| `union` | 6.8.2 | Union — KDE's CSS-driven style engine for Qt Widgets, Qt Quick and Kirigami | `43_toolkits` |
 
 Notes:
 
-- `kio-extras`: the network workers (smb, sftp, nfs) are off by refusing their libraries, and the
-  KCMs that configure them are off too. Every local worker's library is required, because a
-  missing one drops its worker with only a line in the configure summary.
-- `libksysguard`: the per-application network plugin and the KAuth helper stay off. The first
-  needs `CAP_NET_RAW` set by `setcap`; the second is a root D-Bus service for acting on other
-  users' processes.
+- `kio-extras`: the smb and sftp workers are built, Samba and libssh being required; the nfs worker
+  is off by refusing TIRPC. Every other worker's library is required too, because a missing one
+  drops its worker with only a line in the configure summary.
+- `libksysguard`: the per-application network plugin stays off by refusing libpcap; it needs
+  `CAP_NET_RAW` set by `setcap`, which kpkg's tar does not carry. The KAuth helper is built: it is
+  the root D-Bus service that ends or renices another user's process, and polkit asks for an
+  administrator's password for each of its actions. `aggregate-scope-children.patch` counts the
+  processes of a scope's descendant cgroups as the scope's own, and `login-cgroup-root.patch` roots
+  the application model at an elogind login's cgroup, so System Monitor lists each box as an
+  application.
+- `kwin`: carries three patches. `kdos-crt.patch` builds the `kdos_crt` effect behind Phosphor mode
+  into KWin, because KWin's loader refuses an out-of-tree effect built against any other 6.8.x
+  point release. `sandbox-policy.patch` refuses a sandboxed client the desktop-shell globals unless
+  its box grants them, and `sandbox-badge.patch` exposes a window's sandbox engine, app id and
+  instance id to the title bar and to scripts.
 - `plasma-wayland-protocols`: qt6-qtbase stays in `depends` though nothing is compiled: ECM's
   KDEInstallDirs asks Qt's `qtpaths` for its prefix and stops without it.
 
@@ -3295,7 +3473,7 @@ Notes:
 - `fltk`: with both backends built, a program picks Wayland whenever a Wayland display is reachable
   and X11 otherwise; `FLTK_BACKEND=x11` forces Xwayland. The X11 half needs cairo with Xlib and
   pango with Xft, or configure stops.
-- `motif`: `mwm` and `xmbind` are not shipped: X windows are managed by kdos-comp's Xwayland window
+- `motif`: `mwm` and `xmbind` are not shipped: X windows are managed by KWin's Xwayland window
   manager. `--with-mwmrcdir` keeps mwm's rc file off `/etc/X11`, which must not exist.
 - `stfl`: the build includes `<ncursesw/ncurses.h>`, so it gets a directory with that one link into
   the flat widec headers, and `-D_XOPEN_SOURCE_EXTENDED`, without which the wide-character calls
@@ -3307,7 +3485,7 @@ Notes:
 
 ### audio-io
 
-The sound stack: ALSA, PipeWire and WirePlumber, PulseAudio client, and portable audio I/O APIs. 15
+The sound stack: ALSA, PipeWire and WirePlumber, PulseAudio client, and portable audio I/O APIs. 16
 ports, under `ports/core/audio-io/`.
 
 | Port | Version | Description | Phase |
@@ -3316,6 +3494,7 @@ ports, under `ports/core/audio-io/`.
 | `alsa-topology-conf` | 1.2.5.1 | ALSA topology configuration files | `41_system` |
 | `alsa-ucm-conf` | 1.2.16.1 | ALSA Use Case Manager configuration (and topologies) | `41_system` |
 | `alsa-utils` | 1.2.16 | Various utilities for controlling sound card | `41_system` |
+| `kmix` | 26.08.2 | Sound mixer — per-channel volume over PulseAudio and ALSA, with a tray icon and media keys | `44_apps` |
 | `libao` | 1.2.2 | Audio output library over ALSA and PulseAudio | `41_system` |
 | `libpulse` | 17.0 | PulseAudio client libraries and pactl/pacat — the server is pipewire-pulse | `41_system` |
 | `libsoundio` | 2.0.0 | Cross-backend real-time audio input and output, through PulseAudio or ALSA | `41_system` |
@@ -3334,9 +3513,9 @@ Notes:
   it for the socket. `-lintl` rides `LDFLAGS`: the probe finds musl's `dgettext` while gettext's
   `libintl.h` renames every call.
 - `pipewire`: `-Dpipewire-v4l2` stays off, because its LD_PRELOAD shim calls `openat64` and
-  `mmap64`, which musl does not export, and every process under it faults. The rlimits file is not
-  installed: kdos-getty raises the realtime limits, and the `@pipewire` group it matches does not
-  exist.
+  `mmap64`, which musl does not export, and every process under it faults. The rlimits file,
+  `/etc/security/limits.d/25-pw-rlimits.conf`, is installed and matches `@audio`, the group every
+  KDOS user is in; upstream's `@pipewire` names a group that does not exist here.
 - `portaudio`: built serially; the library and the C++ binding race under a parallel make.
 - `wiremix`: `crt-static` is off so the bindgen build script can dlopen libclang.
 - `wireplumber`: the Lua version is named, `5.5`. Left to `auto` it settles for any older Lua it
@@ -3501,7 +3680,7 @@ Notes:
 
 ### studio
 
-Music production: DAWs, audio editors, trackers, drum machines and notation. 12 ports, under
+Music production: DAWs, audio editors, trackers, drum machines and notation. 13 ports, under
 `ports/core/studio/`.
 
 | Port | Version | Description | Phase |
@@ -3511,7 +3690,8 @@ Music production: DAWs, audio editors, trackers, drum machines and notation. 12 
 | `ft2-clone` | 2.24 | Fasttracker II clone — the XM tracker, pixel for pixel, on SDL2 | `44_apps` |
 | `furnace` | 0.6.8.3 | Chiptune tracker for over fifty sound chips of consoles, computers and arcades | `44_apps` |
 | `hydrogen` | 1.2.6 | Pattern-based drum machine and sequencer with sample drum kits | `44_apps` |
-| `kwave` | 26.08.1 | KDE sound editor — record, cut, filter and convert WAV, FLAC, MP3, Ogg Vorbis and Opus | `44_apps` |
+| `krecorder` | 26.08.2 | KDE audio recorder — record, list and play back voice clips | `44_apps` |
+| `kwave` | 26.08.2 | KDE sound editor — record, cut, filter and convert WAV, FLAC, MP3, Ogg Vorbis and Opus | `44_apps` |
 | `lmms` | 1.2.2 | Pattern-based music production: sequencer, synthesizers, samples and LADSPA effects (Qt 5) | `44_apps` |
 | `milkytracker` | 1.06 | Fast Tracker II–style music tracker for XM and MOD files, on SDL2 | `44_apps` |
 | `musescore` | 4.7.5 | MuseScore Studio — music notation: write, play back, print and export scores, with the MS Basic soundfont | `44_apps` |
@@ -3539,14 +3719,17 @@ Notes:
 
 ### music-players
 
-Music players, library managers and taggers. 10 ports, under `ports/core/music-players/`.
+Music players, library managers and taggers. 13 ports, under `ports/core/music-players/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
 | `audacious` | 4.6.1 | Playlist-oriented music player — Qt 6 interface, MPRIS on the session bus | `43_toolkits` |
 | `audacious-plugins` | 4.6.1 | Audacious decoders, outputs, effects and the Qt interface — without them the player opens no window and plays nothing | `44_apps` |
+| `audiotube` | 26.08.2 | YouTube Music client — search, stream and keep a library through ytmusicapi and yt-dlp | `44_apps` |
 | `cmus` | 2.12.0 | Console music player with a library view | `44_apps` |
-| `elisa` | 26.08.1 | KDE music player — a local music collection, played through libVLC | `44_apps` |
+| `elisa` | 26.08.2 | KDE music player — a local music collection, played through libVLC | `44_apps` |
+| `juk` | 26.08.2 | Jukebox and music manager — a tagged collection, playlists, a tag editor and file renamer | `44_apps` |
+| `kasts` | 26.08.2 | Podcast player — subscriptions, an episode queue, downloads and chapters, on Kirigami | `44_apps` |
 | `mpd` | 0.24.15 | Music Player Daemon — plays music for separate client programs | `42_graphics` |
 | `picard` | 3.0.0rc4 | Tag and rename music files from the MusicBrainz database | `44_apps` |
 | `rhythmbox` | 3.5.1 | GNOME music player and library organiser | `44_apps` |
@@ -3622,13 +3805,12 @@ Notes:
 
 ### media-frameworks
 
-Multimedia frameworks, capture, and media inspection. 18 ports, under
+Multimedia frameworks, capture, and media inspection. 17 ports, under
 `ports/core/media-frameworks/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
 | `ffmpeg` | 9.0.2 | Record, convert and stream audio and video | `42_graphics` |
-| `ffmpegthumbnailer` | 2.3.1 | Video thumbnail generator for file managers | `42_graphics` |
 | `gst-libav` | 1.28.8 | GStreamer FFmpeg-based codec plugins | `42_graphics` |
 | `gst-plugins-bad` | 1.28.8 | GStreamer "bad" plugin set (less mature plugins) | `43_toolkits` |
 | `gst-plugins-base` | 1.28.8 | GStreamer base plugin set (provides gstreamer-pbutils, audio/video conversion, file I/O) | `42_graphics` |
@@ -3667,17 +3849,20 @@ Notes:
 
 ### video-players
 
-Video players and media centres, and their front-end add-ons. 8 ports, under
+Video players and media centres, and their front-end add-ons. 11 ports, under
 `ports/core/video-players/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
 | `celluloid` | 0.30 | GTK 4 video player over libmpv | `44_apps` |
+| `dragon` | 26.08.2 | Dragon Player — a simple video player for files, discs and streams | `44_apps` |
 | `haruna` | 1.8.1 | Haruna: a Qt 6 and Kirigami video player over libmpv | `44_apps` |
 | `kodi` | 21.3 | Ten-foot media centre for local and network video, music and pictures, with add-ons | `44_apps` |
 | `mpv` | 0.41.0 | Command-line media player for Wayland, with no toolkit | `42_graphics` |
 | `mpv-mpris` | 1.3 | Puts mpv on the session bus, so the media keys and the panel reach it | `44_apps` |
+| `plasmatube` | 26.08.2 | Video client — watch YouTube through Invidious or Piped, and PeerTube, played by mpv | `44_apps` |
 | `smplayer` | 26.8.29 | Qt front end for mpv that remembers where every file stopped | `44_apps` |
+| `telly-skout` | 26.08.2 | TV guide — programme listings by channel from TV Spielfilm or any XMLTV source | `44_apps` |
 | `uosc` | 5.13.0 | Minimalist, proximity-based on-screen controls, menus and playlist for mpv | `44_apps` |
 | `vlc` | 3.0.24 | VLC media player 3 with its Qt 5 interface — plays files, discs, devices and streams | `43_toolkits` |
 
@@ -3712,12 +3897,12 @@ Video editing, transcoding, muxing, recording, streaming and webcam apps. 10 por
 | `avidemux` | 2.8.1 | Qt 6 video cutter, filter and encoder | `44_apps` |
 | `blind` | 1.1 | Video editing as a pipeline of small programs over raw frames | `44_apps` |
 | `handbrake` | 1.11.2 | HandBrake video transcoder: the GTK 4 application and HandBrakeCLI | `44_apps` |
-| `kamoso` | 26.08.1 | KDE webcam booth — take pictures and record videos from a camera | `44_apps` |
-| `kdenlive` | 26.08.1 | Kdenlive: the KDE multi-track video editor, on MLT | `44_apps` |
+| `kamoso` | 26.08.2 | KDE webcam booth — take pictures and record videos from a camera | `44_apps` |
+| `kdenlive` | 26.08.2 | Kdenlive: the KDE multi-track video editor, on MLT | `44_apps` |
 | `mkvtoolnix` | 102.0 | MKVToolNix: create, split, edit and inspect Matroska files, with the Qt 6 GUI | `44_apps` |
 | `obs-studio` | 32.2.2 | OBS Studio: screen recording and live streaming, with PipeWire screen capture on Wayland | `44_apps` |
+| `plasma-camera` | 26.08.2 | Camera app — photos and video from libcamera devices such as laptop webcams | `44_apps` |
 | `shotcut` | 26.8.1 | Shotcut: a Qt 6 video editor on MLT, with no KDE Frameworks | `44_apps` |
-| `wf-recorder` | 0.6.0 | Screen recorder for wlroots compositors, through wlr-screencopy | `44_apps` |
 | `yt-dlp` | 2026.08.19 | Download video and audio from YouTube and thousands of other sites | `41_system` |
 
 Notes:
@@ -3735,8 +3920,6 @@ Notes:
 - `obs-studio`: `OBS_VERSION_OVERRIDE` is required: the release tarball has no `.git`, and the
   version would read 0.0.1.
 - `shotcut`: `SHOTCUT_VERSION` is set; unset, it is the build date and two builds differ.
-- `wf-recorder`: PipeWire audio is named on. Left at `auto`, pulse wins whenever libpulse-simple is
-  installed.
 
 ### game-libs
 
@@ -3747,8 +3930,8 @@ ports, under `ports/core/game-libs/`.
 |---|---|---|---|
 | `enet` | 1.3.18 | Reliable UDP networking for games | `41_system` |
 | `glm` | 1.0.3 | OpenGL Mathematics: header-only C++ vectors and matrices in GLSL's terms | `41_system` |
-| `libkdegames` | 26.08.1 | Common code, card decks and sound for the KDE games | `43_toolkits` |
-| `libkmahjongg` | 26.08.1 | Tile sets, backgrounds and the rendering code shared by the KDE Mahjongg games | `43_toolkits` |
+| `libkdegames` | 26.08.2 | Common code, card decks and sound for the KDE games | `43_toolkits` |
+| `libkmahjongg` | 26.08.2 | Tile sets, backgrounds and the rendering code shared by the KDE Mahjongg games | `43_toolkits` |
 | `love` | 11.5 | Lua 2D game framework, and the runtime that opens a .love game | `42_graphics` |
 | `physfs` | 3.2.0 | Read game data from directories and ZIP, 7z, WAD, GRP and other archives as one tree | `41_system` |
 | `sdl12-compat` | 1.2.76 | The SDL 1.2 library, headers and build files, answering every SDL 1.2 call through SDL2 | `42_graphics` |
@@ -3767,8 +3950,8 @@ ports, under `ports/core/game-libs/`.
 Notes:
 
 - `sdl3`: `SDL_KMSDRM=OFF`. A KMSDRM program would take the card and the input devices from the
-  running compositor; without the driver, a program started outside `kdos-comp` exits with "No
-  available video device".
+  running compositor; without the driver, a program started outside a Wayland or X session exits
+  with "No available video device".
 - `sdl3`: libusb and liburing are in `depends` because `SDL_HIDAPI_LIBUSB` and `SDL_LIBURING` only
   permit a probe, which configures without the feature when nothing is found. HIDAPI over libusb
   reaches the GameCube adapter and the Switch 2 controllers.
@@ -3783,11 +3966,15 @@ Notes:
 
 ### games-action
 
-Action, arcade, racing, platform and sandbox games. 9 ports, under `ports/core/games-action/`.
+Action, arcade, racing, platform and sandbox games. 13 ports, under `ports/core/games-action/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
+| `bomber` | 26.08.2 | Arcade game: bomb the city flat before the plane comes down on the buildings | `44_apps` |
 | `ddnet` | 20.1 | DDraceNetwork — the cooperative Teeworlds racing game, its client, server and map tools | `44_apps` |
+| `granatier` | 26.08.2 | Bomberman-style arcade game: blast the other players out of the arena | `44_apps` |
+| `ksnakeduel` | 26.08.2 | Light-cycle duel: make the other snake crash first, against the computer or a second player | `44_apps` |
+| `kspaceduel` | 26.08.2 | Two satellites duel around a sun, with gravity, energy and bullets | `44_apps` |
 | `luanti` | 5.17.0 | Voxel game engine, with Minetest Game for offline play | `44_apps` |
 | `moon-buggy` | 1.1.0 | Drive a buggy across the moon, jumping craters and shooting meteors | `41_system` |
 | `neverball` | 1.6.0 | Neverball and Neverputt — tilt the floor to roll a ball through 3D obstacle courses, and minigolf on the same engine | `44_apps` |
@@ -3848,7 +4035,7 @@ Notes:
 
 ### games-strategy
 
-Strategy, simulation and space-trading games, and their data. 12 ports, under
+Strategy, simulation and space-trading games, and their data. 13 ports, under
 `ports/core/games-strategy/`.
 
 | Port | Version | Description | Phase |
@@ -3856,6 +4043,7 @@ Strategy, simulation and space-trading games, and their data. 12 ports, under
 | `endless-sky` | 0.11.2 | 2D space trading, exploration and combat in the spirit of Escape Velocity | `44_apps` |
 | `fheroes2` | 1.1.17 | Heroes of Might and Magic II engine, for a player's own copy of the game data | `44_apps` |
 | `freeciv` | 3.2.6 | Turn-based empire-building strategy in the Civilization tradition, SDL2 client and server | `44_apps` |
+| `ksirk` | 26.08.2 | World-domination strategy game in the style of Risk, with a skin editor | `44_apps` |
 | `openrct2` | 0.5.5 | RollerCoaster Tycoon 2 engine, for a player's own copy of the RCT2 or RCT Classic data | `44_apps` |
 | `openttd` | 15.3 | Transport Tycoon Deluxe engine — build rail, road, air and sea networks | `44_apps` |
 | `openttd-opengfx` | 8.0 | OpenGFX: the free graphics base set for OpenTTD | `41_system` |
@@ -3914,27 +4102,57 @@ Notes:
 ### games-board
 
 Board, card, puzzle, chess and classic small games, whatever toolkit or desktop project they come
-from. 18 ports, under `ports/core/games-board/`.
+from. 48 ports, under `ports/core/games-board/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
 | `aisleriot` | 3.22.35 | Over eighty solitaire card games, each written in Scheme | `44_apps` |
 | `black-hole-solver` | 1.14.0 | Solver for the Black Hole, All in a Row and Golf patience games | `41_system` |
+| `bovo` | 26.08.2 | Gomoku: five in a row against the computer on a pen-and-paper board | `44_apps` |
 | `bsd-games` | 2.17 | Three of the BSD games — Colossal Cave, tetris and worm | `41_system` |
 | `chess-tui` | 2.7.1 | Chess in a terminal, against Stockfish or a second player | `41_system` |
 | `freecell-solver` | 6.16.0 | Solver for Freecell, Simple Simon and related patience games, as a library and a command | `41_system` |
 | `gnome-mahjongg` | 51.1 | Match pairs of mahjong tiles until the board is clear | `44_apps` |
 | `gnome-mines` | 50.0 | Clear hidden mines from a minefield | `44_apps` |
 | `gnome-sudoku` | 51.0.1 | Sudoku, the number-grid puzzle, generated at four difficulties | `44_apps` |
-| `katomic` | 26.08.1 | Slide atoms into place to build the molecule | `44_apps` |
-| `kblocks` | 26.08.1 | The falling-blocks game, against the clock or a computer player | `44_apps` |
-| `kbounce` | 26.08.1 | Fence off the field while the balls bounce around it | `44_apps` |
-| `kmahjongg` | 26.08.1 | Mahjong solitaire: clear the board by matching pairs of free tiles | `44_apps` |
-| `kmines` | 26.08.1 | The classic minesweeper, on a themed board | `44_apps` |
-| `kpat` | 26.08.1 | KPatience — fourteen solitaire card games, with a solver for each deal | `44_apps` |
-| `kreversi` | 26.08.1 | Reversi against the computer or a second player | `44_apps` |
-| `ksudoku` | 26.08.1 | Sudoku, jigsaw, killer and 3-D Roxdoku puzzles, generated and solved | `44_apps` |
+| `gnugo` | 3.8 | GNU Go — a Go engine that plays over GTP, and the opponent for KDE's Kigo | `41_system` |
+| `kajongg` | 26.08.2 | Classical four-player Mah Jongg, with computer players and a game server | `44_apps` |
+| `kapman` | 26.08.2 | Pac-Man clone: eat every pill in the maze while the ghosts hunt you | `44_apps` |
+| `katomic` | 26.08.2 | Slide atoms into place to build the molecule | `44_apps` |
+| `kblackbox` | 26.08.2 | Black Box logic game: find the hidden balls by firing laser rays into the box | `44_apps` |
+| `kblocks` | 26.08.2 | The falling-blocks game, against the clock or a computer player | `44_apps` |
+| `kbounce` | 26.08.2 | Fence off the field while the balls bounce around it | `44_apps` |
+| `kbreakout` | 26.08.2 | Breakout: keep the ball in play with the paddle and break every brick | `44_apps` |
+| `kdiamond` | 26.08.2 | Match three: swap neighbouring diamonds into lines of three or more | `44_apps` |
+| `kdominate` | 26.08.2 | Ataxx-style tactics: spread across the board and convert your opponent's pieces | `44_apps` |
+| `kfourinline` | 26.08.2 | Four in a row against the computer, or against another player over the network | `44_apps` |
+| `kgoldrunner` | 26.08.2 | Lode Runner-style puzzle: collect the gold, dig traps and dodge the enemies | `44_apps` |
+| `kigo` | 26.08.2 | Go board game, played against GNU Go or any engine that speaks GTP | `44_apps` |
+| `killbots` | 26.08.2 | Turn-based robot evasion: lure the killer robots into wrecking each other | `44_apps` |
+| `kiriki` | 26.08.2 | Yahtzee-style dice game for up to six players, human or computer | `44_apps` |
+| `kjumpingcube` | 26.08.2 | Territory dice game: grow your cubes until they jump and take their neighbours | `44_apps` |
+| `klickety` | 26.08.2 | SameGame-style puzzle: clear the board by removing groups of same-coloured blocks | `44_apps` |
+| `klines` | 26.08.2 | Color Lines: line up five balls of one colour before the board fills | `44_apps` |
+| `kmahjongg` | 26.08.2 | Mahjong solitaire: clear the board by matching pairs of free tiles | `44_apps` |
+| `kmines` | 26.08.2 | The classic minesweeper, on a themed board | `44_apps` |
+| `knavalbattle` | 26.08.2 | Battleship: sink the hidden fleet, against the computer or over the network | `44_apps` |
+| `knetwalk` | 26.08.2 | Turn the cable pieces until every terminal is connected to the server | `44_apps` |
+| `knights` | 26.08.2 | Chess board for local engines, two players at one desk or the Free Internet Chess Server | `44_apps` |
+| `kolf` | 26.08.2 | Miniature golf on top-down courses, with a course editor | `44_apps` |
+| `kollision` | 26.08.2 | Steer a ball clear of the others bouncing around the field | `44_apps` |
+| `konquest` | 26.08.2 | Conquer the galaxy by sending fleets of ships between planets | `44_apps` |
+| `kpat` | 26.08.2 | KPatience — fourteen solitaire card games, with a solver for each deal | `44_apps` |
+| `kreversi` | 26.08.2 | Reversi against the computer or a second player | `44_apps` |
+| `kshisen` | 26.08.2 | Shisen-Sho: clear the board by joining pairs of tiles with a path of at most two turns | `44_apps` |
+| `ksquares` | 26.08.2 | Dots and Boxes: draw lines and complete squares, against the computer or friends | `44_apps` |
+| `ksudoku` | 26.08.2 | Sudoku, jigsaw, killer and 3-D Roxdoku puzzles, generated and solved | `44_apps` |
+| `ktuberling` | 26.08.2 | Potato Guy: a picture-stamping game for children, with sounds and several playgrounds | `44_apps` |
+| `kubrick` | 26.08.2 | Rubik's Cube puzzles in 3D, in several sizes and shapes, with solving demos | `44_apps` |
+| `lskat` | 26.08.2 | Lieutenant Skat: a card game for two, from the Skat family | `44_apps` |
+| `palapeli` | 26.08.2 | Jigsaw puzzles cut from any picture, with pieces moved freely on an open table | `44_apps` |
+| `picmi` | 26.08.2 | Nonograms: reveal the hidden picture from the number clues | `44_apps` |
 | `qqwing` | 1.3.4 | Sudoku generator and solver, as a C++ library and a command | `41_system` |
+| `skladnik` | 26.08.2 | Sokoban: push every gem into the store room | `44_apps` |
 | `stockfish` | 19 | UCI chess engine, with its evaluation network built in | `41_system` |
 
 Notes:
@@ -4028,26 +4246,38 @@ Notes:
 
 ### education
 
-Learning software, offline encyclopedias and reference dictionaries. 16 ports, under
+Learning software, offline encyclopedias and reference dictionaries. 28 ports, under
 `ports/core/education/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
+| `artikulate` | 26.08.2 | KDE pronunciation trainer — record yourself and compare with native speakers | `44_apps` |
+| `blinken` | 26.08.2 | KDE memory game — repeat ever longer sequences of lights and sounds | `44_apps` |
 | `gcompris` | 26.2 | Educational activities for children aged 2 to 10 — reading, counting, science, games and art | `44_apps` |
 | `goldendict-ng` | 26.8.0 | Dictionary lookup — StarDict, DSL, MDict, ZIM, Babylon and hunspell morphology, offline | `44_apps` |
-| `kalzium` | 26.08.1 | KDE periodic table of the elements — properties, isotopes, spectra and a molar mass calculator | `44_apps` |
-| `kgeography` | 26.08.1 | KDE geography trainer — maps, capitals and flags of countries and regions, as quizzes | `44_apps` |
+| `kalm` | 26.08.2 | Breathing exercises — guided techniques with an animated pace to follow | `44_apps` |
+| `kalzium` | 26.08.2 | KDE periodic table of the elements — properties, isotopes, spectra and a molar mass calculator | `44_apps` |
+| `kanagram` | 26.08.2 | KDE anagram game — unscramble words from KVTML vocabulary lists, with spoken hints | `44_apps` |
+| `kbruch` | 26.08.2 | KDE fraction trainer — exercises on fractions, ratios, percentages and factorisation | `44_apps` |
+| `kdeedu-data` | 26.08.2 | KDE Education shared data — KVTML vocabulary lists and icons for the education apps | `41_system` |
+| `kgeography` | 26.08.2 | KDE geography trainer — maps, capitals and flags of countries and regions, as quizzes | `44_apps` |
+| `khangman` | 26.08.2 | KDE hangman game — guess words from KVTML vocabulary lists in many languages | `44_apps` |
+| `kiten` | 26.08.2 | KDE Japanese reference — EDICT and KANJIDIC dictionary, kanji browser and radical search | `44_apps` |
 | `kiwix-desktop` | 2.5.1 | Offline reader for ZIM libraries such as Wikipedia, with search, tabs and a reading list | `44_apps` |
 | `kiwix-tools` | 3.8.2 | kiwix-serve, kiwix-manage and kiwix-search over ZIM archives | `41_system` |
+| `klettres` | 26.08.2 | KDE alphabet trainer — letters and syllables spoken aloud, in 22 languages | `44_apps` |
 | `kolibri` | 0.19.5 | Offline learning platform — courses, lessons and quizzes from content channels, served on the LAN | `41_system` |
-| `ktouch` | 26.08.1 | KDE touch typing tutor — graded courses, keyboard layouts and progress statistics | `44_apps` |
-| `kturtle` | 26.08.1 | KDE educational programming environment — steer a turtle with TurtleScript and learn to program | `44_apps` |
-| `kwordquiz` | 26.08.1 | KDE flashcard trainer — flashcards, multiple choice and question-and-answer quizzes on KVTML decks | `44_apps` |
-| `libkeduvocdocument` | 26.08.1 | KDE vocabulary document library — reads and writes the KVTML files of Parley and KWordQuiz | `43_toolkits` |
+| `ktouch` | 26.08.2 | KDE touch typing tutor — graded courses, keyboard layouts and progress statistics | `44_apps` |
+| `kturtle` | 26.08.2 | KDE educational programming environment — steer a turtle with TurtleScript and learn to program | `44_apps` |
+| `kwordquiz` | 26.08.2 | KDE flashcard trainer — flashcards, multiple choice and question-and-answer quizzes on KVTML decks | `44_apps` |
+| `libkeduvocdocument` | 26.08.2 | KDE vocabulary document library — reads and writes the KVTML files of Parley and KWordQuiz | `43_toolkits` |
 | `libkiwix` | 14.2.1 | The library under kiwix-serve and kiwix-desktop that searches and serves ZIM archives | `41_system` |
 | `libzim` | 9.8.2 | Library that reads and writes ZIM archives, the format offline Wikipedia ships in | `41_system` |
-| `parley` | 26.08.1 | KDE vocabulary trainer — spaced repetition over KVTML word lists, with themes and HTML export | `44_apps` |
+| `minuet` | 26.08.2 | KDE ear trainer — intervals, chords, scales and rhythm, played through FluidSynth | `44_apps` |
+| `parley` | 26.08.2 | KDE vocabulary trainer — spaced repetition over KVTML word lists, with themes and HTML export | `44_apps` |
+| `rocs` | 26.08.2 | KDE graph theory IDE — draw graphs and run algorithms on them in JavaScript | `44_apps` |
 | `sdcv` | 0.5.5 | Look a word up in a StarDict dictionary, offline | `41_system` |
+| `step` | 26.08.2 | KDE physics simulator — mechanics, springs, gases and charged particles | `44_apps` |
 | `tuxpaint` | 0.9.35 | Drawing program for children — brushes, stamps, shapes, text and magic tools | `44_apps` |
 
 Notes:
@@ -4066,11 +4296,12 @@ Notes:
 ### office
 
 Office suites, word processors, spreadsheets, presentations, accounting and finance, and
-office-format import libraries. 23 ports, under `ports/core/office/`.
+office-format import libraries. 27 ports, under `ports/core/office/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
 | `abiword` | 3.0.8 | AbiWord word processor — reads and writes Word, OpenDocument, RTF and HTML | `44_apps` |
+| `calligra` | 26.08.2 | Office suite — Words, Sheets, Stage and Karbon on OpenDocument, with import filters | `44_apps` |
 | `freexl` | 2.0.0 | Reads Excel .xls, .xlsx and LibreOffice .ods sheets, for SpatiaLite and GDAL | `41_system` |
 | `gnucash` | 5.17 | Double-entry accounting — personal and small-business books, invoices, reports | `44_apps` |
 | `gnumeric` | 1.12.62 | GNOME spreadsheet — accurate statistics, and reads Excel, OpenDocument and Lotus files | `44_apps` |
@@ -4078,15 +4309,18 @@ office-format import libraries. 23 ports, under `ports/core/office/`.
 | `homebank` | 5.10.3 | Personal finance manager — accounts, budgets, reports, QIF, CSV and OFX import | `44_apps` |
 | `ledger` | 3.4.1 | Double-entry accounting over a plain-text journal | `44_apps` |
 | `libcdr` | 0.1.9 | CorelDRAW file import library | `41_system` |
+| `libetonyek` | 0.1.13 | Import filter library and conversion tools for Apple Keynote, Pages and Numbers documents | `41_system` |
 | `libgsf` | 1.14.59 | GNOME Structured File library — OLE2, ZIP and ODF containers for office formats | `41_system` |
 | `libixion` | 0.20.0 | Threaded spreadsheet formula engine, the calculation half of orcus | `41_system` |
+| `libodfgen` | 0.1.8 | Library that writes OpenDocument files from librevenge's interfaces, for import filters | `41_system` |
 | `libofx` | 0.10.9 | Open Financial Exchange (OFX, QFX) statement parser library, ofxdump and ofx2qif | `41_system` |
 | `liborcus` | 0.20.2 | Spreadsheet import filters for ODS, XLSX, Excel 2003 XML, Gnumeric, CSV, JSON and YAML | `41_system` |
-| `libreoffice` | 26.8.0.3 | Office suite — Writer, Calc, Impress, Draw, Math and Base, with the gtk3 and qt6 front ends | `44_apps` |
+| `libreoffice` | 26.8.0.3 | Office suite — Writer, Calc, Impress, Draw, Math and Base, with the gtk3, qt6 and kf6 front ends | `44_apps` |
 | `librevenge` | 0.0.6 | Base library for document import filters: the drawing, text and spreadsheet interfaces | `41_system` |
 | `libvisio` | 0.1.11 | Microsoft Visio diagram import library | `41_system` |
 | `libwpd` | 0.10.3 | WordPerfect document import library | `41_system` |
 | `libwpg` | 0.3.4 | WordPerfect Graphics import library | `41_system` |
+| `libwps` | 0.4.14 | Import filter library and conversion tools for Microsoft Works documents | `41_system` |
 | `libxlsxwriter` | 1.2.4 | C library for writing Excel XLSX files | `41_system` |
 | `mdds` | 3.2.1 | Header-only multi-dimensional data structures for ixion and orcus | `41_system` |
 | `presenterm` | 0.16.1 | Slides from a markdown file, drawn in the terminal | `41_system` |
@@ -4130,11 +4364,12 @@ Notes:
 
 ### documents
 
-PDF, PostScript, DjVu, EPUB, CHM and DOCX viewers, libraries and tools, and ebook managers. 22
+PDF, PostScript, DjVu, EPUB, CHM and DOCX viewers, libraries and tools, and ebook managers. 23
 ports, under `ports/core/documents/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
+| `arianna` | 26.08.2 | E-book reader — an EPUB library with progress, search and themes, rendered by foliate-js | `44_apps` |
 | `calibre` | 9.15.0 | E-book library manager, converter, viewer and editor | `44_apps` |
 | `catdoc` | 0.95 | The text of Word, Excel and PowerPoint 97–2003 files on standard output — catdoc, xls2csv and catppt | `41_system` |
 | `chmlib` | 0.40a | Library for reading Microsoft Compiled HTML Help (CHM) files, with extract_chmLib | `41_system` |
@@ -4149,7 +4384,7 @@ ports, under `ports/core/documents/`.
 | `libharu` | 2.4.6 | Haru: a C library for writing PDF files — Blender's Grease Pencil PDF export | `41_system` |
 | `libspectre` | 0.2.12 | PostScript rendering library over the Ghostscript API | `41_system` |
 | `mupdf` | 1.28.4 | mutool — the PDF the command line can take apart — and the mupdf-gl and mupdf-x11 viewers | `42_graphics` |
-| `okular` | 26.08.1 | Universal document viewer — PDF, PostScript, DjVu, EPUB, XPS, comics, Markdown | `44_apps` |
+| `okular` | 26.08.2 | Universal document viewer — PDF, PostScript, DjVu, EPUB, XPS, comics, Markdown | `43_toolkits` |
 | `pdf4qt` | 1.6.0.0 | PDF viewer and editor — annotate, redact, sign, compare, split and merge pages | `44_apps` |
 | `pdfio` | 1.6.5 | C library for reading and writing PDF files | `41_system` |
 | `pdfium` | 7988 | Chromium's PDF renderer, as a shared library with its C headers | `42_graphics` |
@@ -4183,22 +4418,59 @@ Notes:
 
 ### pim
 
-Personal information: calendars, contacts, tasks, time tracking, notes and genealogy. 12 ports,
+Personal information: calendars, contacts, tasks, time tracking, notes and genealogy. 49 ports,
 under `ports/core/pim/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
+| `akonadi` | 26.08.2 | KDE PIM storage service: the Akonadi server, its agent framework and its client libraries | `43_toolkits` |
+| `akonadi-calendar` | 26.08.2 | KDE PIM library that keeps calendars in Akonadi, with iTIP handling and the kalendarac reminder daemon | `43_toolkits` |
+| `akonadi-calendar-tools` | 26.08.2 | Command-line tools for Akonadi calendars — konsolekalendar and calendarjanitor | `44_apps` |
+| `akonadi-contacts` | 26.08.2 | KDE PIM libraries that keep contacts in Akonadi, with the contact editor, viewer and vCard serializer | `43_toolkits` |
+| `akonadi-import-wizard` | 26.08.2 | Wizard that imports mail, accounts, contacts and calendars from other mail clients into KDE PIM | `43_toolkits` |
+| `akonadi-search` | 26.08.2 | Xapian indexing and search for Akonadi: the indexing agent, the search plugin and the contacts runner | `43_toolkits` |
+| `akonadiconsole` | 26.08.2 | Akonadi management and debugging console — agents, collections, items, the database and notifications | `44_apps` |
 | `calcurse` | 4.8.2 | A calendar and todo list whose storage is two text files | `41_system` |
+| `calendarsupport` | 26.08.2 | KDE PIM calendar support library: printing, incidence helpers and calendar selection for KOrganizer | `43_toolkits` |
+| `calindori` | 26.08.2 | Kirigami calendar — events, to-dos and reminders in local iCalendar files | `44_apps` |
+| `eventviews` | 26.08.2 | KDE PIM library of calendar views: agenda, month, timeline, to-do list and journal | `43_toolkits` |
+| `francis` | 26.08.2 | Pomodoro timer — focus and break periods with a progress ring and notifications | `44_apps` |
 | `gramps` | 6.0.8 | Genealogy: family trees, people, places, sources and reports | `44_apps` |
+| `grantleetheme` | 26.08.2 | KDE PIM library that loads and renders KTextTemplate themes for mail, contacts and feeds | `43_toolkits` |
+| `incidenceeditor` | 26.08.2 | KDE PIM library of the event, to-do and journal editor dialogs | `43_toolkits` |
+| `itinerary` | 26.08.2 | KDE Itinerary — tickets, bookings and boarding passes on one timeline, with live connections | `44_apps` |
+| `kaddressbook` | 26.08.2 | KDE address book — Akonadi contacts and groups, LDAP search and vCard import and export | `43_toolkits` |
+| `kalarm` | 26.08.2 | Personal alarm scheduler — message, sound, command and email reminders | `44_apps` |
+| `kcalutils` | 26.08.2 | KDE PIM library of calendar utilities: incidence formatting, iCalendar to HTML and date helpers | `43_toolkits` |
+| `kclock` | 26.08.2 | Clock — alarms, timers, a stopwatch and world clocks, with a panel widget | `44_apps` |
+| `kdepim-addons` | 26.08.2 | Plugins for KDE PIM — message viewer formatters, an ad blocker, editor tools, and calendar events for the Plasma clock | `44_apps` |
+| `kdepim-runtime` | 26.08.2 | Akonadi resources and agents — IMAP, POP3, Maildir, mbox, CalDAV, CardDAV, Google, EWS and local files | `43_toolkits` |
 | `khal` | 0.14.1 | Terminal calendar over a vdir | `41_system` |
 | `khard` | 0.21.0 | Terminal address book over a vdir | `41_system` |
+| `khealthcertificate` | 26.08.2 | Library that decodes and verifies digital health and vaccination certificates | `43_toolkits` |
+| `kitinerary` | 26.08.2 | KDE PIM library that extracts travel bookings from mail, PDF, Apple Wallet passes and ticket barcodes | `43_toolkits` |
+| `kongress` | 26.08.2 | Conference companion — talk schedules, favourites, reminders and venue indoor maps | `44_apps` |
+| `kontact` | 26.08.2 | KDE personal information suite — KMail, KOrganizer, KAddressBook and Akregator in one window | `44_apps` |
+| `kontactinterface` | 26.08.2 | KDE PIM library that embeds PIM applications in Kontact as plugins | `43_toolkits` |
+| `korganizer` | 26.08.2 | KDE calendar and scheduler — events, to-dos and journals on Akonadi | `44_apps` |
+| `kpeoplevcard` | 0.1.git20241202 | KPeople data source that reads contacts from vCard files under ~/.local/share/kpeoplevcard | `43_toolkits` |
+| `kpkpass` | 26.08.2 | KDE PIM library that reads Apple Wallet .pkpass boarding passes and tickets | `43_toolkits` |
+| `kteatime` | 26.08.2 | Tea timer — counts down a steeping time from the tray and says when the tea is ready | `44_apps` |
+| `ktimer` | 26.08.2 | Countdown launcher — run a command or raise a notification once a set delay has passed | `44_apps` |
 | `libical` | 4.0.5 | Reference implementation of the iCalendar and vCard formats | `41_system` |
+| `libkdepim` | 26.08.2 | KDE PIM shared widgets: progress manager, multi-line editors and service D-Bus interfaces | `43_toolkits` |
+| `libkgapi` | 26.08.2 | KDE library for Google Calendar, People, Drive, Tasks and Blogger APIs, with a SASL XOAUTH2 plugin | `43_toolkits` |
+| `merkuro` | 26.08.2 | Kirigami calendar, contacts and mail applications on Akonadi, with a Plasma contacts widget | `44_apps` |
 | `nb` | 7.25.5 | Notes and bookmarks in a git repository, from one command | `41_system` |
+| `pim-data-exporter` | 26.08.2 | Backs up and restores KDE PIM mail, accounts, identities, contacts, calendars and settings | `44_apps` |
+| `pimcommon` | 26.08.2 | KDE PIM shared library: autocorrection, address completion, Akonadi folder widgets and plugin interfaces | `43_toolkits` |
+| `plasma-phonebook` | 26.08.2 | Kirigami contact book — view and edit vCard contacts through KPeople | `44_apps` |
 | `qownnotes` | 26.9.13 | Plain-text Markdown notes with a live preview, to-do lists and optional Nextcloud sync | `44_apps` |
 | `taskwarrior` | 3.5.0 | Tasks with dates, dependencies and a query language | `41_system` |
 | `taskwarrior-tui` | 0.27.0 | Terminal UI for taskwarrior | `41_system` |
 | `timewarrior` | 1.10.0 | Time tracking in a text file | `41_system` |
 | `vdirsyncer` | 0.21.0 | Makes a CalDAV or CardDAV collection and a local vdir equal | `41_system` |
+| `zanshin` | 26.08.2 | Getting Things Done task manager on Akonadi to-dos, with a KRunner plugin | `44_apps` |
 | `zim` | 0.77.2 | Desktop wiki — linked notebook pages, journal, tasks and attachments in plain text | `44_apps` |
 
 Notes:
@@ -4226,7 +4498,7 @@ Notes:
 
 ### printing
 
-Printing, printer drivers, labels, scanning and OCR. 26 ports, under `ports/core/printing/`.
+Printing, printer drivers, labels, scanning and OCR. 28 ports, under `ports/core/printing/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -4242,18 +4514,20 @@ Printing, printer drivers, labels, scanning and OCR. 26 ports, under `ports/core
 | `gutenprint` | 5.3.5 | Printer drivers for inkjet and dye-sublimation printers | `41_system` |
 | `hplip` | 3.26.4 | HP printer and scanner drivers — hpcups, the hp backend, PPDs and the hpaio SANE backend | `44_apps` |
 | `ipp-usb` | 0.9.34 | A USB printer that speaks IPP-over-USB, presented to cups as a network one | `41_system` |
-| `ksanecore` | 26.08.1 | Qt 6 library that drives SANE scanners, without a user interface | `43_toolkits` |
+| `ksanecore` | 26.08.2 | Qt 6 library that drives SANE scanners, without a user interface | `43_toolkits` |
 | `libcupsfilters` | 2.2.1 | The filter functions behind every CUPS print filter, as a library | `43_toolkits` |
-| `libksane` | 26.08.1 | Qt 6 scanner widget over ksanecore, used by Skanlite and KolourPaint | `43_toolkits` |
+| `libksane` | 26.08.2 | Qt 6 scanner widget over ksanecore, used by Skanlite and KolourPaint | `43_toolkits` |
 | `libpaper` | 2.3.0 | Library and paper(1) tool for the system's default paper size and the known paper sizes | `41_system` |
 | `libppd` | 2.1.1 | The PPD handling CUPS 3 drops, as a library for its filters and daemons | `43_toolkits` |
 | `ocrmypdf` | 17.12.1 | Adds an invisible OCR text layer to a scanned PDF, in place | `42_graphics` |
+| `print-manager` | 6.8.2 | Plasma printing — the Printers page of System Settings, the print queue, the tray applet and new-printer notices | `50_desktop` |
 | `ptouch-print` | 1.9 | Prints text and images on Brother P-touch label printers over USB | `42_graphics` |
 | `sane-airscan` | 0.99.38 | Driverless scanning over eSCL and WSD | `44_apps` |
 | `sane-backends` | 1.4.0 | The scanner driver set, and the udev rules 70-kdos-*.rules already grant | `43_toolkits` |
-| `skanlite` | 26.08.1 | Image scanning application — preview, select and save scans through SANE | `44_apps` |
+| `skanlite` | 26.08.2 | Image scanning application — preview, select and save scans through SANE | `44_apps` |
+| `skanpage` | 26.08.2 | Document scanner — scan pages through SANE, reorder and edit them, recognise the text and save searchable PDFs | `44_apps` |
 | `splix` | 2.0.2 | CUPS driver for Samsung, Xerox, Dell and Lexmark SPL2/SPLc laser printers | `44_apps` |
-| `system-config-printer` | 1.5.18 | Printer configuration tool for CUPS — add, configure and manage print queues (GTK 3) | `44_apps` |
+| `system-config-printer` | 1.5.18 | Printer configuration tool for CUPS — add, configure and manage print queues (GTK 3) | `43_toolkits` |
 | `tessdata-eng` | 4.1.0 | English and script-detection models for the tesseract OCR engine | `41_system` |
 | `tesseract` | 5.5.3 | OCR engine — text from scanned images | `41_system` |
 
@@ -4302,12 +4576,12 @@ Notes:
 ### math
 
 Mathematics applications and libraries: computer algebra, arbitrary precision, solvers, calculators,
-statistics and plotting apps. 27 ports, under `ports/core/math/`.
+statistics and plotting apps. 31 ports, under `ports/core/math/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
-| `analitza` | 26.08.1 | KDE mathematical expression library — the parser, evaluator and 2D/3D plotter behind KAlgebra | `43_toolkits` |
-| `cantor` | 26.08.1 | Worksheet front end for Python, R, Octave, Maxima, Qalculate, KAlgebra and Lua | `43_toolkits` |
+| `analitza` | 26.08.2 | KDE mathematical expression library — the parser, evaluator and 2D/3D plotter behind KAlgebra | `43_toolkits` |
+| `cantor` | 26.08.2 | Worksheet front end for Python, R, Octave, Maxima, Qalculate, KAlgebra and Lua | `43_toolkits` |
 | `ceres-solver` | 2.2.0.git20251109 | Ceres Solver: non-linear least squares — Blender's camera and motion tracker | `41_system` |
 | `coolprop` | 8.0.0 | Thermophysical properties for 122 fluids, IAPWS-95 water/steam and humid air | `41_system` |
 | `cudd` | 3.0.0 | CUDD, the Colorado decision-diagram package — BDDs, ADDs and ZDDs for yices2's bit-vector reasoning | `41_system` |
@@ -4315,7 +4589,11 @@ statistics and plotting apps. 27 ports, under `ports/core/math/`.
 | `gmp` | 6.3.0 | Arbitrary-precision arithmetic library | `20_selfhost` (as a dependency) |
 | `gnuplot` | 6.0.5 | Plotting program driven by scripts, drawing to the terminal, to a Qt window or to PNG | `43_toolkits` |
 | `highs` | 1.15.1 | Linear and mixed-integer programming solver | `41_system` |
-| `kalgebra` | 26.08.1 | KDE graph calculator — expressions, 2D and 3D plots, and a console calculator | `44_apps` |
+| `kalgebra` | 26.08.2 | KDE graph calculator — expressions, 2D and 3D plots, and a console calculator | `44_apps` |
+| `kalk` | 26.08.2 | Convergent calculator — expressions, unit conversion and binary arithmetic on libqalculate | `44_apps` |
+| `kcalc` | 26.08.2 | Scientific calculator — arbitrary precision, bases, bit editing, constants and statistics | `44_apps` |
+| `kig` | 26.08.2 | KDE interactive geometry — constructions, loci, macros and Python scripts | `44_apps` |
+| `kmplot` | 26.08.2 | KDE function plotter — Cartesian, parametric, polar, implicit and differential plots | `44_apps` |
 | `labplot` | 2.12.1 | Data visualisation and analysis: plots, fits, FFT, spreadsheets and live data | `44_apps` |
 | `libpoly` | 0.2.1 | Polynomial arithmetic and real algebraic numbers — the library yices2's MCSAT solver reasons with | `41_system` |
 | `libqalculate` | 5.12.0 | Calculator library with unit and expression parsing | `41_system` |
@@ -4481,7 +4759,7 @@ Notes:
 
 ### gis
 
-GIS, maps, projections, GPS, navigation and location. 20 ports, under `ports/core/gis/`.
+GIS, maps, projections, GPS, navigation and location. 26 ports, under `ports/core/gis/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -4492,10 +4770,16 @@ GIS, maps, projections, GPS, navigation and location. 20 ports, under `ports/cor
 | `gpsd` | 3.27.5 | GPS daemon that presents receivers as a socket | `41_system` |
 | `gpxsee` | 16.16 | GPXSee: GPS track, route and waypoint viewer and analyser over offline raster and vector maps | `44_apps` |
 | `josm` | 19613 | Java OpenStreetMap editor: map data, GPS traces, imagery and validation (Java Swing) | `42_graphics` |
+| `kopeninghours` | 26.08.2 | Library that parses, validates and evaluates OpenStreetMap opening_hours expressions | `43_toolkits` |
+| `kosmindoormap` | 26.08.2 | OpenStreetMap indoor map renderer for stations and airports, with QML components | `43_toolkits` |
+| `kpublictransport` | 26.08.2 | Library and QML module for public-transport journeys, departures and onboard train Wi-Fi APIs | `43_toolkits` |
+| `ktrip` | 26.08.2 | Public transport journey planner — connections and departures through KPublicTransport | `44_apps` |
+| `kweather` | 26.08.2 | Weather forecasts — hourly and daily forecasts for saved places, with a Plasma widget and a KRunner plugin | `44_apps` |
+| `kweathercore` | 26.08.2 | Library that fetches met.no weather forecasts and alerts by place, with QML bindings | `43_toolkits` |
 | `libgeotiff` | 1.7.4 | Reads and writes the georeferencing tags of GeoTIFF rasters, with listgeo and geotifcp | `41_system` |
 | `librttopo` | 1.1.0 | RT Topology Library — PostGIS-style topology and validity functions, for SpatiaLite | `41_system` |
 | `libspatialindex` | 2.1.0 | R-tree spatial indexing, under QGIS | `41_system` |
-| `marble` | 26.08.1 | Marble: virtual globe and world atlas, with offline Atlas, satellite and OpenStreetMap vector views | `44_apps` |
+| `marble` | 26.08.2 | Marble: virtual globe and world atlas, with offline Atlas, satellite and OpenStreetMap vector views | `44_apps` |
 | `opencpn` | 5.14.0 | Chart plotter and navigation for S-57/S-63 ENC and raster charts, AIS and GPS (wxWidgets) | `44_apps` |
 | `organicmaps` | 2025.09.05.1 | Organic Maps: offline maps with search and turn-by-turn routing for walking, cycling and driving, from OpenStreetMap data | `44_apps` |
 | `pdal` | 2.10.2 | Point cloud translation and processing: LAS/LAZ, E57, Draco, HDF and the pdal tool | `43_toolkits` |
@@ -4878,7 +5162,7 @@ under `ports/core/ai/`.
 | `onnxruntime` | 1.30.0 | ONNX Runtime: inference for ONNX models on the CPU, as a C/C++ library and a Python module | `41_system` |
 | `opencv` | 4.14.0 | Computer vision and machine-learning library, with the tracking, optical-flow and extended image-processing contrib modules and Python bindings | `43_toolkits` |
 | `translatelocally` | 0.0.2.20250330 | translateLocally: machine translation on the CPU with Bergamot models, with the text never leaving the machine | `44_apps` |
-| `whisper-model-base-en` | 20241029 | The Whisper base.en speech model in ggml form, for whisper.cpp and kdos-rec | `41_system` |
+| `whisper-model-base-en` | 20241029 | The Whisper base.en speech model in ggml form, for whisper.cpp, kdos speech and Dolphin's Transcribe | `41_system` |
 | `whisper.cpp` | 1.9.4 | Speech to text on the CPU or a Vulkan GPU, with the model on the disk and nothing sent anywhere | `42_graphics` |
 
 Notes:
@@ -4901,7 +5185,7 @@ Notes:
 
 ### python
 
-The python3 interpreter, tkinter, and Python build, packaging and extension tooling. 36 ports, under
+The python3 interpreter, tkinter, and Python build, packaging and extension tooling. 37 ports, under
 `ports/core/python/`.
 
 | Port | Version | Description | Phase |
@@ -4917,6 +5201,7 @@ The python3 interpreter, tkinter, and Python build, packaging and extension tool
 | `python3-hatch-nodejs-version` | 0.4.0 | Hatchling plugins that read version and metadata from package.json | `40_lang` |
 | `python3-hatch-vcs` | 0.5.0 | Version from VCS for hatchling projects, through setuptools-scm | `30_foundation` |
 | `python3-hatchling` | 1.32.4 | Hatch's PEP 517 backend, which bootstraps itself — scikit-build-core builds with it | `30_foundation` |
+| `python3-incremental` | 24.11.0 | Version numbering for Python projects, with the setuptools and hatchling plugins that read it | `40_lang` |
 | `python3-maturin` | 1.15.0 | Build backend for Rust-based Python extensions | `40_lang` |
 | `python3-meson-python` | 0.21.1 | The PEP 517 backend numpy, scipy and matplotlib build through | `40_lang` |
 | `python3-nanobind` | 3.1.0 | C++17 binding library for Python — pikepdf and CoolProp generate through it | `40_lang` |
@@ -4961,16 +5246,18 @@ Notes:
 ### python-libs
 
 General-purpose python3-* runtime libraries: text, templating, markup, parsing, config, CLI, system,
-files, crypto, imaging. 67 ports, under `ports/core/python-libs/`.
+files, crypto, imaging. 70 ports, under `ports/core/python-libs/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
 | `python3-attrs` | 26.1.0 | Classes without boilerplate: declared attributes, validators and converters for Python | `40_lang` |
+| `python3-automat` | 25.4.16 | Finite-state machines for Python, declared as states, inputs and outputs on a class | `40_lang` |
 | `python3-bcrypt` | 5.0.0 | The bcrypt password hash for Python, in Rust | `40_lang` |
 | `python3-click` | 8.5.0 | Composable command-line interfaces for python programs | `40_lang` |
 | `python3-click-log` | 0.4.0 | Logging integration for click command-line programs | `40_lang` |
 | `python3-colorama` | 0.4.6 | ANSI colour codes in Python that also work on a Windows console | `40_lang` |
 | `python3-configobj` | 5.0.9 | INI-style configuration files with validation, for python programs | `40_lang` |
+| `python3-constantly` | 23.10.4 | Symbolic constants for Python: named, valued and flag constants grouped in containers | `40_lang` |
 | `python3-cryptography` | 50.0.1 | Cryptographic primitives and recipes for Python | `40_lang` |
 | `python3-cssselect` | 1.5.0 | CSS selectors translated to XPath — Inkscape's extension library selects with it | `40_lang` |
 | `python3-cups` | 2.0.4 | libcups bindings for Python, for system-config-printer | `41_system` |
@@ -5031,6 +5318,7 @@ files, crypto, imaging. 67 ports, under `ports/core/python-libs/`.
 | `python3-wcwidth` | 0.9.1 | The column width of a Unicode string in a terminal | `40_lang` |
 | `python3-yaml` | 6.0.3 | Python bindings for YAML, using libyaml | `30_foundation` |
 | `python3-yapps` | 2.2.0 | Yet Another Python Parser System, the yapps2 LL(1) parser generator | `40_lang` |
+| `python3-zope-interface` | 8.7 | Interfaces for Python: declared contracts that objects provide and adapters look up | `40_lang` |
 | `python3-zstandard` | 0.25.0 | Python bindings for the zstd library | `40_lang` |
 
 Notes:
@@ -5068,7 +5356,7 @@ Notes:
 
 ### python-net
 
-python3-* HTTP, web-framework, TLS-trust and network-stack modules. 22 ports, under
+python3-* HTTP, web-framework, TLS-trust and network-stack modules. 25 ports, under
 `ports/core/python-net/`.
 
 | Port | Version | Description | Phase |
@@ -5082,6 +5370,7 @@ python3-* HTTP, web-framework, TLS-trust and network-stack modules. 22 ports, un
 | `python3-flask-cors` | 6.0.5 | Cross-origin resource sharing (CORS) headers for Flask applications | `40_lang` |
 | `python3-html5lib` | 1.1 | An HTML parser following the WHATWG HTML specification, for Python | `40_lang` |
 | `python3-httplib2` | 0.32.0 | An HTTP client with caching, keep-alive and digest authentication | `40_lang` |
+| `python3-hyperlink` | 21.0.0 | Immutable URL objects for Python, with parsing, joining and IRI to URI conversion | `40_lang` |
 | `python3-idna` | 3.20 | Internationalised domain names in applications (IDNA 2008 and UTS #46) | `40_lang` |
 | `python3-itsdangerous` | 2.2.0 | Cryptographically signed serialisation of data for passing through untrusted channels | `40_lang` |
 | `python3-lxmf` | 1.1.1 | Store-and-forward messaging over Reticulum, and the lxmd propagation node | `40_lang` |
@@ -5091,10 +5380,12 @@ python3-* HTTP, web-framework, TLS-trust and network-stack modules. 22 ports, un
 | `python3-rns` | 1.5.4 | Reticulum encrypted mesh networking over LoRa, packet radio, WiFi or anything that carries bytes | `40_lang` |
 | `python3-soupsieve` | 2.10 | CSS selectors for Beautiful Soup | `40_lang` |
 | `python3-truststore` | 0.10.4 | Verify TLS against the system certificate store through the ssl module | `40_lang` |
+| `python3-twisted` | 26.4.0 | Event-driven networking engine for Python: TCP, UDP, TLS, HTTP, SSH, DNS and mail protocols | `40_lang` |
 | `python3-urllib3` | 2.8.0 | HTTP client with connection pooling, retries and TLS verification | `40_lang` |
 | `python3-waitress` | 3.0.2 | Waitress, a pure-Python production WSGI server | `40_lang` |
 | `python3-webencodings` | 0.6.1 | The WHATWG Encoding standard's labels and legacy decoders, for Python | `40_lang` |
 | `python3-werkzeug` | 3.1.9 | Werkzeug, the WSGI toolkit under Flask: request, response, routing and a development server | `40_lang` |
+| `python3-ytmusicapi` | 1.12.3 | Unofficial YouTube Music API for Python: search, library, playlists and uploads | `40_lang` |
 
 Notes:
 
@@ -5135,7 +5426,7 @@ Notes:
 
 ### python-gui
 
-python3-* GUI toolkit, desktop and D-Bus bindings. 16 ports, under `ports/core/python-gui/`.
+python3-* GUI toolkit, desktop and D-Bus bindings. 17 ports, under `ports/core/python-gui/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -5145,6 +5436,7 @@ python3-* GUI toolkit, desktop and D-Bus bindings. 16 ports, under `ports/core/p
 | `python3-gobject` | 3.58.0 | GObject introspection bindings: GLib, GTK and every introspected library, from Python | `42_graphics` |
 | `python3-kivy` | 2.3.1 | Python UI framework drawing with OpenGL through SDL2 | `42_graphics` |
 | `python3-opengl` | 3.1.10 | The OpenGL, GLU and GLUT bindings for Python, loaded through ctypes | `42_graphics` |
+| `python3-pyatspi` | 2.58.2 | The AT-SPI2 accessibility API as a Python module, over Atspi's introspection | `42_graphics` |
 | `python3-pyqt5` | 5.15.11 | Python bindings for Qt 5, which GNU Radio's gr-qtgui and the Qt 5 Python tools are written in | `43_toolkits` |
 | `python3-pyqt5-sip` | 12.19.0 | The sip runtime module every PyQt5 extension is linked through | `41_system` |
 | `python3-pyqt6` | 6.11.0 | Python bindings for Qt 6, which Calibre, Anki, QGIS, Picard and git-cola are written in | `43_toolkits` |
@@ -5286,37 +5578,41 @@ Notes:
 ## KDOS's own programs
 
 These ports are KDOS's own code, filed under `src/` by the part of the system they belong to rather
-than on a shelf. Three programs under `src/` have no recipe and are not catalogued:
-`src/system/kdos-kpkg`, the package manager, which `10_bootstrap` compiles by script; and
-`src/devtools/kdosbuild` and `src/devtools/kdos-portup`, the build orchestrator and the upstream
-version checker behind `ports/update`, which run on the build host rather than in the image.
-`src/libs` holds the `libk*` libraries these programs compile in; it holds no ports.
+than on a shelf. Four directories under `src/` have no recipe and are not catalogued:
+`src/system/kdos-kpkg`, the package manager, which `10_bootstrap` compiles by script;
+`src/system/kinstall-core`, the installer's backend, which `kdos-installer`'s recipe compiles into
+`kinstall`; and `src/devtools/kdosbuild` and `src/devtools/kdos-portup`, the build orchestrator and
+the upstream version checker behind `ports/update`, which run on the build host rather than in the
+image. `src/libs` holds the `libk*` libraries these programs compile in; it holds no ports.
 
 ### src/system
 
-The system layer: the `kdos` command and its services, packs and boxes, the installer, and the two books on the image. On the
-`PORT_REPO` of every phase from `40_lang` to `60_kernel`. 7 ports.
+The system layer: the `kdos` command and its services, packs and boxes, the box socket, the
+installer, and the two books on the image. On the `PORT_REPO` of every phase from `40_lang` to
+`60_kernel`. 8 ports.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
-| `kdos-appbox` | 1.2.0 | KDOS alien app runtime and appbox manager | `44_apps` |
+| `kdos-appbox` | 1.3.0 | KDOS alien app runtime and appbox manager | `43_toolkits` |
 | `kdos-boxinit` | 0.1.0 | pid 1 inside a pack box, in place of distrobox-init | `41_system` |
-| `kdos-doc` | 1.0.0 | The KDOS book as HTML, kdos(7) and a manual page per kdos-* command | `41_system` |
-| `kdos-installer` | 4.0 | KDOS installer — the disk wizard, C with no libraries | `10_bootstrap` (by script) |
+| `kdos-boxsock` | 0.2.0 | Per-launcher tagged Wayland socket in a box's private runtime directory — the security-context-v1 engine | `42_graphics` |
+| `kdos-doc` | 1.0.0 | The KDOS book as HTML, kdos(7), kdos-doc and a manual page per kdos-* command | `41_system` |
+| `kdos-installer` | 5.0 | KDOS installer — the terminal wizard and the headless backend, C with no libraries | `10_bootstrap` (by script) |
 | `kdos-kfs` | 1.0.0 | KDOS from Scratch, the build book, as HTML and one PDF | `41_system` |
 | `kdos-pack` | 0.1.0 | Build, sign, index and delta packs | `41_system` |
-| `kdos-tools` | 1.2.0 | KDOS system tools — kdos, services, getty, screenshots, fetch | `42_graphics` |
+| `kdos-tools` | 1.3.0 | KDOS system tools — kdos, services, getty, slots, fetch | `42_graphics` |
 
 Notes:
 
 - `kdos-appbox`: the `xdg-open` link to it is installed by this package in `/usr/local/bin`, ahead
   of xdg-utils' `/usr/bin/xdg-open` on `PATH`; a link under `fs/` would outlive the binary it names.
-  The store catalogue ships with the program: without it the store opens empty and reports no error.
+  The box catalogue ships with the program, at `/usr/share/kdos/appstore/catalogue`.
 - `kdos-boxinit`: links statically; it runs inside a box whose `/usr` is a glibc pack, where a
   dynamically linked musl binary finds no loader.
-- `kdos-installer`: every `.c` in its directory is compiled by glob, as
-  `script/phases/10_bootstrap/130_kinstall.sh` compiles it; a name list in either place lets the two
-  builds become different programs.
+- `kdos-boxsock`: generates the `security-context-v1` client code from wayland-protocols at build
+  time, so it needs no compositor's headers.
+- `kdos-installer`: `build.sh` compiles `src/system/kinstall-core` into a static archive and links
+  the terminal front end over it as `kinstall`, the binary `kdos-installer-gui` drives.
 - `kdos-kfs`: renders from a checkout, never from `/ports`: the book reads every recipe under
   `ports/core` and the phase lists under `script/phases`. Its directory holds two links,
   `docs` to `docs/kfs` and `book` to `script/book`, which the recipe hash follows; a recipe edit
@@ -5324,87 +5620,99 @@ Notes:
   comes from the package database, so it names only what was installed before this port.
   `usr/share/doc/kfs` is in the prune's `DOC_KEEP`, or the HTML and the PDF would be stripped.
 - `kdos-tools`: `kdos-bootctl` is linked into `/usr/bin`, the path `090_initramfs.sh` copies it from.
-  `-DKDOS_HAVE_LIBPNG` gates the wallpaper retint, so the host selftest builds without libpng.
 
 ### src/art
 
-The look of the system: theme, icons, cursors, the GTK theme, the boot splash and the demo. On the
-`PORT_REPO` of every phase from `40_lang` to `60_kernel`. 6 ports.
+The look of the system: the identity generators, icons, wallpapers, sounds, the login screen theme,
+the curated add-ons, the boot splash and the demo. On the `PORT_REPO` of every phase from `40_lang`
+to `60_kernel`. 8 ports.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
+| `kdos-addons` | 1.0.0 | KDOS's curated offline add-ons — wallpapers, Plasma and Konsole colour schemes, KWin scripts and widgets | `50_desktop` |
 | `kdos-bb` | 1.3.0 | The AAlib demo, hard-forked and rebranded, with a threaded mixer | `41_system` |
-| `kdos-cursors` | 2.0 | KDOS phosphor cursor theme | `41_system` |
-| `kdos-gtk-theme` | 6.5 | KDOS phosphor GTK theme — a recoloured adw-gtk3 | `41_system` |
-| `kdos-icons` | 20250501 | KDOS phosphor icon theme — a recoloured Papirus | `41_system` |
-| `kdos-splash` | 1.1 | Boot splash — CRT power-on animation drawn on the framebuffer | `41_system` |
-| `kdos-theme` | 1.0.0 | KDOS theme generators — GTK stylesheet, icons, cursors | `41_system` |
+| `kdos-icons` | 20261028 | KDOS icon themes — the KDOS marks over Breeze, following the accent | `41_system` |
+| `kdos-sddm-theme` | 1.0.0 | KDOS login screen for SDDM — the Breeze greeter in the accent, with the KDOS mark | `50_desktop` |
+| `kdos-sounds` | 1.0.0 | KDOS sound theme — the machine's synthesised voices under their freedesktop names | `42_graphics` |
+| `kdos-splash` | 1.2 | Boot splash drawn on the framebuffer — a fade from black, or Phosphor mode's CRT power-on | `41_system` |
+| `kdos-theme` | 2.0.0 | KDOS identity generators — KDE colour schemes, Konsole, qt5ct, wallpapers, greeter palette | `41_system` |
+| `kdos-wallpapers` | 1.0.0 | KDOS wallpapers — the mark in each accent, dark and light, as Plasma wallpaper packages | `41_system` |
 
 Notes:
 
 - `kdos-bb`: built without configure; `src/aconfig.h` holds the platform answers.
-- `kdos-cursors`, `kdos-gtk-theme`, `kdos-icons`: the vendored artwork ships under
-  `/usr/share/kdos/`, because `kdos theme <accent>` regenerates each theme from it on the running
-  system. `kdos-gtk-theme` and `kdos-icons` install no `/etc/skel` copy: `70_image/050_theme.sh`
-  generates it with `kdos theme $KDOS_ACCENT`, which `70_image/phase.env` sets to `bone`.
-- `kdos-icons`: the marks (`start-here`, `kdos-launcher`, `distributor-logo-kdos`) go into
-  `icons/hicolor` as well as the theme. libkicon reads its atlas, then hicolor's `apps/` PNGs, then
-  `pixmaps/`, and never the theme directory, so without them the Start button draws a fallback
-  glyph. The atlas is optional: without `atlas/atlas.kia` the desktop draws its glyph tier.
+- `kdos-theme`: builds the `kdos-theme` generator, which `kdos-plasma-look`, `kdos-wallpapers` and
+  `kdos-addons` run at build time and `kdos theme <accent>` runs on the running system.
+- `kdos-sddm-theme`: copies the Breeze SDDM theme that `plasma-desktop` installs and applies
+  `kdos-sddm.patch` to it, so it is built in `50_desktop`, after that theme exists.
+- `kdos-sounds`: renders its sounds with `kdos-sfx render` at build time; no recorded audio is in
+  the tree.
 - `kdos-splash`: runs from the initramfs, so it is linked statically, takes libkcolor's header
   only, and ships the console font decompressed to need no zlib.
 
 ### src/desktop
 
-The compositor, the panel, the terminal, the lock screen, the resource monitor, the box socket, the
-recorder and the portal. On the `PORT_REPO` of `50_desktop` only. 8 ports.
+KDOS's own parts of the Plasma desktop: System Settings pages, a kded module, a Discover backend,
+KWin effects and scripts, Plasma widgets, a KRunner runner, a KIO worker, a System Monitor plugin,
+the Welcome Center pages, the global themes and the graphical installer. On the `PORT_REPO` of
+`50_desktop` only, because they build against KWin, libplasma and Discover, which that phase
+installs. 21 ports.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
-| `kdos-boxsock` | 0.1.0 | Per-box tagged Wayland socket — the security-context-v1 engine | `50_desktop` |
-| `kdos-comp` | 0.20.0 | The KDOS compositor — a hard fork of labwc 0.20.0 | `50_desktop` |
-| `kdos-lock` | 0.2.0 | The KDOS lock screen and its setuid password checker | `50_desktop` |
-| `kdos-record` | 0.1.0 | Screen recorder: the ScreenCast portal into a GStreamer pipeline | `50_desktop` |
-| `kdos-res` | 0.2.0 | KDOS Resources — per-device pages, a process table and an application rollup | `50_desktop` |
-| `kdos-shell` | 0.2.0 | The KDOS shell — a character-cell panel on layer-shell | `50_desktop` |
-| `kdos-term` | 0.1.0 | KDOS terminal emulator | `50_desktop` |
-| `xdg-desktop-portal-kdos` | 0.3.0 | FileChooser, Settings, AppChooser and Access portal backend for KDOS | `50_desktop` |
+| `kcm-kdos-boxes` | 1.0.0 | System Settings page for boxes — per-box permissions, grants, colour and lifecycle over kdos-box | `50_desktop` |
+| `kcm-kdos-firewall` | 1.0.0 | System Settings Firewall page — named services through kdos-powerd, and the prompt that offers to let a blocked program in | `50_desktop` |
+| `kcm-kdos-health` | 1.0.0 | Health page of Info Center and System Settings, and the KDOS rows of About this System | `50_desktop` |
+| `kcm-kdos-look` | 1.0.0 | System Settings KDOS Look page — one accent everywhere, and Phosphor mode | `50_desktop` |
+| `kcm-kdos-system` | 1.0.0 | System Settings page for the A/B system slots — which version starts, its trial, and where updates come from | `50_desktop` |
+| `kded-kdos` | 1.0.0 | KDOS kded6 module — keeps the accent in step with Plasma, offers sets found on sticks, starts Samba for the first shared folder | `50_desktop` |
+| `kdos-discover` | 0.1.0 | Discover backend for packs, boxes and ports, and the A/B update tray notifier | `50_desktop` |
+| `kdos-installer-gui` | 1.0.0 | Install KDOS — the graphical installer, a Kirigami front end over kinstall | `50_desktop` |
+| `kdos-kwin-motion` | 1.0.0 | KDOS CRT motion for KWin — windows unfold and fold, the splash powers on, logout powers down | `50_desktop` |
+| `kdos-notice` | 0.1.0 | The system's notices in Plasma: restarts after an update, CVEs, the trial slot, a rollback, memory kills; confirms a booted slot | `50_desktop` |
+| `kdos-plasma-look` | 1.0.0 | KDOS Modern for Plasma — eight global themes, the kdos Plasma style, the desks, KSplash | `50_desktop` |
+| `kdos-runner` | 0.1.0 | KDOS in KRunner: kdos verbs, favourites, routes, settings pages, shortcuts, the offline library and the local model | `50_desktop` |
+| `kdos-transcribe` | 1.0.0 | Transcribe in the file manager's menu for audio and video, offline, while a speech model is installed | `50_desktop` |
+| `kdos-welcome` | 1.0.0 | The KDOS tour in Welcome Center — accessibility, accent, Phosphor mode, desk, system and help pages | `50_desktop` |
+| `kio-library` | 1.0.0 | library:/, the offline library as a folder, its Places entry and the menu's Library category | `50_desktop` |
+| `ksystemstats-kdos` | 1.0.0 | KDOS sensors for System Monitor: boxes, energy by application, the A/B slots; the KDOS Meters face and page | `50_desktop` |
+| `kwin-effect-kdos-keys` | 1.0.0 | KDOS key card for KWin — every global shortcut on one searchable card, on Meta+F1 and Meta+/ | `50_desktop` |
+| `kwin-script-kdos-runraise` | 1.0.0 | KDOS run-or-raise for KWin — one key per terminal program raises its Konsole window or opens one | `50_desktop` |
+| `kwin-script-kdos-window-memory` | 1.0.0 | KDOS window memory for KWin — a program's window opens where its last one closed | `50_desktop` |
+| `plasmoid-kdos-checklist` | 1.0.0 | First-run checklist that ticks itself: the org.kdos.checklist QML module and its tray entry | `50_desktop` |
+| `plasmoid-kdos-privacy` | 1.0.0 | Privacy lamps for the system tray: microphone, camera and screen, naming the program and its box | `50_desktop` |
 
 Notes:
 
-- `kdos-lock`, `kdos-res`, `kdos-shell`, `kdos-term`: libkwl compiles whole, and `kwl.c` includes
-  every protocol header it can use, so each consumer generates the client header and the
-  private-code of the whole set (cursor-shape, tablet, viewporter, fractional-scale,
-  primary-selection, xdg-shell, xdg-decoration, xdg-foreign, ext-session-lock, layer-shell,
-  foreign-toplevel); a missing one fails the compile or the link. fontconfig is named beside fcft,
-  which carries it only as `Requires.private`.
-- `kdos-lock`, `kdos-res`: the setuid helpers `kdos-checkpass` and `kdos-resctl` are compiled on
-  their own lines and link libc, libcrypt and libkbase only, never the Wayland stack.
-- `kdos-res`: every `.c` but `resctl.c` is compiled by glob, as the selftest compiles it.
-- `kdos-shell`: only the build-time `mkcharidx` links ICU; `kdos-shell` must not. The style picker
-  is linked as `kdos-style`, because `kdos-theme` is the generator's port and path.
-- `kdos-term`: ncurses is in `depends` for its terminfo database, not to link.
-- `kdos-record`: GStreamer is a run-time dependency; the pipeline runs as `gst-launch-1.0`.
-- `xdg-desktop-portal-kdos`: the backend installs as `/usr/lib/xdg-desktop-portal-kdos`, where
-  `kdos-desktop-start` looks for portal daemons. Without `kdos.portal` (its `UseIn`) or the D-Bus
-  activation file the backend is never used.
+- Every Qt port here builds with extra-cmake-modules and the KDE install directories, the same shape
+  as a KDE port; `kdos-notice` and `kdos-runner` are C on basu and libkbase, and `kdos-discover`
+  compiles its root helper `kdos-ports-helper` in C beside the Qt backend.
+- `kcm-kdos-firewall`, `kdos-notice`: their autostart entries go under
+  `/usr/share/kdos/xdg/autostart`, which a session finds through `XDG_CONFIG_DIRS`
+  (`/etc/profile.d/10-wayland.sh` appends `/usr/share/kdos/xdg`).
+- `kdos-plasma-look`: runs `kdos-theme` for the colour schemes, the Konsole schemes, the qt5ct
+  palettes and the greeter's colours, and fails the build when a generated scheme misses its
+  contrast floor (`kdos-theme contrast`).
+- `kdos-installer-gui`: `KDOS_KINSTALL` names `/usr/bin/kinstall`, the backend the pkexec policy
+  lets it run as root.
 
 ### src/daemons
 
-The root daemons. On the `PORT_REPO` of `50_desktop` only. 5 ports.
+The root daemons. On the `PORT_REPO` of `50_desktop` only. 6 ports.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
-| `kdos-energyd` | 0.1.0 | Relative per-app Energy Impact from RAPL, attributed by container | `50_desktop` |
-| `kdos-mountd` | 0.1.0 | Removable media for a desktop that is not root | `50_desktop` |
-| `kdos-oomd` | 0.1.0 | PSI-triggered memory-pressure killer that spares the desktop | `50_desktop` |
+| `kdos-energyd` | 0.2.0 | Relative per-app Energy Impact from RAPL, attributed by container | `50_desktop` |
+| `kdos-oomd` | 0.2.0 | PSI-triggered memory-pressure killer that spares the desktop | `50_desktop` |
 | `kdos-packd` | 0.1.0 | Mounts packs, composes box root filesystems, verifies signatures | `50_desktop` |
-| `kdos-powerd` | 0.1.0 | Suspend, poweroff and reboot for a desktop that is not root | `50_desktop` |
+| `kdos-powerd` | 0.2.0 | The firewall's named services and the look of the machine before a login, for a desktop that is not root | `50_desktop` |
+| `kdos-settingsd` | 0.1.0 | hostname1, timedate1 and locale1 on the system bus, over the files KDOS keeps | `50_desktop` |
+| `kdos-sysupdated` | 0.1.0 | org.freedesktop.sysupdate1 and io.kdos.Slots1 over the A/B root slots, for Discover | `50_desktop` |
 
 Notes:
 
-- Every daemon here links only the `libk*` libraries its `build.sh` names: each is code running as
-  root.
+- Every daemon here links only the `libk*` libraries its `build.sh` names, and basu where it is on
+  the system bus: each is code running as root.
 - `kdos-powerd`: libkcolor is linked so the `accent` verb matches its argument against the
   compiled-in scheme list; that match is the verb's whole authorisation check.
 
@@ -5412,28 +5720,23 @@ Notes:
 
 These library ports are named by no recipe's `depends =`: nothing in the tree links them. They are
 built and shipped as the platform a program written on KDOS builds against, so that the GTK 4, Qt 6,
-KDE Frameworks, Qt 5 and C/C++ toolkits an application developer reaches for are complete on the
-image rather than missing their less common pieces. Together they install about 190 MB, 149 MB of it
+Qt 5 and C/C++ toolkits an application developer reaches for are complete on the
+image rather than missing their less common pieces. Together they install about 180 MB, 149 MB of it
 `webkitgtk6`, the GTK 4 web view. Each is in its shelf's table above as well.
 `testing/bookcounts.py` fails when a port here gains a consumer, because it then belongs to that
 consumer rather than to the platform.
 
 | Port | Shelf | Platform |
 |---|---|---|
-| `bluez-qt` | `kf6` | KDE Frameworks: Bluetooth |
 | `glog` | `devlibs` | C++ logging |
 | `goocanvas` | `graphics-libs` | GTK 3 canvas |
 | `gtkmm4` | `gtk` | GTK 4 from C++ |
 | `gumbo-parser` | `formats` | HTML5 parsing in C |
-| `kdesu` | `kf6` | KDE Frameworks: running a command as another user |
-| `kholidays` | `kf6` | KDE Frameworks: holiday calendars |
-| `kwayland` | `kde` | Qt 6 Wayland client protocols |
 | `libdbusmenu-lxqt` | `qt-extra` | Qt 6 tray-icon menus |
 | `libetpan` | `mail` | Mail protocols in C |
 | `libgrapheme` | `i18n` | Unicode segmentation in C |
 | `libspelling` | `spelling` | GTK 4 spell checking |
 | `libxdg-basedir` | `base-libs` | XDG base directories in C |
-| `networkmanager-qt` | `kf6` | KDE Frameworks: NetworkManager |
 | `qt5-qtquickcontrols2` | `qt5` | Qt 5 Quick Controls 2 |
 | `rttr` | `devlibs` | C++ run-time reflection |
 | `sdl3-mixer` | `game-libs` | SDL 3 audio mixing |

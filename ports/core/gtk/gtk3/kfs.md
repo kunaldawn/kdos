@@ -40,7 +40,8 @@ toolkit in the tree it is for applications only, and no part of the KDOS desktop
   and Vietnamese ones) into `libgtk-3` instead of installing each as a loadable module under
   `/usr/lib/gtk-3.0/3.0.0/immodules`. GTK 3 finds a loadable module only through the
   `immodules.cache` that `gtk-query-immodules-3.0` writes, and upstream's install step skips writing
-  it under `DESTDIR`; built in, the modules need no cache.
+  it under `DESTDIR`; built in, the modules need no cache. The one loadable module in the tree,
+  [fcitx5-gtk](#port-fcitx5-gtk)'s, writes the cache itself.
 - `-Dinstalled_tests=false`, `-Ddemos=false`, `-Dexamples=false` — Install no test programs and
   build neither `gtk3-demo`, `gtk3-widget-factory` nor the examples; the demos and examples are on
   by default upstream.

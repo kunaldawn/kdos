@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdeedu-data
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 3d2f1134bea020a0d237d186dc3b30ef69f6c313a2ca31d020b6797bdeae1813  kdeedu-data-26.08.2.tar.xz
+description = KDE Education shared data — KVTML vocabulary lists and icons for the education apps
+homepage    = https://invent.kde.org/education/kdeedu-data
+license     = GPL-2.0-only
+depends     = cmake ninja extra-cmake-modules

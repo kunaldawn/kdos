@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ksystemlog
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 165f6b26e5cbaab13f85b7d3dc4a0d34d840018fd2e01ed6f17aa38ab8b8406b  ksystemlog-26.08.2.tar.xz
+description = System log viewer — syslog, kernel, authentication, cron, CUPS and Samba logs in tabs, with filters
+homepage    = https://apps.kde.org/ksystemlog/
+license     = GPL-2.0-or-later AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kxmlgui kcoreaddons kwidgetsaddons kitemviews kio kconfig karchive ki18n kcompletion ktextwidgets kcrash kdoctools kconfigwidgets

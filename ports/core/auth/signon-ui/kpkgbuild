@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = signon-ui
+version     = 0.17.git20231016
+release     = 1
+_commit     = eef943f0edf3beee8ecb85d4a9dae3656002fc24
+source      = $name-$version.tar.gz::https://gitlab.com/accounts-sso/signon-ui/-/archive/$_commit/signon-ui-$_commit.tar.gz
+sha256      = 0906a1adee88e331e9dcf1f2d5978c24f8564fb734f5c114c88bddb63196d3d4  signon-ui-0.17.git20231016.tar.gz
+description = signond's browser dialog: shows a provider's sign-in page for an OAuth login
+homepage    = https://gitlab.com/accounts-sso/signon-ui
+license     = GPL-3.0-only
+depends     = pkgconf qt6-qtbase qt6-qtdeclarative qt6-qtwebengine libaccounts-qt signond libnotify libproxy

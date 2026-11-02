@@ -1,0 +1,16 @@
+{"t":"plan","steps":[{"index":0,"title":"Prepare","detail":"unmount the target, stop swap","state":"pending"},{"index":1,"title":"Partition","detail":"write the GPT layout: ESP, BIOS boot, root","state":"pending"},{"index":2,"title":"Copy system","detail":"the live system, without the live session","state":"pending"},{"index":3,"title":"Slot B","detail":"the second root, filled for A/B updates","state":"skipped"},{"index":4,"title":"Finish","detail":"flush and unmount","state":"pending"}]}
+{"t":"S","step":0,"title":"Prepare"}
+{"t":"P","step":0,"frac":-1.0000}
+{"t":"N","step":0,"text":"checking the target"}
+{"t":"P","step":0,"frac":1.0000}
+{"t":"S","step":1,"title":"Partition"}
+{"t":"L","text":"$ sfdisk --wipe always /dev/vda"}
+{"t":"S","step":2,"title":"Copy system"}
+{"t":"P","step":2,"frac":0.5000}
+{"t":"N","step":2,"text":"1.2G copied  45.67MB/s  ETA 0:00:12"}
+{"t":"W","text":"Limine has no BOOTIA32.EFI — this disk will not start on 32-bit UEFI firmware"}
+{"t":"W","text":"Limine has no BOOTIA32.EFI — this disk will not start on 32-bit UEFI firmware"}
+{"t":"K","step":3}
+{"t":"S","step":4,"title":"Finish"}
+{"t":"D"}
+{"t":"exit","status":0}

@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   No timed lock on the live medium.
+#
+# The live session is SDDM's autologin of an account with no password: a
+# screen that locks itself by the clock asks a person trying the system for a
+# password nobody gave them, and the empty one that unlocks it is nowhere on
+# the screen. This directory goes FIRST in XDG_CONFIG_DIRS, and only in a
+# session whose root is the live medium's overlay, so it outranks /etc/xdg
+# there; the person's own choice in ~/.config still outranks it. Meta+L and
+# lock-on-resume still lock.
+# ---------------------------------
+
+[Daemon]
+Autolock=false
