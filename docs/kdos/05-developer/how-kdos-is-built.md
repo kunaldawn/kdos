@@ -519,9 +519,10 @@ dependencies reach. Every port's dependencies are in its own phase or an earlier
 Their environment adds `src/system` and `src/art` to the repositories `kpkg` searches, so KDOS's
 own tools, identity generators, icon marks, wallpapers, sounds, splash, pack tools, box launcher
 and `kdos-bb` are built here as ordinary ports alongside upstream software, each in the phase its
-dependencies put it in: `kdos-tools` and `kdos-sounds` in `42_graphics`, because the tools'
-keyboard support reaches Wayland and the sound theme is rendered with them, and `kdos-appbox` in
-`43_toolkits`, because it depends on `podman`. The
+dependencies put it in: `kdos-tools` in `42_graphics`, because the tools' keyboard support
+reaches Wayland; `kdos-sounds` in `43_toolkits`, because it inherits Plasma's Ocean sound theme,
+whose ECM configure needs Qt's `qtpaths`; and `kdos-appbox` in `43_toolkits`, because it depends
+on `podman`. The
 dependency graph also puts `podman`, `distrobox` and `qemu` in `43_toolkits`: `podman` and
 `distrobox` because GnuPG's passphrase prompt, which they reach through `gpgme`, builds against Qt;
 `qemu` because its display backend depends on GTK 3 (`gtk3`, `vte3`) directly.

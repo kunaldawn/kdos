@@ -497,7 +497,6 @@ gtksourceview5		libgtksourceview-5.so	usr/include/gtksourceview-5 usr/share/gtks
 gts	delaunay gts-config gts2dxf gts2oogl gts2stl gts2xyz gtscheck gtscompare gtstemplate happrox stl2gts transform	libgts-0.7.so libgts.so	usr/share/licenses/gts
 guile	guild guile guile-config guile-snarf guile-tools	libguile-3.0.so	usr/include/guile usr/lib/guile/3.0/ccache usr/lib/guile/3.0/extensions usr/share/guile/3.0 usr/share/licenses/guile
 gumbo-parser		libgumbo.so	
-gusb	gusbcmd	libgusb.so	usr/include/gusb-1 usr/share/licenses/gusb
 gutenprint	cups-calibrate cups-genppd.5.3 cups-genppdupdate escputil	libgutenprint.so	usr/include/gutenprint usr/lib/gutenprint usr/share/gutenprint usr/share/licenses/gutenprint
 gvfs			usr/lib/gvfs usr/share/gvfs usr/share/licenses/gvfs
 gwenview	gwenview gwenview_importer	libgwenviewlib.so	usr/share/doc/HTML/en/gwenview usr/share/gwenview usr/share/licenses/gwenview

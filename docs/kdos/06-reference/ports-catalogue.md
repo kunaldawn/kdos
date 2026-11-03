@@ -1,7 +1,7 @@
 # The ports catalogue
 
-This chapter lists every port KDOS can build: each of the 2,390 recipes under `ports/core` and the
-43 recipes KDOS writes itself under `src/`, 2,433 in all, each exactly once. It is a reference for
+This chapter lists every port KDOS can build: each of the 2,389 recipes under `ports/core` and the
+43 recipes KDOS writes itself under `src/`, 2,432 in all, each exactly once. It is a reference for
 anyone who needs to know whether a piece of software is in the tree, which version it is at, where
 its recipe lives, and which phase of the build installs it. Read
 [Packaging](../03-architecture/packaging.md) first for what a port and a package are, and
@@ -109,17 +109,17 @@ leaving out any an earlier phase installed.
 | `30_foundation` | Build Foundation | `packages.txt` | 138 | 127 |
 | `31_compilers` | Compilers | `packages.txt` | 22 | 22 |
 | `40_lang` | Languages | `packages.d/`, 13 files | 184 | 184 |
-| `41_system` | System | `packages.d/`, 98 files | 1,040 | 1,040 |
-| `42_graphics` | Graphics Stack | `packages.d/`, 54 files | 188 | 188 |
-| `43_toolkits` | Toolkits | `packages.d/`, 55 files | 339 | 339 |
+| `41_system` | System | `packages.d/`, 98 files | 1,035 | 1,035 |
+| `42_graphics` | Graphics Stack | `packages.d/`, 53 files | 187 | 187 |
+| `43_toolkits` | Toolkits | `packages.d/`, 56 files | 344 | 344 |
 | `44_apps` | Applications | `packages.d/`, 61 files | 423 | 423 |
 | `50_desktop` | Desktop | `packages.txt` | 91 | 91 |
 | `60_kernel` | Kernel | `packages.txt` | 2 | 2 |
 | `70_image` | Image | none: steps | — | — |
-| Total | | | 2,436 | 2,431 |
+| Total | | | 2,435 | 2,430 |
 
-The lists hold 2,436 lines naming 2,427 distinct ports; 9 of those ports are named by more than one
-phase. Following `depends =` from the lists reaches 2,431 ports. With `kdos-installer`, which
+The lists hold 2,435 lines naming 2,426 distinct ports; 9 of those ports are named by more than one
+phase. Following `depends =` from the lists reaches 2,430 ports. With `kdos-installer`, which
 `10_bootstrap` builds by script, that is every recipe but 1, listed in `ports/unbuilt`: `texlive-doc`,
 a recipe kept for `kpkg install` that no phase builds, marked `not built` in its table.
 `testing/bookcounts.py` fails on any other recipe no phase builds.
@@ -186,7 +186,7 @@ Every recipe, counted by where it lives.
 | [`cli`](#cli) | 20 |
 | [`files`](#files) | 14 |
 | [`sysmon`](#sysmon) | 12 |
-| [`hardware`](#hardware) | 33 |
+| [`hardware`](#hardware) | 32 |
 | [`input`](#input) | 19 |
 | [`mobile`](#mobile) | 15 |
 | [`disk`](#disk) | 34 |
@@ -273,7 +273,7 @@ Every recipe, counted by where it lives.
 | [`src/art`](#srcart) | 8 |
 | [`src/desktop`](#srcdesktop) | 21 |
 | [`src/daemons`](#srcdaemons) | 6 |
-| Total | 2,433 |
+| Total | 2,432 |
 
 ## The shelves
 
@@ -1313,7 +1313,7 @@ Notes:
 
 ### hardware
 
-Device access, bus and sensor tools, power management, and Bluetooth. 33 ports, under
+Device access, bus and sensor tools, power management, and Bluetooth. 32 ports, under
 `ports/core/hardware/`.
 
 | Port | Version | Description | Phase |
@@ -1323,7 +1323,6 @@ Device access, bus and sensor tools, power management, and Bluetooth. 33 ports, 
 | `ddcutil` | 3.0.2 | Brightness, contrast and input source of an external monitor over DDC/CI | `42_graphics` |
 | `dmidecode` | 3.7 | Prints the SMBIOS table in readable form | `41_system` |
 | `freeipmi` | 1.6.19 | IPMI tools and libraries — sensors, event log, power control and serial-over-LAN for server BMCs and IPMI power supplies | `41_system` |
-| `gusb` | 0.4.9 | GObject wrapper over libusb — libfprint's device layer | `41_system` |
 | `hidapi` | 0.15.0 | HID device access — CMSIS-DAP debuggers and instruments speak it | `41_system` |
 | `hwdata` | 0.411 | Hardware identification and configuration data | `41_system` |
 | `hwloc` | 2.15.0 | Portable hardware locality — the CPU, cache, NUMA and device topology, with lstopo | `42_graphics` |
@@ -2884,10 +2883,10 @@ Icon, cursor, sound and widget themes, and theme-configuration tools. 12 ports, 
 | `breeze-gtk` | 6.8.2 | Breeze GTK 2, 3 and 4 themes, light and dark, rendered from the Breeze colour schemes | `43_toolkits` |
 | `hicolor-icon-theme` | 0.18 | Freedesktop.org Hicolor icon theme | `41_system` |
 | `icon-naming-utils` | 0.8.90 | Perl script used for maintaining backwards compatibility with current desktop icon themes | `41_system` |
-| `ocean-sound-theme` | 6.8.2 | Ocean sound theme — Plasma's login, notification, alert and alarm sounds | `41_system` |
+| `ocean-sound-theme` | 6.8.2 | Ocean sound theme — Plasma's login, notification, alert and alarm sounds | `43_toolkits` |
 | `oxygen` | 6.8.2 | Oxygen widget style, window decoration, cursors, colour schemes, Plasma theme and global themes | `43_toolkits` |
-| `oxygen-sounds` | 6.8.2 | Oxygen sound theme — the classic KDE event sounds | `41_system` |
-| `plasma-workspace-wallpapers` | 6.8.2 | Plasma wallpapers — the artwork of every Plasma release, at every screen size | `41_system` |
+| `oxygen-sounds` | 6.8.2 | Oxygen sound theme — the classic KDE event sounds | `43_toolkits` |
+| `plasma-workspace-wallpapers` | 6.8.2 | Plasma wallpapers — the artwork of every Plasma release, at every screen size | `43_toolkits` |
 | `qt5ct` | 1.9 | Qt 5 appearance settings — the palette, style, fonts and icon theme of every Qt 5 program, as a platform theme plugin | `43_toolkits` |
 | `sound-theme-freedesktop` | 0.8 | The freedesktop default sound theme — event sounds libcanberra plays | `41_system` |
 
@@ -4259,7 +4258,7 @@ Learning software, offline encyclopedias and reference dictionaries. 28 ports, u
 | `kalzium` | 26.08.2 | KDE periodic table of the elements — properties, isotopes, spectra and a molar mass calculator | `44_apps` |
 | `kanagram` | 26.08.2 | KDE anagram game — unscramble words from KVTML vocabulary lists, with spoken hints | `44_apps` |
 | `kbruch` | 26.08.2 | KDE fraction trainer — exercises on fractions, ratios, percentages and factorisation | `44_apps` |
-| `kdeedu-data` | 26.08.2 | KDE Education shared data — KVTML vocabulary lists and icons for the education apps | `41_system` |
+| `kdeedu-data` | 26.08.2 | KDE Education shared data — KVTML vocabulary lists and icons for the education apps | `43_toolkits` |
 | `kgeography` | 26.08.2 | KDE geography trainer — maps, capitals and flags of countries and regions, as quizzes | `44_apps` |
 | `khangman` | 26.08.2 | KDE hangman game — guess words from KVTML vocabulary lists in many languages | `44_apps` |
 | `kiten` | 26.08.2 | KDE Japanese reference — EDICT and KANJIDIC dictionary, kanji browser and radical search | `44_apps` |
@@ -5633,7 +5632,7 @@ to `60_kernel`. 8 ports.
 | `kdos-bb` | 1.3.0 | The AAlib demo, hard-forked and rebranded, with a threaded mixer | `41_system` |
 | `kdos-icons` | 20261028 | KDOS icon themes — the KDOS marks over Breeze, following the accent | `41_system` |
 | `kdos-sddm-theme` | 1.0.0 | KDOS login screen for SDDM — the Breeze greeter in the accent, with the KDOS mark | `50_desktop` |
-| `kdos-sounds` | 1.0.0 | KDOS sound theme — the machine's synthesised voices under their freedesktop names | `42_graphics` |
+| `kdos-sounds` | 1.0.0 | KDOS sound theme — the machine's synthesised voices under their freedesktop names | `43_toolkits` |
 | `kdos-splash` | 1.2 | Boot splash drawn on the framebuffer — a fade from black, or Phosphor mode's CRT power-on | `41_system` |
 | `kdos-theme` | 2.0.0 | KDOS identity generators — KDE colour schemes, Konsole, qt5ct, wallpapers, greeter palette | `41_system` |
 | `kdos-wallpapers` | 1.0.0 | KDOS wallpapers — the mark in each accent, dark and light, as Plasma wallpaper packages | `41_system` |

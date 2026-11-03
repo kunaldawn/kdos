@@ -16,6 +16,10 @@ its toolbar from the icons.
 
 ## Notes
 
+Nothing is compiled, but [qt6-qtbase](#port-qt6-qtbase) is in `depends`: ECM's
+`KDEInstallDirs` asks Qt's `qtpaths` for its prefix and the configure stops without it, and that
+puts the port in `43_toolkits`.
+
 The vocabularies in other languages are word lists for learners, not translations of an
 interface, so the language rule keeps them all. `apps/kvtml` under the generic data directory is
 the path libkeduvocdocument's shared-file lookup searches, so the files cannot move to

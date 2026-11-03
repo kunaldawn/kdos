@@ -17,4 +17,4 @@ description = Plasma wallpapers — the artwork of every Plasma release, at ever
 homepage    = https://invent.kde.org/plasma/plasma-workspace-wallpapers
 license     = LGPL-3.0-only AND CC-BY-SA-4.0 AND GPL-2.0-or-later
 group       = plasma
-depends     = cmake ninja extra-cmake-modules
+depends     = cmake ninja extra-cmake-modules qt6-qtbase

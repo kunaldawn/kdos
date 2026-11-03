@@ -20,5 +20,6 @@ any other sound theme.
 ## Notes
 
 The port is data only: the configure needs CMake and
-[extra-cmake-modules](#port-extra-cmake-modules) for the install paths and nothing else, so its
-closure reaches neither the graphics stack nor a toolkit and it is built in `41_system`.
+[extra-cmake-modules](#port-extra-cmake-modules) for the install paths. [qt6-qtbase](#port-qt6-qtbase)
+is in `depends` all the same, because ECM's `KDEInstallDirs` asks Qt's `qtpaths` for its prefix
+and the configure stops without it, and that puts the port in `43_toolkits`.

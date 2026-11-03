@@ -1572,7 +1572,7 @@ five userland phases, `40_lang` to `44_apps`, split their list into
 `script/phases/<phase>/packages.d/`: one file per shelf, `<shelf>.txt`, holding the phase's ports
 from that shelf; `src-<area>.txt` for ports of KDOS's own, where the phase installs any
 (`src-system.txt` in `41_system`, `42_graphics` and `43_toolkits`, and `src-art.txt` in
-`41_system` and `42_graphics`);
+`41_system` and `43_toolkits`);
 and, in `41_system`, `00-order.txt`, the order run, which sorts first and holds the runs whose
 order a comment pins. The files
 are read in byte order as one list, so which file a port is in changes nothing but where a reader

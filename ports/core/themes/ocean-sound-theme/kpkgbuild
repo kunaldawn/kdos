@@ -17,4 +17,4 @@ description = Ocean sound theme — Plasma's login, notification, alert and alar
 homepage    = https://invent.kde.org/plasma/ocean-sound-theme
 license     = CC-BY-SA-4.0 AND BSD-2-Clause AND CC0-1.0
 group       = plasma
-depends     = cmake ninja extra-cmake-modules
+depends     = cmake ninja extra-cmake-modules qt6-qtbase

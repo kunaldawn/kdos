@@ -36,4 +36,3 @@ sdcv
 
 kolibri
 
-kdeedu-data

@@ -26,6 +26,6 @@ output profile a sound is written for, libcanberra plays a mono file through a s
 build; an encoder left to pick its own serial writes a different file each time and the package
 never reproduces.
 
-`ocean-sound-theme` is in `depends` because it is what the inherited names resolve to; it is data
-in 41_system, so naming it keeps this port's closure below the toolkits. This port is in
-42_graphics because `kdos-sfx` is part of [kdos-tools](#port-kdos-tools), which is.
+`ocean-sound-theme` is in `depends` because it is what the inherited names resolve to. Its
+configure needs Qt's `qtpaths` through ECM, which puts it, and this port with it, in
+43_toolkits; `kdos-sfx`, from [kdos-tools](#port-kdos-tools), is built a phase earlier.

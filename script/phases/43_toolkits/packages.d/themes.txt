@@ -37,3 +37,6 @@ oxygen
 # take it from Plasma's own platform theme. kdos-plasma-look depends on it for
 # the palettes it installs, so it is not a leaf.
 qt5ct
+ocean-sound-theme
+oxygen-sounds
+plasma-workspace-wallpapers

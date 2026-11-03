@@ -66,7 +66,6 @@ upower
 # and stays there, which reads as a slow machine rather than a hot one.
 thermald
 
-gusb
 dmidecode
 
 # Thunderbolt authorisation. Where the firmware's security level is `user` or

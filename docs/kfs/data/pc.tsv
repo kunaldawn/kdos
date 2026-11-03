@@ -777,7 +777,6 @@ gts	GNU Triangulated Surface Library	gts
 gudev-1.0	GObject bindings for libudev	libgudev
 guile-3.0	GNU's Ubiquitous Intelligent Language for Extension	guile
 gumbo	HTML parser library implemented in C99	gumbo-parser
-gusb	GUsb is a GLib binding for libusb1	gusb
 gutenprint	Gutenprint Top Quality Printer Drivers	gutenprint
 gvnc-1.0	GObject for VNC client connections	gtk-vnc
 gvncpulse-1.0	Pulse audio bridge for VNC client connections	gtk-vnc
