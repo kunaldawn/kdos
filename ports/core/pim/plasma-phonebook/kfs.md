@@ -14,10 +14,9 @@ actions on a contact.
 
 ## Notes
 
-KPeople has no contacts of its own; it shows what its data-source plugins provide.
-[kpeoplevcard](#port-kpeoplevcard) is that plugin here, reading and writing vCards under
-`~/.local/share/kpeoplevcard`, and without it the book is empty and cannot add a contact. The
-build does not look for it, so it is in `depends` for run time only.
+KPeople shows what its data-source plugins provide. The contacts here come from the vCard plugin
+[kpeople](#port-kpeople) itself installs, reading and writing vCards under
+`~/.local/share/kpeoplevcard`.
 
 A number opens as a `tel:` or `sms:` link; KDOS gives `tel:` to KDE Connect, which places the
 call on a paired phone. `qml/Header.qml` and `qml/RoundImage.qml` import the Qt 5 module

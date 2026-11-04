@@ -1332,7 +1332,6 @@ Versions are measured in prior research or in section 1.5 unless marked. Anythin
 | futuresql | qt-extra | 43 | 0.1.1 | angelfish, audiotube, kontrast | Needs qcoro |
 | ktextaddons | qt-extra | 43 | 2.2.0 | the whole PIM stack | TextAutoGenerateText off |
 | kdiagram | qt-extra | 43 | 3.0.1 | eventviews, incidenceeditor, massif-visualizer, calligra | Take it from the `3.0.1/` directory. The bare 2.7.90 tarball beside it is an old beta |
-| kpeoplevcard | pim | 43 | 0.1 | plasma-phonebook | — |
 | libquotient | chat | 43 | 0.9.6 | neochat (REQUIRED), itinerary | olm is present and deprecated upstream |
 | libphonenumber | i18n | 41 | 9.0.42 | kitinerary | C++ only, with the Java and geocoder tooling off |
 | qt6-qtvirtualkeyboard | qt6 | 43 | 6.12.0 | plasma-keyboard, the greeter, plasma-setup | `group = qt6` |

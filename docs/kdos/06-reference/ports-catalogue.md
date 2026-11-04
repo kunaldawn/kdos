@@ -1,7 +1,7 @@
 # The ports catalogue
 
-This chapter lists every port KDOS can build: each of the 2,389 recipes under `ports/core` and the
-43 recipes KDOS writes itself under `src/`, 2,432 in all, each exactly once. It is a reference for
+This chapter lists every port KDOS can build: each of the 2,388 recipes under `ports/core` and the
+43 recipes KDOS writes itself under `src/`, 2,431 in all, each exactly once. It is a reference for
 anyone who needs to know whether a piece of software is in the tree, which version it is at, where
 its recipe lives, and which phase of the build installs it. Read
 [Packaging](../03-architecture/packaging.md) first for what a port and a package are, and
@@ -111,15 +111,15 @@ leaving out any an earlier phase installed.
 | `40_lang` | Languages | `packages.d/`, 13 files | 184 | 184 |
 | `41_system` | System | `packages.d/`, 98 files | 1,035 | 1,035 |
 | `42_graphics` | Graphics Stack | `packages.d/`, 53 files | 187 | 187 |
-| `43_toolkits` | Toolkits | `packages.d/`, 56 files | 344 | 344 |
+| `43_toolkits` | Toolkits | `packages.d/`, 56 files | 343 | 343 |
 | `44_apps` | Applications | `packages.d/`, 61 files | 423 | 423 |
 | `50_desktop` | Desktop | `packages.txt` | 91 | 91 |
 | `60_kernel` | Kernel | `packages.txt` | 2 | 2 |
 | `70_image` | Image | none: steps | — | — |
-| Total | | | 2,435 | 2,430 |
+| Total | | | 2,434 | 2,429 |
 
-The lists hold 2,435 lines naming 2,426 distinct ports; 9 of those ports are named by more than one
-phase. Following `depends =` from the lists reaches 2,430 ports. With `kdos-installer`, which
+The lists hold 2,434 lines naming 2,425 distinct ports; 9 of those ports are named by more than one
+phase. Following `depends =` from the lists reaches 2,429 ports. With `kdos-installer`, which
 `10_bootstrap` builds by script, that is every recipe but 1, listed in `ports/unbuilt`: `texlive-doc`,
 a recipe kept for `kpkg install` that no phase builds, marked `not built` in its table.
 `testing/bookcounts.py` fails on any other recipe no phase builds.
@@ -248,7 +248,7 @@ Every recipe, counted by where it lives.
 | [`education`](#education) | 28 |
 | [`office`](#office) | 27 |
 | [`documents`](#documents) | 23 |
-| [`pim`](#pim) | 49 |
+| [`pim`](#pim) | 48 |
 | [`printing`](#printing) | 28 |
 | [`math`](#math) | 31 |
 | [`sci-libs`](#sci-libs) | 21 |
@@ -273,7 +273,7 @@ Every recipe, counted by where it lives.
 | [`src/art`](#srcart) | 8 |
 | [`src/desktop`](#srcdesktop) | 21 |
 | [`src/daemons`](#srcdaemons) | 6 |
-| Total | 2,432 |
+| Total | 2,431 |
 
 ## The shelves
 
@@ -4417,7 +4417,7 @@ Notes:
 
 ### pim
 
-Personal information: calendars, contacts, tasks, time tracking, notes and genealogy. 49 ports,
+Personal information: calendars, contacts, tasks, time tracking, notes and genealogy. 48 ports,
 under `ports/core/pim/`.
 
 | Port | Version | Description | Phase |
@@ -4452,7 +4452,6 @@ under `ports/core/pim/`.
 | `kontact` | 26.08.2 | KDE personal information suite — KMail, KOrganizer, KAddressBook and Akregator in one window | `44_apps` |
 | `kontactinterface` | 26.08.2 | KDE PIM library that embeds PIM applications in Kontact as plugins | `43_toolkits` |
 | `korganizer` | 26.08.2 | KDE calendar and scheduler — events, to-dos and journals on Akonadi | `44_apps` |
-| `kpeoplevcard` | 0.1.git20241202 | KPeople data source that reads contacts from vCard files under ~/.local/share/kpeoplevcard | `43_toolkits` |
 | `kpkpass` | 26.08.2 | KDE PIM library that reads Apple Wallet .pkpass boarding passes and tickets | `43_toolkits` |
 | `kteatime` | 26.08.2 | Tea timer — counts down a steeping time from the tray and says when the tea is ready | `44_apps` |
 | `ktimer` | 26.08.2 | Countdown launcher — run a command or raise a notification once a set delay has passed | `44_apps` |

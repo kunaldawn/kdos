@@ -26,7 +26,6 @@ akonadi-import-wizard
 kaddressbook
 kdepim-runtime
 kontactinterface
-kpeoplevcard
 akonadi
 akonadi-calendar
 akonadi-contacts

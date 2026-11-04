@@ -19,6 +19,12 @@ plugins, and the merged person is offered as an item model, a details widget and
 
 ## Notes
 
+The package installs one data source of its own, `kpeople/datasource/KPeopleVCard.so`: every vCard
+file under `~/.local/share/kpeoplevcard/` is a contact, and a new one is saved under `own/` there.
+The plugin watches the directory, so a vCard dropped in appears in a running application. It is the
+source the standalone kpeoplevcard project provides, so a port of that project would conflict with
+this one on that path.
+
 The configure requires Qt Qml and Qt Quick for the QML module, from
 [qt6-qtdeclarative](#port-qt6-qtdeclarative), and Qt Sql, which [qt6-qtbase](#port-qt6-qtbase)
 carries with its SQLite driver.

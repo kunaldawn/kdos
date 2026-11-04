@@ -573,7 +573,6 @@
 2dca25c0e0c837ddf00b52011b3f82cac1e4ddd3ad018227806b0c2288864acc sources-4 video-libs--libass-0.17.5.tar.xz libass/libass-0.17.5.tar.xz
 2df215bbec34d51d60c1a04b01b2df4d5d18f510f1f3a7af4b80cddb5671154e sources-4 web-engines--libcss-0.9.2.tar.gz libcss/libcss-0.9.2.tar.gz
 2e33d17f74cefadf85825f601829a68156f669348071be8470dcd700029a14af sources-3 hardware--libgpiod-2.3.1.tar.gz libgpiod/libgpiod-2.3.1.tar.gz
-2e6d03795cf999bce1f730e93723fe86ffbbc98e42f6f6cf5ae1f831eb033fb9 sources-3 pim--kpeoplevcard-0.1.git20241202.tar.gz kpeoplevcard/kpeoplevcard-0.1.git20241202.tar.gz
 2eb0204b76d52fe825c0e1f98826f62a179033a60543032d0e8b90060ecaa50e sources-3 music-libs--libresidfp-1.2.2.tar.gz libresidfp/libresidfp-1.2.2.tar.gz
 2ebd31e79f2893025d659def7784e0ec3557e7ff9ac105adcc82d35782913bf2 sources-2 fonts--noto-fonts-extra-malayalam-2.104.zip noto-fonts-extra/noto-fonts-extra-malayalam-2.104.zip
 2ed4ecb28320a433db18a5bf029986aa8afcfd740745e78847e330d5d94922a9 sources-4 python-sci--python3-shapely-2.1.2.tar.gz python3-shapely/python3-shapely-2.1.2.tar.gz

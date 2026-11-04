@@ -540,7 +540,7 @@ first-run checklist. See [The Plasma shell](../04-programs/plasma-shell.md#the-s
 
 One piece of host software as this repository describes it: a directory holding a *kpkgbuild* and a
 `build.sh` (the build, run by bash with the unpacked source as its working directory). There are
-five port repositories in one format, holding 2,432 recipes: the upstream ports in
+five port repositories in one format, holding 2,431 recipes: the upstream ports in
 `ports/core/`, each on a *shelf*, and KDOS's own in four *areas*: `src/system/`, `src/art/`,
 `src/desktop/` and `src/daemons/` ([The ports catalogue](ports-catalogue.md#ports-per-shelf) counts
 them). (`src/system/kdos-kpkg` has no recipe; `10_bootstrap` compiles it by script.) A port is known by its bare name, which is unique
