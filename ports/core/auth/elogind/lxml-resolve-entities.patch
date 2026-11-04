@@ -1,0 +1,18 @@
+Subject: Ask lxml to resolve external entities when reading the manual pages
+
+lxml's XMLParser() defaults to resolve_entities='internal', which leaves the
+external parameter entity custom-entities.ent unloaded, so
+make-directive-index.py and make-man-index.py stop at the first page using it
+with "Entity 'entities' not defined".
+
+--- a/tools/xml_helper.py
++++ b/tools/xml_helper.py
+@@ -13,7 +13,7 @@
+ 
+         return None
+ 
+-_parser = tree.XMLParser()
++_parser = tree.XMLParser(resolve_entities=True)
+ # pylint: disable=no-member
+ _parser.resolvers.add(CustomResolver())
+ 

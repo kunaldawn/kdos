@@ -81,6 +81,11 @@ against musl (no `<gshadow.h>`, `sh` instead of `bash` in two generator scripts,
 and three include fixes), and `0010` is a backport from systemd that collects a session when its
 leader process dies. `no-runtime-dir.patch` is Chimera Linux's, and is what lets
 [turnstile](#port-turnstile) own the runtime directory (see Notes).
+`lxml-resolve-entities.patch` passes `resolve_entities=True` to the parser in
+`tools/xml_helper.py`: [python3-lxml](#port-python3-lxml) otherwise leaves `custom-entities.ent`
+unloaded, and the `elogind.directives` and `elogind.index` pages stop the build with
+`Entity 'entities' not defined`. Those two pages are built unconditionally whatever configure
+finds, so lxml is a build dependency, not an optional one.
 
 ## Notes
 
