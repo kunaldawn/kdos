@@ -18,12 +18,11 @@ tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
 
 _back="$SRC_ROOT/backends"
 pip3 install --no-deps --no-index --find-links=vendor --no-build-isolation \
-	--target "$_back" hatch-fancy-pypi-readme incremental rjsmin
+	--target "$_back" hatch-fancy-pypi-readme rjsmin
 export PYTHONPATH="$_back${PYTHONPATH:+:$PYTHONPATH}"
 
 pip3 install --no-deps --no-index --find-links=vendor --no-build-isolation \
 	--ignore-installed --root=$PKG --prefix=/usr \
-	twisted automat constantly hyperlink incremental zope.interface \
 	pyopenssl service-identity pyasn1 pyasn1-modules rencode \
 	setproctitle .
 
