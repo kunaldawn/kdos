@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+export CXXFLAGS="$CXXFLAGS -include sys/types.h"
+
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D KDE_INSTALL_LIBDIR=lib \

@@ -7,6 +7,9 @@ command prints which processes hold the watches.
 
 ## Flags
 
+- `-include sys/types.h` — Added to `CXXFLAGS`. `src/survey/entries.h` uses `uid_t` and includes
+  nothing that declares it on musl, whose C++ and Qt headers do not bring in `<sys/types.h>` as
+  glibc's do, so `entries.cpp` stops on `'uid_t' does not name a type`.
 - `-D KF_SKIP_PO_PROCESSING=ON` — Builds none of the interface translations in `po/`, which kpkg's
   English-only rule would remove from the package anyway (see
   [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
