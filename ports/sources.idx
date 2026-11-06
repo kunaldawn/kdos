@@ -2699,6 +2699,7 @@ e0e996a979ee52c840dca3ee74f5d005e3259b94ddce58f255d3b6f47c8cb41d sources-2 graph
 e0fa5839a4c5c1d631b0931cf2c554ebbfa4e2fee3a9fb3ffd4f82ce4396c6e4 sources-2 formats--thrift-0.24.0.tar.gz thrift/thrift-0.24.0.tar.gz
 e10c12b3f21f45bf08e09d4215d9c7691368d747beebd840de0b6fefed2df9f8 sources-3 image-libs--imath-3.2.3.tar.gz imath/imath-3.2.3.tar.gz
 e1250a03bf9f478193094e25c8e8193d64a5290c8dfacd2322a8d277d90d03e9 sources-2 eda--flexmark-util-builder-0.64.8-sources.jar logisim-evolution/flexmark-util-builder-0.64.8-sources.jar
+e126657d75080ce560236bb690b4f5d4459dab5bb984c6b11adc23998edbcc33 sources-4 transfer--deluge--e126657d7508--deluge-vendor-2.2.0.tar.xz deluge/deluge-vendor-2.2.0.tar.xz
 e1385de66c4740336be4c6bfabd3d5d4270dce4ba36642d608aa9787d6c3ae61 sources-1 astronomy--predict-3.0.2.tar.gz predict/predict-3.0.2.tar.gz
 e140c25480fe1678d00b9a52462368fa4e7805fba67b12ee496784437f3e239e sources-1 bioscience--openbabel-3.2.1.tar.gz openbabel/openbabel-3.2.1.tar.gz
 e170ad5857994dfed0c84c4c04eb904fa410f3ec2d5a6c789b50b3fda47ba98c sources-1 chat--baresip-4.11.0.tar.gz baresip/baresip-4.11.0.tar.gz
