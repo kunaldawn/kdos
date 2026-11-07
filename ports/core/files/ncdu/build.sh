@@ -20,6 +20,7 @@ unpack_zig_dep() {
 unpack_zig_dep translate_c translate_c-0.0.0-Q_BUWgpXBwDWbTJQO9Ul01ZN4NJ4CEqQ4ZX1vLrcy38W
 unpack_zig_dep aro         aro-0.0.0-JSD1QrExOgBF8ySFOvEaZfP1LBTjgwg58Y7UHoGJ3nOd
 
+unset PKG_CONFIG_PATH
 zig build --system "$ZIG_GLOBAL_CACHE_DIR/p" -fsys=ncurses -fsys=zstd \
 	-Doptimize=ReleaseFast -Dcpu=baseline -Dpie=true \
 	--prefix "$PKG/usr"

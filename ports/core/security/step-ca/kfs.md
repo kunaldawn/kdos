@@ -3,7 +3,7 @@
 step-ca is Smallstep's private certificate authority: an online CA that issues X.509 and SSH
 certificates over its own API and over ACME, so that any ACME client, [caddy](#port-caddy) among
 them, can obtain and renew certificates from it on a network with no route to a public CA. It is
-set up and driven with [step-cli](#port-step-cli)'s `step` command, and the package adds a service
+set up and driven with the [step-cli](#port-step-cli) command, and the package adds a service
 script, `89_step-ca`, that runs it as root from `/etc/step-ca`; the
 [Services](../../../../docs/kdos/02-user-guide/administration.md#services) table says how to set
 it up.
@@ -27,7 +27,7 @@ builds with `-mod=vendor`, offline. See
 
 `build.sh` writes `/etc/init.d/89_step-ca.sh`. It sets `STEPPATH=/etc/step-ca` and skips itself,
 with a `[SKIP]` line, until both `config/ca.json` and `password.txt` exist there: the first is
-what `sudo STEPPATH=/etc/step-ca step ca init` writes, and the second holds the CA key's password,
+what `sudo STEPPATH=/etc/step-ca step-cli ca init` writes, and the second holds the CA key's password,
 which step-ca reads with `--password-file` instead of asking for it at a console. Once both exist
 it starts the CA under the service supervisor, so a crashed CA is restarted. Other machines reach
 it only after the firewall's `https` name is opened, when the CA listens on 443 (see

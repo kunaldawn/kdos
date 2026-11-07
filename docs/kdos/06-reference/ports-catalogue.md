@@ -1719,7 +1719,7 @@ forensics and audit. 32 ports, under `ports/core/security/`.
 | `qtkeychain` | 0.17.0 | Qt 6 API for storing passwords in the Secret Service, KWallet or a plain file | `43_toolkits` |
 | `sleuthkit` | 4.15.0 | Filesystem forensics tools that read disk images directly | `41_system` |
 | `step-ca` | 0.30.2 | Private certificate authority with ACME | `41_system` |
-| `step-cli` | 0.30.6 | The step command — creates a CA for step-ca, and requests, renews and inspects certificates | `41_system` |
+| `step-cli` | 0.30.6 | The step-cli command — creates a CA for step-ca, and requests, renews and inspects certificates | `41_system` |
 | `sweeper` | 26.08.2 | Privacy cleaner — clear recent documents, activity history, web history, cookies, caches and thumbnails | `44_apps` |
 | `yara` | 4.5.8 | Rule-based pattern matching for classifying files | `41_system` |
 | `zenmap` | 7.991 | The GTK front end to nmap: scan profiles, saved results, topology map and scan comparison | `44_apps` |

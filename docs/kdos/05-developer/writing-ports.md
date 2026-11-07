@@ -1026,6 +1026,10 @@ project's `build.zig` offers it), and always `-Dcpu=baseline`: zig compiles for 
 machine's own CPU unless told otherwise, and the package then stops with an illegal instruction on
 an older one.
 
+A `build.zig` that links a system library through pkg-config needs `unset PKG_CONFIG_PATH`. Zig
+reads the whole of `pkg-config --list-all` and stops with `error: ReadFailure` past 400 KiB, and
+the tree's `PKG_CONFIG_PATH` makes pkgconf list every package several times.
+
 ### qmake
 
 ```bash

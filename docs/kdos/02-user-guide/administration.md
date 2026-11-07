@@ -171,7 +171,7 @@ on `tty1` once `rcS` has run every script (see [The login screen](#the-login-scr
 | `86_kiwix-serve` | The offline library on `127.0.0.1:8080`, skipped until `/var/lib/kiwix/library.xml` lists an archive — see [The local servers](../03-architecture/boot-and-init.md#the-local-servers) |
 | `87_kolibri` | Kolibri, the offline curriculum, on `127.0.0.1:8081`, skipped until a channel is installed |
 | `88_llama-server` | The local language-model server on `127.0.0.1:8082`, skipped until a `.gguf` model is under `/usr/share/llama.cpp/models` |
-| `89_step-ca` *(step-ca)* | The step-ca certificate authority, as root, from `/etc/step-ca`. Skipped until `/etc/step-ca/config/ca.json` (from `sudo STEPPATH=/etc/step-ca step ca init`) and `/etc/step-ca/password.txt` (the CA password, mode 600) both exist. Open the `https` firewall name for other machines when the CA listens on 443 |
+| `89_step-ca` *(step-ca)* | The step-ca certificate authority, as root, from `/etc/step-ca`. Skipped until `/etc/step-ca/config/ca.json` (from `sudo STEPPATH=/etc/step-ca step-cli ca init`) and `/etc/step-ca/password.txt` (the CA password, mode 600) both exist. Open the `https` firewall name for other machines when the CA listens on 443 |
 
 ### Shutdown
 
