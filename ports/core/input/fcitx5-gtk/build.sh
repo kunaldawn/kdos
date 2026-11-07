@@ -19,6 +19,7 @@ cmake -S . -B build -G Ninja \
 	-D ENABLE_GTK3_IM_MODULE=ON \
 	-D ENABLE_GTK4_IM_MODULE=ON \
 	-D ENABLE_GIR=OFF \
+	-D FCITX5_GTK_VERSION=$version \
 	-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build

@@ -22,6 +22,9 @@ of the session chapter says which route each one takes.
   built with their X11 backend, so both modules link [libX11](#port-libX11) as well.
 - `-D ENABLE_GIR=OFF` — No `FcitxG-1.0` GObject introspection data for `libFcitx5GClient`.
   Nothing in the tree loads it, and building it would make gobject-introspection a dependency.
+- `-D FCITX5_GTK_VERSION=$version` — The version on the `Version:` line of `Fcitx5GClient.pc`. The
+  template reads this variable and upstream's CMake never sets it, so the line would be empty, and
+  `kpkg`'s lint refuses a package whose pkg-config file has an empty `Version`.
 
 ## Notes
 

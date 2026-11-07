@@ -71,7 +71,7 @@ module through, `/usr/lib/gtk-3.0/3.0.0/immodules.cache`, because GTK 3 ignores 
 does not name (`ports/core/input/fcitx5-gtk/build.sh`; the reasons are on its
 [package page](#port-fcitx5-gtk)):
 
-<!-- kfs:include ports/core/input/fcitx5-gtk/build.sh lines=14-29 pin=91194328c531 -->
+<!-- kfs:include ports/core/input/fcitx5-gtk/build.sh lines=14-30 pin=620f4bf4e677 -->
 
 The Chinese engines are built without cloud pinyin, which would send what you type to a remote
 service:
