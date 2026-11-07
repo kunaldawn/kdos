@@ -21,3 +21,4 @@ cmake -S . -B build -G Ninja \
 	-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build
+ln -s org.kde.kclock.svg "$PKG/usr/share/icons/hicolor/scalable/apps/kclock.svg"

@@ -37,7 +37,9 @@ line.
   instead of that copy. The empty `*HDR_DIR` settings say the headers are in the compiler's default
   path.
 - `X11LIB=NONE` — Build no `pamx`, the program that displays an image on an X server.
-  `config.mk.in`'s default, named.
+  `config.mk.in`'s default, named. `other/pamx/Makefile` ignores it once pkg-config knows `x11`, and
+  [libX11](#port-libX11) comes in a later phase than this port, so `no-pamx.patch` takes the
+  directory out of the build as well; the package then does not vary with what the tree holds.
 - `LINUXSVGALIB=NONE` — Build no `ppmsvgalib`, which needs Svgalib. `config.mk.in`'s default,
   named.
 - `RGB_DB_PATH=/usr/share/netpbm/rgb.txt` — Look up colour names in the one colour database the

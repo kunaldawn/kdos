@@ -9,7 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-for p in "$PORT_SRC"/0*.patch "$PORT_SRC/no-runtime-dir.patch" "$PORT_SRC/lxml-resolve-entities.patch"; do
+for p in "$PORT_SRC"/0*.patch "$PORT_SRC/no-runtime-dir.patch" "$PORT_SRC/lxml-resolve-entities.patch" "$PORT_SRC/udevadm-path.patch"; do
 	patch -p1 --no-backup-if-mismatch -i "$p"
 done
 

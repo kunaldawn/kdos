@@ -354,6 +354,8 @@ pairing or a qt5ct palette is moved only while it still names a KDOS file. An ac
 took your own wallpaper with it would be a switch nobody could use twice. Outside a Plasma session
 (at a console, or over ssh) steps 2 and 3 become one write of `LookAndFeelPackage` to
 `~/.config/kdeglobals`, which startplasma applies at the next login, and the command says so.
+KConfig writes no key whose value `/etc/xdg/kdeglobals` already gives, so the accent the machine
+already names leaves that file without the key, and startplasma reads the machine's.
 
 The command prints `<accent> (<theme name>)` and, from step 8, a line when the machine's half was
 not reached. It exits 0 when the session wears the accent, even when the machine's half was refused,

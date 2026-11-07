@@ -22,6 +22,9 @@ for setting timers.
 
 ## Notes
 
+The autostart entry for `kclockd` names the icon `kclock`, and the package installs it only as
+`org.kde.kclock`, so `build.sh` links the one name to the other.
+
 `kclockd` wakes the machine for an alarm through PowerDevil's `org.kde.Solid.PowerManagement`
 interface, which belongs to the Plasma session, not to `depends`: a Gear port never names a
 session port. Without PowerDevil the daemon counts down with an ordinary timer, which rings only

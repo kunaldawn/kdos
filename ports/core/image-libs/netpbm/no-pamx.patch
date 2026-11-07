@@ -1,0 +1,13 @@
+Subject: Build no pamx whatever pkg-config says about x11
+
+--- a/other/Makefile
++++ b/other/Makefile
+@@ -7,7 +7,7 @@
+ 
+ include $(BUILDDIR)/config.mk
+ 
+-SUBDIRS = pamx
++SUBDIRS =
+ 
+ EXTERN_INCLUDES =
+ ifneq ($(LINUXSVGALIB),NONE)

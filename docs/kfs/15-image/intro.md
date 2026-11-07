@@ -121,7 +121,7 @@ whole tree; the others are local to their step:
 | `020_cleanup.sh` | A Python module a package owns has no bytecode |
 | `030_launchers.sh` | No launcher table was written, or launchers survive a reconcile that found no packs |
 | `040_orphans.sh` | No recipe is found under `/ports/core`, or more than half the installed packages would be removed |
-| `050_theme.sh` | `KDOS_ACCENT` is not libkcolor's default, `/etc/skel` does not name the accent and its global theme, the qt5ct configuration names no KDOS palette, an installed colour scheme fails the contrast floors, or `glib-compile-schemas` writes no `gschemas.compiled` |
+| `050_theme.sh` | `KDOS_ACCENT` is not libkcolor's default, `/etc/skel` does not name the accent, a new home's global theme is not that accent's, the qt5ct configuration names no KDOS palette, an installed colour scheme fails the contrast floors, or `glib-compile-schemas` writes no `gschemas.compiled` |
 | `060_udev_hwdb.sh` | There is no `*.hwdb` source, or no trie was written |
 | `080_whatis.sh` | No manual root exists, or no `mandoc.db` was written |
 | `085_fontcache.sh` | `/usr/share/fonts` is missing, no cache file was written, or fontconfig rejects it |

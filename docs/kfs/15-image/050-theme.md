@@ -4,8 +4,8 @@ A new account on KDOS starts themed: Plasma, Konsole, Qt 5 applications and the 
 are all in the default [accent]{.idx} before anything has been configured. The Plasma half is
 already on disk: the colour schemes, global themes, Konsole profiles and qt5ct palettes are
 installed under `/usr/share` by [kdos-plasma-look](#port-kdos-plasma-look) and
-[kdos-theme](#port-kdos-theme). What a home carries is the accent's name, the global theme the
-first login applies, and the files of the programs that read only a home.
+[kdos-theme](#port-kdos-theme). What a home carries is the accent's name and the files of the programs
+that read only a home; the global theme the first login applies comes from `/etc/xdg/kdeglobals`.
 `script/phases/70_image/050_theme.sh` writes those into `/etc/skel`, from which
 [070_user.sh](070-user.md) makes every home. It first checks that the accent it seeds is the one
 compiled into libkcolor, checks what it wrote and the contrast of every installed scheme, and
@@ -32,27 +32,29 @@ first time anything was opened, which looks like a fault in that program.
 `kdos theme <accent>` is the command a user runs to switch accents (see
 [Theming](../../kdos/02-user-guide/theming.md)). Here it is run with `HOME` and the three XDG
 directories pointed into `/etc/skel`, so it writes into the template exactly what it would write
-into a home, outside a session: no Plasma call is made, and the global theme is recorded for the
-first login to apply. The seeded files are therefore the same, byte for byte, as those of a
+into a home, outside a session: no Plasma call is made, and the global theme is left for the first
+login to apply. KConfig writes no key whose value `/etc/xdg/kdeglobals` already gives, so the home's
+`kdeglobals` stays without `LookAndFeelPackage` here, and the accent the installer writes to that
+file reaches a new account. The seeded files are therefore the same, byte for byte, as those of a
 `kdos theme` to the same accent.
 
 ## The files it checks
 
-<!-- kfs:include script/phases/70_image/050_theme.sh lines=46-60 pin=131c45c29b29 -->
+<!-- kfs:include script/phases/70_image/050_theme.sh lines=46-68 pin=93a53891309f -->
 
-`test` and `grep -q` fail on a value that is not the one asked for, and `set -e` then stops the
-phase. In order:
+A value that is not the one asked for stops the phase, through `set -e` or an explicit `FATAL`. In
+order:
 
 | Check | What it protects |
 |:--|:--|
 | `.config/kdos/accent` names the accent | The KDOS accent the terminal programs and `kdos theme` read |
-| `.config/kdeglobals` names `org.kdos.<accent>.desktop` | The global theme Plasma applies at the first login, and with it the colour scheme, icons, fonts and wallpaper |
+| `kreadconfig6`, through the cascade a login reads, answers `org.kdos.<accent>.desktop` | The global theme Plasma applies at the first login, and with it the colour scheme, icons, fonts and wallpaper |
 | `.config/qt5ct/qt5ct.conf` names a KDOS palette the image carries | Qt 5 applications, which have no Plasma platform theme and reach the accent only through qt5ct |
 | `kdos-theme contrast` over every `KDOS*.colors` | Every installed colour scheme clears the contrast floors; a palette edit that drops a role under 4.5:1 stops the image here |
 
 ## The two shared indexes
 
-<!-- kfs:include script/phases/70_image/050_theme.sh lines=62-83 pin=fbcf29e8da8b -->
+<!-- kfs:include script/phases/70_image/050_theme.sh lines=70-91 pin=fbcf29e8da8b -->
 
 `fs/` ships two kinds of file that reach their readers only through an index. KDOS's GSettings
 defaults, `fs/usr/share/glib-2.0/schemas/90_kdos.gschema.override`, take effect only once

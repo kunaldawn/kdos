@@ -44,7 +44,15 @@ HOME=/etc/skel XDG_CONFIG_HOME=/etc/skel/.config XDG_CACHE_HOME=/etc/skel/.cache
     XDG_DATA_HOME=/etc/skel/.local/share \
     /usr/local/bin/kdos theme "$KDOS_ACCENT"
 test "$(cat /etc/skel/.config/kdos/accent)" = "$KDOS_ACCENT"
-grep -qx "LookAndFeelPackage=org.kdos.$KDOS_ACCENT.desktop" /etc/skel/.config/kdeglobals
+# Read through the cascade, as startplasma does at the first login, and not out
+# of the file: KConfig writes no key whose value the machine's /etc/xdg/kdeglobals
+# already gives, and that absence is what lets the installer's accent reach a
+# new account.
+_lnf=$(XDG_CONFIG_HOME=/etc/skel/.config kreadconfig6 --file kdeglobals --group KDE --key LookAndFeelPackage)
+if [ "$_lnf" != "org.kdos.$KDOS_ACCENT.desktop" ]; then
+    echo "FATAL: a new home's global theme is '$_lnf', not org.kdos.$KDOS_ACCENT.desktop" >&2
+    exit 1
+fi
 # The Qt 5 applications have no Plasma platform theme, so qt5ct is their only
 # way to the accent: its configuration must name a palette the image carries,
 # or every Qt 5 application paints qt5ct's own defaults.

@@ -86,6 +86,9 @@ leader process dies. `no-runtime-dir.patch` is Chimera Linux's, and is what lets
 unloaded, and the `elogind.directives` and `elogind.index` pages stop the build with
 `Entity 'entities' not defined`. Those two pages are built unconditionally whatever configure
 finds, so lxml is a build dependency, not an optional one.
+`udevadm-path.patch` writes `/usr/sbin/udevadm` into `71-seat.rules`. The template takes the
+directory from `bindir`, which on KDOS holds no `udevadm` (see [eudev](#port-eudev)), and udev logs
+the failed run only at debug level.
 
 ## Notes
 

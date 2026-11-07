@@ -275,9 +275,9 @@ KDOS's defaults for KDE's settings are files in `/usr/share/kdos/xdg`, which the
 and a package update never collides with it. The installer is the one program that writes there:
 the accent chosen at installation as `/etc/xdg/kdeglobals` `LookAndFeelPackage`, the desk as
 `/etc/xdg/kdosrc`, and for the Tiling desk `/etc/xdg/kwinrc [Plugins] krohnkiteEnabled=true`, because
-KWin loads its scripts before the first login's layout script runs. `/etc/skel` ships no KDE settings file, because a panel layout or a Plasma
-defaults file copied into a new home would bypass the global theme and be rewritten at the first
-login anyway. A virtual machine gets one more directory in front, `/usr/share/kdos/xdg-vm`, which
+KWin loads its scripts before the first login's layout script runs. `/etc/skel` ships no panel layout or Plasma defaults file, because one
+copied into a new home would bypass the global theme and be rewritten at the first login anyway;
+its `kdeglobals` holds only the `DefaultDarkLookAndFeel` pairing that `kdos theme` writes. A virtual machine gets one more directory in front, `/usr/share/kdos/xdg-vm`, which
 turns screen locking and display power-off off, and the live medium gets `/usr/share/kdos/xdg-live`.
 The full list of files is in [Configuration](../06-reference/configuration.md).
 

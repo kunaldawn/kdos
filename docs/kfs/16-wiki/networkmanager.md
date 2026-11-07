@@ -146,7 +146,7 @@ keep their activation files: nothing supervises them, and the bus is what starts
 
 ### The menu entry
 
-<!-- kfs:include ports/core/network/networkmanager/build.sh lines=71-84 pin=c3852013b69a -->
+<!-- kfs:include ports/core/network/networkmanager/build.sh lines=71-84 pin=6e2ada6f4bfb -->
 
 The port's `build.sh` adds this entry, so `nmtui` appears in the menu as *Network* and opens in a
 terminal.
