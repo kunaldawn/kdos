@@ -2,15 +2,29 @@
 
 FreeRDP is an implementation of Microsoft's Remote Desktop Protocol. The port builds its
 libraries (`libfreerdp3`, `libwinpr3` and the client library with its virtual-channel plugins)
-and one client, `sdl-freerdp`, which runs on SDL 3 and so opens as a Wayland window. The libraries
-are the RDP engine of [remmina](#port-remmina). No server is built.
+and one client, `sdl-freerdp`, which runs on SDL 3 and so opens as a Wayland window, and the server
+library `libfreerdp-server3`. The client libraries are the RDP engine of [remmina](#port-remmina);
+the server library is the one [krdp](#port-krdp) shares a Plasma desktop through. No server
+program is built.
 
 ## Flags
 
 - `-DCMAKE_SKIP_INSTALL_RPATH=ON` — Install the binaries without the `$ORIGIN/../lib:$ORIGIN/..`
   run path FreeRDP's `cmake/ConfigureRPATH.cmake` sets; the libraries are in `/usr/lib`, where
   the loader looks anyway.
-- `-DWITH_SAMPLE=OFF`, `-DWITH_SERVER=OFF` — No sample client and no server binaries.
+- `-DWITH_SAMPLE=OFF` — No sample client or sample server.
+- `-DWITH_SERVER=ON` — Build `libfreerdp-server3`, its headers and `freerdp-server3.pc`, and the
+  server side of the channels: the protocol half of an RDP server, which [krdp](#port-krdp) links
+  and feeds with KWin's screencast. It is upstream's default, stated beside the three switches
+  below that leave out the server programs it would otherwise bring.
+- `-DWITH_SHADOW=OFF` — No `freerdp-shadow-cli`. The shadow server mirrors a desktop through its
+  X11 subsystem, which a build with no X11 cannot have; krdp is the server that shares a Plasma
+  session.
+- `-DWITH_PROXY=OFF` — No `freerdp-proxy`, the RDP proxy server with its module plugins; nothing
+  in KDOS relays RDP connections.
+- `-DWITH_PLATFORM_SERVER=OFF` — No platform server. `server/CMakeLists.txt` builds one only for
+  Windows, and reports the macOS one as broken, so on Linux the option adds nothing; upstream's
+  default is on, and it is stated off so the configure says what is built.
 - `-DWITH_CLIENT=ON`, `-DWITH_CLIENT_SDL=ON`, `-DWITH_CLIENT_SDL3=ON` — Build the SDL client, on
   [sdl3](#port-sdl3).
 - `-DWITH_CLIENT_SDL2=OFF` — The SDL 2 client, which upstream marks deprecated and experimental;
@@ -62,7 +76,7 @@ are the RDP engine of [remmina](#port-remmina). No server is built.
 - `-DWITH_URIPARSER=ON` — Validate, escape and unescape URLs in WinPR's string helpers
   with [uriparser](#port-uriparser) rather than WinPR's own fallback code.
 - `-DWITH_SYSTEMD=OFF` — No export of FreeRDP's log to the systemd journal; KDOS has no systemd
-  ([principles](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)).
+  ([principles](../../../../docs/kdos/01-philosophy/principles.md#no-systemd-init-units-or-service-manager)).
 - `-DWITH_INSTALL_CLIENT_DESKTOP_FILES=OFF` — Install no `.desktop` file for `sdl-freerdp`, which
   takes the server and its options on the command line; it gets no menu entry. This is
   upstream's default.

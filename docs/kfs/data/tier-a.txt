@@ -197,7 +197,8 @@ linux-firmware
 limine
 efibootmgr
 dbus
-seatd
+elogind
+turnstile
 sysklogd
 snooze
 polkit
@@ -219,12 +220,12 @@ libinput
 libxkbcommon
 mesa
 xwayland
-wlroots
-xdg-desktop-portal-wlr
+libplasma
 podman
 crun
 
-# 50_desktop
+# 50_desktop: the login screen, the input method and the core of the session
+sddm
 fcitx5
 libime
 fcitx5-chinese-addons
@@ -232,27 +233,26 @@ anthy-unicode
 fcitx5-anthy
 libhangul
 fcitx5-hangul
-kdos-comp
-kdos-boxsock
-kdos-shell
-kdos-term
-kdos-lock
-kdos-res
-xdg-desktop-portal-kdos
-kdos-record
+kwin
+kscreenlocker
+plasma-workspace
+plasma-desktop
+powerdevil
+xdg-desktop-portal-kde
+discover
 kdos-powerd
 kdos-energyd
 kdos-oomd
-kdos-mountd
 kdos-packd
+kdos-settingsd
+kdos-sysupdated
 
 # KDOS's own programs, every port under src/
 kdos-appbox
 kdos-bb
 kdos-boxinit
-kdos-cursors
+kdos-boxsock
 kdos-doc
-kdos-gtk-theme
 kdos-icons
 kdos-installer
 kdos-kfs
@@ -260,3 +260,28 @@ kdos-pack
 kdos-splash
 kdos-theme
 kdos-tools
+kdos-sddm-theme
+kdos-addons
+kdos-plasma-look
+kdos-welcome
+plasmoid-kdos-checklist
+plasmoid-kdos-privacy
+kded-kdos
+kcm-kdos-system
+kcm-kdos-boxes
+kcm-kdos-firewall
+kcm-kdos-look
+kcm-kdos-health
+kdos-kwin-motion
+kwin-effect-kdos-keys
+kwin-script-kdos-runraise
+kwin-script-kdos-window-memory
+kdos-discover
+kdos-runner
+kdos-notice
+ksystemstats-kdos
+kio-library
+kdos-transcribe
+kdos-installer-gui
+kdos-sounds
+kdos-wallpapers

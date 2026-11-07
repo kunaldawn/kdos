@@ -1,16 +1,15 @@
 ## About
 
 fcitx5 is an [input method]{.idx} framework: the engine that turns keystrokes into text a keyboard
-cannot type directly, such as Chinese, Japanese or Korean. On KDOS it is the program on the far end
-of the compositor's `input-method-v2` protocol; [kdos-comp](#port-kdos-comp) relays what it
-produces to applications over `text-input-v3`, so a boxed application reaches it through the
+cannot type directly, such as Chinese, Japanese or Korean. On KDOS [KWin](#port-kwin) starts it
+as the session's input method (`InputMethod=` in `kwinrc`) and relays what it produces to
+applications over the text-input protocols, so a boxed application reaches it through the
 compositor and never directly. The language engines are separate ports built on this one:
 [fcitx5-chinese-addons](#port-fcitx5-chinese-addons) over [libime](#port-libime),
 [fcitx5-anthy](#port-fcitx5-anthy) for Japanese and [fcitx5-hangul](#port-fcitx5-hangul) for
-Korean. `kdos-desktop-start` starts it as `fcitx5 -d` once the compositor is up, and the candidate
-window is drawn as cells by `kdos-ime`, which takes over through fcitx5's kimpanel module. The
-whole arrangement is in
-[Input methods](../../../../docs/kdos/03-architecture/session.md#input-methods).
+Korean; [fcitx5-qt](#port-fcitx5-qt) carries it into Qt applications and
+[fcitx5-configtool](#port-fcitx5-configtool) is its System Settings page. The whole arrangement is
+in [Input methods](../../../../docs/kdos/03-architecture/session.md#input-methods).
 
 The build is Wayland only: no X11 frontend, no systemd, no autostart entry, and every helper
 archive the build would download already in place.
@@ -22,11 +21,13 @@ archive the build would download already in place.
   libraries (`xcb-icccm`, `xcb-ewmh`, `xcb-keysyms` and others) on the host. The cost is that an
   X11 application under Xwayland, on the host or in a box, has no input method, because XIM is the
   only route an X client has to an engine.
-- `-D ENABLE_WAYLAND=On` — Builds the Wayland frontend, which speaks `input-method-v2` and
-  `virtual-keyboard` to the compositor, and the Wayland half of the classic interface.
-- `-D ENABLE_DBUS=On` — Builds the D-Bus modules: the kimpanel interface through which `kdos-ime`
-  draws the candidate window, the virtual-keyboard interface, and the D-Bus, fcitx4 and IBus
-  frontends. Without it there is no `kdos-ime` route and fcitx5 draws its own panel.
+- `-D ENABLE_WAYLAND=On` — Builds the Wayland frontend, which speaks `input-method-v1` to KWin
+  (and `input-method-v2` and `virtual-keyboard` to compositors that offer them), and the Wayland
+  half of the classic interface.
+- `-D ENABLE_DBUS=On` — Builds the D-Bus modules: the kimpanel interface through which Plasma's
+  input-method panel draws the candidate window, the virtual-keyboard interface, and the D-Bus,
+  fcitx4 and IBus frontends, through which [fcitx5-qt](#port-fcitx5-qt) and
+  [fcitx5-configtool](#port-fcitx5-configtool) reach it. Without it fcitx5 draws its own panel.
 - `-D ENABLE_KEYBOARD=On` — Builds the XKB key translation and the keyboard engine that ordinary
   layouts use. Upstream's configure refuses Wayland support without it.
 - `-D ENABLE_EMOJI=On` — Builds the emoji module, which needs zlib.
@@ -45,7 +46,8 @@ archive the build would download already in place.
   `TestFrontend` module with an unconditional `REQUIRED` `find_package`, so without these addons
   neither engine configures.
 - `-D ENABLE_XDGAUTOSTART=Off` — Installs no `.desktop` file under `/etc/xdg/autostart`. Nothing
-  on KDOS reads that directory; `kdos-desktop-start` starts fcitx5 by name.
+  starts it from that directory: KWin starts fcitx5 itself as the session's input method,
+  from `kwinrc` `[Wayland] InputMethod`, and an autostart entry would start a second copy.
 - `-D BUILD_SPELL_DICT=On` — Compiles `en_dict.fscd`, the English word list the spell module uses
   for hints, from the `en_dict` archive the recipe carries (see Notes).
 - `-D EVENT_LOOP_BACKEND=libuv` — Runs fcitx5's event loop on [libuv](#port-libuv), and with

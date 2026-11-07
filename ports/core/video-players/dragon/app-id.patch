@@ -1,0 +1,15 @@
+Subject: set StartupWMClass to the Wayland app_id org.kde.dragonplayer
+
+Dragon sets its desktop file name, and so its app_id, to
+org.kde.dragonplayer; upstream's class names no window Dragon opens.
+
+--- a/misc/org.kde.dragonplayer.desktop
++++ b/misc/org.kde.dragonplayer.desktop
+@@ -163,6 +163,6 @@
+ Exec=dragon %u
+ MimeType=video/ogg;video/x-theora+ogg;video/x-ogm+ogg;video/x-ms-wmv;video/x-msvideo;video/x-ms-asf;video/x-matroska;video/mpeg;video/avi;video/quicktime;video/vnd.rn-realvideo;video/x-flic;video/mp4;video/x-flv;video/webm;
+ Categories=Qt;KDE;AudioVideo;Video;Player;
+-StartupWMClass=dragonplayer
++StartupWMClass=org.kde.dragonplayer
+ # route the rest through kio-fuse
+ X-KDE-Protocols=http;https;

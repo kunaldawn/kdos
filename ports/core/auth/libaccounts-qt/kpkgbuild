@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libaccounts-qt
+version     = 1.17
+release     = 1
+source      = https://gitlab.com/accounts-sso/libaccounts-qt/-/archive/VERSION_$version/libaccounts-qt-VERSION_$version.tar.gz
+sha256      = 6ed3e976133962c1c88f6c66928ba0d0a17a570843577d31e783dc891659e5d8  libaccounts-qt-1.17.tar.gz
+description = Accounts database library for Qt 6 — the Qt interface to libaccounts-glib
+homepage    = https://gitlab.com/accounts-sso/libaccounts-qt
+license     = LGPL-2.1-only
+depends     = pkgconf qt6-qtbase glib libaccounts-glib

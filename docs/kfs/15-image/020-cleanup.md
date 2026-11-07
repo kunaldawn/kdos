@@ -140,4 +140,4 @@ Nothing is written outside the root.
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 343.* Previous: [342. The package store](015-pkgstore.md) · [Contents](../README.md) · Next: [344. The application launchers](030-launchers.md)
+*Part XV. The image, chapter 366.* Previous: [365. The package store](015-pkgstore.md) · [Contents](../README.md) · Next: [367. The application launchers](030-launchers.md)

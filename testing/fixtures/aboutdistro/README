@@ -1,0 +1,5 @@
+The About-page check's fixture: kcm-about-distrorc names four scripts under
+fs/. about-two prints a label and a value and passes; about-one prints one
+line, about-none prints nothing and about-gone is not there, and each must be
+reported, because kinfocenter stops with qFatal on output of fewer than two
+lines.

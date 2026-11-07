@@ -1,0 +1,3 @@
+The greeter check's fixture: good.conf must pass, with the one [X11] key the
+check lets through (an empty SessionDir, which lists no X session), and every
+bad-*.conf must be reported.

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = signon-plugin-oauth2
+version     = 0.25
+release     = 1
+source      = https://gitlab.com/accounts-sso/signon-plugin-oauth2/-/archive/VERSION_$version/signon-plugin-oauth2-VERSION_$version.tar.gz
+sha256      = 48a5bb61bf74fca458c870c1a27eedfe058b20f016c19a72aad2f5b151516447  signon-plugin-oauth2-0.25.tar.gz
+description = OAuth 1.0 and 2.0 authentication plugin for signond
+homepage    = https://gitlab.com/accounts-sso/signon-plugin-oauth2
+license     = LGPL-2.1-only
+depends     = pkgconf qt6-qtbase signond

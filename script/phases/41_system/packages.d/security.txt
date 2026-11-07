@@ -31,8 +31,8 @@ afflib
 
 # Let's Encrypt needs the internet and a self-signed cert per host means a
 # warning per host that people learn to click through. One root, trusted once,
-# speaking ACME so caddy renews against it with its public config. `step`
-# creates that CA (`step ca init`) and is its client.
+# speaking ACME so caddy renews against it with its public config. `step-cli`
+# creates that CA (`step-cli ca init`) and is its client.
 step-cli
 step-ca
 

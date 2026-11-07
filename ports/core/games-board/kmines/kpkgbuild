@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = kmines
-version     = 26.08.1
+version     = 26.08.2
 release     = 1
 source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
-sha256      = 0097fd3f17033f9a8ad518ce613ceb0920668a3c7fd6321af6ab18fa2c058074  kmines-26.08.1.tar.xz
+sha256      = b88e3a8e7e3deacb2fc113d97deceb05662d188a9639d513acd34a2a88d25ea8  kmines-26.08.2.tar.xz
 description = The classic minesweeper, on a themed board
 homepage    = https://apps.kde.org/kmines/
 license     = GPL-2.0-or-later

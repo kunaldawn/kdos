@@ -3,8 +3,7 @@
 pixman is the low-level pixel library under [cairo](#port-cairo) and much of the graphics stack:
 it composites images, fills rectangles and rasterises trapezoids, with hand-written SIMD code
 paths chosen at run time for the processor it finds. Besides cairo, the ports that link it include
-[wlroots](#port-wlroots), the terminal [foot](#port-foot) and its font library
-[fcft](#port-fcft).
+[Xwayland](#port-xwayland), [QEMU](#port-qemu) and [Firefox](#port-firefox-esr).
 
 It is one of the hot libraries the tree builds with link-time optimisation (see
 [Every port](../../../../docs/kdos/05-developer/writing-ports.md#every-port), "LTO only for the

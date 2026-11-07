@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdev-php
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 43ee097c59599b7ceadaf81ffece2bc558442821f158a5c8ec241f5f34aed2bb  kdev-php-26.08.2.tar.xz
+description = PHP language support for KDevelop — parser, semantic highlighting, code completion and PHPUnit tests
+homepage    = https://invent.kde.org/kdevelop/kdev-php
+license     = LGPL-2.0-or-later AND LGPL-2.0-only AND GPL-2.0-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND MIT AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcmutils ki18n ktexteditor threadweaver kdevelop kdevelop-pg-qt

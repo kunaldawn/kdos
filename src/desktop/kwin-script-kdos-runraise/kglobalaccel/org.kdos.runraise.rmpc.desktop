@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=rmpc in a New Window
+Comment=Open rmpc in a new terminal window. The KDOS Raise key brings back the one already open.
+Exec=konsole -p tabtitle=rmpc -e rmpc
+Icon=utilities-terminal

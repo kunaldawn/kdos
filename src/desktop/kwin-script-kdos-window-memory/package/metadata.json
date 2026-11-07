@@ -1,0 +1,19 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "kunal.dawn@gmail.com",
+                "Name": "Kunal Dawn"
+            }
+        ],
+        "Description": "A program's window opens where its last window closed, at the same size",
+        "EnabledByDefault": true,
+        "Icon": "preferences-system-windows-placement",
+        "Id": "kdos_window_memory",
+        "License": "MIT",
+        "Name": "KDOS Window Memory",
+        "Website": "https://github.com/kunaldawn/kdos"
+    },
+    "X-Plasma-API": "declarativescript"
+}

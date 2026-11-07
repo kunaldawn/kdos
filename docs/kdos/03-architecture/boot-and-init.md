@@ -1,11 +1,11 @@
 # Boot and init
 
-This chapter follows a KDOS machine from power-on to the login prompt and names the program that
+This chapter follows a KDOS machine from power-on to the login screen and names the program that
 owns each step: the Limine boot loader, the kernel's early microcode loader, the initramfs and its
-boot splash, the A/B root slots, `rcS` and the service scripts, and the console login that starts
-the desktop. It is written for two readers: someone whose machine stops somewhere along that path
-and who needs to know which program to look at, and a contributor changing the boot loader, the
-initramfs, the splash, the slots, `rcS` or the login. Read
+boot splash, the A/B root slots, `rcS` and the service scripts, and the display manager that draws
+the login screen. It is written for two readers: someone whose machine stops somewhere along that
+path and who needs to know which program to look at, and a contributor changing the boot loader,
+the initramfs, the splash, the slots, `rcS` or the login. Read
 [the architecture overview](overview.md) first for where boot sits in the running system, and
 [Getting started](../02-user-guide/getting-started.md) for the same path seen from the user's
 side: what appears on screen and which menu entry to pick.
@@ -17,7 +17,8 @@ sections are reference for contributors and change nothing about how a running m
 [The artwork](#the-artwork), the build checks listed in [The initramfs](#the-initramfs), and
 [Tools that must be util-linux's](#tools-that-must-be-util-linuxs). After this chapter you can say
 which stage a boot reached, where that stage writes its log, what each kernel command-line word
-does, and how the A/B root slots decide which root to boot and when to roll back.
+does, and how the A/B root slots decide which root to boot, when a boot counts as good, and when
+to roll back. What happens after the login screen is [The session](session.md).
 
 Terms used throughout:
 
@@ -27,7 +28,9 @@ Terms used throughout:
 | initramfs | The small archive the kernel unpacks into memory and runs first. Its `init` script finds, unlocks and mounts the real root, then hands over to it. |
 | Root slot | One of two root partitions, `a` and `b`, on a machine set up for A/B updates. One is the *active* slot, known to work; the other can hold an update on *trial*. Not the same thing as a colour [slot](../06-reference/glossary.md#slot). |
 | Live medium | The KDOS ISO, booted from a USB stick or optical disc, running from a compressed image with an in-memory (or persistent) overlay on top. |
-| Splash | `kdos-splash`, the program that draws the boot animation and the stage list on the framebuffer from the initramfs until the login prompt. |
+| Splash | `kdos-splash`, the program that draws the boot animation and the stage list on the framebuffer from the initramfs until the display manager takes the screen. |
+| Display manager | SDDM, the daemon that owns the login screen on tty1. It runs its greeter on a copy of KWin as the `sddm` account and starts each user's Plasma session. |
+| elogind | The login and seat manager (`org.freedesktop.login1`): it tracks every login as a session, hands the active session's compositor the display and input devices, and carries out suspend, power-off and reboot. It is not an init system; init is sysvinit's. |
 | Runlevel | The state sysvinit's `init` keeps the machine in, named in `/etc/inittab`: `3` is the running system, `S` single-user, `0` power-off and `6` reboot. Each `inittab` entry lists the runlevels it runs in, and `telinit` moves between them. |
 
 ## The sequence
@@ -48,16 +51,20 @@ Terms used throughout:
 | 12 | `switch_root` | util-linux's `switch_root` |
 | 13 | `/etc/init.d/rcS` | init (sysvinit), as its `sysinit` entry |
 | 14 | The numbered service scripts ([boot order](../02-user-guide/administration.md#services)) | `rcS` |
-| 15 | `kdos-bootctl mark-good` | `rcS`, last |
-| 16 | The splash quits | `rcS` |
-| 17 | `kdos-getty` on tty1 and tty2; `serial-getty` (`agetty`) on `ttyS0` | init, as `respawn` entries of runlevels 2 to 5 |
-| 18 | `kdos-login`, which hands tty1 to `agetty` | `kdos-getty` on tty1 |
-| 19 | The desktop | `~/.bash_profile` (or `~/.zprofile` for a zsh login), on tty1 only |
+| 15 | The first boot mark, `/run/kdos/bless/userspace` | `rcS`, last |
+| 16 | The splash hands the screen over (`kdos-splash handoff`) | `rcS` |
+| 17 | `kdos-dm` on tty1; `kdos-getty` on tty2; `serial-getty` (`agetty`) on `ttyS0` | init, as `respawn` entries of runlevels 2 to 5 |
+| 18 | SDDM, and its login screen on a copy of KWin | `kdos-dm` |
+| 19 | The Plasma session, after a password or an automatic login | SDDM |
+| 20 | The second boot mark, then `kdos-bootctl mark-good` | `kdos-notice --bless` in the session, then `kdos-sysupdated` |
 
-Step 19 is [the session](session.md). A login on tty1 reaches it without anyone typing a
-command. `tty2` is a plain `agetty` and is the recovery console: a machine whose GPU driver fails to
-come up still has a login prompt there. Press `Ctrl+Alt+F2` to reach it from the desktop, or
-`Alt+F2` at a text console, and `Alt+F1` to come back.
+Step 19 is [the session](session.md). A machine set to log in by itself reaches the desktop without
+anyone typing anything; otherwise the login screen asks for a password. `tty2` is a plain `agetty`
+and is the recovery console: a machine whose GPU driver fails to come up, or whose login screen
+keeps failing, still has a login prompt there. Press `Ctrl+Alt+F2` to reach it from the desktop or
+the login screen, and `Alt+F2` at a text console; which terminal leads back is in
+[The console](#the-console). Step 20 is what confirms an update on trial; see
+[Counting and confirming](#counting-and-confirming).
 
 ## When a boot stops
 
@@ -76,8 +83,10 @@ and `STARTING SESSION`.
 | `ROOT FILESYSTEM HAS ERRORS - RUN e2fsck` | `e2fsck -p` left errors on an ext root | [Checking the root](#checking-the-root) |
 | `fsck: errors left uncorrected` | A non-root filesystem has errors | `/run/kdos-fsck.log` |
 | A service stage marked failed | That service script exited non-zero; up to six lines of its output are on the splash | `/run/kdos-init.<name>.log`, and `/run/kdos-svc.<name>.log` for a supervised daemon |
-| A login prompt with the wrong font or colours | The console setup did not complete | `/run/kdos-getty.<tty>.log` |
-| A black screen after the splash | The session did not start | Press `Ctrl+Alt+F2` (`Alt+F2` at a text console) and log in on tty2; then [The session](session.md) |
+| A text login prompt on tty1 instead of the login screen | SDDM is missing, has no `sddm` account, or exited three times within a minute, and `kdos-dm` put a password prompt there instead | syslog under `kdos-dm`, `/var/log/sddm.log` and `sddm.log.old`; see [The display manager](#the-display-manager) |
+| A black screen after the splash | SDDM is running but its greeter does not draw | Press `Ctrl+Alt+F2` and log in on tty2; `/var/log/sddm.log` |
+| The login screen comes back after a password | The session did not start | `~/.local/share/sddm/wayland-session.log`; see [The session](session.md#what-kdos-session-wrapper-does) |
+| A text login prompt with the wrong font or colours | The console setup did not complete | `/run/kdos-getty.<tty>.log` |
 
 Everything the initramfs prints goes to `/dev/console`, and where that is depends on the boot (see
 [the `console=` row](#command-line-parameters-kdos-reads)):
@@ -218,11 +227,13 @@ are unchanged.
 | `cryptdevice=UUID=<luks-uuid>:<name>` | The initramfs | A LUKS container to open before looking for the root. `/dev/<node>:<name>` is also accepted, and an empty name becomes `kdosroot`. |
 | `bootstate=UUID=<esp-uuid>` | The initramfs, for `kdos-bootctl` | Which ESP holds the A/B state file. Without it no slot selection runs. |
 | `kdos_slot=a` or `b` | `kdos-bootctl select` and `mark-good` | The slot whose ESP directory this kernel came from. Every installed-machine entry carries one. |
+| `kdos.splash=phosphor` | `kdos-splash` | The splash's CRT motion; absent, or any other value, is the flat Modern one. `kdos-bootctl splash` writes it on every KDOS entry (see [The splash](#the-splash)). |
 | `nopersist` | The initramfs, live medium only | Ignore the persistence store; this session is not saved. |
 | `panic=10` | The kernel | Added to the candidate's entry during a UEFI update trial, unless the command line already sets `panic=`. The kernel is built with `CONFIG_PANIC_TIMEOUT=0`, so without it a panicking kernel waits for the reset button. |
 | `single` | The initramfs, handed on to init | Carried by the installed menu's `(single user)` entry. Init runs `rcS` and then `sulogin`, with no consoles and no desktop. |
 | `emergency` | The initramfs, handed on to init | `sulogin` before `rcS`: only the initramfs's mounts exist. No menu entry carries it; add it in Limine's entry editor (`E` on an entry). |
 | `quiet loglevel=3`, `loglevel=7` | The kernel | Normal and verbose entries. |
+| `vt.global_cursor_default=0` | The kernel | No text cursor on any virtual terminal. Carried, with `quiet loglevel=3`, by every installed entry that boots to the desktop, so nothing is drawn between the splash and the login screen. |
 | `console=` | The kernel | Where kernel messages and `/dev/console` go. The last one named wins. |
 
 The live medium's entries carry `console=tty0 console=ttyS0`, so there the last `console=` is the
@@ -529,11 +540,21 @@ leaving it panics the kernel with `Attempted to kill init`. The initramfs carrie
 
 ## The splash
 
-`kdos-splash` draws a CRT power-on animation directly to `/dev/fb0`, with glyphs scaled up from
-its own font (`/usr/share/kdos/splash.psf`), then lists the boot stages under a progress bar. It
-is a static binary of about 1,200 lines of C, and every failure path exits without drawing: a
-boot animation must never be able to stop a boot. The initramfs starts it before the device
-manager, and it runs until `rcS` quits it just before the login prompt.
+`kdos-splash` draws a power-on animation directly to `/dev/fb0`, with glyphs scaled up from its
+own font (`/usr/share/kdos/splash.psf`), then lists the boot stages under a progress bar. It is a
+static binary of about 1,400 lines of C, and every failure path exits without drawing: a boot
+animation must never be able to stop a boot. The initramfs starts it before the device manager,
+and it runs until `rcS` hands the screen to the display manager.
+
+It has two motions of one picture, chosen by the kernel command line because the splash runs before
+any root filesystem with a setting in it is mounted. `kdos.splash=phosphor` is Phosphor mode's CRT:
+a flash, then the picture unfolding vertically from a hairline, with scanline banding and a hum bar
+drifting down, and the reverse (collapse to a line, pinch to a dot, decay) when it ends. Anything
+else, or nothing, is Modern: the same picture fading in from black and back out, flat. The last
+`kdos.splash=` on the line wins, and a line that cannot be read is Modern.
+`kdos-bootctl splash phosphor|modern` writes the word on every KDOS entry of the boot menu, and of a
+pending trial's menu, so the choice is the machine's and not a user's. Either way the last frame
+is black, so whatever takes the screen next starts from black.
 
 | Command | Effect |
 |---|---|
@@ -544,8 +565,9 @@ manager, and it runs until `rcS` quits it just before the login prompt.
 | `kdos-splash detail "text"` | Show a line of failure detail |
 | `kdos-splash total N` | Add N to the expected number of stages |
 | `kdos-splash accent NAME` | Repaint in that accent; an unknown name changes nothing |
-| `kdos-splash quit` | Run the power-off animation, then exit |
-| `kdos-splash preview WxH T out.ppm` | Render the frame T seconds into the power-on animation, with a fixed set of sample stages, to a PPM file without a framebuffer; a T past the animation gives the settled picture |
+| `kdos-splash quit` | Run the power-off animation, then exit, leaving the console in text mode with its cursor shown |
+| `kdos-splash handoff` | Run the power-off animation, then exit, leaving tty1 black and in graphics mode for the display manager (see [rcS and the service scripts](#rcs-and-the-service-scripts)) |
+| `kdos-splash preview WxH T out.ppm [modern\|phosphor]` | Render the frame T seconds into the power-on animation, with a fixed set of sample stages, to a PPM file without a framebuffer, in the motion named or the command line's; a T past the animation gives the settled picture |
 
 The kernel is built with deferred framebuffer-console takeover
 (`CONFIG_FRAMEBUFFER_CONSOLE_DEFERRED_TAKEOVER`), so the text console does not claim the
@@ -557,9 +579,11 @@ clear-and-hide-cursor sequence to `/dev/tty0`, which is escape sequences alone, 
 itself never ends it. Which glyph does depends on where `/dev/console` is:
 
 - **On the live medium** (`console=tty0 console=ttyS0`), the initramfs and `rcS` print on the
-  serial line, and the deferral lasts until `kdos-getty` prints its glyph on `tty1` after the
-  splash has quit (measured at 5 to 21 seconds into boot). The splash's frames are on screen
-  before that on the rig's virtio-gpu, whose framebuffer is shown without the takeover.
+  serial line, and the deferral lasts until `kdos-getty` prints its glyph on `tty2`, which init
+  starts only after `rcS` has returned. By then the splash has handed `tty1` over in graphics mode,
+  so the console draws nothing there, and the login screen's compositor takes the display from
+  the splash's black last frame. The splash's frames are on screen without the takeover on the
+  rig's virtio-gpu, whose framebuffer is shown directly.
 - **On an installed machine** (`console=tty0` alone), the initramfs's first line,
   `KDOS Init Starting...`, is printed on the screen, and the console takes the framebuffer over
   about a millisecond after `/init` starts, before the splash has started. From then on every
@@ -578,8 +602,8 @@ the new root rather than remounted. The `quit` client therefore detects the runn
 opening the FIFO for writing, which fails with `ENXIO` once no reader is left, and does the
 cleanup itself from the real root.
 
-The quit is synchronous: `kdos-splash quit` returns only once the splash has stopped drawing, or
-after two seconds. A client command sent when no splash is running succeeds and does nothing, so
+The quit is synchronous: `kdos-splash quit` and `kdos-splash handoff` return only once the splash
+has stopped drawing, or after two seconds. A client command sent when no splash is running succeeds and does nothing, so
 `rcS` and the initramfs call it unconditionally.
 
 The splash starts in the default accent, because no root filesystem exists when the initramfs
@@ -591,13 +615,13 @@ which already wraps every service script in one.
 
 The progress total is additive: each part of boot adds its own stage count as soon as it knows
 it, so `done == total` happens at every boundary between parts. Until the first total arrives the
-bar sweeps back and forth. The bar stops one segment short of full until `quit` arrives, so it
-never shows 100% before the boot has finished.
+bar sweeps back and forth. The bar stops one segment short of full until `quit` or `handoff`
+arrives, so it never shows 100% before the boot has finished.
 
 To work on the artwork without booting, render a frame to a PPM file:
 
 ```sh
-kdos-splash preview 1280x800 0.35 out.ppm
+kdos-splash preview 1280x800 0.35 out.ppm phosphor
 ```
 
 ## A/B slot selection
@@ -615,16 +639,29 @@ active   = a                the slot known to work
 try      = b                a candidate, or empty
 attempts = 1                how many boots it has left
 bootnext = yes              tried through UEFI BootNext, or empty
+armed    = <boot id>        the boot that put the candidate on trial
 ```
 
-`kinstall` writes the first version whenever the install has an ESP: `slot_a` and `crypt_a`
-filled in, `active = a`, no candidate. Slot B is described later with
-`kdos-bootctl set-slot b <uuid> [<luks-uuid>]`, and
-[`kdos update apply`](../04-programs/kdos-command.md#kdos-update) installs into it, deploys its
-kernel and calls `try`. Nothing in KDOS creates or first populates slot B's partition: the steps
-to make one by hand are in [Installation](../02-user-guide/installation.md#ab-root-slots), and
-what has not been tested is in
-[Known gaps](../06-reference/known-gaps.md#nothing-creates-or-first-fills-the-second-root-slot).
+`kinstall` writes the first version whenever the install has an ESP: `active = a` and no
+candidate. On its A/B layout it also creates slot B as a second logical volume beside slot A,
+fills it with a copy of slot A as installed (with its own root UUID in its `fstab`), records it as
+`slot_b`, and writes its menu entry, so both slots boot the same system from the first boot. Any
+other layout records slot A alone; a second root made by hand is described with
+`kdos-bootctl set-slot b <uuid> [<luks-uuid>]` (see
+[Installation](../02-user-guide/installation.md#ab-root-slots)). `/home` is a third volume both
+slots mount, and the pack store is bound from it at `/var/lib/kdos/packs`, so applications and
+their boxes are shared; everything else, `/etc` and `/var` included, belongs to one slot.
+
+[`kdos update apply`](../04-programs/kdos-command.md#kdos-update) writes a newer release into the
+inactive slot: as a signed slot image when one is published, or from the signed binary host, or
+built from source with `--source` (see [Packaging](packaging.md#updating-a-machine)). Before it
+calls `try` it *arms* the slot: it deploys the slot's kernel, and carries this machine's own state
+into it, because the slot holds the release and not the machine's configuration. A file under
+`/etc` a package installed and nobody edited takes the slot's newer copy; an edited or unowned file
+keeps the running machine's copy, and a different copy the slot held is kept beside it as
+`<file>.kdos-new`; the account files are merged by name; `fstab` is the running machine's with the
+slot's own root line; and machine state under `/var` (the network's, Bluetooth's, the accounts
+service's, SDDM's and the rest) is copied whole.
 
 In the initramfs, when the command line names `bootstate=UUID=`, the init loads `vfat`, waits up
 to ten seconds for that ESP to appear, mounts it at `/esp`, and asks `kdos-bootctl select` which
@@ -638,16 +675,30 @@ still closes as passed.
 
 | Command | What it does |
 |---|---|
-| `kdos-bootctl status [--json]` | Print what the state file says |
+| `kdos-bootctl status [--json]` | Print what the state file says, with each slot's version |
+| `kdos-bootctl list [--json[=short\|pretty]]` | The boot entries, one per slot, in the shape systemd's `bootctl list --json` prints; the logout screen reads it to say which version a restart starts |
 | `kdos-bootctl set-slot <a\|b> <uuid> [<luks-uuid>]` | Record where a slot's filesystem is, and which container it is inside |
 | `kdos-bootctl crypt <fs-uuid>` | Print the container UUID that filesystem is inside, for the initramfs |
 | `kdos-bootctl try <a\|b> [n]` | Put that slot on trial: one boot through UEFI `BootNext`, or `n` boots led by the menu where there is no `BootNext` (default 3, minimum 1) |
+| `kdos-bootctl cancel` | Forget a trial that has not had its boot yet; the next boot starts the confirmed slot. A trial the running boot is already in is refused: it ends by being confirmed or rolled back |
 | `kdos-bootctl deploy <root> [<a\|b>]` | Put that root's kernel and initramfs in its slot's directory on the ESP |
 | `kdos-bootctl select [<a\|b>]` | Decide which root to boot and spend an attempt (run by the initramfs); the argument is the entry's `kdos_slot=` |
-| `kdos-bootctl mark-good` | Confirm that this boot worked (run at the end of `rcS`) |
+| `kdos-bootctl mark-good` | Confirm that this boot worked (run by `kdos-sysupdated` once both boot marks exist; see [Counting and confirming](#counting-and-confirming)) |
 | `kdos-bootctl theme <accent>` | Repaint the boot menu and the text consoles in that scheme |
 | `kdos-bootctl theme --print [<accent>]` | Print the menu's theme block to standard output |
 | `kdos-bootctl palette [<accent>]` | Print that scheme's `setvtrgb` table to standard output |
+| `kdos-bootctl splash phosphor\|modern` | Set the splash's motion on every KDOS entry, and on a pending trial's menu |
+
+The ESP is mounted `umask=0077`, so nothing that runs as a user can read the state file. Every run
+as root against the machine's own state therefore publishes three world-readable copies, which the
+logout screen, the welcome tour, the update notices and System Settings read: `status --json` as
+`/run/kdos/bootstate.json`, `list --json=short` as `/run/kdos/boot-entries.json`, and a flat
+`/run/kdos/slot.json` (this boot's slot, its version and state, and the other slot's). A `--json`
+read that cannot open the state file prints those copies instead. `kdos-sysupdated` runs
+`status --json` at start and every half minute, so a copy trails the state by half a minute at most.
+`try` also writes `/run/systemd/reboot-to-boot-loader-entry`, which elogind reports as login1's
+`RebootToBootLoaderEntry` (its init script exports `SYSTEMD_REBOOT_TO_BOOT_LOADER_ENTRY=1` for
+this), so the logout screen can name the version a restart will start; `cancel` removes it.
 
 Environment variables point it at files other than the real ones, which is how the selftest
 exercises it against fixtures without touching the machine running it:
@@ -660,6 +711,10 @@ exercises it against fixtures without touching the machine running it:
 | `KDOS_EFIVARS` | `/sys/firmware/efi/efivars` | The firmware variables. With `KDOS_BOOTSTATE` set to anything else and this unset, no firmware variable is written. |
 | `KDOS_CMDLINE` | `/proc/cmdline` | The kernel command line. With `KDOS_BOOTSTATE` redirected and this unset, no `kdos_slot=` is read. |
 | `KDOS_ESP_DISK` | Read from the mount table and `/sys/class/block` | `<image>:<partition>`, the disk and partition number of the ESP |
+| `KDOS_BOOT_ID` | `/proc/sys/kernel/random/boot_id` | This boot's id, which `try` records as `armed` |
+| `KDOS_SYSROOT` | `/` | The running root, read for its own version |
+| `KDOS_BOOTSTATE_PUB`, `KDOS_BOOT_ENTRIES`, `KDOS_SLOT_PUB` | `/run/kdos/bootstate.json`, `boot-entries.json`, `slot.json` | The published copies. With `KDOS_BOOTSTATE` redirected and these unset, nothing is published |
+| `KDOS_REBOOT_ENTRY` | `/run/systemd/reboot-to-boot-loader-entry` | The one-shot entry elogind reports |
 
 ### Counting and confirming
 
@@ -675,9 +730,39 @@ mounted, and prints the UUID to boot:
 | A candidate with attempts left | Spends one and boots the candidate |
 | A candidate with no attempts left | Rolls back: forgets the candidate and boots the active slot |
 
-`kdos-bootctl mark-good` is the other half. It runs at the *end* of `rcS`, after every service
-that was going to fail has had its chance. A bad update therefore rolls itself back with no help:
-on UEFI after its one boot, on BIOS after its allotted number. It confirms a candidate only on the
+`kdos-bootctl mark-good` is the other half, and it runs only when the boot has shown two things.
+Each is a mark, an empty file root owns under `/run/kdos/bless/`, which is a tmpfs, so every boot
+starts with neither:
+
+| Mark | Written by | Means |
+|---|---|---|
+| `userspace` | `rcS`, as its last step | Every service that was going to fail has had its chance |
+| `graphical` | `kdos-sysupdated`, when a Plasma session calls `io.kdos.Slots1.Bless` | The desktop came up and stayed up |
+
+The session's call comes from `kdos-notice --bless`, an autostart entry, once
+`org.kde.plasmashell` has answered on the session bus for a minute without a gap or a restart.
+polkit grants `io.kdos.slots.bless` to the active local session alone, never with a prompt, and
+nothing under a user's runtime directory is read, so a mark cannot be forged from a session that is
+not the one at the machine. On a machine nobody logs in to (SDDM is not set to log anyone in, and
+no user session has existed this boot), the login screen staying up for a minute writes the
+`graphical` mark instead; once any user session has existed, a console login included, only a
+session's call counts, because a login screen that came back after a crashed session must not
+confirm the slot that crashed it. A machine whose `/etc/inittab` starts no display manager, or
+that has no executable `/usr/bin/sddm`, has no graphical half, and the first mark is enough.
+
+`kdos-sysupdated` watches the directory and runs `mark-good` once per boot when both marks exist,
+then writes `/run/kdos/bless/confirmed`. A `mark-good` that fails is tried again half a minute
+later; until it succeeds the boot is unconfirmed, which is the safe way to fail, since the attempt
+counter then rolls back. A session that does not manage its minute within fifteen minutes is given
+up on. An image without `kdos-sysupdated`, or one where it is disabled, has `rcS` run `mark-good`
+itself as its last step, because the marks would otherwise wait for a reader that is not there and
+every trial would roll back however well it booted.
+
+A bad update therefore rolls itself back with no help, whether its userland wedges or its desktop
+crashes: on UEFI after its one boot, on BIOS after its allotted number. A trial armed during the
+boot that is about to be confirmed (an update applied in the first minute after login) is left
+exactly as it is: `try` records the boot that armed it as `armed`, and `mark-good` in that same
+boot neither promotes nor rolls back the candidate. It confirms a candidate only on the
 candidate's own kernel: when the command line's `kdos_slot=` names another slot, the candidate's
 kernel never ran, and `mark-good` rolls it back instead. A command line with no `kdos_slot=` is
 taken as the candidate's. On a machine with no boot state `mark-good` does nothing, silently.
@@ -773,7 +858,7 @@ slot and no other, because the running kernel is that slot's.
   anything.
 - **Any other hand-picked entry** is one boot of that root. No attempt is spent and nothing is
   confirmed, except a candidate picked after its last attempt, which is still the candidate and is
-  confirmed by `rcS` as usual.
+  confirmed as usual.
 
 In a menu-led trial, spending the last attempt moves the menu's lead back to the active slot. A
 candidate that fails that boot is therefore rolled back by the next boot of the confirmed slot's
@@ -796,8 +881,8 @@ updated; no update rewrites the init of a slot it is not installing into. A conf
 therefore runs the pair it was installed with until its own next update, and that pair is the one
 that carries out a rollback. Two consequences follow:
 
-- `mark-good` regenerates the menu on every boot, confirmed or not, so a menu left leading with the
-  wrong kernel is corrected on the first boot that reaches the end of `rcS`.
+- `mark-good` regenerates the menu whenever it runs, whether or not a trial was pending, so a menu
+  left leading with the wrong kernel is corrected on the first boot that is confirmed.
 - If the menu still leads with a candidate kernel that dies, pick the confirmed slot's
   `KDOS (slot <x>)` entry by hand. That entry boots the slot's own kernel and root.
 
@@ -1149,26 +1234,53 @@ field is free of shell metacharacters, so init executes each one directly rather
    it and its supervisor at a log forwarder of their own. A
    supervised daemon's own output does not stay in that file: `ksvc` sends it to syslog and to
    `/run/kdos-svc.<name>.log`; see [The daemons](../04-programs/daemons.md#the-shape-they-share).
-7. Runs `kdos-bootctl mark-good`.
-8. Quits the splash, which runs the power-off animation and leaves a clean framebuffer for the tty1
-   login.
+7. Writes the first boot mark, `/run/kdos/bless/userspace`, which is half of what confirms an
+   update on trial (see [Counting and confirming](#counting-and-confirming)). It is the last step
+   on purpose: a boot that wedges before it never writes it. On an image without
+   `kdos-sysupdated`, or with it disabled, it runs `kdos-bootctl mark-good` here instead.
+8. Hands the screen to the display manager: `kdos-splash handoff` runs the power-off animation and
+   leaves tty1 black, in graphics mode, with its text cleared and its cursor hidden. A VT in
+   graphics mode draws nothing, so neither init's runlevel message nor a kernel message appears
+   between the splash's last frame and the login screen's first. A single-user boot (`single`,
+   `s`, `S`, `1` or `-s` on the command line) gets `kdos-splash quit` instead, which leaves the
+   console in text mode for `sulogin`.
 
-The quit is synchronous, and the desktop depends on that twice. Init starts the tty1 login on a
-framebuffer nothing else owns, and the compositor's mode set further down that chain acquires a
-device the splash has already released. A splash that quit asynchronously would race the mode set,
-and losing that race gives a black screen with a running session behind it.
+The hand-over is synchronous, and the login screen depends on that. Init reaches the inittab line
+that starts SDDM only after `rcS` returns, and the login screen's compositor takes the display as
+a device the splash has already let go of. A splash that let go asynchronously would race that mode
+set, and losing the race gives a black screen with a running greeter behind it.
 
 The base filesystem ships these service scripts in `/etc/init.d/`:
 
 ```
-01_udev  02_modules  03_lvm  05_hostname  06_utmps  10_sysctl  12_zram  15_userdirs
-18_timers  20_dmesg  22_syslog  25_nftables  30_network  35_chrony  40_dbus
-41_polkitd  42_modemmanager  42_networkmanager  45_avahi  45_seatd
-46_hostapd  47_pcscd  50_alsa  51_mdmonitor  52_smartd  53_xfs_healer
-54_thermald  55_powerd  55_tlp  56_energyd  57_oomd  58_mountd  59_packd
-60_bluetooth  70_sshd  80_cups  81_cups-browsed  82_ipp-usb
-86_kiwix-serve  87_kolibri  88_llama-server
+01_udev  02_modules  03_lvm  05_hostname  06_utmps  10_sysctl  12_zram  15_cgroups
+18_timers  20_dmesg  22_syslog  25_nftables  30_network  35_chrony  40_dbus  40_elogind
+41_polkitd  42_modemmanager  42_networkmanager  43_settingsd  44_accounts  45_avahi
+46_hostapd  46_sysupdated  47_pcscd  48_iio-sensor-proxy  50_alsa  51_mdmonitor  52_smartd
+53_xfs_healer  54_thermald  55_powerd  55_tlp  56_energyd  56_tlppd  57_oomd  59_packd
+60_bluetooth  62_plasma-setup  63_live-installer  65_turnstiled  70_sshd  80_cups
+81_cups-browsed  82_ipp-usb  85_crond  86_kiwix-serve  87_kolibri  88_llama-server
 ```
+
+The ones the desktop stands on, in boot order:
+
+| Script | Starts | Why it sits there |
+|---|---|---|
+| `15_cgroups` | Nothing: enables the `cpu`, `memory` and `pids` controllers at the root of the cgroup2 tree | Before anything makes a cgroup. elogind gives each login's subtree exactly the controllers the root offers, and without them a box profile's `memory`, `cpus` and `pids` are accepted by podman and enforced by nothing |
+| `40_elogind` | `elogind`, as `org.freedesktop.login1` | After the system bus and before polkit, NetworkManager and everything that asks about sessions; it waits until the name is owned, because the port ships no activation file |
+| `41_polkitd` | `polkitd` | See [How polkit and ModemManager are started](security-model.md#how-polkit-and-modemmanager-are-started) |
+| `43_settingsd` | `kdos-settingsd`: `org.freedesktop.hostname1`, `timedate1` and `locale1` | Read by System Settings, the first-boot wizard and the login screen's keyboard layout |
+| `44_accounts` | `accounts-daemon`, as `org.freedesktop.Accounts` | After polkit, which it asks before every change, and before the login screen, which shows the accounts it keeps |
+| `46_sysupdated` | `kdos-sysupdated`: `org.freedesktop.sysupdate1` and `io.kdos.Slots1` | Discover's system updates, and the [boot confirmation](#counting-and-confirming) |
+| `62_plasma-setup` | Nothing, or arms the first-boot wizard | On a machine installed for somebody else (`/etc/plasma-setup-done` absent, not the live medium), makes the `plasma-setup` account and has SDDM log it in to run the wizard |
+| `63_live-installer` | Nothing | On the live medium only: puts the installer's menu entry and its polkit rule in place |
+| `65_turnstiled` | `turnstiled` | Every login's runtime directory and every user's services (see [The session](session.md#the-users-services)). The login screen cannot start without it. It sorts late so that a lingering user's services start after the bus, elogind, the network and the pack daemon they use, and `rcK` stops it early for the same reason |
+
+`elogind` and `accounts-daemon` are supervised `--restart-with dbus`, because a restarted system
+bus leaves each holding a name on a bus that is gone. A restarted elogind reads every session back
+from `/run/systemd`, but not a compositor's hold on its display and input devices, so a desktop that
+ran across an elogind restart is best logged out of. `40_elogind` exports
+`SYSTEMD_REBOOT_TO_BOOT_LOADER_ENTRY=1` for elogind; see [`kdos-bootctl`](#kdos-bootctl).
 
 Ports install more beside them, each from its `build.sh`:
 
@@ -1235,8 +1347,9 @@ change to this script. Each is disabled like any other service, with a marker na
 
 musl's `utmp` and `utmpx` functions are stubs: they store nothing and find no one. The login
 records that `who`, `w`, `uptime`, `users`, `pinky` and `last` read are kept instead by [utmps](https://skarnet.org/software/utmps/), whose library every reader and writer on
-the image links: `sysvinit`, `util-linux` (`agetty`, `last`, `utmpdump`), `shadow` (`login`),
-`coreutils` and `procps-ng`. The library sends each call over a socket to one of two daemons, which
+the image links: `sysvinit`, `util-linux` (`agetty`, `last`, `utmpdump`), `util-linux-login`
+(`login`), `sddm` (`sddm-helper`, which records each graphical login), `coreutils` and
+`procps-ng`. The library sends each call over a socket to one of two daemons, which
 `06_utmps` starts and `ksvc` supervises:
 
 | Service | Socket | File | Records |
@@ -1248,7 +1361,8 @@ Each is `utmps-utmpd` or `utmps-wtmpd` behind s6's `s6-ipcserver`, run as the `u
 through `s6-setuidgid`; `utmps-utmpd` opens `utmp` in its working directory, which execline's
 `execline-cd` sets. Each daemon reads the client's uid and gid from the socket: `utmpd` changes a
 record only for root or the `utmp` group, and `wtmpd` appends one only for root or for the user the
-record names, so only root's writers (`init`, `agetty`, `login`) can log someone in. `06_utmps` creates `/run/utmps`, an empty `/run/utmps/utmp` and `/var/log/wtmp` for `utmp`, and
+record names, so only root's writers (`init`, `agetty`, `login`, `sddm-helper`) can log someone
+in. `06_utmps` creates `/run/utmps`, an empty `/run/utmps/utmp` and `/var/log/wtmp` for `utmp`, and
 waits up to two seconds for both sockets, because `init` writes its boot record the moment `rcS`
 returns and a record sent with no socket listening is lost. The empty `utmp` is needed because
 `utmpd` creates the file only when its first request arrives, while `init` checks that the file
@@ -1304,7 +1418,7 @@ continues to runlevel 3, the running system. There are three ways in:
   starts, and then `sulogin` runs.
 - `emergency` on the kernel command line, handed on the same way. `sulogin` runs before `rcS`, so
   only the initramfs's mounts (`/dev`, `/proc`, `/sys` and the root) exist.
-- `telinit S` from a running system, which ends the consoles and the session first.
+- `telinit S` from a running system, which ends the consoles, SDDM and every session first.
 
 `sulogin` gives no shell when root's password is locked, which is what the installer does to root
 unless it was asked to set a root password: it prints *"Cannot open access to console, the root
@@ -1317,11 +1431,14 @@ password does not open it.
 ### Shutdown
 
 `poweroff`, `reboot`, `shutdown`, `telinit 0` or `telinit 6` asks init for runlevel 0 or 6, and
-`Ctrl+Alt+Del` runs `shutdown -r now`. Each of them reaches init as a request written to
-`/run/initctl`, the FIFO init creates itself, again on the tmpfs `rcS` mounts over `/run`. Init then
-sends `TERM`, and `KILL` three seconds later, to every `/etc/inittab` entry the new runlevel does not
-list, which is every console and, with tty1, the session. Then it runs the runlevel's `wait`
-entries in file order, each to completion:
+`Ctrl+Alt+Del` at a text console runs `shutdown -r now`. Plasma's Shut Down and Restart, and the
+login screen's, ask elogind, which runs `/sbin/poweroff` or `/sbin/reboot`; outside runlevels 0 and
+6 those hand the request to `shutdown`, so a shutdown from the desktop takes the same path. Each of
+them reaches init as a request written to `/run/initctl`, the FIFO init creates itself, again on the
+tmpfs `rcS` mounts over `/run`. Init then sends `TERM`, and `KILL` three seconds later, to every
+`/etc/inittab` entry the new runlevel does not list, which is every console and, with tty1, SDDM and
+every session under it. Then it runs the runlevel's `wait` entries in file order, each to
+completion:
 
 | Entry | Does |
 |---|---|
@@ -1358,20 +1475,20 @@ process group, a wait for the group to empty polled every 50 ms, and `SIGKILL` t
 the stop grace runs out. The grace is five seconds unless the script passed `supervise
 --stop-grace`; PostgreSQL's is 30 and Samba's 15, so a server writing its data out is not killed
 partway through. Most daemons exit within a tick, so `rcK`'s walk costs a fraction of a second per
-service. `kdos-powerd` runs `telinit 0` or `telinit 6` and then waits sixty seconds before
-calling `reboot(2)` itself. That is longer than init's three seconds for the consoles plus `rcK`'s
-walk down to `55_powerd`, which ends it, so the fallback fires only when init never acted on the
-request. No signal can stand in for `telinit`: sysvinit ignores `SIGTERM`, and `SIGUSR2` closes
-`/run/initctl` for the rest of the boot, after which no `telinit`, `shutdown` or `reboot` reaches
-init.
+service. `65_turnstiled` is stopped early in the walk, with a grace of sixty seconds: turnstiled's
+own `TERM` stops every user's services through the backend, boxes first, while the system bus and
+elogind they talk to are still up. No signal can stand in for `telinit`: sysvinit ignores
+`SIGTERM`, and `SIGUSR2` closes `/run/initctl` for the rest of the boot, after which no `telinit`,
+`shutdown` or `reboot` reaches init.
 
 A restarted system bus takes every client's connection with it. `40_dbus` supervises
 `dbus-daemon`, so the bus is back five seconds after it dies, and polkitd, ModemManager, avahi and
 bluetoothd exit with their connection and are restarted onto it by their own supervisors.
-NetworkManager does not exit, so `42_networkmanager` supervises it with `--restart-with dbus`: its
+NetworkManager, elogind and `accounts-daemon` do not exit, so each is supervised with
+`--restart-with dbus`: its
 supervisor restarts it once the new bus is up (see [ksvc and
-service](../04-programs/kdos-command.md#ksvc-and-service)), and it brings `wpa_supplicant`, which
-left with the old bus, back by activation.
+service](../04-programs/kdos-command.md#ksvc-and-service)), and NetworkManager brings
+`wpa_supplicant`, which left with the old bus, back by activation.
 
 ### One DHCP client on the link
 
@@ -1454,24 +1571,90 @@ The installer keeps the shipped entries, because of the `/tmp` line: it writes t
 (`/boot/efi`, `vfat`, pass number 2) and any swap at the top of `fstab` and the shipped lines
 after them, rather than replacing the file.
 
+## The display manager
+
+The login screen is SDDM's. `/etc/inittab` starts it on tty1, through a short script, and never
+from an `rcS` service script: init reaches the inittab line only once `rcS` has returned, which is
+after the splash has let go of the display.
+
+```
+1:2345:respawn:/usr/local/sbin/kdos-dm
+```
+
+`kdos-dm` makes the `sddm` account's home, `/var/lib/sddm`, and hands it to the account (SDDM keeps
+the last user and session there, and the greeter its settings), takes the greeter's language from
+`/etc/locale.conf`, clears tty1's text and hides its cursor, and execs `/usr/bin/sddm`. SDDM writes
+to `/var/log/sddm.log`; the first start of each boot moves the previous boot's log to
+`sddm.log.old`, so the log of a boot that failed survives the reboot that follows it.
+
+**A missing or failing SDDM still gives a console.** SDDM stays up across every login and logout,
+so every start of `kdos-dm` after the first is SDDM having exited. A `sddm` that is not executable,
+no `sddm` account in `/etc/passwd`, or three exits within a minute (counted in
+`/run/kdos/kdos-dm.starts`, on the uptime clock so a clock step cannot hide them) turns tty1 into a
+password prompt through `kdos-getty` instead, and says why in syslog under `kdos-dm`. That prompt is
+never an automatic login: whatever broke the greeter must not also hand somebody a shell. When the
+login there ends, init starts `kdos-dm` again and SDDM is tried once the minute has passed. An SDDM
+that keeps running with a greeter that never draws is not seen from here, because SDDM restarts a
+failed greeter itself; tty2 is the console for that.
+
+**What SDDM runs.** Its configuration is read from `/usr/lib/sddm/sddm.conf.d` (plasma-workspace's
+`plasma-wayland.conf`), then `/etc/sddm.conf.d/` by name, then `/etc/sddm.conf`, the last value of a
+key winning:
+
+| File | Holds |
+|---|---|
+| `/etc/sddm.conf.d/00-kdos.conf` | `DisplayServer=wayland`; the greeter's compositor, `kwin_wayland --no-global-shortcuts --no-lockscreen --inputmethod plasma-keyboard --locale1`; the session wrapper, `/usr/local/bin/kdos-session-wrapper`; no X11 session directory, so no X session can ever be offered; accounts from uid 1000 to 60000; the `kdos` theme |
+| `/etc/sddm.conf.d/kde_settings.conf` | `[Autologin]` and nothing else of KDOS's. The installer and System Settings' Login Screen page both write it |
+| `/etc/sddm.conf.d/99-plasma-setup.conf` | Only while the first-boot wizard is armed: logs the `plasma-setup` account in |
+
+The greeter runs as the `sddm` account (uid and gid 64, home `/var/lib/sddm`, shell `/sbin/nologin`)
+in its own PAM session, `sddm-greeter`, which `pam_turnstile` gives a runtime directory, since its
+KWin will not start without one, and elogind registers as a greeter session on `seat0`. It starts
+no X server: KWin is run without `--xwayland`. `GreeterEnvironment` puts KDOS's defaults in its
+`XDG_CONFIG_DIRS`, so the greeter and its KWin read the same look as a session. The theme matches
+the splash and the lock screen.
+
+**Who is logged in automatically.** The live medium ships `[Autologin] User=kdos` with
+`Relogin=true`, so it reaches the desktop as the live account and logs straight back in after a
+Log Out. Every install replaces the group: on a single-account machine with an encrypted root that
+asked for it, with that account and `Relogin=false`, so the disk passphrase is the only thing typed
+at power-on; everywhere else with nothing, which shows the login screen. An automatic login can
+also start behind the lock screen; how is in
+[The security model](security-model.md#the-login-stacks), with the PAM stacks that refuse an
+automatic login to any account below uid 1000.
+
+**Which terminal a session is on.** The login screen, and a session started by an automatic
+login, are on VT 1. A session started from a password at the greeter gets the next free virtual
+terminal while the greeter still holds VT 1, and with tty2's prompt holding VT 2 that is VT 3.
+KWin switches terminals through elogind, so `Ctrl+Alt+F<n>` works from the desktop and the login
+screen alike; at a text console `Alt+F<n>` does the same.
+
+**The first-boot wizard.** A machine installed for somebody else (kinstall's OEM answer) has no
+account and no `/etc/plasma-setup-done`. While that file is absent, `62_plasma-setup` makes the
+system account `plasma-setup` and its home under `/run`, and has plasma-setup's own boot utility
+write `99-plasma-setup.conf`, so SDDM logs that account into a Plasma session whose autostart runs
+the wizard. The wizard makes the first real account, writes `/etc/plasma-setup-done` and removes the
+file, so the next boot shows the login screen and the step does nothing. The live medium never runs
+it.
+
 ## The console
 
 The framebuffer console is built with deferred takeover, and the takeover resets every virtual
 terminal to the kernel's built-in font. A `setfont` in `rcS` would therefore be silently undone.
 
-`/etc/inittab` starts every console through `kdos-getty`, which does the job at the right moment:
-force the takeover, load the font and palette, check them, then run the real getty.
+`/etc/inittab` starts the text consoles through `kdos-getty`, which does the job at the right
+moment: force the takeover, load the font and palette, check them, then run the real getty.
 
 | Console | `inittab` entry | What you get |
 |---|---|---|
-| `tty1` | `respawn`: `kdos-getty tty1 /usr/local/sbin/kdos-login tty1` | The desktop's login, automatic when `login.conf` names an account |
+| `tty1` | `respawn`: `/usr/local/sbin/kdos-dm` | The login screen ([The display manager](#the-display-manager)); a password prompt through `kdos-getty` when SDDM cannot run |
 | `tty2` | `respawn`: `kdos-getty tty2 /sbin/agetty --noclear tty2 38400 linux` | A plain login prompt from util-linux's `agetty`, never with `--autologin`: the recovery console |
 | `ttyS0` | `respawn`: `/etc/init.d/serial-getty --autologin root --keep-baud --noclear -L ttyS0 115200,38400,9600 vt102`, which execs `/sbin/agetty` with those arguments | On the live medium, root logged in on the serial line with no password. On an installed machine, a login prompt: the installer removes `--autologin root` from that line |
 
-The three consoles belong to runlevels 2 to 5, so single-user mode and the power-off and reboot
-runlevels have none. `--keep-baud` keeps the serial line at the rate the kernel console set, and
-`-L` treats it as a local line with no modem control. A program that `respawn` restarts ten times
-within two minutes is disabled for five minutes, and init logs `respawning too fast`.
+The three belong to runlevels 2 to 5, so single-user mode and the power-off and reboot runlevels
+have none. `--keep-baud` keeps the serial line at the rate the kernel console set, and `-L` treats
+it as a local line with no modem control. A program that `respawn` restarts ten times within two
+minutes is disabled for five minutes, and init logs `respawning too fast`.
 
 The kernel registers `ttyS0` whether or not a UART answers there, so the device always exists, and
 on a machine with no serial port `agetty` would fail at once on every respawn and hit that limit
@@ -1480,11 +1663,22 @@ over and over. `/etc/init.d/serial-getty` reads `/sys/class/tty/ttyS0/type` firs
 quiet until the runlevel changes. Any other type, or no such file, runs `agetty`. The name has no
 `NN_` prefix, so `rcS` and `rcK` never run it.
 
+**A console login is a full login.** `agetty` hands the name to `/bin/login`, util-linux's PAM
+`login` (the `util-linux-login` port), whose stack, `/etc/pam.d/login`, includes `system-login`. A
+login on tty2 or the serial line is therefore a session elogind knows, gets the same resource
+limits as a desktop login, and starts the user's services through turnstile like any other (see
+[The session](session.md#the-users-services)). `login` writes the `wtmp` entry and lastlog, and
+`agetty` the tty's `utmp` record (see [Login records](#login-records)).
+
 `kdos-getty` is another name of the `ksvc` binary, installed as `/usr/local/sbin/kdos-getty`. What
 it does, in order:
 
 - It logs to `/run/kdos-getty.<tty>.log`, which is where to look when a terminal comes up with the
   wrong font.
+- It puts the terminal back into text mode when it is in graphics mode, and shows the cursor
+  again. `kdos-splash handoff` leaves tty1 in graphics mode for the login screen, and a terminal in
+  graphics mode draws no text: the password prompt `kdos-dm` falls back to would wait where nobody
+  can see it.
 - It ends the deferral. Only a real glyph does that: escape sequences are consumed by the
   terminal's state machine, and even spaces are skipped by the render path, so it prints one
   character and clears it.
@@ -1498,53 +1692,28 @@ it does, in order:
 - It loads the palette from `/etc/vtrgb` (the accent's sixteen console colours, written by
   `kdos-bootctl theme`) **before** the final clear, or the screen ends up half pure black and half
   the palette's black.
-- It loads the keyboard layout named in `/etc/keymap`, which the installer writes, with `loadkeys`.
-  The layout applies to every console at once, so the second getty's load changes nothing. A
-  console keyboard with the wrong layout starts with that file.
+- It loads the keyboard layout named in `/etc/keymap`, which the installer and the keyboard
+  setting of System Settings write, with `loadkeys`. The layout applies to every console at once.
+  A console keyboard with the wrong layout starts with that file.
 - It sets the terminal's window size from the grid the font actually produced, read from
-  `/dev/vcsa<n>`. Without this, full-screen programs on tty1 would come up believing the screen is
-  80x24 and draw in its top-left corner.
-- When tty1's account is known (from `login.conf`, below), it moves itself into
-  `/sys/fs/cgroup/user.slice/user-<uid>/session`, so the session and every box under it get working
-  memory limits. A password login and an ssh session are not moved.
-- It raises the real-time limits every process below it inherits: `rtprio` 95, `nice` 39 (nice −19)
-  and `memlock` 4 MiB, which the audio stack needs to run its threads at real-time priority. A
-  limit the kernel refuses is logged, not fatal.
+  `/dev/vcsa<n>`. Without this, full-screen programs would come up believing the screen is 80x24
+  and draw in its top-left corner.
 - It runs the getty named on its command line.
 
-Loading the font and palette anywhere earlier, such as in `rcS`, would be undone by the takeover.
+Resource limits, cgroups and the session itself are not `kdos-getty`'s: every login below it is a
+PAM login, and `pam_limits`, `pam_elogind` and `pam_turnstile` do all three. Loading the font and
+palette anywhere earlier, such as in `rcS`, would be undone by the takeover.
 
-`kdos-login` is a short shell script in `/usr/local/sbin`. It reads `autologin` from
-[`/etc/kdos/login.conf`](../06-reference/configuration.md#etckdosloginconf) (the last such line
-wins) and hands the terminal to `agetty` either way:
-
-- **With the key** (`autologin = kdos` as shipped, which is what the live medium uses), it runs
-  `agetty --autologin <account> --noclear tty1 38400 linux`: a machine with one account and no
-  password has nothing to ask. agetty's autologin calls `/bin/login -f -- USER`, and shadow's
-  `login` takes `--` as the end of its options; a `login` that read the account as `-f`'s own
-  argument would refuse `--` as the account and leave tty1 at a prompt nobody can answer.
-- **Without it** (commented out, which is what the installer writes unless an answer file asked
-  otherwise, or a missing or unreadable file), it runs plain `agetty` and the ordinary password
-  prompt appears. There is no greeter: no account chooser, no session chooser and no graphical
-  surface of any kind before the shell.
-
-Going through agetty either way keeps the login record, lastlog and the shell profile on the same
-path they take everywhere else: agetty writes the tty's `utmp` record through `utmpd` (see
-[Login records](#login-records)), and `login` its `wtmp` entry through `wtmpd`. The profile is what starts the desktop: `~/.bash_profile` (and
-`~/.zprofile`) runs `kdos-desktop` when the login is on `/dev/tty1`, `WAYLAND_DISPLAY` is unset and
-`kdos-desktop` exists. It is not `exec`ed, so a session that fails to start falls back to a shell
-prompt.
-
-`kdos-getty` falls back to a plain `agetty` when the program named in `/etc/inittab` cannot be run.
-Without that fallback, init would respawn a failing program until it disabled the entry, and there
-would be no way to log in at all. The fallback reads the same `login.conf` key rather than a built-in account name, so
-it logs in the account the missing `kdos-login` would have, and otherwise asks for a password. A
-second copy of the name would log in a user a renamed installation does not have.
+`kdos-getty` falls back to a plain `agetty` when the program named on its command line cannot be
+run. Without that fallback, init would respawn a failing program until it disabled the entry, and
+there would be no way to log in at all. The fallback never logs anybody in: a fallback that did
+would turn a broken login path into an open console.
 
 `tty2` is the recovery console and stays a plain `agetty` whatever tty1 does. Reaching it from the
-desktop is the compositor's job, not the kernel's: once `libseat` puts tty1 into graphics mode the
-kernel stops answering Ctrl+Alt+F<n>, so the compositor switches terminals itself:
-`Ctrl+Alt+F2` from the desktop reaches tty2, and `Alt+F1` at tty2 comes back.
+desktop or the login screen is KWin's job, not the kernel's: once KWin holds the display the
+kernel stops answering `Ctrl+Alt+F<n>`, so KWin asks elogind to switch terminals. `Ctrl+Alt+F2`
+reaches tty2; at tty2, `Alt+F1` returns to the login screen or an automatic login's session, and
+`Alt+F3` to a session started from a password.
 
 ## The login banner
 
@@ -1592,14 +1761,15 @@ the prompt below it, or the banner prints plainly instead of animating.
 - [Installation](../02-user-guide/installation.md#the-esp-and-the-bootloader): what the installer
   writes to the ESP
 - [Theming](../02-user-guide/theming.md): the boot menu, splash and console colours
-- [The session](session.md): everything after the login prompt
+- [The session](session.md): everything after the login screen
 - [The daemons](../04-programs/daemons.md): the services `rcS` starts
 - [kinstall](../04-programs/kinstall.md): the installer, its partition plans and LVM
 - [The build system](../05-developer/build-system.md): the image phase that builds the initramfs
   and the ISO
 - [How KDOS is built](../05-developer/how-kdos-is-built.md#packaging-70_image): the build
   from source to the ISO this chapter boots
-- [Configuration](../06-reference/configuration.md): `fstab`, `inittab`, `login.conf` and the rest
+- [Configuration](../06-reference/configuration.md): `fstab`, `inittab`, `/etc/sddm.conf.d` and the
+  rest
 - [The ports catalogue](../06-reference/ports-catalogue.md): every port by shelf, with its phase,
   including `limine`, `sysvinit` and `util-linux`
 - [Known gaps](../06-reference/known-gaps.md): what the boot path does not do

@@ -1,0 +1,34 @@
+{
+    "KDE-KIO-Protocols": {
+        "library": {
+            "Class": ":local",
+            "ExtraNames": [
+                "Pack"
+            ],
+            "ExtraTypes": [
+                "QString"
+            ],
+            "Icon": "folder-library",
+            "copyFromFile": false,
+            "copyToFile": false,
+            "deleting": false,
+            "input": "none",
+            "linking": false,
+            "listing": [
+                "Name",
+                "Type",
+                "Size",
+                "Date",
+                "Access",
+                "Extra1"
+            ],
+            "makedir": false,
+            "maxInstances": 4,
+            "moving": false,
+            "output": "filesystem",
+            "protocol": "library",
+            "reading": true,
+            "writing": false
+        }
+    }
+}

@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = ktexteditor
-version     = 6.30.0
+version     = 6.31.0
 release     = 1
 source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
-sha256      = d90f24e33a7aa0e6a179af253dfdeca0977992adb62bf1b6f7ad11537ab6e3e7  ktexteditor-6.30.0.tar.xz
+sha256      = 02e2d9dbe40b517861af7ad8dd7151d08cbf84be9f8c4e0fecf005b3fc741dac  ktexteditor-6.31.0.tar.xz
 description = KDE Frameworks: the KatePart text editor component
 homepage    = https://invent.kde.org/frameworks/ktexteditor
 license     = LGPL-2.0-or-later AND LGPL-2.0-only AND MIT

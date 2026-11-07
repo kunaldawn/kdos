@@ -22,3 +22,5 @@
 
 fastfetch
 resources
+
+ksystemlog

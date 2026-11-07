@@ -1,0 +1,25 @@
+Subject: Hide "Get Alphabet in New Language..." when KNewStuff is not allowed
+
+The action opens a KNSWidgets::Dialog directly, so it stays in the menu
+under [KDE Action Restrictions] ghns=false and opens a dialog that only
+says it is not allowed. The action now takes the visibility KNewStuff's
+own actions take from the same kiosk check.
+
+--- a/src/klettres.cpp
++++ b/src/klettres.cpp
+@@ -23,6 +23,7 @@
+ 
+ //KDE includes
+ #include <KActionCollection>
++#include <KAuthorized>
+ #include <KConfigDialog>
+ #include <KLocalizedString>
+ #include <KMessageBox>
+@@ -123,6 +124,7 @@
+     QAction *m_stuffAction = actionCollection()->addAction(QStringLiteral("downloadnewstuff"));
+     m_stuffAction->setText(i18n("Get Alphabet in New Language..."));
+     m_stuffAction->setIcon(QIcon::fromTheme(QStringLiteral("get-hot-new-stuff")));
++    m_stuffAction->setVisible(KAuthorized::authorize(KAuthorized::GHNS));
+     connect(m_stuffAction, &QAction::triggered, this, &KLettres::slotDownloadNewStuff);
+ 
+     QAction *m_playAgainAction = actionCollection()->addAction(QStringLiteral("play_again"));

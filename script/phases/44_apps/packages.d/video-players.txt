@@ -30,3 +30,7 @@ smplayer
 celluloid
 kodi
 uosc
+
+dragon
+plasmatube
+telly-skout

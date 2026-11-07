@@ -21,12 +21,12 @@
 # message.
 #
 # WHAT OPENS A FILE IS NOT HERE. That is mc.ext.ini beside this file, which
-# hands everything to `kdos-appbox open` — the same resolution the icons, the
-# chooser and `xdg-open` use.
+# hands everything to `kdos-appbox open` — the same opener `xdg-open` is, over
+# the same mimeapps lists Dolphin reads.
 #
 # THE MOUSE NEEDS NO KEY. mc turns it on by itself when the terminal reports
-# it, and both terminals on this image do; the two keys here are its
-# behaviour, not its existence.
+# it, and Konsole does; the two keys here are its behaviour, not its
+# existence.
 # ---------------------------------
 
 [Midnight-Commander]
@@ -52,7 +52,7 @@ mouse_close_dialog=1
 mouse_repeat_rate=100
 
 [Layout]
-# The panel's directory in the window title, which is what the taskbar chip's
-# second line and the window's own title bar both draw. Without it every `mc`
+# The panel's directory in the window title, which is what the Task Manager's
+# tooltip and the window's own title bar both draw. Without it every `mc`
 # window is called `mc`.
 xterm_title=1

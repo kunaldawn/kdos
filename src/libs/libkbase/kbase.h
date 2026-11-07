@@ -167,8 +167,8 @@ char **kb_listdir(const char *path, int *count);
 void kb_strv_free(char **v);
 
 /* ────────────────────────────────────────────────────────────────────────
- * the freedesktop trash — one implementation, because `kdos-desk`'s Delete
- * key and `kdos trash` at a prompt must mean the same thing.
+ * the freedesktop trash — one implementation, the spec's, because Dolphin's
+ * Delete key and `kdos trash` at a prompt must mean the same thing.
  *
  * Every call returns -1 on failure with errno as the syscall left it, so a
  * caller can say EXDEV ("it is on another filesystem") rather than "failed".
@@ -220,34 +220,9 @@ int kb_lock_file(const char *path, int nonblock);
 int kb_state_path(const char *rel, char *out, size_t n);
 
 /*
- * IS A DESKTOP TOGGLE ON? `kdos toggle <name>` writes a flag file under
- * `$XDG_STATE_HOME/kdos/toggles/` and its presence is the whole state.
- *
- * A FLAG FILE RATHER THAN A CONFIGURATION KEY, because the configuration is
- * documented as read once when a session starts: a runtime writer would make
- * half a program's answers come from before an edit and half from after.
- *
- * STAT'ED PER CALL, NEVER CACHED. Every toggle is set by a different process —
- * a chord, a menu row, a script before a long build — so a program holding a
- * copy is one that has to be told, and there is nothing to tell it with.
- */
-int kb_toggle_on(const char *name);
-
-/*
- * SET ONE. Creating or removing the flag file, with the directory made on the
- * way; 0 on success, -1 if the state directory is not reachable. There is no
- * temp-and-rename because there is nothing to tear: an empty file either
- * exists or it does not, and a half-written nothing is still nothing.
- *
- * THIS AND kb_toggle_on() ARE THE ONLY TWO PLACES THE PATH IS SPELLED. A
- * program that builds it itself is a program writing where nothing reads.
- */
-int kb_toggle_set(const char *name, int on);
-
-/*
  * THE FIRST NAME IN $XDG_CURRENT_DESKTOP, which is the prefix a desktop's own
  * `<desktop>-mimeapps.list` is spelled with — lowercased, because the variable
- * is `KDOS` and the file the spec asks for is `kdos-mimeapps.list`.
+ * is `KDE` and the file the spec asks for is `kde-mimeapps.list`.
  *
  * Returns 0 when the variable is unset or empty, and the caller then searches
  * only the plain lists: a machine with no desktop declared has no per-desktop
@@ -256,8 +231,8 @@ int kb_toggle_set(const char *name, int on);
 int kb_desktop_prefix(char *out, size_t n);
 
 /*
- * WHICH TERMINAL A `Terminal=true` ENTRY IS RUN IN: `foot`, under the
- * compositor. Named here rather than at each call site so the answer cannot
+ * WHICH TERMINAL A `Terminal=true` ENTRY IS RUN IN: `konsole`, in the Plasma
+ * session. Named here rather than at each call site so the answer cannot
  * differ between two of them.
  *
  * NULL WHERE THERE IS NO SESSION, which is a bare virtual terminal, a serial
@@ -301,9 +276,9 @@ int kb_run(const KbArgv *a);		/* exec, wait, return exit status   */
 int kb_run_feed(const KbArgv *a, const char *in, size_t n);
 /* Same as kb_run_feed, except the child keeps the caller's stdout and stderr.
  * That is the difference between feeding a CHECKER and feeding a PAGER: the
- * one place kb_run_feed is used sends the child's output to /dev/null, which
- * is right for kdos-checkpass and would make `kdos help --pager` render the
- * help text into nothing. Same reason kb_run_tty exists beside kb_run. */
+ * kb_run_feed sends the child's output to /dev/null, which is right for a
+ * child fed for what it does rather than what it prints, and would make
+ * `kdos help --pager` render the help text into nothing. Same reason kb_run_tty exists beside kb_run. */
 int kb_run_feed_tty(const KbArgv *a, const char *in, size_t n);
 /* Fed on stdin AND captured from stdout — a FILTER, which neither of the other
  * two serve. THE INPUT MUST FIT IN ONE PIPE BUFFER: nothing reads the output
@@ -356,9 +331,8 @@ void kb_run_detach(const KbArgv *a);
  * no inherited SIG_IGN.
  *
  * CALL IT BETWEEN FORK AND EXEC WHEREVER THE PARENT MAY BE IGNORING A SIGNAL,
- * which every program with a display backend does: libktui's tty backend and
- * libkwl both set SIGPIPE to SIG_IGN so that a peer declining their clipboard
- * cannot kill them. An ignored disposition survives execve, so without this a
+ * which every program with a display backend does: libktui's tty backend sets
+ * SIGPIPE to SIG_IGN so that a peer declining its clipboard cannot kill it. An ignored disposition survives execve, so without this a
  * shell launched from such a program never ends a pipeline and `yes | head`
  * runs until something else stops it. A program that ignores nothing loses
  * nothing by calling it either.
@@ -471,8 +445,8 @@ void kb_uri_file(const char *path, char *out, size_t n);
  * THE OTHER DIRECTION: a `file://` URI back to a path, percent-decoded.
  *
  * A STRING THAT IS NOT A URI IS COPIED THROUGH. One surface hands a program a
- * path and another hands it a URI — `kdos-pick` prints one, a command line
- * carries the other — and a caller that had to know which it was given is a
+ * path and another hands it a URI — a file dialog returns one, a command
+ * line carries the other — and a caller that had to know which it was given is a
  * caller that will one day be given the other.
  *
  * A HOST IS REFUSED, NOT DROPPED. `file://otherbox/etc/passwd` names a file on
@@ -528,19 +502,5 @@ int kb_landlock_allow_tcp(KbLandlock *ll, uint16_t port, int connect);
  * ruleset fd. A caller that builds a ruleset and then does not enforce it owns
  * that fd and must close() it, or the descriptor leaks into every child. */
 int kb_landlock_enforce(KbLandlock *ll);
-
-/*
- * Base64. The decoder returns the byte count, or -1 when the input is not
- * base64 or would not fit — refused whole rather than partially decoded, so a
- * caller never pastes half a selection.
- *
- * Here rather than in libkvt: OSC 52 carries a base64 selection, so the escape
- * parser decodes one, and decoding base64 is not a terminal's question.
- * `libktui` hand-rolls the encode for its own OSC 52 write: that library links
- * nothing but libc, and pulling this one in would break the property every
- * other file there depends on.
- */
-int kb_b64_decode(const char *in, size_t inlen, char *out, size_t outsz,
-		  size_t *outlen);
 
 #endif /* KBASE_H */

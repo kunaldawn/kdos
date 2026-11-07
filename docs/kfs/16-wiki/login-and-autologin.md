@@ -1,187 +1,150 @@
 # Login and autologin
 
-KDOS has no display manager. The desktop is reached by logging in on the first console, `tty1`,
-and the login shell's profile starts it. This page covers that path on a running machine: which
-programs make it up, the one file that decides whether `tty1` asks for a password, how to turn
-[autologin]{.idx} on and off, the recovery console on `tty2`, the serial console, and what to do
-when a login does not reach the desktop.
+The desktop is reached through [SDDM]{.idx}, the display manager, whose greeter runs on its own
+KWin on the first console, `tty1`. This page covers that path on a running machine: which programs
+make it up, the files that decide whether the machine shows the greeter or logs somebody in by
+itself, how to turn [autologin]{.idx} on and off, the recovery console on `tty2`, the serial
+console, and what to do when a login does not reach the desktop. What happens after the login is
+on [Session and environment](session-and-environment.md).
 
 ## Installation
 
-Every image has the login path; nothing on it is optional. It is made of these packages and a few
-files of the base filesystem:
+Every image has the login path; nothing on it is optional:
 
-- [util-linux](#port-util-linux) provides [`agetty`]{.idx}, which opens the terminal and prints the
-  prompt, and [`sulogin`]{.idx}, used for single-user mode. It is built with `--disable-login` and
-  `--disable-su`, so [`login`]{.idx} and `su` come from shadow.
-- [shadow](#port-shadow) provides `login`, `su`, `passwd` and the account tools (`useradd`,
-  `usermod`, `userdel`). It is built `--without-libpam`, so the console login checks
-  [`/etc/shadow`]{.idx} itself and runs no PAM module.
-- [kdos-tools](#port-kdos-tools) provides [`kdos-getty`]{.idx} in `/usr/local/sbin`, the wrapper every
-  console getty in [`/etc/inittab`]{.idx} runs under; see
-  [kdos-banner and kdos-getty](../../kdos/04-programs/kdos-command.md#kdos-banner-and-kdos-getty).
-- [kdos-powerd](#port-kdos-powerd) provides the `autologin` verb that changes the setting without
-  editing a file as root, and its client `kdos-power`.
-- The base filesystem (`fs/` in the tree, see [The fs overlay](../01-preparing/fs-overlay.md))
-  provides `/etc/inittab`, [`/etc/kdos/login.conf`]{.idx}, `/usr/local/sbin/kdos-login` and the account
-  skeleton in `/etc/skel`.
+| Piece | From | What it does |
+|---|---|---|
+| `/usr/local/sbin/kdos-dm` | the base filesystem | Started on `tty1` by `/etc/inittab`; makes the greeter account's home, takes the locale from `/etc/locale.conf` and runs `sddm`. When SDDM is missing or exits three times within a minute it puts a password prompt on `tty1` instead, never an autologin |
+| `sddm`, `sddm-helper`, `sddm-greeter-qt6` | [sddm](#port-sddm) | The display manager, the helper that opens each PAM session, and the greeter, run as the `sddm` account (uid 64) on `kwin_wayland` |
+| The KDOS greeter theme | [kdos-sddm-theme](#port-kdos-sddm-theme) | The theme `kdos`, matched to the splash and the lock screen |
+| The Login Screen page | [sddm-kcm](#port-sddm-kcm) | System Settings → **Login Screen (SDDM)**: the theme, autologin and the session's defaults |
+| PAM's `system-login` stack and `/bin/login` | [pam](#port-pam), [util-linux-login](#port-util-linux-login) | Every login is a PAM login: `pam_turnstile` makes the runtime directory and starts the user's services, `pam_elogind` registers the session |
+| `pam_kwallet5` | [kwallet-pam](#port-kwallet-pam) | Opens the user's wallet with the password typed at the greeter |
+| `kdos-getty` | [kdos-tools](#port-kdos-tools) | Wraps `agetty` on `tty2`: loads the console font and palette, then hands over |
+| [plasma-setup](#port-plasma-setup) | | The first-boot wizard of an OEM install, which logs in as its own account to make the first real one |
 
-The login path has no service script: [`init`]{.idx} starts the consoles itself from `/etc/inittab`.
-Logins are recorded by `utmpd` and `wtmpd`, which `06_utmps.sh` starts; see
-[Login records](../../kdos/03-architecture/boot-and-init.md#login-records).
-
-The live medium and an installed system differ in three places:
-
-| | Live medium | Installed system |
-|:--|:--|:--|
-| `tty1` | Logs in [`kdos`]{.idx term="kdos (account)"} without a password | Asks for a password, unless the [installer]{.idx}'s answer file set `autologin = yes` |
-| The `kdos` password | `kdos` | The one given to the installer |
-| The serial console `ttyS0` | Logs in `root` without a password | Asks for a login |
-
-The installed column is what the installer's Configure step writes into the target's
-`login.conf`, `inittab` and `shadow`.
+The live medium logs the `kdos` account in by itself; an installed machine shows the greeter
+unless the install asked for autologin.
 
 ## Configuration
 
-### /etc/kdos/login.conf
-
-The only setting on the login path: the account `tty1` logs in without asking. The file comes from
-`fs/etc/kdos/login.conf`:
-
-<!-- kfs:include fs/etc/kdos/login.conf -->
-
-The key, its default and when it applies are in
-[/etc/kdos/login.conf](../../kdos/06-reference/configuration.md#etckdosloginconf). An absent,
-commented or empty key means a password prompt. On an installed machine the installer edits the
-line rather than rewriting the file: `autologin = <user>` when autologin was chosen,
-`#autologin = <user>` when it was not; see [autologin](../../kdos/04-programs/kinstall.md#autologin).
-
 ### /etc/inittab
 
-`init` reads the consoles from this file, `fs/etc/inittab` in the tree. The three login lines:
+The two console lines:
 
-<!-- kfs:include fs/etc/inittab lines=22-47 pin=82afe0988bdd -->
+<!-- kfs:include fs/etc/inittab lines=22-45 pin=0ea4cfa2ae5f -->
 
-`tty1` runs [`kdos-login`]{.idx} under `kdos-getty`; `tty2` runs a plain `agetty` under `kdos-getty`; the
-serial line runs [`/etc/init.d/serial-getty`]{.idx}, which hands its arguments to `agetty`. The file names
-no account for `tty1`. On an installed system the installer cuts `--autologin root` from the `S0`
-line and leaves the rest of the file as it ships. The rest of the file, the runlevels and the
-shutdown entries, is on [Init and runlevels](init-and-runlevels.md).
+`kdos-dm` is started only once `rcS` has returned, and `rcS` lets go of the framebuffer
+synchronously at its end, so the greeter's compositor never races the boot splash for the
+display. Its log is `/var/log/sddm.log`, one boot per file, with the previous boot's in
+`/var/log/sddm.log.old`.
 
-### /usr/local/sbin/kdos-login
+### /etc/sddm.conf.d/
 
-The program the `tty1` line runs, a short shell script from `fs/usr/local/sbin/kdos-login`. It
-reads the last `autologin` line of `login.conf` and starts `agetty` with or without
-`--autologin`:
+SDDM reads `/usr/lib/sddm/sddm.conf.d/` first, then this directory in name order, then
+`/etc/sddm.conf`, each key's last value winning. `00-kdos.conf` is KDOS's: a Wayland greeter, the
+KDOS session wrapper and no X sessions (see
+[Session and environment](session-and-environment.md#how-sddm-starts-the-session)), the accounts
+from uid 1000 up, and the theme, from `fs/etc/sddm.conf.d/00-kdos.conf`:
 
-<!-- kfs:include fs/usr/local/sbin/kdos-login lines=15-28 pin=bf1adf4b4daa -->
+<!-- kfs:include fs/etc/sddm.conf.d/00-kdos.conf lines=50-63 pin=8cac08410de7 -->
 
-### ~/.bash_profile
+[`kde_settings.conf`]{.idx term="/etc/sddm.conf.d/kde_settings.conf"} is the one home of
+`[Autologin]`. The installer writes it, the Login Screen page of System Settings writes it, and it
+overrides `00-kdos.conf`. The image ships the live medium's, from
+`fs/etc/sddm.conf.d/kde_settings.conf`:
 
-The desktop is started by the login shell, not by `init`. The skeleton every account is created
-from, `fs/etc/skel/.bash_profile`, starts [`kdos-desktop`]{.idx} on `tty1` only:
+<!-- kfs:include fs/etc/sddm.conf.d/kde_settings.conf -->
 
-<!-- kfs:include fs/etc/skel/.bash_profile lines=11-26 pin=50aeabf5d274 -->
+`Relogin=true` logs the account in again when its session ends. An install replaces the file:
+with the new account's `[Autologin]` and `Relogin=false` on a single-account machine with an
+encrypted root that asked for it, and with no `[Autologin]` anywhere else, which shows the greeter.
 
-`kdos-desktop` is not `exec`'d, so a desktop that fails to start leaves a shell prompt on `tty1`.
-`/etc/profile.d/10-wayland.sh` sets up `XDG_RUNTIME_DIR` and the session variables for every login
-shell, `tty1`, `tty2`, serial and SSH alike.
+### The PAM stacks
+
+`sddm` installs three stacks of its own, from `ports/core/auth/sddm/build.sh`:
+
+<!-- kfs:include ports/core/auth/sddm/build.sh lines=36-70 pin=048145511062 -->
+
+`sddm` is a password login and `sddm-autologin` one with no password, refused for any uid under
+1000 except the OEM wizard's `plasma-setup`. `sddm-greeter` is the greeter's own session;
+`pam_turnstile` is `required` there because the greeter's KWin will not start without a runtime
+directory. Both user stacks include `system-login`, from `ports/core/auth/pam/build.sh`, which
+`/bin/login` on the consoles uses as well:
+
+<!-- kfs:include ports/core/auth/pam/build.sh lines=65-74 pin=4157cc080085 -->
+
+**An autologin can start locked.** `sddm-autologin` puts `/etc/kdos/autologin-xdg` first in
+`XDG_CONFIG_DIRS` for an automatic login and for nothing else. The image ships no such directory.
+The installer makes it on the encrypted single-account machine that asked for autologin, with a
+`kscreenlockerrc` of `[Daemon] LockOnStart=true`, so the session comes up behind the lock screen
+and the disk passphrase alone does not open the desktop. Answering the installer's "no password
+after the disk passphrase" leaves the directory out.
 
 ### Other files
 
-| File | Provided by | Holds |
-|:--|:--|:--|
-| `/etc/login.defs` | [shadow](#port-shadow), with no `MAIL_DIR` | `login`'s and the account tools' defaults |
-| `/etc/default/useradd` | `fs/etc/default/` | `CREATE_MAIL_SPOOL=no`, the one key `useradd`'s compiled defaults are overridden in |
-| [`/etc/passwd`]{.idx}, `/etc/group`, `/etc/shadow` | `fs/etc/`, then the installer | The accounts; the installer renames `kdos` to the user name it is given |
-| `/etc/sudoers.d/00-sudo` | [sudo](#port-sudo)'s `build.sh` | `%wheel ALL=(ALL) ALL`, which the `sudo` commands below rely on |
+| File | Holds |
+|---|---|
+| `/var/lib/sddm/` | The greeter account's home: the last user and session, and the greeter's output settings. `kdos-dm` makes it at every start |
+| `/etc/locale.conf` | The language the greeter speaks; see [Locale and console](locale-and-console.md) |
+| `/etc/kdos/xkb.conf` | The greeter's keyboard layout, read by its KWin through locale1 |
+| `/var/lib/AccountsService/icons/<user>` | An account's picture on the greeter, set on the Users page |
+| `/etc/plasma-setup-done` | Present on every machine whose install made an account; its absence arms the first-boot wizard |
 
 ## Usage
 
 ### Turning autologin on or off
 
-The first two need membership of `wheel`, the third needs root. Each changes only the key's line in
-`login.conf`, or adds an `autologin = <user>` line to a file that has none, and keeps every other
-line as it was, blank lines included. The change applies the next time `tty1` starts its getty.
+1. System Settings → **Login Screen (SDDM)** → **Behavior**.
+2. Tick **Automatically log in**, pick the account and **Plasma (Wayland)** as the session, or untick
+   it. Leave **Log in again immediately after logging off** unticked on a machine somebody leaves.
+3. **Apply**. The page asks for an administrator's password and writes
+   `/etc/sddm.conf.d/kde_settings.conf`. The change applies at the next boot, or the next time
+   SDDM starts.
 
-1. With the desktop: open Settings, go to **System**, choose **Accounts…** ([`kdos-users`]{.idx}),
-   select the account and press **Autologin**; on the account `tty1` already logs in, the same
-   button reads **No autologin** and turns it off. The surface is described in
-   [The system surfaces](../../kdos/04-programs/kdos-shell.md#the-system-surfaces).
-
-2. From a shell, through `kdos-powerd`:
-
-   ```bash
-   kdos-power autologin kdos      # log in kdos on tty1 without asking
-   kdos-power autologin off       # ask for a password on tty1
-   ```
-
-   The daemon refuses a name that is no account with `err no such account`, and one that exists but
-   cannot log in (root, a system account, a `nologin` shell) with `err not an account that can log
-   in (a system account, or no login shell)`. It writes the off state by commenting the key line,
-   `#autologin = <user>`, keeping the account it named. Its rules are in
-   [autologin](../../kdos/04-programs/daemons.md#autologin).
-
-3. By hand, as root: edit `/etc/kdos/login.conf` and set or comment out the `autologin` line.
-   `kdos-login` reads the last such line, so leave only one. Comment the line rather than
-   deleting it: the commented line keeps the account it named, and the first two ways rewrite it
-   where it stands instead of adding a new line at the end of the file.
-
-4. To apply the change without rebooting, end the desktop session and then the shell it leaves
-   on `tty1` (`exit`). `init` respawns the `tty1` line, and the new `agetty` reads the file again.
+From a shell, edit `/etc/sddm.conf.d/kde_settings.conf` as root: an `[Autologin]` group with
+`User=<account>` and `Session=plasma` logs that account in; no group shows the greeter.
 
 ### Choosing autologin when installing
 
-The installer's wizard installs a machine that asks for a password on `tty1`. An answer file turns
-autologin on with one key:
-
-```text
-autologin = yes
-```
-
-The key, and the `username` key it names, are in
-[Answer files](../../kdos/04-programs/kinstall.md#answer-files).
+The installer offers autologin only on a single-account install with an encrypted root, where
+the disk passphrase stands in front of the desktop. See
+[Users and the login](../../kdos/02-user-guide/installation.md) in the installation guide.
 
 ### Logging in on the recovery console
 
 `tty2` is a plain login prompt with no autologin, kept as the way in when the desktop on `tty1`
 does not come up.
 
-1. Press Ctrl+Alt+F2 from the desktop, or Alt+F2 at a text console.
+1. Press `Ctrl+Alt+F2` from the desktop or the greeter, or `Alt+F2` at a text console.
 2. Log in as your own account, or as `root` if root has a password.
-3. Go back to the desktop with Alt+F1.
+3. Go back to the desktop with `Ctrl+Alt+F1`.
 
-A login on `tty2` does not start the desktop: `~/.bash_profile` starts it on `tty1` only. From the
-desktop the compositor does the switch, not the kernel; see
-[The console](../../kdos/03-architecture/boot-and-init.md#the-console).
+A login on `tty2` starts no desktop. It is an elogind session like any other, so it starts the
+user's services when they are not already running, and it reaches a running desktop session's bus
+(see [Session and environment](session-and-environment.md#reaching-a-running-session-from-tty2-or-ssh)).
 
 ### Logging in on the serial console
 
 1. Connect to the machine's first serial port, `ttyS0`. The `S0` line gives `agetty` the rates
    115200, 38400 and 9600.
 2. On the live medium you get a root shell with no password. On an installed system you get a
-   login prompt.
+   login prompt: the installer removes `--autologin root` from the installed copy of `inittab`.
 
 `serial-getty` sleeps instead of starting `agetty` when no UART answers at `ttyS0`, so a machine
 without a serial port does not respawn a failing getty.
 
 ### Adding an account that can log in
 
-`kdos-users` lists accounts and does not create them. Use shadow's tools, as
-[Users and groups](../../kdos/02-user-guide/administration.md#users-and-groups) shows:
+System Settings → **Users** adds an account, its password, its picture and whether it is an
+administrator, through AccountsService. From a shell, use shadow's tools, as
+[Users and groups](users-and-groups.md) shows:
 
 ```bash
-sudo useradd -m -G wheel,seat,audio,video,render,input -s /bin/bash alice
+sudo useradd -m -G wheel,audio,video,render,input -s /bin/bash alice
 sudo passwd alice
 ```
 
-The new account can log in on `tty2` at once, and over SSH when the server is on. To make it the
-one `tty1` logs in, run `kdos-power autologin alice`. Until its runtime directory exists, every
-login of the account prints `kdos: no /run/user/<uid> yet — run 'sudo service start userdirs' (or
-reboot) before starting the desktop`, because `/etc/profile.d/10-wayland.sh` runs as the account
-and `/run/user` is root's, so it cannot make the directory itself. Before its
-first desktop login, create the directory, and the account's control group with it, with
-`sudo service start userdirs`, or reboot.
+The account is offered on the greeter at once: SDDM lists every account from uid 1000 to 60000.
 
 ### Single-user mode
 
@@ -197,75 +160,56 @@ the installer, and `sulogin` gives no shell to a locked root; set a password fir
 - `sudo kdos doctor` reports, in its Security section, whether the `kdos` account still has the
   shipped password `kdos`. The section appears only when `/etc/shadow` is readable, so run it with
   `sudo`.
-- `who`, `w` and `last` read the records `utmpd` and `wtmpd` keep: on the live medium `who` lists
-  `kdos` on `tty1` and `root` on `ttyS0`, and `last` ends with the boot's `reboot   system boot`
-  line. With the `utmps` service disabled they report nobody.
-- Renaming the desktop account means changing `login.conf` with it, or `tty1` fails to log in
-  and the machine is reachable only from `tty2`.
+- `loginctl list-sessions` lists every session elogind knows, the greeter's included, and which
+  one is active; `who`, `w` and `last` read the records `utmpd` and `wtmpd` keep.
 - The login banner on a console is `kdos-banner`, run from `/etc/bash.bashrc`; `KDOS_NO_ANIM=1`
   prints it without animation. See
   [The login banner](../../kdos/03-architecture/boot-and-init.md#the-login-banner).
 
 ## Troubleshooting
 
-**`tty1` shows a login prompt although autologin is set.**
-Check the key: `grep autologin /etc/kdos/login.conf`. A commented line, an empty value or a
-missing file all mean a prompt. `kdos-login` reads the file only when `init` starts the `tty1`
-getty, so end the session and the shell on `tty1`, or reboot.
+**`tty1` shows a text password prompt instead of the greeter.** `kdos-dm` fell back: SDDM is not
+executable, there is no `sddm` account, or SDDM exited three times within a minute. Log in there
+or on `tty2` and read why:
 
-**`tty1` logs in and drops to a shell prompt instead of the desktop.**
-The login worked and the session did not come up. Either the profile never ran `kdos-desktop`, or
-it ran and exited.
+```bash
+grep kdos-dm /var/log/messages
+sudo tail -40 /var/log/sddm.log
+```
 
-1. Check what the profile tests: `tty` must print `/dev/tty1`, `WAYLAND_DISPLAY` must be empty,
-   and `command -v kdos-desktop` must find the program. An account created without `-m`, or with
-   a home directory that has no `.bash_profile`, never runs it; copy [`/etc/skel/.bash_profile`]{.idx} into the home directory.
-2. Run `kdos-desktop` from the prompt and read what it prints. The compositor's own output is kept
-   in `$XDG_RUNTIME_DIR/kdos-comp.log`.
+Logging out of the prompt starts `kdos-dm` again, which tries SDDM once the minute is past.
 
-**`tty1` never logs in, and its getty keeps restarting.**
-`login.conf` names an account that does not exist, and `init` respawns the `agetty` that fails
-for it. Log in on `tty2` and run `kdos-power autologin off`, or `kdos-power autologin <user>`
-with an account that exists.
+**The screen stays black after the splash, and `tty2` answers.** SDDM is running and its greeter
+is not drawing; SDDM restarts a failing greeter itself, which `kdos-dm` cannot see. Read
+`/var/log/sddm.log` for the greeter's errors. A greeter's KWin with no runtime directory, or one
+refused the display, says so there; `loginctl list-sessions` should show a session of the `sddm`
+user on `seat0`.
 
-**`kdos-power autologin` answers ``kdos-power: no kdos-powerd — `service start powerd` ``.**
-The daemon is not running. Start it with `sudo service start powerd`, the command the message
-names. The daemon's log is `/run/kdos-svc.kdos-powerd.log`.
-See [The client](../../kdos/04-programs/daemons.md#the-client).
+**The greeter comes back after the password.** The password was accepted and the session did not
+start. The reason is in `~/.local/share/sddm/wayland-session.log`; see
+[Session and environment](session-and-environment.md#troubleshooting).
 
-**`kdos-power autologin` answers `kdos-power: err not permitted`.**
-The caller is not in `wheel`; membership of `seat` alone allows only suspend, power-off and
-reboot. `kdos-powerd --explain <user>`, which needs no privilege, prints what the daemon allows
-that user and why, as in `alice: uid 1001, primary gid 1001, in neither seat nor wheel — refused`;
-see [Diagnosis and testing](../../kdos/04-programs/daemons.md#diagnosis-and-testing).
+**The machine logs in by itself although autologin was turned off.** Another file in
+`/etc/sddm.conf.d/` or `/etc/sddm.conf` carries an `[Autologin]` group, and a later one wins:
+`grep -rn -A3 Autologin /etc/sddm.conf.d /etc/sddm.conf`.
 
-**`/run/kdos-getty.tty1.log` holds `kdos-getty: not moved into /sys/fs/cgroup/user.slice/user-<uid>/session/cgroup.procs`.**
-`kdos-getty` moves only the account `login.conf` names for autologin, and that account's control
-group does not exist: `15_userdirs` creates it at boot for the accounts in
-`/etc/passwd` then, so an account added since has none, and its boxed applications run with no
-memory limit. Run `sudo service start userdirs`, then end the session and log in on `tty1` again.
+**The wallet asks for a password after an autologin.** `pam_kwallet5` opens the wallet with the
+password typed at the greeter, and an autologin types none. Give the wallet an empty password in
+KWalletManager, or log in with a password.
 
 ## Known gaps
 
-- [There is no graphical login screen (greeter)](../../kdos/06-reference/known-gaps.md#there-is-no-graphical-login-screen-greeter)
-- The live medium's serial console and its autologin, in
-  [Security](../../kdos/06-reference/known-gaps.md#security)
-- [A fingerprint unlocks sudo and nothing else](../../kdos/06-reference/known-gaps.md#a-fingerprint-unlocks-sudo-and-nothing-else):
-  the console login asks for no finger
+- [Known gaps](../../kdos/06-reference/known-gaps.md): the live image's automatic login and
+  default password, among the desktop's open items
 
 ## See also
 
-- [The session on tty1](../../kdos/02-user-guide/administration.md#the-session-on-tty1): the user
-  guide's account of the same path
-- [The console](../../kdos/03-architecture/boot-and-init.md#the-console) and
-  [Login records](../../kdos/03-architecture/boot-and-init.md#login-records): the mechanism
-- [autologin](../../kdos/04-programs/daemons.md#autologin): the `kdos-powerd` verb
-- [Users and groups](../../kdos/02-user-guide/administration.md#users-and-groups), in the user
-  guide: the shipped account and its groups
-- [Users and groups](users-and-groups.md), [Screen lock](screen-lock.md), [SSH server](ssh-server.md),
-  [Init and runlevels](init-and-runlevels.md), [Recovering an unbootable system](recovering-an-unbootable-system.md)
+- [The session](../../kdos/03-architecture/session.md): what happens from the greeter to the desktop
+- [The console](../../kdos/03-architecture/boot-and-init.md#the-console): `tty2` and the text consoles
+- [Session and environment](session-and-environment.md), [Screen lock](screen-lock.md),
+  [Users and groups](users-and-groups.md), [sudo, PAM and polkit](sudo-pam-polkit.md)
 
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 381.* Previous: [380. sudo, PAM and polkit](sudo-pam-polkit.md) · [Contents](../README.md) · Next: [382. Screen lock](screen-lock.md)
+*Part XVI. System administration, chapter 405.* Previous: [404. sudo, PAM and polkit](sudo-pam-polkit.md) · [Contents](../README.md) · Next: [406. Screen lock](screen-lock.md)

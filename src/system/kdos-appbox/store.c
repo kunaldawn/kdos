@@ -404,9 +404,15 @@ int store_launchers(void)
 	     line = strtok_r(NULL, "\n", &save)) {
 		const CatPack *p = cat_find(line);
 
-		/* An app row only. A runtime's applications directory is
+		/* An app row, or a box of the Debian lane (`deb.<package>`,
+		 * which no row names). A runtime's applications directory is
 		 * whatever Debian's libraries dropped there and is not this
 		 * desktop's business. */
+		if (!strncmp(line, STORE_DEB_PREFIX, sizeof(STORE_DEB_PREFIX) - 1)) {
+			if (extract_entries(line, root) == 0)
+				n++;
+			continue;
+		}
 		if (!p || strcmp(p->kind, "app"))
 			continue;
 		/* A command-only row has no applications directory to copy
@@ -642,6 +648,148 @@ int store_uninstall_many(const char *const *ids, int n)
 		if (store_uninstall(want[i]) != 0)
 			failed++;
 	return failed;
+}
+
+/* ── the Debian lane ───────────────────────────────────────────────────── */
+
+/*
+ * `deb:<package>`: one Debian package, no catalogue row, for Discover's
+ * Debian lane. The box is `deb.<P>` over the image `kdos/deb.<P>`, which is
+ * the catalogue's `base` row with that package installed on top, where <P>
+ * is the package with each `+` written `_`: a box name has no `+` and a
+ * Debian package name has no `_`, so no two packages share a box. Discover
+ * names the box by the same rule (Kdos::boxNameForDebian), and its meter
+ * counts the three lines an install prints: the base, the package's image,
+ * and the closing `==> deb:<package> installed`.
+ *
+ * THE NAME IS CHECKED BEFORE IT MEANS ANYTHING. It reaches apt-get's
+ * argument list inside a Containerfile RUN line, so a name outside Debian's
+ * own policy (^[a-z0-9][a-z0-9.+-]{0,62}$) is refused with nothing changed.
+ */
+static int deb_name(const char *spec, char *pkg, size_t pn, char *box,
+		    size_t bn)
+{
+	const char *p = spec + 4;
+	size_t len = strlen(p);
+
+	if (strncmp(spec, "deb:", 4) || len < 1 || len > 63 || len >= pn)
+		return -1;
+	for (size_t i = 0; i < len; i++) {
+		char c = p[i];
+		int ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+			 (i && (c == '.' || c == '+' || c == '-'));
+		if (!ok)
+			return -1;
+	}
+	kb_strlcpy(pkg, p, pn);
+	snprintf(box, bn, STORE_DEB_PREFIX "%s", p);
+	for (char *c = box; *c; c++)
+		if (*c == '+')
+			*c = '_';
+	return 0;
+}
+
+int store_deb_install(const char *spec, int dry)
+{
+	char pkg[64], box[80];
+	const CatPack *chain[CAT_CHAIN_MAX];
+	KbArgv a = {0};
+
+	if (deb_name(spec, pkg, sizeof(pkg), box, sizeof(box)) != 0) {
+		fprintf(stderr, "kdos-appbox: '%s' is not deb:<a Debian package "
+				"name>\n", spec);
+		return 1;
+	}
+	int n = cat_chain("base", chain);
+	if (n < 1) {
+		fprintf(stderr, "kdos-appbox: the catalogue has no `base` row to "
+				"install %s on\n", pkg);
+		return 1;
+	}
+	for (int i = 0; i < n; i++) {
+		if (!dry && row_built(chain[i]->id)) {
+			printf("    %s%s is already here\n", STORE_IMG_PREFIX,
+			       chain[i]->id);
+			fflush(stdout);
+			continue;
+		}
+		if (build_one(chain[i], i ? chain[i - 1] : NULL, dry) != 0) {
+			fprintf(stderr, "  %s: %s did not build\n", spec,
+				chain[i]->id);
+			return 1;
+		}
+	}
+	CatPack top;
+	memset(&top, 0, sizeof(top));
+	kb_strlcpy(top.id, box, sizeof(top.id));
+	kb_strlcpy(top.kind, "app", sizeof(top.kind));
+	kb_strlcpy(top.parent, chain[n - 1]->id, sizeof(top.parent));
+	top.packages = pkg;
+	if (build_one(&top, chain[n - 1], dry) != 0) {
+		fprintf(stderr, "  %s: %s%s did not build\n", spec,
+			STORE_IMG_PREFIX, box);
+		return 1;
+	}
+	if (dry)
+		return 0;
+	kb_argv_add(&a, "kdos-box");
+	kb_argv_add(&a, "create");
+	kb_argv_add(&a, box);
+	kb_argv_addf(&a, "base=image:%s%s", STORE_IMG_PREFIX, box);
+	kb_argv_end(&a);
+	if (kb_run(&a) != 0) {
+		fprintf(stderr, "  %s: the image built and the box did not\n",
+			spec);
+		return 1;
+	}
+	store_launchers();
+	printf("==> %s installed\n", spec);
+	fflush(stdout);
+	return 0;
+}
+
+int store_deb_uninstall(const char *spec)
+{
+	char pkg[64], box[80];
+	KbArgv q = {0}, a = {0}, r = {0};
+	int rc;
+
+	if (deb_name(spec, pkg, sizeof(pkg), box, sizeof(box)) != 0) {
+		fprintf(stderr, "kdos-appbox: '%s' is not deb:<a Debian package "
+				"name>\n", spec);
+		return 1;
+	}
+	kb_argv_add(&q, "podman");
+	kb_argv_add(&q, "container");
+	kb_argv_add(&q, "exists");
+	kb_argv_add(&q, box);
+	kb_argv_end(&q);
+	rc = kb_run(&q);
+	if (rc != 0 && rc != 1) {
+		fprintf(stderr, "kdos-appbox: podman could not say whether %s "
+			"has a container; %s was not uninstalled\n", box, spec);
+		return 1;
+	}
+	if (rc == 0) {
+		kb_argv_add(&a, "kdos-box");
+		kb_argv_add(&a, "remove");
+		kb_argv_add(&a, box);
+		kb_argv_end(&a);
+		if (kb_run_tty(&a) != 0) {
+			fprintf(stderr, "kdos-appbox: %s was not uninstalled\n",
+				spec);
+			return 1;
+		}
+	}
+	kb_argv_add(&r, "podman");
+	kb_argv_add(&r, "rmi");
+	kb_argv_addf(&r, "%s%s", STORE_IMG_PREFIX, box);
+	kb_argv_end(&r);
+	if (kb_run(&r) == 0)
+		printf("    removed %s%s\n", STORE_IMG_PREFIX, box);
+	store_launchers();
+	printf("==> %s removed\n", spec);
+	return 0;
 }
 
 /* ── export ────────────────────────────────────────────────────────────── */
@@ -1347,6 +1495,30 @@ int store_selftest(void)
 					    cat_snapshot(), small,
 					    sizeof(small)) == -1,
 			"a buffer too small is refused, not truncated");
+	}
+
+	/* The Debian lane's name rule is Discover's (Kdos::boxNameForDebian):
+	 * `+` becomes `_`, and a name outside Debian's policy is refused
+	 * before it can reach an apt-get argument list. */
+	{
+		char pkg[64], box[80];
+		cat_chk(deb_name("deb:libc++-dev", pkg, sizeof(pkg), box,
+				 sizeof(box)) == 0 &&
+			!strcmp(pkg, "libc++-dev") &&
+			!strcmp(box, "deb.libc__-dev"),
+			"deb:libc++-dev is the box deb.libc__-dev");
+		cat_chk(deb_name("deb:-x", pkg, sizeof(pkg), box,
+				 sizeof(box)) == -1,
+			"a deb name starting with a dash is refused");
+		cat_chk(deb_name("deb:a;b", pkg, sizeof(pkg), box,
+				 sizeof(box)) == -1,
+			"a deb name with a shell character is refused");
+		cat_chk(deb_name("deb:Gimp", pkg, sizeof(pkg), box,
+				 sizeof(box)) == -1,
+			"a deb name with a capital is refused");
+		cat_chk(deb_name("deb:", pkg, sizeof(pkg), box,
+				 sizeof(box)) == -1,
+			"an empty deb name is refused");
 	}
 
 	/* The SELECTION manifest round-trips: what export writes, import reads

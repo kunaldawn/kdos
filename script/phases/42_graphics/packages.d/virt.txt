@@ -24,13 +24,5 @@
 
 spice
 
-# Reaching this desktop from another machine. kdos-comp already offers
-# zwlr_screencopy_manager_v1, so the server side needs no code of ours — only
-# aml, then neatvnc, the protocol library wayvnc drives, then wayvnc. neatvnc
-# must be 1.x; wayvnc 0.10.1 pins `>=1.0.0 <2.0.0` and fails at meson setup
-# against a 0.9 series.
-neatvnc
-wayvnc
-
 freerdp
 wlvncc

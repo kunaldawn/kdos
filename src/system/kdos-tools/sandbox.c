@@ -11,8 +11,8 @@
  *   kdos sandbox --explain [opts]
  *
  * The appbox has had enforceable per-app confinement since the box profiles
- * landed; native programs — foot, the file manager, our own tools — have had
- * nothing. This is the other half, and it needs no container, no root and no
+ * landed; native programs — a terminal tool, the file manager, our own tools —
+ * have had nothing. This is the other half, and it needs no container, no root and no
  * library: three syscalls in libkbase.
  *
  * Two rules carried over from the box profiles, because they are the whole

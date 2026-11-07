@@ -10,7 +10,7 @@
 
 name        = deja-dup
 version     = 50.2
-release     = 1
+release     = 2
 source      = https://gitlab.gnome.org/World/deja-dup/-/archive/$version/$name-$version.tar.bz2
 sha256      = 956664cff547757a64127395a47f7e30b0c764b8265eeef253ede4ca47a7be88  deja-dup-50.2.tar.bz2
 description = Scheduled, encrypted backups to a disk or folder over restic

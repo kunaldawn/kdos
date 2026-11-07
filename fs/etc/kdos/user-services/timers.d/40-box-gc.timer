@@ -1,0 +1,14 @@
+# Rows here run for EVERY user, as that user, under the `timers` user service
+# (/etc/kdos/user-services/30_timers.sh), beside the user's own
+# ~/.config/kdos/timers.d. The shape is /etc/kdos/timers.d's:
+#
+#     NAME  TIMESPEC...  --  COMMAND...
+#
+# GIVING IDLE BOXES BACK. `kdos-box gc` stops a box that has run past its
+# profile's `autostop` with no window on the screen; nothing else calls it.
+# Every ten minutes, from the user's own services rather than from a root
+# service, because the boxes are the user's and so is the question asked about
+# their windows before any is stopped — a gc that cannot ask leaves every box
+# running. nice 10, so a gc that lands during a login does not take the CPU
+# from the desktop coming up.
+box-gc  -H * -M /10  --  nice -n 10 kdos-box gc

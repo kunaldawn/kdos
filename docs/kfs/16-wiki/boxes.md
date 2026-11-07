@@ -20,9 +20,11 @@ machine is [Packs](packs.md); Podman and distrobox used directly are [Containers
   [kdos-boxsock](#port-kdos-boxsock) holds each box's own tagged Wayland socket.
 - [kdos-packd](#port-kdos-packd), the service `packd`, mounts and composes the packs a pack box is
   made of; see [Packs](packs.md).
-- The desktop session starts the boxes behind your pinned launchers at login and, every ten
-  minutes, stops any box that has run past its profile's `autostop` time with no window open, from
-  `/usr/local/lib/kdos/session-common.sh`.
+- The session wrapper starts the boxes behind your pinned launchers at login, from
+  `/usr/local/lib/kdos/session-common.sh`, and the user service `timers` stops, every ten minutes,
+  any box that has run past its profile's `autostop` time with no window open.
+- [kcm-kdos-boxes](#port-kcm-kdos-boxes) is the **Boxes** page of System Settings, and
+  [kdos-discover](#port-kdos-discover) lists and installs boxed applications in Discover.
 
 The image carries the catalogue and no application: each one is built on the machine that asks for
 it, which needs the network. Boxes need no service of their own.
@@ -32,7 +34,7 @@ it, which needs the network. Boxes need no service of their own.
 ### The catalogue
 
 `/usr/share/kdos/appstore/catalogue` lists every application KDOS knows how to build, as a row
-naming its parent row and the Debian packages it adds. `kdos app`, the store window and the
+naming its parent row and the Debian packages it adds. `kdos app`, Discover's KDOS backend and the
 installer all read this one file. Its `snapshot` line pins the Debian archive date the packages
 come from:
 
@@ -58,27 +60,29 @@ host (`home`, `network`, `ipc`, `devices`, `processes`), what it may use (`gpu`,
 default and what enforces it are in
 [Box profiles](../../kdos/04-programs/kdos-appbox.md#box-profiles) and
 [the box profile file](../../kdos/06-reference/configuration.md#configkdosboxesnameconf).
-The compositor reads the same file for the box's `grant` line.
+KWin reads the same file for the box's `grant` line.
 
 ### What the session starts
 
-The session's `kdos_session_boxes`, in `fs/usr/local/lib/kdos/session-common.sh`, runs two
-commands in the background. The warmup, once at login:
+The session wrapper's `kdos_session_boxes`, in `fs/usr/local/lib/kdos/session-common.sh`, starts
+the warmup in the background, once at every login:
 
-<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=92-92 pin=fa4c063a4b0e -->
+<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=118-121 pin=c05799d7b245 -->
 
-and the idle sweep, every ten minutes from login on, started only when the pid in
-`$XDG_RUNTIME_DIR/kdos/box-gc.pid` is not already a running loop, so a login has one however many
-sessions it starts. The loop keeps running after Log Out and ends with the login; a box stops for
-neither:
+The idle sweep is a row of the per-user timers, run under the user service `timers` from the
+user's first login to the last, from `fs/etc/kdos/user-services/timers.d/40-box-gc.timer`:
 
-<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=109-114 pin=e3ccc5f78bfa -->
+<!-- kfs:include fs/etc/kdos/user-services/timers.d/40-box-gc.timer -->
+
+At the end of each Plasma session, `plasma-workspace/shutdown/kdos-boxes.sh` runs the same sweep
+once more with `--session-end`, and every container of the user's stops at the user's last
+logout, with the user's services.
 
 The warmup starts up to eight boxes, the ones behind the entries of
 `~/.config/kdos/favorites`, in order. Its skeleton, `fs/etc/skel/.config/kdos/favorites`, describes
 the format:
 
-<!-- kfs:include fs/etc/skel/.config/kdos/favorites lines=11-19 pin=9d380fc97c16 -->
+<!-- kfs:include fs/etc/skel/.config/kdos/favorites lines=11-20 pin=7470f264d707 -->
 
 ### Other files
 
@@ -192,8 +196,8 @@ and any composed stack released, answers `<name> had no container — its profil
 exits 0; a name with neither a container nor a profile answers `<name> has no container to remove`
 and exits 1, after releasing any composed stack the same way.
 
-`kdos-box enter` with no command, from a terminal, opens a new `foot` window titled
-`<name> — KDOS box`; with `KDOS_BOX_NOTERM` set to anything it runs in the current terminal.
+`kdos-box enter` with no command, from a terminal, opens a new Konsole window in the box's accent
+profile; with `KDOS_BOX_NOTERM` set to anything it runs in the current terminal.
 Inside, `KDOS_BOX` holds the box's name.
 
 ### Changing what a box may share
@@ -230,27 +234,26 @@ Both kinds of box take the same keys. A store box is created by `distrobox creat
 `network=none` as `--network none`, a namespace with no interface; a `memory` or `cpus` value
 made of anything but letters, digits and dots is refused with a warning and not applied. On
 either kind, `memory` and `cpus` become
-[cgroup]{.idx} limits only in a session started by autologin, which `kdos-getty` puts in your
-delegated cgroup; in a session started any other way the engine accepts them and the kernel does
-not apply them. See [Box profiles](../../kdos/04-programs/kdos-appbox.md#box-profiles) and
+[cgroup]{.idx} limits under the delegated cgroup elogind gives each login's session; the engine
+applies them through it. See [Box profiles](../../kdos/04-programs/kdos-appbox.md#box-profiles) and
 [memory and grants](../../kdos/04-programs/kdos-appbox.md#memory-and-grants).
 
 ### Granting a box more of the desktop
 
-A box's clients reach the compositor through a tagged socket, and the compositor refuses them
-screen capture, clipboard managers, lists of other windows, layer-shell surfaces, output power and
-input methods unless the profile grants them by name:
+A box's clients reach KWin through a socket tagged with the box's security context, and KWin
+refuses them the window list, input injection, screen capture, clipboard managers, layer-shell
+surfaces, output management and power, and the Plasma shell surface unless the profile grants
+them by name:
 
 ```bash
-kdos-box profile app.hugin grant=screencopy
-kdos-comp -r
+kdos-box profile app.hugin grant=screencast
 ```
 
-The names are `screencopy`, `toplevel-capture`, `export-dmabuf`, `data-control`,
-`foreign-toplevel`, `layer-shell`, `input-method` and `output-power`. The compositor reads a box's
-`grant` line once and keeps the answer until it reloads its configuration, which `kdos-comp -r`
-asks for; after that the box's next client sees the change, and a running one keeps what it bound.
-`input-method` sees every key typed on the seat. See
+The names are `window-list`, `fake-input`, `screencast`, `data-control`, `layer-shell`,
+`output-management`, `dpms` and `plasma-shell`; `input-method` is accepted and opens nothing,
+because KWin keeps the input-method globals for the input method it starts. KWin reads a box's
+profile once per client, so the box's next client sees the change, and a running one keeps what
+it bound. A screen capture through the portal needs no grant: the portal asks the person. See
 [Granting a box past the allowlist](../../kdos/03-architecture/security-model.md#granting-a-box-past-the-allowlist).
 
 ### Snapshots, clones and rollback
@@ -328,11 +331,9 @@ kdos-box gc --dry-run                  # what the next sweep would stop
 
 With nothing past its time, `gc --dry-run` prints `nothing to stop`.
 
-The session runs `kdos-box gc` every ten minutes, from login until the login ends, in one loop per
-login that `$XDG_RUNTIME_DIR/kdos/box-gc.pid` finds again on a session restart, so a box left
-running after the login has ended waits for the next login's sweep. It stops a box that has run longer than its
-`autostop` time, counted from when it started, and only after the compositor says the box has no
-window open.
+The user service `timers` runs `kdos-box gc` every ten minutes, from the user's first login to the
+last. It stops a box that has run longer than its `autostop` time, counted from when it started,
+and only after the desktop says the box has no window open.
 
 ### Removing an application
 
@@ -423,8 +424,8 @@ A profile change has no effect
 : Namespace and directory keys apply at creation: stop and remove the box, then launch the
   application again, which creates either kind of box over its kept profile. A `memory` or `cpus` value that is not a
   plain size or number is refused at creation with a warning; see
-  [Changing what a box may share](#changing-what-a-box-may-share). A `grant` change needs
-  `kdos-comp -r`, and then reaches the next client, not a running one.
+  [Changing what a box may share](#changing-what-a-box-may-share). A `grant` change reaches the box's
+  next client, not a running one.
 
 `kdos-box snapshot` says `<name> has nothing written to snapshot`
 : The box was built from a container image, and its writes are in the engine's store, or it is a
@@ -433,12 +434,12 @@ A profile change has no effect
 
 ## Known gaps
 
-- [A box can be granted only the eight named groups of Wayland globals](../../kdos/06-reference/known-gaps.md#a-box-can-be-granted-only-the-eight-named-groups-of-wayland-globals)
+- [A box can be granted only the nine named groups of Wayland globals](../../kdos/06-reference/known-gaps.md#a-box-can-be-granted-only-the-nine-named-groups-of-wayland-globals)
 - [A boxed application is given your location without being asked](../../kdos/06-reference/known-gaps.md#a-boxed-application-is-given-your-location-without-being-asked)
 - [A catalogue change reaches an installed application only when it is rebuilt](../../kdos/06-reference/known-gaps.md#a-catalogue-change-reaches-an-installed-application-only-when-it-is-rebuilt)
 - [A live session cannot create a persistent box](../../kdos/06-reference/known-gaps.md#a-live-session-cannot-create-a-persistent-box)
 - [A box is not a security boundary against you](../../kdos/06-reference/known-gaps.md#a-box-is-not-a-security-boundary-against-you)
-- [Changing the accent colour reaches running GTK3 applications, not running libadwaita or KDE ones](../../kdos/06-reference/known-gaps.md#changing-the-accent-colour-reaches-running-gtk3-applications-not-running-libadwaita-or-kde-ones)
+- [An accent change has not been watched in running GTK and libadwaita programs](../../kdos/06-reference/known-gaps.md#an-accent-change-has-not-been-watched-in-running-gtk-and-libadwaita-programs)
 - [Applications imported or built during an install stay in the live session](../../kdos/06-reference/known-gaps.md#applications-imported-or-built-during-an-install-stay-in-the-live-session)
 
 ## See also
@@ -453,4 +454,4 @@ A profile change has no effect
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 408.* Previous: [407. Packs](packs.md) · [Contents](../README.md) · Next: [409. Containers](containers.md)
+*Part XVI. System administration, chapter 432.* Previous: [431. Packs](packs.md) · [Contents](../README.md) · Next: [433. Containers](containers.md)

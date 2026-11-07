@@ -1,436 +1,121 @@
 #!/bin/sh
-# session-common.sh — the session bring-up, in one place.
+# session-common.sh — the Plasma session's bring-up, in one place.
 #
-# Sourced, never executed. Everything below runs before the compositor does,
-# and every one of these blocks carries a trap that fails without a message
-# when it is missed. A second copy is a second place to lose one.
+# Sourced, never executed: by kdos-session-wrapper before Plasma starts, and
+# by /usr/share/kdos/xdg/plasma-workspace/env/kdos.sh when startplasma reads
+# its environment scripts, which is also the path of a startplasma-wayland run
+# by hand. Every one of these blocks carries a trap that fails without a
+# message when it is missed, and a second copy is a second place to lose one.
 #
 #   kdos_session_open      $BROWSER, which the login shell may not have set
-#   kdos_session_runtime   XDG_RUNTIME_DIR, before anything uses it
-#   kdos_session_keymap    the VT keymap as XKB variables
-#   kdos_session_boxes     the appbox warmup, and giving idle ones back
-#   kdos_session_bus       one session bus per user, at a fixed path
-#   kdos_session_audio     pipewire, once per user rather than per session
-#   kdos_session_once      the login sound, the first-run card, the offer of
-#                          the applications the install left pending, the
-#                          per-user timers, the session restore
+#   kdos_session_xdg_dirs  XDG_CONFIG_DIRS: the distribution's defaults, and
+#                          the overlays of a virtual machine and the live medium
+#   kdos_session_boxes     the appbox warmup
+#
+# The session bus, the audio stack and the per-user timers are not here: they
+# are user services (/etc/kdos/user-services), started once per user by
+# turnstile at the first login, whatever kind of login that is, and stopped at
+# the last. The keyboard layout is not here either: kdos-settingsd serves it as
+# locale1 from /etc/kdos/xkb.conf, and KWin and startplasma read it there.
 
 # ONE ROAD TO A LINK, ON A PATH THAT MAY HAVE READ NO PROFILE.
-# /etc/profile.d sets $BROWSER for a login shell, and
-# `dbus-update-activation-environment BROWSER` pushes NOTHING for an unset name
-# rather than failing — so a session started any other way would push nothing
-# and every boxed link would go nowhere. Only fills a gap: a person who
-# exported their own has said what they want.
+# /etc/profile.d sets $BROWSER for a login shell, and startplasma hands the
+# activation environment only what is set — so a session started any other way
+# would hand every D-Bus-started program no browser, and every boxed link would
+# go nowhere. Only fills a gap: a person who exported their own has said what
+# they want.
 kdos_session_open() {
 	BROWSER="${BROWSER:-xdg-open}"
 	export BROWSER
 }
 
-kdos_session_runtime() {
-	XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-	export XDG_RUNTIME_DIR
+# THE DISTRIBUTION'S DEFAULTS ARE THE LAST CONFIG DIRECTORY, AND ALWAYS THERE.
+# Every KDOS default for a KDE program — the look-and-feel, the fonts, kwinrc,
+# powerdevilrc, startkderc, this very directory's plasma-workspace/env — is in
+# /usr/share/kdos/xdg, after /etc/xdg so the machine's owner overrides it key
+# by key. A session whose XDG_CONFIG_DIRS lacks it reads Breeze and upstream's
+# defaults with nothing to say so, and one that lacks /etc/xdg loses every
+# package's autostart entry, the polkit agent's among them. Both are appended
+# when missing and nothing else moves, so the order a session already carries
+# is kept: startplasma puts ~/.config/kdedefaults in front of whatever it is
+# handed.
+#
+# TWO OVERLAYS GO IN FRONT, EACH ONLY WHERE IT APPLIES, and ahead of /etc/xdg
+# because what they turn off is wrong for that machine whatever the image
+# says. ~/.config still outranks both, so a person can turn either back on.
+#
+#   /usr/share/kdos/xdg-vm    in a virtual machine (`kdos in-vm`, the DMI
+#                             vendor test of libkbase): no idle dimming,
+#                             blanking or timed lock, which from outside the
+#                             guest read as a hung one
+#   /usr/share/kdos/xdg-live  on the live medium, whose root is an overlay
+#                             filesystem: no file index of a home that is gone
+#                             at the next boot, no timed lock and no wallet
+#                             for an account with no password, no notice of
+#                             an update nobody can keep, and the welcome tour
+#                             on its live page
+#
+# Each is added once, so a second call — the wrapper's, then the environment
+# script's — changes nothing.
+kdos_session_xdg_dirs() {
+	_xd=${XDG_CONFIG_DIRS:-/etc/xdg}
+	case ":$_xd:" in
+		*:/etc/xdg:*) ;;
+		*) _xd=$_xd:/etc/xdg ;;
+	esac
+	case ":$_xd:" in
+		*:/usr/share/kdos/xdg:*) ;;
+		*) _xd=$_xd:/usr/share/kdos/xdg ;;
+	esac
+	case ":$_xd:" in
+		*:/usr/share/kdos/xdg-vm:*) ;;
+		*)
+			if [ -d /usr/share/kdos/xdg-vm ] && \
+			   command -v kdos >/dev/null 2>&1 && \
+			   kdos in-vm >/dev/null 2>&1; then
+				_xd=/usr/share/kdos/xdg-vm:$_xd
+			fi
+			;;
+	esac
+	case ":$_xd:" in
+		*:/usr/share/kdos/xdg-live:*) ;;
+		*)
+			if [ -d /usr/share/kdos/xdg-live ] && kdos_session_live; then
+				_xd=/usr/share/kdos/xdg-live:$_xd
+			fi
+			;;
+	esac
+	XDG_CONFIG_DIRS=$_xd
+	export XDG_CONFIG_DIRS
+	unset _xd
 }
 
-kdos_session_keymap() {
-	# The keyboard layout. The installer writes the VT keymap name to
-	# /etc/keymap and kdos-getty loadkeys it on every tty — and nothing else
-	# carries it into the session, so without this a non-US user gets US QWERTY
-	# in the desktop, the lock-screen password prompt included. xkbcommon reads
-	# these variables in every client and in kdos-comp itself; VT map names and
-	# XKB layout names are different vocabularies, hence the table. Anything not
-	# listed falls back to its first two letters, which is how most VT maps are
-	# named anyway.
-	if [ -r /etc/keymap ]; then
-		_km=$(cat /etc/keymap 2>/dev/null)
-		_layout= _variant=
-		case "$_km" in
-		"")        ;;
-		us)        _layout=us ;;
-		uk)        _layout=gb ;;
-		de*)       _layout=de ;;
-		fr*)       _layout=fr ;;
-		es*)       _layout=es ;;
-		it*)       _layout=it ;;
-		br*)       _layout=br ;;
-		ru*)       _layout=ru ;;
-		# The VT map names whose first two letters are a DIFFERENT layout —
-		# `la` is Lao, not Latin American, and there is no `sg`, `sl` or `cr`.
-		sg*)       _layout=ch ;;
-		slovene)   _layout=si ;;
-		croat)     _layout=hr ;;
-		la-latin1) _layout=latam ;;
-		dvorak*)   _layout=us _variant=dvorak ;;
-		*)         _layout=$(printf '%.2s' "$_km") ;;
-		esac
-		# A layout xkbcommon cannot compile does not fall back loudly: kdos-comp
-		# logs the failure and sets XKB_DEFAULT_LAYOUT=us for the whole session,
-		# lock prompt included, so a non-US user gets US QWERTY with nothing on
-		# screen to say why. A DERIVED name is therefore only exported when
-		# xkeyboard-config really carries it. The check is skipped where that data is absent,
-		# because then nothing here can be verified either way.
-		_xkb=/usr/share/X11/xkb/symbols
-		if [ -n "$_layout" ] && [ -d "$_xkb" ] && [ ! -f "$_xkb/$_layout" ]; then
-			echo "kdos-desktop: keymap '$_km' has no XKB layout '$_layout'" \
-				"— leaving the default" >&2
-			_layout=
+# The live medium: the root is the overlay the initramfs builds over the
+# image, which no installed system's root is — the test `kdos doctor` makes of
+# the same mount table. /proc/mounts names the root's type in the third field.
+kdos_session_live() {
+	while read -r _dev _mnt _type _rest; do
+		if [ "$_mnt" = / ] && [ "$_type" = overlay ]; then
+			unset _dev _mnt _type _rest
+			return 0
 		fi
-		if [ -n "$_layout" ]; then
-			export XKB_DEFAULT_LAYOUT="$_layout"
-			[ -n "$_variant" ] && export XKB_DEFAULT_VARIANT="$_variant"
-		fi
-		unset _km _layout _variant _xkb
-	fi
+	done < /proc/mounts
+	unset _dev _mnt _type _rest
+	return 1
 }
 
+# Pre-create and start the boxes behind the pinned favourites while the
+# desktop is coming up, one box per application, so the first click on each
+# doesn't pay for container init. nice 10, not 19: at 19 the warmup loses every
+# CPU slice to the starting desktop and stays mid-init for minutes, and a
+# launch that lands in that window has to wait for it to finish. A second
+# warmup while one runs is a no-op (kdos-appbox takes a lock), so every login
+# may ask.
+#
+# Giving the idle ones back is the `box-gc` row of
+# /etc/kdos/user-services/timers.d, under the user's own services, and the
+# session's end (plasma-workspace/shutdown/kdos.sh).
 kdos_session_boxes() {
-	# Pre-create and start the boxes behind the pinned favourites while the
-	# desktop is coming up, one box per application, so the first click on
-	# each doesn't pay for container init. nice 10, not 19:
-	# at 19 the warmup loses every CPU slice to the starting desktop and stays
-	# mid-init for minutes, and a launch that lands in that window has to wait
-	# for it to finish.
-	(nice -n 10 /usr/local/bin/kdos-appbox warmup >/dev/null 2>&1 &)
-
-	# AND GIVE THE IDLE ONES BACK. `kdos-box gc` stops a box past its profile's
-	# `autostop` with no window on the screen; nothing else calls it. The loop
-	# runs on past Log Out and ends with the login, and a box stops for neither.
-	# Ten minutes, from the session rather than from a root service, because
-	# the boxes are the user's and so is the question the compositor is asked
-	# before any is stopped.
-	#
-	# ONE LOOP PER LOGIN, found again by its pidfile in the runtime directory:
-	# every session start inside one login runs this, and without the check
-	# each would add another loop. The pid is only trusted while its command
-	# line still names kdos-box, so a reused pid does not stand in for it.
-	_gpid="$XDG_RUNTIME_DIR/kdos/box-gc.pid"
-	mkdir -p "${_gpid%/*}" 2>/dev/null
-	_gp=$(cat "$_gpid" 2>/dev/null)
-	case "$_gp" in ''|*[!0-9]*) _gp=0 ;; esac
-	if [ "$_gp" = 0 ] || ! grep -qa kdos-box "/proc/$_gp/cmdline" 2>/dev/null; then
-		(sh -c 'echo $$ > "$1" 2>/dev/null
-			while sleep 600; do
-				nice -n 10 /usr/local/bin/kdos-box gc >/dev/null 2>&1
-			done' kdos-box-gc "$_gpid" >/dev/null 2>&1 &)
-	fi
-	unset _gpid _gp
-}
-
-kdos_session_bus() {
-	# ONE session bus per user, at a fixed runtime path — not dbus-run-session.
-	# kdos-appbox hands every box DBUS_SESSION_BUS_ADDRESS=unix:path=
-	# /run/user/<uid>/bus, a path every box binds; dbus-run-session listens at
-	# an address of its own choosing under unix:tmpdir=/tmp, so alien apps
-	# would be pointed at a socket nobody answers: GApplication single-instance
-	# breaks (every impatient re-click spawns another full instance), dconf/a11y
-	# probe and stall, notifications go nowhere. With the daemon at that same
-	# path the one address is valid on both sides. The daemon is reused
-	# across session restarts; the address carries no guid on purpose — a later
-	# session re-binding the socket would otherwise kill zbus clients with
-	# "D-Bus handshake failed: Server GUID mismatch" (the session aborts).
-	XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-	export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
-	# flock-serialized: two sessions starting at once must not both decide the
-	# daemon is down — the loser's rm -f would yank the winner's socket away.
-	#
-	# `7>&-` CLOSES THE LOCK FD FOR THE DAEMON, and without it the SECOND login of
-	# a boot hangs forever with no output at all. dbus-daemon --fork inherits every
-	# open descriptor, fd 7 among them; the subshell then exits and drops its own
-	# reference, but the daemon holds the flock for as long as the session bus
-	# lives, which is past every login: it forks into a session of its own. Every
-	# later kdos-desktop blocks on `flock 7` before it has printed a single line,
-	# so the symptom is a tty that sits there: no compositor, no error, nothing in
-	# a log. Measured in QEMU with three `flock 7` queued behind one dbus-daemon.
-	(
-		flock 7
-		if ! dbus-send --session --print-reply --dest=org.freedesktop.DBus \
-			/ org.freedesktop.DBus.Peer.Ping >/dev/null 2>&1; then
-			rm -f "$XDG_RUNTIME_DIR/bus"
-			dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" \
-				--fork 7>&-
-		fi
-	) 7>"$XDG_RUNTIME_DIR/.kdos-bus.lock"
-}
-
-# THE AUDIO STACK, once per user and not once per session. pgrep-guarded
-# because a session restart must not start a second pipewire: two of them
-# fight over the same devices and the loser's clients get silence. The guard
-# is this user's pipewire only — another account's running daemon serves that
-# account's runtime directory, and taking it for ours leaves this login silent.
-#
-# Not the compositor's — a login sound and a boxed application's audio are the
-# same stack, and neither goes through it.
-#
-# WIREPLUMBER IS THE SESSION MANAGER AND PIPEWIRE BUILDS NONE. The daemon
-# routes nothing on its own: device discovery, which sink a stream lands on,
-# and a Bluetooth headset's profile are all policy, and policy lives here.
-# Without it there is a graph with nothing connected to anything — a machine
-# with working hardware and no sound.
-#
-# STARTED AFTER pipewire AND BEFORE pipewire-pulse: it connects to the
-# daemon's socket, and the PulseAudio shim announces sinks that do not exist
-# until something has created them.
-kdos_session_audio() {
-	if command -v pipewire >/dev/null 2>&1 && ! pgrep -u "$(id -u)" -f '^pipewire$' >/dev/null 2>&1; then
-		pipewire >/dev/null 2>&1 &
-		sleep 0.3
-		command -v wireplumber >/dev/null 2>&1 && \
-			wireplumber >/dev/null 2>&1 &
-		command -v pipewire-pulse >/dev/null 2>&1 && \
-			pipewire-pulse >/dev/null 2>&1 &
-	fi
-}
-
-# Everything a session does ONCE, after its display exists.
-#
-#   kdos_session_once <command...>
-#
-# The command is the caller's readiness test and must BLOCK until the display
-# is up, exporting whatever the children need to reach it, and return non-zero
-# if it never comes — for kdos-desktop-start that is kdos-comp's socket
-# appearing under $XDG_RUNTIME_DIR and WAYLAND_DISPLAY being exported from it.
-# The test is the caller's rather than this file's because this file is sourced
-# before anything has a display to test.
-#
-# All of it is one backgrounded subshell, because none of it may delay the
-# display by a millisecond: the session starts whether or not any of these is
-# installed or wanted.
-kdos_session_once() {
-	(
-		"$@" || exit 0
-
-		_cfg="${XDG_CONFIG_HOME:-$HOME/.config}"
-
-		# The login chord. Fire and forget, and silent about failure: an
-		# image with no kdos-sfx, or a machine with no card, must not
-		# print anything at every login.
-		command -v kdos-sfx >/dev/null 2>&1 && kdos-sfx login >/dev/null 2>&1 &
-
-		# The keybind card, once. kdos-keys writes the marker itself when
-		# the user has seen it — this only decides whether to open it, so a
-		# user who deletes the marker gets the welcome back.
-		if [ ! -e "$_cfg/kdos/first-run" ] && \
-		   command -v kdos-keys >/dev/null 2>&1; then
-			kdos-keys --first-run >/dev/null 2>&1 &
-		fi
-
-		# THE MUSIC DAEMON, ONCE SOMEBODY HAS CONFIGURED ONE. mpd exits at
-		# once with no configuration file and the image ships none, so a
-		# file in one of the four places mpd itself looks is the opt-in.
-		# --no-daemon keeps it in this login: it runs on past Log Out and
-		# ends with the login itself; one already running is left alone.
-		# The watcher is what feeds the panel's media cell, and it
-		# reconnects across mpd restarts on its own, so one per login is
-		# enough — started even when this login found mpd already up.
-		if command -v mpd >/dev/null 2>&1; then
-			for _mc in "$_cfg/mpd/mpd.conf" "$HOME/.mpdconf" \
-				   "$HOME/.mpd/mpd.conf" /etc/mpd.conf; do
-				[ -r "$_mc" ] || continue
-				pgrep -u "$(id -u)" -x mpd >/dev/null 2>&1 || \
-					mpd --no-daemon >/dev/null 2>&1 &
-				pgrep -u "$(id -u)" -f '^kdos-mpctl watch' \
-					>/dev/null 2>&1 || \
-					kdos-mpctl watch >/dev/null 2>&1 &
-				break
-			done
-		fi
-
-		# APPLICATIONS CHOSEN DURING THE INSTALL ARE OFFERED, NEVER
-		# BUILT IN THE BACKGROUND. Building them is podman and apt —
-		# twenty minutes on a machine somebody has just booted for the
-		# first time — and a job that long behind no surface at all is
-		# a machine that is busy for reasons nobody can see. The same
-		# rule kdos-update keeps about `kdos update apply`.
-		#
-		# The marker is what stops it asking at every login; delete it
-		# and the offer comes back. It is the user's, not the file's:
-		# /var/lib/kdos/apps-pending is root's and stays until the
-		# install actually runs.
-		if [ -s /var/lib/kdos/apps-pending ] && \
-		   [ ! -e "$_cfg/kdos/apps-offered" ] && \
-		   command -v kdos >/dev/null 2>&1 && \
-		   command -v gdbus >/dev/null 2>&1; then
-			# `grep -c` PRINTS THE ZERO AND THEN EXITS 1, so an
-			# `|| echo 0` behind it would put a second zero in the
-			# substitution and the toast would open with "0 0".
-			_napp=$(grep -cvE '^[[:space:]]*(#|$)' \
-				/var/lib/kdos/apps-pending 2>/dev/null)
-			[ -n "$_napp" ] || _napp=0
-			# `kdos notify` SENDS one; `kdos-notify` is the centre
-			# that displays what has already arrived and takes no
-			# summary at all.
-			#
-			# AND THE NAME HAS TO BE OWNED FIRST. The send is one
-			# `gdbus call`, double-forked and best effort — it
-			# reports nothing either way — and there is no
-			# activation file for org.freedesktop.Notifications, so
-			# a call made the moment the display is up reaches a
-			# notifier that is still starting and is simply lost.
-			# The wait is the only test there is, so the marker is
-			# written only once the name has appeared: a session
-			# that never got a notifier keeps the offer for the
-			# next login instead of burning its one shot. All of it
-			# in a subshell, because the restore below must not
-			# wait twenty seconds for a machine with no notifier.
-			(
-				_own=0
-				for _ in $(seq 1 100); do
-					dbus-send --session --print-reply \
-						--dest=org.freedesktop.DBus \
-						/org/freedesktop/DBus \
-						org.freedesktop.DBus.NameHasOwner \
-						string:org.freedesktop.Notifications \
-						2>/dev/null \
-						| grep -q 'boolean true' && {
-						_own=1
-						break
-					}
-					sleep 0.2
-				done
-				[ "$_own" = 1 ] || exit 0
-				kdos notify "Applications" \
-					"$_napp chosen during installation are ready to install — open the store" \
-					>/dev/null 2>&1
-				mkdir -p "$_cfg/kdos"
-				: > "$_cfg/kdos/apps-offered"
-			) &
-		fi
-
-		# THE PER-USER TIMERS, as this session's own loops.
-		#
-		# `ksvc supervise` writes its pidfile into /run, which an
-		# ordinary user cannot, so the system table's supervisor is not
-		# available here. The loops below are background children of
-		# this script, and their pids are in the session's runtime
-		# directory rather than in /run.
-		# NOTHING STOPS THEM WHEN THE COMPOSITOR EXITS: they run on at
-		# the tty1 prompt Log Out leaves, until the next start below or
-		# the end of the login, whose hangup ends them.
-		#
-		# The table is parsed the same way /etc/kdos/timers.d is —
-		# `NAME TIMESPEC... -- COMMAND...`, an argument vector and not
-		# a shell line — because two parses of one format is one of
-		# them being wrong the day a field is added.
-		#
-		# AND THEY REPEAT, WHICH IS WHAT THE PIDFILE IS FOR.
-		# `snooze` waits for its slot, runs the command ONCE and exits,
-		# so a bare background job is one run per login and not a
-		# schedule — a reminder set for every Monday would fire only on
-		# a Monday somebody happened to log in. The loop that repeats it
-		# has to be FINDABLE, or a start script that re-execs itself
-		# adds a second set of loops on top of the first: the pid of
-		# each goes in the session's own runtime directory, which lasts
-		# until a reboot, and the next start stops what the last one
-		# left before it starts anything.
-		#
-		_tpid="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/kdos/timers.pid"
-		mkdir -p "${_tpid%/*}" 2>/dev/null
-		if [ -r "$_tpid" ]; then
-			while read -r _p; do
-				case "$_p" in
-					''|*[!0-9]*) continue ;;
-				esac
-				# THE CHILD FIRST. Killing the loop alone
-				# leaves the `snooze` it is waiting on
-				# running, reparented and unfindable.
-				pkill -P "$_p" 2>/dev/null
-				kill "$_p" 2>/dev/null
-			done < "$_tpid"
-		fi
-		: > "$_tpid" 2>/dev/null
-
-		_td="$_cfg/kdos/timers.d"
-		if [ -d "$_td" ] && command -v snooze >/dev/null 2>&1; then
-			for _tf in "$_td"/*.timer; do
-				[ -e "$_tf" ] || continue
-				while IFS= read -r _row || [ -n "$_row" ]; do
-					case "$_row" in
-						''|'#'*) continue ;;
-					esac
-					# NOGLOB AROUND THE SPLIT, for the
-					# reason /etc/init.d/18_timers.sh gives:
-					# `*` is snooze's own syntax for
-					# "every", and an unguarded split
-					# expands it against the current
-					# directory.
-					set -f
-					set -- $_row
-					set +f
-					shift	# the name; it labels only
-					_spec=""
-					_seen=0
-					while [ $# -gt 0 ]; do
-						if [ "$1" = "--" ]; then
-							_seen=1
-							shift
-							break
-						fi
-						_spec="$_spec $1"
-						shift
-					done
-					[ "$_seen" = 1 ] && [ $# -gt 0 ] || continue
-					command -v "$1" >/dev/null 2>&1 || continue
-					# THE SPEC IS CHECKED FIRST. `snooze -n`
-					# prints the next five times and exits
-					# non-zero on a pattern it will not
-					# accept, so a row it would refuse is
-					# reported by nothing otherwise.
-					# shellcheck disable=SC2086
-					snooze -n $_spec >/dev/null 2>&1 ||
-						continue
-					#
-					# THE LOOP IS WHAT REPEATS IT, and it
-					# is the same shape `supervise` gives
-					# the system table: `snooze` waits for
-					# its slot, runs the command once and
-					# exits, so something has to start it
-					# again. The floor under the loop is
-					# what stops a command that fails
-					# instantly from spinning it at the
-					# speed of `fork` — one second is far
-					# below any schedule and far above a
-					# spin.
-					#
-					# A REMOVED FILE ENDS ITS ROWS' LOOPS —
-					# `kdos remind fire`, `kdos remind
-					# clear` or a person deleting it. A
-					# snooze restarted with its -t timefile
-					# gone searches from one slack before
-					# now and re-runs the job about once a
-					# second for the whole slack.
-					# shellcheck disable=SC2086
-					(
-						while [ -e "$_tf" ]; do
-							_t0=$(date +%s)
-							snooze $_spec "$@" \
-								>/dev/null 2>&1
-							[ $(( $(date +%s) - \
-							      _t0 )) -ge 1 ] ||
-								sleep 1
-						done
-					) >/dev/null 2>&1 &
-					echo $! >> "$_tpid" 2>/dev/null
-				done < "$_tf"
-			done
-		fi
-
-		# Session restore, opt-in: ~/.config/kdos/session-restore has to
-		# exist, because relaunching half a dozen containerised
-		# applications at login is a decision, not a default. Only the
-		# `app` lines are relaunched — a native program costs no container
-		# start, and where every window comes back is the desktop's window
-		# memory rather than this list. Staggered, because six
-		# `kdos-appbox run` at once contend with the boxes the login
-		# warmup is still building.
-		_sess="${XDG_STATE_HOME:-$HOME/.local/state}/kdos/session"
-		if [ -e "$_cfg/kdos/session-restore" ] && [ -r "$_sess" ] && \
-		   command -v kdos-appbox >/dev/null 2>&1; then
-			while read -r _kind _name; do
-				[ "$_kind" = app ] || continue
-				[ -n "$_name" ] || continue
-				# kdos-appbox waits out an in-flight warmup itself.
-				kdos-appbox run "$_name" >/dev/null 2>&1 &
-				sleep 2
-			done < "$_sess"
-		fi
-	) &
+	command -v kdos-appbox >/dev/null 2>&1 || return 0
+	(nice -n 10 kdos-appbox warmup >/dev/null 2>&1 &)
 }

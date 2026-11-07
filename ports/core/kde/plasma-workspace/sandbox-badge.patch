@@ -1,0 +1,158 @@
+Subject: libtaskmanager: add the SandboxEngine and SandboxName roles
+
+A task whose desktop entry carries X-Flatpak or X-KDOS-Box runs its
+application in a sandbox, and the task manager can say which: SandboxEngine
+is org.flatpak or io.kdos.appbox, SandboxName the Flatpak application id or
+the KDOS box. Both are read with the rest of AppData from the task's
+service, for window and launcher tasks alike, and refreshed when a window's
+app id changes. They name where the entry launches, which is what a tooltip
+line needs; the compositor's security context stays the authority on what a
+running window is.
+
+diff -ruN a/libtaskmanager/abstracttasksmodel.cpp b/libtaskmanager/abstracttasksmodel.cpp
+--- a/libtaskmanager/abstracttasksmodel.cpp	2026-11-01 16:35:55.026068948 +0530
++++ b/libtaskmanager/abstracttasksmodel.cpp	2026-11-01 16:36:09.435969824 +0530
+@@ -102,6 +102,8 @@
+     case IsExcludedFromCapture:
+         return false;
+     case StorageId:
++    case SandboxEngine:
++    case SandboxName:
+         return QString();
+     case IsMapped:
+         return true;
+diff -ruN a/libtaskmanager/abstracttasksmodel.h b/libtaskmanager/abstracttasksmodel.h
+--- a/libtaskmanager/abstracttasksmodel.h	2026-11-01 16:35:55.012868373 +0530
++++ b/libtaskmanager/abstracttasksmodel.h	2026-11-01 16:36:09.435708808 +0530
+@@ -96,6 +96,12 @@
+         IsExcludedFromCapture, /**< Whether the task's window has been hidden from screencasts. @since 6.6 */
+         StorageId, /** The KService storageId for the underlying service. @since 6.8  */
+         IsMapped, /**< Whether the window is mapped, @since 6.8 */
++        SandboxEngine, /**< The sandbox the task's application runs in, as its desktop entry
++                            names it: @c org.flatpak for an entry with X-Flatpak,
++                            @c io.kdos.appbox for one with X-KDOS-Box; empty for an
++                            application that runs on the host. @since 6.9 */
++        SandboxName, /**< The name of that sandbox: the Flatpak application id, or the
++                          KDOS box. Empty when SandboxEngine is. @since 6.9 */
+     };
+     Q_ENUM(AdditionalRoles)
+ 
+diff -ruN a/libtaskmanager/launchertasksmodel.cpp b/libtaskmanager/launchertasksmodel.cpp
+--- a/libtaskmanager/launchertasksmodel.cpp	2026-11-01 16:35:55.078141597 +0530
++++ b/libtaskmanager/launchertasksmodel.cpp	2026-11-01 16:36:25.519751055 +0530
+@@ -323,6 +323,10 @@
+         return data.name;
+     } else if (role == GenericName) {
+         return data.genericName;
++    } else if (role == SandboxEngine) {
++        return data.sandboxEngine;
++    } else if (role == SandboxName) {
++        return data.sandboxName;
+     } else if (role == LauncherUrl) {
+         // Take resolved URL from cache.
+         return data.url;
+diff -ruN a/libtaskmanager/tasktools.cpp b/libtaskmanager/tasktools.cpp
+--- a/libtaskmanager/tasktools.cpp	2026-11-01 16:35:55.051959751 +0530
++++ b/libtaskmanager/tasktools.cpp	2026-11-01 16:36:16.759997877 +0530
+@@ -47,6 +47,25 @@
+ 
+ namespace TaskManager
+ {
++/*
++ * The sandbox a desktop entry runs its application in, from the keys the
++ * sandbox writes into the entries it exports: X-Flatpak (the application id)
++ * and X-KDOS-Box (the box). It names where a launch goes, not what a running
++ * window is; the compositor's security context is the authority for that.
++ */
++static void fillSandbox(AppData &data, const KService::Ptr &service)
++{
++    const QString flatpak = service->property<QString>(QStringLiteral("X-Flatpak"));
++    const QString box = service->property<QString>(QStringLiteral("X-KDOS-Box"));
++    if (!flatpak.isEmpty()) {
++        data.sandboxEngine = QStringLiteral("org.flatpak");
++        data.sandboxName = flatpak;
++    } else if (!box.isEmpty()) {
++        data.sandboxEngine = QStringLiteral("io.kdos.appbox");
++        data.sandboxName = box;
++    }
++}
++
+ AppData appDataFromUrl(const QUrl &url, const QIcon &fallbackIcon)
+ {
+     AppData data;
+@@ -61,6 +80,7 @@
+             data.name = service->name();
+             data.genericName = appropriateCaption(service);
+             data.id = service->desktopEntryName();
++            fillSandbox(data, service);
+ 
+             if (data.icon.isNull()) {
+                 data.icon = QIcon::fromTheme(service->icon());
+@@ -85,6 +105,7 @@
+                 data.name = service->name();
+                 data.genericName = appropriateCaption(service);
+                 data.id = service->desktopEntryName();
++                fillSandbox(data, service);
+ 
+                 if (data.icon.isNull()) {
+                     data.icon = QIcon::fromTheme(service->icon());
+@@ -95,6 +116,7 @@
+                     data.name = service->name();
+                     data.genericName = appropriateCaption(service);
+                     data.id = service->desktopEntryName();
++                    fillSandbox(data, service);
+ 
+                     if (data.icon.isNull()) {
+                         const QString iconValue = service->icon();
+@@ -135,6 +157,7 @@
+             data.name = service->name();
+             data.genericName = appropriateCaption(service);
+             data.id = service->desktopEntryName();
++            fillSandbox(data, service);
+ 
+             if (data.icon.isNull()) {
+                 data.icon = QIcon::fromTheme(service->icon());
+diff -ruN a/libtaskmanager/tasktools.h b/libtaskmanager/tasktools.h
+--- a/libtaskmanager/tasktools.h	2026-11-01 16:35:55.037855127 +0530
++++ b/libtaskmanager/tasktools.h	2026-11-01 16:36:09.436142452 +0530
+@@ -23,6 +23,8 @@
+     QString genericName; // Generic application name.
+     QIcon icon;
+     QUrl url;
++    QString sandboxEngine; // The sandbox the entry runs its application in, or empty.
++    QString sandboxName; // The Flatpak application id or the KDOS box, or empty.
+ };
+ 
+ enum UrlComparisonMode {
+diff -ruN a/libtaskmanager/waylandtasksmodel.cpp b/libtaskmanager/waylandtasksmodel.cpp
+--- a/libtaskmanager/waylandtasksmodel.cpp	2026-11-01 16:35:55.064092578 +0530
++++ b/libtaskmanager/waylandtasksmodel.cpp	2026-11-01 16:36:25.519455453 +0530
+@@ -612,7 +612,16 @@
+ 
+         // Refresh roles satisfied from the app data cache.
+         this->dataChanged(window,
+-                          QList<int>{Qt::DecorationRole, AppId, AppName, GenericName, LauncherUrl, LauncherUrlWithoutIcon, SkipTaskbar, CanLaunchNewInstance});
++                          QList<int>{Qt::DecorationRole,
++                                     AppId,
++                                     AppName,
++                                     GenericName,
++                                     LauncherUrl,
++                                     LauncherUrlWithoutIcon,
++                                     SkipTaskbar,
++                                     CanLaunchNewInstance,
++                                     SandboxEngine,
++                                     SandboxName});
+     });
+ 
+     if (window->windowState & PlasmaWindow::state::state_active) {
+@@ -906,6 +915,10 @@
+         return d->appData(window).name;
+     case GenericName:
+         return d->appData(window).genericName;
++    case SandboxEngine:
++        return d->appData(window).sandboxEngine;
++    case SandboxName:
++        return d->appData(window).sandboxName;
+     case LauncherUrl:
+     case LauncherUrlWithoutIcon:
+         return d->appData(window).url;

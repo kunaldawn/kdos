@@ -1,5 +1,6 @@
-/* The KDOS book, as installed under /usr/share/doc/kdos. Phosphor on black,
- * the desktop's own palette, and readable at any width. */
+/* The KDOS book, as installed under /usr/share/doc/kdos. Phosphor on black
+ * when the reader's system is dark, deep green on paper when it is light, and
+ * readable at any width. */
 :root { --bg: #04120a; --fg: #b6f5a8; --dim: #1f8f0c; --accent: #39ff14; --rule: #12401f; }
 @media (prefers-color-scheme: light) {
 	:root { --bg: #f6fbf4; --fg: #0d2a12; --dim: #3d6b44; --accent: #146b0a; --rule: #c9dcc6; }
@@ -15,3 +16,28 @@ table { border-collapse: collapse; display: block; overflow-x: auto; }
 th, td { border: 1px solid var(--rule); padding: .3em .6em; vertical-align: top; text-align: left; }
 img { max-width: 100%; }
 blockquote { border-left: 3px solid var(--dim); margin-left: 0; padding-left: 1em; color: var(--dim); }
+
+/* In the Help Center. KHelpCenter adds KDE's handbook stylesheet to every
+ * page it shows, as a <style id="default"> appended to the head, and its
+ * element rules come after these and would win: white paper, black text, a
+ * different face for paragraphs and headings. A page that carries that style
+ * element is in the Help Center, so the rules below match only there, and
+ * their extra specificity keeps the book's own colours over the handbook's.
+ * The body text takes the desktop's proportional face, as the handbooks
+ * beside it do, and the Help Center's own margins replace the book's. */
+html:has(> head > style#default) body {
+	background: var(--bg); color: var(--fg); margin: 0 auto; max-width: 56rem;
+	padding: 1rem 1.25rem 3rem; font: 15px/1.6 "Noto Sans", "DejaVu Sans", sans-serif;
+}
+html:has(> head > style#default) :is(p, li, td, th, dd, dt) { font-family: inherit; color: var(--fg); }
+html:has(> head > style#default) :is(h1, h2, h3, h4, h5, h6) {
+	font-family: "JetBrains Mono", "DejaVu Sans Mono", monospace; color: var(--accent);
+	margin: 1.4em 0 .5em; text-align: left;
+}
+html:has(> head > style#default) :is(a, a:visited, :link) { color: var(--accent); background: none; }
+html:has(> head > style#default) a:hover { color: var(--fg); }
+html:has(> head > style#default) table { border-collapse: collapse; border: 0; margin: .5em 0; }
+html:has(> head > style#default) :is(th, td) { border: 1px solid var(--rule); padding: .3em .6em; }
+html:has(> head > style#default) :is(code, pre) {
+	font-family: "JetBrains Mono", "DejaVu Sans Mono", monospace; background: rgba(127, 127, 127, .12);
+}

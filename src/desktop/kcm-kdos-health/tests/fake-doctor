@@ -1,0 +1,20 @@
+#!/bin/sh
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   fake-doctor — `kdos doctor --json`, as healthtest needs it
+#
+# Prints $FAKE_DOCTOR_FILE, writes $FAKE_DOCTOR_ERR to stderr, waits
+# $FAKE_DOCTOR_SLEEP seconds and exits $FAKE_DOCTOR_EXIT (default 0); every
+# run's arguments are appended to $FAKE_DOCTOR_LOG.
+
+[ -n "${FAKE_DOCTOR_LOG:-}" ] && printf '%s\n' "$*" >> "$FAKE_DOCTOR_LOG"
+[ "$*" = "doctor --json" ] || { echo "fake-doctor: not doctor --json: $*" >&2; exit 2; }
+[ -n "${FAKE_DOCTOR_SLEEP:-}" ] && sleep "$FAKE_DOCTOR_SLEEP"
+[ -n "${FAKE_DOCTOR_FILE:-}" ] && cat "$FAKE_DOCTOR_FILE"
+[ -n "${FAKE_DOCTOR_ERR:-}" ] && printf '%s\n' "$FAKE_DOCTOR_ERR" >&2
+exit "${FAKE_DOCTOR_EXIT:-0}"

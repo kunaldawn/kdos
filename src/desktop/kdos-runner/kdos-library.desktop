@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Service
+Name=KDOS Library
+Comment=The offline library: the KDOS books, manual pages, Zeal docsets, places, Kiwix and Kolibri
+Icon=accessories-dictionary
+X-KDE-PluginInfo-Name=kdos-library
+X-KDE-PluginInfo-EnabledByDefault=true
+X-Plasma-API=DBus2
+X-Plasma-DBusRunner-Service=io.kdos.Runner
+X-Plasma-DBusRunner-Path=/library
+X-Plasma-Request-Actions-Once=true
+X-Plasma-Runner-Min-Letter-Count=3
+X-Plasma-Runner-Syntaxes=?:q:,:q:
+X-Plasma-Runner-Syntax-Descriptions=Searches the offline library alone,Also searches the offline library\, below everything else

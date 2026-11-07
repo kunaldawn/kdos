@@ -19,7 +19,9 @@
 #define KD_SOCKET   "/run/kdos-packd.sock"
 #define KD_GROUP    "wheel"
 #define KD_STORE    "/var/lib/kdos/packs"
-#define KD_MANIFEST "/var/lib/kdos/pack-manifest"
+/* The graft record, inside the store so every root that binds the store
+ * reads one record (graft.c). */
+#define KD_MANIFEST "pack-manifest"
 #define KD_ISO      "/mnt/iso/packs"
 #define KD_SHARE    "/usr/share"
 /*
@@ -137,10 +139,14 @@ int kd_fs_takes_upper(const char *path);
 
 int kd_graft(int idx, uid_t uid, char *msg, size_t n);
 int kd_ungraft(const char *id, char *msg, size_t n);
+/* Every host graft the store's record names and this root lacks, made
+ * again; run at start. */
+int kd_regraft(void);
 
 /* ── shared ────────────────────────────────────────────────────────────── */
 
-extern int kd_fixture;		/* print what WOULD happen; mount nothing */
+extern int kd_fixture;		/* mount nothing; a pack's mountpoint is named */
+extern int kd_dry;		/* print each graft; write no link, no record */
 /* The fixture still hashes a medium pack — that is the check being tested. */
 extern int kd_fixture_trust;
 void kd_log(const char *fmt, ...) __attribute__((format(printf, 1, 2)));

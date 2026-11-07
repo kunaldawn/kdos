@@ -1,22 +1,89 @@
 # bash completion for the kdos umbrella command.
 
+_kdos_accents="phosphor amber ice bone norton borland perfect paper"
+
 _kdos() {
     local cur prev
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
     if [ "$COMP_CWORD" -eq 1 ]; then
-        COMPREPLY=($(compgen -W "help theme status doctor version app share remind notify toggle" -- "$cur"))
+        COMPREPLY=($(compgen -W "help theme phosphor desk tiling status doctor version app share remind notify toggle settings menu panel places trash thumb verify hey appid privacy checklist backup speech timezone hostname locale keymap in-vm update cve why explain persist restarts" -- "$cur"))
         return
     fi
 
     case "${COMP_WORDS[1]}" in
-        theme)  COMPREPLY=($(compgen -W "phosphor amber ice bone next prev list current" -- "$cur")) ;;
-        status) COMPREPLY=($(compgen -W "--bar" -- "$cur")) ;;
-        help)   COMPREPLY=($(compgen -W "--pager" -- "$cur")) ;;
-        remind) COMPREPLY=($(compgen -W "in at tomorrow ls clear" -- "$cur")) ;;
-        notify) COMPREPLY=($(compgen -W "--time --battery" -- "$cur")) ;;
-        *)      COMPREPLY=() ;;
+        theme)
+            case "$prev" in
+                --from-plasma|--audit) COMPREPLY=($(compgen -W "$_kdos_accents" -- "$cur")) ;;
+                style) COMPREPLY=($(compgen -f -- "$cur")) ;;
+                theme) COMPREPLY=($(compgen -W "$_kdos_accents next prev list current style --audit --from-plasma" -- "$cur")) ;;
+                *) COMPREPLY=() ;;
+            esac ;;
+        phosphor)
+            case "$prev" in
+                phosphor) COMPREPLY=($(compgen -W "on off status preset terminus fullscreen collapse unfold degauss" -- "$cur")) ;;
+                preset|--preset) COMPREPLY=($(compgen -W "subtle retro" -- "$cur")) ;;
+                terminus|fullscreen) COMPREPLY=($(compgen -W "on off" -- "$cur")) ;;
+                on) COMPREPLY=($(compgen -W "--preset --terminus --no-terminus" -- "$cur")) ;;
+                status) COMPREPLY=($(compgen -W "--json" -- "$cur")) ;;
+                *) COMPREPLY=($(compgen -W "--preset --terminus --no-terminus" -- "$cur")) ;;
+            esac ;;
+        desk)
+            case "$prev" in
+                desk) COMPREPLY=($(compgen -W "kdos dock tiling undo status" -- "$cur")) ;;
+                status) COMPREPLY=($(compgen -W "--json" -- "$cur")) ;;
+                *) COMPREPLY=() ;;
+            esac ;;
+        tiling)
+            case "$prev" in
+                tiling) COMPREPLY=($(compgen -W "on off toggle status" -- "$cur")) ;;
+                on|toggle) COMPREPLY=($(compgen -W "--only" -- "$cur")) ;;
+                status) COMPREPLY=($(compgen -W "--json" -- "$cur")) ;;
+                *) COMPREPLY=() ;;
+            esac ;;
+        toggle)
+            case "$prev" in
+                toggle) COMPREPLY=($(compgen -W "stay-awake night-light dnd reduced-motion" -- "$cur")) ;;
+                *) COMPREPLY=($(compgen -W "on off" -- "$cur")) ;;
+            esac ;;
+        hey)
+            case "$prev" in
+                hey) COMPREPLY=($(compgen -W "list boxes run outputs" -- "$cur")) ;;
+                run) COMPREPLY=($(compgen -W "close activate minimize unminimize maximize unmaximize fullscreen unfullscreen keep-above no-keep-above" -- "$cur")) ;;
+                list|outputs) COMPREPLY=($(compgen -W "--json" -- "$cur")) ;;
+                *) COMPREPLY=() ;;
+            esac ;;
+        privacy)  COMPREPLY=($(compgen -W "--json --watch mute unmute stop" -- "$cur")) ;;
+        checklist)
+            case "$prev" in
+                checklist) COMPREPLY=($(compgen -W "--json dismiss restore" -- "$cur")) ;;
+                dismiss) COMPREPLY=($(compgen -W "backup phone language box firmware encryption" -- "$cur")) ;;
+                *) COMPREPLY=() ;;
+            esac ;;
+        backup)   COMPREPLY=($(compgen -W "run" -- "$cur")) ;;
+        speech)
+            case "$prev" in
+                speech) COMPREPLY=($(compgen -W "transcribe say sync list get where remove" -- "$cur")) ;;
+                transcribe) COMPREPLY=($(compgen -W "--notify" -- "$cur") $(compgen -f -- "$cur")) ;;
+                say) COMPREPLY=($(compgen -W "--voice" -- "$cur")) ;;
+                *) COMPREPLY=($(compgen -f -- "$cur")) ;;
+            esac ;;
+        timezone)
+            COMPREPLY=($(cd /usr/share/zoneinfo 2>/dev/null && compgen -f -- "$cur")) ;;
+        settings) COMPREPLY=($(compgen -W "appearance look accent colors fonts network wifi bluetooth sound display nightlight power keyboard shortcuts mouse touchpad time region users printers notifications accessibility firewall boxes health about system updates backup autostart defaults" -- "$cur")) ;;
+        menu)     COMPREPLY=($(compgen -W "summon toggle" -- "$cur")) ;;
+        panel)    COMPREPLY=($(compgen -W "toggle" -- "$cur")) ;;
+        places)   COMPREPLY=($(compgen -W "add" -- "$cur")) ;;
+        status)   COMPREPLY=($(compgen -W "--bar" -- "$cur")) ;;
+        doctor)   COMPREPLY=($(compgen -W "--json --cve" -- "$cur")) ;;
+        persist)  COMPREPLY=($(compgen -W "--json create --yes" -- "$cur")) ;;
+        help)     COMPREPLY=($(compgen -W "--keys --pager" -- "$cur")) ;;
+        remind)   COMPREPLY=($(compgen -W "in at tomorrow ls clear --ask" -- "$cur")) ;;
+        notify)   COMPREPLY=($(compgen -W "--time --battery --dnd" -- "$cur")) ;;
+        update)   COMPREPLY=($(compgen -W "check fetch apply install notes" -- "$cur")) ;;
+        verify)   COMPREPLY=($(compgen -W "--notify" -- "$cur") $(compgen -f -- "$cur")) ;;
+        *)        COMPREPLY=() ;;
     esac
 }
 complete -F _kdos kdos

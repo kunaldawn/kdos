@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = blinken
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 4998e4f625aefee1498c55787e18d90e087bf2b98f8c1591684effb194a596fc  blinken-26.08.2.tar.xz
+description = KDE memory game — repeat ever longer sequences of lights and sounds
+homepage    = https://apps.kde.org/blinken/
+license     = GPL-2.0-or-later AND (GPL-2.0-or-later WITH Font-exception-2.0) AND GFDL-1.2-only AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg qt6-qtmultimedia qt6-qtdeclarative kcoreaddons ki18n kxmlgui kguiaddons kdoctools kdbusaddons kcrash

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdepim-runtime
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = e9e27465fa9fdfdd068fff18e52f62118c76df62b44e49a969f891d6b4717e1a  kdepim-runtime-26.08.2.tar.xz
+description = Akonadi resources and agents — IMAP, POP3, Maildir, mbox, CalDAV, CardDAV, Google, EWS and local files
+homepage    = https://invent.kde.org/pim/kdepim-runtime
+license     = LGPL-2.0-or-later AND GPL-2.0-or-later AND GPL-3.0-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND (LGPL-2.0-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.1-or-later AND LGPL-3.0-or-later AND AGPL-3.0-or-later AND BSD-2-Clause AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtnetworkauth qt6-qtwebengine qt6-qtspeech shared-mime-info cyrus-sasl qca qtkeychain kcmutils kcodecs kcompletion kconfig kconfigwidgets kcontacts kcalendarcore kcoreaddons kdav ki18n kio kitemmodels kmime knotifications knotifyconfig kservice kwidgetsaddons kwindowsystem kxmlgui ktextaddons akonadi akonadi-calendar akonadi-contacts akonadi-mime kcalutils kidentitymanagement kimap kldap kmailtransport kmbox libkgapi pimcommon plasma-activities

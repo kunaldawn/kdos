@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = plasma-sdk
+version     = 6.8.2
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = 135ffe2f8ed53e188e283bbfd89767a39b91868f481dc903ce172252d696d7b7  plasma-sdk-6.8.2.tar.xz
+description = Plasma development tools — plasmoidviewer, lookandfeelexplorer, themeexplorer, iconexplorer, engineexplorer and kqml
+homepage    = https://invent.kde.org/plasma/plasma-sdk
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later AND GPL-2.0-only AND LGPL-2.0-only AND BSD-2-Clause
+group       = plasma
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qt5compat karchive kcolorscheme kcompletion kconfig kcoreaddons kcrash kdbusaddons ki18n kiconthemes kitemmodels kio kpackage ktexteditor kwidgetsaddons ksvg kdoctools kirigami kdeclarative kcmutils knewstuff libplasma plasma5support

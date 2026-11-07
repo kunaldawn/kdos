@@ -2,8 +2,7 @@
 khal is a calendar for the terminal over a vdir: a directory of `.ics` files, one event to a file.
 `khal` lists and adds events from the command line and `ikhal` is its interactive view; the
 package adds a desktop entry, "Calendar", for `ikhal`. [vdirsyncer](#port-vdirsyncer) keeps the
-vdir equal to a CalDAV calendar, and the panel's calendar, `kdos-cal`, asks `khal` for the
-events it marks.
+vdir equal to a CalDAV calendar.
 
 ## Flags
 - `icalendar` — The three PyPI packages named before `.` on the `pip3 install` line, `icalendar`,

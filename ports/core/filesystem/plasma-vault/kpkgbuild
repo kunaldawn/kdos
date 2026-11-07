@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = plasma-vault
+version     = 6.8.2
+release     = 1
+source      = https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = acc4167ef8f8701af4437378797c41c573d27f7573341ff39a1476930406f729  plasma-vault-6.8.2.tar.xz
+description = Plasma Vaults — encrypted gocryptfs folders opened and closed from the tray, with offline-only vaults
+homepage    = https://invent.kde.org/plasma/plasma-vault
+license     = (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND BSD-3-Clause AND CC0-1.0
+group       = plasma
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kconfig kcoreaddons kdbusaddons ki18n kitemmodels kio kservice kwidgetsaddons kirigami libplasma plasma-activities networkmanager-qt libksysguard kded gocryptfs fuse lsof

@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kwin-script-kdos-runraise
+version     = 1.0.0
+release     = 1
+description = KDOS run-or-raise for KWin — one key per terminal program raises its Konsole window or opens one
+homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
+depends     = cmake ninja extra-cmake-modules kpackage kwin kglobalacceld konsole

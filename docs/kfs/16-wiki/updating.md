@@ -1,23 +1,36 @@
 # Updating
 
-A KDOS machine is updated by building it from source. A recipe pins its version, so what is newer
-arrives as a newer recipe tree: `kdos update fetch` replaces `/ports` with the newest signed tree,
-`kdos update check` lists every installed package older than the recipe there, and `kdos update apply`
-fetches the sources of those packages and builds and installs each one on the machine. There is no
-binary package server. This page covers checking, fetching and applying an update, taking a tree
-from a stick, what to do after an update, the nightly check that feeds the panel's badge, and the
-vulnerability report. Boxed applications are updated differently, at the end of [Usage](#usage).
+A recipe pins its version, so what is newer for a KDOS machine arrives as a newer recipe tree.
+`kdos update fetch` replaces `/ports` with the newest signed tree and fetches, beside it, the
+release's signed [release index]{.idx}, `kdos-update.idx`, and through it alone the signed binhost
+index and the signed slot image manifest. `kdos update check`
+lists every installed package older than its recipe there and says what an update would make this
+system. `kdos update apply` then writes the newer release into the inactive A/B slot, by one of
+three lanes: the release's **slot image**, whole and checked file by file; the **binhost**'s
+prebuilt packages; or, with `--source`, a **build** on this machine. Discover shows the same
+update beside the applications' and installs it through `kdos-sysupdated`. This page covers
+checking, fetching and applying an update, taking a tree from a stick, what to do after an update,
+the nightly check, and the vulnerability report. Boxed applications are updated differently, at
+the end of [Usage](#usage).
 
 ## Installation
 
-- [kdos-tools](#port-kdos-tools) installs the `kdos` command, whose `update`, `cve` and
+- [kdos-tools](#port-kdos-tools) installs the `kdos` command, whose `update`, `image`, `cve` and
   `restarts` subcommands are on this page. `kdos update` drives [kpkg](kpkg.md), which the
   bootstrap installs, and `kdos-bootctl`, from the same port, on a machine with two root slots.
-- `kdos update fetch` downloads with [`curl`]{.idx} and unpacks with `tar` and `xz`, which the
-  [curl](#port-curl), [tar](#port-tar) and [xz](#port-xz) ports install.
+- `kdos update` downloads with [`curl`]{.idx}, over HTTPS or from a local directory only, and
+  unpacks with `tar`, `xz` and `zstd`, which the [curl](#port-curl), [tar](#port-tar),
+  [xz](#port-xz) and [zstd](#port-zstd) ports install.
+- [kdos-sysupdated](#port-kdos-sysupdated) serves `org.freedesktop.sysupdate1` and
+  `io.kdos.Slots1` on the system bus; [Discover](#port-discover) with
+  [kdos-discover](#port-kdos-discover)'s tray notifier shows and installs the system update
+  through it, and the **System Versions** page of System Settings, from
+  [kcm-kdos-system](#port-kcm-kdos-system), shows both slots and the update source.
 - The base filesystem supplies the nightly check, [`/etc/kdos/timers.d/10-update-check.timer`]{.idx}, run
-  by the service `timers` (see [Timers](timers.md)), and the ring of keys a fetched tree is
-  checked against, [`/etc/kdos/keys/tree/`]{.idx term="/etc/kdos/keys/tree"}.
+  by the service `timers` (see [Timers](timers.md)), the ring of keys a fetched tree is
+  checked against, [`/etc/kdos/keys/tree/`]{.idx term="/etc/kdos/keys/tree"}, and the ring the
+  release index, the binhost index and the slot image manifest are checked against,
+  `/etc/kdos/keys/`.
 - The image step [105_ports](../15-image/105-ports.md) stages the recipe tree that every image
   carries at `/ports`, stamps it with the commit it was made from, and puts the release key's
   public half into the ring.
@@ -28,17 +41,29 @@ The timer is enabled on the live medium and on an installed system alike.
 
 ### /etc/kdos/update.conf
 
-Not shipped. It has one key, `tree`, which says where `kdos update fetch` takes
-`kdos-ports.tar.xz` and `kdos-ports.tar.xz.sig` from: a URL, or a directory such as a mounted USB
-stick or an NFS share. With no file, the tree comes from the latest KDOS release on GitHub. A file
-pointing at a stick is one line:
+Not shipped. Each key is a URL, or a directory such as a mounted USB stick or an NFS share. The
+`binhost` and `image` places hold a `kdos-update.idx` with its `.sig`, and every file is fetched
+from where that index says, never by its name:
+
+| Key | Where `kdos update fetch` takes it from | With no key |
+|---|---|---|
+| `tree` | `kdos-ports.tar.xz` and its `.sig` | the latest KDOS release on GitHub |
+| `binhost` | the release index through which the binhost index, `PACKAGES` and `PACKAGES.sig`, and the packages it names are found | the release `<version>` of a tree whose stamp names its release, whose index points into the releases `binhost-<version>-01`, `-02`, … |
+| `image` | the release index through which the slot image manifest, `kdos-image.manifest` and its `.sig`, and its bundles are found | the latest KDOS release, whose index points into the release `image-<version>` |
+| `carry` | a path, under `/etc` or `/var`, carried into a slot when an update arms it (see [A/B slots and rollback](ab-slots-and-rollback.md#updating-through-the-inactive-slot)); one line per path | nothing beyond the built-in list |
+
+The System Versions page's update-source setting writes `tree` through kdos-sysupdated. A file
+pointing every download at a stick:
 
 ```text
 tree = /media/stick
+binhost = /media/stick/binhost
+image = /media/stick
 ```
 
-`$KDOS_UPDATE_TREE` overrides the file, and `kdos update fetch --from` overrides both. `sudo`
-clears the environment, so the variable reaches the command only when it is set behind `sudo`:
+`$KDOS_UPDATE_TREE`, `$KDOS_UPDATE_BINHOST` and `$KDOS_UPDATE_IMAGE` stand in for a missing key,
+and `kdos update fetch --from` overrides the tree's. `sudo` clears the environment, so a variable
+reaches the command only when it is set behind `sudo`:
 `sudo env KDOS_UPDATE_TREE=/media/stick kdos update fetch`. See
 [/etc/kdos/update.conf](../../kdos/06-reference/configuration.md#etckdosupdateconf).
 
@@ -53,6 +78,17 @@ The image step that fills it. An image built without the release key ships the r
 then refuses every fetched tree:
 
 <!-- kfs:include script/phases/70_image/105_ports.sh lines=133-142 pin=68e72034c604 -->
+
+### /etc/kdos/keys/
+
+The release index, the binhost index and the slot image manifest are kept only when their signature
+verifies against a `*.pub` directly in this directory; a release's index is signed with both the
+release key and the binhost key. The image ships it with no key there, so until one is added all
+of them are recorded as `unverified`: `kdos update apply` refuses, Discover offers no system update,
+and `kdos update apply --source` is the one way to update, by building here. Its description, from
+`fs/etc/kdos/keys/README`:
+
+<!-- kfs:include fs/etc/kdos/keys/README -->
 
 ### /ports/TREE
 
@@ -70,6 +106,9 @@ commit <short commit>
 time <seconds since 1970>
 ```
 
+A tree a release published carries a fourth line, `version <release>`, which names the release
+whose `kdos-update.idx` the binhost is found through.
+
 ### /etc/kpkg.conf
 
 `kdos update` finds `/ports` through `PORT_REPO` in [`/etc/kpkg.conf`]{.idx}: the tree's root is the
@@ -83,10 +122,13 @@ directory above the first repository it names. See [kpkg](kpkg.md#etckpkgconf).
 
 | File | Written by | Holds |
 |---|---|---|
-| [`/var/lib/kdos/update.state`]{.idx} | `fetch`, `apply` | The outcome of the last fetch and the last apply: `ok`, `no-key`, `no-network`, `fetch-failed` or `build-failed`, with a time and a sentence |
+| [`/var/lib/kdos/update.state`]{.idx} | `fetch`, `apply` | The outcome of the last fetch of the tree, the release index with the binhost index, and the release index with the image manifest, and of the last apply: `ok`, `absent`, `unverified`, `no-key`, `no-network`, `fetch-failed`, `build-failed`, `acquired` or `cancelled`, with a time and a sentence |
 | [`/var/lib/kdos/update.state.lock`]{.idx} | `fetch`, `apply` | The lock both hold, so a tree is never replaced under a build |
 | [`/var/lib/kdos/update.state.sig`]{.idx} | `fetch` | The signature of the tree last installed |
-| [`/var/lib/kdos/update.json`]{.idx} | The nightly check, `fetch`, `apply` | What `check --json` found; the panel's update badge reads it |
+| [`/var/lib/kdos/update.json`]{.idx} | The nightly check, `fetch`, `apply`, kdos-sysupdated at start | What `check --json` found: what is behind, what is offered and by which lane; kdos-sysupdated serves Discover from it |
+| `/var/lib/kdos/binhost/` | `fetch`, `apply` | The verified binhost index, the release index it was fetched by (`INDEX`, `INDEX.sig`, `ORIGIN`), and the packages it names, kept until a newer index names others |
+| `/var/lib/kdos/image/offer/` | `fetch` | The verified manifest of the newest slot image and the release index that names its bundles |
+| `/var/lib/kdos/image/MANIFEST` | `apply` by the image lane | The manifest of the image the root was written from, which the next image lane reads to pick its delta |
 
 A freshly booted image has none of them. The first `fetch` or `apply` writes `update.state` and its
 lock, and `update.json` appears at the nightly check's first run, or sooner when a `fetch` or an
@@ -97,10 +139,20 @@ The full list is in [Filesystem and IPC](../../kdos/06-reference/filesystem-and-
 
 ## Usage
 
-On a booted live medium `check`, `apply --dry-run`, `restarts`, `cve` and each way `fetch` refuses
-have been run, and the outputs below are theirs. No `fetch` has installed a tree and no `apply` has
-built anything: no release yet carries `kdos-ports.tar.xz`, and the image's tree ring is empty, so
-there has been no newer signed tree to take. See [Known gaps](#known-gaps).
+`ports/publish --release` publishes a release's tree, binhost and slot image with the index that
+finds them, but no published release yet carries them, so no update has been taken from one; see
+[Known gaps](#known-gaps). The update lanes are exercised against fixtures by
+`testing/selftest.sh`.
+
+### From the desktop
+
+Discover's tray icon shows when an update is offered. Open Discover's **Updates** page: the KDOS
+system update is listed with its version, its download size and the lane it comes by, beside any
+application updates. **Update All** writes the inactive slot, and **Restart to update** reboots
+into it. The update is confirmed a minute into the next session, or rolled back by itself when
+that boot does not get there (see [A/B slots and rollback](ab-slots-and-rollback.md)). System
+Settings → **System Versions** shows what each slot holds and why the last update stopped, if it
+did.
 
 ### Checking what is behind
 
@@ -111,17 +163,10 @@ there has been no newer signed tree to take. See [Known gaps](#known-gaps).
    ```
 
    `kdos update` with no verb does the same. It lists each installed package whose version, or
-   release, is older than its recipe in `/ports`, counts the installed packages that have no recipe
-   there, names the tree's commit, and reports the last problem a fetch or an apply recorded. On
-   an image built without a release key, after a fetch:
-
-   ```text
-   KDOS update  —  the ports tree against what is installed
-
-     0 behind, 0 with no recipe on this machine
-     tree <commit>, <date> at /ports
-     no-key: no trusted tree key in /etc/kdos/keys/tree: this image can verify no published tree; `kdos update apply` builds from /ports
-   ```
+   release, is older than its recipe in `/ports`, and which of them the verified binhost index
+   covers; counts the installed packages that have no recipe there; names the tree's commit; says
+   whether a verified slot image of a newer release is cached; and reports the last problem a fetch
+   or an apply recorded.
 
 2. Read the exit status: 0 nothing is behind, 1 something is behind, 2 there is no tree or no
    package database. A recorded problem does not change it: the check above exits 0.
@@ -133,16 +178,18 @@ there has been no newer signed tree to take. See [Known gaps](#known-gaps).
    kdos update check --out ~/update.json
    ```
 
-   On a machine with nothing behind and no recorded problem:
-
-   ```text
-   {"behind":0,"orphans":0,"tree":"<commit>","problem":null,"detail":"","packages":[]}
-   ```
+   The document's `offer` is the version an update would make this system and `lane` is where it
+   comes from: `image`, or `binhost` when every package behind is covered by a verified index.
+   With neither, nothing is offered to Discover, and `apply --source` is the way.
 
 ### Fetching a newer tree
 
 1. Fetch the newest published tree. It is downloaded with its signature, the signature is checked
-   against `/etc/kdos/keys/tree/`, and only then is the tree unpacked and exchanged with `/ports`:
+   against `/etc/kdos/keys/tree/`, and only then is the tree unpacked and exchanged with `/ports`.
+   The release index follows, checked against `/etc/kdos/keys/`, and through it the binhost index
+   and the slot image manifest, each kept only with the size and hash the index gives and when its
+   own signature verifies; a release that publishes no image is recorded as `absent`, which is not
+   a failure, and an index for another release than the tree is `unverified`:
 
    ```bash
    sudo kdos update fetch
@@ -165,7 +212,9 @@ reported as current.
 ### Fetching from a stick
 
 A stick, or any directory, holding `kdos-ports.tar.xz` and `kdos-ports.tar.xz.sig` from a release
-can stand in for the network for the tree:
+can stand in for the network for the tree, and a binhost or slot image directory as a build wrote
+it (`build/binhost`, or what `script/release-image.sh` wrote), each with its own
+`kdos-update.idx`, for theirs (see [/etc/kdos/update.conf](#etckdosupdateconf)):
 
 1. Mount it, for example at `/media/stick`.
 2. Fetch from it:
@@ -182,58 +231,77 @@ can stand in for the network for the tree:
 
 3. To make the stick the usual source, write `tree = /media/stick` into `/etc/kdos/update.conf`.
 
-The sources an update builds from still come from the network, from the KDOS source archive and
-then upstream. `KDOS_SOURCES_BASE`, set to an absolute path, names a directory laid out as the
+The sources a `--source` update builds from still come from the network, from the KDOS source
+archive and then upstream. `KDOS_SOURCES_BASE`, set to an absolute path, names a directory laid out as the
 archive is, `<tag>/<asset>`, in its place, and like any variable it has to be set behind `sudo`:
 `sudo env KDOS_SOURCES_BASE=/media/archive kdos update apply`. See
 [Fetching sources on a machine](../../kdos/03-architecture/packaging.md#fetching-sources-on-a-machine).
 
 ### Applying an update
 
-1. See what would be built. This needs no root:
+1. See what would be done. This needs no root:
 
    ```bash
    kdos update apply --dry-run
    ```
 
-   On the live medium, with nothing behind:
+   With nothing behind it prints `nothing to take: everything installed matches the ports tree`.
 
-   ```text
-   no A/B slots — updating the running root in place
-   nothing to take: everything installed matches the ports tree
-   ```
-
-2. On a machine with two root slots, mount the inactive slot first; `apply` finds it by its UUID
-   wherever it is mounted, and refuses when it is not mounted. See
-   [A/B slots and rollback](ab-slots-and-rollback.md).
-
-3. Apply:
+2. Apply:
 
    ```bash
-   sudo kdos update apply
+   sudo kdos update apply --mount
    ```
 
-   It downloads every source of every package that is behind before it compiles anything, so a
-   machine that is offline, or a source neither the archive nor upstream has, stops the run in
-   minutes. It then builds and installs each package with `kpkg install -f`, dependencies first,
-   with `KPKG_FETCH=1` so that a dependency the new tree adds fetches its own sources. On a machine
-   with two slots each build runs in a chroot of the inactive slot, against that slot's libraries.
+   On a machine with two root slots `apply` writes the inactive one, which `--mount` mounts at
+   `/run/kdos/slot-<x>` for the run; without `--mount` the slot has to be mounted already, wherever
+   it is, and `apply` finds it by its UUID in the boot state. It takes the first lane that can
+   deliver the update:
 
-4. On a machine with two slots, `apply` then runs `kpkg check --all` on the slot it installed into,
-   copies `/ports` into it, puts its kernel on the EFI system partition with `kdos-bootctl deploy`,
-   and marks it to be tried with `kdos-bootctl try`. A failed package, check, copy or deploy leaves
-   the slot untried. Reboot to try it.
+   - **The slot image**, when a verified manifest of a newer release is cached. The slot is
+     synchronised, not formatted: files the slot or the running root already hold are copied and
+     checked, the delta from the version this root was written from is streamed, and the full image
+     fills only what is still missing. Every file is checked against the signed manifest, so a
+     damaged delta falls back to the full image.
+   - **The binhost**, when the verified index covers every package behind. kpkg installs each
+     prebuilt package after its three equality tests (architecture, build configuration, recipe);
+     one package that fails them refuses the whole lane before the slot is written, with
+     `N packages need a source build`.
+   - **`--source`**, a build on this machine: every source of every package behind is downloaded
+     before anything compiles, then each package is built and installed with `kpkg install -f`,
+     dependencies first, in a chroot of the inactive slot against that slot's libraries.
 
-5. On a machine with one root, `apply` prints `no A/B slots — updating the running root in place`
-   and updates the running root. On a machine with two slots whose inactive slot is not mounted,
-   `--in-place` updates the running root instead of refusing, and gives up the rollback.
+   `--image`, `--binhost` and `--source` name a lane instead.
 
-`--root DIR` installs into `DIR` instead of choosing a root: it reads the package database under
-`DIR` and builds every package there that is older than its recipe in `/ports`. It does nothing
-about slots, even when `DIR` is the inactive slot: no `kpkg check`, no copy of `/ports`, no
+3. On a machine with two slots, `apply` then runs `kpkg check --all` on the slot, carries this
+   machine's configuration into it, copies `/ports` into it unless an image brought its own,
+   records its version, puts its kernel on the EFI system partition with `kdos-bootctl deploy`,
+   and marks it to be tried with `kdos-bootctl try`. A failure at any step leaves the slot untried.
+   Reboot to try it.
+
+4. On a machine with one root, `apply` prints `no A/B slots — updating the running root in place`
+   and updates the running root. On a machine with two slots, `--in-place` updates the running
+   root instead of the slot, and gives up the rollback.
+
+`apply --acquire` does only the long half, the download, the write and the check, and records the
+slot as `acquired`; `apply --arm` does the rest. Discover runs the two as its download and its
+install step. While the running boot is itself a trial, `apply` refuses: the other slot is the
+confirmed way back until this one is confirmed or rolled back.
+
+`--root DIR` installs into `DIR` instead of choosing a root. It does nothing about slots, even when
+`DIR` is the inactive slot: no `kpkg check`, no carry, no copy of `/ports`, no
 `kdos-bootctl deploy` and no `try`, so a slot updated this way is never booted as a candidate.
-Mount the slot and run `apply` without `--root` for that. A machine installed by `kinstall` has slot A
-only, so until slot B is made and recorded with `kdos-bootctl set-slot`, it updates in place.
+
+### Installing one port from the binhost
+
+```bash
+kdos update install --dry-run <port>
+sudo kdos update install <port>
+```
+
+installs one port and every dependency it lacks into the running root from the verified binhost
+index, with no build; `--dry-run` names the packages and files and touches nothing. Discover's
+host-software installs go the same way.
 
 ### After an update
 
@@ -252,7 +320,16 @@ only, so until slot B is made and recorded with `kdos-bootctl set-slot`, it upda
 2. Restart those services (`sudo service restart <name>`; see [Services](services.md)), or log out
    and back in for the desktop's own programs. A new kernel runs from the next boot.
 
-3. If the update changed the artwork, regenerate your theme files:
+3. After a slot switch, list the configuration files where the new version's default and this
+   machine's copy differ, and merge what you want from each:
+
+   ```bash
+   find /etc -name '*.kdos-new'
+   ```
+
+4. Read what the running version changed: `kdos update notes`.
+
+5. If the update changed the artwork, re-apply your accent to your home:
 
    ```bash
    kdos update theme
@@ -304,22 +381,22 @@ live medium has no slot state, so `apply` updates the running root.
 
 ## Tips
 
-- The panel's update badge counts the packages behind, and is absent when nothing is behind and
-  nothing failed. It turns to the warning colour, or shows `!` when nothing is behind, when the
-  last fetch or apply failed or the machine has no tree; hovering it says which.
-- `kdos update check` answers against whatever tree is in `/ports`, so it works offline; only
-  `--fetch` reaches the network.
-- An update compiles on the machine, and a large set takes hours.
+- `kdos update check` answers against whatever tree, index and manifest are cached, so it works
+  offline; only `--fetch` reaches the network.
+- An image update downloads only the delta from the release this root was written from. A
+  `--source` update compiles on the machine, and a large set takes hours.
+- A machine that will never take a published update can keep `--source`, which needs no key in
+  `/etc/kdos/keys/`.
 - `/ports` is replaced whole by every fetch. Keep a recipe you changed outside it, as
   [Local rebuilds and kdos march](local-rebuilds-and-march.md) shows.
 
 ## Troubleshooting
 
-The badge shows `!`, or `kdos update check` reports a problem
+Discover offers no system update, or `kdos update check` reports a problem
 : `check` names the first of `no-tree`, then the last fetch's `no-key`, `no-network` or
   `fetch-failed`, then
   the last apply's `no-network`, `fetch-failed` or `build-failed`. The sentence beside it is in
-  `/var/lib/kdos/update.state`:
+  `/var/lib/kdos/update.state`, which also has the `binhost` and `image` lines:
 
   ```bash
   cat /var/lib/kdos/update.state
@@ -353,6 +430,15 @@ The badge shows `!`, or `kdos update check` reports a problem
   upstream had, or says the network could not be reached. Fetch one by hand to see why:
   `sudo kpkg fetch <port>`.
 
+`unverified` on the `binhost` or `image` line
+: No key in `/etc/kdos/keys/` verifies the release index, the binhost index or the manifest, a file
+  is not the one the release index names, or the index is for another release; nothing was kept,
+  and Discover offers nothing. Add the key that signed the release, or update with `--source`.
+
+`N packages need a source build`
+: The binhost does not cover every package behind (another architecture, another build
+  configuration, or a recipe the index predates). The binhost lane refuses whole; use `--source`.
+
 `fetch` exits 2
 : It needs root (`kdos update fetch replaces the ports tree and needs root`), another `fetch` or
   `apply` holds the lock, or `/ports` is inside a git checkout, which belongs to git and is never
@@ -370,16 +456,14 @@ The badge shows `!`, or `kdos update check` reports a problem
   it again (see [kpkg](kpkg.md)).
 
 `apply` refuses: the inactive slot is not mounted
-: Mount it and run `apply` again, or pass `--in-place`. See
+: Pass `--mount`, mount it and run `apply` again, or pass `--in-place`. See
   [A/B slots and rollback](ab-slots-and-rollback.md).
 
 ## Known gaps
 
 - [The update path has not been run against a published tree](../../kdos/06-reference/known-gaps.md#the-update-path-has-not-been-run-against-a-published-tree)
-- [Nothing creates or first fills the second root slot](../../kdos/06-reference/known-gaps.md#nothing-creates-or-first-fills-the-second-root-slot)
 - [An update with --root compiles against the running system](../../kdos/06-reference/known-gaps.md#an-update-with---root-compiles-against-the-running-system)
 - [Per-slot kernels have been booted on virtual firmware only](../../kdos/06-reference/known-gaps.md#per-slot-kernels-have-been-booted-on-virtual-firmware-only)
-- [There is no public binary host](../../kdos/06-reference/known-gaps.md#there-is-no-public-binary-host)
 - [A catalogue change reaches an installed application only when it is rebuilt](../../kdos/06-reference/known-gaps.md#a-catalogue-change-reaches-an-installed-application-only-when-it-is-rebuilt)
 
 ## See also
@@ -388,9 +472,10 @@ The badge shows `!`, or `kdos update check` reports a problem
 - [Updating a machine](../../kdos/03-architecture/packaging.md#updating-a-machine): how a tree, `kpkg` and the slots fit together
 - [Keeping it current](../../kdos/02-user-guide/administration.md#keeping-it-current): the user guide's own section
 - [A/B slot selection](../../kdos/03-architecture/boot-and-init.md#ab-slot-selection): how a tried slot is confirmed or rolled back
+- [Discover](../../kdos/04-programs/discover.md): the system update and the KDOS backend in Discover
 - [kpkg](kpkg.md), [A/B slots and rollback](ab-slots-and-rollback.md), [Timers](timers.md), [Boxes](boxes.md)
 
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 405.* Previous: [404. kpkg](kpkg.md) · [Contents](../README.md) · Next: [406. Local rebuilds and kdos march](local-rebuilds-and-march.md)
+*Part XVI. System administration, chapter 429.* Previous: [428. kpkg](kpkg.md) · [Contents](../README.md) · Next: [430. Local rebuilds and kdos march](local-rebuilds-and-march.md)

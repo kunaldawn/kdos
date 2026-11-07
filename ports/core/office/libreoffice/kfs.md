@@ -60,11 +60,16 @@ and a vendor bundle of the libraries it builds itself. See
   PDFium, upstream warns, signature verification is insecure.
 - `--enable-python=system` — Scripting and pyuno against the system [python3](#port-python3), not
   a Python built from the bundle.
-- `--enable-gtk3`, `--enable-qt6`, `--enable-qt6-multimedia` — The two front ends (VCL plugins),
-  with media playback inside the Qt 6 plugin through Qt Multimedia.
-- `--disable-gtk4`, `--disable-qt5`, `--disable-kf5`, `--disable-kf6`, `--disable-gtk3-kde5` — No
-  GTK 4 plugin, no Qt 5 plugin, no plugins integrating with KDE Frameworks 5 or 6, and no GTK 3
-  plugin with KDE file dialogs.
+- `--enable-gtk3`, `--enable-qt6`, `--enable-qt6-multimedia`, `--enable-kf6` — The three front
+  ends (VCL plugins), with media playback inside the Qt 6 plugin through Qt Multimedia. The KF6
+  plugin is the Qt 6 one with KDE Frameworks' file dialogs and settings, and LibreOffice picks it
+  by itself in a Plasma session, so Open and Save show the same dialog as every KDE application.
+  It links [kcoreaddons](#port-kcoreaddons), [ki18n](#port-ki18n), [kconfig](#port-kconfig),
+  [kwindowsystem](#port-kwindowsystem) and [kio](#port-kio); `configure` finds them by the
+  `KF6/KIOFileWidgets/KFileWidget` header under `/usr/include`.
+- `--disable-gtk4`, `--disable-qt5`, `--disable-kf5`, `--disable-gtk3-kde5` — No GTK 4 plugin, no
+  Qt 5 plugin, no plugin integrating with KDE Frameworks 5, and no GTK 3 plugin with KDE file
+  dialogs.
 - `--disable-introspection` — Generate no GObject introspection files.
 - `--with-tls=nss` — [nss](#port-nss) for TLS and cryptography in LibreOffice's own code, which
   also restricts its use of OpenSSL. NSS is upstream's default.

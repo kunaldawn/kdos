@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ttf-jetbrains-mono
+version     = 2.304
+release     = 1
+source      = $name-$version.zip::https://github.com/JetBrains/JetBrainsMono/releases/download/v$version/JetBrainsMono-$version.zip
+sha256      = 6f6376c6ed2960ea8a963cd7387ec9d76e3f629125bc33d1fdcd7eb7012f7bbf  ttf-jetbrains-mono-2.304.zip
+description = JetBrains Mono — the desktop's monospace face, with its no-ligature NL family
+homepage    = https://www.jetbrains.com/lp/mono/
+license     = OFL-1.1
+depends     = unzip fontconfig

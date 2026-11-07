@@ -25,7 +25,30 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
+
+/* A process's start time in clock ticks, field 22 of /proc/<pid>/stat: what
+ * tells the pid a ledger line names from a later process given the same
+ * number. 0 when the process is gone. The command name is skipped past its
+ * LAST `)`, because a name may itself contain one. */
+unsigned long long proc_start_time(long pid)
+{
+	char path[64], st[1024], *rp, *tok, *save = NULL;
+	int field = 3;
+
+	snprintf(path, sizeof(path), "/proc/%ld/stat", pid);
+	if (kb_read_file(path, st, sizeof(st)) <= 0)
+		return 0;
+	rp = strrchr(st, ')');
+	if (!rp || !rp[1])
+		return 0;
+	for (tok = strtok_r(rp + 2, " ", &save); tok;
+	     tok = strtok_r(NULL, " ", &save), field++)
+		if (field == 22)
+			return strtoull(tok, NULL, 10);
+	return 0;
+}
 
 /* Stage timings, so "why did that take so long" stays answerable afterwards. */
 void tracef(const char *fmt, ...)

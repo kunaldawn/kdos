@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Read Aloud in the Clipboard
+Comment=Offers Klipper's Read Aloud action while a voice is installed, and takes it away when none is
+Exec=kdos speech sync
+OnlyShowIn=KDE;
+NoDisplay=true
+X-KDE-autostart-phase=2

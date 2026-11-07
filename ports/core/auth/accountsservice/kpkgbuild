@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = accountsservice
+version     = 26.27.3
+release     = 1
+source      = https://gitlab.freedesktop.org/accountsservice/accountsservice/-/archive/$version/accountsservice-$version.tar.gz
+sha256      = 11de07bcd499c2277f78a6fc830d1437654f3397cc7bbed19c28b3818435ba38  accountsservice-26.27.3.tar.gz
+description = D-Bus service for querying and changing user accounts (org.freedesktop.Accounts)
+homepage    = https://www.freedesktop.org/wiki/Software/AccountsService/
+license     = GPL-3.0-or-later
+depends     = meson ninja pkgconf gettext glib json-c dbus polkit elogind

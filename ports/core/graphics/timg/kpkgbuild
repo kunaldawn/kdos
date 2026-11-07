@@ -10,7 +10,7 @@
 
 name        = timg
 version     = 1.6.3
-release     = 1
+release     = 2
 source      = https://github.com/hzeller/timg/archive/v$version.tar.gz
 sha256      = 59c908867f18c81106385a43065c232e63236e120d5b2596b179ce56340d7b01  timg-1.6.3.tar.gz
 description = Terminal image and video viewer

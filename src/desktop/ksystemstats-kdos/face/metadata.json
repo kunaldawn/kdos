@@ -1,0 +1,18 @@
+{
+    "KPackageStructure": "KSysguard/SensorFace",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "KDOS"
+            }
+        ],
+        "Description": "Accent sparklines with monospace figures, one row per sensor",
+        "Icon": "office-chart-line",
+        "Id": "org.kdos.meters",
+        "License": "MIT",
+        "Name": "KDOS Meters",
+        "Version": "1.0",
+        "Website": "https://github.com/kunaldawn/kdos"
+    },
+    "X-KDE-ParentApp": "org.kde.plasmashell"
+}

@@ -93,5 +93,5 @@ The browser-plugin directory `/usr/lib/mozilla` and the KDE 4 service menus in
 `build.sh` replaces upstream's desktop entry. The Qt interface sets the window class `vlc`, which
 `StartupWMClass` names. The entry has no `MimeType` line: other players' entries claim the
 audio and video types, and the default for each type is chosen in the desktop's mimeapps table,
-`/etc/xdg/kdos-mimeapps.list`. The icons are
+`/usr/share/kdos/xdg/kde-mimeapps.list`. The icons are
 upstream's, from `make install`.

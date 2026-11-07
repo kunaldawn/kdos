@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kde-gear-utilities
+version     = 1
+release     = 1
+description = The remaining KDE Gear applications: desktop utilities, network and chat clients, the convergent mobile applications, Calligra and Lokalize
+homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
+depends     = kalk kalm kbackup kclock kweather kteatime ktimer keysmith keepsecret kget konqueror neochat tokodon alligator angelfish calindori ktrip plasma-phonebook qmlkonsole francis ghostwriter kmouth keditbookmarks kdf konversation falkon kleopatra calligra lokalize kcron

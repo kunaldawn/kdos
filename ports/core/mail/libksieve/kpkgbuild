@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libksieve
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 24dd338c7215cc2031df011edba818a1bfb158189f71f17e6e4286534b716c54  libksieve-26.08.2.tar.xz
+description = KDE PIM Sieve libraries: ManageSieve client, script parser and the sieve script editor
+homepage    = https://invent.kde.org/pim/libksieve
+license     = GPL-2.0-or-later AND GPL-2.0-only AND LGPL-2.0-or-later AND BSD-3-Clause AND MIT AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtwebengine cyrus-sasl ki18n kcolorscheme kio kcoreaddons kiconthemes knewstuff karchive syntax-highlighting sonnet kmime libkdepim pimcommon kidentitymanagement kmailtransport kimap ktextaddons

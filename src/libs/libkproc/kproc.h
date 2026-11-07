@@ -9,9 +9,10 @@
  * ---------------------------------
  *
  * Links libkbase and NOTHING ELSE. That is a constraint, not an accident:
- * kdos-oomd is a root daemon that links libkbase alone, and kdos-shell's panel
- * must never gain a dependency that can block. A library that reads files and
- * calls out to nothing is safe in both.
+ * kdos-oomd and kdos-energyd are root daemons whose only other library is
+ * libkbase, and a daemon deciding under memory pressure must never gain a
+ * dependency that can block. A library that reads files and calls out to
+ * nothing is safe there.
  *
  * Three properties decide the shape of everything below.
  *

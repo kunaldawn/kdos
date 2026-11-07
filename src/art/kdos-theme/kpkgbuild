@@ -9,8 +9,9 @@
 # ---------------------------------
 
 name        = kdos-theme
-version     = 1.0.0
-release     = 2
-description = KDOS theme generators — GTK stylesheet, icons, cursors
+version     = 2.0.0
+release     = 1
+description = KDOS identity generators — KDE colour schemes, Konsole, qt5ct, wallpapers, greeter palette
 homepage    = https://github.com/kunaldawn/kdos
 license     = MIT
+depends     = libpng

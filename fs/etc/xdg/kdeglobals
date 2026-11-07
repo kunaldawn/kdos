@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   The machine's global theme, and nothing else.
+#
+# /etc/xdg is the administrator's. Every KDOS default lives in
+# /usr/share/kdos/xdg/kdeglobals, after this directory in XDG_CONFIG_DIRS; this
+# file carries the one key a process must see even when it was started without
+# XDG_CONFIG_DIRS and reads /etc/xdg alone. The installer rewrites it to the
+# accent chosen at installation, and a key added here outranks the KDOS
+# default of the same name for every account on the machine.
+# ---------------------------------
+
+[KDE]
+LookAndFeelPackage=org.kdos.bone.desktop

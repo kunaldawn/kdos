@@ -117,7 +117,7 @@ int oracle_main(int argc, char **argv)
 	}
 
 	/* SGR 33 is the secondary slot: /etc/vtrgb maps the console's yellow
-	 * onto the scheme's secondary, and the generated foot palette does the
+	 * onto the scheme's secondary, and the accent's Konsole scheme does the
 	 * same, so one escape is the accent's secondary on both. Never bold —
 	 * on a 512-glyph VT the intensity bit is the 9th glyph bit, so bold
 	 * changes the FONT PAGE rather than the weight. */

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0
+      http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+  <group name="General">
+    <entry name="focusMinutes" type="Int">
+      <label>How long a focus period lasts, in minutes.</label>
+      <default>25</default>
+      <min>1</min>
+      <max>180</max>
+    </entry>
+    <entry name="shortBreakMinutes" type="Int">
+      <label>How long a short break lasts, in minutes.</label>
+      <default>5</default>
+      <min>1</min>
+      <max>60</max>
+    </entry>
+    <entry name="longBreakMinutes" type="Int">
+      <label>How long a long break lasts, in minutes.</label>
+      <default>15</default>
+      <min>1</min>
+      <max>120</max>
+    </entry>
+    <entry name="longBreakEvery" type="Int">
+      <label>How many focus periods come before a long break.</label>
+      <default>4</default>
+      <min>2</min>
+      <max>12</max>
+    </entry>
+    <entry name="autoStartNext" type="Bool">
+      <label>Start the next period without waiting for a click.</label>
+      <default>false</default>
+    </entry>
+  </group>
+</kcfg>

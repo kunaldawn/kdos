@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libquotient
+version     = 0.9.6.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/quotient-im/libQuotient/archive/refs/tags/$version.tar.gz
+sha256      = ac0fe5df480fa893d3e16da626bf5028c944e9b41f504f6fe0fe49273247d636  libquotient-0.9.6.1.tar.gz
+description = Qt library for Matrix clients: sync, rooms, events and end-to-end encryption over libolm
+homepage    = https://quotient-im.github.io/libQuotient/
+license     = LGPL-2.1-or-later
+depends     = cmake ninja qt6-qtbase qtkeychain olm openssl

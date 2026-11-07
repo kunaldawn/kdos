@@ -1,0 +1,10 @@
+#!/bin/sh
+# A stand-in for PipeWire's pw-dump: the document beside it, once, or with
+# --monitor that document, then the camera stream's removal, then nothing.
+here=$(dirname "$0")
+cat "${KDOS_FAKE_PW:-$here/pw-dump.json}"
+if [ "$1" = --monitor ]; then
+	sleep 1
+	printf '[\n  { "id": 52, "info": null }\n]\n'
+	sleep 30
+fi

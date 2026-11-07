@@ -1,0 +1,20 @@
+Subject: include the text-generation manager only when it is built
+
+sieveeditormainwidget.cpp includes <TextAutoGenerateText/TextAutoGenerateManager>
+unconditionally, but every use of the class is under HAVE_TEXT_AUTOGENERATE_TEXT,
+and the include directory comes only from the KF6::TextAutoGenerateText target,
+which is linked only when OPTION_ADD_AUTOGENERATETEXT finds the library. With
+the option off the include fails and the build stops.
+
+--- a/src/sieveeditormainwidget.cpp
++++ b/src/sieveeditormainwidget.cpp
+@@ -11,7 +11,9 @@
+ #include "sieveeditorscriptmanagerwidget.h"
+ #include "sieveeditortabwidget.h"
+ #include <KSieveUi/SieveEditor>
++#if HAVE_TEXT_AUTOGENERATE_TEXT
+ #include <TextAutoGenerateText/TextAutoGenerateManager>
++#endif
+ 
+ #include <KColorScheme>
+ #include <KConfigGroup>

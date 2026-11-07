@@ -1,0 +1,21 @@
+{
+    "KPackageStructure": "KWin/Effect",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "kunal.dawn@gmail.com",
+                "Name": "Kunal Dawn"
+            }
+        ],
+        "Category": "Appearance",
+        "Description": "Open the desktop out of a line across the login splash, the way a CRT powers on",
+        "EnabledByDefault": false,
+        "Icon": "preferences-system-windows-effect-login",
+        "Id": "kdos_login",
+        "License": "MIT",
+        "Name": "KDOS Power-On",
+        "Website": "https://github.com/kunaldawn/kdos"
+    },
+    "X-KDE-Ordering": 40,
+    "X-Plasma-API": "javascript"
+}

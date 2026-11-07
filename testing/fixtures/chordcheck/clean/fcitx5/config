@@ -1,0 +1,5 @@
+[Hotkey/EnumerateGroupForwardKeys]
+0=Control+Super+space
+
+[Hotkey/EnumerateGroupBackwardKeys]
+0=Control+Super+Shift+space

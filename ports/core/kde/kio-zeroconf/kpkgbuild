@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kio-zeroconf
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = bdd749cfa7d4fca112413cf844c9619f031adb025bd4d48f9f575d5afad53aa2  kio-zeroconf-26.08.2.tar.xz
+description = zeroconf:/ KIO worker — browse the DNS-SD services advertised on the local network
+homepage    = https://invent.kde.org/network/kio-zeroconf
+license     = GPL-2.0-or-later AND LGPL-2.0-only AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kdbusaddons kdnssd ki18n kio kded avahi

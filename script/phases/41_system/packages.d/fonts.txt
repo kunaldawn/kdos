@@ -31,16 +31,14 @@ woff2
 
 # One OpenType Collection covering Chinese, Japanese and Korean. Without a CJK
 # face, fontconfig has nothing to fall back to and every CJK codepoint renders
-# as a box — in foot, in an alien app, and in any filename that carries one.
+# as a box — in Konsole, in an alien app, and in any filename that carries one.
 noto-cjk
 
 # Noto Sans and Noto Sans Mono, and the preference file that puts them at the
 # head of `sans-serif` and `monospace`. Anything that asks fontconfig for a
-# generic family gets Noto: libkcell's default and its monospace retry, the
-# canvas fallback, libkwl's font-step fallback and every GTK or Qt app,
-# native or boxed.
-# The desktop's own chrome, panel and terminal name Terminus. It is installed
-# BESIDE DejaVu and not instead of it: Noto Sans Mono carries the full box and
+# generic family gets Noto: every GTK or Qt app, native or boxed, and every
+# Plasma surface whose font is unset. It is installed BESIDE DejaVu and not
+# instead of it: Noto Sans Mono carries the full box and
 # block sets but no diagonal arrows, four dingbats and three misc symbols, and
 # the preference file is numbered so fontconfig reaches DejaVu for those next.
 noto-fonts
@@ -82,3 +80,5 @@ font-carlito
 font-caladea
 
 libspiro
+
+ttf-jetbrains-mono

@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = kpty
-version     = 6.30.0
+version     = 6.31.0
 release     = 1
 source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
-sha256      = ad66149c20470de29d483f0ccdcb057d42ccf778f3f8cc8e68aefca5380bace7  kpty-6.30.0.tar.xz
+sha256      = 432b0a8fed2d355e19131e3f63c7856e5cb26fe4932ecb840be9465fa072bcea  kpty-6.31.0.tar.xz
 description = KDE Frameworks: pseudo-terminal devices for terminal emulators
 homepage    = https://invent.kde.org/frameworks/kpty
 license     = LGPL-2.0-or-later AND GPL-2.0-or-later

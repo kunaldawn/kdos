@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = liblangtag
+version     = 0.6.8
+release     = 1
+source      = $name-$version.tar.bz2::https://dev-www.libreoffice.org/src/liblangtag-$version.tar.bz2
+sha256      = a96975b79ddd8fef6d9295c083fe3f1afa1a8898a57235d4069255ade44e5cf2  liblangtag-0.6.8.tar.bz2
+description = Library for parsing, matching and canonicalising BCP 47 language tags
+homepage    = https://gitlab.com/tagoh/liblangtag
+license     = LGPL-3.0-or-later OR MPL-2.0
+depends     = pkgconf libxml2 glib gobject-introspection

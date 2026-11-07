@@ -5,7 +5,7 @@ draws its screen. This port builds it for both toolkits, `libvte-2.91.so` for
 [gtk3](#port-gtk3) and `libvte-2.91-gtk4.so` for [gtk4](#port-gtk4). In the tree,
 [geany](#port-geany)'s terminal pane, [qemu](#port-qemu)'s GTK display (built `--enable-vte`,
 for its text consoles), [virt-manager](#port-virt-manager) and [remmina](#port-remmina) use it.
-KDOS's own terminal, `kdos-term`, does not.
+The desktop's terminal, [Konsole](#port-konsole), does not: it has its own emulator.
 
 ## Flags
 

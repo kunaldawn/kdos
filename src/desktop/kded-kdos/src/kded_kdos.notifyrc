@@ -1,0 +1,19 @@
+[Global]
+IconName=distributor-logo-kdos
+Name=KDOS
+Comment=KDOS
+
+[Event/importOffer]
+Name=Application set on a removable drive
+Comment=A drive you connected holds an exported KDOS application set
+Action=Popup
+
+[Event/shareStartFailed]
+Name=Shared folder not served
+Comment=A folder was shared, but the file server could not be started to serve it
+Action=Popup
+
+[Event/syncFailed]
+Name=Accent not applied everywhere
+Comment=The desktop changed accent, but the terminal programs, greeter or boot menu could not follow
+Action=Popup

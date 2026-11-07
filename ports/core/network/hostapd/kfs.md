@@ -2,7 +2,7 @@
 hostapd turns a wireless card into an access point, and carries an EAP and RADIUS server for
 802.1X networks. On KDOS it makes a machine the access point of a network of its own, one that
 stays up across reboots, with [dnsmasq](#port-dnsmasq) beside it for addresses and names;
-`kdos-net`'s hotspot, through NetworkManager, is the quicker way to share a connection. The package installs
+The Wi-Fi hotspot of Plasma's network applet, through NetworkManager, is the quicker way to share a connection. The package installs
 `hostapd`, `hostapd_cli`, their manual pages and `/etc/hostapd/hostapd.conf.example`.
 `/etc/init.d/46_hostapd.sh`, which the base filesystem ships rather than this package, starts the
 daemon only once `/etc/hostapd/hostapd.conf` exists; setting one up is

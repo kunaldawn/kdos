@@ -22,3 +22,6 @@
 
 k3b
 xfburn
+
+audiocd-kio
+audex

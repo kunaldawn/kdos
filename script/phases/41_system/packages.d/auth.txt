@@ -51,3 +51,8 @@ fprintd
 
 cracklib
 libpwquality
+
+libaccounts-glib
+elogind
+turnstile
+accountsservice

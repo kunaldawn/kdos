@@ -1,0 +1,4 @@
+[Icon Theme]
+Name=Default
+Comment=The cursors of an application that names no cursor theme
+Inherits=breeze_cursors

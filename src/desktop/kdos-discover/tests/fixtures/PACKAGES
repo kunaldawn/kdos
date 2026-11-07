@@ -1,0 +1,17 @@
+P:app.scribus
+V:1730000000-1
+A:x86_64
+K:app
+S:91234567
+C:0000000000000000000000000000000000000000000000000000000000000000
+F:app.scribus.kpack
+N:Scribus
+T:Page layout
+G:Office
+
+P:app.kcalc
+V:1730000001-1
+K:app
+S:4200000
+F:app.kcalc.kpack
+N:KCalc

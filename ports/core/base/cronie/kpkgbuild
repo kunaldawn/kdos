@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = cronie
+version     = 1.7.2
+release     = 1
+source      = https://github.com/cronie-crond/cronie/releases/download/cronie-$version/cronie-$version.tar.gz
+sha256      = f1da374a15ba7605cf378347f96bc8b678d3d7c0765269c8242cfe5b0789c571  cronie-1.7.2.tar.gz
+description = Cron daemon and crontab: the scheduler for the crontabs users write
+homepage    = https://github.com/cronie-crond/cronie
+license     = ISC
+depends     = nano

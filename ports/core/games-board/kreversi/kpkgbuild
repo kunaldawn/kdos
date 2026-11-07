@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = kreversi
-version     = 26.08.1
+version     = 26.08.2
 release     = 1
 source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
-sha256      = 251810115e224275e2c2bd16fc21f2d92e7a28b9c6d968d16bc93eeed2305fca  kreversi-26.08.1.tar.xz
+sha256      = dc62f5021ff9df8dece66689101af3d1a9b14dfa04576f21bc502176ffff45b1  kreversi-26.08.2.tar.xz
 description = Reversi against the computer or a second player
 homepage    = https://apps.kde.org/kreversi/
 license     = GPL-2.0-or-later

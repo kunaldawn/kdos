@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  KdosBackend's categories. KdosBackend::category() reads this from the
+  plugin's resources and puts one "<group> set" menu per catalogue group where
+  the kdos-sets marker stands, so a group added to the catalogue is a page
+  without an edit here.
+
+  A resource matches a <Category> by KdosResource::hasCategory: its
+  desktop-entry categories, plus kdos-box (it runs in a box), kdos-set (it is a
+  set), kdos-set:<group> (it is in that catalogue group) and kdos-pending (the
+  installer recorded it in /var/lib/kdos/apps-pending). The "Selected during
+  install" menu takes the place of the kdos-pending marker only while that
+  file names something; Discover's category option opens it by that name.
+-->
+<Menu>
+
+  <!-- kdos-pending -->
+
+  <Menu>
+    <Name>All Applications</Name>
+    <Icon>applications-all</Icon>
+    <Top />
+    <Include>
+      <Or>
+        <Category>Accessibility</Category>
+        <Category>AudioVideo</Category>
+        <Category>Development</Category>
+        <Category>Education</Category>
+        <Category>Engineering</Category>
+        <Category>Game</Category>
+        <Category>Graphics</Category>
+        <Category>Network</Category>
+        <Category>Office</Category>
+        <Category>Science</Category>
+        <Category>Settings</Category>
+        <Category>System</Category>
+        <Category>Utility</Category>
+        <Category>Other</Category>
+      </Or>
+    </Include>
+  </Menu>
+
+  <Menu>
+    <Name>Sets</Name>
+    <Icon>package-x-generic</Icon>
+    <Include>
+      <Category>kdos-set</Category>
+    </Include>
+    <!-- kdos-sets -->
+  </Menu>
+
+  <Menu>
+    <Name>Boxes</Name>
+    <Icon>utilities-terminal</Icon>
+    <Include>
+      <Category>kdos-box</Category>
+    </Include>
+  </Menu>
+
+  <Menu>
+    <Name>Add-ons</Name>
+    <Icon>plasma</Icon>
+    <Include>
+      <Or>
+        <Category>X-KDOS-Addons</Category>
+        <PkgName>kdos-addons</PkgName>
+      </Or>
+    </Include>
+  </Menu>
+
+  <Menu>
+    <Name>Accessibility</Name>
+    <Icon>preferences-desktop-accessibility</Icon>
+    <Include>
+      <And>
+        <Category>Accessibility</Category>
+        <Not><Category>Settings</Category></Not>
+      </And>
+    </Include>
+  </Menu>
+
+  <Menu>
+    <Name>Development</Name>
+    <Icon>applications-development</Icon>
+    <Include>
+      <Category>Development</Category>
+    </Include>
+  </Menu>
+
+  <Menu>
+    <Name>Education</Name>
+    <Icon>applications-education</Icon>
+    <Include>
+      <Category>Education</Category>
+    </Include>
+  </Menu>
+
+  <Menu>
+    <Name>Games</Name>
+    <Icon>applications-games</Icon>
+    <Include>
+      <Category>Game</Category>
+    </Include>
+  </Menu>
+
+  <Menu>
+    <Name>Graphics</Name>
+    <Icon>applications-graphics</Icon>
+    <Include>
+      <Category>Graphics</Category>
+    </Include>
+  </Menu>
+
+  <Menu>
+    <Name>Internet</Name>
+    <Icon>applications-internet</Icon>
+    <Include>
+      <Category>Network</Category>
+    </Include>
+  </Menu>
+
+  <Menu>
+    <Name>Multimedia</Name>
+    <Icon>applications-multimedia</Icon>
+    <Include>
+      <Category>AudioVideo</Category>
+    </Include>
+  </Menu>
+
+  <Menu>
+    <Name>Office</Name>
+    <Icon>applications-office</Icon>
+    <Include>
+      <Category>Office</Category>
+    </Include>
+  </Menu>
+
+  <Menu>
+    <Name>Science and Engineering</Name>
+    <Icon>applications-science</Icon>
+    <Include>
+      <Or>
+        <Category>Science</Category>
+        <Category>Engineering</Category>
+      </Or>
+    </Include>
+  </Menu>
+
+  <Menu>
+    <Name>System</Name>
+    <Icon>applications-system</Icon>
+    <Include>
+      <And>
+        <Category>System</Category>
+        <Not><Category>Settings</Category></Not>
+      </And>
+    </Include>
+  </Menu>
+
+  <Menu>
+    <Name>Utilities</Name>
+    <Icon>applications-utilities</Icon>
+    <Include>
+      <And>
+        <Category>Utility</Category>
+        <Not><Category>Accessibility</Category></Not>
+      </And>
+    </Include>
+  </Menu>
+
+</Menu>

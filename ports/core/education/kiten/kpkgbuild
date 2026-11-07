@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kiten
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = ee07e3450dd835f86ec15bfdbc00d0b14e8d3030b4173d6650f1a23d2613bc9c  kiten-26.08.2.tar.xz
+description = KDE Japanese reference — EDICT and KANJIDIC dictionary, kanji browser and radical search
+homepage    = https://apps.kde.org/kiten/
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later AND GPL-1.0-or-later AND BSD-3-Clause AND LicenseRef-EDRDG AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase karchive kcompletion kconfig kconfigwidgets kcoreaddons kcrash kdoctools ki18n kio kxmlgui

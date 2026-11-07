@@ -1,6 +1,11 @@
+Subject: run kiod6 from /usr/lib/libexec/kf6 in its desktop entry
+
+The daemon is installed under /usr/lib/libexec/kf6, which is on no PATH
+directory, so a bare Exec=kiod6 names a program nothing can start.
+
 --- a/src/kiod/org.kde.kiod6.desktop
 +++ b/src/kiod/org.kde.kiod6.desktop
-@@ -60,4 +60,4 @@
+@@ -59,4 +59,4 @@
  Name[zh_TW]=KIO
  NoDisplay=true
  Icon=dialog-password

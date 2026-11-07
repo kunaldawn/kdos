@@ -1,0 +1,22 @@
+{
+    "KPackageStructure": "KWin/Effect",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "kunal.dawn@gmail.com",
+                "Name": "Kunal Dawn"
+            }
+        ],
+        "Category": "Window Open/Close Animation",
+        "Description": "Unfold windows from a line as they open and fold them to a dot as they close, the way the KDOS boot splash powers on and off",
+        "EnabledByDefault": false,
+        "Icon": "preferences-system-windows-effect-scale",
+        "Id": "kdos_unfold",
+        "License": "MIT",
+        "Name": "KDOS Unfold",
+        "Website": "https://github.com/kunaldawn/kdos"
+    },
+    "X-KDE-Ordering": 60,
+    "X-KWin-Exclusive-Category": "toplevel-open-close-animation",
+    "X-Plasma-API": "javascript"
+}

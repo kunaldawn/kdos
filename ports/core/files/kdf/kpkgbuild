@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdf
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 9c1f8d6ee09f35505f1562e4e580303a4bbf65059369d4a9a2ce10f51ef49bae  kdf-26.08.2.tar.xz
+description = Disk free — mounted filesystems, their usage and mount points, with a tray mounter
+homepage    = https://apps.kde.org/kdf/
+license     = GPL-2.0-or-later
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kconfigwidgets kcoreaddons ki18n kiconthemes kjobwidgets kio kcmutils kservice knotifications kwidgetsaddons kxmlgui kstatusnotifieritem kcrash kdoctools coreutils util-linux

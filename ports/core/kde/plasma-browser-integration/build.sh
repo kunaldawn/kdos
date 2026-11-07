@@ -1,0 +1,26 @@
+#!/bin/bash
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+cmake -S . -B build -G Ninja \
+	-D CMAKE_INSTALL_PREFIX=/usr \
+	-D KDE_INSTALL_LIBDIR=lib \
+	-D CMAKE_BUILD_TYPE=Release \
+	-D KDE_INSTALL_USE_QT_SYS_PATHS=ON \
+	-D BUILD_TESTING=OFF \
+	-D KF_SKIP_PO_PROCESSING=ON \
+	-D INSTALL_CHROME_MANIFEST=OFF \
+	-Wno-dev
+cmake --build build
+DESTDIR=$PKG cmake --install build
+for _b in firefox-esr librewolf; do
+	install -Dm644 "$name-extension-$_xpi.xpi" \
+		"$PKG/usr/lib/$_b/distribution/extensions/plasma-browser-integration@kde.org.xpi"
+done

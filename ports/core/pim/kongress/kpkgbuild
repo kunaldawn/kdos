@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kongress
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = a118955cf029d4e671b396f383ab0f4b0734a0a731c8ce4bf690d15f68cf0209  kongress-26.08.2.tar.xz
+description = Conference companion — talk schedules, favourites, reminders and venue indoor maps
+homepage    = https://apps.kde.org/kongress/
+license     = GPL-3.0-or-later AND LGPL-3.0-or-later AND BSD-2-Clause AND BSD-3-Clause AND CC-BY-SA-4.0 AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qtpositioning qt6-qtlocation kconfig kirigami ki18n kcalendarcore kcoreaddons kcrash kdbusaddons knotifications kirigami-addons kosmindoormap

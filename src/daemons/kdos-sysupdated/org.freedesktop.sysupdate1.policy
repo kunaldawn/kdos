@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "https://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+
+<!--
+  The actions kdos-sysupdated checks for org.freedesktop.sysupdate1. The ids
+  are systemd-sysupdated's, so a polkit rule written for either names the
+  same action on both. The defaults are KDOS's and stricter than systemd's,
+  which lets the active session install the offered update without asking.
+
+  check is allowed to the active local session without a prompt: Discover
+  asks CheckNew on every start, and a password on every start would be a
+  password nobody reads. Installing the offered update is an
+  administrator's, once per authentication, because it chooses what the
+  machine boots next; naming a version, every time. There is no vacuum
+  action: Vacuum removes nothing here and asks nobody.
+-->
+
+<policyconfig>
+	<vendor>KDOS</vendor>
+	<vendor_url>https://github.com/kunaldawn/kdos</vendor_url>
+
+	<action id="org.freedesktop.sysupdate1.check">
+		<description>Check for system updates</description>
+		<message>Authentication is required to check for system updates.</message>
+		<defaults>
+			<allow_any>auth_admin</allow_any>
+			<allow_inactive>auth_admin</allow_inactive>
+			<allow_active>yes</allow_active>
+		</defaults>
+	</action>
+
+	<action id="org.freedesktop.sysupdate1.update">
+		<description>Install system updates</description>
+		<message>Authentication is required to install system updates.</message>
+		<defaults>
+			<allow_any>auth_admin</allow_any>
+			<allow_inactive>auth_admin</allow_inactive>
+			<allow_active>auth_admin_keep</allow_active>
+		</defaults>
+	</action>
+
+	<action id="org.freedesktop.sysupdate1.update-to-version">
+		<description>Install a specific system version</description>
+		<message>Authentication is required to update the system to a specific version.</message>
+		<defaults>
+			<allow_any>auth_admin</allow_any>
+			<allow_inactive>auth_admin</allow_inactive>
+			<allow_active>auth_admin</allow_active>
+		</defaults>
+	</action>
+</policyconfig>

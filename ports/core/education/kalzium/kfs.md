@@ -8,13 +8,17 @@ editor. The viewer is built on [openbabel](#port-openbabel) and
 
 ## Flags
 
+- `-D KF_SKIP_PO_PROCESSING=ON` — Builds none of the interface translations in `po/`; the image is
+  English only (see
+  [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
 - `-Wl,--strip-debug` — Drop debug sections at the link. The OCaml runtime that the equation
   solver links into `kalzium` is a static archive compiled with debug information, which no
   compile flag of this build reaches (see
   [What kpkg does around build.sh](../../../../docs/kdos/05-developer/writing-ports.md#what-kpkg-does-around-buildsh)).
-- `-D CMAKE_REQUIRE_FIND_PACKAGE_OpenBabel3=ON` — This switch and the other
-  `CMAKE_REQUIRE_FIND_PACKAGE_` switches (`AvogadroLibs`, `Eigen3`, `OCaml`, `Libfacile`) make each
-  of those `find_package` calls fail configure when its package is missing. All five are optional
+- `-D CMAKE_REQUIRE_FIND_PACKAGE_OpenBabel3=ON` — With
+  `-D CMAKE_REQUIRE_FIND_PACKAGE_AvogadroLibs=ON`, `-D CMAKE_REQUIRE_FIND_PACKAGE_Eigen3=ON`,
+  `-D CMAKE_REQUIRE_FIND_PACKAGE_OCaml=ON` and `-D CMAKE_REQUIRE_FIND_PACKAGE_Libfacile=ON`: make
+  each of those `find_package` calls fail configure when its package is missing. All five are optional
   upstream: the molecule editor (`compoundviewer`) is built only when Open Babel, AvogadroLibs and
   [eigen](#port-eigen) are all found, and the equation solver only when OCaml and facile are, and
   either is otherwise left out with only a status line.
@@ -34,3 +38,9 @@ Both menu entries are replaced. The main one gives `StartupWMClass=org.kde.kalzi
 app_id `KAboutData` sets. The `chemical/x-cml` handler opens a file in the molecule editor, and
 upstream's writes `-molecule %f`: `QCommandLineParser` reads that as `-m` with the value
 `olecule`, and the file is never opened. The replacement writes `--molecule %f`.
+
+KNewStuff is off on KDOS (`[KDE Action Restrictions][$i] ghns=false` in
+`/usr/share/kdos/xdg/kdeglobals`). The molecule viewer's "Download New Molecules" opens the
+KNewStuff dialog from a plain button that the key does not reach, so it would stay on the viewer
+and open a page that only says downloading is not allowed; `kiosk-get-new.patch` hides it under the
+same check KNewStuff's own buttons make.

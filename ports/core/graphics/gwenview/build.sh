@@ -24,8 +24,8 @@ cmake -S . -B build -G Ninja \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_CFitsio=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_TIFF=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_X11=ON \
-	-D CMAKE_DISABLE_FIND_PACKAGE_KF6Purpose=ON \
-	-D CMAKE_DISABLE_FIND_PACKAGE_PlasmaActivities=ON \
+	-D CMAKE_REQUIRE_FIND_PACKAGE_KF6Purpose=ON \
+	-D CMAKE_REQUIRE_FIND_PACKAGE_PlasmaActivities=ON \
 	-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build

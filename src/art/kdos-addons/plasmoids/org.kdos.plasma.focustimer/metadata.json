@@ -1,0 +1,19 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "KDOS"
+            }
+        ],
+        "Category": "Utilities",
+        "Description": "Focus for a set time, then rest, with a notification at each change",
+        "Icon": "chronometer",
+        "Id": "org.kdos.plasma.focustimer",
+        "License": "MIT",
+        "Name": "Focus Timer",
+        "Version": "1.0",
+        "Website": "https://github.com/kunaldawn/kdos"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

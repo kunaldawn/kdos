@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libkscreen
+version     = 6.8.2
+release     = 1
+source      = https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = 6229bbcde7664a14f9cbf1e4e241e3dd88186a96295004c2749bdd0bebd627e3  libkscreen-6.8.2.tar.xz
+description = Display configuration library over KWin's output protocols, and kscreen-doctor
+homepage    = https://invent.kde.org/plasma/libkscreen
+license     = LGPL-2.1-or-later AND GPL-2.0-or-later
+group       = plasma
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtwayland wayland plasma-wayland-protocols jq

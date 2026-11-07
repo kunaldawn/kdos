@@ -28,9 +28,16 @@
  * to prevent. The polling is C — the kernel ring is read with klogctl(), so a
  * wait of fifty polls forks nothing.
  *
- * It is also the last root process on either login path, so the two things that
- * must be done as root and then inherited -- the delegated cgroup and the
- * real-time resource limits -- are done here as well.
+ * THE VT IS PUT BACK INTO TEXT MODE BEFORE ANYTHING IS WRITTEN TO IT.
+ * `kdos-splash handoff` leaves tty1 in KD_GRAPHICS for the display manager's
+ * compositor, and a VT in graphics mode draws no text: a getty there — kdos-dm's
+ * prompt when SDDM cannot run — would wait at a prompt nobody can see, and the
+ * glyph that ends fbcon's deferred take-over would never reach fbcon, so the
+ * wait below would time out. The cursor the handoff hid is shown again with the
+ * last clear, for the same reason.
+ *
+ * Limits, cgroups and the session itself are not this program's: every login
+ * below it is a PAM login, and pam_limits and pam_elogind do all three.
  * ---------------------------------
  */
 
@@ -42,10 +49,9 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
-#include <pwd.h>
+#include <linux/kd.h>
 #include <sys/ioctl.h>
 #include <sys/klog.h>
-#include <sys/resource.h>
 #include <sys/wait.h>
 
 #include "kdos-tools.h"
@@ -153,131 +159,19 @@ static int run(const char *const *argv, char *out, size_t outcap)
 	return WIFEXITED(st) ? WEXITSTATUS(st) : 1;
 }
 
-/*
- * THE ACCOUNT tty1 LOGS IN, from /etc/kdos/login.conf, or NULL for nobody.
- *
- * Parsed here rather than linked: this binary runs before anything else on
- * tty1 and stays thin, and the key is one word after an equals sign.
- *
- * NO ACCOUNT IS AN ANSWER, AND IT IS THE SAME ONE kdos-login GIVES. Turning
- * autologin off comments the key out rather than emptying it, so an absent,
- * commented or unreadable file all mean a password prompt. A default of
- * "kdos" here would log in an account the administrator disabled — and on a
- * renamed installation one that does not exist, leaving init respawning a
- * failing agetty. The two callers below both take NULL for "ask".
- *
- * THE LAST `autologin =` LINE WINS, and its value ends at whitespace or '#',
- * as in kdos-login's sed. Reading it any other way moves this process into
- * one account's cgroup while kdos-login logs in another. An empty last value
- * means "ask", there as here.
- */
-static const char *autologin_user(void)
+/* Text mode on this VT, before the first write. A VT that is already in text
+ * mode, or a terminal that is not a VT at all, is left as it is. */
+static void vt_text(int fd, const char *tty)
 {
-	static char name[64];
-	FILE *f = fopen("/etc/kdos/login.conf", "r");
-	char line[256];
+	int mode = KD_TEXT;
 
-	name[0] = '\0';
-	if (!f)
-		return NULL;
-
-	while (fgets(line, sizeof(line), f)) {
-		char *p = line;
-		char *v;
-
-		while (*p == ' ' || *p == '\t')
-			p++;
-		if (*p == '#' || strncmp(p, "autologin", 9))
-			continue;
-		p += 9;
-		while (*p == ' ' || *p == '\t')
-			p++;
-		if (*p != '=')
-			continue;
-		v = p + 1;
-		while (*v == ' ' || *v == '\t')
-			v++;
-		for (p = v; *p && *p != '#' && !isspace((unsigned char)*p);
-		     p++)
-			;
-		*p = '\0';
-		snprintf(name, sizeof(name), "%s", v);
-	}
-
-	fclose(f);
-	return name[0] ? name : NULL;
-}
-
-/*
- * THE REAL-TIME BUDGET FOR EVERY PROCESS BELOW THIS ONE.
- *
- * rlimits survive setuid() and execve(), so raising them in the last root
- * process is the one place that covers the whole login path, autologin and a
- * password prompt alike. Nothing downstream lowers them again: shadow is built
- * --without-libpam, so /etc/security/limits.d is read by nobody, and the
- * /etc/limits reader login does have returns without touching a limit when no
- * line names the account.
- *
- * WITHOUT THIS THE WHOLE AUDIO PATH IS SCHED_OTHER AND NOTHING SAYS SO.
- * pcm.!default is the PipeWire ioplug, which puts a data-loop thread inside
- * every ALSA client, and in a VM 99-kdos-vm.conf forces
- * default.clock.min-quantum = 4096 -- an 85.3 ms deadline at 48 kHz on that
- * thread. PipeWire's module-rt is loaded `nofail` in both pipewire.conf and
- * client.conf, so a thread it cannot promote simply stays at nice 0, and
- * RTKit is not shipped for its fallback to reach. A missed cycle is mixed as
- * silence, heard as a gap, and the buffer is delivered a cycle late for the
- * rest of the run -- a drift no player corrects.
- *
- * The numbers are the ones PipeWire's own 25-pw-rlimits.conf asks for. That
- * file is not installed (pipewire is built -Drlimits-install=false, since
- * nothing reads limits.d), so these grants are the only place they live: 95
- * clears module-rt's server priority of 88 and its client priority of 83.
- * RLIMIT_NICE is the 20-minus-ceiling encoding, so 39 is nice -19, below module-rt's -11.
- * RLIMIT_MEMLOCK is BYTES here where that file's number is kB: 4 MiB covers
- * PipeWire's mlocked buffer pool, which the kernel's 64 KiB default does not,
- * while the 4 GiB a kB reading would mean is a ceiling that lets an
- * unprivileged session pin every page of a small machine.
- *
- * A LIMIT THE KERNEL REFUSES IS REPORTED, NEVER FATAL. A tty that will not
- * come up is far worse than one without real-time audio.
- */
-static void raise_rt_limits(void)
-{
-	static const struct {
-		const char	*name;
-		int		 res;
-		rlim_t		 val;
-	} want[] = {
-		{ "rtprio",  RLIMIT_RTPRIO,  95 },
-		{ "nice",    RLIMIT_NICE,    39 },
-		{ "memlock", RLIMIT_MEMLOCK, 4194304 },
-	};
-
-	for (size_t i = 0; i < sizeof(want) / sizeof(want[0]); i++) {
-		struct rlimit rl;
-
-		/* RAISE ONLY, AND BOTH HALVES. A hard limit cannot be put back
-		 * up once it is lowered, so whatever already grants more than
-		 * this keeps what it grants; and the soft limit is the one the
-		 * kernel checks, so a high hard limit on its own grants
-		 * nothing. Raising the hard half is what needs the root this
-		 * process still has. */
-		if (getrlimit(want[i].res, &rl) != 0)
-			rl.rlim_cur = rl.rlim_max = 0;
-		if (rl.rlim_cur >= want[i].val && rl.rlim_max >= want[i].val)
-			continue;
-		if (rl.rlim_cur < want[i].val)
-			rl.rlim_cur = want[i].val;
-		if (rl.rlim_max < want[i].val)
-			rl.rlim_max = want[i].val;
-
-		if (setrlimit(want[i].res, &rl) != 0)
-			fprintf(stderr,
-				"kdos-getty: %s limit not raised to %llu: %s\n",
-				want[i].name,
-				(unsigned long long)want[i].val,
-				strerror(errno));
-	}
+	if (ioctl(fd, KDGETMODE, &mode) != 0 || mode == KD_TEXT)
+		return;
+	if (ioctl(fd, KDSETMODE, KD_TEXT) != 0)
+		fprintf(stderr, "kdos-getty: %s stays in graphics mode: %s\n",
+			tty, strerror(errno));
+	else
+		fprintf(stderr, "kdos-getty: %s back in text mode\n", tty);
 }
 
 int getty_main(int argc, char **argv)
@@ -303,7 +197,12 @@ int getty_main(int argc, char **argv)
 	char dev[128];
 	snprintf(dev, sizeof(dev), "/dev/%s", tty);
 
+	/* The last write on this VT before the getty's own: a cleared screen,
+	 * and the cursor back on. */
+	static const char clear[] = "\033[2J\033[H\033[?25h";
 	int vt = open(dev, O_WRONLY | O_CLOEXEC);
+	if (vt >= 0)
+		vt_text(vt, tty);
 	if (vt >= 0 && kb_have_prog("setfont")) {
 		/* End fbcon's deferred take-over. Neither escape sequences NOR
 		 * SPACES do it — escapes are eaten by the VT state machine and
@@ -366,95 +265,30 @@ int getty_main(int argc, char **argv)
 			run(lk, NULL, 0);
 		}
 
-		if (write(vt, "\033[2J\033[H", 7) < 0)
+		if (write(vt, clear, sizeof(clear) - 1) < 0)
 			fprintf(stderr, "kdos-getty: cannot clear %s\n", dev);
 
 		fix_winsize(vt, tty);
+	} else if (vt >= 0 && write(vt, clear, sizeof(clear) - 1) < 0) {
+		fprintf(stderr, "kdos-getty: cannot clear %s\n", dev);
 	}
 	if (vt >= 0)
 		close(vt);
 
-	/*
-	 * PUT THE AUTOLOGIN SESSION INSIDE ITS DELEGATED CGROUP. 15_userdirs.sh
-	 * delegates `user.slice/user-<uid>` to each human user, and that is
-	 * decoration until a session actually runs in it: rootless podman with
-	 * the cgroupfs manager creates a container's cgroup as a SIBLING of
-	 * the one it is called from, so a session left in the root cgroup gets
-	 * `--memory` accepted and ignored. Measured: a shell moved into
-	 * `user-1000/session` gives every box `user-1000/<id>` with
-	 * memory.max set; the same box from the root cgroup reads `max`. The
-	 * move needs root — a process cannot write itself out of `/` — and
-	 * this is the last root process before login, so it is done here,
-	 * for the account that is about to be logged in. `session` is a LEAF:
-	 * a cgroup with processes in it may not enable controllers for
-	 * children, and the container cgroups have to be siblings of the
-	 * shell's, not children. A tty that logs in interactively and an ssh
-	 * session are not covered and stay in the root cgroup.
-	 *
-	 * THE ACCOUNT IS RESOLVED THE WAY THE LOGIN PROGRAM WILL RESOLVE IT,
-	 * not from a fixed argument: kdos-login takes the tty and nothing else
-	 * and reads login.conf itself, so an argv scan alone matches nothing
-	 * on the shipped inittab and every box gets `--memory` accepted and
-	 * ignored. The scan stays first so an inittab naming agetty directly
-	 * still works, and login.conf answering "nobody" means a password
-	 * prompt whose account is not known here — so nothing is moved.
-	 */
-	const char *who = NULL;
-
-	for (int i = 3; i + 1 < argc; i++)
-		if (!strcmp(argv[i], "--autologin") || !strcmp(argv[i], "-a")) {
-			who = argv[i + 1];
-			break;
-		}
-	if (!who && !strcmp(kb_basename(argv[2]), "kdos-login"))
-		who = autologin_user();
-	if (who) {
-		struct passwd *pw = getpwnam(who);
-		char cgp[256], pid[32];
-		int fd;
-
-		if (pw) {
-			snprintf(cgp, sizeof(cgp),
-				 "/sys/fs/cgroup/user.slice/user-%u/session/cgroup.procs",
-				 (unsigned)pw->pw_uid);
-			snprintf(pid, sizeof(pid), "%ld\n", (long)getpid());
-			fd = open(cgp, O_WRONLY | O_CLOEXEC);
-			if (fd < 0 || write(fd, pid, strlen(pid)) < 0)
-				fprintf(stderr,
-					"kdos-getty: not moved into %s: %s\n",
-					cgp, strerror(errno));
-			if (fd >= 0)
-				close(fd);
-		}
-	}
-
-	raise_rt_limits();
-
 	execvp(argv[2], argv + 2);
 
 	/*
-	 * A CONSOLE ALWAYS COMES UP. The program named here is whichever login
-	 * path the image was built with, and an image built without it — a
-	 * desktop package that did not land, a partially installed system —
-	 * would otherwise leave init respawning a failing exec forever and no
-	 * way to log in at all. The fallback is a bare agetty, which needs
-	 * nothing but util-linux.
-	 *
-	 * IT LOGS IN WHOEVER THE MISSING PROGRAM WOULD HAVE, AND OTHERWISE
-	 * ASKS — the same account resolved for the cgroup above. The desktop's
-	 * account is named in one place and an installer that renames it
-	 * rewrites that place; a second copy of the name here logs in a user
-	 * the installed system does not have, leaving the machine reachable
-	 * only from tty2. A tty whose inittab line names a plain getty
-	 * resolves nobody and falls back to a password prompt, which is what
-	 * keeps tty2 the recovery console when the login path is broken
-	 * everywhere else.
+	 * A CONSOLE ALWAYS COMES UP, AT A PASSWORD PROMPT. The program named
+	 * here is whatever the inittab line asks for, and an image built
+	 * without it — a package that did not land, a partially installed
+	 * system — would otherwise leave init respawning a failing exec forever
+	 * and no way to log in at all. The fallback is a bare agetty, which
+	 * needs nothing but util-linux, and it never logs anybody in: a
+	 * fallback that did would turn a broken login path into an open
+	 * console.
 	 */
 	fprintf(stderr, "kdos-getty: cannot exec %s: %s — falling back\n",
 		argv[2], strerror(errno));
-	if (who)
-		execl("/sbin/agetty", "agetty", "--autologin", who,
-		      "--noclear", tty, "38400", "linux", (char *)NULL);
 	execl("/sbin/agetty", "agetty", "--noclear", tty, "38400", "linux",
 	      (char *)NULL);
 	fprintf(stderr, "kdos-getty: no agetty either: %s\n", strerror(errno));

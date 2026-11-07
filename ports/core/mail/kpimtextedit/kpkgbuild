@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kpimtextedit
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 807837b312ab46abc8f94ac18e7f69b1da42b8b3e437ee5a628592c3023188d4  kpimtextedit-26.08.2.tar.xz
+description = KDE PIM library of rich-text editor widgets for the mail composer
+homepage    = https://invent.kde.org/pim/kpimtextedit
+license     = LGPL-2.0-or-later AND LGPL-2.1-or-later AND (LGPL-2.0-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND BSD-3-Clause AND CC0-1.0 AND MIT
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kconfig kcoreaddons ki18n kiconthemes kio sonnet syntax-highlighting kwidgetsaddons kxmlgui kcodecs ktextaddons

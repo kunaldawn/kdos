@@ -12,14 +12,20 @@
  *
  *   kdos-appbox run <app> [args...]   run an app from its pack's box
  *   kdos-appbox open <path>           open a file in whatever opens it
- *   kdos-appbox warmup                compose + start the pinned set
+ *   kdos-appbox throwaway <file>      a file in a box that is gone after
+ *   kdos-appbox warmup                compose + start the favourite boxes
+ *   kdos-appbox session save|restore  the boxes across a logout
  *   kdos-appbox status                daemon / store / box state
  *   kdos-appbox list                  boxes
  *   kdos-appbox apps                  known alien apps
- *   kdos-appbox genlaunchers …        launchers, shims, mime cache, table
+ *   kdos-appbox genlaunchers …        launchers, icons, shims, mime cache,
+ *                                     table, window rules
  *
  * Boxes themselves are `kdos-box`'s — a second name on this binary. The launch
- * path keeps the ordering the launchers and the login warmup depend on.
+ * path keeps the ordering the launchers and the login warmup depend on: the
+ * box exists, it runs, its private runtime directory and its bus are ready,
+ * its launcher's tagged socket is served, and only then does the application
+ * start — or it does not start, and the reason is printed.
  */
 
 #include "kdos-appbox.h"
@@ -27,132 +33,196 @@
 
 #include <ctype.h>
 #include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <pwd.h>
 #include <string.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 const char *g_box = DEFAULT_BOX;
+const char *g_launcher;
 
 /*
- * The box's own tagged Wayland socket, or NULL to use the session's.
+ * WHICH LAUNCHER A LAUNCH IS, which is the app id KWin gives its windows.
  *
- * kdos-boxsock binds a socket per box and hands it to kdos-comp through
- * security-context-v1, so every client on it is tagged with this box's name and
- * gets the capability policy from the SAME ~/.config/kdos/boxes/<box>.conf that
- * decided the container's namespaces. It must be started detached and must
- * outlive us: `run` execs podman, and the context lives exactly as long as
- * kdos-boxsock holds its close fd. It is idempotent under a flock, so starting
- * it on every launch costs one failed lock after the first.
+ * KWin replaces a tagged window's app_id with the security context's app id
+ * unless the window's own starts with it, and sets resourceClass and
+ * desktopFileName from the result. So the id handed to kdos-boxsock decides
+ * the icon a window shows, the pinned launcher it lights and the window rules
+ * that match it, and it has to be the file name of a launcher genlaunchers
+ * wrote: `<box>` for a box with one launcher, `<box>.<stem>` for each of a
+ * box with several.
  *
- * Returns the shared session socket when anything at all is missing —
- * kdos-boxsock, the compositor's support for the protocol, the runtime dir. A
- * box on the shared socket is unconfined at the protocol level. Silently
- * substituting an untagged socket for a tagged one is the honest failure: the
- * alternative is an app that does not start at all because its sandbox could
- * not be labelled.
+ * `-l` names it outright, and every generated launcher passes one. A shim, a
+ * prompt and `kdos-box run` do not, and the box's own launchers are asked
+ * which one runs this program — by the program a command line runs, the same
+ * key the alien-apps table is matched by. A program no launcher of the box
+ * runs gets the box's own name, which is the box's rule in KWin and in the
+ * Boxes page whatever its icon.
+ *
+ * A THROWAWAY BOX takes the launcher id of the box it was made from: it is
+ * named `<launcher>.tw<n>`, and its windows are that application's.
  */
-/*
- * WHICH COMPOSITOR A TAGGED SOCKET IS FOR, as a path component.
- *
- * A tagged socket is a listener on ONE compositor. Keyed on the box alone the
- * path would be the FIRST launch's compositor for ever after:
- * the second launch of the same application finds the file already there,
- * connects to it, and its window opens inside the first launch's window.
- * kdos-boxsock derives the same component from the same variable, which is
- * what keeps the two in step with nothing passed between them.
- *
- * Twelve characters, because the whole path has to fit a sockaddr_un's 108 and
- * a box name may be sixty-four of them. Every display name a compositor hands
- * out is "wayland-<n>". Anything a path may not carry is dropped rather than
- * escaped: the component only has to be the same on both sides and different
- * between compositors.
- */
-static void display_tag(char *out, size_t cap)
+static int launcher_related(const char *box, const char *id)
 {
-	const char *d = getenv("WAYLAND_DISPLAY");
-	const char *slash;
-	size_t n = 0;
+	size_t bl = strlen(box), il = strlen(id);
 
-	if (cap > 13)
-		cap = 13;
-	if (d && (slash = strrchr(d, '/')) != NULL)
-		d = slash + 1;
-	for (; d && *d && n + 1 < cap; d++) {
-		char c = *d;
-
-		if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-		    (c >= '0' && c <= '9') || c == '-' || c == '.' || c == '_')
-			out[n++] = c;
-	}
-	out[n] = '\0';
-	if (!n)
-		snprintf(out, cap, "session");
+	if (!box_name_ok(id))
+		return 0;
+	if (!strcmp(id, box))
+		return 1;
+	if (il > bl + 1 && !strncmp(id, box, bl) && id[bl] == '.' &&
+	    !strchr(id + bl + 1, '.'))
+		return 1;
+	return bl > il + 1 && !strncmp(box, id, il) && box[il] == '.' &&
+	       !strchr(box + il + 1, '.');
 }
 
-static const char *box_wayland_socket(void)
+static const char *resolve_launcher(int argc, char **argv)
 {
-	static char path[512];
-	const char *rundir = getenv("XDG_RUNTIME_DIR");
+	BoxLauncher *bl;
+	char joined[1024] = "", key[256], lk[256];
+	const char *found = NULL;
+	int n;
+
+	if (g_launcher) {
+		if (!launcher_related(g_box, g_launcher))
+			kb_die("%s is not a launcher of the box %s — a launcher "
+			       "id is the box, or the box and one more component",
+			       g_launcher, g_box);
+		return g_launcher;
+	}
+	for (int i = 0; i < argc; i++) {
+		size_t l = strlen(joined);
+
+		snprintf(joined + l, sizeof(joined) - l, "%s\"%s\"", i ? " " : "",
+			 argv[i]);
+	}
+	app_exec_key(joined, key, sizeof(key));
+	bl = kb_calloc(64, sizeof(*bl));
+	n = box_launchers(g_box, bl, 64);
+	for (int i = 0; i < n && !found; i++) {
+		app_exec_key(bl[i].exec, lk, sizeof(lk));
+		if (key[0] && !strcmp(lk, key) && launcher_related(g_box, bl[i].id))
+			found = kb_strdup(bl[i].id);
+	}
+	free(bl);
+	return found ? found : g_box;
+}
+
+/*
+ * A HELPER THAT STAYS, AND THE ONE LINE IT ANSWERS WITH. kdos-boxsock prints
+ * `ready <path>` or `error <reason>`, closes its standard output and then
+ * holds the socket for the box's life, so it cannot be waited for: it is
+ * started detached — a grandchild, reparented as soon as its parent exits, so
+ * the `podman exec` this process becomes never inherits it as a child — and
+ * its output is read to end of file, bounded, because a helper that hung
+ * before answering would otherwise hang the launch with it.
+ */
+static int detach_read_line(const KbArgv *a, char *out, size_t n, int ms)
+{
+	int fd[2];
+	pid_t pid;
+	size_t got = 0;
+
+	out[0] = '\0';
+	if (pipe2(fd, O_CLOEXEC) != 0)
+		return -1;
+	pid = fork();
+	if (pid < 0) {
+		close(fd[0]);
+		close(fd[1]);
+		return -1;
+	}
+	if (pid == 0) {
+		if (fork() == 0) {
+			int null = open("/dev/null", O_RDWR);
+
+			if (null >= 0) {
+				dup2(null, STDIN_FILENO);
+				dup2(null, STDERR_FILENO);
+			}
+			dup2(fd[1], STDOUT_FILENO);
+			kb_child_reset_signals();
+			setsid();
+			execvp(a->v[0], (char *const *)a->v);
+			_exit(127);
+		}
+		_exit(0);
+	}
+	close(fd[1]);
+	waitpid(pid, NULL, 0);
+	for (;;) {
+		struct pollfd pf = { .fd = fd[0], .events = POLLIN };
+		ssize_t r;
+
+		if (poll(&pf, 1, ms) <= 0)
+			break;
+		r = read(fd[0], out + got, n - 1 - got);
+		if (r < 0 && errno == EINTR)
+			continue;
+		if (r <= 0)
+			break;
+		got += (size_t)r;
+		if (got >= n - 1)
+			break;
+	}
+	close(fd[0]);
+	out[got] = '\0';
+	out[strcspn(out, "\n")] = '\0';
+	return got ? 0 : -1;
+}
+
+/*
+ * THE LAUNCHER'S TAGGED SOCKET, from kdos-boxsock, or the reason there is
+ * none. There is no fallback to the session's own socket: a window on it is
+ * untagged, every global KWin denies a box is open to it, and the launch that
+ * took it would report a confinement nothing enforces. A box whose socket
+ * cannot be had does not start, and `why` is what the person is told.
+ *
+ * $KDOS_BOXSOCK names another engine, which is how the selftest drives this
+ * path without a compositor.
+ */
+static int box_socket(const char *box, const char *launcher, int confined,
+		      char *path, size_t pn, char *why, size_t wn)
+{
+	const char *engine = getenv("KDOS_BOXSOCK");
+	char line[512];
 	KbArgv a = {0};
-	char tag[16];
 
-	if (!rundir || !*rundir)
-		return NULL;
-	/* Checked by path, not by PATH search: it is our own binary at a known
-	 * place, and the point of the check is to skip the socket wait entirely
-	 * on a tree that does not carry it. */
-	if (!kb_path_exists(KDOS_BOXSOCK))
-		return NULL;
-
-	display_tag(tag, sizeof(tag));
-	snprintf(path, sizeof(path), "%s/kdos-box-%s@%s.sock", rundir, g_box,
-		 tag);
-
-	kb_argv_add(&a, KDOS_BOXSOCK);
-	kb_argv_add(&a, (char *)g_box);
-	kb_argv_end(&a);
-	kb_run_detach(&a);
-
-	/*
-	 * Wait for the socket rather than assuming it: the holder has a registry
-	 * round trip to do first, and handing the box a WAYLAND_DISPLAY that
-	 * does not exist yet is an app that dies at startup with "failed to
-	 * connect to display". Short, because on the second launch it is
-	 * already there.
-	 */
-	for (int i = 0; i < 50; i++) {
-		if (kb_path_exists(path))
-			return path;
-		usleep(20 * 1000);
+	if (!engine || !*engine)
+		engine = KDOS_BOXSOCK;
+	if (!kb_path_exists(engine)) {
+		snprintf(why, wn, "kdos-boxsock is not installed, so the box "
+			 "would have no tagged Wayland socket");
+		return -1;
 	}
-	tracef("boxsock: no socket for %s, using the session's", g_box);
-	return NULL;
-}
-
-/*
- * Accessibility, opt-in.
- *
- * By default every boxed GTK app is told not to probe org.a11y.Bus: the host's
- * at-spi registry serves native applications, and a box that has not opted in
- * would only pay for the probe at startup. It is a DEFAULT and not a policy:
- * a user who wants a boxed app on the a11y bus (GTK's own dependencies bring
- * the at-spi client library; no catalogue row names at-spi2-core) opts in by
- * creating ~/.config/kdos/a11y — an empty file is enough — or by exporting
- * KDOS_A11Y=1 for one launch. Resolved from $HOME/.config like the box
- * profiles, and for the same reason: two programs resolving it differently is
- * the failure this must not have.
- */
-static int a11y_wanted(void)
-{
-	char path[MAX_LINE];
-	const char *env = getenv("KDOS_A11Y");
-
-	if (env && *env)
-		return strcmp(env, "0") != 0;
-	snprintf(path, sizeof(path), "%s/.config/kdos/a11y", kb_home_dir());
-	return kb_path_exists(path);
+	if (!getenv("WAYLAND_DISPLAY") || !*getenv("WAYLAND_DISPLAY")) {
+		snprintf(why, wn, "there is no Wayland session to show it in "
+			 "(WAYLAND_DISPLAY is unset)");
+		return -1;
+	}
+	kb_argv_add(&a, engine);
+	kb_argv_add(&a, "-s");
+	kb_argv_add(&a, confined ? "confined" : "tagged");
+	kb_argv_add(&a, box);
+	kb_argv_add(&a, launcher);
+	kb_argv_end(&a);
+	if (detach_read_line(&a, line, sizeof(line), 5000) != 0) {
+		snprintf(why, wn, "kdos-boxsock gave no answer within 5 s");
+		return -1;
+	}
+	if (!strncmp(line, "ready ", 6) && line[6] == '/') {
+		kb_strlcpy(path, line + 6, pn);
+		return 0;
+	}
+	snprintf(why, wn, "kdos-boxsock: %.200s",
+		 !strncmp(line, "error ", 6) ? line + 6 : line);
+	return -1;
 }
 
 /*
@@ -183,44 +253,59 @@ static void export_env(KbArgv *a, char env[][256], int n)
  * application would come up grey under an inert QT_QPA_PLATFORMTHEME.
  *
  * The box NAME is the catalogue id — that is what `store_install` creates it
- * as — so a box whose name is not a row is not a store box and answers 0,
- * leaving the label branches below to decide.
+ * as — or `deb.<package>`, the Debian lane's box over the `base` row, which
+ * takes that row's chain. A box whose name is neither is not a store box and
+ * answers 0, leaving the label branches below to decide.
  */
 static int store_env(const Profile *prof, KbArgv *a)
 {
 	char env[PACK_ENV_MAX][256];
 	char err[256];
+	const char *row = prof->name;
 	int n;
 
-	if (strncmp(prof->base, "image:" STORE_IMG_PREFIX,
-		    6 + sizeof(STORE_IMG_PREFIX) - 1))
+	if (box_lane(prof) != BOX_LANE_STORE)
 		return 0;
 	if (cat_load(NULL, err, sizeof(err)) != 0)
 		return 0;
-	if (!cat_find(prof->name)) {
+	if (!strncmp(row, STORE_DEB_PREFIX, sizeof(STORE_DEB_PREFIX) - 1))
+		row = "base";
+	if (!cat_find(row)) {
 		cat_free();
 		return 0;
 	}
-	n = cat_env(prof->name, env, PACK_ENV_MAX);
+	n = cat_env(row, env, PACK_ENV_MAX);
 	export_env(a, env, n);
 	cat_free();
 	return 1;
 }
 
+/* What one launch hands the box: the sockets in it, by their in-box paths. */
+typedef struct {
+	char wayland[512];	/* "" when the profile says wayland = no      */
+	char bus[512];		/* the proxied session bus                    */
+	int  x11;		/* DISPLAY and the cookie are handed over     */
+	int  a11y;		/* the accessibility bus is in reach          */
+	int  private_layout;	/* /run/user/<uid> is the box's own directory */
+} Launch;
+
 /*
  * Environment every app inside a box gets.
  *
- *   WAYLAND_DISPLAY            the box's own tagged socket, when there is one
- *   GSETTINGS_BACKEND=keyfile  no dconf-service is reachable over the (host)
- *                              session bus; keyfile keeps GNOME app settings
+ *   WAYLAND_DISPLAY            the launcher's own tagged socket, by its path
+ *                              inside the box
+ *   DBUS_SESSION_BUS_ADDRESS   the box's filtered bus, the keeper's proxy
+ *   XDG_RUNTIME_DIR            /run/user/<uid>, which in a pack or store box
+ *                              is the box's private directory
+ *   GSETTINGS_BACKEND=keyfile  no dconf-service is reachable over the
+ *                              filtered bus; keyfile keeps GNOME app settings
  *                              persistent instead of silently dropped
  *   NO_AT_BRIDGE / GTK_A11Y    stop every boxed GTK app probing
- *                              org.a11y.Bus at startup — unless the
- *                              user opted in, see
- *                              a11y_wanted()
+ *                              org.a11y.Bus at startup — unless assistive
+ *                              technology is in use, see box_a11y_wanted()
  *   QT_QPA_PLATFORMTHEME       how a Qt app finds a palette: `kde` when the
  *                              image has the KDE segment (it reads the
- *                              kdeglobals `kdos theme` writes into the shared
+ *                              kdeglobals Plasma writes into the shared
  *                              home, which is the direct route), `gtk3`
  *                              otherwise. Inert without the matching platform
  *                              theme package, so the image lane asks the
@@ -230,27 +315,27 @@ static int store_env(const Profile *prof, KbArgv *a)
  *                              theme setting for the life of the process, so
  *                              an accent switch could never reach a running
  *                              GTK application. The name reaches the box
- *                              through the settings portal and through the
- *                              seeded gtk-3.0/settings.ini instead
+ *                              through the settings portal instead
  *   LIBGL_ALWAYS_SOFTWARE      only where the box's graphics are the CPU's,
  *                              see the `render` block below
+ *   DISPLAY / XAUTHORITY       only for a box handed the X11 display
  */
-static void box_env(KbArgv *a, const Profile *prof, const char *pack)
+static void box_env(KbArgv *a, const Profile *prof, const char *pack,
+		    const Launch *l)
 {
-	const char *display;
-	const char *sock;
-
 	kb_argv_add(a, "env");
 
 	/*
-	 * A per-box socket is the client's identity, so it must be set before
-	 * anything in the box connects. WAYLAND_DISPLAY takes an absolute path
-	 * here rather than a name — libwayland accepts either, and the socket
-	 * lives beside the session's in $XDG_RUNTIME_DIR, which the box shares.
+	 * A per-launcher socket is the client's identity, so it must be set
+	 * before anything in the box connects. WAYLAND_DISPLAY takes an
+	 * absolute path here rather than a name — libwayland accepts either —
+	 * and with `wayland = no` it is set to nothing at all, so a toolkit
+	 * that would otherwise guess `wayland-0` finds no display to guess at.
 	 */
-	sock = box_wayland_socket();
-	if (sock)
-		kb_argv_addf(a, "WAYLAND_DISPLAY=%s", sock);
+	if (l->wayland[0])
+		kb_argv_addf(a, "WAYLAND_DISPLAY=%s", l->wayland);
+	else
+		kb_argv_add(a, "WAYLAND_DISPLAY=");
 	/* PODMAN EXEC DOES NOT INHERIT PID 1's ENVIRONMENT. kdos-boxinit sets
 	 * this PATH for what IT starts; a launch is a separate exec and gets
 	 * podman's default, which has no /usr/games — so without this every
@@ -273,14 +358,13 @@ static void box_env(KbArgv *a, const Profile *prof, const char *pack)
 	 * it exists in every Debian without a locale being generated, and the
 	 * box's userland is Debian's whatever the host is set to.
 	 */
-	kb_argv_addf(a, "XDG_RUNTIME_DIR=/run/user/%u", (unsigned)getuid());
-	/* The session bus is at a FIXED path the box shares (see kdos-desktop);
-	 * GLib would find it from XDG_RUNTIME_DIR alone, but a GApplication
-	 * that cannot reach the bus blocks in single-instance negotiation with
-	 * no window and no message, so the address is stated rather than
-	 * left to a fallback. */
-	kb_argv_addf(a, "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%u/bus",
-		     (unsigned)getuid());
+	kb_argv_addf(a, "XDG_RUNTIME_DIR=%s", box_inbox_rundir());
+	/* The bus is the box's proxy, stated rather than left to a fallback:
+	 * GLib and sd-bus look for `bus` in the runtime directory when the
+	 * variable is unset, and a box has none; a GApplication that cannot
+	 * reach a bus blocks in single-instance negotiation with no window and
+	 * no message. */
+	kb_argv_addf(a, "DBUS_SESSION_BUS_ADDRESS=unix:path=%s", l->bus);
 	kb_argv_add(a, "XDG_SESSION_TYPE=wayland");
 	kb_argv_addf(a, "HOME=%s", kb_home_dir());
 	{
@@ -294,54 +378,52 @@ static void box_env(KbArgv *a, const Profile *prof, const char *pack)
 	else
 		kb_argv_addf(a, "LANG=%s", getenv("LANG"));
 
+	/* The box's own /etc/xdg first, then KDOS's defaults, bound in at
+	 * create (pack_box_create): the order the host session has. A box
+	 * created before the bind existed finds no such directory and reads
+	 * its own /etc/xdg alone. */
+	kb_argv_add(a, "XDG_CONFIG_DIRS=/etc/xdg:" BOX_KDOS_XDG);
 	kb_argv_add(a, "GSETTINGS_BACKEND=keyfile");
-	if (!a11y_wanted()) {
+	if (!l->a11y) {
 		kb_argv_add(a, "NO_AT_BRIDGE=1");
 		kb_argv_add(a, "GTK_A11Y=none");
 	}
 	/*
 	 * THE PORTAL, AND WHY THE ENV IS WHAT SWITCHES IT ON.
 	 *
-	 * xdg-desktop-portal-kdos serves FileChooser, Settings, AppChooser and
-	 * Access, and the front end's own OpenURI rides on AppChooser; every
-	 * one of those is for the benefit of boxed applications — but a GTK
-	 * app only ROUTES through the portal when it believes it is sandboxed,
-	 * which it decides from /.flatpak-info or from this variable. A box is
-	 * neither, so without it every boxed GTK app draws its own
-	 * GtkFileChooser and the KDOS file dialog is never called.
-	 * Firefox's `widget.use-xdg-desktop-portal.file-picker` default of 2
-	 * ("auto") consults the same variable, so it is covered by this line
-	 * too.
-	 *
-	 * With the portal on, GTK's Print dialog also goes through it, and
-	 * kdos-portals.conf names xdg-desktop-portal-gtk as the Print backend.
-	 * box_create() also shares /run/cups into the box and CUPS_SERVER
-	 * below points every toolkit's OWN print dialog at it, which is the
-	 * route that needs no portal.
+	 * xdg-desktop-portal-kde serves FileChooser, OpenURI's application
+	 * chooser, Settings, Print and the rest, and the box's bus proxy lets
+	 * org.freedesktop.portal.* through — but a GTK app only ROUTES through
+	 * the portal when it believes it is sandboxed, which it decides from
+	 * /.flatpak-info or from this variable. A box is neither, so without it
+	 * every boxed GTK app draws its own GtkFileChooser, reading a home the
+	 * box may not share, and the KDE file dialog is never called. Firefox's
+	 * `widget.use-xdg-desktop-portal.file-picker` default of 2 ("auto")
+	 * consults the same variable, so it is covered by this line too.
 	 *
 	 * XDG_CURRENT_DESKTOP goes with it because a toolkit that has decided
 	 * to use portals then asks which desktop it is on, and the answer
 	 * inside the container is otherwise nothing at all.
 	 */
 	kb_argv_add(a, "GTK_USE_PORTAL=1");
-	kb_argv_add(a, "XDG_CURRENT_DESKTOP=KDOS");
+	kb_argv_add(a, "XDG_CURRENT_DESKTOP=KDE");
 
 	/*
-	 * Printing. box_create() shares /run/cups into the box as a VOLUME —
-	 * a create-time property — while this export is per-LAUNCH and probes
-	 * the socket again. Asymmetric on purpose: a box created before cups
-	 * was up gets the env but not the socket, and needs `kdos-box remove`
-	 * and a new create to grow the volume, which is the same message the
-	 * profile system sends for a namespace change.
+	 * Printing. pack_box_create() shares /run/cups into the box as a
+	 * VOLUME — a create-time property — while this export is per-LAUNCH
+	 * and probes the socket again. Asymmetric on purpose: a box created
+	 * before cups was up gets the env but not the socket, and needs
+	 * `kdos-box remove` and a new create to grow the volume, which is the
+	 * same message the profile system sends for a namespace change.
 	 */
 	if (kb_path_exists("/run/cups/cups.sock"))
 		kb_argv_add(a, "CUPS_SERVER=/run/cups/cups.sock");
 
 	/*
 	 * Input methods. A boxed app reaches fcitx5 through the COMPOSITOR —
-	 * text-input-v3 to kdos-comp, which relays to input-method-v2 — and
-	 * never directly, because fcitx5 runs on the host and its bus name is
-	 * not what the box would find anyway.
+	 * text-input to KWin, which relays to the input method KWin itself
+	 * started — and never directly, because fcitx5 runs on the host and its
+	 * bus name is not one the box's proxy passes.
 	 *
 	 * So the value is `wayland` and emphatically not `fcitx`: the fcitx
 	 * module is the X11-era route where each toolkit talks to the IM daemon
@@ -355,8 +437,8 @@ static void box_env(KbArgv *a, const Profile *prof, const char *pack)
 	/*
 	 * Two routes to a themed Qt app, and the KDE one is better where it
 	 * exists: the `kde` platform theme reads ~/.config/kdeglobals, which
-	 * `kdos theme` writes into the home the box already shares, so Breeze
-	 * paints in the KDOS palette with no bridge and no style override.
+	 * Plasma writes into the home the box already shares, so Breeze paints
+	 * in the session's colours with no bridge and no style override.
 	 *
 	 * Without the KDE segment it is qgtk3 plus Fusion, and Fusion is not
 	 * optional there: the Breeze style kdenlive and shotcut pull in paints
@@ -418,27 +500,40 @@ static void box_env(KbArgv *a, const Profile *prof, const char *pack)
 		kb_argv_add(a, "LIBGL_ALWAYS_SOFTWARE=1");
 
 	/*
-	 * DISPLAY, for the few apps that are X11-only and whose own .desktop
-	 * says so (debian ships audacity as `env GDK_BACKEND=x11 audacity`).
-	 * kdos-comp runs Xwayland rootlessly but exports DISPLAY only to what
-	 * IT spawned, so a launcher fired from the dock may not have it and the
-	 * app then exits with no window and no message. The socket is the
-	 * authority, and distrobox shares the host /tmp.
+	 * DISPLAY, for a box that is handed X11 (profile_x11): an application
+	 * whose own entry or runtime forces an X11 backend, or one the profile
+	 * says yes for. The socket is the authority — KWin exports DISPLAY only
+	 * into what the session started, and a launch from a prompt may not
+	 * have it — and the cookie is the box's copy in its own runtime
+	 * directory, or the session's own where the box shares that directory.
+	 * Every other box is told there is no display, so a toolkit with an X11
+	 * fallback does not reach for one it would be refused.
 	 */
-	display = getenv("DISPLAY");
-	if (display && *display) {
-		kb_argv_addf(a, "DISPLAY=%s", display);
-	} else {
-		DIR *d = opendir("/tmp/.X11-unix");
-		struct dirent *e;
-		while (d && (e = readdir(d))) {
-			if (e->d_name[0] == 'X' && e->d_name[1]) {
-				kb_argv_addf(a, "DISPLAY=:%s", e->d_name + 1);
-				break;
+	if (l->x11) {
+		const char *display = getenv("DISPLAY");
+		const char *xa = getenv("XAUTHORITY");
+
+		if (display && *display) {
+			kb_argv_addf(a, "DISPLAY=%s", display);
+		} else {
+			DIR *d = opendir("/tmp/.X11-unix");
+			struct dirent *e;
+			while (d && (e = readdir(d))) {
+				if (e->d_name[0] == 'X' && e->d_name[1]) {
+					kb_argv_addf(a, "DISPLAY=:%s", e->d_name + 1);
+					break;
+				}
 			}
+			if (d)
+				closedir(d);
 		}
-		if (d)
-			closedir(d);
+		if (l->private_layout)
+			kb_argv_addf(a, "XAUTHORITY=%s/Xauthority",
+				     box_inbox_rundir());
+		else if (xa && *xa)
+			kb_argv_addf(a, "XAUTHORITY=%s", xa);
+	} else {
+		kb_argv_add(a, "DISPLAY=");
 	}
 }
 
@@ -508,20 +603,113 @@ static void tune_storage(void)
 }
 
 /*
+ * WHAT THIS LAUNCH CAN HAND THE BOX, decided once and recorded.
+ *
+ * The order is the boundary's: the private directory is refreshed (audio
+ * links, the cookie), the keeper is asked for the box's proxied bus, the
+ * state that follows from the two decides which engine string KWin is given
+ * (`io.kdos.appbox+private` for a confined box, `+tagged` otherwise), and only
+ * then is the tagged socket asked for. A launch that cannot get the socket or
+ * the bus is refused with the reason, and the refusal is recorded as the
+ * box's state, so the Boxes page and the badge say what happened rather than
+ * what was meant to.
+ */
+static void launch_prepare(const Profile *p, const char *pack,
+			   const char *launcher, Launch *l)
+{
+	BoxBoundary b;
+	char why[256] = "", host[512];
+	int layout = box_layout_private(p->name);
+
+	memset(l, 0, sizeof(*l));
+	memset(&b, 0, sizeof(b));
+	kb_strlcpy(b.launcher, launcher, sizeof(b.launcher));
+	l->private_layout = b.private_rundir = layout == 1;
+	l->a11y = box_a11y_wanted();
+
+	if (rundir_prepare(p, pack, 0) != 0)
+		kb_die("%s: its private runtime directory could not be made", p->name);
+
+	/* The X11 display is in reach when it is handed over, when the box
+	 * shares the session's runtime directory and so the cookie in it, and
+	 * when the cookie sits where the box can read it anyway. */
+	l->x11 = profile_x11(p, pack);
+	b.x11 = l->x11 || !l->private_layout || x11_cookie_exposed(p);
+
+	if (keeper_ensure(p->name, why, sizeof(why)) != 0) {
+		snprintf(b.reason, sizeof(b.reason), "%s", why);
+		box_state_write(p->name, &b);
+		notify("App not started", why);
+		kb_die("%s: %s — the box was not started", p->name, why);
+	}
+	b.bus = 1;
+	if (rundir_inbox_path(p->name, l->private_layout, BOX_PROXY_LEAF,
+			      l->bus, sizeof(l->bus)) != 0)
+		kb_die("%s: the bus path does not fit", p->name);
+
+	if (!p->wayland) {
+		/* No display at all is tagged by construction where the box
+		 * cannot reach the session's socket either; where it can, it
+		 * is not confined, and the state says so. */
+		b.tagged = l->private_layout;
+		if (!b.tagged)
+			snprintf(b.reason, sizeof(b.reason), "wayland = no, and "
+				 "the box shares the session's runtime directory "
+				 "with its untagged socket in it");
+	} else {
+		BoxBoundary want = b;
+
+		want.tagged = 1;
+		if (box_socket(p->name, launcher,
+			       boundary_state(&want) == CONF_CONFINED, host,
+			       sizeof(host), why, sizeof(why)) != 0) {
+			snprintf(b.reason, sizeof(b.reason), "%s", why);
+			box_state_write(p->name, &b);
+			notify("App not started", why);
+			kb_die("%s: %s — the box was not started rather than "
+			       "started untagged", p->name, why);
+		}
+		b.tagged = 1;
+		if (rundir_inbox_path(p->name, l->private_layout,
+				      kb_basename(host), l->wayland,
+				      sizeof(l->wayland)) != 0)
+			kb_die("%s: the socket path does not fit", p->name);
+	}
+
+	if (!b.reason[0] && boundary_state(&b) != CONF_CONFINED)
+		snprintf(b.reason, sizeof(b.reason), "%s",
+			 !l->private_layout
+			 ? "the box shares the session's runtime directory, so "
+			   "the session's own Wayland socket and bus are in reach"
+			 : "the box is handed the X11 display, whose windows "
+			   "reach KWin untagged");
+	box_state_write(p->name, &b);
+	tracef("launch %s as %s: %s", p->name, launcher,
+	       confinement_name(boundary_state(&b)));
+}
+
+/*
  * The pack lane's launch. Everything the image lane does that is about the
  * MACHINE rather than about distrobox is shared: the stuck-in-`stopping`
  * recovery, the readiness wait on `container_setup_done`, the notification,
  * the trace lines and the whole of box_env(). What differs is three calls —
  * compose, create, exec — in place of `distrobox enter`.
+ *
+ * `wait` runs the application as a child and returns its exit status, which
+ * is what a throwaway box needs in order to remove itself; otherwise this
+ * process BECOMES `podman exec`, and its pid is the launch's for the ledger.
  */
-static int run_pack(int argc, char **argv, const char *app, const char *state)
+static int run_pack(int argc, char **argv, int wait)
 {
 	Profile p;
 	KbArgv a = {0};
+	Launch l;
 	char id[128];
+	const char *launcher;
 	int i;
 
 	profile_load(&p, g_box);
+	launcher = resolve_launcher(argc, argv);
 
 	/* The box is named after the pack, so the box name IS the id unless
 	 * somebody aimed --box somewhere else. A store box (`base=image:`) has
@@ -551,6 +739,8 @@ static int run_pack(int argc, char **argv, const char *app, const char *state)
 	if (!box_setup_done(g_box) && box_wait_ready(g_box, 30) != 0)
 		tracef("wait_ready timed out");
 
+	launch_prepare(&p, id, launcher, &l);
+
 	tracef("entering");
 	kb_argv_add(&a, "podman");
 	kb_argv_add(&a, "exec");
@@ -567,47 +757,70 @@ static int run_pack(int argc, char **argv, const char *app, const char *state)
 	/* box_env writes `env NAME=value …` in front of the command, so the
 	 * environment reaches the app the same way in both lanes and there is
 	 * one place where GTK_USE_PORTAL and the rest are decided. */
-	box_env(&a, &p, id);
+	box_env(&a, &p, id, &l);
 	for (i = 0; i < argc; i++)
 		kb_argv_add(&a, argv[i]);
 	kb_argv_end(&a);
-	execvp(a.v[0], (char *const *)a.v);
-	kb_die("podman: not found");
-	(void)state;
-	(void)app;
-	return 1;
+
+	if (!wait) {
+		box_ledger_add(g_box, launcher, argc, argv);
+		execvp(a.v[0], (char *const *)a.v);
+		kb_die("podman: not found");
+	}
+	{
+		pid_t pid = fork();
+		int st = 0;
+
+		if (pid < 0)
+			kb_die("fork: %s", strerror(errno));
+		if (pid == 0) {
+			kb_child_reset_signals();
+			execvp(a.v[0], (char *const *)a.v);
+			_exit(127);
+		}
+		while (waitpid(pid, &st, 0) < 0 && errno == EINTR)
+			;
+		return WIFEXITED(st) ? WEXITSTATUS(st) : 128 + WTERMSIG(st);
+	}
 }
 
-int cmd_run(int argc, char **argv)
+/*
+ * NO `-b`, SO THE EXEC HAS TO NAME THE PACK. A generated launcher for an app
+ * that belongs to a pack passes `-b <pack>` and never reaches here; a prompt,
+ * a shim and an entry naming no box do, and the pack is looked up from the
+ * exec. An exec no installed pack carries is refused by name — composing a box
+ * called "kdos-apps" out of a pack of that name fails a step later with a
+ * sentence about a box nobody asked for.
+ */
+static void resolve_box(int argc, char **argv)
+{
+	char pack[128] = "", joined[1024] = "";
+
+	if (strcmp(g_box, DEFAULT_BOX))
+		return;
+	/* The whole argv, so `sh -c "…"` and `env X=y prog` resolve to the
+	 * program they run rather than to the wrapper. */
+	for (int i = 0; i < argc; i++) {
+		size_t l = strlen(joined);
+		snprintf(joined + l, sizeof(joined) - l, "%s\"%s\"",
+			 i ? " " : "", argv[i]);
+	}
+	if (app_pack_by_exec(joined, pack, sizeof(pack)) && pack[0])
+		g_box = kb_strdup(pack);
+	else
+		kb_die("no installed pack carries '%s' — "
+		       "kdos app list, then kdos app install <pack>", argv[0]);
+}
+
+static int run_common(int argc, char **argv, int wait)
 {
 	Profile p;
 	char state[64];
 	const char *app = argv[0];
-	int i;
 
-	/* NO `-b`, SO THE EXEC HAS TO NAME THE PACK. A generated launcher for an
-	 * app that belongs to a pack passes `-b <pack>` and never reaches here;
-	 * a prompt, a shim and an entry naming no box do, and the pack is
-	 * looked up from the exec. An exec no installed pack carries is refused
-	 * by name — composing a box called "kdos-apps" out of a pack of that
-	 * name fails a step later with a sentence about a box nobody asked
-	 * for. */
-	if (!strcmp(g_box, DEFAULT_BOX)) {
-		char pack[128] = "", joined[1024] = "";
-		/* The whole argv, so `sh -c "…"` and `env X=y prog` resolve
-		 * to the program they run rather than to the wrapper. */
-		for (i = 0; i < argc; i++) {
-			size_t l = strlen(joined);
-			snprintf(joined + l, sizeof(joined) - l, "%s\"%s\"",
-				 i ? " " : "", argv[i]);
-		}
-		if (app_pack_by_exec(joined, pack, sizeof(pack)) && pack[0])
-			g_box = kb_strdup(pack);
-		else
-			kb_die("no installed pack carries '%s' — "
-			       "kdos app list, then kdos app install <pack>", app);
-	}
-
+	resolve_box(argc, argv);
+	if (!box_name_ok(g_box))
+		kb_die("'%s' is not a box name — [A-Za-z0-9._-]", g_box);
 	profile_load(&p, g_box);
 	box_state(g_box, state, sizeof(state));
 
@@ -638,28 +851,112 @@ int cmd_run(int argc, char **argv)
 	}
 
 	tracef("run %s status=%s", app, state);
-	return run_pack(argc, argv, app, state);
+	return run_pack(argc, argv, wait);
+}
+
+int cmd_run(int argc, char **argv)
+{
+	return run_common(argc, argv, 0);
+}
+
+int cmd_run_wait(int argc, char **argv)
+{
+	return run_common(argc, argv, 1);
 }
 
 /*
- * WARM THE PINNED SET. One box per application means a single shared warmup
+ * WHICH BOX A FAVOURITE NAMES. A line is a desktop-entry id or a box name.
+ * A generated launcher says its box outright (`X-KDOS-Box`); an entry without
+ * that key, written by hand, names it through its Exec — `kdos-appbox -b
+ * <pack> … run <exec>` or a shim the table knows — and a word that is no
+ * entry at all but has a profile is a box by name. A host application's entry
+ * names no box and is skipped: the list is also the pinned set the shipped
+ * desks are checked against, and those are host applications.
+ */
+static int favourite_box(const char *id, char *box, size_t bn)
+{
+	char path[MAX_LINE], pack[128] = "", cmd[512], shim[128] = "";
+	const char *xdg = getenv("XDG_DATA_HOME");
+	KxdgEntry e;
+
+	box[0] = '\0';
+	if (xdg && *xdg)
+		snprintf(path, sizeof(path), "%s/applications/%s.desktop", xdg, id);
+	else
+		snprintf(path, sizeof(path),
+			 "%s/.local/share/applications/%s.desktop",
+			 kb_home_dir(), id);
+	if (!kb_path_exists(path))
+		snprintf(path, sizeof(path), "/usr/share/applications/%s.desktop",
+			 id);
+	if (kxdg_load(&e, path, "Desktop Entry") == 0) {
+		/* kxdg_get answers `def` or a stored value, and every stored
+		 * value is allocated — so neither is NULL. */
+		const char *b = kxdg_get(&e, "X-KDOS-Box", "");
+		const char *ex = kxdg_get(&e, "Exec", "");
+
+		if (b && *b) {
+			kb_strlcpy(box, b, bn);
+		} else if (ex) {
+			/* THE FIRST WORD, THEN ITS BASENAME, in that order:
+			 * basenaming the whole line lands on the last slash of
+			 * the boxed program's own path and never sees this
+			 * binary. `-b` IS AN OPTION, SO IT PRECEDES THE VERB:
+			 * past `run` the words are the boxed program's own argv,
+			 * where a `-b` means whatever that program says. */
+			const char *sl;
+
+			snprintf(shim, sizeof(shim), "%.*s",
+				 (int)strcspn(ex, " \t"), ex);
+			sl = strrchr(shim, '/');
+			if (sl)
+				memmove(shim, sl + 1, strlen(sl + 1) + 1);
+			if (!strcmp(shim, "kdos-appbox")) {
+				const char *rn = strstr(ex, " run ");
+				const char *r = strstr(ex, " -b ");
+
+				if (r && (!rn || r < rn))
+					snprintf(pack, sizeof(pack), "%.*s",
+						 (int)strcspn(r + 4, " \t"), r + 4);
+				else if (rn)
+					app_pack_by_exec(rn + 5, pack, sizeof(pack));
+			} else if (!app_lookup_pack(shim, cmd, sizeof(cmd), pack,
+						    sizeof(pack))) {
+				pack[0] = '\0';
+			}
+			kb_strlcpy(box, pack, bn);
+		}
+		kxdg_free(&e);
+	} else {
+		char *pp = profile_path(id);
+
+		if (box_name_ok(id) && kb_path_exists(pp))
+			kb_strlcpy(box, id, bn);
+		free(pp);
+	}
+	return box[0] && box_name_ok(box);
+}
+
+/*
+ * WARM THE FAVOURITES. One box per application means a single shared warmup
  * covers nothing: it would start a box no application runs in, while every
  * application's first launch of the session still pays compose + create +
  * boxinit + its own start, measured at 18 s cold. The warmup therefore has to
- * name boxes. `~/.config/kdos/favorites` is the set the user CHOSE, so those
- * are the boxes worth having running before the first click — resolved
- * through the alien-apps table to their packs, composed and started one at a
- * time.
+ * name boxes. `~/.config/kdos/favorites` is the list of boxes the user wants
+ * running before the first click, so those are composed and started one at a
+ * time, each with its keeper, so the first launch finds the bus proxy up too.
  *
  * Non-blocking lock, so a second warmup is a no-op and never a queue; `nice`
- * is the caller's (kdos-desktop runs this at 10). A box that is started and
- * idle costs a conmon and nothing else, and `kdos-box gc` — run on a timer
- * by the same session — is what gives it back.
+ * is the caller's (kdos-session-wrapper runs this at 10). A box that is
+ * started and idle costs a conmon, a keeper and an xdg-dbus-proxy, and
+ * `kdos-box gc` — run on a timer by the user's services — is what gives it
+ * back.
  */
 int cmd_warmup(void)
 {
 	char *lockpath, *fav;
 	char buf[4096], *line, *save;
+	char done[8][64];
 	int fd, n = 0;
 
 	lockpath = kb_path_join(kb_runtime_dir(), "kdos-appbox.warmup.lock");
@@ -680,104 +977,33 @@ int cmd_warmup(void)
 
 	for (line = strtok_r(buf, "\n", &save); line && n < 8;
 	     line = strtok_r(NULL, "\n", &save)) {
-		char pack[128] = "", cmd[512];
+		char box[64], why[256];
+		Profile p;
+		int seen = 0;
 
 		while (*line == ' ' || *line == '\t')
 			line++;
 		if (!*line || *line == '#')
 			continue;
-		/* The id is the first word: a line may carry `code=XX` after
-		 * it, and the whole line names no desktop entry. */
+		/* The id is the first word: anything after it on the line is
+		 * a note for a person. */
 		line[strcspn(line, " \t")] = '\0';
-		/*
-		 * A FAVORITE IS A DESKTOP ID AND THE TABLE IS KEYED BY SHIM.
-		 * `org.gnome.GHex` is the launcher's file id; its Exec= names
-		 * the shim, `ghex`, which is the table's key and carries the
-		 * pack in its third field. The desktop entry is the one place
-		 * both names meet, so it is read rather than guessed at.
-		 */
-		/*
-		 * A GENERATED LAUNCHER'S EXEC IS `kdos-appbox [-b <pack>] run
-		 * <exec>`, so the FIRST word of such an entry is this binary
-		 * and never a shim — reading the shim out of it warms nothing
-		 * and exits 0. `-b` names the pack outright; without one the
-		 * pack is resolved from <exec> exactly as `run` does
-		 * (app_pack_by_exec: the table's command column, whole then by
-		 * basename). An entry somebody wrote by hand naming the shim
-		 * itself still resolves through the table by name.
-		 */
-		char shim[128] = "";
-		{
-			char path[MAX_LINE];
-			KxdgEntry e;
-			const char *xdg = getenv("XDG_DATA_HOME");
-
-			if (xdg && *xdg)
-				snprintf(path, sizeof(path),
-					 "%s/applications/%s.desktop", xdg,
-					 line);
-			else
-				snprintf(path, sizeof(path),
-					 "%s/.local/share/applications/%s.desktop",
-					 kb_home_dir(), line);
-			if (!kb_path_exists(path))
-				snprintf(path, sizeof(path),
-					 "/usr/share/applications/%s.desktop", line);
-			if (kxdg_load(&e, path, "Desktop Entry") == 0) {
-				/* kxdg_get answers `def` or a stored value, and
-				 * every stored value is allocated — so this is
-				 * never NULL. Said out loud because the
-				 * compiler cannot see through the allocator,
-				 * and the alternative to saying it is a
-				 * read through NULL if that ever changes. */
-				const char *ex = kxdg_get(&e, "Exec", "");
-				const char *b;
-
-				if (!ex)
-					ex = "";
-				/* THE FIRST WORD, THEN ITS BASENAME, in that
-				 * order: basenaming the whole line lands on
-				 * the last slash of the boxed program's own
-				 * path and never sees this binary. */
-				snprintf(shim, sizeof(shim), "%.*s",
-					 (int)strcspn(ex, " \t"), ex);
-				b = strrchr(shim, '/');
-				if (b)
-					memmove(shim, b + 1, strlen(b + 1) + 1);
-				if (!strcmp(shim, "kdos-appbox")) {
-					/* `-b` IS AN OPTION, SO IT PRECEDES
-					 * THE VERB. Past `run` the words are
-					 * the boxed program's own argv, where
-					 * a `-b` means whatever that program
-					 * says it does. */
-					const char *rn = strstr(ex, " run ");
-					const char *r = strstr(ex, " -b ");
-
-					if (r && (!rn || r < rn))
-						snprintf(pack, sizeof(pack),
-							 "%.*s",
-							 (int)strcspn(r + 4,
-								      " \t"),
-							 r + 4);
-					else if (rn)
-						app_pack_by_exec(rn + 5, pack,
-								 sizeof(pack));
-					shim[0] = 0;
-				}
-				kxdg_free(&e);
-			}
-		}
-		if (shim[0] &&
-		    (!app_lookup_pack(shim, cmd, sizeof(cmd), pack, sizeof(pack))))
-			pack[0] = 0;
-		if (!pack[0]) {
-			tracef("warmup: %s -> pack '%s': skipped", line, pack);
+		if (!favourite_box(line, box, sizeof(box))) {
+			tracef("warmup: %s names no box: skipped", line);
 			continue;
 		}
-		tracef("warmup %s -> %s", line, pack);
-		if (pack_box_ensure(pack, pack) == 0)
-			pack_box_start(pack);
-		n++;
+		for (int i = 0; i < n && !seen; i++)
+			seen = !strcmp(done[i], box);
+		if (seen)
+			continue;
+		kb_strlcpy(done[n++], box, sizeof(done[0]));
+		profile_load(&p, box);
+		tracef("warmup %s -> %s", line, box);
+		if (pack_box_ensure(box, !strncmp(p.base, "pack:", 5)
+					 ? p.base + 5 : box) == 0 &&
+		    pack_box_start(box) == 0 &&
+		    keeper_ensure(box, why, sizeof(why)) != 0)
+			tracef("warmup %s: %s", box, why);
 	}
 	close(fd);
 	return 0;
@@ -786,7 +1012,7 @@ int cmd_warmup(void)
 int cmd_status(void)
 {
 	Profile p;
-	char state[64], st[4096];
+	char state[64], st[4096], sp[MAX_LINE];
 
 	profile_load(&p, g_box);
 	if (packd_ask("status", st, sizeof(st)) == 0)
@@ -797,6 +1023,21 @@ int cmd_status(void)
 	printf("box   : %s (%s)\n",
 	       strcmp(state, "absent") ? "created"
 				       : "not created (first launch will)", state);
+	/* The boundary the last launch recorded, as the Boxes page reads it. */
+	if (box_state_dir(sp, sizeof(sp)) == 0) {
+		char path[MAX_LINE + 80], text[2048];
+
+		snprintf(path, sizeof(path), "%s/%s.state", sp, g_box);
+		if (kb_read_file(path, text, sizeof(text)) > 0) {
+			for (char *l = text, *nl; l && *l; l = nl) {
+				nl = strchr(l, '\n');
+				if (nl)
+					*nl++ = '\0';
+				if (*l != '#')
+					printf("state : %s\n", l);
+			}
+		}
+	}
 	return 0;
 }
 
@@ -806,7 +1047,11 @@ static void usage(void)
 "Usage: kdos-appbox run <app> [args...]     run an app from its pack's box\n"
 "       kdos-appbox open [--print|--choose] <path>\n"
 "                                           open a file in whatever opens it\n"
+"       kdos-appbox throwaway [--pack <id>] <file>\n"
+"                                           the file in a fresh box with no\n"
+"                                           network, gone when it closes\n"
 "       kdos-appbox warmup | status\n"
+"       kdos-appbox session save | restore  the boxes a logout left running\n"
 "       kdos-appbox list                    boxes and their profiles\n"
 "       kdos-appbox apps                    known alien apps\n"
 "       kdos-appbox catalogue [--groups]    what this system can build\n"
@@ -818,8 +1063,9 @@ static void usage(void)
 "                               --packs-dir <dir> <fs-root>\n"
 "                               <desktop-dir> <fs-root>\n"
 "\n"
-"  -b, --box <name>   run in <name> instead of the app's own pack box\n"
-"  -v, --verbose      let podman print to stderr\n"
+"  -b, --box <name>       run in <name> instead of the app's own pack box\n"
+"  -l, --launcher <id>    the launcher id its windows take (<box>[.<stem>])\n"
+"  -v, --verbose          let podman print to stderr\n"
 "\n"
 "Boxes are kdos-box's: kdos-box list|create|enter|profile|remove ...\n",
 	      stderr);
@@ -832,12 +1078,13 @@ static void usage(void)
  */
 static int run_as_shim(const char *name, int argc, char **argv)
 {
-	char cmd[512], store[1024], pack[128] = "";
+	char cmd[512], store[1024], pack[128] = "", launcher[128] = "";
 	const char *slot[KB_MAX_ARGV];
 	char *vec[KB_MAX_ARGV];
 	int n = 0, i;
 
-	if (!app_lookup_pack(name, cmd, sizeof(cmd), pack, sizeof(pack))) {
+	if (!app_lookup(name, cmd, sizeof(cmd), pack, sizeof(pack), launcher,
+			sizeof(launcher))) {
 		/*
 		 * `<command>@<box>` IS A `kdos-box export` SHIM, which writes no
 		 * alien-apps row: split at the LAST `@` and run what
@@ -847,13 +1094,9 @@ static int run_as_shim(const char *name, int argc, char **argv)
 		 */
 		const char *at = strrchr(name, '@');
 		const char *box = at ? at + 1 : NULL;
-		int ok = at && at != name && box[0] && box[0] != '.' &&
-			 box[0] != '-';
 
-		for (const char *c = box; ok && *c; c++)
-			ok = isalnum((unsigned char)*c) || *c == '.' ||
-			     *c == '_' || *c == '-';
-		if (!ok || (size_t)(at - name) >= sizeof(cmd) ||
+		if (!at || at == name || !box_name_ok(box) ||
+		    (size_t)(at - name) >= sizeof(cmd) ||
 		    argc + 1 >= KB_MAX_ARGV)
 			kb_die("unknown alien app '%s' (try: kdos-appbox apps)",
 			       name);
@@ -870,10 +1113,14 @@ static int run_as_shim(const char *name, int argc, char **argv)
 	/*
 	 * ONE BOX PER APPLICATION in the pack lane, named after the pack. The
 	 * launch path below is otherwise identical, and `--box` still wins —
-	 * that is how the same application is run in a second box.
+	 * that is how the same application is run in a second box. The row's
+	 * launcher id goes with the box it names, and nowhere else.
 	 */
-	if (pack[0] && !strcmp(g_box, DEFAULT_BOX))
+	if (pack[0] && !strcmp(g_box, DEFAULT_BOX)) {
 		g_box = kb_strdup(pack);
+		if (launcher[0] && !g_launcher)
+			g_launcher = kb_strdup(launcher);
+	}
 
 	/*
 	 * kxdg_exec_split, not a `strtok(" ")`: the table's commands come out
@@ -933,6 +1180,11 @@ int main(int argc, char **argv)
 			if (i + 1 >= argc)
 				kb_die("--box needs a name");
 			g_box = argv[++i];
+		} else if (!strcmp(argv[i], "-l") ||
+			   !strcmp(argv[i], "--launcher")) {
+			if (i + 1 >= argc)
+				kb_die("--launcher needs an id");
+			g_launcher = argv[++i];
 		} else if (!strcmp(argv[i], "-v") || !strcmp(argv[i], "--verbose")) {
 			kb_proc_verbose = 1;
 		} else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
@@ -960,6 +1212,17 @@ int main(int argc, char **argv)
 			       "<path> [path...]");
 		return cmd_open(argc - i - 1, argv + i + 1);
 	}
+	if (CMD("throwaway"))
+		return cmd_throwaway(argc - i - 1, argv + i + 1);
+	/* The keeper is started by a launch, detached, and is no command a
+	 * person types; it still checks its box name like every other verb. */
+	if (CMD("keeper")) {
+		if (i + 2 != argc)
+			kb_die("usage: kdos-appbox keeper <box>");
+		return cmd_keeper(argv[i + 1]);
+	}
+	if (CMD("session"))
+		return cmd_session(argc - i - 1, argv + i + 1);
 	/* The catalogue, for the surfaces, and the parser's own assertions.
 	 * Before anything that needs a daemon or a display: --selftest is
 	 * offline and pure and must stay runnable where neither exists. */
@@ -968,6 +1231,8 @@ int main(int argc, char **argv)
 			return cat_selftest();
 		return cmd_catalogue(argc - i - 1, argv + i + 1);
 	}
+	if (CMD("boxes") && i + 1 < argc && !strcmp(argv[i + 1], "--selftest"))
+		return boxes_selftest();
 	if (CMD("install") || CMD("uninstall")) {
 		int dry = 0, first = i + 1, argn = 0;
 		const char *ids[CAT_MAX_PACKS];
@@ -981,15 +1246,34 @@ int main(int argc, char **argv)
 				ids[argn++] = argv[k];
 		}
 		if (!argn)
-			kb_die("usage: kdos-appbox %s <id|group>... [--dry-run]",
-			       argv[i]);
+			kb_die("usage: kdos-appbox %s <id|group|deb:package>... "
+			       "[--dry-run]", argv[i]);
 		{
 			char err[256];
 			if (cat_load(NULL, err, sizeof(err)) != 0)
 				kb_die("%s", err);
 		}
-		return CMD("install") ? store_install_many(ids, argn, dry)
-				      : store_uninstall_many(ids, argn);
+		/* `deb:<package>` is Discover's Debian lane and names no
+		 * catalogue row, so it is taken out before the catalogue
+		 * expands the rest. */
+		{
+			int nrow = 0, failed = 0;
+			for (int k = 0; k < argn; k++) {
+				if (strncmp(ids[k], "deb:", 4)) {
+					ids[nrow++] = ids[k];
+					continue;
+				}
+				setvbuf(stdout, NULL, _IOLBF, 0);
+				failed += CMD("install")
+					  ? store_deb_install(ids[k], dry)
+					  : store_deb_uninstall(ids[k]);
+			}
+			if (nrow)
+				failed += CMD("install")
+					  ? store_install_many(ids, nrow, dry)
+					  : store_uninstall_many(ids, nrow);
+			return failed;
+		}
 	}
 	if (CMD("store") && i + 1 < argc && !strcmp(argv[i + 1], "--selftest"))
 		return store_selftest();

@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = spectacle
+version     = 6.8.2
+release     = 1
+source      = https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = 95785faf9a97c5005956ff78fc812a32a3735b6a3c1b8543cb21e5838cb8b23f  spectacle-6.8.2.tar.xz
+description = Screenshot and screen recording tool — regions, windows, annotations, OCR and video
+homepage    = https://apps.kde.org/spectacle/
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND (GPL-2.0-only OR LGPL-2.0-only OR LicenseRef-KDE-Accepted-GPL) AND LGPL-2.1-or-later AND BSD-3-Clause AND CC0-1.0 AND GFDL-1.2-or-later
+group       = plasma
+depends     = cmake ninja extra-cmake-modules pkgconf qt6-qtbase qt6-qtdeclarative qt6-qtwayland qt6-qtmultimedia kcoreaddons kwidgetsaddons kdbusaddons knotifications kconfig ki18n kio kwindowsystem kglobalaccel kxmlgui kguiaddons kirigami kstatusnotifieritem prison kcrash kdoctools purpose wayland plasma-wayland-protocols layer-shell-qt kpipewire kquickimageeditor tesseract

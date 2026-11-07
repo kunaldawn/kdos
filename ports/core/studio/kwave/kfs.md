@@ -12,12 +12,12 @@ other uncompressed formats. It is a Qt 6 and KDE Frameworks program.
   so this only saves build time.
 - `-D WITH_DOC=ON` — build Kwave's handbook with [kdoctools](#port-kdoctools). On by default
   upstream.
-- `-D WITH_ALSA=ON` — and `WITH_PULSEAUDIO`, `WITH_QT_AUDIO`: playback and recording through ALSA
+- `-D WITH_ALSA=ON` — With `-D WITH_PULSEAUDIO=ON` and `-D WITH_QT_AUDIO=ON`: playback and recording through ALSA
   and PulseAudio, both of which PipeWire serves on KDOS, and playback through Qt Multimedia
   ([qt6-qtmultimedia](#port-qt6-qtmultimedia)).
 - `-D WITH_OSS=OFF` — no playback or recording through the OSS device interface, which upstream
   builds by default.
-- `-D WITH_FLAC=ON` — and `WITH_OGG_OPUS`, `WITH_OGG_VORBIS`: the FLAC, Opus and Vorbis codecs.
+- `-D WITH_FLAC=ON` — With `-D WITH_OGG_OPUS=ON` and `-D WITH_OGG_VORBIS=ON`: the FLAC, Opus and Vorbis codecs.
   Each switch makes its library a `REQUIRED` pkg-config check, so a missing library stops the
   configure instead of dropping the format.
 - `-D WITH_MP3=ON` — MP3 support: decoding through [libmad](#port-libmad), tags through

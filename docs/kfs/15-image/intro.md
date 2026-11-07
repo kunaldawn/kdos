@@ -1,7 +1,7 @@
 # The image
 
 <!-- kfs:phase 70_image -->
-<!-- kfs:order 010-binhost 015-pkgstore 020-cleanup 030-launchers 040-orphans 045-identity 050-theme 060-udev-hwdb 070-user 080-whatis 085-fontcache 087-gates 090-initramfs 091-initramfs-init 100-packs 105-ports 110-iso -->
+<!-- kfs:order 010-binhost 015-pkgstore 020-cleanup 030-launchers 040-orphans 045-identity 050-theme 060-udev-hwdb 070-user 080-whatis 085-fontcache 086-swcatalog 087-gates 090-initramfs 091-initramfs-init 100-packs 105-ports 110-iso -->
 
 The last phase, `70_image`, makes no packages. It takes the root the package phases built in
 `build/fs`, trims what only the build needed, writes the launchers, identity, theme, homes and
@@ -26,7 +26,7 @@ outside the root write under `/kdos/build`, which is `build/` on your machine.
 
 No step of this phase has a mark. Each runs in full every time the phase runs, so a step that
 writes a file first removes the copy an earlier run wrote: the stamp in [`/etc/os-release`]{.idx}, the
-hardware database, the manual index, the font cache, the staged recipe tree and the base pack are
+hardware database, the manual index, the font cache, the software catalogue, the staged recipe tree and the base pack are
 each made from nothing rather than updated.
 
 ## No snapshot
@@ -99,8 +99,9 @@ The step numbers are the only sequencing, and these orderings matter:
   copied from.
 - `030_launchers.sh` and `050_theme.sh` write into `/etc/skel`, and run before `070_user.sh`, which
   copies `/etc/skel` into every home. A skel changed after that step reaches no home on this image.
-- `040_orphans.sh` runs before the three indexes, `060_udev_hwdb.sh`, `080_whatis.sh` and
-  `085_fontcache.sh`, so a swept package's rules, manual pages and fonts are not indexed.
+- `040_orphans.sh` runs before the indexes, `060_udev_hwdb.sh`, `080_whatis.sh`,
+  `085_fontcache.sh` and `086_swcatalog.sh`, so a swept package's rules, manual pages, fonts and
+  applications are not indexed.
 - `045_identity.sh` runs before `100_packs.sh`, so the base pack carries the stamped
   `/etc/os-release`.
 - `087_gates.sh` runs after the sweep and every index, so it checks the tree the image carries, and
@@ -120,10 +121,11 @@ whole tree; the others are local to their step:
 | `020_cleanup.sh` | A Python module a package owns has no bytecode |
 | `030_launchers.sh` | No launcher table was written, or launchers survive a reconcile that found no packs |
 | `040_orphans.sh` | No recipe is found under `/ports/core`, or more than half the installed packages would be removed |
-| `050_theme.sh` | `KDOS_ACCENT` is not libkcolor's default, a seeded file is missing or empty, or `glib-compile-schemas` writes no `gschemas.compiled` |
+| `050_theme.sh` | `KDOS_ACCENT` is not libkcolor's default, `/etc/skel` does not name the accent and its global theme, the qt5ct configuration names no KDOS palette, an installed colour scheme fails the contrast floors, or `glib-compile-schemas` writes no `gschemas.compiled` |
 | `060_udev_hwdb.sh` | There is no `*.hwdb` source, or no trie was written |
 | `080_whatis.sh` | No manual root exists, or no `mandoc.db` was written |
 | `085_fontcache.sh` | `/usr/share/fonts` is missing, no cache file was written, or fontconfig rejects it |
+| `086_swcatalog.sh` | The catalogue it wrote lists no application |
 | `087_gates.sh` | `testing/linkcheck.py` or `testing/entrycheck.py` reports a finding, or `testing/unowned.py` finds a file no package owns under `/usr/share/locale`, `man`, `doc` or `info` |
 | `090_initramfs.sh` | No `readelf` reads a program's libraries; a program the initramfs carries, or a library one of them links, is installed nowhere or missing from the archive; a program that must be util-linux's or GNU's is another userland's; lvm2 is installed without `lvm`, `dmsetup`, `thin_check` or `cache_check`, or its udev rules run them from outside `/usr/sbin`; a udev rule a root needs is left out or runs a program the initramfs lacks; installed microcode left an empty or missing bundle; or `/lib/modules` is empty |
 | `100_packs.sh` | With `KDOS_PACK_KDOS=1`: `mkfs.erofs` does not honour the excludes |
@@ -157,4 +159,4 @@ where its step's output lands. Outside the root, under `build/`:
 <!-- book-nav -->
 ---
 
-*Part XV. The image.* Previous: [338. Installing the kernel](../14-kernel/installing.md) · [Contents](../README.md) · Next: [341. The binary host](010-binhost.md)
+*Part XV. The image.* Previous: [361. Installing the kernel](../14-kernel/installing.md) · [Contents](../README.md) · Next: [364. The binary host](010-binhost.md)

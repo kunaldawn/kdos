@@ -32,9 +32,8 @@ Avahi is a library as well as a daemon. The ports that discover things through i
 [cups](#port-cups) and [cups-browsed](#port-cups-browsed) (printers), [ipp-usb](#port-ipp-usb) (a
 USB printer presented as a network one), [sane-backends](#port-sane-backends) and
 [sane-airscan](#port-sane-airscan) (scanners), [samba](#port-samba) (which advertises its shares),
-[gvfs](#port-gvfs) (the GTK file managers' network view) and [pipewire](#port-pipewire) (network
-audio sinks). [kdos-mountd](#port-kdos-mountd) links none of it: it runs `avahi-browse` for its
-list of file servers and `avahi-resolve-host-name` for a `.local` server name. The port's
+[gvfs](#port-gvfs) (the GTK file managers' network view), [kio-extras](#port-kio-extras)
+(Dolphin's `network:/` and `smb:/` views) and [pipewire](#port-pipewire) (network audio sinks). The port's
 `--enable-compat-libdns_sd` also builds Avahi's `libdns_sd`, for programs written against
 Apple's DNS-SD interface.
 
@@ -60,10 +59,10 @@ not one is running:
 ### The firewall
 
 mDNS is UDP port 5353, and the shipped [`/etc/nftables.conf`]{.idx} accepts it in its base rules, before
-any [firewall]{.idx} name is turned on. Beside it is the rule for NetBIOS name replies, which
-`kdos-mount browse` sends alongside its mDNS query:
+any [firewall]{.idx} name is turned on. Beside it are the rules for NetBIOS name replies and
+WS-Discovery answers, which Dolphin's network browsing asks for alongside its mDNS query:
 
-<!-- kfs:include fs/etc/nftables.conf lines=67-84 pin=de6e7a8fb0a7 -->
+<!-- kfs:include fs/etc/nftables.conf lines=67-100 pin=2280c755ab79 -->
 
 ### /etc/nsswitch.conf
 
@@ -111,7 +110,7 @@ the local network, to root and the members of `wheel`, the group the avahi port'
    machine answers with `192.168.122.1`, the address of libvirt's `virbr0` bridge.
 
 2. Use the address, or give the name to a program that resolves through Avahi itself, such as
-   [`kdos-connect`]{.idx}. `ping printer.local` and `ssh printer.local` fail, because they resolve through
+   Dolphin's `smb://` or `sftp://`. `ping printer.local` and `ssh printer.local` fail, because they resolve through
    the C library. For a machine you reach often, put its address in `/etc/hosts`.
 
 ### Publishing a service
@@ -150,8 +149,8 @@ sudo service disable avahi
 sudo service stop avahi
 ```
 
-Printers and scanners on the network are then not discovered, `kdos-mount browse` finds only the
-machines that answer NetBIOS, and `kdos-connect` cannot resolve a `.local` name. UDP 5353 stays
+Printers and scanners on the network are then not discovered, Dolphin's network view finds only
+the machines that answer NetBIOS or WS-Discovery, and no program resolves a `.local` name. UDP 5353 stays
 accepted by the base firewall rules until you edit `/etc/nftables.conf`.
 
 ## Tips
@@ -163,9 +162,8 @@ accepted by the base firewall rules until you edit `/etc/nftables.conf`.
   them, so `avahi-browse -rt` lists a service of this machine once per interface.
 - `avahi-browse -p` prints one record per line, separated by semicolons, for scripts; `-k` shows
   service types by their DNS names rather than translated ones.
-- `kdos-mount browse` and the browse list in `kdos-connect` are `avahi-browse -ptrk _smb._tcp`
-  plus a NetBIOS query; see
-  [Network shares](../../kdos/04-programs/daemons.md#network-shares).
+- Dolphin's `smb:/` lists file servers from `avahi-browse`'s `_smb._tcp` records, a NetBIOS
+  query and a WS-Discovery probe together.
 
 ## Troubleshooting
 
@@ -213,11 +211,10 @@ That is expected; see [Resolving a .local name](#resolving-a-local-name).
 
 - [Services](../../kdos/02-user-guide/administration.md#services): `45_avahi` in the boot order
 - [The firewall](../../kdos/02-user-guide/administration.md#the-firewall): the base rules, which accept UDP 5353
-- [Network shares](../../kdos/04-programs/daemons.md#network-shares): how `kdos-mountd` resolves `.local` and NetBIOS names
 - [File sharing](file-sharing.md), [Printing and scanning](printing-and-scanning.md),
   [Firewall](firewall.md), [SSH server](ssh-server.md), [Services](services.md)
 
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 394.* Previous: [393. File sharing](file-sharing.md) · [Contents](../README.md) · Next: [395. udev and device groups](udev-and-device-groups.md)
+*Part XVI. System administration, chapter 418.* Previous: [417. File sharing](file-sharing.md) · [Contents](../README.md) · Next: [419. udev and device groups](udev-and-device-groups.md)

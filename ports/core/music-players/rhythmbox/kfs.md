@@ -42,8 +42,8 @@ renders `org.gnome.Rhythmbox3.svg` at 48, 64 and 128 pixels with `rsvg-convert` 
 
 The desktop entry is KDOS's own, written over upstream's. Its `StartupWMClass` is the
 GtkApplication id `org.gnome.Rhythmbox3`, which is the Wayland app id. It claims no MIME type:
-[strawberry](#port-strawberry) is the program audio files open in, in
-`/etc/xdg/kdos-mimeapps.list`. Upstream's second entry, `org.gnome.Rhythmbox3.device.desktop`, is
+[elisa](#port-elisa) is the program audio files open in, in
+`/usr/share/kdos/xdg/kde-mimeapps.list`. Upstream's second entry, `org.gnome.Rhythmbox3.device.desktop`, is
 installed unchanged: hidden from menus, it runs `rhythmbox-client --select-source` and claims only
 the `x-content/audio-player` and `x-content/audio-cdda` content types, a connected player and an
 audio CD.

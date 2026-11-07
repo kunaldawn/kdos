@@ -1,5 +1,12 @@
---- a/app/org.kde.ark.desktop.cmake	2026-09-28 02:54:14.490285207 +0530
-+++ b/app/org.kde.ark.desktop.cmake	2026-09-28 02:54:14.490454519 +0530
+Subject: Set StartupWMClass in ark's desktop entry to its desktop id, org.kde.ark
+
+Plasma's task manager matches a window to a desktop entry by its Wayland
+app_id, which KAboutData sets to the desktop file name, org.kde.ark, and
+by StartupWMClass. Upstream's StartupWMClass=ark names neither, so the two
+lookups disagree.
+
+--- a/app/org.kde.ark.desktop.cmake
++++ b/app/org.kde.ark.desktop.cmake
 @@ -160,7 +160,7 @@
  Type=Application
  Categories=Qt;KDE;Utility;Archiving;Compression;X-KDE-Utilities-File;

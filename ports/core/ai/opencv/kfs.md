@@ -3,8 +3,8 @@
 OpenCV is the computer-vision library: image processing, feature detection, camera calibration,
 object tracking, video input and output, and a neural-network inference module, with Python
 bindings (`cv2`). The port is the 4.x line, the API [digikam](#port-digikam), [mlt](#port-mlt)
-(the motion tracker of Kdenlive and Shotcut), [sdrangel](#port-sdrangel),
-[wl-kbptr](#port-wl-kbptr) and the other consumers are written against. Eight modules come from
+(the motion tracker of Kdenlive and Shotcut), [sdrangel](#port-sdrangel) and the other consumers
+are written against. Eight modules come from
 the separate `opencv_contrib` tarball.
 
 ## Flags
@@ -21,7 +21,7 @@ the separate `opencv_contrib` tarball.
 - `-DCMAKE_SKIP_INSTALL_RPATH=ON` — Install the libraries and programs without a run path; they
   are in `/usr/lib`.
 - `-DOPENCV_GENERATE_PKGCONFIG=ON` — Install `opencv4.pc`, through which meson and autotools
-  consumers, such as [wl-kbptr](#port-wl-kbptr), find OpenCV. Upstream leaves it off.
+  consumers find OpenCV. Upstream leaves it off.
 - `-DOPENCV_GENERATE_SETUPVARS=OFF` — Do not install `setup_vars_opencv4.sh`, a shell script
   that sets the environment variables for using the install; with everything under `/usr`, none
   is needed.

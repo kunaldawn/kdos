@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = dragon
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = e0510d65c59002f5ff5ceed3540b082952bb65bee1490a06e68e24fb0d107941  dragon-26.08.2.tar.xz
+description = Dragon Player — a simple video player for files, discs and streams
+homepage    = https://apps.kde.org/dragonplayer/
+license     = GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
+depends     = cmake ninja extra-cmake-modules pkgconf qt6-qtbase qt6-qtdeclarative qt6-qtmultimedia kcoreaddons kcrash ki18n kio kwindowsystem kirigami kconfig ffmpeg kio-fuse

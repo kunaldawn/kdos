@@ -7,7 +7,7 @@ a tab bar and a command line.
 
 ## Patches
 
-- `app-id.patch` — Edits `misc/org.qutebrowser.qutebrowser.desktop`. It changes `StartupWMClass=qutebrowser` to `StartupWMClass=org.qutebrowser.qutebrowser`, the entry's own desktop id, so the panel's lookup by file name and its lookup by window class find the one entry. It cuts the `MimeType=` line down to `x-scheme-handler/qute`, qutebrowser's own scheme: upstream also claims HTML, XHTML, XML and RDF, the GIF, WebP, JPEG and PNG image types, `http` and `https`. The web types are Firefox ESR's, their default in `/etc/xdg/kdos-mimeapps.list`, and an entry claims a type only where nothing else does (see [desktop entries](../../../../docs/kdos/05-developer/writing-ports.md#desktop-entries-belong-to-the-port)).
+- `app-id.patch` — Edits `misc/org.qutebrowser.qutebrowser.desktop`. It changes `StartupWMClass=qutebrowser` to `StartupWMClass=org.qutebrowser.qutebrowser`, the entry's own desktop id, so the panel's lookup by file name and its lookup by window class find the one entry. It cuts the `MimeType=` line down to `x-scheme-handler/qute`, qutebrowser's own scheme: upstream also claims HTML, XHTML, XML and RDF, the GIF, WebP, JPEG and PNG image types, `http` and `https`. The web types are Firefox ESR's, their default in `/usr/share/kdos/xdg/kde-mimeapps.list`, and an entry claims a type only where nothing else does (see [desktop entries](../../../../docs/kdos/05-developer/writing-ports.md#desktop-entries-belong-to-the-port)).
 
 ## Notes
 

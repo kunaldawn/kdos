@@ -1,14 +1,10 @@
 # The archives under here are FIXTURES, not upstream tarballs, and they must
 # reach a clone as their exact bytes.
 #
-# testing/fixtures/shell/tree/roll.tar.gz is two bytes and its twin under
-# openwith/ is empty, and both are named .tar.gz for one reason: to prove the
-# LONGEST matching suffix wins, so a .tar.gz does not open in a decompressor.
-# The file chooser's golden frame prints the size, so any filter that stores
-# something else in their place (a pointer, a normalised line ending) comes
-# back as a failing layout test with nothing pointing at the cause. These
-# lines unset every filter and text conversion for them, whatever a root
-# .gitattributes says.
+# A filter that stored something else in an archive's place (a pointer, a
+# normalised line ending) changes what a test reads with nothing pointing at
+# the cause. These lines unset every filter and text conversion for archive
+# names, whatever a root .gitattributes says.
 *.tar.gz  !filter !diff !merge -text
 *.tar.xz  !filter !diff !merge -text
 *.tar.bz2 !filter !diff !merge -text

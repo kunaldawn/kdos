@@ -196,4 +196,4 @@ If `deploy` fails, the warning says that the next boot runs the kernel it ran be
 <!-- book-nav -->
 ---
 
-*Part XIV. The kernel, chapter 338.* Previous: [337. Building the kernel](building.md) · [Contents](../README.md) · Next: [Part XV. The image](../15-image/intro.md)
+*Part XIV. The kernel, chapter 361.* Previous: [360. Building the kernel](building.md) · [Contents](../README.md) · Next: [Part XV. The image](../15-image/intro.md)

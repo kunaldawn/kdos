@@ -1,0 +1,19 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "KDOS"
+            }
+        ],
+        "Category": "System Information",
+        "Description": "Lights while a microphone, camera or the screen is captured, and names the program and its box",
+        "EnabledByDefault": true,
+        "Icon": "security-high-symbolic",
+        "License": "MIT",
+        "Name": "Privacy Lamps",
+        "Website": "https://github.com/kunaldawn/kdos"
+    },
+    "Keywords": "privacy;microphone;camera;screen;capture;recording;box;",
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-NotificationAreaCategory": "Hardware"
+}

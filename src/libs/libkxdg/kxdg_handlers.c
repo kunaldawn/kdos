@@ -14,12 +14,14 @@
  * defaults answer for every common type.
  *
  * The order is freedesktop's, the desktop-named list ahead of the plain one at
- * each level:
+ * each level, <desktop> being the first name in $XDG_CURRENT_DESKTOP
+ * lowercased (`kde` in and out of a Plasma session):
  *
- *   ~/.config/kdos-mimeapps.list, mimeapps.list   [Default Applications]
- *   ~/.config/kdos-mimeapps.list, mimeapps.list   [Added Associations]
- *   /etc/xdg/kdos-mimeapps.list, mimeapps.list    [Default Applications]
- *   <data dir>/applications/mimeinfo.cache        [MIME Cache]
+ *   ~/.config/<desktop>-mimeapps.list, mimeapps.list   [Default Applications]
+ *   ~/.config/<desktop>-mimeapps.list, mimeapps.list   [Added Associations]
+ *   each $XDG_CONFIG_DIRS directory, in order,         [Default Applications]
+ *     <desktop>-mimeapps.list then mimeapps.list
+ *   <data dir>/applications/mimeinfo.cache             [MIME Cache]
  *
  * An id counts only when its entry is installed, so a list naming a removed
  * application falls through to the next one.
@@ -31,6 +33,31 @@
 #include <string.h>
 
 #include "kxdg.h"
+
+/*
+ * A `:`-separated directory list appended to `out` from slot `n`, empty
+ * members skipped. Returns the new count.
+ */
+static int split_dirs(const char *dirs, char out[][512], int n, int max)
+{
+	for (const char *p = dirs; *p && n < max;) {
+		const char *sep = strchr(p, ':');
+		size_t len = sep ? (size_t)(sep - p) : strlen(p);
+		/* A trailing slash is legal in an XDG list; kept, every path
+		 * built from it carries a `//` into `--print`. */
+		while (len > 1 && p[len - 1] == '/')
+			len--;
+		if (len && len < 512) {
+			memcpy(out[n], p, len);
+			out[n][len] = '\0';
+			n++;
+		}
+		if (!sep)
+			break;
+		p = sep + 1;
+	}
+	return n;
+}
 
 /*
  * XDG_DATA_HOME first, then XDG_DATA_DIRS in order — the order the launcher
@@ -50,23 +77,22 @@ static int data_dirs(char out[][512], int max)
 
 	if (!dirs || !*dirs)
 		dirs = "/usr/local/share:/usr/share";
-	for (const char *p = dirs; *p && n < max;) {
-		const char *sep = strchr(p, ':');
-		size_t len = sep ? (size_t)(sep - p) : strlen(p);
-		/* A trailing slash is legal in XDG_DATA_DIRS; kept, every path
-		 * built from it carries a `//` into `--print`. */
-		while (len > 1 && p[len - 1] == '/')
-			len--;
-		if (len && len < 512) {
-			memcpy(out[n], p, len);
-			out[n][len] = '\0';
-			n++;
-		}
-		if (!sep)
-			break;
-		p = sep + 1;
-	}
-	return n;
+	return split_dirs(dirs, out, n, max);
+}
+
+/*
+ * XDG_CONFIG_DIRS in order, /etc/xdg when it is unset. The shipped defaults
+ * live in more than one of them — the administrator's /etc/xdg ahead of
+ * KDOS's /usr/share/kdos/xdg — so a resolver that read /etc/xdg alone would
+ * miss the desktop's whole default table.
+ */
+static int config_dirs(char out[][512], int max)
+{
+	const char *dirs = getenv("XDG_CONFIG_DIRS");
+
+	if (!dirs || !*dirs)
+		dirs = "/etc/xdg";
+	return split_dirs(dirs, out, 0, max);
 }
 
 /* `<datadir>/applications/<id>`, first one that exists. */
@@ -141,11 +167,11 @@ static int collect_in(const char *path, const char *section, int layer,
 /* See kxdg.h. */
 int kxdg_handlers(const char *mime, KxdgHandler *c, int max, int *defaulted)
 {
-	char dirs[16][512], path[600], dpre[80], cfgdir[512];
+	char dirs[16][512], cdirs[16][512], path[600], dpre[80], cfgdir[512];
 	const char *cfg = getenv("XDG_CONFIG_HOME");
 	int nd = data_dirs(dirs, 16);
 	int have_pre = kb_desktop_prefix(dpre, sizeof(dpre));
-	int n = 0, dflt = 0;
+	int n = 0, dflt = 0, ncd;
 
 	if (cfg && *cfg)
 		snprintf(cfgdir, sizeof(cfgdir), "%.500s", cfg);
@@ -186,17 +212,24 @@ int kxdg_handlers(const char *mime, KxdgHandler *c, int max, int *defaulted)
 	/* The system default counts as a decision whatever the user's
 	 * additions found: XDG puts Default Applications ahead of Added
 	 * Associations at every level, so an association that masked one would
-	 * turn a decided type into a chooser prompt. */
-	if (have_pre) {
-		snprintf(path, sizeof(path), "/etc/xdg/%.40s-mimeapps.list",
-			 dpre);
+	 * turn a decided type into a chooser prompt. Each config directory is
+	 * read whole, desktop-named list then plain, before the next — the order
+	 * KDE's own resolver keeps, so a box opens a file with what Dolphin
+	 * would. */
+	ncd = config_dirs(cdirs, 16);
+	for (int i = 0; i < ncd; i++) {
+		if (have_pre) {
+			snprintf(path, sizeof(path),
+				 "%.500s/%.40s-mimeapps.list", cdirs[i], dpre);
+			if (collect_in(path, "Default Applications",
+				       KXDG_LAYER_SYSTEM, mime, c, &n, max))
+				dflt = 1;
+		}
+		snprintf(path, sizeof(path), "%.500s/mimeapps.list", cdirs[i]);
 		if (collect_in(path, "Default Applications", KXDG_LAYER_SYSTEM,
 			       mime, c, &n, max))
 			dflt = 1;
 	}
-	if (collect_in("/etc/xdg/mimeapps.list", "Default Applications",
-		       KXDG_LAYER_SYSTEM, mime, c, &n, max))
-		dflt = 1;
 
 	/* Then the caches. `mimeinfo.cache` is the file genlaunchers writes
 	 * beside the box's launchers so this lookup finds them; without it the

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = cdparanoia
+version     = 10.2
+release     = 1
+source      = $name-$version.tgz::https://downloads.xiph.org/releases/cdparanoia/cdparanoia-III-$version.src.tgz
+sha256      = 005db45ef4ee017f5c32ec124f913a0546e77014266c6a1c50df902a55fe64df  cdparanoia-10.2.tgz
+description = Paranoia III audio CD ripper and its libcdda_interface and libcdda_paranoia libraries
+homepage    = https://www.xiph.org/paranoia/
+license     = GPL-2.0-or-later AND LGPL-2.1-or-later

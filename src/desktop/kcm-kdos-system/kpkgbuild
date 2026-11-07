@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kcm-kdos-system
+version     = 1.0.0
+release     = 1
+description = System Settings page for the A/B system slots — which version starts, its trial, and where updates come from
+homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
+depends     = extra-cmake-modules qt6-qtbase qt6-qtdeclarative kcoreaddons ki18n kcmutils kirigami systemsettings kdos-sysupdated

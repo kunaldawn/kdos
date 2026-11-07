@@ -64,11 +64,10 @@ service script for upstream's per-driver daemons.
 ### Who may manage system guests
 
 A connection to `qemu:///system` asks polkit for `org.libvirt.unix.manage`. The KDOS rules file
-answers yes, with no prompt, to any member of `wheel`:
+answers a member of `wheel` at the machine with one password per agent session rather than one
+per connection:
 
-<!-- kfs:include fs/etc/polkit-1/rules.d/50-kdos.rules lines=43-46 pin=b413b21a98a8 -->
-
-<!-- kfs:include fs/etc/polkit-1/rules.d/50-kdos.rules lines=133-149 pin=288b5dd7b9b9 -->
+<!-- kfs:include fs/etc/polkit-1/rules.d/50-kdos.rules lines=126-140 pin=a187d717353f -->
 
 libvirt installs its own rule, `/usr/share/polkit-1/rules.d/50-libvirt.rules`, which grants the
 same action to members of the [`libvirt`]{.idx} group. The package creates that group and the [`qemu`]{.idx}
@@ -76,8 +75,8 @@ account its guests run as, a member of `kvm`:
 
 <!-- kfs:include ports/core/virt/libvirt/postinstall.sh lines=12-15 pin=134700f1675e -->
 
-Why there is no polkit authentication agent, so that a rule is the only way to grant this, is in
-[polkit, and why the desktop has no authentication agent](../../kdos/03-architecture/security-model.md#polkit-and-why-the-desktop-has-no-authentication-agent).
+Who polkit asks for a password, and which actions KDOS's rule grants without one, is in
+[polkit and the authentication agent](../../kdos/03-architecture/security-model.md#polkit-and-the-authentication-agent).
 
 ### The firewall
 
@@ -214,7 +213,7 @@ the display back ends built: `none`, `gtk`, `sdl`, `egl-headless`, `curses`, `sp
    sudo service start libvirtd
    ```
 
-2. Open **Virtual Machine Manager** from the Start menu, or run `virt-manager`. On its first run
+2. Open **Virtual Machine Manager** from the application menu, or run `virt-manager`. On its first run
    it connects to `qemu:///system`. A member of `wheel` is let in by the rule above with no password prompt; any
    other account must be in `libvirt`:
 
@@ -294,36 +293,24 @@ certificates.
 A KDOS image runs under QEMU on any host with [KVM]{.idx}. The build tree's `make run` target is the
 command line KDOS is developed against; it is in the repository's `Makefile`:
 
-<!-- kfs:include Makefile lines=204-209 pin=a0d042b20a1c lang=make -->
+<!-- kfs:include Makefile lines=203-208 pin=a0d042b20a1c lang=make -->
 
 That target runs on the build machine and expects its OVMF at `/usr/share/ovmf/OVMF.fd`; on a KDOS
 host, use the firmware paths from [Running a guest with QEMU directly](#running-a-guest-with-qemu-directly).
 What the guest does differently from real hardware:
 
-- On a virtio GPU, `kdos-desktop` turns the hardware cursor off:
-
-  <!-- kfs:include fs/usr/local/bin/kdos-desktop lines=13-17 pin=f01a3a00bfb4 -->
-
-  and when the virtio GPU has no virgl (3D) support it puts the compositor on software rendering,
-  where the phosphor pass is off:
-
-  <!-- kfs:include fs/usr/local/bin/kdos-desktop lines=37-39 pin=ce1eec971951 -->
-
-- A display device with no render node puts the compositor on software rendering too, with the
-  phosphor pass off: QEMU's standard VGA (`-vga std`) and QXL, VirtualBox's VBoxVGA, and
-  Hyper-V's synthetic video:
-
-  <!-- kfs:include fs/usr/local/bin/kdos-desktop lines=44-51 pin=da56a7c7b973 -->
-
-  A virtual GPU that has a render node and no 3D, VMware's SVGA or VirtualBox's VBoxSVGA with 3D
-  acceleration off, is not caught here. When wlroots refuses its EGL device as software,
-  `kdos-desktop-start` runs the compositor once more on the software renderer; when Mesa falls
-  back to `kms_swrast` instead, the compositor runs in GLES2 on `llvmpipe` and declines only the
-  phosphor pass; see
-  [What `kdos-desktop-start` does](../../kdos/03-architecture/session.md#what-kdos-desktop-start-does).
-
-- The compositor's idle dim, lock and screen-off timers and the lid action default to off; see
-  [In a virtual machine](../../kdos/04-programs/kdos-comp.md#in-a-virtual-machine).
+- KWin renders with OpenGL through Mesa. On a virtio GPU with virgl (`-device virtio-vga-gl`) that
+  is the host's GPU; on a display device with no 3D, QEMU's standard VGA (`-vga std`), QXL, a
+  virtio GPU without virgl, VirtualBox's VBoxVGA or Hyper-V's synthetic video, Mesa falls back to
+  `llvmpipe`, the software renderer. The desktop works there, more slowly, and Phosphor mode's
+  CRT pass refuses to start. `qdbus6 org.kde.KWin /KWin supportInformation | grep -i renderer`
+  says which is in use.
+- In a virtual machine (`kdos in-vm`) the session puts `/usr/share/kdos/xdg-vm` first in
+  `XDG_CONFIG_DIRS`, which turns off the idle dimming, the screen blanking and the timed lock,
+  because over a viewer a desktop that blanked itself looks like one that stopped; see
+  [Session and environment](session-and-environment.md#where-the-kdos-defaults-live).
+- A viewer that resizes its window resizes the guest's screen when the guest has the virtio or
+  QXL display and the SPICE or virtio agent; KWin follows the new size.
 - PipeWire runs a larger quantum under a hypervisor:
 
   <!-- kfs:include fs/etc/pipewire/pipewire.conf.d/99-kdos-vm.conf lines=38-48 pin=3d3c189a4c9e -->
@@ -435,4 +422,4 @@ helper serves only root. That is a known gap; use user-mode networking, or a lib
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 410.* Previous: [409. Containers](containers.md) · [Contents](../README.md) · Next: [411. Session and environment](session-and-environment.md)
+*Part XVI. System administration, chapter 434.* Previous: [433. Containers](containers.md) · [Contents](../README.md) · Next: [435. Session and environment](session-and-environment.md)

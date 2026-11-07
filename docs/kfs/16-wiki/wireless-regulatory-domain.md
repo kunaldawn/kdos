@@ -14,7 +14,7 @@ country, and how to tell when the radio is stuck on the world rules.
 | [wireless-regdb](#port-wireless-regdb) | `/lib/firmware/regulatory.db` and its signature, `regulatory.db.p7s` |
 | [iw](#port-iw) | `iw reg get` and `iw reg set` |
 | [linux](#port-linux) | `cfg80211`, the kernel's wireless layer, built as a module |
-| [kdos-powerd](#port-kdos-powerd) | The `timezone` verb, which also sets the country |
+| [kdos-settingsd](#port-kdos-settingsd) | `org.freedesktop.timedate1`, whose time zone also sets the country |
 | [kdos-tools](#port-kdos-tools) | `kdos doctor`, which checks the database and the domain |
 
 `wireless-regdb` is on the `boot` shelf of `41_system`; the rest are on every image too. No
@@ -38,26 +38,26 @@ signature check in silence and leaves the radio exactly where it was, on the wor
 ### The country: `/etc/modprobe.d/kdos-regdom.conf`
 
 One setting, `options cfg80211 ieee80211_regdom=<CC>`, where `<CC>` is a two-letter country code;
-the file `kdos-powerd` writes puts a two-line comment naming the zone above it. The image ships
+the file kdos-settingsd writes puts a two-line comment naming the zone above it. The image ships
 no such file; two programs write it from the [time zone]{.idx}, looking the zone up in
 tzdata's `zone.tab`, which gives each zone one country.
 
 The installer writes it from the zone chosen on its *Time* page:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=1751-1759 pin=5a0dbdc98892 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=1947-1955 pin=5a0dbdc98892 -->
 
-`kdos-powerd` writes it whenever the time zone is changed later, and runs `iw reg set` so the
-running radio follows at once. A zone with no country, such as `UTC`, removes the file:
+kdos-settingsd writes it whenever the time zone is changed later, and runs `iw reg set` so the
+running radio follows at once. A zone with no country, such as `UTC`, removes the file, from
+`src/daemons/kdos-settingsd/store.c`:
 
-<!-- kfs:include src/daemons/kdos-powerd/main.c lines=840-851 pin=7a5ecb4a3526 -->
+<!-- kfs:include src/daemons/kdos-settingsd/store.c lines=995-1007 pin=6f7d102e34f9 -->
 
 The file is read when `cfg80211` loads, which is during boot, as the first wireless driver loads,
 or, on a machine with no wireless driver, when a program such as `iw` first asks for the wireless
 layer. A change to it takes effect at the next boot. Removing it changes nothing in the running
 kernel either: after a change to `UTC` the radio keeps the country it had until the next boot. The
 key is described in
-[/etc/modprobe.d/kdos-regdom.conf](../../kdos/06-reference/configuration.md#etcmodprobedkdos-regdomconf),
-and the verb in [timezone](../../kdos/04-programs/daemons.md#timezone).
+[/etc/modprobe.d/kdos-regdom.conf](../../kdos/06-reference/configuration.md#etcmodprobedkdos-regdomconf).
 
 ## Usage
 
@@ -74,14 +74,9 @@ frequency range with its limits and flags.
 
 ### Setting the country
 
-1. Set the time zone; the country follows it. From the desktop, choose the zone in `kdos-time`.
-   From a terminal, as a member of `wheel`:
-
-   ```bash
-   kdos-power timezone Europe/Berlin
-   ```
-
-   This rewrites `/etc/modprobe.d/kdos-regdom.conf` and runs `iw reg set` for the running boot.
+1. Set the time zone; the country follows it. From the desktop, choose the zone on System
+   Settings → **Date & Time**. From a terminal, as in
+   [Setting the time zone](time-and-ntp.md#setting-the-time-zone). Either rewrites `/etc/modprobe.d/kdos-regdom.conf` and runs `iw reg set` for the running boot.
 
 2. Check the result with `iw reg get`, and later with `kdos doctor`.
 
@@ -133,9 +128,8 @@ disk keeps whatever file the live session had, since the installer copies the li
 ## Troubleshooting
 
 **`kdos doctor` warns that the domain is `00`.**
-No country was set at boot. Set the time zone as above. The warning names the same two remedies
-this page gives: `kdos-power timezone <Area/City>` for every boot and `iw reg set <CC>` for this
-one.
+No country was set at boot. Set the time zone as above. The two remedies are the ones this page gives: the time
+zone for every boot and `iw reg set <CC>` for this one.
 
 **`kdos doctor` warns that `regulatory.db` or `regulatory.db.p7s` is missing.**
 The package's files are gone or damaged. `sudo kpkg check wireless-regdb` compares them with the
@@ -165,7 +159,7 @@ database and accepted its signature (the kernel log is root's alone). Its first 
   the country
 - [3. Time](../../kdos/02-user-guide/installation.md#3-time): the installer's zone, and the country
   it sets
-- [timezone](../../kdos/04-programs/daemons.md#timezone): the `kdos-powerd` verb
+- [Time and NTP](time-and-ntp.md): setting the time zone
 - [kdos doctor](../../kdos/04-programs/kdos-command.md#kdos-doctor)
 - [NetworkManager](networkmanager.md), [Access point](access-point.md)
 - [Time and NTP](time-and-ntp.md), [Microcode and firmware](microcode-and-firmware.md)
@@ -173,4 +167,4 @@ database and accepted its signature (the kernel log is root's alone). Its first 
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 392.* Previous: [391. Access point](access-point.md) · [Contents](../README.md) · Next: [393. File sharing](file-sharing.md)
+*Part XVI. System administration, chapter 416.* Previous: [415. Access point](access-point.md) · [Contents](../README.md) · Next: [417. File sharing](file-sharing.md)

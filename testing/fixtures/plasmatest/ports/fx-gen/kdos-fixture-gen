@@ -1,0 +1,4 @@
+#!/bin/sh
+# kdos-fixture-gen <dir> — writes the script a fixture package's QML imports,
+# which exists only once the package is built.
+printf '.pragma library\nvar label = "generated";\n' > "$1/generated.js"

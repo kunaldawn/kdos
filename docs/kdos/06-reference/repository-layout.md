@@ -16,8 +16,8 @@ listed by shelf, with its phase, in [The ports catalogue](ports-catalogue.md). T
 
 ## The tree
 
-The top-level directories divide by role. `src/` holds KDOS's own source: the C libraries, the
-desktop and the other programs written for KDOS. `ports/` holds the recipes for upstream software
+The top-level directories divide by role. `src/` holds KDOS's own source: the C libraries, KDOS's
+parts of the Plasma desktop, the daemons and the other programs written for KDOS. `ports/` holds the recipes for upstream software
 and the tools that fetch its sources. `fs/` holds the files copied as they are into the target's
 root filesystem. `script/` is the build, phase by phase; `testing/` is the tests and the test rig;
 `build/` is where the build writes, and git ignores it. Five directories beneath `ports/` and
@@ -41,14 +41,14 @@ kdos/
 │   ├── kfs/               KDOS from Scratch, the build book: hand-written parts in
 │   │   │                  numbered directories; package pages are generated, not kept
 │   │   └── data/          the committed build-state snapshot `make book-data` writes
-│   └── screenshots/       every image the documentation references
+│   └── screenshots/       the pictures the documentation and the README show
 │
 ├── ports/
 │   ├── core/<shelf>/<name>/   one directory per upstream port, on one of 102 shelves
 │   │   ├── kpkgbuild          declarative metadata — parsed, never sourced
 │   │   ├── build.sh           the build; bash, run in the unpacked source
-│   │   ├── postinstall.sh     optional install-time hook (27 ports have one)
-│   │   ├── *.patch            optional patches, tracked (620 files)
+│   │   ├── postinstall.sh     optional install-time hook (28 ports have one)
+│   │   ├── *.patch            optional patches, tracked (671 files)
 │   │   ├── kfs.md             optional: the port's note in KDOS from Scratch; never hashed
 │   │   ├── other support files  configuration, data files, single-file sources — tracked
 │   │   └── <name>-<ver>.tar.* the upstream archive or vendor bundle — fetched, not tracked
@@ -61,37 +61,35 @@ kdos/
 │   ├── .kpkgbin/, .portup, .portup-tools/   host helpers compiled on demand — ignored
 │   ├── srclib.sh              the source archive's addressing, and the port lookup by name,
 │   │                          shared by fetch, publish, the hook and preflight
+│   ├── releaselib.sh          the release index's writer and shard rule, shared by publish,
+│   │                          70_image/010_binhost.sh and the selftest
 │   ├── fetch                  download and verify sources; generate vendor bundles (`make fetch`)
 │   ├── publish                upload sources to the archive; freeze and publish a KDOS release
+│   │                          with its binhost, slot image and release index
 │   └── update                 front end of the upstream version checker (`make updates`)
 │
 ├── src/                   KDOS's own code; every port is at exactly src/<area>/<name>/
 │   ├── libs/              the C libraries, compiled by their consumers — see the rule below
 │   │   ├── libkbase/          allocation, strings, files, processes, the trash
 │   │   ├── libkbuild/         phases, plans, the snapshot inventory and its chains
-│   │   ├── libkcell/          the glyph cache and the cell painter
-│   │   ├── libkchrome/        the window furniture
 │   │   ├── libkcolor/         the palette table and colour arithmetic
-│   │   ├── libkdisp/          which display server, and the surface lifecycle
-│   │   ├── libkicon/          icon lookup: resolves an icon name or file to a sprite
-│   │   ├── libkimg/           the only place untrusted image bytes are decoded
 │   │   ├── libkpack/          the pack format
 │   │   ├── libkpkg/           the package database, the ports tree and its lookup, the solver
 │   │   ├── libkproc/          reads system state from /proc and /sys, or from a fixture root
 │   │   ├── libksig/           Ed25519 — Monocypher, the one third-party source carried unmodified
-│   │   ├── libktui/           the terminal toolkit: cell buffer, widgets, charts, motion
-│   │   ├── libkvt/            the terminal state machine — forked from libtsm, maintained here
-│   │   ├── libkwl/            the toolkit's Wayland backend
-│   │   ├── libkwm/            the window model, taken out of the compositor that obeys it
+│   │   ├── libktui/           the terminal toolkit: cell buffer, widgets, the installer's pages
 │   │   ├── libkxdg/           desktop entries and the MIME cache
 │   │   └── selftest.c         the shared assertion program
 │   │
-│   ├── system/            the system layer — a port repository, 7 recipes
+│   ├── system/            the system layer — a port repository, 8 recipes
 │   │   ├── kdos-kpkg/         the package manager, under five names (no kpkgbuild)
-│   │   ├── kdos-installer/    kinstall, the installer; also built directly by 10_bootstrap
-│   │   ├── kdos-appbox/       launching boxed applications, box management, the store
+│   │   ├── kinstall-core/     the installer's backend, compiled into kinstall (no kpkgbuild)
+│   │   ├── kdos-installer/    kinstall, the terminal wizard over that backend; also built
+│   │   │                      directly by 10_bootstrap
+│   │   ├── kdos-appbox/       launching boxed applications, box management, the store lane
 │   │   │   └── catalogue          every installable application, as a chain of apt packages
 │   │   ├── kdos-boxinit/      process 1 inside a box; statically linked
+│   │   ├── kdos-boxsock/      one tagged Wayland socket per box launcher
 │   │   ├── kdos-doc/          this book on the image; `kdos` and `screenshots` link to docs/
 │   │   ├── kdos-kfs/          KDOS from Scratch on the image; `docs` links to docs/kfs,
 │   │   │                      `book` to script/book
@@ -99,30 +97,41 @@ kdos/
 │   │   └── kdos-tools/        one binary: the kdos command, the ksvc supervisor, kdos-getty,
 │   │                          kdos-bootctl and the other small system tools
 │   │
-│   ├── art/               pictures, themes and their generators — a port repository, 6 recipes
-│   │   ├── kdos-theme/        the stylesheet, icon and cursor generators
+│   ├── art/               pictures, themes and their generators — a port repository, 8 recipes
+│   │   ├── kdos-theme/        the identity generators: colour schemes, Konsole, qt5ct,
+│   │   │                      wallpapers, the greeter's palette
+│   │   ├── kdos-icons/        the KDOS icon themes, the marks over Breeze; genmarks.py
+│   │   ├── kdos-wallpapers/   the mark in each accent, as Plasma wallpaper packages
+│   │   ├── kdos-sounds/       the sound theme, rendered by kdos-sfx at build time
+│   │   ├── kdos-sddm-theme/   the login screen, the Breeze greeter with a KDOS patch
+│   │   ├── kdos-addons/       the curated offline add-ons: wallpapers, schemes, scripts, widgets
 │   │   ├── kdos-splash/       the boot splash, and the host-only boot-artwork generators
-│   │   ├── kdos-bb/           the ASCII-art demo, a fork of the AA-project's bb
-│   │   ├── kdos-icons/        vendored Papirus icons, pruned and recoloured
-│   │   ├── kdos-cursors/      vendored Bibata cursors, pruned and recoloured
-│   │   └── kdos-gtk-theme/    the vendored adw-gtk3 stylesheet
+│   │   └── kdos-bb/           the ASCII-art demo, a fork of the AA-project's bb
 │   │
-│   ├── desktop/           the programs that draw or serve the session — a port repository, 8 recipes
-│   │   ├── kdos-comp/         the compositor; KDOS additions in src/kdos-*.c
-│   │   ├── kdos-shell/        the panel and every other surface: one binary under 55 names
-│   │   ├── kdos-res/          the resource monitor, and its setuid helper kdos-resctl
-│   │   ├── kdos-lock/         the lock screen, and the setuid password checker kdos-checkpass
-│   │   ├── kdos-term/         the terminal
-│   │   ├── kdos-record/       the screen recorder
-│   │   ├── kdos-boxsock/      one tagged compositor socket per box
-│   │   └── xdg-desktop-portal-kdos/  the file chooser, settings, app chooser and access portals
+│   ├── desktop/           KDOS's parts of the Plasma desktop — a port repository, 21 recipes
+│   │   ├── kcm-kdos-*/        five System Settings pages: boxes, firewall, health, look, system
+│   │   ├── kded-kdos/         the kded6 module that keeps the accent in step with Plasma
+│   │   ├── kdos-plasma-look/  the global themes, the Plasma style, the desks, KSplash
+│   │   ├── kdos-welcome/      the KDOS pages of the Welcome Center
+│   │   ├── kdos-discover/     the Discover backend, the update notifier, the ports helper
+│   │   ├── kdos-runner/       KDOS in KRunner, over its D-Bus runner API (C)
+│   │   ├── kdos-notice/       the system's notices as Plasma notifications (C)
+│   │   ├── kdos-kwin-motion/, kwin-effect-kdos-keys/, kwin-script-kdos-*/
+│   │   │                      the KWin effects and scripts: motion, the key card,
+│   │   │                      run-or-raise, window memory
+│   │   ├── plasmoid-kdos-*/   the privacy lamps and the first-run checklist
+│   │   ├── kio-library/       library:/, the offline library as a folder
+│   │   ├── ksystemstats-kdos/ the KDOS sensors, face and page of System Monitor
+│   │   ├── kdos-transcribe/   Transcribe in the file manager's menu
+│   │   └── kdos-installer-gui/  the graphical installer over kinstall
 │   │
-│   ├── daemons/           root daemons the desktop account talks to — a port repository, 5 recipes
-│   │   ├── kdos-powerd/       suspend, poweroff, reboot; client kdos-power
+│   ├── daemons/           root daemons the desktop account talks to — a port repository, 6 recipes
+│   │   ├── kdos-powerd/       the firewall's services and the accent before login; client kdos-power
 │   │   ├── kdos-energyd/      per-application energy attribution; client kdos-energy
 │   │   ├── kdos-oomd/         memory-pressure protection
-│   │   ├── kdos-mountd/       removable media, LUKS, SMB; client kdos-mount
-│   │   └── kdos-packd/        the only thing that mounts a pack
+│   │   ├── kdos-packd/        the only thing that mounts a pack
+│   │   ├── kdos-settingsd/    hostname1, timedate1 and locale1 over KDOS's files
+│   │   └── kdos-sysupdated/   sysupdate1 and Slots1 over the A/B slots, for Discover
 │   │
 │   └── devtools/          host-side build tools — not ports, never installed on the target
 │       ├── kdosbuild/         the build orchestrator
@@ -130,13 +139,15 @@ kdos/
 │
 ├── fs/                    copied verbatim into the target root filesystem
 │   ├── etc/                   the system configuration; see the table below the tree
-│   ├── root/                  root's own shell dotfiles
-│   └── usr/                   local/bin and local/sbin: shell programs such as kdos-desktop,
-│                              xdg-terminal-exec and kdos-login; local/lib/kdos: the session
-│                              bring-up the two kdos-desktop scripts source;
-│                              share/{applications,backgrounds,bash-completion,glib-2.0,kdos,
-│                              xdg-desktop-portal}; boot artwork is in share/kdos/boot, the
-│                              help pages in share/kdos/doc; lib64 is a link to lib
+│   ├── root/                  root's home: .bash_profile and .bashrc
+│   └── usr/                   local/bin and local/sbin: shell programs such as kdos-dm,
+│                              kdos-session-wrapper and xdg-terminal-exec; local/lib/kdos: the
+│                              session's shared shell code and the user timers; lib/turnstile:
+│                              ksvc, the user-service backend script;
+│                              share/{applications,bash-completion,desktop-directories,fwupd,
+│                              glib-2.0,kdos}; KDOS's defaults for KDE programs are in
+│                              share/kdos/xdg, boot artwork in share/kdos/boot; lib64 is a link
+│                              to lib
 │
 ├── script/                the build
 │   ├── phases/<NN>_<name>/  the thirteen phases, run in number order; each holds its
@@ -149,6 +160,7 @@ kdos/
 │   ├── chroot/              exec.sh runs a step in the chroot; enter.sh opens a shell there
 │   ├── book/                the renderer of KDOS from Scratch (`make book`); kdos-kfs links it
 │   ├── kdosbuild.sh         compiles and runs the orchestrator
+│   ├── release-image.sh     a release's signed whole-slot image and its deltas
 │   ├── migrate-phase-names.sh  renames the snapshots, logs and marks of a build/ tree
 │   │                        made under other phase directory names to the current ones
 │   └── hooks/pre-push       refuses a push that breaks the ports layout, adds a patch with
@@ -159,6 +171,11 @@ kdos/
 │   ├── preflight.sh          compiles kpkg, then checks the tree's wiring (packages resolve,
 │   │                         recipes parse, scripts are valid) without building a port
 │   ├── selftest.sh           the libraries and their consumers
+│   ├── plasmatest.sh         the Qt suite of KDOS's desktop components (development image only)
+│   ├── defaultscheck.py, xdgcheck.sh, lnfcheck.py, chordcheck.py, mimecheck.py, monofont.py
+│   │                         KDOS's defaults for Plasma read back, kept out of /etc/xdg, the
+│   │                         global themes and desks, the chords, the default applications and
+│   │                         the monospace face
 │   ├── docscheck.sh          both books: dead links, history, the page contract
 │   ├── bookcounts.py         the book's port counts and catalogue rows, against the tree
 │   ├── anchorcheck.py        every #fragment link in both books lands on a heading
@@ -175,11 +192,11 @@ kdos/
 │   │                         the gates 70_image runs on the image: files nothing owns, run-time
 │   │                         references nothing satisfies, links and launchers that lead nowhere
 │   ├── treescan.py           the built-tree reader those four checks share
-│   ├── barcheck.c, boxcheck.c, appindex.c
-│   │                         checks selftest.sh compiles and runs
 │   ├── hostcheck.sh          in a booted guest: is the binary each name resolves to the right one
-│   ├── fixtures/             recorded system state, 51 directories
-│   ├── goldens/              committed reference frames: 222 files and a README
+│   ├── plasma-probe.sh, session-cost.sh, aboutcheck.sh
+│   │                         in a booted guest: the Plasma session whole, its cost, the About rows
+│   ├── atspi/                AT-SPI dumps of KDOS's surfaces and their goldens
+│   ├── fixtures/             recorded system state, 30 directories
 │   ├── vnc-shot.py           drive and photograph a real session
 │   ├── rig-image.sh          builds kdos-qemu-py, the image vnc-shot.py runs in
 │   ├── quick.sh, quickpatch.sh   one port, patched into a booted ISO's RAM overlay
@@ -213,8 +230,9 @@ kdos/
 | Network | `hostname`, `hosts`, `resolv.conf`, `nsswitch.conf`, `nftables.conf`, `nftables.d/` |
 | Init and shells | `inittab`, `init.d/`, `service.disabled/` (one flag file per service that does not start; `sshd` ships there), `default/` (settings for `pcscd` and `useradd`), `fstab`, `mtab` (a link to `/proc/self/mounts`), `profile`, `profile.d/`, `bash.bashrc`, `skel/` |
 | Kernel, modules and devices | `sysctl.conf`, `modprobe.d/`, `modules-load.d/`, `udev/`, `vtrgb`, `ld-musl-x86_64.path` |
-| Desktop services | `polkit-1/`, `pipewire/`, `alsa/`, `xdg/` |
-| KDOS's own | `kdos/`: `login.conf`, `packd.conf`, `menu.conf`, `zram.conf`, `timers.d/`, `keys/` |
+| Login and sessions | `sddm.conf.d/`, `elogind/`, `turnstile/`, `security/limits.d/`, `locale.conf` |
+| Desktop services | `polkit-1/`, `pipewire/`, `alsa/`, `samba/`, `fonts/conf.d/` (JetBrains Mono first for `monospace`), `xdg/` (the files every desktop reads; KDOS's defaults for KDE programs are in `fs/usr/share/kdos/xdg/`) |
+| KDOS's own | `kdos/`: `packd.conf`, `menu.conf`, `zram.conf`, `xkb.conf`, `timers.d/`, `user-services/`, `keys/` |
 
 The keys these files hold are listed in [Configuration](configuration.md).
 
@@ -232,11 +250,11 @@ port repository; it is the catalogue file `src/system/kdos-appbox/catalogue`.
 
 | Directory | Holds | Recipes | Layout |
 |---|---|---|---|
-| `ports/core/` | Upstream software: somebody else's source | about 2,000 | `<shelf>/<name>/`, on 102 shelves |
-| `src/system/` | The package manager, the `kdos` command and its services, packs and boxes, the installer, and the two books on the image (`kdos-doc`, whose `kdos` and `screenshots` link to `docs/kdos` and `docs/screenshots`, and `kdos-kfs`, whose `docs` and `book` link to `docs/kfs` and `script/book`) | 7 | `<name>/` |
-| `src/art/` | Theme generators, the themes built from them, the boot splash, the demo | 6 | `<name>/` |
-| `src/desktop/` | Programs that draw the session or serve it over Wayland or D-Bus | 8 | `<name>/` |
-| `src/daemons/` | Root daemons whose client is the desktop account | 5 | `<name>/` |
+| `ports/core/` | Upstream software: somebody else's source, Plasma, Frameworks and Gear among it | about 2,400 | `<shelf>/<name>/`, on 102 shelves |
+| `src/system/` | The package manager, the `kdos` command and its services, packs, boxes and the box socket, the installer, and the two books on the image (`kdos-doc`, whose `kdos` and `screenshots` link to `docs/kdos` and `docs/screenshots`, and `kdos-kfs`, whose `docs` and `book` link to `docs/kfs` and `script/book`) | 8 | `<name>/` |
+| `src/art/` | The identity generators and what they make: icons, wallpapers, sounds, the login theme, the add-ons; the boot splash; the demo | 8 | `<name>/` |
+| `src/desktop/` | KDOS's parts of the Plasma desktop, in Qt and QML (and two in C): settings pages, widgets, KWin effects and scripts, the Discover backend, the runner, the graphical installer | 21 | `<name>/` |
+| `src/daemons/` | Root daemons whose client is the desktop account | 6 | `<name>/` |
 
 The counts are directories holding a `kpkgbuild`; [The ports catalogue](ports-catalogue.md#ports-per-shelf) has the exact figures, shelf by shelf. A port is its bare name in every one of them:
 one name is one port across all five, and nothing that names a port spells the shelf or the area.
@@ -256,7 +274,8 @@ more:
 
 The paths are the chroot's view of the tree, described in
 [How the build sees the tree](#how-the-build-sees-the-tree). A port in `src/desktop/` or
-`src/daemons/` is on the search path of `50_desktop` alone, so only that phase can build one.
+`src/daemons/` is on the search path of `50_desktop` alone, so only that phase can build one: the
+desktop's components link KWin, libplasma and Discover, which that phase installs.
 
 Which port is built in which phase is decided by the lists in the phase directories, not by where
 the recipe lives. Each package phase from `30_foundation` on names every port it installs, and
@@ -294,7 +313,8 @@ first area that fits:
 
 1. A library goes to `src/libs/`.
 2. A program not installed on the target goes to `src/devtools/`.
-3. A program that draws, or that speaks the session's Wayland or D-Bus, goes to `src/desktop/`.
+3. A part of the Plasma desktop, a plugin, page, widget, effect or script Plasma loads or a
+   program that speaks the session's D-Bus for it, goes to `src/desktop/`.
 4. A root daemon whose client is the desktop account goes to `src/daemons/`.
 5. Pictures, themes and their generators go to `src/art/`.
 6. Everything else goes to `src/system/`.
@@ -317,8 +337,8 @@ list, because that phase runs before the package manager exists:
   `kpkgdepends`.
 - `src/system/kdos-installer/` has a recipe, but no phase list names it.
   `script/phases/10_bootstrap/130_kinstall.sh` compiles `kinstall` from the same directory, taking
-  every `.c` file by glob so that the bootstrap build and the recipe's `build.sh` compile the same
-  sources.
+  every `.c` file by glob. The recipe's `build.sh` also compiles `src/system/kinstall-core`, the
+  backend, which has no recipe of its own.
 
 ## The script directory
 
@@ -376,24 +396,17 @@ any other library exists on the target, and two programs are built in it:
 
 | Program | Compiles in | Links |
 |---|---|---|
-| `kinstall`, the installer | `libkbase`, `libktui`, `libkcolor`, and `kdos-appbox`'s `catalogue.c` | the C library only |
+| `kinstall`, the installer | `libkbase`, `libktui`, `libkcolor`, `kinstall-core` and `kdos-appbox`'s `catalogue.c` | the C library only |
 | `kpkg`, the package manager | `libkbase`, `libkpkg`, `libksig` (with Monocypher) | the C library only |
 
 If any of those five libraries gained a real link dependency, the program that compiles it in would
 have to move to a later phase with it — and the package manager is what every later phase uses.
 
-Five libraries do link beyond the C library. Each is its own source directory, so a program that does
-not draw pixels never compiles it in or links its dependencies:
-
-| Library | Links |
-|---|---|
-| `libkwl` | fcft, fontconfig, pixman, xkbcommon and the Wayland client libraries |
-| `libkcell` | fcft, fontconfig and pixman |
-| `libkicon` | pixman and libpng |
-| `libkimg` | pixman, plus whichever of libpng, libjpeg, libwebp, libnsgif and libsixel the consumer enables with a `KIMG_HAVE_*` flag |
-| `libkchrome` | pixman directly, plus everything `libkcell`, `libkicon` and `libkwl` link, since it is built on them |
-
-The per-library dependencies are in [The C libraries](../05-developer/c-libraries.md#the-set).
+None of the nine libraries links anything beyond the C library. What a program links beyond them is
+its own choice in its own `build.sh`: basu for the daemons on the system bus, libpng for
+`kdos-theme`, Qt and KDE Frameworks for the components under `src/desktop/`, which compile in no
+`libk*` library except `libkbase`, `libkxdg` and `libkcolor` where a part of them is C. The per-library
+detail is in [The C libraries](../05-developer/c-libraries.md#the-set).
 
 ## How the build sees the tree
 
@@ -447,14 +460,15 @@ upstream. `make build` runs its container with no network; only building that co
 reaches out, for Alpine's packages. The lookup order, the cache, the vendor bundles and the
 environment variables are described in [Developing](../05-developer/developing.md#where-sources-come-from).
 
-Five files in the tree make this work:
+Six files in the tree make this work:
 
 | File | Does |
 |---|---|
 | `ports/srclib.sh` | The archive's addressing and hash checks, the lookup of a port by bare name on any shelf, and the on-demand build of the recipe reader; sourced by `ports/fetch`, `ports/publish`, the pre-push hook and `testing/preflight.sh` |
 | `ports/sources.idx` | Format 2: the first line is `# kdos-sources-index 2`, then one line per archived file, `<sha256> <tag> <asset> <port>/<file>`, with `parts=<N>:<h1>,…,<hN>` after it for a file stored in parts. The file is asset `<asset>` (or `<asset>.part01` onwards) of release `<tag>`. Written by `ports/publish`, read by `ports/fetch` and the pre-push hook, checked by `testing/preflight.sh`, and committed with the recipe that needs it; an index of any other format is not read |
 | `ports/fetch` | Resolves every recipe hash from the port directory, `ports/.srccache/`, the archive, or the recipe's `source =` URL, in that order, and generates a port's own vendor bundle when none of those holds it. `make fetch` runs it; `make fetch-check` runs `ports/fetch --check`, which is offline |
-| `ports/publish` | Uploads sources the archive does not hold into their shelf's volume (needs a token) and writes their index lines; `--check` and `--dry-run` report without uploading; `--history` adds the files older commits' recipes name; `--plan` gives a new shelf its volume in `ports/shelves`; `--describe` rewrites each release's title and notes from the index; `--rehome` moves files whose port changed shelf, `--retire` deletes the emptied releases of the older one-per-shelf layout, `--orphans` lists files no recipe names; `--freeze <tag>` attaches a release's frozen `sources.sha256` list; `--release <tag>` puts up a KDOS release: the ISO, the recipe tree, checksums and their signatures. See [Writing ports](../05-developer/writing-ports.md#publishing-sources) |
+| `ports/publish` | Uploads sources the archive does not hold into their shelf's volume (needs a token) and writes their index lines; `--check` and `--dry-run` report without uploading; `--history` adds the files older commits' recipes name; `--plan` gives a new shelf its volume in `ports/shelves`; `--describe` rewrites each release's title and notes from the index; `--rehome` moves files whose port changed shelf, `--retire` deletes the emptied releases of the older one-per-shelf layout, `--orphans` lists files no recipe names; `--freeze <tag>` attaches a release's frozen `sources.sha256` list; `--release <tag>` puts up a KDOS release: the ISO, the recipe tree, checksums and their signatures, and its updates, the binhost in releases of at most 1,000 assets and the slot image, with the signed release index that finds them. See [Writing ports](../05-developer/writing-ports.md#publishing-sources) and [Publishing a release](../03-architecture/packaging.md#publishing-a-release) |
+| `ports/releaselib.sh` | Writes the release index `kdos-update.idx`, makes a path's flat asset name and cuts a lane into releases of at most `$KDOS_RELEASE_CAP` assets; sourced by `ports/publish`, `70_image/010_binhost.sh` and `testing/selftest.sh` |
 | `script/hooks/pre-push` | Refuses a `git push` that breaks the ports layout, adds or changes a patch with no `Subject:` line, fails the book checks, or whose recipes name a hash the archive does not hold, every part of a split file included |
 
 The hook runs only in a clone that has opted in:
@@ -512,7 +526,7 @@ delete them from inside a container rather than with `sudo`.
 |---|---|
 | `README.md` | The front door: what KDOS is, and how to build and run it |
 | `CLAUDE.md` | The contributor briefing read by coding assistants: hard rules, conventions and the build loop. It is not a description of how the system works; that is this book |
-| `Makefile` | Every target: building (`all`, the default and the same as `build`; `build`, `snapshots`, `cleanbuild`, `clean`), running (`run`, `run-hw`, `rundisk`, `rundisk-hw`, `debug-boot`, `check-hw`, `cleandisk`), sources (`fetch`, `fetch-check`, `updates`, `publish` and the seven `publish-*` targets), releases (`freeze`, `release`, `release-publish`), checks (`check`, and each of its checks alone, with `selftest-asan`, `booknav-write` and the built-tree checks `depdrift`, `debuginfo`, `unowned`, `linkcheck` and `entrycheck`), the book (`book`, `book-data`, `book-stamp`) and the rig (`quick`, `rig-image`, `devdeps-image`). `make help` lists them with a line each. `check-iso-free` runs before every `build` and stops it while another process — usually a running VM — holds `build/iso-build/kdos.iso` open, since rewriting the image under a guest gives it I/O errors; `ALLOW_ISO_IN_USE=1` overrides it. See [Developing](../05-developer/developing.md#make-targets) |
+| `Makefile` | Every target: building (`all`, the default and the same as `build`; `build`, `snapshots`, `cleanbuild`, `clean`), running (`run`, `run-hw`, `rundisk`, `rundisk-hw`, `debug-boot`, `check-hw`, `cleandisk`), sources (`fetch`, `fetch-check`, `updates`, `publish` and the seven `publish-*` targets), releases (`freeze`, `release`, `release-publish`), checks (`check`, and each of its checks alone, with `selftest-asan`, `plasmatest`, `booknav-write` and the built-tree checks `depdrift`, `debuginfo`, `unowned`, `linkcheck` and `entrycheck`), the book (`book`, `book-data`, `book-stamp`) and the rig (`quick`, `session-probe`, `shots`, `atspi`, `rig-image`, `devdeps-image`). `make help` lists them with a line each. `check-iso-free` runs before every `build` and stops it while another process — usually a running VM — holds `build/iso-build/kdos.iso` open, since rewriting the image under a guest gives it I/O errors; `ALLOW_ISO_IN_USE=1` overrides it. See [Developing](../05-developer/developing.md#make-targets) |
 | `Dockerfile` | The build container, `os-dev`: Alpine with the host tools the two host phases (`00_cross`, `10_bootstrap`) need |
 | `.dockerignore` | What the build container's context leaves out: `build/`, `ports-archived/` and `ports/` |
 | `.gitignore` | The ignore rules in the table above |
@@ -543,9 +557,10 @@ After changing `kdos.png`, regenerate the four in the table on the host (and cop
 
 ## What must never exist
 
-`fs/etc/X11/`. There is no Xorg server on this system and nothing X on the login path. The one X
-server is Xwayland, a rootless X server the compositor starts for X11 clients: boxed applications,
-and host applications that have no Wayland path. It needs nothing in that directory. See
+`fs/etc/X11/`. There is no Xorg server on this system and nothing X on the login path: SDDM's
+greeter runs on Wayland. The one X server is Xwayland, a rootless X server KWin starts for X11
+clients: boxed applications, and host applications that have no Wayland path. It needs nothing in
+that directory. See
 [Principles](../01-philosophy/principles.md#no-xorg-server-and-one-carve-out).
 
 ## See also

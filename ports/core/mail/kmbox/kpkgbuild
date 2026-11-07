@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = kmbox
-version     = 26.08.1
+version     = 26.08.2
 release     = 1
 source      = $name-$version.tar.xz::https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
-sha256      = 4bda0a789e010d383db7a56294941853cc2d878ddd57b33f1e08daeb2714a75b  kmbox-26.08.1.tar.xz
+sha256      = a4b08915584d0b7ec5fa28adae1eb3d0bc63a1d95f15e40bfae529505d0307a5  kmbox-26.08.2.tar.xz
 description = KDE PIM library for reading and writing mbox mail folders
 homepage    = https://invent.kde.org/pim/kmbox
 license     = LGPL-2.0-or-later

@@ -1,0 +1,122 @@
+Subject: Add the sandbox engine, app id and instance id of a decorated window
+
+DecoratedWindowPrivateV5 adds sandboxEngine(), sandboxAppId() and
+sandboxInstanceId(), and DecoratedWindow exposes them, with isSandboxed(),
+as constant properties, so a decoration can mark the windows of a sandboxed
+client (a Flatpak, a KDOS box) the way it marks a modal or kept-above one.
+A compositor that implements only V4 answers empty strings.
+
+diff -ruN a/src/decoratedwindow.cpp b/src/decoratedwindow.cpp
+--- a/src/decoratedwindow.cpp	2026-10-27 16:55:47.000000000 +0530
++++ b/src/decoratedwindow.cpp	2026-10-29 03:43:12.476535623 +0530
+@@ -78,6 +78,35 @@
+     return false;
+ }
+ 
++bool DecoratedWindow::isSandboxed() const
++{
++    return !sandboxEngine().isEmpty();
++}
++
++QString DecoratedWindow::sandboxEngine() const
++{
++    if (auto impl = dynamic_cast<DecoratedWindowPrivateV5 *>(d.get())) {
++        return impl->sandboxEngine();
++    }
++    return QString();
++}
++
++QString DecoratedWindow::sandboxAppId() const
++{
++    if (auto impl = dynamic_cast<DecoratedWindowPrivateV5 *>(d.get())) {
++        return impl->sandboxAppId();
++    }
++    return QString();
++}
++
++QString DecoratedWindow::sandboxInstanceId() const
++{
++    if (auto impl = dynamic_cast<DecoratedWindowPrivateV5 *>(d.get())) {
++        return impl->sandboxInstanceId();
++    }
++    return QString();
++}
++
+ bool DecoratedWindow::isCloseable() const
+ {
+     return d->isCloseable();
+diff -ruN a/src/decoratedwindow.h b/src/decoratedwindow.h
+--- a/src/decoratedwindow.h	2026-10-27 16:55:47.000000000 +0530
++++ b/src/decoratedwindow.h	2026-10-29 03:43:12.476388163 +0530
+@@ -93,6 +93,24 @@
+      * Whether the DecoratedWindow is hidden from Screencasts.
+      **/
+     Q_PROPERTY(bool excludeFromCapture READ isExcludedFromCapture NOTIFY excludeFromCaptureChanged)
++    /**
++     * The sandbox engine of the window's client, such as @c org.flatpak, or
++     * empty when the client is not sandboxed. An engine may carry a state
++     * after a @c + (KDOS: @c io.kdos.appbox+private, @c +tagged).
++     * @since 6.9
++     */
++    Q_PROPERTY(QString sandboxEngine READ sandboxEngine CONSTANT)
++    /**
++     * The app id the window's sandbox gave its client, or empty.
++     * @since 6.9
++     */
++    Q_PROPERTY(QString sandboxAppId READ sandboxAppId CONSTANT)
++    /**
++     * The instance id of the window's sandbox, naming the sandbox it runs in,
++     * or empty.
++     * @since 6.9
++     */
++    Q_PROPERTY(QString sandboxInstanceId READ sandboxInstanceId CONSTANT)
+ 
+     /**
+      * Whether the DecoratedWindow can be closed. If this property is @c false a DecorationButton
+@@ -206,6 +224,14 @@
+     bool isKeepAbove() const;
+     bool isKeepBelow() const;
+     bool isExcludedFromCapture() const;
++    /**
++     * Whether the window's client is sandboxed: its sandbox engine is set.
++     * @since 6.9
++     */
++    bool isSandboxed() const;
++    QString sandboxEngine() const;
++    QString sandboxAppId() const;
++    QString sandboxInstanceId() const;
+ 
+     bool isCloseable() const;
+     bool isMaximizeable() const;
+diff -ruN a/src/private/decoratedwindowprivate.cpp b/src/private/decoratedwindowprivate.cpp
+--- a/src/private/decoratedwindowprivate.cpp	2026-10-27 16:55:47.000000000 +0530
++++ b/src/private/decoratedwindowprivate.cpp	2026-10-29 03:43:12.475989795 +0530
+@@ -67,4 +67,9 @@
+     : DecoratedWindowPrivateV3(client, decoration)
+ {
+ }
++
++DecoratedWindowPrivateV5::DecoratedWindowPrivateV5(DecoratedWindow *client, Decoration *decoration)
++    : DecoratedWindowPrivateV4(client, decoration)
++{
++}
+ }
+diff -ruN a/src/private/decoratedwindowprivate.h b/src/private/decoratedwindowprivate.h
+--- a/src/private/decoratedwindowprivate.h	2026-10-27 16:55:47.000000000 +0530
++++ b/src/private/decoratedwindowprivate.h	2026-10-29 03:43:12.475766621 +0530
+@@ -124,4 +124,15 @@
+     explicit DecoratedWindowPrivateV4(DecoratedWindow *client, Decoration *decoration);
+ };
+ 
++class KDECORATIONS_PRIVATE_EXPORT DecoratedWindowPrivateV5 : public DecoratedWindowPrivateV4
++{
++public:
++    virtual QString sandboxEngine() const = 0;
++    virtual QString sandboxAppId() const = 0;
++    virtual QString sandboxInstanceId() const = 0;
++
++protected:
++    explicit DecoratedWindowPrivateV5(DecoratedWindow *client, Decoration *decoration);
++};
++
+ } // namespace

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = keysmith
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = c04c5362e3d50947a4175422f0cf9856d3218711f43da5b8bf1864dafecae256  keysmith-26.08.2.tar.xz
+description = One-time password generator — TOTP and HOTP codes for two-factor sign-in, kept encrypted
+homepage    = https://apps.kde.org/keysmith/
+license     = GPL-3.0-or-later
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qtmultimedia kirigami kcoreaddons ki18n kconfig kirigami-addons kdbusaddons kwindowsystem prison libsodium openssl qqc2-desktop-style

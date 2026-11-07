@@ -1,0 +1,81 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   The KDOS layer over KDE's global shortcuts.
+#
+# KDE's defaults win the window-management chords; KDOS rebinds two of them
+# and adds chords KDE leaves free. Every chord here passes
+# testing/chordcheck.py, which holds it against KDE's compiled-in defaults,
+# every installed X-KDE-Shortcuts and fcitx5's hotkeys.
+#
+# KGLOBALACCEL NEVER READS THIS FILE. It reads ~/.config/kglobalshortcutsrc
+# alone, with no XDG cascade, and a component's own registration fills in
+# whatever that file leaves out. plasma-workspace/env/kdos-shortcuts.sh, which
+# startplasma sources before KWin starts, copies each entry here into a
+# person's file once: only an entry their file does not already hold, and only
+# an entry it has not copied before, so a chord a person resets to KDE's
+# default stays reset.
+#
+# Two shapes, as kglobalaccel writes them. A component's entry is
+#   action=<current keys>,<KDE's default keys>,<friendly name>
+# and a desktop entry's (under [services][<id>]) is the current keys alone,
+# its default being the entry's own X-KDE-Shortcuts. Keys are separated by
+# \t, and `none` is no key.
+# ---------------------------------
+
+[kwin]
+_k_friendly_name=KWin
+# Meta+Q closes the window, beside Alt+F4; KDE gives it to the activity
+# switcher, and KDOS ships no activity interface.
+Window Close=Alt+F4\tMeta+Q,Alt+F4,Close Window
+# Meta+F1 is the key card's; desktop 1 keeps Ctrl+F1.
+Switch to Desktop 1=Ctrl+F1,Meta+F1\tCtrl+F1,Switch to Desktop 1
+# The key card, the kdos_keys effect, registers Meta+F1 itself; Meta+/ is
+# the same action's second key, so the Shortcuts page shows one row.
+KDOS Key Card=Meta+F1\tMeta+/,Meta+F1,Show Key Card
+# Night Light has no default chord in KDE.
+Toggle Night Color=Meta+Ctrl+Shift+N,none,Suspend/Resume Night Light
+# The bundled auto-tiler, Krohnkite, asks for seven chords the session
+# already holds: Meta+L (lock), Meta+D (show desktop), Meta+T (tile editor),
+# Meta+. (emoji), Meta+R and Meta+Shift+R (Spectacle's recordings) and
+# Meta+Return (Konsole). kglobalaccel gives a chord to whichever component
+# registers it first, and a script turned on by `kdos tiling on` can come
+# first, so these entries settle it in advance: the seven stay unbound until
+# a person binds them. They are not moved to other chords: each would be one
+# more chord held back from everything else for a script that is off by
+# default, and testing/chordcheck.py holds every chord here against the rest.
+KrohnkiteFocusNext=none,Meta+.,Krohnkite: Focus Next
+KrohnkiteFocusRight=none,Meta+L,Krohnkite: Focus Right
+KrohnkiteDecrease=none,Meta+D,Krohnkite: Decrease
+KrohnkiteRotate=none,Meta+R,Krohnkite: Rotate
+KrohnkiteRotatePart=none,Meta+Shift+R,Krohnkite: Rotate Part
+KrohnkiteSetMaster=none,Meta+Return,Krohnkite: Set master
+KrohnkiteTileLayout=none,Meta+T,Krohnkite: Select Layout - Tile
+
+[plasmashell]
+_k_friendly_name=plasmashell
+manage activities=none,Meta+Q,Show Activity Switcher
+
+# Meta+Space opens KRunner, the KDOS command palette, beside KDE's three.
+[services][org.kde.krunner.desktop]
+_launch=Alt+Space\tAlt+F2\tSearch\tMeta+Space
+
+# Meta+Return opens a terminal, beside Ctrl+Alt+T.
+[services][org.kde.konsole.desktop]
+_launch=Ctrl+Alt+T\tMeta+Return
+
+# The KDOS capture keys: Print the whole screen (spectaclerc makes that
+# Spectacle's launch action), Shift+Print a rectangle, Alt+Print a recording
+# of a rectangle. Spectacle's own Shift+Print (the whole desktop) moves to
+# Print. Meta+Shift+S, which KDE puts on the launch action and so on a
+# rectangle, follows the rectangle rather than the launch action, and
+# Meta+Shift+Print and Meta+Shift+R stay.
+[services][org.kde.spectacle.desktop]
+_launch=Print
+FullScreenScreenShot=none
+RectangularRegionScreenShot=Shift+Print\tMeta+Shift+Print\tMeta+Shift+S
+RecordRegion=Meta+Shift+R\tMeta+R\tAlt+Print

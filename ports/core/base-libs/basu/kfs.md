@@ -2,9 +2,9 @@
 
 basu is [sd-bus]{.idx}, systemd's D-Bus client library, cut out of the systemd tree so that it
 builds and runs without systemd. It installs the sd-bus headers under `<basu/…>`, such as
-`<basu/sd-bus.h>`, and programs link it as `libbasu` through `basu.pc`; in KDOS that is the compositor `kdos-comp`, the panel `kdos-shell`,
-`kdos-record`, both portal backends (`xdg-desktop-portal-kdos` and `xdg-desktop-portal-wlr`),
-`fprintd`, `libei` and `cmus`. KDOS has [no systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd),
+`<basu/sd-bus.h>`, and programs link it as `libbasu` through `basu.pc`; in KDOS that is
+`kdos-tools`, the KDOS daemons (`kdos-powerd`, `kdos-settingsd`, `kdos-sysupdated`), the KRunner
+runner and notifier of `src/desktop`, `fprintd`, `libei` and `cmus`. KDOS has [no systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd),
 so this is the sd-bus every one of them gets.
 
 ## Flags

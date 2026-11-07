@@ -1,0 +1,15 @@
+[SddmGreeterTheme]
+Name=KDOS
+Description=The KDOS login screen, derived from Breeze
+Author=KDOS, from the KDE Visual Design Group's Breeze theme
+Copyright=(c) 2014, David Edmundson
+License=LGPL-2.0-or-later
+Type=sddm-theme
+Version=1.0
+Website=https://github.com/kunaldawn/kdos
+MainScript=Main.qml
+ConfigFile=theme.conf
+TranslationsDirectory=translations
+Theme-Id=kdos
+Theme-API=2.0
+QtVersion=6

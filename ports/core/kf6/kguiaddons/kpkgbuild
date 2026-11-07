@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = kguiaddons
-version     = 6.30.0
+version     = 6.31.0
 release     = 1
 source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
-sha256      = e98864228d1c5e23f3428025eb9928697374fdc3eddebb3a9dec570de028a62d  kguiaddons-6.30.0.tar.xz
+sha256      = d440bbe350282b03c828d5987a6db1f0a4f5d87a528907bf19e1e5bb76d4b219  kguiaddons-6.31.0.tar.xz
 description = KDE Frameworks: colours, fonts, clipboard and key helpers for Qt GUIs
 homepage    = https://api.kde.org/frameworks/kguiaddons/html/
 license     = LGPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND BSD-2-Clause AND (LGPL-2.0-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-3.0-only AND (LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only)

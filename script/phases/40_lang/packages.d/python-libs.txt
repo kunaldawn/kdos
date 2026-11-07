@@ -91,3 +91,7 @@ python3-ruamel-yaml
 python3-hatch-tryton
 python3-networkx
 python3-colorama
+
+python3-zope-interface
+python3-constantly
+python3-automat

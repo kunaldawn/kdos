@@ -1,0 +1,11 @@
+Subject: set the desktop entry's StartupWMClass to the Wayland app_id, org.kde.kcachegrind
+
+--- a/kcachegrind/org.kde.kcachegrind.desktop
++++ b/kcachegrind/org.kde.kcachegrind.desktop
+@@ -183,5 +183,5 @@
+ Comment[uk]=Візуалізація даних профілювання швидкодії
+ Comment[zh_CN]=性能测试数据的可视化表现
+ Comment[zh_TW]=效能分析資料視覺化
+-StartupWMClass=kcachegrind
++StartupWMClass=org.kde.kcachegrind
+ Categories=Qt;KDE;Development;

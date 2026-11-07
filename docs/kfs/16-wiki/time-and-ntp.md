@@ -4,7 +4,7 @@ KDOS keeps its clock with [chrony]{.idx}, which starts at boot and needs no sett
 [time zone]{.idx} in two files that always name the same zone. This page shows how to check that the clock
 is synchronised, how to set the time zone, how to use other time servers, and what to look at when
 the clock is wrong. Why the zone is written twice, and what else the zone sets, is in the KDOS
-book's [timezone](../../kdos/04-programs/daemons.md#timezone) section.
+book's [kdos-settingsd](../../kdos/04-programs/daemons.md#kdos-settingsd) section.
 
 ## Installation
 
@@ -12,8 +12,8 @@ book's [timezone](../../kdos/04-programs/daemons.md#timezone) section.
 |---|---|---|
 | [`chronyd`]{.idx} and [`chronyc`]{.idx} | [chrony](#port-chrony) | [`/etc/init.d/35_chrony.sh`]{.idx}, at every boot |
 | The zone database, [`/usr/share/zoneinfo`]{.idx} | [tzdata](#port-tzdata) | read by the C library, nothing to start |
-| `kdos-power timezone`, the one command that sets the zone | [kdos-powerd](#port-kdos-powerd) | [`/etc/init.d/55_powerd.sh`]{.idx} |
-| [`kdos-time`]{.idx}, the Date and time window | [kdos-shell](#port-kdos-shell) | Settings, under System |
+| `org.freedesktop.timedate1`, which sets the zone, the clock and network time | [kdos-settingsd](#port-kdos-settingsd) | [`/etc/init.d/43_settingsd.sh`]{.idx} |
+| The **Date & Time** page of System Settings, and the clock in the panel | [plasma-workspace](#port-plasma-workspace) | System Settings |
 
 The two service scripts come from the tree's `fs/` overlay, not from the ports, and the image
 ships no marker for either in `/etc/service.disabled/`, so both start on the live medium and on an
@@ -51,13 +51,13 @@ nothing is there at boot, as on every boot of the live medium, `rcS` links UTC, 
 <!-- kfs:include fs/etc/init.d/rcS lines=110-116 pin=c9969d56d2ea -->
 
 **[`/etc/profile.d/20-timezone.sh`]{.idx}** sets `TZ` for every login shell. It is not in the tree: the
-installer writes it, and `kdos-powerd` writes it on every zone change, so the live medium has none
-until the first `kdos-power timezone`. The text, from `src/daemons/kdos-powerd/main.c`:
+installer writes it, and kdos-settingsd writes it on every zone change, so the live medium has
+none until the first one. The text, from `src/daemons/kdos-settingsd/store.c`:
 
-<!-- kfs:include src/daemons/kdos-powerd/main.c lines=900-906 pin=6d1b532e0eee -->
+<!-- kfs:include src/daemons/kdos-settingsd/store.c lines=986-992 pin=11bcddfa8bb9 -->
 
 **`/etc/modprobe.d/kdos-regdom.conf`** is the wireless regulatory country, written from the zone
-by the same verb; see
+by the same call; see
 [`/etc/modprobe.d/kdos-regdom.conf`](../../kdos/06-reference/configuration.md#etcmodprobedkdos-regdomconf).
 
 ## Usage
@@ -83,13 +83,13 @@ by the same verb; see
 
    The source marked `*` is the one the clock follows. `-v` prints a legend for the columns.
 
-3. Or open **Date and time** in Settings, or run `kdos-time`, which shows the zone, the clock and
-   whether chronyd reports it synchronised. It reads `chronyc tracking` and never changes the
-   clock.
+3. Or open System Settings → **Date & Time**, which shows the zone, the clock and whether it is
+   set automatically.
 
 ### Setting the time zone
 
-The account must be in `wheel`.
+polkit lets the person at the machine do it; anyone else is asked for an administrator's
+password.
 
 1. Find the zone's name, `Area/City`. The list of current zones is the third column of
    `zone1970.tab`:
@@ -98,14 +98,16 @@ The account must be in `wheel`.
    grep -v '^#' /usr/share/zoneinfo/zone1970.tab | cut -f3 | sort | less
    ```
 
-2. Set it:
+2. Set it on System Settings → **Date & Time** → **Time Zone**, or from a prompt through
+   timedate1:
 
    ```bash
-   kdos-power timezone Europe/Berlin
+   dbus-send --system --print-reply --dest=org.freedesktop.timedate1 \
+       /org/freedesktop/timedate1 org.freedesktop.timedate1.SetTimezone \
+       string:Europe/Berlin boolean:true
    ```
 
-   or choose it in `kdos-time`, which calls the same verb. `/etc/localtime`, `TZ` and the Wi-Fi
-   country change together.
+   `/etc/localtime`, `TZ` and the Wi-Fi country change together.
 
 3. Open a new terminal, or log in again, and check with `date`. A shell started before the change
    keeps the `TZ` it read at login.
@@ -201,16 +203,12 @@ with it.
 
 **`date` shows UTC on an installed machine.** `rcS` links UTC at boot when nothing is at
 `/etc/localtime`, and a link to a zone file that is not there reads as UTC too.
-`ls -l /etc/localtime` shows which; set the zone again with `kdos-power timezone`.
+`ls -l /etc/localtime` shows which; set the zone again as in
+[Setting the time zone](#setting-the-time-zone).
 
-**`kdos-power timezone` prints `kdos-power: err no such zone` or `err not a zone name`.** The name
-must be a file under `/usr/share/zoneinfo`, at most 64 characters of letters, digits, `+`, `-`,
-`_` and `/`, with no leading, trailing or doubled `/`. `kdos-power: err not permitted` means the
-account is not in `wheel`; `kdos-powerd --explain <user>` says which of the daemon's groups an
-account is in.
-
-**`kdos-power` prints `no kdos-powerd`.** The daemon is down. Start it with the command the message
-names, `sudo service start powerd`; see [The client](../../kdos/04-programs/daemons.md#the-client).
+**The Date & Time page cannot save.** kdos-settingsd is not running: `service status settingsd`,
+and its log `/run/kdos-svc.kdos-settingsd.log`. A refusal names the zone it could not find under
+`/usr/share/zoneinfo`.
 
 **`date` and the desktop's clock disagree.** One of them was started before a zone change. Log out
 and in again.
@@ -221,7 +219,7 @@ and in again.
 
 ## See also
 
-- [timezone](../../kdos/04-programs/daemons.md#timezone): what the verb checks and writes, and the Wi-Fi country
+- [The root daemons](../../kdos/04-programs/daemons.md): kdos-settingsd, which serves timedate1
 - [Media, colour and time](../../kdos/02-user-guide/administration.md#media-colour-and-time): the zone data and how the zone is set
 - [3. Time](../../kdos/02-user-guide/installation.md#3-time): the installer's Time page
 - [rcS and the service scripts](../../kdos/03-architecture/boot-and-init.md#rcs-and-the-service-scripts): where the UTC link is made
@@ -233,4 +231,4 @@ and in again.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 366.* Previous: [365. Out of memory](out-of-memory.md) · [Contents](../README.md) · Next: [367. Locale and console](locale-and-console.md)
+*Part XVI. System administration, chapter 390.* Previous: [389. Out of memory](out-of-memory.md) · [Contents](../README.md) · Next: [391. Locale and console](locale-and-console.md)

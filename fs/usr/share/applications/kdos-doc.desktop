@@ -8,4 +8,3 @@ Icon=help-contents
 Terminal=false
 NoDisplay=true
 Categories=Documentation;Utility;
-StartupWMClass=kdos-doc

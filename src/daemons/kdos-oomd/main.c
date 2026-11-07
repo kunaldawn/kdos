@@ -25,23 +25,27 @@
  * relaunches in seconds, while a host process is more often session state.
  *
  * THE SHAPE IS kdos-powerd's: a root daemon in the foreground under ksvc, a
- * socket in /run answering one word per connection (`ping`, `status`) gated by
- * SO_PEERCRED — root, seat and wheel — so `kdos doctor` has something to ask.
- * Killing takes no client and no argument: there is nothing in the protocol
- * that names a process, so there is nothing to aim.
+ * socket in /run answering one word per connection (`ping`, `status`,
+ * `protected`) gated by SO_PEERCRED — root, wheel, and the person at the
+ * machine — so `kdos doctor` has something to ask. Killing takes no client and
+ * no argument: there is nothing in the protocol that names a process, so there
+ * is nothing to aim.
  *
  * `--fixture <dir>` points every /proc read at a recorded tree and prints who
- * WOULD be killed without signalling anyone — the kdos stutter seam, and the
- * only way selection logic this consequential gets tested at all.
+ * WOULD be killed without signalling anyone — the seam kdos-energyd and
+ * kdos-packd share, and the only way selection logic this consequential gets
+ * tested at all.
  */
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE	/* struct ucred, pipe2 */
 #endif
 #include <ctype.h>
+#include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <pwd.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -59,7 +63,6 @@
 #include "kproc.h"
 
 #define KO_SOCKET   "/run/kdos-oomd.sock"
-#define KO_SEAT     "seat"	/* the desktop user, admin or not */
 #define KO_ADMIN    "wheel"
 /* 150 ms of full stall in a 1 s window: every runnable thread stuck on memory
  * for 15% of the last second. A desktop is already visibly hitching there. */
@@ -109,8 +112,8 @@ static char *slurp(const char *fmt, ...)
 	return kb_read_all(path, &n);
 }
 
-/* avg10 only, the same reasoning as kdos stutter: a wedge is a moment, and
- * avg60 has already averaged it away by the time anyone reads it. */
+/* avg10 only: a wedge is a moment, and avg60 has already averaged it away by
+ * the time anyone reads it. */
 static void read_pressure(double *some, double *full)
 {
 	*some = *full = -1.0;
@@ -209,11 +212,11 @@ static int read_stat(int pid, KoProc *out)
 
 /*
  * Which box is this process in? libkproc owns the walk: the ppid climb to
- * podman's supervisor, whose argv carries `-n <name>`, is the only identity
- * there is here — no systemd means rootless podman gets no cgroup delegation
- * and the box frequently sits in `0::/`. It costs a few file reads on a
- * machine that is already struggling, which is why it reads /proc directly
- * rather than holding a table.
+ * podman's supervisor, whose argv carries `-n <name>`, is the identity that
+ * holds wherever the box runs. A cgroup path names no box: a box started where
+ * podman could make no cgroup of its own sits in its parent's. It costs a few
+ * file reads on a machine that is already struggling, which is why it reads
+ * /proc directly rather than holding a table.
  */
 static int box_of(int pid, char *out, size_t cap)
 {
@@ -225,22 +228,37 @@ static int box_of(int pid, char *out, size_t cap)
 /*
  * The protected set. pid 1, kernel threads (empty cmdline), anything that
  * opted out through oom_score_adj (the contract below), this daemon itself,
- * and the desktop's own
- * chrome plus the session's plumbing by comm — killing kdos-comp to save the
- * desktop is not a trade, and a dead pipewire takes every app's audio with it.
- * The three chrome names are argv[0]s of one binary, which is what comm
- * reports for a process exec'd through a symlink.
+ * and the desktop and the session's plumbing by comm — killing kwin_wayland
+ * to save the desktop is not a trade, and a dead pipewire takes every app's
+ * audio with it.
+ *
+ * EVERY ENTRY IS A comm, AND A comm IS 15 BYTES. The kernel cuts the
+ * executable's name at TASK_COMM_LEN - 1 and that is what /proc/<pid>/stat
+ * carries, so kwin_wayland_wrapper is `kwin_wayland_wr`, kscreenlocker_greet
+ * is `kscreenlocker_g`, sddm-greeter-qt6 is `sddm-greeter-qt` and
+ * polkit-kde-authentication-agent-1 is `polkit-kde-auth`. An entry spelled
+ * in full is compared with strcmp and matches nothing, and the process it was
+ * meant to spare is the first one chosen. `xdg-desktop-por` is every portal
+ * at once — the front end and the KDE back end — which is the intent: each
+ * is a process every boxed app's file dialog goes through.
  *
  * The plumbing is here for the same reason and is easy to leave out, because
  * none of it is what a user would call an application: Xwayland is every X11
- * alien app at once and can be the largest process on the machine, the session
- * bus is the fixed address the whole appbox depends on, seatd owns the seat the
- * compositor holds, and the supervisors are what would restart any of it.
+ * app at once and can be the largest process on the machine, the session bus
+ * is the fixed address every box depends on, elogind and turnstiled own the
+ * sessions and their runtime directories, sddm and its helper hold every
+ * login open, ksecretd holds the unlocked wallet, and the supervisors are
+ * what would restart any of it. The greeter's names run only before a login
+ * and the lock screen's only while the screen is locked; protecting a name
+ * that is not running costs nothing.
  */
 static const char *const ko_protected[] = {
-	"kdos-comp", "kdos-shell", "kdos-desk", "kdos-notifyd",
-	"Xwayland", "dbus-daemon", "seatd", "ksvc",
-	"kdos-powerd", "kdos-energyd", "kdos-oomd",
+	"kwin_wayland", "kwin_wayland_wr", "plasmashell", "ksmserver", "kded6",
+	"plasma_session", "kglobalacceld", "kscreenlocker_g", "Xwayland",
+	"xdg-desktop-por", "polkit-kde-auth", "ksecretd",
+	"sddm", "sddm-helper", "sddm-greeter-qt", "elogind", "turnstiled",
+	"dbus-daemon", "ksvc", "kdos-powerd", "kdos-energyd", "kdos-oomd",
+	"kdos-settingsd", "accounts-daemon",
 	/*
 	 * THE SESSION MANAGER IS NOT NAMED "pipewire" AND THE PREFIX BELOW
 	 * DOES NOT REACH IT. wireplumber is where every routing decision
@@ -252,6 +270,9 @@ static const char *const ko_protected[] = {
 	"wireplumber", NULL
 };
 
+/* pipewire and pipewire-pulse: one prefix rule reaches both. */
+#define KO_PREFIX "pipewire"
+
 static int is_protected(const KoProc *p)
 {
 	if (p->pid == 1)
@@ -262,7 +283,7 @@ static int is_protected(const KoProc *p)
 	/* pipewire and pipewire-pulse; `comm` is truncated at 15 characters,
 	 * so the prefix is what matches both. wireplumber shares no prefix
 	 * with them and is named in the list above. */
-	if (!strncmp(p->comm, "pipewire", 8))
+	if (!strncmp(p->comm, KO_PREFIX, strlen(KO_PREFIX)))
 		return 1;
 
 	char *cmd = slurp("%s/%d/cmdline", g_proc, p->pid);
@@ -312,11 +333,13 @@ static int is_number(const char *s)
 /*
  * A BOX'S DECLARED BUDGET, and reading it here is what makes the key honest.
  *
- * `memory = 4G` in a box profile becomes `podman --memory`, and rootless
- * podman on a machine with no systemd frequently has no cgroup delegation to
- * enforce it with — so the flag is accepted and does nothing. A profile key
- * that cannot be enforced is one KDOS does not offer, so this is the
- * enforcement: a box over the budget it declared is PREFERRED as a victim,
+ * `memory = 4G` in a box profile becomes `podman --memory`, which the kernel
+ * enforces only when rootless podman can write the box a cgroup of its own:
+ * inside an elogind session's delegated subtree. A box started anywhere else
+ * — a lingering user's, or one from a login no session tracks — has the flag
+ * accepted and nothing enforced. A profile key that cannot be enforced is one
+ * KDOS does not offer, so this is the enforcement there and the backstop
+ * everywhere: a box over the budget it declared is PREFERRED as a victim,
  * ahead of the general rule that boxed processes are preferred.
  *
  * The profiles live in the user's home, which this daemon reads and never
@@ -575,6 +598,110 @@ static void shield_self(void)
 	(void)mlockall(MCL_CURRENT | MCL_FUTURE);
 }
 
+/* ── who may ask ───────────────────────────────────────────────────────── */
+
+/*
+ * THE PERSON AT THE MACHINE, asked of elogind: sd_uid_get_state() is "active"
+ * while the uid has a session in the foreground of a seat, administrator or
+ * not, and that is who runs `kdos doctor` at the desk. A login elogind does
+ * not track (an SSH session) is not active, so away from the machine the
+ * answer is wheel's.
+ *
+ * libelogind IS OPENED AT FIRST USE, NEVER LINKED. This daemon exists for the
+ * minute memory runs out, and a session library that is missing or broken
+ * must cost the read tier and never the killer — a library the dynamic loader
+ * could not resolve would stop the daemon starting at all. Root and wheel
+ * never reach here, so on an administrator's machine it is never opened.
+ */
+static int g_login_tried;
+static int (*g_uid_state)(uid_t, char **);
+
+static int login_open(void)
+{
+	if (!g_login_tried) {
+		void *h = dlopen("libelogind.so.0", RTLD_NOW | RTLD_LOCAL);
+
+		g_login_tried = 1;
+		if (h)
+			*(void **)&g_uid_state = dlsym(h, "sd_uid_get_state");
+	}
+	return g_uid_state != NULL;
+}
+
+static int uid_active(uid_t uid)
+{
+	char *state = NULL;
+	int active;
+
+	if (!login_open() || g_uid_state(uid, &state) < 0 || !state)
+		return 0;
+	active = !strcmp(state, "active");
+	free(state);
+	return active;
+}
+
+/* Root, KO_ADMIN — both asked of libkbase, the one answer every root daemon
+ * here gives to this question — or the uid in the foreground of a seat. The
+ * socket's mode is not the gate. */
+static int may_read(uid_t uid)
+{
+	return kb_uid_allowed(uid, KO_ADMIN) || uid_active(uid);
+}
+
+/*
+ * `kdos-oomd --explain <user>` — whether that user may read the status, and
+ * why: the same three questions the socket asks, so the explanation cannot
+ * drift from the decision. Exit 0 when permitted.
+ */
+static int explain(const char *user)
+{
+	struct passwd *pw = getpwnam(user);
+
+	if (!pw) {
+		printf("%s: no passwd entry — refused\n", user);
+		return 1;
+	}
+	if (pw->pw_uid == 0) {
+		printf("%s: uid 0 — permitted\n", user);
+		return 0;
+	}
+	if (kb_uid_allowed(pw->pw_uid, KO_ADMIN)) {
+		printf("%s: uid %u, in " KO_ADMIN " — permitted\n", user,
+		       (unsigned)pw->pw_uid);
+		return 0;
+	}
+	if (!login_open()) {
+		printf("%s: uid %u, not in " KO_ADMIN "; libelogind could not "
+		       "be opened, so no session counts — refused\n", user,
+		       (unsigned)pw->pw_uid);
+		return 1;
+	}
+	if (uid_active(pw->pw_uid)) {
+		printf("%s: uid %u, not in " KO_ADMIN ", in an active session "
+		       "— permitted\n", user, (unsigned)pw->pw_uid);
+		return 0;
+	}
+	printf("%s: uid %u, not in " KO_ADMIN " and in no active session — "
+	       "refused\n", user, (unsigned)pw->pw_uid);
+	return 1;
+}
+
+/* The protected names, space-separated, the prefix rule last with its `*`. */
+static void protected_list(char *out, size_t cap)
+{
+	size_t used = 0;
+
+	out[0] = '\0';
+	for (int i = 0; ko_protected[i]; i++) {
+		int k = snprintf(out + used, cap - used, "%s ", ko_protected[i]);
+
+		if (k < 0 || (size_t)k >= cap - used)
+			return;
+		used += (size_t)k;
+	}
+	snprintf(out + used, cap - used, "%s*", KO_PREFIX);
+}
+
 static void answer(int c)
 {
 	struct ucred cred = {0};
@@ -584,12 +711,8 @@ static void answer(int c)
 	struct timeval tv = { .tv_sec = 2 };
 	setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-	/* Root, KO_SEAT or KO_ADMIN, each asked of libkbase — the one answer
-	 * every root daemon here gives to this question. The socket's mode is
-	 * not the gate. */
 	if (getsockopt(c, SOL_SOCKET, SO_PEERCRED, &cred, &len) < 0 ||
-	    (!kb_uid_allowed(cred.uid, KO_SEAT) &&
-	     !kb_uid_allowed(cred.uid, KO_ADMIN))) {
+	    !may_read(cred.uid)) {
 		(void)!write(c, "err not permitted\n", 18);
 		close(c);
 		return;
@@ -610,6 +733,17 @@ static void answer(int c)
 					 g_kills ? ", last: " : "",
 					 g_kills ? g_last : "");
 			(void)!write(c, out, (size_t)m);
+		} else if (!strcmp(buf, "protected")) {
+			/* What `kdos doctor` prints, so a session program
+			 * missing from the list is visible without reading
+			 * the source. */
+			char out[1024];
+
+			protected_list(out, sizeof(out));
+			char line[1040];
+			int m = snprintf(line, sizeof(line), "ok %s\n", out);
+
+			(void)!write(c, line, (size_t)m);
 		} else {
 			(void)!write(c, "err unknown command\n", 20);
 		}
@@ -789,8 +923,19 @@ int main(int argc, char **argv)
 
 	if (argc == 3 && !strcmp(argv[1], "--fixture"))
 		return fixture(argv[2]);
+	if (argc == 3 && !strcmp(argv[1], "--explain"))
+		return explain(argv[2]);
+	if (argc == 2 && !strcmp(argv[1], "--protected")) {
+		/* One name a line, for the check that holds each to a comm's
+		 * 15 bytes. */
+		for (int i = 0; ko_protected[i]; i++)
+			printf("%s\n", ko_protected[i]);
+		printf("%s*\n", KO_PREFIX);
+		return 0;
+	}
 	if (argc > 1) {
-		fprintf(stderr, "usage: kdos-oomd [--fixture DIR]\n");
+		fprintf(stderr, "usage: kdos-oomd [--fixture DIR | --explain USER "
+				"| --protected]\n");
 		return 2;
 	}
 	return serve();

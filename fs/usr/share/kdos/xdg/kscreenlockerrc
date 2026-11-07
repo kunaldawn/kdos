@@ -1,0 +1,32 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   When the screen locks, and what the lock screen shows.
+#
+# KDOS's idle policy: the screen dims at 5 minutes and turns off at 15
+# (powerdevilrc beside this file) and locks at 10, with a 5-second grace in
+# which a key or a move unlocks without a password. In a virtual machine
+# /usr/share/kdos/xdg-vm, put ahead of /etc/xdg for that session, turns the
+# timed lock off.
+#
+# The lock screen's layout is the Plasma shell's own; only its wallpaper
+# and its clock come from here. `kdos theme` moves the wallpaper to the chosen
+# accent's package, and only while it still names a KDOS-* package.
+# ---------------------------------
+
+[Daemon]
+Autolock=true
+Timeout=10
+LockGrace=5
+LockOnResume=true
+
+[Greeter][LnF][General]
+alwaysShowClock=true
+showMediaControls=true
+
+[Greeter][Wallpaper][org.kde.image][General]
+Image=file:///usr/share/wallpapers/KDOS-Bone/

@@ -176,11 +176,6 @@ int kxdg_launch_read(const KxdgEntry *e, KxdgLaunch *out)
 
 	kb_strlcpy(out->exec, exec, sizeof(out->exec));
 	kb_strlcpy(out->name, kxdg_get(e, "Name", ""), sizeof(out->name));
-	kb_strlcpy(out->term, kxdg_get(e, "X-KDOS-Term", ""),
-		   sizeof(out->term));
-	kb_strlcpy(out->size, kxdg_get(e, "X-KDOS-Size", ""),
-		   sizeof(out->size));
 	out->terminal = kxdg_bool(e, "Terminal", 0);
-	out->floating = kxdg_bool(e, "X-KDOS-Float", 0);
 	return 0;
 }

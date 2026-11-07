@@ -1,4 +1,5 @@
-Your own periodic jobs, one per line, started by your session at login.
+Your own periodic jobs, one per line, run by your `timers` user service from
+your first login to your last.
 
     NAME  TIMESPEC...  --  COMMAND...
 
@@ -24,13 +25,16 @@ that writes a file takes a flag naming it. That is what lets this file be
 parsed instead of sourced, and it is why a line here cannot run something you
 did not write.
 
-EVERY SLOT WHILE THE LOOP LIVES. `snooze` waits for its slot, runs the command
-once and exits, so the session runs each row in a loop that starts it again: a
-job here fires at every occurrence of its slot, not once per login. The loops
-are the session's children, not a root service, and their process ids are in
-$XDG_RUNTIME_DIR/kdos/timers.pid. Log Out does not stop them: they run on at
-the tty1 prompt it leaves, and end with the login itself. A session started
-again within one login stops the previous set before starting its own. Use
+EVERY SLOT WHILE YOU ARE LOGGED IN. `snooze` waits for its slot, runs the
+command once and exits, so /usr/local/lib/kdos/user-timers runs each row in a
+loop that starts it again: a job here fires at every occurrence of its slot,
+not once per login. It is the `timers` service of your own services
+(/etc/kdos/user-services, `service --user status timers`), which start at your
+first login of any kind — the desktop, a console, either — and stop at your
+last, unless you linger (`loginctl enable-linger`), and then they run with no
+login at all. A file added or edited while you are logged in is read at the
+next start, or now with `service --user restart timers`. A job's error output
+is in $XDG_RUNTIME_DIR/ksvc/kdos-svc.timers.log and in syslog. Use
 /etc/kdos/timers.d for a job that must run whether or not anybody is logged in.
 
 A COMMAND HERE CANNOT TAKE AN ARGUMENT WITH A SPACE IN IT. The row is split

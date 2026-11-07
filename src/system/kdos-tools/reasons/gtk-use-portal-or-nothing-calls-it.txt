@@ -5,8 +5,7 @@ port: kdos-appbox
 It decides that from /.flatpak-info or from GTK_USE_PORTAL=1 — and a distrobox
 is neither. So FileChooser, Settings and OpenURI all existed, all answered,
 and NOTHING EVER CALLED THEM: every boxed app went on drawing its own
-GtkFileChooser, the exact rounded antialiased dialog kdos-pick was written to
-replace.
+GtkFileChooser instead of the desktop's own KDE dialog.
 
 Firefox's widget.use-xdg-desktop-portal.file-picker default of `auto` reads
 the same variable. Stated cost: GTK's Print dialog goes through the portal as

@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "https://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+
+<!--
+  The actions kdos-settingsd checks for org.freedesktop.hostname1, with
+  systemd-hostnamed's ids and defaults: plasma-setup's rule grants its user
+  set-hostname and set-static-hostname by these names.
+
+  set-static-hostname covers SetStaticHostname and SetPrettyHostname, and
+  implies the two set- actions after it; set-machine-info covers the icon,
+  the chassis, the deployment and the location. get-product-uuid and
+  get-hardware-serial cover GetProductUUID and GetHardwareSerial, the two
+  values that name this one machine to whoever is given them.
+-->
+
+<policyconfig>
+	<vendor>KDOS</vendor>
+	<vendor_url>https://github.com/kunaldawn/kdos</vendor_url>
+
+	<action id="org.freedesktop.hostname1.set-hostname">
+		<description>Set the hostname</description>
+		<message>Authentication is required to set the local hostname.</message>
+		<defaults>
+			<allow_any>auth_admin_keep</allow_any>
+			<allow_inactive>auth_admin_keep</allow_inactive>
+			<allow_active>auth_admin_keep</allow_active>
+		</defaults>
+	</action>
+
+	<action id="org.freedesktop.hostname1.set-static-hostname">
+		<description>Set the static hostname</description>
+		<message>Authentication is required to set the statically configured local hostname, as well as the pretty hostname.</message>
+		<defaults>
+			<allow_any>auth_admin_keep</allow_any>
+			<allow_inactive>auth_admin_keep</allow_inactive>
+			<allow_active>auth_admin_keep</allow_active>
+		</defaults>
+		<annotate key="org.freedesktop.policykit.imply">org.freedesktop.hostname1.set-hostname org.freedesktop.hostname1.set-machine-info</annotate>
+	</action>
+
+	<action id="org.freedesktop.hostname1.set-machine-info">
+		<description>Set machine information</description>
+		<message>Authentication is required to set local machine information.</message>
+		<defaults>
+			<allow_any>auth_admin_keep</allow_any>
+			<allow_inactive>auth_admin_keep</allow_inactive>
+			<allow_active>auth_admin_keep</allow_active>
+		</defaults>
+	</action>
+
+	<action id="org.freedesktop.hostname1.get-product-uuid">
+		<description>Get the product UUID</description>
+		<message>Authentication is required to get the product UUID.</message>
+		<defaults>
+			<allow_any>auth_admin_keep</allow_any>
+			<allow_inactive>auth_admin_keep</allow_inactive>
+			<allow_active>auth_admin_keep</allow_active>
+		</defaults>
+	</action>
+
+	<action id="org.freedesktop.hostname1.get-hardware-serial">
+		<description>Get the hardware serial number</description>
+		<message>Authentication is required to get the hardware serial number.</message>
+		<defaults>
+			<allow_any>auth_admin_keep</allow_any>
+			<allow_inactive>auth_admin_keep</allow_inactive>
+			<allow_active>auth_admin_keep</allow_active>
+		</defaults>
+	</action>
+</policyconfig>

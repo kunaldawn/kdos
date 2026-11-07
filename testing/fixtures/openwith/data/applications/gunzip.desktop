@@ -1,5 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Gunzip
-Exec=gunzip %f
-MimeType=application/gzip;

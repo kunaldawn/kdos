@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = selenium-webdriver-at-spi
+version     = 0.git20261013
+release     = 1
+_commit     = cb67767e0206f495f24ca98214912692982bd23c
+source      = $name-$version.tar.gz::https://invent.kde.org/sdk/selenium-webdriver-at-spi/-/archive/$_commit/selenium-webdriver-at-spi-$_commit.tar.gz
+sha256      = bb3454b38f33752076b917311b3c18ef00cee5f187e11f20f36c4718f782cf54  selenium-webdriver-at-spi-0.git20261013.tar.gz
+description = KDE's WebDriver over AT-SPI2: drives and reads Qt applications through their accessibility tree
+homepage    = https://invent.kde.org/sdk/selenium-webdriver-at-spi
+license     = AGPL-3.0-or-later AND (GPL-2.0-only OR GPL-3.0-only)
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtwayland kcoreaddons kwindowsystem kwayland kpipewire plasma-wayland-protocols wayland libxkbcommon python3 python3-gobject python3-pyatspi python3-flask python3-lxml numpy gtk3 at-spi2-core

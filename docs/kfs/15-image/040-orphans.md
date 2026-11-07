@@ -70,4 +70,4 @@ recipes, it prints `no orphaned packages`.
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 345.* Previous: [344. The application launchers](030-launchers.md) · [Contents](../README.md) · Next: [346. Stamping the build identity](045-identity.md)
+*Part XV. The image, chapter 368.* Previous: [367. The application launchers](030-launchers.md) · [Contents](../README.md) · Next: [369. Stamping the build identity](045-identity.md)

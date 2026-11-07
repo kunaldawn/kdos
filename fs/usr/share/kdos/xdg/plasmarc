@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   The Plasma style a process sees before any global theme is applied.
+#
+# Inside a session the global theme writes the same name into
+# ~/.config/kdedefaults/plasmarc, which outranks this file, and a style
+# picked on the Plasma Style page lands in ~/.config/plasmarc above both. This
+# answers for what runs with no kdedefaults: the SDDM greeter, whose
+# GreeterEnvironment carries this directory and whose Plasma components read
+# plasmarc before kdos-powerd has written the sddm user's own, and a Plasma
+# program started outside a session. The `kdos` style ships no colours file,
+# so it draws in whichever scheme kdeglobals names.
+# ---------------------------------
+
+[Theme]
+name=kdos

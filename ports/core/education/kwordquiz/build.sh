@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/kiosk-get-new.patch"
+
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D KDE_INSTALL_LIBDIR=lib \

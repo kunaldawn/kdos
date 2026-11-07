@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = libkmahjongg
-version     = 26.08.1
+version     = 26.08.2
 release     = 1
 source      = $name-$version.tar.xz::https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
-sha256      = 11d68a9cbbdab3a0331a6b6a353b522cbdc45ac4dac23ec7a0805595f9e01bac  libkmahjongg-26.08.1.tar.xz
+sha256      = 5f5b592e54a3a2029307a3080ea98c9dad43f9ee45a356daf64965970eab91f1  libkmahjongg-26.08.2.tar.xz
 description = Tile sets, backgrounds and the rendering code shared by the KDE Mahjongg games
 homepage    = https://invent.kde.org/games/libkmahjongg
 license     = GPL-2.0-or-later

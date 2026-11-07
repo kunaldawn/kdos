@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdialog
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = ed4a6fde2832d2c0265c855b2a871a6b2bb5a22a1949edaed67f44dbda84bf20  kdialog-26.08.2.tar.xz
+description = Script dialogs — message boxes, prompts, file pickers and progress bars from the shell
+homepage    = https://invent.kde.org/utilities/kdialog
+license     = GPL-2.0-or-later
+depends     = cmake ninja extra-cmake-modules qt6-qtbase ktextwidgets knotifications kguiaddons kiconthemes kwindowsystem kio kdbusaddons libX11

@@ -21,6 +21,7 @@ or dark colour scheme. [kcolorscheme](#port-kcolorscheme), [kxmlgui](#port-kxmlg
   [Toolkits, Wayland and X11](../../../../docs/kdos/02-user-guide/applications.md#toolkits-wayland-and-x11)).
 - `-D BUILD_GEO_SCHEME_HANDLER=OFF` — Build no `kde-geo-uri-handler`, the program that opens a
   `geo:` link in a web map, and none of the desktop entries that register it for OpenStreetMap,
-  Google Maps, Wheelmap and Cartes.
+  Google Maps, Wheelmap and Cartes. Each of those opens an online map site, which fails offline,
+  and the shipped default for `geo:` is Organic Maps, which reads its maps from the disk.
 - `-D BUILD_PYTHON_BINDINGS=OFF` — Build no Python bindings. Upstream's default is on, and the
   configure then requires Shiboken6 and PySide6, which this port's `depends` does not name.

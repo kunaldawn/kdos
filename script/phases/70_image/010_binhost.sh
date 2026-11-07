@@ -16,8 +16,22 @@
 # KPKG_KEEP_CACHE=1, so every `kpkg install` of the build leaves the package it
 # built in /var/cache/kpkg/packages. This step copies them to build/binhost/
 # and runs `kpkg index --sign` over that directory, which is then a binhost
-# `kpkg binhost` reads (packaging.md, "The binary host"). `kdos update` never
-# reads one. Off, it does nothing.
+# `kpkg binhost` reads (packaging.md, "The binary host"), and writes the
+# release index `kdos update` finds every file of it by.
+#
+# EVERY NAME IS FLAT, AND THE RELEASE INDEX SAYS WHERE EACH FILE IS. A GitHub
+# release holds no directories, so the AppStream catalogue is written as
+# swcatalog--xml--kdos-binhost.xml beside the packages, and kdos-update.idx
+# (ports/releaselib.sh writes it, relidx.c reads it) maps each file to the
+# path a client asks for — `binhost/PACKAGES`, `binhost/<package>`,
+# `binhost/swcatalog/xml/kdos-binhost.xml` — with its size and SHA-256, every
+# asset beside the index. It is signed with the binhost key, so the directory,
+# copied to a stick or served as it is, is what `binhost =` in
+# /etc/kdos/update.conf names. `ports/publish --release` puts the same files in
+# the releases binhost-<version>-NN and writes the release's own index over
+# them. Its `version` is the short commit hash the Makefile records, cut to
+# twelve characters, which is what a machine whose /ports carries no release
+# name calls its tree.
 #
 # THE DIRECTORY ACCUMULATES. 020_cleanup.sh empties the package cache on every
 # 70_image run, and an incremental build makes only the packages it rebuilt,
@@ -76,3 +90,47 @@ kpkg index "$OUT" --sign "$KEYDIR/$KEY.key"
 # Verified against the one key it was signed with, the way a client that
 # trusts it will read it.
 KPKG_KEYRING="$KEYDIR" kpkg verify-index "$OUT"
+
+# THE CATALOGUE NAMES ONLY WHAT THE INDEX HOLDS AND THIS TREE HAS INSTALLED:
+# Discover offers each of its components as a port `kdos update install` takes
+# from this binhost. A package file in the directory whose package this tree
+# does not have stays indexed and goes uncatalogued. It is signed with the
+# index's key, the one key a client checks the two against.
+CAT=$OUT/swcatalog--xml--kdos-binhost.xml
+rm -f "$CAT" "$CAT.sig"
+if ! command -v kdos-discover-catalog >/dev/null 2>&1; then
+    echo "[binhost] kdos-discover-catalog is not installed — no catalogue"
+else
+    pkgs=()
+    while IFS= read -r p; do
+        [ -f "/var/lib/kpkg/db/$p" ] && pkgs+=(--package "$p")
+    done < <(grep '^P:' "$OUT/PACKAGES" | cut -d: -f2- | LC_ALL=C sort -u)
+    if [ "${#pkgs[@]}" -eq 0 ]; then
+        echo "[binhost] no indexed package is installed in this tree — no catalogue"
+    else
+        kdos-discover-catalog --root / --origin kdos-binhost --out "$CAT" "${pkgs[@]}"
+        kpkg sign "$CAT" "$KEYDIR/$KEY.key"
+        echo "[binhost] $(grep -c '<component[ >]' "$CAT" || true) components in $CAT"
+    fi
+fi
+
+# THE RELEASE INDEX, over every file here but itself and the public key.
+source ports/releaselib.sh
+IDX=$OUT/$REL_INDEX_FILE
+rm -f "$IDX" "$IDX.sig"
+version=${KDOS_GIT_COMMIT:-local}
+version=${version:0:12}
+for f in "$OUT"/*; do
+    [ -f "$f" ] || continue
+    n=${f##*/}
+    case $n in
+        "$REL_INDEX_FILE"|"$REL_INDEX_FILE".*|*.pub|*.tmp) continue ;;
+        swcatalog--xml--kdos-binhost.xml)     path=binhost/swcatalog/xml/kdos-binhost.xml ;;
+        swcatalog--xml--kdos-binhost.xml.sig) path=binhost/swcatalog/xml/kdos-binhost.xml.sig ;;
+        *)                                    path=binhost/$n ;;
+    esac
+    rel_entry "$OUT" "$n" "$path"
+done | rel_write "$IDX" "$version"
+kpkg sign "$IDX" "$KEYDIR/$KEY.key"
+KPKG_KEYRING="$KEYDIR" kpkg verify-pkg "$IDX"
+echo "[binhost] $(rel_entries "$IDX" | wc -l) files in $IDX, version $version"

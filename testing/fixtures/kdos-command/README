@@ -1,0 +1,11 @@
+Fixtures for the `kdos` command's selftest blocks (testing/selftest.sh):
+
+  kwriteconfig6   KConfig's writer, faked: the options kdos uses, and files
+                  written back in KConfig's own order and escaping
+  fakesession.py  the Plasma session's bus names, and timedate1, hostname1
+                  and locale1, on one private bus
+  fakewm.py       a compositor offering only the window list, over the
+                  Wayland wire protocol
+  pw-dump         PipeWire's dump, from pw-dump.json, once or --monitor
+  fakempd.py      mpd's protocol, `idle` included, for the MPRIS bridge
+  backup.conf     the configuration `kdos backup run` is tested against

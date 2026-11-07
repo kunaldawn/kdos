@@ -29,3 +29,18 @@ Categories=Development;RevisionControl;
 Keywords=git;commit;branch;merge;diff;lazygit;
 EOF
 chmod 644 "$PKG/usr/share/applications/lazygit.desktop"
+
+install -d "$PKG/usr/share/kio/servicemenus"
+cat > "$PKG/usr/share/kio/servicemenus/lazygit.desktop" <<'EOF'
+[Desktop Entry]
+Type=Service
+MimeType=inode/directory;
+Actions=gitstatus;
+X-KDE-Priority=TopLevel
+
+[Desktop Action gitstatus]
+Name=Git Status Here
+Icon=vcs-normal
+Exec=konsole --workdir %f -e lazygit
+EOF
+chmod 644 "$PKG/usr/share/kio/servicemenus/lazygit.desktop"

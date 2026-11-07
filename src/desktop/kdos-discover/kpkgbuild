@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdos-discover
+version     = 0.1.0
+release     = 1
+description = Discover backend for packs, boxes and ports, and the A/B update tray notifier
+homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcoreaddons kconfig ki18n karchive kservice kio kjobwidgets appstream debian-dep11 qcoro discover polkit kdos-appbox kdos-pack kdos-tools

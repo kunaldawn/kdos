@@ -11,18 +11,18 @@ default, and the menu entry for the GTK window.
 - `release-check-off-by-default.patch` — Sets the core preference `new_release_check` to `False`, so the daemon does not ask deluge-torrent.org for a newer release at every start. It can be turned back on in the preferences.
 
 ## Notes
-- **The vendor bundle.** `vendoring = python` with an explicit `pypackages` list: Twisted and the
-  libraries it needs for TLS (pyOpenSSL, service-identity, pyasn1 and pyasn1-modules), Automat,
-  constantly, hyperlink, incremental and zope.interface, and rencode and setproctitle. Everything
-  else Deluge imports is a port in `depends`. How the three Python keys narrow a bundle is in
+- **The vendor bundle.** `vendoring = python` with an explicit `pypackages` list: the libraries
+  Twisted needs for TLS (pyOpenSSL, service-identity, pyasn1 and pyasn1-modules), and rencode and
+  setproctitle. Everything else Deluge imports is a port in `depends`, among them
+  [python3-twisted](#port-python3-twisted) and what it requires. Those must not join the bundle:
+  a module two packages carry is a path two packages own, which kpkg refuses. How the three Python
+  keys narrow a bundle is in
   [The three Python keys](../../../../docs/kdos/05-developer/writing-ports.md#the-three-python-keys).
-- **Build backends stay out of the package.** `hatch-fancy-pypi-readme` and `incremental` are
-  Twisted's build plugins, and `rjsmin` is the minifier `minify_web_js.py` uses to build the web
+- **Build backends stay out of the package.** `hatch-fancy-pypi-readme` is a build plugin of
+  service-identity, and `rjsmin` is the minifier `minify_web_js.py` uses to build the web
   interface's minified scripts when no Closure compiler is installed. The first `pip3 install`
-  puts the three into `$SRC_ROOT/backends`, on `PYTHONPATH`, so they reach the build and never
-  `$PKG`. `incremental` is named again in the second install
-  because Twisted imports it at run time; `--ignore-installed` makes pip install it into `$PKG`
-  even though the backends directory already has it.
+  puts the two into `$SRC_ROOT/backends`, on `PYTHONPATH`, so they reach the build and never
+  `$PKG`.
 - **Two optional imports are left out.** `setup.py` lists `chardet` and `ifaddr` as extras.
   `ifaddr` is already in [cura](#port-cura)'s bundle, and a module two packages carry is a path
   two packages own, which kpkg refuses (see

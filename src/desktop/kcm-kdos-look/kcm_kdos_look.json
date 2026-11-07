@@ -1,0 +1,11 @@
+{
+    "KPlugin": {
+        "Description": "Apply an accent everywhere at once, and switch Phosphor mode",
+        "Icon": "preferences-desktop-color",
+        "Name": "KDOS Look"
+    },
+    "X-DocPath": "kdos/04-programs/kdos-settings.html#kdos-look",
+    "X-KDE-Keywords": "accent,color,colour,theme,KDOS,phosphor,CRT,scanlines,retro,terminus,boot menu,login screen,splash,konsole",
+    "X-KDE-System-Settings-Parent-Category": "themes",
+    "X-KDE-Weight": 25
+}

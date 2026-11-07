@@ -31,3 +31,4 @@ gtk-vnc
 libvirt
 libvirt-glib
 spice-gtk
+krdp

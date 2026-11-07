@@ -17,10 +17,12 @@ daemons start on demand over D-Bus.
 - `-Dsystemduserunitdir=no`, `-Dtmpfilesdir=no` — Install no systemd user units and no tmpfiles
   configuration. Left empty, either one makes the configure ask pkg-config for systemd's directory
   and stop when systemd is not found. KDOS has no systemd (see
-  [No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)).
-- `-Dlogind=false` — Build without logind. With it, the udisks2 volume monitor asks
-  `sd-login` which seat the session is on and lists only the drives of that seat; without it, it
-  assumes one seat for the whole machine. Neither libsystemd nor libelogind is a port.
+  [No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd-init-units-or-service-manager)).
+- `-Dlogind=true` — Link the udisks2 volume monitor with [elogind](#port-elogind)'s
+  `libelogind`; meson tries `libsystemd` first, which KDOS does not have. The monitor asks
+  `sd-login` about its own process: run in a user's login session, it lists only the drives
+  udisks tags with that session's seat, and a drive with no seat tag, or a process in no
+  session, is treated as on its seat, so a single-seat machine shows every drive either way.
 - `-Dbusy_processes_command=lsof` — Name the processes that keep a volume from unmounting with
   `lsof -t`, from [lsof](#port-lsof). It is upstream's default; the alternative is `fuser`.
 - `-Dadmin=true` — Build the `admin://` backend, which opens files as root after a
@@ -60,5 +62,6 @@ daemons start on demand over D-Bus.
 - `-Dnfs=false` — Build no NFS backend, which would use libnfs.
 - `-Dwsdd=false` — Build no WS-Discovery backend, which finds Windows machines on the network by
   running the external `wsdd` daemon; `wsdd` is not a port.
-- `-Ddevel_utils=false`, `-Dunit_tests=false` — Build neither the development utilities nor the
-  unit tests; both are upstream's defaults.
+- `-Ddevel_utils=false`, `-Dinstalled_tests=false`, `-Dunit_tests=false` — Build neither the
+  development utilities nor the unit tests, and install no tests; all three are upstream's
+  defaults.

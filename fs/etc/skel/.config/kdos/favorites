@@ -5,38 +5,29 @@
 # ██║  ██╗██████╔╝╚██████╔╝███████║
 # ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
 # ---------------------------------
-#   pinned launchers
+#   boxes pre-started at login
 # ---------------------------------
 #
 # One DESKTOP-ENTRY ID per line — the file name under
-# /usr/share/applications or ~/.local/share/applications, without the
-# `.desktop`. Two surfaces read this file and they read the same one: the
-# taskbar's quick-launch row, left of the window list, and the Start menu's
-# pinned column above the rule. Two lists of favourites would be two things to
-# keep in agreement, and one of them always loses.
+# ~/.local/share/applications or /usr/share/applications, without the
+# `.desktop` — or a box's name. Anything after the first word is a note,
+# except a `code=XX` word: those two letters, typed alone in KRunner, open
+# the entry (the KDOS runner reads this file too).
 #
-# An id with no entry is skipped in silence: an alien app whose pack is not
-# installed must not leave a launcher that opens nothing.
+# At every login, before Plasma starts, `kdos-appbox warmup` starts the box
+# behind each line, with its bus proxy, so the first launch of the session
+# finds it running instead of paying for a cold start. A boxed application's
+# launcher id (`app.<id>`, or `app.<id>.<launcher>` for a pack with several)
+# names its box; so does a box's name; a host application's id names no box
+# and is skipped. At most eight boxes are started, in the order listed, and a
+# box that stays idle past its profile's `autostop` is stopped again by
+# `kdos-box gc`.
 #
-# SHIP A LIST, not an empty file. The quick-launch row and the pinned column
-# both read this, and both of them look broken on a freshly booted machine
-# when it is empty. Delete every line for a bare desktop.
-#
-# The first four are terminal programs and Firefox ESR, Kate and GIMP are
-# native, so every pinned entry opens on a freshly installed machine.
-
-# A line is a desktop-entry id, optionally followed by `code=XX` — the
-# two-letter shorthand DESQview's Open Window menu had. Typing both letters in
-# the Start menu opens that row: no arrows, no Enter, and no waiting to see
-# whether the search narrowed to one. The code is drawn on the row, because a
-# code nobody can see is one nobody learns.
-#
-# `foot` and `kdos-term` both mean THE TERMINAL and resolve to whichever this
-# image carries.
-mc code=FM
-btop code=MO
-lazygit code=GI
-foot code=TE
-firefox-esr code=WW
-org.kde.kate code=ED
-gimp code=IM
+# The panel's pinned launchers are Plasma's own (right-click a task, Pin to
+# Task Manager) and are not read from here. The shipped list names the apps
+# the desks pin, so a fresh account whose pinned app is boxed starts that box
+# warm; testing/lnfcheck.py keeps the two in step.
+org.kde.konsole code=TE
+org.kde.dolphin code=FM
+firefox-esr code=FF
+org.kde.kate

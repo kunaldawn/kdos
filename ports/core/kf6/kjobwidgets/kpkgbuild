@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = kjobwidgets
-version     = 6.30.0
+version     = 6.31.0
 release     = 1
 source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
-sha256      = bf36e3619df1c6ad3d900bd36433d97ab295be41c1cc401ff0e766380788bbae  kjobwidgets-6.30.0.tar.xz
+sha256      = b734186ed41e8cc84c2a5f9ba61b46075dacf076450dcb78d37a5d01dcd8c69e  kjobwidgets-6.31.0.tar.xz
 description = KDE Frameworks: widgets that track the progress of KJob tasks
 homepage    = https://invent.kde.org/frameworks/kjobwidgets
 license     = LGPL-2.0-only AND LGPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.1-or-later

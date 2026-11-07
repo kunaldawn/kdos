@@ -21,8 +21,6 @@
 # testing/phaseclosure.py fails when a dependency pulls a port in from outside
 # them, or when a shelf file names a port an earlier phase installs.
 
-# Image processing that STREAMS rather than loads, so a 20000x20000 scan is a
-# few megabytes of memory instead of a few gigabytes.
-libvips
-
 zint
+
+qrca

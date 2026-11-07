@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Welcome to KDOS, a desktop built from source that works with no network.
+Icon=distributor-logo-kdos
+Comment=KDOS, with Plasma by KDE
+URL=file:///usr/share/doc/kdos/index.html

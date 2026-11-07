@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = kweathercore
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = a8a5ad8ab8c10f3e8352aaa6e0bdf746a489b78f3ebed7e53e4d42d520994961  kweathercore-26.08.2.tar.xz
+description = Library that fetches met.no weather forecasts and alerts by place, with QML bindings
+homepage    = https://invent.kde.org/libraries/kweathercore
+license     = LGPL-2.0-or-later AND BSD-2-Clause AND CC-BY-4.0 AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtpositioning qt6-qtdeclarative ki18n kholidays

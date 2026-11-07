@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-twisted
+version     = 26.4.0
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/t/twisted/twisted-$version.tar.gz
+sha256      = dbfd0fe1ee409d0243fdd7a6a6ff14f4948cec1fd78e0376291f805e1501fae9  python3-twisted-26.4.0.tar.gz
+sha256      = 91aed379e05beb237e828af194f3a50f6fc6ee67bc85bfcb2d91a27d7f7452da  python3-twisted-vendor-26.4.0.tar.xz
+description = Event-driven networking engine for Python: TCP, UDP, TLS, HTTP, SSH, DNS and mail protocols
+homepage    = https://twisted.org/
+license     = MIT
+depends     = python3 python3-pip python3-hatchling python3-incremental python3-attrs python3-automat python3-constantly python3-hyperlink python3-typing-extensions python3-zope-interface
+vendoring   = python
+pyrequirements = no
+pyruntime   = no
+pypackages  = hatch-fancy-pypi-readme:25.1.0

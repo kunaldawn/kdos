@@ -18,7 +18,9 @@ gcc $CFLAGS -O2 -std=c11 -D_GNU_SOURCE -Wall -Wextra \
 	"$PORT_SRC/catalogue.c" "$PORT_SRC/store.c" \
 	"$PORT_SRC/app.c" "$PORT_SRC/launchers.c" \
 	"$PORT_SRC/open.c" "$PORT_SRC/pack.c" \
-	"$PORT_SRC/box_cmd.c" \
+	"$PORT_SRC/box_cmd.c" "$PORT_SRC/rundir.c" "$PORT_SRC/keeper.c" \
+	"$PORT_SRC/rules.c" "$PORT_SRC/session.c" "$PORT_SRC/throwaway.c" \
+	"$PORT_SRC/boxtest.c" \
 	"$LIBS"/libkbase/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c \
 	"$LIBS"/libkxdg/*.c $LDFLAGS
 install -Dm755 kdos-appbox "$PKG/usr/local/bin/kdos-appbox"

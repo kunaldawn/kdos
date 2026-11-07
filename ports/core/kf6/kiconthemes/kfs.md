@@ -17,3 +17,8 @@ KIconThemes implements the freedesktop icon theme lookup for KDE programs: `KIco
 - `-D BUILD_DESIGNERPLUGIN=OFF` — Build no Qt Designer plugin for the icon widgets. Upstream builds
   one by default, and the configure then requires Qt's `UiPlugin` module from
   [qt6-qttools](#port-qt6-qttools), which this port's `depends` does not name.
+- `-D KF_SKIP_PO_PROCESSING=ON` — Build none of the gettext catalogues under `po/`, which
+  `ki18n_install()` would compile into `.mo` files. The strings in the source are English, and the
+  package-wide English-only rule (see
+  [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy))
+  would remove every catalogue in another language.

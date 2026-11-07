@@ -1,10 +1,8 @@
 ## About
 FreeType reads font files (TrueType, OpenType, Type 1, CFF, WOFF and WOFF2, PCF and BDF bitmap
 fonts and more) and renders their glyphs into bitmaps, with hinting. Nearly every program that
-draws text on KDOS reaches it, usually through [fontconfig](#port-fontconfig), cairo or
-[harfbuzz](#port-harfbuzz), and the desktop's own programs (`kdos-shell`, `kdos-res`,
-`kdos-term`, `kdos-lock`) draw their text through [fcft](#port-fcft), which loads faces with
-FreeType.
+draws text on KDOS reaches it, usually through [fontconfig](#port-fontconfig), cairo,
+[harfbuzz](#port-harfbuzz) or Qt, which renders the whole Plasma desktop's text with it.
 
 ## Flags
 - `--enable-freetype-config` — Install the `freetype-config` script, which prints the compiler and

@@ -1,0 +1,8 @@
+{
+    "KPackageStructure": "KWin/Effect",
+    "KPlugin": {
+        "EnabledByDefault": true,
+        "Id": "kdos_keys",
+        "Name": "chordcheck fixture"
+    }
+}

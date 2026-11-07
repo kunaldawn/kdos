@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kio-gdrive
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = b9ce4d10e34d060747fb3346a8c4d3875a7ed87c21035b143bfb1410139a4b43  kio-gdrive-26.08.2.tar.xz
+description = gdrive:/ KIO worker for Google Drive, with a share plugin and file properties page
+homepage    = https://invent.kde.org/network/kio-gdrive
+license     = GPL-2.0-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND GPL-3.0-or-later AND LGPL-2.1-or-later AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcoreaddons kdoctools ki18n kio libkgapi purpose qtkeychain

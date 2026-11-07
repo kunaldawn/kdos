@@ -65,7 +65,7 @@ runs the package lint and rolls the package. No shape does any of that itself. T
 A `configure` script, then make. [pv](#port-pv) and [acl](#port-acl) are built with this shape,
 each with its own switches in place of some of these:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=759-761 pin=1455cb9a0681 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=802-804 pin=1455cb9a0681 lang=bash -->
 
 configure takes the exported flags by itself. In the chroot phases it also reads the site file
 `script/env/config.site`, which `CONFIG_SITE` names, and which places `sysconfdir`,
@@ -77,7 +77,7 @@ read the site file. See [autotools](../../kdos/05-developer/writing-ports.md#aut
 
 meson configures into a build directory and ninja builds it:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=781-784 pin=f119190e4a66 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=824-827 pin=f119190e4a66 lang=bash -->
 
 Three things in it are deliberate. `--libdir=lib`, because meson picks its default library
 directory from the machine it runs on: `lib64` wherever `/usr/lib64` is a real directory, and the
@@ -97,7 +97,7 @@ no wrap mode, so a missing subproject fails by name instead of being fetched, an
 
 The reference shape uses make as CMake's generator:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=845-850 pin=d390ab3f3189 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=888-893 pin=d390ab3f3189 lang=bash -->
 
 The tree's commonest form uses Ninja instead, with CMake's own build and install commands. The KDE
 Frameworks are built this way, here [karchive](#port-karchive):
@@ -117,7 +117,7 @@ picks `lib64` by itself, apart from the tree's `GNUInstallDirs` default. See
 
 A Rust program builds from its vendor bundle, with no network:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=880-886 pin=56bff5f813e7 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=923-929 pin=56bff5f813e7 lang=bash -->
 
 The bundle, `<name>-vendor-<version>.tar.xz`, holds every crate the program needs and the cargo
 configuration that points cargo at them; [Sources and the archive](../01-preparing/sources.md#vendor-bundles)
@@ -131,7 +131,7 @@ into `$PKG` by hand, since `cargo build` installs nothing. See
 
 A Go program builds from its module vendor tree, also offline:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=938-941 pin=945a281da9a7 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=981-984 pin=945a281da9a7 lang=bash -->
 
 `-ldflags "-s -w"` is required, because the Go linker otherwise writes DWARF and a symbol table that
 kpkg does not strip; `testing/preflight.sh` fails a `go build` without both. `-trimpath`,
@@ -164,7 +164,7 @@ without uninstalling the copy the build root holds. kpkg compiles the bytecode a
 
 A Qt project that ships a `.pro` file:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=989-992 pin=3c09c3145853 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=1036-1039 pin=3c09c3145853 lang=bash -->
 
 qmake reads no flags from the environment, so the three `QMAKE_*_RELEASE` variables hand it the
 exported ones, and `CONFIG+=release` keeps a debug build out. The install goes to `INSTALL_ROOT`,
@@ -189,7 +189,7 @@ See [Python, Perl, Haskell, Node and OCaml modules](../../kdos/05-developer/writ
 
 A project with only a makefile:
 
-<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=1070-1072 pin=88831e0ba377 lang=bash -->
+<!-- kfs:include docs/kdos/05-developer/writing-ports.md lines=1117-1119 pin=88831e0ba377 lang=bash -->
 
 The flags are exported, not passed as make arguments. A variable on the make command line overrides
 the makefile's own assignment of it, so passing `CFLAGS=...` there would discard whatever the
@@ -232,4 +232,4 @@ compile line taking the exported flags, and no code tuned to the build machine's
 <!-- book-nav -->
 ---
 
-*Part XVII. Appendices, chapter 422.* Previous: [Part XVII. Appendices](intro.md) · [Contents](../README.md) · Next: [423. Flag glossary](flag-glossary.md)
+*Part XVII. Appendices, chapter 446.* Previous: [Part XVII. Appendices](intro.md) · [Contents](../README.md) · Next: [447. Flag glossary](flag-glossary.md)

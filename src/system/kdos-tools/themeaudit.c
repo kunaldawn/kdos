@@ -8,30 +8,31 @@
  *   kdos theme --audit — is what is on this machine what the palette says?
  *
  * KDOS claims that every colour on the system comes from one table:
- * `KCOL_SCHEMES` in libkcolor. Eleven thousand icons, 32 cursor shapes, six
- * stylesheets, a terminal theme, a system-monitor theme and a prompt palette are
- * generated from it — and generated artwork that nobody re-checks is a claim,
- * not a fact. A hand-edited gtk.css, a half-finished accent switch, an icon
- * theme left behind by an interrupted `kdos theme`, a package upgrade that
- * reinstalled the phosphor build over an amber session: every one of those is
- * silent, and every one of them makes the claim false.
+ * `KCOL_SCHEMES` in libkcolor. Plasma's colour schemes, the Konsole schemes
+ * and profiles, the qt5ct palettes and the global themes are generated from it
+ * when the image is built, and the terminal programs' files in a home are
+ * generated from it by `kdos theme` — and generated artwork that nobody
+ * re-checks is a claim, not a fact. So the audit asks three things.
  *
- * THE AUDIT IS A REGENERATION, NOT AN INSPECTION. It does not try to recognise
- * "palette colours" in the installed files — that test would have to know which
- * mixes are legal and would drift away from the generators the moment one of
- * them changed. Instead it runs the SAME generators, with `$HOME` and the XDG
- * variables pointed at a temporary directory, and compares the result byte for
- * byte with what is installed. Anything that differs, differs from what this
- * machine's own palette produces right now, whatever the reason.
+ * THE INSTALLED SCHEMES STILL MEET THE CONTRAST FLOORS. `kdos-theme contrast`
+ * is the gate the build itself ran; run again here it catches a scheme file
+ * edited or replaced after the image was made.
  *
- * That also makes it exact rather than approximate: the generators were verified
- * byte-identical against the python ones they replaced, so "identical" is a
- * meaningful word here, and the comparison covers symlinks (the icon theme is
- * 12 462 of them) as well as file contents.
+ * THE ACCENT'S INSTALLED FILES ARE ALL THERE, found the way KDE finds them:
+ * along $XDG_DATA_DIRS. A global theme whose colour scheme is missing applies
+ * Breeze's colours under the KDOS name, which looks like a broken accent
+ * rather than a missing file.
  *
- * Nothing is written outside the temporary directory and nothing is signalled:
- * an audit that repaired what it found would be a `kdos theme` with a
- * misleading name.
+ * THE HOME'S GENERATED FILES ARE WHAT THE PALETTE MAKES. That half is a
+ * REGENERATION, NOT AN INSPECTION: it runs the same generators with `$HOME`
+ * and the XDG variables pointed at a temporary directory, and compares the
+ * result byte for byte with what is in the home. Anything that differs,
+ * differs from what this machine's own palette produces right now, whatever
+ * the reason.
+ *
+ * Nothing is written outside the temporary directory and nothing is
+ * signalled: an audit that repaired what it found would be a `kdos theme` with
+ * a misleading name.
  * ---------------------------------
  */
 
@@ -109,10 +110,9 @@ static void walk(const char *want, const char *have, AuditCount *c)
 			return;
 		}
 		c->same++;
-		/* AND THROUGH IT, when it names a directory on both sides.
-		 * `.themes/KDOS` is a link to the accent's own stylesheet
-		 * directory; counting the link alone would leave the whole GTK
-		 * theme unaudited. */
+		/* AND THROUGH IT, when it names a directory on both sides:
+		 * counting the link alone would leave everything under it
+		 * unaudited. */
 		if (stat(want, &tw) == 0 && stat(have, &th) == 0 &&
 		    S_ISDIR(tw.st_mode) && S_ISDIR(th.st_mode))
 			goto both_dirs;
@@ -162,22 +162,13 @@ both_dirs:
 
 /* ── the artefacts ─────────────────────────────────────────────────────── */
 
-enum { A_HOME, A_CONFIG, A_DATA };
+enum { A_CONFIG, A_DATA };
 
 static const struct {
 	int base;
 	const char *rel;
 	const char *label;
 } ARTEFACTS[] = {
-	{ A_HOME,   ".themes/KDOS",             "GTK stylesheet"     },
-	{ A_HOME,   ".icons/KDOS",              "icon theme"         },
-	{ A_HOME,   ".icons/KDOS-cursors",      "cursor theme"       },
-	{ A_CONFIG, "gtk-3.0/settings.ini",     "GTK3 theme name"    },
-	{ A_CONFIG, "gtk-4.0/settings.ini",     "GTK4 theme name"    },
-	{ A_CONFIG, "gtk-4.0/gtk.css",          "GTK4 palette"       },
-	{ A_CONFIG, "kdos-comp/themerc-override", "window frames"    },
-	{ A_CONFIG, "foot/themes/kdos",         "foot"               },
-	{ A_CONFIG, "kdos/term-colors.conf",    "terminal colours"   },
 	{ A_CONFIG, "bat/themes/kdos.tmTheme",  "bat"                },
 	{ A_CONFIG, "micro/colorschemes/kdos.micro", "micro"         },
 	/* Dropping the row would leave a generated file nothing audits: the
@@ -192,39 +183,25 @@ static const struct {
 	{ A_CONFIG, "btop/themes/kdos.theme",   "btop"               },
 	{ A_CONFIG, "starship.toml",            "starship palette"   },
 	{ A_CONFIG, "kdos/ls-colors",           "LS_COLORS"          },
-	{ A_CONFIG, "kdeglobals",               "KDE palette"        },
-	{ A_CONFIG, "qt5ct/qt5ct.conf",         "qt5ct settings"     },
-	{ A_CONFIG, "qt5ct/colors/KDOS.conf",   "qt5ct palette"      },
-	{ A_CONFIG, "qt6ct/qt6ct.conf",         "qt6ct settings"     },
-	{ A_CONFIG, "qt6ct/colors/KDOS.conf",   "qt6ct palette"      },
 	{ A_CONFIG, "mc/ini",                   "mc skin selection"  },
 	{ A_DATA,   "mc/skins/kdos.ini",        "mc skin"            },
 	{ A_CONFIG, "yazi/theme.toml",          "yazi"               },
-	{ A_DATA,   "color-schemes/KDOS.colors", "KDE colour scheme" },
 };
 #define NARTEFACTS ((int)(sizeof(ARTEFACTS) / sizeof(ARTEFACTS[0])))
 
 static char *live_path(int base, const char *rel)
 {
-	if (base == A_CONFIG)
-		return kdt_cfg_home(rel);
-	if (base == A_DATA)
-		return kdt_data_home(rel);
-	return kb_path_join(kb_home_dir(), rel);
+	return base == A_CONFIG ? kdt_cfg_home(rel) : kdt_data_home(rel);
 }
 
 static char *tmp_path(const char *root, int base, const char *rel)
 {
-	const char *sub = base == A_CONFIG ? ".config"
-			  : base == A_DATA   ? ".local/share"
-					     : NULL;
-	if (sub) {
-		char *dir = kb_path_join(root, sub);
-		char *p = kb_path_join(dir, rel);
-		free(dir);
-		return p;
-	}
-	return kb_path_join(root, rel);
+	char *dir = kb_path_join(root, base == A_CONFIG ? ".config"
+							: ".local/share");
+	char *p = kb_path_join(dir, rel);
+
+	free(dir);
+	return p;
 }
 
 /* ── the run ───────────────────────────────────────────────────────────── */
@@ -268,6 +245,119 @@ static int regenerate(const char *root, const KcolScheme *sc,
 	return WIFEXITED(st) && WEXITSTATUS(st) == 0 ? 0 : -1;
 }
 
+/* ── what the image installed ──────────────────────────────────────────── */
+
+/* The first $XDG_DATA_DIRS entry (default /usr/local/share:/usr/share) that
+ * holds `rel`, or NULL: the search KDE itself makes for a colour scheme, a
+ * Konsole profile or a global theme. */
+static char *data_find(const char *rel)
+{
+	const char *dirs = getenv("XDG_DATA_DIRS");
+	char *copy = kb_strdup(dirs && *dirs ? dirs
+				: "/usr/local/share:/usr/share");
+	char *save = NULL, *hit = NULL;
+
+	for (char *d = strtok_r(copy, ":", &save); d && !hit;
+	     d = strtok_r(NULL, ":", &save)) {
+		char *p = kb_path_join(d, rel);
+
+		if (*d && kb_path_exists(p))
+			hit = p;
+		else
+			free(p);
+	}
+	free(copy);
+	return hit;
+}
+
+/* Every installed KDOS*.colors along the search path, for the contrast gate:
+ * a scheme the user's own data directory adds is audited too, because KDE
+ * offers it beside the shipped ones. */
+static int contrast_gate(void)
+{
+	const char *dirs = getenv("XDG_DATA_DIRS");
+	char *copy = kb_strdup(dirs && *dirs ? dirs
+				: "/usr/local/share:/usr/share");
+	char *save = NULL;
+	KbArgv a = { 0 };
+	int files = 0, rc;
+
+	kb_argv_add(&a, "kdos-theme");
+	kb_argv_add(&a, "contrast");
+	kb_argv_add(&a, "-q");
+	for (char *d = strtok_r(copy, ":", &save); d;
+	     d = strtok_r(NULL, ":", &save)) {
+		char *dir = kb_path_join(d, "color-schemes");
+		int n = 0;
+		char **v = kb_listdir(dir, &n);
+
+		for (int i = 0; i < n; i++) {
+			size_t l = strlen(v[i]);
+
+			if (strncmp(v[i], "KDOS", 4) || l < 8 ||
+			    strcmp(v[i] + l - 7, ".colors") ||
+			    a.n >= KB_MAX_ARGV - 2)
+				continue;
+			kb_argv_addf(&a, "%s/%s", dir, v[i]);
+			files++;
+		}
+		kb_strv_free(v);
+		free(dir);
+	}
+	free(copy);
+	kb_argv_end(&a);
+	if (!files) {
+		printf("  %-18s no KDOS colour scheme is installed\n",
+		       "contrast floors");
+		return 1;
+	}
+	if (!kb_have_prog("kdos-theme")) {
+		printf("  %-18s not checked: kdos-theme is not installed\n",
+		       "contrast floors");
+		return 0;
+	}
+	{
+		/* Its refusals are the finding, so they reach the terminal. */
+		int was = kb_proc_verbose;
+
+		kb_proc_verbose = 1;
+		rc = kb_run_tty(&a);
+		kb_proc_verbose = was;
+	}
+	printf("  %-18s %d scheme%s %s\n", "contrast floors", files,
+	       files == 1 ? " " : "s", rc == 0 ? "pass" : "FAIL");
+	return rc != 0;
+}
+
+static int installed(const KcolScheme *sc)
+{
+	const char *title = kdt_accent_title(sc);
+	char rel[5][160];
+	static const char *const LABEL[] = {
+		"colour scheme", "Konsole colours", "Konsole profile",
+		"qt5ct palette", "global theme",
+	};
+	int bad = 0;
+
+	snprintf(rel[0], sizeof(rel[0]), "color-schemes/KDOS%s.colors", title);
+	snprintf(rel[1], sizeof(rel[1]), "konsole/%s.colorscheme",
+		 sc->theme_name);
+	snprintf(rel[2], sizeof(rel[2]), "konsole/%s.profile", sc->theme_name);
+	snprintf(rel[3], sizeof(rel[3]), "qt5ct/colors/%s.conf",
+		 sc->theme_name);
+	snprintf(rel[4], sizeof(rel[4]),
+		 "plasma/look-and-feel/org.kdos.%s.desktop", sc->name);
+	for (int i = 0; i < 5; i++) {
+		char *hit = data_find(rel[i]);
+
+		printf("  %-18s %s\n", LABEL[i], hit ? hit : "MISSING");
+		if (!hit)
+			bad = 1;
+		free(hit);
+	}
+	return bad;
+}
+
 int kdt_theme_audit(const KcolScheme *sc, void (*apply)(const KcolScheme *),
 		    const char *tty_accent, const char *tty_reset)
 {
@@ -288,31 +378,15 @@ int kdt_theme_audit(const KcolScheme *sc, void (*apply)(const KcolScheme *),
 	 * question.
 	 *
 	 *   starship.toml   only the block between the markers is ours
-	 *   kdeglobals      KDE apps write their own settings into it, so the
-	 *                   generator merges; a user's [Dolphin] section is not
-	 *                   drift, and regenerating into an EMPTY home would call
-	 *                   it drift on every machine that has ever run dolphin
-	 *   mc/ini          the same merge rule — mc keeps real user state there
-	 *                   and the generator only sets `skin`
-	 *   qt5ct.conf,     the same again: the qt5ct and qt6ct programs save a
-	 *   qt6ct.conf      person's choices there and the generator sets only
-	 *                   its own keys
-	 *
-	 * kdos/style-themerc is carried for a different reason: it is an INPUT
-	 * to write_themerc, not an artefact of it. Regenerating without it
-	 * would produce a themerc-override missing the applied style's lines
-	 * and call the live file drift on every machine that has ever run
-	 * `kdos theme style`.
+	 *   mc/ini          mc keeps real user state there and the generator
+	 *                   only sets `skin`
 	 *
 	 * A machine with none of the files produces none on either side and is
 	 * reported as absent, which is also correct.
 	 */
 	char *cfg = kb_path_join(root, ".config");
 	kb_mkdir_p(cfg);
-	static const char *const CARRIED[] = {
-		"starship.toml", "kdeglobals", "mc/ini", "kdos/style-themerc",
-		"qt5ct/qt5ct.conf", "qt6ct/qt6ct.conf"
-	};
+	static const char *const CARRIED[] = { "starship.toml", "mc/ini" };
 	for (size_t i = 0; i < sizeof(CARRIED) / sizeof(CARRIED[0]); i++) {
 		char *live = kdt_cfg_home(CARRIED[i]);
 		char *tmp = kb_path_join(cfg, CARRIED[i]);
@@ -329,8 +403,14 @@ int kdt_theme_audit(const KcolScheme *sc, void (*apply)(const KcolScheme *),
 	free(cfg);
 
 	printf("%s==> theme audit — %s%s\n", tty_accent, sc->name, tty_reset);
-	printf("    regenerating into a scratch directory and comparing; this "
-	       "reads nothing but files\n\n");
+	printf("    what the image installed, then the home regenerated into a "
+	       "scratch directory and compared\n\n");
+	fflush(stdout);
+
+	int bad = contrast_gate();
+
+	bad |= installed(sc);
+	printf("\n");
 	fflush(stdout);
 
 	if (regenerate(root, sc, apply) != 0) {
@@ -339,7 +419,7 @@ int kdt_theme_audit(const KcolScheme *sc, void (*apply)(const KcolScheme *),
 		return 2;
 	}
 
-	int bad = 0;
+	int drift = 0;
 	for (int i = 0; i < NARTEFACTS; i++) {
 		char *have = live_path(ARTEFACTS[i].base, ARTEFACTS[i].rel);
 		char *want = tmp_path(root, ARTEFACTS[i].base, ARTEFACTS[i].rel);
@@ -361,7 +441,7 @@ int kdt_theme_audit(const KcolScheme *sc, void (*apply)(const KcolScheme *),
 		if (verdict) {
 			printf("%s\n", verdict);
 		} else {
-			bad = 1;
+			drift = 1;
 			printf("%sDRIFTED%s —", tty_accent, tty_reset);
 			if (c.differ)
 				printf(" %ld differ", c.differ);
@@ -378,20 +458,20 @@ int kdt_theme_audit(const KcolScheme *sc, void (*apply)(const KcolScheme *),
 	kb_rmtree(root);
 
 	printf("\n");
-	if (bad) {
-		printf("  Something on this machine is not what the palette "
+	if (drift)
+		printf("  A file in this home is not what the palette "
 		       "generates.\n"
 		       "  `kdos theme %s` rewrites all of it.\n", sc->name);
+	if (bad)
+		printf("  What the image installed for %s is incomplete or "
+		       "fails its floors;\n"
+		       "  reinstalling kdos-plasma-look puts it back.\n",
+		       sc->name);
+	if (drift || bad)
 		return 1;
-	}
-	printf("  Every generated artefact is byte-identical to what "
-	       "KCOL_SCHEMES produces.\n");
-	/* The system copies under /usr/share are built at package time and are
-	 * always the phosphor build; the home copies are what a session and the
-	 * appbox actually read, which is why they are what is audited. Said out
-	 * loud so a green audit is not mistaken for a claim about /usr/share. */
-	printf("  (/usr/share/icons and /usr/share/kdos hold the phosphor build "
-	       "from the image build;\n   $HOME is what the session and the appbox "
-	       "read, and is what was checked.)\n");
+	printf("  The installed schemes pass their floors, every file the "
+	       "accent needs is installed,\n"
+	       "  and every generated file in this home is what KCOL_SCHEMES "
+	       "produces.\n");
 	return 0;
 }

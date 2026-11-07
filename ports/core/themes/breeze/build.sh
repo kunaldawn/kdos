@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/sandbox-badge.patch"
+
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D KDE_INSTALL_LIBDIR=lib \
@@ -19,9 +21,9 @@ cmake -S . -B build -G Ninja \
 	-D BUILD_QT5=OFF \
 	-D BUILD_QT6=ON \
 	-D BUILD_WITH_QTQUICK=ON \
-	-D BUILD_CURSOR=OFF \
-	-D WITH_DECORATIONS=OFF \
-	-D WITH_WALLPAPERS=OFF \
+	-D BUILD_CURSOR=ON \
+	-D WITH_DECORATIONS=ON \
+	-D WITH_WALLPAPERS=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_KF6FrameworkIntegration=ON \
 	-Wno-dev
 cmake --build build

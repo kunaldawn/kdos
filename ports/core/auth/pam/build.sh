@@ -62,6 +62,17 @@ password  required   pam_unix.so  sha512 shadow try_first_pass
 # End /etc/pam.d/system-password
 EOF
 
+cat > $PKG/etc/pam.d/system-login << "EOF"
+# Begin /etc/pam.d/system-login
+auth      include    system-auth
+account   include    system-account
+password  include    system-password
+session   include    system-session
+-session  optional   pam_turnstile.so
+-session  optional   pam_elogind.so
+# End /etc/pam.d/system-login
+EOF
+
 cat > $PKG/etc/pam.d/other << "EOF"
 # Begin /etc/pam.d/other
 auth        required        pam_warn.so

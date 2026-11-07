@@ -41,7 +41,7 @@ FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
 
 # What the boot screen says. THIS is the line to edit.
 TITLE    = "KD's Homebrew Linux Distro"
-SUBTITLE = "musl · GNU · kdos-comp · no systemd"
+SUBTITLE = "musl · GNU · KDE Plasma · no systemd"
 
 # Measured off the shipped banner, not chosen: the fitted DejaVu Sans Mono
 # sizes reproduce the original ink widths to within 3px, the colours are the

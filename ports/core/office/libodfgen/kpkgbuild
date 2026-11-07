@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = libodfgen
+version     = 0.1.8
+release     = 1
+source      = $name-$version.tar.xz::https://downloads.sourceforge.net/project/libwpd/libodfgen/libodfgen-$version/libodfgen-$version.tar.xz
+sha256      = 55200027fd46623b9bdddd38d275e7452d1b0ff8aeddcad6f9ae6dc25f610625  libodfgen-0.1.8.tar.xz
+description = Library that writes OpenDocument files from librevenge's interfaces, for import filters
+homepage    = https://sourceforge.net/p/libwpd/wiki/libodfgen/
+license     = MPL-2.0 OR LGPL-2.1-or-later
+depends     = pkgconf librevenge libxml2

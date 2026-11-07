@@ -1,0 +1,197 @@
+#!/bin/bash
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#
+# user-timers — one user's timer tables, as the daemon of the `timers` user
+# service (/etc/kdos/user-services/30_timers.sh).
+#
+# Two tables, read in this order, in the shape and through the parser of
+# /etc/kdos/timers.d (/usr/local/lib/kdos/timers.sh):
+#
+#   /etc/kdos/user-services/timers.d   rows every user runs
+#   ~/.config/kdos/timers.d            the user's own, and `kdos remind`'s
+#
+# ONE LOOP PER ROW, AND THE LOOP IS WHAT REPEATS IT. `snooze` waits for its
+# slot, runs the command once and exits, so a bare snooze is one run and not a
+# schedule. The system table gets the repeat from `ksvc supervise`; here one
+# supervised process holds every row, so the loops are its children and live
+# in its process group, and `service --user stop timers` — or the turnstile
+# backend at the last logout — ends every loop and every snooze with the one
+# group signal ksvc sends.
+#
+# A REMOVED FILE ENDS ITS ROWS' LOOPS — `kdos remind fire`, `kdos remind clear`
+# or a person deleting it. A snooze started again with its -t timefile gone
+# searches from one slack before now and re-runs the job about once a second
+# for the whole slack.
+#
+# A ROW snooze REFUSES IS REPORTED AND SKIPPED. `snooze -n` prints the next
+# five times and exits non-zero on a pattern it will not accept, so the check
+# costs nothing and a refused row is otherwise silent: its loop would spin at
+# the floor below and never run the job.
+#
+# TWO SIGNALS, BECAUSE A RESTARTED LOOP KILLS ITS JOB. A loop whose snooze has
+# reached its slot is running the job itself — snooze execs it — so stopping
+# that loop stops a backup halfway.
+#
+#   SIGUSR1  starts the rows of every table file that has no loops yet and
+#            touches no running loop. `kdos remind` sends it after writing a
+#            reminder, so the reminder is this service's from the start and
+#            stops with it at the last logout.
+#   SIGHUP   reads both tables again: every loop is stopped, its child first,
+#            and every row is started anew, for a file edited in place.
+#
+# A job's standard output is discarded and its standard error kept, in the
+# service's log under $XDG_RUNTIME_DIR/ksvc and in syslog: a nightly job's
+# chatter is noise, and its failure is the one line worth finding. Its
+# standard input is /dev/null, never the table file being read.
+#
+# The pid file is written once both tables have been read; the service's
+# `ready` waits for it.
+#
+# KDOS_USER_TIMERS_SYSTABLE and KDOS_TIMERS_LIB move the system table and the
+# parser, for the selftest fixture; neither is set anywhere on the image.
+
+# shellcheck source=fs/usr/local/lib/kdos/timers.sh
+. "${KDOS_TIMERS_LIB:-/usr/local/lib/kdos/timers.sh}"
+
+NAME="timers"
+SYSTABLE="${KDOS_USER_TIMERS_SYSTABLE:-/etc/kdos/user-services/timers.d}"
+USERTABLE="${XDG_CONFIG_HOME:-$HOME/.config}/kdos/timers.d"
+RUNDIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/kdos"
+PIDFILE="$RUNDIR/user-timers.pid"
+
+_loops=()
+declare -A _started=()
+_reload=0
+_add=0
+_idle=0
+
+# <name> <file> <spec> <command...>
+#
+# THE LOOP TAKES ITS OWN SIGTERM. snooze runs in the background and the loop
+# waits for it, so the TERM that stops the loop reaches the trap at once and
+# the trap ends the snooze it was waiting on; a loop killed while it waited in
+# the foreground would leave its snooze running, reparented and unfindable.
+#
+# The floor under the loop is what stops a command that fails instantly from
+# spinning it at the speed of `fork` — one second is far below any schedule
+# and far above a spin.
+row_loop() {
+    local name=$1 file=$2 spec=$3 child=0 rc t0
+    shift 3
+    trap '[ "$child" -gt 0 ] && kill "$child" 2>/dev/null; exit 0' TERM
+    trap - HUP INT USR1
+    while [ -e "$file" ]; do
+        t0=$EPOCHSECONDS
+        set -f
+        # shellcheck disable=SC2086 # $spec IS a word list
+        snooze $spec "$@" >/dev/null &
+        child=$!
+        set +f
+        wait "$child"
+        rc=$?
+        child=0
+        [ "$rc" = 0 ] || echo "[KDOS] ($NAME) $name: exited with code $rc"
+        [ $((EPOCHSECONDS - t0)) -ge 1 ] || sleep 1
+    done
+}
+
+# The timers_file callback: <name> <spec> <command...>, with TIMER_FILE set.
+row_start() {
+    local name=$1 spec=$2
+    shift 2
+    if ! command -v "$1" >/dev/null 2>&1; then
+        echo "[SKIP] $NAME: $name needs $1, which is not on this image"
+        return 0
+    fi
+    set -f
+    # shellcheck disable=SC2086
+    if ! snooze -n $spec >/dev/null 2>&1; then
+        set +f
+        echo "[KDOS] ($NAME) $TIMER_FILE: $name: snooze refuses '${spec# }'; skipped"
+        return 0
+    fi
+    set +f
+    row_loop "$name" "$TIMER_FILE" "$spec" "$@" </dev/null &
+    _loops+=("$!")
+}
+
+# The loops still running. An ended loop has been reaped, and its pid can by
+# now belong to any process of this user's, which a later stop would kill; a
+# pid counts only while /proc says this process is its parent.
+loops_live() {
+    local p live=()
+    for p in "${_loops[@]}"; do
+        [ "$(cut -d' ' -f4 "/proc/$p/stat" 2>/dev/null)" = "$$" ] && live+=("$p")
+    done
+    _loops=("${live[@]}")
+}
+
+# Every table file that has no loops yet, the system table's first. A file
+# that has gone is forgotten, so one written again under the same name starts.
+rows_start_new() {
+    local f
+    for f in "${!_started[@]}"; do
+        [ -e "$f" ] || unset '_started[$f]'
+    done
+    for f in "$SYSTABLE"/*.timer "$USERTABLE"/*.timer; do
+        [ -e "$f" ] || continue
+        [ -n "${_started[$f]}" ] && continue
+        _started[$f]=1
+        timers_file "$f" row_start
+    done
+    loops_live
+    echo "[KDOS] ($NAME) ${#_loops[@]} timer(s) running"
+}
+
+rows_stop() {
+    loops_live
+    if [ "${#_loops[@]}" -gt 0 ]; then
+        kill "${_loops[@]}" 2>/dev/null
+        wait "${_loops[@]}" 2>/dev/null
+    fi
+    _loops=()
+    _started=()
+}
+
+if ! command -v snooze >/dev/null 2>&1; then
+    echo "[SKIP] $NAME: snooze not found"
+    exit 0
+fi
+
+mkdir -p "$RUNDIR"
+rm -f "$PIDFILE"
+
+trap '[ "$_idle" -gt 0 ] && kill "$_idle" 2>/dev/null; rows_stop; rm -f "$PIDFILE"; exit 0' TERM INT
+trap '_reload=1' HUP
+trap '_add=1' USR1
+
+rows_start_new
+echo $$ > "$PIDFILE"
+# A trapped signal ends the `wait` at once. The minute bounds the one case it
+# cannot end: a signal that lands after the flags were looked at and before
+# the `wait` began is acted on at the next turn instead of never.
+while :; do
+    if [ "$_reload" = 1 ]; then
+        _reload=0
+        _add=0
+        echo "[KDOS] ($NAME) reading the tables again"
+        rows_stop
+        rows_start_new
+    elif [ "$_add" = 1 ]; then
+        _add=0
+        rows_start_new
+    fi
+    sleep 60 &
+    _idle=$!
+    wait "$_idle"
+    kill "$_idle" 2>/dev/null
+    _idle=0
+done

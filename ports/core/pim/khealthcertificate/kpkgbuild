@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = khealthcertificate
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 328a857c9c2659ce033f93c2097b85263d971de62c9cea0a20a8c927dacff5d1  khealthcertificate-26.08.2.tar.xz
+description = Library that decodes and verifies digital health and vaccination certificates
+homepage    = https://invent.kde.org/pim/khealthcertificate
+license     = LGPL-2.0-or-later AND BSD-3-Clause AND CC0-1.0 AND MIT AND Apache-2.0 AND CC-BY-3.0 AND EUPL-1.2 AND W3C-20150513
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative karchive kcodecs ki18n openssl zlib

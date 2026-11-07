@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kmail-account-wizard
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 12c80011c79bd9df7a452d911086fe63164e4a51fdc2749c366b51404b21a980  kmail-account-wizard-26.08.2.tar.xz
+description = Account setup wizard for KMail — looks up the IMAP and SMTP settings for an address
+homepage    = https://invent.kde.org/pim/kmail-account-wizard
+license     = LGPL-2.0-or-later AND GPL-2.0-or-later AND GFDL-1.2-or-later AND BSD-3-Clause AND CC0-1.0 AND MIT
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kcrash kdbusaddons ki18n kiconthemes kio kmime kwidgetsaddons kirigami kirigami-addons qqc2-desktop-style akonadi kidentitymanagement kmailtransport kdepim-runtime

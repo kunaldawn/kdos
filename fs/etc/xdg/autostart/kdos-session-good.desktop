@@ -1,0 +1,15 @@
+# The second marker of the A/B boot confirmation: once org.kde.plasmashell has
+# answered for a minute, kdos-notice asks kdos-sysupdated to record that this
+# boot reached a working desktop, and the slot is confirmed when the first
+# marker, rcS's, is there too. Without this entry no trial slot is ever kept.
+# Phase 2 is the last of plasma_session's autostart phases, after the shell.
+[Desktop Entry]
+Type=Application
+Name=KDOS Session Check
+Comment=Confirms the booted system version once the desktop is up
+Exec=kdos-notice --bless
+TryExec=kdos-notice
+NoDisplay=true
+OnlyShowIn=KDE;
+X-KDE-autostart-phase=2
+X-KDE-StartupNotify=false

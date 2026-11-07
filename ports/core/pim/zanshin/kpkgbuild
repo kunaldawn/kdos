@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = zanshin
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 51457e05d0e45de98ffebb9bd1f9c74c4b7ed29ee9917928dd5d1dddab67244c  zanshin-26.08.2.tar.xz
+description = Getting Things Done task manager on Akonadi to-dos, with a KRunner plugin
+homepage    = https://apps.kde.org/zanshin/
+license     = (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND LGPL-2.0-or-later AND MIT AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase boost kcalendarcore kconfig kcoreaddons kcrash ki18n kitemmodels kparts krunner kwidgetsaddons kwindowsystem kxmlgui akonadi akonadi-calendar kontactinterface kdepim-runtime

@@ -5,9 +5,10 @@
 # through GIO — which is how xdg-desktop-portal opens a link for a boxed
 # application — is wrapped by prepending the first name GLib finds from
 # `xdg-terminal-exec, gnome-terminal, mate-terminal, xfce4-terminal, …`. This
-# file must stay first on that list: konsole, further down it, is on this
-# image too, and without this file every terminal handler GIO starts opens in
-# Konsole instead of the desktop's foot.
+# file must stay first on that list: konsole is further down it, behind
+# terminals a port may also install, and without this file a terminal handler
+# GIO starts opens in whichever of those GLib meets first instead of the
+# desktop's Konsole.
 #
 # THE SAME RULE AS kb_terminal(). The two must agree, or a handler resolved
 # correctly is wrapped in a terminal that cannot open and reads as the handler
@@ -20,4 +21,4 @@ case "$1" in
 -e|--) shift ;;
 esac
 
-exec foot -e "$@"
+exec konsole -e "$@"

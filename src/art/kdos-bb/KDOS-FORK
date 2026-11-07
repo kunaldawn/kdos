@@ -38,8 +38,9 @@ KDOS changes, all applied in place because this is our source now:
             not a cost: one draw is 1.35ms against a 16ms budget.
             SIXTEEN, because 666us under 1000000/60 is the margin that keeps
             the deadline from ever being AHEAD of the control tick it is
-            checked against, and because kdos-term has no constant of its own
-            and takes the output's 16.667. A producer past a floor beats
+            checked against, and because a terminal drawing on the
+            compositor's frame callback has no constant of its own and takes
+            the output's 16.667. A producer past a floor beats
             against it at the difference. Further under is
             surplus nobody composes, further over is the halved rate.
             A DEADLINE MORE THAN A WHOLE PERIOD BEHIND IS MOVED, never
@@ -62,10 +63,9 @@ KDOS changes, all applied in place because this is our source now:
             half of two frames. The bracket is the fix precisely because the
             write cannot be made atomic. It goes to stdout, the stream
             aalib's curses driver is initscr()'d on, with both ends flushed,
-            and only when stdout is a terminal. The consumer half is
-            kvt_term_sync_hold() under a 150ms watchdog, so a producer that
-            sets the hold and dies cannot freeze a window, and a terminal
-            that honours neither ignores a private mode it does not know.
+            and only when stdout is a terminal. The consumer half is the
+            terminal's: Konsole honours the mode, and a terminal that does
+            not ignores a private mode it does not know.
             Measured at 236x63: 741 frames, 100.00% of bytes inside a
             bracket, zero nesting errors, biggest bracketed frame 20178 B.
   main.c    the mixer runs on its own thread. Upstream pumped MikMod_Update

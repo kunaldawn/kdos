@@ -63,7 +63,7 @@ boot. It is the one marker the image ships; see
 `kdos-powerd` treats `ssh` as both a port and a daemon. The comment above the code that does it,
 from `src/daemons/kdos-powerd/main.c`:
 
-<!-- kfs:include src/daemons/kdos-powerd/main.c lines=463-471 pin=9d44e95d2ac3 -->
+<!-- kfs:include src/daemons/kdos-powerd/main.c lines=475-483 pin=9d44e95d2ac3 -->
 
 The rule it writes goes into [`/etc/nftables.d/50-kdos-services.nft`]{.idx}; see [Firewall](firewall.md).
 
@@ -99,7 +99,7 @@ Needs membership of `wheel`.
    kdos-power firewall ssh on
    ```
 
-   or switch the `ssh` row in Settings → **System** → **Firewall…**. Either removes
+   or switch the `ssh` row on System Settings → **Firewall**. Either removes
    `/etc/service.disabled/sshd`, starts `sshd`, and opens TCP 22.
 
 3. Check:
@@ -257,7 +257,7 @@ The account has a finger enrolled, and `pam_fprintd` waits on the machine's read
 
 - The live medium's known passwords, among the points in
   [Security](../../kdos/06-reference/known-gaps.md#security)
-- [A fingerprint unlocks sudo and nothing else](../../kdos/06-reference/known-gaps.md#a-fingerprint-unlocks-sudo-and-nothing-else):
+- [A fingerprint unlocks sudo and the lock screen, and nothing else](../../kdos/06-reference/known-gaps.md#a-fingerprint-unlocks-sudo-and-the-lock-screen-and-nothing-else):
   `sudo` over SSH and the reader
 - [Kerberos is built and has never been given a ticket](../../kdos/06-reference/known-gaps.md#kerberos-is-built-and-has-never-been-given-a-ticket):
   openssh is built `--with-kerberos5`, and GSSAPI logins are untried
@@ -275,4 +275,4 @@ The account has a finger enrolled, and `pam_fprintd` waits on the machine's read
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 385.* Previous: [384. Firewall](firewall.md) · [Contents](../README.md) · Next: [386. Signing keys and trust](signing-keys-and-trust.md)
+*Part XVI. System administration, chapter 409.* Previous: [408. Firewall](firewall.md) · [Contents](../README.md) · Next: [410. Signing keys and trust](signing-keys-and-trust.md)

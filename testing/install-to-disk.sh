@@ -154,15 +154,40 @@ mount "$esp" /mnt/esp 2>&1 && {
 	umount /mnt/esp
 }
 
-part=$(ls "${DISK}"* 2>/dev/null | grep -v "^${DISK}\$" | tail -1)
-echo "root partition guess: $part"
-mount "$part" /mnt/target 2>&1 && {
+# THE ROOT IS A LOGICAL VOLUME. The erase plan lays an LVM group `kdos` on
+# the disk (inside the LUKS container on an encrypted install) holding
+# root_a, root_b, home and the swap: each slot is its own root and only /home
+# is shared, with the pack store bound into each slot from
+# /home/.kdos/packs. A plain partition is the root only on a disk too small
+# for two slots, which the last partition then is.
+root=""
+if [ "$LUKS" = 1 ]; then
+	crypt=$(blkid -t TYPE=crypto_LUKS -o device 2>/dev/null | grep "^${DISK}" | head -1)
+	[ -n "$crypt" ] && printf '%s' "$LUKS_PASS" |
+		cryptsetup open --key-file=- "$crypt" kdos-check 2>&1
+fi
+vgchange -ay kdos >/dev/null 2>&1 && [ -e /dev/kdos/root_a ] && root=/dev/kdos/root_a
+[ -n "$root" ] || root=$(ls "${DISK}"* 2>/dev/null | grep -v "^${DISK}\$" | tail -1)
+echo "--- volumes ---"; ls -l /dev/kdos/ 2>&1
+echo "root: $root"
+mount "$root" /mnt/target 2>&1 && {
 	echo "--- top level ---"; ls /mnt/target
 	echo "--- the pack store ---"; ls -la /mnt/target/var/lib/kdos/packs/ 2>&1
-	echo "--- fstab ---"; cat /mnt/target/etc/fstab 2>&1 | grep -v '^#'
+	echo "--- fstab (home, the packs bind, the root's own line) ---"
+	cat /mnt/target/etc/fstab 2>&1 | grep -v '^#'
+	grep -q '/home/.kdos/packs[[:space:]]*/var/lib/kdos/packs[[:space:]]*none[[:space:]]*bind' \
+		/mnt/target/etc/fstab 2>/dev/null \
+		&& echo "packs bind: present" || echo "packs bind: MISSING"
 	echo "--- the user ---"; grep '^kdos' /mnt/target/etc/passwd 2>&1
-	echo "--- inittab autologin ---"; grep -i autologin /mnt/target/etc/inittab 2>&1
+	echo "--- SDDM autologin ---"
+	cat /mnt/target/etc/sddm.conf.d/kde_settings.conf 2>&1
 	umount /mnt/target
 }
+if [ -e /dev/kdos/home ] && mount /dev/kdos/home /mnt/target 2>&1; then
+	echo "--- home: the shared pack store ---"; ls -la /mnt/target/.kdos/packs 2>&1
+	umount /mnt/target
+fi
+vgchange -an kdos >/dev/null 2>&1
+[ "$LUKS" = 1 ] && cryptsetup close kdos-check 2>/dev/null
 sync; sync
 printf '\nINSTALL DONE rc=%d\n' "$rc"

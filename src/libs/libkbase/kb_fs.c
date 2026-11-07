@@ -316,12 +316,9 @@ void kb_json_str(KbBuf *b, const char *s)
 }
 
 /*
- * The one reader of a desktop toggle. See kbase.h.
- *
- * The path is rebuilt on each call rather than kept: the whole point of a flag
- * file is that another process owns the answer, and a cached path would be the
- * one place this could still go stale after $HOME changed under a program that
- * re-execs.
+ * See kbase.h. The path is rebuilt on each call rather than kept: a cached
+ * path would be the one place this could still go stale after $HOME changed
+ * under a program that re-execs.
  */
 int kb_state_path(const char *rel, char *out, size_t n)
 {
@@ -335,51 +332,6 @@ int kb_state_path(const char *rel, char *out, size_t n)
 	if (home && *home)
 		return snprintf(out, n, "%s/.local/state/%s", home, rel)
 		       < (int)n;
-	return 0;
-}
-
-static int toggle_path(const char *name, char *out, size_t n)
-{
-	char rel[256];
-
-	if (!name || !*name)
-		return 0;
-	if (snprintf(rel, sizeof(rel), "kdos/toggles/%s", name) >=
-	    (int)sizeof(rel))
-		return 0;
-	return kb_state_path(rel, out, n);
-}
-
-int kb_toggle_on(const char *name)
-{
-	char path[512];
-
-	if (!toggle_path(name, path, sizeof(path)))
-		return 0;
-	return access(path, F_OK) == 0;
-}
-
-int kb_toggle_set(const char *name, int on)
-{
-	char path[512];
-	char *slash;
-	int fd;
-
-	if (!toggle_path(name, path, sizeof(path)))
-		return -1;
-	if (!on)
-		return unlink(path) == 0 || errno == ENOENT ? 0 : -1;
-
-	slash = strrchr(path, '/');
-	if (slash) {
-		*slash = '\0';
-		kb_mkdir_p(path);
-		*slash = '/';
-	}
-	fd = open(path, O_WRONLY | O_CREAT, 0644);
-	if (fd < 0)
-		return -1;
-	close(fd);
 	return 0;
 }
 
@@ -408,14 +360,14 @@ const char *kb_terminal(void)
 	const char *wl = getenv("WAYLAND_DISPLAY");
 
 	if (wl && *wl)
-		return "foot";
+		return "konsole";
 	/*
-	 * NO EMULATOR EXISTS WITHOUT A SESSION TO OPEN IT IN. `foot` is a
-	 * Wayland client, so a bare virtual terminal — `Ctrl+Alt+F2`, a serial
-	 * console, an ssh login — has none. NULL is the honest answer and every
-	 * caller already has to have one: a name returned here would resolve
-	 * the right program and then fail to open a window for it, which reads
-	 * as the handler being wrong.
+	 * NO EMULATOR EXISTS WITHOUT A SESSION TO OPEN IT IN. `konsole` is a
+	 * window in the Plasma session, so a bare virtual terminal —
+	 * `Ctrl+Alt+F2`, a serial console, an ssh login — has none. NULL is the
+	 * honest answer and every caller already has to have one: a name
+	 * returned here would resolve the right program and then fail to open a
+	 * window for it, which reads as the handler being wrong.
 	 */
 	return NULL;
 }

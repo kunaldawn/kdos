@@ -25,3 +25,4 @@
 # Firmware updates: UEFI, SSDs, docks, peripherals. fwupd-efi is the capsule
 # loader the UEFI plugin boots into, and gnu-efi is what it is linked against.
 fwupd
+fwupd-snapshot

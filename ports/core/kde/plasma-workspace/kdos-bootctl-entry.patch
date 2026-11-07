@@ -1,0 +1,21 @@
+Subject: logout-greeter: list boot entries with kdos-bootctl
+
+The logout screen names the boot entry the next restart switches to. It
+reads the entry's id from login1's RebootToBootLoaderEntry and looks up
+its title in the output of `bootctl list --json=short`. KDOS installs no
+program called bootctl: its A/B slots are listed by
+`kdos-bootctl list --json=short`, which prints the same JSON shape, one
+entry per slot. Without the change the lookup finds no program and the
+screen shows no entry.
+
+--- a/logout-greeter/shutdowndlg.cpp
++++ b/logout-greeter/shutdowndlg.cpp
+@@ -191,7 +191,7 @@
+ 
+             const QStringList bootctlArgs{u"list"_s, u"--json=short"_s};
+ 
+-            bootctl->start(u"bootctl"_s, bootctlArgs);
++            bootctl->start(u"kdos-bootctl"_s, bootctlArgs);
+         });
+     }
+ 

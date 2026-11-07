@@ -1,0 +1,31 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   What the file indexer reads.
+#
+# File names only. Reading the contents of every file in a home directory on
+# the first login of a fresh install is minutes of full CPU before the desktop
+# is usable; the Welcome tour offers content indexing, which sets
+# `only basic indexing=false` in ~/.config/baloofilerc.
+#
+# The excluded folders hold data no person searches by name and that grows
+# without bound: caches, rootless podman's image store, every box's root and
+# grafted packs, the pack store, and kpkg's build tree. Hidden folders are
+# already skipped, so the first three matter once a person turns them on.
+# `exclude filters` names KDOS's port build trees wherever a checkout of the
+# tree lives; baloo appends its own default filters to whatever this lists and
+# writes the union into the person's file, so this list adds and removes
+# nothing of upstream's.
+# ---------------------------------
+
+[Basic Settings]
+Indexing-Enabled=true
+
+[General]
+only basic indexing=true
+exclude folders[$e]=$HOME/.cache/,$HOME/.local/share/containers/,$HOME/.local/share/kdos/,/var/lib/kdos/packs/,/var/cache/kpkg/
+exclude filters=.srccache,.portup,.portup-tools,.kpkgbin

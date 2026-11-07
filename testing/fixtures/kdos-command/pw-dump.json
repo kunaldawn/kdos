@@ -1,0 +1,11 @@
+[
+  { "id": 31, "type": "PipeWire:Interface:Client", "info": { "props": { "application.process.id": 4242, "application.name": "Firefox" } } },
+  { "id": 40, "type": "PipeWire:Interface:Node", "info": { "state": "running", "props": { "media.class": "Stream/Input/Audio", "node.name": "Firefox", "client.id": 31, "application.icon-name": "firefox" }, "params": { "Props": [ { "volume": 1.0, "mute": true } ] } } },
+  { "id": 41, "type": "PipeWire:Interface:Node", "info": { "state": "idle", "props": { "media.class": "Stream/Input/Audio", "node.name": "Idle", "application.process.id": 1 } } },
+  { "id": 50, "type": "PipeWire:Interface:Node", "info": { "state": "running", "props": { "media.class": "Video/Source", "device.api": "v4l2", "node.name": "v4l2_input.cam [x]" } } },
+  { "id": 51, "type": "PipeWire:Interface:Node", "info": { "state": "running", "props": { "media.class": "Stream/Input/Video", "node.name": "OBS \"cam\"", "application.name": "OBS Studio", "application.process.id": 4343 } } },
+  { "id": 52, "type": "PipeWire:Interface:Link", "info": { "output-node-id": 50, "input-node-id": 51, "state": "active" } },
+  { "id": 60, "type": "PipeWire:Interface:Node", "info": { "state": "running", "props": { "media.class": "Video/Source", "node.name": "kwin_screencast" } } },
+  { "id": 61, "type": "PipeWire:Interface:Link", "info": { "output-node-id": 60, "input-node-id": 51, "state": "active" } },
+  { "id": 62, "type": "PipeWire:Interface:Link", "info": { "output-node-id": 60, "input-node-id": 40, "state": "paused" } }
+]

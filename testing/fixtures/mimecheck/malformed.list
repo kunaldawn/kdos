@@ -1,0 +1,7 @@
+[Default Applications]
+text/html=firefox-esr.desktop;
+text/html=thunderbird.desktop;
+not a mime type=firefox-esr.desktop;
+
+[Default Application]
+text/plain=firefox-esr.desktop;

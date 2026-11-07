@@ -1,0 +1,50 @@
+Subject: leave the user runtime directory to turnstile
+
+pam_elogind does not export XDG_RUNTIME_DIR, and elogind neither mounts a
+tmpfs at /run/user/<uid> at a user's first login nor unmounts and removes
+it at the last logout. turnstile (manage_rundir) creates, exports and
+removes the directory instead, and keeps it for a lingering user, whose
+boxes and user services would otherwise lose their sockets when elogind
+removed it at logout.
+
+Carried from Chimera Linux's elogind (cports main/elogind,
+no-runtime-dir.patch, by q66), with its hunks
+placed for 255.24.
+
+--- a/src/login/pam_elogind.c
++++ b/src/login/pam_elogind.c
+@@ -1185,6 +1185,7 @@
+         if (r != PAM_SUCCESS)
+                 return r;
+ 
++#if 0
+         if (original_uid == ur->uid) {
+                 /* Don't set $XDG_RUNTIME_DIR if the user we now authenticated for does not match the
+                  * original user of the session. We do this in order not to result in privileged apps
+@@ -1194,6 +1195,7 @@
+                 if (r != PAM_SUCCESS)
+                         return r;
+         }
++#endif
+ 
+         /* Most likely we got the session/type/class from environment variables, but might have gotten the data
+          * somewhere else (for example PAM module parameters). Let's now update the environment variables, so that this
+--- a/src/login/user-runtime-dir.c
++++ b/src/login/user-runtime-dir.c
+@@ -237,6 +237,7 @@
+                 return do_umount(argv[2]);
+         assert_not_reached();
+ #else // 0
++#if 0
+         if (streq(verb, "start"))
+                 r = do_mount(u->runtime_path, u->manager->runtime_dir_size, u->manager->runtime_dir_inodes,
+                              u->user_record->uid, u->user_record->gid);
+@@ -244,7 +245,7 @@
+                 r = do_umount(u->runtime_path);
+         else
+                 assert_not_reached();
+-
++#endif
+         return r;
+ #endif // 0
+ }

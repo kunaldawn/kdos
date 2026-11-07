@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = aha
+version     = 0.5.1
+release     = 1
+source      = $name-$version.tar.gz::https://github.com/theZiz/aha/archive/$version.tar.gz
+sha256      = 6aea13487f6b5c3e453a447a67345f8095282f5acd97344466816b05ebd0b3b1  aha-0.5.1.tar.gz
+description = ANSI colour escapes to HTML converter
+homepage    = https://github.com/theZiz/aha
+license     = MPL-1.1 OR LGPL-2.0-or-later

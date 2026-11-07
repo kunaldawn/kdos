@@ -1,0 +1,42 @@
+#!/bin/sh
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   about-update — About this System's "Update key" row
+#
+# The key that verified the last update this machine was offered, and when,
+# as `kdos update check` recorded them in /var/lib/kdos/update.json (its
+# signed_by and verified fields, one line of JSON) — the same key Discover
+# names on the update. Only that file is read, never the network or the key
+# ring. A key id is 16 hex digits, shown as its first and last four. Always
+# two lines, at once: see about-slot.
+
+PATH=/usr/bin:/bin
+R=${KDOS_ABOUT_ROOT:-}
+v=Unknown
+doc=
+[ -r "$R/var/lib/kdos/update.json" ] && IFS= read -r doc <"$R/var/lib/kdos/update.json" 2>/dev/null
+case $doc in
+*'"signed_by":null'*) v="None verified yet" ;;
+*'"signed_by":{"key":"'*)
+	# The key, then the time, each from the line as read: the signer's name
+	# between them may hold any character, and a quote inside a JSON string
+	# is always escaped, so neither pattern can match inside one.
+	kt=$(printf '%s\n' "$doc" | sed -n -e h \
+		-e 's/.*"signed_by":{"key":"\([0-9a-f]\{16\}\)".*/k \1/p' -e g \
+		-e 's/.*},"verified":\([0-9]\{1,12\}\)[,}].*/t \1/p')
+	k='' t=''
+	while read -r a b; do case $a in k) k=$b ;; t) t=$b ;; esac; done <<EOF
+$kt
+EOF
+	if [ -n "$k" ]; then
+		v="ed25519 ${k%????????????}…${k#????????????}"
+		[ -n "$t" ] && d=$(date -u -d "@$t" +%Y-%m-%d 2>/dev/null) && v="$v · verified $d"
+	fi
+	;;
+esac
+printf 'Update key\n%s\n' "$v"

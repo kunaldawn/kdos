@@ -1,0 +1,5 @@
+# Discover's Home page reads its featured list from this URL. Upstream's
+# default is https://autoconfig.kde.org, fetched at every start; KDOS points
+# it at a file the image carries, so Discover reaches no server to open.
+[Software]
+FeaturedListingURL=file:///usr/share/kdos/discover/featured.json

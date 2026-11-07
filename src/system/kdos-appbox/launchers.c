@@ -21,17 +21,23 @@
  *   kdos-appbox genlaunchers <desktop-dir> <fs-root>
  *       one applications directory, with no pack field in the table
  *
- * Four outputs, and dropping any one of them breaks something visible:
+ * Six outputs, and dropping any one of them breaks something visible:
  *
- *   etc/skel/.local/share/applications/<upstream-id>.desktop
- *       the launcher, keeping UPSTREAM's own desktop-file id — not
- *       kdos-<name>, and not StartupWMClass either. Measured in a booted VM:
- *       kdos-shell matches a running toplevel to a desktop entry by the
- *       entry's FILE ID and ignores StartupWMClass, and a Wayland app_id is
- *       NOT the X11 WM_CLASS — GIMP's entry says StartupWMClass=gimp-3.0 but
- *       its toplevel announces app_id "gimp" (confirmed with WAYLAND_DEBUG=1),
- *       which is exactly its upstream filename. Get this wrong and every
- *       running alien app shows a second grey cog beside its own pinned icon.
+ *   etc/skel/.local/share/applications/<launcher-id>.desktop
+ *       the launcher, named with the LAUNCHER ID — `<box>` for a box with one
+ *       launcher, `<box>.<stem>` for each of a box with several — and never
+ *       upstream's own desktop-file id. KWin replaces every tagged window's
+ *       app_id with the launcher id kdos-boxsock tagged its socket with, and
+ *       sets resourceClass and desktopFileName from it, so the Task Manager,
+ *       KWin's rules and the window's icon all look for a desktop entry of
+ *       exactly that name; under upstream's id every boxed window would show a
+ *       generic icon beside a pin that never lights. It also keeps a boxed
+ *       copy and a host copy of one program apart, which the Start menu and
+ *       "Open with" need.
+ *   etc/skel/.local/share/icons/hicolor/<size>/apps/<launcher-id>.<ext>
+ *       the application's icon, copied out of its pack under the launcher's
+ *       name: the pack's /usr/share/icons is inside the box and nothing on the
+ *       host reads it, so an `Icon=` naming upstream's icon finds nothing.
  *   etc/skel/.local/share/applications/mimeinfo.cache
  *       the mime -> desktop-id index. Written here because this directory
  *       is not /usr/share/applications, whose cache kpkg's trigger writes,
@@ -39,11 +45,17 @@
  *       lines are never consulted, so no alien app appears in any "Open
  *       with" dialog and none can be a default handler.
  *   usr/share/kdos/alien-apps
- *       name -> in-box command line, read by the launch path.
+ *       name -> in-box command line, its pack and its launcher id, read by
+ *       the launch path.
  *   usr/local/bin/<name> -> kdos-appbox
  *       one symlink per app, so every alien app is also a normal command in
  *       $PATH. kdos-appbox dispatches on its own basename, the way busybox
  *       does, which keeps the alien-app path free of any shell.
+ *   etc/skel/.config/kwinrulesrc, groups kdos-box-<box>
+ *       one window rule per box, the title bar in the box's colour (rules.c).
+ *
+ * The user's tree is followed by kbuildsycoca6, so KService — the Start menu,
+ * KRunner, the Task Manager — sees the new launchers before this returns.
  */
 
 #include "kdos-appbox.h"
@@ -53,6 +65,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "kxdg.h"
@@ -62,17 +75,18 @@
  * ahead of /usr/bin on PATH, so a shim carrying a host tool's name shadows the
  * native program and dispatches to a box instead. git, gnuplot and mpv are
  * native ports that a pack's desktop entry could also name, which is why they
- * are here beside the shell and system tools.
+ * are here beside the shell and system tools; any other name a host program
+ * already answers to in /usr/bin is refused the same way when the shims are
+ * written (host_has()).
  */
 static const char *RESERVED[] = {
 	"sh", "bash", "env", "ls", "cp", "mv", "rm", "cat", "sed", "awk", "grep",
-	"find", "tar", "gzip", "python3", "perl", "make", "gcc", "kdos", "foot",
-	"git", "gnuplot", "mpv",
-	"kdos-appbox", "kdos-box", "xdg-open", "kdos-banner", "kdos-desktop",
-	"kdos-desktop-start",
+	"find", "tar", "gzip", "python3", "perl", "make", "gcc", "kdos",
+	"git", "gnuplot", "mpv", "konsole",
+	"kdos-appbox", "kdos-box", "xdg-open", "kdos-banner",
 	"kdos-shot", "kdos-fetch-app", "kdos-fetch-static", "kdos-getty",
-	"kdos-pix", "kdos-rec", "rec", "play", "sox", "soxi",
-	"kdos-theme", "kdos-theme-helper", "kinstall", "kpkg", "kpkgadd",
+	"rec", "play", "sox", "soxi",
+	"kinstall", "kpkg", "kpkgadd",
 	"kpkgbuild", "kpkgdel", "kpkgdepends", "ksvc", "service", NULL
 };
 
@@ -92,12 +106,13 @@ static const char *SKIP_ROOTLESS_INERT[] = {
 };
 
 /*
- * KWIN-ONLY. Spectacle on Wayland asks KWin's own screenshot interface and
- * opens an error dialog on any other compositor — measured on this desktop:
- * "On Wayland, Spectacle requires KDE Plasma's KWin compositor". Screenshots
- * are the host's, `kdos-shot`, which is where the capture globals are.
+ * THE SESSION'S OWN, AND UNREACHABLE FROM A BOX. Spectacle captures through
+ * KWin's ScreenShot2 interface on the session bus, which a box's bus proxy
+ * hides on purpose — that interface answers any caller with the whole screen
+ * — so a boxed copy opens on an error. The host's Spectacle is installed and
+ * is the screenshot tool.
  */
-static const char *SKIP_NEEDS_KWIN[] = {
+static const char *SKIP_HOST_ONLY[] = {
 	"org.kde.spectacle", NULL
 };
 
@@ -118,7 +133,8 @@ static const char *SKIP_PREFIXES[] = {
 	"org.kicad.pcbcalculator", "cups", "display-im", "mediainfo-gui", NULL
 };
 
-/* Old-launcher names the dock favorites and the docs already reference. */
+/* Short names for upstream ids: the shim on $PATH and the alien-apps table's
+ * key, which `kdos app`, the shims and the docs all spell this way. */
 static const char *RENAME[][2] = {
 	{ "firefox-esr", "firefox" },
 	{ "org.xfce.mousepad", "mousepad" },
@@ -268,6 +284,14 @@ static const char *X11_FORCING[] = {
 	"ELECTRON_OZONE_PLATFORM_HINT=x11", NULL
 };
 
+int env_forces_x11(const char *assignment)
+{
+	for (int i = 0; X11_FORCING[i]; i++)
+		if (!strcmp(X11_FORCING[i], assignment))
+			return 1;
+	return 0;
+}
+
 static int in_list(const char *const *list, const char *s)
 {
 	for (int i = 0; list[i]; i++)
@@ -296,8 +320,9 @@ typedef struct {
 	char mime[2048];
 	char keywords[512];
 	char generic[160];
-	char wmclass[160];
 	char pack[96];		/* the pack that provides it, or "" for an image */
+	char lid[128];		/* its launcher id, "" until assign_ids()       */
+	char root[1024];	/* the pack's root, where its icons are         */
 	int cmdonly;		/* a command, not an application: no launcher */
 	int terminal;		/* upstream's Terminal=true: it draws in one */
 } Launcher;
@@ -332,8 +357,29 @@ static Launcher *app_new(void)
 
 /* Stamped onto every launcher parsed while it is set. The pack lane walks one
  * mounted pack at a time, and this is what ties a shim to the box it should
- * launch in — the third field of the alien-apps table. */
+ * launch in — the third field of the alien-apps table — and an icon to the
+ * root it is copied out of. */
 static char cur_pack[96];
+
+/*
+ * The image root, from the desktop directory it was pointed at: the caller
+ * passes <image>/usr/share/applications, so three components up is the root —
+ * "" for the host's own /usr/share/applications. -1, and "", when the path is
+ * too short to have one.
+ */
+static int root_of(const char *srcdir, char *root, size_t n)
+{
+	kb_strlcpy(root, srcdir, n);
+	for (int up = 0; up < 3; up++) {
+		char *slash = strrchr(root, '/');
+		if (!slash) {
+			root[0] = 0;
+			return -1;
+		}
+		*slash = 0;
+	}
+	return 0;
+}
 
 /* A field code is a `%` and one letter and nothing else. The four that name
  * the file or URL the user picked are kept; the rest (%i, %c, %k …) are
@@ -441,8 +487,11 @@ static int has_category(const char *cats, const char *want)
 static void parse_dir(const char *srcdir)
 {
 	char **files = kb_listdir(srcdir, NULL);
+	char root[1024];
+
 	if (!files)
 		kb_die("cannot read %s", srcdir);
+	root_of(srcdir, root, sizeof(root));
 
 	for (char **f = files; *f; f++) {
 		if (!ends_with(*f, ".desktop"))
@@ -457,7 +506,7 @@ static void parse_dir(const char *srcdir)
 
 		if (in_list(SKIP_BASENAMES, base) ||
 		    in_list(SKIP_ROOTLESS_INERT, base) ||
-		    in_list(SKIP_NEEDS_KWIN, base) ||
+		    in_list(SKIP_HOST_ONLY, base) ||
 		    starts_with_any(SKIP_PREFIXES, base))
 			continue;
 
@@ -520,13 +569,9 @@ static void parse_dir(const char *srcdir)
 			   sizeof(a->keywords));
 		kb_strlcpy(a->generic, kxdg_get(&e, "GenericName", ""),
 			   sizeof(a->generic));
-		/* The window this launcher opens announces the APP's app_id,
-		 * not ours, so without this the dock cannot tie a running alien
-		 * app back to any desktop entry. */
-		kb_strlcpy(a->wmclass, kxdg_get(&e, "StartupWMClass", base),
-			   sizeof(a->wmclass));
+		kb_strlcpy(a->root, root, sizeof(a->root));
 		/* R, octave-cli and the like say `Terminal=true`, and the Start
-		 * menu wraps such an entry in `foot -e`. Written as false, the
+		 * menu runs such an entry in Konsole. Written as false, the
 		 * program was started with a pipe for stdin, and R answers that
 		 * with "you must specify --save" and exits. */
 		a->terminal = kxdg_bool(&e, "Terminal", 0);
@@ -555,21 +600,12 @@ static void parse_dir(const char *srcdir)
 	kb_strv_free(files);
 }
 
-/*
- * The image root, from the desktop directory it was pointed at: the caller
- * passes <image>/usr/share/applications, so three components up is the root.
- * Nothing else here needs it, which is why it is derived rather than passed.
- */
 static void add_commands(const char *srcdir)
 {
 	char root[1024];
-	kb_strlcpy(root, srcdir, sizeof(root));
-	for (int up = 0; up < 3; up++) {
-		char *slash = strrchr(root, '/');
-		if (!slash)
-			return;
-		*slash = 0;
-	}
+
+	if (root_of(srcdir, root, sizeof(root)) != 0)
+		return;
 
 	for (int i = 0; COMMANDS[i]; i++) {
 		char probe[1200];
@@ -604,23 +640,184 @@ static void add_commands(const char *srcdir)
 		kb_strlcpy(a->keywords, ENTRIES[i].keywords,
 			   sizeof(a->keywords));
 		kb_strlcpy(a->exec, ENTRIES[i].exec, sizeof(a->exec));
-		/* The window announces the program's own class, which for an
-		 * X11 client under Xwayland is its WM_CLASS — without it the
-		 * taskbar cannot tie the running window to this entry. */
-		kb_strlcpy(a->wmclass, ENTRIES[i].bin, sizeof(a->wmclass));
 		kb_strlcpy(a->icon, ENTRIES[i].icon, sizeof(a->icon));
+		kb_strlcpy(a->root, root, sizeof(a->root));
 	}
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
-static void write_launchers(const char *dir)
+/*
+ * THE LAUNCHER ID. A box with one launcher is its own launcher; a box whose
+ * pack exports several (app.maxima carries maxima and wxmaxima) gives each
+ * `<box>.<stem>`, the stem being the shim name with every character an app id
+ * component cannot carry turned into `_`. The stem carries no dot, which is
+ * what lets a reader find the box from the id: the id itself, or the id less
+ * its last component.
+ */
+void launcher_id(const char *box, const char *stem, int several, char *out,
+		 size_t n)
 {
+	size_t at;
+
+	if (!several || !stem || !*stem) {
+		kb_strlcpy(out, box, n);
+		return;
+	}
+	at = (size_t)snprintf(out, n, "%s.", box);
+	for (const char *c = stem; *c && at + 1 < n; c++)
+		out[at++] = isalnum((unsigned char)*c) || *c == '_' || *c == '-'
+			  ? *c : '_';
+	if (at < n)
+		out[at] = '\0';
+	/* A stem that cannot start a component is given one that can. */
+	if (out[strlen(box) + 1] == '-')
+		out[strlen(box) + 1] = '_';
+}
+
+/* Every application of a pack gets its launcher id, once the whole set is
+ * read, because whether a pack has several is a fact about the set. Two
+ * shims that clean to the same stem keep the first one's id and the second
+ * gets its upstream id's stem, so no two launchers share a file name. */
+static void assign_ids(void)
+{
+	for (int i = 0; i < napps; i++) {
+		Launcher *a = &apps[i];
+		int several = 0;
+
+		if (a->cmdonly || !a->pack[0])
+			continue;
+		for (int k = 0; k < napps && !several; k++)
+			several = k != i && !apps[k].cmdonly &&
+				  !strcmp(apps[k].pack, a->pack);
+		launcher_id(a->pack, a->id, several, a->lid, sizeof(a->lid));
+		for (int k = 0; k < i; k++)
+			if (!strcmp(apps[k].lid, a->lid)) {
+				launcher_id(a->pack, a->base, 1, a->lid,
+					    sizeof(a->lid));
+				break;
+			}
+	}
+}
+
+/*
+ * THE ICON, COPIED OUT OF THE PACK UNDER THE LAUNCHER'S NAME. An `Icon=` is a
+ * theme name looked up in the HOST's icon themes, and the application's own
+ * icon is inside its pack, which nothing on the host reads; a boxed launcher
+ * naming upstream's icon shows a generic one. Every size and format the pack
+ * has in hicolor is copied, then /usr/share/pixmaps as the unthemed fallback
+ * KIconLoader also searches, and an absolute `Icon=` path inside the pack is
+ * copied as it is.
+ *
+ * The files written are listed in <data>/kdos/launcher-icons, and that list is
+ * what the next run deletes before it writes: the icon directories are shared
+ * with every other program that installs one, so nothing is swept by pattern.
+ */
+static const char *const ICON_EXTS[] = { "svg", "svgz", "png", "xpm", NULL };
+
+static int copy_icon(const char *src, const char *dst, KbBuf *manifest,
+		     const char *data)
+{
+	char dir[1024];
+	char *slash;
+
+	kb_strlcpy(dir, dst, sizeof(dir));
+	slash = strrchr(dir, '/');
+	if (slash) {
+		*slash = '\0';
+		kb_mkdir_p(dir);
+	}
+	if (kb_copy_file(src, dst) != 0)
+		return 0;
+	kb_buf_printf(manifest, "%s\n", dst + strlen(data) + 1);
+	return 1;
+}
+
+static int export_icon(const Launcher *a, const char *data, KbBuf *manifest)
+{
+	char path[2048], dst[4096];
+	char **sizes;
+	int n = 0;
+
+	if (!a->icon[0] || !a->root[0] || !a->lid[0])
+		return 0;
+	if (a->icon[0] == '/') {
+		const char *dot = strrchr(a->icon, '.');
+
+		snprintf(path, sizeof(path), "%s%s", a->root, a->icon);
+		if (!dot || !kb_path_exists(path))
+			return 0;
+		snprintf(dst, sizeof(dst), "%s/pixmaps/%s%s", data, a->lid, dot);
+		return copy_icon(path, dst, manifest, data);
+	}
+	if (strchr(a->icon, '/'))
+		return 0;
+	snprintf(path, sizeof(path), "%s/usr/share/icons/hicolor", a->root);
+	sizes = kb_listdir(path, NULL);
+	for (char **sz = sizes; sz && *sz; sz++) {
+		for (int e = 0; ICON_EXTS[e]; e++) {
+			char src[4096];
+
+			snprintf(src, sizeof(src), "%s/%s/apps/%s.%s", path, *sz,
+				 a->icon, ICON_EXTS[e]);
+			if (!kb_path_exists(src))
+				continue;
+			snprintf(dst, sizeof(dst), "%s/icons/hicolor/%s/apps/%s.%s",
+				 data, *sz, a->lid, ICON_EXTS[e]);
+			n += copy_icon(src, dst, manifest, data);
+		}
+	}
+	kb_strv_free(sizes);
+	if (n)
+		return n;
+	for (int e = 0; ICON_EXTS[e]; e++) {
+		char src[4096];
+
+		snprintf(src, sizeof(src), "%s/usr/share/pixmaps/%s.%s", a->root,
+			 a->icon, ICON_EXTS[e]);
+		if (!kb_path_exists(src))
+			continue;
+		snprintf(dst, sizeof(dst), "%s/pixmaps/%s.%s", data, a->lid,
+			 ICON_EXTS[e]);
+		return copy_icon(src, dst, manifest, data);
+	}
+	return 0;
+}
+
+/* The previous run's icons go, by the list it left. */
+static void sweep_icons(const char *data)
+{
+	char list[2048];
+	size_t len = 0;
+	char *text;
+
+	snprintf(list, sizeof(list), "%s/kdos/launcher-icons", data);
+	text = kb_read_all(list, &len);
+	for (char *l = text, *nl; l && *l; l = nl) {
+		char p[2048];
+
+		nl = strchr(l, '\n');
+		if (nl)
+			*nl++ = '\0';
+		/* A line naming a parent directory is no icon this wrote. */
+		if (!*l || strstr(l, "..") || *l == '/')
+			continue;
+		snprintf(p, sizeof(p), "%s/%s", data, l);
+		unlink(p);
+	}
+	free(text);
+	unlink(list);
+}
+
+static void write_launchers(const char *dir, const char *data)
+{
+	KbBuf manifest = {0};
+
 	kb_mkdir_p(dir);
 
-	/* Cleared by MARKER, not by name: a launcher's file name follows the
-	 * upstream entry, which can change between pack versions, and an
-	 * orphan launcher is a dead icon on the desktop. */
+	/* Cleared by MARKER, not by name: a launcher's file name follows its
+	 * box and its stem, either of which a pack version can change, and an
+	 * orphan launcher is a dead icon in the Start menu. */
 	char **old = kb_listdir(dir, NULL);
 	for (char **f = old; f && *f; f++) {
 		if (!ends_with(*f, ".desktop"))
@@ -634,54 +831,79 @@ static void write_launchers(const char *dir)
 		free(p);
 	}
 	kb_strv_free(old);
+	sweep_icons(data);
 
 	for (int i = 0; i < napps; i++) {
 		Launcher *a = &apps[i];
 		if (a->cmdonly)
 			continue;
 		KbBuf b = {0};
-		char box[128] = "";
+		char lead[256] = "", icon[160];
+		const char *leafid = a->lid[0] ? a->lid : a->base;
 
 		/*
-		 * THE LAUNCHER CARRIES THE BOX. `-b <pack>` is the pack id, and
-		 * the pack id is what a box profile is filed under
-		 * (~/.config/kdos/boxes/<pack>.conf) — so `run` skips the
+		 * THE LAUNCHER CARRIES THE BOX AND ITS OWN ID. `-b <pack>` is
+		 * the pack id, and the pack id is what a box profile is filed
+		 * under (~/.config/kdos/boxes/<pack>.conf) — so `run` skips the
 		 * exec→pack table entirely and a reader takes a guest's policy
 		 * key straight off the argv instead of reversing the box layout
-		 * out of an absolute Exec. A row with no pack keeps the bare
-		 * verb, and both sides fall back to the program's own name.
+		 * out of an absolute Exec. `-l` is the launcher id its windows
+		 * take, which is this file's own name. A row with no pack keeps
+		 * the bare verb, and both sides fall back to the program's own
+		 * name.
 		 */
 		if (a->pack[0])
-			snprintf(box, sizeof(box), "-b %s ", a->pack);
+			snprintf(lead, sizeof(lead), "-b %s -l %s ", a->pack,
+				 a->lid);
+		kb_strlcpy(icon, a->icon, sizeof(icon));
+		if (export_icon(a, data, &manifest))
+			kb_strlcpy(icon, a->lid, sizeof(icon));
 		kb_buf_printf(&b,
 			      "[Desktop Entry]\n"
 			      "Type=Application\n"
 			      "Name=%s\n"
-			      "Comment=%s (boxed app%s%s)\n"
+			      "Comment=%s%s%s\n"
 			      "Exec=kdos-appbox %srun %s\n"
 			      "Icon=%s\n"
 			      "Terminal=%s\n"
 			      "Categories=%s\n",
-			      a->name, a->name, a->pack[0] ? ", box " : "",
+			      a->name, a->generic[0] ? a->generic : a->name,
+			      a->pack[0] ? " — in the box " : " — boxed",
 			      a->pack,
-			      box, a->exec, a->icon,
+			      lead, a->exec, icon,
 			      a->terminal ? "true" : "false", a->cats);
 		if (a->generic[0])
 			kb_buf_printf(&b, "GenericName=%s\n", a->generic);
 		if (a->mime[0])
 			kb_buf_printf(&b, "MimeType=%s\n", a->mime);
-		if (a->keywords[0])
-			kb_buf_printf(&b, "Keywords=%s\n", a->keywords);
-		kb_buf_printf(&b, "StartupWMClass=%s\nX-KDOS-Alien=true\n",
-			      a->wmclass);
+		/* "box" is a word a person can search the Start menu by, and
+		 * it is how the boxed copy of a program the host also carries
+		 * is told from the native one in KRunner. */
+		kb_buf_printf(&b, "Keywords=%s%sbox;\n", a->keywords,
+			      a->keywords[0] && !ends_with(a->keywords, ";")
+			      ? ";" : "");
+		kb_buf_printf(&b, "StartupWMClass=%s\n", leafid);
+		if (a->pack[0])
+			kb_buf_printf(&b, "X-KDOS-Box=%s\nX-KDOS-Upstream=%s\n",
+				      a->pack, a->base);
+		kb_buf_str(&b, "X-KDOS-Alien=true\n");
 
 		char leaf[160];
-		snprintf(leaf, sizeof(leaf), "%s.desktop", a->base);
+		snprintf(leaf, sizeof(leaf), "%s.desktop", leafid);
 		char *p = kb_path_join(dir, leaf);
 		kb_write_all(p, b.p, b.n);
 		free(p);
 		kb_buf_free(&b);
 	}
+	if (manifest.n) {
+		char list[2048];
+
+		snprintf(list, sizeof(list), "%s/kdos", data);
+		kb_mkdir_p(list);
+		snprintf(list, sizeof(list), "%s/kdos/launcher-icons", data);
+		kb_write_all(list, manifest.p, manifest.n);
+	}
+	kb_buf_free(&manifest);
 }
 
 /* mime -> the desktop ids that handle it, both sorted. */
@@ -729,7 +951,8 @@ static int write_mimeinfo(const char *dir)
 			}
 			size_t used = strlen(rows[at].ids);
 			snprintf(rows[at].ids + used, sizeof(rows[0].ids) - used,
-				 "%s%s.desktop", used ? ";" : "", apps[i].base);
+				 "%s%s.desktop", used ? ";" : "",
+				 apps[i].lid[0] ? apps[i].lid : apps[i].base);
 		}
 		free(copy);
 	}
@@ -748,18 +971,39 @@ static int write_mimeinfo(const char *dir)
 	return nrows;
 }
 
-static int write_shims(const char *share, const char *bindir)
+/*
+ * A NAME THE HOST ALREADY ANSWERS TO. Every Gear application is native here
+ * and a pack may carry the same one, so a shim named after it would sit ahead
+ * of /usr/bin on PATH and send the native program's name into a box. The host
+ * program keeps its name; the boxed copy is still its launcher, and still
+ * `<name>@<box>` through `kdos-box export`.
+ */
+static int host_has(const char *fsroot, const char *name)
+{
+	char p[1024];
+
+	snprintf(p, sizeof(p), "%s/usr/bin/%s", fsroot && strcmp(fsroot, "/")
+		 ? fsroot : "", name);
+	return kb_path_exists(p);
+}
+
+static int write_shims(const char *share, const char *bindir,
+		       const char *fsroot)
 {
 	kb_mkdir_p(share);
 
 	KbBuf t = {0};
-	/* The third field is the pack, and it is OPTIONAL: a row with no pack
-	 * is two fields and still parses, which is why every reader splits at
-	 * the second tab rather than counting them. */
-	kb_buf_str(&t, "# name\tcommand[\tpack] — GENERATED by kdos-appbox "
-		       "genlaunchers\n");
+	/* The third field is the pack and the fourth the launcher id, and both
+	 * are OPTIONAL: a row with no pack is two fields and a command with no
+	 * launcher of its own three, and every reader splits at the tabs it
+	 * needs rather than counting them. */
+	kb_buf_str(&t, "# name\tcommand[\tpack[\tlauncher]] — GENERATED by "
+		       "kdos-appbox genlaunchers\n");
 	for (int i = 0; i < napps; i++) {
-		if (apps[i].pack[0])
+		if (apps[i].pack[0] && apps[i].lid[0])
+			kb_buf_printf(&t, "%s\t%s\t%s\t%s\n", apps[i].id,
+				      apps[i].exec, apps[i].pack, apps[i].lid);
+		else if (apps[i].pack[0])
 			kb_buf_printf(&t, "%s\t%s\t%s\n", apps[i].id,
 				      apps[i].exec, apps[i].pack);
 		else
@@ -815,6 +1059,11 @@ static int write_shims(const char *share, const char *bindir)
 			kb_warn("shim %s: reserved name, skipped", apps[i].id);
 			continue;
 		}
+		if (host_has(fsroot, apps[i].id)) {
+			kb_warn("shim %s: the host has /usr/bin/%s, skipped",
+				apps[i].id, apps[i].id);
+			continue;
+		}
 		char *p = kb_path_join(bindir, apps[i].id);
 		/* ABSOLUTE in the user's tree: `~/.local/bin/gimp -> kdos-appbox`
 		 * resolves nothing, since the dispatcher is not beside it. The
@@ -851,7 +1100,7 @@ static int genlaunchers_packs(void)
 
 	if (!list) {
 		kb_warn("kdos-packd is not answering — no packs to read");
-		return 0;
+		return -1;
 	}
 	for (line = strtok_r(list, "\n", &save); line;
 	     line = strtok_r(NULL, "\n", &save)) {
@@ -987,6 +1236,275 @@ static int genlaunchers_dirs(const char *root)
 	return packs;
 }
 
+/*
+ * THE LAUNCHERS A BOX HAS, read back: every entry in the user's applications
+ * directory, then the skeleton's, that names the box in `X-KDOS-Box` — the
+ * generated ones and `kdos-box export`'s alike. The in-box command is what
+ * follows the verb in the Exec line, field codes dropped; a launcher id that
+ * is already listed is not listed twice.
+ */
+static int read_box_entry(const char *path, const char *box, BoxLauncher *o)
+{
+	KxdgEntry e;
+	char store[2048];
+	const char *w[KB_MAX_ARGV];
+	const char *b, *ex;
+	int nw, at = -1, ok = 0;
+	KbBuf cmd = {0};
+
+	if (kxdg_load(&e, path, "Desktop Entry") != 0)
+		return 0;
+	b = kxdg_get(&e, "X-KDOS-Box", "");
+	ex = kxdg_get(&e, "Exec", "");
+	if (!b || strcmp(b, box) || !ex) {
+		kxdg_free(&e);
+		return 0;
+	}
+	memset(o, 0, sizeof(*o));
+	{
+		const char *leaf = kb_basename(path);
+		size_t l = strlen(leaf);
+
+		snprintf(o->id, sizeof(o->id), "%.*s", (int)(l > 8 ? l - 8 : l),
+			 leaf);
+	}
+	kb_strlcpy(o->upstream, kxdg_get(&e, "X-KDOS-Upstream", ""),
+		   sizeof(o->upstream));
+	kb_strlcpy(o->mime, kxdg_get(&e, "MimeType", ""), sizeof(o->mime));
+	nw = kxdg_exec_split(ex, NULL, -1, store, sizeof(store), w, KB_MAX_ARGV);
+	/* `kdos-appbox [-b B] [-l L] run CMD…` or `kdos-box run [-l L] B CMD…` */
+	for (int i = 0; i < nw && at < 0; i++) {
+		if (strcmp(w[i], "run"))
+			continue;
+		at = i + 1;
+		if (!strcmp(kb_basename(w[0]), "kdos-box")) {
+			if (at + 1 < nw && !strcmp(w[at], "-l"))
+				at += 2;
+			at++;		/* the box */
+		}
+	}
+	for (int i = at; at >= 0 && i < nw; i++) {
+		char q[1024];
+
+		if (w[i][0] == '%' && w[i][1] && !w[i][2])
+			continue;
+		if (kxdg_exec_quote(w[i], q, sizeof(q)) == 0)
+			kb_buf_printf(&cmd, "%s%s", cmd.p ? " " : "", q);
+	}
+	if (cmd.p) {
+		kb_strlcpy(o->exec, cmd.p, sizeof(o->exec));
+		ok = 1;
+	}
+	kb_buf_free(&cmd);
+	kxdg_free(&e);
+	return ok;
+}
+
+int box_launchers(const char *box, BoxLauncher *out, int max)
+{
+	char user[1024];
+	const char *xdg = getenv("XDG_DATA_HOME");
+	const char *dirs[2];
+	int n = 0;
+
+	if (xdg && *xdg)
+		snprintf(user, sizeof(user), "%s/applications", xdg);
+	else
+		snprintf(user, sizeof(user), "%s/.local/share/applications",
+			 kb_home_dir());
+	dirs[0] = user;
+	dirs[1] = "/etc/skel/.local/share/applications";
+	for (int d = 0; d < 2 && n < max; d++) {
+		char **names = kb_listdir(dirs[d], NULL);
+
+		for (char **f = names; f && *f && n < max; f++) {
+			char *p;
+			int dup = 0;
+
+			if (!ends_with(*f, ".desktop"))
+				continue;
+			p = kb_path_join(dirs[d], *f);
+			if (read_box_entry(p, box, &out[n])) {
+				for (int k = 0; k < n && !dup; k++)
+					dup = !strcmp(out[k].id, out[n].id);
+				if (!dup)
+					n++;
+			}
+			free(p);
+		}
+		kb_strv_free(names);
+	}
+	return n;
+}
+
+/*
+ * A `kdos-box export` LAUNCHER WHOSE BOX IS GONE. Its box is neither a
+ * container nor a profile any more — removed with `kdos-box remove` and its
+ * profile deleted — so the entry and its `<command>@<box>` shim are a Start
+ * menu row and a command that open nothing. They are the user's, written by
+ * export and marked `X-KDOS-Export=true`, and they go here, where the rest of
+ * the menu is reconciled.
+ */
+static int sweep_stale_exports(const char *dir)
+{
+	char **names = kb_listdir(dir, NULL);
+	int n = 0;
+
+	for (char **f = names; f && *f; f++) {
+		KxdgEntry e;
+		char *p, box[64] = "";
+		int stale = 0;
+
+		if (!ends_with(*f, ".desktop"))
+			continue;
+		p = kb_path_join(dir, *f);
+		if (kxdg_load(&e, p, "Desktop Entry") == 0) {
+			if (kxdg_bool(&e, "X-KDOS-Export", 0))
+				kb_strlcpy(box, kxdg_get(&e, "X-KDOS-Box", ""),
+					   sizeof(box));
+			kxdg_free(&e);
+		}
+		if (box[0] && box_name_ok(box)) {
+			char *pp = profile_path(box);
+
+			stale = !kb_path_exists(pp) && !box_exists(box);
+			free(pp);
+		}
+		if (stale && unlink(p) == 0) {
+			char shim[1024], target[256];
+			char **bins;
+			char *bin = kb_path_join(kb_home_dir(), ".local/bin");
+			size_t bl = strlen(box);
+
+			bins = kb_listdir(bin, NULL);
+			for (char **s = bins; s && *s; s++) {
+				size_t l = strlen(*s);
+				ssize_t r;
+
+				if (l <= bl + 1 || (*s)[l - bl - 1] != '@' ||
+				    strcmp(*s + l - bl, box))
+					continue;
+				snprintf(shim, sizeof(shim), "%s/%s", bin, *s);
+				r = readlink(shim, target, sizeof(target) - 1);
+				if (r > 0) {
+					target[r] = '\0';
+					if (!strcmp(target, "/usr/local/bin/kdos-appbox"))
+						unlink(shim);
+				}
+			}
+			kb_strv_free(bins);
+			free(bin);
+			n++;
+		}
+		free(p);
+	}
+	kb_strv_free(names);
+	return n;
+}
+
+/*
+ * DOLPHIN'S "OPEN IN A THROWAWAY BOX", offered only on the types a boxed
+ * application opens: a KIO service menu whose MimeType is the union of every
+ * boxed launcher's, written beside the launchers it follows and removed when
+ * there are none. A service menu in a user's own data directory runs only
+ * with its execute bit set — KIO's rule for menus anybody could have written
+ * — so it is written 0755.
+ */
+static void write_throwaway_menu(const char *data)
+{
+	char dir[2048], path[2100];
+	KbBuf mimes = {0}, b = {0};
+	int n = 0;
+
+	snprintf(dir, sizeof(dir), "%s/kio/servicemenus", data);
+	snprintf(path, sizeof(path), "%s/kdos-disposable.desktop", dir);
+	for (int i = 0; i < napps; i++) {
+		char *copy, *save = NULL;
+
+		if (apps[i].cmdonly || !apps[i].pack[0] || !apps[i].mime[0])
+			continue;
+		copy = kb_strdup(apps[i].mime);
+		for (char *m = strtok_r(copy, ";", &save); m;
+		     m = strtok_r(NULL, ";", &save)) {
+			char probe[256];
+
+			while (*m == ' ')
+				m++;
+			/* No scheme handlers: a throwaway box opens a file. */
+			if (!*m || !strncmp(m, "x-scheme-handler/", 17))
+				continue;
+			snprintf(probe, sizeof(probe), ";%s;", m);
+			if (mimes.p && strstr(mimes.p, probe))
+				continue;
+			kb_buf_printf(&mimes, "%s%s;", mimes.p ? "" : ";", m);
+			n++;
+		}
+		free(copy);
+	}
+	if (!n) {
+		unlink(path);
+		kb_buf_free(&mimes);
+		return;
+	}
+	kb_mkdir_p(dir);
+	kb_buf_printf(&b,
+		      "[Desktop Entry]\n"
+		      "Type=Service\n"
+		      "MimeType=%s\n"
+		      "Actions=throwaway;\n"
+		      "X-KDE-Priority=TopLevel\n"
+		      "X-KDOS-Alien=true\n"
+		      "\n"
+		      "[Desktop Action throwaway]\n"
+		      "Name=Open in a Throwaway Box\n"
+		      "Icon=security-high\n"
+		      "Exec=kdos-appbox throwaway %%f\n",
+		      mimes.p + 1);
+	if (kb_write_all(path, b.p, b.n) == 0)
+		chmod(path, 0755);
+	kb_buf_free(&b);
+	kb_buf_free(&mimes);
+}
+
+/* KService's cache, rebuilt so the Start menu, KRunner and the Task Manager
+ * see the launchers now rather than whenever kded next notices. Best effort:
+ * a session without KDE's tools reads the directories itself. */
+static void rebuild_sycoca(void)
+{
+	KbArgv a = {0};
+
+	if (!kb_have_prog("kbuildsycoca6"))
+		return;
+	kb_argv_add(&a, "kbuildsycoca6");
+	kb_argv_end(&a);
+	kb_run(&a);
+}
+
+/* The skeleton's window rules: one per pack box the image ships, in the
+ * neutral box scheme, because no box has a profile yet when the image is
+ * made. A user's genlaunchers writes their own over them, accents and all. */
+static void skel_rules(const char *fsroot)
+{
+	char path[1024];
+	const char *boxes[256];
+	int n = 0;
+
+	for (int i = 0; i < napps && n < 256; i++) {
+		int seen = 0;
+
+		if (!apps[i].pack[0] || apps[i].cmdonly)
+			continue;
+		for (int k = 0; k < n && !seen; k++)
+			seen = !strcmp(boxes[k], apps[i].pack);
+		if (!seen)
+			boxes[n++] = apps[i].pack;
+	}
+	snprintf(path, sizeof(path), "%s/etc/skel/.config/kwinrulesrc",
+		 strcmp(fsroot, "/") ? fsroot : "");
+	if (rules_write(path, boxes, NULL, n) < 0)
+		kb_warn("cannot write %s", path);
+}
+
 int cmd_genlaunchers(const char *srcdir, const char *fsroot, int user, int packsdir)
 {
 	napps = 0;
@@ -998,17 +1516,30 @@ int cmd_genlaunchers(const char *srcdir, const char *fsroot, int user, int packs
 		 * pack's launchers; it reads both sources. */
 		if (user) {
 			n = genlaunchers_packs();
+			if (n < 0) {
+				kb_warn("the launchers are left as they were");
+				return 1;
+			}
 			fprintf(stderr, "%d app pack(s) read\n", n);
 		}
 	} else if (srcdir) {
 		parse_dir(srcdir);
 		add_commands(srcdir);
 	} else {
+		/* A DAEMON THAT DOES NOT ANSWER IS NOT AN EMPTY STORE. The set
+		 * is written whole, so reading nothing would sweep every pack's
+		 * launcher out of the menu until the next install; it is left
+		 * as it is instead. */
 		int n = genlaunchers_packs();
+		if (n < 0) {
+			kb_warn("the launchers are left as they were");
+			return 1;
+		}
 		fprintf(stderr, "%d app pack(s) read\n", n);
 	}
+	assign_ids();
 
-	char *apps_dir, *share, *bindir;
+	char *apps_dir, *share, *bindir, *data;
 	if (user) {
 		/* $XDG_DATA_HOME when it is set, as the Start menu, `kdos app`
 		 * and the launch path read it: a table written under one
@@ -1017,29 +1548,39 @@ int cmd_genlaunchers(const char *srcdir, const char *fsroot, int user, int packs
 		 * and is the PATH the skel profile sets. */
 		const char *home = kb_home_dir();
 		const char *xdg = getenv("XDG_DATA_HOME");
-		char *data = xdg && *xdg ? kb_strdup(xdg)
-					 : kb_path_join(home, ".local/share");
 
+		data = xdg && *xdg ? kb_strdup(xdg)
+				   : kb_path_join(home, ".local/share");
 		apps_dir = kb_path_join(data, "applications");
 		share = kb_path_join(data, "kdos");
 		bindir = kb_path_join(home, ".local/bin");
-		free(data);
 	} else {
+		data = kb_path_join(fsroot, "etc/skel/.local/share");
 		apps_dir = kb_path_join(fsroot, "etc/skel/.local/share/applications");
 		share = kb_path_join(fsroot, "usr/share/kdos");
 		bindir = kb_path_join(fsroot, "usr/local/bin");
 	}
-	write_launchers(apps_dir);
+	write_launchers(apps_dir, data);
+	write_throwaway_menu(data);
 	int mimes = write_mimeinfo(apps_dir);
+	int stale = user ? sweep_stale_exports(apps_dir) : 0;
 	free(apps_dir);
+	free(data);
 
-	int shims = write_shims(share, bindir);
+	int shims = write_shims(share, bindir, user ? "/" : fsroot);
 	free(share);
 	free(bindir);
 	int cmds = 0;
 	for (int i = 0; i < napps; i++)
 		cmds += apps[i].cmdonly;
-	fprintf(stderr, "%d launchers, %d command-only, %d mime types, %d shims\n",
-		napps - cmds, cmds, mimes, shims);
+	fprintf(stderr, "%d launchers, %d command-only, %d mime types, %d shims"
+		"%s\n", napps - cmds, cmds, mimes, shims,
+		stale ? ", stale exports removed" : "");
+	if (user) {
+		box_rules_refresh();
+		rebuild_sycoca();
+	} else {
+		skel_rules(fsroot);
+	}
 	return 0;
 }

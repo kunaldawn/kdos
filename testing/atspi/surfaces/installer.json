@@ -1,0 +1,11 @@
+{
+  "app": "kdos-installer-gui",
+  "settle": 5,
+  "mask": [
+    {
+      "name": "\\b\\d+([.,]\\d+)? ?([KMGT]i?B|%)\\b"
+    }
+  ],
+  "steps": [],
+  "allow_unnamed": []
+}

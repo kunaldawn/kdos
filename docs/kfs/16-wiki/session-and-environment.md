@@ -1,355 +1,265 @@
 # Session and environment
 
-This page covers the graphical [session]{.idx}: the two scripts that start it after the login on
-`tty1`, the environment every desktop program inherits, how to add a variable of your own, how to
-end and restart a session, how to reach a running session from `tty2` or over [SSH]{.idx}, and what to
-check when the desktop does not come up. The login itself, and whether `tty1` asks for a password,
-is on [Login and autologin](login-and-autologin.md). What each part of the session does and why it
-is started in that order is explained in [The session](../../kdos/03-architecture/session.md); this
+This page covers the graphical [session]{.idx}: how SDDM starts a Plasma session through the KDOS
+session wrapper, the environment every desktop program inherits, where the KDOS defaults for KDE
+programs live, how to add a variable of your own, the per-user services that outlive a session,
+how to end and restart a session, and how to reach a running session from `tty2` or over
+[SSH]{.idx}. The login screen itself, and whether a machine logs in by itself, is on
+[Login and autologin](login-and-autologin.md). What each part of the session does and why it is
+started in that order is explained in [The session](../../kdos/03-architecture/session.md); this
 page gives the procedures.
 
 ## Installation
 
-The session is not a service and has no script in `/etc/init.d`. The login shell on `tty1` starts
-it, and everything in it runs as the logged-in user. Its pieces:
+The session is not a service and has no script in `/etc/init.d`. SDDM starts it after a login,
+and everything in it runs as the logged-in user. Its pieces:
 
-- The base filesystem (`fs/` in the tree) supplies the two start scripts,
-  `/usr/local/bin/kdos-desktop` and `/usr/local/bin/kdos-desktop-start`, the functions both source,
-  `/usr/local/lib/kdos/session-common.sh`, the list writer `/usr/local/bin/kdos-session-save`, and
-  `/etc/profile.d/10-wayland.sh`. No package owns them.
-- [kdos-comp](#port-kdos-comp) is the [compositor]{.idx} the session runs in the foreground; it starts the
-  panel and the other supervised programs. See [The panel and the launcher](panel-and-launcher.md).
-- [seatd](#port-seatd) hands the compositor the display and input devices. Its service, `45_seatd`,
-  runs at boot with `-g seat`, so members of `seat` may take a seat.
-- [dbus](#port-dbus) provides the per-user [session bus]{.idx} the scripts start.
-- [pipewire](#port-pipewire), [wireplumber](#port-wireplumber),
-  [xdg-desktop-portal](#port-xdg-desktop-portal), [xdg-desktop-portal-wlr](#port-xdg-desktop-portal-wlr)
-  and [fcitx5](#port-fcitx5) are started by `kdos-desktop-start` when they are installed.
+- [sddm](#port-sddm), the display manager, started on `tty1` by `/usr/local/sbin/kdos-dm` from
+  `/etc/inittab` (see [Login and autologin](login-and-autologin.md)).
+- [elogind](#port-elogind), which registers each login as a session, tracks which one is active
+  on the seat, and hands KWin the display and input devices.
+- [turnstile](#port-turnstile), whose PAM module makes the runtime directory `/run/user/<uid>` at
+  a user's first login and starts that user's own services under `ksvc --user`: the session bus,
+  PipeWire, WirePlumber, pipewire-pulse, the user's timers and the boxes' cleanup. They stop at the
+  user's last logout.
+- [plasma-workspace](#port-plasma-workspace), which installs `startplasma-wayland`,
+  `plasma_session`, `ksmserver`, `plasmashell` and the session file
+  `/usr/share/wayland-sessions/plasma.desktop`; [kwin](#port-kwin), the compositor; and the rest of
+  the Plasma set, which the [kde-plasma](#port-kde-plasma) meta port names.
+- The base filesystem (`fs/` in the tree) supplies the session wrapper
+  `/usr/local/bin/kdos-session-wrapper`, the functions it shares,
+  `/usr/local/lib/kdos/session-common.sh`, the login profile `/etc/profile.d/10-wayland.sh`, the
+  user services in `/etc/kdos/user-services/`, and the KDOS defaults for KDE programs in
+  `/usr/share/kdos/xdg/`. No package owns them.
 
 The live medium and an installed system run the same session. On the live medium the home
-directory is on the boot overlay, so anything a session writes there, including the files on this
-page under `~/.config`, is gone at power-off unless a persistence store is set up with
-[`kdos persist`](../../kdos/04-programs/kdos-command.md#kdos-persist).
+directory is on the boot overlay, so everything a session writes there is gone at power-off
+unless the medium has a persistence store; see [Live persistence](live-persistence.md).
 
 ## Configuration
 
-### ~/.bash_profile
+### How SDDM starts the session
 
-A new account's profile, from `/etc/skel`, starts the desktop on `tty1` and nowhere else:
+SDDM reads `/etc/sddm.conf.d/00-kdos.conf`. Its `[Wayland]` group names the greeter's compositor
+and the command a session is started with, and its `[X11]` group offers no X session at all:
 
-<!-- kfs:include fs/etc/skel/.bash_profile lines=22-26 pin=b96a3af15b1c -->
+<!-- kfs:include fs/etc/sddm.conf.d/00-kdos.conf lines=35-49 pin=6d391837ffe9 -->
 
-`~/.zprofile` does the same for an account whose shell is zsh. The line is not `exec`, so when the
-desktop exits or fails to start, the login shell carries on to a prompt.
+SDDM runs `kdos-session-wrapper` as the user, after PAM has opened the session, with the
+`Exec=` line of `plasma.desktop` as its one argument. The wrapper re-runs itself as a login shell
+so `/etc/profile`, `/etc/profile.d` and `~/.bash_profile` reach Plasma; checks that the session
+bus at `$XDG_RUNTIME_DIR/bus` answers and points `DBUS_SESSION_BUS_ADDRESS` at it, refusing to start
+the session when it does not, so the greeter comes back; and settles the environment before
+anything reads it, from `fs/usr/local/bin/kdos-session-wrapper`:
 
-### /usr/local/bin/kdos-desktop
+<!-- kfs:include fs/usr/local/bin/kdos-session-wrapper lines=124-137 pin=003f91a5c8f0 -->
 
-The first script stops when the compositor is not installed:
+`kdos_session_xdg_dirs` puts the KDOS defaults into `XDG_CONFIG_DIRS` (below), the
+`QT_IM_MODULE` and `GTK_IM_MODULE` variables are cleared so Qt and GTK reach the input method
+through KWin, and `TERM`, `LINES` and `COLUMNS` are cleared because the session has no
+terminal. `kdos_session_boxes` warms up the boxes behind the pinned favourites in the background.
+Then `startplasma-wayland` runs. KDOS has no systemd user instance, so the session is always
+Plasma's classic one, in which `plasma_session` starts `kded6`, `ksmserver`, `plasmashell` and the
+autostart entries itself; the KDOS default that says so, from
+`fs/usr/share/kdos/xdg/startkderc`:
 
-<!-- kfs:include fs/usr/local/bin/kdos-desktop lines=7-11 pin=382d0335a0d6 -->
+<!-- kfs:include fs/usr/share/kdos/xdg/startkderc lines=8-18 pin=df42059fddd3 -->
 
-On a virtio GPU it turns the hardware cursor off (`WLR_NO_HARDWARE_CURSORS=1`), and when that GPU
-has no 3D support it puts the compositor on software rendering (`WLR_RENDERER=pixman`). A display
-device with no render node in `/dev/dri` gets software rendering too; see
-[Virtual machines](virtual-machines.md#running-kdos-as-a-guest). It then sets up the runtime
-directory, the keyboard layout, the box warm-up and the session bus, and hands over to the second
-script:
+### Where the KDOS defaults live
 
-<!-- kfs:include fs/usr/local/bin/kdos-desktop lines=53-61 pin=ca4700af0db5 -->
+Every KDOS default for a KDE program is a file in [`/usr/share/kdos/xdg/`]{.idx term="/usr/share/kdos/xdg"}:
+`kwinrc`, `kglobalshortcutsrc`, `kscreenlockerrc`, `powerdevilrc`, `plasmarc`, `breezerc`,
+`startkderc` and the rest. The directory is the last entry of `XDG_CONFIG_DIRS`, after
+`/etc/xdg`, so KDE's configuration cascade reads, for each key, the first of:
 
-### /usr/local/bin/kdos-desktop-start
+| Order | Directory | Whose |
+|---|---|---|
+| 1 | `~/.config` | The person's own: everything System Settings saves |
+| 2 | `~/.config/kdedefaults` | What the global theme last applied |
+| 3 | `/usr/share/kdos/xdg-vm`, `/usr/share/kdos/xdg-live` | Overlays, each only where it applies: in a virtual machine, no idle dimming or timed lock; on the live medium, no file index, no timed lock, no wallet and no update notice |
+| 4 | `/etc/xdg` | The machine's administrator |
+| 5 | `/usr/share/kdos/xdg` | KDOS |
 
-The second starts audio, the portals, the input method and Déjà Dup's backup scheduler when they
-are installed, and queues the steps that run once the display exists: the login sound, the
-shortcut card, mpd when it has a configuration, the offer of pending applications, the per-user
-timers and the session restore (see
-[What runs once, after the display exists](../../kdos/03-architecture/session.md#what-runs-once-after-the-display-exists)).
-Then it runs the compositor with its standard error kept in a log, and once more on the software
-renderer if it refused a GPU with no hardware GL:
+So a file the administrator puts in `/etc/xdg` overrides the KDOS default key by key, and a
+person's own setting overrides both. `/etc/xdg/kdeglobals` carries one key, the global theme, which
+the installer writes from the accent chosen at installation.
 
-<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=167-192 pin=6d5a742e6bd9 -->
+The order is set in two places, so a session started by SDDM and a shell started any other way
+agree: `kdos_session_xdg_dirs` in `/usr/local/lib/kdos/session-common.sh`, which also adds the two
+overlays, and every login shell's profile, from `fs/etc/profile.d/10-wayland.sh`:
 
-What it does when the compositor exits:
+<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=60-63 pin=1a5ef55bd582 -->
 
-<!-- kfs:include fs/usr/local/bin/kdos-desktop-start lines=202-230 pin=550e5678fa39 -->
+### The environment every program inherits
 
-### /etc/profile.d/10-wayland.sh
+`/etc/profile.d/10-wayland.sh` runs for every login shell, the session wrapper's included. It
+fills in `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS` for a shell no PAM session started (an
+`su` without `-l`), names the desktop for a shell outside the session so files opened from a
+console open in the desktop's applications, and chooses the toolkits' back ends:
 
-Every login shell reads this file, so every program the session starts inherits what it exports.
-It points a shell that the session did not start at the session's bus:
+<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=78-101 pin=0ed63f6cc1a0 -->
 
-<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=43-48 pin=767720f2e945 -->
+`/usr/share/kdos/xdg/plasma-workspace/env/kdos.sh` is the environment script Plasma itself
+reads. `startplasma` sources every `plasma-workspace/env/*.sh` along `XDG_CONFIG_DIRS`, the
+person's own `~/.config/plasma-workspace/env/` last, and takes every variable they leave set into
+the session:
 
-and it chooses each toolkit's back end:
+<!-- kfs:include fs/usr/share/kdos/xdg/plasma-workspace/env/kdos.sh lines=31-49 pin=d4b375c5794b -->
 
-<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=78-103 pin=f911d6393ed7 -->
+`kdos-shortcuts.sh` beside it copies the KDOS global shortcuts into a person's
+`~/.config/kglobalshortcutsrc` once each; see
+[Shortcuts and window rules](shortcuts-and-window-rules.md).
 
-Every variable it sets is tabulated in
-[Shell environment](../../kdos/06-reference/configuration.md#shell-environment). A box receives
-none of them; see [The environment a box receives](../../kdos/03-architecture/session.md#the-environment-a-box-receives).
+### The per-user services
+
+turnstile starts a user's services at the first PAM login, the greeter's or a console's, and
+stops them at the last logout. An SSH login opens no PAM session, because OpenSSH is built
+without PAM, so it starts nothing and holds nothing open. Its configuration, from
+`fs/etc/turnstile/turnstiled.conf`:
+
+<!-- kfs:include fs/etc/turnstile/turnstiled.conf -->
+
+`backend = ksvc` runs the scripts in [`/etc/kdos/user-services/`]{.idx term="/etc/kdos/user-services"}
+under the user's own `ksvc`, each in name order: `10_dbus.sh` (the session bus at
+`$XDG_RUNTIME_DIR/bus`), `20_pipewire.sh`, `21_wireplumber.sh`, `22_pipewire-pulse.sh`,
+`25_mpd.sh`, `30_timers.sh` (the timers in `/etc/kdos/user-services/timers.d/` and the user's own)
+and `40_boxes.sh`. A user service's log is `$XDG_RUNTIME_DIR/ksvc/kdos-svc.<name>.log`.
 
 ### The keyboard layout
 
-[`kdos-desktop`]{.idx} turns the console [keymap]{.idx} in [`/etc/keymap`]{.idx}, which the installer writes, into a
-graphical layout. The names that differ between the two vocabularies are translated, and any other
-name gives its first two letters:
+The layout the login screen and every new session start with is the machine's, in
+[`/etc/kdos/xkb.conf`]{.idx}, which [kdos-settingsd](#port-kdos-settingsd) serves as
+`org.freedesktop.locale1`. The greeter's KWin reads it before anybody types, and `startplasma`
+copies it into each session; a person's layout on the Keyboard page of System Settings, saved in
+`~/.config/kxkbrc`, comes after it and wins. From `fs/etc/kdos/xkb.conf`:
 
-<!-- kfs:include fs/usr/local/lib/kdos/session-common.sh lines=43-64 pin=343f63196495 -->
-
-The live medium has no `/etc/keymap`, so nothing is exported and its session types in xkbcommon's
-default, US.
-
-### ~/.config/kdos-comp/environment
-
-An optional file the compositor reads when it starts and again when it reloads its configuration,
-with any `*.env` file in `~/.config/kdos-comp/environment.d/` beside it. The image ships neither.
-Each `KEY=value` line replaces the value the login shell exported, for the compositor and for
-everything it starts afterwards. A value may use `~` and `$VARIABLE`. For example:
-
-```ini
-XKB_DEFAULT_LAYOUT=de
-XCURSOR_SIZE=48
-```
-
-Never write `FOO=$FOO:bar`: every reload appends again, and once the value passes the
-compositor's size limit the line is refused. The rules are in
-[`~/.config/kdos-comp/environment`](../../kdos/06-reference/configuration.md#configkdos-compenvironment).
-
-### Files that switch something on
-
-| File | Effect | Read |
-|---|---|---|
-| `~/.config/kdos/session-restore` | At login, relaunch the boxed applications listed in `~/.local/state/kdos/session` | At login |
-| `~/.config/kdos/first-run` | Its absence shows the keyboard shortcut card at login; `kdos-keys` writes it once the card has been seen | At login |
-| `~/.config/kdos/apps-offered` | While `/var/lib/kdos/apps-pending` lists applications chosen during installation, its absence repeats the offer to install them; the session writes it once the offer has been sent | At login |
+<!-- kfs:include fs/etc/kdos/xkb.conf -->
 
 ## Usage
 
-### Starting the desktop by hand
+### Starting a session
 
-A login on `tty1` starts the desktop by itself, with or without [autologin]{.idx}. When `tty1`
-shows a shell prompt instead, after a logout or after a crash you did not restart, run at that
-prompt:
+Log in at the SDDM greeter, which offers one session, **Plasma (Wayland)**. A machine set to log
+in by itself starts the session with no greeter at all; see
+[Login and autologin](login-and-autologin.md).
+
+From a console login on `tty2`, a second session can be started by hand. It runs with the
+environment of that login shell and is registered with elogind as the `tty2` session:
 
 ```bash
-kdos-desktop
+startplasma-wayland
 ```
-
-The compositor's log scrolls on the console while it starts.
 
 ### Ending the session
 
-There are four ways out. Only the first writes the list of open applications that
-[Reopening applications at login](#reopening-applications-at-login) reads.
+**Log Out**, **Restart** and **Shut Down** are in the Application Launcher's Leave buttons and on
+`Ctrl+Alt+Del`, which opens the logout screen. At the end of every session Plasma runs the scripts
+in `plasma-workspace/shutdown/` along `XDG_CONFIG_DIRS`. The KDOS ones run in name order:
+`kdos-boxes.sh` records the running boxes for the next login, then `kdos.sh` stops every box that
+has run past its profile's `autostop`. The user's services keep running until the user's last login ends.
 
-- **With the keyboard:** press `Super+Escape` and answer **Yes**. The compositor's root menu has a
-  **Log Out** row that does the same, beside **Restart** and **Shut Down**, which ask and then
-  restart or power off the machine. A right click on the wallpaper opens that menu only with
-  `desktop_icons = no` in `comp.conf`; with desktop icons on, the wallpaper's menu is the
-  desktop's own, and it has none of those rows.
-- **From the panel:** **Log Off** in the Start menu's row of power buttons asks
-  `Log out of this session?`, and **Log Out** in the System menu (a right click on the Start
-  button) asks `End the KDOS session? Unsaved work will be lost.`. Both then send the compositor
-  `SIGTERM`.
-- **From a terminal the compositor started:** this exits at once, with no prompt:
+From a terminal inside the session:
 
-  ```bash
-  kdos-comp -e
-  ```
-
-- **From `tty2` or over SSH:** `kdos-comp -e` fails there with `LABWC_PID not set`, because that
-  shell was not started by the compositor. Send the compositor `SIGTERM` by its exact name
-  instead:
-
-  ```bash
-  pkill -x kdos-comp
-  ```
-
-Each of these is a clean exit, and it leaves a shell prompt on `tty1`, still logged in. Type
-`exit` there to end the login; with autologin on, `tty1` logs in again and starts a new session.
-`kdos-ime` and the capture portal end with the compositor. PipeWire, WirePlumber and
-`pipewire-pulse`, mpd and its `kdos-mpctl watch` watcher, the loop that stops idle boxes and the
-per-user timers keep running at the prompt and end with the login. The session bus runs until
-shutdown, and with it the portal front end and the KDOS portal backend. A session started again
-on the same boot reuses the bus, PipeWire and a running mpd instead of starting second copies,
-and replaces the per-user timer loops. What the compositor does as it exits is in
-[Ending a session](../../kdos/03-architecture/session.md#ending-a-session).
-
-### Restarting after a crash
-
-When the compositor exits with a non-zero status, `tty1` shows the last 20 lines of its log and
-asks:
-
-```text
-r=restart session, anything else=exit to tty:
+```bash
+qdbus6 org.kde.Shutdown /Shutdown logout
 ```
 
-1. Read the lines; the whole log is `$XDG_RUNTIME_DIR/kdos-comp.log`.
-2. Type `r` and Enter to start the session again, or anything else for a shell prompt.
+### Restarting part of a running session
 
-After the third crash within 60 seconds the question is not asked; the script prints
-`kdos-comp: crashed 3 times in 60s — not restarting again.` and leaves the prompt. Fix the cause
-and start the desktop by hand.
+```bash
+plasmashell --replace &          # the panel and the desktop
+kquitapp6 kded6; kded6 &         # the background modules
+service --user restart pipewire  # one of your own services
+service --user status            # all of your services
+```
+
+KWin cannot be replaced from inside the session it draws; a KWin that dies ends the session,
+and SDDM shows the greeter again.
 
 ### Setting a variable for every desktop program
 
-1. Create `~/.config/kdos-comp/environment` and add the line, for example `QT_SCALE_FACTOR=1.5`.
-2. Reload the compositor from a terminal it started:
+1. Make the directory: `mkdir -p ~/.config/plasma-workspace/env`.
+2. Write a script ending in `.sh` that exports the variable, for example
+   `~/.config/plasma-workspace/env/editor.sh` containing `export EDITOR=micro`.
+3. Log out and back in. `startplasma` sources the script after the KDOS ones, so its value wins.
 
-   ```bash
-   kdos-comp -r
-   ```
-
-   From anywhere else, signal it instead, as with `pkill -HUP -x kdos-comp`. Each reload logs
-   `read environment file /home/<you>/.config/kdos-comp/environment`.
-
-3. Start the program again. A program that is already running, the panel included, keeps the
-   environment it was started with; one the compositor starts after the reload, such as a panel
-   it restarts, has the new value, with `~` already expanded.
-
-For every account and every login shell, including text consoles and SSH, put the export in a file
-of your own under [`/etc/profile.d/`]{.idx term="/etc/profile.d"} instead, ending in `.sh`
-(`/etc/profile` reads no other name) and named so that it sorts after `10-wayland.sh`, and log in
-again. A file of your own keeps the change apart from `10-wayland.sh`, which is the image's.
+A variable meant for login shells as well, consoles and SSH included, belongs in
+`~/.bash_profile` instead; the session wrapper reads that file too.
 
 ### Reaching a running session from tty2 or SSH
 
-A login shell on another terminal already has `XDG_RUNTIME_DIR` and, while the session bus is up,
-`DBUS_SESSION_BUS_ADDRESS`. It has no display.
+A console login of the same user shares the user's services, so it reaches the session bus and
+everything on it. An SSH login has no runtime directory of its own: the login profile points it at
+the one a still-open login of the same user keeps, so it reaches the bus only while that login
+lasts, and `loginctl` shows no session for it:
 
-1. Log in as the same account on `tty2` (`Ctrl+Alt+F2`) or over SSH.
-2. Talk to the desktop through the bus or the compositor's socket, which need nothing more:
+```bash
+echo "$DBUS_SESSION_BUS_ADDRESS"     # unix:path=/run/user/<uid>/bus
+qdbus6 org.kde.KWin /KWin supportInformation | head
+loginctl list-sessions               # every session elogind knows, and which is active
+```
 
-   ```bash
-   kdos notify "Hello from tty2"
-   kdos hey list
-   ```
-
-3. To open a window on the session's screen, find the compositor's socket and name it:
-
-   ```bash
-   ls "$XDG_RUNTIME_DIR"/wayland-*
-   WAYLAND_DISPLAY=wayland-0 foot &
-   ```
-
-   The socket is the name without `.lock`; use the one the listing shows. The window opens on the
-   session's screen and is listed by `kdos hey list` like any other.
-
-   An X11 program needs `DISPLAY` as well; see [Xwayland and X11 applications](xwayland-and-x11-apps.md).
+A graphical program started from there needs the session's display:
+`WAYLAND_DISPLAY=wayland-0 kate`.
 
 ### Reopening applications at login
 
-1. Create the switch:
-
-   ```bash
-   touch ~/.config/kdos/session-restore
-   ```
-
-2. End sessions with `Super+Escape`, or with **Log Out**, **Restart** or **Shut Down** in the
-   compositor's root menu; those are the routes that write the list. The panel's **Log Off** and
-   **Log Out** rows, `kdos-comp -e` and `pkill` do not.
-
-At the next login each boxed application on the list is started again, two seconds apart.
-Programs that are not boxed are not restarted. Remove the file to stop.
+Plasma saves the open applications when a session ends and restarts the ones that support session
+management at the next login. System Settings → **Session** → **Desktop Session** sets whether it
+does, and which applications it leaves out.
 
 ### Changing the keyboard layout for the session
 
-1. To change it for the console and the session together, write the console keymap name to
-   `/etc/keymap` and log in again:
-
-   ```bash
-   echo de-latin1 | sudo tee /etc/keymap
-   ```
-
-2. To change only the graphical layout, set `XKB_DEFAULT_LAYOUT` (and `XKB_DEFAULT_VARIANT`,
-   `XKB_DEFAULT_OPTIONS` if you need them) in `~/.config/kdos-comp/environment` and log in again.
-   A value there replaces the one `kdos-desktop` derived from `/etc/keymap`.
+1. System Settings → **Keyboard** → **Layouts**: add a layout and turn on **Configure layouts**.
+   The change applies at once and is yours alone.
+2. For the machine's own layout, the one the login screen uses, see
+   [Locale and console](locale-and-console.md).
 
 ## Tips
 
-- `kdos why /usr/local/bin/kdos-desktop` answers `package  (none — provided by fs/ or
-  10_bootstrap, or not installed)`, then the reason recorded for the fixed session-bus path: the
-  scripts come from the base filesystem.
-- The previous session's log is kept beside the current one as `kdos-comp.log.old`, so a crash's
-  log survives one restart. A session that has not been restarted since boot has no `.old`.
-- `kdos-desktop-start` exports `XDG_CURRENT_DESKTOP=KDOS` over whatever the login shell set, so
-  setting it in a profile file has no effect inside the session.
-- Shell aliases and functions from `~/.bashrc` do not reach desktop programs; only exported
-  variables do.
-- The per-user timers in `~/.config/kdos/timers.d` run under the login, not under the compositor;
-  see [Timers](timers.md).
+- `kdos doctor` checks that the session bus, KWin, plasmashell and elogind answer, and says which
+  does not.
+- `~/.bash_profile` runs before Plasma: a command there that waits holds the session behind the
+  login screen, and one that prints writes into the session log.
+- The session log is `~/.local/share/sddm/wayland-session.log`; SDDM's own is
+  `/var/log/sddm.log`, with the previous boot's in `/var/log/sddm.log.old`.
 
 ## Troubleshooting
 
-**`tty1` prints "kdos-desktop: no desktop installed (kdos-comp missing)."** The compositor package
-is not installed. `kpkg info kdos-comp` confirms it.
+**The greeter comes back right after a login.** The session wrapper refused, or Plasma failed.
 
-**`tty1` stays at a shell prompt after login.** The profile starts the desktop only when the
-terminal is `/dev/tty1`, `WAYLAND_DISPLAY` is unset and `kdos-desktop` is on the path. Check
-`~/.bash_profile` (or `~/.zprofile`) against the one in `/etc/skel`, then run `kdos-desktop` by
-hand to see its messages.
+1. Log in on `tty2` (`Ctrl+Alt+F2`).
+2. `tail -30 ~/.local/share/sddm/wayland-session.log`. A line from `kdos-session-wrapper` names
+   what it refused, for example that the session bus does not answer.
+3. `service --user status dbus` for the bus, and `grep kdos-session /var/log/messages` for
+   the refusal in syslog.
 
-**The screen is black, or the desktop flashes and drops back to the console.** Read the end of the
-compositor's log from `tty2`:
+**The desktop draws in Breeze's colours, with upstream's defaults.** The session has no
+`/usr/share/kdos/xdg` in `XDG_CONFIG_DIRS`. Check it from Konsole: `echo "$XDG_CONFIG_DIRS"`. A
+session started some way other than through SDDM or a login shell skips both places that add it.
 
-```bash
-tail -50 /run/user/$(id -u)/kdos-comp.log
-kdos doctor
-```
+**Notifications, single-instance applications or a box's portals do nothing.** The program is
+on a private session bus rather than the user's. `echo "$DBUS_SESSION_BUS_ADDRESS"` in it must
+read `unix:path=/run/user/<uid>/bus`.
 
-`kdos doctor`'s Session section checks the compositor's socket, the runtime directory, and that
-`kdos-comp`, `kdos-shell` and `xdg-desktop-portal-wlr` are running. Run from `tty2`, it warns
-`no WAYLAND_DISPLAY — not inside a desktop session` instead of checking the socket; that warning
-is expected there. The compositor takes the display through `seatd`; `service status seatd` shows
-whether it is up, and what its script printed at boot is in `/run/kdos-init.seatd.log`.
-
-**The session's keyboard layout is US although `/etc/keymap` names another.** `kdos-desktop`
-printed `keymap '<name>' has no XKB layout '<layout>' — leaving the default` on `tty1`. Set the
-right layout in `~/.config/kdos-comp/environment`.
-
-**A variable set in the environment file has no effect.** Check the compositor's log for the file
-being read and for a refused line:
-
-```bash
-grep -E 'environment file|ignoring environment' "$XDG_RUNTIME_DIR/kdos-comp.log"
-```
-
-Then remember that only programs started after the reload see the new value.
-
-**A program started from `tty2` or SSH fails with "cannot open display" or finds no Wayland
-display.** That shell has no `WAYLAND_DISPLAY` or `DISPLAY`; follow
-[Reaching a running session from tty2 or SSH](#reaching-a-running-session-from-tty2-or-ssh).
-
-**A boxed application has no sound, no notifications or never opens a window, while host programs
-work.** The box reaches the session bus, the compositor and PipeWire through the host's
-`$XDG_RUNTIME_DIR`, shared into it at the same path; see
-[What is shared into a box](../../kdos/03-architecture/session.md#what-is-shared-into-a-box) and
-[The session message bus](../../kdos/03-architecture/session.md#the-session-message-bus) for what
-breaks without it.
+**A variable set in `~/.config/plasma-workspace/env` is missing.** The script must end in `.sh`
+and export the variable; an `unset` in it does not reach the session. Log out fully: the scripts
+are read only at the start of a session.
 
 ## Known gaps
 
-- [There is no graphical login screen (greeter)](../../kdos/06-reference/known-gaps.md#there-is-no-graphical-login-screen-greeter)
-- [Only two ways of ending the session save the list of open windows](../../kdos/06-reference/known-gaps.md#only-two-ways-of-ending-the-session-save-the-list-of-open-windows)
-- [Log Out ends the desktop, not the login](../../kdos/06-reference/known-gaps.md#log-out-ends-the-desktop-not-the-login)
-- [The power button and the sleep key work only inside a graphical session](../../kdos/06-reference/known-gaps.md#the-power-button-and-the-sleep-key-work-only-inside-a-graphical-session)
-- [A live session cannot create a persistent box](../../kdos/06-reference/known-gaps.md#a-live-session-cannot-create-a-persistent-box)
-- The live image's automatic login and default password: see
-  [Security](../../kdos/06-reference/known-gaps.md#security)
+- [Known gaps](../../kdos/06-reference/known-gaps.md): the desktop's open items, among them the
+  live image's automatic login and default password
 
 ## See also
 
 - [The session](../../kdos/03-architecture/session.md): every step from the login to the desktop, and how it ends
-- [kdos-comp](../../kdos/04-programs/kdos-comp.md): the compositor's options, log and start-up files
 - [Shell environment](../../kdos/06-reference/configuration.md#shell-environment): every file in `/etc/profile.d`
-- [The session on tty1](../../kdos/02-user-guide/administration.md#the-session-on-tty1): the login side
-- [Login and autologin](login-and-autologin.md), [Compositor keybindings](compositor-keybindings.md),
-  [The panel and the launcher](panel-and-launcher.md), [Xwayland and X11 applications](xwayland-and-x11-apps.md),
-  [Locale and console](locale-and-console.md), [Live persistence](live-persistence.md),
-  [Portals and screen sharing](portals-and-screen-sharing.md), [Desktop troubleshooting](desktop-troubleshooting.md),
-  [Timers](timers.md), [Logs](logs.md)
+- [Login and autologin](login-and-autologin.md): the greeter, autologin and the console logins
+- [Desktop troubleshooting](desktop-troubleshooting.md): a desktop that does not come up
+- [Services](services.md): `service --user`, and the system's own services
 
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 411.* Previous: [410. Virtual machines](virtual-machines.md) · [Contents](../README.md) · Next: [412. Compositor keybindings](compositor-keybindings.md)
+*Part XVI. System administration, chapter 435.* Previous: [434. Virtual machines](virtual-machines.md) · [Contents](../README.md) · Next: [436. Shortcuts and window rules](shortcuts-and-window-rules.md)

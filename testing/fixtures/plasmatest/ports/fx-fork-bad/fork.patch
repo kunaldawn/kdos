@@ -1,0 +1,10 @@
+Subject: bind a property the fixture theme's root does not have
+
+--- a/Theme.qml
++++ b/Theme.qml
+@@ -8,4 +8,5 @@ Item {
+ 
+     property Item box: Item {}
+     readonly property int length: root.box.text.length
++    kdosForkNoSuchProperty: true
+ }

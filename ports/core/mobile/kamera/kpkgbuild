@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kamera
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 5b0aa76ece2d89491704f769403352a3d8de2699c85a83f941069103ee5ebe02  kamera-26.08.2.tar.xz
+description = camera:/ KIO worker and settings module for gPhoto2 digital cameras
+homepage    = https://invent.kde.org/graphics/kamera
+license     = GPL-2.0-or-later AND BSD-3-Clause AND GFDL-1.2-or-later AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcmutils kconfig kconfigwidgets kdoctools ki18n kio kxmlgui libgphoto2

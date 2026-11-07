@@ -16,4 +16,5 @@ sha256      = fbd62a100ab7bb8746ba0661255c3c48185b1e9021507c624da01fbc696330ec  
 description = Miscellaneous system utilities for Linux
 homepage    = https://github.com/util-linux/util-linux
 license     = GPL-2.0-or-later AND LGPL-2.1-or-later AND BSD-3-Clause
+group       = util-linux
 depends     = sqlite ncurses readline zlib libcap-ng utmps

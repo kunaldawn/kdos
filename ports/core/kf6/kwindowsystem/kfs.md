@@ -10,8 +10,10 @@ many KDE applications link it.
 
 - `-D KWINDOWSYSTEM_WAYLAND=ON` — Build the Wayland platform plugin. It is upstream's default; on,
   the configure requires [qt6-qtwayland](#port-qt6-qtwayland),
-  [wayland-protocols](#port-wayland-protocols) and
-  [plasma-wayland-protocols](#port-plasma-wayland-protocols).
+  [wayland-protocols](#port-wayland-protocols),
+  [plasma-wayland-protocols](#port-plasma-wayland-protocols) and `xkbcommon`, which it looks up
+  through pkg-config with no switch, so [libxkbcommon](#port-libxkbcommon) and
+  [pkgconf](#port-pkgconf) are in `depends`.
 - `-D KWINDOWSYSTEM_X11=ON` — Build the X11 platform plugin, used by a KDE program that runs under
   Xwayland. It is upstream's default and requires [libX11](#port-libX11),
   [libXfixes](#port-libXfixes) and the xcb keysyms and ICCCM utility libraries
@@ -20,3 +22,8 @@ many KDE applications link it.
   [Toolkits, Wayland and X11](../../../../docs/kdos/02-user-guide/applications.md#toolkits-wayland-and-x11)).
 - `-D KWINDOWSYSTEM_QML=ON` — Build the QML module, `org.kde.kwindowsystem`, for Qt Quick
   programs. It is upstream's default and needs [qt6-qtdeclarative](#port-qt6-qtdeclarative).
+- `-D KF_SKIP_PO_PROCESSING=ON` — Build none of the Qt translation catalogues under `poqm/`,
+  which `ecm_install_po_files_as_qm()` would compile into `.qm` files. The strings in the source
+  are English, and the package-wide English-only rule (see
+  [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy))
+  would remove every catalogue in another language.

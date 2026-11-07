@@ -23,9 +23,9 @@
  *
  *   - THE CLIENT NEVER NAMES A PATH. Every verb takes an ID out of a list this
  *     daemon itself published; `install` takes a FILENAME in a staging
- *     directory the daemon owns, and a second one for a signed index. kdos-mountd established this and the reason
- *     has not changed: a daemon reachable from `wheel` that takes a path is
- *     `mount /dev/sda2 /etc` from any shell.
+ *     directory the daemon owns, and a second one for a signed index. A
+ *     daemon reachable from `wheel` that takes a path is `mount /dev/sda2
+ *     /etc` from any shell.
  *   - VERIFICATION HAPPENS WHERE THE MOUNT HAPPENS. A client that verifies and
  *     then asks a daemon to mount has verified nothing.
  *   - A PACK IS READ-ONLY AND IS NEVER MODIFIED IN PLACE. Every write a box
@@ -59,6 +59,7 @@
 #include "packd.h"
 
 int kd_fixture;
+int kd_dry;
 int kd_fixture_trust;
 static int quiet;
 
@@ -289,6 +290,12 @@ static int serve(void)
 
 	kd_scan();
 	kd_adopt();
+	{
+		int again = kd_regraft();
+		if (again)
+			kd_log("grafted %d data pack(s) again into this root",
+			       again);
+	}
 
 	srv = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
 	if (srv < 0) {
@@ -367,8 +374,8 @@ static int serve(void)
 /* ── the fixture ───────────────────────────────────────────────────────── */
 
 /*
- * What WOULD be mounted, and nothing is. The seam `kdos stutter --fixture`,
- * `kdos-oomd --fixture` and `kdos-mountd --fixture` all use, and the only way
+ * What WOULD be mounted, and nothing is. The seam `kdos-oomd --fixture` and
+ * `kdos-energyd --fixture` use too, and the only way
  * selection logic this consequential gets tested — on a host with no root, no
  * erofs and no loop device.
  */
@@ -377,6 +384,7 @@ static int fixture(int argc, char **argv)
 	char msg[512];
 
 	kd_fixture = 1;
+	kd_dry = 1;
 	setenv("KDOS_PACK_STORE", argv[0], 1);
 	if (argc > 1)
 		setenv("KDOS_PACK_MEDIUM", argv[1], 1);
@@ -444,6 +452,44 @@ static int fixture(int argc, char **argv)
 	return 0;
 }
 
+/*
+ * The graft record over a store, with every mount pretended and every link
+ * and record line real: `--fixture-graft STORE ID` is the `graft` verb,
+ * `--fixture-ungraft STORE ID` the `ungraft` verb, and `--fixture-start
+ * STORE` is what the daemon does to a root before its first request.
+ * $KDOS_PACK_SHARE and $KDOS_PACK_HOME say where the links go, so two share
+ * directories over one store are two slots over one shared store.
+ */
+static int fixture_graft(const char *store, const char *id, int un)
+{
+	char msg[512];
+	int i;
+
+	kd_fixture = 1;
+	setenv("KDOS_PACK_STORE", store, 1);
+	setenv("KDOS_PACK_MEDIUM", "/nonexistent", 1);
+	kd_scan();
+	if (!id) {
+		printf("regrafted %d\n", kd_regraft());
+		return 0;
+	}
+	if (un) {
+		if (kd_ungraft(id, msg, sizeof(msg)) != 0) {
+			fprintf(stderr, "kdos-packd: %s\n", msg);
+			return 1;
+		}
+		printf("%s\n", msg);
+		return 0;
+	}
+	i = kd_id_ok(id) ? kd_find(id) : -1;
+	if (i < 0 || kd_graft(i, getuid(), msg, sizeof(msg)) != 0) {
+		fprintf(stderr, "kdos-packd: %s\n", i < 0 ? "no such pack" : msg);
+		return 1;
+	}
+	printf("%s\n", msg);
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	kb_set_progname("kdos-packd");
@@ -452,8 +498,23 @@ int main(int argc, char **argv)
 		quiet = getenv("KDOS_PACKD_VERBOSE") ? 0 : 1;
 		return fixture(argc - 2, argv + 2);
 	}
+	if (argc == 4 && !strcmp(argv[1], "--fixture-graft")) {
+		quiet = getenv("KDOS_PACKD_VERBOSE") ? 0 : 1;
+		return fixture_graft(argv[2], argv[3], 0);
+	}
+	if (argc == 4 && !strcmp(argv[1], "--fixture-ungraft")) {
+		quiet = getenv("KDOS_PACKD_VERBOSE") ? 0 : 1;
+		return fixture_graft(argv[2], argv[3], 1);
+	}
+	if (argc == 3 && !strcmp(argv[1], "--fixture-start")) {
+		quiet = getenv("KDOS_PACKD_VERBOSE") ? 0 : 1;
+		return fixture_graft(argv[2], NULL, 0);
+	}
 	if (argc > 1) {
 		fprintf(stderr, "usage: kdos-packd [--fixture STORE [MEDIUM]]\n"
+				"       kdos-packd --fixture-graft STORE ID\n"
+				"       kdos-packd --fixture-ungraft STORE ID\n"
+				"       kdos-packd --fixture-start STORE\n"
 				"\nThe daemon takes no other argument. Talk to it\n"
 				"on %s; every verb takes an id out of the list it\n"
 				"publishes, and none takes a path.\n", KD_SOCKET);

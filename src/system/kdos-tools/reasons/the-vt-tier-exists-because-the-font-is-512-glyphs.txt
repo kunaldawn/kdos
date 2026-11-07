@@ -1,7 +1,6 @@
 title: the console font is 512 glyphs — an eighth block there is INVISIBLE
 cite: libktui ramp tiers
 port: terminus-font
-port: kdos-shell
 
 ter-kdos32n has the box sets and the three shades and no eighth blocks, no
 half blocks, no braille and no left/right arrows (which is why ktui_glyph

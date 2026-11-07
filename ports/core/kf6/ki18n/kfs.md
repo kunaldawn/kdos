@@ -8,6 +8,16 @@ countries and country subdivisions from the [iso-codes](#port-iso-codes) data (`
 `ki18n_install()` and `ki18n_wrap_ui()`, that KDE projects call. Nearly every KDE port in the tree
 depends on it.
 
+## Flags
+
+- `-D KF_SKIP_PO_PROCESSING=ON` — Build none of the gettext catalogues under `po/`, which
+  `ki18n_install()` would compile into `.mo` files. The strings in the source are English, and the
+  package-wide English-only rule (see
+  [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy))
+  would remove every catalogue in another language. `ki18n_install()` is this port's own macro,
+  and the same switch turns it into a no-op in every KDE recipe that passes it; with no catalogue,
+  `i18np()` still picks the English singular or plural by the count.
+
 ## Notes
 
 [iso-codes](#port-iso-codes) is a run-time dependency: the locale-data library reads its JSON files

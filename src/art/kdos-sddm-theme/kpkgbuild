@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdos-sddm-theme
+version     = 1.0.0
+release     = 1
+description = KDOS login screen for SDDM — the Breeze greeter in the accent, with the KDOS mark
+homepage    = https://github.com/kunaldawn/kdos
+license     = LGPL-2.0-or-later
+depends     = plasma-desktop plasma5support kdos-icons

@@ -25,21 +25,21 @@
 kdos-bb
 
 # Boot splash. Lives in src/art rather than ports/core because the source is
-# ours, not an upstream tarball. Draws the CRT power-on animation straight to
-# /dev/fb0 from the initramfs and keeps running until rcS hands the console to
-# kdos-getty.
+# ours, not an upstream tarball. Draws straight to /dev/fb0 from the initramfs
+# — a fade from black, or Phosphor mode's CRT power-on — and keeps running
+# until rcS hands the screen to the display manager.
 kdos-splash
 
-# The GTK/icon/cursor generators (src/art, ours). Build-time step for
-# kdos-icons, kdos-cursors and kdos-gtk-theme AND the runtime engine behind
-# `kdos theme`, so python3 is not a runtime dependency of the shipped system.
+# The identity generators (src/art, ours): KDE colour schemes, Konsole
+# profiles, qt5ct palettes, wallpapers and the greeter's palette, all from
+# libkcolor's one table, run at build time so python3 is not a runtime
+# dependency of the shipped system.
 kdos-theme
 
-# KDOS phosphor icon theme (src/art, ours) — recolored Papirus.
+# The KDOS and KDOS-Light icon themes: the KDOS marks over Breeze, following
+# the accent.
 kdos-icons
 
-# KDOS phosphor cursor theme (src/art, ours) — recolored Bibata Modern Ice.
-kdos-cursors
-
-# KDOS phosphor GTK theme (src/art, ours) — recolored adw-gtk3.
-kdos-gtk-theme
+# Plasma wallpaper packages: the KDOS mark in each accent, dark and light,
+# drawn by kdos-theme at build time.
+kdos-wallpapers

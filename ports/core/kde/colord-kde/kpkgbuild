@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = colord-kde
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = b3a12f1bab882d9aa0857889b93178dd2c2b45d31f9b069013b4d41b2dc3dcd9  colord-kde-26.08.2.tar.xz
+description = Colour management settings for colord devices and ICC profiles, with an ICC profile importer
+homepage    = https://invent.kde.org/graphics/colord-kde
+license     = GPL-2.0-or-later AND LGPL-2.1-or-later AND LGPL-3.0-or-later AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules pkgconf qt6-qtbase qt6-qtdeclarative kcmutils kcoreaddons kdbusaddons ki18n kirigami kitemmodels kwidgetsaddons kwindowsystem lcms2 colord

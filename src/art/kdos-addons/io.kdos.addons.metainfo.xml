@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: MIT -->
+<component type="addon">
+  <id>io.kdos.addons</id>
+  <extends>org.kde.plasmashell</extends>
+  <name>KDOS Add-ons</name>
+  <summary>Wallpapers, colour schemes, Konsole schemes, window scripts and widgets, reviewed for KDOS</summary>
+  <description>
+    <p>
+      The curated set KDOS ships in place of KDE's online "Get New…" store. Everything in it
+      installs into the places Plasma already reads, so the Wallpaper, Colours, Konsole, KWin
+      Scripts and widget pages list it as soon as it is installed.
+    </p>
+    <ul>
+      <li>Four wallpapers in the KDOS accents, each with a light and a dark picture</li>
+      <li>Eight colour schemes for Plasma and Konsole: VGA, Nord, Dracula, Gruvbox Dark and Light, Tokyo Night, Catppuccin Mocha and Latte</li>
+      <li>Two window scripts: picture-in-picture video on top, and new windows on the pointer's screen</li>
+      <li>Two widgets: the Phosphor Clock and a Focus Timer</li>
+    </ul>
+  </description>
+  <url type="homepage">https://github.com/kunaldawn/kdos</url>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="io.kdos">
+    <name>KDOS</name>
+  </developer>
+  <provides>
+    <id>org.kdos.plasma.phosphorclock</id>
+    <id>org.kdos.plasma.focustimer</id>
+    <id>org.kdos.pinpip</id>
+    <id>org.kdos.activescreen</id>
+  </provides>
+</component>

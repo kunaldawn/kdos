@@ -66,22 +66,31 @@ cat > "$PKG/etc/init.d/83_samba.sh" <<'KDOS_SH'
 
 NAME="samba"
 DAEMON="/usr/sbin/smbd"
+USERSHARES="/var/lib/samba/usershares"
+
+has_shares() {
+    for f in "$USERSHARES"/*; do
+        case "${f##*/}" in :*) continue ;; esac
+        [ -f "$f" ] && [ ! -L "$f" ] && return 0
+    done
+    grep -Eiv '^[[:space:]]*\[global\]' /etc/samba/smb.conf |
+        grep -Eq '^[[:space:]]*\['
+}
 
 case "$1" in
     start)
         [ ! -x "$DAEMON" ] && { echo "[SKIP] $NAME: $DAEMON not found"; exit 0; }
-        # A share nobody declared is a listening socket nobody asked for, so
-        # smbd starts only once a non-empty smb.conf exists.
         if [ ! -s /etc/samba/smb.conf ]; then
             echo "[SKIP] $NAME: no /etc/samba/smb.conf"
             exit 0
         fi
-        echo "[KDOS] Starting $NAME..."
-        # smbd never makes its log directory, and an emptied /var/log takes
-        # it away: without it every line goes only to the supervisor's log,
-        # and testparm calls a missing cache directory an ERROR until smbd
-        # first writes there.
         install -d -m 755 /var/log/samba /var/cache/samba
+        install -d -m 1770 -o root -g sambashare "$USERSHARES"
+        if ! has_shares; then
+            echo "[SKIP] $NAME: nothing is shared"
+            exit 0
+        fi
+        echo "[KDOS] Starting $NAME..."
         supervise --stop-grace 15 "$NAME" "$DAEMON" --foreground --no-process-group
         ;;
     stop)   stop_service "$NAME" ;;

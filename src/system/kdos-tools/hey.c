@@ -5,527 +5,344 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   kdos hey — the compositor, from a shell prompt
+ *   kdos hey — the window manager, from a shell prompt
  *
- *   kdos hey list [--json]              every toplevel: id, workspace, state
- *   kdos hey run <action> <id>          any labwc action, aimed at one view
- *   kdos hey outputs [--json]           the screens
+ *   kdos hey list [--json]          every window: its app id, its box, its title
+ *   kdos hey boxes                  the boxes with a window open
+ *   kdos hey run <action> <id>      close, activate, minimize, maximize… one
+ *   kdos hey outputs [--json]       the screens
  *
- * Haiku's `hey` is the ancestor and the shape is deliberately the same one:
- * the window manager answers questions from the command line, so a window is
- * something a script can find and act on. What is KDOS-shaped about it is the
- * transport — $XDG_RUNTIME_DIR/kdos-cmd.sock, one NDJSON request line in, one
- * NDJSON response line out, the socket closes — cloned from kdos-frames rather
- * than invented, and deliberately NOT a Wayland protocol: it is one distro's
- * channel between two of its own programs.
+ * Haiku's `hey` is the ancestor: the window manager answers questions from the
+ * command line, so a window is something a script can find and act on. KWin
+ * answers over its window-list protocol (windows.c); the screens are
+ * kscreen's.
  *
- * The JSON reader here is a scanner over one response line and nothing more.
- * It is not a JSON parser and must not become one: the only document it will
- * ever see is the one kdos-comp's kdos-cmd graft writes, and libkbuild's
- * kj_parse — the real one — lives in a library this package does not link.
- * --json prints the response verbatim, which is the escape hatch for anything
- * this scanner cannot see.
+ * WHICH BOX A WINDOW IS IN, by its process: the cgroup scope kdos-appbox
+ * starts every boxed process in names the box (app-kdos-<box>-<n>.scope,
+ * with each `-` of the box written `\x2d`), and failing that the window's app
+ * id is a running container's name or begins with it and a dot — the launcher
+ * ids a box's windows carry. The longest such name wins, so `app.x` does not
+ * claim `app.xyz`'s windows. A throwaway box is found by the first rule
+ * alone, because its windows carry its application's launcher id.
+ *
+ * `boxes` is what `kdos-box gc` reads to leave a box with a window running:
+ * exit 0 with an answer, an empty one included, and 1 when there is no session
+ * to ask — which gc takes as "cannot tell" and stops nothing.
  * ---------------------------------
  */
 
+#include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 
 #include "kdos-tools.h"
+#include "kproc.h"
 
-#define CMD_SOCKET "kdos-cmd.sock"
+/* ── which box ─────────────────────────────────────────────────────────── */
 
-/* ── the one-line JSON scanner ─────────────────────────────────────────── */
-
-/*
- * Walk to the next `{...}` at or after *p, string-aware. Window titles carry
- * braces and quotes routinely — "foo}bar" in a filename is not exotic — so a
- * splitter that counted braces without knowing where strings are would cut an
- * object in half and silently report the wrong window.
- */
-static int j_object(const char **p, const char **beg, const char **end)
+int kdt_box_of_pid(long pid, char *out, size_t n)
 {
-	const char *s = *p;
-	while (*s && *s != '{')
-		s++;
-	if (!*s)
-		return 0;
-	*beg = s;
+	char path[64], *cg;
+	static const char pfx[] = "app-kdos-";
 
-	int depth = 0, instr = 0;
-	for (; *s; s++) {
-		if (instr) {
-			if (*s == '\\' && s[1])
-				s++;
-			else if (*s == '"')
-				instr = 0;
+	if (pid <= 0)
+		return -1;
+	snprintf(path, sizeof(path), "/proc/%ld/cgroup", pid);
+	cg = kb_read_all(path, NULL);
+	for (char *c = cg; c && (c = strstr(c, pfx));) {
+		char *name = c + sizeof(pfx) - 1;
+		char *end = strstr(name, ".scope");
+		char *dash;
+		size_t o = 0;
+
+		c = name;
+		if (!end)
 			continue;
-		}
-		if (*s == '"')
-			instr = 1;
-		else if (*s == '{')
-			depth++;
-		else if (*s == '}' && --depth == 0) {
-			*end = s + 1;
-			*p = s + 1;
-			return 1;
-		}
-	}
-	return 0;
-}
-
-/* The value after `"key":` inside [beg,end), or NULL. Only top-level keys of
- * the object are wanted, and every object kdos-comp emits is flat, so nesting
- * is not tracked. */
-static const char *j_value(const char *beg, const char *end, const char *key)
-{
-	size_t klen = strlen(key);
-	for (const char *s = beg; s + klen + 2 < end; s++) {
-		if (*s != '"' || strncmp(s + 1, key, klen) || s[1 + klen] != '"')
+		/* The last `-` before `.scope` begins the instance number. */
+		dash = end;
+		while (dash > name && dash[-1] != '-')
+			dash--;
+		if (dash == name || dash == end ||
+		    strspn(dash, "0123456789") != (size_t)(end - dash))
 			continue;
-		const char *v = s + 2 + klen;
-		while (v < end && (*v == ' ' || *v == ':'))
-			v++;
-		return v < end ? v : NULL;
-	}
-	return NULL;
-}
-
-/* Decodes the two escapes JSON requires plus the shorthand controls; \uXXXX is
- * copied as-is rather than decoded, because this prints into a cell grid and a
- * half-decoded codepoint is worse than a visible escape. */
-static void j_str(const char *beg, const char *end, const char *key, char *out,
-		  size_t cap)
-{
-	out[0] = 0;
-	const char *v = j_value(beg, end, key);
-	if (!v || *v != '"')
-		return;
-	size_t o = 0;
-	for (const char *s = v + 1; s < end && *s != '"' && o + 1 < cap; s++) {
-		if (*s == '\\' && s + 1 < end) {
-			s++;
-			switch (*s) {
-			case 'n': out[o++] = ' '; break;
-			case 't': out[o++] = ' '; break;
-			case 'r': case 'b': case 'f': break;
-			default:  out[o++] = *s; break;
+		for (char *p = name; p < dash - 1 && o + 1 < n; p++) {
+			if (!strncmp(p, "\\x2d", 4)) {
+				out[o++] = '-';
+				p += 3;
+			} else {
+				out[o++] = *p;
 			}
-			continue;
 		}
-		out[o++] = *s;
+		out[o] = '\0';
+		free(cg);
+		return o ? 0 : -1;
 	}
-	out[o] = 0;
+	free(cg);
+	return -1;
 }
 
-static long j_int(const char *beg, const char *end, const char *key, long dflt)
+/* The running containers, one name a line, for the app-id rule. NULL when
+ * podman is not here or answered nothing. */
+static char *running_boxes(void)
 {
-	const char *v = j_value(beg, end, key);
-	if (!v || (*v != '-' && (*v < '0' || *v > '9')))
-		return dflt;
-	return strtol(v, NULL, 10);
-}
+	KbArgv a = { 0 };
+	KbBuf b = { 0 };
 
-static double j_num(const char *beg, const char *end, const char *key,
-		    double dflt)
-{
-	const char *v = j_value(beg, end, key);
-	if (!v || (*v != '-' && *v != '.' && (*v < '0' || *v > '9')))
-		return dflt;
-	return strtod(v, NULL);
-}
-
-static int j_bool(const char *beg, const char *end, const char *key)
-{
-	const char *v = j_value(beg, end, key);
-	return v && *v == 't';
-}
-
-/* ── the socket ────────────────────────────────────────────────────────── */
-
-/*
- * The message this prints is the whole of what a missing socket means, and it
- * has to name both possibilities: the compositor may not be running at all, or
- * it may be an older kdos-comp with no kdos-cmd graft in it. Reporting one and
- * not the other sends half the people who see it to the wrong place.
- */
-static void no_socket(void)
-{
-	fprintf(stderr, "kdos hey: the compositor does not expose the command "
-			"socket (kdos-comp too old, or not running)\n");
-}
-
-/*
- * `quiet` is for a caller that is ASKING WHETHER the compositor is there
- * rather than being told to talk to it — `kdos appid`'s fallback runs on a
- * machine that may have no session at all, and a diagnostic about a socket
- * nobody mentioned would be noise in the middle of its report.
- */
-static int cmd_socket(int quiet)
-{
-	const char *rt = getenv("XDG_RUNTIME_DIR");
-	if (!rt || !*rt) {
-		if (!quiet)
-			no_socket();
-		return -1;
-	}
-	struct sockaddr_un addr = { .sun_family = AF_UNIX };
-	snprintf(addr.sun_path, sizeof(addr.sun_path), "%s/%s", rt, CMD_SOCKET);
-
-	int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-	if (fd < 0) {
-		if (!quiet)
-			no_socket();
-		return -1;
-	}
-	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-		close(fd);
-		if (!quiet)
-			no_socket();
-		return -1;
-	}
-	return fd;
-}
-
-/*
- * One request, one response, close. The reply is read to EOF rather than to
- * the first newline: the protocol promises one line, and reading to EOF is
- * what notices when it did not keep that promise instead of leaving the rest
- * in the socket buffer for nobody.
- */
-static char *ask_q(const char *req, int quiet)
-{
-	int fd = cmd_socket(quiet);
-	if (fd < 0)
+	if (!kb_have_prog("podman"))
 		return NULL;
-
-	size_t len = strlen(req);
-	if (write(fd, req, len) != (ssize_t)len) {
-		if (!quiet)
-			fprintf(stderr, "kdos hey: %s\n", strerror(errno));
-		close(fd);
-		return NULL;
-	}
-	shutdown(fd, SHUT_WR);
-
-	KbBuf b = {0};
-	char chunk[4096];
-	ssize_t n;
-	while ((n = read(fd, chunk, sizeof(chunk))) > 0)
-		kb_buf_add(&b, chunk, (size_t)n);
-	close(fd);
-
-	if (!b.n) {
-		if (!quiet)
-			fprintf(stderr, "kdos hey: the compositor closed "
-					"without answering\n");
+	kb_argv_add(&a, "podman");
+	kb_argv_add(&a, "ps");
+	kb_argv_add(&a, "--filter");
+	kb_argv_add(&a, "status=running");
+	kb_argv_add(&a, "--format");
+	kb_argv_add(&a, "{{.Names}}");
+	kb_argv_end(&a);
+	if (kb_run_capture_buf(&a, &b) != 0) {
 		kb_buf_free(&b);
 		return NULL;
 	}
-	kb_buf_add(&b, "", 1);		/* NUL, not counted in b.n */
 	return b.p;
 }
 
-static char *ask(const char *req)
+static void box_of_window(const KdtWindow *w, const char *boxes, char *out,
+			  size_t n)
 {
-	return ask_q(req, 0);
+	size_t best = 0;
+
+	out[0] = '\0';
+	if (kdt_box_of_pid(w->pid, out, n) == 0)
+		return;
+	for (const char *l = boxes; l && *l;) {
+		size_t len = strcspn(l, "\n");
+
+		if (len && len > best && len < n &&
+		    !strncmp(w->app_id, l, len) &&
+		    (w->app_id[len] == '\0' || w->app_id[len] == '.')) {
+			memcpy(out, l, len);
+			out[len] = '\0';
+			best = len;
+		}
+		l += len;
+		if (*l)
+			l++;
+	}
 }
 
-/*
- * `"ok":false` carries an `err` that is the compositor's own words; printing
- * anything else here would be this program guessing at what went wrong.
- *
- * `end` bounds the ENVELOPE rather than the document: the array that follows
- * carries window titles, and a title containing the text `"ok"` would
- * otherwise be read as the response's own verdict.
- */
-static int reply_ok(const char *reply, const char *end)
-{
-	if (j_bool(reply, end, "ok"))
-		return 1;
-	char err[256];
-	j_str(reply, end, "err", err, sizeof(err));
-	fprintf(stderr, "kdos hey: %s\n", err[0] ? err : "refused");
-	return 0;
-}
+/* ── the verbs ─────────────────────────────────────────────────────────── */
 
-/* ── the tables ────────────────────────────────────────────────────────── */
-
-static void state_letters(const char *beg, const char *end, char out[8])
+static void state_letters(unsigned long st, char out[8])
 {
 	int o = 0;
-	if (j_bool(beg, end, "focused"))
+
+	if (st & 0x1)
 		out[o++] = 'F';
-	if (j_bool(beg, end, "minimized"))
+	if (st & 0x2)
 		out[o++] = 'm';
-	if (j_bool(beg, end, "maximized"))
+	if (st & 0x4)
 		out[o++] = 'M';
-	if (j_bool(beg, end, "fullscreen"))
+	if (st & 0x8)
 		out[o++] = 'X';
-	if (j_bool(beg, end, "shaded"))
-		out[o++] = 's';
-	out[o] = 0;
+	if (st & 0x10)
+		out[o++] = 'a';
+	if (!o)
+		out[o++] = '-';
+	out[o] = '\0';
 }
 
-static int list_table(const char *reply)
+static int no_session(void)
 {
-	const char *beg, *end;
-	const char *views = strstr(reply, "\"views\"");
-	const char *p = views ? views : reply + strlen(reply);
+	fprintf(stderr, "kdos hey: there is no Plasma session to ask\n");
+	return 1;
+}
 
-	if (!reply_ok(reply, p))
-		return 1;
+static int cmd_list(int json)
+{
+	KdtWindow *w;
+	int n = kdt_windows(&w);
+	char *boxes;
 
-	/* THE BOX COLUMN IS NOT TRUNCATED. A box is named after its pack —
-	 * `app.gnome-mines`, `app.libreoffice` — and a cut name makes
-	 * anything matching on the box (the app sweep, a script) find
-	 * nothing for every app with a longer name. An identifier is
-	 * printed whole; a wide one widens the column. */
-	printf("  %3s %3s %-6s %-22s %-20s %s\n", "id", "ws", "state", "app_id",
-	       "box", "title");
-	int n = 0;
-	while (j_object(&p, &beg, &end)) {
-		char app[64], title[160], box[64], st[8];
-		j_str(beg, end, "app_id", app, sizeof(app));
-		j_str(beg, end, "title", title, sizeof(title));
-		/* The box comes from the window's own security context, which
-		 * kdos-boxsock set — not from walking its pid to a conmon. A
-		 * host window has none and prints a dash. */
-		j_str(beg, end, "box", box, sizeof(box));
-		state_letters(beg, end, st);
-		printf("  %3ld %3ld %-6s %-22s %-20s %.48s\n",
-		       j_int(beg, end, "id", -1), j_int(beg, end, "workspace", 0),
-		       st, app[0] ? app : "-", box[0] ? box : "-", title);
-		n++;
+	if (n < 0)
+		return no_session();
+	boxes = running_boxes();
+	if (json) {
+		KbBuf o = { 0 };
+
+		kb_buf_str(&o, "[");
+		for (int i = 0; i < n; i++) {
+			char box[128];
+
+			box_of_window(&w[i], boxes, box, sizeof(box));
+			kb_buf_printf(&o, "%s{\"id\": %d, \"uuid\": ",
+				      i ? ", " : "", i + 1);
+			kb_json_str(&o, w[i].uuid);
+			kb_buf_printf(&o, ", \"pid\": %ld, \"app_id\": ",
+				      w[i].pid);
+			kb_json_str(&o, w[i].app_id);
+			kb_buf_str(&o, ", \"resource\": ");
+			kb_json_str(&o, w[i].resource);
+			kb_buf_str(&o, ", \"box\": ");
+			if (*box)
+				kb_json_str(&o, box);
+			else
+				kb_buf_str(&o, "null");
+			kb_buf_str(&o, ", \"title\": ");
+			kb_json_str(&o, w[i].title);
+			kb_buf_printf(&o, ", \"active\": %s, \"minimized\": %s, "
+					  "\"maximized\": %s, "
+					  "\"fullscreen\": %s}",
+				      w[i].state & 1 ? "true" : "false",
+				      w[i].state & 2 ? "true" : "false",
+				      w[i].state & 4 ? "true" : "false",
+				      w[i].state & 8 ? "true" : "false");
+		}
+		kb_buf_str(&o, "]\n");
+		fwrite(o.p, 1, o.n, stdout);
+		kb_buf_free(&o);
+	} else {
+		/* THE BOX COLUMN IS NOT TRUNCATED, and every column holds a
+		 * word: a script matches on the box by column, and a cut or
+		 * empty field moves every column after it. */
+		/* `ws` stays a column though it is always `-`: KWin names a
+		 * virtual desktop by an id no person types, and the column
+		 * order is what scripts read. */
+		printf("  %3s %3s %-5s %-30s %-20s %s\n", "id", "ws", "state",
+		       "app_id", "box", "title");
+		for (int i = 0; i < n; i++) {
+			char box[128], st[8];
+
+			box_of_window(&w[i], boxes, box, sizeof(box));
+			state_letters(w[i].state, st);
+			printf("  %3d %3s %-5s %-30s %-20s %.60s\n", i + 1, "-",
+			       st,
+			       *w[i].app_id ? w[i].app_id : "-",
+			       *box ? box : "-", w[i].title);
+		}
+		if (!n)
+			printf("  (no windows)\n");
 	}
-	if (!n)
-		printf("  (no windows)\n");
+	free(boxes);
+	kdt_windows_free(w, n);
 	return 0;
 }
 
-static int outputs_table(const char *reply)
+static int cmd_boxes(void)
 {
-	const char *beg, *end;
-	const char *outs = strstr(reply, "\"outputs\"");
-	const char *p = outs ? outs : reply + strlen(reply);
+	KdtWindow *w;
+	int n = kdt_windows(&w);
+	char *boxes, **seen;
+	int ns = 0;
 
-	if (!reply_ok(reply, p))
-		return 1;
+	if (n < 0)
+		return no_session();
+	boxes = running_boxes();
+	seen = kb_calloc((size_t)n + 1, sizeof(*seen));
+	for (int i = 0; i < n; i++) {
+		char box[128];
+		int dup = 0;
 
-	printf("  %-14s %6s %6s %6s %6s %6s\n", "name", "w", "h", "scale", "x",
-	       "y");
-	int n = 0;
-	while (j_object(&p, &beg, &end)) {
-		char name[64];
-		j_str(beg, end, "name", name, sizeof(name));
-		printf("  %-14.14s %6ld %6ld %6.2f %6ld %6ld\n",
-		       name[0] ? name : "-", j_int(beg, end, "w", 0),
-		       j_int(beg, end, "h", 0), j_num(beg, end, "scale", 1.0),
-		       j_int(beg, end, "x", 0), j_int(beg, end, "y", 0));
-		n++;
+		box_of_window(&w[i], boxes, box, sizeof(box));
+		if (!*box)
+			continue;
+		for (int k = 0; k < ns; k++)
+			if (!strcmp(seen[k], box))
+				dup = 1;
+		if (dup)
+			continue;
+		seen[ns++] = kb_strdup(box);
+		printf("  %s\n", box);
 	}
-	if (!n)
-		printf("  (no outputs)\n");
+	for (int k = 0; k < ns; k++)
+		free(seen[k]);
+	free(seen);
+	free(boxes);
+	kdt_windows_free(w, n);
 	return 0;
 }
 
-/* ── the front end ─────────────────────────────────────────────────────── */
+/* `<id>` is the row number `list` printed, or the window's uuid. */
+static int cmd_run(const char *action, const char *id)
+{
+	KdtWindow *w;
+	int n = kdt_windows(&w), rc;
+	char *uuid = NULL;
+
+	if (n < 0)
+		return no_session();
+	if (strspn(id, "0123456789") == strlen(id) && *id) {
+		int k = atoi(id);
+
+		if (k >= 1 && k <= n)
+			uuid = kb_strdup(w[k - 1].uuid);
+	} else {
+		for (int i = 0; i < n && !uuid; i++)
+			if (!strcmp(w[i].uuid, id))
+				uuid = kb_strdup(w[i].uuid);
+	}
+	kdt_windows_free(w, n);
+	if (!uuid) {
+		fprintf(stderr, "kdos hey: no window %s — try: kdos hey list\n",
+			id);
+		return 1;
+	}
+	rc = kdt_window_act(uuid, action);
+	free(uuid);
+	if (rc == 2) {
+		fprintf(stderr, "kdos hey: no action %s\n", action);
+		return 2;
+	}
+	if (rc < 0)
+		return no_session();
+	if (rc == 1)
+		fprintf(stderr, "kdos hey: the window closed before it was "
+				"reached\n");
+	return rc;
+}
+
+static int cmd_outputs(int json)
+{
+	KbArgv a = { 0 };
+
+	if (!kb_have_prog("kscreen-doctor")) {
+		fprintf(stderr, "kdos hey: kscreen-doctor is not installed\n");
+		return 1;
+	}
+	kb_argv_add(&a, "kscreen-doctor");
+	kb_argv_add(&a, json ? "-j" : "-o");
+	kb_argv_end(&a);
+	return kb_run_tty(&a) == 0 ? 0 : 1;
+}
 
 static int usage(void)
 {
 	fprintf(stderr,
 		"usage: kdos hey list [--json]\n"
+		"       kdos hey boxes\n"
 		"       kdos hey run <action> <id>\n"
 		"       kdos hey outputs [--json]\n"
-		"       kdos hey boxes [--json]\n"
-		"\n"
-		"<action> is a labwc action name: Close, Focus, Iconify,\n"
-		"ToggleMaximize, ToggleShade, ToggleFullscreen, Raise, ...\n");
+		"\nactions: close activate minimize unminimize maximize "
+		"unmaximize fullscreen\n         unfullscreen keep-above "
+		"no-keep-above\n");
 	return 2;
-}
-
-/*
- * THE app_ids OF THE WINDOWS OPEN RIGHT NOW, which is `kdos appid`'s fallback
- * when the recorded ledger is not there — a fresh boot, or a home that has
- * never run this compositor.
- *
- * It lives HERE rather than in appid.c because this file already owns the
- * string-aware object walk, and a window title containing the literal text
- * `"app_id":"` is not exotic: a scan for that substring would report a window
- * that does not exist. Two parsers would be two answers.
- *
- * Answers -1 when the compositor cannot be reached, which the caller must tell
- * apart from 0 — "nothing is running" and "nobody asked" are different
- * verdicts, and folding them is the confident wrong answer that tool exists
- * not to give.
- */
-int hey_app_ids(char ***out)
-{
-	char *reply = ask_q("{\"cmd\":\"list\"}\n", 1);
-	const char *p, *beg, *end;
-	char **v = NULL;
-	int n = 0;
-
-	*out = NULL;
-	if (!reply)
-		return -1;
-	/* The envelope is the FIRST object; every one after it is a view. */
-	p = reply;
-	if (!j_object(&p, &beg, &end) || !reply_ok(reply, end)) {
-		free(reply);
-		return -1;
-	}
-	/*
-	 * Counted first, then filled. There is no realloc in libkbase and a
-	 * fixed cap would silently drop a window, which is the one thing a
-	 * checker must not do; two walks of a reply that is a few kilobytes
-	 * cost nothing worth measuring.
-	 */
-	{
-		const char *q = p;
-		int cap = 0;
-
-		while (j_object(&q, &beg, &end))
-			cap++;
-		if (!cap) {
-			free(reply);
-			return 0;
-		}
-		v = kb_calloc((size_t)cap, sizeof(*v));
-	}
-	while (j_object(&p, &beg, &end)) {
-		char id[256];
-		int dup = 0;
-
-		j_str(beg, end, "app_id", id, sizeof(id));
-		if (!id[0])
-			continue;
-		for (int i = 0; i < n; i++)
-			if (!strcmp(v[i], id))
-				dup = 1;
-		if (!dup)
-			v[n++] = kb_strdup(id);
-	}
-	free(reply);
-	*out = v;
-	return n;
 }
 
 int hey_main(int argc, char **argv)
 {
-	if (argc < 2)
-		return usage();
-
+	const char *what = argc > 1 ? argv[1] : "list";
 	int json = 0;
+
 	for (int i = 2; i < argc; i++)
 		if (!strcmp(argv[i], "--json"))
 			json = 1;
-
-	const char *what = argv[1];
-
-	if (!strcmp(what, "boxes")) {
-		/* The distinct boxes with a window on the screen. `kdos-box gc`
-		 * asks this before stopping anything: a box whose window is
-		 * mapped is not idle whatever its clock says. */
-		char *reply = ask("{\"cmd\":\"boxes\"}\n");
-		const char *p, *beg, *end;
-		int n = 0;
-
-		if (!reply)
-			return 1;
-		if (json) {
-			fputs(reply, stdout);
-			if (reply[0] && reply[strlen(reply) - 1] != '\n')
-				fputc('\n', stdout);
-			free(reply);
-			return 0;
-		}
-		p = strstr(reply, "\"boxes\"");
-		if (!p || !reply_ok(reply, p)) {
-			free(reply);
-			return 1;
-		}
-		/* A flat array of strings, so the object walk does not apply:
-		 * scan the quoted runs after the key. */
-		for (beg = p + 7; *beg && *beg != '['; beg++)
-			;
-		for (; *beg && *beg != ']'; beg++) {
-			if (*beg != '"')
-				continue;
-			end = strchr(beg + 1, '"');
-			if (!end)
-				break;
-			printf("  %.*s\n", (int)(end - beg - 1), beg + 1);
-			beg = end;
-			n++;
-		}
-		if (!n)
-			printf("  (no boxed windows)\n");
-		free(reply);
-		return 0;
-	}
-
-	if (!strcmp(what, "list") || !strcmp(what, "outputs")) {
-		char req[64];
-		snprintf(req, sizeof(req), "{\"cmd\":\"%s\"}\n", what);
-		char *reply = ask(req);
-		if (!reply)
-			return 1;
-		int rc;
-		if (json) {
-			fputs(reply, stdout);
-			if (reply[0] && reply[strlen(reply) - 1] != '\n')
-				fputc('\n', stdout);
-			rc = 0;
-		} else {
-			rc = what[0] == 'l' ? list_table(reply)
-					    : outputs_table(reply);
-		}
-		free(reply);
-		return rc;
-	}
-
-	if (!strcmp(what, "run")) {
-		if (argc < 4)
-			return usage();
-		const char *action = argv[2];
-		char *tail = NULL;
-		long id = strtol(argv[3], &tail, 10);
-		if (!tail || *tail || id < 0) {
-			fprintf(stderr, "kdos hey: '%s' is not a view id — "
-					"`kdos hey list` prints them\n", argv[3]);
-			return 2;
-		}
-		/* The action is quoted into the request rather than
-		 * concatenated raw: it comes from argv, and a name with a quote
-		 * in it would otherwise produce a request the compositor cannot
-		 * parse instead of one it refuses. */
-		KbBuf b = {0};
-		kb_buf_str(&b, "{\"cmd\":\"run\",\"action\":");
-		kb_json_str(&b, action);
-		kb_buf_printf(&b, ",\"id\":%ld}\n", id);
-		kb_buf_add(&b, "", 1);
-
-		char *reply = ask(b.p);
-		kb_buf_free(&b);
-		if (!reply)
-			return 1;
-		if (json) {
-			fputs(reply, stdout);
-			if (reply[0] && reply[strlen(reply) - 1] != '\n')
-				fputc('\n', stdout);
-			free(reply);
-			return 0;
-		}
-		int ok = reply_ok(reply, reply + strlen(reply));
-		free(reply);
-		return ok ? 0 : 1;
-	}
-
+	if (!strcmp(what, "list") && argc <= 3 && (argc < 3 || json))
+		return cmd_list(json);
+	if (!strcmp(what, "boxes") && argc == 2)
+		return cmd_boxes();
+	if (!strcmp(what, "outputs") && argc <= 3 && (argc < 3 || json))
+		return cmd_outputs(json);
+	if (!strcmp(what, "run") && argc == 4)
+		return cmd_run(argv[2], argv[3]);
 	return usage();
 }

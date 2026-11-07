@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = fwupd-snapshot
+version     = 20261028
+release     = 1
+source      = fwupd-snapshot-$version.tar.xz
+sha256      = f696234d4104961ce56937076215f0d89d5c55075bd4ae93af2f4b5652eb7e5e  fwupd-snapshot-20261028.tar.xz
+description = The LVFS firmware metadata as of a KDOS release, for fwupd's offline kdos-snapshot remote
+homepage    = https://fwupd.org
+license     = CC0-1.0
+depends     = fwupd

@@ -11,8 +11,7 @@ build. The one thing this port generates itself is a header of enumerations per 
 whenever the scanner is installed, and in KDOS it always is.
 
 In KDOS it is a build dependency of most programs that speak an extension:
-[wlroots](#port-wlroots) and [kdos-comp](#port-kdos-comp) on the server side, the KDOS clients of
-`src/desktop`, the Wayland backends of GTK 3, GTK 4 and SDL 3, Mesa, and [Xwayland](#port-xwayland).
+[KWin](#port-kwin) on the server side, the Wayland backends of GTK 3, GTK 4 and SDL 3, Mesa, and [Xwayland](#port-xwayland).
 Qt's Wayland platform and GLFW carry their own copies of the XML they use and do not depend on it.
 
 ## Flags
@@ -28,5 +27,5 @@ warn, so a broken XML file in a new release shows up here and not in the first c
 
 A program built against an older copy of these files does not see a protocol added later, and a
 newer protocol version in the XML does nothing until the compositor implements it. The version
-that matters at run time is the one [kdos-comp](#port-kdos-comp) and wlroots advertise, not the
+that matters at run time is the one [KWin](#port-kwin) advertises, not the
 one installed here.

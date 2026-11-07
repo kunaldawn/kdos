@@ -11,7 +11,7 @@
 # clients are a dnsmasq of the administrator's own, which needs
 # `bind-interfaces` beside NetworkManager's loopback one, and the firewall does not
 # let a hand-made subnet in: see docs/kdos/02-user-guide/administration.md.
-# kdos-net's hotspot is the other way to an access point and needs none of it.
+# Plasma's Wi-Fi hotspot is the other way to an access point and needs none of it.
 
 NAME="hostapd"
 DAEMON="/usr/sbin/hostapd"

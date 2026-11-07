@@ -228,4 +228,4 @@ The [linux](#port-linux) port's page lists every file the package owns.
 <!-- book-nav -->
 ---
 
-*Part XIV. The kernel, chapter 337.* Previous: [336. Configuring the kernel](configuring.md) · [Contents](../README.md) · Next: [338. Installing the kernel](installing.md)
+*Part XIV. The kernel, chapter 360.* Previous: [359. Configuring the kernel](configuring.md) · [Contents](../README.md) · Next: [361. Installing the kernel](installing.md)

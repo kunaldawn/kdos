@@ -1,0 +1,6 @@
+{
+  "packages": [
+    {"name": "kate", "version": "26.08.2", "release": "1"},
+    {"name": "konsole", "version": "26.08.2", "release": "2"}
+  ]
+}

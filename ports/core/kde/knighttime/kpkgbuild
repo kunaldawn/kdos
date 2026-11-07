@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = knighttime
+version     = 6.8.2
+release     = 1
+source      = https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = 24a7bba1fb798a06b4dec5249b72d4dff94d01df6e2bddfa6665c122a1ab7b28  knighttime-6.8.2.tar.xz
+description = Day and night schedule library and session daemon, for Night Light and automatic light and dark themes
+homepage    = https://invent.kde.org/plasma/knighttime
+license     = (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND CC0-1.0 AND BSD-3-Clause AND MIT
+group       = plasma
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtpositioning kconfig kcoreaddons kdbusaddons kholidays ki18n dbus

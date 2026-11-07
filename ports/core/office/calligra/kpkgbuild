@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = calligra
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = f4b9c11f5957798face6cf29834695d76506c5e28049e21abcb62884ce9cc96c  calligra-26.08.2.tar.xz
+description = Office suite — Words, Sheets, Stage and Karbon on OpenDocument, with import filters
+homepage    = https://calligra.org/
+license     = LGPL-2.0-or-later AND LGPL-2.1-or-later AND GPL-2.0-or-later AND LGPL-2.0-only AND LGPL-2.1-only AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND GPL-3.0-or-later AND BSD-3-Clause AND BSD-2-Clause
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qtwebengine karchive kcompletion kconfig kconfigwidgets kcoreaddons kcrash kguiaddons ki18n kiconthemes kitemviews kjobwidgets kcmutils kio knotifications knotifyconfig sonnet ktextwidgets kwidgetsaddons kwindowsystem kxmlgui kdbusaddons kdoctools kirigami kirigami-addons openssl perl zlib qtkeychain boost imath gsl phonon phonon-backend-vlc kdiagram eigen qca lcms2 fontconfig freetype2 shared-mime-info okular librevenge libodfgen libwpd libwpg libwps libvisio libetonyek poppler

@@ -1,0 +1,66 @@
+---
+File: DEP-11
+Version: '1.0'
+Origin: debian-trixie-main
+---
+Type: desktop-application
+ID: org.gimp.GIMP
+Package: gimp
+Name:
+  C: GNU Image Manipulation Program
+Summary:
+  C: Create images and edit photographs
+Description:
+  C: >-
+    <p>GIMP is an image editor.</p>
+Categories:
+  - Graphics
+Icon:
+  stock: gimp
+Launchable:
+  desktop-id:
+    - gimp.desktop
+ProjectLicense: GPL-3.0-or-later
+---
+Type: desktop-application
+ID: net.scribus.Scribus
+Package: scribus
+Name:
+  C: Scribus
+Summary:
+  C: Open source desktop publishing
+Description:
+  C: >-
+    <p>Scribus lays out pages.</p>
+Categories:
+  - Office
+  - Publishing
+Icon:
+  stock: scribus
+Url:
+  homepage: https://www.scribus.net
+---
+Type: desktop-application
+ID: org.inkscape.Inkscape
+Package: inkscape
+Name:
+  C: Inkscape
+Summary:
+  C: Vector graphics editor
+Categories:
+  - Graphics
+Icon:
+  stock: inkscape
+---
+Type: desktop-application
+ID: org.kde.kate
+Package: kate
+Name:
+  C: Kate
+Summary:
+  C: Advanced text editor
+Categories:
+  - Utility
+  - TextEditor
+Icon:
+  stock: kate

@@ -45,7 +45,7 @@ THE TRAPS, AND WHAT EACH ONE CATCHES
 
   conmon 900 -n kdos-apps    pid 950 (firefox-esr) and 951 (Web Content) are
                              its descendants and belong to box `kdos-apps`.
-                             pid 700 (foot) has init as its parent and belongs
+                             pid 700 (konsole) has init as its parent and belongs
                              to no box — the boundary, not just the match.
 
   BAT0 full < full_design    50 Wh of a design 62 Wh. Health is

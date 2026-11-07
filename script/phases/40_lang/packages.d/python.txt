@@ -55,3 +55,5 @@ python3-sip
 python3-pyqt-builder
 python3-hatch-jupyter-builder
 python3-hatch-nodejs-version
+
+python3-incremental

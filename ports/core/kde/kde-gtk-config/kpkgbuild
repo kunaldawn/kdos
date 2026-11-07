@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kde-gtk-config
+version     = 6.8.2
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = 883a7c5f2491c180d0ce2631217d20ca450fe6ad1587a2cfa271a51a100cd638  kde-gtk-config-6.8.2.tar.xz
+description = Plasma's settings bridge to GTK — theme, fonts, icons, cursor and window buttons for GTK 3 and 4 applications
+homepage    = https://invent.kde.org/plasma/kde-gtk-config
+license     = (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND GPL-2.0-or-later
+group       = plasma
+depends     = cmake ninja extra-cmake-modules pkgconf qt6-qtbase qt6-qtsvg kcolorscheme kcoreaddons kconfig kguiaddons kdbusaddons kwindowsystem kdecoration glib gtk3 gsettings-desktop-schemas sassc xsettingsd dconf breeze-gtk

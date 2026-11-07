@@ -66,40 +66,20 @@ while IFS=: read -r name _pw uid gid _gecos home shell; do
     # would silently ship the previous build's dotfiles instead.
     #
     # cp -r overwrites but never DELETES, so a file skel has since dropped
-    # lingers in the home forever. The generated theme trees are wholly build
-    # output (050_theme.sh regenerates them from scratch every run) and nothing
-    # user-authored lives there, so clear them first rather than merging onto
-    # whatever the last build left.
-    rm -rf "$home/.icons" "$home/.themes"
-    # Desktop state a home accumulated from a generator this tree does not
-    # build. Same reasoning as .icons/.themes: the home is MATERIALIZED from
-    # skel, so anything skel has stopped providing has to be cleared here or
-    # it outlives the thing that made it. The fs-manifest guard cannot help —
-    # it only owns paths fs/ itself provided.
-    rm -rf "$home/.config/cosmic" "$home/.config/kdos-con"
-    # The KDE colour scheme is generated output like .icons and .themes, so it
-    # is cleared for the same reason: an accent renamed or dropped upstream
-    # would otherwise leave a stale .colors file offered in every KDE app's
-    # colour picker forever. kdeglobals is NOT cleared — KDE apps write their
-    # own settings into it and `kdos theme` merges rather than overwrites.
-    rm -rf "$home/.local/share/color-schemes"
-    # The compositor config dir is skel's wholesale (rc.xml). A file skel has
-    # stopped providing must not outlive it: a stale `autostart` here starts a
-    # second kdos-shell beside the supervised one, and the loser of that
-    # bus-name race is whichever of the two asks second.
-    rm -rf "$home/.config/kdos-comp"
-    # Same reason, and the alien launchers need it most: a launcher whose file
-    # name changes would stay under its old name as well, and the app library
-    # would show that app twice.
+    # lingers in the home forever. The alien launchers need clearing most: a
+    # launcher whose file name changes would stay under its old name as well,
+    # and the app library would show that app twice.
     rm -rf "$home/.local/share/applications"
     if [ -d /etc/skel ]; then
         cp -r /etc/skel/. "$home"/ 2>/dev/null || true
     fi
 
-    # XDG user dirs. ~/.config/user-dirs.dirs names them, but git cannot carry
-    # an empty directory through /etc/skel, so they are created here.
-    # `kdos-shot` makes Pictures/Screenshots on its first capture, and is made
-    # here as well so the tree exists before one. Mail is here because
+    # XDG user dirs: the folders /etc/xdg/user-dirs.defaults lists. The first
+    # Plasma login's xdg-user-dirs-update writes ~/.config/user-dirs.dirs over
+    # them; git cannot carry an empty directory through /etc/skel, so they are
+    # created here and Dolphin's Places has them before that login. Spectacle
+    # saves into Pictures/Screenshots, made here so the tree exists before its
+    # first capture. Mail is here because
     # the tools that use it do not make it:
     # notmuch's mail_root and mbsync's MaildirStore both name ~/Mail, and both
     # report an error on a directory that is not there rather than making one.
@@ -110,7 +90,7 @@ while IFS=: read -r name _pw uid gid _gecos home shell; do
     # create what it is pointed at — deliberately, so a login grows nothing —
     # which is exactly why they are made here.
     for _d in Desktop Downloads Documents Mail Music Pictures \
-              Pictures/Screenshots Videos Public Templates .local/bin \
+              Pictures/Screenshots Projects Videos Public Templates .local/bin \
               .local/share/applications .local/share/calendars \
               .local/share/contacts/personal; do
         mkdir -p "$home/$_d"

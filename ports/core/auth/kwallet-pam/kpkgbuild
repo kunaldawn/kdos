@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kwallet-pam
+version     = 6.8.2
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = 858025e222ba1cce66591d3a0cf4d41d60917e7b55418840422712910a853022  kwallet-pam-6.8.2.tar.xz
+description = PAM module that unlocks the KDE wallet with the login password
+homepage    = https://invent.kde.org/plasma/kwallet-pam
+license     = LGPL-2.1-or-later
+group       = plasma
+depends     = cmake ninja extra-cmake-modules pkgconf pam libgcrypt kwallet socat

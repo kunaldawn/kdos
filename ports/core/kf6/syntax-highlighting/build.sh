@@ -17,6 +17,7 @@ cmake -S . -B build -G Ninja \
 	-D KDE_INSTALL_USE_QT_SYS_PATHS=ON \
 	-D KF_SKIP_PO_PROCESSING=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_Python=ON \
+	-D CMAKE_DISABLE_FIND_PACKAGE_XercesC=ON \
 	-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build

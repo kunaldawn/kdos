@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = bluez-qt
-version     = 6.30.0
+version     = 6.31.0
 release     = 1
 source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
-sha256      = f5045b14a6c689bbfded9437582f943dd4f8f74537085ab6115bcacdea2110d8  bluez-qt-6.30.0.tar.xz
+sha256      = 22b25448c6b5372ee4fba15bb938e698a599cec0d69816ceb0405451c879c827  bluez-qt-6.31.0.tar.xz
 description = KDE Frameworks: Qt wrapper for the BlueZ 5 D-Bus API
 homepage    = https://invent.kde.org/frameworks/bluez-qt
 license     = (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.1-or-later

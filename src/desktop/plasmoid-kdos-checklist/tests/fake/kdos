@@ -1,0 +1,29 @@
+#!/bin/sh
+# A stand-in for `kdos checklist`: the state is a file, KDOS_FAKE_STATE,
+# holding the ids done and dismissed; actions are appended to KDOS_FAKE_LOG.
+state=${KDOS_FAKE_STATE:?}
+[ "$1" = checklist ] || exit 2
+case "$2" in
+--json)
+	[ -n "$KDOS_FAKE_FAIL" ] && { echo "kdos: checklist: lsblk is missing" >&2; exit 1; }
+	printf '{"version":1,"items":['
+	sep=
+	for id in backup phone box firmware encryption mystery; do
+		done=false dismissed=false
+		grep -qx "done $id" "$state" 2>/dev/null && done=true
+		grep -qx "dismissed $id" "$state" 2>/dev/null && dismissed=true
+		printf '%s{"id":"%s","done":%s,"dismissed":%s}' "$sep" "$id" "$done" "$dismissed"
+		sep=,
+	done
+	printf ']}\n'
+	;;
+dismiss)
+	echo "dismissed $3" >>"$state"
+	echo "dismiss $3" >>"${KDOS_FAKE_LOG:-/dev/null}"
+	;;
+restore)
+	grep -v '^dismissed ' "$state" >"$state.new" 2>/dev/null; mv "$state.new" "$state"
+	echo restore >>"${KDOS_FAKE_LOG:-/dev/null}"
+	;;
+*) exit 2 ;;
+esac

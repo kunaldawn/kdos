@@ -968,29 +968,48 @@ static void layout_draw(KRect b)
 	y = fs_rows(b, y);
 	y++;
 
+	/* On the A/B layout the swap is a volume of the group whichever kind was
+	 * asked for, so the partition row is not offered there. */
 	ktui_radio(b.x, y++, b.w / 2, "No swap", &cfg.swap, SWAP_NONE);
-	ktui_radio(b.x, y++, b.w / 2, "Swap file on the root filesystem",
-		 &cfg.swap, SWAP_FILE);
-	ktui_radio(b.x, y++, b.w / 2, "Dedicated swap partition", &cfg.swap,
-		 SWAP_PART);
+	if (ki_ab()) {
+		if (cfg.swap == SWAP_PART)
+			cfg.swap = SWAP_FILE;
+		ktui_radio(b.x, y++, b.w / 2,
+			   "Swap volume, shared by both slots", &cfg.swap,
+			   SWAP_FILE);
+	} else {
+		ktui_radio(b.x, y++, b.w / 2, "Swap file on the root filesystem",
+			   &cfg.swap, SWAP_FILE);
+		ktui_radio(b.x, y++, b.w / 2, "Dedicated swap partition",
+			   &cfg.swap, SWAP_PART);
+	}
 
 	y++;
 	/*
-	 * THE ROOT ON LVM. The root partition becomes the one physical volume of
-	 * group `kdos`, and the root is its volume `root_a` — slot A's, with the
-	 * other half of the group left for slot B's `root_b` whenever the disk
-	 * holds two. The note says which, because half a disk left empty must
-	 * not be something a person finds out with `df`. Under encryption the
-	 * group goes INSIDE the container: one passphrase opens both slots.
+	 * THE A/B LAYOUT. The root partition becomes the one physical volume of
+	 * group `kdos`, holding both root slots, the swap and the home they
+	 * share, whenever the disk holds them; otherwise `root_a` takes all of
+	 * it. The note says which, because a machine whose updates have nowhere
+	 * to go must not be something a person finds out at the first update.
+	 * Under encryption the group goes INSIDE the container: one passphrase
+	 * opens all of it.
 	 */
-	ktui_check(b.x, y++, b.w, "Put the root on LVM", &cfg.lvm);
-	if (cfg.lvm)
-		ktui_note(b.x + 4, y++, b.w,
-			  ki_lvm_half()
-				  ? "volume group kdos; root_a takes half, the "
-				    "rest is room for a second A/B slot"
-				  : "volume group kdos; root_a takes all of it — "
-				    "this disk has no room for a second slot");
+	ktui_check(b.x, y++, b.w,
+		   "Two system slots for safe updates (LVM)", &cfg.lvm);
+	if (cfg.lvm) {
+		char ab[160];
+
+		if (ki_ab())
+			snprintf(ab, sizeof(ab),
+				 "slots A and B, %s each; the swap and /home "
+				 "are shared by both",
+				 kb_human_size(ki_slot_mb() << 20));
+		else
+			snprintf(ab, sizeof(ab),
+				 "this disk holds one slot only — updates will "
+				 "have no second root");
+		ktui_note(b.x + 4, y++, b.w, ab);
+	}
 	/*
 	 * LUKS2 on the root partition. Offered on the WIPE plan only: encrypting
 	 * a partition destroys what is on it, and the reuse plan exists for
@@ -1071,13 +1090,20 @@ static void layout_draw(KRect b)
 		ktui_draw_text(bx + i, y, 1, ktui_glyph[KT_G_FULL], KT_WARN, KT_BG, 0);
 	for (int i = 0; i < wswp; i++)
 		ktui_draw_text(bx + wesp + i, y, 1, ktui_glyph[KT_G_FULL], KT_MID, KT_BG, 0);
-	/* Slot B's half of the group is drawn as shade: space that is kept,
-	 * not space that is used. */
-	int lvhalf = cfg.lvm && ki_lvm_half();
-	int wa = lvhalf ? wroot / 2 : wroot;
+	/* Slot A in the accent, slot B as shade beside it — a copy kept for
+	 * the next update — and the shared home after them. */
+	int ab = cfg.lvm && ki_ab();
+	int wa = wroot, wb = 0;
+	if (ab && root) {
+		wa = (int)((double)(ki_slot_mb() << 20) / root * wroot);
+		if (wa < 1)
+			wa = 1;
+		wb = wa;
+	}
 	for (int i = 0; i < wroot; i++)
 		ktui_draw_text(bx + wesp + wswp + i, y, 1,
-			       ktui_glyph[i < wa ? KT_G_FULL : KT_G_SHADE],
+			       ktui_glyph[i < wa ? KT_G_FULL
+					  : i < wa + wb ? KT_G_SHADE : KT_G_FULL],
 			       i < wa ? KT_ACCENT : KT_MID, KT_BG, 0);
 	y += 2;
 
@@ -1104,14 +1130,27 @@ static void layout_draw(KRect b)
 					 : "LVM physical volume, group " KI_VG);
 		ktui_draw_textf(b.x, y++, b.w, KT_ACCENT, KT_BG, 0,
 				"    %-12s %-9s %s", KI_VG "/" KI_LV_A,
-				kb_human_size(lvhalf ? root / 2 : root),
+				kb_human_size(ab ? ki_slot_mb() << 20 : root),
 				rootdesc);
-		if (lvhalf)
+		if (ab) {
+			unsigned long long used = 2 * (ki_slot_mb() << 20) +
+						  (ki_swap_lv_mb() << 20);
+
 			ktui_draw_textf(b.x, y++, b.w, KT_MID, KT_BG, 0,
-					"    %-12s %-9s %s", "free",
-					kb_human_size(root - root / 2),
-					"room for " KI_VG "/" KI_LV_B
-					", a second A/B slot");
+					"    %-12s %-9s %s", KI_VG "/" KI_LV_B,
+					kb_human_size(ki_slot_mb() << 20),
+					"slot B, a copy of slot A");
+			if (ki_swap_lv_mb())
+				ktui_draw_textf(b.x, y++, b.w, KT_MID, KT_BG, 0,
+						"    %-12s %-9s %s",
+						KI_VG "/" KI_LV_SWAP,
+						kb_human_size(ki_swap_lv_mb() << 20),
+						"swap, for both slots");
+			ktui_draw_textf(b.x, y++, b.w, KT_MID, KT_BG, 0,
+					"    %-12s %-9s %s", KI_VG "/" KI_LV_HOME,
+					kb_human_size(root > used ? root - used : 0),
+					"/home, for both slots");
+		}
 	} else {
 		ktui_draw_textf(b.x, y++, b.w, KT_ACCENT, KT_BG, 0,
 				"  %-14s %-9s %s", nm, kb_human_size(root),
@@ -1272,27 +1311,6 @@ static Page page_layout = {
  * 6 · ACCOUNTS
  * ════════════════════════════════════════════════════════════════════════ */
 
-static int name_ok(const char *s)
-{
-	if (!*s || isdigit((unsigned char)*s))
-		return 0;
-	for (const char *c = s; *c; c++)
-		if (!islower((unsigned char)*c) && !isdigit((unsigned char)*c) &&
-		    *c != '_' && *c != '-')
-			return 0;
-	return 1;
-}
-
-static int host_ok(const char *s)
-{
-	if (!*s)
-		return 0;
-	for (const char *c = s; *c; c++)
-		if (!isalnum((unsigned char)*c) && *c != '-')
-			return 0;
-	return 1;
-}
-
 static void accounts_draw(KRect b)
 {
 	KtuiLay l;
@@ -1306,38 +1324,104 @@ static void accounts_draw(KRect b)
 	f = ktui_lay_field(&l, "hostname", 0);
 	f.w = fw;
 	ktui_input(f, cfg.hostname, sizeof(cfg.hostname), 0, "kdos");
-	if (!host_ok(cfg.hostname))
+	if (!ki_host_ok(cfg.hostname))
 		ktui_draw_text(f.x + fw + 1, f.y, b.w, "letters, digits and -",
 			       KT_ERR, KT_BG, 0);
 	ktui_lay_gap(&l, 1);
 
-	ktui_lay_section(&l, "YOU");
-	f = ktui_lay_field(&l, "full name", 0);
-	f.w = fw;
-	ktui_input(f, cfg.fullname, sizeof(cfg.fullname), 0, "KDOS User");
-	f = ktui_lay_field(&l, "username", 0);
-	f.w = fw;
-	ktui_input(f, cfg.username, sizeof(cfg.username), 0, "kdos");
-	if (!name_ok(cfg.username))
-		ktui_draw_text(f.x + fw + 1, f.y, b.w,
-			       "lowercase, no leading digit", KT_ERR, KT_BG, 0);
-	f = ktui_lay_field(&l, "password", 0);
-	f.w = fw;
-	ktui_input(f, cfg.userpass, sizeof(cfg.userpass), 1, "required");
-	f = ktui_lay_field(&l, "confirm", 0);
-	f.w = fw;
-	ktui_input(f, cfg.userpass2, sizeof(cfg.userpass2), 1, "");
-	if (cfg.userpass2[0] && strcmp(cfg.userpass, cfg.userpass2))
-		ktui_draw_text(f.x + fw + 1, f.y, b.w, "does not match", KT_ERR,
-			       KT_BG, 0);
-	f = ktui_lay_field(&l, NULL, 0);
-	ktui_pw_meter(f.x, f.y, f.w, cfg.userpass);
+	/*
+	 * SET UP NOW, OR LEAVE IT TO THE FIRST PERSON. The OEM choice makes no
+	 * account at all: plasma-setup asks for one on the first boot, and the
+	 * fields below are not drawn because nothing reads them.
+	 */
+	ktui_lay_section(&l, "WHO SETS IT UP");
+	f = ktui_lay_row(&l, 1);
+	ktui_radio(f.x, f.y, f.w, "Set up my account now", &cfg.oem, 0);
+	f = ktui_lay_row(&l, 1);
+	ktui_radio(f.x, f.y, f.w,
+		   "Let the first person to start it set it up (OEM)",
+		   &cfg.oem, 1);
 	ktui_lay_gap(&l, 1);
 
-	f = ktui_lay_row(&l, 1);
-	ktui_check(f.x, f.y, f.w, "Administrator (member of wheel, may use sudo)",
-		   &cfg.user_wheel);
-	ktui_lay_gap(&l, 1);
+	ktui_id_push("account");
+	if (!cfg.oem) {
+		ktui_lay_section(&l, "YOU");
+		f = ktui_lay_field(&l, "full name", 0);
+		f.w = fw;
+		ktui_input(f, cfg.fullname, sizeof(cfg.fullname), 0,
+			   "KDOS User");
+		f = ktui_lay_field(&l, "username", 0);
+		f.w = fw;
+		ktui_input(f, cfg.username, sizeof(cfg.username), 0, "kdos");
+		if (!ki_name_ok(cfg.username))
+			ktui_draw_text(f.x + fw + 1, f.y, b.w,
+				       "lowercase, no leading digit", KT_ERR,
+				       KT_BG, 0);
+		f = ktui_lay_field(&l, "password", 0);
+		f.w = fw;
+		ktui_input(f, cfg.userpass, sizeof(cfg.userpass), 1,
+			   "required");
+		f = ktui_lay_field(&l, "confirm", 0);
+		f.w = fw;
+		ktui_input(f, cfg.userpass2, sizeof(cfg.userpass2), 1, "");
+		if (cfg.userpass2[0] && strcmp(cfg.userpass, cfg.userpass2))
+			ktui_draw_text(f.x + fw + 1, f.y, b.w,
+				       "does not match", KT_ERR, KT_BG, 0);
+		f = ktui_lay_field(&l, NULL, 0);
+		ktui_pw_meter(f.x, f.y, f.w, cfg.userpass);
+		ktui_lay_gap(&l, 1);
+
+		f = ktui_lay_row(&l, 1);
+		ktui_check(f.x, f.y, f.w,
+			   "Administrator (member of wheel, may use sudo)",
+			   &cfg.user_wheel);
+		ktui_lay_gap(&l, 1);
+
+		/*
+		 * AUTOMATIC LOGIN, ONLY ON AN ENCRYPTED ROOT. The disk's
+		 * passphrase at boot already asks who is at the machine; on a
+		 * plain root the login screen is that question and is never
+		 * skipped. The row is drawn either way, so a person who looks
+		 * for it is told why it is not there.
+		 */
+		ktui_lay_section(&l, "LOGIN");
+		if (cfg.luks) {
+			f = ktui_lay_row(&l, 1);
+			ktui_check(f.x, f.y, f.w,
+				   "Log in automatically after the disk "
+				   "passphrase",
+				   &cfg.autologin);
+			ktui_id_push("lock");
+			if (cfg.autologin) {
+				ktui_lay_indent(&l, 0);
+				f = ktui_lay_row(&l, 1);
+				ktui_check(f.x, f.y, f.w,
+					   "Start the session locked (unlock "
+					   "with this password)",
+					   &cfg.autologin_lock);
+				ktui_lay_unindent(&l, 0);
+			}
+			ktui_id_pop();
+		} else {
+			cfg.autologin = 0;
+			f = ktui_lay_row(&l, 1);
+			ktui_note(f.x, f.y, b.w,
+				  "the login screen asks for this password; "
+				  "automatic login is offered on an encrypted "
+				  "root only");
+		}
+		ktui_lay_gap(&l, 1);
+	} else {
+		cfg.autologin = 0;
+		f = ktui_lay_left(&l);
+		ktui_para(f.x, f.y, f.w,
+			  "No account is made. The first time the machine is "
+			  "switched on, the setup wizard asks for the language, "
+			  "keyboard, time zone and network, and makes the "
+			  "account, which is an administrator.", KT_MID);
+		ktui_lay_gap(&l, 4);
+	}
+	ktui_id_pop();
 
 	ktui_lay_section(&l, "ROOT");
 	f = ktui_lay_row(&l, 1);
@@ -1368,36 +1452,18 @@ static void accounts_draw(KRect b)
 	}
 	ktui_lay_gap(&l, 1);
 	ktui_id_pop();
-
-	f = ktui_lay_left(&l);
-	ktui_para(f.x, f.y, f.w,
-		     "The live system logs in as kdos/kdos without asking; the "
-		     "installed one asks for this password at tty1 — a machine "
-		     "with one account and no password has nothing to ask, and "
-		     "one you installed does. The name here is the account "
-		     "/etc/kdos/login.conf carries, and an answer file is what "
-		     "turns its autologin back on.", KT_MID);
 }
 
+/* The page's own fields, by the rules every front end shares; the disk and
+ * look answers are another page's to refuse. */
 static int accounts_validate(char *err, size_t n)
 {
-	if (!host_ok(cfg.hostname)) {
+	if (!ki_host_ok(cfg.hostname)) {
 		snprintf(err, n, "hostname must be letters, digits and dashes");
 		return 1;
 	}
-	if (!name_ok(cfg.username)) {
-		snprintf(err, n,
-			 "username must be lowercase letters, digits, - or _");
-		return 1;
-	}
-	if (!cfg.userpass[0]) {
-		snprintf(err, n, "set a password for %s", cfg.username);
-		return 1;
-	}
-	if (strcmp(cfg.userpass, cfg.userpass2)) {
-		snprintf(err, n, "the two passwords do not match");
-		return 1;
-	}
+	/* Root first: an OEM install makes no account but still unlocks root
+	 * when asked, and an empty password there is a console root login. */
 	if (!cfg.root_locked) {
 		if (!cfg.rootpass[0]) {
 			snprintf(err, n, "set a root password, or lock the account");
@@ -1407,6 +1473,25 @@ static int accounts_validate(char *err, size_t n)
 			snprintf(err, n, "the two root passwords do not match");
 			return 1;
 		}
+	}
+	if (cfg.oem)
+		return 0;
+	if (!ki_name_ok(cfg.username)) {
+		snprintf(err, n,
+			 "username must be lowercase letters, digits, - or _");
+		return 1;
+	}
+	if (!ki_fullname_ok(cfg.fullname)) {
+		snprintf(err, n, "the full name cannot hold ':'");
+		return 1;
+	}
+	if (!cfg.userpass[0]) {
+		snprintf(err, n, "set a password for %s", cfg.username);
+		return 1;
+	}
+	if (strcmp(cfg.userpass, cfg.userpass2)) {
+		snprintf(err, n, "the two passwords do not match");
+		return 1;
 	}
 	if (!cfg.user_wheel && cfg.root_locked) {
 		snprintf(err, n,
@@ -1419,7 +1504,7 @@ static int accounts_validate(char *err, size_t n)
 }
 
 static Page page_accounts = {
-	"accounts", "Accounts", "hostname, user, passwords",
+	"accounts", "Accounts", "hostname, user or OEM, login",
 	NULL, accounts_draw, accounts_validate, NULL, 0
 };
 
@@ -1434,8 +1519,8 @@ static void system_draw(KRect b)
 	ktui_section(b.x, y, b.w, "ACCENT");
 	y++;
 	ktui_note(b.x, y++, b.w,
-	     "applied to the desktop, GTK, the icons, the cursors, foot, btop and "
-	     "this installer");
+	     "the desktop's global theme, the login screen, the boot menu, the "
+	     "consoles and this installer");
 	y++;
 
 	int col = b.w / 4;
@@ -1463,6 +1548,27 @@ static void system_draw(KRect b)
 				  KT_BG, 0);
 	}
 	y += ((ktui_ntheme + 3) / 4) * 2 + 1;
+
+	/* The panel layout the first login lays out. Every desk can be changed
+	 * later from the welcome tour or with `kdos desk`. */
+	ktui_section(b.x, y, b.w, "DESK");
+	y++;
+	{
+		static const char *const label[] = {
+			"KDOS     one bottom panel: menu, tasks, meters, tray",
+			"Dock     a top bar and a floating dock",
+			"Tiling   a top bar, and windows tiled as they open",
+		};
+		int idx = 0;
+
+		for (int i = 0; i < ki_ndesks; i++)
+			if (!strcmp(cfg.desk, ki_desks[i]))
+				idx = i;
+		for (int i = 0; i < ki_ndesks && i < 3; i++)
+			ktui_radio(b.x, y++, b.w, label[i], &idx, i);
+		kb_strlcpy(cfg.desk, ki_desks[idx], sizeof(cfg.desk));
+	}
+	y++;
 
 	ktui_section(b.x, y, b.w, "ALIEN APPS");
 	y++;
@@ -1499,7 +1605,7 @@ static void system_draw(KRect b)
 }
 
 static Page page_system = {
-	"system", "System", "accent, alien apps, services",
+	"system", "System", "accent, desk, alien apps, services",
 	NULL, system_draw, NULL, NULL, 0
 };
 
@@ -1527,24 +1633,6 @@ static Page page_system = {
 
 static KtuiList applist;
 
-/* `cfg.apps` is the chosen set as one space-separated line: it is what the
- * answer file records and what `--dump plan` prints. Rebuilt from the ticks
- * rather than maintained beside them, because two representations of one
- * choice is how they come apart. */
-static void apps_collect(void)
-{
-	cfg.apps[0] = '\0';
-	for (int i = 0; i < ki_ngroup; i++) {
-		size_t l;
-
-		if (!ki_group[i].chosen)
-			continue;
-		l = strlen(cfg.apps);
-		snprintf(cfg.apps + l, sizeof(cfg.apps) - l, "%s%s",
-			 l ? " " : "", ki_group[i].id);
-	}
-}
-
 static void app_row(int idx, int x, int y, int w, int selected, int focus,
 		    void *u)
 {
@@ -1569,52 +1657,6 @@ static void app_row(int idx, int x, int y, int w, int selected, int focus,
 	ktui_draw_text(x + 4 + descw, y, nw, n, ktui_sel_dim(selected, focus), bg, 0);
 	ktui_draw_text(x + 4 + descw + nw, y, szw, size,
 		       ktui_sel_dim(selected, focus), bg, 0);
-}
-
-void ki_apps_enter(void)
-{
-	probe_apps();
-	if (!ki_apps_present)
-		return;
-
-	/*
-	 * THE ANSWER FILE WINS WHERE IT NAMED SOMETHING, and `essential` is
-	 * the default where it did not. An unknown name falls the whole
-	 * selection back to `essential` rather than refusing: this runs before
-	 * the point of no return, and refusing there would leave a machine
-	 * with no operating system on it over one misspelling.
-	 */
-	if (!cfg.apps[0]) {
-		for (int i = 0; i < ki_ngroup; i++)
-			ki_group[i].chosen = !strcmp(ki_group[i].id,
-						     "essential");
-		apps_collect();
-		return;
-	}
-	for (int i = 0; i < ki_ngroup; i++)
-		ki_group[i].chosen = 0;
-	{
-		char want[1024];
-		char *tok, *save;
-		int matched = 0, asked = 0;
-
-		kb_strlcpy(want, cfg.apps, sizeof(want));
-		for (tok = strtok_r(want, " ", &save); tok;
-		     tok = strtok_r(NULL, " ", &save)) {
-			asked++;
-			for (int i = 0; i < ki_ngroup; i++)
-				if (!strcmp(ki_group[i].id, tok)) {
-					ki_group[i].chosen = 1;
-					matched++;
-					break;
-				}
-		}
-		if (asked && !matched)
-			for (int i = 0; i < ki_ngroup; i++)
-				ki_group[i].chosen =
-					!strcmp(ki_group[i].id, "essential");
-	}
-	apps_collect();
 }
 
 static void apps_draw(KRect b)
@@ -1664,7 +1706,7 @@ static void apps_draw(KRect b)
 
 		if (i >= 0 && i < ki_ngroup) {
 			ki_group[i].chosen = !ki_group[i].chosen;
-			apps_collect();
+			ki_apps_collect();
 		}
 	}
 	y += lh;
@@ -1710,13 +1752,25 @@ static void summary_draw(KRect b)
 	snprintf(v, sizeof(v), "%s  (%s)", cfg.tz_label, cfg.tz);
 	ktui_kv(b.x, y++, b.w, "time zone", v, KT_TEXT);
 	ktui_kv(b.x, y++, b.w, "hostname", cfg.hostname, KT_TEXT);
-	snprintf(v, sizeof(v), "%s (%s)%s", cfg.username, cfg.fullname,
-		 cfg.user_wheel ? ", administrator" : "");
-	ktui_kv(b.x, y++, b.w, "user", v, KT_TEXT);
+	if (cfg.oem) {
+		ktui_kv(b.x, y++, b.w, "user",
+			"none — the first boot sets one up", KT_TEXT);
+	} else {
+		snprintf(v, sizeof(v), "%s (%s)%s", cfg.username, cfg.fullname,
+			 cfg.user_wheel ? ", administrator" : "");
+		ktui_kv(b.x, y++, b.w, "user", v, KT_TEXT);
+	}
 	ktui_kv(b.x, y++, b.w, "root account",
 	      cfg.root_locked ? "locked" : "password set",
 	      cfg.root_locked ? KT_TEXT : KT_WARN);
-	ktui_kv(b.x, y++, b.w, "accent", cfg.theme, KT_TEXT);
+	ktui_kv(b.x, y++, b.w, "login",
+		cfg.oem ? "the setup wizard, on the first boot"
+		: !cfg.autologin ? "the login screen"
+		: cfg.autologin_lock ? "automatic, into a locked session"
+				     : "automatic, no password after the disk's",
+		cfg.autologin && !cfg.autologin_lock ? KT_WARN : KT_TEXT);
+	snprintf(v, sizeof(v), "%s, %s desk", cfg.theme, cfg.desk);
+	ktui_kv(b.x, y++, b.w, "look", v, KT_TEXT);
 	ktui_kv(b.x, y++, b.w, "alien apps",
 	      cfg.with_appbox ? "installed" : "left out",
 	      cfg.with_appbox ? KT_TEXT : KT_WARN);
@@ -1764,10 +1818,15 @@ static void summary_draw(KRect b)
 				    : "use existing partitions",
 	      cfg.plan == PLAN_WIPE ? KT_ERR : KT_TEXT);
 	if (cfg.plan == PLAN_WIPE && cfg.lvm) {
-		snprintf(v, sizeof(v), "LVM%s, %s/%s on %s of group %s",
-			 cfg.luks ? " inside LUKS2" : "", KI_VG, KI_LV_A,
-			 ki_lvm_half() ? "half" : "all", KI_VG);
-		ktui_kv(b.x, y++, b.w, "root", v, KT_TEXT);
+		if (ki_ab())
+			snprintf(v, sizeof(v), "LVM%s, slots A and B of %s each, "
+				 "/home shared", cfg.luks ? " inside LUKS2" : "",
+				 kb_human_size(ki_slot_mb() << 20));
+		else
+			snprintf(v, sizeof(v), "LVM%s, %s/%s on all of group %s "
+				 "— one slot", cfg.luks ? " inside LUKS2" : "",
+				 KI_VG, KI_LV_A, KI_VG);
+		ktui_kv(b.x, y++, b.w, "root", v, ki_ab() ? KT_TEXT : KT_WARN);
 	} else if (cfg.luks) {
 		/* install_plan honours cfg.luks on every plan, so the review
 		 * names the container wherever the LVM line does not. */

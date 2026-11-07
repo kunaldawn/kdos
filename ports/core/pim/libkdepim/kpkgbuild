@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libkdepim
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 4a24c06d72fb1f95a98519f66847d2cf069c2e15cdafeaf2321051d56d18ddd5  libkdepim-26.08.2.tar.xz
+description = KDE PIM shared widgets: progress manager, multi-line editors and service D-Bus interfaces
+homepage    = https://invent.kde.org/pim/libkdepim
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later AND (GPL-2.0-or-later WITH LicenseRef-Qt-Commercial-exception-1.0) AND BSD-3-Clause AND MIT AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcompletion ki18n kwidgetsaddons

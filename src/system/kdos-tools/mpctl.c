@@ -7,16 +7,20 @@
  * ---------------------------------
  *   kdos-mpctl — the music, over mpd's own protocol or MPRIS
  *
- * A MEDIA KEY RUNS A PROGRAM, and this is that program. What "next" means
- * belongs to the player, so the session's chord table names a command and
- * nothing about the session knows what a track is.
+ *   kdos-mpctl toggle | stop | next | prev
+ *   kdos-mpctl mpris
  *
- * TWO KINDS OF PLAYER. mpd speaks its own protocol on a socket; mpv, cmus and
- * every boxed player speak MPRIS on the session bus. The compositor's binding
- * takes the key before a focused player could see it, so the transport verbs
- * reach both from here — see `transport` below for which one gets the key. `now`
- * and `watch` are mpd's alone: the panel reads MPRIS itself, and the file they
- * write is how mpd reaches the same cell.
+ * mpd SPEAKS ITS OWN PROTOCOL AND NO MPRIS, and Plasma reaches a player only
+ * through MPRIS: the media keys, the Media Player applet, the lock screen's
+ * controls and KDE Connect all ask the session bus. `mpris` is the bridge —
+ * a small service, started at login by its autostart entry, that owns
+ * org.mpris.MediaPlayer2.mpd while mpd is running and answers for it, and
+ * follows mpd's own `idle` so the applet's title and play state change when
+ * mpd's do, without polling.
+ *
+ * The transport verbs are what a script or a KRunner line runs: they reach
+ * mpd directly and, being asked anyway, the other MPRIS players too, ranked
+ * with mpd on one scale (see `transport` below for which one gets the key).
  *
  * THE UNIX SOCKET AND NOTHING ELSE. mpd will listen on TCP if it is told to,
  * and a client that fell back to it would be a client that reached a music
@@ -27,24 +31,14 @@
  * between commands, so a read that waited for EOF would wait forever — which
  * is the one difference between this and every other small client in this
  * directory.
- *
- * `watch` WRITES A LINE AND SLEEPS IN `idle`. Polling a music daemon for a
- * title that changes every few minutes is a wakeup a battery pays for; `idle`
- * is mpd's own answer and it costs nothing until something happens.
- *
- * AND IT OUTLIVES mpd. The session starts one watcher per login, and mpd is
- * started, stopped and restarted under it; a watcher that left with mpd would
- * leave the panel empty for the rest of the login. It handles no signal, so
- * the end of the login ends it as it ends the session's other background
- * children; Log Out alone does not. With no mpd to follow it also returns once
- * `$XDG_RUNTIME_DIR/kdos` is gone, which nothing removes while the machine is
- * up.
  * ---------------------------------
  */
 
 #define _POSIX_C_SOURCE 200809L
-#include <dlfcn.h>
 #include <errno.h>
+#include <poll.h>
+#include <signal.h>
+#include <stdint.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -59,10 +53,6 @@
 /* One line of mpd's protocol is a key and a value; a title is the longest
  * thing that arrives and 512 is past any of them. */
 #define MP_LINE 512
-
-/* What the panel reads. Longer than the field is ever drawn, because the
- * truncation is the panel's decision and not this program's. */
-#define MP_NOW 256
 
 typedef struct {
 	int fd;
@@ -183,148 +173,6 @@ static int mp_do(Mp *m, const char *cmd)
 	return 1;
 }
 
-/* Control characters never reach the panel: the field is drawn into a cell
- * grid, and one escape in a track title would be a track title that moves the
- * cursor. */
-static void sanitise(char *s)
-{
-	for (; *s; s++)
-		if ((unsigned char)*s < 0x20 || *s == 0x7f)
-			*s = ' ';
-}
-
-/*
- * One round trip for the state and the song, formatted into the line the panel
- * draws. A stopped player writes an EMPTY line rather than the word "stopped":
- * the panel shows no field at all then, which is what a bar with nothing
- * playing should look like.
- *
- * ASCII, AND THAT IS THE FILE'S CONTRACT. The reader is a cell grid whose glyph
- * tier this program cannot see — a console font with 512 glyphs draws `?` for
- * anything it lacks — so the line carries nothing that needs a tier to survive.
- */
-static int mp_now(Mp *m, char *out, size_t cap)
-{
-	char line[MP_LINE], artist[MP_LINE] = "", title[MP_LINE] = "";
-	char state[MP_LINE] = "";
-	int r;
-
-	out[0] = '\0';
-	if (mp_send(m, "command_list_begin\nstatus\ncurrentsong\n"
-			"command_list_end\n") != 0)
-		return -1;
-	while ((r = mp_line(m, line, sizeof(line))) == 1) {
-		if (!strcmp(line, "OK"))
-			break;
-		if (!strncmp(line, "ACK ", 4))
-			return -1;
-		if (!strncmp(line, "state: ", 7))
-			snprintf(state, sizeof(state), "%s", line + 7);
-		else if (!strncmp(line, "Artist: ", 8))
-			snprintf(artist, sizeof(artist), "%s", line + 8);
-		else if (!strncmp(line, "Title: ", 7))
-			snprintf(title, sizeof(title), "%s", line + 7);
-		else if (!strncmp(line, "file: ", 6) && !*title)
-			snprintf(title, sizeof(title), "%s", line + 6);
-	}
-	if (r != 1)
-		return -1;
-	if (strcmp(state, "play") && strcmp(state, "pause"))
-		return 0;	/* stopped: no field */
-
-	sanitise(artist);
-	sanitise(title);
-	if (*artist && *title)
-		snprintf(out, cap, "%s %s - %s",
-			 strcmp(state, "play") ? "||" : ">", artist, title);
-	else if (*title)
-		snprintf(out, cap, "%s %s",
-			 strcmp(state, "play") ? "||" : ">", title);
-	return 0;
-}
-
-/*
- * Where the panel looks. The directory is NOT created here: it belongs to the
- * session and a producer that got there first with the usual 0755 would leave
- * it group-readable. No directory means no session, and no session means
- * nothing to tell.
- */
-static int now_path(char *buf, size_t cap)
-{
-	const char *rt = getenv("XDG_RUNTIME_DIR");
-	struct stat st;
-	char dir[192];
-
-	if (!rt || !*rt)
-		return -1;
-	snprintf(dir, sizeof(dir), "%s/kdos", rt);
-	if (stat(dir, &st) != 0 || !S_ISDIR(st.st_mode))
-		return -1;
-	snprintf(buf, cap, "%s/nowplaying", dir);
-	return 0;
-}
-
-/* How long a watcher with no mpd to talk to waits before it looks again: a
- * daemon started after the watcher is shown within this, and between looks the
- * watcher costs one wakeup. */
-#define MP_RETRY 5
-
-/*
- * One connection's worth: `idle` blocks until mpd has something to say, so the
- * loop costs nothing between tracks. `player` is a track change and `mixer` is
- * the volume — the two events the line can show — and asking for more would be
- * waking for database updates nobody is drawing. Returns when mpd goes away.
- */
-static void mp_follow(Mp *m, const char *path)
-{
-	char now[MP_NOW], line[MP_LINE];
-
-	for (;;) {
-		int r;
-
-		if (mp_now(m, now, sizeof(now)) != 0)
-			return;
-		kb_write_file_atomic(path, now);
-
-		if (mp_send(m, "idle player mixer\n") != 0)
-			return;
-		while ((r = mp_line(m, line, sizeof(line))) == 1)
-			if (!strcmp(line, "OK") || !strncmp(line, "ACK ", 4))
-				break;
-		if (r != 1)
-			return;
-	}
-}
-
-/*
- * Connect, follow, and when mpd goes away empty the line and wait for the next
- * one. The empty line is what takes the field off the panel: a title left in
- * the file would be drawn as playing by a daemon that no longer exists.
- */
-static int mp_watch(void)
-{
-	char path[256];
-
-	if (now_path(path, sizeof(path)) != 0) {
-		fprintf(stderr, "kdos-mpctl: no session to tell\n");
-		return 1;
-	}
-	for (;;) {
-		Mp m = { .fd = -1 };
-
-		if (mp_connect(&m) == 0) {
-			if (mp_hello(&m) == 0) {
-				mp_follow(&m, path);
-				kb_write_file_atomic(path, "");
-			}
-			close(m.fd);
-		}
-		sleep(MP_RETRY);
-		if (now_path(path, sizeof(path)) != 0)
-			return 0;	/* no session directory to write to */
-	}
-}
-
 /* mpd's `state:` alone — `play`, `pause` or `stop` — for deciding who gets a
  * key. An empty state is a daemon that did not say, and counts as not
  * playing. */
@@ -353,116 +201,47 @@ static int mp_state(Mp *m, char *state, size_t cap)
 #define MB_OBJ "/org/mpris/MediaPlayer2"
 #define MB_IFACE "org.mpris.MediaPlayer2.Player"
 
-/* A player that does not answer within this costs the key and nothing else;
- * sd-bus's own default is 25 seconds of a key that seems to do nothing. */
-#define MB_TIMEOUT_US 2000000ULL
-
 /* More players than anybody runs at once; the rest are not considered. A bus
  * name is at most 255 bytes, and an MPRIS one longer than this is not read. */
 #define MB_MAX 16
 #define MB_NAME 128
 
 /*
- * libbasu IS OPENED AT RUN TIME, NOT LINKED. This binary is also ksvc,
- * kdos-getty and the kdos-bootctl the initramfs copies with a hand-kept
- * library list, so a linked libbasu would be one more library every one of
- * them needs before it can start, for the sake of a media key. Without basu
- * there is no bus client, and the verbs fall to mpd alone. The handles are
- * sd-bus's `sd_bus *` and `sd_bus_message *`, carried as void pointers so this
- * file needs no sd-bus header either.
- */
-typedef struct {
-	void *lib;
-	void *bus;
-	int (*open_user)(void **bus);
-	void *(*close_unref)(void *bus);
-	int (*set_timeout)(void *bus, uint64_t usec);
-	int (*call)(void *bus, const char *dest, const char *path,
-		    const char *iface, const char *member, void *err,
-		    void **reply, const char *types, ...);
-	int (*get_string)(void *bus, const char *dest, const char *path,
-			  const char *iface, const char *member, void *err,
-			  char **ret);
-	int (*enter)(void *msg, char type, const char *contents);
-	int (*leave)(void *msg);
-	int (*read_basic)(void *msg, char type, void *p);
-	void *(*msg_unref)(void *msg);
-} Mb;
-
-static void mb_close(Mb *b)
-{
-	if (b->bus && b->close_unref)
-		b->close_unref(b->bus);
-	if (b->lib)
-		dlclose(b->lib);
-	memset(b, 0, sizeof(*b));
-}
-
-static int mb_open(Mb *b)
-{
-	memset(b, 0, sizeof(*b));
-	b->lib = dlopen("libbasu.so.0", RTLD_NOW | RTLD_LOCAL);
-	if (!b->lib)
-		return -1;
-	*(void **)&b->open_user = dlsym(b->lib, "sd_bus_open_user");
-	*(void **)&b->close_unref = dlsym(b->lib, "sd_bus_flush_close_unref");
-	*(void **)&b->set_timeout = dlsym(b->lib,
-					  "sd_bus_set_method_call_timeout");
-	*(void **)&b->call = dlsym(b->lib, "sd_bus_call_method");
-	*(void **)&b->get_string = dlsym(b->lib, "sd_bus_get_property_string");
-	*(void **)&b->enter = dlsym(b->lib, "sd_bus_message_enter_container");
-	*(void **)&b->leave = dlsym(b->lib, "sd_bus_message_exit_container");
-	*(void **)&b->read_basic = dlsym(b->lib, "sd_bus_message_read_basic");
-	*(void **)&b->msg_unref = dlsym(b->lib, "sd_bus_message_unref");
-	if (!b->open_user || !b->close_unref || !b->set_timeout || !b->call ||
-	    !b->get_string || !b->enter || !b->leave || !b->read_basic ||
-	    !b->msg_unref || b->open_user(&b->bus) < 0) {
-		b->bus = NULL;
-		mb_close(b);
-		return -1;
-	}
-	b->set_timeout(b->bus, MB_TIMEOUT_US);
-	return 0;
-}
-
-/*
  * The player to send a key to, by PlaybackStatus: the first one Playing, else
  * the first Paused, else the first on the bus. Returns its rank — 3 Playing,
  * 2 Paused, 1 anything else — or 0 for no player; `transport` weighs mpd's
- * state on the same scale.
+ * state on the same scale. The bus is kdos-tools' own (bus.c).
  */
-static int mb_pick(Mb *b, char *out, size_t cap)
+static int mb_pick(KdtBus *b, char *out, size_t cap)
 {
 	char names[MB_MAX][MB_NAME];
-	void *reply = NULL;
+	KdtMsg *reply = NULL;
 	const char *s;
 	int n = 0, best = 0;
 
 	out[0] = '\0';
-	if (b->call(b->bus, "org.freedesktop.DBus", "/org/freedesktop/DBus",
-		    "org.freedesktop.DBus", "ListNames", NULL, &reply,
-		    NULL) < 0)
+	if (kdt_bus_call(b, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+			 "org.freedesktop.DBus", "ListNames", &reply, NULL, 0,
+			 "") != 0)
 		return 0;
-	if (b->enter(reply, 'a', "s") > 0) {
-		while (n < MB_MAX && b->read_basic(reply, 's', &s) > 0)
+	if (kdt_bus_enter(b, reply, 'a', "s") > 0) {
+		while (n < MB_MAX && kdt_bus_read(b, reply, "s", &s) > 0)
 			if (s && !strncmp(s, MB_PREFIX, strlen(MB_PREFIX)) &&
 			    strlen(s) < sizeof(names[0]))
 				memcpy(names[n++], s, strlen(s) + 1);
-		b->leave(reply);
+		kdt_bus_leave(b, reply);
 	}
-	b->msg_unref(reply);
+	kdt_bus_free(b, reply);
 
 	for (int i = 0; i < n && best < 3; i++) {
-		char *st = NULL;
+		char *st = kdt_bus_get_prop_s(b, names[i], MB_OBJ, MB_IFACE,
+					      "PlaybackStatus", NULL, 0);
 		int rank = 1;
 
-		if (b->get_string(b->bus, names[i], MB_OBJ, MB_IFACE,
-				  "PlaybackStatus", NULL, &st) >= 0 && st) {
-			if (!strcmp(st, "Playing"))
-				rank = 3;
-			else if (!strcmp(st, "Paused"))
-				rank = 2;
-		}
+		if (st && !strcmp(st, "Playing"))
+			rank = 3;
+		else if (st && !strcmp(st, "Paused"))
+			rank = 2;
 		free(st);
 		if (rank > best) {
 			best = rank;
@@ -472,24 +251,562 @@ static int mb_pick(Mb *b, char *out, size_t cap)
 	return best;
 }
 
-static int mb_do(Mb *b, const char *player, const char *method)
+static int mb_do(KdtBus *b, const char *player, const char *method)
 {
-	void *reply = NULL;
-
-	if (b->call(b->bus, player, MB_OBJ, MB_IFACE, method, NULL, &reply,
-		    NULL) < 0) {
+	if (kdt_bus_call(b, player, MB_OBJ, MB_IFACE, method, NULL, NULL, 0,
+			 "") != 0) {
 		fprintf(stderr, "kdos-mpctl: %s did not take %s\n", player,
 			method);
 		return 1;
 	}
-	b->msg_unref(reply);
 	return 0;
 }
 
 static void usage(void)
 {
-	fprintf(stderr,
-		"usage: kdos-mpctl toggle|stop|next|prev|now|watch\n");
+	fprintf(stderr, "usage: kdos-mpctl toggle|stop|next|prev\n"
+			"       kdos-mpctl mpris\n");
+}
+
+/* ── the MPRIS bridge ──────────────────────────────────────────────────── */
+
+#define MPRIS_NAME "org.mpris.MediaPlayer2.mpd"
+#define MPRIS_ROOT "org.mpris.MediaPlayer2"
+#define MPRIS_RETRY_MS 5000
+
+typedef struct {
+	KdtBus *b;
+	Mp ctl;			/* commands and `status`              */
+	Mp idle;		/* parked in `idle`, says what moved  */
+	int up;
+	char state[16];		/* play, pause or stop                */
+	int volume;		/* 0..100, or -1 for no mixer         */
+	int random, repeat;
+	long long elapsed_us, length_us;
+	long song_id;
+	char title[MP_LINE], artist[MP_LINE], album[MP_LINE], file[MP_LINE];
+} Mpris;
+
+/* `status` and `currentsong`, into the model. */
+static int mpris_refresh(Mpris *x)
+{
+	char line[MP_LINE];
+	int r;
+
+	x->state[0] = x->title[0] = x->artist[0] = x->album[0] =
+		x->file[0] = '\0';
+	x->volume = -1;
+	x->random = x->repeat = 0;
+	x->elapsed_us = x->length_us = 0;
+	x->song_id = -1;
+	if (mp_send(&x->ctl, "status\n") != 0)
+		return -1;
+	while ((r = mp_line(&x->ctl, line, sizeof(line))) == 1) {
+		if (!strcmp(line, "OK"))
+			break;
+		if (!strncmp(line, "ACK ", 4))
+			return -1;
+		if (!strncmp(line, "state: ", 7))
+			snprintf(x->state, sizeof(x->state), "%.15s", line + 7);
+		else if (!strncmp(line, "volume: ", 8))
+			x->volume = atoi(line + 8);
+		else if (!strncmp(line, "random: ", 8))
+			x->random = atoi(line + 8);
+		else if (!strncmp(line, "repeat: ", 8))
+			x->repeat = atoi(line + 8);
+		else if (!strncmp(line, "elapsed: ", 9))
+			x->elapsed_us = (long long)(atof(line + 9) * 1e6);
+		else if (!strncmp(line, "duration: ", 10))
+			x->length_us = (long long)(atof(line + 10) * 1e6);
+		else if (!strncmp(line, "songid: ", 8))
+			x->song_id = atol(line + 8);
+	}
+	if (r != 1)
+		return -1;
+	if (mp_send(&x->ctl, "currentsong\n") != 0)
+		return -1;
+	while ((r = mp_line(&x->ctl, line, sizeof(line))) == 1) {
+		if (!strcmp(line, "OK"))
+			return 0;
+		if (!strncmp(line, "ACK ", 4))
+			return -1;
+		if (!strncmp(line, "Title: ", 7))
+			snprintf(x->title, sizeof(x->title), "%s", line + 7);
+		else if (!strncmp(line, "Artist: ", 8))
+			snprintf(x->artist, sizeof(x->artist), "%s", line + 8);
+		else if (!strncmp(line, "Album: ", 7))
+			snprintf(x->album, sizeof(x->album), "%s", line + 7);
+		else if (!strncmp(line, "file: ", 6))
+			snprintf(x->file, sizeof(x->file), "%s", line + 6);
+	}
+	return -1;
+}
+
+static const char *mpris_status(const Mpris *x)
+{
+	return !strcmp(x->state, "play")    ? "Playing"
+	       : !strcmp(x->state, "pause") ? "Paused"
+					    : "Stopped";
+}
+
+static void mpris_trackid(const Mpris *x, char *out, size_t n)
+{
+	if (x->song_id >= 0)
+		snprintf(out, n, "/org/mpd/Track/%ld", x->song_id);
+	else
+		snprintf(out, n, "/org/mpris/MediaPlayer2/TrackList/NoTrack");
+}
+
+static void mpris_metadata(Mpris *x, KdtMsg *m)
+{
+	KdtBus *b = x->b;
+	char tid[64];
+	/* A track with no Title tag is still a track; its file name is what
+	 * every mpd client shows for it. */
+	const char *title = *x->title ? x->title
+			    : *x->file ? (strrchr(x->file, '/')
+					  ? strrchr(x->file, '/') + 1 : x->file)
+				       : "";
+
+	mpris_trackid(x, tid, sizeof(tid));
+	kdt_bus_open_container(b, m, 'a', "{sv}");
+	kdt_bus_append(b, m, "{sv}", "mpris:trackid", "o", tid);
+	if (x->length_us > 0)
+		kdt_bus_append(b, m, "{sv}", "mpris:length", "x",
+			       (int64_t)x->length_us);
+	if (*title)
+		kdt_bus_append(b, m, "{sv}", "xesam:title", "s", title);
+	if (*x->artist)
+		kdt_bus_append(b, m, "{sv}", "xesam:artist", "as", 1,
+			       x->artist);
+	if (*x->album)
+		kdt_bus_append(b, m, "{sv}", "xesam:album", "s", x->album);
+	kdt_bus_close_container(b, m);
+}
+
+static const char *const ROOT_PROPS[] = {
+	"CanQuit", "CanRaise", "HasTrackList", "Identity",
+	"SupportedUriSchemes", "SupportedMimeTypes",
+};
+static const char *const PLAYER_PROPS[] = {
+	"PlaybackStatus", "LoopStatus", "Rate", "Shuffle", "Metadata",
+	"Volume", "Position", "MinimumRate", "MaximumRate", "CanGoNext",
+	"CanGoPrevious", "CanPlay", "CanPause", "CanSeek", "CanControl",
+};
+
+/* One property's value, as the variant a Get answers with. 0, or -1 for a
+ * name the interface does not have. */
+static int mpris_prop(Mpris *x, KdtMsg *m, const char *iface,
+		      const char *name)
+{
+	KdtBus *b = x->b;
+	int has = *x->state && strcmp(x->state, "stop");
+
+	if (!strcmp(iface, MPRIS_ROOT)) {
+		if (!strcmp(name, "Identity"))
+			return kdt_bus_append(b, m, "v", "s",
+					      "Music Player Daemon");
+		if (!strcmp(name, "SupportedUriSchemes"))
+			return kdt_bus_append(b, m, "v", "as", 1, "file");
+		if (!strcmp(name, "SupportedMimeTypes"))
+			return kdt_bus_append(b, m, "v", "as", 0);
+		if (!strcmp(name, "CanQuit") || !strcmp(name, "CanRaise") ||
+		    !strcmp(name, "HasTrackList"))
+			return kdt_bus_append(b, m, "v", "b", 0);
+		return -1;
+	}
+	if (strcmp(iface, MPRIS_ROOT ".Player"))
+		return -1;
+	if (!strcmp(name, "PlaybackStatus"))
+		return kdt_bus_append(b, m, "v", "s", mpris_status(x));
+	if (!strcmp(name, "LoopStatus"))
+		return kdt_bus_append(b, m, "v", "s",
+				      x->repeat ? "Playlist" : "None");
+	if (!strcmp(name, "Rate") || !strcmp(name, "MinimumRate") ||
+	    !strcmp(name, "MaximumRate"))
+		return kdt_bus_append(b, m, "v", "d", 1.0);
+	if (!strcmp(name, "Shuffle"))
+		return kdt_bus_append(b, m, "v", "b", x->random);
+	if (!strcmp(name, "Volume"))
+		return kdt_bus_append(b, m, "v", "d",
+				      x->volume < 0 ? 0.0 : x->volume / 100.0);
+	if (!strcmp(name, "Position"))
+		return kdt_bus_append(b, m, "v", "x", (int64_t)x->elapsed_us);
+	if (!strcmp(name, "Metadata")) {
+		kdt_bus_open_container(b, m, 'v', "a{sv}");
+		mpris_metadata(x, m);
+		return kdt_bus_close_container(b, m);
+	}
+	if (!strcmp(name, "CanSeek"))
+		return kdt_bus_append(b, m, "v", "b", has);
+	if (!strcmp(name, "CanGoNext") || !strcmp(name, "CanGoPrevious") ||
+	    !strcmp(name, "CanPlay") || !strcmp(name, "CanPause") ||
+	    !strcmp(name, "CanControl"))
+		return kdt_bus_append(b, m, "v", "b", 1);
+	return -1;
+}
+
+static void mpris_all(Mpris *x, KdtMsg *m, const char *iface)
+{
+	const char *const *names = !strcmp(iface, MPRIS_ROOT) ? ROOT_PROPS
+								: PLAYER_PROPS;
+	size_t n = !strcmp(iface, MPRIS_ROOT)
+			   ? sizeof(ROOT_PROPS) / sizeof(ROOT_PROPS[0])
+			   : sizeof(PLAYER_PROPS) / sizeof(PLAYER_PROPS[0]);
+
+	kdt_bus_open_container(x->b, m, 'a', "{sv}");
+	for (size_t i = 0; i < n; i++) {
+		kdt_bus_open_container(x->b, m, 'e', "sv");
+		kdt_bus_append(x->b, m, "s", names[i]);
+		mpris_prop(x, m, iface, names[i]);
+		kdt_bus_close_container(x->b, m);
+	}
+	kdt_bus_close_container(x->b, m);
+}
+
+static const char MPRIS_XML[] =
+	"<!DOCTYPE node PUBLIC \"-//freedesktop//DTD D-BUS Object Introspection "
+	"1.0//EN\" \"http://www.freedesktop.org/standards/dbus/1.0/"
+	"introspect.dtd\">\n<node>\n"
+	" <interface name=\"org.freedesktop.DBus.Introspectable\">"
+	"<method name=\"Introspect\"><arg type=\"s\" direction=\"out\"/>"
+	"</method></interface>\n"
+	" <interface name=\"org.freedesktop.DBus.Properties\">"
+	"<method name=\"Get\"><arg type=\"s\" direction=\"in\"/>"
+	"<arg type=\"s\" direction=\"in\"/><arg type=\"v\" "
+	"direction=\"out\"/></method><method name=\"GetAll\"><arg "
+	"type=\"s\" direction=\"in\"/><arg type=\"a{sv}\" "
+	"direction=\"out\"/></method><method name=\"Set\"><arg type=\"s\" "
+	"direction=\"in\"/><arg type=\"s\" direction=\"in\"/><arg "
+	"type=\"v\" direction=\"in\"/></method><signal "
+	"name=\"PropertiesChanged\"><arg type=\"s\"/><arg "
+	"type=\"a{sv}\"/><arg type=\"as\"/></signal></interface>\n"
+	" <interface name=\"org.mpris.MediaPlayer2\"><method name=\"Raise\"/>"
+	"<method name=\"Quit\"/><property name=\"CanQuit\" type=\"b\" "
+	"access=\"read\"/><property name=\"CanRaise\" type=\"b\" "
+	"access=\"read\"/><property name=\"HasTrackList\" type=\"b\" "
+	"access=\"read\"/><property name=\"Identity\" type=\"s\" "
+	"access=\"read\"/><property name=\"SupportedUriSchemes\" "
+	"type=\"as\" access=\"read\"/><property "
+	"name=\"SupportedMimeTypes\" type=\"as\" access=\"read\"/>"
+	"</interface>\n"
+	" <interface name=\"org.mpris.MediaPlayer2.Player\">"
+	"<method name=\"Next\"/><method name=\"Previous\"/>"
+	"<method name=\"Pause\"/><method name=\"PlayPause\"/>"
+	"<method name=\"Stop\"/><method name=\"Play\"/>"
+	"<method name=\"Seek\"><arg type=\"x\" direction=\"in\"/></method>"
+	"<method name=\"SetPosition\"><arg type=\"o\" direction=\"in\"/>"
+	"<arg type=\"x\" direction=\"in\"/></method>"
+	"<method name=\"OpenUri\"><arg type=\"s\" direction=\"in\"/>"
+	"</method><signal name=\"Seeked\"><arg type=\"x\"/></signal>"
+	"<property name=\"PlaybackStatus\" type=\"s\" access=\"read\"/>"
+	"<property name=\"LoopStatus\" type=\"s\" access=\"readwrite\"/>"
+	"<property name=\"Rate\" type=\"d\" access=\"read\"/>"
+	"<property name=\"Shuffle\" type=\"b\" access=\"readwrite\"/>"
+	"<property name=\"Metadata\" type=\"a{sv}\" access=\"read\"/>"
+	"<property name=\"Volume\" type=\"d\" access=\"readwrite\"/>"
+	"<property name=\"Position\" type=\"x\" access=\"read\"/>"
+	"<property name=\"MinimumRate\" type=\"d\" access=\"read\"/>"
+	"<property name=\"MaximumRate\" type=\"d\" access=\"read\"/>"
+	"<property name=\"CanGoNext\" type=\"b\" access=\"read\"/>"
+	"<property name=\"CanGoPrevious\" type=\"b\" access=\"read\"/>"
+	"<property name=\"CanPlay\" type=\"b\" access=\"read\"/>"
+	"<property name=\"CanPause\" type=\"b\" access=\"read\"/>"
+	"<property name=\"CanSeek\" type=\"b\" access=\"read\"/>"
+	"<property name=\"CanControl\" type=\"b\" access=\"read\"/>"
+	"</interface>\n</node>\n";
+
+/* A verb to mpd on the control connection, answered on the bus. */
+static int mpris_verb(Mpris *x, KdtMsg *call, const char *cmd)
+{
+	KdtMsg *r;
+
+	if (mp_do(&x->ctl, cmd) != 0)
+		return kdt_bus_reply_error(x->b, call,
+					   "org.freedesktop.DBus.Error.Failed",
+					   "mpd refused the command");
+	r = kdt_bus_new_reply(x->b, call);
+	kdt_bus_send(x->b, r);
+	return 1;
+}
+
+static int mpris_call(KdtMsg *m, void *ud, void *err)
+{
+	Mpris *x = ud;
+	KdtBus *b = x->b;
+	const char *iface = kdt_bus_interface(b, m);
+	const char *member = kdt_bus_member(b, m);
+	KdtMsg *r;
+	char cmd[64];
+
+	(void)err;
+	if (!x->up)
+		return kdt_bus_reply_error(b, m,
+					   "org.freedesktop.DBus.Error.Failed",
+					   "mpd is not running");
+	if (!strcmp(iface, "org.freedesktop.DBus.Introspectable") &&
+	    !strcmp(member, "Introspect")) {
+		r = kdt_bus_new_reply(b, m);
+		kdt_bus_append(b, r, "s", MPRIS_XML);
+		kdt_bus_send(b, r);
+		return 1;
+	}
+	if (!strcmp(iface, "org.freedesktop.DBus.Properties")) {
+		const char *pi = NULL, *pn = NULL;
+
+		if (!strcmp(member, "GetAll") &&
+		    kdt_bus_read(b, m, "s", &pi) > 0) {
+			if (strcmp(pi, MPRIS_ROOT) &&
+			    strcmp(pi, MPRIS_ROOT ".Player"))
+				return kdt_bus_reply_error(b, m,
+					"org.freedesktop.DBus.Error.UnknownInterface",
+					"no such interface");
+			r = kdt_bus_new_reply(b, m);
+			mpris_all(x, r, pi);
+			kdt_bus_send(b, r);
+			return 1;
+		}
+		if (!strcmp(member, "Get") &&
+		    kdt_bus_read(b, m, "ss", &pi, &pn) > 0) {
+			r = kdt_bus_new_reply(b, m);
+			if (mpris_prop(x, r, pi, pn) != 0) {
+				kdt_bus_free(b, r);
+				return kdt_bus_reply_error(b, m,
+					"org.freedesktop.DBus.Error.UnknownProperty",
+					"no such property");
+			}
+			kdt_bus_send(b, r);
+			return 1;
+		}
+		if (!strcmp(member, "Set") &&
+		    kdt_bus_read(b, m, "ss", &pi, &pn) > 0) {
+			if (!strcmp(pn, "Volume")) {
+				double v = 0;
+
+				if (kdt_bus_enter(b, m, 'v', "d") <= 0 ||
+				    kdt_bus_read(b, m, "d", &v) <= 0)
+					return kdt_bus_reply_error(b, m,
+						"org.freedesktop.DBus.Error.InvalidArgs",
+						"Volume is a double");
+				snprintf(cmd, sizeof(cmd), "setvol %d\n",
+					 v < 0 ? 0 : v > 1 ? 100
+						 : (int)(v * 100 + 0.5));
+				return mpris_verb(x, m, cmd);
+			}
+			if (!strcmp(pn, "Shuffle")) {
+				int v = 0;
+
+				if (kdt_bus_enter(b, m, 'v', "b") <= 0 ||
+				    kdt_bus_read(b, m, "b", &v) <= 0)
+					return kdt_bus_reply_error(b, m,
+						"org.freedesktop.DBus.Error.InvalidArgs",
+						"Shuffle is a boolean");
+				return mpris_verb(x, m, v ? "random 1\n"
+							  : "random 0\n");
+			}
+			if (!strcmp(pn, "LoopStatus")) {
+				const char *v = NULL;
+
+				if (kdt_bus_enter(b, m, 'v', "s") <= 0 ||
+				    kdt_bus_read(b, m, "s", &v) <= 0)
+					return kdt_bus_reply_error(b, m,
+						"org.freedesktop.DBus.Error.InvalidArgs",
+						"LoopStatus is a string");
+				return mpris_verb(x, m, strcmp(v, "None")
+							? "repeat 1\n"
+							: "repeat 0\n");
+			}
+			return kdt_bus_reply_error(b, m,
+				"org.freedesktop.DBus.Error.PropertyReadOnly",
+				"read-only property");
+		}
+		return 0;
+	}
+	if (!strcmp(iface, MPRIS_ROOT) &&
+	    (!strcmp(member, "Raise") || !strcmp(member, "Quit"))) {
+		r = kdt_bus_new_reply(b, m);
+		kdt_bus_send(b, r);
+		return 1;
+	}
+	if (strcmp(iface, MPRIS_ROOT ".Player"))
+		return 0;
+	if (!strcmp(member, "Next"))
+		return mpris_verb(x, m, "next\n");
+	if (!strcmp(member, "Previous"))
+		return mpris_verb(x, m, "previous\n");
+	if (!strcmp(member, "Pause"))
+		return mpris_verb(x, m, "pause 1\n");
+	if (!strcmp(member, "Stop"))
+		return mpris_verb(x, m, "stop\n");
+	if (!strcmp(member, "Play"))
+		return mpris_verb(x, m, !strcmp(x->state, "pause")
+					    ? "pause 0\n" : "play\n");
+	if (!strcmp(member, "PlayPause"))
+		return mpris_verb(x, m, !strcmp(x->state, "play") ? "pause 1\n"
+					: !strcmp(x->state, "pause")
+						? "pause 0\n" : "play\n");
+	if (!strcmp(member, "Seek")) {
+		int64_t off = 0;
+
+		if (kdt_bus_read(b, m, "x", &off) <= 0)
+			return 0;
+		snprintf(cmd, sizeof(cmd), "seekcur %+.3f\n", off / 1e6);
+		return mpris_verb(x, m, cmd);
+	}
+	if (!strcmp(member, "SetPosition")) {
+		const char *tid = NULL;
+		int64_t pos = 0;
+		char now[64];
+
+		if (kdt_bus_read(b, m, "ox", &tid, &pos) <= 0)
+			return 0;
+		mpris_trackid(x, now, sizeof(now));
+		/* The spec's rule: a position for another track is ignored. */
+		if (strcmp(tid, now) || pos < 0) {
+			r = kdt_bus_new_reply(b, m);
+			kdt_bus_send(b, r);
+			return 1;
+		}
+		snprintf(cmd, sizeof(cmd), "seekcur %.3f\n", pos / 1e6);
+		return mpris_verb(x, m, cmd);
+	}
+	if (!strcmp(member, "OpenUri"))
+		return kdt_bus_reply_error(b, m,
+			"org.freedesktop.DBus.Error.NotSupported",
+			"mpd plays what is in its own library");
+	return 0;
+}
+
+/* What moved, told to whoever watches: the whole Player state each time,
+ * because it is a handful of values and a client merges what it is sent. */
+static void mpris_changed(Mpris *x)
+{
+	static const char *const MOVED[] = { "PlaybackStatus", "Metadata",
+					     "Volume", "Shuffle",
+					     "LoopStatus", "CanSeek" };
+	KdtMsg *s = kdt_bus_new_signal(x->b, MB_OBJ,
+				       "org.freedesktop.DBus.Properties",
+				       "PropertiesChanged");
+
+	if (!s)
+		return;
+	kdt_bus_append(x->b, s, "s", MPRIS_ROOT ".Player");
+	kdt_bus_open_container(x->b, s, 'a', "{sv}");
+	for (size_t i = 0; i < sizeof(MOVED) / sizeof(MOVED[0]); i++) {
+		kdt_bus_open_container(x->b, s, 'e', "sv");
+		kdt_bus_append(x->b, s, "s", MOVED[i]);
+		mpris_prop(x, s, MPRIS_ROOT ".Player", MOVED[i]);
+		kdt_bus_close_container(x->b, s);
+	}
+	kdt_bus_close_container(x->b, s);
+	kdt_bus_append(x->b, s, "as", 0);
+	kdt_bus_send(x->b, s);
+}
+
+static void mpris_down(Mpris *x)
+{
+	if (x->up)
+		kdt_bus_release_name(x->b, MPRIS_NAME);
+	if (x->ctl.fd >= 0)
+		close(x->ctl.fd);
+	if (x->idle.fd >= 0)
+		close(x->idle.fd);
+	x->ctl.fd = x->idle.fd = -1;
+	x->up = 0;
+}
+
+/* Two connections: one answers commands, the other waits in `idle`, which
+ * holds its connection until something changes. */
+static int mpris_up(Mpris *x)
+{
+	if (mp_connect(&x->ctl) != 0 || mp_hello(&x->ctl) != 0 ||
+	    mp_connect(&x->idle) != 0 || mp_hello(&x->idle) != 0 ||
+	    mpris_refresh(x) != 0 ||
+	    mp_send(&x->idle, "idle player mixer options\n") != 0 ||
+	    kdt_bus_request_name(x->b, MPRIS_NAME) != 0) {
+		mpris_down(x);
+		return -1;
+	}
+	x->up = 1;
+	return 0;
+}
+
+static volatile sig_atomic_t mpris_stop;
+
+static void mpris_term(int sig)
+{
+	(void)sig;
+	mpris_stop = 1;
+}
+
+/*
+ * THE BRIDGE'S LIFE IS THE LOGIN'S. It outlives mpd: with no mpd it holds no
+ * name and looks again every five seconds, so mpd started, stopped and
+ * restarted under it keeps its media keys. It ends with SIGTERM or with the
+ * session bus.
+ */
+static int mpris_main(void)
+{
+	Mpris x = { 0 };
+
+	x.ctl.fd = x.idle.fd = -1;
+	x.b = kdt_bus_open(0);
+	if (!x.b) {
+		fprintf(stderr, "kdos-mpctl: the session bus could not be "
+				"reached\n");
+		return 1;
+	}
+	if (kdt_bus_serve(x.b, MB_OBJ, mpris_call, &x) != 0) {
+		fprintf(stderr, "kdos-mpctl: %s could not be served\n",
+			MB_OBJ);
+		kdt_bus_close(x.b);
+		return 1;
+	}
+	signal(SIGTERM, mpris_term);
+	signal(SIGINT, mpris_term);
+	signal(SIGPIPE, SIG_IGN);
+	while (!mpris_stop) {
+		struct pollfd p[2];
+		short ev = 0;
+		int n = 1, r;
+
+		if (!x.up)
+			mpris_up(&x);
+		p[0].fd = kdt_bus_fd(x.b, &ev);
+		p[0].events = ev;
+		p[0].revents = 0;
+		if (x.up) {
+			p[1].fd = x.idle.fd;
+			p[1].events = POLLIN;
+			p[1].revents = 0;
+			n = 2;
+		}
+		r = poll(p, (nfds_t)n, x.up ? -1 : MPRIS_RETRY_MS);
+		if (r < 0 && errno != EINTR)
+			break;
+		if (r > 0 && p[0].revents && kdt_bus_dispatch(x.b) != 0)
+			break;
+		if (n == 2 && r > 0 && p[1].revents) {
+			char line[MP_LINE];
+			int got;
+
+			while ((got = mp_line(&x.idle, line, sizeof(line))) == 1 &&
+			       strcmp(line, "OK"))
+				;
+			if (got != 1 || mpris_refresh(&x) != 0 ||
+			    mp_send(&x.idle, "idle player mixer options\n") != 0) {
+				mpris_down(&x);
+				continue;
+			}
+			mpris_changed(&x);
+		}
+		/* Anything a handler queued is sent before the next wait. */
+		if (kdt_bus_dispatch(x.b) != 0)
+			break;
+	}
+	mpris_down(&x);
+	kdt_bus_close(x.b);
+	return 0;
 }
 
 /*
@@ -515,7 +832,7 @@ static int transport(Mp *m, int have_mpd, const char *verb)
 	};
 	char state[MP_LINE] = "", player[MB_NAME] = "";
 	const char *cmd;
-	Mb b = { 0 };
+	KdtBus *b = NULL;
 	int got = 0, mpd_rank = 0, rc;
 	size_t i;
 
@@ -535,18 +852,18 @@ static int transport(Mp *m, int have_mpd, const char *verb)
 		if (mpd_rank == 3)
 			return mp_do(m, cmd);
 	}
-	if (mb_open(&b) == 0)
-		got = mb_pick(&b, player, sizeof(player));
+	b = kdt_bus_open(0);
+	if (b)
+		got = mb_pick(b, player, sizeof(player));
 	if (have_mpd && mpd_rank >= got) {
 		rc = mp_do(m, cmd);
 	} else if (got) {
-		rc = mb_do(&b, player, V[i].mpris);
+		rc = mb_do(b, player, V[i].mpris);
 	} else {
 		fprintf(stderr, "kdos-mpctl: no player on this login\n");
 		rc = 1;
 	}
-	if (b.lib)
-		mb_close(&b);
+	kdt_bus_close(b);
 	return rc;
 }
 
@@ -560,25 +877,14 @@ int mpctl_main(int argc, char **argv)
 		usage();
 		return verb ? 0 : 1;
 	}
-	if (!strcmp(verb, "watch"))
-		return mp_watch();	/* it connects, and reconnects, itself */
+	if (!strcmp(verb, "mpris"))
+		return argc == 2 ? mpris_main() : (usage(), 2);
 	have_mpd = mp_connect(&m) == 0 && mp_hello(&m) == 0;
 	if (!have_mpd && m.fd >= 0) {
 		close(m.fd);
 		m.fd = -1;
 	}
-
-	if (!strcmp(verb, "now")) {
-		char now[MP_NOW];
-
-		if (!have_mpd) {
-			fprintf(stderr, "kdos-mpctl: no mpd on this login\n");
-			return 1;
-		}
-		rc = mp_now(&m, now, sizeof(now)) == 0 ? 0 : 1;
-		if (!rc && *now)
-			printf("%s\n", now);
-	} else if ((rc = transport(&m, have_mpd, verb)) < 0) {
+	if ((rc = transport(&m, have_mpd, verb)) < 0) {
 		usage();
 		rc = 1;
 	}

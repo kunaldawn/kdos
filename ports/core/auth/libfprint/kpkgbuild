@@ -16,4 +16,4 @@ sha256      = edc90e02f330a7595ceaf37f2c6ec32ed43541347fe936d3273b0bb2524fd19c  
 description = Fingerprint reader drivers
 homepage    = https://fprint.freedesktop.org/
 license     = LGPL-2.1-or-later
-depends     = meson ninja glib libusb gusb pixman openssl libgudev eudev
+depends     = meson ninja glib libusb libgusb pixman openssl libgudev eudev

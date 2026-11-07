@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "https://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+
+<!--
+  The actions kdos-settingsd checks for org.freedesktop.timedate1. The ids
+  are systemd-timedated's, because the Date & Time page and plasma-setup's
+  rule name them.
+
+  set-time implies set-timezone and set-ntp: the Date & Time page
+  authorises set-time once and then makes all three calls, so one password
+  covers the one Apply. set-timezone and set-ntp are allowed to the active
+  local session without a prompt, so the person at the machine can follow a
+  laptop into another zone and switch network time on or off without an
+  administrator. Setting the clock by hand and the RTC mode stay an
+  administrator's: a clock set wrong fails every TLS certificate and
+  misdates every log on the machine, for every user.
+-->
+
+<policyconfig>
+	<vendor>KDOS</vendor>
+	<vendor_url>https://github.com/kunaldawn/kdos</vendor_url>
+
+	<action id="org.freedesktop.timedate1.set-time">
+		<description>Set the system time</description>
+		<message>Authentication is required to set the system time.</message>
+		<defaults>
+			<allow_any>auth_admin_keep</allow_any>
+			<allow_inactive>auth_admin_keep</allow_inactive>
+			<allow_active>auth_admin_keep</allow_active>
+		</defaults>
+		<annotate key="org.freedesktop.policykit.imply">org.freedesktop.timedate1.set-timezone org.freedesktop.timedate1.set-ntp</annotate>
+	</action>
+
+	<action id="org.freedesktop.timedate1.set-timezone">
+		<description>Set the system time zone</description>
+		<message>Authentication is required to set the system time zone.</message>
+		<defaults>
+			<allow_any>auth_admin_keep</allow_any>
+			<allow_inactive>auth_admin_keep</allow_inactive>
+			<allow_active>yes</allow_active>
+		</defaults>
+	</action>
+
+	<action id="org.freedesktop.timedate1.set-local-rtc">
+		<description>Set the hardware clock to local time or UTC</description>
+		<message>Authentication is required to control whether the hardware clock keeps local time or UTC.</message>
+		<defaults>
+			<allow_any>auth_admin_keep</allow_any>
+			<allow_inactive>auth_admin_keep</allow_inactive>
+			<allow_active>auth_admin_keep</allow_active>
+		</defaults>
+	</action>
+
+	<action id="org.freedesktop.timedate1.set-ntp">
+		<description>Turn network time synchronisation on or off</description>
+		<message>Authentication is required to control whether network time synchronisation is enabled.</message>
+		<defaults>
+			<allow_any>auth_admin_keep</allow_any>
+			<allow_inactive>auth_admin_keep</allow_inactive>
+			<allow_active>yes</allow_active>
+		</defaults>
+	</action>
+</policyconfig>

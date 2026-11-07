@@ -1,0 +1,16 @@
+# kdos-atspi 1
+# surface: fixture
+# app: kcmshell6 kcm_fixture
+application "kcmshell6"
+  frame "Boxes — System Settings" [enabled, focusable, sensitive]
+    filler "" [enabled, sensitive]
+      button "Apply" desc="Save the box's settings" [enabled, focusable, sensitive]
+      check_box "Allow network" [checkable, checked, enabled, focusable, sensitive]
+      label "<masked>" [enabled, sensitive]
+      entry "Search" desc="Filter the boxes by name" [editable, enabled, focusable, sensitive, single line]
+      scroll_bar "" [enabled, sensitive, vertical]
+      list "Boxes" [enabled, focusable, sensitive]
+        list_item "web" [enabled, focusable, selectable, selected, sensitive]
+        list_item "office" [enabled, focusable, selectable, sensitive]
+    panel "Hidden page" [enabled, sensitive, invisible]
+      button "Remove" [enabled, focusable, sensitive, invisible]

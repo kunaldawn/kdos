@@ -1,0 +1,125 @@
+Subject: Lead a sandboxed window's caption with a box glyph
+
+A window whose client is sandboxed (KDecoration3's isSandboxed(), the
+sandbox engine of its security context) has a small box drawn before its
+caption, in the caption's own colour, so a confined window is told from a
+host one at a glance. An engine whose state says only part of the boundary
+held (`+tagged`) is drawn dashed, one that says none did (`+unconfined`) as
+a warning triangle. The glyph's width comes out of the caption's, so the two
+never overlap, whatever the title alignment.
+
+diff -ruN a/kdecoration/breezedecoration.cpp b/kdecoration/breezedecoration.cpp
+--- a/kdecoration/breezedecoration.cpp	2026-10-27 16:54:14.000000000 +0530
++++ b/kdecoration/breezedecoration.cpp	2026-10-29 03:44:04.256166942 +0530
+@@ -692,8 +692,33 @@
+     // draw caption
+     painter->setFont(settings()->font());
+     painter->setPen(fontColor());
+-    const auto [captionRectangle, alignment] = captionRect();
+-    const QString caption = painter->fontMetrics().elidedText(window()->caption(), Qt::ElideMiddle, captionRectangle.width());
++    auto [captionRectangle, alignment] = captionRect();
++
++    // a sandboxed window's caption is led by a box glyph, which takes its
++    // room out of the caption's so the two never overlap
++    const bool sandboxed = window()->isSandboxed();
++    const qreal glyphSize = sandboxed ? std::round(painter->fontMetrics().height() * 0.75) : 0;
++    const qreal glyphGap = sandboxed ? settings()->smallSpacing() * 1.5 : 0;
++    const qreal textWidth = std::max<qreal>(0, captionRectangle.width() - glyphSize - glyphGap);
++    const QString caption = painter->fontMetrics().elidedText(window()->caption(), Qt::ElideMiddle, textWidth);
++    if (sandboxed) {
++        const qreal advance = painter->fontMetrics().horizontalAdvance(caption);
++        qreal textLeft = captionRectangle.left() + glyphSize + glyphGap;
++        if (alignment & Qt::AlignRight) {
++            textLeft = captionRectangle.right() - advance;
++        } else if (alignment & Qt::AlignHCenter) {
++            textLeft = captionRectangle.center().x() - (advance - glyphSize - glyphGap) / 2;
++        }
++        const QRectF glyph(textLeft - glyphGap - glyphSize, captionRectangle.center().y() - glyphSize / 2, glyphSize, glyphSize);
++        paintSandboxGlyph(painter, glyph);
++        if (alignment & Qt::AlignHCenter) {
++            captionRectangle.setLeft(textLeft);
++            captionRectangle.setWidth(advance + 1);
++            alignment = Qt::AlignVCenter | Qt::AlignLeft;
++        } else if (!(alignment & Qt::AlignRight)) {
++            captionRectangle.setLeft(textLeft);
++        }
++    }
+     painter->drawText(captionRectangle, alignment | Qt::TextSingleLine, caption);
+ 
+     // draw all buttons
+@@ -702,6 +727,64 @@
+ }
+ 
+ //________________________________________________________________
++void Decoration::paintSandboxGlyph(QPainter *painter, const QRectF &rect) const
++{
++    // A box seen from above a corner: the top face and the two sides that
++    // face the viewer, in the caption's own colour. A sandbox whose engine
++    // says only part of its boundary held (`+tagged`) is drawn dashed, one
++    // that says none did (`+unconfined`) as a warning triangle.
++    const QString engine = window()->sandboxEngine();
++    painter->save();
++    painter->setRenderHint(QPainter::Antialiasing);
++    QPen pen(fontColor(), std::max<qreal>(1.0, rect.width() / 10.0));
++    pen.setJoinStyle(Qt::RoundJoin);
++    pen.setCapStyle(Qt::RoundCap);
++    painter->setBrush(Qt::NoBrush);
++
++    if (engine.endsWith(QLatin1String("+unconfined"))) {
++        painter->setPen(pen);
++        QPainterPath triangle;
++        triangle.moveTo(rect.center().x(), rect.top());
++        triangle.lineTo(rect.right(), rect.bottom());
++        triangle.lineTo(rect.left(), rect.bottom());
++        triangle.closeSubpath();
++        painter->drawPath(triangle);
++        painter->drawLine(QPointF(rect.center().x(), rect.top() + rect.height() * 0.35), QPointF(rect.center().x(), rect.top() + rect.height() * 0.65));
++        painter->drawPoint(QPointF(rect.center().x(), rect.top() + rect.height() * 0.82));
++        painter->restore();
++        return;
++    }
++    if (engine.endsWith(QLatin1String("+tagged"))) {
++        pen.setStyle(Qt::DashLine);
++        pen.setDashPattern({1.5, 1.5});
++    }
++    painter->setPen(pen);
++
++    const QRectF r = rect.adjusted(pen.widthF() / 2, pen.widthF() / 2, -pen.widthF() / 2, -pen.widthF() / 2);
++    const qreal cx = r.center().x();
++    const qreal top = r.top();
++    const qreal upper = r.top() + r.height() * 0.25;
++    const qreal mid = r.top() + r.height() * 0.5;
++    const qreal lower = r.top() + r.height() * 0.75;
++    const qreal bottom = r.bottom();
++    QPainterPath box;
++    box.moveTo(cx, top);
++    box.lineTo(r.right(), upper);
++    box.lineTo(r.right(), lower);
++    box.lineTo(cx, bottom);
++    box.lineTo(r.left(), lower);
++    box.lineTo(r.left(), upper);
++    box.closeSubpath();
++    box.moveTo(r.left(), upper);
++    box.lineTo(cx, mid);
++    box.lineTo(r.right(), upper);
++    box.moveTo(cx, mid);
++    box.lineTo(cx, bottom);
++    painter->drawPath(box);
++    painter->restore();
++}
++
++//________________________________________________________________
+ int Decoration::buttonSize() const
+ {
+     const int baseSize = settings()->gridUnit();
+diff -ruN a/kdecoration/breezedecoration.h b/kdecoration/breezedecoration.h
+--- a/kdecoration/breezedecoration.h	2026-10-27 16:54:14.000000000 +0530
++++ b/kdecoration/breezedecoration.h	2026-10-29 03:44:04.256332637 +0530
+@@ -99,6 +99,7 @@
+ private:
+     //* return the rect in which caption will be drawn
+     QPair<QRectF, Qt::Alignment> captionRect() const;
++    void paintSandboxGlyph(QPainter *painter, const QRectF &rect) const;
+ 
+     void createButtons();
+     void paintTitleBar(QPainter *painter, const QRectF &repaintRegion);

@@ -1,7 +1,7 @@
 # VPN
 
 This page covers the three kinds of [VPN]{.idx} a KDOS machine can join: [OpenVPN]{.idx} and [WireGuard]{.idx},
-which NetworkManager manages and [`kdos-net`]{.idx} lists, and the corporate VPNs [`openconnect`]{.idx} speaks
+which NetworkManager manages and the network applet lists, and the corporate VPNs [`openconnect`]{.idx} speaks
 (AnyConnect, GlobalProtect, Fortinet, Pulse and others), which run from a terminal. It gives the
 files each one reads, how to bring a tunnel up and down, and where its name servers go.
 
@@ -34,8 +34,9 @@ bringing one up without being asked.
 The package's `postinstall.sh` creates the `nm-openvpn` account and its chroot directory.
 NetworkManager's OpenVPN service runs `openvpn` as that account, inside that directory when it
 exists, and refuses every connection when the account is missing. The plugin is built with
-`--without-gnome`, so it has no dialog of its own; a password or a one-time code is asked for by
-[`kdos-netagent`]{.idx} (see [kdos-netagent](../../kdos/04-programs/kdos-shell.md#kdos-netagent)).
+`--without-gnome`, so it has no GNOME dialog of its own; a password or a one-time code is asked
+for by the session's secret agent, plasma-nm's (see
+[The system tray](../../kdos/04-programs/plasma-shell.md#the-system-tray)).
 
 <!-- kfs:include ports/core/network/openvpn/build.sh lines=12-20 pin=4917d9bd938a -->
 
@@ -86,16 +87,16 @@ The script also sources every file in `/etc/vpnc/<hook>.d/` (such as `connect.d`
    nmcli connection import type openvpn file ~/client.ovpn
    ```
 
-2. Bring it up. In `kdos-net` (`Super+F4`) the profile is a row of its own below the radios:
-   select it and press `Enter`. From a terminal:
+2. Bring it up. In the network applet the profile is a row of its own: click **Connect**. From a
+   terminal:
 
    ```bash
    nmcli --ask connection up client
    ```
 
    `--ask` asks for a password on the terminal. Without it, run as the desktop user, `nmcli`
-   prints *A password is required to connect to 'client'* and the question goes to
-   `kdos-netagent`, which opens a dialog headed *NetworkManager*: *client wants its password.*
+   prints *A password is required to connect to 'client'* and the question goes to the session's
+   secret agent, which opens a dialog for it.
    Run as root, the request reaches no agent and fails with *No valid secrets*.
 
 3. Take it down with `Enter` on the same row, or `nmcli connection down client`.
@@ -115,7 +116,7 @@ The script also sources every file in `/etc/vpnc/<hook>.d/` (such as `connect.d`
    once and at every later start of NetworkManager. To bring it up only when asked, turn that off:
    `nmcli connection modify wg0 connection.autoconnect no`.
 
-2. Bring it up and down: `Enter` on its row in `kdos-net`, or `nmcli connection up wg0` and
+2. Bring it up and down: its row in the network applet, or `nmcli connection up wg0` and
    `nmcli connection down wg0`.
 
 The `DNS=` servers of the file go to NetworkManager's local resolver. When the file names no
@@ -141,7 +142,7 @@ tunnel's servers about every name; with domains named, it asks them about those.
 A `DNS=` line is handed to `resolvconf` as the tunnel's only servers (`resolvconf -a wg0 -m 0
 -x`), so while the tunnel is up `/etc/resolv.conf` names them alone and every name is asked of
 them; `wg-quick down` removes them, and the file names the servers it named before.
-`nmcli device status` lists the tunnel as `connected (externally)`, and `kdos-net` shows it as a *wireguard* row: NetworkManager reports it and does
+`nmcli device status` lists the tunnel as `connected (externally)`, and the network applet shows it as a WireGuard row: NetworkManager reports it and does
 not manage it, so take it down with `wg-quick down`.
 
 ### A corporate VPN with `openconnect`
@@ -226,8 +227,8 @@ sudo useradd -r -g nm-openvpn -d /var/lib/openvpn/chroot -s /sbin/nologin nm-ope
 `sudo grep nm-openvpn /var/log/messages`.
 
 **A VPN profile fails without asking for a password.**
-The question went to a secret agent and none answered. In a session, `pgrep -a kdos-netagent`
-should show the agent; from a terminal, use `nmcli --ask connection up <profile>`.
+The question went to a secret agent and none answered. In a session the agent is plasma-nm's
+kded module; from a terminal, use `nmcli --ask connection up <profile>`.
 
 **`nmcli connection import` says "failed to load VPN plugin".**
 The whole message names the type, as in *Error: failed to load VPN plugin: unknown VPN plugin
@@ -260,7 +261,8 @@ not load. `sudo modprobe wireguard` loads it, or prints the reason it cannot.
 
 - [Networking](../../kdos/02-user-guide/administration.md#networking): VPNs, and DNS split by
   connection
-- [kdos-net](../../kdos/04-programs/kdos-shell.md#kdos-net): the rows for VPN and WireGuard profiles
+- [The system tray](../../kdos/04-programs/plasma-shell.md#the-system-tray): the networks applet,
+  where VPN and WireGuard profiles are listed
 - [The firewall](../../kdos/02-user-guide/administration.md#the-firewall)
 - [NetworkManager](networkmanager.md), [DNS](dns.md)
 - [Firewall](firewall.md)
@@ -268,4 +270,4 @@ not load. `sudo modprobe wireguard` loads it, or prints the reason it cannot.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 389.* Previous: [388. DNS](dns.md) · [Contents](../README.md) · Next: [390. Mobile broadband](mobile-broadband.md)
+*Part XVI. System administration, chapter 413.* Previous: [412. DNS](dns.md) · [Contents](../README.md) · Next: [414. Mobile broadband](mobile-broadband.md)

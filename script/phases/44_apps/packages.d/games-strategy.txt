@@ -30,3 +30,5 @@ pioneer
 openrct2
 fheroes2
 widelands
+
+ksirk

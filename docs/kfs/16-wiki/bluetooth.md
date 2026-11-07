@@ -16,8 +16,9 @@ It also installs `obexd`, the object-exchange daemon for file transfer, beside `
 `/usr/lib/bluetooth` and not on the `PATH`. The session bus starts it when a program asks for
 `org.bluez.obex` (`/usr/share/dbus-1/services/org.bluez.obex.service`); no service script runs it.
 
-The desktop's pairing window, [`kdos-bt`]{.idx}, and the Bluetooth pane of [`kdos-audio`]{.idx} are part of
-[kdos-shell](#port-kdos-shell). The audio side, the Bluetooth plugin and its codecs, is
+The desktop's side is [bluedevil](#port-bluedevil): the Bluetooth applet in the system tray, the
+**Bluetooth** page of System Settings with its pairing wizard, file sending and receiving, and the
+pairing agent the session registers with the daemon. The audio side, the Bluetooth plugin and its codecs, is
 [pipewire](#port-pipewire)'s, with [wireplumber](#port-wireplumber) choosing the profile. Adapter
 firmware comes from [linux-firmware](#port-linux-firmware).
 
@@ -26,7 +27,7 @@ named `bluetooth`, and its supervised process `bluetoothd`. It is on by default 
 medium and an installed system. The installer lists it among its service choices, on unless you
 turn it off:
 
-<!-- kfs:include src/system/kdos-installer/conf.c lines=23-29 pin=9a2600b3e3b2 -->
+<!-- kfs:include src/system/kinstall-core/conf.c lines=25-31 pin=9a2600b3e3b2 -->
 
 ## Configuration
 
@@ -79,32 +80,24 @@ not ports; see
 
 ### Pairing a device from the desktop
 
-1. Open `kdos-bt` with `Super+F5`, or choose *Bluetooth…* on the Hardware page of Settings. The top
-   row shows the adapter and whether it is powered.
-2. If the adapter is off, press `o` to power it on.
-3. Put the device into pairing mode, then press `s` to scan. Devices appear as they are found.
-4. Select the device with the arrow keys and press `p` to pair. When the device asks for a passkey
-   to be confirmed, the question takes the bottom row: press `y` (or `Enter`) to confirm or `n` to
-   refuse. A keyboard, which has no screen to show a passkey on, gets a number instead, as
-   `type 123456 on <device>` on the bottom row: type it on that keyboard and press its `Enter`.
-5. Press `t` to trust the device, and `Enter` to connect.
-6. Press `s` again to stop scanning.
+1. Click the Bluetooth applet in the system tray and turn Bluetooth on if it is off.
+2. Put the device into pairing mode, then **Pair Device…** (or System Settings → **Bluetooth** →
+   **Pair a New Device**). Devices appear as they are found.
+3. Select the device and **Next**. When the device asks for a passkey to be confirmed, the wizard
+   shows it: confirm it. A keyboard, which has no screen to show a passkey on, gets a number
+   instead: type it on that keyboard and press its `Enter`. A device that wants a PIN typed on this
+   machine asks for one in the wizard.
+4. The device is paired, trusted and connected.
 
-`x` removes a paired device and `d` makes this machine visible to others, or hides it again. `Esc`
-refuses a question on the bottom row, and with none there closes the window. `F1` opens the window's help
-page, which is also `kdos-doc bt`.
-
-`kdos-bt` cannot pair a device that wants a PIN typed on this machine, an old device without
-secure simple pairing: it refuses the request and its bottom row reads
-`this device needs a typed PIN — pair it with bluetoothctl`. Pair such a device
-[from a terminal](#pairing-from-a-terminal).
+**Remove** on the device's row in the Bluetooth page forgets it; **Make this computer visible** is
+the page's switch for being found by others.
 
 ### Connecting a headset
 
 1. Pair it once, as above.
-2. Open `kdos-audio` with `Super+F3` and press `Tab` for its Bluetooth pane. `Enter` connects or
-   disconnects the selected device.
-3. In the Outputs pane, select the headset's sink and press `Enter` to make it the default.
+2. Click it in the Bluetooth applet to connect or disconnect.
+3. Choose it as the output in the volume applet, or on System Settings → **Sound**, where its
+   profile, A2DP for music or HFP for a call, is chosen too.
 
 ### Pairing from a terminal
 
@@ -145,11 +138,10 @@ the installer has already done this if Bluetooth was turned off there.
 
 ## Tips
 
-- While `kdos-bt` is open, an untrusted device that asks to use a service is put to you on the
-  bottom row (`y` or `n`); a trusted one is allowed without asking. Trust the devices you use
-  every day.
-- Which profile a headset uses, A2DP for music or HFP for a call, is WirePlumber's choice and not
-  the pairing window's. `wpctl status` lists the headset's nodes once it is connected.
+- An untrusted device that asks to use a service is put to you in a notification; a trusted one is
+  allowed without asking. The wizard trusts a device it pairs.
+- Which profile a headset uses, A2DP for music or HFP for a call, is WirePlumber's choice unless
+  you pick one on the Sound page. `wpctl status` lists the headset's nodes once it is connected.
 - `sudo btmon` prints every packet between the daemon and the adapter, which shows where a pairing
   stops.
 - TLP runs at every boot, from `55_tlp`. When `DEVICES_TO_DISABLE_ON_STARTUP` names `bluetooth`,
@@ -161,10 +153,8 @@ the installer has already done this if Bluetooth was turned off there.
 
 ## Troubleshooting
 
-**`kdos-bt` shows no adapter.** Its top row then reads `no bluetooth adapter on this machine`, as
-does the Bluetooth pane of `kdos-audio`, and `bluetoothctl show` says
-`No default controller available`. A pane that reads `not running — service start bluetooth`
-instead could not reach the daemon at all. Work down the chain:
+**The Bluetooth applet shows no adapter.** `bluetoothctl show` then says
+`No default controller available`. Work down the chain:
 
 1. Is the daemon running?
 
@@ -211,10 +201,9 @@ A clean start logs `Bluetooth daemon <version>`, `Starting SDP server` and
 `Bluetooth management interface <version> initialized`.
 
 **A keyboard will not pair.** Pairing a keyboard needs an agent, a program that answers the
-daemon's passkey questions, and the daemon refuses the pairing when none answers. `kdos-bt`
-registers one while it is open, so keep its window open until the pairing finishes, and type the
-number its bottom row shows on the keyboard itself. A keyboard that wants a PIN typed on this
-machine is refused by `kdos-bt`; pair it from `bluetoothctl` after `agent on` and `default-agent`.
+daemon's passkey questions, and the daemon refuses the pairing when none answers. The session's
+agent is bluedevil's kded module; from a console or SSH, pair from `bluetoothctl` after `agent on`
+and `default-agent`. Type the number the wizard shows on the keyboard itself.
 
 **A keyboard or mouse pairs and connects, and does nothing.** Check that the HID node exists:
 
@@ -249,7 +238,8 @@ The line must carry `-E` and `--kernel=6fbaf188-05e0-496a-9885-d6ddfdb4e03e`.
 ## See also
 
 - [Bluetooth](../../kdos/02-user-guide/administration.md#bluetooth): the user guide's section
-- [kdos-bt](../../kdos/04-programs/kdos-shell.md#kdos-bt) and [kdos-audio](../../kdos/04-programs/kdos-shell.md#kdos-audio): the two windows
+- [The system tray](../../kdos/04-programs/plasma-shell.md#the-system-tray): the tray's Bluetooth and
+  audio applets
 - [Audio](../../kdos/03-architecture/session.md#audio): PipeWire, the codecs and LE Audio
 - [Audio](audio.md), [udev and device groups](udev-and-device-groups.md),
   [Power management](power-management.md), [Microcode and firmware](microcode-and-firmware.md),
@@ -258,4 +248,4 @@ The line must carry `-E` and `--kernel=6fbaf188-05e0-496a-9885-d6ddfdb4e03e`.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 396.* Previous: [395. udev and device groups](udev-and-device-groups.md) · [Contents](../README.md) · Next: [397. Printing and scanning](printing-and-scanning.md)
+*Part XVI. System administration, chapter 420.* Previous: [419. udev and device groups](udev-and-device-groups.md) · [Contents](../README.md) · Next: [421. Printing and scanning](printing-and-scanning.md)

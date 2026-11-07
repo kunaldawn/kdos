@@ -1,0 +1,25 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   The notifications the add-on widgets post.
+#
+# A KNotification names a component and an event, and is shown only as this
+# file says; one with no file behind it shows nothing. The Notifications page
+# lists the events under "KDOS Add-ons" and writes a person's choice to
+# ~/.config/kdos-addons.notifyrc.
+# ---------------------------------
+
+[Global]
+IconName=chronometer
+Name=KDOS Add-ons
+Comment=The widgets of the KDOS add-on set
+
+[Event/phaseEnded]
+Name=A focus period or a break ended
+Comment=The Focus Timer moved to its next period
+Action=Popup|Sound
+Sound=complete

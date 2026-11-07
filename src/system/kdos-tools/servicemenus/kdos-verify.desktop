@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Service
+MimeType=all/allfiles;
+Actions=verify;
+X-KDE-Priority=TopLevel
+
+[Desktop Action verify]
+Name=Verify
+Icon=security-high
+Exec=kdos verify --notify -- %F

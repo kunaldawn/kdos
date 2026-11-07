@@ -2,8 +2,8 @@
 
 [NetworkManager]{.idx} brings up and keeps up every link a KDOS machine has: Ethernet, Wi-Fi,
 mobile broadband, PPPoE, [Bluetooth]{.idx} tethering, VPNs and a shared [hotspot]{.idx}. This page covers the
-daemon itself: how it is started, the files it reads, the tools that drive it ([`kdos-net`]{.idx},
-[`kdos-netagent`]{.idx}, `nmtui` and `nmcli`), and how to hand the network back to [`dhcpcd`]{.idx} on a machine
+daemon itself: how it is started, the files it reads, the tools that drive it (the network
+applet, System Settings → **Wi-Fi & Networking**, `nmtui` and `nmcli`), and how to hand the network back to [`dhcpcd`]{.idx} on a machine
 that should not run it. Name resolution, VPNs, modems, access points and the Wi-Fi country each
 have a page of their own, listed under [See also](#see-also).
 
@@ -15,9 +15,11 @@ library `libnm`. Its `depends` line brings in the programs NetworkManager runs o
 [modemmanager](#port-modemmanager) for modems, [ppp](#port-ppp) for PPPoE and serial modems,
 [dnsmasq](#port-dnsmasq) for the local resolver and the hotspot, [openresolv](#port-openresolv) for
 [`/etc/resolv.conf`]{.idx}, and [nftables](#port-nftables) for a hotspot's address translation. All of
-them are in the `network` shelf's list of `41_system`, so they are part of every image. The desktop's two
-front ends, `kdos-net` and `kdos-netagent`, are programs of [kdos-shell](#port-kdos-shell); they
-talk to the daemon over the [system bus]{.idx} and do not link `libnm`.
+them are in the `network` shelf's list of `41_system`, so they are part of every image. The desktop's front
+end is [plasma-nm](#port-plasma-nm): the network applet in the system tray, the connection editor
+in System Settings, and the kded module that is the session's secret agent, which asks for a
+passphrase NetworkManager needs. It talks to the daemon over the [system bus]{.idx} through
+`libnm`.
 
 Nothing has to be installed. To confirm the package and its files on a running machine:
 
@@ -83,12 +85,10 @@ drop-in takes effect when the daemon restarts; see [Restarting the daemon](#rest
 sudo service restart networkmanager
 ```
 
-The restart works the same in a desktop session as outside one. `kdos-netagent` calls
-NetworkManager's bus name within moments of the daemon leaving the bus, and while the name has no
-owner the bus refuses the call, because nothing lets it start NetworkManager itself (see
-[D-Bus activation](#d-bus-activation)); the agent tries again every five seconds, and at once
-when the name gains an owner, so it registers with the supervised daemon as soon as that has the
-name. `pgrep -a NetworkManager` then shows one
+The restart works the same in a desktop session as outside one. The session's secret agent
+registers again when the name gains an owner; while it has none, the bus refuses calls to it,
+because nothing lets it start NetworkManager itself (see [D-Bus activation](#d-bus-activation)).
+`pgrep -a NetworkManager` then shows one
 process, `/usr/sbin/NetworkManager --no-daemon`.
 
 ### Connection profiles
@@ -96,7 +96,7 @@ process, `/usr/sbin/NetworkManager --no-daemon`.
 Every network you join is saved as a **profile**, a file in
 `/etc/NetworkManager/system-connections/` named after the profile with `.nmconnection` added. The
 files hold passphrases in plain text, are owned by root with mode 600, and NetworkManager ignores a
-file there that any other user can read or write. `kdos-net` and `nmcli` write them for you;
+file there that any other user can read or write. The network applet, System Settings → **Wi-Fi & Networking** and `nmcli` write them for you;
 `nm-settings-keyfile(5)` documents the format. NetworkManager does not notice a file edited by
 hand until it is told to read the directory again:
 
@@ -104,25 +104,27 @@ hand until it is told to read the directory again:
 sudo nmcli connection reload
 ```
 
-Every profile that works on KDOS is a system profile, one with no owner in its
-`connection.permissions` list. NetworkManager is built without session tracking, so it sees no
-user as logged in, and a profile that names an owner never connects on its own. It is still
-listed by `nmcli connection show`, and `nmcli connection up` brings it up by hand, which is why the
-fault looks like a network that is forgotten at every boot. The reason, and what it costs, is in
+A profile with no owner in its `connection.permissions` list is a system profile, which every user
+of the machine joins; one that names an owner is that user's and connects only while that user has
+a session. NetworkManager is built with elogind as its session tracker, so it knows who is logged
+in. The network applet creates a system profile when **All users may connect to this network** is
+ticked, and every profile the installer or `nmcli` writes is one. Why the administrator may edit a
+system profile without a password is in
 [Why settings.modify.system is granted](../../kdos/03-architecture/security-model.md#why-settingsmodifysystem-is-granted).
 
 ### Who may change the network
 
-There is no password prompt for network changes on the desktop. Instead, the polkit rule
-`/etc/polkit-1/rules.d/50-kdos.rules`, from `fs/`, answers yes to these NetworkManager actions for
-members of `wheel`, and leaves every other action to polkit's default:
+NetworkManager's everyday actions, scanning, joining a network, the Wi-Fi switch, a hotspot and a
+profile of one's own, are `allow_active` upstream: the person in the active session at the machine
+does them with no password. The polkit rule `/etc/polkit-1/rules.d/50-kdos.rules`, from `fs/`,
+adds one answer, for the administrator at the machine, so a profile every user shares can be
+created and edited without a password:
 
-<!-- kfs:include fs/etc/polkit-1/rules.d/50-kdos.rules lines=60-86 pin=96b22754754a -->
+<!-- kfs:include fs/etc/polkit-1/rules.d/50-kdos.rules lines=91-100 pin=5b503706a10d -->
 
-Setting the host name, setting machine-wide DNS and reloading NetworkManager's configuration are
-left out on purpose, and need `sudo`. The full list, and why a prompt cannot work on this desktop,
-is in
-[What is granted instead: 50-kdos.rules](../../kdos/03-architecture/security-model.md#what-is-granted-instead-50-kdosrules).
+Everything else is polkit's default, and where it asks for a password, Plasma's agent asks. The
+full list is in
+[What 50-kdos.rules changes](../../kdos/03-architecture/security-model.md#what-50-kdosrules-changes).
 
 ### D-Bus activation
 
@@ -130,9 +132,9 @@ There is no `/usr/share/dbus-1/system-services/org.freedesktop.NetworkManager.se
 NetworkManager's build installs none when systemd is off, and the image adds none, so the system
 bus never starts NetworkManager; only `42_networkmanager.sh` does. A call to
 `org.freedesktop.NetworkManager` while the name has no owner fails at once with
-*org.freedesktop.DBus.Error.ServiceUnknown*, and `kdos-netagent`, the network surface and `nmcli`
-report NetworkManager as not running. With such a file, the call `kdos-netagent` makes whenever the
-name has no owner would start a second NetworkManager outside the supervisor: at every login on a
+*org.freedesktop.DBus.Error.ServiceUnknown*, and the network applet and `nmcli` report
+NetworkManager as not running. With such a file, any call made while the name has no owner would
+start a second NetworkManager outside the supervisor: at every login on a
 machine where the service is disabled, and in the gap of every restart, after which the supervised
 one would exit with *NetworkManager is already running* every five seconds. The same holds for
 ModemManager and polkit, whose ports delete the activation file their builds install; see
@@ -175,17 +177,14 @@ terminal.
 
 ### Joining a wireless network from the desktop
 
-1. Open `kdos-net` with `Super+F4`, or click the network readout on the panel.
-2. Select the network and press `Enter`.
+1. Click the network applet in the system tray.
+2. Click the network, then **Connect**.
 3. Type the passphrase and press `Enter`. It is written into the new profile.
 
-The window's bottom row holds buttons for the commonest actions (*Connect*, *Forget*, *Rescan*,
-*Wi-Fi Off*, *Close*), and each action has a key as well: `f` forgets the selected network, `r`
-rescans, `a` turns the Wi-Fi radio off and on, `c` copies the selected network's name to the
-clipboard, and `h` starts or stops a [hotspot](access-point.md), offered only for a radio that can
-be an access point. Every later
-question for a secret, such as a changed passphrase, comes from `kdos-netagent` in a dialog of
-its own; see [kdos-netagent](../../kdos/04-programs/kdos-shell.md#kdos-netagent).
+The applet also turns the Wi-Fi radio and airplane mode on and off, and starts a
+[hotspot](access-point.md). A profile is created for you alone unless **All users may connect to
+this network** is ticked in its settings. Every later question for a secret, such as a changed
+passphrase, comes from the session's secret agent in a dialog of its own.
 
 ### Joining a wireless network from a terminal
 
@@ -196,7 +195,7 @@ its own; see [kdos-netagent](../../kdos/04-programs/kdos-shell.md#kdos-netagent)
    ```
 
 2. Join one. `--ask` makes `nmcli` ask for the passphrase on the terminal itself, so this works on
-   a text console where no `kdos-netagent` is running:
+   a text console where no secret agent runs:
 
    ```bash
    nmcli --ask device wifi connect "<SSID>"
@@ -244,7 +243,7 @@ nmcli radio wifi off                     # the radio; `on` turns it back on
 | Connection | Command |
 |---|---|
 | PPPoE (DSL), carried by `pppd` | `nmcli connection add type pppoe ifname ppp0 pppoe.parent <ethernet> username <user> password <password>` |
-| A phone's Bluetooth tethering, after pairing it in `kdos-bt` | `nmcli connection add type bluetooth bt-type panu bluetooth.bdaddr <phone>` |
+| A phone's Bluetooth tethering, after pairing it in the Bluetooth applet | `nmcli connection add type bluetooth bt-type panu bluetooth.bdaddr <phone>` |
 | A modem, or a phone that offers only dial-up over Bluetooth | See [Mobile broadband](mobile-broadband.md) |
 | A VPN | See [VPN](vpn.md) |
 
@@ -294,10 +293,8 @@ installing is joined on the installed system too.
 ## Tips
 
 - `nmcli general permissions` lists each action NetworkManager may be asked for and whether your
-  account may ask. On KDOS an answer other than `yes` is a refusal: no authentication agent is
-  running to turn `auth` into a prompt. For a member of `wheel` the actions the polkit rule leaves
-  out answer `auth` (`reload`, `settings.modify.global-dns`, `settings.modify.hostname`,
-  `checkpoint-rollback`) or `no`.
+  account may ask. `auth` is a password prompt, which Plasma's authentication agent shows in a
+  session; from an SSH login it is a refusal.
 - `nmcli connection down "<profile>"` leaves the device free to join its other saved networks.
   `nmcli device disconnect <interface>` also stops the device from connecting again on its own
   until you next bring a profile up on it.
@@ -310,7 +307,7 @@ installing is joined on the installed system too.
 
 ## Troubleshooting
 
-**`kdos-net` says "NetworkManager is not answering".**
+**The network applet says NetworkManager is not running.**
 Check `service status networkmanager`, then read `/run/kdos-init.networkmanager.log`, the
 supervisor's `/run/kdos-svc.NetworkManager.log`, and the lines NetworkManager wrote to the system
 log with `sudo grep NetworkManager /var/log/messages`.
@@ -318,9 +315,9 @@ Start it with `sudo service start networkmanager`, the command the message names
 
 **A network you joined does not come back after a reboot.**
 On the live medium with no persistence store, that is expected; see
-[above](#on-the-live-medium-and-on-an-installed-system). Otherwise the profile names an owner. Check with
+[above](#on-the-live-medium-and-on-an-installed-system). Otherwise the profile may name an owner and connect only while that user has a session. Check with
 `nmcli -f connection.id,connection.permissions connection show "<profile>"`; anything after
-`connection.permissions:` is an owner. Clear it with
+`connection.permissions:` is an owner. To make it every user's, clear it with
 `sudo nmcli connection modify "<profile>" connection.permissions ""`.
 
 **The machine holds two leases, or `ip route` shows two `default` routes.**
@@ -342,8 +339,8 @@ wireless interfaces the kernel has; with none, the driver or its firmware did no
 
 **A connection fails at once with no question asked.**
 NetworkManager never prompts for a missing secret; it asks the registered agents and gives up when
-none answers. In a desktop session the agent is `kdos-netagent`: `pgrep -a kdos-netagent` should
-show it, and it answers requests made as the desktop user. A request made as root, from a root
+none answers. In a desktop session the agent is plasma-nm's kded module, and it answers requests
+made as the desktop user. A request made as root, from a root
 shell or through `sudo`, reaches no agent and fails with *Error: Connection activation failed: No
 valid secrets*. On a text console, or as root, use `nmcli --ask connection up "<profile>"`.
 
@@ -371,9 +368,9 @@ dispatcher and the privileged helper; see [kdos doctor](../../kdos/04-programs/k
 
 - [Networking](../../kdos/02-user-guide/administration.md#networking): the user guide's account of
   the same tools
-- [kdos-net](../../kdos/04-programs/kdos-shell.md#kdos-net) and
-  [kdos-netagent](../../kdos/04-programs/kdos-shell.md#kdos-netagent): the desktop front ends
-- [polkit, and why the desktop has no authentication agent](../../kdos/03-architecture/security-model.md#polkit-and-why-the-desktop-has-no-authentication-agent)
+- [The system tray](../../kdos/04-programs/plasma-shell.md#the-system-tray): the networks applet,
+  the desktop's front end
+- [polkit and the authentication agent](../../kdos/03-architecture/security-model.md#polkit-and-the-authentication-agent)
 - [One DHCP client on the link](../../kdos/03-architecture/boot-and-init.md#one-dhcp-client-on-the-link)
 - [Services](../../kdos/02-user-guide/administration.md#services): `service` and the boot logs
 - [DNS](dns.md), [VPN](vpn.md), [Mobile broadband](mobile-broadband.md),
@@ -384,4 +381,4 @@ dispatcher and the privileged helper; see [kdos doctor](../../kdos/04-programs/k
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 387.* Previous: [386. Signing keys and trust](signing-keys-and-trust.md) · [Contents](../README.md) · Next: [388. DNS](dns.md)
+*Part XVI. System administration, chapter 411.* Previous: [410. Signing keys and trust](signing-keys-and-trust.md) · [Contents](../README.md) · Next: [412. DNS](dns.md)

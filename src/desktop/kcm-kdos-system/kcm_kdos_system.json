@@ -1,0 +1,11 @@
+{
+    "KPlugin": {
+        "Description": "Choose which installed version of KDOS this computer starts, and where updates come from",
+        "Icon": "system-software-update",
+        "Name": "System Versions"
+    },
+    "X-DocPath": "kdos/04-programs/kdos-settings.html#system-versions",
+    "X-KDE-Keywords": "KDOS,version,versions,slot,slots,A/B,rollback,roll back,previous version,trial,update,updates,update channel,update source,restart,boot",
+    "X-KDE-System-Settings-Parent-Category": "system-administration",
+    "X-KDE-Weight": 30
+}

@@ -1,14 +1,19 @@
 ## About
 Qt Multimedia for Qt 6: audio and video playback, recording, camera and screen capture, and audio
 devices, as the QtMultimedia library, its Qt Quick types and the Qt Spatial Audio module. Media
-decoding and encoding go through an FFmpeg plugin; audio reaches the sound server through
-PipeWire.
+decoding and encoding go through two media plugins, FFmpeg's and GStreamer's; audio reaches the
+sound server through PipeWire.
 
 ## Flags
-- `-DFEATURE_ffmpeg=ON` — with `-DFEATURE_gstreamer=OFF`: build the FFmpeg media plugin, through
-  [ffmpeg](#port-ffmpeg), and not the GStreamer one. [gstreamer](#port-gstreamer) is installed in
-  an earlier phase and is not in `depends`, so without the second switch the GStreamer plugin
-  would be built whenever it is found.
+- `-DFEATURE_ffmpeg=ON` — the FFmpeg media plugin, through [ffmpeg](#port-ffmpeg). Qt loads it
+  by default on Linux whenever it is built, so it is the backend every Qt program uses unless
+  `QT_MEDIA_BACKEND` or the program itself asks for another.
+- `-DFEATURE_gstreamer=ON` — the GStreamer media plugin beside it, through
+  [gstreamer](#port-gstreamer), [gst-plugins-base](#port-gst-plugins-base) for the `app` and GL
+  libraries, and [gst-plugins-bad](#port-gst-plugins-bad) for `gstreamer-play`, which the plugin
+  requires. [audiotube](#port-audiotube) stops its configure without the plugin's CMake target,
+  `Qt6::QGstreamerMediaPlugin`, and selects that backend at run time. Named, a missing GStreamer
+  library stops the configure instead of leaving the plugin out.
 - `-DFEATURE_pipewire=ON` — PipeWire audio devices and streams, through [pipewire](#port-pipewire).
   At run time Qt picks PipeWire unless `QT_AUDIO_BACKEND` asks for another backend or the
   PulseAudio server it finds is not PipeWire's.
@@ -29,4 +34,8 @@ PipeWire.
 - `select.patch` — adds `#include <sys/select.h>` to the FFmpeg plugin's `qv4l2camera_p.h`, for the `struct timeval` of its `m_firstFrameTime` member.
 
 ## Notes
+The GStreamer backend plays what the GStreamer element plugins installed beside it can decode.
+[gst-plugins-good](#port-gst-plugins-good) and [gst-libav](#port-gst-libav) are not in `depends`,
+so a program that selects this backend names them in its own.
+
 Like every Qt 6 module but `qt6-qtbase`, it passes no install paths of its own (see [How Qt 6 is built](../../../../docs/kdos/05-developer/writing-ports.md#how-qt-6-is-built)).

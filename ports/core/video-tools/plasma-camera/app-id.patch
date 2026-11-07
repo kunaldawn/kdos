@@ -1,0 +1,13 @@
+Subject: name the window app_id org.kde.plasma-camera in the desktop entry
+
+KAboutData derives the Wayland app_id from the component name, plasma-camera,
+while the entry is org.kde.plasma.camera.desktop, so the task manager can only
+match the window to its entry through StartupWMClass.
+
+--- a/org.kde.plasma.camera.desktop
++++ b/org.kde.plasma.camera.desktop
+@@ -102,3 +102,4 @@
+ Exec=plasma-camera
+ Categories=Qt;KDE;AudioVideo;
+ X-KDE-FormFactor=desktop;tablet;handset;
++StartupWMClass=org.kde.plasma-camera

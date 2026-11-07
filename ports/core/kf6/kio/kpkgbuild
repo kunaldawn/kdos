@@ -9,11 +9,11 @@
 # ---------------------------------
 
 name        = kio
-version     = 6.30.0
-release     = 2
+version     = 6.31.0
+release     = 1
 source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
-sha256      = c19cbd4878347b67a9e05ee6541083f51dd90f9e58ee245b4d7634e09f9c04b2  kio-6.30.0.tar.xz
+sha256      = cdc8e3787be1f4a5c8f8a45fabab5cf540ef6380c549c6fd984f15f093b5eac0  kio-6.31.0.tar.xz
 description = KDE Frameworks: network-transparent file access, workers and file dialogs
 homepage    = https://invent.kde.org/frameworks/kio
 license     = LGPL-2.0-or-later AND LGPL-2.0-only AND (LGPL-2.0-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND GPL-2.0-or-later AND BSD-2-Clause AND (LGPL-2.0-only OR LGPL-3.0-only) AND LGPL-2.1-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND GPL-2.0-only AND CC0-1.0
-depends     = cmake ninja extra-cmake-modules qt6-qtbase karchive kbookmarks kcolorscheme kcompletion kconfig kcoreaddons kcrash kdbusaddons kdoctools kguiaddons ki18n kiconthemes kitemviews kjobwidgets kservice kwallet kwidgetsaddons kwindowsystem solid switcheroo-control acl util-linux libxml2 libxslt
+depends     = cmake ninja extra-cmake-modules qt6-qtbase karchive kbookmarks kcolorscheme kcompletion kconfig kcoreaddons kcrash kdbusaddons kded kdoctools kguiaddons ki18n kiconthemes kitemviews kjobwidgets kservice kwallet kwidgetsaddons kwindowsystem solid switcheroo-control acl util-linux libxml2 libxslt

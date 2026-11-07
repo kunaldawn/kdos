@@ -1,0 +1,2 @@
+The window-rules check's fixture: good.kwinrulesrc must parse and every
+bad-*.kwinrulesrc must be reported.

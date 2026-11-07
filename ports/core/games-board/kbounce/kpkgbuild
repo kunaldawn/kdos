@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = kbounce
-version     = 26.08.1
+version     = 26.08.2
 release     = 1
 source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
-sha256      = 2288a3f2b630bc60cc8e3cdbc65396053c61a0303efacf54a2449bd262bf3631  kbounce-26.08.1.tar.xz
+sha256      = 09a7a6aaa5624475da706a4de0d5162f9a05df14b971730e03f4e6fce89424df  kbounce-26.08.2.tar.xz
 description = Fence off the field while the balls bounce around it
 homepage    = https://apps.kde.org/kbounce/
 license     = LGPL-2.0-or-later

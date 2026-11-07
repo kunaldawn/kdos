@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = accessibility-inspector
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 0a863d870b83d6ee4bcde72282cd226439d632309e07f183b0674363236d6726  accessibility-inspector-26.08.2.tar.xz
+description = Accessibility inspector — browse the AT-SPI tree a program shows to screen readers
+homepage    = https://apps.kde.org/accessibilityinspector/
+license     = (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.0-or-later AND LGPL-3.0-or-later AND BSD-2-Clause AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kconfigwidgets kcoreaddons kcrash kdbusaddons ki18n kxmlgui libqaccessibilityclient at-spi2-core

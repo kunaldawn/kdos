@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = pim-data-exporter
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = d4c7d9966e53cc7318d31cfcb447f22bc43fdd4186ef0c2b66229a4b9ea9e4bc  pim-data-exporter-26.08.2.tar.xz
+description = Backs up and restores KDE PIM mail, accounts, identities, contacts, calendars and settings
+homepage    = https://apps.kde.org/pimdataexporter/
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later AND GFDL-1.2-or-later AND BSD-3-Clause AND CC0-1.0 AND MIT
+depends     = cmake ninja extra-cmake-modules qt6-qtbase karchive kcalendarcore kconfig kcontacts kcoreaddons kcrash kdbusaddons kdoctools ki18n kiconthemes kio kitemviews kmime knotifications kstatusnotifieritem kwidgetsaddons kxmlgui ktextaddons akonadi kidentitymanagement kmailtransport mailcommon pimcommon breeze-icons

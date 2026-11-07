@@ -28,3 +28,5 @@ gphoto2
 android-file-transfer
 
 kdeconnect
+
+kamera

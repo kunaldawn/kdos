@@ -22,7 +22,8 @@
 #
 # THREE OUTPUTS, ONE SOURCE. The book is rendered to HTML under
 # /usr/share/doc/kdos with the tree's own layout and kdos.css from beside
-# this file; kdos(7) says where it is and lists its chapters; and every
+# this file inside every page; kdos(7) says where it is and lists its
+# chapters; and every
 # `kdos-*` row of the command index, and the row of each command in OURS,
 # becomes a manual page whose DESCRIPTION is the book section that row links
 # to. A manual page written by hand beside
@@ -177,6 +178,14 @@ def render_book(docs, root):
     book = os.path.join(docs, "kdos")
     if not os.path.isfile(os.path.join(book, "README.md")):
         sys.exit(f"mkbook: {docs} holds no kdos/README.md")
+    # THE STYLESHEET IS INSIDE EACH PAGE. KHelpCenter shows a help:/kdos/…
+    # page through KIO's help worker and answers every request of that page,
+    # its stylesheet included, as text/html, and the browser engine refuses
+    # a linked stylesheet of that type; a <style> element is part of the page
+    # and holds under file:, help: and the published site alike.
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "kdos.css"), encoding="utf-8") as f:
+        style = "<style>\n" + f.read() + "</style>\n"
     chapters = []
     for d, dirs, files in os.walk(book):
         dirs.sort()
@@ -186,14 +195,15 @@ def render_book(docs, root):
             src = os.path.join(d, name)
             rel = os.path.relpath(src, docs)
             out_rel = rel[5:-3] + ".html"
-            depth = out_rel.count("/")
             title = title_of(src)
             with open(src, encoding="utf-8") as f:
                 text = f.read()
             html = lowdown(["-s", "-thtml", "--html-no-skiphtml",
                             "--html-no-escapehtml",
-                            "-M", "title=" + title,
-                            "-M", "css=" + "../" * depth + "kdos.css"], text)
+                            "-M", "title=" + title], text)
+            if "</head>" not in html:
+                sys.exit(f"mkbook: {rel}: lowdown wrote no </head>")
+            html = html.replace("</head>", style + "</head>", 1)
             html = github_ids(html, text, rel)
             html = ATTR_RE.sub(
                 lambda m: '%s="%s"' % (m.group(1),
@@ -210,8 +220,6 @@ def render_book(docs, root):
         for name in sorted(os.listdir(shots)):
             copy_file(os.path.join(shots, name),
                       os.path.join(root, "screenshots", name))
-    copy_file(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                           "kdos.css"), os.path.join(root, "kdos.css"))
     os.symlink("README.html", os.path.join(root, "index.html"))
     return chapters
 

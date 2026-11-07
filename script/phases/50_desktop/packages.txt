@@ -10,31 +10,63 @@
 #   50_desktop: Desktop
 # ---------------------------------
 #
-# Everything the desktop is, and nothing the userland already provides:
-# wlroots, the compositor, the panel, the terminal, the lock screen, the root
-# daemons, the input method and the portals. src/desktop and src/daemons are on
-# PORT_REPO for this phase only. The Wayland base — wayland, wayland-protocols,
-# seatd, foot, grim, slurp, wl-clipboard, xwayland — is 41_system and
-# 42_graphics: it is useful without a compositor.
+# Everything the desktop session is, and nothing an application needs at build
+# time: KWin, the Plasma shell and its daemons, SDDM, the portals, the input
+# method, KDOS's own Plasma code and daemons, and the meta ports. The Plasma
+# libraries that Gear applications link (libplasma, kpipewire,
+# plasma-activities, union and the rest) are 43_toolkits. A port listed here is
+# never named in the `depends` of a 41-44 port.
 #
-# See docs/kdos/03-architecture/session.md for the session shape and
-# docs/kdos/04-programs/kdos-comp.md for the compositor.
+# See docs/kdos/03-architecture/session.md.
 #
 # This list names every port the phase installs and nothing it does not;
 # testing/phaseclosure.py fails when a dependency pulls a port in from outside
 # it, or when a shelf section names a port an earlier phase installs.
 
 # ---------------------------------
+# auth — Authentication, authorisation, accounts and directory services
+# ---------------------------------
+
+# The login screen. A QML greeter on its own kwin_wayland, started from inittab
+# through kdos-dm; it opens the Plasma session through elogind and PAM.
+sddm
+
+# Opens the wallet with the password typed at login, so the Secret Service
+# ksecretd provides is unlocked without a second prompt.
+kwallet-pam
+
+# ---------------------------------
+# sysmon — Process, resource and system-information monitors
+# ---------------------------------
+
+# The sensor daemon every system-monitor widget and Plasma System Monitor
+# read over D-Bus.
+ksystemstats
+
+# Plasma System Monitor: sensor pages, history and the process table.
+plasma-systemmonitor
+
+# Info Center: the hardware, graphics, firmware and energy pages of System
+# Settings.
+kinfocenter
+
+# ---------------------------------
+# hardware — Device access, bus and sensor tools, power management, and
+# Bluetooth
+# ---------------------------------
+
+# The Thunderbolt page and new-device notifier, over boltd.
+plasma-thunderbolt
+
+# ---------------------------------
 # input — Input-device libraries, keyboard data, input methods and on-screen
 # keyboards
 # ---------------------------------
 
-# The input method. kdos-comp speaks text-input-v3 to applications and
-# input-method-v2 to fcitx5 (the fork's src/input/ime.c); this is the
-# thing on the other end of that second protocol. Built Wayland-only — no X11
-# frontend, no Qt config tool, no cloud pinyin — and the engines are one per
-# language: chinese-addons (pinyin, shuangpin, tables) over libime, anthy for
-# Japanese, hangul for Korean.
+# The input method, which KWin starts for the session and speaks to over
+# input-method-v1. Built Wayland-only — no X11 frontend, no cloud pinyin — and
+# the engines are one per language: chinese-addons (pinyin, shuangpin, tables)
+# over libime, anthy for Japanese, hangul for Korean.
 fcitx5
 
 libime
@@ -44,95 +76,254 @@ fcitx5-anthy
 libhangul
 fcitx5-hangul
 
+# Fcitx 5's Qt 6 input-method module, so Qt applications reach the input
+# method KWin starts.
+fcitx5-qt
+
+# Fcitx 5's GTK 3 and GTK 4 input-method modules, which reach fcitx5 over the
+# session bus: the route a GTK program under Xwayland has to it.
+fcitx5-gtk
+
+# The input-method page of System Settings.
+fcitx5-configtool
+
+# The on-screen keyboard, an input method KWin starts for the session and the
+# login screen.
+plasma-keyboard
+
 # ---------------------------------
-# wl — Wayland libraries and protocols, wlroots, and Wayland-only desktop
-# utilities
+# disk — Block devices: partitioning, RAID, LVM, block encryption, SMART, NVMe,
+# recovery, image writing and async I/O
 # ---------------------------------
 
-# The compositor library, from its release tarball with one patch. wlroots
-# breaks API every release, and kdos-comp asks meson for wlroots-0.20 by name.
-wlroots
+# Warns from the tray before a disk fails, from SMART data read through
+# smartctl.
+plasma-disks
+
+# ---------------------------------
+# filesystem — Filesystem utilities, FUSE, and network or encrypted filesystems
+# ---------------------------------
+
+# Encrypted gocryptfs folders opened and closed from the tray.
+plasma-vault
+
+# ---------------------------------
+# security — Security applications: GnuPG and front-ends, password and secret
+# managers, certificates, scanners, forensics and audit
+# ---------------------------------
+
+# The passphrase prompt ssh-add and git use, keeping passphrases in the
+# session's secret store.
+ksshaskpass
+
+# ---------------------------------
+# transfer — File transfer, synchronisation, backup and BitTorrent
+# ---------------------------------
+
+# Backup plans run on a timer or when a drive is plugged in.
+kup
+
+# ---------------------------------
+# graphics — Graphics applications: painting, vector, photo development and
+# management, image viewers, screenshot and image optimisers
+# ---------------------------------
+
+# Screenshots and screen recording, over KWin's screenshot and screen-cast
+# interfaces.
+spectacle
 
 # ---------------------------------
 # xdg — freedesktop desktop integration: portals, MIME, desktop entries,
 # AppStream, tray and indicators, notifications, event sounds, script dialogs
 # ---------------------------------
 
-# The screen-capture portal. OBS or a browser, native or boxed, reaches the
-# screen only through xdg-desktop-portal, which has no capture code of its own
-# — the wlr backend is what turns the compositor's ext-image-copy-capture and
-# wlr-screencopy globals into a ScreenCast session. Screenshot comes with it.
-# 42_graphics installs the main portal; this is the half that knows about
-# wlroots.
-xdg-desktop-portal-wlr
+# The portal backend under Plasma: file chooser, screen cast, screenshots,
+# settings and the rest, drawn by KDE.
+xdg-desktop-portal-kde
 
 # ---------------------------------
-# src-desktop — KDOS's own desktop programs, from src/desktop
+# kde — KDE Plasma and Gear platform pieces outside Frameworks that have no
+# other domain: KIO workers, thumbnailers, Plasma integration, KDE Wayland glue
 # ---------------------------------
 
-# The compositor.
-kdos-comp
+# The compositor and window manager, with Xwayland for X11 clients.
+kwin
 
-# The security-context-v1 sandbox engine: one tagged Wayland socket per box.
-# Separate from kdos-appbox because `run` execs distrobox and cannot hold the
-# context's close fd, and because kdos-appbox links no libraries.
-kdos-boxsock
+# The global shortcut registry KWin loads to serve org.kde.kglobalaccel.
+kglobalacceld
 
-# The shell: a character-cell panel on layer-shell, drawn by libktui through
-# libkwl. Learns what it shows from wlr-foreign-toplevel-management and from
-# ext-workspace-v1: standard protocols, so waybar works here too.
-kdos-shell
+# The lock screen: the library KWin links and the PAM unlock greeter.
+kscreenlocker
 
-# The terminal, an xdg-toplevel under kdos-comp. libkvt is the state machine —
-# kmscon's, forked — and libkimg is what turns sixel, iTerm2's OSC 1337 and
-# kitty's APC into pixels.
-#
-# It ships BESIDE foot and changes nothing: foot is still the default terminal
-# in rc.xml, menu.xml, the .desktop files, favorites and tmux.conf. foot is
-# battle-tested and this is not, which is the same trade kdos-res made beside
-# btop.
-kdos-term
+# KWin's themeable SVG window decoration engine.
+aurorae
 
-# The lock screen. Its kdos-checkpass is one of the two setuid-root helpers of
-# KDOS's own: /etc/shadow is root-only and kdos-lock must not be.
-# ext-session-lock-v1 means the compositor keeps the screen locked even if the
-# client dies.
-kdos-lock
+# The day and night schedule behind Night Light and automatic light and dark
+# themes.
+knighttime
 
-# The resource monitor. One binary that is a TTY program on tty1 and an
-# xdg-toplevel window on the desktop, because both are the same cell grid: nine
-# per-device pages, a sortable process table, and an application rollup that
-# names a boxed app by the container supervising it — an identity no other
-# Linux monitor can build without systemd cgroup delegation, which this distro
-# does not have.
-#
-# It ships BESIDE btop rather than replacing it: btop is mature, and until this
-# has run on real hardware a fallback is worth keeping.
-#
-# kdos-resctl is built by the same recipe and is the OTHER setuid-root helper
-# of KDOS's own — three verbs, no paths in argv, gated on `wheel` by real uid.
-kdos-res
+# Display configuration: the settings page, the output-switching OSD and
+# kscreenctl.
+kscreen
 
-# The FileChooser portal. xdg-desktop-portal-wlr does ScreenCast and
-# Screenshot only, and xdg-desktop-portal-gtk, the backend other desktops fall
-# back to, draws GTK's own dialog. Without this, an app's Open and Save dialog
-# is whatever its own toolkit draws, carrying none of the desktop's palette,
-# chrome or file roots.
-# Settings comes with it and hands out the accent.
-xdg-desktop-portal-kdos
+# The KRunner results view and the Plasma search applet.
+milou
 
-# The screen recorder. It is a program rather than a shell script because
-# xdg-desktop-portal keys a session to the connection that created it and closes
-# it when that connection goes: three gdbus calls are three connections, and the
-# second is told `Invalid session`.
-kdos-record
+# plasmashell, session start and shutdown, KRunner, notifications, the panel
+# applets and the workspace settings.
+plasma-workspace
+
+# The desktop and panel containments, Kickoff, the task manager and the input
+# and session settings.
+plasma-desktop
+
+# System Settings, the window that hosts every settings module.
+systemsettings
+
+# kde-open, kioclient, kstart and the other command-line tools the session
+# runs.
+kde-cli-tools
+
+# The launcher's menu editor.
+kmenuedit
+
+# The activity manager: activities, recent documents and resource scoring.
+kactivitymanagerd
+
+# Shows messages sent with write and wall as notifications.
+kwrited
+
+# The polkit agent: the password dialog for actions an administrator must
+# approve.
+polkit-kde-agent-1
+
+# Power management: idle dimming and suspend, lid and power-key policy,
+# brightness and the battery applet.
+powerdevil
+
+# The network applet and connection editor, over NetworkManager.
+plasma-nm
+
+# The volume applet, audio settings and volume keys.
+plasma-pa
+
+# Bluetooth: the tray applet, the settings page, pairing and file sending.
+bluedevil
+
+# Carries the Plasma theme, fonts, icons and cursor to GTK 3 and 4
+# applications.
+kde-gtk-config
+
+# Extra widgets, runners, wallpapers and window switchers.
+kdeplasma-addons
+
+# Joins Firefox and Chromium to Plasma: media controls, tab search and
+# downloads.
+plasma-browser-integration
+
+# The software centre: system updates over the A/B slots and firmware through
+# fwupd.
+discover
+
+# The Login Screen page of System Settings.
+sddm-kcm
+
+# The first-boot wizard that creates the first account.
+plasma-setup
+
+# The first-login tour and the post-update page.
+plasma-welcome
+
+# Dynamic tiling as a KWin script, shipped disabled.
+krohnkite
+
+# ---------------------------------
+# printing — Printing, printer drivers, labels, scanning and OCR
+# ---------------------------------
+
+# The Printers page of System Settings, the print queue and the tray applet.
+print-manager
+
+# ---------------------------------
+# src-art — KDOS's own artwork and its generators, from src/art
+# ---------------------------------
+
+# The login screen's look: plasma-desktop's Breeze greeter, copied at build
+# time with the KDOS accent and mark patched in.
+kdos-sddm-theme
+
+# The curated offline add-ons that stand in for "Get New…": wallpapers, Plasma
+# and Konsole colour schemes, KWin scripts and widgets.
+kdos-addons
+
+# ---------------------------------
+# src-desktop — KDOS's own Plasma integration, from src/desktop
+# ---------------------------------
+
+# KDOS Modern: the eight colour schemes and global themes, the kdos Plasma
+# style, the three desks, KSplash, the Konsole profile, the qt5ct palettes and
+# the defaults under /usr/share/kdos/xdg.
+kdos-plasma-look
+
+# The KDOS pages of Welcome Center: accessibility, accent, Phosphor mode, the
+# desk picker, system and help.
+kdos-welcome
+
+# The first-run checklist widget, ticking itself as each step is done.
+plasmoid-kdos-checklist
+
+# Microphone, camera and screen lamps in the tray, naming the program and its
+# box.
+plasmoid-kdos-privacy
+
+# The kded6 module that keeps the accent in step with Plasma and offers the
+# sets it finds on a stick.
+kded-kdos
+
+# System Settings pages: the A/B slots, boxes, the firewall's named services,
+# the KDOS look and Phosphor mode, and the Health page.
+kcm-kdos-system
+kcm-kdos-boxes
+kcm-kdos-firewall
+kcm-kdos-look
+kcm-kdos-health
+
+# KWin's KDOS pieces: the CRT motion effects, the key card on Meta+F1,
+# run-or-raise for the terminal programs and the window position memory.
+kdos-kwin-motion
+kwin-effect-kdos-keys
+kwin-script-kdos-runraise
+kwin-script-kdos-window-memory
+
+# Discover's backend for packs, boxes and ports, and the A/B update notifier.
+kdos-discover
+
+# The kdos verbs, routes and the offline library in KRunner, over D-Bus.
+kdos-runner
+
+# The system's notices in Plasma: restarts after an update, CVEs, the trial
+# slot, a rollback, memory kills.
+kdos-notice
+
+# System Monitor's KDOS sensors: boxes, energy by application, the A/B slots.
+ksystemstats-kdos
+
+# library:/, the offline library as a folder in Dolphin and the file dialogs.
+kio-library
+
+# Transcribe in Dolphin's menu for audio and video, offline.
+kdos-transcribe
+
+# The graphical installer, a Kirigami front end over kinstall.
+kdos-installer-gui
 
 # ---------------------------------
 # src-daemons — KDOS's own root daemons, from src/daemons
 # ---------------------------------
 
-# Suspend, poweroff and reboot for a desktop that is not root. A unix socket in
-# /run, gated by SO_PEERCRED — no setuid, no polkit prompt, no logind.
+# The firewall's named services, the accent and the boot splash, for a desktop
+# that is not root: a unix socket in /run gated by SO_PEERCRED, and
+# io.kdos.Power1 on the system bus, which asks polkit for anyone not in wheel.
 kdos-powerd
 
 # Per-app Energy Impact. RAPL is root-only (PLATYPUS), so the sampler is a
@@ -142,20 +333,10 @@ kdos-energyd
 
 # Wedge protection under memory pressure. Blocks on a /proc/pressure/memory PSI
 # trigger and SIGKILLs + process_mrelease()s the largest attributable offender —
-# preferring boxed apps, never the desktop's own chrome — at most once per ten
+# preferring boxed apps, never the Plasma session itself — at most once per ten
 # seconds. Same shape as kdos-powerd: root, foreground under ksvc, SO_PEERCRED
 # socket for `kdos doctor`.
 kdos-oomd
-
-# Removable media for kdos-shell: mounting is root's and the desktop is not
-# root. udisks2, in 43_toolkits, serves the toolkit applications (K3b,
-# Dolphin's devices, the image writers) beside it; this daemon stays the
-# authority for the shell.
-#
-# Same shape as kdos-powerd: root, foreground under ksvc, an SO_PEERCRED
-# socket, and a protocol whose only argument is a row number out of a list the
-# daemon published, so a client can never name a device or a mountpoint.
-kdos-mountd
 
 # Packs. An application is one signed EROFS image with a KDOS footer on the
 # end, and this is the only thing on the machine that mounts one: it verifies
@@ -164,3 +345,39 @@ kdos-mountd
 # ROOT is what makes overlay whiteouts real: a box's root is composed from the
 # packs as they are, with no flatten step.
 kdos-packd
+
+# hostname1, timedate1 and locale1 on the system bus, written to the files
+# KDOS keeps, for System Settings, the greeter and plasma-setup.
+kdos-settingsd
+
+# org.freedesktop.sysupdate1 and io.kdos.Slots1 over the A/B root slots: what
+# Discover's system updates and the slots page ask.
+kdos-sysupdated
+
+# ---------------------------------
+# meta — the KDE install set: source-less ports that only name others
+# ---------------------------------
+
+# The session: every Plasma module that is not a library, SDDM, the input
+# method and its engines, and every KDOS Plasma port, artwork and daemon.
+kde-plasma
+
+# The Gear applications, split by kind so no one recipe names more than kpkg's
+# 128 depends; each Gear application no other port depends on is named by
+# exactly one of them.
+kde-gear-core
+kde-gear-games
+kde-gear-education
+kde-gear-pim
+kde-gear-multimedia
+kde-gear-graphics
+kde-gear-utilities
+kde-gear-devtools
+
+# The eight above as one.
+kde-gear
+
+# Plasma and all of Gear: `kpkg install kde-all` gives a machine the whole
+# desktop. It is not `kde`, which is the shelf every meta sits on, and a port
+# may not share a shelf's name.
+kde-all

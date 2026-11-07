@@ -1,1143 +1,490 @@
 # The design language
 
-This chapter is the visual and interaction specification that every KDOS surface follows: the
-panel, the Start menu, the settings, the resource monitor, the installer, the lock screen and every
-popup. It describes the cell grid everything is drawn on, the window frame, the shared controls,
-colour, the keys and pointer gestures every surface answers, touch, the glyph sets that decide what
-can be drawn on a text console, pictures, and the frame the compositor draws round other programs'
-windows. It is written for people building or reviewing a KDOS surface, and for anyone who wants
-to know why the desktop looks the way it does.
+This chapter is the specification of how KDOS looks: the identity called **KDOS Modern** that it
+paints over KDE Plasma, from the boot menu to the lock screen, and the opt-in **Phosphor mode**
+layered on top of it. It covers the eight accents and the colour roles they become, the type, the
+pieces Plasma loads to wear the look (colour schemes, global themes, a Plasma style, the window
+decoration, icons, cursor, wallpapers, sounds), how the screens before and after a login are made
+to read as one, motion, Phosphor mode, and the smaller rule set of KDOS's text-mode tools. It is
+written for people adding to the look or writing KDOS code that draws, and for anyone who wants to
+know why the desktop looks the way it does.
 
-A *surface* here means any program, or any front end of a program, that draws its own screen with
-the KDOS toolkit; `kdos-shell` alone provides more than fifty of them. Read
-[The architecture overview](overview.md) first for where these programs sit in the running
-system. If you are about to write a surface, read
-[Every surface is a grid of character cells](#every-surface-is-a-grid-of-character-cells) and
-[The checklist](#the-checklist) first, then
-[Writing desktop software](../05-developer/writing-desktop-software.md) for the code.
+How a person switches accents and what each control changes is in
+[Theming](../02-user-guide/theming.md); the code side of a settings page, widget or effect is in
+[Writing desktop software](../05-developer/writing-desktop-software.md). Read
+[The architecture overview](overview.md) first for where Plasma and KDOS's own components sit.
 
-The rules are not a matter of taste. A surface that ignores them looks like a different program
-placed inside the desktop.
+## The identity is data Plasma already loads
 
-## Every surface is a grid of character cells
+KDOS does not fork Plasma's look. Every piece of KDOS Modern is a file in a format Plasma already
+reads, installed where Plasma already looks, so the stock settings pages (Global Theme, Colours,
+Plasma Style, Window Decorations, Icons, Cursors, Splash Screen, Wallpaper, System Sounds) show
+KDOS's choices beside KDE's and can change any of them. Four rules hold the kit together:
 
-A KDOS surface has no scene graph, no widget tree with its own layout engine and no vector drawing.
-It is a two-dimensional buffer of *cells* (`KtuiCell` in `src/libs/libktui/ktui.h`). Each cell
-holds one character, a foreground colour slot, a background colour slot and a set of attributes:
-bold, reverse, underline (with a style: single, double, curly, dotted or dashed), italic,
-strikethrough and overline. Drawing means writing cells. Presenting means comparing the buffer with
-what was last shown and sending only the cells that changed.
+- **One palette, compiled once.** The eight accents are one table in `libkcolor`
+  (`KCOL_SCHEMES` in `src/libs/libkcolor/kcolor.h`). Every colour scheme, Konsole scheme, Qt 5
+  palette, wallpaper, login-screen file, boot-menu palette and console palette is generated from
+  it at build time by `kdos-theme`, so no second copy of a colour ships anywhere. A colour in a
+  shipped KDE file that no generator wrote is a defect.
+- **Derive, never fork.** Where KDOS needs a screen KDE draws, it starts from KDE's own file and
+  carries a patch with a `Subject:` line: the login screen is the Breeze SDDM theme with one patch,
+  the window decoration is Breeze configured, and the lock and logout screens are Breeze's own. An
+  upstream change then breaks the build, never the screen.
+- **One accent is one name.** Each accent is a separately named colour scheme, `KDOS<Title>`, and
+  a separately named global theme, `org.kdos.<accent>.desktop`. Plasma applies nothing when told
+  to apply the scheme it already has, so an accent that changed under an unchanged name would never
+  reach a running session.
+- **A person's choice is never overwritten.** Distribution defaults reach an account through
+  Plasma's own defaults layer, under the person's keys. When `kdos theme` writes into `~/.config`
+  it moves a value only while that value still names a KDOS file (a `KDOS*` colour scheme, a
+  `KDOS-*` wallpaper package, a `KDOS *` Konsole profile), so a wallpaper or profile somebody chose
+  survives every accent switch.
 
-The same buffer is presented to three kinds of destination, and nothing above that layer knows
-which one it is talking to. Each destination is reached through a *backend*, a `KtuiBackend`
-table of functions:
+The ports that carry it:
 
-| Destination | Backend | Where it lives |
-|---|---|---|
-| A terminal, including the Linux text console `tty1` | the built-in terminal backend | `libktui` (`ktui_draw.c`) |
-| A Wayland window under the compositor | `kwl_backend` | `libkwl` |
-| An offscreen text dump (`--dump`, which prints one frame as text; a committed one is a *golden*) | the offscreen buffer | `libktui` (`ktui_offscreen_init`) |
-
-On `tty1` the terminal backend installs the palette into the console with `PIO_CMAP` and reads the
-mouse from `/dev/input/event*` itself, because the Linux console reports no mouse events of its own.
-`libkdisp` sits one level above the backends and decides which display server a surface talks to;
-it names no implementation itself, and the one that ships is `kwl_impl` in `libkwl`. That is why
-the resource monitor looks the same on `tty1`, in a window, and in a committed test file.
-
-`libktui` needs nothing beyond the C library and two of KDOS's own libraries that need nothing
-either, `libkbase` and `libkcolor`. The installer compiles all three into itself in the bootstrap
-phase (`10_bootstrap`, step `130_kinstall.sh`), with the cross compiler, against nothing but the
-C library and the kernel headers; a library that needed a real `-l` would move the installer out
-of that phase. That constraint shapes several rules below: anything that needs pixels, fonts or
-a display connection lives in another library.
-
-The consequence to keep in mind is that **a control is one row of text tall.** Where that is wrong,
-the answer is a picture drawn into whole cells, not a second renderer. See
-[Pictures are an enhancement layer](#pictures-are-an-enhancement-layer).
-
-Three things on the screen are not cells:
-
-- **The compositor's own chrome.** Window title bars, the root menu and the window-switcher display
-  are drawn by the compositor with Pango, in `Terminus (TTF)` at 24 points (set in
-  `fs/etc/skel/.config/kdos-comp/rc.xml`), which is 32 pixels at 96 dpi and so one cell tall. The
-  cell grid itself is drawn from the bitmap Terminus face at every size it has a bitmap for, and
-  from the same TTF conversion, in a cell exactly the asked size, at the sizes it has none (see
-  [libkcell](../05-developer/c-libraries.md#the-cells-size)); Pango cannot render bitmap fonts,
-  which is why the compositor asks for the TTF conversion by its own family name. See
-  [The compositor's decoration is part of the set](#the-compositors-decoration-is-part-of-the-set).
-- **The pixel layer under the cells.** A surface with a Wayland backend may record plates, rules,
-  rounded ends and display text that are painted beneath its cells. Layout, hit testing and every dump stay in
-  cells. See [The pixel layer under the cells](#the-pixel-layer-under-the-cells).
-- **An application.** A natively ported application (one built from a recipe with GTK, Qt,
-  KDE Frameworks, wxWidgets, FLTK or Tk) and a boxed application (one running in a container)
-  each draw whatever their toolkit draws. The compositor frames such a window with its own title
-  bar and border unless the application asks to draw its own decoration, as GTK applications with
-  a header bar do; the compositor grants what the application asks for.
-
-No KDOS surface is drawn by another toolkit. The input-method candidate window shows how far that
-goes. An input-method engine normally draws its own candidate list with its own renderer, which on
-this desktop would be a rounded, antialiased panel over a text-mode screen. `kdos-ime` draws it
-instead, with the same chrome and colour slots as everything else, by speaking `kimpanel`, the
-input-method framework's generic D-Bus panel protocol. It is not an input method and knows nothing
-about any language: the engine decides the candidates and `kdos-ime` draws them.
-
-## A window is a double-line box
-
-```
-╔═[ Resources ]═════════════════════╗
-║                                   ║
-║  body starts at column 1          ║
-║                                   ║
-╚═══════════════════════════════════╝
-```
-
-`ktui_draw_box` draws it; its last argument chooses the double-line set or the single one. The title
-is bracketed rather than padded with spaces, because two blanks either side of a title make the rule
-look broken where it stops, and the eye reads a missing segment rather than a label. The box adds
-the brackets and the padding itself and trims whatever spaces the caller passed, so `" Settings "`
-and `"Settings"` draw the same. A title is drawn only when the box is more than six columns wide,
-and is clipped to eight columns less than the box.
-
-- Column 0, the last column and the last row belong to the frame. The body starts at column 1 and
-  stops one row short of the bottom. The title hangs on the top edge.
-- The header band (`kch_header`) fills from column 1 to the second-to-last column. A surface that
-  draws a header with no box round it therefore shows an empty one-column margin, which is the sign
-  that a box was forgotten.
-- A surface too small for a frame keeps the whole area rather than drawing a box with nothing
-  inside it.
-- Under the compositor, the server-side decoration (the frame the compositor draws round a window)
-  takes the box's place: a top-level window asks `kdisp_decorated()` and, when the compositor is
-  drawing a frame, skips its own and keeps only the background (`sh_frame` in `kdos-shell`). Two
-  nested frames on screen mean a program drew chrome the compositor had already drawn for it.
-
-## The chrome primitives
-
-*Chrome* is the part of a surface that is not its content. It is drawn by `libkchrome` and by
-nothing else. A second implementation of a control is not updated when the first changes, and the
-two diverge.
-
-| Primitive | Draws |
+| Port | Installs |
 |---|---|
-| `kch_header` | The two-row accent band across the top, with an optional icon, title and subtitle, and a rule under it; returns the first body row |
-| `kch_group` | A heading inside the body, followed by a rule to the right margin |
-| `kch_buttons` | The verb bar: a row of buttons (at most eight), dropped from the right when narrow |
-| `kch_button_at`, `kch_hover` | Which button the last frame drew under a cell, and where the pointer is, so a button lights under it |
-| `kch_list_wheel`, `kch_list_clamp` | The scrolling rule for a list |
-| `kch_scrollbar` and `kch_scrollbar_press` / `_drag` / `_release` / `_grabbed` | A scrollbar that can be dragged; up to four per surface |
-| `kch_tile_*` | A block of cells drawn as pixels |
-| `kch_plot`, `kch_plot_draw` | An area chart, or a mirrored pair on one axis, drawn as pixels in a tile |
-| `kch_tone`, `kch_tone_alpha`, `kch_popup_alpha`, `kch_slot_rgb` | Shading and body opacity derived from the palette |
-| `kch_px_*` | The plates, rules and rounded ends a backend with pixels records under the cells |
-
-The controls come from `libktui`, and there is one of each. A surface that draws its own is a
-second answer to a question this desktop has already settled.
-
-| Control | What it is |
-|---|---|
-| `ktui_button`, `ktui_check`, `ktui_radio` | A verb, a flag, one of a set |
-| `ktui_slider`, `ktui_slider_*` | A number on a track: press, drag, wheel, or an end cap for one step |
-| `ktui_dropdown_*` | A choice, as a list that opens under its row |
-| `ktui_input`, `ktui_field_*` | A line of text with a caret |
-| `ktui_textarea_*` | Several lines of text with a caret |
-| `ktui_list`, `ktui_table_*` | Rows, and rows with columns; a column may sort from its title, align right, or drag wider |
-| `ktui_sel_slots`, `ktui_sel_row`, `ktui_sel_dim` | What a selected row looks like, for every surface that has one |
-| `ktui_rows_*` | Which row the pointer is on, for a surface that draws its own rows |
-| `ktui_table_event` | The same for a table: wheel, press, pick, Back, and a sort or a drag in its header |
-| `ktui_tabs_*` | A strip of pages |
-| `ktui_split` | Two panes and the divider between them, dragged or moved with the arrow keys |
-| `ktui_fold_begin`, `ktui_fold_end` | A section heading that opens and shuts the section under it |
-| `ktui_lay_*` | Not a control: the rows of a page, with one label column for every field on it |
-| `KtuiMenu`, `ktui_modal_*` | A pane of verbs, and a question |
-| `ktui_progress`, `ktui_gauge`, `ktui_sparkline`, `ktui_heat` | Progress and measurements, in four shapes |
-
-Colours here are named by *slot* (`KT_TEXT`, `KT_MID`, `KT_DIM`, `KT_ACCENT` and four more; see
-[Colour](#colour)), and the *accent* is the scheme colour chosen with `kdos theme`.
-
-A button is a plate with a `░` shadow one column to the right and one row below it, drawn in
-`KT_DIM`. The shadow is what stops a filled rectangle with a word in it from reading as a selected
-row. A focused button also carries `►` and `◄` at its two ends, so that focus is shown by a shape as
-well as a colour; a disabled button has no shadow, because it cannot be pressed.
-
-A slider is drawn as `◄ ████■▒▒▒ ►  55`. The track is `▒` in `KT_DIM`, the run up to the value is
-`█` in `KT_MID`, and the thumb is `■` in the accent while the slider is not focused (in `KT_TEXT`
-when it is), so the accent marks the value and nothing else. On a selected row (a `KT_DIM` fill)
-each role steps up one slot, to `KT_MID` for the track and `KT_TEXT` for the run, so the track does
-not vanish into the fill. On a row filled with `KT_ACCENT` the thumb is `KT_SURFACE`, or `KT_BG`
-when focused. The end caps are dropped below 14 columns (`KT_SLIDER_MIN_W`) and the number below
-ten.
-
-A divider is a `│` (or a `─` between stacked panes) in `KT_DIM` on whatever the page put under it,
-and in the accent while it has the focus. A fold's heading is a section heading with a marker in
-front of it: `►` in the accent while shut, `▼` while open (`>` and `v` at the [ascii tier](#the-glyph-tiers)), the title in
-the accent and the section's rule after it; focused, the row takes the selection fill and the title
-`KT_TEXT`, as a check box does, so the marker is the state and the plate is the focus.
-
-Most controls are a `draw` / `key` / `hit` trio with one frame-level call on top. That is what
-lets a surface running its own event loop, such as `kdos-display` or `kdos-audio`, use the same
-control as one written inside the immediate-mode frame (`ktui_frame_begin()`), in which a surface
-redraws every control on every frame and reads input as it draws. The installer is drawn that way;
-the `kdos-shell` runner can host a surface inside a frame (`ShSurface.frame`), but none of its
-surfaces asks for one. A control that existed only inside the frame would have to be written a
-second time by every other surface. A control that takes the focus also records what it would say
-to a screen reader (`ktui_announce`), though nothing reads that record; see
-[The announcement record](../02-user-guide/accessibility.md#the-announcement-record).
-
-### The pixel layer under the cells
-
-A backend with pixels can paint beneath the cell grid. While a surface draws, `libkchrome` records
-a display list of plates (`kch_px_plate`), selected-row bars (`kch_px_row`, and `kch_px_row_anim`
-for one that slides to a new row), rules, rounded rectangles and display text (`kch_px_text`); the
-Wayland backend replays it under the cells in the pixels they are drawn in: the output's scale
-times the cell, or on a fractional scale the device pixels of a cell drawn at that size, so a plate
-edge and a glyph edge cannot drift apart. The rule is
-*pixels for paint, cells for layout*: the fallbacks, the hit maps and every `--dump` stay in cells,
-so a surface is correct without the layer and only better with it.
-
-The plates take their colours from a *tone ladder* (`kch_tone`): a rest tone, a hover tone and a
-focused tone, each a `kcol_mix()` of two scheme colours and each laid down at its own alpha, so an
-accent change retints them. The ladder exists because the palette's dark end is compressed: the
-surface and background slots measure between 1.00:1 and 1.20:1 against each other in every accent,
-so a panel painted in its own background slot is the same colour as the desktop behind it. The
-focused plate is solved rather than chosen: `libkchrome` walks the mix from 68% down and stops at
-the first plate that both stands off the bar and carries its label at 7:1, falling back to the best
-separating plate where no mix reaches 7:1. A bar's body is laid at 80% opacity and a popup's at 95%
-(`kch_popup_alpha`), because a menu is read and a taskbar is glanced at. The plate radius is three
-pixels (`KCH_PLATE_RADIUS`); a larger radius would sit badly beside window frames that are square
-on purpose.
-
-`kch_px_popup()` gives a popup that body in one call, with no bright edge line, because a popup
-draws its own `╔═[ Title ]══╗` and a second border a few pixels above it reads as a fault.
-`kch_px_bare()` is the same hand-off with no body at all, for a surface that is only separate cards,
-such as a stack of notifications. `kch_px_custom()` is the hand-off for a surface that draws its
-own body; the taskbar uses it for its adaptive opacity and its edge. `kch_px_flat()` hands over a
-page that is one opaque slot, so an ordinary window gains the layer and looks exactly as it did;
-`kdos-res` uses it.
-
-All four go through one cache. The layer is rasterised once per change of what it depends on (the
-recorded list, the body's alpha and edge, the palette, the size and the scale) and kept, so a
-commit that changes only cells, such as a clock tick, a meter or a caret, repaints just those cells:
-each is laid back on its own rectangle of the cached layer and redrawn, and only those cells are
-reported to the compositor. A plate that moves, appears or vanishes re-rasterises only its own
-rectangles, and repaints and reports only the cells it left and reached; a change of the body's
-alpha or edge, of the palette, of the size or of the scale repaints the surface. A body at full opacity (the
-taskbar over a maximized window) also tells the compositor the surface is opaque, so it is copied
-rather than blended and whatever lies under it is skipped.
-
-**Display text** is a heading or a figure taller than a row of text, drawn as one op. The rule is
-that it is *whole rows of the cell tall*: text `n` rows high asks the face for `n` times the cell
-height, so on the 16×32 Terminus cell two rows are the 32-pixel strike doubled, pixel for pixel, and
-a size no strike draws exactly comes from the `Terminus (TTF)` twin (see
-[The cell's size](../05-developer/c-libraries.md#the-cells-size)). The face is the cell font's,
-never a second typeface. The rectangle's cells go blank on the slot the backdrop owns, so the text
-shows through them; a band of another slot under the text is recorded as a flat rectangle first,
-so the text sits on the band it replaces. Its colours are slots like everything else. Where there
-is no pixel layer, `kch_display_text()` draws the same string as cells on the rectangle's first
-row, which is what tty1 and every `--dump` show. A figure that only repeats what the cells already
-say, as `kdos-res`'s does, is drawn where the layer is live and not at all where it is not.
-
-### Bars and rows
-
-A button bar drops buttons rather than vanishing. Buttons are ordered most-useful-first and dropped
-from the right when the surface is too narrow, never half-drawn. A bar that disappeared entirely
-would leave only a row of key hints (see [The hint row](#the-hint-row)), which is what the buttons
-exist to replace.
-
-Anything that draws over part of a row owns all of it. A button bar shares its row with the status
-line, and the single column between two buttons belongs to neither, so a leftover character would
-show through the gap. The bar clears its whole span first, and `kch_buttons` returns the leftmost
-column it took so the status text can be clipped to what is left. `ktui_sel_row` follows the same
-rule and clears the full row before it draws its marker.
-
-## The keys every surface answers
-
-Five keys mean the same thing on every surface, and the bottom row of the surface says what the
-other keys do at that moment.
-
-| Key | What it does | Declared by |
-|---|---|---|
-| `F1` | Opens this surface's help page in `kdos-doc` | `KtuiKeys.doc`, drawn first in the hint row |
-| `F10` | Opens the surface's menu bar | `KtuiMenu.has_bar` |
-| `Shift+F10` | Opens the menu for the thing under the selection | `KtuiKeys.ctx_at` |
-| `Alt+letter` | Opens a menu pane by its underlined letter | the `&` in a pane title |
-| `Esc` | Steps back one level, and closes only from the top level | the Esc ladder, below |
-
-A surface holds one `KtuiKeys`, calls `ktui_keys()` first in its event dispatch, and calls
-`ktui_hint_row()` last in its draw. `ktui_keys()` takes every event, not only keys, because it
-routes into the surface's menu first and a menu also answers the pointer. It returns
-`KTUI_KEY_PASS` for everything it does not own, so the surface's own dispatch sees the rest
-unchanged. Thirty-two source files outside `libktui` and its self-test call it.
-
-### Help and absent keys
-
-A key with nothing behind it is neither advertised nor answered. Help pages are text files in
-`/usr/share/kdos/doc/<name>.txt` (in the tree, `fs/usr/share/kdos/doc/`, which holds nine pages and
-an index). A surface with no page leaves `doc` as `NULL`, and `F1` then passes the key on: a key
-that opens an index reading *no such document* teaches that help is broken. `testing/preflight.sh`
-refuses a `keys.doc` that names a page which does not ship. The same rule holds for `F10` on a
-surface with no menu bar, and for `Shift+F10` on one with nothing selected.
-
-### The Esc ladder
-
-`Esc` walks a ladder of declared layers, checked at the moment the key arrives and never cached. A
-surface registers each raised state (an open dropdown, a dialog, a search field) once with
-`ktui_keys_layer()`, outermost first and innermost last, up to six of them. Each press of `Esc`
-closes the innermost layer that is up. Each layer is a question ("is this open?") rather than a
-stored flag, so a dialog dismissed by a click leaves nothing behind to swallow the next keystroke.
-With no layer up, `ktui_keys()` returns `KTUI_KEY_CLOSE` and the surface closes itself; the toolkit
-does not own a program's lifetime. An open menu is always innermost, above the ladder.
-`ktui_esc_verb()` names what `Esc` does at that moment (a layer's verb, `Cancel` while a menu is
-open, otherwise `Close`), so the hint row never reads *Esc Close* on a screen where Escape goes
-back.
-
-### The hint row
-
-The hint row is built during the draw, by whatever has the focus. `ktui_hint(key, verb)` and
-`ktui_hint_if(cond, key, verb)` add hints to a pool of at most twelve; `ktui_hint_row()` clears the
-pool first, then draws what it held. Clearing first matters because `kdos-shell` is one binary with
-many front ends, and a pool emptied only at flush time would carry one surface's hints into the
-next `--dump` in the same process. The key is drawn in the accent, the verb in `KT_MID`, and hints
-are separated by a `│` in `KT_DIM`. No row is drawn on a window shorter than eight rows. A fixed
-string cannot follow the focus, and a row naming keys the focused control does not answer is worse
-than no row, because the value of the line is that every key on it works.
-
-Each hint is drawn whole or not at all: a fragment of one hint against the start of another is
-worse than an empty half-row. A status message is different. Where a surface's status row beside its
-button bar shows either a message or the key hints, the message takes whatever room is left, because
-it describes what the person has just done.
-
-The row drops its tail: a hint that does not fit ends the row, and every hint after it is lost
-with it. Surfaces push `Esc` last, so on a narrow surface it is the first thing lost. If a surface is
-too narrow for everything it answers, drop a hint deliberately rather than moving `Esc` earlier, or
-make the surface wider.
-
-### Menus and accelerators
-
-A menu's `sel` counts items, never drawn rows. A caller's `show` callback can hide rows, and a
-selection counted in drawn rows lands on a different item the moment one is hidden. The same
-callback answers both the drawing and the hit test, from one walk, because two copies of a
-visibility rule eventually disagree and a click then runs the row above the one under the pointer.
-An item with no label is a rule: it is drawn and can never hold the selection.
-
-An accelerator is marked, not guessed. `&` before a letter in a label or pane title marks it;
-`&&` is a literal ampersand. `ktui_menu_label` underlines the letter, except on a Linux console,
-where it brackets it as `[F]ile`: the console has no underline, and drawing one there puts a colour
-on screen that no slot owns.
+| `kdos-theme` (`src/art`) | Nothing at run time: the build-time generator of every colour file below |
+| `kdos-plasma-look` (`src/desktop`) | The eight colour schemes and global themes, the `kdos` Plasma style, the three desk layouts, the Konsole schemes and profiles, the Qt 5 palettes, the login screen's files per accent, and the distribution's `kdeglobals` |
+| `kdos-icons` (`src/art`) | The icon themes `KDOS` and `KDOS-Light`, the KDOS marks, and the default cursor theme for programs that name none |
+| `kdos-wallpapers` (`src/art`) | The wallpaper `KDOS-<Title>` in each accent |
+| `kdos-sounds` (`src/art`) | The sound theme `kdos` |
+| `kdos-sddm-theme` (`src/art`) | The login screen, `/usr/share/sddm/themes/kdos` |
+| `kdos-splash` (`src/art`) | The boot splash |
+| `kdos-kwin-motion` (`src/desktop`) and the `kdos_crt` effect built into `kwin` | Phosphor mode |
+| `breeze`, `breeze-gtk`, `kde-gtk-config`, `ocean-sound-theme`, `ttf-jetbrains-mono` (`ports/core`) | The upstream pieces the look is built over: the decoration, the cursors, the GTK theme and its bridge, the sounds KDOS inherits, the fixed-width face |
 
 ## Colour
 
-Colour comes from a *slot*, never from a literal value. There are eight slots and no more, because
-the console font has 512 glyphs: the Linux console uses the foreground intensity bit as the ninth
-glyph bit, so colours 8 to 15 cannot be used as a foreground. Designing for eight means a text
-console and a true-colour window show the same picture. The same reason is why bold is suppressed
-on a Linux console.
-
-| Slot | Role | Scheme field |
-|---|---|---|
-| `KT_ACCENT` | The accent | `primary` |
-| `KT_ERR` | Urgent | `urgent` |
-| `KT_WARN` | Secondary: a caution, not a failure | `secondary` |
-| `KT_TEXT` | Body text | `text` |
-| `KT_MID` | Labels, secondary text, rules | `pdark` |
-| `KT_DIM` | A fill; see below | `dim` |
-| `KT_SURFACE` | Raised chrome background | `variant` |
-| `KT_BG` | The background | `backdrop` |
-
-A scheme has a ninth field, `deep`, the ground at the far end from `text`: the darkest colour of a
-dark scheme and the lightest of `paper`. No slot takes it. It is what a scheme's legibility is
-measured against, and it feeds derived colours such as `kcol_muted()` below. Outside the slots, the
-compositor paints it under [the wallpaper](../04-programs/kdos-comp.md#the-wallpaper), so it is all
-an output shows with `wallpaper = none`, and the text console's sixteen-colour palette uses it as
-colour 0.
-
-The values behind the slots are one table in `libkcolor` (`KCOL_SCHEMES` in
-`src/libs/libkcolor/kcolor.h`), expanded at compile time by everything that draws. Nobody keeps a
-second copy of the numbers, which is why `kdos theme <accent>` repaints the whole desktop. The table
-holds eight accents: `phosphor`, `amber`, `ice`, `bone`, `norton`, `borland`, `perfect` and `paper`.
-`paper` is the one light scheme. The default, `bone`, is named (`KCOL_DEFAULT_ID`) rather than taken
-from a position, so the table can be reordered without changing what an unconfigured machine starts
-in. How to choose one is in [Theming](../02-user-guide/theming.md#the-eight-accents).
-
-Every contrast ratio in this section is the WCAG 2 contrast ratio, computed from the eight schemes
-in that table; a range gives the worst and best accent.
-
-### The two exceptions
-
-**A colour that is not the palette's to name.** A program running in a terminal may ask for a 24-bit
-colour, or for one of the 256-colour palette's cube and grey entries. No palette names those, they
-do not follow an accent, and reducing them to eight slots would ruin a photograph. Such a cell
-carries the literal colour beside the slot it reduces to (`fgc`, `bgc` and `ulc` in `KtuiCell`, with
-one attribute bit per colour saying which literal is meaningful). Terminal content reaches a frame
-through `ktui_draw_put`. The only other literals are the shadow and the blend described below, which
-are mixed from the current palette each time they are drawn. A display that draws in slots alone,
-such as a dump or a sixteen-colour terminal, reads the slot and ignores the literal. Chrome never
-names a colour of its own, because a piece of chrome holding a fixed literal would stop following
-`kdos theme`. The sixteen ANSI colours stay slots for the same reason: they are colours this palette
-names.
-
-**Translucency**, which is a mix of two colours rather than a colour of its own. A surface that
-wants its body seen through sets `KDispConfig.opacity`, a percentage where `0` means unset and is
-treated as 100. Below 100 the display dims the one slot the body is drawn in (`KT_BG` for a
-top-level window, `KT_SURFACE` for everything else) and uses an alpha-capable buffer, so the
-wallpaper and the windows show through while the text and the fills stay opaque. It is the
-background slot only, because a translucent character is one nobody can read. The panel and
-`kdos-term` use it.
-
-For a rectangle of cells rather than a whole surface, the toolkit also has a pair of calls:
-`ktui_draw_bg_take()` copies the background colours of the rectangle, and `ktui_draw_blend()` mixes
-what has since been drawn there back towards them. The result is written as each cell's literal and
-the slot is left as drawn, so a display that does not show literals (a `--tty` run, a test dump,
-`tty1`) shows an opaque rectangle, which is the correct answer where there is nothing to mix with.
-Both ends of the mix come from the current palette and are recomputed every frame, so an accent
-change moves them like everything else. A picture cell is skipped, because a picture's pixels are
-not a background. No surface in the tree calls the pair; only the self-test exercises it.
-
-### `KT_DIM` is a fill, not a label colour
-
-Used as a foreground, `KT_DIM` measures only 1.42:1 to 2.12:1 against the surface and background
-slots across the eight accents. `KT_MID` measures 3.40:1 to 6.30:1. Nothing is comfortably readable
-below about 3:1.
-
-So a label is `KT_MID`. Hint rows, empty-state messages, help text and the brackets round a button
-all belong there. `testing/preflight.sh` checks it: it refuses any text draw whose foreground can
-be `KT_DIM`, a ternary arm included.
-
-A two-state colour is a different matter. Where `KT_DIM` is one half of a pair, such as a
-scrollbar's track against its thumb or an unpinned mark against a pinned one, it carries the
-difference, and changing it to `KT_MID` would erase the state rather than make it readable. Those
-pairs stay `KT_DIM`, and the draw carries `/* not text */` so the check passes it.
-
-For text that must be muted and still readable there is a derived colour, `kcol_muted()`: the
-scheme's `deep` field mixed 56% of the way towards its `text` colour, then moved further towards
-`text` one percent at a time until it reads at 4.5:1 against `deep`. Every dark scheme clears that
-floor at 56% and keeps it; `paper`, on its light ground, lands at 60% (4.54:1). It measures 3.94:1
-to 6.26:1 against the background and surface slots, above 3:1 in every accent, and the self-test
-asserts the 4.5:1 floor for every scheme and that it sits more than twice as far from `deep` in luma
-(perceived brightness) as `KT_DIM` does. Every
-muted text role in the theme generators uses it. `KT_DIM` keeps fills, borders and selection
-backgrounds, where contrast is not the question.
-
-### Emphasis is a fill with swapped slots
-
-Never use the reverse attribute over a label. Reverse inverts only the cells a character covers, so
-a two-word name comes out as one lit block per word with a hole between them, and looks correct for
-every name that happens to contain no space.
-
-Instead, fill the rectangle, swap the foreground and background slots, then draw the text.
-`kch_header` is drawn this way: an accent fill with the title in `KT_SURFACE` on it, and its
-picture inked in the same slot (see [A picture on a lit plate is inked](#a-picture-on-a-lit-plate-is-inked)).
-
-### A selected row is `KT_DIM` under `KT_TEXT`, and the accent is one cell
-
-```
-    Files                FM  ■        a row
-  ► System Monitor       MO  ■        the selection, in a pane without the keyboard
-  ►▓Git▓▓▓▓▓▓▓▓▓▓▓▓GI▓▓■▓            the selection, in the focused pane (▓ is the fill)
-```
-
-`ktui_sel_slots()` decides this, and no surface works it out for itself; `ktui_sel_row()` fills the
-row and draws the marker. There are three states, because they say three different things:
-
-| State | Drawn as |
-|---|---|
-| A row | `KT_TEXT` on the page, no fill |
-| The selection, pane not focused | `►` in `KT_MID`, label in `KT_TEXT`, still no fill |
-| The selection, pane focused | the row filled `KT_DIM`, `►` in `KT_ACCENT` (`KT_TEXT` in `paper`), label in `KT_TEXT` |
-
-`KT_TEXT` on `KT_DIM` measures 8.30:1 in the worst accent and 10.22:1 in the best, so the label
-clears 7:1 everywhere. `KT_ACCENT` on `KT_DIM` clears 4.5:1 in every accent but `paper`, where it
-measures 3.68:1, so `ktui_sel_row()` measures the live palette on each draw and puts the `►` in
-`KT_TEXT` wherever the accent falls below 4.5:1 on the fill; night light's warmed copy is judged
-the same way. The fill is quiet because it is a fill, and the accent is spent on the one cell that says where the
-selection is. The page slot is a parameter, `KT_BG` or `KT_SURFACE`, because a control that guessed
-would paint an opaque band across a translucent window.
-
-Do not fill a row with `KT_ACCENT`. Writing `bg = on ? KT_ACCENT : KT_SURFACE` puts the background
-colour on the label and drags a lit plate across the screen under the pointer, and it breaks the
-rule above: `KT_DIM` owns selection backgrounds.
-
-A pane without the keyboard keeps its marker and loses its fill. A surface with two panes has two
-selections; filling both says both are live, and dropping the inactive one loses the place that
-pane will return to.
-
-`KT_ACCENT` as a fill has three uses, and none of them is a list row:
-
-- the header band drawn by `kch_header`;
-- a **state indicator**: the current workspace in the pager (the panel's one cell per workspace),
-  the focused window's task button on a panel with no pixel layer, the installer's current step;
-- a **button**, where the plate is the control: a focused primary button.
-
-Each is one thing on screen rather than one per row, and each means *this*, not *here*.
-`grep 'KT_ACCENT :'` over the tree lists every conditional use of the accent; most are foregrounds
-or state indicators, and one used as a list row's background is a surface making its own rule. The
-process, application, box and device tables in `kdos-res` break this rule: they fill the selected
-row with `KT_ACCENT` and the hovered row with `KT_MID`.
-
-The secondary colours cannot be read on the selection fill: `KT_MID` on `KT_DIM` measures 2.19:1
-to 4.21:1, and `kcol_muted()` 2.77:1 to 3.38:1. A row with a secondary column (a tag, a two-letter
-code, a unit) therefore raises that column to `KT_TEXT` when the row is selected in a focused pane,
-and `ktui_sel_dim()` answers that in one place. Left muted, the right-hand half of the row would
-disappear exactly when someone is looking at it.
-
-### A shadow darkens, and the clamp is what guarantees it
-
-The drop shadow uses the same literal-colour mix as `ktui_draw_blend()`, and the modal, the menu,
-the open dropdown list and the installer's dialogs draw one. `ktui_draw_shadow()` darkens rather
-than erases: every cell in the one-cell strip to the right of and below the rectangle keeps its
-character, and both its colours are mixed towards `KT_BG`, keeping 110/255 of the original, so the
-window underneath stays readable. A picture under the strip is left alone. The background slot is
-set to `KT_BG` beside the literal, which is the whole shadow where literals are not shown. A shadow
-that wrote blank cells would cut a rectangular bite out of whatever it falls on, which looks like a
-rendering fault rather than depth.
-
-After the mix, `ktui_draw_shadow()` clamps each colour channel so it is never lighter than it
-started. `KT_BG` is not the darker of the two background slots in every
-accent: in `bone` the background is lighter than the surface in red and green, and in `ice` in green
-and blue. Without the clamp those accents would glow along two edges of every window. The clamp
-costs nothing where the background is already darker, and it is what keeps a new accent from
-getting a luminous shadow.
-
-### A mark on a fill is a shape, not a contrast
-
-A character on a filled plate is read by the plate around it. The dark slots of this palette look
-like one colour (`KT_BG` measures 1.00:1 to 1.20:1 against `KT_SURFACE`), so dark ink on a bright
-fill cannot be told apart by colour from the chrome behind the fill, whichever of the two it is
-drawn in. What separates them is the fill surrounding the mark.
-
-So a mark drawn in `KT_SURFACE` on a plate that sits on a `KT_SURFACE` body must be a character
-that stays clear of every edge of its cell; that clearance is the whole boundary between the mark
-and the body. A mark that runs close to the bottom of the cell reads as the plate ending early
-rather than as a mark on it.
-
-It is a threshold, measured on the console font `ter-kdos32n` (16 by 32 pixels, so 512 pixels a
-cell):
-
-| Character | Lit pixels (of 512) | Rows used | Clear rows below |
-|---|---|---|---|
-| `_` | 24 | 27–28 | 3 |
-| `■` | 108 | 10–21 | 10 |
-| `X` | 80 | 6–25 | 6 |
-| `↓` | 68 | 6–25 | 6 |
-
-Six clear rows of thirty-two hold; three do not. `■`, `X` and `↓` can carry a mark on a plate, and
-`_` cannot. The compositor's own title-bar buttons are not bound by this, because their ground is a
-different colour from their mark; see
-[The compositor's decoration is part of the set](#the-compositors-decoration-is-part-of-the-set).
-
-The same measurements explain why ink on a bright fill is dark. `KT_TEXT` drops as low as 1.10:1 on
-`KT_ACCENT` and 2.17:1 on `KT_ERR`, so a light character on a lit or urgent plate is effectively
-invisible. `KT_SURFACE` clears 3.40:1 on `KT_MID`, 5.23:1 on `KT_ERR` and 5.51:1 on `KT_ACCENT` in
-the worst accent of each.
-
-## The pointer contract
-
-Every surface answers the pointer, and answers it the same way. A surface with rows and no motion
-handling is a picture: the only way to discover that a row is a control is to click it.
-
-| Gesture | Means |
-|---|---|
-| Motion | Lights what is under it; on a list that follows hover, selects the row |
-| Left press | Activates. On a row that is already selected, opens it |
-| Wheel | Steps the selection while the list fits; moves the view when it does not (see [the two wheel rules](#drops-and-the-wheel)), gliding where the display has a frame clock ([Motion](#motion)). One detent is one step, whether it arrives whole or, from a high-resolution wheel, in fractions |
-| Two fingers on a touchpad | The wheel, one step per ten units of travel; a flick coasts on after the finger lifts, slowing to a stop, and the next scroll, click or key stops it |
-| Right press | Backs out one level, then closes |
-| Scrollbar | Is dragged, and its end caps step one row |
-| Column header | Sets the sort; a second press reverses it |
-| Click away | Closes a transient surface |
-
-### Everything the keyboard can do, the pointer can do
-
-A verb reachable only by a key chord does not exist for someone using a mouse, and the shipped key
-card is not the first thing anybody reads. The rule works both ways: every control answers the
-arrow keys and `Enter` as well as a click. That is why the window menu carries every per-window
-verb, and why a number in a settings form is a slider rather than a printed value.
-
-The usual way to break the rule is a line such as `if (ev.type != KT_EVT_KEY) continue;`, which
-throws away every pointer event, so the surface cannot be operated with a mouse at all however much
-of it looks clickable. A surface that draws its own rows uses `ktui_rows_event` rather than
-inventing its own answer:
-
-- a press moves the selection;
-- a press on the row already selected picks it;
-- each wheel detent steps the selection one row, whether or not the list fits;
-- the right button is Back.
-
-`ktui_rows_event` ignores motion, so hovering over a row does not select it. A list that scrolls
-needs the fit-aware wheel described under [Drops and the wheel](#drops-and-the-wheel) instead.
-
-### The display draws the pointer, never the surface
-
-A surface owns its cells and the display owns the screen. A pointer drawn by the surface would cost a
-round trip for every motion event and lag behind the hand. The display already holds the device and
-already knows where it is.
-
-In the cells, the pointer is the reversed cell under it: the pointer every text mode has drawn, and
-as fine as a grid of characters goes. Over a Wayland window there is also a real arrow, and the
-surface does not draw it: `libkwl` answers the pointer-enter event with
-`wp_cursor_shape_device_v1.set_shape`, and the compositor draws a cursor at the device's own pixel
-position, so it moves as smoothly as the hand holding it. The enter event carries the only serial a
-set-cursor request may use, so a client that does not answer it has no cursor image, and the pointer
-disappears over every surface the library draws.
-
-### What a press would do
-
-The toolkit defines seven pointer shapes, each saying what a press at that spot would do:
-`KT_PTR_ARROW` (the default, and every unhandled case), `KT_PTR_IBEAM`, `KT_PTR_SIZE_NS`,
-`KT_PTR_SIZE_WE`, `KT_PTR_SIZE_NWSE`, `KT_PTR_SIZE_NESW` and `KT_PTR_MOVE`.
-
-The list is what this desktop can mean, not what any protocol carries. It is neither the cursor
-shape protocol's list nor X11's, for the same reason the raw event codes are not libinput's: a
-number that happens to equal an upstream one is a coupling neither side can see. Whatever forwards a
-shape maps it in a switch.
-
-A backend holds no window state, so it cannot choose a shape; it cannot tell a border from a
-box-drawing character. Whatever owns the pointer names the shape with `ktui_draw_cursor_shape()`,
-only when it changes, because a pointer crossing a window spends hundreds of frames over the same
-thing, and `KtuiBackend.pointer` carries it to the backend.
-
-**The shape is a hint and never a promise.** No surface sets a shape, and no backend fills
-`KtuiBackend.pointer`: a terminal, a dump, `tty1` and a Wayland window all reverse the cell whatever
-the shape says, and on Wayland the compositor shows the arrow that `libkwl` requests. So a control
-must say what it does in its own cells; the shape is a second telling for those who can see it. A
-backend that meets a shape it does not recognise draws the arrow rather than failing, so a newer
-session with more shapes still has a pointer on an older display.
-
-Nothing shows a busy pointer. `libkdisp`'s cursor list (`enum kdisp_cursor`) includes default,
-text, hand and progress shapes, and no surface sets any of them: nothing here tracks a window as not
-answering in a way a pointer could report.
-
-### The flush decides which is drawn
-
-`ktui_draw_cursor(x, y)` names the cell the pointer is on; `ktui_draw_flush()` decides how it is
-drawn. The contract:
-
-- **A backend with pixels may claim the pointer through `KtuiBackend.pointer`.** Returning `1` is a
-  promise that the cells reach the screen exactly as the surface composed them, with the backend
-  drawing its own arrow; returning `0` declines for that frame. A backend that leaves the entry
-  `NULL`, as every backend in the tree does, gets the reversed cell. The arrow cannot be drawn in
-  `libktui` itself, because that library has no pixel or font dependency and an arrow needs a
-  pixel buffer.
-- **The hook is called on every flush, including those with no pointer to report.** A negative `x`
-  means no pointer, and it is the only thing that tells a backend to remove the last arrow; a
-  backend told nothing would leave one where the hand last was.
-- **The hook carries a shape beside the cell, and a backend may ignore it.** A shape needs its own
-  hotspot: an arrow points with its tip, a resize arrow and an I-beam with their middle. Drawing
-  every shape from a fixed corner would put a resize arrow half a cell off the border it belongs
-  to, enough to make a border seem to move when you reach for it.
-- **The hook carries cells, and a backend that owns the device may draw finer.** What the hook
-  says is that there is a pointer and which cell the surface believes it is on, which decides whose
-  it is to draw.
-- **A cell marked `KT_A_GUEST` gets no pointer.** The bit marks a cell drawn from an embedded
-  client's own pixels, where the client's compositor has already drawn a cursor, and a second one a
-  cell away is the one nobody is aiming with. The rule is applied before the hook, so every backend
-  is told the same thing. The flush honours the bit, but nothing in this tree sets it.
-
-Where the reversed cell is what gets drawn:
-
-- **The reverse goes on for the flush and comes straight back off.** The back buffer accumulates
-  the surface's cells between frames, so a reverse left in it would stain every cell the pointer
-  ever crossed.
-- **Taking it off is what erases it.** The front buffer keeps the reversed cell and the back buffer
-  does not, so the cell differs and repaints as itself the moment the pointer leaves. One XOR does
-  both jobs.
-- **A cell with no character still shows the reverse.** A space carries colour and nothing to draw,
-  and the fill pass has already painted it in its background slot, so a painter that skipped it
-  would lose the swap and the pointer would show only over text. `kcell_paint` fills those cells
-  with the foreground colour instead.
-- **A picture cell keeps the pointer.** A desktop icon, a panel icon and a picture in a terminal
-  are things people aim at, so the reverse goes over them too: the flush swaps the cell's character
-  for a blank alongside the XOR and puts it back afterwards. Inverting the picture's own pixels
-  would be wrong, because `KT_A_REVERSE` is also how selected text is drawn, and a panel icon on a
-  hovered row would come out in negative.
-- **Motion is a change even when no cell's content changed**, so the frame is marked dirty for it;
-  otherwise the pointer would move only when something else on screen did. On a backend that draws
-  its own arrow that is two jobs: the cells under the old position go back into the row comparison
-  (the only thing that erases an arrow the cell model does not know about), and the move pushes the
-  frame past the nothing-changed shortcut so it is presented at all. Skipping either leaves a trail
-  of arrows down the screen.
-
-Nothing is drawn before the first motion, since the pointer starts on no cell, so a machine with no
-pointing device does not show a pointer in its corner all session.
-
-Nothing this desktop routes on is finer than a cell: a pointer, a wheel step and a coast all land on
-whole rows and columns. Two things are finer, and neither reaches a surface's cells. A gliding list
-is presented a fraction of a row off for the frames of its slide, in `libkwl`'s pixels only. And
-the raw input stream, `KtuiBackend.poll_raw`, reports every key as a switch, every motion in the
-backend's own pixels and every scroll with its real distance, its `value120` and whether the device
-reversed it, beside the cell-level queue, for a consumer that is not cells; `libkwl` fills it, and
-nothing in the tree reads it.
-
-## Touch
-
-A touchscreen follows the same contract, because one recogniser turns fingers into the pointer
-events above. `ktui_gesture_feed` in `libktui` is fed by `wl_touch` in `libkwl`; a recogniser
-in each backend would duplicate the code and let the two backends interpret the same fingers
-differently.
-
-| Gesture | Reported as | Also arrives as |
-|---|---|---|
-| Tap | `KT_GEST_TAP` | a left press and release |
-| Long press | `KT_GEST_LONG` | nothing; a surface wanting a context menu reads the gesture |
-| Drag | `KT_GEST_DRAG` | motion with the button held |
-| Two-finger scroll | `KT_GEST_SCROLL` | one wheel step per row the fingers' centre crosses |
-| Pinch | `KT_GEST_PINCH` | nothing |
-| Edge swipe | `KT_GEST_SWIPE_EDGE` | motion with the button held, and it says which edge it came from |
-
-A tap is a touch shorter than 250 ms (`KT_TAP_MS`) that never left its cell; a long press is one
-held past 500 ms (`KT_LONG_MS`) without leaving it. An edge swipe is a drag that began in the
-outermost row or column. So a surface written without touch in mind already works under a finger,
-and one that wants more reads `ev.gesture` on a `KT_EVT_TOUCH` event.
-
-The recogniser follows four rules:
-
-- **Movement is measured in cells.** A drag begins when the finger leaves the cell it went down in.
-  That is coarse on purpose: everything here is a grid, and a threshold in pixels is a number a
-  surface drawn in cells cannot see. Pointer drags of the desktop icons use the same one-cell rule,
-  from `libkwm`'s `kwm_drag_threshold()`.
-- **One finger of two says nothing yet.** Moving away from a still finger is both a pinch and a
-  scroll; the answer comes when the second finger agrees or disagrees in direction. Guessing makes
-  the gesture flip between the two midway, which is unusable.
-- **Only the first finger synthesises a pointer press, and the second finger closes it.** A press
-  under every finger would click whatever each finger landed on, so two fingers down to scroll would
-  select two rows and a pinch over a button would press it. Presses and releases stay paired: the
-  release goes out on the finger that opened the press, and a finger that never opened one closes
-  nothing when it lifts.
-- **The synthesised wheel is counted at the fingers' centre, one step per row.** Touch arrives one
-  finger at a time, so a step per finger movement would count the same row twice and scroll twice
-  as far as the hand moved. The gesture's own `dy` keeps the per-finger movement, for a surface that
-  forwards the gesture.
-
-A long press has no event to arrive on, because the finger is down and nothing moves, so it is
-checked with `ktui_gesture_tick` from the backend's idle wait and reported once, using the same
-`CLOCK_MONOTONIC` milliseconds the recogniser was fed. A deadline compared against a different clock
-never expires, and nothing reports that.
-
-A long press is `Shift+F10` with a finger, and the contract answers it: `ktui_keys()` opens the
-surface's context menu on `KT_GEST_LONG`, so a surface that declared one supports touch without a
-touch path of its own. It opens at the finger, not where `ctx_at` says the keyboard focus is,
-because someone holding a row expects the menu on that row; `ctx_at` is still asked, so a surface
-that refuses a key refuses a finger too. A tap opens nothing: a tap is a click, every control
-already handles one, and a menu on every tap would put a pane under every finger.
-
-## Drops and the wheel
-
-A drag-and-drop *drop* is a position and a payload, and an event has room for only one of them.
-`KT_EVT_DROP` carries the position; `ktui_drop_take` returns the payload once, so two surfaces in
-one process cannot both act on one drop. A `text/uri-list` payload arrives exactly as sent, URIs
-separated by CRLF with comment lines included, because what a URI means differs from surface to
-surface.
-
-Drop and wheel handling depends on four facts about the event stream:
-
-- **Motion arrives as a drag event.** Wayland reports plain movement and dragged movement the same
-  way, so treating an event's "pressed" flag as a button state would make every mouse movement a
-  click. The button state is what must be remembered across events, which is why a slider arms on
-  press, follows motion, and commits on release.
-- **A motion that did not move is not a motion.** An absolute pointing device sends the position
-  again with each wheel event, so a naive handler would step the selection and immediately put it
-  back under a pointer that has not moved. `libkwl` drops motion when the cell is unchanged.
-- **A wheel step is a press with no release.** A wheel detent arrives as a press whose button is
-  `KT_MB_WHEEL_UP` or `KT_MB_WHEEL_DOWN`, and no release follows it. Dispatch on the button, not on
-  the press alone, or a scroll will raise, focus, move or close whatever is under the pointer. A
-  scroll reaches the thing under the pointer and does nothing else to it: it does not raise it, take
-  the keyboard or start a move or resize.
-- **One press, not a double click.** Nothing in this toolkit measures a double click. Opening a
-  detail view is not destructive, and the destructive verbs sit behind a confirmation.
-
-The fit-aware wheel is `kch_list_wheel()` in `libkchrome`: a list that fits gets a selection step,
-and a list that scrolls gets its view moved by three rows (`SH_WHEEL_ROWS`) with the selection left
-where it was. `kch_list_clamp()` keeps the view inside the list afterwards. `ktui_rows_event` does
-not follow that rule: it steps the selection on every detent, fits or not, and leaves the view to
-follow the selection. Twelve call sites in eleven source files use the fit-aware rule. The four
-`kdos-shell` surfaces that draw their rows through `ktui_rows_event` (the recorder, command
-palette, theme and find surfaces) step the selection on every detent instead, and so does every
-table driven by `ktui_table_event` (the trash, backup, disc-burning and verify tables).
-
-The flag that says "pull the selection into view" (`follow`) is set by everything that moves the
-selection and by nothing that scrolls the page, or the next frame would undo the scroll. A surface
-that assigns a new view from a scrollbar drag clears its own flag for the same reason.
-
-After the clamp, a list that scrolls declares its rows and its first item with `kch_list_view()`,
-which is what lets the backend present a change of view as a glide ([Motion](#motion)). It declares
-the rows alone: a header scrolls with nothing, and a scrollbar's thumb is drawn at the new view at
-once.
-
-A list that scrolls shows a scrollbar. It is one column wide: a `▲` cap, a `▒` track in `KT_DIM`
-with a `█` thumb in `KT_MID`, and a `▼` cap, all characters every glyph tier has, so it looks the
-same on a console. A cap at the end of its travel is drawn in `KT_DIM`. Nothing is drawn when
-everything fits, because a full-height thumb says nothing a missing bar does not. Where rows would
-reach that column, the rows give up a cell rather than the bar drawing over them: a selected row is
-a filled band, and a bar on top of it would put a notch in it. `kch_scrollbar` is called every
-frame, including frames where the list fits, so a bar that has stopped being drawn stops being
-grabbable.
-
-## Hit maps
-
-A *hit map* records where each clickable thing was drawn, so a click can be matched to it. It is
-recorded from what was drawn and never worked out a second time from the geometry the drawing
-computed.
-
-Both copies agree until the window is resized, a sidebar collapses or a border is added, and then a
-click lands on the row above the one under the pointer. In a network dialog, that means joining the
-wrong network.
-
-Two rules keep the hit map and the drawing in step:
-
-- **The frame subtracts its body origin once** and hands a page its own coordinates. A page that
-  subtracts an origin itself is the second copy.
-- **A control with no room records an empty span.** A hit map that outlives what it describes sends
-  a click on a narrow screen to a control the current frame did not draw: someone aims at the clock
-  and operates whatever sat there in an earlier frame.
-
-## The glyph tiers
-
-What a surface can draw depends on the terminal or display. `libktui` picks from its capabilities
-(`ktui_caps`):
-
-| Tier | When | Box drawing and symbols | Ramp (bars, charts) | Ramp levels |
+There are eight accents, and every colour KDOS shows comes from one of them. Each row of the table
+holds nine named colours: `primary` (the accent), `dim`, `secondary`, `urgent`, `deep` (the ground
+at the far end from the text: the darkest colour of a dark scheme, the lightest of a light one),
+`text`, `variant`, `pdark` and `backdrop`.
+
+| Accent | Title | Light or dark | Colour scheme | Global theme |
 |---|---|---|---|---|
-| rich | UTF-8, not a Linux console | `glyph_utf8` | eighth blocks `▏…█`, `▁…█` | 8 |
-| vt | UTF-8 on a Linux console (`KT_CAP_LINUXVT`) | `glyph_utf8` | `░ ▒ █` | 3 |
-| ascii | no UTF-8 | `glyph_ascii` | `. : #` | 3 |
+| `phosphor` | Phosphor | dark | `KDOSPhosphor` | `org.kdos.phosphor.desktop` |
+| `amber` | Amber | dark | `KDOSAmber` | `org.kdos.amber.desktop` |
+| `ice` | Ice | dark | `KDOSIce` | `org.kdos.ice.desktop` |
+| `bone` | Bone | dark | `KDOSBone` | `org.kdos.bone.desktop` |
+| `norton` | Norton | dark | `KDOSNorton` | `org.kdos.norton.desktop` |
+| `borland` | Borland | dark | `KDOSBorland` | `org.kdos.borland.desktop` |
+| `perfect` | Perfect | dark | `KDOSPerfect` | `org.kdos.perfect.desktop` |
+| `paper` | Paper | light | `KDOSPaper` | `org.kdos.paper.desktop` |
 
-The box-drawing and symbol table (`glyph_utf8` in `src/libs/libktui/ktui_draw.c`) is the same for
-the rich and vt tiers, so it must stay inside what the console font can draw. Only the ramps differ
-(`ktui_chart.c`). With no UTF-8, every character above ASCII is drawn as `?`.
+`bone` is the default, named in the table by `KCOL_DEFAULT_ID` rather than taken from a position,
+so reordering the table never changes what an unconfigured machine starts in. An accent is light
+when its ground is (`deep` at half luma or above), the same rule Plasma's Global Theme page uses;
+`paper` is the one light accent. Plasma's light and dark switch flips between the account's dark
+accent and `paper`: the distribution's `kdeglobals` names `org.kdos.bone.desktop` as the dark look
+and feel and `org.kdos.paper.desktop` as the light one, with automatic switching off, and `kdos
+theme` moves the dark half to whichever dark accent is chosen. The Konsole scheme and profile,
+the Qt 5 palette and the wallpaper of an accent are all named `KDOS-<Title>`.
 
-The vt tier exists because the console font, `ter-kdos32n`, has 512 glyphs. A character the font
-lacks is drawn as a blank on `tty1`, so an eighth-block bar there is not merely coarse, it is
-invisible. Three levels is the true resolution of that font.
+### The role mapping
 
-What the console font has: `░ ▒ █`, the single box-drawing set, the double rules `═ ║`, the double
-corners `╔ ╗ ╚ ╝` and `╬`, and `· • ■ … ° ↑ ↓ ◀ ▶`.
+A KColorScheme file is eight colour sets (View, Window, Button, Selection, Tooltip,
+Complementary, Header and the inactive Header), each two backgrounds and ten roles drawn on them.
+`kdos-theme kde-colors` writes one file per accent, and every role is **solved** against both
+backgrounds of its set rather than picked. The palette's dark end is compressed (`deep`,
+`backdrop` and `variant` are within 1.19:1 of each other), so a mapping judged by eye passes on one
+background and fails on the other, and the two backgrounds of a set are exactly where KDE draws
+alternating rows.
 
-What it does not have: eighth blocks, half blocks (`▀ ▄`), `▓`, braille, and the double tees
-`╠ ╣ ╦ ╩` and the mixed joins `╡ ╞`. The double set is only partly there: the rules and the
-corners are, the tees are not.
-
-The `terminus-font` recipe (`ports/core/fonts/terminus-font/build.sh`) builds the font from Terminus's
-`xos4-2` character set and swaps six spacing diacritics for the double box-drawing characters
-`═ ║ ╔ ╗ ╚ ╝`, which the KDOS block logo needs. The font answers to 627 codepoints in all, because
-its duplicate tables map extra codepoints onto existing shapes. `▲ ▼` are drawn as `↑ ↓`, and
-`◄ ►` and `← →` as `◀ ▶`, so the control glyphs `◄ ►` and the direction glyphs `◀ ▶` in the table
-draw the same two shapes on `tty1`. A glyph the font answers to is not necessarily a distinct
-shape, so two table entries that must look different on `tty1` need two different glyphs, not two
-codepoints mapped to one.
-
-Anything that can reach `tty1` stays inside the vt tier, and `glyph_utf8` is entirely inside it.
-The toolkit uses that table whenever the backend reports UTF-8, which the Linux console does, so an
-entry the font lacks would be a blank on `tty1`, with nothing reporting it. A slider built on `▓`
-would draw its filled part as nothing at all.
-
-`testing/preflight.sh` reads the built `ter-kdos32n` (from `build/fs`) and refuses any `glyph_utf8`
-entry the font cannot draw, because a written list of what the font carries is the thing that goes
-stale. Two consequences are visible in the controls: the slider separates its track from its run by
-colour slot rather than by a third shade, and a button's shadow is `░` rather than a half block.
-
-A frame's title is bracketed `[ like this ]`, and the brackets are ASCII for a second reason beyond
-the font. The test dumps are drawn at the ascii tier (`+=[ backup ]=====+` is what the top of a
-committed frame looks like), and every join in that table collapses to `+`, so a title bracketed
-with `╡ ╞` or `┤ ├` would read there as two corners in the middle of the top rule. `[` and `]` are
-the same at all three tiers, exist in every font, and are the bracket the DOS file managers put a
-title in.
-
-A wide character is measured, not assumed. The toolkit computes display width with its own table
-(`ktui_wcwidth`, not the C library's) and reserves a continuation cell, so double-width text does
-not break the row layout. The console font has no wide characters, so on `tty1` a wide character is
-written as a single `?` in one cell. Chrome that must read on both stays inside the small set.
-
-### The same cell at every scale
-
-On a Wayland output the tier is rich at every scale, and a scale changes the pixels of a cell, never
-the cell. A whole-number scale draws each glyph of the 16×32 cell that many times over with
-nearest-neighbour filtering, so the letters are the `tty1` letters with every pixel doubled. A
-fractional scale draws the same face at the device size instead of a doubled grid the compositor
-shrinks: at 1.25, 1.5 and 1.75 the chrome is `Terminus (TTF)` in a cell of exactly 20×40, 24×48 and
-28×56. A surface keeps the same number of cells in the same logical room either way. The box-drawing
-and block characters are synthesised from their codepoints at whatever size the cell is, so frames
-join at every scale. See
-[The fractional scale](../05-developer/c-libraries.md#the-fractional-scale).
-
-## Pictures are an enhancement layer
-
-A *sprite* is a picture registered in a numbered slot of the toolkit's *sprite table* (up to 4096
-slots) and drawn into whole cells. The *icon atlas* is the theme's icon set, one file
-(`/usr/share/kdos/icons/atlas.kia`, read by `libkicon`).
-
-Icons and pixel tiles are drawn into whole cells, with the picture's slot and position within it
-encoded in the cell's character. The ordinary row comparison therefore already tracks what changed,
-and a text backend draws the sprite's fallback character instead.
-
-Every surface must draw correctly when the picture is unavailable. The icon lookup answers "none" on
-a terminal, when icons are turned off (`icons = no` in `~/.config/kdos/comp.conf`), when there is no
-icon atlas, and when the sprite table is full; each of those is a normal state, not an error. The
-test harness (`testing/fixtures/shell/dumpmain.c`) stubs the lookup to exactly that, so a committed
-reference frame is the character grid, and a layout that only lines up once the pictures load is a
-broken layout.
-
-A *pixel tile* (`kch_tile_*`) is a block of cells a surface paints as pixels through a canvas, such
-as the panel's Start button and its meters. It can be any size up to the grid: past the 16×16 cells
-one slot covers, it is a grid of slots over views of the one canvas, like a picture in a terminal
-below, and `kch_tile_draw()` writes all of its cells. Two rules apply:
-
-- **A tile owns two sets of slots and alternates between them.** A cell encodes the slot, not the picture,
-  so redrawing a tile's contents in place changes no cell, the comparison sees nothing, and the frame
-  is never presented; a clock tile would freeze at the minute it was first drawn. Swapping slots on
-  every content change repaints exactly the cells it covers.
-- **Decide the geometry before claiming the tile.** Giving up after claiming it leaves the tile
-  believing it drew that content, and the next frame presents a stale slot.
-
-`kdos theme` drops every tile (`kch_tile_reset`), because each was rasterised in the palette being
-replaced.
-
-### A picture on a lit plate is inked
-
-Atlas pictures are tinted into the accent through `kcol_remap`, which keeps each colour's lightness.
-More than half the atlas is symbolic artwork drawn in one light grey, and a
-tint of it stays light: on the `KT_ACCENT` plate of a header it measures 1.15:1 and cannot be seen.
-
-So a picture drawn on a lit plate is asked for with an ink, `kicon_slot_ink(name, cw, ch, rgb)`,
-where `rgb` is the colour of the slot the plate's own text takes. An atlas picture whose covered
-pixels are all one colour is then a mask: its shape is its alpha, and it is drawn in the ink at
-that alpha. A picture with two colours or more is drawn exactly as `kicon_slot()` draws it, because
-its colours are the picture, and an application's own icon is never inked, for the reason it is
-never tinted.
-
-The header band is the one lit plate a picture sits on. `kch_header` inks in `KT_SURFACE`, the
-title's slot, which clears 5.51:1 on `KT_ACCENT` in the worst accent, warmed by night light or
-not. Every other picture on the desktop sits on `KT_BG`, `KT_SURFACE` or the `KT_DIM` selection
-fill, where the light tint reads, and is asked for with `kicon_slot()`. A new surface that puts a
-picture on a lit plate inks it in the slot of the text beside it.
-
-### A data trace is antialiased; chrome is not
-
-Chrome is hard-edged: plates, rules, rounded ends, gridlines and the compositor's title-bar buttons
-are whole pixels, because a smoothed edge beside a cell grid is what makes chrome look as if it came
-from another toolkit. A *data mark* is the one exception. The trace of a chart and the area under
-it (`kcell_canvas_series`), and a segment drawn with `kcell_canvas_line`, are antialiased, because
-a measurement's slope is information and a staircase at a fixed pixel pitch misstates it.
-
-Every chart on the desktop is drawn by one renderer, `kch_plot()`, in one style: a faint plate in
-`KT_DIM`, gridlines in `KT_MID` every ten seconds keyed to the sample number so they move with the
-data, a base line, the area at a third of the series' weight and the trace at full weight over it.
-A trace lying on its base is drawn at the area's weight, so an idle chart is a quiet line rather
-than a hard rule. A pair of series (receive and send, read and write) shares one axis and is
-mirrored about a midline, the first in `KT_ACCENT` above and the second in `KT_WARN` below. Every
-mark takes a slot and an alpha, never a colour. The chart is a tile, so tty1 and `--dump` draw the
-surface's cell chart instead, and a reference frame asserts that.
-
-### Damage, for a picture that changed in place
-
-A new picture in the same slot changes no cell, which is what `ktui_draw_dirty()` is for. An
-animation's next frame writes cells identical to the last, so the flush finds nothing to send and
-the screen would keep the first frame indefinitely. Marking the rectangle the slot covers costs that
-rectangle; the alternative, repainting the whole screen for every arriving tile, costs every
-character on the desktop and a full upload dozens of times a second.
-
-A backend that keeps its own copy of the previous frame must implement `dirty` and mark every copy
-it keeps. `libkwl` keeps three: the cells the compositor is showing (which the damage rectangles
-are cut from) and one per shared-memory buffer (which each paint compares against). Mark only the
-buffer copies and the pixels land in a buffer the compositor is never told to re-read; mark only the
-screen copy and the damage names rows nothing repainted. Every one of these failures is silent and
-looks like an animation that stopped. A backend without `dirty` compares against the `prev` frame
-it is handed and needs nothing more.
-
-A backend that caches uploaded pictures compares the sprite's generation counter (`gen`), not its
-pointer: an animation re-registers the same key, and the allocator often hands the freed picture's
-memory straight back, so a pointer comparison would take the first frame and no other.
-
-### A picture from a terminal is the same sprite
-
-A picture shown in a terminal uses the same sprite mechanism. A slot covers at most 16 by 16 cells,
-so a larger picture becomes a grid of sprites sharing a key prefix, handled all-or-nothing: it is
-evicted and re-registered as a unit rather than leaving three quarters of a photograph on screen.
-Each backend does what it can:
-
-| Backend | What a picture is |
+| Role | Taken from |
 |---|---|
-| Wayland | Real pixels, scaled to the cells it occupies |
-| A text terminal, a dump, or a display built without a pixel library | The fallback shade, in every cell of the picture |
+| Backgrounds | View: `variant`, and `variant` 5% towards the text; Window: `deep` and `variant`; Button: 9% and 11% of the text over `deep`; Tooltip 13%; Header and Complementary 7%; the inactive Header on `deep` |
+| `ForegroundNormal` | `text`; `deep` on a Selection |
+| `ForegroundInactive` | The set's background walked towards its text from 56% until it clears 4.5:1 on both backgrounds |
+| `ForegroundActive`, `ForegroundLink`, `ForegroundPositive` | The accent; `deep` on a Selection |
+| `ForegroundVisited` | `pdark`; `deep` 30% into the accent on a Selection |
+| `ForegroundNegative`, `ForegroundNeutral` | `urgent` and `secondary` |
+| `DecorationFocus` | The accent |
+| `DecorationHover` | 35% of the way from the focus colour to `deep` (to the accent on a Selection), backed off towards the focus colour until it holds 3:1 |
+| Selection background | The accent, and for the alternate row the accent 10% towards `deep` |
 
-A picture that shows as nothing is worse than one that shows as a mark, because blank cells look
-like output that never arrived. That is why the tiled path carries a fallback character rather than
-a space.
+**The selection is the accent under `deep`.** A selected row is the one row a person is reading,
+so it is the last place a scheme may fall below the floor. `deep` on the accent measures 6.02:1 at
+its worst, on `paper`; the darker accent under the plain text would measure 2.42:1 on `bone`.
 
-A tile that is a control shows its state in the plate the pixel layer records under it. The Start
-button is the example: a quiet plate at rest, the accent under the pointer, the warning colour
-while its own menu is open, with the ink following the plate (`KT_TEXT` at rest, `KT_SURFACE` on a
-lit plate). The button's cells keep `KT_SURFACE`, the slot the backdrop owns, so the recorded plate
-shows through them rather than being filled over. The backend fills a cell's background before it
-draws the picture, so where there is no pixel layer the button has no fill and no visible hover or
-open-menu state, and a lit Start button's `KT_SURFACE` ink is drawn on `KT_SURFACE`. An icon sitting inside a wider
-field shows its state through the field instead.
+Every accent-coloured role that misses its floor is walked towards the set's text one percent at a
+time, so it keeps as much of its hue as the floor allows and never more. `[General] AccentColor` is
+never written: Plasma's colour applicator recolours the Selection, Link and Decoration roles
+whenever an accent colour is set, and what it would write are not the solved colours. For the same
+reason "accent colour from wallpaper" stays off.
 
-A sprite beside text is two cells wide and one tall. A cell is twice as tall as it is wide (16 by
-32 pixels at the default font), so two cells across one row is a square on the same line as the
-text. A two-by-two block next to a single row of text centres the picture across the boundary
-between rows and makes the whole surface look misaligned.
+### Contrast is measured at build time
 
-## The compositor's decoration is part of the set
+The floors are WCAG 2 contrast ratios: 4.5:1 for every text role, 3:1 for every decoration, each
+against both backgrounds of its set, and 4.5:1 for the window titles. `kdos-theme` measures the
+palette before it writes a byte and dies when a role misses its floor, and the build of
+`kdos-plasma-look` runs `kdos-theme contrast` over the files as installed, so a scheme that fails is
+a failed build, never an installed scheme. `testing/selftest.sh` runs the same measurement.
 
-The window frame is the one piece of chrome a KDOS program does not draw for itself. `kdos theme`
-generates it for the current accent into `~/.config/kdos-comp/themerc-override`, the labwc theme
-file the compositor reads last, and the compositor re-reads it on the same `SIGHUP` that retints
-everything else. It is designed to match the cell grid:
+A process that runs outside a Plasma session (the login screen, a `pkexec` program, an early
+autostart entry) reads colours only from the configuration directories, never from Plasma's
+per-account defaults, and KColorScheme reads the `[Colors:*]` groups of `kdeglobals`, never the
+scheme file `ColorScheme` names. So the distribution's `kdeglobals` carries the default accent's
+colour groups merged in, and the `sddm` account's own `kdeglobals` carries the machine accent's;
+without them those processes draw Breeze blue.
 
-- **Square corners** (`<cornerRadius>0</cornerRadius>` in `rc.xml`). A rounded corner is the one
-  thing a cell grid cannot express, so it is the one thing that gives a server-drawn frame away.
-- **A two-pixel accent border** (`border.width: 2`), because a hairline disappears beside a
-  32-pixel cell. An inactive frame is drawn from the same scheme with the accent removed: its
-  border is the `dim` colour, its title bar the `deep` ground, and its rule and label are `deep`
-  mixed 25% and 45% towards `text`. No second hue appears, so focus does not read as two kinds of
-  window.
-- **A title bar carrying the same double rule the grid draws with**, broken by the title and by each
-  button, so it reads as `════ Title ════[_][=][X]`. This is the `flat kdos` title texture of
-  `kdos-comp`, a fork of labwc (see [kdos-comp](../04-programs/kdos-comp.md)); its `colorTo` is the
-  rule's colour.
-- **Buttons are 8×8 bitmaps enlarged exactly four times to 32×32 with nearest-neighbour
-  filtering**, so they are hard-edged blocks rather than smeared glyphs; a fractional multiple would
-  give one stroke two pixels and the next three. The marks (`src/desktop/kdos-comp/src/theme.c`) are
-  the compositor's own: a bar, a framed box, a cross and a stack of rules. A button image is drawn
-  in the accent (`window.active.button.unpressed.image.color`) on a title bar that is a different
-  colour, so the minimise bar works there with the one clear row it keeps beneath it. On the cell
-  grid the same bar would fail the six-row threshold in
-  [A mark on a fill is a shape](#a-mark-on-a-fill-is-a-shape-not-a-contrast), which is why the two
-  sets of marks are allowed to differ.
-- **The close button is the urgent colour** (`window.active.button.close.unpressed.image.color`),
-  and the others are the accent. It is the one window control that cannot be undone, and on an
-  eight-colour palette that difference is the whole signal.
-- **The hover plate is translucent** (`window.button.hover.bg.color` carries alpha `66`). The
-  compositor has no separate hover images; it lays that colour over the plain button image, and an
-  opaque colour would paint the symbol out, leaving every button blank under the pointer at the
-  moment it most needs to say what it is.
-- **Menus are sized for the cell.** The generated file sets `menu.width.max: 900`, because at
-  32-pixel text the compositor's default cap of 200 pixels holds about eleven characters.
-- **A box chip.** A window from a box whose
-  [profile](../04-programs/kdos-appbox.md#box-profiles) sets its own accent (`accent =` in
-  `~/.config/kdos/boxes/<name>.conf`) carries a square of that colour at the left of its title
-  area, the height of the title bar, so you can see which box it came from. A box with the
-  session's own accent draws no chip, so a default installation shows none.
+### Colour in KDOS's own code
 
-Style overrides written by `kdos theme style` are kept in `~/.config/kdos/style-themerc` and
-appended after the generated block each time it is written, so they survive an accent change.
+KDOS's settings pages, widgets, effects, the welcome pages and the login screen take every colour
+from a role of the colour scheme in force: `Kirigami.Theme` in QML, `KColorScheme` or the
+application palette in C++, uniforms in a shader. `testing/preflight.sh` refuses a hex colour, a
+`Qt.rgba()`, a named colour or a `QColor` built from numbers anywhere under `src/desktop`. The few
+colours that are no scheme's are generated rather than written: the mascot's body and the colour its
+rim is mixed towards, read out of `kdos-splash` at build time into the splash's `mark.js`, and the
+black of a screen with nothing on it, which every handover of the power-on passes through and which
+no accent may own.
+
+## Type
+
+| Use | Face | Where it is set |
+|---|---|---|
+| Interface, menus, toolbars, window titles | Noto Sans 10 | `kdeglobals` `font`, `menuFont`, `toolBarFont`, `[WM] activeFont` |
+| The smallest readable text | Noto Sans 8 | `smallestReadableFont` |
+| Fixed width: Konsole, Kate's editor, code | JetBrains Mono 10 (11 in the Konsole profiles) | `fixed`, and first for `monospace` in fontconfig |
+| Phosphor mode's option | Terminus (TTF) | Set only by `kdos phosphor terminus on` |
+
+Text is antialiased in greyscale with slight hinting (`XftAntialias=true`,
+`XftHintStyle=hintslight`, `XftSubPixel=none`), which renders the same at every fractional scale.
+The fixed face is named explicitly, because Plasma's built-in default for an unset `fixed` key is
+Hack, which KDOS does not ship. `/etc/fonts/conf.d/45-kdos-mono.conf` puts JetBrains Mono first for
+`monospace`, Noto Sans Mono second for the Latin Extended, Greek and Cyrillic it lacks, and Terminus
+(TTF) third, the one fixed-width face on the image with every braille pattern that terminal plots
+draw with, so a missing glyph costs a different fixed-width face and never a proportional one.
+`testing/monofont.py` measures each block against that chain. The Konsole profiles turn ligatures
+off: a terminal has to show what was typed, and JetBrains Mono would join `!=` or `->` into one
+glyph.
+
+Every global theme sets the same fonts, and carries the fonts in `[kdeglobals][WM]` as well as
+`[kdeglobals][General]`: Plasma applies a theme's fonts from the General group but decides whether
+the theme has fonts at all from the WM group, so a theme without the WM key never applies them.
+
+The fixed face is KDOS's typographic signature, used where a monospace means something: the
+terminal, the editor, the clock on the login screen, the text of the splash, and the KDOS Phosphor
+clock widget. Window titles and the rest of the interface stay in Noto Sans.
+
+## The pieces of the look
+
+A **global theme** (a Plasma look-and-feel package) is what binds the pieces together, one per
+accent under `/usr/share/plasma/look-and-feel/org.kdos.<accent>.desktop`, generated by
+`genlook.py` in `kdos-plasma-look`. Its `contents/defaults` names:
+
+| Piece | Value |
+|---|---|
+| Colour scheme | `KDOS<Title>` |
+| Application style | Breeze |
+| Plasma style | `kdos` |
+| Icons | `KDOS`, or `KDOS-Light` for the light accent |
+| Cursor | `breeze_cursors` |
+| Window decoration | Breeze (`org.kde.breeze`), normal borders |
+| Window placement | Centred |
+| Task switcher | Thumbnail grid |
+| Splash screen | The theme's own KSplash |
+| Wallpaper | `KDOS-<Title>` |
+
+Every package also carries its own splash, its desk layout script, a Kickoff setup script that
+gives the launcher the KDOS mark and the label "Start", and three previews. Plasma fills any
+missing file from Breeze's package, so a theme without its splash would show Breeze's; the build
+refuses a package that lacks one. The previews are drawn by the generator from the scheme's roles,
+not captured, so they are exact for every accent with no session to photograph.
+
+### The Plasma style
+
+`/usr/share/plasma/desktoptheme/kdos` draws the panel, popups, tooltips, buttons and the task
+manager: square frames, opaque, with a one-pixel rule in the accent. It falls back to Breeze for
+everything else and ships no colour file of its own, so it follows whichever scheme is in force.
+Blur, background contrast and adaptive transparency are off. Each frame is installed at its own path
+and under `solid/`, because an opaque panel, a solid dialog and every tooltip and menu ask for the
+`solid/` path by name.
+
+### The window decoration
+
+Window frames are Breeze's decoration, configured rather than replaced: square corners, a
+one-pixel outline, no gradient, titles aligned left (`/usr/share/kdos/xdg/breezerc`). The title bar
+takes its colours from the scheme's window-manager colours, so it follows the accent live. A boxed
+application's window carries a box glyph before its caption, from the sandbox patches KDOS carries
+against KWin, KDecoration and Breeze, and its title bar is drawn in the colour scheme of its box's
+accent through a KWin window rule per box; see
+[Window rules KDOS writes](window-model.md#window-rules-kdos-writes). A client that draws its own
+title bar, as a GTK application with a header bar does, draws neither.
+
+### Icons
+
+`KDOS` and `KDOS-Light` are thin themes over Breeze: each holds the KDOS penguin under the names
+Plasma draws the KDE logo by (`start-here-kde`, `start-here-kde-symbolic` and the Plasma variants),
+and inherits every other icon from `breeze-dark` or `breeze`. The marks themselves are in `hicolor`:
+`start-here-kdos` for the launcher, `distributor-logo-kdos` and `kdos` for the About page and
+`/etc/os-release`. Both themes set `FollowsColorScheme=true`, which is what makes Breeze's
+monochrome icons take the accent: KIconLoader recolours an inherited icon only when the top theme
+asks for it. GTK and other non-KDE toolkits do no such recolouring and draw those icons in Breeze's
+own blue. The marks are raster, the one part of the icon themes that does not follow the accent.
+
+### The cursor
+
+One neutral pointer, `breeze_cursors`, for every accent; `/usr/share/icons/default/index.theme`
+names it for programs that name none, Xwayland's among them. KWin renders a cursor theme's SVGs as
+they are, so a pointer per accent would be eight cursor themes and a cursor switch per accent. No
+shipped profile script exports `XCURSOR_THEME` or `XCURSOR_SIZE`: KWin prefers those variables to
+the Cursors page whenever both are set, and the page would stop working.
+
+### Wallpapers
+
+`KDOS-<Title>` is a Plasma wallpaper package per accent: the KDOS mark on the accent's own ground
+in `images_dark/`, and on the light ground in `images/`, at four sizes, so the wallpaper follows
+Plasma's light and dark switch with no KDOS code. The pictures are generated from the master
+artwork by `kdos-theme wallpaper`. A global theme's wallpaper is a default only for a desktop with
+none set, and Plasma reads it once per desktop, so an accent applied in a running session would leave
+the old wallpaper up; `kdos theme` therefore sets the wallpaper itself, on each desktop whose image
+is still a `KDOS-*` package, and the lock screen's the same way. `kdos-addons` adds four more
+wallpaper packages that follow light and dark, chosen from the Wallpaper page like any other.
+
+### Sounds
+
+The sound theme `kdos` holds the machine's own voices (the login chime, the notification blip, the
+error buzz, and the device, warning and completion sounds) under the freedesktop names, synthesised
+at build time by `kdos-sfx render`, and inherits Plasma's Ocean theme and then the freedesktop
+theme for every name it has no voice for. `[Sounds] Theme=kdos` selects it, and the login and
+logout sounds are on.
+
+### Applications outside KDE
+
+A GTK application wears the Breeze GTK theme, which `kde-gtk-config` keeps in the scheme's colours
+by writing each account's GTK settings; KDOS writes nothing under `~/.config/gtk-*` itself. A Qt 5
+application has no Plasma integration to read the scheme (there is no KDE Frameworks 5), so it is
+themed by qt5ct: `kdos theme` points qt5ct at the accent's generated palette. A boxed application
+gets the colour scheme and the light or dark preference through the portal's Settings interface,
+and the KDE runtime of the box catalogue installs Plasma's platform theme for the Qt applications in
+it.
+
+## Where the defaults live
+
+KDOS's defaults for KDE's settings are files in `/usr/share/kdos/xdg`, which the session puts after
+`/etc/xdg` in `XDG_CONFIG_DIRS`. A program therefore reads, from strongest to weakest:
+
+1. the account's own file in `~/.config`;
+2. the account's Plasma defaults in `~/.config/kdedefaults`, written from the global theme, inside a
+   Plasma session only;
+3. the administrator's `/etc/xdg`;
+4. KDOS's `/usr/share/kdos/xdg`.
+
+`/etc/xdg` stays the administrator's, so an edit there outranks KDOS's default for every account
+and a package update never collides with it. The installer is the one program that writes there:
+the accent chosen at installation as `/etc/xdg/kdeglobals` `LookAndFeelPackage`, the desk as
+`/etc/xdg/kdosrc`, and for the Tiling desk `/etc/xdg/kwinrc [Plugins] krohnkiteEnabled=true`, because
+KWin loads its scripts before the first login's layout script runs. `/etc/skel` ships no KDE settings file, because a panel layout or a Plasma
+defaults file copied into a new home would bypass the global theme and be rewritten at the first
+login anyway. A virtual machine gets one more directory in front, `/usr/share/kdos/xdg-vm`, which
+turns screen locking and display power-off off, and the live medium gets `/usr/share/kdos/xdg-live`.
+The full list of files is in [Configuration](../06-reference/configuration.md).
+
+## One look from power-on to the lock screen
+
+The screens a person sees before the desktop are drawn by six different programs, and they are
+made to read as one sequence: the same ground, the same mark in the same place, the same accent,
+and full black between each and the next, so a change of display mode always falls inside a black
+frame.
+
+| Stage | Drawn by | What it shows |
+|---|---|---|
+| Boot menu | Limine | The menu in the accent's palette, over the KDOS artwork |
+| Boot progress | `kdos-splash`, on the framebuffer | The mark fading in out of black, then the boot stages under a segmented bar; at the end of `rcS` it fades to black and lets go of the screen |
+| Login screen | SDDM, with the `kdos` theme on its own KWin | Breeze's login layout with the KDOS mark, the clock in the fixed face, the footer "KDOS · Plasma by KDE", over the accent's dark wallpaper, fading in out of black and back to black on a login |
+| Session start | KSplash, the global theme's own | `kdos-splash`'s last frame again, at the same pixels: the mark and the wordmark, then a segmented bar driven by the session's start-up stages |
+| Desktop | Plasma | The KDOS desk in the accent |
+| Lock and logout | `kscreenlocker` and Plasma's logout screen, stock Breeze | Breeze's own layout in the accent's colours, wallpaper and fonts |
+
+The login screen and the lock screen are drawn by the same Breeze components, and the patch that
+makes the Breeze SDDM theme the KDOS one changes only the mark, the clock's face, the footer and the
+background, never the layout, so the two screens a person types a password into look the same. A
+global theme cannot change the lock or logout screen (Plasma loads both from the shell package),
+which is why they are Breeze's in KDOS's colours rather than KDOS's own.
+
+The login screen reads no light, dark or time-of-day setting, so it always shows a dark accent:
+the machine's accent, or for `paper` its dark partner. The accent reaches the screens before a
+login through `kdos-powerd`, because they are root's files: `/etc/kdos/accent` for the splash,
+`/etc/vtrgb` for the text console, the boot menu's palette, and the `sddm` account's
+`kdeglobals`, `plasmarc` and `kcminputrc`, copied from `/usr/share/kdos/greeter/<accent>/` together
+with that set's `background.png` as `/var/lib/sddm/kdos-background.png`. How `kdos theme` reaches
+each of them is in [kdos theme](../04-programs/kdos-command.md#kdos-theme); the splash and the
+handover are in [The splash](boot-and-init.md#the-splash).
 
 ## Motion
 
-No cell depends on a clock to reach its final state. A cell is drawn or it is not, and the final
-state is what `tty1` and `--dump` show. Motion lives in three places, and almost all of it is pixels
-over, under or in place of cells that are already final; the About window, which moves its cells,
-is the exception, listed with the surface animations below.
+KDOS motion is short. `kdeglobals` sets `AnimationDurationFactor=0.5`, half of KDE's own, which
+every Plasma and KWin animation scales by, and `0` turns every one of them off. That one key is the
+switch for reduced motion: the Welcome tour's accessibility and look pages offer it, System
+Settings' animation speed slider sets it, and every KDOS motion reads it too.
 
-The compositor re-blends pictures a surface has already finished. A surface on the top or overlay
-layer fades in when it maps and out when it unmaps, from a snapshot of its last frame; peek fades
-the windows; with `window_motion` on, a window fades and rises into place as it opens, fades and
-sinks away as it closes or is minimised, and slides sideways with a workspace switch. It changes
-position and opacity, never size. A surface needs no code to get this and cannot tell it is
-happening.
+KDOS Modern adds no motion of its own past that. KWin's own effects run as KDE ships them, and the
+login screen and KSplash fade in out of black rather than move. Phosphor mode adds the motion of a
+CRT, every duration below scaled by the factor:
 
-A surface animates its own pixel layer with a `KtuiAnim` from `libktui`: a start time, a duration
-and a curve, read by the draw that uses it. The Wayland backend keeps the frame clock. While any
-animation in the process is running, its event wait returns a `KT_EVT_TICK` once per display frame,
-so a loop that draws on every return animates at the display's rate; when the last one ends, one
-more frame draws the end value and the loop goes back to its own timeout. An idle surface gets no
-tick, no extra commit and no shorter wait from any of this. The surface animations are:
+| What moves | Effect | Duration |
+|---|---|---|
+| A window opening out of a hairline across its middle | `kdos_unfold` | 160 ms |
+| A window closing: folded to a line, the line pinched to a dot | `kdos_unfold` | 140 ms |
+| The desktop opening out of a line across the splash when KSplash closes | `kdos_login` | 900 ms |
+| Each window folding away while the session quits | `kdos_quit` | 450 ms |
+| The whole screen collapsing to a line and a dot at lock and logout | `kdos_crt` | 350 ms, then 100 ms |
+| A degauss when the colour scheme's accent changes | `kdos_crt` | 400 ms, one pulse |
 
-- the panel's launch pulse;
-- the selection plate in the Start menu, the cascading and window menus and the tray menu, which
-  slides to the row the selection moves to (`kch_px_row_anim`). Only the plate slides: the row's
-  cells and its hit map are the new row from the first frame, and a list that scrolls under the
-  same selection carries the plate with it at once rather than letting it trail the text;
-- `kdos-about`: its facts type themselves in row by row as it opens; its Credits page rolls up one
-  row every 600 ms, starting again from the top at the end, until a key or the wheel stops it; and
-  its logo degausses (alternate rows thrown left and right, settling back on the accent) when
-  `↑ ↑ ↓ ↓ ← → ← → b a` is typed on it. These move cells rather than pixels. Where nothing moves (a
-  dump, a terminal, or [`motion = no`](../02-user-guide/accessibility.md#reducing-motion)) each is its settled picture: every row whole, the credits at
-  their top, the logo at rest.
+Two rules hold every motion here. **Nothing waits for one**: keys and the pointer act on the end
+state at once, and a motion never shows anything the end state does not. **The end state is the
+picture wherever nothing moves**: with the factor at `0`, on a software renderer, and in a
+screenshot, a window is where it ends up and the screen is the screen. The degauss is one pulse,
+under the three flashes a second that a flashing screen may not exceed.
 
-The Wayland backend presents a scrolled list gliding. A list declares where its rows are and which
-item is in the first of them (`kch_list_view`, beside `kch_list_clamp`), and when that item changes
-the list's pixels slide from the picture on the screen to the new one, eased out, with the frames
-in between committed by `libkwl` itself. The list's cells have already moved by whole rows: the
-pointer hits the rows the cells say, a key acts on the new view at once, and the last frame of the
-slide is the cells' own picture. A second notch while one is under way continues the slide from
-where it is. A page's worth or more is a jump, and so is a new list in the same place (a filter
-typed, a group opened), which the backend tells from the cells. The lists that declare themselves
-are the Start menu's three columns, the cascading and window menus, the tray menu, the status and
-notification centres, the clipboard picker, the file chooser, Open With, the teams list, the
-recorder's files, and `kdos-res`'s Applications, Processes and Boxes tables.
+## Phosphor mode
 
-A touchpad flick coasts: a finger that leaves the pad while still moving keeps the list moving,
-slowing to a stop over about a second. That is input, not animation: the backend keeps producing the
-wheel ticks the finger would have made, so every surface coasts without knowing it, cells included,
-and the next scroll, click or key stops it, as does the pointer leaving the surface. A finger
-resting on the pad without moving does not: the backend binds no gesture protocol that would say so. See
-[Input the backend cleans](../05-developer/writing-desktop-software.md#input-the-backend-cleans).
+Phosphor mode is the CRT layer, off by default and off for every new account, switched by one
+command, `kdos phosphor on|off`, by the switch on the Welcome tour's look page, and by the
+`kdos_crt` entry on System Settings' Desktop Effects page. It has no keyboard shortcut, so a stray
+chord cannot flash the whole screen.
 
-| What moves | Duration | Curve | Settles on |
+`kdos phosphor on`:
+
+1. asks KWin whether `kdos_crt` is supported and refuses, changing nothing, when it is not: the
+   effect needs GPU rendering, and a software-rendered session (a plain virtual machine, `make run`)
+   prints `phosphor mode needs GPU rendering (this session renders in software)`;
+2. records every key it is about to change, as the account's own file had it, in
+   `~/.config/kdos/phosphor`, so `off` puts each back exactly;
+3. loads `kdos_crt` and the three motion effects, and unloads KWin's own `login` and
+   `sessionquit` effects, which two of them replace;
+4. switches `bone` or `paper`, the two accents that do not read as a CRT, to `phosphor`, and keeps
+   any other accent as chosen; `off` restores the previous one;
+5. with the Terminus option, sets the fixed face and a Konsole profile to Terminus (TTF); the
+   interface stays in Noto Sans, because Terminus covers Latin, Greek and Cyrillic only;
+6. sets the boot splash's motion to the CRT power-on.
+
+The effect is built into KWin by a patch KDOS carries (`kdos-crt.patch` in the `kwin` port),
+because KWin refuses an effect built outside it against any other KWin release, point releases
+included. It paints each output into an offscreen picture and draws it back through a CRT shader:
+a horizontal bleed, scanlines, a vignette, barrel curvature and a faint floor in the accent. Two
+presets set its three values in `kwinrc [Effect-kdos_crt]`:
+
+| Preset | `Strength` | `Scanlines` | `Curve` |
 |---|---|---|---|
-| A top- or overlay-layer surface opening / closing | 120 ms / 90 ms | ease-out | shown / gone |
-| Peek (Show Desktop hover) | 150 ms each way | ease-out | faded / restored |
-| A window opening, restored / closing, minimised (`window_motion`) | 150 ms / 120 ms | ease-out | in place / gone |
-| The panel's launch pulse: the accent over a pinned button, twice | 1100 ms | ease-in-out, there and back | the button at rest |
-| A menu's selection plate moving to another row | 90 ms | ease-out | the new row |
-| `kdos-about`'s facts typing in as it opens | 400 ms | linear | every row whole |
-| `kdos-about`'s credits rolling, until a key or the wheel stops them | 600 ms a row | none: a whole row at a time | the rows where the roll stopped |
-| `kdos-about`'s logo degauss | 1200 ms | ease-in-out, there and back four times | the logo in its column, in the accent |
-| A list scrolled by the wheel, a touchpad or a key | 100 ms from the last step | ease-out | the new first row |
+| Subtle (the default) | 55 | 0 | 0 |
+| Retro | 55 | 60 | 30 |
 
-Choose the curve by what the motion says. `KT_EASE_OUT` (cubic) is an arrival: fast, then
-settling. `KT_EASE_IN_OUT` is a pulse or a swap, slow at both ends. `KT_EASE_LINEAR` is for a
-progress, never for a movement. Keep an animation under a quarter of a second unless it is an
-acknowledgement that has to be seen, as the launch pulse is, and never make anything wait for one:
-keys and the pointer act on the end state at once.
+What it costs, and when it stands aside:
 
-**The end value is the picture wherever nothing moves.** On `tty1`, under `--dump`, through a
-capture backend and with motion switched off, a `KtuiAnim` is worth its end value from the moment it
-starts, so a golden never holds a frame from the middle of one. A surface must not put anything in
-a motion that its end state does not also say.
+- The scene is composited on every frame of every output it draws, the hardware cursor plane and
+  direct scanout are given up, and the pointer is drawn into the picture, so it curves with it.
+- With `Fullscreen=false`, the default, an output showing an active fullscreen window gets direct
+  scanout back, so a game or a video plays untouched.
+- It refuses HDR outputs, and stands aside while zoom or the magnifier runs.
+- Screenshots, screencasts and the colour picker get the plain picture.
+- Retro's scanlines lower the effective contrast of the screen, which the scheme's measured floors
+  do not cover; Subtle draws none.
 
-**Reduce motion is one switch.** `motion = no` in `~/.config/kdos/comp.conf` turns off both halves:
-the compositor reads it at each fade, and every Wayland surface reads it at each animation's start,
-so a change reaches a running panel without a restart. With it off, a compositor fade is a single
-frame and a surface's animation is its end value. Where the motion *is* the message, the state is
-held still instead of dropped: the launch pulse becomes a steady accent over the button for the same
-1.1 seconds, so the click is still acknowledged and nothing moves. A selection plate lands on its
-new row in the frame the selection moves, a scrolled list jumps to its new rows, and a touchpad
-flick stops when the finger lifts. What the compositor fades and what each fade costs are
-in [kdos-comp](../04-programs/kdos-comp.md#motion).
+The effect's state and its power-down are exported on KWin's bus name as `io.kdos.Crt1` at
+`/io/kdos/Crt1`, which `kdos phosphor collapse|unfold|degauss` calls. How to switch it, and its
+effect on accessibility, are in [Theming](../02-user-guide/theming.md).
+
+## Desks
+
+How the panels are laid out is part of the look, and KDOS ships three layouts, the **desks**, as
+Plasma layout templates: KDOS (one bottom panel, the default), Dock (a top bar and a centred
+floating dock) and Tiling (a top bar, with automatic tiling on). Every global theme's layout script
+lays out the desk the account picked (`kdosrc [Desk] Layout`), never a fixed one, so applying any
+accent's layout gives back the same panels. The first Welcome page offers the three, `kdos desk`
+switches between them, and switching replaces the panels after copying the old arrangement aside.
+The desks themselves are in [The desktop](../02-user-guide/desktop.md); what the Tiling desk does to
+windows is in [The window model](window-model.md#auto-tiling).
+
+## The text tools
+
+A few KDOS programs draw in a terminal rather than on Plasma: the installer's text front end
+(`kinstall`, for serial and unattended installs) and the build's own front end `kdosbuild` among
+them. They draw with `libktui`, KDOS's cell toolkit, and follow the same palette through
+`libkcolor`'s eight **slots**:
+
+| Slot | Role | Scheme colour |
+|---|---|---|
+| `KT_ACCENT` | The accent | `primary` |
+| `KT_ERR` | Urgent | `urgent` |
+| `KT_WARN` | A caution, not a failure | `secondary` |
+| `KT_TEXT` | Body text | `text` |
+| `KT_MID` | Labels, secondary text, rules | `pdark` |
+| `KT_DIM` | A fill | `dim` |
+| `KT_SURFACE` | Raised chrome background | `variant` |
+| `KT_BG` | The background | `backdrop` |
+
+There are eight slots and no more because the console font has 512 glyphs: the Linux console uses
+the foreground intensity bit as the ninth glyph bit, so colours 8 to 15 cannot be a foreground.
+Designing for eight means a text console and a terminal window show the same picture. Three rules
+follow from the measured contrasts:
+
+- **`KT_DIM` is a fill, never a label.** As a foreground it measures 1.42:1 to 2.12:1 against the
+  surface and background slots; `KT_MID` measures 3.40:1 to 6.30:1. A label is `KT_MID`, and
+  `testing/preflight.sh` refuses any text draw whose foreground can be `KT_DIM`. Text that must be
+  muted and still readable takes `kcol_muted()`, which clears 4.5:1 on `deep` in every accent.
+- **A selected row is `KT_DIM` under `KT_TEXT`, and the accent is one cell.** In a focused pane the
+  row is filled `KT_DIM`, its label stays `KT_TEXT` (8.30:1 at worst), and the marker `►` takes the
+  accent wherever the accent clears 4.5:1 on the fill, `KT_TEXT` where it does not; an unfocused
+  pane keeps the marker and loses the fill. `ktui_sel_row()` draws it, and no program works it out
+  for itself.
+- **Emphasis is a fill with swapped slots, never the reverse attribute**, which inverts only the
+  cells a character covers and leaves a hole at every space.
+
+## The glyph tiers
+
+What a text tool can draw depends on the terminal. `libktui` picks a tier from its capabilities:
+
+| Tier | When | Box drawing and symbols | Bars and charts |
+|---|---|---|---|
+| rich | UTF-8, not a Linux console | `glyph_utf8` | Eighth blocks, 8 levels |
+| vt | UTF-8 on a Linux console | `glyph_utf8` | `░ ▒ █`, 3 levels |
+| ascii | No UTF-8 | `glyph_ascii` | `. : #`, 3 levels |
+
+The box-drawing and symbol table, `glyph_utf8` in `src/libs/libktui/ktui_draw.c`, is the same for
+the rich and vt tiers, so it stays inside what the console font `ter-kdos32n` can draw: a character
+the font lacks is a blank on the console, and nothing reports it. The font has `░ ▒ █`, the single
+box-drawing set, the double rules `═ ║`, the double corners `╔ ╗ ╚ ╝` and `╬`, and `· • ■ … ° ↑ ↓
+◀ ▶`; it has no eighth or half blocks, no `▓`, no braille, and no double tees. `testing/preflight.sh`
+reads the built font and refuses a `glyph_utf8` entry it cannot draw. A frame's title is bracketed
+`[ like this ]` in ASCII, because the brackets read the same at all three tiers. Display width is
+measured by the toolkit's own table, `ktui_wcwidth`, and a wide character on the console, whose font
+has none, is written as one `?`.
 
 ## The checklist
 
-A new surface is not finished until every line is answered.
+KDOS code that draws on the desktop (a settings page, a widget, an effect, a welcome page, a
+theme) is not finished until every line is answered:
 
-1. `ktui_draw_box` around it, with the title on the top edge.
-2. `kch_header` for the band, `kch_group` for headings, `kch_buttons` for verbs.
-3. Colour from slots; `KT_MID` for labels; fills for emphasis, never the reverse attribute; no
-   `KT_ACCENT` fill on a list row.
-4. Every gesture in [the pointer contract](#the-pointer-contract): motion, press, wheel, right
-   press as Back, scrollbar drag, header sort, and click-away for a transient surface.
-5. A hit map recorded from the draw, with coordinates handed down by the frame.
-6. `--dump` at the sizes the surface is used at (80x24 and 132x43 for a window, its own size for a
-   popup), with a reference frame (a *golden*, under `testing/goldens/`) committed for each.
-7. Read it at the vt tier before believing it works on `tty1`.
-8. One `KtuiKeys`, with `ktui_keys()` first in the event dispatch and `ktui_hint_row()` last in the
-   draw, on every path including the `--dump` one, because that call is what clears the hint pool.
-9. Every raised state declared with `ktui_keys_layer()` rather than handled in an `Esc` branch.
-10. A help page in `fs/usr/share/kdos/doc/` if `keys.doc` names one, and `doc` left `NULL` if not.
+1. Every colour from a role of the scheme in force (`Kirigami.Theme`, `KColorScheme`, a shader
+   uniform), and none written as a literal; the preflight check passes.
+2. Readable in all eight accents, `paper` included, and at the 4.5:1 text floor in each.
+3. Text in the interface face; the fixed face only where a monospace means something.
+4. Every motion through `animationTime()` or Kirigami's durations, so `AnimationDurationFactor`
+   scales it and `0` stops it, with the end state complete on its own.
+5. An accessible name on every control, so the screen reader can say what it is.
+6. Square where KDOS draws a frame; Breeze's own components wherever Plasma provides one.
+7. Nothing written into a person's settings unless the value there is still KDOS's own.
 
-If `grep -c KT_EVT_MOUSE` on a new source file returns zero, line 4 has not been answered.
+A text tool answers a shorter list: colour from slots, `KT_MID` for labels, fills for emphasis,
+the selection drawn by `ktui_sel_row()`, and a look at the vt tier before believing it works on the
+console.
 
 ## See also
 
-- [Writing desktop software](../05-developer/writing-desktop-software.md) — implementing all of this
-- [The C libraries](../05-developer/c-libraries.md) — `libktui`, `libkchrome`, `libkcolor` and the rest
-- [Theming](../02-user-guide/theming.md) — the accents these slots resolve to, and `kdos theme`
-- [Accessibility](../02-user-guide/accessibility.md) — what the controls record for a screen reader, and why the desktop is not read
-- [Testing](../05-developer/testing.md) — goldens and the dump harness
-- [kdos-shell](../04-programs/kdos-shell.md) — the largest set of surfaces following this chapter
-- [kdos-comp](../04-programs/kdos-comp.md) — the compositor that draws the generated frame
-- [How KDOS differs](../01-philosophy/how-kdos-differs.md#toolkits) — why the desktop links no widget toolkit, so every surface is cells
-- [The window model](window-model.md) — where the windows those frames surround go
-- [Glossary](../06-reference/glossary.md) — surface, slot, sprite, golden and the other terms used here
+- [Theming](../02-user-guide/theming.md) — choosing an accent, Phosphor mode and the fonts, as a user
+- [The desktop](../02-user-guide/desktop.md) — the desks, the panel and the shortcuts
+- [The window model](window-model.md) — where windows go, and the rules that colour a box's title bar
+- [KWin](../04-programs/kwin.md#phosphor-mode) — the CRT pass and the window motion as KWin runs them
+- [The Plasma shell](../04-programs/plasma-shell.md#the-desks) — the desks and the panels they lay out
+- [Boot and init](boot-and-init.md) — the splash and the handover to the login screen
+- [Writing desktop software](../05-developer/writing-desktop-software.md) — writing a settings page, widget or effect that follows this chapter
+- [The C libraries](../05-developer/c-libraries.md) — `libkcolor` and `libktui`
+- [The kdos command](../04-programs/kdos-command.md) — `kdos theme`, `kdos phosphor` and `kdos desk`
+- [Accessibility](../02-user-guide/accessibility.md) — reduced motion, contrast and the screen reader
+- [Configuration](../06-reference/configuration.md) — every settings file KDOS ships
+- [Glossary](../06-reference/glossary.md) — accent, global theme, Phosphor mode and the other terms used here
 
 <!-- book-nav -->
 ---

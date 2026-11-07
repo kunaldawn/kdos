@@ -1,0 +1,134 @@
+/*
+    SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
+    SPDX-License-Identifier: MIT
+*/
+
+// The key card's model against the generated groups.js. CMake writes the
+// two absolute paths in.
+
+import QtQuick
+import QtTest
+
+import "@KEYS_JS@" as CardModel
+import "@GROUPS_JS@" as Groups
+
+TestCase {
+    name: "KeyCardModel"
+
+    function test_keyText_data() {
+        return [
+            { tag: "nothing", key: 0, text: "" },
+            { tag: "Meta+F1", key: 0x11000030, text: "Meta+F1" },
+            { tag: "Meta+/", key: 0x1000002f, text: "Meta+/" },
+            { tag: "Meta+Space", key: 0x10000020, text: "Meta+Space" },
+            { tag: "Meta+Ctrl+Esc", key: 0x15000000, text: "Meta+Ctrl+Esc" },
+            { tag: "Meta+Shift+U", key: 0x12000055, text: "Meta+Shift+U" },
+            { tag: "all modifiers", key: 0x1e00004e, text: "Meta+Ctrl+Alt+Shift+N" },
+            { tag: "keypad", key: 0x20000035, text: "Num+5" },
+            { tag: "media", key: 0x01000080, text: "Media Play" },
+            { tag: "unnamed", key: 0x01fffff0, text: "0x1fffff0" },
+        ];
+    }
+
+    function test_keyText(data) {
+        compare(CardModel.keyText(data.key), data.text);
+    }
+
+    function test_groupOf_data() {
+        return [
+            { tag: "key card", c: "kwin", a: "KDOS Key Card", g: "kdos" },
+            { tag: "raise", c: "kwin", a: "KDOS Raise rmpc", g: "kdos" },
+            { tag: "raise launcher", c: "org.kdos.runraise.rmpc.desktop", a: "_launch", g: "kdos" },
+            { tag: "close", c: "kwin", a: "Window Close", g: "windows" },
+            { tag: "slash in a name", c: "kwin", a: "Toggle Window Raise/Lower", g: "windows" },
+            { tag: "desktop 1", c: "kwin", a: "Switch to Desktop 1", g: "desktops" },
+            { tag: "window to desktop", c: "kwin", a: "Window to Desktop 3", g: "desktops" },
+            { tag: "konsole", c: "org.kde.konsole.desktop", a: "_launch", g: "launch" },
+            { tag: "zoom", c: "kwin", a: "view_zoom_in", g: "accessibility" },
+            { tag: "night light", c: "kwin", a: "Toggle Night Color", g: "system" },
+            { tag: "quoted component", c: "KDE Keyboard Layout Switcher", a: "Switch to Next Keyboard Layout", g: "system" },
+            { tag: "spectacle", c: "org.kde.spectacle.desktop", a: "RectangularRegionScreenShot", g: "system" },
+            { tag: "task entry", c: "plasmashell", a: "activate task manager entry 3", g: "launch" },
+            { tag: "next task", c: "plasmashell", a: "activate next task", g: "windows" },
+            { tag: "activity", c: "plasmashell", a: "next activity", g: "desktops" },
+            { tag: "kwin fallback", c: "kwin", a: "Some New Action", g: "windows" },
+            { tag: "desktop entry fallback", c: "org.example.App.desktop", a: "_launch", g: "launch" },
+            { tag: "anything else", c: "org.example.daemon", a: "frob", g: "system" },
+            { tag: "dot is literal", c: "orgXkdosXrunraiseXrmpcXdesktop", a: "_launch", g: "system" },
+        ];
+    }
+
+    function test_groupOf(data) {
+        compare(CardModel.groupOf(Groups.rules, data.c, data.a), data.g);
+    }
+
+    function test_groupsAreTheCardsGroups() {
+        compare(Groups.groups, ["windows", "desktops", "launch", "kdos", "accessibility", "system"]);
+        for (const rule of Groups.rules) {
+            verify(Groups.groups.indexOf(rule[0]) >= 0, rule[0]);
+        }
+    }
+
+    function infos() {
+        return [
+            ["Window Close", "Close Window", "kwin", "KWin", "default", "Default", [0x08000000 | 0x01000033, 0x10000051], [0x08000000 | 0x01000033]],
+            ["Window Minimize", "Minimize Window", "kwin", "KWin", "default", "Default", [], []],
+            ["_launch", "Konsole", "org.kde.konsole.desktop", "Konsole", "default", "Default", [0x0c000054, 0x11000004, 0x0c000054], [0x0c000054]],
+            ["RecordRegion", "Start/Stop Region Recording", "org.kde.spectacle.desktop", "Spectacle", "default", "Default", [0x12000052], []],
+            ["KDOS Key Card", "Show Key Card", "kwin", "KWin", "default", "Default", [0x11000030, 0x1000002f], [0x11000030]],
+            ["short", "Short"],
+        ];
+    }
+
+    function test_rows() {
+        const rows = CardModel.rows(infos(), Groups.rules);
+        compare(rows.length, 4, "no keys and a short struct are dropped");
+        compare(rows.map(r => r.text), ["Close Window", "Konsole", "Show Key Card", "Spectacle: Start/Stop Region Recording"]);
+        compare(rows[0].keys, ["Alt+F4", "Meta+Q"]);
+        compare(rows[1].keys, ["Ctrl+Alt+T", "Meta+Return"], "a repeated key is listed once");
+        compare(rows[1].group, "launch");
+        compare(rows[2].group, "kdos");
+        compare(rows[3].group, "system");
+    }
+
+    function test_unloadedScript() {
+        const list = infos().concat([
+            ["KrohnkiteFocusLeft", "Krohnkite: Focus Left", "kwin", "KWin", "default", "Default", [0x10000048], [0x10000048]],
+        ]);
+        const texts = l => CardModel.rows(list, Groups.rules, l).map(r => r.text);
+        verify(texts(undefined).indexOf("Krohnkite: Focus Left") >= 0, "with no answer, every row is listed");
+        verify(texts({}).indexOf("Krohnkite: Focus Left") >= 0, "a script not answered for is listed");
+        verify(texts({ krohnkite: true }).indexOf("Krohnkite: Focus Left") >= 0);
+        compare(texts({ krohnkite: false }).indexOf("Krohnkite: Focus Left"), -1, "an unloaded script's key is left out");
+        compare(texts({ krohnkite: false }).length, 4, "and nothing else is");
+        compare(CardModel.scriptOf("kwin", "KrohnkiteSetMaster"), "krohnkite");
+        compare(CardModel.scriptOf("org.example.desktop", "KrohnkiteSetMaster"), "");
+        compare(CardModel.scriptOf("kwin", "Window Close"), "");
+    }
+
+    function test_sections() {
+        const rows = CardModel.rows(infos(), Groups.rules);
+        let s = CardModel.sections(rows, Groups.groups, "");
+        compare(s.map(x => x.group), ["windows", "launch", "kdos", "system"]);
+        s = CardModel.sections(rows, Groups.groups, "meta");
+        compare(s.map(x => x.group), ["windows", "launch", "kdos", "system"]);
+        s = CardModel.sections(rows, Groups.groups, "META   return");
+        compare(s.length, 1);
+        compare(s[0].rows[0].text, "Konsole");
+        s = CardModel.sections(rows, Groups.groups, "spectacle");
+        compare(s.length, 1, "the program's name is searched");
+        compare(s[0].group, "system");
+        s = CardModel.sections(rows, Groups.groups, "no such thing");
+        compare(s.length, 0);
+    }
+
+    function test_columns() {
+        const sec = (g, n) => ({ group: g, rows: new Array(n).fill(0) });
+        const s = [sec("windows", 30), sec("desktops", 12), sec("launch", 4), sec("kdos", 9), sec("system", 6)];
+        const cols = CardModel.columns(s, 3);
+        compare(cols.length, 3);
+        compare(cols.map(c => c.map(x => x.group)), [["windows"], ["desktops", "system"], ["launch", "kdos"]]);
+        compare(CardModel.columns(s, 0).length, 1, "at least one column");
+        compare(CardModel.columns([], 2), [[], []]);
+    }
+}

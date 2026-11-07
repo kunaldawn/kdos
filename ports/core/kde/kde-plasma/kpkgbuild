@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kde-plasma
+version     = 1
+release     = 1
+description = The KDE Plasma session: KWin, the shell and its daemons, SDDM, the portal, the input method, and KDOS's own Plasma code, artwork and daemons
+homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
+depends     = breeze-gtk breeze-icons oxygen ocean-sound-theme oxygen-sounds plasma-workspace-wallpapers sddm kwallet-pam ksystemstats plasma-systemmonitor kinfocenter plasma-thunderbolt fcitx5 fcitx5-chinese-addons fcitx5-anthy fcitx5-hangul fcitx5-qt fcitx5-gtk fcitx5-configtool plasma-keyboard plasma-disks plasma-vault ksshaskpass kup xdg-desktop-portal-kde kwin kglobalacceld kscreenlocker aurorae knighttime kscreen milou plasma-workspace plasma-desktop systemsettings kde-cli-tools kmenuedit kactivitymanagerd kwrited polkit-kde-agent-1 powerdevil plasma-nm plasma-pa bluedevil kde-gtk-config kdeplasma-addons plasma-browser-integration discover sddm-kcm plasma-setup plasma-welcome krohnkite print-manager kdos-sddm-theme kdos-addons kdos-plasma-look kdos-welcome plasmoid-kdos-checklist plasmoid-kdos-privacy kded-kdos kcm-kdos-system kcm-kdos-boxes kcm-kdos-firewall kcm-kdos-look kcm-kdos-health kdos-kwin-motion kwin-effect-kdos-keys kwin-script-kdos-runraise kwin-script-kdos-window-memory kdos-discover kdos-runner kdos-notice ksystemstats-kdos kio-library kdos-transcribe kdos-installer-gui kdos-powerd kdos-energyd kdos-oomd kdos-packd kdos-settingsd kdos-sysupdated krdp iio-sensor-proxy fwupd-snapshot kdos-icons kdos-wallpapers kdos-sounds

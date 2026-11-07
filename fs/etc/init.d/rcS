@@ -82,8 +82,8 @@ unset _fsck_rc _fsck_out
 # boot would fail the line. Without it /sys/firmware/efi/efivars is an empty
 # directory: efibootmgr reports no EFI variables, the installer cannot write
 # its NVRAM boot entry or see Secure Boot, fwupd has no UEFI devices, and
-# kdos-bootctl can neither arm an update's BootNext trial nor, in mark-good
-# below, clear one.
+# kdos-bootctl can neither arm an update's BootNext trial nor, in mark-good,
+# clear one.
 if [ -d /sys/firmware/efi/efivars ] && ! mountpoint -q /sys/firmware/efi/efivars; then
     mount -t efivarfs -o nosuid,nodev,noexec efivarfs /sys/firmware/efi/efivars
 fi
@@ -174,33 +174,58 @@ done
 
 unset _script
 
-# The other half of A/B rollback: this boot got far enough to start every
-# service that was going to fail, so the slot it booted is confirmed good.
+# THE FIRST OF THE TWO MARKERS THAT CONFIRM AN A/B SLOT: this boot started
+# every service that was going to fail. It confirms nothing on its own.
+# kdos-sysupdated runs `kdos-bootctl mark-good` only once the graphical marker
+# beside it exists too, which it writes when a desktop session has answered
+# for a minute — or the greeter has, on a machine nobody logs in to — so a
+# slot whose services start and whose desktop does not still spends its
+# attempt and is rolled back once its attempts are spent.
+# Both markers are root's, under /run/kdos/bless, and /run is a tmpfs, so a
+# boot starts with neither.
 #
-# LAST, deliberately. Confirming earlier would confirm a system that has not yet
-# failed rather than one that has succeeded — and the whole value of the attempt
-# counter is that a boot which wedges before this line never reaches it, spends
-# its attempt, and eventually rolls back.
+# LAST, deliberately: a boot that wedges before this line never writes it.
 #
-# Silent when the machine has no boot state, which is every machine with a
-# single root: there is nothing to confirm and that is not a failure.
-if command -v kdos-bootctl >/dev/null 2>&1; then
-    kdos-bootctl mark-good >/dev/null 2>&1 || true
+# AN IMAGE WITHOUT kdos-sysupdated CONFIRMS HERE, because nothing else would:
+# the marker would wait for a reader that is not there, and every trial slot
+# would roll back however well it booted. Silent when the machine has no boot
+# state, which is every machine with a single root: there is nothing to
+# confirm and that is not a failure.
+mkdir -p /run/kdos/bless
+chmod 0755 /run/kdos/bless
+: > /run/kdos/bless/userspace
+if [ ! -x /usr/sbin/kdos-sysupdated ] || [ -f "${DISABLED_DIR}/sysupdated" ]; then
+    if command -v kdos-bootctl >/dev/null 2>&1; then
+        kdos-bootctl mark-good >/dev/null 2>&1 || true
+    fi
 fi
 
-# Hand the screen back. This runs the power-off animation and leaves the
-# framebuffer black, so the getty's first write to tty1 (on the live medium,
-# what ends fbcon's deferred take-over) paints onto a clean console instead of
-# fighting a process that is still drawing.
+# HAND THE SCREEN TO THE DISPLAY MANAGER. `handoff` runs the power-off
+# animation and leaves the framebuffer black, and tty1 in graphics mode with
+# its text cleared and its cursor hidden: nothing printed after it — the line
+# below, init's runlevel message, a kernel message — is drawn between the
+# splash's last frame and the first frame of the greeter's compositor, which
+# takes tty1 from elogind still in graphics mode. A single-user boot puts
+# sulogin on the console instead, which needs text, and gets `quit`: the same
+# animation, with the console left in text mode and its cursor shown. The
+# runlevel is the one a word on the kernel command line asks init for.
 #
-# SYNCHRONOUS, and the desktop depends on it twice over. `kdos-splash quit`
-# returns only once the splash has stopped drawing, so init starts the tty1
-# login on a framebuffer nothing else owns; and the compositor's modeset,
-# further down that same chain, acquires a device the splash has already let
-# go. A splash that quit asynchronously would race a modeset, and the loser of
-# that race is a black screen with a running session behind it.
+# SYNCHRONOUS. Either returns only once the splash has stopped drawing, so the
+# compositor's modeset — started from inittab, which init reaches only after
+# this script returns — acquires a device the splash has already let go. A
+# splash that let go asynchronously would race that modeset, and the loser of
+# the race is a black screen with a running session behind it.
+_next=handoff
+_words=()
+{ read -r -a _words < /proc/cmdline; } 2>/dev/null
+for _w in "${_words[@]}"; do
+    case "$_w" in
+    single|s|S|1|-s) _next=quit ;;
+    esac
+done
 splash step "STARTING SESSION"
 splash ok
-splash quit
+splash "$_next"
+unset _w _words _next
 
 echo "KDOS Initialized."

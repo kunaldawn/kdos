@@ -20,7 +20,7 @@
  * THE TRANSFER STAYS IN FRONT OF THE PERSON. croc runs in the foreground of a
  * terminal window and prints its own progress; this program relays every byte
  * of it untouched rather than summarising, because what a transfer is doing is
- * croc's to say. All it adds is the QR and the toast, and it adds them from
+ * croc's to say. All it adds is the QR and the notification, and it adds them from
  * INSIDE the same window — reading croc's output and running croc where
  * somebody can watch it are the same process or they are two.
  *
@@ -56,7 +56,7 @@ static int usage(void)
 {
 	fprintf(stderr,
 		"usage: kdos-share [--clipboard] [FILE|file://URI]...\n"
-		"With no file, kdos-pick asks for one.\n"
+		"With no file, a file dialog asks for one.\n"
 		"Sends over croc: one code word, any machine on this network,\n"
 		"no account. Run it again on the other machine as `croc CODE`.\n");
 	return 2;
@@ -64,27 +64,29 @@ static int usage(void)
 
 /*
  * NOTHING NAMED, SO ASK. `share.file` is a menu row and a menu row has no
- * argument to give, so the chooser is what turns the row into a file — and
- * `kdos-share` typed with nothing after it means the same thing.
+ * argument to give, so KDE's own file dialog (kdialog) is what turns the row
+ * into a file — and `kdos-share` typed with nothing after it means the same
+ * thing.
  *
- * IT PRINTS A URI. That is kdos-pick's whole interface, and kb_uri_path is
- * what turns it back into a path; exit 1 is a cancel and not a failure, so
- * nothing is said about it.
+ * IT PRINTS A PATH, which kb_uri_path takes as it takes a URI; exit 1 is a
+ * cancel and not a failure, so nothing is said about it.
  */
 static const char *pick_one(void)
 {
-	static char uri[4096];
+	static char path[4096];
 	KbArgv a = { 0 };
 
-	if (!kb_have_prog("kdos-pick"))
-		kb_die("nothing to send, and kdos-pick is not installed");
-	kb_argv_add(&a, "kdos-pick");
+	if (!kb_have_prog("kdialog"))
+		kb_die("nothing to send, and kdialog is not installed");
+	kb_argv_add(&a, "kdialog");
 	kb_argv_add(&a, "--title");
 	kb_argv_add(&a, "Share");
+	kb_argv_add(&a, "--getopenfilename");
+	kb_argv_add(&a, kb_home_dir());
 	kb_argv_end(&a);
-	if (kb_run_capture(&a, uri, sizeof(uri)) != 0 || !uri[0])
+	if (kb_run_capture(&a, path, sizeof(path)) != 0 || !path[0])
 		return NULL;
-	return uri;
+	return path;
 }
 
 /*
@@ -333,14 +335,15 @@ static int send_files(const char *const *paths, int n)
 /*
  * A WINDOW OF ITS OWN WHEN THERE IS NO TERMINAL TO USE.
  *
- * The Share verb is reached from a desktop icon, the file chooser and `mc`'s
+ * The Share verb is reached from Dolphin's context menu, KRunner and `mc`'s
  * `F2`, and the first two have no terminal at all — a transfer started there
  * with nowhere to draw is a transfer nobody can see finish or cancel. Typed at
  * a prompt it runs where it was typed, which is what a person who typed it
  * meant.
  *
- * THE TERMINAL FOLLOWS THE DESKTOP, through `kb_terminal()`: `foot` needs a
- * compositor and `kdos-term` is what the console has.
+ * THE TERMINAL FOLLOWS THE DESKTOP, through `kb_terminal()`: Konsole in a
+ * Plasma session, and none on a bare console, where the transfer runs in
+ * place.
  */
 static int in_terminal(const char *const *paths, int n)
 {
@@ -354,8 +357,12 @@ static int in_terminal(const char *const *paths, int n)
 	if (!term)
 		return send_files(paths, n);
 	kb_argv_add(&a, term);
-	kb_argv_add(&a, "--title");
-	kb_argv_add(&a, "Share");
+	/* Konsole names a tab through a profile property; another emulator
+	 * gets no title rather than an option it may refuse. */
+	if (!strcmp(term, "konsole")) {
+		kb_argv_add(&a, "-p");
+		kb_argv_add(&a, "tabtitle=Share");
+	}
 	kb_argv_add(&a, "-e");
 	kb_argv_add(&a, "kdos-share");
 	kb_argv_add(&a, "--here");
@@ -397,8 +404,8 @@ int share_main(int argc, char **argv)
 			return usage();
 		if (n >= SHARE_MAX)
 			kb_die("too many files in one transfer");
-		/* A path from a command line and a `file://` URI from
-		 * `kdos-pick` are the same argument to this program. */
+		/* A path from a command line and a `file://` URI from a
+		 * file manager are the same argument to this program. */
 		if (!kb_uri_path(a, resolved[n], sizeof(resolved[n])))
 			kb_die("%s: not a file on this machine", a);
 		if (access(resolved[n], R_OK) != 0)
@@ -431,8 +438,8 @@ int share_main(int argc, char **argv)
 	int rc = send_files(paths, n);
 
 	/*
-	 * A WINDOW THIS PROGRAM OPENED, IT ALSO HOLDS OPEN. `kdos-term` has no
-	 * `--hold` and the window closes with the command, so a transfer that
+	 * A WINDOW THIS PROGRAM OPENED, IT ALSO HOLDS OPEN. The window closes
+	 * with the command, so a transfer that
 	 * finished would take its own result off the screen with it — and
 	 * whether it finished is the one thing the person was watching for.
 	 * Nothing waits where the person already had a prompt.

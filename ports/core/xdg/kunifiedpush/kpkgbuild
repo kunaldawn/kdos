@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = kunifiedpush
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 52d9c7a2555890834b4ea773b0968e2748bccababdd8c06d076ba8e628acd02b  kunifiedpush-26.08.2.tar.xz
+description = UnifiedPush client library, push distributor daemon and its System Settings page
+homepage    = https://invent.kde.org/libraries/kunifiedpush
+license     = LGPL-2.0-or-later AND BSD-2-Clause AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtwebsockets openssl kcoreaddons ki18n solid kservice kcmutils kcrash kirigami

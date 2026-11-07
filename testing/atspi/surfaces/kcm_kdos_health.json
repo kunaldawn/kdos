@@ -1,0 +1,17 @@
+{
+  "app": "kcmshell6 kcm_kdos_health",
+  "mask": [
+    {
+      "name": "\\b\\d+([.,]\\d+)? ?([KMGT]i?B|%)\\b"
+    },
+    {
+      "name": "\\b\\d+\\.\\d+(\\.\\d+)*\\b"
+    },
+    {
+      "name": "\\b\\d{4}-\\d{2}-\\d{2}\\b"
+    }
+  ],
+  "settle": 3,
+  "steps": [],
+  "allow_unnamed": []
+}

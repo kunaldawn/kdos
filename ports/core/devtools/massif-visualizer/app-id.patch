@@ -1,0 +1,13 @@
+Subject: set the desktop entry's StartupWMClass to the Wayland app_id, org.kde.massif-visualizer
+
+--- a/app/org.kde.massif-visualizer.desktop
++++ b/app/org.kde.massif-visualizer.desktop
+@@ -7,7 +7,7 @@
+ Icon=massif-visualizer
+ # FIXME: write docs!
+ # X-DocPath=kcachegrind/index.html
+-StartupWMClass=massif-visualizer
++StartupWMClass=org.kde.massif-visualizer
+ Terminal=false
+ Name=Massif-Visualizer
+ Name[ar]=مصور Massif

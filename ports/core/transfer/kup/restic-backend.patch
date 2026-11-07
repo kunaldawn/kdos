@@ -1,0 +1,3091 @@
+Subject: Add a restic backend: backup and maintenance jobs, a settings page option and a restic:/ KIO worker
+
+diff -ruN a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt	2026-10-27 16:57:05.000000000 +0530
++++ b/CMakeLists.txt	2026-11-01 18:02:44.636222637 +0530
+@@ -50,6 +50,7 @@
+   KCMUtils
+   Crash
+   WindowSystem
++  Wallet
+ )
+ find_package(Plasma REQUIRED)
+ 
+diff -ruN a/daemon/backupjob.h b/daemon/backupjob.h
+--- a/daemon/backupjob.h	2026-10-27 16:57:05.000000000 +0530
++++ b/daemon/backupjob.h	2026-11-01 18:02:44.636527436 +0530
+@@ -19,7 +19,7 @@
+ {
+     Q_OBJECT
+ public:
+-    enum ErrorCodes { ErrorWithLog = UserDefinedError, ErrorWithoutLog, ErrorSuggestRepair, ErrorSourcesConfig };
++    enum ErrorCodes { ErrorWithLog = UserDefinedError, ErrorWithoutLog, ErrorSuggestRepair, ErrorSourcesConfig, ErrorPasswordConfig };
+ 
+     void start() override;
+ 
+diff -ruN a/daemon/CMakeLists.txt b/daemon/CMakeLists.txt
+--- a/daemon/CMakeLists.txt	2026-10-27 16:57:05.000000000 +0530
++++ b/daemon/CMakeLists.txt	2026-11-01 18:02:44.636718590 +0530
+@@ -15,10 +15,13 @@
+ bupverificationjob.cpp
+ buprepairjob.cpp
+ rsyncjob.cpp
++resticjob.cpp
++resticmaintenancejob.cpp
+ ../settings/backupplan.cpp
+ ../settings/kupsettings.cpp
+ ../settings/kuputils.cpp
+ ../settings/dynamicexclusions.cpp
++../settings/restic.cpp
+ )
+ 
+ set_source_files_properties(org.kde.kupdaemon.KupDaemon.xml PROPERTIES
+@@ -52,6 +55,7 @@
+ KF${QT_MAJOR_VERSION}::CoreAddons
+ KF${QT_MAJOR_VERSION}::DBusAddons
+ KF${QT_MAJOR_VERSION}::Crash
++KF${QT_MAJOR_VERSION}::Wallet
+ )
+ 
+ ########### install files ###############
+diff -ruN a/daemon/kupdaemon.cpp b/daemon/kupdaemon.cpp
+--- a/daemon/kupdaemon.cpp	2026-10-27 16:57:05.000000000 +0530
++++ b/daemon/kupdaemon.cpp	2026-11-01 18:02:44.636916266 +0530
+@@ -170,7 +170,7 @@
+             return pPath.startsWith(lIncludedPath) && !lIsExcluded;
+         });
+ 
+-        if (lExecutor->destinationAvailable() && lPlan->mBackupType == BackupType::BupType && lIsIncluded) {
++        if (lExecutor->destinationAvailable() && (lPlan->mBackupType == BackupType::BupType || lPlan->mBackupType == BackupType::ResticType) && lIsIncluded) {
+             return lExecutor->mDestinationPath;
+         }
+     }
+diff -ruN a/daemon/planexecutor.cpp b/daemon/planexecutor.cpp
+--- a/daemon/planexecutor.cpp	2026-10-27 16:57:05.000000000 +0530
++++ b/daemon/planexecutor.cpp	2026-11-01 18:02:44.637168445 +0530
+@@ -8,6 +8,8 @@
+ #include "bupverificationjob.h"
+ #include "kupdaemon.h"
+ #include "kupdaemon_debug.h"
++#include "resticjob.h"
++#include "resticmaintenancejob.h"
+ #include "rsyncjob.h"
+ 
+ #include <KFormat>
+@@ -34,6 +36,8 @@
+     , mFailNotification(nullptr)
+     , mIntegrityNotification(nullptr)
+     , mRepairNotification(nullptr)
++    , mPruneQuestion(nullptr)
++    , mPruneNotification(nullptr)
+     , mLastState(ExecutorState::NOT_AVAILABLE)
+     , mKupDaemon(pKupDaemon)
+     , mSleepCookie(0)
+@@ -71,6 +75,8 @@
+         return i18nc("status in tooltip", "Checking backup integrity");
+     case ExecutorState::REPAIRING:
+         return i18nc("status in tooltip", "Repairing backups");
++    case ExecutorState::PRUNING:
++        return i18nc("status in tooltip", "Removing old backups");
+     default:;
+     }
+ 
+@@ -203,6 +209,12 @@
+             QProcess::startDetached(QStringLiteral("kcmshell6"),
+                                     {QStringLiteral("--args"), QStringLiteral("show_sources %1").arg(mPlan->planNumber()), QStringLiteral("kcm_kup")});
+         });
++    } else if (pFailedJob->error() == BackupJob::ErrorPasswordConfig) {
++        KNotificationAction *openSettings = mFailNotification->addAction(xi18nc("@action:button", "Open settings"));
++        connect(openSettings, &KNotificationAction::activated, this, [this] {
++            QProcess::startDetached(QStringLiteral("kcmshell6"),
++                                    {QStringLiteral("--args"), QStringLiteral("show_type %1").arg(mPlan->planNumber()), QStringLiteral("kcm_kup")});
++        });
+     }
+ 
+     connect(mFailNotification, SIGNAL(closed()), SLOT(discardFailNotification()));
+@@ -235,10 +247,15 @@
+ 
+ void PlanExecutor::startIntegrityCheck()
+ {
+-    if (mPlan->mBackupType != BackupType::BupType || busy() || !destinationAvailable()) {
++    if ((mPlan->mBackupType != BackupType::BupType && mPlan->mBackupType != BackupType::ResticType) || busy() || !destinationAvailable()) {
+         return;
+     }
+-    KJob *lJob = new BupVerificationJob(*mPlan, mDestinationPath, mLogFilePath, mKupDaemon);
++    KJob *lJob;
++    if (mPlan->mBackupType == BackupType::ResticType) {
++        lJob = new ResticMaintenanceJob(ResticMaintenanceJob::Check, *mPlan, mDestinationPath, mLogFilePath, mKupDaemon);
++    } else {
++        lJob = new BupVerificationJob(*mPlan, mDestinationPath, mLogFilePath, mKupDaemon);
++    }
+     connect(lJob, &KJob::result, this, &PlanExecutor::integrityCheckFinished);
+     lJob->start();
+     mLastState = mState;
+@@ -249,10 +266,15 @@
+ 
+ void PlanExecutor::startRepairJob()
+ {
+-    if (mPlan->mBackupType != BackupType::BupType || busy() || !destinationAvailable()) {
++    if ((mPlan->mBackupType != BackupType::BupType && mPlan->mBackupType != BackupType::ResticType) || busy() || !destinationAvailable()) {
+         return;
+     }
+-    KJob *lJob = new BupRepairJob(*mPlan, mDestinationPath, mLogFilePath, mKupDaemon);
++    KJob *lJob;
++    if (mPlan->mBackupType == BackupType::ResticType) {
++        lJob = new ResticMaintenanceJob(ResticMaintenanceJob::Repair, *mPlan, mDestinationPath, mLogFilePath, mKupDaemon);
++    } else {
++        lJob = new BupRepairJob(*mPlan, mDestinationPath, mLogFilePath, mKupDaemon);
++    }
+     connect(lJob, &KJob::result, this, &PlanExecutor::repairFinished);
+     lJob->start();
+     mLastState = mState;
+@@ -261,6 +283,86 @@
+     startSleepInhibit();
+ }
+ 
++void PlanExecutor::startPruneJob()
++{
++    discardPruneQuestion();
++    if (mPlan->mBackupType != BackupType::ResticType || busy() || !destinationAvailable()) {
++        return;
++    }
++    KJob *lJob = new ResticMaintenanceJob(ResticMaintenanceJob::Prune, *mPlan, mDestinationPath, mLogFilePath, mKupDaemon);
++    connect(lJob, &KJob::result, this, &PlanExecutor::pruneFinished);
++    lJob->start();
++    mLastState = mState;
++    mState = ExecutorState::PRUNING;
++    emit stateChanged();
++    startSleepInhibit();
++}
++
++// Removing snapshots cannot be undone, so the applet's action asks first and
++// names what the policy keeps.
++void PlanExecutor::askToPrune()
++{
++    discardPruneQuestion();
++    mPruneQuestion = new KNotification(QStringLiteral("StartBackup"), KNotification::Persistent);
++    mPruneQuestion->setTitle(mPlan->mDescription);
++    mPruneQuestion->setText(xi18nc("@info",
++                                   "Remove the old backups this plan no longer needs?\n"
++                                   "Kept are every backup from the last two days, one a day for a month, "
++                                   "one a week for six months, one a month for two years and one a year after that."));
++
++    KNotificationAction *yes = mPruneQuestion->addAction(xi18nc("@action:button", "Remove Old Backups"));
++    connect(yes, &KNotificationAction::activated, this, &PlanExecutor::startPruneJob);
++
++    KNotificationAction *no = mPruneQuestion->addAction(xi18nc("@action:button", "Cancel"));
++    connect(no, &KNotificationAction::activated, this, &PlanExecutor::discardPruneQuestion);
++
++    connect(mPruneQuestion, &KNotification::closed, this, &PlanExecutor::discardPruneQuestion);
++    connect(mPruneQuestion, &KNotification::ignored, this, &PlanExecutor::discardPruneQuestion);
++    mPruneQuestion->sendEvent();
++}
++
++void PlanExecutor::discardPruneQuestion()
++{
++    if (mPruneQuestion) {
++        mPruneQuestion->deleteLater();
++        mPruneQuestion = nullptr;
++    }
++}
++
++void PlanExecutor::pruneFinished(KJob *pJob)
++{
++    endSleepInhibit();
++    discardPruneNotification();
++    mPruneNotification = new KNotification(pJob->error() ? QStringLiteral("BackupFailed") : QStringLiteral("BackupSucceeded"));
++    if (pJob->error()) {
++        mPruneNotification->setTitle(xi18nc("@title:window", "Removing Old Backups Failed"));
++        mPruneNotification->setText(pJob->errorText());
++        KNotificationAction *showLogFile = mPruneNotification->addAction(xi18nc("@action:button", "Show log file"));
++        connect(showLogFile, &KNotificationAction::activated, this, [this]() {
++            showLog(mPruneNotification ? mPruneNotification->xdgActivationToken() : QString());
++        });
++    } else {
++        mPruneNotification->setTitle(xi18nc("@title:window", "Old Backups Removed"));
++        mPruneNotification->setText(xi18nc("@info notification", "The backups the plan no longer keeps were removed."));
++    }
++    connect(mPruneNotification, &KNotification::closed, this, &PlanExecutor::discardPruneNotification);
++    connect(mPruneNotification, &KNotification::ignored, this, &PlanExecutor::discardPruneNotification);
++    mPruneNotification->sendEvent();
++
++    if (mState == ExecutorState::PRUNING) { // only restore if nothing has changed during the run
++        mState = mLastState;
++    }
++    emit stateChanged();
++}
++
++void PlanExecutor::discardPruneNotification()
++{
++    if (mPruneNotification) {
++        mPruneNotification->deleteLater();
++        mPruneNotification = nullptr;
++    }
++}
++
+ void PlanExecutor::startBackupSaveJob()
+ {
+     if (busy() || !destinationAvailable()) {
+@@ -479,11 +581,24 @@
+     } else if (mPlan->mBackupType == BackupType::RsyncType) {
+         auto *job = new KIO::OpenUrlJob(QUrl::fromLocalFile(mDestinationPath));
+         job->start();
++    } else if (mPlan->mBackupType == BackupType::ResticType) {
++        // The restic KIO worker shows the repository as one folder per
++        // snapshot, so any file manager can browse and copy files back.
++        QUrl lUrl;
++        lUrl.setScheme(QStringLiteral("restic"));
++        lUrl.setPath(mDestinationPath);
++        auto *job = new KIO::OpenUrlJob(lUrl, QStringLiteral("inode/directory"));
++        job->setStartupId(pXdgActivationToken.toUtf8());
++        job->start();
+     }
+ }
+ 
+ void PlanExecutor::showBackupPurger(const QString &pXdgActivationToken)
+ {
++    if (mPlan->mBackupType == BackupType::ResticType && !busy() && destinationAvailable()) {
++        askToPrune();
++        return;
++    }
+     if (mPlan->mBackupType != BackupType::BupType || busy() || !destinationAvailable()) {
+         return;
+     }
+@@ -501,6 +616,9 @@
+     if (mPlan->mBackupType == BackupType::RsyncType) {
+         return new RsyncJob(*mPlan, mDestinationPath, mLogFilePath, mKupDaemon);
+     }
++    if (mPlan->mBackupType == BackupType::ResticType) {
++        return new ResticJob(*mPlan, mDestinationPath, mLogFilePath, mKupDaemon);
++    }
+     qCWarning(KUPDAEMON) << "Invalid backup type in configuration!";
+     return nullptr;
+ }
+diff -ruN a/daemon/planexecutor.h b/daemon/planexecutor.h
+--- a/daemon/planexecutor.h	2026-10-27 16:57:05.000000000 +0530
++++ b/daemon/planexecutor.h	2026-11-01 18:02:44.637505446 +0530
+@@ -39,7 +39,8 @@
+ 
+     bool busy()
+     {
+-        return mState == ExecutorState::BACKUP_RUNNING || mState == ExecutorState::INTEGRITY_TESTING || mState == ExecutorState::REPAIRING;
++        return mState == ExecutorState::BACKUP_RUNNING || mState == ExecutorState::INTEGRITY_TESTING || mState == ExecutorState::REPAIRING
++            || mState == ExecutorState::PRUNING;
+     }
+     bool destinationAvailable()
+     {
+@@ -60,6 +61,7 @@
+     void updateAccumulatedUsageTime();
+     void startIntegrityCheck();
+     void startRepairJob();
++    void startPruneJob();
+     void startBackupSaveJob();
+     void showLog(const QString &pXdgActivationToken);
+ 
+@@ -90,6 +92,11 @@
+     void repairFinished(KJob *pJob);
+     void discardRepairNotification();
+ 
++    void askToPrune();
++    void discardPruneQuestion();
++    void pruneFinished(KJob *pJob);
++    void discardPruneNotification();
++
+     void startSleepInhibit();
+     void endSleepInhibit();
+ 
+@@ -102,6 +109,8 @@
+     KNotification *mFailNotification;
+     KNotification *mIntegrityNotification;
+     KNotification *mRepairNotification;
++    KNotification *mPruneQuestion;
++    KNotification *mPruneNotification;
+     ExecutorState mLastState;
+     KupDaemon *mKupDaemon;
+     uint mSleepCookie;
+diff -ruN a/daemon/resticjob.cpp b/daemon/resticjob.cpp
+--- a/daemon/resticjob.cpp	1970-01-01 05:30:00.000000000 +0530
++++ b/daemon/resticjob.cpp	2026-11-01 18:15:05.931202372 +0530
+@@ -0,0 +1,446 @@
++// SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
++//
++// SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++
++#include "resticjob.h"
++#include "dynamicexclusions.h"
++#include "kupdaemon_debug.h"
++#include "kuputils.h"
++
++#include <KFormat>
++#include <KLocalizedString>
++#include <KNotification>
++
++#include <QDir>
++#include <QFileInfo>
++#include <QJsonArray>
++#include <QJsonDocument>
++#include <QJsonObject>
++
++#include <csignal>
++
++ResticBaseJob::ResticBaseJob(BackupPlan &pBackupPlan, const QString &pDestinationPath, const QString &pLogFilePath, KupDaemon *pKupDaemon)
++    : BackupJob(pBackupPlan, pDestinationPath, pLogFilePath, pKupDaemon)
++{
++    setCapabilities(KJob::Suspendable | KJob::Killable);
++}
++
++bool ResticBaseJob::prepareRestic()
++{
++    if (Restic::programVersion().isEmpty()) {
++        jobFinishedError(ErrorWithoutLog,
++                         xi18nc("@info notification",
++                                "The <application>restic</application> program is needed but could not be found, "
++                                "maybe it is not installed?"));
++        return false;
++    }
++    QString lError;
++    if (!mCredentials.loadForPlan(mBackupPlan, 0, lError)) {
++        jobFinishedError(ErrorPasswordConfig, lError);
++        return false;
++    }
++    return true;
++}
++
++void ResticBaseJob::watchProcess(KProcess &pProcess)
++{
++    pProcess.setOutputChannelMode(KProcess::SeparateChannels);
++    connect(&pProcess, &KProcess::started, this, [this, &pProcess] {
++        makeNice(static_cast<int>(pProcess.processId()));
++    });
++    mProcesses.append(&pProcess);
++}
++
++bool ResticBaseJob::startRestic(KProcess &pProcess, const QStringList &pArguments)
++{
++    if (!mCredentials.prepare(pProcess, mDestinationPath, pArguments)) {
++        mLogStream << QStringLiteral("Kup could not hand the repository password to restic.") << Qt::endl;
++        return false;
++    }
++    mLogStream << quoteArgs(pProcess.program()) << Qt::endl;
++    pProcess.start();
++    mCredentials.release();
++    return true;
++}
++
++int ResticBaseJob::executeRestic(KProcess &pProcess, const QStringList &pArguments)
++{
++    pProcess.setOutputChannelMode(KProcess::SeparateChannels);
++    if (!mCredentials.prepare(pProcess, mDestinationPath, pArguments)) {
++        mLogStream << QStringLiteral("Kup could not hand the repository password to restic.") << Qt::endl;
++        return -1;
++    }
++    mLogStream << quoteArgs(pProcess.program()) << Qt::endl;
++    pProcess.start();
++    mCredentials.release();
++    if (!pProcess.waitForFinished(-1) || pProcess.exitStatus() != QProcess::NormalExit) {
++        return -1;
++    }
++    return pProcess.exitCode();
++}
++
++void ResticBaseJob::logErrors(KProcess &pProcess)
++{
++    const QString lErrors = QString::fromUtf8(pProcess.readAllStandardError());
++    if (!lErrors.isEmpty()) {
++        mLogStream << lErrors << Qt::endl;
++    }
++}
++
++bool ResticBaseJob::finishOnCommonError(int pExitCode)
++{
++    switch (pExitCode) {
++    case Restic::ExitNoRepository:
++        mLogStream << QStringLiteral("Kup found no restic repository at the destination.") << Qt::endl;
++        jobFinishedError(ErrorWithLog, xi18nc("@info notification", "There is no restic repository at the backup destination. See log file for more details."));
++        return true;
++    case Restic::ExitLocked:
++        mLogStream << QStringLiteral("The restic repository is locked by another restic process.") << Qt::endl;
++        jobFinishedError(ErrorWithLog,
++                         xi18nc("@info notification",
++                                "The backup destination is in use by another restic process. "
++                                "Try again when it has finished. See log file for more details."));
++        return true;
++    case Restic::ExitWrongPassword:
++        mLogStream << QStringLiteral("The password does not open the restic repository.") << Qt::endl;
++        jobFinishedError(ErrorPasswordConfig,
++                         xi18nc("@info notification",
++                                "The password does not open the restic repository at the backup destination. "
++                                "Please open settings and enter the repository's password."));
++        return true;
++    default:
++        return false;
++    }
++}
++
++bool ResticBaseJob::doKill()
++{
++    setError(KilledJobError);
++    for (KProcess *lProcess : std::as_const(mProcesses)) {
++        if (lProcess->state() == KProcess::Running) {
++            // SIGINT lets restic remove its lock from the repository before it
++            // exits; a killed restic leaves a stale lock behind.
++            if (0 == ::kill(static_cast<pid_t>(lProcess->processId()), SIGINT)) {
++                return lProcess->waitForFinished();
++            }
++            return false;
++        }
++    }
++    return true;
++}
++
++bool ResticBaseJob::doSuspend()
++{
++    for (KProcess *lProcess : std::as_const(mProcesses)) {
++        if (lProcess->state() == KProcess::Running) {
++            return 0 == ::kill(static_cast<pid_t>(lProcess->processId()), SIGSTOP);
++        }
++    }
++    return false;
++}
++
++bool ResticBaseJob::doResume()
++{
++    for (KProcess *lProcess : std::as_const(mProcesses)) {
++        if (lProcess->state() == KProcess::Running) {
++            return 0 == ::kill(static_cast<pid_t>(lProcess->processId()), SIGCONT);
++        }
++    }
++    return false;
++}
++
++ResticJob::ResticJob(BackupPlan &pBackupPlan, const QString &pDestinationPath, const QString &pLogFilePath, KupDaemon *pKupDaemon)
++    : ResticBaseJob(pBackupPlan, pDestinationPath, pLogFilePath, pKupDaemon)
++{
++    watchProcess(mCheckProcess);
++    watchProcess(mSaveProcess);
++    watchProcess(mForgetProcess);
++    connect(&mCheckProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this, &ResticJob::slotCheckingDone);
++    connect(&mSaveProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this, &ResticJob::slotSavingDone);
++    connect(&mSaveProcess, &KProcess::readyReadStandardOutput, this, &ResticJob::slotReadSaveOutput);
++    connect(&mSaveProcess, &KProcess::readyReadStandardError, this, &ResticJob::slotReadSaveErrors);
++    connect(&mForgetProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this, &ResticJob::slotForgettingDone);
++}
++
++void ResticJob::performJob()
++{
++    if (!prepareRestic()) {
++        return;
++    }
++    mLogStream << QStringLiteral("Kup is starting restic backup job at ") << QLocale().toString(QDateTime::currentDateTime()) << Qt::endl << Qt::endl;
++
++    if (!Restic::isRepository(mDestinationPath)) {
++        // restic init writes its folders beside whatever is there; a folder
++        // that already holds other files would end up mixed with the
++        // repository, so only an empty one is initialised.
++        const QDir lDestination(mDestinationPath);
++        if (!lDestination.entryList(QDir::AllEntries | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot).isEmpty()) {
++            mLogStream << QStringLiteral("The destination is not empty and holds no restic repository: ") << mDestinationPath << Qt::endl;
++            jobFinishedError(ErrorWithLog,
++                             xi18nc("@info notification",
++                                    "The backup destination is not empty and is not a restic repository. "
++                                    "Please choose an empty folder or an existing restic repository."));
++            return;
++        }
++        emit description(this, i18n("Initializing backup destination"));
++        KProcess lInitProcess;
++        const int lExitCode = executeRestic(lInitProcess, {QStringLiteral("init")});
++        if (lExitCode != 0) {
++            logErrors(lInitProcess);
++            mLogStream << QStringLiteral(
++                "Kup did not successfully complete the restic backup job: "
++                "failed to initialize backup destination.")
++                       << Qt::endl;
++            jobFinishedError(ErrorWithLog,
++                             xi18nc("@info notification",
++                                    "Backup destination could not be initialised. "
++                                    "See log file for more details."));
++            return;
++        }
++        mLogStream << QString::fromUtf8(lInitProcess.readAllStandardOutput()) << Qt::endl;
++    }
++
++    if (mBackupPlan.mCheckBackups) {
++        emit description(this, i18n("Checking backup integrity"));
++        if (!startRestic(mCheckProcess, {QStringLiteral("--retry-lock"), QStringLiteral("1m"), QStringLiteral("check")})) {
++            jobFinishedError(ErrorWithLog, xi18nc("@info notification", "Failed to save backup. See log file for more details."));
++        }
++    } else {
++        startSaving();
++    }
++}
++
++void ResticJob::slotCheckingDone(int pExitCode, QProcess::ExitStatus pExitStatus)
++{
++    mLogStream << QString::fromUtf8(mCheckProcess.readAllStandardOutput());
++    logErrors(mCheckProcess);
++    mLogStream << "Exit code: " << pExitCode << Qt::endl;
++    if (pExitStatus == QProcess::NormalExit && finishOnCommonError(pExitCode)) {
++        return;
++    }
++    if (pExitStatus != QProcess::NormalExit || pExitCode != 0) {
++        mLogStream << QStringLiteral(
++            "Kup did not successfully complete the restic backup job: "
++            "failed integrity check. Your backups could be "
++            "corrupted! See above for details.")
++                   << Qt::endl;
++        jobFinishedError(ErrorSuggestRepair,
++                         xi18nc("@info notification",
++                                "Failed backup integrity check. Your backups could be corrupted! "
++                                "See log file for more details. Do you want to try repairing the backup files?"));
++        return;
++    }
++    startSaving();
++}
++
++QStringList ResticJob::excludeArguments()
++{
++    QStringList lArguments;
++    if (mBackupPlan.mExcludeCaches) {
++        lArguments << QStringLiteral("--exclude-caches");
++    }
++
++    DynamicExclusions lDynExclusions;
++    lDynExclusions.setFromPlan(mBackupPlan);
++    QStringList lExcludes = mBackupPlan.mPathsExcluded + lDynExclusions.pathsExcluded(mBackupPlan.mPathsIncluded);
++
++    // A repository inside a source folder would be saved into itself on
++    // every run, and grow by its own size each time.
++    const QString lRepository = QDir::cleanPath(mDestinationPath);
++    for (const QString &lInclude : std::as_const(mBackupPlan.mPathsIncluded)) {
++        QString lIncludeWithSlash = lInclude;
++        ensureTrailingSlash(lIncludeWithSlash);
++        if (lRepository.startsWith(lIncludeWithSlash)) {
++            lExcludes << lRepository;
++            break;
++        }
++    }
++
++    lExcludes.removeDuplicates();
++    for (const QString &lExclude : std::as_const(lExcludes)) {
++        if (!lExclude.isEmpty()) {
++            lArguments << QStringLiteral("--exclude") << Restic::escapePattern(lExclude);
++        }
++    }
++
++    const QString lExcludesPath = mBackupPlan.absoluteExcludesFilePath();
++    if (mBackupPlan.mExcludePatterns && QFileInfo::exists(lExcludesPath)) {
++        lArguments << QStringLiteral("--exclude-file") << lExcludesPath;
++    }
++    return lArguments;
++}
++
++void ResticJob::startSaving()
++{
++    QStringList lArguments{QStringLiteral("--retry-lock"),
++                           QStringLiteral("1m"),
++                           QStringLiteral("backup"),
++                           QStringLiteral("--json"),
++                           QStringLiteral("--tag"),
++                           Restic::snapshotTag()};
++    lArguments << excludeArguments();
++    lArguments << QStringLiteral("--");
++    lArguments << mBackupPlan.mPathsIncluded;
++
++    emit description(this, i18n("Saving backup"));
++    mInfoRateLimiter.start();
++    if (!startRestic(mSaveProcess, lArguments)) {
++        jobFinishedError(ErrorWithLog, xi18nc("@info notification", "Failed to save backup. See log file for more details."));
++    }
++}
++
++void ResticJob::takeLines(QByteArray &pPending, const QByteArray &pRead, bool pFlush)
++{
++    pPending += pRead;
++    qsizetype lEnd;
++    while ((lEnd = pPending.indexOf('\n')) >= 0) {
++        const QByteArray lLine = pPending.left(lEnd).trimmed();
++        pPending.remove(0, lEnd + 1);
++        if (!lLine.isEmpty()) {
++            handleJsonLine(lLine);
++        }
++    }
++    if (pFlush) {
++        const QByteArray lLast = pPending.trimmed();
++        pPending.clear();
++        if (!lLast.isEmpty()) {
++            handleJsonLine(lLast);
++        }
++    }
++}
++
++void ResticJob::slotReadSaveOutput()
++{
++    takeLines(mPendingOutput, mSaveProcess.readAllStandardOutput(), false);
++}
++
++// With --json, restic writes its error messages as JSON lines on standard
++// error, not standard output; they are what decides whether an exit code 3 is
++// harmless, so they are read as they come, like the status lines.
++void ResticJob::slotReadSaveErrors()
++{
++    takeLines(mPendingErrors, mSaveProcess.readAllStandardError(), false);
++}
++
++void ResticJob::handleJsonLine(const QByteArray &pLine)
++{
++    QJsonParseError lParseError;
++    const QJsonDocument lDocument = QJsonDocument::fromJson(pLine, &lParseError);
++    if (lParseError.error != QJsonParseError::NoError || !lDocument.isObject()) {
++        mLogStream << QString::fromUtf8(pLine) << Qt::endl;
++        return;
++    }
++    const QJsonObject lMessage = lDocument.object();
++    const QString lType = lMessage.value(QStringLiteral("message_type")).toString();
++
++    if (lType == QStringLiteral("status")) {
++        if (!mInfoRateLimiter.hasExpired(200)) {
++            return;
++        }
++        mInfoRateLimiter.start();
++        const auto lTotalBytes = static_cast<qulonglong>(lMessage.value(QStringLiteral("total_bytes")).toDouble());
++        const auto lBytesDone = static_cast<qulonglong>(lMessage.value(QStringLiteral("bytes_done")).toDouble());
++        const auto lTotalFiles = static_cast<qulonglong>(lMessage.value(QStringLiteral("total_files")).toDouble());
++        const auto lFilesDone = static_cast<qulonglong>(lMessage.value(QStringLiteral("files_done")).toDouble());
++        const double lElapsed = lMessage.value(QStringLiteral("seconds_elapsed")).toDouble();
++        const double lPercentDone = lMessage.value(QStringLiteral("percent_done")).toDouble();
++        if (lTotalFiles != 0) {
++            setPercent(qMax(static_cast<unsigned long>(lPercentDone * 100.0), 1UL));
++            setTotalAmount(KJob::Bytes, lTotalBytes);
++            setTotalAmount(KJob::Files, lTotalFiles);
++            setProcessedAmount(KJob::Bytes, lBytesDone);
++            setProcessedAmount(KJob::Files, lFilesDone);
++            if (lElapsed > 0.0) {
++                emitSpeed(static_cast<unsigned long>(static_cast<double>(lBytesDone) / lElapsed));
++            }
++        }
++        const QJsonArray lCurrentFiles = lMessage.value(QStringLiteral("current_files")).toArray();
++        if (!lCurrentFiles.isEmpty()) {
++            emit description(this,
++                             i18n("Saving backup"),
++                             qMakePair(i18nc("Label for file currently being copied", "File"), lCurrentFiles.first().toString()));
++        }
++    } else if (lType == QStringLiteral("error")) {
++        ++mErrorCount;
++        const QString lText = lMessage.value(QStringLiteral("error")).toObject().value(QStringLiteral("message")).toString();
++        // A file deleted between restic's scan and its read is not lost
++        // data; anything else (permission denied, an I/O error) is.
++        if (lText.contains(QStringLiteral("no such file or directory"))) {
++            ++mHarmlessErrorCount;
++        }
++        mLogStream << QStringLiteral("Error during ") << lMessage.value(QStringLiteral("during")).toString() << QStringLiteral(": ")
++                   << lMessage.value(QStringLiteral("item")).toString() << QStringLiteral(": ") << lText << Qt::endl;
++    } else if (lType == QStringLiteral("summary")) {
++        const KFormat lFormat;
++        mLogStream << QStringLiteral("Saved snapshot ") << lMessage.value(QStringLiteral("snapshot_id")).toString() << QStringLiteral(": ")
++                   << lMessage.value(QStringLiteral("files_new")).toInt() << QStringLiteral(" new, ") << lMessage.value(QStringLiteral("files_changed")).toInt()
++                   << QStringLiteral(" changed, ") << lMessage.value(QStringLiteral("files_unmodified")).toInt() << QStringLiteral(" unmodified files; ")
++                   << lFormat.formatByteSize(lMessage.value(QStringLiteral("data_added")).toDouble()) << QStringLiteral(" added to the repository.")
++                   << Qt::endl;
++    } else if (lType != QStringLiteral("verbose_status")) {
++        mLogStream << QString::fromUtf8(pLine) << Qt::endl;
++    }
++}
++
++void ResticJob::slotSavingDone(int pExitCode, QProcess::ExitStatus pExitStatus)
++{
++    takeLines(mPendingOutput, mSaveProcess.readAllStandardOutput(), true);
++    takeLines(mPendingErrors, mSaveProcess.readAllStandardError(), true);
++    mLogStream << "Exit code: " << pExitCode << Qt::endl;
++    if (pExitStatus == QProcess::NormalExit && finishOnCommonError(pExitCode)) {
++        return;
++    }
++    if (pExitStatus == QProcess::NormalExit && pExitCode == Restic::ExitIncomplete && mErrorCount > 0 && mErrorCount == mHarmlessErrorCount) {
++        mLogStream << QStringLiteral("Only harmless errors detected by Kup.") << Qt::endl;
++    } else if (pExitStatus == QProcess::NormalExit && pExitCode == Restic::ExitIncomplete) {
++        mLogStream << QStringLiteral(
++            "Kup did not successfully complete the restic backup job: "
++            "some files could not be read, the snapshot is incomplete.")
++                   << Qt::endl;
++        jobFinishedError(ErrorWithLog,
++                         xi18nc("@info notification",
++                                "Some files could not be read and are missing from the backup. "
++                                "See log file for more details."));
++        return;
++    } else if (pExitStatus != QProcess::NormalExit || pExitCode != 0) {
++        mLogStream << QStringLiteral(
++            "Kup did not successfully complete the restic backup job: "
++            "failed to save everything.")
++                   << Qt::endl;
++        jobFinishedError(ErrorWithLog,
++                         xi18nc("@info notification",
++                                "Failed to save backup. "
++                                "See log file for more details."));
++        return;
++    }
++
++    if (mBackupPlan.mResticForget) {
++        emit description(this, i18n("Removing old backups"));
++        if (startRestic(mForgetProcess, QStringList{QStringLiteral("--retry-lock"), QStringLiteral("2m")} + Restic::forgetArguments())) {
++            return;
++        }
++    }
++    finishSaved();
++}
++
++void ResticJob::slotForgettingDone(int pExitCode, QProcess::ExitStatus pExitStatus)
++{
++    mLogStream << QString::fromUtf8(mForgetProcess.readAllStandardOutput());
++    logErrors(mForgetProcess);
++    mLogStream << "Exit code: " << pExitCode << Qt::endl;
++    // The snapshot is saved by now, so a failed thinning-out does not make
++    // the backup fail: it is reported on its own and tried again next time.
++    if (pExitStatus != QProcess::NormalExit || pExitCode != 0) {
++        mLogStream << QStringLiteral("Kup could not remove old backups after saving the new one.") << Qt::endl;
++        KNotification::event(KNotification::Warning,
++                             xi18nc("@title:window", "Problem"),
++                             xi18nc("@info notification", "The backup was saved, but old backups could not be removed. See log file for more details."));
++    }
++    finishSaved();
++}
++
++void ResticJob::finishSaved()
++{
++    mLogStream << QStringLiteral("Kup successfully completed the restic backup job at ") << QLocale().toString(QDateTime::currentDateTime()) << Qt::endl;
++    jobFinishedSuccess();
++}
+diff -ruN a/daemon/resticjob.h b/daemon/resticjob.h
+--- a/daemon/resticjob.h	1970-01-01 05:30:00.000000000 +0530
++++ b/daemon/resticjob.h	2026-11-01 18:15:05.931419384 +0530
+@@ -0,0 +1,79 @@
++// SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
++//
++// SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++
++#ifndef RESTICJOB_H
++#define RESTICJOB_H
++
++#include "backupjob.h"
++#include "restic.h"
++
++#include <KProcess>
++#include <QElapsedTimer>
++
++class KupDaemon;
++
++// What every job on a restic repository shares: finding restic, loading the
++// repository password, starting restic with it, and the exit codes all restic
++// commands have in common.
++class ResticBaseJob : public BackupJob
++{
++    Q_OBJECT
++
++protected:
++    ResticBaseJob(BackupPlan &pBackupPlan, const QString &pDestinationPath, const QString &pLogFilePath, KupDaemon *pKupDaemon);
++
++    // Finishes the job with a reason and returns false when restic is missing
++    // or the password is not available.
++    bool prepareRestic();
++    void watchProcess(KProcess &pProcess);
++    bool startRestic(KProcess &pProcess, const QStringList &pArguments);
++    int executeRestic(KProcess &pProcess, const QStringList &pArguments);
++    void logErrors(KProcess &pProcess);
++    // Finishes the job when the exit code is one every restic command shares
++    // (no repository, locked, wrong password) and returns true then.
++    bool finishOnCommonError(int pExitCode);
++
++    bool doKill() override;
++    bool doSuspend() override;
++    bool doResume() override;
++
++    Restic::Credentials mCredentials;
++    QList<KProcess *> mProcesses;
++};
++
++class ResticJob : public ResticBaseJob
++{
++    Q_OBJECT
++
++public:
++    ResticJob(BackupPlan &pBackupPlan, const QString &pDestinationPath, const QString &pLogFilePath, KupDaemon *pKupDaemon);
++
++protected slots:
++    void performJob() override;
++    void slotCheckingDone(int pExitCode, QProcess::ExitStatus pExitStatus);
++    void startSaving();
++    void slotSavingDone(int pExitCode, QProcess::ExitStatus pExitStatus);
++    void slotReadSaveOutput();
++    void slotReadSaveErrors();
++    void slotForgettingDone(int pExitCode, QProcess::ExitStatus pExitStatus);
++
++protected:
++    QStringList excludeArguments();
++    // Hands every complete line of pRead, after what pPending held, to
++    // handleJsonLine; with pFlush also the unterminated rest.
++    void takeLines(QByteArray &pPending, const QByteArray &pRead, bool pFlush);
++    void handleJsonLine(const QByteArray &pLine);
++    void finishSaved();
++
++    KProcess mCheckProcess;
++    KProcess mSaveProcess;
++    KProcess mForgetProcess;
++    QByteArray mPendingOutput;
++    QByteArray mPendingErrors;
++    QElapsedTimer mInfoRateLimiter;
++    int mErrorCount = 0;
++    int mHarmlessErrorCount = 0;
++};
++
++#endif // RESTICJOB_H
+diff -ruN a/daemon/resticmaintenancejob.cpp b/daemon/resticmaintenancejob.cpp
+--- a/daemon/resticmaintenancejob.cpp	1970-01-01 05:30:00.000000000 +0530
++++ b/daemon/resticmaintenancejob.cpp	2026-11-01 18:02:44.638051634 +0530
+@@ -0,0 +1,151 @@
++// SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
++//
++// SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++
++#include "resticmaintenancejob.h"
++
++#include <KLocalizedString>
++
++ResticMaintenanceJob::ResticMaintenanceJob(Mode pMode,
++                                           BackupPlan &pBackupPlan,
++                                           const QString &pDestinationPath,
++                                           const QString &pLogFilePath,
++                                           KupDaemon *pKupDaemon)
++    : ResticBaseJob(pBackupPlan, pDestinationPath, pLogFilePath, pKupDaemon)
++    , mMode(pMode)
++{
++    watchProcess(mStepProcess);
++    watchProcess(mCheckProcess);
++    connect(&mStepProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this, &ResticMaintenanceJob::slotFirstStepDone);
++    connect(&mCheckProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this, &ResticMaintenanceJob::slotCheckAfterRepairDone);
++}
++
++void ResticMaintenanceJob::performJob()
++{
++    if (!prepareRestic()) {
++        return;
++    }
++    if (!Restic::isRepository(mDestinationPath)) {
++        jobFinishedError(ErrorWithoutLog, xi18nc("@info notification", "There is no restic repository at the backup destination."));
++        return;
++    }
++
++    QStringList lArguments;
++    switch (mMode) {
++    case Check:
++        mLogStream << QStringLiteral("Kup is starting restic verification job at ") << QLocale().toString(QDateTime::currentDateTime()) << Qt::endl << Qt::endl;
++        emit description(this, i18n("Checking backup integrity"));
++        lArguments << QStringLiteral("--retry-lock") << QStringLiteral("1m") << QStringLiteral("check");
++        break;
++    case Repair:
++        // The index is what restic rebuilds from the data it actually holds;
++        // repairing snapshots would cut damaged files out of them, which is a
++        // decision about lost data left to the person, not to this job.
++        mLogStream << QStringLiteral("Kup is starting restic repair job at ") << QLocale().toString(QDateTime::currentDateTime()) << Qt::endl << Qt::endl;
++        emit description(this, i18n("Repairing backups"));
++        lArguments << QStringLiteral("--retry-lock") << QStringLiteral("2m") << QStringLiteral("repair") << QStringLiteral("index");
++        break;
++    case Prune:
++        mLogStream << QStringLiteral("Kup is starting restic prune job at ") << QLocale().toString(QDateTime::currentDateTime()) << Qt::endl << Qt::endl;
++        emit description(this, i18n("Removing old backups"));
++        lArguments << QStringLiteral("--retry-lock") << QStringLiteral("2m") << Restic::forgetArguments();
++        break;
++    }
++    if (!startRestic(mStepProcess, lArguments)) {
++        jobFinishedError(ErrorWithLog, xi18nc("@info notification", "The restic program could not be started. See log file for more details."));
++    }
++}
++
++void ResticMaintenanceJob::collectOutput(KProcess &pProcess, int pExitCode)
++{
++    mLogStream << QString::fromUtf8(pProcess.readAllStandardOutput());
++    logErrors(pProcess);
++    mLogStream << "Exit code: " << pExitCode << Qt::endl;
++}
++
++void ResticMaintenanceJob::slotFirstStepDone(int pExitCode, QProcess::ExitStatus pExitStatus)
++{
++    collectOutput(mStepProcess, pExitCode);
++    if (pExitStatus == QProcess::NormalExit && finishOnCommonError(pExitCode)) {
++        return;
++    }
++    const bool lSucceeded = pExitStatus == QProcess::NormalExit && pExitCode == 0;
++
++    switch (mMode) {
++    case Check:
++        finishCheck(pExitCode, pExitStatus);
++        return;
++    case Repair:
++        if (!lSucceeded) {
++            mLogStream << QStringLiteral(
++                "Repair failed. Your backups could still be "
++                "corrupted! See above for details.")
++                       << Qt::endl;
++            jobFinishedError(ErrorWithLog,
++                             xi18nc("@info notification",
++                                    "Backup repair failed. Your backups could still be corrupted! "
++                                    "See log file for more details."));
++            return;
++        }
++        emit description(this, i18n("Checking backup integrity"));
++        if (!startRestic(mCheckProcess, {QStringLiteral("--retry-lock"), QStringLiteral("1m"), QStringLiteral("check")})) {
++            jobFinishedError(ErrorWithLog, xi18nc("@info notification", "The restic program could not be started. See log file for more details."));
++        }
++        return;
++    case Prune:
++        if (!lSucceeded) {
++            mLogStream << QStringLiteral("Removing old backups failed. See above for details.") << Qt::endl;
++            jobFinishedError(ErrorWithLog, xi18nc("@info notification", "Old backups could not be removed. See log file for more details."));
++            return;
++        }
++        mLogStream << QStringLiteral("Kup successfully removed old backups at ") << QLocale().toString(QDateTime::currentDateTime()) << Qt::endl;
++        jobFinishedSuccess();
++        return;
++    }
++}
++
++void ResticMaintenanceJob::slotCheckAfterRepairDone(int pExitCode, QProcess::ExitStatus pExitStatus)
++{
++    collectOutput(mCheckProcess, pExitCode);
++    if (pExitStatus == QProcess::NormalExit && finishOnCommonError(pExitCode)) {
++        return;
++    }
++    if (pExitStatus == QProcess::NormalExit && pExitCode == 0) {
++        mLogStream << QStringLiteral("Repair succeeded. See above for details.") << Qt::endl;
++        jobFinishedError(ErrorWithLog, xi18nc("@info notification", "Success! Backup repair worked. See log file for more details."));
++    } else {
++        mLogStream << QStringLiteral(
++            "Repair failed. Your backups could still be "
++            "corrupted! See above for details.")
++                   << Qt::endl;
++        jobFinishedError(ErrorWithLog,
++                         xi18nc("@info notification",
++                                "Backup repair failed. Your backups could still be corrupted! "
++                                "See log file for more details."));
++    }
++}
++
++void ResticMaintenanceJob::finishCheck(int pExitCode, QProcess::ExitStatus pExitStatus)
++{
++    // As with bup, a finished check is reported through the error text, so
++    // that the notification carries the verdict and a link to the log.
++    if (pExitStatus == QProcess::NormalExit && pExitCode == 0) {
++        mLogStream << QStringLiteral(
++            "Backup integrity test was successful. "
++            "Your backups are fine. See above for details.")
++                   << Qt::endl;
++        jobFinishedError(ErrorWithLog,
++                         xi18nc("@info notification",
++                                "Backup integrity test was successful. "
++                                "Your backups are fine."));
++        return;
++    }
++    mLogStream << QStringLiteral(
++        "Integrity check failed. Your backups are "
++        "corrupted! See above for details.")
++               << Qt::endl;
++    jobFinishedError(ErrorSuggestRepair,
++                     xi18nc("@info notification",
++                            "Failed backup integrity check. Your backups are corrupted! "
++                            "See log file for more details. Do you want to try repairing the backup files?"));
++}
+diff -ruN a/daemon/resticmaintenancejob.h b/daemon/resticmaintenancejob.h
+--- a/daemon/resticmaintenancejob.h	1970-01-01 05:30:00.000000000 +0530
++++ b/daemon/resticmaintenancejob.h	2026-11-01 18:02:44.638214053 +0530
+@@ -0,0 +1,35 @@
++// SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
++//
++// SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++
++#ifndef RESTICMAINTENANCEJOB_H
++#define RESTICMAINTENANCEJOB_H
++
++#include "resticjob.h"
++
++// The jobs on a restic repository that save nothing: the integrity check, the
++// repair, and removing the snapshots the retention policy no longer keeps.
++class ResticMaintenanceJob : public ResticBaseJob
++{
++    Q_OBJECT
++
++public:
++    enum Mode { Check, Repair, Prune };
++
++    ResticMaintenanceJob(Mode pMode, BackupPlan &pBackupPlan, const QString &pDestinationPath, const QString &pLogFilePath, KupDaemon *pKupDaemon);
++
++protected slots:
++    void performJob() override;
++    void slotFirstStepDone(int pExitCode, QProcess::ExitStatus pExitStatus);
++    void slotCheckAfterRepairDone(int pExitCode, QProcess::ExitStatus pExitStatus);
++
++protected:
++    void collectOutput(KProcess &pProcess, int pExitCode);
++    void finishCheck(int pExitCode, QProcess::ExitStatus pExitStatus);
++
++    Mode mMode;
++    KProcess mStepProcess;
++    KProcess mCheckProcess;
++};
++
++#endif // RESTICMAINTENANCEJOB_H
+diff -ruN a/fileitemaction/fileitemaction.cpp b/fileitemaction/fileitemaction.cpp
+--- a/fileitemaction/fileitemaction.cpp	2026-10-27 16:57:05.000000000 +0530
++++ b/fileitemaction/fileitemaction.cpp	2026-11-01 18:02:44.638394156 +0530
+@@ -6,6 +6,7 @@
+ #include <KAbstractFileItemActionPlugin>
+ #include <KFileItem>
+ #include <KFileItemListProperties>
++#include <KIO/OpenUrlJob>
+ #include <KLocalizedString>
+ #include <KPluginFactory>
+ #include <KProcess>
+@@ -14,6 +15,7 @@
+ #include <QDBusInterface>
+ #include <QDBusPendingReply>
+ #include <QEventLoop>
++#include <QFileInfo>
+ #include <QTimer>
+ #include <QWidget>
+ 
+@@ -62,6 +64,21 @@
+ 
+         QString lDescription = lFileItem.isDir() ? i18n("Restore Missing Files…") : i18n("Restore Previous Version…");
+         auto lAction = new QAction(lDescription, pParentWidget);
++        // A restic repository has a config file and a keys folder, a bup one
++        // neither; restic backups open in the file manager through the
++        // restic KIO worker, at the folder in the newest snapshot, where the
++        // older snapshots are one level up.
++        if (QFileInfo(lRepoPath + QStringLiteral("/config")).isFile() && QFileInfo(lRepoPath + QStringLiteral("/keys")).isDir()) {
++            const QString lFolder = lFileItem.isDir() ? lLocalPath : QFileInfo(lLocalPath).absolutePath();
++            connect(lAction, &QAction::triggered, [lRepoPath, lFolder] {
++                QUrl lUrl;
++                lUrl.setScheme(QStringLiteral("restic"));
++                lUrl.setPath(lRepoPath + QStringLiteral("/latest") + lFolder);
++                auto *lJob = new KIO::OpenUrlJob(lUrl, QStringLiteral("inode/directory"));
++                lJob->start();
++            });
++            return {lAction};
++        }
+         connect(lAction, &QAction::triggered, [lLocalPath, lRepoPath] {
+             KProcess::startDetached("kup-filedigger", {"--path", lLocalPath, lRepoPath});
+         });
+diff -ruN a/kcm/backupplanwidget.cpp b/kcm/backupplanwidget.cpp
+--- a/kcm/backupplanwidget.cpp	2026-10-27 16:57:05.000000000 +0530
++++ b/kcm/backupplanwidget.cpp	2026-11-01 18:02:44.638677384 +0530
+@@ -8,6 +8,7 @@
+ #include "driveselection.h"
+ #include "folderselectionmodel.h"
+ #include "kbuttongroup.h"
++#include "restic.h"
+ 
+ #include <QAction>
+ #include <QBoxLayout>
+@@ -30,8 +31,10 @@
+ #include <KIO/OpenUrlJob>
+ #include <KLineEdit>
+ #include <KLocalizedString>
++#include <KMessageBox>
+ #include <KMessageWidget>
+ #include <KPageWidget>
++#include <KPasswordLineEdit>
+ #include <KUrlCompletion>
+ #include <KUrlRequester>
+ #include <utility>
+@@ -474,7 +477,11 @@
+     return mDirSelector->url();
+ }
+ 
+-BackupPlanWidget::BackupPlanWidget(BackupPlan *pBackupPlan, const QString &pBupVersion, const QString &pRsyncVersion, bool pPar2Available)
++BackupPlanWidget::BackupPlanWidget(BackupPlan *pBackupPlan,
++                                   const QString &pBupVersion,
++                                   const QString &pRsyncVersion,
++                                   const QString &pResticVersion,
++                                   bool pPar2Available)
+     : mBackupPlan(pBackupPlan)
+ {
+     mDescriptionEdit = new KLineEdit;
+@@ -486,7 +493,8 @@
+     connect(mConfigureButton, SIGNAL(clicked()), this, SIGNAL(requestOverviewReturn()));
+ 
+     mConfigPages = new KPageWidget;
+-    mConfigPages->addPage(createTypePage(pBupVersion, pRsyncVersion));
++    mTypePage = createTypePage(pBupVersion, pRsyncVersion, pResticVersion);
++    mConfigPages->addPage(mTypePage);
+     mSourcePage = createSourcePage();
+     mConfigPages->addPage(mSourcePage);
+     mConfigPages->addPage(createDestinationPage());
+@@ -517,7 +525,133 @@
+     mConfigPages->setCurrentPage(mSourcePage);
+ }
+ 
+-KPageWidgetItem *BackupPlanWidget::createTypePage(const QString &pBupVersion, const QString &pRsyncVersion)
++void BackupPlanWidget::showTypePage()
++{
++    mConfigPages->setCurrentPage(mTypePage);
++}
++
++bool BackupPlanWidget::resticPasswordChanged() const
++{
++    return mResticPasswordChanged;
++}
++
++void BackupPlanWidget::updateResticPasswordPlaceholder()
++{
++    if (Restic::walletHasPassword(mBackupPlan->resticWalletKey())) {
++        mResticPasswordEdit->lineEdit()->setPlaceholderText(xi18nc("@info:placeholder", "Stored in KDE Wallet; type to replace it"));
++    } else {
++        mResticPasswordEdit->lineEdit()->setPlaceholderText(xi18nc("@info:placeholder", "Not set"));
++    }
++}
++
++QWidget *BackupPlanWidget::createResticPasswordWidget()
++{
++    auto lWidget = new QWidget;
++
++    // The password itself is never read back into the dialog: what the
++    // wallet holds stays there, and the field only replaces it.
++    mResticPasswordEdit = new KPasswordLineEdit;
++    mResticPasswordEdit->setObjectName(QStringLiteral("resticPassword"));
++    mResticPasswordEdit->setRevealPasswordMode(KPassword::RevealMode::OnlyNew);
++    auto lPasswordLabel = new QLabel(xi18nc("@label:textbox", "Repository password:"));
++    lPasswordLabel->setBuddy(mResticPasswordEdit->lineEdit());
++    updateResticPasswordPlaceholder();
++    connect(mResticPasswordEdit, &KPasswordLineEdit::passwordChanged, this, [this] {
++        mResticPasswordChanged = true;
++        emit resticPasswordEdited();
++    });
++
++    mResticPasswordFileCheckBox = new QCheckBox(xi18nc("@option:check", "Read the password from a file"));
++    mResticPasswordFileCheckBox->setObjectName(QStringLiteral("kcfg_Restic use password file"));
++    auto lPasswordFileEdit = new KLineEdit;
++    lPasswordFileEdit->setObjectName(QStringLiteral("kcfg_Restic password file"));
++    lPasswordFileEdit->setAccessibleName(xi18nc("@label:textbox", "Password file"));
++    lPasswordFileEdit->setClearButtonEnabled(true);
++    lPasswordFileEdit->setCompletionObject(new KUrlCompletion);
++    lPasswordFileEdit->setAutoDeleteCompletionObject(true);
++    lPasswordFileEdit->setEnabled(false);
++    auto lPasswordFileButton = new QPushButton;
++    lPasswordFileButton->setIcon(QIcon::fromTheme(QStringLiteral("document-open")));
++    lPasswordFileButton->setToolTip(xi18nc("@info:tooltip", "Open dialog to select a file"));
++    lPasswordFileButton->setAccessibleName(xi18nc("@action:button", "Select password file"));
++    lPasswordFileButton->setEnabled(false);
++    connect(lPasswordFileButton, &QPushButton::clicked, this, [this, lPasswordFileEdit] {
++        QString lNewFilePath = QFileDialog::getOpenFileName(this, i18n("Select password file"), lPasswordFileEdit->text());
++        if (!lNewFilePath.isEmpty()) {
++            lPasswordFileEdit->setText(lNewFilePath);
++        }
++    });
++    connect(mResticPasswordFileCheckBox, &QCheckBox::toggled, lPasswordFileEdit, &KLineEdit::setEnabled);
++    connect(mResticPasswordFileCheckBox, &QCheckBox::toggled, lPasswordFileButton, &QPushButton::setEnabled);
++    connect(mResticPasswordFileCheckBox, &QCheckBox::toggled, mResticPasswordEdit, &QWidget::setDisabled);
++
++    auto lNoteLabel = new QLabel(xi18nc("@info",
++                                        "For an existing repository, enter its password. For a new one, the "
++                                        "password entered here encrypts it: without it nobody can read the "
++                                        "backups, including you, so keep a copy somewhere other than this computer. "
++                                        "The password is stored in the KDE Wallet. A password file must be "
++                                        "readable by you alone."));
++    lNoteLabel->setWordWrap(true);
++
++    auto lLayout = new QGridLayout(lWidget);
++    lLayout->setContentsMargins(0, 0, 0, 0);
++    lLayout->addWidget(lPasswordLabel, 0, 0);
++    lLayout->addWidget(mResticPasswordEdit, 0, 1, 1, 2);
++    lLayout->addWidget(mResticPasswordFileCheckBox, 1, 0, 1, 3);
++    lLayout->addWidget(lPasswordFileEdit, 2, 1);
++    lLayout->addWidget(lPasswordFileButton, 2, 2);
++    lLayout->addWidget(lNoteLabel, 3, 0, 1, 3);
++    lLayout->setColumnStretch(1, 1);
++    return lWidget;
++}
++
++void BackupPlanWidget::saveResticPassword()
++{
++    if (mBackupPlan->mBackupType != BackupType::ResticType) {
++        mResticPasswordEdit->clear();
++        mResticPasswordChanged = false;
++        return;
++    }
++    if (mBackupPlan->mResticUsePasswordFile) {
++        mResticPasswordChanged = false;
++        return;
++    }
++    const QString lKey = mBackupPlan->resticWalletKey();
++    const QString lPassword = mResticPasswordEdit->password();
++    if (mResticPasswordChanged && !lPassword.isEmpty()) {
++        // restic strips white space around a password it reads from a file,
++        // which is how Kup hands it over; such a password could never open
++        // a repository made with it at a terminal.
++        if (lPassword != lPassword.trimmed()) {
++            KMessageBox::error(this,
++                               xi18nc("@info", "The repository password cannot begin or end with a space."),
++                               xi18nc("@title:window", "Warning"));
++            return;
++        }
++        QString lError;
++        if (!Restic::writeWalletPassword(lKey, lPassword, window()->winId(), lError)) {
++            KMessageBox::error(this, lError, xi18nc("@title:window", "Warning"));
++            return;
++        }
++        mResticPasswordEdit->clear();
++        mResticPasswordChanged = false;
++        updateResticPasswordPlaceholder();
++        return;
++    }
++    mResticPasswordChanged = false;
++    if (!Restic::walletHasPassword(lKey)) {
++        KMessageBox::information(this,
++                                 xi18nc("@info %1 is the name of the backup plan",
++                                        "%1 has no repository password!<nl/>"
++                                        "No backups will be saved by this plan.",
++                                        mBackupPlan->mDescription),
++                                 xi18nc("@title:window", "Warning"),
++                                 QString(),
++                                 KMessageBox::Dangerous);
++    }
++}
++
++KPageWidgetItem *BackupPlanWidget::createTypePage(const QString &pBupVersion, const QString &pRsyncVersion, const QString &pResticVersion)
+ {
+     mVersionedRadio = new QRadioButton;
+     QString lVersionedInfo = xi18nc("@info",
+@@ -562,6 +696,31 @@
+     } else {
+         mSyncedRadio->setText(xi18nc("@option:radio", "Synchronized Backup"));
+     }
++
++    mResticRadio = new QRadioButton;
++    QString lResticInfo = xi18nc("@info",
++                                 "Back up multiple versions over time of the files in the source folders, "
++                                 "encrypted with a password, using <application>restic</application>. "
++                                 "Older versions of files or deleted files can be recovered, and every saved "
++                                 "version can be browsed in the file manager."
++                                 "<nl/><nl/>"
++                                 "Only the parts of files that changed are stored again, so the backup "
++                                 "archive grows slowly over time.");
++    auto lResticInfoLabel = new QLabel(lResticInfo);
++    lResticInfoLabel->setWordWrap(true);
++    auto lResticWidget = new QWidget;
++    lResticWidget->setVisible(false);
++    QObject::connect(mResticRadio, &QRadioButton::toggled, lResticWidget, &QWidget::setVisible);
++    if (pResticVersion.isEmpty()) {
++        mResticRadio->setText(xi18nc("@option:radio",
++                                     "Encrypted Versioned Backup (not available "
++                                     "because <application>restic</application> is not installed)"));
++        mResticRadio->setEnabled(false);
++        lResticWidget->setEnabled(false);
++    } else {
++        mResticRadio->setText(xi18nc("@option:radio", "Encrypted Versioned Backup"));
++    }
++
+     auto lButtonGroup = new KButtonGroup;
+     lButtonGroup->setObjectName(QStringLiteral("kcfg_Backup type"));
+     lButtonGroup->setFlat(true);
+@@ -580,11 +739,22 @@
+     lSyncedVLayout->addWidget(lSyncedInfoLabel, 0, 1);
+     lSyncedWidget->setLayout(lSyncedVLayout);
+ 
++    auto lResticVLayout = new QGridLayout;
++    lResticVLayout->setColumnMinimumWidth(0, lIndentation);
++    lResticVLayout->setContentsMargins(0, 0, 0, 0);
++    lResticVLayout->addWidget(lResticInfoLabel, 0, 1);
++    lResticVLayout->addWidget(createResticPasswordWidget(), 1, 1);
++    lResticWidget->setLayout(lResticVLayout);
++
+     auto lVLayout = new QVBoxLayout;
+     lVLayout->addWidget(mVersionedRadio);
+     lVLayout->addWidget(lVersionedWidget);
+     lVLayout->addWidget(mSyncedRadio);
+     lVLayout->addWidget(lSyncedWidget);
++    // Added last: the button group numbers its buttons in the order they are
++    // added, and that number is the plan's "Backup type".
++    lVLayout->addWidget(mResticRadio);
++    lVLayout->addWidget(lResticWidget);
+     lVLayout->addStretch();
+     lButtonGroup->setLayout(lVLayout);
+     auto lPage = new KPageWidgetItem(lButtonGroup);
+@@ -920,7 +1090,22 @@
+                                                                                       QStringLiteral("kcfg_Check backups"));
+     lVerificationWidget->setVisible(false);
+ 
+-    connect(mVersionedRadio, SIGNAL(toggled(bool)), lVerificationWidget, SLOT(setVisible(bool)));
++    auto lVerificationUpdater = [this, lVerificationWidget] {
++        lVerificationWidget->setVisible(mVersionedRadio->isChecked() || mResticRadio->isChecked());
++    };
++    connect(mVersionedRadio, &QRadioButton::toggled, this, lVerificationUpdater);
++    connect(mResticRadio, &QRadioButton::toggled, this, lVerificationUpdater);
++
++    auto [lForgetWidget, lForgetCheckBox] = createCheckBoxWithDescription(lAdvancedWidget,
++                                                                          xi18nc("@option:check", "Remove old backups automatically"),
++                                                                          xi18nc("@info",
++                                                                                 "After each saved backup, remove the versions no longer "
++                                                                                 "needed. Kept are every backup from the last two days, one a "
++                                                                                 "day for a month, one a week for six months, one a month for two "
++                                                                                 "years and one a year after that."),
++                                                                          QStringLiteral("kcfg_Restic forget"));
++    lForgetWidget->setVisible(false);
++    connect(mResticRadio, &QRadioButton::toggled, lForgetWidget, &QWidget::setVisible);
+ 
+     auto lExcludesWidget = new QWidget;
+     auto lExcludesCheckBox = new QCheckBox(xi18nc("@option:check", "Exclude files and folders based on patterns"));
+@@ -938,8 +1123,17 @@
+         job->setSuggestedFileName("manpage.html");
+         job->start();
+     });
+-    auto lLabelUpdater = [lExcludesLabel](bool pVersioned) {
+-        QString lHelpUrl = pVersioned ? QStringLiteral("man:///bup-index") : QStringLiteral("man:///rsync");
++    auto lLabelUpdater = [this, lExcludesLabel] {
++        if (mResticRadio->isChecked()) {
++            lExcludesLabel->setText(xi18nc("@info",
++                                           "Patterns need to be listed in a text file with one pattern per line. "
++                                           "Files and folders with names that match any of the patterns will be "
++                                           "excluded from the backup. The pattern format is documented in the "
++                                           "<link url='%1'>restic-backup manual page</link>.",
++                                           QStringLiteral("man:///restic-backup")));
++            return;
++        }
++        QString lHelpUrl = mVersionedRadio->isChecked() ? QStringLiteral("man:///bup-index") : QStringLiteral("man:///rsync");
+         lExcludesLabel->setText(xi18nc("@info",
+                                        "Patterns need to be listed in a text file with one pattern per line. "
+                                        "Files and folders with names that match any of the patterns will be "
+@@ -947,8 +1141,9 @@
+                                        "<link url='%1'>bup-index manual page</link>.",
+                                        lHelpUrl));
+     };
+-    lLabelUpdater(false);
++    lLabelUpdater();
+     connect(mVersionedRadio, &QCheckBox::toggled, this, lLabelUpdater);
++    connect(mResticRadio, &QCheckBox::toggled, this, lLabelUpdater);
+     auto lExcludesEdit = new KLineEdit;
+     lExcludesEdit->setObjectName(QStringLiteral("kcfg_Exclude patterns file path"));
+     lExcludesEdit->setEnabled(false);
+@@ -1049,6 +1244,7 @@
+ 
+     lAdvancedLayout->addWidget(lShowHiddenWidget);
+     lAdvancedLayout->addWidget(lVerificationWidget);
++    lAdvancedLayout->addWidget(lForgetWidget);
+     lAdvancedLayout->addWidget(lRecoveryWidget);
+     lAdvancedLayout->addWidget(lExcludesWidget);
+     lAdvancedLayout->addWidget(lExcludeCachesWidget);
+diff -ruN a/kcm/backupplanwidget.h b/kcm/backupplanwidget.h
+--- a/kcm/backupplanwidget.h	2026-10-27 16:57:05.000000000 +0530
++++ b/kcm/backupplanwidget.h	2026-11-01 18:02:44.639133221 +0530
+@@ -16,9 +16,11 @@
+ 
+ class KLineEdit;
+ class KMessageWidget;
++class KPasswordLineEdit;
+ class KPageWidget;
+ class KPageWidgetItem;
+ class QAction;
++class QCheckBox;
+ class QFileInfo;
+ class QPushButton;
+ class QRadioButton;
+@@ -138,14 +140,21 @@
+ {
+     Q_OBJECT
+ public:
+-    BackupPlanWidget(BackupPlan *pBackupPlan, const QString &pBupVersion, const QString &pRsyncVersion, bool pPar2Available);
++    BackupPlanWidget(BackupPlan *pBackupPlan, const QString &pBupVersion, const QString &pRsyncVersion, const QString &pResticVersion, bool pPar2Available);
+ 
+     void saveExtraData();
++    // Stores a password typed for a restic plan in KWallet, keyed by the
++    // plan's saved destination, and warns about a restic plan that has none.
++    void saveResticPassword();
++    bool resticPasswordChanged() const;
+     void showSourcePage();
++    void showTypePage();
+     KLineEdit *mDescriptionEdit;
+ 
+ protected:
+-    KPageWidgetItem *createTypePage(const QString &pBupVersion, const QString &pRsyncVersion);
++    KPageWidgetItem *createTypePage(const QString &pBupVersion, const QString &pRsyncVersion, const QString &pResticVersion);
++    QWidget *createResticPasswordWidget();
++    void updateResticPasswordPlaceholder();
+     KPageWidgetItem *createSourcePage();
+     KPageWidgetItem *createDestinationPage();
+     KPageWidgetItem *createSchedulePage();
+@@ -158,7 +167,12 @@
+     KLineEdit *mDriveDestEdit{};
+     QRadioButton *mVersionedRadio{};
+     QRadioButton *mSyncedRadio{};
++    QRadioButton *mResticRadio{};
++    KPasswordLineEdit *mResticPasswordEdit{};
++    QCheckBox *mResticPasswordFileCheckBox{};
++    bool mResticPasswordChanged{};
+     FolderSelectionWidget *mSourceSelectionWidget{};
++    KPageWidgetItem *mTypePage{};
+     KPageWidgetItem *mSourcePage;
+     KPageWidgetItem *mAdvancedPage;
+     KMessageWidget *mLocalMessage;
+@@ -170,6 +184,7 @@
+ 
+ signals:
+     void requestOverviewReturn();
++    void resticPasswordEdited();
+ };
+ 
+ #endif // BACKUPPLANWIDGET_H
+diff -ruN a/kcm/CMakeLists.txt b/kcm/CMakeLists.txt
+--- a/kcm/CMakeLists.txt	2026-10-27 16:57:05.000000000 +0530
++++ b/kcm/CMakeLists.txt	2026-11-01 18:02:44.639423102 +0530
+@@ -18,6 +18,7 @@
+ ../settings/kupsettings.cpp
+ ../settings/kuputils.cpp
+ ../settings/dynamicexclusions.cpp
++../settings/restic.cpp
+ )
+ 
+ kcoreaddons_add_plugin(kcm_kup SOURCES ${kcm_kup_SRCS} INSTALL_NAMESPACE "plasma/kcms/systemsettings_qwidgets")
+@@ -37,6 +38,7 @@
+ KF${QT_MAJOR_VERSION}::I18n
+ KF${QT_MAJOR_VERSION}::WidgetsAddons
+ KF${QT_MAJOR_VERSION}::ConfigWidgets
++KF${QT_MAJOR_VERSION}::Wallet
+ )
+ 
+ if(QT_MAJOR_VERSION STREQUAL "6")
+diff -ruN a/kcm/kupkcm.cpp b/kcm/kupkcm.cpp
+--- a/kcm/kupkcm.cpp	2026-10-27 16:57:05.000000000 +0530
++++ b/kcm/kupkcm.cpp	2026-11-01 18:02:44.639621319 +0530
+@@ -8,6 +8,7 @@
+ #include "kupdaemon.h"
+ #include "kupsettings.h"
+ #include "planstatuswidget.h"
++#include "restic.h"
+ 
+ #include <QCheckBox>
+ #include <QDBusInterface>
+@@ -29,6 +30,7 @@
+ KupKcm::KupKcm(QObject *pParent, const KPluginMetaData &pPluginMetaData, const QVariantList &pArgs)
+     : KCModule(pParent, pPluginMetaData)
+     , mSourcePageToShow(0)
++    , mTypePageToShow(0)
+ {
+     setObjectName(QStringLiteral("kcm_kup")); // needed for the kconfigdialogmanager magic
+     setButtons((Apply | buttons()) & ~Default);
+@@ -55,14 +57,17 @@
+         mRsyncVersion = lOutput.split(QLatin1Char(' '), Qt::SkipEmptyParts).at(2);
+     }
+ 
+-    if (mBupVersion.isEmpty() && mRsyncVersion.isEmpty()) {
++    mResticVersion = Restic::programVersion();
++
++    if (mBupVersion.isEmpty() && mRsyncVersion.isEmpty() && mResticVersion.isEmpty()) {
+         auto lSorryIcon = new QLabel;
+         lSorryIcon->setPixmap(QIcon::fromTheme(QStringLiteral("dialog-error")).pixmap(64, 64));
+         QString lInstallMessage = i18n(
+             "<h2>Backup programs are missing</h2>"
+             "<p>Before you can activate any backup plan you need to "
+-            "install either of</p>"
++            "install one of</p>"
+             "<ul><li>bup, for versioned backups</li>"
++            "<li>restic, for encrypted versioned backups</li>"
+             "<li>rsync, for synchronized backups</li></ul>");
+         auto lSorryText = new QLabel(lInstallMessage);
+         lSorryText->setWordWrap(true);
+@@ -93,6 +98,8 @@
+                 QString lArgument = lVariant.toString();
+                 if (lArgument == QStringLiteral("show_sources") && lIter.hasNext()) {
+                     mSourcePageToShow = lIter.next().toString().toInt();
++                } else if (lArgument == QStringLiteral("show_type") && lIter.hasNext()) {
++                    mTypePageToShow = lIter.next().toString().toInt();
+                 }
+             }
+         }
+@@ -101,7 +108,7 @@
+ 
+ void KupKcm::load()
+ {
+-    if (mBupVersion.isEmpty() && mRsyncVersion.isEmpty()) {
++    if (mBupVersion.isEmpty() && mRsyncVersion.isEmpty() && mResticVersion.isEmpty()) {
+         return;
+     }
+     // status will be set correctly after construction, set to checked here to
+@@ -125,6 +132,11 @@
+         mPlanWidgets[mSourcePageToShow - 1]->showSourcePage();
+         mSourcePageToShow = 0; // only trigger on first load after startup.
+     }
++    if (mTypePageToShow > 0 && mTypePageToShow <= mPlanWidgets.count()) {
++        mStackedLayout->setCurrentIndex(mTypePageToShow);
++        mPlanWidgets[mTypePageToShow - 1]->showTypePage();
++        mTypePageToShow = 0; // only trigger on first load after startup.
++    }
+ }
+ 
+ void KupKcm::save()
+@@ -163,6 +175,10 @@
+ 
+         QWidget *wid = widget();
+ 
++        // After updateSettings: the wallet entry is keyed by the destination
++        // just saved.
++        mPlanWidgets.at(i)->saveResticPassword();
++
+         if (lPlan->mDestinationType == 1 && lPlan->mExternalUUID.isEmpty()) {
+             KMessageBox::information(wid,
+                                      xi18nc("@info %1 is the name of the backup plan",
+@@ -207,6 +223,12 @@
+             break;
+         }
+     }
++    for (const BackupPlanWidget *lPlanWidget : std::as_const(mPlanWidgets)) {
++        if (lPlanWidget && lPlanWidget->resticPasswordChanged()) {
++            lHasUnmanagedChanged = true;
++            break;
++        }
++    }
+     if (mPlanWidgets.count() != mSettings->mNumberOfPlans)
+         lHasUnmanagedChanged = true;
+     unmanagedWidgetChangeState(lHasUnmanagedChanged);
+@@ -233,7 +255,7 @@
+     connect(lAddPlanButton, &QPushButton::clicked, this, [this] {
+         mPlans.append(new BackupPlan(mPlans.count() + 1, mConfig, this));
+         if (mBupVersion.isEmpty())
+-            mPlans.last()->mBackupType = 1;
++            mPlans.last()->mBackupType = mResticVersion.isEmpty() ? BackupType::RsyncType : BackupType::ResticType;
+         mConfigManagers.append(nullptr);
+         mPlanWidgets.append(nullptr);
+         mStatusWidgets.append(nullptr);
+@@ -253,10 +275,13 @@
+     lVLayout->addWidget(lScrollArea);
+     mFrontPage->setLayout(lVLayout);
+ 
++    // The file digger reads bup archives only; restic backups open in the
++    // file manager from the Backup Status applet.
+     auto lFilediggerButton = new QPushButton(xi18nc("@action:button", "Open and restore from existing backups"));
+     connect(lFilediggerButton, &QPushButton::clicked, [] {
+         KProcess::startDetached(QStringLiteral("kup-filedigger"));
+     });
++    lFilediggerButton->setVisible(!mBupVersion.isEmpty());
+     mVerticalLayout->addWidget(lFilediggerButton);
+     mVerticalLayout->addStretch(1);
+     lCentralWidget->setLayout(mVerticalLayout);
+@@ -264,8 +289,9 @@
+ 
+ void KupKcm::createPlanWidgets(int pIndex)
+ {
+-    auto lPlanWidget = new BackupPlanWidget(mPlans.at(pIndex), mBupVersion, mRsyncVersion, mPar2Available);
++    auto lPlanWidget = new BackupPlanWidget(mPlans.at(pIndex), mBupVersion, mRsyncVersion, mResticVersion, mPar2Available);
+     connect(lPlanWidget, SIGNAL(requestOverviewReturn()), this, SLOT(showFrontPage()));
++    connect(lPlanWidget, &BackupPlanWidget::resticPasswordEdited, this, &KupKcm::updateChangedStatus);
+     auto lConfigManager = new KConfigDialogManager(lPlanWidget, mPlans.at(pIndex));
+     lConfigManager->setObjectName(objectName());
+     connect(lConfigManager, SIGNAL(widgetModified()), this, SLOT(updateChangedStatus()));
+diff -ruN a/kcm/kupkcm.h b/kcm/kupkcm.h
+--- a/kcm/kupkcm.h	2026-10-27 16:57:05.000000000 +0530
++++ b/kcm/kupkcm.h	2026-11-01 18:02:44.639869281 +0530
+@@ -53,8 +53,10 @@
+     QCheckBox *mEnableCheckBox{};
+     QString mBupVersion;
+     QString mRsyncVersion;
++    QString mResticVersion;
+     bool mPar2Available;
+     int mSourcePageToShow;
++    int mTypePageToShow;
+ };
+ 
+ #endif // KUPKCM_H
+diff -ruN a/kioworker/CMakeLists.txt b/kioworker/CMakeLists.txt
+--- a/kioworker/CMakeLists.txt	2026-10-27 16:57:05.000000000 +0530
++++ b/kioworker/CMakeLists.txt	2026-11-01 18:02:44.640047540 +0530
+@@ -26,4 +26,27 @@
+ 
+ install(TARGETS kio_bup DESTINATION ${KDE_INSTALL_PLUGINDIR}/kf${QT_MAJOR_VERSION}/kio)
+ 
++include_directories("../settings")
++
++set(resticworker_SRCS
++resticworker.cpp
++../settings/backupplan.cpp
++../settings/kupsettings.cpp
++../settings/kuputils.cpp
++../settings/restic.cpp
++)
++
++add_library(kio_restic MODULE ${resticworker_SRCS})
++target_link_libraries(kio_restic
++Qt::Core
++KF${QT_MAJOR_VERSION}::ConfigCore
++KF${QT_MAJOR_VERSION}::CoreAddons
++KF${QT_MAJOR_VERSION}::KIOCore
++KF${QT_MAJOR_VERSION}::I18n
++KF${QT_MAJOR_VERSION}::Solid
++KF${QT_MAJOR_VERSION}::Wallet
++)
++
++install(TARGETS kio_restic DESTINATION ${KDE_INSTALL_PLUGINDIR}/kf${QT_MAJOR_VERSION}/kio)
++
+ add_definitions(-fexceptions)
+diff -ruN a/kioworker/restic.json b/kioworker/restic.json
+--- a/kioworker/restic.json	1970-01-01 05:30:00.000000000 +0530
++++ b/kioworker/restic.json	2026-11-01 18:02:44.640190000 +0530
+@@ -0,0 +1,30 @@
++{
++    "KDE-KIO-Protocols": {
++        "restic": {
++            "Class": ":local",
++            "Icon": "folder-important",
++            "deleting": false,
++            "input": "none",
++            "linking": false,
++            "listing": [
++                "Name",
++                "Type",
++                "Size",
++                "Date",
++                "AccessDate",
++                "Access",
++                "Owner",
++                "Group",
++                "Link"
++            ],
++            "makedir": false,
++            "moving": false,
++            "opening": false,
++            "output": "filesystem",
++            "protocol": "restic",
++            "reading": true,
++            "source": true,
++            "writing": false
++        }
++    }
++}
+diff -ruN a/kioworker/resticworker.cpp b/kioworker/resticworker.cpp
+--- a/kioworker/resticworker.cpp	1970-01-01 05:30:00.000000000 +0530
++++ b/kioworker/resticworker.cpp	2026-11-01 18:03:48.165201736 +0530
+@@ -0,0 +1,845 @@
++// SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
++//
++// SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++
++#include "backupplan.h"
++#include "kupsettings.h"
++#include "restic.h"
++
++#include <QCoreApplication>
++#include <QDir>
++#include <QElapsedTimer>
++#include <QHash>
++#include <QJsonArray>
++#include <QJsonDocument>
++#include <QJsonObject>
++#include <QMimeDatabase>
++#include <QProcess>
++#include <QUrl>
++
++#include <KIO/AuthInfo>
++#include <KIO/WorkerBase>
++#include <KLocalizedString>
++#include <KSharedConfig>
++#include <Solid/Device>
++#include <Solid/StorageAccess>
++
++#include <sys/stat.h>
++
++using namespace KIO;
++
++// Pseudo plugin class to embed meta data
++class KIOPluginForMetaData : public QObject
++{
++    Q_OBJECT
++    Q_PLUGIN_METADATA(IID "org.kde.kio.worker.restic" FILE "restic.json")
++};
++
++namespace
++{
++
++struct ResticNode {
++    QString mName;
++    mode_t mType = S_IFREG;
++    mode_t mPermissions = 0644;
++    qint64 mSize = 0;
++    qint64 mMtime = 0;
++    qint64 mAtime = 0;
++    QString mUser;
++    QString mGroup;
++    QString mLinkTarget;
++};
++
++struct ResticSnapshot {
++    QString mId;
++    QString mName;
++    QDateTime mTime;
++};
++
++// Go's os.FileMode keeps the special bits above the permission bits.
++const quint32 cGoModeSetuid = 1U << 23;
++const quint32 cGoModeSetgid = 1U << 22;
++const quint32 cGoModeSticky = 1U << 20;
++
++// How many directory listings one worker keeps; each costs one restic run to
++// refill, and a worker browses one repository at a time.
++const int cTreeCacheLimit = 512;
++
++// Symbolic links inside a snapshot are followed at most this deep.
++const int cMaxLinkDepth = 16;
++
++// "latest" is answered from the snapshot list only while it is this young; a
++// backup saved since then would otherwise stay hidden behind the older
++// snapshot for as long as the worker lives.
++const qint64 cLatestMaxAgeMs = 10000;
++
++QString latestName()
++{
++    return QStringLiteral("latest");
++}
++
++mode_t fileTypeOf(const QString &pType)
++{
++    if (pType == QStringLiteral("dir")) {
++        return S_IFDIR;
++    }
++    if (pType == QStringLiteral("symlink")) {
++        return S_IFLNK;
++    }
++    if (pType == QStringLiteral("dev")) {
++        return S_IFBLK;
++    }
++    if (pType == QStringLiteral("chardev")) {
++        return S_IFCHR;
++    }
++    if (pType == QStringLiteral("fifo")) {
++        return S_IFIFO;
++    }
++    if (pType == QStringLiteral("socket")) {
++        return S_IFSOCK;
++    }
++    return S_IFREG;
++}
++
++mode_t permissionsOf(quint32 pGoMode)
++{
++    mode_t lMode = pGoMode & 0777;
++    if (pGoMode & cGoModeSetuid) {
++        lMode |= S_ISUID;
++    }
++    if (pGoMode & cGoModeSetgid) {
++        lMode |= S_ISGID;
++    }
++    if (pGoMode & cGoModeSticky) {
++        lMode |= S_ISVTX;
++    }
++    return lMode;
++}
++
++QString joinPath(const QString &pDirectory, const QString &pName)
++{
++    if (pDirectory.endsWith(QLatin1Char('/'))) {
++        return pDirectory + pName;
++    }
++    return pDirectory + QLatin1Char('/') + pName;
++}
++
++QString parentPath(const QString &pPath)
++{
++    const qsizetype lSlash = pPath.lastIndexOf(QLatin1Char('/'));
++    return lSlash <= 0 ? QStringLiteral("/") : pPath.left(lSlash);
++}
++
++QString namePart(const QString &pPath)
++{
++    return pPath.mid(pPath.lastIndexOf(QLatin1Char('/')) + 1);
++}
++
++}
++
++// Browses a local restic repository: restic:///<repository>/ lists one folder
++// per snapshot, named by the local time it was taken, plus "latest", a link to
++// the newest; below a snapshot folder are the files as they were saved. It
++// reads through restic itself, so it needs restic and the repository's
++// password, and it never writes or locks the repository.
++class ResticWorker : public WorkerBase
++{
++public:
++    ResticWorker(const QByteArray &pPoolSocket, const QByteArray &pAppSocket);
++    KIO::WorkerResult get(const QUrl &pUrl) override;
++    KIO::WorkerResult listDir(const QUrl &pUrl) override;
++    KIO::WorkerResult stat(const QUrl &pUrl) override;
++    KIO::WorkerResult mimetype(const QUrl &pUrl) override;
++
++private:
++    struct Location {
++        QString mRepository;
++        QString mSnapshotName; // empty for the repository folder itself
++        QString mPath; // absolute path inside the snapshot
++    };
++
++    KIO::WorkerResult locate(const QUrl &pUrl, Location &pLocation);
++    KIO::WorkerResult openRepository(const QString &pRepository);
++    bool loadPlanCredentials(const QString &pRepository);
++    KIO::WorkerResult verifyPassword(const QString &pPassword, bool &pAccepted);
++    KIO::WorkerResult runRestic(const QStringList &pArguments, QByteArray &pOutput);
++    KIO::WorkerResult loadSnapshots();
++    KIO::WorkerResult findSnapshot(const QString &pName, ResticSnapshot &pSnapshot);
++    KIO::WorkerResult listTree(const ResticSnapshot &pSnapshot, const QString &pPath, QList<ResticNode> &pNodes);
++    KIO::WorkerResult findNode(const ResticSnapshot &pSnapshot, const QString &pPath, bool pFollowLinks, ResticNode &pNode, QString &pResolvedPath);
++    KIO::WorkerResult failFor(int pExitCode, const QByteArray &pErrors);
++    void fillEntry(const ResticNode &pNode, UDSEntry &pEntry, int pDetails);
++    void fillDirectoryEntry(const QString &pName, const QDateTime &pTime, UDSEntry &pEntry);
++    int details();
++
++    QString mRepository;
++    Restic::Credentials mCredentials;
++    QList<ResticSnapshot> mSnapshots;
++    QElapsedTimer mSnapshotsAge;
++    QHash<QString, QList<ResticNode>> mTrees;
++    QMimeDatabase mMimeDatabase;
++};
++
++ResticWorker::ResticWorker(const QByteArray &pPoolSocket, const QByteArray &pAppSocket)
++    : WorkerBase("restic", pPoolSocket, pAppSocket)
++{
++}
++
++int ResticWorker::details()
++{
++    const QString lDetails = metaData(QStringLiteral("details"));
++    return lDetails.isEmpty() ? 2 : lDetails.toInt();
++}
++
++KIO::WorkerResult ResticWorker::locate(const QUrl &pUrl, Location &pLocation)
++{
++    // Accept the same sloppy forms the bup worker does: restic:/path,
++    // restic://path and restic:///path all name /path.
++    QString lPath;
++    if (!pUrl.host().isEmpty()) {
++        lPath = QStringLiteral("/") + pUrl.host() + pUrl.path();
++    } else {
++        lPath = pUrl.path();
++    }
++    lPath = QDir::cleanPath(QStringLiteral("/") + lPath);
++
++    QStringList lParts = lPath.split(QLatin1Char('/'), Qt::SkipEmptyParts);
++    QString lRepository;
++    bool lFound = false;
++    if (!mRepository.isEmpty() && (lPath == mRepository || lPath.startsWith(mRepository + QLatin1Char('/')))) {
++        lRepository = mRepository;
++        lParts = lPath.mid(mRepository.length()).split(QLatin1Char('/'), Qt::SkipEmptyParts);
++        lFound = true;
++    } else {
++        QString lCandidate;
++        while (!lParts.isEmpty()) {
++            lCandidate += QLatin1Char('/') + lParts.takeFirst();
++            if (Restic::isRepository(lCandidate)) {
++                lRepository = lCandidate;
++                lFound = true;
++                break;
++            }
++        }
++    }
++    if (!lFound) {
++        return KIO::WorkerResult::fail(KIO::ERR_WORKER_DEFINED, i18n("No restic repository found.\n%1", pUrl.toDisplayString()));
++    }
++
++    const KIO::WorkerResult lOpened = openRepository(lRepository);
++    if (!lOpened.success()) {
++        return lOpened;
++    }
++    pLocation.mRepository = lRepository;
++    pLocation.mSnapshotName = lParts.isEmpty() ? QString() : lParts.takeFirst();
++    pLocation.mPath = QStringLiteral("/") + lParts.join(QLatin1Char('/'));
++    return KIO::WorkerResult::pass();
++}
++
++bool ResticWorker::loadPlanCredentials(const QString &pRepository)
++{
++    KSharedConfigPtr lConfig = KSharedConfig::openConfig(QStringLiteral("kuprc"));
++    KupSettings lSettings(lConfig);
++    for (int i = 0; i < lSettings.mNumberOfPlans; ++i) {
++        BackupPlan lPlan(i + 1, lConfig);
++        if (lPlan.mBackupType != BackupType::ResticType) {
++            continue;
++        }
++        bool lMatches = false;
++        if (lPlan.mDestinationType == 0) {
++            lMatches = QDir::cleanPath(lPlan.mFilesystemDestinationPath.toLocalFile()) == pRepository;
++        } else if (lPlan.mDestinationType == 1) {
++            // A drive is mounted wherever the system puts it; the plan names
++            // the volume and a folder on it.
++            const Solid::Device lDevice = Solid::Device::storageAccessFromPath(pRepository);
++            const auto *lAccess = lDevice.as<Solid::StorageAccess>();
++            if (lAccess != nullptr && !lAccess->filePath().isEmpty()) {
++                const QString lCandidate = QDir::cleanPath(lAccess->filePath() + QLatin1Char('/') + lPlan.mExternalDestinationPath);
++                lMatches = lCandidate == pRepository && Restic::volumeIdentity(lDevice) == lPlan.mExternalUUID;
++            }
++        }
++        if (!lMatches) {
++            continue;
++        }
++        QString lError;
++        if (mCredentials.loadForPlan(lPlan, 0, lError)) {
++            return true;
++        }
++    }
++    return false;
++}
++
++KIO::WorkerResult ResticWorker::verifyPassword(const QString &pPassword, bool &pAccepted)
++{
++    mCredentials.setPassword(pPassword);
++    QByteArray lOutput;
++    const KIO::WorkerResult lResult = runRestic({QStringLiteral("cat"), QStringLiteral("config")}, lOutput);
++    pAccepted = lResult.success();
++    if (!lResult.success() && lResult.error() != KIO::ERR_CANNOT_AUTHENTICATE) {
++        return lResult;
++    }
++    return KIO::WorkerResult::pass();
++}
++
++KIO::WorkerResult ResticWorker::openRepository(const QString &pRepository)
++{
++    if (pRepository == mRepository && mCredentials.isSet()) {
++        return KIO::WorkerResult::pass();
++    }
++    mRepository = pRepository;
++    mCredentials.setPassword(QString());
++    mSnapshots.clear();
++    mTrees.clear();
++
++    QString lError;
++    if (loadPlanCredentials(pRepository)) {
++        QByteArray lOutput;
++        const KIO::WorkerResult lResult = runRestic({QStringLiteral("cat"), QStringLiteral("config")}, lOutput);
++        if (lResult.success()) {
++            return lResult;
++        }
++        if (lResult.error() != KIO::ERR_CANNOT_AUTHENTICATE) {
++            mRepository.clear();
++            return lResult;
++        }
++        lError = i18n("The password stored for this backup plan does not open the repository.");
++    }
++
++    // A repository no backup plan names, or one whose stored password is
++    // wrong: ask, the way every KIO worker asks, and let the password server
++    // keep the answer in KWallet when the person ticks "Remember".
++    KIO::AuthInfo lInfo;
++    QUrl lUrl;
++    lUrl.setScheme(QStringLiteral("restic"));
++    lUrl.setPath(pRepository);
++    lInfo.url = lUrl;
++    lInfo.username = QStringLiteral("restic");
++    lInfo.readOnly = true;
++    lInfo.keepPassword = true;
++    lInfo.caption = i18n("Backup Password");
++    lInfo.prompt = i18n("Enter the password of the restic repository at %1.", pRepository);
++    lInfo.setExtraField(QStringLiteral("hide-username-line"), true);
++
++    if (lError.isEmpty() && checkCachedAuthentication(lInfo)) {
++        bool lAccepted = false;
++        const KIO::WorkerResult lResult = verifyPassword(lInfo.password, lAccepted);
++        if (!lResult.success()) {
++            mRepository.clear();
++            return lResult;
++        }
++        if (lAccepted) {
++            return KIO::WorkerResult::pass();
++        }
++        lError = i18n("The remembered password does not open the repository.");
++    }
++
++    while (true) {
++        const int lDialogResult = openPasswordDialog(lInfo, lError);
++        if (lDialogResult != 0) {
++            mRepository.clear();
++            mCredentials.setPassword(QString());
++            return KIO::WorkerResult::fail(lDialogResult, pRepository);
++        }
++        bool lAccepted = false;
++        const KIO::WorkerResult lResult = verifyPassword(lInfo.password, lAccepted);
++        if (!lResult.success()) {
++            mRepository.clear();
++            return lResult;
++        }
++        if (lAccepted) {
++            if (lInfo.keepPassword) {
++                cacheAuthentication(lInfo);
++            }
++            return KIO::WorkerResult::pass();
++        }
++        lError = i18n("Wrong password. Please try again.");
++    }
++}
++
++KIO::WorkerResult ResticWorker::failFor(int pExitCode, const QByteArray &pErrors)
++{
++    const QString lErrors = QString::fromUtf8(pErrors).trimmed();
++    switch (pExitCode) {
++    case Restic::ExitWrongPassword:
++        return KIO::WorkerResult::fail(KIO::ERR_CANNOT_AUTHENTICATE, mRepository);
++    case Restic::ExitNoRepository:
++        return KIO::WorkerResult::fail(KIO::ERR_DOES_NOT_EXIST, mRepository);
++    default:
++        break;
++    }
++    if (lErrors.contains(QStringLiteral("not found")) || lErrors.contains(QStringLiteral("no matching ID found"))) {
++        return KIO::WorkerResult::fail(KIO::ERR_DOES_NOT_EXIST, lErrors);
++    }
++    return KIO::WorkerResult::fail(KIO::ERR_WORKER_DEFINED, i18n("restic failed:\n%1", lErrors));
++}
++
++KIO::WorkerResult ResticWorker::runRestic(const QStringList &pArguments, QByteArray &pOutput)
++{
++    QProcess lProcess;
++    if (!mCredentials.prepare(lProcess, mRepository, QStringList{QStringLiteral("--no-lock")} + pArguments)) {
++        return KIO::WorkerResult::fail(KIO::ERR_CANNOT_AUTHENTICATE, mRepository);
++    }
++    lProcess.start();
++    mCredentials.release();
++    if (!lProcess.waitForStarted(-1)) {
++        return KIO::WorkerResult::fail(KIO::ERR_CANNOT_LAUNCH_PROCESS, QStringLiteral("restic"));
++    }
++    lProcess.waitForFinished(-1);
++    pOutput = lProcess.readAllStandardOutput();
++    if (lProcess.exitStatus() != QProcess::NormalExit) {
++        return KIO::WorkerResult::fail(KIO::ERR_WORKER_DIED, QStringLiteral("restic"));
++    }
++    if (lProcess.exitCode() != 0) {
++        return failFor(lProcess.exitCode(), lProcess.readAllStandardError());
++    }
++    return KIO::WorkerResult::pass();
++}
++
++KIO::WorkerResult ResticWorker::loadSnapshots()
++{
++    QByteArray lOutput;
++    const KIO::WorkerResult lResult = runRestic({QStringLiteral("snapshots"), QStringLiteral("--json")}, lOutput);
++    if (!lResult.success()) {
++        return lResult;
++    }
++    const QJsonArray lArray = QJsonDocument::fromJson(lOutput).array();
++    QList<ResticSnapshot> lSnapshots;
++    for (const QJsonValue &lValue : lArray) {
++        const QJsonObject lObject = lValue.toObject();
++        ResticSnapshot lSnapshot;
++        lSnapshot.mId = lObject.value(QStringLiteral("id")).toString();
++        lSnapshot.mTime = Restic::parseTime(lObject.value(QStringLiteral("time")).toString());
++        if (!lSnapshot.mId.isEmpty() && lSnapshot.mTime.isValid()) {
++            lSnapshots.append(lSnapshot);
++        }
++    }
++    std::sort(lSnapshots.begin(), lSnapshots.end(), [](const ResticSnapshot &a, const ResticSnapshot &b) {
++        return a.mTime < b.mTime;
++    });
++
++    // Names are the minute a snapshot was taken, as the bup worker names its
++    // saves; two in the same minute get seconds, and two in the same second
++    // the start of their ID, so every name is unique and stable.
++    QHash<QString, int> lCount;
++    for (ResticSnapshot &lSnapshot : lSnapshots) {
++        lSnapshot.mName = lSnapshot.mTime.toLocalTime().toString(QStringLiteral("yyyy-MM-dd hh:mm"));
++        ++lCount[lSnapshot.mName];
++    }
++    for (ResticSnapshot &lSnapshot : lSnapshots) {
++        if (lCount.value(lSnapshot.mName) > 1) {
++            lSnapshot.mName = lSnapshot.mTime.toLocalTime().toString(QStringLiteral("yyyy-MM-dd hh:mm:ss"));
++        }
++    }
++    lCount.clear();
++    for (const ResticSnapshot &lSnapshot : std::as_const(lSnapshots)) {
++        ++lCount[lSnapshot.mName];
++    }
++    for (ResticSnapshot &lSnapshot : lSnapshots) {
++        if (lCount.value(lSnapshot.mName) > 1) {
++            lSnapshot.mName += QLatin1Char(' ') + lSnapshot.mId.left(8);
++        }
++    }
++    mSnapshots = lSnapshots;
++    mSnapshotsAge.start();
++    return KIO::WorkerResult::pass();
++}
++
++KIO::WorkerResult ResticWorker::findSnapshot(const QString &pName, ResticSnapshot &pSnapshot)
++{
++    for (int lAttempt = 0; lAttempt < 2; ++lAttempt) {
++        const bool lLatestIsStale = pName == latestName() && (!mSnapshotsAge.isValid() || mSnapshotsAge.hasExpired(cLatestMaxAgeMs));
++        if (lAttempt == 1 || mSnapshots.isEmpty() || lLatestIsStale) {
++            const KIO::WorkerResult lResult = loadSnapshots();
++            if (!lResult.success()) {
++                return lResult;
++            }
++        }
++        if (pName == latestName() && !mSnapshots.isEmpty()) {
++            pSnapshot = mSnapshots.last();
++            return KIO::WorkerResult::pass();
++        }
++        for (const ResticSnapshot &lSnapshot : std::as_const(mSnapshots)) {
++            if (lSnapshot.mName == pName) {
++                pSnapshot = lSnapshot;
++                return KIO::WorkerResult::pass();
++            }
++        }
++    }
++    return KIO::WorkerResult::fail(KIO::ERR_DOES_NOT_EXIST, pName);
++}
++
++KIO::WorkerResult ResticWorker::listTree(const ResticSnapshot &pSnapshot, const QString &pPath, QList<ResticNode> &pNodes)
++{
++    const QString lKey = pSnapshot.mId + QLatin1Char(':') + pPath;
++    const auto lCached = mTrees.constFind(lKey);
++    if (lCached != mTrees.constEnd()) {
++        pNodes = *lCached;
++        return KIO::WorkerResult::pass();
++    }
++
++    QByteArray lOutput;
++    const KIO::WorkerResult lResult = runRestic({QStringLiteral("cat"), QStringLiteral("tree"), lKey}, lOutput);
++    if (!lResult.success()) {
++        return lResult;
++    }
++    pNodes.clear();
++    const QJsonArray lArray = QJsonDocument::fromJson(lOutput).object().value(QStringLiteral("nodes")).toArray();
++    for (const QJsonValue &lValue : lArray) {
++        const QJsonObject lObject = lValue.toObject();
++        ResticNode lNode;
++        lNode.mName = lObject.value(QStringLiteral("name")).toString();
++        if (lNode.mName.isEmpty()) {
++            continue;
++        }
++        lNode.mType = fileTypeOf(lObject.value(QStringLiteral("type")).toString());
++        lNode.mPermissions = permissionsOf(static_cast<quint32>(lObject.value(QStringLiteral("mode")).toDouble()));
++        lNode.mSize = static_cast<qint64>(lObject.value(QStringLiteral("size")).toDouble());
++        lNode.mMtime = Restic::parseTime(lObject.value(QStringLiteral("mtime")).toString()).toSecsSinceEpoch();
++        lNode.mAtime = Restic::parseTime(lObject.value(QStringLiteral("atime")).toString()).toSecsSinceEpoch();
++        lNode.mUser = lObject.value(QStringLiteral("user")).toString();
++        if (lNode.mUser.isEmpty()) {
++            lNode.mUser = QString::number(lObject.value(QStringLiteral("uid")).toInt());
++        }
++        lNode.mGroup = lObject.value(QStringLiteral("group")).toString();
++        if (lNode.mGroup.isEmpty()) {
++            lNode.mGroup = QString::number(lObject.value(QStringLiteral("gid")).toInt());
++        }
++        lNode.mLinkTarget = lObject.value(QStringLiteral("linktarget")).toString();
++        pNodes.append(lNode);
++    }
++    if (mTrees.size() >= cTreeCacheLimit) {
++        mTrees.clear();
++    }
++    mTrees.insert(lKey, pNodes);
++    return KIO::WorkerResult::pass();
++}
++
++KIO::WorkerResult ResticWorker::findNode(const ResticSnapshot &pSnapshot, const QString &pPath, bool pFollowLinks, ResticNode &pNode, QString &pResolvedPath)
++{
++    QString lPath = pPath;
++    for (int lDepth = 0; lDepth <= cMaxLinkDepth; ++lDepth) {
++        if (lPath == QStringLiteral("/")) {
++            pNode = ResticNode();
++            pNode.mName = QStringLiteral("/");
++            pNode.mType = S_IFDIR;
++            pNode.mPermissions = 0755;
++            pNode.mMtime = pSnapshot.mTime.toSecsSinceEpoch();
++            pNode.mAtime = pNode.mMtime;
++            pResolvedPath = lPath;
++            return KIO::WorkerResult::pass();
++        }
++        QList<ResticNode> lNodes;
++        const KIO::WorkerResult lResult = listTree(pSnapshot, parentPath(lPath), lNodes);
++        if (!lResult.success()) {
++            return lResult;
++        }
++        const QString lName = namePart(lPath);
++        auto lNode = std::find_if(lNodes.cbegin(), lNodes.cend(), [&lName](const ResticNode &pCandidate) {
++            return pCandidate.mName == lName;
++        });
++        if (lNode == lNodes.cend()) {
++            return KIO::WorkerResult::fail(KIO::ERR_DOES_NOT_EXIST, lPath);
++        }
++        if (!pFollowLinks || lNode->mType != S_IFLNK) {
++            pNode = *lNode;
++            pResolvedPath = lPath;
++            return KIO::WorkerResult::pass();
++        }
++        const QString lTarget = lNode->mLinkTarget;
++        lPath = QDir::cleanPath(lTarget.startsWith(QLatin1Char('/')) ? lTarget : joinPath(parentPath(lPath), lTarget));
++    }
++    return KIO::WorkerResult::fail(KIO::ERR_CYCLIC_LINK, pPath);
++}
++
++void ResticWorker::fillDirectoryEntry(const QString &pName, const QDateTime &pTime, UDSEntry &pEntry)
++{
++    pEntry.clear();
++    pEntry.fastInsert(KIO::UDSEntry::UDS_NAME, pName);
++    pEntry.fastInsert(KIO::UDSEntry::UDS_FILE_TYPE, S_IFDIR);
++    pEntry.fastInsert(KIO::UDSEntry::UDS_ACCESS, 0555);
++    pEntry.fastInsert(KIO::UDSEntry::UDS_MIME_TYPE, QStringLiteral("inode/directory"));
++    if (pTime.isValid()) {
++        pEntry.fastInsert(KIO::UDSEntry::UDS_MODIFICATION_TIME, pTime.toSecsSinceEpoch());
++    }
++}
++
++void ResticWorker::fillEntry(const ResticNode &pNode, UDSEntry &pEntry, int pDetails)
++{
++    pEntry.clear();
++    pEntry.fastInsert(KIO::UDSEntry::UDS_NAME, pNode.mName);
++    pEntry.fastInsert(KIO::UDSEntry::UDS_FILE_TYPE, pNode.mType);
++    pEntry.fastInsert(KIO::UDSEntry::UDS_ACCESS, pNode.mPermissions);
++    if (!pNode.mLinkTarget.isEmpty()) {
++        pEntry.fastInsert(KIO::UDSEntry::UDS_LINK_DEST, pNode.mLinkTarget);
++    }
++    if (pDetails > 0) {
++        pEntry.fastInsert(KIO::UDSEntry::UDS_SIZE, pNode.mType == S_IFREG ? pNode.mSize : 0);
++        if (pNode.mType == S_IFDIR) {
++            pEntry.fastInsert(KIO::UDSEntry::UDS_MIME_TYPE, QStringLiteral("inode/directory"));
++        } else if (pNode.mType == S_IFREG) {
++            pEntry.fastInsert(KIO::UDSEntry::UDS_MIME_TYPE, mMimeDatabase.mimeTypeForFile(pNode.mName, QMimeDatabase::MatchExtension).name());
++        }
++        pEntry.fastInsert(KIO::UDSEntry::UDS_MODIFICATION_TIME, pNode.mMtime);
++        pEntry.fastInsert(KIO::UDSEntry::UDS_ACCESS_TIME, pNode.mAtime);
++        pEntry.fastInsert(KIO::UDSEntry::UDS_USER, pNode.mUser);
++        pEntry.fastInsert(KIO::UDSEntry::UDS_GROUP, pNode.mGroup);
++    }
++}
++
++KIO::WorkerResult ResticWorker::listDir(const QUrl &pUrl)
++{
++    Location lLocation;
++    KIO::WorkerResult lResult = locate(pUrl, lLocation);
++    if (!lResult.success()) {
++        return lResult;
++    }
++
++    UDSEntry lEntry;
++    if (lLocation.mSnapshotName.isEmpty()) {
++        // The repository folder is listed fresh every time, so a backup
++        // saved while it is open shows up on reload.
++        lResult = loadSnapshots();
++        if (!lResult.success()) {
++            return lResult;
++        }
++        fillDirectoryEntry(QStringLiteral("."), QDateTime(), lEntry);
++        listEntry(lEntry);
++        for (const ResticSnapshot &lSnapshot : std::as_const(mSnapshots)) {
++            fillDirectoryEntry(lSnapshot.mName, lSnapshot.mTime, lEntry);
++            listEntry(lEntry);
++        }
++        if (!mSnapshots.isEmpty()) {
++            fillDirectoryEntry(latestName(), mSnapshots.last().mTime, lEntry);
++            lEntry.fastInsert(KIO::UDSEntry::UDS_LINK_DEST, mSnapshots.last().mName);
++            listEntry(lEntry);
++        }
++        return KIO::WorkerResult::pass();
++    }
++
++    ResticSnapshot lSnapshot;
++    lResult = findSnapshot(lLocation.mSnapshotName, lSnapshot);
++    if (!lResult.success()) {
++        return lResult;
++    }
++    ResticNode lNode;
++    QString lResolved;
++    lResult = findNode(lSnapshot, lLocation.mPath, true, lNode, lResolved);
++    if (!lResult.success()) {
++        return lResult;
++    }
++    if (lNode.mType != S_IFDIR) {
++        return KIO::WorkerResult::fail(KIO::ERR_IS_FILE, pUrl.toDisplayString());
++    }
++    QList<ResticNode> lNodes;
++    lResult = listTree(lSnapshot, lResolved, lNodes);
++    if (!lResult.success()) {
++        return lResult;
++    }
++    const int lDetails = details();
++    lNode.mName = QStringLiteral(".");
++    lNode.mLinkTarget.clear();
++    fillEntry(lNode, lEntry, lDetails);
++    listEntry(lEntry);
++    for (const ResticNode &lChild : std::as_const(lNodes)) {
++        ResticNode lShown = lChild;
++        if (lChild.mType == S_IFLNK && lDetails > 1) {
++            // Show a link with the type of what it points to, as the bup
++            // worker does, so a link to a folder opens as a folder.
++            ResticNode lTarget;
++            QString lTargetPath;
++            if (findNode(lSnapshot, joinPath(lResolved, lChild.mName), true, lTarget, lTargetPath).success()) {
++                lShown = lTarget;
++                lShown.mName = lChild.mName;
++                lShown.mLinkTarget = lChild.mLinkTarget;
++            }
++        }
++        fillEntry(lShown, lEntry, lDetails);
++        listEntry(lEntry);
++    }
++    return KIO::WorkerResult::pass();
++}
++
++KIO::WorkerResult ResticWorker::stat(const QUrl &pUrl)
++{
++    Location lLocation;
++    KIO::WorkerResult lResult = locate(pUrl, lLocation);
++    if (!lResult.success()) {
++        return lResult;
++    }
++
++    UDSEntry lEntry;
++    if (lLocation.mSnapshotName.isEmpty()) {
++        fillDirectoryEntry(namePart(lLocation.mRepository), QDateTime(), lEntry);
++        statEntry(lEntry);
++        return KIO::WorkerResult::pass();
++    }
++    ResticSnapshot lSnapshot;
++    lResult = findSnapshot(lLocation.mSnapshotName, lSnapshot);
++    if (!lResult.success()) {
++        return lResult;
++    }
++    if (lLocation.mPath == QStringLiteral("/")) {
++        fillDirectoryEntry(lLocation.mSnapshotName, lSnapshot.mTime, lEntry);
++        if (lLocation.mSnapshotName == latestName()) {
++            lEntry.fastInsert(KIO::UDSEntry::UDS_LINK_DEST, lSnapshot.mName);
++        }
++        statEntry(lEntry);
++        return KIO::WorkerResult::pass();
++    }
++
++    ResticNode lNode;
++    QString lResolved;
++    lResult = findNode(lSnapshot, lLocation.mPath, false, lNode, lResolved);
++    if (!lResult.success()) {
++        return lResult;
++    }
++    if (lNode.mType == S_IFLNK && details() > 1) {
++        ResticNode lTarget;
++        QString lTargetPath;
++        if (findNode(lSnapshot, lLocation.mPath, true, lTarget, lTargetPath).success()) {
++            const QString lLinkTarget = lNode.mLinkTarget;
++            const QString lName = lNode.mName;
++            lNode = lTarget;
++            lNode.mName = lName;
++            lNode.mLinkTarget = lLinkTarget;
++        }
++    }
++    fillEntry(lNode, lEntry, details());
++    statEntry(lEntry);
++    return KIO::WorkerResult::pass();
++}
++
++KIO::WorkerResult ResticWorker::mimetype(const QUrl &pUrl)
++{
++    Location lLocation;
++    KIO::WorkerResult lResult = locate(pUrl, lLocation);
++    if (!lResult.success()) {
++        return lResult;
++    }
++    if (lLocation.mSnapshotName.isEmpty() || lLocation.mPath == QStringLiteral("/")) {
++        mimeType(QStringLiteral("inode/directory"));
++        return KIO::WorkerResult::pass();
++    }
++    ResticSnapshot lSnapshot;
++    lResult = findSnapshot(lLocation.mSnapshotName, lSnapshot);
++    if (!lResult.success()) {
++        return lResult;
++    }
++    ResticNode lNode;
++    QString lResolved;
++    lResult = findNode(lSnapshot, lLocation.mPath, true, lNode, lResolved);
++    if (!lResult.success()) {
++        return lResult;
++    }
++    mimeType(lNode.mType == S_IFDIR ? QStringLiteral("inode/directory") : mMimeDatabase.mimeTypeForFile(lNode.mName, QMimeDatabase::MatchExtension).name());
++    return KIO::WorkerResult::pass();
++}
++
++KIO::WorkerResult ResticWorker::get(const QUrl &pUrl)
++{
++    Location lLocation;
++    KIO::WorkerResult lResult = locate(pUrl, lLocation);
++    if (!lResult.success()) {
++        return lResult;
++    }
++    if (lLocation.mSnapshotName.isEmpty() || lLocation.mPath == QStringLiteral("/")) {
++        return KIO::WorkerResult::fail(KIO::ERR_IS_DIRECTORY, pUrl.toDisplayString());
++    }
++    ResticSnapshot lSnapshot;
++    lResult = findSnapshot(lLocation.mSnapshotName, lSnapshot);
++    if (!lResult.success()) {
++        return lResult;
++    }
++
++    // Kio never calls get() on a link it means to copy as a link, so the
++    // link is followed, as in the bup worker.
++    ResticNode lNode;
++    QString lResolved;
++    lResult = findNode(lSnapshot, lLocation.mPath, true, lNode, lResolved);
++    if (!lResult.success()) {
++        return lResult;
++    }
++    if (lNode.mType == S_IFDIR) {
++        return KIO::WorkerResult::fail(KIO::ERR_IS_DIRECTORY, pUrl.toDisplayString());
++    }
++    if (lNode.mType != S_IFREG) {
++        return KIO::WorkerResult::fail(KIO::ERR_CANNOT_READ, pUrl.toDisplayString());
++    }
++
++    mimeType(mMimeDatabase.mimeTypeForFile(lNode.mName, QMimeDatabase::MatchExtension).name());
++    totalSize(static_cast<KIO::filesize_t>(lNode.mSize));
++
++    // restic dump streams from the start of the file; a resumed copy skips
++    // what the other side already has.
++    KIO::filesize_t lSkip = 0;
++    const QString lResumeOffset = metaData(QStringLiteral("resume"));
++    if (!lResumeOffset.isEmpty()) {
++        bool lOk = false;
++        const quint64 lOffset = lResumeOffset.toULongLong(&lOk);
++        if (lOk && lOffset > 0 && lOffset < static_cast<quint64>(lNode.mSize)) {
++            canResume();
++            lSkip = lOffset;
++        }
++    }
++
++    QProcess lProcess;
++    if (!mCredentials.prepare(lProcess, mRepository, {QStringLiteral("--no-lock"), QStringLiteral("dump"), lSnapshot.mId, lResolved})) {
++        return KIO::WorkerResult::fail(KIO::ERR_CANNOT_AUTHENTICATE, mRepository);
++    }
++    lProcess.start();
++    mCredentials.release();
++    if (!lProcess.waitForStarted(-1)) {
++        return KIO::WorkerResult::fail(KIO::ERR_CANNOT_LAUNCH_PROCESS, QStringLiteral("restic"));
++    }
++
++    KIO::filesize_t lProcessed = lSkip;
++    KIO::filesize_t lToSkip = lSkip;
++    auto lDeliver = [&](QByteArray pChunk) {
++        if (lToSkip > 0 && !pChunk.isEmpty()) {
++            const auto lDrop = static_cast<qsizetype>(qMin<KIO::filesize_t>(lToSkip, static_cast<KIO::filesize_t>(pChunk.size())));
++            pChunk.remove(0, lDrop);
++            lToSkip -= static_cast<KIO::filesize_t>(lDrop);
++        }
++        if (!pChunk.isEmpty()) {
++            data(pChunk);
++            lProcessed += static_cast<KIO::filesize_t>(pChunk.size());
++            processedSize(lProcessed);
++        }
++    };
++    while (lProcess.state() != QProcess::NotRunning) {
++        if (wasKilled()) {
++            lProcess.terminate();
++            lProcess.waitForFinished();
++            return KIO::WorkerResult::pass();
++        }
++        lProcess.waitForReadyRead(1000);
++        lDeliver(lProcess.readAllStandardOutput());
++    }
++    lDeliver(lProcess.readAllStandardOutput());
++    if (lProcess.exitStatus() != QProcess::NormalExit) {
++        return KIO::WorkerResult::fail(KIO::ERR_WORKER_DIED, QStringLiteral("restic"));
++    }
++    if (lProcess.exitCode() != 0) {
++        return failFor(lProcess.exitCode(), lProcess.readAllStandardError());
++    }
++    data(QByteArray());
++    return KIO::WorkerResult::pass();
++}
++
++extern "C" int Q_DECL_EXPORT kdemain(int pArgc, char **pArgv)
++{
++    QCoreApplication lApp(pArgc, pArgv);
++    QCoreApplication::setApplicationName(QStringLiteral("kio_restic"));
++    KLocalizedString::setApplicationDomain("kup");
++
++    if (pArgc != 4) {
++        fprintf(stderr, "Usage: kio_restic protocol domain-socket1 domain-socket2\n");
++        exit(-1);
++    }
++
++    ResticWorker lWorker(pArgv[2], pArgv[3]);
++    lWorker.dispatchLoop();
++
++    return 0;
++}
++
++#include "resticworker.moc"
+diff -ruN a/kupenums.h b/kupenums.h
+--- a/kupenums.h	2026-10-27 16:57:05.000000000 +0530
++++ b/kupenums.h	2026-11-01 18:02:44.640719858 +0530
+@@ -12,6 +12,7 @@
+ enum BackupType {
+     BupType = 0,
+     RsyncType,
++    ResticType,
+ };
+ Q_ENUM_NS(BackupType)
+ 
+@@ -38,6 +39,7 @@
+     WAITING_FOR_MANUAL_BACKUP,
+     INTEGRITY_TESTING,
+     REPAIRING,
++    PRUNING,
+ };
+ Q_ENUM_NS(ExecutorState)
+ }
+diff -ruN a/plasmoid/qml/main.qml b/plasmoid/qml/main.qml
+--- a/plasmoid/qml/main.qml	2026-10-27 16:57:05.000000000 +0530
++++ b/plasmoid/qml/main.qml	2026-11-01 18:02:44.640908868 +0530
+@@ -33,6 +33,7 @@
+ 			[Kup.Enums.ExecutorState.BACKUP_RUNNING]: i18ndc("kup", "status in tooltip", "Saving backup"),
+ 			[Kup.Enums.ExecutorState.INTEGRITY_TESTING]: i18ndc("kup", "status in tooltip", "Checking backup integrity"),
+ 			[Kup.Enums.ExecutorState.REPAIRING]: i18ndc("kup", "status in tooltip", "Repairing backups"),
++			[Kup.Enums.ExecutorState.PRUNING]: i18ndc("kup", "status in tooltip", "Removing old backups"),
+ 		}[state] || "";
+ 	}
+ 
+diff -ruN a/plasmoid/qml/PlanItem.qml b/plasmoid/qml/PlanItem.qml
+--- a/plasmoid/qml/PlanItem.qml	2026-10-27 16:57:05.000000000 +0530
++++ b/plasmoid/qml/PlanItem.qml	2026-11-01 18:02:44.641081105 +0530
+@@ -60,7 +60,7 @@
+ 
+     QQC2.Action {
+         id: pruneAction
+-        enabled: type === Kup.Enums.BackupType.BupType && destAvailable
++        enabled: (type === Kup.Enums.BackupType.BupType || type === Kup.Enums.BackupType.ResticType) && destAvailable
+         icon.name: "edit-clear-history"
+         text: i18nd("kup", "Prune Old Backups")
+         onTriggered: planModel.purgeBackups(index)
+diff -ruN a/README.md b/README.md
+--- a/README.md	2026-10-27 16:57:05.000000000 +0530
++++ b/README.md	2026-11-01 18:02:44.641271858 +0530
+@@ -11,12 +11,14 @@
+ - Configuration module, available in your system settings. Here you can configure backup plans, what to include, where to store the backup and how often. You can also see the status for the backup plans here.
+ - A small program running in the background. It will monitor to see when your backup destination is available, schedule and run your backup plans.
+ - Kioworker for accessing bup archives. This allows you to open files and folders directly from an archive, with any KDE application.
++- Kioworker for accessing restic repositories (`restic:///path/to/repository`). Each saved snapshot is a folder named by the time it was taken, so files can be browsed and copied back with any KDE application.
+ - A file browsing application for bup archives, allowing you to locate the file you want to restore more easily than with the kioworker. It also helps you restore files or folders.
+ 
+ ## Detailed list of features ##
+ - backup types:
+   - Synchronized folders with the use of "rsync".
+   - Incremental backup archive with the use of "bup"
++  - Encrypted incremental backup archive with the use of "restic". The repository password is kept in KDE Wallet, or read from a file readable only by its owner.
+ - backup destinations:
+   - local filesystem, monitored for availability. That means you can set a destination folder which only exist when perhaps a network shared drive is mounted and Kup will detect when it becomes available.
+   - external storage, like usb hard drives. Also monitored for availability.
+@@ -27,8 +29,8 @@
+ 
+ ## Needed backup programs ##
+ 
+-To actually create backups of your data you will need either "bup" or "rsync" installed. They
+-provide the implementations for the two different types of backups that Kup supports.
++To actually create backups of your data you will need "bup", "restic" or "rsync" installed. They
++provide the implementations for the three different types of backups that Kup supports.
+ 
+ ## Compiling from source ##
+ To compile you need:
+diff -ruN a/settings/backupplan.cpp b/settings/backupplan.cpp
+--- a/settings/backupplan.cpp	2026-10-27 16:57:05.000000000 +0530
++++ b/settings/backupplan.cpp	2026-11-01 18:02:44.641455968 +0530
+@@ -75,6 +75,9 @@
+     addItemBool(QStringLiteral("Check backups"), mCheckBackups);
+     addItemBool(QStringLiteral("Exclude patterns"), mExcludePatterns);
+     addItemString(QStringLiteral("Exclude patterns file path"), mExcludePatternsPath);
++    addItemBool(QStringLiteral("Restic use password file"), mResticUsePasswordFile);
++    addItemString(QStringLiteral("Restic password file"), mResticPasswordFile);
++    addItemBool(QStringLiteral("Restic forget"), mResticForget);
+ 
+     addItemDateTime(QStringLiteral("Last complete backup"), mLastCompleteBackup);
+     addItemDouble(QStringLiteral("Last backup size"), mLastBackupSize);
+@@ -122,6 +125,9 @@
+     mExcludeSnapshots = pPlan.mExcludeSnapshots;
+     mExcludeContainers = pPlan.mExcludeContainers;
+     mExcludeUserFlatpaks = pPlan.mExcludeUserFlatpaks;
++    mResticUsePasswordFile = pPlan.mResticUsePasswordFile;
++    mResticPasswordFile = pPlan.mResticPasswordFile;
++    mResticForget = pPlan.mResticForget;
+ }
+ 
+ QDateTime BackupPlan::nextScheduledTime()
+@@ -204,6 +210,26 @@
+     return mExcludePatternsPath;
+ }
+ 
++QString BackupPlan::absoluteResticPasswordFilePath() const
++{
++    if (QDir::isRelativePath(mResticPasswordFile)) {
++        return QDir::homePath() + QDir::separator() + mResticPasswordFile;
++    }
++    return mResticPasswordFile;
++}
++
++// The key names the repository, not the plan: plans are renumbered when one is
++// removed, and two plans writing to one repository share its password.
++QString BackupPlan::resticWalletKey() const
++{
++    if (mDestinationType == 1) {
++        QString lPath = QDir::cleanPath(mExternalDestinationPath);
++        ensureNoTrailingSlash(lPath);
++        return QStringLiteral("restic-drive:%1:%2").arg(mExternalUUID, lPath);
++    }
++    return QStringLiteral("restic-path:%1").arg(QDir::cleanPath(mFilesystemDestinationPath.toLocalFile()));
++}
++
+ void BackupPlan::usrRead()
+ {
+     // correct the time spec after default read routines.
+diff -ruN a/settings/backupplan.h b/settings/backupplan.h
+--- a/settings/backupplan.h	2026-10-27 16:57:05.000000000 +0530
++++ b/settings/backupplan.h	2026-11-01 18:02:44.641672019 +0530
+@@ -62,6 +62,14 @@
+     bool mExcludePatterns{};
+     QString mExcludePatternsPath;
+ 
++    // restic: where the repository password comes from. With a password file
++    // set the file is handed to restic as it is; otherwise the password is in
++    // KWallet under resticWalletKey().
++    bool mResticUsePasswordFile{};
++    QString mResticPasswordFile;
++    // restic: thin out old snapshots after each saved backup.
++    bool mResticForget{};
++
+     QDateTime mLastCompleteBackup;
+     // Size of the last backup in bytes.
+     double mLastBackupSize{};
+@@ -76,6 +84,8 @@
+     Status backupStatus();
+     static QString iconName(Status pStatus);
+     QString absoluteExcludesFilePath();
++    QString absoluteResticPasswordFilePath() const;
++    QString resticWalletKey() const;
+ 
+ protected:
+     void usrRead() override;
+diff -ruN a/settings/restic.cpp b/settings/restic.cpp
+--- a/settings/restic.cpp	1970-01-01 05:30:00.000000000 +0530
++++ b/settings/restic.cpp	2026-11-01 18:02:44.641810422 +0530
+@@ -0,0 +1,312 @@
++// SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
++//
++// SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++
++#include "restic.h"
++#include "backupplan.h"
++
++#include <QDir>
++#include <QFileInfo>
++#include <QProcess>
++#include <QRegularExpression>
++#include <QTimeZone>
++
++#include <KLocalizedString>
++#include <KWallet>
++#include <Solid/Device>
++#include <Solid/StorageDrive>
++#include <Solid/StorageVolume>
++
++#include <cerrno>
++#include <climits>
++#include <fcntl.h>
++#include <unistd.h>
++
++namespace Restic
++{
++
++// restic reads its password file once, at start, from the descriptor the
++// child inherits here. A descriptor number restic or the Go runtime opens
++// itself is always above the inherited ones, so 3 cannot be taken.
++static const int cPasswordFd = 3;
++
++QString snapshotTag()
++{
++    return QStringLiteral("kup");
++}
++
++bool isRepository(const QString &pPath)
++{
++    const QDir lDir(pPath);
++    return QFileInfo(lDir.filePath(QStringLiteral("config"))).isFile() && QFileInfo(lDir.filePath(QStringLiteral("keys"))).isDir()
++        && QFileInfo(lDir.filePath(QStringLiteral("data"))).isDir() && QFileInfo(lDir.filePath(QStringLiteral("snapshots"))).isDir();
++}
++
++QString volumeIdentity(const Solid::Device &pVolumeDevice)
++{
++    const auto *lVolume = pVolumeDevice.as<Solid::StorageVolume>();
++    if (lVolume == nullptr) {
++        return QString();
++    }
++    QString lIdentity = lVolume->uuid();
++    if (lIdentity.isEmpty()) {
++        const Solid::Device lDriveDevice = pVolumeDevice.is<Solid::StorageDrive>() ? pVolumeDevice : pVolumeDevice.parent();
++        lIdentity += lDriveDevice.description();
++        lIdentity += QStringLiteral("|");
++        lIdentity += lVolume->label();
++    }
++    return lIdentity;
++}
++
++QString escapePattern(const QString &pPath)
++{
++    QString lEscaped;
++    lEscaped.reserve(pPath.size() + 8);
++    for (const QChar lChar : pPath) {
++        if (lChar == QLatin1Char('*') || lChar == QLatin1Char('?') || lChar == QLatin1Char('[') || lChar == QLatin1Char('\\')) {
++            lEscaped += QLatin1Char('\\');
++        }
++        lEscaped += lChar;
++    }
++    return lEscaped;
++}
++
++QStringList forgetArguments()
++{
++    // Durations count back from the newest snapshot of each group, not from
++    // now, so a drive left in a drawer for a year keeps its history until new
++    // backups replace it.
++    return {QStringLiteral("forget"),
++            QStringLiteral("--prune"),
++            QStringLiteral("--tag"),
++            snapshotTag(),
++            QStringLiteral("--keep-within"),
++            QStringLiteral("2d"),
++            QStringLiteral("--keep-within-daily"),
++            QStringLiteral("1m"),
++            QStringLiteral("--keep-within-weekly"),
++            QStringLiteral("6m"),
++            QStringLiteral("--keep-within-monthly"),
++            QStringLiteral("2y"),
++            QStringLiteral("--keep-yearly"),
++            QStringLiteral("unlimited")};
++}
++
++QDateTime parseTime(const QString &pTime)
++{
++    // restic writes nanoseconds; Qt reads at most milliseconds, so the
++    // fraction is cut to three digits before parsing.
++    static const QRegularExpression lFraction(QStringLiteral("\\.(\\d{1,3})\\d*"));
++    QString lTime = pTime;
++    lTime.replace(lFraction, QStringLiteral(".\\1"));
++    QDateTime lResult = QDateTime::fromString(lTime, Qt::ISODateWithMs);
++    if (!lResult.isValid()) {
++        lResult = QDateTime::fromString(lTime, Qt::ISODate);
++    }
++    return lResult;
++}
++
++QProcessEnvironment environment()
++{
++    QProcessEnvironment lEnv = QProcessEnvironment::systemEnvironment();
++    static const char *const cDropped[] = {
++        "RESTIC_REPOSITORY",
++        "RESTIC_REPOSITORY_FILE",
++        "RESTIC_PASSWORD",
++        "RESTIC_PASSWORD_FILE",
++        "RESTIC_PASSWORD_COMMAND",
++        "RESTIC_KEY_HINT",
++        "RESTIC_HOST",
++    };
++    for (const char *lName : cDropped) {
++        lEnv.remove(QString::fromLatin1(lName));
++    }
++    // JSON status lines arrive ten times a second by default; the job shows
++    // them at most five times a second.
++    lEnv.insert(QStringLiteral("RESTIC_PROGRESS_FPS"), QStringLiteral("4"));
++    return lEnv;
++}
++
++QString programVersion()
++{
++    QProcess lProcess;
++    lProcess.setProcessEnvironment(environment());
++    lProcess.start(QStringLiteral("restic"), {QStringLiteral("version")});
++    if (!lProcess.waitForStarted() || !lProcess.waitForFinished(10000) || lProcess.exitStatus() != QProcess::NormalExit || lProcess.exitCode() != 0) {
++        return QString();
++    }
++    return QString::fromUtf8(lProcess.readAllStandardOutput()).section(QLatin1Char('\n'), 0, 0).trimmed();
++}
++
++QString walletFolder()
++{
++    return QStringLiteral("Kup");
++}
++
++bool walletHasPassword(const QString &pKey)
++{
++    return !KWallet::Wallet::keyDoesNotExist(KWallet::Wallet::NetworkWallet(), walletFolder(), pKey);
++}
++
++static KWallet::Wallet *openWallet(WId pWindow, QString &pError)
++{
++    if (!KWallet::Wallet::isEnabled()) {
++        pError = xi18nc("@info notification",
++                        "The KDE Wallet is turned off, so the password of the restic repository cannot be stored or read. "
++                        "Turn the wallet on, or set a password file in the backup plan's settings.");
++        return nullptr;
++    }
++    KWallet::Wallet *lWallet = KWallet::Wallet::openWallet(KWallet::Wallet::NetworkWallet(), pWindow, KWallet::Wallet::Synchronous);
++    if (lWallet == nullptr) {
++        pError = xi18nc("@info notification", "The KDE Wallet could not be opened, so the password of the restic repository is not available.");
++    }
++    return lWallet;
++}
++
++bool readWalletPassword(const QString &pKey, QString &pPassword, WId pWindow, QString &pError)
++{
++    if (!walletHasPassword(pKey)) {
++        pError = xi18nc("@info notification",
++                        "No password is stored for this restic repository. "
++                        "Enter it in the backup plan's settings.");
++        return false;
++    }
++    KWallet::Wallet *lWallet = openWallet(pWindow, pError);
++    if (lWallet == nullptr) {
++        return false;
++    }
++    bool lOk = lWallet->setFolder(walletFolder()) && lWallet->readPassword(pKey, pPassword) == 0 && !pPassword.isEmpty();
++    delete lWallet;
++    if (!lOk) {
++        pError = xi18nc("@info notification", "The password of the restic repository could not be read from the KDE Wallet.");
++    }
++    return lOk;
++}
++
++bool writeWalletPassword(const QString &pKey, const QString &pPassword, WId pWindow, QString &pError)
++{
++    KWallet::Wallet *lWallet = openWallet(pWindow, pError);
++    if (lWallet == nullptr) {
++        return false;
++    }
++    if (!lWallet->hasFolder(walletFolder())) {
++        lWallet->createFolder(walletFolder());
++    }
++    bool lOk = lWallet->setFolder(walletFolder()) && lWallet->writePassword(pKey, pPassword) == 0;
++    delete lWallet;
++    if (!lOk) {
++        pError = xi18nc("@info", "The password of the restic repository could not be stored in the KDE Wallet.");
++    }
++    return lOk;
++}
++
++Credentials::~Credentials()
++{
++    release();
++}
++
++void Credentials::setPassword(const QString &pPassword)
++{
++    mPasswordFile.clear();
++    mPassword = pPassword.toUtf8();
++}
++
++void Credentials::setPasswordFile(const QString &pPath)
++{
++    mPassword.clear();
++    mPasswordFile = pPath;
++}
++
++bool Credentials::isSet() const
++{
++    return !mPasswordFile.isEmpty() || !mPassword.isEmpty();
++}
++
++bool Credentials::loadForPlan(const BackupPlan &pPlan, WId pWindow, QString &pError)
++{
++    if (pPlan.mResticUsePasswordFile) {
++        const QString lPath = pPlan.absoluteResticPasswordFilePath();
++        const QFileInfo lInfo(lPath);
++        if (pPlan.mResticPasswordFile.isEmpty() || !lInfo.isFile() || !lInfo.isReadable()) {
++            pError = xi18nc("@info notification", "The password file <filename>%1</filename> of the restic repository cannot be read.", lPath);
++            return false;
++        }
++        // A password file others can read discloses every backup in the
++        // repository; refusing before the backup runs is the only moment the
++        // refusal still protects anything.
++        const auto lOpen = QFileDevice::ReadGroup | QFileDevice::WriteGroup | QFileDevice::ReadOther | QFileDevice::WriteOther;
++        if (lInfo.permissions() & lOpen) {
++            pError = xi18nc("@info notification",
++                            "The password file <filename>%1</filename> can be read by other users. "
++                            "Make it readable by you alone (mode 0600).",
++                            lPath);
++            return false;
++        }
++        setPasswordFile(lPath);
++        return true;
++    }
++    QString lPassword;
++    if (!readWalletPassword(pPlan.resticWalletKey(), lPassword, pWindow, pError)) {
++        return false;
++    }
++    setPassword(lPassword);
++    return true;
++}
++
++bool Credentials::prepare(QProcess &pProcess, const QString &pRepository, const QStringList &pArguments)
++{
++    release();
++    QStringList lArguments{QStringLiteral("-r"), pRepository};
++    if (!mPasswordFile.isEmpty()) {
++        lArguments << QStringLiteral("--password-file") << mPasswordFile;
++        pProcess.setChildProcessModifier({});
++    } else {
++        // The whole password goes into the pipe before the child exists, so
++        // nothing has to feed it later. A write of at most PIPE_BUF bytes to
++        // an empty pipe never blocks.
++        if (mPassword.isEmpty() || mPassword.size() > PIPE_BUF) {
++            return false;
++        }
++        int lFds[2];
++        if (::pipe2(lFds, O_CLOEXEC) != 0) {
++            return false;
++        }
++        const ssize_t lWritten = ::write(lFds[1], mPassword.constData(), static_cast<size_t>(mPassword.size()));
++        ::close(lFds[1]);
++        if (lWritten != mPassword.size()) {
++            ::close(lFds[0]);
++            return false;
++        }
++        mPipeRead = lFds[0];
++        lArguments << QStringLiteral("--password-file") << QStringLiteral("/proc/self/fd/%1").arg(cPasswordFd);
++        const int lReadFd = mPipeRead;
++        QProcess *lProcess = &pProcess;
++        pProcess.setChildProcessModifier([lReadFd, lProcess]() {
++            // dup2 onto the same number leaves close-on-exec set, so the flag
++            // is cleared by hand in that case.
++            if (lReadFd == cPasswordFd) {
++                const int lFlags = ::fcntl(cPasswordFd, F_GETFD);
++                if (lFlags == -1 || ::fcntl(cPasswordFd, F_SETFD, lFlags & ~FD_CLOEXEC) == -1) {
++                    lProcess->failChildProcessModifier("restic password pipe", errno);
++                }
++            } else if (::dup2(lReadFd, cPasswordFd) == -1) {
++                lProcess->failChildProcessModifier("restic password pipe", errno);
++            }
++        });
++    }
++    lArguments << pArguments;
++    pProcess.setProgram(QStringLiteral("restic"));
++    pProcess.setArguments(lArguments);
++    pProcess.setProcessEnvironment(environment());
++    return true;
++}
++
++void Credentials::release()
++{
++    if (mPipeRead >= 0) {
++        ::close(mPipeRead);
++        mPipeRead = -1;
++    }
++}
++
++}
+diff -ruN a/settings/restic.h b/settings/restic.h
+--- a/settings/restic.h	1970-01-01 05:30:00.000000000 +0530
++++ b/settings/restic.h	2026-11-01 18:02:44.642017225 +0530
+@@ -0,0 +1,118 @@
++// SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
++//
++// SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++
++#ifndef KUP_RESTIC_H
++#define KUP_RESTIC_H
++
++#include <QByteArray>
++#include <QDateTime>
++#include <QProcessEnvironment>
++#include <QString>
++#include <QStringList>
++#include <qwindowdefs.h>
++
++class BackupPlan;
++class QProcess;
++
++namespace Solid
++{
++class Device;
++}
++
++// Everything the restic backend shares between the daemon, the settings
++// module and the KIO worker: how a repository is recognised, how restic is
++// started and how its password reaches it.
++namespace Restic
++{
++
++// restic's documented exit codes.
++enum ExitCode {
++    ExitSuccess = 0,
++    ExitFatal = 1,
++    ExitIncomplete = 3,
++    ExitNoRepository = 10,
++    ExitLocked = 11,
++    ExitWrongPassword = 12,
++};
++
++// Every snapshot Kup saves carries this tag, and pruning only ever considers
++// snapshots that carry it, so snapshots saved into the same repository by
++// other programs are never removed by Kup.
++QString snapshotTag();
++
++// A local restic repository: a config file beside the keys, data and
++// snapshots folders.
++bool isRepository(const QString &pPath);
++
++// The identity Kup gives a storage volume: its filesystem UUID, or for a
++// volume without one (vfat) the drive's description and the volume label.
++// Must give the same string as EDExecutor::deviceAdded and DriveSelection,
++// which store it as "External drive UUID".
++QString volumeIdentity(const Solid::Device &pVolumeDevice);
++
++// Escapes a literal path for restic's --exclude, which reads its argument as
++// a glob: a folder named "a*b" would otherwise exclude every name it matches.
++QString escapePattern(const QString &pPath);
++
++// The retention policy of "Remove old backups automatically" and of the
++// applet's prune action, as restic forget arguments.
++QStringList forgetArguments();
++
++// A timestamp restic writes in its JSON output (RFC 3339, nanoseconds).
++QDateTime parseTime(const QString &pTime);
++
++// The environment restic runs in: the session's, without the RESTIC_*
++// variables that would name another repository or take precedence over the
++// password Kup passes (RESTIC_PASSWORD_COMMAND outranks --password-file).
++QProcessEnvironment environment();
++
++// The first line of `restic version`, or empty when restic cannot be run.
++QString programVersion();
++
++// KWallet holds the passwords in this folder of the network wallet.
++QString walletFolder();
++bool walletHasPassword(const QString &pKey);
++bool readWalletPassword(const QString &pKey, QString &pPassword, WId pWindow, QString &pError);
++bool writeWalletPassword(const QString &pKey, const QString &pPassword, WId pWindow, QString &pError);
++
++// How restic gets the password of one repository. A password from KWallet
++// never becomes an argument or an environment variable: each process gets it
++// through its own pipe, at file descriptor 3, which restic reads as its
++// password file. A configured password file is passed as it is.
++class Credentials
++{
++public:
++    Credentials() = default;
++    ~Credentials();
++    Credentials(const Credentials &) = delete;
++    Credentials &operator=(const Credentials &) = delete;
++
++    void setPassword(const QString &pPassword);
++    void setPasswordFile(const QString &pPath);
++    bool isSet() const;
++
++    // Loads what pPlan says: the password file, which must exist and be
++    // readable by no one else, or the KWallet entry. Fills pError with a
++    // sentence for a notification on failure.
++    bool loadForPlan(const BackupPlan &pPlan, WId pWindow, QString &pError);
++
++    // Sets program, arguments and environment of pProcess so that it runs
++    // `restic -r <pRepository> --password-file <...> <pArguments>`, and
++    // prepares the pipe that carries the password. Call release() as soon as
++    // the process has been started.
++    bool prepare(QProcess &pProcess, const QString &pRepository, const QStringList &pArguments);
++
++    // Closes this side's copy of the password pipe. A started child keeps its
++    // own copy; one that never started reads nothing.
++    void release();
++
++private:
++    QString mPasswordFile;
++    QByteArray mPassword;
++    int mPipeRead = -1;
++};
++
++}
++
++#endif // KUP_RESTIC_H

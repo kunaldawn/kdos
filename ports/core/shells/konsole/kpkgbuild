@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = konsole
-version     = 26.08.1
+version     = 26.08.2
 release     = 1
 source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
-sha256      = 64d8aaba741f4412ede26ffbbbe3824523e941b725d3046ec27f510fd42d82e6  konsole-26.08.1.tar.xz
+sha256      = 2154a03a952c29be435defffd4c88f9d2eff44a55cdfa33b16a8fc7bfd978217  konsole-26.08.2.tar.xz
 description = KDE terminal emulator — tabs, split views, profiles, SSH manager
 homepage    = https://konsole.kde.org/
 license     = GPL-2.0-or-later

@@ -58,15 +58,20 @@ line of the table names. Every key and line is described in
 [`/etc/fstab`](../../kdos/06-reference/configuration.md#etcfstab).
 
 **The installer's lines.** On an installed system the installer puts its own lines in front of the
-image's, keeping every shipped one, from `src/system/kdos-installer/install.c`:
+image's, keeping every shipped one, from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=1625-1651 pin=722f1c369b15 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=1813-1846 pin=b7e79086c91c -->
 
-So an installed `fstab` begins with the root by its filesystem UUID, the EFI system partition at
-`/boot/efi` with `umask=0077` and pass 2, and any [swap]{.idx} partition or swap file. The root's type,
-options and pass number come from one table, from `src/system/kdos-installer/conf.c`:
+So an installed `fstab` begins with the root by its filesystem UUID and the EFI system partition
+at `/boot/efi` with `umask=0077` and pass 2. On the A/B layout, which an erased disk under LVM gets
+when it has room for two root slots, the `home` volume follows at `/home`, and a bind mount puts
+`/home/.kdos/packs` on `/var/lib/kdos/packs`, so the packs and boxes live on the volume both slots
+share (see [A/B slots and rollback](ab-slots-and-rollback.md)). Any [swap]{.idx} partition or volume
+comes last; a swap file is offered only on a single-root layout, because a file inside one slot's
+root would not be there after a switch. The root's type, options and pass number come from one
+table, from `src/system/kinstall-core/conf.c`:
 
-<!-- kfs:include src/system/kdos-installer/conf.c lines=39-57 pin=2664f1a53985 -->
+<!-- kfs:include src/system/kinstall-core/conf.c lines=41-59 pin=2664f1a53985 -->
 
 Only ext4 has pass 1; btrfs, xfs and f2fs have 0. See
 [The filesystem table](../../kdos/04-programs/kinstall.md#the-filesystem-table).
@@ -140,7 +145,7 @@ of date, so ask it as root. See [Known gaps](#known-gaps).
 [setuid binaries](../../kdos/03-architecture/security-model.md#setuid-binaries). An NFS share is the
 exception, because nfs-utils' `mount.nfs` is setuid; see
 [Mounting an NFS export](file-sharing.md#mounting-an-nfs-export). A removable disk an
-ordinary account should mount belongs to [`kdos-mountd`]{.idx} instead; see
+ordinary account should mount is left to udisks2 instead; see
 [Storage and removable media](storage-and-removable-media.md).
 
 On the live medium the edit lands in the session's overlay and lasts only as long as the session,
@@ -173,7 +178,7 @@ every boot; to check any root by hand, boot the live medium and check it there, 
 ### Labelling a filesystem
 
 A label names a filesystem in `fstab` (`LABEL=data`) and becomes the mount point's name under
-`/media/<user>/` when `kdos-mountd` mounts it.
+`/run/media/<user>/` when udisks2 mounts it.
 
 | Filesystem | Command |
 |---|---|
@@ -208,9 +213,8 @@ sudo mount -o remount /srv/data
 
 - Name filesystems by `UUID=` or `LABEL=`, never by `/dev/sdX`: device names follow the order in
   which disks are found, and that order can change from one boot to the next.
-- `kdos-mountd` stops offering a removable device that `/etc/fstab` names by its device path or by
-  `LABEL=`. It does not match `UUID=`, so a USB disk listed by UUID is still offered in the
-  desktop's device list.
+- A removable device that `/etc/fstab` names is mounted at that line's mount point and with its
+  options when udisks2 mounts it.
 - e2fsprogs is built without its cron directory (`--without-crond-dir`) and xfsprogs without
   `xfs_scrub_all`, so no periodic online check runs. A btrfs scrub or an `xfs_scrub` can be made a
   job of the system's timer table; see [Timers](timers.md).
@@ -294,4 +298,4 @@ the running kernel are not installed.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 374.* Previous: [373. Live persistence](live-persistence.md) · [Contents](../README.md) · Next: [375. Storage and removable media](storage-and-removable-media.md)
+*Part XVI. System administration, chapter 398.* Previous: [397. Live persistence](live-persistence.md) · [Contents](../README.md) · Next: [399. Storage and removable media](storage-and-removable-media.md)

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = konqueror
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = df13ccf0350b898ad35c12f15a574229788945f59a352432d90ae1ae9b7b273b  konqueror-26.08.2.tar.xz
+description = Web browser and file manager — QtWebEngine pages and KIO folders in one window, with tabs, split views and a sidebar
+homepage    = https://apps.kde.org/konqueror/
+license     = GPL-2.0-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND LGPL-2.0-or-later AND LGPL-2.0-only AND (LGPL-2.0-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.1-or-later AND BSD-2-Clause AND BSD-3-Clause AND GFDL-1.2-only
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtwebengine kparts kcmutils karchive kcrash kwindowsystem kiconthemes kdbusaddons kguiaddons ki18n sonnet ktextwidgets kcodecs kbookmarks kio kjobwidgets kwallet knotifications kdesu kdoctools plasma-activities zlib hunspell hunspell-en kcompletion kconfig kconfigwidgets kcoreaddons kitemviews kservice kwidgetsaddons kxmlgui solid

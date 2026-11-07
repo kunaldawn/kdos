@@ -11,7 +11,7 @@
 
 meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release --wrap-mode=nodownload \
-	-Dlogind=none \
+	-Dlogind=libelogind \
 	-Dgsd_plugin=false \
 	-Dman=true
 meson compile -C build

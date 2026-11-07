@@ -46,7 +46,7 @@ On the store itself, the overlay uses two directories, `upper/` (the session's f
 
 `kdos persist create` makes the filesystem with no reserved blocks and the label:
 
-<!-- kfs:include src/system/kdos-tools/persist.c lines=303-318 pin=adc5db1e67b9 -->
+<!-- kfs:include src/system/kdos-tools/persist.c lines=337-352 pin=adc5db1e67b9 -->
 
 The menu entry that skips the store:
 
@@ -222,4 +222,4 @@ space; start it afresh or make a larger one on another device.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 373.* Previous: [372. A/B slots and rollback](ab-slots-and-rollback.md) · [Contents](../README.md) · Next: [374. Filesystems and fstab](filesystems-and-fstab.md)
+*Part XVI. System administration, chapter 397.* Previous: [396. A/B slots and rollback](ab-slots-and-rollback.md) · [Contents](../README.md) · Next: [398. Filesystems and fstab](filesystems-and-fstab.md)

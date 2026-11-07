@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kaddressbook
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 8d593ad344471cc9a7b0d3ef9d7a57d5299745c5adedd0676b9dc70d3e432376  kaddressbook-26.08.2.tar.xz
+description = KDE address book — Akonadi contacts and groups, LDAP search and vCard import and export
+homepage    = https://apps.kde.org/kaddressbook/
+license     = GPL-2.0-or-later AND GPL-2.0-or-later WITH LicenseRef-Qt-Commercial-exception-1.0 AND GPL-2.0-only AND LGPL-2.0-or-later AND BSD-3-Clause AND CC0-1.0 AND MIT
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcmutils kcolorscheme kcompletion kcontacts kcoreaddons kcrash kdbusaddons kdoctools ki18n kiconthemes kio kjobwidgets kparts kxmlgui ktextaddons akonadi akonadi-contacts akonadi-search grantleetheme kldap kontactinterface libkdepim pimcommon plasma-activities kdepim-runtime

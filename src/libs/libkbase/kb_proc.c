@@ -138,13 +138,12 @@ int kb_run_to_file(const KbArgv *a, const char *path)
 /*
  * Run with `in` on the child's stdin. The one reason this exists: a password
  * must not travel in argv, where /proc/<pid>/cmdline publishes it to every
- * process on the machine for as long as the child lives — kdos-lock pipes one
- * into kdos-checkpass.
+ * process on the machine for as long as the child lives, so a secret reaches a
+ * helper on its stdin or not at all.
  *
  * The write is guarded against SIGPIPE rather than assumed safe: a child that
  * exits without reading (a bad invocation, a missing binary) would otherwise
- * kill the CALLER, which for a lock screen means the lock client dying and the
- * session staying locked forever.
+ * kill the CALLER, which takes whatever it was in the middle of down with it.
  */
 static pid_t feed_start(const KbArgv *a, const char *in, size_t n, int outfd,
 			bool keep_stdout)

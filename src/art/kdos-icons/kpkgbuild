@@ -9,9 +9,8 @@
 # ---------------------------------
 
 name        = kdos-icons
-version     = 20250501
-release     = 2
-description = KDOS phosphor icon theme — a recoloured Papirus
-homepage    = https://github.com/PapirusDevelopmentTeam/papirus-icon-theme
-license     = GPL-3.0-only AND MIT
-depends     = kdos-theme
+version     = 20261028
+release     = 1
+description = KDOS icon themes — the KDOS marks over Breeze, following the accent
+homepage    = https://github.com/kunaldawn/kdos
+license     = MIT

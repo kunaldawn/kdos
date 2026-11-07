@@ -1,0 +1,35 @@
+# The toolkit guard's fixture: testing/preflight.sh builds each row as an ELF
+# whose NEEDED entries are the sonames listed, installs it into a scratch tree
+# as a package of a src/<area>/<port> port, and asks the guard for a verdict.
+# A row the guard answers differently fails preflight before the real tree is
+# read: a guard that cannot refuse these refuses nothing.
+#
+#   <area> <port> <expect> <mode> <path> <soname>...
+#
+# area is a src/ area, or `lib` for a library the cases link (no port). mode is
+# octal; `,rcs` adds the path to a scratch init script, which makes it a
+# program rcS starts.
+
+lib      -                   -        755      usr/lib/libfxplasma.so.6           libQt6Core.so.6
+lib      -                   -        755      usr/lib/libfxgtkwrap.so.1          libgtk-3.so.0
+
+# Only src/desktop may link Qt 6 and KF6, and through a library as well.
+system   fx-system-qt        refused  755      usr/bin/fx-system-qt               libQt6Core.so.6
+daemons  fx-daemon-plasma    refused  755      usr/bin/fx-daemon-plasma           libfxplasma.so.6
+art      fx-art-kf           refused  644      usr/lib/fx-art-kf.so               libKF6ConfigCore.so.6
+system   fx-system-c         allowed  755      usr/bin/fx-system-c                libbasu.so.0 libz.so.1
+desktop  fx-kcm              allowed  644      usr/lib/qt6/plugins/kcm_fx.so      libQt6Core.so.6 libKF6CoreAddons.so.6 libfxplasma.so.6 libxkbcommon.so.0
+
+# src/desktop is still refused every other toolkit, Qt 5 and Xlib, as every
+# other area is.
+desktop  fx-kcm-gtk          refused  644      usr/lib/qt6/plugins/kcm_fxg.so     libQt6Core.so.6 libgtk-3.so.0
+daemons  fx-daemon-gtk       refused  755      usr/bin/fx-daemon-gtk              libgtk-3.so.0
+desktop  fx-qt5              refused  755      usr/bin/fx-qt5                     libQt5Core.so.5
+desktop  fx-xlib             refused  755      usr/bin/fx-xlib                    libQt6Gui.so.6 libX11.so.6
+desktop  fx-gtk-indirect     refused  755      usr/bin/fx-gtk-indirect            libfxgtkwrap.so.1
+
+# A program that runs as root or before the login links no toolkit, whatever
+# its area.
+desktop  fx-setuid           refused  4755     usr/bin/fx-setuid                  libQt6Core.so.6
+desktop  fx-sbin             refused  755      usr/sbin/fx-sbin                   libQt6Core.so.6
+desktop  fx-rcs              refused  755,rcs  usr/bin/fx-rcs                     libQt6Core.so.6

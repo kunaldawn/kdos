@@ -496,30 +496,46 @@ int kdt_cve(int argc, char **argv, const char *tty_accent,
 	}
 
 	if (json) {
-		printf("{\n  \"source\": \"alpine-secdb\",\n"
-		       "  \"generated\": \"%s\",\n"
-		       "  \"age_days\": %d,\n"
-		       "  \"scope\": \"%s\",\n"
-		       "  \"checked\": %d,\n  \"unknown\": %d,\n"
-		       "  \"findings\": [\n",
-		       stamp, age, from_db ? "installed" : "ports", checked,
-		       unknown);
-		for (int i = 0; i < nhit; i++)
-			printf("    {\"port\": \"%s\", \"version\": \"%s\", "
-			       "\"fixed_in\": \"%s\", \"cves\": \"%s\"}%s\n",
-			       hits[i].port, hits[i].have, hits[i].fixed,
-			       hits[i].cves, i + 1 < nhit ? "," : "");
-		printf("  ],\n  \"bundled\": [\n");
-		for (int i = 0; i < nbund; i++)
-			printf("    {\"port\": \"%s\", \"crate\": \"%s\", "
-			       "\"component\": \"%s\", \"version\": \"%s\", "
-			       "\"in_database\": %s, \"behind\": %s}%s\n",
-			       bundled[i].port, bundled[i].crate,
-			       bundled[i].component, bundled[i].version,
-			       bundled[i].known ? "true" : "false",
-			       bundled[i].behind ? "true" : "false",
-			       i + 1 < nbund ? "," : "");
-		printf("  ]\n}\n");
+		/* Every value goes through kb_json_str: a port, crate or
+		 * version with a quote in it would otherwise end the document
+		 * kdos-notice and the runner parse. */
+		KbBuf b = {0};
+		kb_buf_str(&b, "{\n  \"source\": \"alpine-secdb\",\n  \"generated\": ");
+		kb_json_str(&b, stamp);
+		kb_buf_printf(&b, ",\n  \"age_days\": %d,\n  \"scope\": \"%s\",\n"
+			      "  \"checked\": %d,\n  \"unknown\": %d,\n"
+			      "  \"findings\": [\n",
+			      age, from_db ? "installed" : "ports", checked,
+			      unknown);
+		for (int i = 0; i < nhit; i++) {
+			kb_buf_str(&b, "    {\"port\": ");
+			kb_json_str(&b, hits[i].port);
+			kb_buf_str(&b, ", \"version\": ");
+			kb_json_str(&b, hits[i].have);
+			kb_buf_str(&b, ", \"fixed_in\": ");
+			kb_json_str(&b, hits[i].fixed);
+			kb_buf_str(&b, ", \"cves\": ");
+			kb_json_str(&b, hits[i].cves);
+			kb_buf_str(&b, i + 1 < nhit ? "},\n" : "}\n");
+		}
+		kb_buf_str(&b, "  ],\n  \"bundled\": [\n");
+		for (int i = 0; i < nbund; i++) {
+			kb_buf_str(&b, "    {\"port\": ");
+			kb_json_str(&b, bundled[i].port);
+			kb_buf_str(&b, ", \"crate\": ");
+			kb_json_str(&b, bundled[i].crate);
+			kb_buf_str(&b, ", \"component\": ");
+			kb_json_str(&b, bundled[i].component);
+			kb_buf_str(&b, ", \"version\": ");
+			kb_json_str(&b, bundled[i].version);
+			kb_buf_printf(&b, ", \"in_database\": %s, \"behind\": %s}%s\n",
+				      bundled[i].known ? "true" : "false",
+				      bundled[i].behind ? "true" : "false",
+				      i + 1 < nbund ? "," : "");
+		}
+		kb_buf_str(&b, "  ]\n}\n");
+		fwrite(b.p, 1, b.n, stdout);
+		kb_buf_free(&b);
 	} else {
 		printf("%sKDOS cve%s  —  Alpine secdb of %s (%d days old), %s\n\n",
 		       tty_accent, tty_reset, stamp[0] ? stamp : "unknown", age,

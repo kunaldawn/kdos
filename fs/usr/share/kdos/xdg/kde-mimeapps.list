@@ -1,0 +1,320 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   What opens a file on KDOS.
+#
+# The KDE application by default, unless an application already on the image
+# is clearly better at the job; the choice per role is the default
+# applications table of applications.md. testing/defaultscheck.py holds one
+# row of that table per role and fails when this file leaves it.
+#
+# Read wherever $XDG_CURRENT_DESKTOP is KDE, which startplasma sets in the
+# session and the login shell's profile sets everywhere else. It sits in
+# /usr/share/kdos/xdg, the last XDG config directory, and every config
+# directory is searched before any data directory, so a row here outranks
+# plasma-desktop's own /usr/share/applications/kde-mimeapps.list; a type this
+# file does not name falls through to that list, and then to every
+# application that declares the type.
+#
+# Several applications claim the same types (Kate and every editor, Haruna
+# and mpv, Okular and Calligra, Firefox and Falkon, LibreOffice and Calligra),
+# so a row here is what makes the choice. An id counts only while its entry is
+# installed; a row whose application is removed falls through in silence,
+# which is why mimecheck.py also fails on an id the built image does not
+# carry. /etc/xdg/mimeapps.list holds the few handlers that are not a desktop
+# application's, and names no type this file names. A person's own choice
+# lands in ~/.config/mimeapps.list and outranks both.
+#
+# Three roles of the table open no file and have no type to name here: the
+# terminal is kdeglobals' TerminalApplication (Konsole), the calculator is
+# KCalc through the Calculator key its own entry claims (Qalculate-Qt claims
+# none), and screenshots are Spectacle on the Print keys of
+# kglobalshortcutsrc.
+# ---------------------------------
+
+[Default Applications]
+# Every type is written by its canonical shared-mime-info name. KDE resolves
+# an alias, but kdos-appbox's opener, which serves boxes, reads the name as
+# written, and the compiled glob table it matches against carries canonical
+# names only.
+#
+# Folders: Dolphin. Kate's entry claims inode/directory too.
+inode/directory=org.kde.dolphin.desktop
+
+# Documents: Okular, through its per-format entries for PDF, PostScript,
+# DjVu, XPS and comic books (the main org.kde.okular.desktop claims only
+# Okular's own archive type). *.djvu is globbed by vnd.djvu and
+# vnd.djvu+multipage at equal weight, so both are named; the DjVu generator
+# serves the subclass. Comic books packed as rar or 7z are extracted by
+# kdos-openarchive (/etc/xdg/mimeapps.list): Okular's comic book generator
+# needs an unrar this image does not have.
+application/pdf=okularApplication_pdf.desktop
+application/postscript=okularApplication_ghostview.desktop
+image/x-eps=okularApplication_ghostview.desktop
+image/x-bzeps=okularApplication_ghostview.desktop
+image/x-gzeps=okularApplication_ghostview.desktop
+image/vnd.djvu=okularApplication_djvu.desktop
+image/vnd.djvu+multipage=okularApplication_djvu.desktop
+application/oxps=okularApplication_xps.desktop
+application/vnd.ms-xpsdocument=okularApplication_xps.desktop
+application/vnd.comicbook+zip=okularApplication_comicbook.desktop
+
+# Books: Calibre's viewer. Arianna is installed and claims EPUB too.
+application/epub+zip=calibre-ebook-viewer.desktop
+application/x-mobipocket-ebook=calibre-ebook-viewer.desktop
+application/x-fictionbook+xml=calibre-ebook-viewer.desktop
+
+# Offline library: a ZIM archive. shared-mime-info names it x-openzim and
+# kiwix-desktop's own MIME file adds a second type with the same *.zim glob;
+# which one a lookup lands on is the order of the compiled glob table, so both
+# are named.
+application/x-openzim=org.kiwix.desktop.desktop
+application/org.kiwix.desktop.x-zim=org.kiwix.desktop.desktop
+
+# Text and code: Kate. KWrite is not built. Kate's entry claims text/plain
+# alone, and kdos-appbox's opener reads the exact type with no subclass walk,
+# so every text subtype that should reach it is named.
+text/plain=org.kde.kate.desktop
+text/markdown=org.kde.kate.desktop
+text/x-shellscript=org.kde.kate.desktop
+application/json=org.kde.kate.desktop
+text/x-csrc=org.kde.kate.desktop
+text/x-chdr=org.kde.kate.desktop
+text/x-c++src=org.kde.kate.desktop
+text/x-c++hdr=org.kde.kate.desktop
+text/x-python=org.kde.kate.desktop
+text/x-python3=org.kde.kate.desktop
+text/x-log=org.kde.kate.desktop
+text/x-patch=org.kde.kate.desktop
+text/x-makefile=org.kde.kate.desktop
+text/x-cmake=org.kde.kate.desktop
+text/x-go=org.kde.kate.desktop
+text/rust=org.kde.kate.desktop
+text/x-java=org.kde.kate.desktop
+text/x-lua=org.kde.kate.desktop
+text/css=org.kde.kate.desktop
+text/javascript=org.kde.kate.desktop
+text/x-tex=org.kde.kate.desktop
+application/x-perl=org.kde.kate.desktop
+application/x-ruby=org.kde.kate.desktop
+application/xml=org.kde.kate.desktop
+application/yaml=org.kde.kate.desktop
+application/toml=org.kde.kate.desktop
+application/sql=org.kde.kate.desktop
+text/x-pascal=org.kde.kate.desktop
+
+# Pictures: Gwenview.
+image/png=org.kde.gwenview.desktop
+image/jpeg=org.kde.gwenview.desktop
+image/gif=org.kde.gwenview.desktop
+image/webp=org.kde.gwenview.desktop
+image/bmp=org.kde.gwenview.desktop
+image/tiff=org.kde.gwenview.desktop
+image/svg+xml=org.kde.gwenview.desktop
+image/avif=org.kde.gwenview.desktop
+image/heif=org.kde.gwenview.desktop
+image/jxl=org.kde.gwenview.desktop
+image/x-tga=org.kde.gwenview.desktop
+image/vnd.microsoft.icon=org.kde.gwenview.desktop
+image/x-portable-bitmap=org.kde.gwenview.desktop
+image/x-portable-graymap=org.kde.gwenview.desktop
+image/x-portable-pixmap=org.kde.gwenview.desktop
+image/x-portable-anymap=org.kde.gwenview.desktop
+image/vnd.adobe.photoshop=org.kde.gwenview.desktop
+image/svg+xml-compressed=org.kde.gwenview.desktop
+image/openraster=org.kde.gwenview.desktop
+image/x-icns=org.kde.gwenview.desktop
+image/x-xbitmap=org.kde.gwenview.desktop
+image/x-xpixmap=org.kde.gwenview.desktop
+
+# Camera RAW: Gwenview shows it, as it shows every other picture; darktable
+# and RawTherapee, which also claim these types, are the editors. Gwenview
+# claims no Canon CR3 or Nikon NRW, so those two open in darktable.
+image/x-adobe-dng=org.kde.gwenview.desktop
+image/x-canon-cr2=org.kde.gwenview.desktop
+image/x-canon-crw=org.kde.gwenview.desktop
+image/x-fuji-raf=org.kde.gwenview.desktop
+image/x-kodak-dcr=org.kde.gwenview.desktop
+image/x-kodak-k25=org.kde.gwenview.desktop
+image/x-kodak-kdc=org.kde.gwenview.desktop
+image/x-minolta-mrw=org.kde.gwenview.desktop
+image/x-nikon-nef=org.kde.gwenview.desktop
+image/x-olympus-orf=org.kde.gwenview.desktop
+image/x-panasonic-rw=org.kde.gwenview.desktop
+image/x-panasonic-rw2=org.kde.gwenview.desktop
+image/x-pentax-pef=org.kde.gwenview.desktop
+image/x-sigma-x3f=org.kde.gwenview.desktop
+image/x-sony-arw=org.kde.gwenview.desktop
+image/x-sony-sr2=org.kde.gwenview.desktop
+image/x-sony-srf=org.kde.gwenview.desktop
+image/x-canon-cr3=org.darktable.darktable.desktop
+image/x-nikon-nrw=org.darktable.darktable.desktop
+
+# Pictures Gwenview does not claim go to the viewer that does: Okular's
+# image entry for JPEG 2000, DDS, OpenEXR, Radiance HDR, PCX and SGI; imv for
+# farbfeld; KolourPaint for WBMP and Sun raster. Windows metafiles are vector
+# drawings, and open in Inkscape.
+image/jp2=okularApplication_kimgio.desktop
+image/vnd.ms-dds=okularApplication_kimgio.desktop
+image/x-exr=okularApplication_kimgio.desktop
+image/x-hdr=okularApplication_kimgio.desktop
+image/vnd.zbrush.pcx=okularApplication_kimgio.desktop
+image/x-rgb=okularApplication_kimgio.desktop
+image/x-farbfeld=imv.desktop
+image/vnd.wap.wbmp=org.kde.kolourpaint.desktop
+image/x-sun-raster=org.kde.kolourpaint.desktop
+image/emf=org.inkscape.Inkscape.desktop
+image/wmf=org.inkscape.Inkscape.desktop
+
+# GIMP's own format: GIMP, whose entry is gimp.desktop (plasma-desktop's list
+# names org.gimp.GIMP.desktop, the Flatpak id). Gwenview and KolourPaint
+# claim it too, and only preview it.
+image/x-xcf=gimp.desktop
+
+# Video: Haruna. Dragon is installed and claims the same types, and the
+# three that close the list besides.
+video/mp4=org.kde.haruna.desktop
+video/matroska=org.kde.haruna.desktop
+video/webm=org.kde.haruna.desktop
+video/mpeg=org.kde.haruna.desktop
+video/quicktime=org.kde.haruna.desktop
+video/ogg=org.kde.haruna.desktop
+video/vnd.avi=org.kde.haruna.desktop
+video/mp2t=org.kde.haruna.desktop
+video/x-ms-wmv=org.kde.haruna.desktop
+video/x-theora+ogg=org.kde.haruna.desktop
+video/x-ogm+ogg=org.kde.haruna.desktop
+video/x-flv=org.kde.haruna.desktop
+video/3gpp=org.kde.haruna.desktop
+application/vnd.ms-asf=org.kde.haruna.desktop
+video/vnd.rn-realvideo=org.kde.haruna.desktop
+video/x-flic=org.kde.haruna.desktop
+
+# Sound that comes in a video container or a film's audio track, WebM audio
+# and AC-3, goes to Haruna with the video; mpv claims both too.
+audio/webm=org.kde.haruna.desktop
+audio/ac3=org.kde.haruna.desktop
+
+# Music: Elisa. Strawberry is installed and claims every type here.
+# *.ogg and *.opus are globbed by several Ogg subtypes of equal weight, and
+# which one a lookup lands on is the order of the compiled glob table, so
+# every subtype is named. Playlists (*.m3u, *.pls) come here too.
+audio/mpeg=org.kde.elisa.desktop
+audio/flac=org.kde.elisa.desktop
+audio/ogg=org.kde.elisa.desktop
+audio/x-vorbis+ogg=org.kde.elisa.desktop
+audio/mp4=org.kde.elisa.desktop
+audio/aac=org.kde.elisa.desktop
+audio/vnd.wave=org.kde.elisa.desktop
+audio/x-wavpack=org.kde.elisa.desktop
+audio/x-ape=org.kde.elisa.desktop
+audio/x-musepack=org.kde.elisa.desktop
+audio/x-ms-wma=org.kde.elisa.desktop
+audio/x-opus+ogg=org.kde.elisa.desktop
+audio/x-flac+ogg=org.kde.elisa.desktop
+audio/x-speex+ogg=org.kde.elisa.desktop
+audio/x-aiff=org.kde.elisa.desktop
+audio/matroska=org.kde.elisa.desktop
+audio/x-mpegurl=org.kde.elisa.desktop
+audio/x-scpls=org.kde.elisa.desktop
+audio/vnd.rn-realaudio=org.kde.elisa.desktop
+
+# Archives Ark writes as well as reads: zip, the tar family and 7z.
+application/zip=org.kde.ark.desktop
+application/x-tar=org.kde.ark.desktop
+application/x-compressed-tar=org.kde.ark.desktop
+application/x-bzip2-compressed-tar=org.kde.ark.desktop
+application/x-xz-compressed-tar=org.kde.ark.desktop
+application/x-zstd-compressed-tar=org.kde.ark.desktop
+application/x-7z-compressed=org.kde.ark.desktop
+
+# Disk images: ISO Image Writer, which writes an ISO or a raw image to a
+# stick. Ark claims the ISO type too, and opens it as an archive from Open
+# With.
+application/vnd.efi.iso=org.kde.isoimagewriter.desktop
+application/vnd.efi.img=org.kde.isoimagewriter.desktop
+
+# Mail, calendars and contacts: Thunderbird, one application for all three
+# with no Akonadi server in the session. KMail, KOrganizer and KAddressBook
+# are installed and claim the same types.
+x-scheme-handler/mailto=thunderbird.desktop
+message/rfc822=thunderbird.desktop
+text/calendar=thunderbird.desktop
+text/vcard=thunderbird.desktop
+
+# The web: Firefox ESR. Falkon and LibreWolf claim the same four types.
+text/html=firefox-esr.desktop
+application/xhtml+xml=firefox-esr.desktop
+x-scheme-handler/http=firefox-esr.desktop
+x-scheme-handler/https=firefox-esr.desktop
+
+# Office documents: LibreOffice. Calligra is installed and claims the
+# OpenDocument and Microsoft formats too, and doxx claims .docx and draws in
+# a terminal, so every format is named here, each to the LibreOffice
+# application that edits it. The flat OpenDocument types go to that
+# application, not to the XSLT filter entry, and a Works document to Writer,
+# which Calc shares it with. A comma-separated file is a spreadsheet.
+application/vnd.oasis.opendocument.text=libreoffice-writer.desktop
+application/vnd.oasis.opendocument.text-template=libreoffice-writer.desktop
+application/vnd.oasis.opendocument.text-flat-xml=libreoffice-writer.desktop
+application/msword=libreoffice-writer.desktop
+application/vnd.openxmlformats-officedocument.wordprocessingml.document=libreoffice-writer.desktop
+application/vnd.openxmlformats-officedocument.wordprocessingml.template=libreoffice-writer.desktop
+application/vnd.ms-word.document.macroEnabled.12=libreoffice-writer.desktop
+application/rtf=libreoffice-writer.desktop
+application/vnd.wordperfect=libreoffice-writer.desktop
+application/vnd.ms-works=libreoffice-writer.desktop
+application/vnd.oasis.opendocument.spreadsheet=libreoffice-calc.desktop
+application/vnd.oasis.opendocument.spreadsheet-template=libreoffice-calc.desktop
+application/vnd.oasis.opendocument.spreadsheet-flat-xml=libreoffice-calc.desktop
+application/vnd.ms-excel=libreoffice-calc.desktop
+application/vnd.openxmlformats-officedocument.spreadsheetml.sheet=libreoffice-calc.desktop
+application/vnd.openxmlformats-officedocument.spreadsheetml.template=libreoffice-calc.desktop
+application/vnd.ms-excel.sheet.macroEnabled.12=libreoffice-calc.desktop
+text/csv=libreoffice-calc.desktop
+application/vnd.oasis.opendocument.presentation=libreoffice-impress.desktop
+application/vnd.oasis.opendocument.presentation-template=libreoffice-impress.desktop
+application/vnd.oasis.opendocument.presentation-flat-xml=libreoffice-impress.desktop
+application/vnd.ms-powerpoint=libreoffice-impress.desktop
+application/vnd.openxmlformats-officedocument.presentationml.presentation=libreoffice-impress.desktop
+application/vnd.openxmlformats-officedocument.presentationml.template=libreoffice-impress.desktop
+application/vnd.ms-powerpoint.presentation.macroEnabled.12=libreoffice-impress.desktop
+application/vnd.oasis.opendocument.graphics=libreoffice-draw.desktop
+application/vnd.oasis.opendocument.graphics-template=libreoffice-draw.desktop
+application/vnd.oasis.opendocument.graphics-flat-xml=libreoffice-draw.desktop
+application/vnd.oasis.opendocument.formula=libreoffice-math.desktop
+
+# Remote desktops: Remmina, for every scheme it serves; KRDC is installed and
+# has no SPICE. An ssh: link opens a shell in Konsole through KIO's telnet
+# service, not a Remmina window.
+x-scheme-handler/rdp=org.remmina.Remmina.desktop
+x-scheme-handler/vnc=org.remmina.Remmina.desktop
+x-scheme-handler/spice=org.remmina.Remmina.desktop
+x-scheme-handler/remmina=org.remmina.Remmina.desktop
+x-scheme-handler/ssh=ktelnetservice6.desktop
+
+# Torrents and magnet links: qBittorrent. KTorrent is installed and claims
+# both.
+application/x-bittorrent=org.qbittorrent.qBittorrent.desktop
+x-scheme-handler/magnet=org.qbittorrent.qBittorrent.desktop
+
+# Places: Organic Maps, which works from the offline world map. Marble is
+# installed and is plasma-desktop's choice.
+x-scheme-handler/geo=app.organicmaps.desktop.desktop
+
+# Password databases: KeePassXC. Its own MIME file defines the type.
+application/x-keepass2=org.keepassxc.KeePassXC.desktop
+
+# OpenPGP keys, encrypted files and signatures: Kleopatra, which imports a
+# key or decrypts and verifies a file. KGpg is installed and claims all
+# three.
+application/pgp-keys=kleopatra_import.desktop
+application/pgp-encrypted=kleopatra_decryptverifyfiles.desktop
+application/pgp-signature=kleopatra_decryptverifyfiles.desktop
+
+# Phone numbers: KDE Connect dials them on the paired phone.
+x-scheme-handler/tel=org.kde.kdeconnect.handler.desktop

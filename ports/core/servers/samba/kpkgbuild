@@ -10,7 +10,7 @@
 
 name        = samba
 version     = 4.24.7
-release     = 2
+release     = 3
 source      = https://download.samba.org/pub/samba/stable/$name-$version.tar.gz
 sha256      = 45b7747a47452eff2b2159a44cc63eb43690d339fd1069088e023a015fed06c7  samba-4.24.7.tar.gz
 description = SMB/CIFS file and print server and client tools

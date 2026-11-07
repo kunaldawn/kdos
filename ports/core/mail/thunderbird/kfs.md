@@ -2,7 +2,7 @@
 [Thunderbird]{.idx} is Mozilla's mail, calendar, address-book, chat and feed client, built from
 its extended-support release on the same Gecko engine as [firefox-esr](#port-firefox-esr). It is
 the graphical mail client of KDOS and the default handler for `mailto:` links, `message/rfc822`
-and `text/calendar` in `/etc/xdg/kdos-mimeapps.list`. It reaches the network for the accounts,
+and `text/calendar` in `/usr/share/kdos/xdg/kde-mimeapps.list`. It reaches the network for the accounts,
 calendars and feeds it is given. The paths that reach the network on their own (update checks,
 telemetry, add-on updates, the start page, captive-portal and connectivity probes, safe-browsing
 lists) are off, by build switch where one exists and by default prefs and policies where none does.

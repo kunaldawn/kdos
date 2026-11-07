@@ -21,10 +21,14 @@
 # testing/phaseclosure.py fails when a dependency pulls a port in from outside
 # them, or when a shelf file names a port an earlier phase installs.
 
-# foot supports sixel, so yazi draws real thumbnails in a window that is
-# otherwise a character grid — the one place here a picture beats a filename.
+# Konsole draws sixel and kitty pictures, so yazi draws real thumbnails in a
+# window that is otherwise a character grid — the one place here a picture
+# beats a filename.
 yazi
 
-dolphin
 filelight
 qdirstat
+
+dolphin-plugins
+kdf
+kfind

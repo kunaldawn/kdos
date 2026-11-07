@@ -11,10 +11,13 @@
 # ---------------------------------
 
 # rcS's mirror, the first runlevel 0 and 6 entry in /etc/inittab. init has
-# already ended the consoles (and with tty1 the session) by then; it never runs
-# a script's `stop` on its own, so without this no service saves its state —
-# the mixer levels `50_alsa` stores are the plainest case. Whatever is still
-# alive once rcK returns is signalled by `killprocs`, the next entry.
+# already ended the consoles (and with tty1 SDDM and every session under it)
+# by then; it never runs a script's `stop` on its own, so without this no
+# service saves its state — the mixer levels `50_alsa` stores are the plainest
+# case. The users' own services are not the consoles' but turnstiled's, and
+# stop with 65_turnstiled here, before the bus and elogind they talk to.
+# Whatever is still alive once rcK returns is signalled by `killprocs`, the
+# next entry.
 #
 # THE SAME SET rcS STARTED, in reverse. The enable rule is rcS's exactly: an
 # executable `NN_name.sh` with no `/etc/service.disabled/<name>` marker. A

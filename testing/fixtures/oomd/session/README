@@ -1,0 +1,19 @@
+oomd/session — the whole Plasma session is spared, and the right app goes.
+
+Every name kdos-oomd protects runs here, each LARGER than the victim and each
+a different size: kwin_wayland and its wrapper, plasmashell, ksmserver, kded6,
+plasma_session, kglobalacceld, the lock screen's greeter, Xwayland, the KDE
+portal, the polkit agent, ksecretd, sddm with its helper and greeter, elogind,
+turnstiled, the buses, ksvc, the KDOS daemons, accounts-daemon, wireplumber
+and pipewire.
+
+The names are what /proc/<pid>/stat carries, which is the executable's name
+cut at 15 characters: kwin_wayland_wrapper is `kwin_wayland_wr`,
+kscreenlocker_greet is `kscreenlocker_g`, xdg-desktop-portal-kde is
+`xdg-desktop-por`, polkit-kde-authentication-agent-1 is `polkit-kde-auth`
+and sddm-greeter-qt6 is `sddm-greeter-qt`. A list entry spelled in full
+matches nothing, and the process it was meant to spare is the one chosen.
+
+Outside the session there are two processes, kate (600 MB) and baloo_file
+(200 MB). The answer is kate. Any other answer names the protection that
+stopped holding, because it is the largest process left.

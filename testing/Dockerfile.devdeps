@@ -5,71 +5,142 @@
 # ██║  ██╗██████╔╝╚██████╔╝███████║
 # ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
 # ---------------------------------
-#   testing/Dockerfile.devdeps — the image the GUARDED self-test blocks need
+#   testing/Dockerfile.devdeps — the image the guarded self-test blocks and
+#   the Qt suite need
 #
-# testing/selftest.sh runs everywhere and skips what it cannot build. What it
-# skips on a bare host is most of the interesting half: libkimg's four
-# decoders, the sd-bus blocks, the fcft renderer, the Wayland consumers. Each
-# skip says so, which is honest, but a block that is skipped on every machine
-# is a block nobody runs.
+# Two suites run here. testing/selftest.sh runs everywhere and skips what it
+# cannot build; what it skips on a bare host is most of the interesting half —
+# the sd-bus blocks, the KDOS daemons on a bus of their own, kdos-boxsock, the
+# runner and the notifier. Each skip says
+# so, which is honest, but a block that is skipped on every machine is a block
+# nobody runs. testing/plasmatest.sh runs nowhere else at all: it builds every
+# KDOS Qt port with its QtTest suites, lints every KDOS QML file and installs
+# every package, and refuses on a host without these tools.
 #
-# This is the machine where none of them skip. It is Alpine because the target
-# is musl and a feature-test difference is worth meeting here rather than in a
-# phase build, and it carries exactly what the script probes for:
+# It is Alpine because the target is musl and a feature-test difference is
+# worth meeting here rather than in a phase build, and it is edge because only
+# edge carries Plasma 6.8, KDE Frameworks 6.31 and Qt 6.11 — the release set
+# KDOS builds, a point release behind at most.
 #
-#     pkg-config: alsa basu fcft libarchive libdrm libinput libpipewire-0.3
-#                 libseat libzstd pixman-1 wayland-client xkbcommon — and four
-#                 of the five decoders
-#     command -v: cpio dbus-daemon python3 xz zstd
+# THE C HALF carries exactly what selftest.sh probes for:
 #
-# mesa, libxml2, cairo and pango are here for the compositor's graft block,
-# which needs them beside wlroots.
+#     pkg-config: basu libpng sqlite3 wayland-client, and wayland-protocols'
+#                 security-context-v1.xml
+#     command -v: cpio dbus-daemon dbus-run-session dbus-send dbus-monitor
+#                 duk gdbus node python3 xz zstd
 #
-# vim, htop, mc, tmux and less are here to be DRIVEN. The self-test opens each
-# on a real pty, presses a key and resizes the window — which is the half of
-# "kdos-term handles the catalogue" that a recorded stream cannot show, because
-# it is what the program does in response to us rather than what it once did.
+# THE QT HALF is what a KDOS Qt port's CMakeLists asks find_package for —
+# Qt 6 with its private headers, every Framework a KCM, plasmoid, KWin plugin
+# or the installer links, and Plasma's own libraries (libplasma, KWin,
+# KDecoration, plasma-workspace, libksysguard, layer-shell-qt, Plasma
+# Activities) — and what plasmatest.sh runs: ctest, dbus-run-session for the
+# tests that need a session bus, qmllint, kpackagetool6 with every package
+# structure Plasma and KWin install, clang-format, node for the desk layout
+# scripts, and fontTools with JetBrains Mono, Noto and DejaVu for
+# testing/monofont.py: its --selftest, and the face against a chain named with
+# --fallback, since Alpine has no Terminus (TTF), the last face of the chain
+# KDOS ships, which a --root run reads from the built tree.
 #
-# THREE THINGS STILL SKIP HERE, and they are named rather than left to be found:
+# THE HEADLESS HALF is testing/headless.sh and the kdos command's session
+# blocks: weston's headless backend with its desktop shell is the compositor
+# the AT-SPI surface dumps run under (KWin's virtual backend needs a render
+# device a container does not have), at-spi2-core and pyatspi read the
+# accessibility tree, flask, lxml and numpy are selenium-webdriver-at-spi's
+# for --webdriver, and python's dbus and GObject bindings drive
+# testing/fixtures/kdos-command/fakesession.py, the fake Plasma session
+# `kdos phosphor`, `kdos desk` and `kdos tiling` are tested against.
 #
-#   - wlroots. No distribution packages 0.20; the tree carries the tarball and
-#     building it is a second layer on top of this one — see "Compiling the
-#     compositor without a full build" in 05-developer/testing.md.
-#   - busctl, which gates the portal block. Alpine ships it in no package, so
-#     that one block stays skipped on this image even though its sd-bus and
-#     dbus-daemon halves are both here.
-#   - libnsgif, which gates libkimg's GIF cases. Alpine packages neither it nor
-#     netsurf's buildsystem; the port builds both, so the block runs inside the
-#     build chroot once 41_system has installed it, and skips here.
+# qmllint resolves an import only against a QML module that is installed, so
+# the applications whose modules KDOS's QML imports are here too:
+# plasma-welcome (the Welcome pages), plasma-desktop (the Breeze greeter the
+# KDOS SDDM theme is made from) and sddm (the greeter's components). The ports that generate KDOS's packages run here as well, so
+# libjpeg-turbo's cjpeg is here for the look-and-feel previews.
 #
-# A FONT IS NOT OPTIONAL HERE. fcft resolves `monospace` through fontconfig, and
-# an image with no font at all answers `failed to match font` — which stops the
-# suite at the first rasteriser block and takes every front-end dump with it,
-# so the half this image exists to run would not run.
+# DISCOVER IS THE TREE'S OWN RELEASE, BUILT HERE. libdiscover installs no
+# header, and every plugin interface carries discover's full version in its
+# IID, so kdos-discover configures only against the exact release the tree
+# ships and refuses any other. Alpine's discover is another point release and
+# has no headers, so the last layer builds the tree's: the version and sha256
+# testing/devdeps-image.sh reads out of the discover recipe (the defaults below
+# are that recipe's at the time of writing), from the same tarball, with the
+# recipe's flags, installed into /usr, and libdiscover's headers copied to
+# /usr/include/discover the way the recipe copies them.
 #
-# NOR IS GNU tar. Alpine's default is busybox's, and the reproducible-build
-# block answers "the synthetic port did not build" with it — which gates every
-# front-end golden behind it, so they are skipped in silence.
+# ONE THING STILL SKIPS HERE, and it is named rather than left to be found:
+# busctl, which gates the kdos-powerd and kdos-sysupdated bus blocks. Alpine
+# ships it in no package, so those blocks stay skipped on this image even
+# though their sd-bus and dbus-daemon halves are both here.
+#
+# GNU tar IS NOT OPTIONAL HERE. Alpine's default is busybox's, and the
+# reproducible-build block answers "the synthetic port did not build" with it,
+# which stops the suite there.
 #
 # NOR IS duktape. It is the engine polkitd runs a .rules file in, and the
-# shipped rules are the whole of this desktop's authorisation for networking —
-# there is no authentication agent to fall back on. Without `duk` the block
-# that evaluates them skips with a message, and a check that never runs is
-# worse than no check: it reads as covered.
+# shipped rules are the whole of KDOS's own daemons' authorisation. Without
+# `duk` the block that evaluates them skips with a message, and a check that
+# never runs is worse than no check: it reads as covered.
+#
+# clang-format is the newest clangNN-extra-tools edge carries, picked at build
+# time from the index the layer fetched: edge retires an old LLVM major every few
+# months, and a pinned name would stop the image building on the day it does.
 
-FROM alpine:3.23
+FROM alpine:edge
 
 RUN apk add --no-cache \
         bash build-base pkgconf python3 \
-        pixman-dev libpng-dev libjpeg-turbo-dev libwebp-dev libsixel-dev \
-        libarchive-dev \
-        fcft-dev libdrm-dev wayland-dev wayland-protocols \
-        libxkbcommon-dev libinput-dev libseat-dev \
-        mesa-dev libxml2-dev cairo-dev pango-dev \
-        basu-dev pipewire-dev alsa-lib-dev \
-        dbus cpio tar xz zstd zstd-dev fakeroot \
-        font-dejavu fontconfig duktape \
-        vim htop mc tmux less ncurses
+        libpng-dev sqlite-dev wayland-dev wayland-protocols \
+        basu-dev dbus glib cpio tar xz zstd fakeroot \
+        font-dejavu fontconfig duktape
+
+RUN apk update && apk add \
+        cmake samurai extra-cmake-modules gettext-dev patch \
+        qt6-qtbase-dev qt6-qtbase-private-dev qt6-qtdeclarative-dev \
+        qt6-qtwayland-dev qt6-qttools-dev qt6-qtsvg-dev qt6-qtshadertools-dev \
+        karchive-dev kauth-dev kcmutils-dev kcodecs-dev kcolorscheme-dev \
+        kconfig-dev kconfigwidgets-dev kcoreaddons-dev kcrash-dev \
+        kdbusaddons-dev kdeclarative-dev kded-dev kdoctools-dev \
+        kglobalaccel-dev kguiaddons-dev ki18n-dev kiconthemes-dev \
+        kidletime-dev kio-dev kirigami-dev kitemmodels-dev kjobwidgets-dev \
+        knotifications-dev knotifyconfig-dev kpackage-dev krunner-dev \
+        kservice-dev kstatusnotifieritem-dev ksvg-dev kwidgetsaddons-dev \
+        kwindowsystem-dev kxmlgui-dev solid-dev bluez-qt-dev \
+        networkmanager-qt-dev modemmanager-qt-dev kirigami-addons-dev \
+        libplasma-dev kwin-dev kdecoration-dev kwayland-dev \
+        plasma-workspace-dev plasma-activities-dev libksysguard-dev \
+        layer-shell-qt-dev kpipewire-dev kscreenlocker-dev \
+        plasma-wayland-protocols polkit-qt-dev qcoro-dev \
+        appstream-dev appstream-qt elogind-dev purpose-dev fwupd-dev \
+        plasma-desktop plasma-welcome sddm breeze breeze-icons \
+        nodejs py3-fonttools font-jetbrains-mono font-noto \
+        libjpeg-turbo-utils curl \
+        weston weston-backend-headless weston-shell-desktop at-spi2-core \
+        py3-atspi py3-gobject3 py3-dbus py3-flask py3-lxml py3-numpy \
+ && apk add "$(apk search -q 'clang*-extra-tools' | grep -E '^clang[0-9]+-extra-tools$' | sort -V | tail -1)" \
+ && rm -rf /var/cache/apk/*
+
+ARG DISCOVER_VERSION=6.8.2
+ARG DISCOVER_SHA256=2bc7280155adb003498a3b31817be8815673cc665b424b98b8250cc97dff5bc6
+RUN mkdir /tmp/discover && cd /tmp/discover \
+ && curl -fsSLo discover.tar.xz \
+        "https://download.kde.org/stable/plasma/$DISCOVER_VERSION/discover-$DISCOVER_VERSION.tar.xz" \
+ && echo "$DISCOVER_SHA256  discover.tar.xz" | sha256sum -c - \
+ && tar -xf discover.tar.xz --strip-components=1 \
+ && cmake -S . -B build -G Ninja \
+        -D CMAKE_INSTALL_PREFIX=/usr -D KDE_INSTALL_LIBDIR=lib -D CMAKE_BUILD_TYPE=Release \
+        -D KDE_INSTALL_USE_QT_SYS_PATHS=ON -D BUILD_TESTING=OFF -D KF_SKIP_PO_PROCESSING=ON \
+        -D BUILD_SystemdSysupdateBackend=ON -D BUILD_FwupdBackend=ON \
+        -D BUILD_FlatpakBackend=OFF -D BUILD_SnapBackend=OFF -D BUILD_PackageKitBackend=OFF \
+        -D BUILD_RpmOstreeBackend=OFF -D BUILD_HoloBackend=OFF -D BUILD_DummyBackend=OFF \
+        -D BUILD_AlpineApkBackend=OFF -D BUILD_AppStreamPreviewBackend=OFF \
+        -D CMAKE_DISABLE_FIND_PACKAGE_KF6NewStuff=ON -D CMAKE_DISABLE_FIND_PACKAGE_KF6UserFeedback=ON \
+        -D CMAKE_DISABLE_FIND_PACKAGE_Qt6WebView=ON -D WITH_KCM=ON -D WITH_NOTIFIER=ON -Wno-dev \
+ && cmake --build build && cmake --install build \
+ && (cd libdiscover && find . \( -path ./backends -o -path ./tests \) -prune -o -name '*.h' -print | \
+        while read -r h; do install -Dm644 "$h" "/usr/include/discover/$h"; done) \
+ && for h in DiscoverConfig.h libdiscover/discovercommon_export.h \
+             libdiscover/notifiers/discovernotifiers_export.h; do \
+        install -Dm644 "build/$h" "/usr/include/discover/${h##*/}"; done \
+ && cd / && rm -rf /tmp/discover
 
 WORKDIR /kdos
 CMD ["bash", "testing/selftest.sh"]

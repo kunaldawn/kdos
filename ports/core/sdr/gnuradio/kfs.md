@@ -25,11 +25,11 @@ reaches radio hardware through [SoapySDR](#port-soapysdr), [UHD](#port-uhd) and
 - `-DENABLE_JSONYAML_BLOCKS=ON` — the JSON and YAML configuration blocks, which validate their
   input with [python3-jsonschema](#port-python3-jsonschema); configure turns the component on only
   when `import jsonschema` succeeds.
-- `-DGRC_XTERM_EXE=/usr/bin/foot` — the terminal GRC runs a flow graph with no graphical
+- `-DGRC_XTERM_EXE=/usr/bin/konsole` — the terminal GRC runs a flow graph with no graphical
   interface in, written into `/etc/gnuradio/conf.d/grc.conf` as `xterm_executable`. Left to
   configure, it is the first of `x-terminal-emulator`, `gnome-terminal`, `konsole` and the rest
   found on the build's `PATH`, or the name `x-terminal-emulator` when none is, a command KDOS does
-  not have. [foot](#port-foot) takes the `-e` GRC passes, and is in `depends`.
+  not have. [Konsole](#port-konsole) takes the `-e` GRC passes, and is in `depends`.
 - `-DCMAKE_DISABLE_FIND_PACKAGE_JACK=ON` — with `-DCMAKE_DISABLE_FIND_PACKAGE_OSS=ON`: gr-audio
   never looks for JACK or OSS, so its backends are ALSA and PortAudio, both carried to
   [PipeWire](#port-pipewire), and do not change with whatever the build root holds.
@@ -69,6 +69,6 @@ with a Qt sink each run `import sip`, a top-level module. PyQt5 carries it only 
 port installs a top-level `sip` module, so `build.sh` writes a one-line `sip.py` into
 site-packages that re-exports `PyQt5.sip`. Without it such a flow graph stops at its imports.
 
-The last lines of `build.sh` stop the build when `gnuradio-companion`, the `foot` line in
+The last lines of `build.sh` stop the build when `gnuradio-companion`, the `konsole` line in
 `grc.conf`, or the compiled Python modules of `gnuradio.gr` and `gnuradio.qtgui` are missing from
 the package.

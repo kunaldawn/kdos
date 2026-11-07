@@ -1,18 +1,18 @@
 ## About
 
 polkit is the system service that other daemons ask whether a user may perform a privileged
-action. On KDOS, NetworkManager, ModemManager, `udisksd`, `libvirtd`, `bolt`, `fwupd`, `upower`,
-`fprintd`, `pcscd` and brltty's braille server ask it, and `pkexec` runs GParted and Resources
-through it; [networkmanager](#port-networkmanager) and the other ports that ask it depend on this
-one. The KDOS desktop's own network surface reaches NetworkManager, and so polkit, on every
-connect and every Wi-Fi switch.
+action. On KDOS, elogind, NetworkManager, ModemManager, `udisksd`, `accounts-daemon`, `libvirtd`,
+`bolt`, `fwupd`, `upower`, `fprintd`, `pcscd`, brltty's braille server and the KAuth helpers of
+Plasma and KDE applications ask it, and `pkexec` runs GParted and other programs as root through
+it; [networkmanager](#port-networkmanager) and the other ports that ask it depend on this one.
 
-KDOS uses polkit in a way most distributions do not. There is no session tracker (no logind, no
-elogind, no ConsoleKit), so polkit never sees an active session, and there is no authentication
-agent, so it never asks for a password. What members of `wheel` may do is a fixed list of action
-ids in `/etc/polkit-1/rules.d/50-kdos.rules`, shipped from the tree's `fs/` overlay rather than by
-this port. Why a prompt cannot work here and what is granted instead is in
-[polkit, and why the desktop has no authentication agent](../../../../docs/kdos/03-architecture/security-model.md#polkit-and-why-the-desktop-has-no-authentication-agent).
+`polkitd` learns from [elogind](#port-elogind) which session a caller belongs to. A caller in the
+active local session, the person at the machine, gets each action's `allow_active` answer, a local
+session switched away from gets `allow_inactive`, and anything else, an SSH login or a daemon, gets
+`allow_any`. Where that answer is a password, polkit-kde-agent-1 asks for it in a Plasma session.
+What KDOS decides differently from the shipped defaults is in
+`/etc/polkit-1/rules.d/50-kdos.rules`, which comes from the tree's `fs/` overlay rather than from
+this port; see [Security model](../../../../docs/kdos/03-architecture/security-model.md).
 
 `polkitd` is started at boot by `/etc/init.d/41_polkitd.sh`, after D-Bus and before
 ModemManager and NetworkManager, and never by D-Bus activation; see
@@ -35,12 +35,13 @@ ModemManager and NetworkManager, and never by D-Bus activation; see
   four files the pam port writes. Left empty, polkit's configure guesses from marker files in the
   build root such as `/etc/lfs-release`, finds none, and falls back to including `system-auth`
   for all four.
-- `-Dsession_tracking=ConsoleKit` — Selects the session monitor that asks ConsoleKit, and so
-  builds polkit with no link to libsystemd or libelogind; `logind` and `elogind`, the other two
-  choices, each need that library at build time. ConsoleKit is not installed, so every lookup
-  fails and every check falls to the `allow_any` column of an action's policy, which is the
-  behaviour `50-kdos.rules` is written against (see
-  [Why a password prompt cannot work here](../../../../docs/kdos/03-architecture/security-model.md#why-a-password-prompt-cannot-work-here)).
+- `-Dsession_tracking=elogind` — Build the session monitor that asks logind, linked against
+  `libelogind` from [elogind](#port-elogind), which is in `depends`. Without a session monitor
+  that finds sessions, polkit never sees an active one: every check falls to an action's
+  `allow_any` answer, which for most actions is a refusal or a request for the administrator's
+  password, so nothing the person at the machine does is granted by the `allow_active` defaults
+  and `50-kdos.rules` would have to grant each action by name. `logind` would link libsystemd,
+  which is not a port, and `ConsoleKit` asks a daemon that is not installed.
 - `-Dintrospection=false` — Generates no GObject introspection data for the polkit libraries, so
   the build does not need [gobject-introspection](#port-gobject-introspection).
 - `-Dman=true` — Builds the manual pages (`polkit(8)`, `polkitd(8)`, `pkexec(1)` and the rest)
@@ -71,3 +72,8 @@ restarted every five seconds without ever getting it. Without the file the call 
 
 The rules files are JavaScript, which `polkitd` runs with [duktape](#port-duktape), the one
 JavaScript engine polkit's build accepts.
+
+elogind is built before polkit and needs none of polkit's libraries to build: its
+`-Dpolkit=enabled` only installs its policy and makes it ask `polkitd` over D-Bus at run time. So
+polkit can depend on elogind with no cycle. At boot, `40_elogind.sh` runs before `41_polkitd.sh`,
+so the first checks already find the sessions elogind records.

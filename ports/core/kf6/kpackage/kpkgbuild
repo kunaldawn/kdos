@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = kpackage
-version     = 6.30.0
+version     = 6.31.0
 release     = 1
 source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
-sha256      = 58939af0c553f24963652e10d248e2f8f2b2ca2b87dc26d3220675ed0cf33019  kpackage-6.30.0.tar.xz
+sha256      = cdfdc95ccc31f753f30d62918c8098d8544b08c10b70835628839198671c13a3  kpackage-6.31.0.tar.xz
 description = KDE Frameworks: loading and installing non-binary content packages
 homepage    = https://invent.kde.org/frameworks/kpackage
 license     = LGPL-2.0-or-later AND LGPL-2.1-or-later AND GPL-2.0-or-later

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = akonadi-mime
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 1f260c099b01ff5eefcba3c9d706b7ece17b251a5719afa43d8f40cdef0daaf5  akonadi-mime-26.08.2.tar.xz
+description = KDE PIM library that stores mail in Akonadi: message models, the mail serializer and the standard mail actions
+homepage    = https://invent.kde.org/pim/akonadi-mime
+license     = LGPL-2.0-or-later AND LGPL-2.1-or-later AND GPL-2.0-only AND (LGPL-2.0-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND BSD-3-Clause AND CC0-1.0 AND MIT
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kio ki18n kxmlgui kmime kitemmodels akonadi shared-mime-info libxslt

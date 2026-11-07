@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = messagelib
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 7a6003d027042ad9f69a16f84cb0132cb8a306c28ac0fa70087b505dccca6e3b  messagelib-26.08.2.tar.xz
+description = KDE PIM message libraries: viewer, composer, message list, templates and the MIME tree parser
+homepage    = https://invent.kde.org/pim/messagelib
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later AND LGPL-2.1-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND (LGPL-2.0-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND (GPL-2.0-or-later WITH LicenseRef-Qt-Commercial-exception-1.0) AND BSD-3-Clause AND BSL-1.0 AND MIT AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtwebengine openssl gpgmepp qgpgme gnupg kcoreaddons kcodecs ki18n knewstuff karchive kcompletion kconfig kcontacts kiconthemes kitemviews kjobwidgets kio kservice sonnet ktextwidgets kwidgetsaddons kxmlgui syntax-highlighting kguiaddons knotifications kcolorscheme ktexttemplate kcalendarcore kmime kmbox libkleo akonadi akonadi-mime akonadi-contacts akonadi-search grantleetheme libgravatar kidentitymanagement kmailtransport pimcommon kpimtextedit libkdepim ktextaddons

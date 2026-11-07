@@ -828,8 +828,8 @@ def read_shelves(root):
 
 AREA_DESC = {
     "system": "KDOS's own system programs, from src/system",
-    "art": "KDOS's own artwork: theme, icons, cursors, splash",
-    "desktop": "KDOS's own desktop: the compositor, the panel and their programs",
+    "art": "KDOS's own artwork: the identity generators, icons, sounds, wallpapers, splash",
+    "desktop": "KDOS's own Plasma integration: settings pages, widgets, KWin plugins, Discover",
     "daemons": "KDOS's own root daemons, from src/daemons",
     "devtools": "KDOS's own build tools, from src/devtools",
 }

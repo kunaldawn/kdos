@@ -40,33 +40,26 @@ The loop reads `/etc/passwd` and makes a home for each ordinary account: a numer
 65533, with a home directory named. The service accounts, below 1000, and any UID from 65534 up
 are skipped. On a KDOS root that is `kdos` alone.
 
-<!-- kfs:include script/phases/70_image/070_user.sh lines=73-97 pin=7f7da857e72b -->
+<!-- kfs:include script/phases/70_image/070_user.sh lines=64-75 pin=7ea86e8af715 -->
 
 The template wins over what the home holds. `cp -r` overwrites, so an edit to `fs/etc/skel` reaches
 the home on the next image build; a copy that kept existing files would ship the previous build's
-dotfiles instead. `cp` never deletes, though, so before the copy the step removes the trees that
-are wholly generated or wholly the template's:
+dotfiles instead. `cp` never deletes, though, so before the copy the step removes
+`.local/share/applications`: the boxed-application launchers [030_launchers.sh](030-launchers.md)
+reconciled in `/etc/skel`, where a launcher whose file name changes would otherwise stay under
+its old name too, and the menu would list the application twice. Anything else edited by hand in
+`build/fs/home/kdos` survives only where the template has no file of the same name.
 
-| Removed | Why |
-|:--|:--|
-| `.icons`, `.themes` | Build output; `050_theme.sh` writes them afresh in `/etc/skel` on every run |
-| `.config/cosmic`, `.config/kdos-con` | Desktop state from programs this tree does not build |
-| `.local/share/color-schemes` | The generated KDE colour scheme; an accent dropped from the generator would stay offered in every KDE application's colour picker |
-| `.config/kdos-comp` | The compositor's directory is the template's; a stale `autostart` left there starts a second `kdos-shell` beside the supervised one |
-| `.local/share/applications` | The boxed-application launchers [030_launchers.sh](030-launchers.md) reconciled in `/etc/skel`; a launcher whose file name changes would otherwise stay under its old name too, and the app library would list the application twice |
-
-`kdeglobals` is not removed: KDE applications write their own settings into it, and `kdos theme`
-merges its colours into the file rather than replacing it. Anything in these trees edited by hand
-in `build/fs/home/kdos` is lost on the next image build.
-
-<!-- kfs:include script/phases/70_image/070_user.sh lines=112-117 pin=a13e99b438db -->
+<!-- kfs:include script/phases/70_image/070_user.sh lines=92-97 pin=340559f9943d -->
 
 git cannot carry these directories either, so they are made here. Each is a directory a program
-expects and will not create: `~/.config/user-dirs.dirs` names the XDG ones, `kdos-shot` writes into
-`Pictures/Screenshots`, notmuch and mbsync both name `~/Mail`, khal's shipped configuration reads
-`.local/share/calendars/*`, and khard's names `.local/share/contacts/personal`.
+expects and will not create before its first use: the folders `/etc/xdg/user-dirs.defaults` lists,
+which the first Plasma login's `xdg-user-dirs-update` records in `~/.config/user-dirs.dirs` and
+Dolphin's Places shows from the start; `Pictures/Screenshots`, where Spectacle saves; `~/Mail`,
+which notmuch and mbsync both name; `.local/share/calendars/*`, which khal's shipped configuration
+reads; and `.local/share/contacts/personal`, which khard's names.
 
-<!-- kfs:include script/phases/70_image/070_user.sh lines=122-128 pin=02825bae40ce -->
+<!-- kfs:include script/phases/70_image/070_user.sh lines=102-108 pin=02825bae40ce -->
 
 `cp` gives a new file the template's mode but leaves the mode of an existing one alone, so the two
 mail files are set to 600 in the home as well. The whole home is then given to the account's UID
@@ -92,4 +85,4 @@ On the image, `/home/kdos`, owned by `kdos` (1000:1000) and mode 0700, holding a
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 349.* Previous: [348. The udev hardware database](060-udev-hwdb.md) · [Contents](../README.md) · Next: [350. The manual index](080-whatis.md)
+*Part XV. The image, chapter 372.* Previous: [371. The udev hardware database](060-udev-hwdb.md) · [Contents](../README.md) · Next: [373. The manual index](080-whatis.md)

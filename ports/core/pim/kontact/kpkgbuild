@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kontact
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 3d26032dad5f07739c5c24c62ba56a5948a4e25840df2b01f781eaf65000c5fc  kontact-26.08.2.tar.xz
+description = KDE personal information suite — KMail, KOrganizer, KAddressBook and Akregator in one window
+homepage    = https://apps.kde.org/kontact/
+license     = GPL-2.0-or-later AND GPL-2.0-or-later WITH LicenseRef-Qt-Commercial-exception-1.0 AND LGPL-2.0-only AND LGPL-2.0-or-later AND GFDL-1.2-or-later AND BSD-3-Clause AND CC0-1.0 AND MIT
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtwebengine kcmutils kcrash kdbusaddons kdoctools kguiaddons ki18n kiconthemes kio ktextaddons grantleetheme kontactinterface libkdepim pimcommon

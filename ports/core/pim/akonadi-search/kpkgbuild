@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = akonadi-search
+version     = 26.08.2
+release     = 1
+vendordir   = agent/rs/htmlparser
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 7508de35606f31bd9cfa2804a3686f232e50721cf7ad206603bdfc2b8bc48dca  akonadi-search-26.08.2.tar.xz
+sha256      = 4c9291ec99566e0c478cbc186568befcbab129dab68295efd34df4c5584530be  akonadi-search-vendor-26.08.2.tar.xz
+description = Xapian indexing and search for Akonadi: the indexing agent, the search plugin and the contacts runner
+homepage    = https://invent.kde.org/pim/akonadi-search
+license     = (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND GPL-2.0-or-later AND LGPL-2.1-or-later AND LGPL-2.0-or-later AND BSD-3-Clause AND CC0-1.0 AND MIT
+vendoring   = rust
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kconfig kcoreaddons kcompletion ki18n kcrash kdbusaddons kcmutils kio kwidgetsaddons krunner xapian-core akonadi akonadi-mime kcontacts kmime kcalendarcore kcodecs ktextaddons rust corrosion

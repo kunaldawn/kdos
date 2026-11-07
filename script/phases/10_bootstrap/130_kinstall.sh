@@ -32,6 +32,7 @@ if [ -f "$MARK/kinstall" ] && [ "${KDOS_REPLAY:-0}" != "1" ]; then
 fi
 
 SRC=$WORKSPACE/src/system/kdos-installer
+CORE=$WORKSPACE/src/system/kinstall-core
 LIBS=$WORKSPACE/src/libs
 OUT=$BUILD_DIR/tmp/kinstall
 
@@ -42,20 +43,21 @@ OUT=$BUILD_DIR/tmp/kinstall
 # kdos-appbox, which is why that directory is on the include path and is not a
 # dependency on the rest of that program.
 #
-# EVERY .c IN $SRC IS COMPILED, by glob and never by name.
-# src/system/kdos-installer/build.sh builds this same program from this same
-# directory as a port, and the two must compile the same sources — only the
-# flags differ. A name list in either place omits the next file added on one
-# side alone, and the 10_bootstrap kinstall and the packaged one stop being the same
+# EVERY .c IN $SRC AND $CORE IS COMPILED, by glob and never by name.
+# src/system/kdos-installer/build.sh builds this same program from these same
+# two directories as a port, archiving $CORE into libkinstall-core.a first, and
+# the two must compile the same sources — only the flags and the archive step
+# differ. A name list in either place omits the next file added on one side
+# alone, and the 10_bootstrap kinstall and the packaged one stop being the same
 # program, with only a link error or a silently absent page to say so.
 $KDOS_TARGET-gcc \
     -O2 -pipe -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
     -fstack-protector-strong -fstack-clash-protection \
     -Wl,-O1,--as-needed,-z,now,-z,pack-relative-relocs -Wl,--build-id=sha1 \
     -I"$LIBS"/libkbase -I"$LIBS"/libktui -I"$LIBS"/libkcolor -I"$SRC" \
-    -I"$WORKSPACE"/src/system/kdos-appbox \
+    -I"$CORE" -I"$WORKSPACE"/src/system/kdos-appbox \
     -o "$OUT" \
-    "$SRC"/*.c \
+    "$SRC"/*.c "$CORE"/*.c \
     "$WORKSPACE"/src/system/kdos-appbox/catalogue.c \
     "$LIBS"/libkbase/*.c "$LIBS"/libktui/*.c "$LIBS"/libkcolor/*.c
 

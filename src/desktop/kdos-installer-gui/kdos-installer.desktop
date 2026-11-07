@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Install KDOS
+GenericName=System Installer
+Comment=Put KDOS on this computer's disk
+Exec=kdos-installer-gui
+Icon=system-software-install
+Terminal=false
+StartupNotify=true
+Categories=Qt;KDE;System;
+Keywords=install;installer;disk;setup;
+X-KDE-StartupNotify=true

@@ -4,9 +4,8 @@ Wayland is the display protocol of the KDOS desktop, and this port is its refere
 implementation: `libwayland-client` and `libwayland-server`, the two halves every program on either
 end of a Wayland socket links, `libwayland-cursor` and `libwayland-egl`, and `wayland-scanner`, the
 code generator that turns a protocol's XML description into C stubs at another port's build time.
-The compositor, [kdos-comp](#port-kdos-comp), and the [wlroots](#port-wlroots) library under it
-are the server; the panel, the terminal, the resource monitor and the lock screen are clients, and
-so is every toolkit's Wayland backend (GTK 3 and 4, Qt 5 and 6, SDL 3, GLFW), Mesa's Wayland
+The compositor, [KWin](#port-kwin), is the server; the Plasma shell, the lock screen and every
+application are clients, and so is every toolkit's Wayland backend (GTK 3 and 4, Qt 5 and 6, SDL 3, GLFW), Mesa's Wayland
 platform and [Xwayland](#port-xwayland). How the desktop is put together on top of it is in
 [The session](../../../../docs/kdos/03-architecture/session.md).
 

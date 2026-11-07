@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   The welcome tour as the live medium's front door.
+#
+# LiveEnvironment makes the tour open at every login of the live session, on
+# its live page; LiveInstaller names the desktop entry that page's big icon
+# starts, which the live boot step (/etc/init.d/63_live-installer.sh) puts in
+# /usr/share/applications. The directory goes first in XDG_CONFIG_DIRS, and
+# only on the live medium, so an installed system's tour is the ordinary
+# first-login one.
+# ---------------------------------
+
+[General]
+LiveEnvironment=true
+LiveInstaller=kdos-installer

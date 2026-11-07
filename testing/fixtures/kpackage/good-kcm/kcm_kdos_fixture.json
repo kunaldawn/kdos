@@ -1,0 +1,8 @@
+{
+    "KPlugin": {
+        "Name": "Fixture",
+        "Description": "A KCM whose metadata passes",
+        "Icon": "preferences-system"
+    },
+    "X-KDE-Keywords": "fixture"
+}

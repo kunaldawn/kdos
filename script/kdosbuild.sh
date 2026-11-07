@@ -47,8 +47,8 @@ FLAGS+=(-Isrc/devtools/kdosbuild)
 # AND `build/fs` IS THE TARGET ROOTFS, WHOSE OWNERSHIP IS THE SHIPPED SYSTEM'S.
 # Handing it back does not make a developer's life easier, it corrupts the
 # distribution: `chown` CLEARS THE SETUID BIT, so every privileged binary in
-# the image loses it — `kdos-checkpass`, whose loss refuses every password and
-# locks the user out of their own session; `kdos-resctl`; and
+# the image loses it — pam_unix's `unix_chkpwd`, whose loss refuses every
+# password at the lock screen and locks the user out of their own session; and
 # `newuidmap`/`newgidmap`, without which no rootless container can be created
 # and no box on the machine starts. It also rewrites every file's OWNER, so a
 # tree that `make install` correctly left to root comes out owned by uid 1000 —

@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdos-sounds
+version     = 1.0.0
+release     = 1
+description = KDOS sound theme — the machine's synthesised voices under their freedesktop names
+homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
+depends     = kdos-tools vorbis-tools ocean-sound-theme sound-theme-freedesktop

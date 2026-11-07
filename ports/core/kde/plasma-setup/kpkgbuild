@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = plasma-setup
+version     = 6.8.2
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = d10c2d766e2b1a3afaa70c2995f0abc8eb9ff2da19c9a4e794ae9e89859758d7  plasma-setup-6.8.2.tar.xz
+description = First-boot setup wizard — creates the first account and sets language, keyboard, time zone and network
+homepage    = https://invent.kde.org/plasma/plasma-setup
+license     = LGPL-2.1-or-later AND GPL-2.0-or-later AND LGPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND GPL-3.0-or-later
+group       = plasma
+depends     = cmake ninja extra-cmake-modules pkgconf qt6-qtbase qt6-qtdeclarative qt6-qtsvg kauth kcoreaddons ki18n kpackage kconfig kirigami kirigami-addons kitemmodels libkscreen plasma-workspace plasma-desktop plasma-nm plasma-keyboard sddm shadow

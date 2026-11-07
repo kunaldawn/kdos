@@ -7,14 +7,18 @@ tray, and the `kdeconnect-cli` command. Browsing the phone's files mounts them w
 [sshfs](#port-sshfs).
 
 ## Flags
+
+- `-D KF_SKIP_PO_PROCESSING=ON` — Builds none of the interface translations in `po/`; the image is
+  English only (see
+  [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
 - `-D CMAKE_INSTALL_LIBEXECDIR=lib` — point the libexec directory at `/usr/lib`. This release
   installs nothing there: `kdeconnectd`, the windows and the command all go to `/usr/bin`, so the
   switch changes nothing in the package.
 - `-D WITH_X11=OFF` — leave out the X11 path. Its mousepad plugin needs libfakekey, which is not a
   port, so the plugin is built for Wayland alone, on [libei](#port-libei). That path asks the
-  RemoteDesktop portal for an input connection, which no backend on KDOS answers, so the phone
-  cannot drive the pointer or keyboard; see
-  [A phone cannot drive the pointer or keyboard through KDE Connect](../../../../docs/kdos/06-reference/known-gaps.md#a-phone-cannot-drive-the-pointer-or-keyboard-through-kde-connect).
+  RemoteDesktop portal for an input connection, which
+  [xdg-desktop-portal-kde](#port-xdg-desktop-portal-kde) answers in the Plasma session with an EIS
+  connection to KWin.
 - `-D WITH_PULSEAUDIO=ON` — build the plugins that reach the sound server through
   [pulseaudio-qt](#port-pulseaudio-qt) and PipeWire's PulseAudio service: `pausemusic`, which
   pauses or mutes playback during a phone call, `findthisdevice`, which lets the phone make the
@@ -33,10 +37,22 @@ tray, and the `kdeconnect-cli` command. Browsing the phone's files mounts them w
 
 ## Notes
 `build.sh` renders upstream's SVG logo, `icons/app/sc-apps-kdeconnect.svg`, to PNG icons at 48,
-64, 128 and 256 pixels with `rsvg-convert` from [librsvg](#port-librsvg), because the panel draws
-only PNG icons.
+64, 128 and 256 pixels with `rsvg-convert` from [librsvg](#port-librsvg), so the `kdeconnect`
+icon resolves in hicolor at those sizes whatever icon theme is chosen.
 
 The three desktop entries are KDOS's own, written over upstream's. KAboutData names each window's
 Wayland app id from the reversed organisation domain and the component name, and each entry's
-`StartupWMClass` repeats it, so the panel can match the window to its entry (see
-[`kdos appid`](../../../../docs/kdos/04-programs/kdos-command.md#kdos-appid)).
+`StartupWMClass` repeats it, so the task manager can match the window to its entry. The
+indicator's entry carries upstream's `NotShowIn=KDE;`: under Plasma the KDE Connect plasmoid is
+the tray icon, and the indicator would add a second one.
+
+The virtual-monitor plugin, which lends the phone or tablet to this machine as an extra screen,
+runs `krdpserver` from [krdp](#port-krdp) when it is asked to. The build does not check for it,
+so krdp is in `depends` to put the server on every machine that has KDE Connect.
+
+The digitizer plugin, which turns a tablet's pen into a drawing tablet here, installs
+`40-kdeconnect-uinput.rules`, tagging `/dev/uinput` `uaccess` so the user of the active session
+may create the virtual pen device. It goes into the `udevdir` that `udev.pc` from
+[eudev](#port-eudev) names, `/lib/udev`; without `udev.pc` the configure falls back to
+`/usr/lib/udev`, which is why eudev is in `depends`. The package carries the rule as
+`lib/udev/rules.d/`, which is `/usr/lib/udev/rules.d` on the merged-`/usr` root.

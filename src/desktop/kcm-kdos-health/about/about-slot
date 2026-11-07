@@ -1,0 +1,52 @@
+#!/bin/sh
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   about-slot — About this System's "System slot" row
+#
+# A label and a value, always both, at once: kinfocenter runs this twice on
+# its GUI thread, and fewer than two lines kills System Settings. It reads
+# /run/kdos/slot.json, which kdos-bootctl writes at boot and at every change
+# of the boot state, and never the ESP or a disk that could wait. Without that
+# file the slot is the boot entry's kdos_slot= on /proc/cmdline and its state
+# is not shown. A value is kept only if it is letters, digits and . _ + -.
+
+PATH=/usr/bin:/bin
+R=${KDOS_ABOUT_ROOT:-}
+slot='' version='' state='' prev='' pver=''
+pairs=$(tr ',{}' '\n\n\n' 2>/dev/null <"$R/run/kdos/slot.json" |
+	sed -n 's/^[[:space:]]*"\([a-z_]*\)"[[:space:]]*:[[:space:]]*"\([A-Za-z0-9._+-]*\)"[[:space:]]*$/\1 \2/p')
+while read -r k v; do
+	case $k in
+	slot) slot=$v ;; version) version=$v ;; state) state=$v ;;
+	previous_slot) prev=$v ;; previous_version) pver=$v ;;
+	esac
+done <<EOF
+$pairs
+EOF
+if [ ! -e "$R/run/kdos/slot.json" ] && [ -r "$R/proc/cmdline" ]; then
+	cmd=
+	read -r cmd <"$R/proc/cmdline" 2>/dev/null
+	# Split on spaces without expanding a word as a pattern.
+	set -f
+	for w in $cmd; do case $w in kdos_slot=a | kdos_slot=b) slot=${w#kdos_slot=} state=booted ;; esac; done
+	set +f
+fi
+if [ -z "$version" ] && [ -r "$R/etc/os-release" ]; then
+	while IFS='=' read -r k v; do [ "$k" = VERSION_ID ] && version=${v#\"} && version=${version%\"}; done <"$R/etc/os-release"
+	case $version in *[!A-Za-z0-9._+-]*) version= ;; esac
+fi
+case $slot in a) slot=A ;; b) slot=B ;; *) slot= ;; esac
+case $prev in a) prev=A ;; b) prev=B ;; *) prev= ;; esac
+v=Unknown
+case $state in
+confirmed) [ -n "$slot" ] && v="$slot · ${version:-?} · confirmed${prev:+ (previous: $prev${pver:+ · $pver})}" ;;
+trial) [ -n "$slot" ] && v="$slot · ${version:-?} · on trial${prev:+ (previous: $prev${pver:+ · $pver})}" ;;
+booted) [ -n "$slot" ] && v="$slot · ${version:-?}" ;;
+single) v="One root${version:+ · $version}" ;;
+esac
+printf 'System slot\n%s\n' "$v"

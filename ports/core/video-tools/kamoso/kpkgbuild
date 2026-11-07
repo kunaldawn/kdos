@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = kamoso
-version     = 26.08.1
+version     = 26.08.2
 release     = 1
 source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
-sha256      = fd36a3fb681b943c4defc4b6acd4c4390aacf373adcb3df0d4c4f17143207d02  kamoso-26.08.1.tar.xz
+sha256      = c26e7d00bd15eedbaa252694cf9c991d7995bfd2ddd2c39a9cf19be73a6ded1f  kamoso-26.08.2.tar.xz
 description = KDE webcam booth — take pictures and record videos from a camera
 homepage    = https://apps.kde.org/kamoso/
 license     = GPL-2.0-or-later

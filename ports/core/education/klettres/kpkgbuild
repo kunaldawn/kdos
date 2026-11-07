@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = klettres
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 5604e8ca91c719ab2f54dc2d4d64e39c22dbd8d0a2633c6a64465fa09329cc48  klettres-26.08.2.tar.xz
+description = KDE alphabet trainer — letters and syllables spoken aloud, in 22 languages
+homepage    = https://apps.kde.org/klettres/
+license     = GPL-2.0-or-later AND LGPL-2.0-only AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg qt6-qtmultimedia kcrash kdoctools ki18n knewstuff kwidgetsaddons kconfigwidgets kcoreaddons kxmlgui

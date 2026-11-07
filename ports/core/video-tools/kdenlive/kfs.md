@@ -6,6 +6,9 @@ and encoding underneath. [OpenTimelineIO](#port-opentimelineio) imports and expo
 from other editors.
 
 ## Flags
+- `-D KF_SKIP_PO_PROCESSING=ON` — Builds none of the interface translations in `po/`; the image is
+  English only (see
+  [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
 - `-D RELEASE_BUILD=ON` — Leave the Git revision out of the program's version string.
   Upstream's default, named.
 - `-D USE_DBUS=ON` — Build the components that use D-Bus. Upstream's default on Linux, named.
@@ -15,12 +18,9 @@ from other editors.
 - `-D BUILD_QCH=OFF` — With `-D BUILD_FUZZING=OFF` and `-D BUILD_DESIGNERPLUGIN=OFF`: no
   API documentation in Qt Help format, no fuzzing target and no Qt Designer plugin. All three are
   upstream's defaults, named.
-
-## Patches
-- `no-qmllint-in-build.patch` — Removes `add_dependencies(kdenlive all_qmllint)` from
-  `src/CMakeLists.txt`, so building the `kdenlive` target does not first run qmllint over every
-  QML module. The lint target installs nothing; the program and its QML are built and installed
-  the same.
+- `-D BUILD_RUN_QMLLINT=OFF` — Building the `kdenlive` target does not first run qmllint over every
+  QML module. Upstream's default is on, and a qmllint error then fails the build. The lint
+  installs nothing: the program and its QML are built and installed the same either way.
 
 ## Notes
 - **Features that download.** Speech-to-text and object masking build a Python virtual

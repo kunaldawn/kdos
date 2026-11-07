@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = sweeper
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = f9c15ecdff1410b73f03a5f38443172ef3d76c68477c9e1e11df5f61f817abec  sweeper-26.08.2.tar.xz
+description = Privacy cleaner — clear recent documents, activity history, web history, cookies, caches and thumbnails
+homepage    = https://apps.kde.org/sweeper/
+license     = LGPL-2.1-or-later AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kbookmarks kcrash kconfig kconfigwidgets kcoreaddons ki18n ktextwidgets kxmlgui kdoctools plasma-activities-stats

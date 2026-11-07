@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = artikulate
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = d50d43f1ff9011b86cada3d88316130023691562dd7248f30b54c62c07eb798f  artikulate-26.08.2.tar.xz
+description = KDE pronunciation trainer — record yourself and compare with native speakers
+homepage    = https://apps.kde.org/artikulate/
+license     = (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND GPL-2.0-or-later AND LGPL-2.0-or-later AND LGPL-2.1-or-later AND LGPL-3.0-or-later AND BSD-2-Clause AND MIT AND CC0-1.0 AND CC-BY-SA-4.0
+depends     = cmake ninja extra-cmake-modules libxml2 qt6-qtbase qt6-qtdeclarative qt6-qtmultimedia karchive kconfig kcrash ki18n kitemmodels knewstuff kirigami kirigami-addons kdoctools

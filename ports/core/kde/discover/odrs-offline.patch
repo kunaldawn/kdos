@@ -1,0 +1,36 @@
+Subject: libdiscover: let discoverrc turn off the ODRS ratings fetch
+
+The Home page's "Most Popular" list asks OdrsReviewsBackend for its
+ratings, and the backend downloads them from odrs.gnome.org at every start
+whose cache is older than a day, whatever backends are loaded. With
+[Software] FetchOdrsRatings=false in discoverrc nothing is requested and an
+existing cache is still parsed; the key defaults to true.
+
+--- a/libdiscover/appstream/OdrsReviewsBackend.cpp
++++ b/libdiscover/appstream/OdrsReviewsBackend.cpp
+@@ -17,8 +17,10 @@
+ #include <resources/AbstractResource.h>
+ #include <resources/AbstractResourcesBackend.h>
+ 
++#include <KConfigGroup>
+ #include <KIO/FileCopyJob>
+ #include <KLocalizedString>
++#include <KSharedConfig>
+ #include <KUser>
+ 
+ #include "libdiscover_debug.h"
+@@ -78,6 +80,14 @@
+         fetchRatings = true;
+     }
+ 
++    // [Software] FetchOdrsRatings=false keeps the ratings offline: whatever is already
++    // cached is still parsed, and nothing is requested from the ODRS server.
++    const KConfigGroup softwareGroup(KSharedConfig::openConfig(), QStringLiteral("Software"));
++    if (fetchRatings && !softwareGroup.readEntry("FetchOdrsRatings", true)) {
++        qCDebug(LIBDISCOVER_LOG) << "OdrsReviewsBackend: FetchOdrsRatings is false, using the cached ratings only";
++        fetchRatings = false;
++    }
++
+     qCWarning(LIBDISCOVER_LOG) << "OdrsReviewsBackend: Fetch ratings:" << fetchRatings;
+     if (fetchRatings) {
+         setFetching(true);
