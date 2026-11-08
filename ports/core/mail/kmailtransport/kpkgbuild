@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kmailtransport
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 8dae63e06e2014f03b7e6002a8dcf9bc5323173ac0e12a66ce63cb71aafecacb  kmailtransport-26.08.2.tar.xz
+description = KDE PIM library that configures mail transports and sends mail over SMTP
+homepage    = https://invent.kde.org/pim/kmailtransport
+license     = LGPL-2.0-or-later AND LGPL-2.1-or-later AND BSD-3-Clause AND CC0-1.0 AND MIT
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kconfig kconfigwidgets kcoreaddons ki18n kio kwidgetsaddons ksmtp libkgapi qtkeychain

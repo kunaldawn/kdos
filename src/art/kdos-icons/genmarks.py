@@ -19,8 +19,11 @@
 #
 # Two marks, cut from the one source so they cannot drift:
 #
-#   tux    the penguin alone — the dock's app-library button.
-#   logo   penguin + wordmark.
+#   tux    the penguin alone — start-here-kdos, the Kickoff button, and the
+#          start-here-kde* names the KDOS icon themes answer with it. A
+#          wordmark at panel size is a smudge, so the button is the penguin.
+#   logo   penguin + wordmark — distributor-logo-kdos and `kdos`, the About
+#          page and os-release's LOGO, which are drawn large.
 #
 # The crop uses TWO alpha thresholds and they do different jobs. SOLID finds
 # where the artwork proper is, which is what separates the penguin from the
@@ -28,11 +31,11 @@
 # of pure glow between). GLOW is what the crop box is actually taken at, so the
 # halo survives — cropping at SOLID shaves it off on all four sides, which is
 # exactly what it looks like.
-# This replaces the old panel-tux.svg, which was <rect> pixel art traced from
-# the boot splash's 34x34 penguin because a general-purpose SVG renderer is
-# built without raster-image support, so an SVG wrapping a PNG renders empty.
-# PNG icons sidestep that entirely — icon themes have always taken them — and
-# a Lanczos downscale of the real artwork beats a 34x34 grid at every size.
+#
+# The marks are the raster master downscaled, shipped as PNG at fixed sizes:
+# an icon theme takes PNG as readily as SVG, and a Lanczos reduction of the
+# real artwork beats a redraw at every size. Being raster, they are the one
+# part of the KDOS icon themes that does not follow the accent.
 
 import os
 import sys

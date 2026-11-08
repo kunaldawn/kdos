@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kcm-kdos-firewall
+version     = 1.0.0
+release     = 1
+description = System Settings Firewall page — named services through kdos-powerd, and the prompt that offers to let a blocked program in
+homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
+depends     = cmake ninja pkgconf extra-cmake-modules qt6-qtbase qt6-qtdeclarative kcoreaddons ki18n kcmutils kirigami basu kdos-powerd

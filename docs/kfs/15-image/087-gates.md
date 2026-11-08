@@ -96,4 +96,4 @@ Nothing. The step only reads the tree.
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 352.* Previous: [351. The font cache](085-fontcache.md) · [Contents](../README.md) · Next: [353. The initramfs](090-initramfs.md)
+*Part XV. The image, chapter 376.* Previous: [375. The software catalogue](086-swcatalog.md) · [Contents](../README.md) · Next: [377. The initramfs](090-initramfs.md)

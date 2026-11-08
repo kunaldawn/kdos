@@ -1,0 +1,119 @@
+Subject: processcore: count processes of a scope's descendant cgroups
+
+diff --git a/processcore/cgroup.cpp b/processcore/cgroup.cpp
+index 1a6993b..6c2b71b 100644
+--- a/processcore/cgroup.cpp
++++ b/processcore/cgroup.cpp
+@@ -49,36 +49,78 @@ public:
+ class CGroupPrivate::ReadPidsRunnable : public QRunnable
+ {
+ public:
+-    ReadPidsRunnable(QObject *context, const QString &path, std::function<void(QList<pid_t>)> callback)
++    ReadPidsRunnable(QObject *context, const QString &path, bool withDescendants, std::function<void(QList<pid_t>)> callback)
+         : m_context(context)
+         , m_path(path)
++        , m_withDescendants(withDescendants)
+         , m_callback(callback)
+     {
+     }
+ 
+     void run() override
+     {
+-        QFile pidFile(m_path);
+-        if (!pidFile.open(QFile::ReadOnly | QIODevice::Text)) {
++        QList<pid_t> pids;
++        if (!readProcs(m_path, pids)) {
+             return;
+         }
++        if (m_withDescendants) {
++            int budget = s_maxDescendants;
++            readDescendants(m_path, 0, budget, pids);
++        }
++        // Ensure we call the callback on the thread the context object lives on.
++        if (m_context) {
++            QMetaObject::invokeMethod(m_context, std::bind(m_callback, pids));
++        }
++    }
++
++private:
++    // A scope's own processes may sit in child cgroups it made for itself, as
++    // a container engine's per-container cgroup does. Those children are
++    // counted with the scope, except a child that is a .scope or .service of
++    // its own, which the model lists as a node and counts there. The walk is
++    // bounded, so a pathological tree cannot hold a pool thread.
++    static constexpr int s_maxDepth = 8;
++    static constexpr int s_maxDescendants = 1024;
++
++    static bool readProcs(const QString &dir, QList<pid_t> &pids)
++    {
++        QFile pidFile(dir + QLatin1String("/cgroup.procs"));
++        if (!pidFile.open(QFile::ReadOnly | QIODevice::Text)) {
++            return false;
++        }
+         QTextStream stream(&pidFile);
+ 
+-        QList<pid_t> pids;
+         QString line = stream.readLine();
+         while (!line.isNull()) {
+             pids.append(line.toLong());
+             line = stream.readLine();
+         }
+-        // Ensure we call the callback on the thread the context object lives on.
+-        if (m_context) {
+-            QMetaObject::invokeMethod(m_context, std::bind(m_callback, pids));
++        return true;
++    }
++
++    static void readDescendants(const QString &dir, int depth, int &budget, QList<pid_t> &pids)
++    {
++        if (depth >= s_maxDepth) {
++            return;
++        }
++        const QStringList children = QDir(dir).entryList(QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks);
++        for (const QString &child : children) {
++            if (budget <= 0) {
++                return;
++            }
++            if (child.endsWith(QLatin1String(".scope")) || child.endsWith(QLatin1String(".service"))) {
++                continue;
++            }
++            --budget;
++            const QString path = dir + QLatin1Char('/') + child;
++            readProcs(path, pids);
++            readDescendants(path, depth + 1, budget, pids);
+         }
+     }
+ 
+-private:
+     QPointer<QObject> m_context;
+     QString m_path;
++    bool m_withDescendants;
+     std::function<void(QList<pid_t>)> m_callback;
+ };
+ 
+@@ -137,8 +179,9 @@ void CGroup::setPids(const QList<pid_t> &pids)
+ 
+ void CGroup::requestPids(QObject *context, std::function<void(QList<pid_t>)> callback)
+ {
+-    QString path = cgroupSysBasePath() + d->processGroupId + QLatin1String("/cgroup.procs");
+-    auto readPidsRunnable = new CGroupPrivate::ReadPidsRunnable(context, path, callback);
++    QString path = cgroupSysBasePath() + d->processGroupId;
++    const bool withDescendants = d->processGroupId.endsWith(QLatin1String(".scope"));
++    auto readPidsRunnable = new CGroupPrivate::ReadPidsRunnable(context, path, withDescendants, callback);
+     QThreadPool::globalInstance()->start(readPidsRunnable);
+ }
+ 
+diff --git a/processcore/cgroup.h b/processcore/cgroup.h
+index 25edef2..0128f46 100644
+--- a/processcore/cgroup.h
++++ b/processcore/cgroup.h
+@@ -78,6 +78,9 @@ public:
+      * \param context An object that is used to track if the caller still exists.
+      * \param callback A callback that gets called once the list of pids has
+      *                 been retrieved.
++     *
++     * For a .scope the list also holds the processes of the scope's descendant
++     * cgroups that are not themselves a .scope or a .service.
+      */
+     void requestPids(QObject *context, std::function<void(QList<pid_t>)> callback);
+ 

@@ -64,7 +64,8 @@ our own, and the size of the staged tree.
 <!-- kfs:include script/phases/70_image/105_ports.sh lines=123-142 pin=f377f0227aab -->
 
 `/ports/TREE` names the commit the tree is and that commit's time, in the format
-`ports/publish --release` writes into a published tree. `kdos update fetch` refuses a signed tree
+`ports/publish --release` writes into a published tree, which adds `version <tag>`: the release
+whose signed `kdos-update.idx` the binhost is then found through. `kdos update fetch` refuses a signed tree
 whose `TREE` time is older than the one in `/ports`, and takes one of the same commit for current,
 so an image without the stamp would take any signed tree, an older one included. Without
 `KDOS_GIT_COMMIT` there is no stamp.
@@ -120,4 +121,4 @@ the image when `110_iso.sh` appends it to `system.sfs`:
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 356.* Previous: [355. The pack store and the base pack](100-packs.md) · [Contents](../README.md) · Next: [357. The ISO](110-iso.md)
+*Part XV. The image, chapter 380.* Previous: [379. The pack store and the base pack](100-packs.md) · [Contents](../README.md) · Next: [381. The ISO](110-iso.md)

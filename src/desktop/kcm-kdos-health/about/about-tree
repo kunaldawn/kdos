@@ -1,0 +1,30 @@
+#!/bin/sh
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   about-tree — About this System's "Ports tree" row
+#
+# The commit /ports was made from and when, from its TREE stamp (the one
+# `kdos update fetch` compares). Always two lines, at once: see about-slot.
+
+PATH=/usr/bin:/bin
+R=${KDOS_ABOUT_ROOT:-}
+commit='' time=''
+if [ -r "$R/ports/TREE" ]; then
+	while read -r k v _; do
+		case $k in commit) commit=$v ;; time) time=$v ;; esac
+	done <"$R/ports/TREE"
+fi
+v=Unknown
+case $commit in
+'' | *[!0-9a-f]*) ;;
+*)
+	v=$(printf '%.12s' "$commit")
+	case $time in '' | 0 | *[!0-9]*) ;; *) d=$(date -u -d "@$time" +%Y-%m-%d 2>/dev/null) && v="$v · $d" ;; esac
+	;;
+esac
+printf 'Ports tree\n%s\n' "$v"

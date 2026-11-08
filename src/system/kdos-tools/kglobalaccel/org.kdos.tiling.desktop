@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Toggle Auto-Tiling
+Comment=Turn Krohnkite's automatic tiling on or off
+Exec=kdos tiling toggle
+Icon=view-grid
+X-KDE-Shortcuts=Meta+Shift+T

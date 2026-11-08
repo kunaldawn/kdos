@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   System Monitor's pages.
+#
+# The KDOS page (ksystemstats-kdos) comes second, after Overview: it shows
+# each box's use, energy and the two slots. The Applications page comes
+# third: libksysguard's login-cgroup-root.patch roots it at the login's
+# cgroup, so it lists each running box's scope in the delegated subtree as
+# one application. pageOrder only sorts; a page it leaves out is placed after
+# the listed ones, and hiddenPages is what takes a page off the sidebar.
+# ---------------------------------
+
+[General]
+pageOrder=overview.page,kdos.page,applications.page,history.page,processes.page

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kcachegrind
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 641a809f7ba5a97637820222b6c7fc639d7bc5d4a1036c69c4886823edb0670a  kcachegrind-26.08.2.tar.xz
+description = Profile data visualiser for Callgrind and Cachegrind — call graphs, treemaps and annotated source
+homepage    = https://apps.kde.org/kcachegrind/
+license     = GPL-2.0-only AND (LGPL-2.1-only WITH Qt-LGPL-exception-1.1 OR LGPL-3.0-only WITH Qt-LGPL-exception-1.1 OR LicenseRef-Qt-Commercial) AND GFDL-1.2-or-later AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase karchive kconfig kcoreaddons kdbusaddons kdoctools ki18n kio kwidgetsaddons kxmlgui perl graphviz valgrind

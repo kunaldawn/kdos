@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kajongg
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 81493ec304ff19c189fc811b1fecd88e749784c1c902e6158565037c9f8ccfed  kajongg-26.08.2.tar.xz
+description = Classical four-player Mah Jongg, with computer players and a game server
+homepage    = https://apps.kde.org/kajongg/
+license     = GPL-2.0-only AND GFDL-1.2-or-later AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg kdoctools ki18n libkmahjongg python3 python3-twisted python3-qtpy python3-pyqt6 vorbis-tools sox

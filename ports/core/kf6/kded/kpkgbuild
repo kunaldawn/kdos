@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = kded
-version     = 6.30.0
+version     = 6.31.0
 release     = 1
 source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
-sha256      = 0adf6e22300cee74d57e790b5db844f03a1366a4d6315edbaa49174b12bf1861  kded-6.30.0.tar.xz
+sha256      = 9a65e6dec8a51cb5e4e6e013c012a977904ca9ee74acb8d948e2031025a7233b  kded-6.31.0.tar.xz
 description = KDE Frameworks: kded6, the daemon that hosts session modules
 homepage    = https://invent.kde.org/frameworks/kded
 license     = LGPL-2.0-only AND LGPL-2.0-or-later

@@ -48,3 +48,5 @@ blend2d
 babl
 graphite2
 gts
+
+colord

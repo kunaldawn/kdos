@@ -1,0 +1,13 @@
+Subject: set StartupWMClass to the Wayland app_id org.kde.kasts
+
+Kasts takes its app_id from KAboutData, which derives org.kde.kasts, the
+desktop file name; upstream's class names no window Kasts opens.
+
+--- a/org.kde.kasts.desktop
++++ b/org.kde.kasts.desktop
+@@ -151,4 +151,4 @@
+ InitialPreference=10
+ X-KDE-FormFactor=desktop;tablet;handset;
+ StartupNotify=true
+-StartupWMClass=kasts
++StartupWMClass=org.kde.kasts

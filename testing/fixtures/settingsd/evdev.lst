@@ -1,0 +1,22 @@
+! model
+  pc104           Generic 104-key PC
+  pc105           Generic 105-key PC
+
+! layout
+  gb              English (UK)
+  us              English (US)
+  fr              French
+  de              German
+  ch              German (Switzerland)
+
+! variant
+  intl            us: English (US, intl., with dead keys)
+  dvorak          us: English (Dvorak)
+  nodeadkeys      de: German (no dead keys)
+  fr              ch: French (Switzerland)
+
+! option
+  grp                  Switching to another layout
+  grp:alt_shift_toggle Alt+Shift
+  ctrl:nocaps          Caps Lock as Ctrl
+  compose:ralt         Right Alt

@@ -1,0 +1,10 @@
+{
+  "truncated": false,
+  "processes": [
+    {"pid": 2841, "comm": "firefox-esr", "exe": "/usr/lib/firefox-esr/firefox-esr", "packages": ["nss", "firefox-esr"]},
+    {"pid": 2850, "comm": "Isolated Web Co", "exe": "/usr/lib/firefox-esr/firefox-esr", "packages": ["nss"]},
+    {"pid": 3122, "comm": "konsole", "exe": "/usr/bin/konsole", "packages": ["qt6-base"]},
+    {"pid": 3300, "comm": "mpd", "exe": "/usr/bin/mpd", "packages": ["ffmpeg"]}
+  ],
+  "count": 4
+}

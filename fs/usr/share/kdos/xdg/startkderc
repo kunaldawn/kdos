@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   How startplasma brings the session up.
+#
+# There is no systemd user instance on KDOS, so the session is always the
+# classic one, in which plasma_session starts kded6, ksmserver, plasmashell
+# and the autostart entries itself. With the key unset startplasma first asks
+# the session bus for systemd's plasma-workspace.target before deciding the
+# same; `false` skips the question.
+# ---------------------------------
+
+[General]
+systemdBoot=false

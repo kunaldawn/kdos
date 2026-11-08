@@ -1,0 +1,27 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   No dimming and no blank screen in a virtual machine.
+#
+# A dimmed or blanked guest saves nothing and reads, from outside it, as a
+# hung one. PowerDevil already never suspends a virtual machine on idle or on
+# a lid event; this turns off the two screen timers as well, in every
+# profile a guest can report. The directory goes first in XDG_CONFIG_DIRS,
+# and only in a virtual machine (kscreenlockerrc beside this file).
+# ---------------------------------
+
+[AC][Display]
+DimDisplayWhenIdle=false
+TurnOffDisplayWhenIdle=false
+
+[Battery][Display]
+DimDisplayWhenIdle=false
+TurnOffDisplayWhenIdle=false
+
+[LowBattery][Display]
+DimDisplayWhenIdle=false
+TurnOffDisplayWhenIdle=false

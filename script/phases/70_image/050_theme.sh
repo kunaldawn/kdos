@@ -10,12 +10,13 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 #
-# Seed the DEFAULT theme into /etc/skel so a fresh home (live ISO, new user)
-# boots straight into the KDOS look. Runs before 070_user.sh materializes homes
-# (the step number does the sequencing). The palette itself is libkcolor's
-# — kdos-comp and kdos-shell link it and read only the accent NAME from
-# $XDG_CACHE_HOME/kdos/theme, so nothing here writes colours for the desktop.
-# Everything below is for software that is not ours: GTK, foot, btop, starship.
+# Seed the DEFAULT accent into /etc/skel so a fresh home (live ISO, new user)
+# logs in to the KDOS look. Runs before 070_user.sh materializes homes (the
+# step number does the sequencing). The Plasma identity kit itself — colour
+# schemes, global themes, Konsole and qt5ct palettes — is installed by the
+# packages under /usr/share and needs nothing here; what a home carries is
+# the accent's NAME and the files of the programs that read only a home:
+# qt5ct, btop, starship and the other terminal programs.
 
 set -e
 source script/phases/70_image/phase.env
@@ -34,46 +35,37 @@ if ! diff -q <(kdos-bootctl theme --print) \
     exit 1
 fi
 
-echo "Seeding $KDOS_ACCENT theme (GTK + icons + foot/btop/starship) into /etc/skel..."
-# `kdos theme` is the single generator — running it against skel keeps the
-# seeds byte-identical to what a live `kdos theme <accent>` produces. It is
-# also what MATERIALIZES ~/.themes/KDOS and ~/.icons/KDOS: the packages only
-# install the system copies plus their generators, because the appbox shares
-# $HOME and not /usr/share, so the home copies are the ones alien apps see.
+echo "Seeding the $KDOS_ACCENT accent (Plasma, Konsole, qt5ct, terminal programs) into /etc/skel..."
+# `kdos theme` is the single writer — running it against skel keeps the seeds
+# byte-identical to what `kdos theme <accent>` writes outside a session: the
+# accent file, the global theme the first login applies, and the home files
+# of the programs that cannot read /usr/share/kdos/xdg.
 HOME=/etc/skel XDG_CONFIG_HOME=/etc/skel/.config XDG_CACHE_HOME=/etc/skel/.cache \
     XDG_DATA_HOME=/etc/skel/.local/share \
     /usr/local/bin/kdos theme "$KDOS_ACCENT"
-test -s /etc/skel/.cache/kdos/theme
-test -s /etc/skel/.config/gtk-3.0/settings.ini
-test -s /etc/skel/.config/gtk-4.0/gtk.css
-# The stylesheet's directory carries the accent, because GTK reloads a theme
-# when its NAME moves and never when one file under a fixed name is rewritten.
-# `KDOS` is a link to it, which is what every seeded settings.ini, XCURSOR path
-# and shipped package copy still names.
-test -s "/etc/skel/.themes/KDOS-$KDOS_ACCENT/gtk-3.0/gtk.css"
-test -L /etc/skel/.themes/KDOS
-test -s /etc/skel/.icons/KDOS/index.theme
-# The window frames, generated from the same palette as everything else so an
-# accent switch reaches them; kdos-comp re-reads the file on the SIGHUP
-# `kdos theme` sends.
-test -s /etc/skel/.config/kdos-comp/themerc-override
-# The cursors are generated here too, from the art kdos-cursors ships in
-# /usr/share/kdos/cursors/art, and this is the only writer of the skel copy:
-# the package installs none, so a second copy owned by kpkg cannot drift from
-# this one and turn up as modified files in `kpkg check`. A box shares the home
-# and not /usr/share/icons, so without this copy boxed apps lose the pointer.
-test -s /etc/skel/.icons/KDOS-cursors/cursors/default
-# The KDE bridge: boxed dolphin/okular/kate read this file out of the shared
-# home, and a skel without it hands every new user a grey KDE.
-test -s /etc/skel/.config/kdeglobals
-test -s /etc/skel/.local/share/color-schemes/KDOS.colors
-# The Qt side for a process with no KDE platform theme: every Qt 5 application,
-# and a Qt 6 one started under qt6ct. Each file's palette is the colour file
-# beside it, named with a `~` so it resolves in the reading user's home.
-test -s /etc/skel/.config/qt5ct/qt5ct.conf
-test -s /etc/skel/.config/qt5ct/colors/KDOS.conf
-test -s /etc/skel/.config/qt6ct/qt6ct.conf
-test -s /etc/skel/.config/qt6ct/colors/KDOS.conf
+test "$(cat /etc/skel/.config/kdos/accent)" = "$KDOS_ACCENT"
+# Read through the cascade, as startplasma does at the first login, and not out
+# of the file: KConfig writes no key whose value the machine's /etc/xdg/kdeglobals
+# already gives, and that absence is what lets the installer's accent reach a
+# new account.
+_lnf=$(XDG_CONFIG_HOME=/etc/skel/.config kreadconfig6 --file kdeglobals --group KDE --key LookAndFeelPackage)
+if [ "$_lnf" != "org.kdos.$KDOS_ACCENT.desktop" ]; then
+    echo "FATAL: a new home's global theme is '$_lnf', not org.kdos.$KDOS_ACCENT.desktop" >&2
+    exit 1
+fi
+# The Qt 5 applications have no Plasma platform theme, so qt5ct is their only
+# way to the accent: its configuration must name a palette the image carries,
+# or every Qt 5 application paints qt5ct's own defaults.
+_qt5=$(sed -n 's/^color_scheme_path=//p' /etc/skel/.config/qt5ct/qt5ct.conf)
+case "$_qt5" in
+/usr/share/qt5ct/colors/KDOS-*.conf) test -s "$_qt5" ;;
+*) echo "FATAL: skel's qt5ct.conf names no KDOS palette: '$_qt5'" >&2; exit 1 ;;
+esac
+# Every installed KDE colour scheme clears the contrast floors. The schemes
+# are generated at build time from libkcolor's table; a palette edit that
+# drops one role under 4.5:1 stops the image here rather than on a screen.
+compgen -G '/usr/share/color-schemes/KDOS*.colors' >/dev/null
+kdos-theme contrast -q /usr/share/color-schemes/KDOS*.colors
 
 # The GSettings defaults (fs/usr/share/glib-2.0/schemas/90_kdos.gschema.override)
 # reach GTK only through gschemas.compiled. kpkg's schemas trigger writes it
@@ -89,7 +81,7 @@ if command -v glib-compile-schemas >/dev/null 2>&1 &&
 fi
 
 # The desktop entries fs/ ships (the kdos-* handlers) reach `kdos-appbox open`
-# and the shell's Open With only through
+# and Plasma's Open With only through
 # /usr/share/applications/mimeinfo.cache. kpkg's desktop trigger
 # writes it when a package touches the directory, which an fs/-only rebuild
 # never does, so it is rebuilt here too.

@@ -7,6 +7,16 @@ CMake macros `kdoctools_create_handbook()` and `kdoctools_create_manpage()` that
 calls, so a KDE application that installs a handbook needs this port at build time. A recipe can make it a requirement with
 `-DCMAKE_REQUIRE_FIND_PACKAGE_KF6DocTools=ON`, so that a missing one stops the configure.
 
+## Flags
+
+- `-D KF_SKIP_PO_PROCESSING=ON` — Build none of the gettext catalogues under `po/`, which
+  `ki18n_install()` would compile into `.mo` files. The strings in the source are English, and the
+  package-wide English-only rule (see
+  [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy))
+  would remove every catalogue in another language. The switch does not reach
+  `kdoctools_install()`, which still builds the translated manual pages of `checkXML6`,
+  `meinproc6`, `kf6options` and `qt6options`; the same rule removes them from the package.
+
 ## Notes
 
 The configure looks up the DocBook 4.5 DTD of [docbook-xml](#port-docbook-xml) and the stylesheets

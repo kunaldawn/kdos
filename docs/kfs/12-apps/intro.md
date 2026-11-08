@@ -5,7 +5,7 @@
 `44_apps` is the last of the userland phases. It builds the natively ported applications, the ports
 at the top of the dependency graph that nothing else needs: browsers, office suites, the graphics,
 audio and video programs, games and emulators, the science, engineering and radio applications,
-and the box launcher `kdos-appbox`. Each is built with the toolkit its upstream uses, from
+and every application of KDE Gear, each on the subject shelf of what it does. Each is built with the toolkit its upstream uses, from
 [Part XI](../11-toolkits/intro.md). This part describes the rule that fills the phase, why some
 programs without a window of their own are built in it, how the shelves divide it, and which of its
 ports have a full page. The package pages follow, in chapters by shelf, in the shelves' own order,
@@ -72,30 +72,33 @@ The other shelves
 : `accessibility`, `pim`, `optical`, `vcs`, `themes` and the rest hold a few ports each:
   applications, and the fonts, themes and libraries that nothing else depends on.
 
-`src-system`
-: [kdos-appbox](#port-kdos-appbox), which starts and manages [boxed applications]{.idx term="box"} and writes their
-  launchers. It depends on `podman` and `distrobox`, which puts it in this phase; see
-  [kdos-appbox](../../kdos/04-programs/kdos-appbox.md).
+`kde`
+: The KDE Gear pieces that belong to no subject shelf: KIO workers, thumbnailers and the other
+  integration plugins. A Gear application itself sits on the shelf of its subject, as Dolphin on
+  `files`, Kate on `editors` and the games on the `games-*` shelves; the meta ports that name them
+  all are Part XIII's.
 
 ## What every application recipe shares
 
 The shape of an application's recipe, and the habits recurring through this phase's recipes, such
 as naming every optional dependency rather than leaving it to whatever happens to be installed, are
 in [A graphical application](../../kdos/05-developer/writing-ports.md#a-graphical-application). An
-application's [desktop entry]{.idx} is installed by its own port, which is what gives it a row in the [Start
-menu]{.idx term="Start menu"}; see
+application's [desktop entry]{.idx} is installed by its own port, which is what gives it a row in Kickoff,
+the [Application Launcher]{.idx term="Application Launcher"}; see
 [Desktop entries belong to the port](../../kdos/05-developer/writing-ports.md#desktop-entries-belong-to-the-port).
 
 A recipe here chooses which display backends its program is built with, where upstream offers a
 choice; it does not choose which one runs. The toolkits are built with both backends, and the
 login profile makes Wayland the first choice, as
-[Part XI](../11-toolkits/intro.md#the-toolkits-are-for-applications) shows. A program with no
+[Part XI](../11-toolkits/intro.md#qt-and-kde-frameworks-serve-the-desktop-too) shows. A program with no
 [Wayland]{.idx} path at all runs under [Xwayland]{.idx} with no change to its recipe.
 
 ## Which ports have full pages
 
-The one [Tier A]{.idx} port of this phase is `kdos-appbox`, as every program of KDOS's own is (see
-[The three tiers](../00-front/reading-a-package-page.md#the-three-tiers)).
+No port of this phase is named in `docs/kfs/data/tier-a.txt`, so none is [Tier A]{.idx} (see
+[The three tiers](../00-front/reading-a-package-page.md#the-three-tiers)). The box launcher
+`kdos-appbox` is Part XI's: the Boxes settings page and the Discover backend depend on it, so it
+is not a port nothing else needs.
 
 A large share of the others are [Tier B]{.idx}, and here the reasons are a `build.sh` longer than the
 threshold, a patch, or a vendor bundle; none is Tier B for having many dependants, because by the

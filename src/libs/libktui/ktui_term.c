@@ -242,12 +242,18 @@ static void detect_caps(void)
 	if (term && !strcmp(term, "linux"))
 		ktui_caps |= KT_CAP_LINUXVT;
 
-	if (ct && (strstr(ct, "truecolor") || strstr(ct, "24bit")))
+	/* Konsole answers 24-bit SGR whatever TERM it was given, and the TERM
+	 * it gives is a plain `xterm-256color`; a profile that unset
+	 * COLORTERM would otherwise draw in 256 colours. KONSOLE_VERSION is
+	 * the variable only Konsole sets. */
+	if ((ct && (strstr(ct, "truecolor") || strstr(ct, "24bit"))) ||
+	    (getenv("KONSOLE_VERSION") && term && strcmp(term, "linux")))
 		ktui_caps |= KT_CAP_TRUECOLOR;
 	else if (term && strstr(term, "256color"))
 		ktui_caps |= KT_CAP_256;
-	else if (term && (strstr(term, "foot") || strstr(term, "kitty") ||
-			  strstr(term, "alacritty") || strstr(term, "wezterm")))
+	else if (term && (strstr(term, "konsole") || strstr(term, "foot") ||
+			  strstr(term, "kitty") || strstr(term, "alacritty") ||
+			  strstr(term, "wezterm")))
 		ktui_caps |= KT_CAP_TRUECOLOR;
 	/* Anything else that is a terminal at all gets 256. Without this the
 	 * last branch of emit_sgr is reached, and that branch is a FIXED table

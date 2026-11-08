@@ -54,3 +54,7 @@ python3-flask
 python3-flask-cors
 python3-rns
 python3-lxmf
+
+python3-hyperlink
+python3-twisted
+python3-ytmusicapi

@@ -12,15 +12,20 @@ every console login ends in `agetty`, single-user mode is `sulogin`, and service
 [python3](#port-python3), [glib](#port-glib), [eudev](#port-eudev), [e2fsprogs](#port-e2fsprogs)
 and [lvm2](#port-lvm2).
 
-The build leaves out every program another package owns here. `login`, `su`, `nologin`, `chsh` and
-`chfn` are [shadow](#port-shadow)'s, and kpkg refuses to install a path a second package already
-claims ([Who owns a file](../../../../docs/kdos/03-architecture/packaging.md#who-owns-a-file)).
+The build leaves out every program another package owns here. `su`, `nologin`, `chsh` and `chfn`
+are [shadow](#port-shadow)'s, and `login` is [util-linux-login](#port-util-linux-login)'s, a
+second build of this tarball once PAM is installed; kpkg refuses to install a path a second
+package already claims
+([Who owns a file](../../../../docs/kdos/03-architecture/packaging.md#who-owns-a-file)).
 
 ## Flags
 - `--disable-chfn-chsh`, `--disable-login`, `--disable-nologin`, `--disable-su` — Build none of
-  these. shadow installs `chfn`, `chsh`, `login`, `nologin` and `su`, so util-linux's would collide
-  with its files; the `su` on the image is shadow's alone
+  these. shadow installs `chfn`, `chsh`, `nologin` and `su`, so util-linux's would collide with
+  its files; the `su` on the image is shadow's alone
   ([setuid binaries](../../../../docs/kdos/03-architecture/security-model.md#setuid-binaries)).
+  `login` needs PAM, which is a `41_system` port and not installed when this `30_foundation`
+  port builds; [util-linux-login](#port-util-linux-login) builds it from this tarball in
+  `41_system`.
 - `--disable-runuser` — Build no `runuser`. Like util-linux's `su` and `login`, it needs PAM, which
   is a `41_system` port; configure would otherwise build it or skip it depending on whether PAM
   happened to be installed.
@@ -66,7 +71,7 @@ claims ([Who owns a file](../../../../docs/kdos/03-architecture/packaging.md#who
   to. `write`, the other program the hook would touch, is off by upstream's default and is not
   built.
 - `--disable-makeinstall-setuid` — Do not make `mount` and `umount` setuid. Removable media go
-  through `kdos-mountd` instead, and these two are on the list of what is deliberately not setuid
+  through [udisks2](#port-udisks2) instead, and these two are on the list of what is deliberately not setuid
   ([setuid binaries](../../../../docs/kdos/03-architecture/security-model.md#setuid-binaries)).
 - `CPPFLAGS=-I/usr/include/utmps` — Compile against [utmps](#port-utmps)' `<utmpx.h>` instead of
   musl's, whose functions are stubs, so `agetty`, `last` and `utmpdump` read and write real login

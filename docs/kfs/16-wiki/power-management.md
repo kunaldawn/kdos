@@ -1,54 +1,59 @@
 # Power management
 
 This page covers suspending, powering off and rebooting a KDOS machine from the desktop and from
-a prompt, the power policy TLP applies, Intel thermal management, and the per-application energy
-report. A laptop's [battery]{.idx}, lid and brightness are on [Laptops](laptops.md), and the idle timers
-that dim, lock and blank the screen are on [Screen lock](screen-lock.md). KDOS has no logind and
-no systemd, so one root daemon, [kdos-powerd]{.idx}, stands between the desktop and
-`/sys/power/state`; why, and who may ask it for what, is in
-[kdos-powerd](../../kdos/04-programs/daemons.md#kdos-powerd).
+a prompt, the power profiles, the power policy TLP applies, Intel thermal management, and the
+per-application energy report. A laptop's [battery]{.idx}, lid and brightness are on
+[Laptops](laptops.md), and the idle timers that dim, lock and blank the screen are on
+[Screen lock](screen-lock.md). [elogind]{.idx} owns the machine's power state: it suspends, powers
+off and reboots for whoever polkit allows, and every program that must act around a suspend hooks
+into it. Inside a Plasma session, PowerDevil sets the policy.
 
 ## Installation
 
 | Port | Provides | Service script |
 |:--|:--|:--|
-| [kdos-powerd](#port-kdos-powerd) | The daemon `/usr/sbin/kdos-powerd` and its client `/usr/bin/kdos-power` | `55_powerd` |
-| [tlp](#port-tlp) | `tlp` and `tlp-stat`: power settings applied to `/sys`, with no daemon | `55_tlp` |
+| [elogind](#port-elogind) | `org.freedesktop.login1`: suspend, power-off and reboot, the inhibitors, the lid and power key outside a session, and `loginctl` | `40_elogind` |
+| [powerdevil](#port-powerdevil) | The session's power policy: idle actions, the lid, power and sleep keys, brightness, and the **Power Management** page of System Settings | none; the session starts it |
+| [tlp](#port-tlp) | `tlp` and `tlp-stat`: power settings applied to `/sys`, with no daemon, and its elogind sleep hook | `55_tlp` |
+| [tlp-pd](#port-tlp-pd) | The power profiles service PowerDevil and the battery applet switch between, and `tlpctl` | `56_tlppd` |
 | [thermald](#port-thermald) | Intel's thermal daemon | `54_thermald` |
 | [kdos-energyd](#port-kdos-energyd) | The per-application energy sampler and its client [`kdos-energy`]{.idx} | `56_energyd` |
 | [powertop](#port-powertop) | An interactive report of wakeups and power use, with tunables | none |
-| [upower](#port-upower) | The `org.freedesktop.UPower` service, for applications that ask the system bus about batteries | none; the system bus starts it when asked |
+| [upower](#port-upower) | The `org.freedesktop.UPower` service PowerDevil reads batteries from | none; the system bus starts it when asked |
 
 All of them are on the image, and the service scripts in the table are enabled on the live medium
 and on an installed system alike. `54_thermald` and `56_energyd` skip themselves on a machine with
 nothing for them to do; see
 [Services that skip themselves](../../kdos/02-user-guide/administration.md#services-that-skip-themselves).
 
-KDOS's own panel and battery notices read `/sys/class/power_supply` directly and do not ask
-`upower`.
-
 ## Configuration
 
-### /etc/init.d/55_powerd.sh
+### elogind
 
-`fs/etc/init.d/55_powerd.sh` starts the daemon under the supervisor:
+KDOS's settings for elogind, from `fs/etc/elogind/logind.conf.d/50-kdos.conf`:
 
-<!-- kfs:include fs/etc/init.d/55_powerd.sh -->
+<!-- kfs:include fs/etc/elogind/logind.conf.d/50-kdos.conf lines=37-48 pin=1b53338a5c9c -->
 
-The daemon has no configuration file. It admits `root`, `seat` and `wheel` to `suspend`, `poweroff`
-and `reboot`; see [Who may ask for what](../../kdos/04-programs/daemons.md#who-may-ask-for-what).
+The lid and power key settings apply at the greeter and at a console login; inside a Plasma
+session PowerDevil holds the key inhibitors and its own settings decide. `InhibitDelayMaxSec`
+gives the screen locker time to lock before the machine sleeps. Only suspend to RAM is offered,
+from `fs/etc/elogind/sleep.conf.d/50-kdos.conf`:
+
+<!-- kfs:include fs/etc/elogind/sleep.conf.d/50-kdos.conf lines=14-22 pin=9a46f7ee6d90 -->
 
 ### What runs around a suspend
 
-`kdos-powerd` tells NetworkManager and TLP about a [suspend]{.idx} itself
-(`src/daemons/kdos-powerd/main.c`):
+Before the machine sleeps, elogind sends `PrepareForSleep`, on which the screen locker locks and
+KWin blanks, and runs every program in `/usr/lib/elogind/system-sleep/` with `pre suspend`; after
+waking, with `post suspend`. TLP installs its hook there, `49-tlp-sleep`, and NetworkManager
+follows `PrepareForSleep` itself, built with elogind as its suspend and resume tracker.
 
-<!-- kfs:include src/daemons/kdos-powerd/main.c lines=189-214 pin=141a8599bfdb -->
+### Who may suspend
 
-The order and its reasons are in
-[What happens around a suspend](../../kdos/04-programs/daemons.md#what-happens-around-a-suspend).
-The client locks the screen before it asks; see
-[Suspend locks the screen first](../../kdos/04-programs/daemons.md#suspend-locks-the-screen-first).
+polkit answers: the `org.freedesktop.login1` actions for suspend, power-off and reboot are
+`allow_active` upstream, so the person at the machine in the active session needs no password,
+and anyone else is asked for an administrator's. KDOS adds no rule for them; see
+[sudo, PAM and polkit](sudo-pam-polkit.md).
 
 ### TLP
 
@@ -57,10 +62,14 @@ daemon, so nothing is supervised:
 
 <!-- kfs:include fs/etc/init.d/55_tlp.sh -->
 
-The recipe installs TLP without its systemd and elogind parts, with its drop-in directory at
-`/etc/tlp.d`:
+The recipe installs TLP without its systemd parts and with its elogind sleep hook in
+`/usr/lib/elogind/system-sleep`, with its drop-in directory at `/etc/tlp.d`:
 
-<!-- kfs:include ports/core/hardware/tlp/build.sh lines=12-19 pin=9a34546e1601 -->
+<!-- kfs:include ports/core/hardware/tlp/build.sh lines=12-19 pin=2c19e0e4a4e1 -->
+
+Battery charge thresholds are TLP's: `/etc/polkit-1/rules.d/50-kdos.rules` refuses PowerDevil's
+helper the two writes, so the battery page shows the limits TLP sets rather than one TLP would
+undo; see [Laptops](laptops.md).
 
 KDOS ships no TLP settings of its own, so upstream's defaults apply. TLP reads them in this order,
 each overriding the one before:
@@ -92,30 +101,35 @@ The daemon has no configuration, and its sampling interval cannot be changed. Se
 
 ### Suspending, powering off and rebooting
 
-From the desktop, the Start menu's footer and the System menu (a right click on the Start button)
-hold Lock Screen, Suspend, Restart, Shut Down and the item that ends the session, *Log Off* in the
-footer and *Log Out* in the System menu. Restart, Shut Down and the session item ask for
-confirmation first; Suspend does not. The sleep key suspends and the power button asks before it
-shuts down; see [Laptops](laptops.md#the-power-button-and-the-sleep-key).
+From the desktop, the Application Launcher's Leave buttons, and `Ctrl+Alt+Del`, which opens the
+logout screen with Sleep, Restart, Shut Down and Log Out. The battery and brightness applet in the
+tray switches the power profile. The sleep key suspends and the power button opens the logout
+screen, as System Settings → **Power Management** sets them; see
+[Laptops](laptops.md).
 
-From a prompt, as a member of `seat` or `wheel`:
+From a prompt:
 
 ```bash
-kdos-power suspend      # lock the session, then suspend to RAM
-kdos-power poweroff
-kdos-power reboot
-kdos-power ping         # exit status 0 when the daemon answers and would let you suspend
+loginctl suspend
+loginctl poweroff
+loginctl reboot
 ```
 
-`kdos-power --no-lock suspend` suspends without locking, and so does setting
-`KDOS_NO_LOCK_ON_SUSPEND=1` in its environment. Over SSH, or at a text console, the ordinary
-`sudo poweroff` and `sudo reboot` work as well.
+`kdos-power suspend`, `poweroff` and `reboot` are the same three, run through `loginctl`. Over SSH,
+where polkit asks for an administrator, `sudo loginctl poweroff` or `sudo poweroff` work as well.
 
-Hibernation is not offered: the initramfs sets up no resume device, although the kernel lists
-`disk` in `/sys/power/state`.
+Hibernation is not offered: `sleep.conf.d` turns it off, and the initramfs sets up no resume
+device.
 
-A suspend itself has not been carried out on the test rig, whose virtual machine is killed rather
-than woken; the refusal and `kdos-power ping` have.
+### Switching the power profile
+
+```bash
+tlpctl list               # power-saver, balanced, performance, and which is in force
+tlpctl set power-saver
+```
+
+or the profile slider in the battery and brightness applet. Each switch runs `tlp power-saver`,
+`tlp balanced` or `tlp performance`, so TLP's own settings stay the tuning under every profile.
 
 ### Reading what TLP has applied
 
@@ -172,8 +186,7 @@ the next `tlp start` or boot. `sudo tlp-stat -s` shows which profile is in force
 
 1. `kdos-energy` prints the report: each application's share of the energy that could be
    attributed, over the time the daemon has been sampling. `kdos-energy --json` prints it as JSON.
-2. The Energy page of `kdos-res`, and a right click on the panel's meters strip, show the same
-   report.
+2. System Monitor's KDOS page shows the same report, from the `ksystemstats-kdos` sensors.
 
 The answer is a share, never watt-hours, and it covers the processor package only. Root and
 members of `wheel` may read it.
@@ -187,76 +200,59 @@ members of `wheel` may read it.
 
 ## Tips
 
-- `kdos doctor` checks that `kdos-powerd` and [`kdos-energyd`]{.idx} are running, and says when the
+- `kdos doctor` checks that elogind and [`kdos-energyd`]{.idx} are running, and says when the
   machine has no RAPL counter for `kdos-energyd` to read.
+- `loginctl` with no argument lists the sessions; `systemd-inhibit` is not on the image, but
+  `qdbus6 --system org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager.ListInhibitors`
+  lists who is holding off a suspend or the lid.
 - `cat /sys/power/mem_sleep` shows which suspend state `mem` means on this machine, the one in
   brackets; `mem_sleep_default=deep` on the kernel command line asks for S3 where the firmware
   offers both. See [Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md).
-- Every refused `kdos-powerd` request is logged with the caller's uid, so a power key that does
-  nothing can be traced: `grep kdos-powerd /var/log/messages` shows lines such as
-  `kdos-powerd: refused uid 1001 (not root and in neither seat nor wheel)`. The system log is
-  described on [Logs](logs.md).
 - Most virtual machines have no RAPL counter, so `56_energyd` skips itself there, logging
-  `[SKIP] kdos-energyd: no readable RAPL energy domain` in `/run/kdos-init.energyd.log`, and
-  `kdos doctor` reports `[skip] no RAPL energy domain on this machine — per-app energy cannot be
-  measured here at all`, which leaves its exit status 0. On an AMD host the guest's thermald is skipped as not Intel; on most Intel hosts
-  the guest's thermald exits with its status 2.
+  `[SKIP] kdos-energyd: no readable RAPL energy domain` in `/run/kdos-init.energyd.log`. On an AMD
+  host the guest's thermald is skipped as not Intel; on most Intel hosts the guest's thermald exits
+  with its status 2.
 - `upower -e` lists what the UPower service sees; with no battery that is only
-  `/org/freedesktop/UPower/devices/DisplayDevice`. The first call starts the service.
+  `/org/freedesktop/UPower/devices/DisplayDevice`.
 
 ## Troubleshooting
 
-**``kdos-power: no kdos-powerd — `service start powerd` ``.** The daemon is not running. Start
-it with the command the message names:
+**`loginctl suspend` is refused, or asks for a password.** The caller is not in the active local
+session: an SSH login, or a session switched away from. Use `sudo`, or suspend from the desktop.
 
-```bash
-sudo service start powerd
-```
+**Suspend does nothing.** Something holds a sleep inhibitor; list them as in [Tips](#tips). Read
+elogind's log: `grep elogind /var/log/messages`.
 
-Then read why it stopped. The supervisor's log is readable by root only:
+**The machine suspends but the network is gone after waking.** NetworkManager follows elogind's
+`PrepareForSleep`; check that both run (`service status networkmanager`, `service status
+elogind`).
 
-```bash
-sudo cat /run/kdos-svc.kdos-powerd.log
-grep kdos-powerd /var/log/messages
-```
-
-**`kdos-power suspend` prints `kdos-power: err not permitted`.** The account is in neither
-`seat` nor `wheel`; `id` shows the groups. `kdos-power ping` asks the same question without
-suspending: it prints nothing and exits 0 when allowed, and prints the same refusal and exits 1
-when not. `kdos-powerd --explain <user>` needs no privilege and says whether that account would be
-let in, and through which group.
-
-**The machine suspends but the network is gone after waking.** NetworkManager is told to sleep and
-wake around the suspend only through `dbus-send`; check that NetworkManager is running
-(`service status networkmanager`) and that the system bus is up (`service status dbus`).
-
-**`kdos-power: no lock confirmation within 2s — suspending anyway`.** The lock screen did not
-confirm in time, and the client suspends regardless, so the session may wake unlocked. See
+**The session wakes unlocked.** The screen locker had no time to lock: check that
+`InhibitDelayMaxSec` in `/etc/elogind/logind.conf.d/50-kdos.conf` is not lowered, and see
 [Screen lock](screen-lock.md#troubleshooting).
 
 **`kdos-energy` says the daemon is not running.** The message is
 ``kdos-energy: no kdos-energyd — `service start energyd` ``. Check `service status energyd`
-(`[DOWN] kdos-energyd` when it is not running), and start it with `sudo service start energyd`. On a machine with no `/sys/class/powercap/*/energy_uj` it cannot run.
+(`[DOWN] kdos-energyd` when it is not running), and start it with `sudo service start energyd`.
+On a machine with no `/sys/class/powercap/*/energy_uj` it cannot run.
 
 **The fan runs hard on an Intel laptop.** Check that thermald runs (`service status thermald`)
 and what TLP set for the processor (`sudo tlp-stat -p`).
 
 ## Known gaps
 
-- [The power button and the sleep key work only inside a graphical session](../../kdos/06-reference/known-gaps.md#the-power-button-and-the-sleep-key-work-only-inside-a-graphical-session)
 - [Broad hardware support is not a goal](../../kdos/06-reference/known-gaps.md#broad-hardware-support-is-not-a-goal)
 - [`kdos doctor` cannot check hardware a machine does not have](../../kdos/06-reference/known-gaps.md#kdos-doctor-cannot-check-hardware-a-machine-does-not-have)
 
 ## See also
 
-- [kdos-powerd](../../kdos/04-programs/daemons.md#kdos-powerd) and
-  [kdos-energyd](../../kdos/04-programs/daemons.md#kdos-energyd): the two daemons
+- [kdos-energyd](../../kdos/04-programs/daemons.md#kdos-energyd): the energy sampler
 - [Locking, idle and power](../../kdos/02-user-guide/desktop.md#locking-idle-and-power)
-- [Services](../../kdos/02-user-guide/administration.md#services): `54_thermald`, `55_powerd`,
-  `55_tlp` and `56_energyd`
+- [Services](../../kdos/02-user-guide/administration.md#services): `40_elogind`, `54_thermald`,
+  `55_tlp`, `56_tlppd` and `56_energyd`
 - [Services with no daemon](../../kdos/02-user-guide/administration.md#services-with-no-daemon):
   why `service status tlp` prints TLP's summary
-- [polkit, and why the desktop has no authentication agent](../../kdos/03-architecture/security-model.md#polkit-and-why-the-desktop-has-no-authentication-agent)
+- [polkit and the authentication agent](../../kdos/03-architecture/security-model.md#polkit-and-the-authentication-agent)
 - [Laptops](laptops.md): the lid, the backlight and the battery readout
 - [Screen lock](screen-lock.md): what locks the session and how to unlock it
 - [Logs](logs.md): where each daemon's output goes and how to read it
@@ -265,4 +261,4 @@ and what TLP set for the processor (`sudo tlp-stat -p`).
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 401.* Previous: [400. Graphics drivers](graphics-drivers.md) · [Contents](../README.md) · Next: [402. Laptops](laptops.md)
+*Part XVI. System administration, chapter 425.* Previous: [424. Graphics drivers](graphics-drivers.md) · [Contents](../README.md) · Next: [426. Laptops](laptops.md)

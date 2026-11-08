@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = krfb
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = d9655fb6d88c1b6caf545dda7a33b7f722b5bfcf3437b63cc0eaf1040c8573ee  krfb-26.08.2.tar.xz
+description = Desktop sharing — serve this screen over VNC, through the PipeWire screencast portal on Wayland
+homepage    = https://apps.kde.org/krfb/
+license     = GPL-2.0-or-later AND GPL-3.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND BSD-3-Clause AND GFDL-1.2-only AND CC0-1.0
+depends     = cmake ninja pkgconf extra-cmake-modules qt6-qtbase qt6-qtwayland wayland ki18n kconfig kcoreaddons kdbusaddons kdnssd kdoctools knotifications kwallet kwidgetsaddons kwindowsystem kxmlgui kstatusnotifieritem kcrash libX11 libXext libXdamage libXtst libxcb xcb-util-image libvncserver kpipewire pipewire plasma-wayland-protocols kwayland

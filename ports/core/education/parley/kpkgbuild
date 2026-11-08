@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = parley
-version     = 26.08.1
+version     = 26.08.2
 release     = 1
 source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
-sha256      = f75ad6da8d9b867ed24d7275333902269983d094d06a32971d6c929cd6523306  parley-26.08.1.tar.xz
+sha256      = e60f02e6d253e01ef4ec773f35ba27251975e00d20dbd95e9809a1d01fe8416e  parley-26.08.2.tar.xz
 description = KDE vocabulary trainer — spaced repetition over KVTML word lists, with themes and HTML export
 homepage    = https://apps.kde.org/parley/
 license     = GPL-2.0-or-later

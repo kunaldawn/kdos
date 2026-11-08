@@ -16,17 +16,11 @@ cmake -S . -B build -G Ninja \
 	-D KDE_INSTALL_USE_QT_SYS_PATHS=ON \
 	-D BUILD_TESTING=OFF \
 	-D KF_SKIP_PO_PROCESSING=ON \
-	-D BUILD_KSECRETD=OFF \
+	-D BUILD_KSECRETD=ON \
 	-D BUILD_KWALLETD=ON \
-	-D BUILD_KWALLET_QUERY=OFF \
-	-D CMAKE_DISABLE_FIND_PACKAGE_Gpgmepp=ON \
+	-D BUILD_KWALLET_QUERY=ON \
+	-D CMAKE_REQUIRE_FIND_PACKAGE_Gpgmepp=ON \
+	-D CMAKE_REQUIRE_FIND_PACKAGE_KF6DocTools=ON \
 	-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build
-
-install -d "$PKG/etc/xdg"
-cat > "$PKG/etc/xdg/kwalletrc" <<'CONF'
-[KSecretD]
-Enabled=false
-CONF
-chmod 644 "$PKG/etc/xdg/kwalletrc"

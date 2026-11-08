@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = ki18n
-version     = 6.30.0
+version     = 6.31.0
 release     = 1
 source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
-sha256      = dfbfc8af89b3bc68810b094bf87746db87c3eeb35b75caeb1882681ebed563bd  ki18n-6.30.0.tar.xz
+sha256      = 9fa271c7a33b856451de1ed3ff105626c2763fbd3b11d3210b02cb30de43f2ba  ki18n-6.31.0.tar.xz
 description = KDE Frameworks: gettext-based translation for Qt programs
 homepage    = https://api.kde.org/frameworks/ki18n/html/
 license     = LGPL-2.0-or-later AND ODbL-1.0 AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND CC0-1.0

@@ -14,10 +14,6 @@ with a QML interface on [kirigami](#port-kirigami), drawn through
   package-wide English-only rule would remove anyway (see
   [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
 
-## Patches
-
-- `app-id.patch` — In upstream's desktop entry, replaces `MimeType=inode/directory;` with `StartupWMClass=org.kde.filelight`. The class names the app_id Filelight's window carries, its desktop file name. The MIME type is dropped because with it a folder could open in the disk-usage view instead of the file manager.
-
 ## Notes
 
 Kirigami and qqc2-desktop-style are QML modules imported at run time. Upstream's CMake only

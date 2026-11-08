@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/kiosk-get-new.patch"
+
 export LDFLAGS="$LDFLAGS -Wl,--strip-debug"
 
 cmake -S . -B build -G Ninja \

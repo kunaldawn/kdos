@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdenetwork-filesharing
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 480ac034d1186111ddc652e1aea419b98e32e14d5d114291e834b2cb3f70475d  kdenetwork-filesharing-26.08.2.tar.xz
+description = Dolphin properties pages that share a folder over Samba and edit its access control list
+homepage    = https://invent.kde.org/network/kdenetwork-filesharing
+license     = (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND GPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND BSD-3-Clause AND MIT AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kauth kcompletion kconfig kcoreaddons ki18n kio kwidgetsaddons qcoro samba shadow avahi

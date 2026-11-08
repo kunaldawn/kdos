@@ -8,14 +8,16 @@ what happens when an application is installed, and for contributors working on `
 `kdos-box`, the same program under a second name), `kdos-pack`, `kdos-packd`, `kdos-boxinit` or the
 catalogue. If you only want to install and use applications, read
 [Applications](../02-user-guide/applications.md) first; this chapter is the machinery underneath it.
-[Principles](../01-philosophy/principles.md#toolkits-are-for-applications-not-the-desktop) explains
-which applications are native ports instead, and why.
+[Principles](../01-philosophy/principles.md#applications-bring-their-own-toolkit) explains
+which applications are native ports instead, and why. Discover is the graphical face of all of it:
+its KDOS backend lists the catalogue, the packs in the store and on the boot medium and the boxes,
+and installs and removes them through the same commands this chapter describes.
 
 Seven terms carry the chapter:
 
 | Term | Meaning |
 |---|---|
-| **Box** | A rootless container that one application, or a working environment, runs in. By default it shares your home directory, `/tmp`, `/run/user/<uid>`, the host's network, IPC and process namespaces, and `/dev`; a box profile can narrow each of these (see [The box](#the-box)) |
+| **Box** | A rootless container that one application, or a working environment, runs in. By default it shares your home directory, `/tmp`, the host's network, IPC and process namespaces, and `/dev`, and sees a runtime directory of its own at `/run/user/<uid>`; a box profile can narrow each of these (see [The box](#the-box)) |
 | **Catalogue** | The shipped list of every application KDOS knows how to build, expressed as Debian packages. It is not the [ports catalogue](../06-reference/ports-catalogue.md), which lists the host's own recipes |
 | **Pack** | A single file holding a read-only filesystem image (EROFS) with metadata, an icon and signatures appended. Extension `.kpack` |
 | **Runtime** | A layer shared by many applications, such as the GTK or Qt libraries, sitting between the base and an application |
@@ -50,13 +52,18 @@ upward they behave the same.
 | Box base | `image:kdos/<id>` | `pack:<id>` |
 
 The store lane is the ordinary route on a machine with a network. The import lane is the route on a
-machine without one, and the one that carries a verification KDOS itself performs.
+machine without one, and the one that carries a verification KDOS itself performs. Discover prefers
+the import lane on its own: a catalogue row whose pack is already in the pack store or on the boot
+medium is installed as a box over that pack, offline, and only a row with no pack anywhere is built
+by the store lane, which Discover says reaches the Debian archive before it starts. A `.ktar` set or
+a `.kpack` file opened from a file manager, or offered when a stick holding one is mounted, opens in
+Discover, which imports it through the same daemon.
 
 ## The catalogue
 
 `src/system/kdos-appbox/catalogue` defines what can be built, and is installed to
-`/usr/share/kdos/appstore/catalogue`. The store lane, the installer (`kinstall`) and `kdos app` all
-read this one file; there is no second copy and no generated index, so a row added here is offered
+`/usr/share/kdos/appstore/catalogue`. The store lane, Discover's KDOS backend, the installer
+(`kinstall`) and `kdos app` all read this one file; there is no second copy and no generated index, so a row added here is offered
 by every surface.
 
 A row reads `<kind> <id> <parent> <apt packages…>`. The parent is a row id, never an image tag; the
@@ -79,7 +86,7 @@ counts every line kind in the shipped file:
 | `deb` | An application Debian does not carry, `deb <row> <releases-api-url> <asset-pattern>` | 1 |
 | `needs` | A data row an application is useless without, `needs <app> <data>` | 0 |
 | `graft`, `boxgraft` | Where a data row's contents should appear, `graft <data> <path-in-pack> <destination>` | 2 and 1 |
-| `group` | A curated bundle `kdos-store` and the installer offer as one tick | 17 lines, 7 groups |
+| `group` | A curated bundle that Discover, the installer and `kdos app install` offer as one choice | 17 lines, 7 groups |
 | `meta` | Display name, category, size estimate and tagline | 75: one for each `app` and `data` row |
 
 **Rows may stand in any order, with one exception.** The whole file is read before any chain is
@@ -131,7 +138,7 @@ audio client libraries (`libpulse0`, `libasound2-plugins`) are in the base for t
 
 That placement is the difference between a box that draws and decodes video on the graphics card
 and one that does both on the CPU. The render nodes are bound into every box by default (see
-[the `gpu` key](#the-graphics-card-and-the-two-profile-keys)) and the compositor
+[the `gpu` key](#the-graphics-card-and-the-two-profile-keys)) and KWin
 offers `linux-dmabuf` wherever there is a card; what decides whether video is decoded in hardware
 is `libva` plus a `*_drv_video.so` beside it. A browser whose stack has neither reports no hardware
 decoder and decodes every frame on the CPU.
@@ -183,6 +190,12 @@ a second name (a symlink); its verbs are listed in
 [kdos-appbox: kdos-box](../04-programs/kdos-appbox.md#kdos-box).
 Nothing rolls back: six applications where the fourth fails leaves five installed and names the
 fourth, because an installed application is not damaged by a later one failing.
+
+A Debian package the catalogue does not name can be installed the same way, as
+`kdos-appbox install deb:<package>`, which is how Discover's Debian lane installs one. The box is
+`deb.<package>` (each `+` written `_`) over an image `kdos/deb.<package>`, the `base` row with that one
+package installed on top. The name reaches apt-get's argument list inside the generated build file,
+so a name outside Debian's own policy for package names is refused before anything is built.
 
 `kdos-appbox uninstall` removes the box, then the application's image, then each runtime image
 above the base that no remaining box's chain still names. The question is asked of the catalogue
@@ -300,7 +313,7 @@ parses back to the same values.
 |---|---|---|
 | `id` | no | The pack's identity: `[A-Za-z0-9._-]`, not starting with `.` or `-`, under 64 bytes. It becomes a filename in the pack store, so this rule is about safety |
 | `kind` | no | `base`, `runtime`, `app` or `data` |
-| `name`, `summary`, `description`, `category`, `licence` | `description` only | What `kdos-store` and `kdos-pack info` show |
+| `name`, `summary`, `description`, `category`, `licence` | `description` only | What Discover and `kdos-pack info` show |
 | `version`, `release`, `arch` | no | `version` is required; `release` defaults to `1` and `arch` to `x86_64` |
 | `requires` | yes | Another pack this one sits on: `rt-gtk`, or `rt-gtk >= 1` with `>=`, `>`, `=`, `<=` or `<` |
 | `provides` | yes | A name a `requires` line may name instead of an id |
@@ -667,27 +680,48 @@ first reboot and then fail to start, with nothing wrong in the box itself.
 
 ## The box
 
-The two lanes create their containers differently:
+Both lanes create their containers the same way, with `podman create`, and differ only in what the
+root is:
 
-- **A store box** is a distrobox container created from the image `kdos/<id>` (base
-  `image:kdos/<id>`). distrobox is a wrapper that creates and initialises podman containers for
-  interactive use, and its own init sets the container up.
+- **A store box** (base `image:kdos/<id>`) is created over the image the store lane built for its
+  catalogue row, and keeps its own writes in the container.
 - **A pack box** (base `pack:<id>`) is created by `podman create --rootfs` over the merged overlay
-  directly, with no image. It is labelled `manager=kdos-box`, runs `--userns keep-id`, and uses
-  `kdos-boxinit` as its init. A box composed on first launch records `base=pack:<id>` in its
-  profile, so every tool that asks what a box is made of gets the pack rather than an image name.
+  directly, with no image. A box composed on first launch records `base=pack:<id>` in its profile,
+  so every tool that asks what a box is made of gets the pack rather than an image name.
 
-In both lanes podman handles the hard parts of a container (user-namespace mapping, seccomp,
-cgroups, and the `conmon` monitor process that KDOS tools identify a box by), and a launch waits for
-the same readiness marker, `container_setup_done`, in either lane.
+Both are labelled `manager=kdos-box`, run `--userns keep-id` and use `kdos-boxinit` as their init.
+A third kind exists only when somebody asks for it: `kdos-box create <name> base=image:<ref>` over
+any other container image is a distrobox container, created and initialised by distrobox's own init,
+and it shares the session's runtime directory as distrobox does. In every case podman handles the
+hard parts of a container (user-namespace mapping, seccomp, cgroups, and the `conmon` monitor
+process that KDOS tools identify a box by), and a launch waits for the same readiness marker,
+`container_setup_done`.
 
-A pack box is created with the flag set distrobox uses for the same job, so an application behaves
-the same in either lane. The box shares a user namespace with you (`--userns keep-id`), so the files
-in your home belong to the same user inside and out. It shares the host's network, IPC and process
-namespaces unless its profile asks for its own, because the session bus, the Wayland socket and
-PipeWire live in `/run/user/<uid>`, which is bound in with `/tmp`, `$HOME` and `/dev/shm`. It runs
-with SELinux labelling disabled and AppArmor unconfined, because the host runs neither and a
-profile that is not loaded is a denial rather than a policy. `/run` and `/run/lock` are tmpfs,
+A box is created with the flag set distrobox uses for the same job, so an application behaves the
+same whatever its box is made of, and one flag distrobox does not have. The box shares a user
+namespace with you (`--userns keep-id`), so the files in your home belong to the same user inside
+and out. It shares the host's network, IPC and process namespaces unless its profile asks for its
+own, and `/tmp`, `$HOME` and `/dev/shm` are bound in. Its `/run/user/<uid>` is **its own runtime
+directory**, `$XDG_RUNTIME_DIR/kdos/box/<box>` on the host, which holds only:
+
+| Entry | What it is |
+|---|---|
+| `wl[.<stem>]@<display>` | The box's tagged Wayland sockets, one per launcher, held by `kdos-boxsock` |
+| `dbus-proxy` | Its filtered session bus, an `xdg-dbus-proxy` the box's keeper runs |
+| `pipewire-0`, `pulse/native` | Hard links to the session's audio sockets: a socket's inode is what a `connect()` reaches, so the link is the same socket and the session's directory stays out of the box |
+| `at-spi/` | The accessibility bus, linked the same way, only while assistive technology is in use or the user created `~/.config/kdos/a11y` |
+| `doc/` | Where the document portal's mount is bound, so a file the portal hands the box is a path that exists in it |
+| `Xauthority` | The session's X11 cookie, only for a box whose `x11` key resolves to yes |
+
+The session's own `wayland-0` and `bus` are never in it. KWin's tag filters only what reaches the
+tagged socket, so a box that could open `wayland-0` would be one `connect()` from every interface
+the tag denies, which is why `kdos-appbox` has no fallback to the session's socket: a box whose
+`kdos-boxsock` fails does not start, and the reason is printed. The box profiles directory is bound
+read-only over the shared home, because KWin reads each box's `grant` key there and a box that
+could write its own profile would grant itself the desktop.
+
+The box runs with SELinux labelling disabled and AppArmor unconfined, because the host runs neither
+and a profile that is not loaded is a denial rather than a policy. `/run` and `/run/lock` are tmpfs,
 because a pack is read-only and `/run` must be writable. The exact flag set, and what each flag is
 for, is in
 [kdos-appbox: What a pack box is created with](../04-programs/kdos-appbox.md#what-a-pack-box-is-created-with).
@@ -697,13 +731,13 @@ account; many applications refuse to run as root. Ownership grants nothing eithe
 packs are mounted `nosuid`.
 
 **`kdos-boxinit`** is installed at `/usr/libexec/kdos/kdos-boxinit` and bind-mounted read-only into
-every pack box at `/usr/libexec/kdos-boxinit`, where it runs as process 1. It:
+every box KDOS creates at `/usr/libexec/kdos-boxinit`, where it runs as process 1. It:
 
 1. writes records for a user and group matching yours into `/etc/group` and `/etc/passwd`, and a
    locked password into `/etc/shadow`, since nothing logs in to a box;
 2. creates your home directory if it is missing, which only happens for a box with a private home;
 3. writes `/usr/local/bin/xdg-open`, which hands links and files to the host's OpenURI portal over
-   the shared session bus, and links `x-www-browser` and `sensible-browser` to it;
+   the box's session bus, and links `x-www-browser` and `sensible-browser` to it;
 4. writes `/etc/asound.conf` where the PulseAudio ALSA plugin exists, so ALSA's `default` in the box
    is the host's sound server;
 5. sets a search path that includes `/usr/games`, and `HOME` to your home directory;
@@ -719,8 +753,49 @@ binary linked against the host's C library would look for its loader and not fin
 `kdos-boxinit` replaces a pack's existing record for your user rather than keeping it. A base pack
 shipping an account whose home directory is `/` would otherwise give every application `HOME=/`, so
 none reads any configuration in your real home, and a boxed application comes up in its toolkit's
-default light theme on the dark KDOS desktop, with the palette sitting correctly in a home it never
+default theme rather than the desktop's, with the settings sitting correctly in a home it never
 looked at.
+
+### The box's identity on the desktop
+
+Every window a box opens is known to the desktop by the box's **launcher id**: `<box>` for a box
+with one launcher, `<box>.<stem>` for each launcher of a box with several. `kdos-boxsock`, one
+process per launcher started by the first launch in a session, binds the launcher's Wayland socket
+in the box's runtime directory and registers it with KWin through the security-context protocol,
+with the launcher id as the app id, the box as the instance id, and `io.kdos.appbox` plus the state
+of the box's boundary as the sandbox engine. KWin replaces the window's own application id with
+that app id, so the Task Manager, the window rules and the window's icon all look for a desktop
+entry of exactly that name, which is what [the launchers](#reaching-the-desktop) are called. The
+instance id is what KWin reads the box's `grant` by, and what the title bar's box glyph and the
+Task Manager's tooltip name.
+
+The engine carries one of two states, and `kdos-appbox` records which in
+`$XDG_RUNTIME_DIR/kdos/boxes/<box>.state`:
+
+| State | Means |
+|---|---|
+| `confined` (engine `io.kdos.appbox+private`) | The box's own runtime directory with no `wayland-0` and no `bus`, a filtered bus, and no X11 display |
+| `tagged` (engine `io.kdos.appbox+tagged`) | The tag holds for clients on the tagged socket, and the box has a way past it: the session's runtime directory (a distrobox box), or an X11 display, through which Xwayland, one client to KWin, draws untagged |
+
+Each box's title bars are drawn in the colour scheme of its accent, by a KWin window rule
+`kdos-appbox` writes per box; see
+[Window rules KDOS writes](window-model.md#window-rules-kdos-writes). A box's processes run in a
+cgroup scope named the way an application's scope is named elsewhere, `app-kdos-<box>-<n>.scope`
+under the login session's delegated subtree, which is the shape System Monitor and the desktop
+portal read an application id out of. Where the session's cgroup does not let an unprivileged
+process move into that subtree, the box is created under podman's own default instead, where the
+profile's `memory`, `cpus` and `pids` are enforced by nothing, and `kdos-box profile` says so.
+
+### Throwaway boxes
+
+`kdos-appbox throwaway [--pack <id>] <file>`, which Dolphin's "Open in a throwaway box" runs,
+opens one file in a box made for it and removed when the application exits. The box is a copy of
+the boxed handler of the file's type (or of `--pack`), named `<launcher-id>.tw<pid>` so its windows
+keep the application's launcher id, icon and colour, and sealed: no network but loopback, an empty
+private home, a writable layer destroyed with the container, private devices, processes, IPC and
+`/tmp`, a profile that grants nothing, and the one file bound read-only at its own path with
+nothing beside it. A throwaway is refused while the same single-instance application runs in its
+own box, because the file would be handed to that copy over the bus.
 
 ### The graphics card and the two profile keys
 
@@ -740,22 +815,12 @@ resolves to software gets `LIBGL_ALWAYS_SOFTWARE=1`. The key is advisory, an env
 and it governs GL and EGL only. VA-API and Vulkan find the render node their own way, which is why
 that is the `gpu` key's job.
 
-A boxed client draws with its own Mesa and connects to `kdos-comp` as an ordinary Wayland client on
-the socket named in `WAYLAND_DISPLAY`. Both keys default to the card, because the nodes and the
+A boxed client draws with its own Mesa and connects to KWin as an ordinary Wayland client on the
+tagged socket named in `WAYLAND_DISPLAY`. Both keys default to the card, because the nodes and the
 drivers are already there and a box drawing in software on a machine with a render node gains
-nothing.
-
-That socket is a per-box one held open by `kdos-boxsock`, a small per-box helper that binds it
-with the `security-context-v1` Wayland protocol. The compositor tags every client that connects on
-it, and that tag is what the compositor's allowlist uses to filter screen capture (screencopy),
-clipboard managers (data-control), input methods and layer-shell surfaces (panels and overlays).
-The tag filters those protocols; it does not isolate the box. The box shares
-`$XDG_RUNTIME_DIR` with the session, so a client that opens the default `wayland-0` reaches the
-session's own socket. Withholding the variable would advertise a confinement the sandbox does not
-have, which is why no profile key withholds it. The allowlist itself is in
-[The security model: Sandboxed clients](security-model.md#sandboxed-clients); a box profile's
-`grant` key opens named protocols past it for that one box (see
-[Granting a box more than the allowlist](session.md#granting-a-box-more-than-the-allowlist)).
+nothing. What the tag refuses a boxed client, and the `grant` vocabulary that opens named
+interfaces again for one box, are in
+[The security model: Sandboxed clients](security-model.md#sandboxed-clients).
 
 ### The environment a box is given
 
@@ -805,10 +870,23 @@ boxgraft data.tesseract-langs   usr/share/tesseract-ocr/5/tessdata  tessdata
 ```
 
 A graft never replaces something that is not a symlink: an existing real file or directory at the
-destination is left alone and logged. Every graft made is recorded in
-`/var/lib/kdos/pack-manifest`, one `<id><TAB><path>` line each, so `ungraft <id>` removes exactly
-what was added, and only a symlink is removed, because a real directory at that path belongs to
-someone else.
+destination is left alone and logged. Every graft made is recorded in `pack-manifest` inside the
+pack store, `/var/lib/kdos/packs/pack-manifest`, one `<id><TAB><path>` line each and never the same
+line twice, so `ungraft <id>` removes exactly what was added, and only a symlink is removed,
+because a real directory at that path belongs to someone else. Each change rewrites the file whole,
+to a temporary name renamed over it, under an `flock` of `pack-manifest.lock` beside it.
+
+The record is the store's and not a root's. On an A/B machine the store is `/home/.kdos/packs`,
+bound onto `/var/lib/kdos/packs` in both slots, while a host graft is a link in the `/usr/share` of
+the root the daemon ran in. So when the daemon starts, before its first request, it makes every
+host graft the record names for a data pack in the store and this root lacks, mounting the pack
+first: a data pack grafted while the other slot was being filled and armed is in place in that
+slot after the switch. An `ungraft` removes the links of the root it runs in and puts the paths it
+dropped on `pack-manifest.ungrafted` beside the record; at start, before regrafting, the daemon
+unlinks each of those paths the record does not name, and only while it is a symlink into the
+store's mountpoints, so the other slot's link goes when that slot starts. A later `graft` of the
+same path takes it off the list. A box graft is under `$HOME`, which both slots share, and needs
+nothing.
 
 The catalogue's grafts travel with an exported pack: `kdos-appbox export` writes a data row's
 `graft` and `boxgraft` rows into its pack's metadata. `kdos-appbox import` reads each pack's kind
@@ -832,12 +910,11 @@ one of four routes, decided in this order:
 | Over the network | The machine has a default route | Runs `kdos-appbox install <group>…`: podman and apt, which takes minutes |
 | At first login | Neither of the above | Writes the selection to `/var/lib/kdos/apps-pending` and builds nothing |
 
-With a pending selection, the first session shows a notification offering the applications, and
-`kdos app install --pending` does the build. It tries to delete the file after a clean run, but it
-runs as the user and the file is root's in a root-owned directory, so the file stays until root
-removes it; a partial run loses nothing
-([Applications chosen during installation](session.md#applications-chosen-during-installation)).
-The offer is made once; deleting `~/.config/kdos/apps-offered` brings it back at the next login.
+With a pending selection, Discover lists the applications under "Selected during install", and a
+notice says so once for each version of the list and is withdrawn when the list names nothing.
+`kdos app install --pending` builds them from the command line. It tries to delete the file after a
+clean run, but it runs as the user and the file is root's in a root-owned directory, so the file
+stays until root removes it; a partial run loses nothing.
 
 The page shows which route applies before the install starts, because a person must not discover at
 first boot that nothing was installed. Building can take most of an hour, and an installer that did
@@ -849,8 +926,8 @@ not to abandon a partitioned disk.
 
 ## Reaching the desktop
 
-`kdos-appbox genlaunchers` makes installed applications appear in your menus and on your command
-line. It has four forms:
+`kdos-appbox genlaunchers` makes installed applications appear in the application menu, KRunner,
+the Task Manager and "Open With", and on your command line. It has four forms:
 
 | Form | Reads | Writes |
 |---|---|---|
@@ -859,43 +936,49 @@ line. It has four forms:
 | `genlaunchers --packs-dir <dir> <fs-root>` | One extracted pack per subdirectory of `<dir>`, named after the pack | The system tree under `<fs-root>` |
 | `genlaunchers <desktop-dir> <fs-root>` | One directory of desktop entries | The system tree under `<fs-root>` |
 
-The system tree is `/etc/skel/.local/share/applications`, `/usr/share/kdos/alien-apps` and
-`/usr/local/bin`; the build's `script/phases/70_image/030_launchers.sh` runs the `--packs-dir` form,
-which with no packs on the medium clears any stale launchers (its place in the build is in
-[How KDOS is built](../05-developer/how-kdos-is-built.md#packaging-70_image)). Your own tree is
-`$XDG_DATA_HOME/applications` and `$XDG_DATA_HOME/kdos/alien-apps`, which are
-`~/.local/share/applications` and `~/.local/share/kdos/alien-apps` when the variable is unset, plus
+The system tree is `/etc/skel/.local/share/applications`, `/etc/skel/.local/share/icons`,
+`/etc/skel/.config/kwinrulesrc`, `/usr/share/kdos/alien-apps` and `/usr/local/bin`; the build's
+`script/phases/70_image/030_launchers.sh` runs the `--packs-dir` form, which with no packs on the
+medium clears any stale launchers (its place in the build is in
+[How KDOS is built](../05-developer/how-kdos-is-built.md#packaging-70_image)). Your own tree is the
+same set under `$XDG_DATA_HOME` (`~/.local/share` when the variable is unset), `~/.config` and
 `~/.local/bin`; every reader consults it first.
 
 The pack forms parse the application's own desktop entries: a pack carries the real ones, so the
 existing parser is reused rather than reimplemented against the metadata. Only `app` packs are read,
 and only installed or already-mounted ones, so a regeneration never mounts every pack on the medium.
 Store boxes have no pack for the daemon to mount. `genlaunchers --packs --user`, and every store
-install, uninstall or import, copies `/usr/share/applications` out of every store box's image with
-`podman cp` and reads those in the `--packs-dir` shape, then walks the installed app packs in the
-same run, and writes your tree from both. Your tree is written whole, so a run that read only one
-source would delete the other's launchers. A store box's catalogue `cmd` rows become shims and
-name-to-command rows as well, so a command-only application such as `gmic` reaches your prompt with
-no desktop entry. With no catalogue to read, or no answer from `podman`, the run is the pack walk
-alone. `kdos-box export <box> <app>` adds a launcher for one application in any box.
+install, uninstall or import, copies `/usr/share/applications` out of every store box's image
+with `podman cp` and reads those in the `--packs-dir` shape, then walks the installed
+app packs in the same run, and writes your tree from both. Your tree is written whole, so a run
+that read only one source would delete the other's launchers. A store box's catalogue `cmd` rows
+become shims and name-to-command rows as well, so a command-only application such as `gmic` reaches
+your prompt with no desktop entry. With no catalogue to read, or no answer from `podman`, the run is
+the pack walk alone. `kdos-box export <box> <app>` adds a launcher for one application in any box.
 
 Each run writes its whole set, because the table, the cache and the shims are written whole, and
 dropping any output breaks something visible:
 
 | Output | Without it |
 |---|---|
-| A desktop entry per application, marked `X-KDOS-Alien=true` | No launcher |
-| A MIME cache (`mimeinfo.cache`) beside them | File-type associations are never consulted |
-| A name-to-command table (`alien-apps`) | The shim cannot find what to run or in which box |
+| A desktop entry per application, named by its [launcher id](#the-boxs-identity-on-the-desktop) and carrying `StartupWMClass`, `X-KDOS-Box` and `X-KDOS-Alien=true` | No launcher; and under upstream's own desktop-file id, every boxed window would show a generic icon beside a pin that never lights, because KWin names the window by its launcher id |
+| A pack application's icon, copied out of the pack under the launcher id into `hicolor` | The pack's icons are inside the box, where nothing on the host reads them, so `Icon=` would find nothing |
+| A MIME cache (`mimeinfo.cache`) beside the entries | File-type associations are never consulted, so no boxed application appears in "Open With" or can be a default handler |
+| A name-to-command table (`alien-apps`), with each row's pack and launcher id | The shim cannot find what to run or in which box |
 | A shim per application in the binary directory | The application is not a command |
+| A window rule per box in `kwinrulesrc` | The box's windows do not wear its colour |
 
-The details (entry naming, quoting, field codes, the tables that skip or rename entries) are in
+A launcher whose box is gone is removed in the same run. The user's tree is followed by
+`kbuildsycoca6`, so KDE's application cache, which the menu, KRunner and the Task Manager read,
+sees the new launchers before the command returns. The details (entry naming, quoting, field codes,
+the tables that skip or rename entries) are in
 [kdos-appbox: Launcher generation](../04-programs/kdos-appbox.md#launcher-generation).
 
 ## See also
 
 - [Applications](../02-user-guide/applications.md) — installing and using applications
-- [kdos-appbox](../04-programs/kdos-appbox.md) — the launcher, the store and the box manager
+- [kdos-appbox](../04-programs/kdos-appbox.md) — the launcher, the store lane and the box manager
+- [Discover](../04-programs/discover.md) — the software centre's KDOS backend over the catalogue, the packs and the boxes
 - [The daemons](../04-programs/daemons.md) — `kdos-packd`'s verbs, files and environment
 - [The security model](security-model.md) — mount options, signing and the sandbox
 - [Packaging](packaging.md) — the host's separate packaging system

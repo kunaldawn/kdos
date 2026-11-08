@@ -1,0 +1,35 @@
+Subject: Hide "Get New Pages…" when KNewStuff is not allowed
+
+With [KDE Action Restrictions] ghns=false, NewStuff.Action disables and
+hides itself, but two entries that open it do not follow: the File menu's
+Labs.MenuItem calls showHotNewStuff() directly and stays visible, doing
+nothing when clicked, and the sidebar's context menu item shows the action
+greyed out. Both now take the visibility KNewStuff's own kiosk check gives,
+and the context menu item collapses to no height while hidden, as an
+invisible item in a QtQuick.Controls Menu otherwise keeps its row.
+
+--- a/src/GlobalMenu.qml
++++ b/src/GlobalMenu.qml
+@@ -37,6 +37,7 @@
+         Labs.MenuItem {
+             text: i18nc("@menu-action", "Get New Pages…")
+             icon.name: "get-hot-new-stuff"
++            visible: NewStuff.Settings.allowedByKiosk
+             onTriggered: ghnsAction.showHotNewStuff()
+         }
+ 
+--- a/src/Main.qml
++++ b/src/Main.qml
+@@ -253,7 +253,11 @@
+                 id: globalContextMenu
+ 
+                 MenuItem { action: editPagesAction }
+-                MenuItem { action: ghnsAction }
++                MenuItem {
++                    action: ghnsAction
++                    visible: ghnsAction.visible
++                    height: visible ? implicitHeight : 0
++                }
+                 MenuItem { action: collapseAction }
+             }
+         ]

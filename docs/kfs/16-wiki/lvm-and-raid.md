@@ -326,4 +326,4 @@ replace it as in [Replacing a failed disk](#replacing-a-failed-disk).
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 377.* Previous: [376. Encrypted root](encrypted-root.md) · [Contents](../README.md) · Next: [378. Disk health](disk-health.md)
+*Part XVI. System administration, chapter 401.* Previous: [400. Encrypted root](encrypted-root.md) · [Contents](../README.md) · Next: [402. Disk health](disk-health.md)

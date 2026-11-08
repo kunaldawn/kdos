@@ -1,0 +1,34 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   Discover, offline: the KDOS backend first, and no ratings server.
+#
+# Discover downloads nothing when it opens. Its sources are the KDOS backend
+# (packs, boxes, the store lane, host software), the A/B system update and
+# firmware; none of them reaches the network until somebody presses a button
+# that says it will. Two of Discover's own paths are closed here and in the
+# files beside it:
+#
+#   FetchOdrsRatings=false  the Home page's "Most Popular" list fetches
+#                           ratings from odrs.gnome.org at every start whose
+#                           cache is a day old; the key, carried by discover's
+#                           odrs-offline.patch, keeps it to what is cached,
+#                           which on KDOS is nothing, so the list is not shown
+#   the featured list       read from /usr/share/discover/featuredurlrc, which
+#                           kdos-discover points at a file on this machine
+#
+# currentApplicationBackend is the source an application install goes to
+# when more than one could take it; a person's choice in Discover's settings
+# lands in ~/.config/discoverrc and wins.
+# ---------------------------------
+
+[Software]
+FetchOdrsRatings=false
+UseOfflineUpdates=false
+
+[ResourcesModel]
+currentApplicationBackend=kdos-backend

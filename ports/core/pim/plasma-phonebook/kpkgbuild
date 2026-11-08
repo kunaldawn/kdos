@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = plasma-phonebook
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 87175951a6f85a8c2694813d956e0aae1b9a04943f8e667be1bdd84392292cd5  plasma-phonebook-26.08.2.tar.xz
+description = Kirigami contact book — view and edit vCard contacts through KPeople
+homepage    = https://apps.kde.org/phonebook/
+license     = (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND GPL-3.0-or-later AND LGPL-2.0-or-later AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qt5compat kcoreaddons kirigami kirigami-addons kpeople kcontacts kconfig ki18n

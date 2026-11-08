@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   The screen reader's chord, kept working.
+#
+# Meta+Alt+S starts and stops Orca from the first login. Plasma's screen
+# reader module starts Orca itself unless it sees systemd on the session bus,
+# in which case it switches, for good, to starting an orca.service unit — and
+# KDOS has no units, so from then on the chord would do nothing. The key is
+# immutable here so that switch can never be written; the on/off state
+# (`Enabled`) stays the person's. The module still tries the switch at every
+# start while something owns org.freedesktop.systemd1 on the session bus, and
+# each try deletes `Enabled`, so a service that ever claims that name there
+# would turn Orca off at every login.
+# ---------------------------------
+
+[ScreenReader]
+SystemdManaged[$i]=false

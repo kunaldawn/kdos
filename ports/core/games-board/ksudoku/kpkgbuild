@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = ksudoku
-version     = 26.08.1
+version     = 26.08.2
 release     = 1
 source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
-sha256      = 163540049797b4338a4a6b11adeb0773c8662416bb925c870d864c25668fdc9e  ksudoku-26.08.1.tar.xz
+sha256      = 2c273747dec718c3a7a09e59f3619c3c3330438a9b828de8d2610820613bda66  ksudoku-26.08.2.tar.xz
 description = Sudoku, jigsaw, killer and 3-D Roxdoku puzzles, generated and solved
 homepage    = https://apps.kde.org/ksudoku/
 license     = GPL-2.0-or-later

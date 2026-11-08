@@ -1,181 +1,143 @@
 /*
- * KDOS: the actions this desktop calls, granted to wheel.
+ * KDOS: what polkit's shipped defaults do not decide the way this desktop
+ * wants, and nothing else.
  *
- * WHY THERE IS NO AUTHENTICATION AGENT INSTEAD. polkit resolves a subject's
- * session by asking org.freedesktop.ConsoleKit, which is not on this system
- * and is not coming — logind is refused and ConsoleKit would be a session
- * daemon bought for one consumer. So no subject is ever in an active session,
- * allow_active and allow_inactive are never read, and every check lands on
- * allow_any. NetworkManager's policy omits allow_any entirely for
- * enable-disable-wifi, enable-disable-network and both wifi.share actions,
- * and an omitted element is a flat refusal that raises no challenge — an
- * agent is consulted only for a challenge, so no agent could ever be asked
- * about the controls this file exists to make work.
+ * THE DEFAULTS DECIDE FIRST. polkitd tracks sessions through elogind, so a
+ * subject in the active local session — the person at the machine — gets each
+ * action's allow_active, a local session switched away from gets
+ * allow_inactive, and anything else gets allow_any: an SSH login (openssh
+ * registers no session), a cron job, a daemon. polkit-kde-authentication-
+ * agent-1 answers every password the defaults ask for in a Plasma session.
+ * This file changes an answer only where KDOS wants another one, and names
+ * the action each time.
  *
- * ONE MECHANISM, NEVER TWO. The decision is written in
- * docs/kdos/03-architecture/security-model.md; if an agent is ever added this
- * file is what has to go, and the reverse.
+ * THE RULES DECIDE; THE AGENT ONLY ANSWERS WHAT THEY LEAVE. A rule returning
+ * YES is a grant nobody is asked about, so one exists only for something an
+ * administrator at the keyboard does as a matter of course and whose default
+ * would stop them for a password every time. A rule returning AUTH_ADMIN_KEEP
+ * is a prompt made explicit, so a broader rule in a file sorted after this one
+ * cannot turn it into a silent yes. A rule returning NO is something this
+ * system does not do, refused where the defaults would have asked.
  *
- * NAMED ACTIONS, NOT AN INTERFACE. The alternative is a D-Bus policy granting
- * wheel NetworkManager's write interfaces, which cannot scope a
- * Properties.Set to one property and cannot leave out the hostname or the
- * machine-wide resolver.
+ * WHEEL MEANS WHEEL AT THE MACHINE. Every grant to the group also tests
+ * subject.local && subject.active, so it reaches the administrator in the
+ * foreground session and never an SSH login, a backgrounded job or a session
+ * switched away from. Those get the defaults, and a wheel member there has
+ * sudo, which asks.
  *
- * WHAT THIS GRANTS. Anybody in wheel reconfigures networking with no prompt,
- * and can read back any stored passphrase. That is the group whose shipped
- * sudoers line is `%wheel ALL=(ALL) ALL`, so it is a shortcut to something
- * they already have rather than a new capability: the passphrases are files
- * under /etc/NetworkManager that `sudo cat` prints. The boundary this file
- * moves is convenience, not privilege. They also reach a smart card through
- * pcscd, which is the card holder's own device behind the card's own PIN.
- * They can also unlock and enable a modem and read its text messages through
- * mmcli (ModemManager Device.Control and Messaging), which ModemManager
- * otherwise allows only to an active session. And they mount, unlock, format
- * and write raw images to disks through udisks2, repartition with GParted,
- * manage libvirt's system guests, and save root-owned files from Kate —
- * each of which is `sudo` with one step fewer.
+ * WHAT THE GRANTS GIVE. The administrator at the machine edits and deletes
+ * system network connections, and can read back their passphrases; mounts,
+ * unlocks and formats internal disks and opens a raw device for an image
+ * writer; and saves root-owned files from Kate, repartitions with GParted,
+ * manages libvirt's system guests and ends other users' processes from
+ * Resources after one password every five minutes. That is the group whose
+ * shipped sudoers line is `%wheel ALL=(ALL) ALL`, so each is a shortcut to
+ * something they already have rather than a new capability.
  *
- * A NAME NOT IN THIS LIST IS NOT GRANTED. Every id here is one a shipped
- * surface or a shipped user program calls; adding a row is a decision, and
- * the list is short so that reading it is one.
+ * A NAME NOT IN THIS FILE IS THE DEFAULT'S. Removable drives, Wi-Fi and the
+ * network toggles, hotspots, smart cards, modems, suspend and power-off,
+ * brightness, power profiles, the time zone and network time, the accent and
+ * the rest are allow_active upstream already, and the person at the machine
+ * gets them with no rule here. testing/fixtures/polkit holds the measured
+ * defaults and the table of answers this file must produce, and
+ * testing/selftest.sh evaluates this file against both.
  */
 
 polkit.addRule(function (action, subject) {
-    if (!subject.isInGroup("wheel"))
-        return undefined;   /* not ours to answer — fall through */
+    var here = subject.local && subject.active;
 
     switch (action.id) {
     /*
-     * pcscd asks for these on every PC/SC connection and on every reader it
-     * hands out, and ships them allow_active only: without them only root
-     * reaches a smart card, and gpg's scdaemon, opensc, ykman and
-     * openconnect's certificate login all read "access denied". A card is
-     * its holder's own device and its PIN is the card's to check, so this is
-     * the same grant a logged-in desktop would get from the policy itself.
+     * THE SYSTEM CRONTAB IS NOT OFFERED. crond runs each user's own crontab
+     * and is built to read no /etc/crontab: the timers the system ships are
+     * snooze's, in /etc/kdos/timers.d. A Task Scheduler save into the system
+     * crontab would write a file nothing reads, so it is refused where the
+     * save is asked for, and the user's own crontab, which needs no polkit,
+     * is the one it edits.
      */
-    case "org.debian.pcsc-lite.access_pcsc":
-    case "org.debian.pcsc-lite.access_card":
-        return polkit.Result.YES;
+    case "local.kcron.crontab.save":
+        return polkit.Result.NO;
 
-    /* kdos-net: the list, joining, forgetting, and the wifi toggle. */
-    case "org.freedesktop.NetworkManager.network-control":
-    case "org.freedesktop.NetworkManager.wifi.scan":
-    case "org.freedesktop.NetworkManager.enable-disable-wifi":
-    case "org.freedesktop.NetworkManager.enable-disable-network":
-    case "org.freedesktop.NetworkManager.settings.modify.own":
     /*
-     * SYSTEM CONNECTIONS ARE THE ONLY KIND THAT WORK HERE, so this is the
-     * permission that forgetting a network and reading its passphrase back
-     * actually land on. NetworkManager is built -Dsession_tracking=no —
-     * there is no logind and no ConsoleKit — so its session monitor answers
-     * FALSE for every user, a profile naming an owner in `permissions` is
-     * permanently invisible, and an invisible profile has autoconnect
-     * blocked. kdos-net therefore writes no owner, and modify.own is kept
-     * only for profiles some other tool created with one.
+     * BATTERY CHARGE THRESHOLDS ARE TLP's. TLP sets them from /etc/tlp.d at
+     * boot and again each time it applies a profile, so a limit PowerDevil's
+     * helper wrote would last until TLP next ran, and a battery page showing
+     * a limit the battery does not keep is worse than one that refuses. The
+     * two writes are refused for everyone; the reads stay the defaults'.
+     */
+    case "org.kde.powerdevil.chargethresholdhelper.setthreshold":
+    case "org.kde.powerdevil.chargethresholdhelper.setconservationmode":
+        return polkit.Result.NO;
+
+    /*
+     * HELD AT A PASSWORD FOR EVERYONE AT THE MACHINE, whatever comes after
+     * this file: flashing system firmware, letting a Thunderbolt device onto
+     * the PCIe bus, and gvfs's admin:// writes as root. Away from the machine
+     * the defaults apply, and each of them is stricter there.
+     */
+    case "org.freedesktop.fwupd.update-internal":
+    case "org.freedesktop.bolt.enroll":
+    case "org.freedesktop.bolt.authorize":
+    case "org.freedesktop.bolt.manage":
+    case "org.gtk.vfs.file-operations":
+    case "org.gtk.vfs.file-operations-helper":
+        return here ? polkit.Result.AUTH_ADMIN_KEEP : undefined;
+    }
+
+    if (!here || !subject.isInGroup("wheel"))
+        return undefined;   /* not ours to answer — the defaults decide */
+
+    switch (action.id) {
+    /*
+     * A SYSTEM CONNECTION is one every user of the machine joins: what
+     * plasma-nm creates with "all users may connect", what nmcli makes, and
+     * every profile the installer wrote. Its default is a password even at
+     * the machine. The rest of NetworkManager's everyday actions — scanning,
+     * joining, the Wi-Fi switch, a hotspot, a profile of one's own — are
+     * allow_active already.
      */
     case "org.freedesktop.NetworkManager.settings.modify.system":
-    /*
-     * A hotspot is share.open or share.protected, and the choice is made by
-     * whether the profile carries an 802-11-wireless-security setting AT ALL —
-     * not by the band, and not by what key-mgmt says: even key-mgmt=none picks
-     * `protected`. Neither is reached unless ipv4.method is "shared". Both are
-     * the same decision here.
-     */
-    case "org.freedesktop.NetworkManager.wifi.share.open":
-    case "org.freedesktop.NetworkManager.wifi.share.protected":
         return polkit.Result.YES;
 
     /*
-     * mmcli: unlocking a SIM, enabling a modem, and its text messages.
-     * NetworkManager needs neither — it is root, and polkit answers root
-     * without reading a rule — so these are for the person at a terminal,
-     * whose carrier's data-limit warnings arrive as SMS. ModemManager is built
-     * -Dpolkit=strict, which ships both allow_active only.
+     * udisks2's actions for a drive that is not removable, or that another
+     * user holds: Dolphin and the Device Notifier mounting a second internal
+     * disk, unlocking its LUKS container, unmounting or ejecting what another
+     * login mounted, taking ownership of a fresh filesystem, an image writer
+     * or GNOME Disks reaching the raw device, and formatting or partitioning
+     * an internal drive. Their removable twins are allow_active upstream; the
+     * -system and -others forms are a password at the machine, and here are
+     * the administrator's without one. The storage layout under a running
+     * system — fstab, crypttab, RAID, LVM, btrfs, swap — and the firmware
+     * erases stay the defaults' prompt.
      */
-    case "org.freedesktop.ModemManager1.Device.Control":
-    case "org.freedesktop.ModemManager1.Messaging":
-        return polkit.Result.YES;
-
-    /*
-     * udisks2, for the toolkit applications: Dolphin's and the file
-     * choosers' device lists, GNOME Disks, K3b, Impression. kdos-mountd stays
-     * the authority for kdos-shell and needs none of these. udisksd is built
-     * with no logind, so it treats every drive as on the caller's seat and
-     * never asks an -other-seat action; the -system variants are what it asks
-     * for a drive that is not removable. open-device is how an image writer
-     * or Disks' backup and restore reaches the raw block device, and
-     * modify-device is formatting and partitioning.
-     */
-    case "org.freedesktop.udisks2.filesystem-mount":
     case "org.freedesktop.udisks2.filesystem-mount-system":
     case "org.freedesktop.udisks2.filesystem-unmount-others":
     case "org.freedesktop.udisks2.filesystem-take-ownership":
-    case "org.freedesktop.udisks2.encrypted-unlock":
     case "org.freedesktop.udisks2.encrypted-unlock-system":
     case "org.freedesktop.udisks2.encrypted-lock-others":
-    case "org.freedesktop.udisks2.encrypted-change-passphrase":
-    case "org.freedesktop.udisks2.eject-media":
     case "org.freedesktop.udisks2.eject-media-system":
-    case "org.freedesktop.udisks2.power-off-drive":
-    case "org.freedesktop.udisks2.loop-setup":
     case "org.freedesktop.udisks2.loop-delete-others":
     case "org.freedesktop.udisks2.open-device":
     case "org.freedesktop.udisks2.open-device-system":
-    case "org.freedesktop.udisks2.modify-device":
     case "org.freedesktop.udisks2.modify-device-system":
-    case "org.freedesktop.udisks2.rescan":
-    case "org.freedesktop.udisks2.cancel-job":
-    case "org.freedesktop.udisks2.ata-check-power":
-    case "org.freedesktop.udisks2.ata-smart-update":
-    case "org.freedesktop.udisks2.nvme-smart-update":
         return polkit.Result.YES;
 
     /*
-     * Administrative applications. GParted's wrapper re-runs itself through
-     * pkexec under this id, which is auth_admin everywhere. The two KAuth
-     * helpers are K3b setting the burner's group and permissions, and
-     * KTextEditor (Kate, KDevelop) writing a file the user cannot.
-     * Resources ends another user's process through pkexec and its
-     * resources-kill helper. libvirt's own rule grants unix.manage to its
-     * `libvirt` group, which no account is in; this is what lets
-     * virt-manager open qemu:///system.
+     * Administrative applications, one password per agent session rather
+     * than one per action: GParted re-running itself through pkexec, K3b
+     * setting the burner's group and permissions, KTextEditor (Kate,
+     * KDevelop) writing a file the user cannot, virt-manager reaching
+     * qemu:///system, and Resources ending another user's process. Each
+     * writes a raw disk or a root-owned file, which is what a prompt is for.
      */
     case "org.gnome.gparted":
     case "org.kde.k3b.updatepermissions":
     case "org.kde.ktexteditor6.katetextbuffer.savefile":
-    case "net.nokyan.Resources.kill":
     case "org.libvirt.unix.manage":
-        return polkit.Result.YES;
+    case "net.nokyan.Resources.kill":
+        return polkit.Result.AUTH_ADMIN_KEEP;
     }
 
-    /*
-     * DELIBERATELY ABSENT, each for its own reason:
-     *   settings.modify.hostname   the hostname is the installer's and
-     *                              /etc/hostname's, not a running desktop's
-     *   settings.modify.global-dns a machine-wide resolver is not a per-user
-     *                              decision
-     *   checkpoint-rollback        nothing here creates a checkpoint, so a
-     *                              rollback could only undo somebody else's
-     *   sleep-wake                 kdos-powerd owns suspend, with its own gate
-     *   reload                     re-reading NetworkManager's own config is
-     *                              administration, and `sudo` is how it is done
-     *   udisks2 fstab, crypttab and system-configuration actions
-     *                              /etc/fstab and /etc/crypttab are the
-     *                              installer's
-     *   udisks2 manage-md-raid, lvm2.manage-lvm, btrfs.manage-btrfs,
-     *   manage-swapspace           the storage layout under a running system
-     *                              is administration
-     *   udisks2 ata-secure-erase, nvme-sanitize, nvme-format-namespace
-     *                              an irreversible firmware erase stays one
-     *                              deliberate `sudo` away
-     *   org.kde.k3b.addtogroup     it edits /etc/group
-     *   org.gtk.vfs.file-operations (gvfs admin://), the
-     *   org.kde.ksysguard.processlisthelper.* actions, and
-     *   org.freedesktop.policykit.exec (pkexec of any command, which
-     *                              Resources' memory-module view asks for)
-     *                              no shipped surface depends on them, and a
-     *                              generic exec grant would be sudo with no
-     *                              password
-     */
     return undefined;
 });

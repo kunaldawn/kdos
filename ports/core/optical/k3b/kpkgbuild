@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = k3b
-version     = 26.08.1
+version     = 26.08.2
 release     = 1
 source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
-sha256      = 84ca4a064553587e7c6a93ff9b29a36bf05c07dd08269bea43f1ab5ff92374f3  k3b-26.08.1.tar.xz
+sha256      = 04bb92de933388cdfe17c8d38bd192256c6b868c1fa16d1e6679405ea6fd3aed  k3b-26.08.2.tar.xz
 description = KDE disc burner — data, audio and video CDs, DVDs and Blu-ray, copies and rips
 homepage    = https://apps.kde.org/k3b/
 license     = GPL-2.0-or-later

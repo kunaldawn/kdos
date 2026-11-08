@@ -32,6 +32,5 @@ Terminal=true
 NoDisplay=true
 Categories=Office;Presentation;
 Keywords=slides;presentation;markdown;talk;presenterm;
-X-KDOS-Term=kdos-term
 EOF
 chmod 644 "$PKG/usr/share/applications/presenterm.desktop"

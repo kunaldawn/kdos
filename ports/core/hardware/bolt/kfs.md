@@ -21,12 +21,11 @@ dead. An enrolled device is authorised only while `boltd` runs.
   bolt has no option to skip building them; the ones that need umockdev are not built, because
   that dependency is optional and umockdev is not a port.
 - `-Dprivileged-group=wheel` — The group named in the polkit rule bolt installs, which grants it
-  enroll, authorize and manage. `wheel` is upstream's default and a group in `/etc/group`. The rule
-  applies only when the caller's session is active and local, and polkit sees no active session on
-  KDOS (see
-  [Why a password prompt cannot work here](../../../../docs/kdos/03-architecture/security-model.md#why-a-password-prompt-cannot-work-here)),
-  so every check falls to the policy's `auth_admin`, with no agent to answer it, and
-  `boltctl enroll` and `boltctl authorize` are run under `sudo`.
+  enroll, authorize and manage. `wheel` is upstream's default and a group in `/etc/group`. KDOS's
+  `/etc/polkit-1/rules.d/50-kdos.rules` is read first and answers the same three actions with an
+  administrator's password for anybody at the machine, so bolt's grant applies to none of them and
+  letting a device onto the PCIe bus always asks (see
+  [What `50-kdos.rules` changes](../../../../docs/kdos/03-architecture/security-model.md#what-50-kdosrules-changes)).
 
 ## Notes
 

@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = kauth
-version     = 6.30.0
+version     = 6.31.0
 release     = 1
 source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
-sha256      = 60b75e02abc2bfbb247c586e3ab94def7ecd7b4e1ddb8260358951d84d9ea8c9  kauth-6.30.0.tar.xz
+sha256      = 6fb4e3d1de3364bab82453bd635387e845f227764c4d75ad505348ba3a2e34f8  kauth-6.31.0.tar.xz
 description = KDE Frameworks: execute actions as a privileged user through polkit
 homepage    = https://invent.kde.org/frameworks/kauth
 license     = LGPL-2.1-or-later

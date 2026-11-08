@@ -1,0 +1,9 @@
+[Sound Theme]
+Name=KDOS
+Comment=The KDOS machine voices: square and triangle tones, synthesised
+Inherits=ocean,freedesktop
+Example=desktop-login
+Directories=stereo
+
+[stereo]
+OutputProfile=stereo

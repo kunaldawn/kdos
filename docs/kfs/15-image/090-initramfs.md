@@ -369,4 +369,4 @@ helpers that passed the udev check; `lib/modules/<version>/` with the modules an
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 353.* Previous: [352. The image gates](087-gates.md) · [Contents](../README.md) · Next: [354. The initramfs init](091-initramfs-init.md)
+*Part XV. The image, chapter 377.* Previous: [376. The image gates](087-gates.md) · [Contents](../README.md) · Next: [378. The initramfs init](091-initramfs-init.md)

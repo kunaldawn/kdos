@@ -1,0 +1,15 @@
+Subject: Build the MPRIS module against basu whichever sd-bus libraries exist
+
+--- a/configure
++++ b/configure
+@@ -329,9 +329,7 @@
+ 
+ check_libsystemd()
+ {
+-	pkg_config LIBSYSTEMD "libsystemd" || pkg_config LIBSYSTEMD "libelogind >= 239.3" || {
+-		pkg_config LIBSYSTEMD "basu" && CFLAGS="${CFLAGS} -DCONFIG_MPRIS_BASU"
+-	}
++	pkg_config LIBSYSTEMD "basu" && CFLAGS="${CFLAGS} -DCONFIG_MPRIS_BASU"
+ 	return $?
+ }
+ 

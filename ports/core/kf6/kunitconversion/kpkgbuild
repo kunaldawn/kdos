@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = kunitconversion
-version     = 6.30.0
+version     = 6.31.0
 release     = 1
 source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
-sha256      = 3dcaa45875bab5a2dcadc34cf57cf06689b8d86ff40e20fee01ca2b18987175f  kunitconversion-6.30.0.tar.xz
+sha256      = fdc0898e8cea7900f38d76f00766b3662201f7121bdcb7c815c2cf7ba43de8cb  kunitconversion-6.31.0.tar.xz
 description = KDE Frameworks: unit conversion
 homepage    = https://invent.kde.org/frameworks/kunitconversion
 license     = LGPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL)

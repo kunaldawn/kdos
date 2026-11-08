@@ -20,9 +20,9 @@ cmake -S . -B build -G Ninja \
 	-D USE_DBUS=ON \
 	-D DISABLE_KWATCHGNUPG=OFF \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_KF6DocTools=ON \
-	-D CMAKE_DISABLE_FIND_PACKAGE_KPim6IdentityManagementCore=ON \
-	-D CMAKE_DISABLE_FIND_PACKAGE_KPim6MailTransport=ON \
-	-D CMAKE_DISABLE_FIND_PACKAGE_KPim6AkonadiMime=ON \
+	-D CMAKE_REQUIRE_FIND_PACKAGE_KPim6IdentityManagementCore=ON \
+	-D CMAKE_REQUIRE_FIND_PACKAGE_KPim6MailTransport=ON \
+	-D CMAKE_REQUIRE_FIND_PACKAGE_KPim6AkonadiMime=ON \
 	-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build

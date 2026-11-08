@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = partitionmanager
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 19f2e38f7982b8b5a6dbe7e3088c70f88e1f9ca089ac4b09b615b70d4a4c7292  partitionmanager-26.08.2.tar.xz
+description = Partition editor — create, resize, move, copy, check and format partitions and file systems
+homepage    = https://apps.kde.org/partitionmanager/
+license     = GPL-3.0-or-later AND LGPL-3.0-or-later AND MIT AND CC-BY-4.0 AND GFDL-1.2-or-later AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kconfig kconfigwidgets kcoreaddons kcrash kdbusaddons ki18n kjobwidgets kio kwidgetsaddons kwindowsystem kxmlgui kdoctools polkit-qt6 kpmcore

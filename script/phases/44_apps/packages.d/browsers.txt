@@ -30,3 +30,6 @@ netsurf
 chromium
 librewolf
 inlyne
+
+angelfish
+konqueror

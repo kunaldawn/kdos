@@ -5,7 +5,7 @@ C, the Vulkan-Hpp headers for C++, the `vk_video` codec headers, and the machine
 registry (`vk.xml`, `video.xml` and the Python generator scripts that read them), installed under
 `/usr/share/vulkan/registry`. Nothing in it is compiled: it is an interface package with a CMake
 config file, `VulkanHeadersConfig.cmake`, and many ports build against it, among them
-[vulkan-loader](#port-vulkan-loader), [wlroots](#port-wlroots), [gtk4](#port-gtk4),
+[vulkan-loader](#port-vulkan-loader), [KWin](#port-kwin), [gtk4](#port-gtk4),
 [ffmpeg](#port-ffmpeg), [mpv](#port-mpv) and [blender](#port-blender).
 
 ## Flags

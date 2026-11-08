@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = threadweaver
-version     = 6.30.0
+version     = 6.31.0
 release     = 1
 source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
-sha256      = e5400968a41820393e76190ab5dbb276c09513263d1b185d64b40f82dcd9b457  threadweaver-6.30.0.tar.xz
+sha256      = 4a65944dcca12672ace6d54a48b3a993d4b46b6095106316c3a95ecae6af9906  threadweaver-6.31.0.tar.xz
 description = KDE Frameworks: high-level job-based multithreading
 homepage    = https://api.kde.org/frameworks/threadweaver/html/
 license     = LGPL-2.0-or-later

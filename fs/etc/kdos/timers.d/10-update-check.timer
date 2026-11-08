@@ -1,10 +1,14 @@
-# The newest signed ports tree, then the installed packages older than their
-# recipe in it, for the panel's badge and kdos-update. --fetch replaces /ports with the latest
-# release's tree when that is newer and records a failure — no network, a
-# download or a signature that failed — which the badge then shows; the check
-# answers against whatever tree is in place either way. Nightly and NOT at
-# midnight: every machine that runs a job at 00:00 runs it at the same second,
-# and this one asks the same server and reads the whole ports tree.
+# The installed packages older than their recipe in the tree already in
+# place, which of them the signed binhost index already in the cache covers,
+# and the update that makes this system current, into the update document.
+# Its readers are kdos-sysupdated (the system update Discover shows, and the
+# AppStream file it serves), the update tray (the Discover notifier's KDOS
+# plugin) and kdos-notice. It downloads nothing: no tree, no index, no source.
+# A newer tree and its index arrive only when somebody asks — Discover's
+# "Check for updates", which kdos-sysupdated answers with
+# `kdos update check --fetch`, or `kdos update fetch` typed at a shell — so no
+# machine reaches the network on a schedule of its own. Nightly and NOT at
+# midnight: the job reads the whole ports tree and every package entry.
 #
 # -s 8h is the missed-run rule and it is snooze's, not ours: a machine that was
 # ASLEEP at 04:17 runs the job ONCE when it wakes, if it wakes within eight
@@ -15,4 +19,4 @@
 # snooze started at boot begins looking one second from now, so the slot it
 # slept through is simply tomorrow's. Reaching back needs `-t FILE`, and a
 # timefile only the job itself may touch.
-update-check  -H 4 -M 17 -s 8h  --  kdos update check --fetch --out /var/lib/kdos/update.json
+update-check  -H 4 -M 17 -s 8h  --  kdos update check --out /var/lib/kdos/update.json

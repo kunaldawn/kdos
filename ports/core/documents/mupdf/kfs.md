@@ -61,5 +61,5 @@ viewers are X11 programs and run under Xwayland. [aerc](#port-aerc) names the po
   exempts.
 - **The menu entry.** `build.sh` writes `mupdf-gl.desktop` and installs upstream's PNG icons into
   `hicolor`. The entry names no `MimeType`, so it is never offered as the opener of a file type
-  and `kdos-mimeapps.list` never has to rank it. freeglut sets no `WM_CLASS` on its window, so the
+  and `kde-mimeapps.list` never has to rank it. freeglut sets no `WM_CLASS` on its window, so the
   entry has no `StartupWMClass` either.

@@ -30,3 +30,6 @@ libnotify
 
 desktop-file-utils
 chemical-mime-data
+
+xdg-user-dirs
+debian-dep11

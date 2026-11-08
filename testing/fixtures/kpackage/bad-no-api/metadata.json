@@ -1,0 +1,7 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Id": "org.kdos.fixture.noapi",
+        "Name": "Fixture"
+    }
+}

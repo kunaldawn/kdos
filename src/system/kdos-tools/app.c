@@ -479,26 +479,12 @@ static int tui_add(int argc, char **argv)
 {
 	const char *name = NULL, *cmd = NULL;
 	const char *icon = "system-run", *cat = "Utility";
-	const char *size = NULL;
-	int flt = 0;
 	char slug[128], exec[2048], path[1024];
 	char *dir;
 	FILE *f;
 
 	for (int i = 0; i < argc; i++) {
-		if (!strcmp(argv[i], "--float")) {
-			flt = 1;
-		} else if (!strcmp(argv[i], "--size") && i + 1 < argc) {
-			int c = 0, r = 0;
-
-			size = argv[++i];
-			if (sscanf(size, "%dx%d", &c, &r) != 2 || c < 4 ||
-			    r < 2) {
-				fprintf(stderr, "kdos app tui: --size wants "
-						"COLSxROWS, at least 4x2\n");
-				return 2;
-			}
-		} else if (!strcmp(argv[i], "--icon") && i + 1 < argc) {
+		if (!strcmp(argv[i], "--icon") && i + 1 < argc) {
 			icon = argv[++i];
 		} else if (!strcmp(argv[i], "--category") && i + 1 < argc) {
 			cat = argv[++i];
@@ -543,10 +529,6 @@ static int tui_add(int argc, char **argv)
 	fprintf(f, "Terminal=true\n");
 	fprintf(f, "Categories=%s;\n", cat);
 	fprintf(f, "X-KDOS-TUI=true\n");
-	if (flt)
-		fprintf(f, "X-KDOS-Float=true\n");
-	if (size)
-		fprintf(f, "X-KDOS-Size=%s\n", size);
 	fclose(f);
 
 	printf("%s%s\n", TUI_PREFIX, slug);
@@ -641,8 +623,7 @@ static int usage(void)
 		"       kdos app remove <id|group>...\n"
 		"       kdos app export <file.ktar> <id|group>...\n"
 		"       kdos app import <file.ktar> [<id>...]\n"
-		"       kdos app tui add <name> <command> [--float]\n"
-		"                       [--size COLSxROWS] [--icon NAME]\n"
+		"       kdos app tui add <name> <command> [--icon NAME]\n"
 		"                       [--category X]\n"
 		"       kdos app tui rm <slug> | ls\n"
 		"\nInstalling builds the application here, which needs a network.\n"

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kiriki
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 00028717af2dbcbda6ed3d9558aa1e013d811a5c96bcc2d0a681465df1602c1b  kiriki-26.08.2.tar.xz
+description = Yahtzee-style dice game for up to six players, human or computer
+homepage    = https://apps.kde.org/kiriki/
+license     = GPL-2.0-or-later AND GFDL-1.2-or-later AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kconfig kconfigwidgets kcoreaddons kcrash kdbusaddons kdoctools ki18n kiconthemes kwidgetsaddons kxmlgui libkdegames

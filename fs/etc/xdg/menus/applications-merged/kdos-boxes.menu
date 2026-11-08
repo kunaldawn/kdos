@@ -1,0 +1,34 @@
+<!DOCTYPE Menu PUBLIC "-//freedesktop//DTD Menu 1.0//EN"
+ "http://www.freedesktop.org/standards/menu-spec/1.0/menu.dtd">
+<!--
+██╗  ██╗██████╗  ██████╗ ███████╗
+██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+█████╔╝ ██║  ██║██║   ██║███████╗
+██╔═██╗ ██║  ██║██║   ██║╚════██║
+██║  ██╗██████╔╝╚██████╔╝███████║
+╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+- - - - - - - - - - - - - - - - -
+  The menu's Boxes category.
+
+`kdos-box export` writes a launcher for an application inside a box with
+Categories=X-KDOS-Box and nothing else, because the box's own entry is the
+distribution's and its categories are guesses about another system. No main
+category means Plasma's menu files the launcher under Lost & Found; this
+merge file gathers them under Boxes instead, beside the main categories.
+A launcher a pack's genlaunchers writes keeps the application's own
+categories and is filed with them.
+
+Merged into plasma-applications.menu through its <DefaultMergeDirs/>, as
+kio-library's Library category is.
+- - - - - - - - - - - - - - - - -
+-->
+<Menu>
+  <Name>Applications</Name>
+  <Menu>
+    <Name>Boxes</Name>
+    <Directory>kdos-boxes.directory</Directory>
+    <Include>
+      <Category>X-KDOS-Box</Category>
+    </Include>
+  </Menu>
+</Menu>

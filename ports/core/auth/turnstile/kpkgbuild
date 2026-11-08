@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = turnstile
+version     = 0.1.11
+release     = 1
+source      = https://github.com/chimera-linux/turnstile/archive/refs/tags/v$version.tar.gz
+sha256      = 04904eff68a726bed281820b3497e018ede55a5d745f31ceb9a502f905d0ed56  turnstile-0.1.11.tar.gz
+description = Per-user service manager launcher: login tracking, the runtime directory and a backend per user
+homepage    = https://github.com/chimera-linux/turnstile
+license     = BSD-2-Clause
+depends     = meson ninja pkgconf pam scdoc

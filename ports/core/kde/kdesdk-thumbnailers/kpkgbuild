@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdesdk-thumbnailers
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 01d67a729120ef05eb4636b54a651866fe51c8cae40b8c758ae20720895ec85c  kdesdk-thumbnailers-26.08.2.tar.xz
+description = Thumbnailer for gettext PO files — Dolphin shows each catalogue's translation progress
+homepage    = https://invent.kde.org/sdk/kdesdk-thumbnailers
+license     = LGPL-2.0-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND BSD-2-Clause AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcoreaddons kio gettext

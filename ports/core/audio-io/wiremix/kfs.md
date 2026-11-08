@@ -3,9 +3,7 @@
 wiremix is a terminal mixer for PipeWire: every playback and recording stream, every device, their
 volumes, and which device each stream is routed to. ALSA's `alsamixer` sees the card and not
 PipeWire's graph, so this is the mixer that shows what is actually playing where. The package adds
-a desktop entry, *Volume Mixer*, which opens it in a floating terminal of 80 by 20 cells through the
-KDOS keys `X-KDOS-Float` and `X-KDOS-Size` (see
-[kdos-term](../../../../docs/kdos/04-programs/kdos-term.md#what-it-is-and-where-it-sits)).
+a desktop entry, *Volume Mixer*, which opens it in a terminal.
 
 ## Flags
 

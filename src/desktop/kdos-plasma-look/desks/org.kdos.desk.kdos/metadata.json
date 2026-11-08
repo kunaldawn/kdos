@@ -1,0 +1,21 @@
+{
+    "KPackageStructure": "Plasma/LayoutTemplate",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "KDOS"
+            }
+        ],
+        "Category": "",
+        "Description": "The KDOS desk: one opaque bottom panel with the launcher, desktops, pinned apps, meters, tray and clock",
+        "Id": "org.kdos.desk.kdos",
+        "License": "MIT",
+        "Name": "KDOS",
+        "Website": "https://github.com/kunaldawn/kdos"
+    },
+    "NoDisplay": true,
+    "X-Plasma-ContainmentCategories": [
+        "panel"
+    ],
+    "X-Plasma-Shell": "plasmashell"
+}

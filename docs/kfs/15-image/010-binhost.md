@@ -9,7 +9,7 @@ signs with, and which packages end up in the directory.
 
 ## Switching it on
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=40-46 pin=aea8bfd4dfe3 -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=57-60 pin=73a5f902efa6 -->
 
 `KDOS_MAKE_BINHOST` comes from the `make build` command line, through the `Makefile` and
 `script/chroot/exec.sh`. Set to anything but `1`, the step prints the line above and exits.
@@ -28,7 +28,7 @@ make build KDOS_MAKE_BINHOST=1
 
 ## The signing key
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=48-58 pin=79afd37a89a5 -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=62-72 pin=79afd37a89a5 -->
 
 The key pair is made once, by `kpkg keygen`, in `build/binhost-key/`, and every later run signs
 with the same key. kpkg writes the private half with mode 0600 and never replaces an existing
@@ -41,7 +41,7 @@ release-signing key, so only removing the directory by hand makes a new key.
 
 ## Copying the packages
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=60-72 pin=740567ff5314 -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=74-86 pin=740567ff5314 -->
 
 Every package in the cache is copied into `build/binhost/`, over a file of the same name. Nothing
 is removed from the directory, so it accumulates from run to run: `020_cleanup.sh` empties the
@@ -70,7 +70,7 @@ make build KDOS_MAKE_BINHOST=1 BUILD_ARGS=--fresh
 
 ## The index
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=74-78 pin=b247da9e28f1 -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=88-92 pin=b247da9e28f1 -->
 
 `kpkg index --sign` writes the index, `PACKAGES`, its signature `PACKAGES.sig`, and a signature
 beside each package, over every package in the directory. `kpkg verify-index` then reads the
@@ -90,10 +90,45 @@ The index format and the rules a client applies are in
 [The binary host](../../kdos/03-architecture/packaging.md#the-binary-host) and
 [Signing](../../kdos/03-architecture/packaging.md#signing).
 
+## The catalogue
+
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=94-115 pin=3b85a50dfbf5 -->
+
+Discover lists what a binhost can add from an AppStream catalogue beside its index, which a client
+asks for as `binhost/swcatalog/xml/kdos-binhost.xml` and keeps at that path under
+`/var/lib/kdos/binhost`; `kdos update fetch` downloads it through the release index below and
+verifies it against the same keys. The step writes it as `swcatalog--xml--kdos-binhost.xml`, a flat
+name, because a GitHub release asset cannot sit in a directory, and it writes it with `kdos-discover-catalog --origin kdos-binhost`, from
+the [kdos-discover](#port-kdos-discover) port, naming each package the index lists that this tree
+has installed: a package file in the directory whose package this tree does not have stays in the
+index and gets no component. `kpkg sign` signs it with the index's key. A tree without
+`kdos-discover-catalog` gets an index and no catalogue, and Discover then offers nothing from the
+binhost. How each component is read is on [The software catalogue](086-swcatalog.md).
+
+## The release index
+
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=117-136 pin=3bb5c61c415b -->
+
+`kdos update` never asks for a binhost file by its name alone: it asks the [release index]{.idx},
+`kdos-update.idx`, where the file is, and keeps it only with the size and SHA-256 the index gives.
+The step writes the directory's own index last, over every file in it but the index and the public
+key: each package, sidecar and delta at `binhost/<name>`, the index and its signature at
+`binhost/PACKAGES` and `binhost/PACKAGES.sig`, and the catalogue at its path above, every one with
+the release `-`, which means beside the index. `ports/releaselib.sh` is the writer, the same one
+`ports/publish --release` uses for a release. The `version` is the short commit hash the build
+records, cut to twelve characters, which is what a machine whose `/ports` names no release calls
+its tree. `kpkg sign` signs it with the binhost key and `kpkg verify-pkg` reads it back against that key alone, so a
+machine trusting `kdos-binhost.pub` takes the directory, copied to a stick or served as it is, as
+the place `binhost =` names in `/etc/kdos/update.conf`. The format, and the published form whose
+files are in releases `binhost-<version>-01`, `-02`, … of at most 1,000 assets each, are in
+[The release index](../../kdos/03-architecture/packaging.md#the-release-index) and
+[Publishing a release](../../kdos/03-architecture/packaging.md#publishing-a-release).
+
 ## What it leaves
 
 Nothing on the image. On your machine, `build/binhost/` holds the packages, `PACKAGES`,
-`PACKAGES.sig`, the per-package signatures and `kdos-binhost.pub`, and `build/binhost-key/` holds
+`PACKAGES.sig`, the per-package signatures, `kdos-binhost.pub`, the catalogue with its signature
+and `kdos-update.idx` with its signature, every name flat, and `build/binhost-key/` holds
 the key pair. With `KDOS_ISO_SOURCES=1`, `110_iso.sh` also puts a copy of `build/binhost/` on the
 medium, under `/sources/binhost`, when the same build sets `KDOS_MAKE_BINHOST=1` and the directory
 holds an index. A binhost an earlier opt-in build left behind stays off the medium.
@@ -102,9 +137,10 @@ holds an index. A binhost an earlier opt-in build left behind stays off the medi
 
 - [The binary host](../../kdos/03-architecture/packaging.md#the-binary-host): the index, the tests a client applies and `kpkg binhost`
 - [Signing](../../kdos/03-architecture/packaging.md#signing): the key rules
+- [Publishing a release](../../kdos/03-architecture/packaging.md#publishing-a-release): how `ports/publish --release` puts this directory in a release
 - [The package store](015-pkgstore.md): the other cache of built packages, used during a build
 
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 341.* Previous: [Part XV. The image](intro.md) · [Contents](../README.md) · Next: [342. The package store](015-pkgstore.md)
+*Part XV. The image, chapter 364.* Previous: [Part XV. The image](intro.md) · [Contents](../README.md) · Next: [365. The package store](015-pkgstore.md)

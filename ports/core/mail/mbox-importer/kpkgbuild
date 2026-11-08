@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = mbox-importer
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 48ef7b90a7ce35fe2253d262d17e7d74f78391bc566048bf521450e491f8b65d  mbox-importer-26.08.2.tar.xz
+description = Imports an mbox mail file into an Akonadi mail folder
+homepage    = https://invent.kde.org/pim/mbox-importer
+license     = GPL-2.0-or-later AND BSD-3-Clause AND CC0-1.0 AND MIT
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kconfig kcrash ki18n kiconthemes kservice akonadi kidentitymanagement mailcommon mailimporter breeze-icons

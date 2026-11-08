@@ -161,14 +161,15 @@ static int ensure_record(const char *path, const char *name, const char *id,
  * "OPEN THIS" FROM INSIDE A BOX MEANS ON THE HOST. jupyter opens its notebook
  * in a browser, every help menu opens a URL, a file manager double-click opens
  * a document — all through xdg-open, which inside a Debian rootfs walks a list
- * of browsers the box does not carry and gives up. The session bus is shared
- * (`/run/user/<uid>/bus`), so the OpenURI portal on the host is one method
- * call away. xdg-desktop-portal launches the host's handler for the type,
- * chosen through `xdg-desktop-portal-kdos`, and only when the host has no
- * handler does the back end open the item itself, through `kdos-appbox open`
- * for a path and `xdg-open` for a scheme. A file path is made absolute and
- * passed as file://: $HOME and /tmp are the same directories on both sides,
- * which is where an application's own files are.
+ * of browsers the box does not carry and gives up. The box's filtered bus
+ * (the keeper's proxy, $DBUS_SESSION_BUS_ADDRESS) lets
+ * org.freedesktop.portal.* through, so the OpenURI portal on the host is one
+ * method call away. xdg-desktop-portal launches the host's default handler for
+ * the type, host or boxed, and asks through xdg-desktop-portal-kde's
+ * application chooser when nothing is the default. A file path is made
+ * absolute and passed as file://: $HOME and /tmp are the same directories on
+ * both sides for every box but one with a private home or a throwaway box,
+ * whose files the host cannot open by path.
  *
  * gdbus carries the call (`libglib2.0-bin` in the base pack); a base without
  * it — alpine — gets a script that says so rather than one that fails inside

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = iio-sensor-proxy
+version     = 3.9
+release     = 1
+source      = https://gitlab.freedesktop.org/hadess/iio-sensor-proxy/-/archive/$version/iio-sensor-proxy-$version.tar.gz
+sha256      = af5edd307dcfa52dc3a242d13b7cc756e90a71640caf332efbad960e21649ae4  iio-sensor-proxy-3.9.tar.gz
+description = IIO sensors to D-Bus — accelerometer, ambient light, compass and proximity for screen rotation and auto-brightness
+homepage    = https://gitlab.freedesktop.org/hadess/iio-sensor-proxy
+license     = GPL-3.0-or-later
+depends     = meson ninja pkgconf glib libgudev eudev polkit dbus

@@ -1,0 +1,28 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   fcitx5's global options, where they differ from upstream's.
+#
+# fcitx5 reads ONE file: ~/.config/fcitx5/config if it exists, else the first
+# fcitx5/config along XDG_CONFIG_DIRS (/etc/xdg when the variable is unset).
+# It merges nothing, so every option this file leaves out takes fcitx5's
+# compiled default, and once fcitx5-configtool saves a person's own file this
+# one is no longer read at all — the saved file already carries these values.
+#
+# Group switching moves off Super+Space, which opens KRunner. KWin's global
+# shortcuts are matched before a key reaches the input method, so a chord
+# bound in both is never seen by fcitx5 and switching groups would stop
+# without a word. Both directions move to Super+Alt, which nothing in KDE
+# binds; the backward chord moves too, so the pair stays one gesture apart.
+# testing/chordcheck.py fails when a chord here is also a global shortcut.
+# ---------------------------------
+
+[Hotkey/EnumerateGroupForwardKeys]
+0=Super+Alt+space
+
+[Hotkey/EnumerateGroupBackwardKeys]
+0=Super+Alt+Shift+space

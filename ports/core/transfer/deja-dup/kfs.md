@@ -17,11 +17,9 @@ though none is linked. The passphrase is kept through libsecret, by whatever ans
   one, and a Duplicity backup made elsewhere cannot be restored; it is a row of
   [Features whose library has no port](../../../../docs/kdos/06-reference/known-gaps.md#features-whose-library-has-no-port).
 - **The scheduler is started by the session.** Upstream installs
-  `org.gnome.DejaDup.Monitor.desktop` into `/etc/xdg/autostart`, the only file it puts under
-  `/etc`; nothing on KDOS reads that directory, so `build.sh` removes `$PKG/etc` and
-  `kdos-desktop-start` runs `/usr/libexec/deja-dup/deja-dup-monitor` instead (see
-  [What `kdos-desktop-start` does](../../../../docs/kdos/03-architecture/session.md#what-kdos-desktop-start-does)).
-  Without the monitor, "Back up automatically" never backs up.
+  `org.gnome.DejaDup.Monitor.desktop` into `/etc/xdg/autostart`, and Plasma starts
+  `/usr/libexec/deja-dup/deja-dup-monitor` from it at every login; the entry names no
+  `OnlyShowIn`, so it runs under KDE. Without the monitor, "Back up automatically" never backs up.
 - **The menu icon.** Upstream installs the application icon as `org.gnome.DejaDup.svg` only, and
   the panel reads hicolor PNGs, so `build.sh` renders 48, 64 and 128 pixel PNGs with `rsvg-convert`.
 - **The menu entry is replaced.** The GtkApplication id, `org.gnome.DejaDup`, is the Wayland

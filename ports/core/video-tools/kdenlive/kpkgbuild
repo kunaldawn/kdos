@@ -10,10 +10,10 @@
 
 
 name        = kdenlive
-version     = 26.08.1
-release     = 2
+version     = 26.08.2
+release     = 1
 source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
-sha256      = 8a0e2cc6451de6901fec778a8b6d00165399879233a264ca5bb1b1b283266513  kdenlive-26.08.1.tar.xz
+sha256      = 1019cda23429a526e3a2dbdd2ec93406fef0c89ca243af16dfa16ac9ae8a6bf8  kdenlive-26.08.2.tar.xz
 description = Kdenlive: the KDE multi-track video editor, on MLT
 homepage    = https://kdenlive.org/
 license     = GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL

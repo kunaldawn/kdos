@@ -47,10 +47,9 @@ Two facts about the guest itself: **the serial console is a root shell on the
 live ISO** — `fs/etc/inittab` runs `agetty --autologin root` on `ttyS0`, so
 there is no password to type, while an installed disk asks for a login there
 because the installer removes `--autologin root` from its copy, and tty2 is a
-plain agetty that asks for one — and **tty1 autologins as `kdos`** and
-`~/.bash_profile`, seeded from `/etc/skel`, starts `kdos-desktop` there — so
-the desktop is already up before
-any step, `type.py` drives whatever surface has the focus in it, and
+plain agetty that asks for one — and **SDDM logs `kdos` in to Plasma on its
+own** (`[Autologin]` in `fs/etc/sddm.conf.d/kde_settings.conf`) — so the
+desktop is already up before any step, `type.py` drives whatever surface has the focus in it, and
 `guest.py` inspects it from the serial root shell. Anything run as `kdos` from
 the serial side needs `su - kdos` (a LOGIN shell: a plain `su kdos` leaves
 podman resolving `HOME` to `/`) plus `XDG_RUNTIME_DIR`, `WAYLAND_DISPLAY` and

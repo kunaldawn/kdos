@@ -22,3 +22,5 @@
 
 kdiff3
 git-cola
+
+kompare

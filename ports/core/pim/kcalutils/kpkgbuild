@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kcalutils
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 5e5ca87267867f203a5ffd87c88e1ab97884b66f81ff4e6ce8d0d6c087a0c450  kcalutils-26.08.2.tar.xz
+description = KDE PIM library of calendar utilities: incidence formatting, iCalendar to HTML and date helpers
+homepage    = https://invent.kde.org/pim/kcalutils
+license     = LGPL-2.0-or-later AND LGPL-2.1-or-later AND BSD-3-Clause AND CC0-1.0 AND MIT
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcoreaddons ki18n kcodecs kwidgetsaddons kiconthemes ktexttemplate kcalendarcore kidentitymanagement

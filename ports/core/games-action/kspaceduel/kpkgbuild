@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kspaceduel
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 90dcd2aaa34bc66ff350ff958d60a4034e7ca7359bc83ede963edf472a4100de  kspaceduel-26.08.2.tar.xz
+description = Two satellites duel around a sun, with gravity, energy and bullets
+homepage    = https://apps.kde.org/kspaceduel/
+license     = GPL-2.0-or-later AND GFDL-1.2-or-later AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg kcompletion kconfig kconfigwidgets kcoreaddons kcrash kdbusaddons kdoctools ki18n kxmlgui libkdegames

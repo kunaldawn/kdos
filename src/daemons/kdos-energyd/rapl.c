@@ -27,10 +27,10 @@
  *
  * IT IS ROOT-ONLY, and has been since Linux 5.10 closed PLATYPUS
  * (CVE-2020-8694): unprivileged microsecond-resolution RAPL reads recover AES
- * keys. That is why this is a daemon and not a library call in the panel. It
- * is also why the daemon never republishes the counter: what leaves this
- * process is a per-app percentage over minutes, which is not an oracle for
- * anything.
+ * keys. That is why this is a daemon and not a library call in System
+ * Monitor. It is also why the daemon never republishes the counter: what
+ * leaves this process is a per-app percentage over minutes, which is not an
+ * oracle for anything.
  * ---------------------------------
  */
 

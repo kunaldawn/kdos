@@ -23,6 +23,7 @@
 
 python3-cairo
 python3-gobject
+python3-pyatspi
 python3-dasbus
 python3-kivy
 python3-opengl

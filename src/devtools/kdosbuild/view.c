@@ -505,7 +505,7 @@ void preview_fixture(Manager *m, Sampler *s)
 	/* Longer than any tree pane this layout will ever hand it: the pane is
 	 * capped at 48 columns and the title starts 6 in. */
 	BStep *run = pv_step(m, g1,
-			     "xdg-desktop-portal-wlr-with-a-very-long-port-name",
+			     "xdg-desktop-portal-kde-with-a-very-long-port-name",
 			     ST_RUNNING, 47);
 	BStep *bad = pv_step(m, g1, "gst-plugins-bad", ST_FAIL, 213);
 	bad->return_code = 2;	/* matches the "make: *** ... Error 2" log line */
@@ -544,7 +544,7 @@ void preview_fixture(Manager *m, Sampler *s)
 	m->nrunning = KB_MAX_WORKERS;
 	m->lvl_from = m->lvl_commit = -1;
 
-	pv_log(run, "[142/318] Compiling wlroots v0.20.2");
+	pv_log(run, "[142/318] Compiling kwin v6.8.2");
 	pv_log(run, "  Compiling smithay v0.4.0");
 	pv_log(run, "checking for error_at_line... yes");
 	pv_log(run, "warning: unused variable: `output_state`");

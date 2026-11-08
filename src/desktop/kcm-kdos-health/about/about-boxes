@@ -1,0 +1,23 @@
+#!/bin/sh
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   about-boxes — About this System's "Boxes" row
+#
+# How many boxes this user has, counted by their profiles in
+# ~/.config/kdos/boxes — the path kdos-appbox resolves from $HOME, never
+# $XDG_CONFIG_HOME. podman is never asked: it can take seconds, and this
+# runs on the GUI thread. Always two lines, at once: see about-slot.
+
+PATH=/usr/bin:/bin
+v=Unknown
+if [ -n "${HOME:-}" ]; then
+	n=0
+	for f in "$HOME"/.config/kdos/boxes/*.conf; do [ -f "$f" ] && n=$((n + 1)); done
+	case $n in 0) v=None ;; 1) v="1 box" ;; *) v="$n boxes" ;; esac
+fi
+printf 'Boxes\n%s\n' "$v"

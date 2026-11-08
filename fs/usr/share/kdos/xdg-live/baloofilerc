@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   No file index on the live medium.
+#
+# A live session's home is in memory and lasts one boot: an index of it is
+# CPU and RAM spent on files that are gone at the next start. File search in
+# Dolphin and KRunner still finds what is there, by walking it. The directory
+# goes first in XDG_CONFIG_DIRS, and only on the live medium; an installed
+# system indexes file names (/usr/share/kdos/xdg/baloofilerc).
+# ---------------------------------
+
+[Basic Settings]
+Indexing-Enabled=false

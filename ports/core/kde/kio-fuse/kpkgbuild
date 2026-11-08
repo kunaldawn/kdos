@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kio-fuse
+version     = 5.1.1
+release     = 1
+source      = https://download.kde.org/stable/$name/$name-$version.tar.xz
+sha256      = adf6aa7ce055c0987e716a93ac01f3c0a97c1280421443cd6b21e0e71d763d14  kio-fuse-5.1.1.tar.xz
+description = FUSE bridge that mounts KIO locations so programs without KIO can open remote files by path
+homepage    = https://invent.kde.org/system/kio-fuse
+license     = GPL-3.0-or-later
+depends     = cmake ninja extra-cmake-modules pkgconf qt6-qtbase kcoreaddons kio fuse

@@ -493,9 +493,9 @@ void ktui_draw_invalidate(void)
  * last codepoint and is not KTUI_SPRITE_BASE, so it can never equal one.
  *
  * AND THE BACKEND IS TOLD AS WELL, because a backend may diff against a copy
- * of its own rather than this one — libkwl keeps one per buffer. Spoiling only
- * this copy leaves such a backend seeing no difference at all, which is an
- * animation frozen on its first frame. A backend with no `dirty` reads `prev`
+ * of its own rather than this one — a pixel backend keeps one per buffer.
+ * Spoiling only this copy leaves such a backend seeing no difference at all,
+ * which is an animation frozen on its first frame. A backend with no `dirty` reads `prev`
  * and needs nothing more.
  */
 void ktui_draw_dirty(int x, int y, int w, int h)

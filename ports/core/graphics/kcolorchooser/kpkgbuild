@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kcolorchooser
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = dbd21ec12a220c4f3bc3ddf9dc3513b38e20f1eca5d92961a635cc7fef82dace  kcolorchooser-26.08.2.tar.xz
+description = Colour chooser — a colour dialog with a screen picker that can print the chosen colour
+homepage    = https://apps.kde.org/kcolorchooser/
+license     = MIT
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcoreaddons ki18n kxmlgui

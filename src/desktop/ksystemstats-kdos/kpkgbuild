@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ksystemstats-kdos
+version     = 1.0.0
+release     = 1
+description = KDOS sensors for System Monitor: boxes, energy by application, the A/B slots; the KDOS Meters face and page
+homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kconfig kcoreaddons ki18n kpackage kirigami kitemmodels kquickcharts libksysguard ksystemstats plasma-systemmonitor

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = akonadiconsole
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 2d1fe95758b1878460e91b60bc65267486db308e52199a90f60ef54703210949  akonadiconsole-26.08.2.tar.xz
+description = Akonadi management and debugging console — agents, collections, items, the database and notifications
+homepage    = https://invent.kde.org/pim/akonadiconsole
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later AND LGPL-2.1-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND BSD-3-Clause AND MIT AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcalendarcore kcompletion kconfig kcontacts kcrash kdbusaddons kdoctools ki18n kio kitemmodels kitemviews kmime ktextwidgets kwidgetsaddons kxmlgui akonadi akonadi-contacts akonadi-mime akonadi-search calendarsupport libkdepim messagelib xapian-core

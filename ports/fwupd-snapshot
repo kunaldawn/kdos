@@ -1,0 +1,261 @@
+#!/usr/bin/env python3
+
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+# fwupd-snapshot — the LVFS firmware metadata, as the fwupd-snapshot port's
+# source.
+#
+#   ports/fwupd-snapshot [--date YYYYMMDD] [--from DIR] [--no-recipe]
+#
+# Run when a release is cut. It takes the LVFS's firmware.xml.zst and the
+# firmware.xml.zst.jcat that signs it (downloaded, or from DIR for a machine
+# that fetched them elsewhere), checks the signature, packs both as
+# ports/core/boot/fwupd-snapshot/fwupd-snapshot-<date>.tar.xz and writes the
+# recipe's `version` and `sha256` lines for it. `ports/publish
+# fwupd-snapshot` then puts the file in the source archive and
+# `make book-stamp` restamps the book; from there the build is offline like
+# every other, and the image's /usr/share/fwupd/remotes.d/kdos-snapshot.conf
+# lists firmware from it with no network.
+#
+# THE SIGNATURE IS CHECKED BEFORE ANYTHING IS WRITTEN. fwupd trusts a local
+# remote outright — it marks every release in one as trusted metadata and a
+# trusted payload — so a snapshot that was not the LVFS's own would be
+# believed on every machine that installs it. At least one PKCS#7 signature
+# in the jcat must verify over the metadata against the LVFS CA certificates,
+# and every SHA-256 or SHA-512 the jcat records must match. The certificates
+# are read from the fwupd source tarball the fwupd recipe pins, after its
+# sha256 has been checked: the same CA fwupd itself verifies a refresh with,
+# reached through a hash this tree already trusts. `openssl cms` does the
+# verifying.
+#
+# THE TARBALL IS REPRODUCIBLE: sorted members, owner 0, every mtime the
+# snapshot's date at 00:00 UTC, xz at one preset. Two runs over the same two
+# files give the same sha256.
+
+import argparse
+import base64
+import hashlib
+import io
+import json
+import lzma
+import os
+import re
+import subprocess
+import sys
+import tarfile
+import tempfile
+import urllib.request
+import zlib
+from datetime import datetime, timezone
+
+LVFS = "https://cdn.fwupd.org/downloads"
+META = "firmware.xml.zst"
+JCAT = "firmware.xml.zst.jcat"
+CA_MEMBERS = ("data/pki/LVFS-CA.pem", "data/pki/LVFS-CA-2025PQ.pem")
+
+# fwupd's FwupdJcatBlobKind, and the flag that marks a blob's data as text.
+KIND_SHA256, KIND_PKCS7, KIND_SHA512 = 1, 3, 10
+FLAG_UTF8 = 1
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PORT = os.path.join(REPO, "ports", "core", "boot", "fwupd-snapshot")
+FWUPD = os.path.join(REPO, "ports", "core", "boot", "fwupd")
+
+
+def fail(msg):
+    print(f"✗  fwupd-snapshot: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+def sha256(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def recipe_value(path, key):
+    with open(path) as f:
+        for line in f:
+            m = re.match(rf"^{key}\s*=\s*(.*?)\s*$", line)
+            if m:
+                return m.group(1)
+    return None
+
+
+def lvfs_ca():
+    """The LVFS CA certificates out of the pinned fwupd tarball, as one PEM
+    bundle; the tarball is checked against its recipe's sha256 first."""
+    recipe = os.path.join(FWUPD, "kpkgbuild")
+    version = recipe_value(recipe, "version")
+    pin = recipe_value(recipe, "sha256")
+    if not version or not pin:
+        fail(f"{recipe} names no version or sha256")
+    want, name = pin.split()[0], pin.split()[-1]
+    path = os.path.join(FWUPD, name)
+    if not os.path.isfile(path):
+        fail(f"{path} is not here: run `ports/fetch fwupd` first")
+    with open(path, "rb") as f:
+        data = f.read()
+    if sha256(data) != want:
+        fail(f"{name}: sha256 {sha256(data)}, the recipe pins {want}")
+    bundle = b""
+    with tarfile.open(fileobj=io.BytesIO(data)) as t:
+        for member in CA_MEMBERS:
+            try:
+                bundle += t.extractfile(f"fwupd-{version}/{member}").read()
+            except KeyError:
+                fail(f"{name} has no {member}")
+    return bundle
+
+
+def jcat_blobs(raw):
+    # One gzip member of JSON. The CDN serves it with bytes after the member,
+    # which fwupd's own reader stops before, so only the first member is read.
+    try:
+        doc = json.loads(zlib.decompressobj(wbits=31).decompress(raw))
+    except (zlib.error, ValueError) as e:
+        fail(f"{JCAT} is not a JCat file: {e}")
+    for item in doc.get("Items", []):
+        if item.get("Id") == META or META in item.get("AliasIds", []):
+            return item.get("Blobs", [])
+    fail(f"{JCAT} has no item for {META}")
+
+
+def blob_bytes(blob):
+    data = blob.get("Data", "")
+    return data.encode() if blob.get("Flags", 0) & FLAG_UTF8 else base64.b64decode(data)
+
+
+def verify(work, meta, jcat, ca):
+    """The subject of the certificate whose signature verified.
+
+    The LVFS signs twice, RSA and ML-DSA-87; openssl's CMS refuses the
+    ML-DSA signature's SHAKE256 digest. A signature that does not verify is
+    reported and the next is tried, and one that verifies is required."""
+    blobs = jcat_blobs(jcat)
+    for kind, fn in ((KIND_SHA256, hashlib.sha256), (KIND_SHA512, hashlib.sha512)):
+        for b in blobs:
+            if b.get("Kind") == kind and blob_bytes(b).decode().strip().lower() != fn(meta).hexdigest():
+                fail(f"{JCAT} records a different {fn().name} for {META}")
+
+    paths = {n: os.path.join(work, n) for n in ("meta", "ca.pem", "sig", "signer.pem")}
+    with open(paths["meta"], "wb") as f:
+        f.write(meta)
+    with open(paths["ca.pem"], "wb") as f:
+        f.write(ca)
+    tried = 0
+    for b in blobs:
+        if b.get("Kind") != KIND_PKCS7:
+            continue
+        tried += 1
+        sig = blob_bytes(b)
+        with open(paths["sig"], "wb") as f:
+            f.write(sig)
+        form = "PEM" if sig.lstrip().startswith(b"-----BEGIN") else "DER"
+        r = subprocess.run(["openssl", "cms", "-verify", "-binary", "-inform", form,
+                            "-in", paths["sig"], "-content", paths["meta"],
+                            "-CAfile", paths["ca.pem"], "-purpose", "any",
+                            "-signer", paths["signer.pem"], "-out", os.devnull],
+                           capture_output=True, text=True)
+        if r.returncode == 0:
+            s = subprocess.run(["openssl", "x509", "-in", paths["signer.pem"], "-noout", "-subject"],
+                               capture_output=True, text=True)
+            return s.stdout.strip().removeprefix("subject=").strip() or "the LVFS"
+        print(f"   a PKCS#7 signature did not verify: {r.stderr.strip().splitlines()[-1:]}", file=sys.stderr)
+    fail(f"{JCAT}: none of its {tried} PKCS#7 signature(s) verifies against the LVFS CA")
+
+
+def tarball(path, top, members, mtime):
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w", format=tarfile.GNU_FORMAT) as t:
+        def info(name, size, mode, kind):
+            ti = tarfile.TarInfo(name)
+            ti.size, ti.mode, ti.type, ti.mtime = size, mode, kind, mtime
+            ti.uid = ti.gid = 0
+            ti.uname = ti.gname = ""
+            return ti
+        t.addfile(info(top, 0, 0o755, tarfile.DIRTYPE))
+        for name in sorted(members):
+            data = members[name]
+            t.addfile(info(f"{top}/{name}", len(data), 0o644, tarfile.REGTYPE), io.BytesIO(data))
+    blob = lzma.compress(buf.getvalue(), format=lzma.FORMAT_XZ, check=lzma.CHECK_CRC64, preset=9)
+    with open(path + ".tmp", "wb") as f:
+        f.write(blob)
+    os.replace(path + ".tmp", path)
+    return sha256(blob)
+
+
+def write_recipe(recipe, date, name, digest):
+    with open(recipe) as f:
+        lines = f.readlines()
+    out, done = [], set()
+    for line in lines:
+        if re.match(r"^version\s*=", line):
+            line, _ = f"version     = {date}\n", done.add("version")
+        elif re.match(r"^sha256\s*=", line):
+            line, _ = f"sha256      = {digest}  {name}\n", done.add("sha256")
+        out.append(line)
+    if done != {"version", "sha256"}:
+        fail(f"{recipe} has no version or sha256 line to rewrite")
+    with open(recipe + ".tmp", "w") as f:
+        f.writelines(out)
+    os.replace(recipe + ".tmp", recipe)
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Snapshot the LVFS firmware metadata for the fwupd-snapshot port.")
+    ap.add_argument("--date", help="the snapshot's date, YYYYMMDD (default: today, UTC)")
+    ap.add_argument("--from", dest="source", help=f"a directory holding {META} and {JCAT} already fetched")
+    ap.add_argument("--no-recipe", action="store_true", help="write the tarball and print the recipe lines")
+    a = ap.parse_args()
+
+    date = a.date or datetime.now(timezone.utc).strftime("%Y%m%d")
+    if not re.fullmatch(r"\d{8}", date):
+        fail(f"--date {date} is not YYYYMMDD")
+    mtime = int(datetime.strptime(date, "%Y%m%d").replace(tzinfo=timezone.utc).timestamp())
+
+    ca = lvfs_ca()
+    files = {}
+    for n in (META, JCAT):
+        if a.source:
+            with open(os.path.join(a.source, n), "rb") as f:
+                files[n] = f.read()
+        else:
+            print(f"⬇  {LVFS}/{n}")
+            with urllib.request.urlopen(f"{LVFS}/{n}") as r:
+                files[n] = r.read()
+
+    with tempfile.TemporaryDirectory(prefix="fwupd-snapshot-") as work:
+        signer = verify(work, files[META], files[JCAT], ca)
+    print(f"✓  {META} is signed by {signer}")
+
+    files["SNAPSHOT"] = (
+        "# The LVFS firmware metadata a KDOS release lists firmware from.\n"
+        f"source  {LVFS}/{META}\n"
+        f"taken   {date[:4]}-{date[4:6]}-{date[6:]}\n"
+        f"sha256  {sha256(files[META])}  {META}\n"
+        f"signer  {signer}\n").encode()
+
+    name = f"fwupd-snapshot-{date}.tar.xz"
+    os.makedirs(PORT, exist_ok=True)
+    digest = tarball(os.path.join(PORT, name), f"fwupd-snapshot-{date}", files, mtime)
+    print(f"✓  {os.path.relpath(os.path.join(PORT, name), REPO)}  {digest}")
+
+    recipe = os.path.join(PORT, "kpkgbuild")
+    if a.no_recipe or not os.path.isfile(recipe):
+        print(f"version     = {date}")
+        print(f"sha256      = {digest}  {name}")
+    else:
+        write_recipe(recipe, date, name, digest)
+        print(f"✓  {os.path.relpath(recipe, REPO)}: version {date}")
+    print("   next: ports/publish fwupd-snapshot, then make book-stamp")
+
+
+if __name__ == "__main__":
+    main()

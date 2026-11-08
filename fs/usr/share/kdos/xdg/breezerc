@@ -1,0 +1,25 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   The window decoration: Breeze, squared.
+#
+# The KDOS title bar is Breeze's decoration with its corners squared, a 1 px
+# outline in the scheme's own colour and the title on the left. It takes
+# every colour from the active scheme's [WM] group, so it follows all eight
+# accents with nothing regenerated, and a window rule's forced colour scheme
+# (a box's colour) tints it the same way. The Window Decorations page writes
+# the person's choices to ~/.config/breezerc, above this file.
+# ---------------------------------
+
+[Common]
+RoundedCorners=false
+OutlineEnabled=true
+
+[Windeco]
+DrawBackgroundGradient=false
+TitleAlignment=AlignLeft
+ButtonSize=ButtonDefault

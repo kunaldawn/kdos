@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdos-wallpapers
+version     = 1.0.0
+release     = 1
+description = KDOS wallpapers — the mark in each accent, dark and light, as Plasma wallpaper packages
+homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
+depends     = kdos-theme

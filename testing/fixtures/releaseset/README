@@ -1,0 +1,9 @@
+The release-set check's fixture: set/ is a tree of recipes, filed the way
+ports/core files them, that holds each KDE family at one version — Plasma
+(by its download.kde.org/stable/plasma source, or `group = plasma` on a port
+off the kde shelf), KDE Frameworks (the kf6 shelf) and KDE Gear (the
+release-service source). A respin (6.8.2.1, 6.31.1) belongs to its release,
+and plasma-wayland-protocols, released on its own, belongs to none.
+testing/preflight.sh checks that set/ passes, then copies it three times,
+moves one port of one family to another release, and checks that each copy
+fails.

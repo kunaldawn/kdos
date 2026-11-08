@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = debian-dep11
+version     = 20261028
+release     = 1
+source      = $name-$version.yml.gz::https://snapshot.debian.org/archive/debian/${version}T000000Z/dists/trixie/main/dep11/Components-amd64.yml.gz
+sha256      = 782b0a6b58526790764605aabf84356d1cfa7fda562d1b154ccb8998da73a9a2  debian-dep11-20261028.yml.gz
+description = Debian trixie's AppStream catalogue, for Discover's Debian lane offline
+homepage    = https://wiki.debian.org/AppStream
+license     = CC0-1.0 AND FSFAP
+depends     = 

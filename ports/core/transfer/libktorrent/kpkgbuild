@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = libktorrent
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 140a8e90b2b0d2f91ad12a9d0ff9687aceac44ede0c06e00d7f41ca999340b5e  libktorrent-26.08.2.tar.xz
+description = BitTorrent protocol library behind KTorrent: DHT, uTP, encryption, magnet links and UPnP
+homepage    = https://invent.kde.org/network/libktorrent
+license     = GPL-2.0-or-later AND BSD-3-Clause AND MIT AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase karchive kcrash ki18n kio solid boost gmp openssl

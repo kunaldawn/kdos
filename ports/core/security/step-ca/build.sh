@@ -28,7 +28,7 @@ case "$1" in
     start)
         [ ! -x "$DAEMON" ] && { echo "[SKIP] $NAME: $DAEMON not found"; exit 0; }
         if [ ! -s "$STEPPATH/config/ca.json" ]; then
-            echo "[SKIP] $NAME: no $STEPPATH/config/ca.json (STEPPATH=$STEPPATH step ca init makes it)"
+            echo "[SKIP] $NAME: no $STEPPATH/config/ca.json (STEPPATH=$STEPPATH step-cli ca init makes it)"
             exit 0
         fi
         if [ ! -s "$STEPPATH/password.txt" ]; then

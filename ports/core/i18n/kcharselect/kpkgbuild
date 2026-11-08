@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kcharselect
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = ce50299a111f8a6e346a52cbf65d77c90d991fb94c5219a19d339e17a6b3fa9b  kcharselect-26.08.2.tar.xz
+description = Character selector — every Unicode block, searchable, with each character's details
+homepage    = https://apps.kde.org/kcharselect/
+license     = GPL-2.0-or-later
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kbookmarks kcoreaddons kcrash ki18n kwidgetsaddons kxmlgui kconfigwidgets kiconthemes kdoctools breeze-icons

@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+# A stand-in for KDE's kwriteconfig6, for the selftest: the options kdos uses
+# (--file, --group repeated, --key, --notify, --delete, a value after --) and
+# KConfig's own way of writing a file back — comments dropped, groups and keys
+# in byte order, a blank line between groups, `\s` for an edge space and the
+# backslash escapes — so a round trip through it ends in the bytes a real
+# KConfig would leave. Every call is appended to $KDOS_FAKE_LOG.
+import os, sys
+
+def escape(v):
+    out = []
+    for i, c in enumerate(v):
+        if c == '\\': out.append('\\\\')
+        elif c == '\n': out.append('\\n')
+        elif c == '\t': out.append('\\t')
+        elif c == '\r': out.append('\\r')
+        elif c == ' ' and (i == 0 or i == len(v) - 1): out.append('\\s')
+        elif ord(c) < 32: out.append('\\x%02x' % ord(c))
+        else: out.append(c)
+    return ''.join(out)
+
+def main(argv):
+    f = groups = key = None
+    groups, notify, delete, value, i = [], False, False, None, 0
+    while i < len(argv):
+        a = argv[i]
+        if a == '--file': f = argv[i + 1]; i += 2; continue
+        if a == '--group': groups.append(argv[i + 1]); i += 2; continue
+        if a == '--key': key = argv[i + 1]; i += 2; continue
+        if a == '--notify': notify = True; i += 1; continue
+        if a == '--delete': delete = True; i += 1; continue
+        if a == '--type': i += 2; continue
+        if a == '--': value = argv[i + 1] if i + 1 < len(argv) else ''; i = len(argv); continue
+        value = a; i += 1
+    if not f or not key or (value is None and not delete):
+        sys.stderr.write('kwriteconfig6: usage\n'); return 1
+    log = os.environ.get('KDOS_FAKE_LOG')
+    if log:
+        with open(log, 'a') as l:
+            l.write('kwriteconfig6 %s %s %s %s%s\n' % (f, '\x1d'.join(groups), key,
+                    '<delete>' if delete else value, ' notify' if notify else ''))
+    home = os.environ.get('XDG_CONFIG_HOME') or os.path.join(os.environ['HOME'], '.config')
+    path = f if f.startswith('/') else os.path.join(home, f)
+    entries = {}
+    order = []
+    try:
+        cur = ''
+        for line in open(path, encoding='utf-8'):
+            line = line.rstrip('\n')
+            s = line.strip()
+            if not s or s.startswith('#'): continue
+            if s.startswith('[') and s.endswith(']'):
+                cur = s[1:-1].replace('][', '\x1d'); continue
+            if '=' not in s: continue
+            k, v = s.split('=', 1)
+            entries.setdefault(cur, {})[k.strip()] = v.strip()
+    except FileNotFoundError:
+        pass
+    g = '\x1d'.join(groups) or 'KDE'
+    if delete:
+        entries.get(g, {}).pop(key, None)
+        if g in entries and not entries[g]: del entries[g]
+    else:
+        entries.setdefault(g, {})[key] = escape(value)
+    out = []
+    for gname in sorted(entries, key=lambda x: x.encode()):
+        if out: out.append('')
+        if gname: out.append('[' + gname.replace('\x1d', '][') + ']')
+        for k in sorted(entries[gname], key=lambda x: x.encode()):
+            out.append('%s=%s' % (k, entries[gname][k]))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as o:
+        o.write('\n'.join(out) + ('\n' if out else ''))
+    return 0
+
+sys.exit(main(sys.argv[1:]))

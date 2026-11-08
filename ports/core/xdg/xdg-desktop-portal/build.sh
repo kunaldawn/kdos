@@ -10,6 +10,7 @@
 # ---------------------------------
 
 patch -p1 --no-backup-if-mismatch -i "$PORT_SRC/camera-leave-pipewire-loop.patch"
+patch -p1 --no-backup-if-mismatch -i "$PORT_SRC/cgroup-app-id.patch"
 
 meson setup build --buildtype=release \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib \

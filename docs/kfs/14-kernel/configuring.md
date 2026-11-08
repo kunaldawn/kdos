@@ -175,7 +175,7 @@ In this table, *DRM* stands for Device Drivers → Graphics support → *Direct 
 | `CONFIG_DM_CRYPT` | Device Drivers → Multiple devices driver support (RAID and LVM) → Device mapper support → *Crypt target support* | `m` | An encrypted root, opened by the initramfs from `cryptdevice=` |
 | `CONFIG_VFAT_FS` | File systems → DOS/FAT/EXFAT/NT Filesystems → *VFAT (Windows-95) fs support* | `y` | The ESP. The initramfs reads the [A/B boot state](../../kdos/03-architecture/boot-and-init.md#ab-slot-selection) off it, and each slot's kernel and initramfs live on it |
 | `CONFIG_NLS_CODEPAGE_437` | File systems → Native language support → *Codepage 437 (United States, Canada)* | `y` | The code page a FAT mount uses for short names unless told otherwise; without it the ESP does not mount |
-| `CONFIG_EXFAT_FS` | File systems → DOS/FAT/EXFAT/NT Filesystems → *exFAT filesystem support* | `y` | exFAT drives, which `kdos-mountd` mounts for the desktop |
+| `CONFIG_EXFAT_FS` | File systems → DOS/FAT/EXFAT/NT Filesystems → *exFAT filesystem support* | `y` | exFAT drives, which udisks2 mounts for the desktop |
 
 ### The live medium and packs
 
@@ -198,7 +198,7 @@ In this table, *DRM* stands for Device Drivers → Graphics support → *Direct 
 | `CONFIG_ZRAM_BACKEND_ZSTD` | Device Drivers → Block devices → Compressed RAM block device support → *zstd compression support* | `y` | zstd as a [zram]{.idx} compressor, the algorithm `12_zram.sh` asks for by default |
 | `CONFIG_ZRAM_DEF_COMP_ZSTD` | Device Drivers → Block devices → Compressed RAM block device support → Default zram compressor → *zstd* | `y` | zstd as the device's own default, the one kept when `/etc/kdos/zram.conf` names an algorithm the kernel lacks |
 | `CONFIG_ZSWAP` | Memory Management options → Support for paging of anonymous memory (swap) → *Compressed cache for swap pages* | `y` | A compressed cache in front of disk swap. `12_zram.sh` turns it off while zram is the swap and on again when zram is removed |
-| `CONFIG_PSI` | General setup → CPU/Task time and stats accounting → *Pressure stall information tracking* | `y` | `/proc/pressure/`. `kdos-oomd` blocks on a memory-pressure trigger there and does not start without it; `kdos-res` shows CPU and memory pressure from it |
+| `CONFIG_PSI` | General setup → CPU/Task time and stats accounting → *Pressure stall information tracking* | `y` | `/proc/pressure/`. `kdos-oomd` blocks on a memory-pressure trigger there and does not start without it; System Monitor shows CPU and memory pressure from it |
 
 ### Boxes, containers and the sandbox
 
@@ -291,7 +291,7 @@ equal the kernel's default.
 | `CONFIG_MODULE_SIG_KEY_TYPE_ECDSA` | Cryptographic API → Certificates for signature checking → Type of module signing key to be generated → *ECDSA* | `y` | The kind of key the kernel generates for itself when `CONFIG_MODULE_SIG_KEY` is left at its default, as it is in a build outside the KDOS tree |
 | `CONFIG_X86_X32_ABI` | Binary Emulations → *x32 ABI for 64-bit mode* | `n` | Removes the x32 system-call entry path, which no program on KDOS uses |
 | `CONFIG_UEVENT_HELPER` | Device Drivers → Generic Driver Options → *Support for uevent helper* | `n` | No program forked as root for every device event; `udevd` reads events from netlink |
-| `CONFIG_PM_AUTOSLEEP` | Power management and ACPI options → *Opportunistic sleep* | `n` | Suspend only when user space asks, as `kdos-powerd` does |
+| `CONFIG_PM_AUTOSLEEP` | Power management and ACPI options → *Opportunistic sleep* | `n` | Suspend only when user space asks, as elogind does |
 | `CONFIG_LDISC_AUTOLOAD` | Device Drivers → Character devices → Enable TTY → *Automatically load TTY Line Disciplines* | `n` | No line-discipline module loaded on behalf of an unprivileged user |
 | `CONFIG_PROC_MEM_FORCE_PTRACE` | Security options → Allow /proc/pid/mem access override → *Require active ptrace() use for access override* | `y` | Writing another process's read-only memory through `/proc/<pid>/mem` needs an attached debugger |
 | `CONFIG_BUG_ON_DATA_CORRUPTION` | Security options → Kernel hardening options → Hardening of kernel data structures → *Trigger a BUG when data corruption is detected* | `y` | Corrupted kernel lists stop the offending task instead of logging and going on |
@@ -337,4 +337,4 @@ On a running system, `zcat /proc/config.gz` shows them with everything else.
 <!-- book-nav -->
 ---
 
-*Part XIV. The kernel, chapter 336.* Previous: [Part XIV. The kernel](intro.md) · [Contents](../README.md) · Next: [337. Building the kernel](building.md)
+*Part XIV. The kernel, chapter 359.* Previous: [Part XIV. The kernel](intro.md) · [Contents](../README.md) · Next: [360. Building the kernel](building.md)

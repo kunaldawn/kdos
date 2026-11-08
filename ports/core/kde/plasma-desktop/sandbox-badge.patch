@@ -1,0 +1,82 @@
+Subject: taskmanager: name a window's sandbox in its tooltip
+
+A window task whose application runs in a sandbox gets a line in its
+tooltip's subtext, from libtaskmanager's SandboxEngine and SandboxName
+roles: "In box: <box>" for a KDOS box, "Flatpak: <id>" for a Flatpak, and
+"In sandbox: <name>" for any other engine. Grouped tooltips show it per
+window. A libtaskmanager without the roles answers nothing and the line is
+not drawn.
+
+diff -ruN a/applets/taskmanager/qml/Task.qml b/applets/taskmanager/qml/Task.qml
+--- a/applets/taskmanager/qml/Task.qml	2026-11-01 16:37:15.382722201 +0530
++++ b/applets/taskmanager/qml/Task.qml	2026-11-01 16:37:15.414449232 +0530
+@@ -369,6 +369,8 @@
+         mainItem.isMinimized = Qt.binding(() => model.IsMinimized);
+         mainItem.display = Qt.binding(() => model.display);
+         mainItem.genericName = Qt.binding(() => model.GenericName);
++        mainItem.sandboxEngine = Qt.binding(() => model.SandboxEngine ?? "");
++        mainItem.sandboxName = Qt.binding(() => model.SandboxName ?? "");
+         mainItem.virtualDesktops = Qt.binding(() => model.VirtualDesktops);
+         mainItem.isOnAllVirtualDesktops = Qt.binding(() => model.IsOnAllVirtualDesktops);
+         mainItem.activities = Qt.binding(() => model.Activities);
+diff -ruN a/applets/taskmanager/qml/ToolTipDelegate.qml b/applets/taskmanager/qml/ToolTipDelegate.qml
+--- a/applets/taskmanager/qml/ToolTipDelegate.qml	2026-11-01 16:37:15.382864511 +0530
++++ b/applets/taskmanager/qml/ToolTipDelegate.qml	2026-11-01 16:37:15.416356795 +0530
+@@ -42,6 +42,8 @@
+     // Needed for generateSubtext()
+     property string display
+     property string genericName
++    property string sandboxEngine
++    property string sandboxName
+     property /*list<var>*/ var virtualDesktops: [] // Can't use list<var> because of QTBUG-127600
+     property bool isOnAllVirtualDesktops
+     property list<string> activities: []
+@@ -79,6 +81,8 @@
+             isOnAllVirtualDesktops: toolTipDelegate.isOnAllVirtualDesktops
+             virtualDesktops: toolTipDelegate.virtualDesktops
+             activities: toolTipDelegate.activities
++            sandboxEngine: toolTipDelegate.sandboxEngine
++            sandboxName: toolTipDelegate.sandboxName
+             model: null
+         }
+     }
+@@ -168,6 +172,8 @@
+                     isOnAllVirtualDesktops: model.IsOnAllVirtualDesktops
+                     virtualDesktops: model.VirtualDesktops
+                     activities: model.Activities
++                    sandboxEngine: model.SandboxEngine ?? ""
++                    sandboxName: model.SandboxName ?? ""
+                     hasTrackInATitle: groupToolTipListView.hasTrackInATitle
+                     orientation: groupToolTipListView.orientation
+                 }
+diff -ruN a/applets/taskmanager/qml/ToolTipInstance.qml b/applets/taskmanager/qml/ToolTipInstance.qml
+--- a/applets/taskmanager/qml/ToolTipInstance.qml	2026-11-01 16:37:15.382932500 +0530
++++ b/applets/taskmanager/qml/ToolTipInstance.qml	2026-11-01 16:37:15.417224574 +0530
+@@ -35,6 +35,10 @@
+     required property list<string> activities
+     required property bool isReadyForPainting
+ 
++    // The sandbox the window's application runs in, from its desktop entry:
++    // the engine says which kind, the name which one.
++    property string sandboxEngine
++    property string sandboxName
+     property bool hasTrackInATitle: false
+     property int orientation: ListView.Vertical // vertical for compact single-window tooltips
+ 
+@@ -471,6 +475,16 @@
+     function generateSubText(): string {
+         const subTextEntries = [];
+ 
++        if (sandboxName.length > 0) {
++            if (sandboxEngine === "io.kdos.appbox") {
++                subTextEntries.push(i18nc("@info:tooltip the KDOS box a window's application runs in", "In box: %1", sandboxName));
++            } else if (sandboxEngine === "org.flatpak") {
++                subTextEntries.push(i18nc("@info:tooltip the Flatpak application a window belongs to", "Flatpak: %1", sandboxName));
++            } else {
++                subTextEntries.push(i18nc("@info:tooltip the sandbox a window's application runs in", "In sandbox: %1", sandboxName));
++            }
++        }
++
+         if (!Plasmoid.configuration.showOnlyCurrentDesktop && virtualDesktopInfo.numberOfDesktops > 1) {
+             if (!isOnAllVirtualDesktops && virtualDesktops.length > 0) {
+                 const virtualDesktopNameList = virtualDesktops.map(virtualDesktop => {

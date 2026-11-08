@@ -2,12 +2,10 @@
 
 libinput turns the kernel's evdev input events into what a Wayland compositor needs: pointer
 motion with acceleration, touchpad tapping, scrolling and gestures, palm and thumb detection,
-tablets and switches such as a laptop lid. KDOS's compositor, `kdos-comp`, gets all of its input
-through it, by way of [wlroots](#port-wlroots); the compositor learns of a closing lid from
-libinput, and no other program on KDOS watches the lid switch. [kdos-comp](#port-kdos-comp),
-[qt6-qtbase](#port-qt6-qtbase) and [qt5-qtbase](#port-qt5-qtbase) depend on it as well. The
-touchpad settings a user can change are the `<libinput>` block of the compositor's configuration;
-see [Changing the bindings](../../../../docs/kdos/02-user-guide/desktop.md#changing-the-bindings).
+tablets and switches such as a laptop lid. KDOS's compositor, [KWin](#port-kwin), gets all of its
+input through it; [qt6-qtbase](#port-qt6-qtbase) and [qt5-qtbase](#port-qt5-qtbase) depend on it
+as well. The touchpad settings a user can change are the Touchpad and Mouse pages of System
+Settings, which KWin applies.
 
 libinput sizes many touchpads from the `EVDEV_ABS_*` entries of udev's hardware database, so it
 depends on the image phase compiling that database; see

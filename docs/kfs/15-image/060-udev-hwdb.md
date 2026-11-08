@@ -66,4 +66,4 @@ and before `090_initramfs.sh` and `110_iso.sh`, which carry the tree into the im
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 348.* Previous: [347. Seeding the theme](050-theme.md) · [Contents](../README.md) · Next: [349. Creating the homes](070-user.md)
+*Part XV. The image, chapter 371.* Previous: [370. Seeding the theme](050-theme.md) · [Contents](../README.md) · Next: [372. Creating the homes](070-user.md)

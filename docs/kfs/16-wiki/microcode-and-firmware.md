@@ -62,10 +62,12 @@ the kernel loads `regulatory.db` only when a valid `regulatory.db.p7s` sits besi
 <!-- kfs:include ports/core/boot/wireless-regdb/build.sh lines=12-30 pin=8370dda29bc2 -->
 
 The country is a module option, [`/etc/modprobe.d/kdos-regdom.conf`]{.idx}. No file in `fs/` ships it; the
-installer writes it from the [time zone]{.idx} you choose, and `kdos-powerd` writes it whenever the time
-zone is set, as a two-letter code taken from `zone.tab`:
+installer writes it from the [time zone]{.idx} you choose, and [kdos-settingsd](#port-kdos-settingsd),
+which serves `org.freedesktop.timedate1`, writes it whenever the time zone is set, from System
+Settings' Date & Time page or `timedatectl`-style clients, as a two-letter code taken from
+`zone.tab`, from `src/daemons/kdos-settingsd/store.c`:
 
-<!-- kfs:include src/daemons/kdos-powerd/main.c lines=835-861 pin=07f9a54f24a7 -->
+<!-- kfs:include src/daemons/kdos-settingsd/store.c lines=995-1007 pin=6f7d102e34f9 -->
 
 A zone with no country, such as `UTC`, removes the file, and the radio stays on the world domain,
 `00`. On a machine installed with the zone `Europe/Berlin`, the file reads:
@@ -82,15 +84,13 @@ wireless device `kdos doctor` reports `[ ok ] regulatory.db signed and loaded (r
 
 ### fwupd
 
-The recipe writes `fwupd`'s configuration, which tells it where the ESP is mounted, and a daily
-job that refreshes the LVFS metadata:
+The recipe writes `fwupd`'s configuration, which tells it where the ESP is mounted:
 
-<!-- kfs:include ports/core/boot/fwupd/build.sh lines=48-62 pin=c9eb6e7687c7 -->
+<!-- kfs:include ports/core/boot/fwupd/build.sh lines=49-54 pin=6d571d1f5469 -->
 
-On the image these are `/etc/fwupd/fwupd.conf` (readable by root only), whose one setting is
-`EspLocation=/boot/efi`, and `/etc/kdos/timers.d/30-fwupd-refresh.timer`, which `18_timers` starts at boot as
-the supervised `kdos-timer-fwupd-refresh`. The job's line format is described in
-[Periodic jobs](../../kdos/02-user-guide/administration.md#periodic-jobs).
+On the image this is `/etc/fwupd/fwupd.conf` (readable by root only), whose one setting is
+`EspLocation=/boot/efi`. Nothing refreshes the LVFS metadata on a schedule: fwupd lists firmware
+from the snapshot the release carries. Both are covered on [Firmware updates](firmware-updates.md).
 
 ## Usage
 
@@ -131,9 +131,18 @@ carries it: the live medium of that image loads it, and so does a machine instal
 
 ### Setting the Wi-Fi country
 
-1. Set the time zone, which sets the country with it, as a member of `wheel`:
-   `kdos-power timezone Europe/Berlin`. It writes `/etc/modprobe.d/kdos-regdom.conf`, headed
-   `# Written by kdos-powerd from the timezone (Europe/Berlin)`, and runs `iw reg set` for this
+1. Set the time zone, which sets the country with it: System Settings → **Date & Time**, or from
+   a terminal
+
+   ```bash
+   dbus-send --system --print-reply --dest=org.freedesktop.timedate1 \
+       /org/freedesktop/timedate1 org.freedesktop.timedate1.SetTimezone \
+       string:Europe/Berlin boolean:true
+   ```
+
+   kdos-settingsd asks polkit, which lets the person at the machine do it; it writes
+   `/etc/modprobe.d/kdos-regdom.conf`, headed
+   `# Written by kdos-settingsd from the timezone (Europe/Berlin)`, and runs `iw reg set` for this
    boot, so `iw reg get` reads `country DE: DFS-ETSI` straight away.
 2. To set a country for this boot only: `sudo iw reg set FR`.
 3. Check: `iw reg get` shows the country in force now. `kdos doctor` reads the country the
@@ -227,4 +236,4 @@ or newer than the upstream release the recipe pins.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 371.* Previous: [370. The initramfs and the rescue shell](initramfs-and-rescue.md) · [Contents](../README.md) · Next: [372. A/B slots and rollback](ab-slots-and-rollback.md)
+*Part XVI. System administration, chapter 395.* Previous: [394. The initramfs and the rescue shell](initramfs-and-rescue.md) · [Contents](../README.md) · Next: [396. A/B slots and rollback](ab-slots-and-rollback.md)

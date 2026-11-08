@@ -128,10 +128,22 @@ void ke_ledger_report(const KeLedger *l, const KeRapl *r, KbBuf *out, bool json)
 					      gpu_total > 0
 						? row[i].a->gpu_ns / gpu_total
 						: 0.0);
+			/* The two halves of the name, so a reader that groups
+			 * by box (System Monitor's KDOS page, the Boxes
+			 * settings) never parses the display string. */
+			kb_buf_str(out, ",\"app\":");
+			kb_json_str(out, row[i].a->app);
+			kb_buf_str(out, ",\"box\":");
+			if (row[i].a->box[0])
+				kb_json_str(out, row[i].a->box);
+			else
+				kb_buf_str(out, "null");
 			kb_buf_str(out, "}");
 		}
-		kb_buf_printf(out, "],\"short_lived\":%.4f}\n",
-			      attributable > 0 ? shortlived / attributable : 0.0);
+		kb_buf_printf(out, "],\"short_lived\":%.4f,"
+			      "\"suspended_windows\":%d}\n",
+			      attributable > 0 ? shortlived / attributable : 0.0,
+			      l->suspended);
 		free(row);
 		return;
 	}
@@ -190,6 +202,11 @@ void ke_ledger_report(const KeLedger *l, const KeRapl *r, KbBuf *out, bool json)
 	else
 		kb_buf_str(out, "  no per-client GPU accounting from this "
 				"driver \xe2\x80\x94 no gpu column\n");
+	if (l->suspended)
+		kb_buf_printf(out, "  %d window%s across a suspend left out: "
+			      "RAPL's counter is not the same counter after "
+			      "a resume\n", l->suspended,
+			      l->suspended == 1 ? "" : "s");
 	kb_buf_str(out, "  relative only. RAPL cannot see the panel, the radio "
 			"or the disk, so there are no watt-hours here.\n");
 

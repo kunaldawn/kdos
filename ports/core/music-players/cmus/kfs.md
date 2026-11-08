@@ -20,8 +20,8 @@ leaving that format out.
   plugin does, such as `.m4a` (AAC or ALAC in an MP4 container), `.wma`, `.ape` and `.shn`. cmus
   ranks its dedicated plugins above it, so MP3 still goes through libmad. See `ffmpeg8.patch`.
 - `CONFIG_MPRIS=y` — publish the player on the session bus over MPRIS, for media keys and the
-  panel. configure looks for the sd-bus API in libsystemd, then libelogind, then
-  [basu](#port-basu); KDOS has neither of the first two, so it is basu.
+  panel, through [basu](#port-basu). configure prefers libelogind to basu, and the tree has both;
+  `mpris-basu.patch` makes it take basu, the one sd-bus library on KDOS.
 - `CONFIG_CDIO=y` — play audio CDs, read through `libcdio_cdda` from
   [libcdio-paranoia](#port-libcdio-paranoia), on [libcdio](#port-libcdio).
 - `CONFIG_PULSE=n` — no PulseAudio output. cmus ranks it above ALSA, so building it would send

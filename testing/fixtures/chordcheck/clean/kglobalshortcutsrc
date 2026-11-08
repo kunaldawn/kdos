@@ -1,0 +1,21 @@
+[kwin]
+Window Close=Meta+Q\tAlt+F4,Alt+F4,Close Window
+Switch to Desktop 1=Ctrl+F1,Meta+F1\tCtrl+F1,Switch to Desktop 1
+Toggle Night Color=Meta+Ctrl+Shift+N,none,Toggle Night Light
+
+[plasmashell]
+manage activities=none,Meta+Q,Show Activity Switcher
+
+[services][org.kde.krunner.desktop]
+_launch=Meta+Space\tAlt+Space\tAlt+F2\tSearch
+
+[services][org.kde.konsole.desktop]
+_launch=Meta+Return\tCtrl+Alt+T
+
+[services][org.kde.khelpcenter.desktop]
+_launch=Meta+/
+
+[services][org.kde.spectacle.desktop]
+FullScreenScreenShot=none
+RectangularRegionScreenShot=Shift+Print\tMeta+Shift+Print
+RecordRegion=Alt+Print\tMeta+Shift+R\tMeta+R

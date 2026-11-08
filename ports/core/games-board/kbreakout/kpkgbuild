@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kbreakout
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 434b78a64b064783d586f803af62352519681cc0b70f1eb7d84806a8e689c1f3  kbreakout-26.08.2.tar.xz
+description = Breakout: keep the ball in play with the paddle and break every brick
+homepage    = https://apps.kde.org/kbreakout/
+license     = GPL-2.0-or-later AND GFDL-1.2-or-later AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kconfig kconfigwidgets kcoreaddons kcrash kdbusaddons kdoctools ki18n kiconthemes kwidgetsaddons kxmlgui libkdegames gzip

@@ -1,12 +1,14 @@
 # The daemons
 
-KDOS has no logind and no polkit agent on the path between the desktop and the kernel.
-In their place are five small root daemons, each answering a few fixed questions on a Unix socket
-in `/run`: suspend the machine, mount a USB stick, say which application is spending the battery,
-kill a runaway program before the desktop freezes, and mount application packs. This chapter
-describes each of them, together with three programs that sit close to privilege without being
-root daemons: the per-box Wayland socket `kdos-boxsock`, the portal backend and the lock screen,
-and the two login-record services, `utmpd` and `wtmpd`.
+KDOS keeps six root daemons of its own. Each answers a few fixed questions, on a Unix socket in
+`/run`, on the system bus, or both: open a named service in the firewall, say which application is
+spending the battery, kill a runaway program before the desktop freezes, mount application packs,
+set the machine's name, clock and keyboard, and install a system update into the other root slot.
+Everything else a desktop asks of root, such as suspending, logging in or mounting a USB stick,
+belongs to programs KDOS ports from upstream: elogind, polkit, udisks2 and the rest. This chapter
+describes KDOS's six, together with the per-box Wayland socket `kdos-boxsock`, which sits close to
+privilege without being a root daemon, the other services `ksvc` runs beside them, and the two
+login-record services, `utmpd` and `wtmpd`.
 
 It is written for two readers:
 
@@ -18,25 +20,27 @@ It is written for two readers:
 
 Why the authorisation is shaped this way, and what it defends against, is argued in
 [The security model](../03-architecture/security-model.md). How init starts services is in
-[Boot and init](../03-architecture/boot-and-init.md). Every socket path and verb on the system is
-listed in [Filesystem and IPC](../06-reference/filesystem-and-ipc.md).
+[Boot and init](../03-architecture/boot-and-init.md). Every socket path, bus name and verb on the
+system is listed in [Filesystem and IPC](../06-reference/filesystem-and-ipc.md).
 
 ## At a glance
 
 Each root daemon is one binary in `/usr/sbin`, started at boot by a script in `/etc/init.d` and
-kept running by `ksvc`, the service supervisor in `kdos-tools`.
+kept running by `ksvc`, the service supervisor in `kdos-tools`. None of them ships a D-Bus
+activation file: a bus name is taken by the supervised daemon or by nobody.
 
-| Daemon | Socket | Command-line client | Other clients | Init script | Skipped at boot when |
-|---|---|---|---|---|---|
-| `kdos-powerd` | `/run/kdos-powerd.sock` | `kdos-power` | The panel's and the Start menu's power items, the power and sleep keys, the compositor's lid handler `kdos-lid`, the `kdos-firewall`, `kdos-time` and `kdos-users` [surfaces](../06-reference/glossary.md#surface) (windows and pop-ups drawn by `kdos-shell`), `kdos theme`, `kdos doctor` (checks that the socket exists) | `55_powerd.sh` | The binary is missing |
-| `kdos-energyd` | `/run/kdos-energyd.sock` | `kdos-energy` | `kdos-res` (the Energy and Boxes pages), `kdos doctor` (checks that the socket exists) | `56_energyd.sh` | The binary is missing, or no `/sys/class/powercap/*/energy_uj` is readable |
-| `kdos-oomd` | `/run/kdos-oomd.sock` | — | `kdos doctor` (checks that the socket exists) | `57_oomd.sh` | The binary is missing, or `/proc/pressure/memory` is not writable (the kernel has PSI off) |
-| `kdos-mountd` | `/run/kdos-mountd.sock` | `kdos-mount` | The `kdos-devices`, `kdos-disks` and `kdos-connect` surfaces, and the session helper `kdos-mediad` | `58_mountd.sh` | The binary is missing |
-| `kdos-packd` | `/run/kdos-packd.sock` | — | `kdos-appbox` (and `kdos app`, which runs it), `kdos doctor` | `59_packd.sh` | The binary is missing, or `erofs` is absent from `/proc/filesystems` even after `modprobe erofs` |
+| Daemon | Socket | System bus | Command-line client | Other clients | Init script | Skipped at boot when |
+|---|---|---|---|---|---|---|
+| `kdos-settingsd` | — | `org.freedesktop.hostname1`, `org.freedesktop.timedate1`, `org.freedesktop.locale1` | `kdos timezone`, `kdos hostname`, `kdos locale`, `kdos keymap` | System Settings' Date & Time page, plasma-setup, the login screen's KWin (`kwin_wayland --locale1`), startplasma, System Monitor's OS sensors | `43_settingsd.sh` | The binary is missing |
+| `kdos-sysupdated` | — | `org.freedesktop.sysupdate1`, `io.kdos.Slots1` | `kdos update`, `kdos-bootctl` (which it runs) | Discover, the System Versions page, `kdos-notice` | `46_sysupdated.sh` | The binary is missing |
+| `kdos-powerd` | `/run/kdos-powerd.sock` | `io.kdos.Power1` | `kdos-power` | The Firewall settings page, `kdos-fwask` and `kded-kdos` (over the bus), `kdos theme`, `kdos phosphor`, `kdos doctor` | `55_powerd.sh` | The binary is missing |
+| `kdos-energyd` | `/run/kdos-energyd.sock` | — | `kdos-energy` | System Monitor's KDOS sensors (`ksystemstats-kdos`), `kdos doctor` | `56_energyd.sh` | The binary is missing, or no `/sys/class/powercap/*/energy_uj` is readable |
+| `kdos-oomd` | `/run/kdos-oomd.sock` | — | — | `kdos doctor`, `kdos-notice` | `57_oomd.sh` | The binary is missing, or `/proc/pressure/memory` is not writable (the kernel has PSI off) |
+| `kdos-packd` | `/run/kdos-packd.sock` | — | — | `kdos-appbox` (and `kdos app`, which runs it), Discover's KDOS backend, `kdos doctor` | `59_packd.sh` | The binary is missing, or `erofs` is absent from `/proc/filesystems` even after `modprobe erofs` |
 
-`kdos-powerd`, `kdos-energyd` and `kdos-mountd` are each one binary with two names. Run under the
-daemon's name it serves the socket; run under the client's name (`kdos-power`, `kdos-energy`,
-`kdos-mount`) it sends one request and prints the answer.
+`kdos-powerd` and `kdos-energyd` are each one binary with two names. Run under the daemon's name
+it serves the socket; run under the client's name (`kdos-power`, `kdos-energy`) it sends one
+request and prints the answer.
 
 ### Starting and stopping one by hand
 
@@ -45,7 +49,7 @@ name**, which is the init script's name without its two-digit prefix and `.sh` s
 
 ```sh
 service status powerd
-service restart mountd
+service restart settingsd
 service stop packd
 service start energyd
 service list                # every service, whether it starts at boot, and its state
@@ -55,35 +59,42 @@ service disable oomd        # do not start it at boot
 `rcS` and `rcK` are the boot and shutdown scripts in `/etc/init.d` that run every numbered service
 script in order (see [Boot and init](../03-architecture/boot-and-init.md)). `disable` creates
 `/etc/service.disabled/<name>`, which both skip; `enable` removes it. A name that matches no
-script exactly is matched as a substring, so `service status mount` also reaches `58_mountd.sh`.
+script exactly is matched as a substring, so `service status pack` also reaches `59_packd.sh`.
 The daemon's full name (`kdos-powerd`) matches nothing: it contains the service name rather than
 the other way round.
 
 The substring match finds the script for `status`, `start`, `stop` and `restart` only. `enable` and
 `disable` check that some script matches, then write or remove the marker under the name exactly
 as typed, while `rcS` and `rcK` look for the marker under the script's own service name. They
-therefore need the exact service name: `service disable mount` reports success, creates
-`/etc/service.disabled/mount`, and disables nothing.
+therefore need the exact service name: `service disable pack` reports success, creates
+`/etc/service.disabled/pack`, and disables nothing.
 
 ### Who may ask for what
 
-| Daemon | root | `wheel` (administrators) | `seat` (the person at the machine) | Anyone else |
+Two kinds of gate stand in front of these daemons. A socket asks the kernel who the caller is and
+admits root and the `wheel` group, the administrators; a bus method asks polkit about the caller
+and follows the action's defaults and whatever `/etc/polkit-1/rules.d` says. The person at the
+machine is the active local session, as elogind reports it.
+
+| Daemon | root | `wheel` | The active local session | Anyone else |
 |---|---|---|---|---|
-| `kdos-powerd` | Every verb | Every verb | `ping`, `suspend`, `poweroff`, `reboot` | Refused |
+| `kdos-settingsd` | Every method, without asking polkit | polkit's answer | Time zone and network time without a password; the clock, locale, keyboard and names after an administrator's password | Refused |
+| `kdos-sysupdated` | Every method, without asking polkit | polkit's answer | Checking and `Bless` without a password; installing, trying a slot and changing the channel after an administrator's password | Refused |
+| `kdos-powerd`, socket | Every verb | Every verb | `ping`, `firewall list`, `firewall knocks`, and `accent` and `splash` when polkit grants them without a prompt | `ping`, `firewall list` and `firewall knocks` |
+| `kdos-powerd`, bus | Every method | polkit's answer | The accent and the splash without a password; the firewall after an administrator's password | The reads only |
 | `kdos-energyd` | Every verb | Every verb | Refused | Refused |
 | `kdos-oomd` | Every verb | Every verb | Every verb | Refused |
-| `kdos-mountd` | Every verb | Every verb | Every verb | Refused |
 | `kdos-packd` | Every verb | Every verb | Refused | Refused |
 
-`seat` is the group seatd hands the display to. The installer keeps the desktop account in `seat`
-on every install and takes a non-administrator out of `wheel`; see
-[kinstall](kinstall.md#what-the-rest-of-the-tree-provides). Such an account keeps the lid, the
-power keys and removable media, and loses sudo and every configuration verb.
+The non-administrator column of a socket is never a group: `kdos-oomd` asks elogind whether the
+caller has the active session on a seat, and `kdos-powerd` asks polkit. A login elogind does not
+count as active, such as an ssh session, gets the administrators' answer or nothing. Each daemon's
+`--explain <user>` says which row a user falls in.
 
 ## The shape they share
 
 Every root daemon here is built the same way. Knowing the pattern once tells you how to run,
-diagnose and review all five.
+diagnose and review all six.
 
 ### Supervision and logging
 
@@ -92,17 +103,17 @@ A daemon runs in the foreground and never forks into the background. The init sc
 group, writes `/run/<full name>.pid`, and restarts the daemon five seconds after it exits.
 `service stop <name>` sends SIGTERM to the whole group, waits for it to empty, checking every 50
 ms, and sends SIGKILL to whatever is left when the stop grace runs out. The grace is five seconds
-unless the init script passed `supervise --stop-grace <seconds>`; none of these five daemons does.
-`supervise` on a name whose supervisor is alive starts nothing and says `[SKIP]`, so a second `service start` cannot leave a daemon nothing stops.
-A `SIGTERM` sent to the supervisor alone is passed on to its group, so the daemon goes with it. A
-daemon whose supervisor was killed outright is still found through the state file: `service
-status` reports it as `[FAIL]` rather than `[DOWN]`, `service start` refuses to start a second
-beside it, and `service stop` ends it.
+unless the init script passed `supervise --stop-grace <seconds>`; none of these six daemons does.
+`supervise` on a name whose supervisor is alive starts nothing and says `[SKIP]`, so a second
+`service start` cannot leave a daemon nothing stops. A `SIGTERM` sent to the supervisor alone is
+passed on to its group, so the daemon goes with it. A daemon whose supervisor was killed outright is
+still found through the state file: `service status` reports it as `[FAIL]` rather than `[DOWN]`,
+`service start` refuses to start a second beside it, and `service stop` ends it.
 
 The daemon's output goes to syslog and to a small file in `/run`. The supervisor points the
 daemon's standard output and error, and its own *Starting* and *Exited* lines, at a forwarder
 process. Each line becomes a daemon-facility syslog message tagged with the daemon's full name
-(`supervise --facility <name>` picks another facility; none of these five daemons uses it), and
+(`supervise --facility <name>` picks another facility; none of these six daemons uses it), and
 is also appended to `/run/kdos-svc.<full name>.log`: for example `/run/kdos-svc.kdos-powerd.log`,
 tagged `kdos-powerd`. Files and tags use the full name; only the `service` command takes the short
 one. The file holds at most 64 KiB; when it would grow past that it is renamed to
@@ -119,187 +130,225 @@ into a pipe with no reader.
 The init script checks the machine first and skips with a reason. A daemon that cannot do its job
 on this machine (no energy counter, no PSI, no EROFS) is skipped and prints
 `[SKIP] <name>: <reason>` at boot, because a daemon that refuses to start under a respawn loop is
-restarted every five seconds for as long as the machine is up. `service_helper` also offers
-`supervise --final-exit <code>`, which stops the respawn on an exit status restarting cannot
-change. None of these five daemons uses it: each one's usual refusal is caught by its init script,
-and a refusal the script cannot see (`kdos-energyd` finding no usable energy domain after the
-script's glob matched) is restarted every five seconds, and `service status` reports it as
-`[FAIL]` with its exit status rather than `[ OK ]` (see
-[ksvc and service](kdos-command.md#ksvc-and-service)).
+restarted every five seconds for as long as the machine is up. A refusal the script cannot see
+(`kdos-energyd` finding no usable energy domain after the script's glob matched) is restarted
+every five seconds, and `service status` reports it as `[FAIL]` with its exit status rather than
+`[ OK ]` (see [ksvc and service](kdos-command.md#ksvc-and-service)).
+
+The two bus-only daemons use two more `supervise` options:
+
+- `--restart-with dbus` restarts the daemon whenever the system bus's own service is restarted or
+  stopped, and holds each start while the bus is between two runs. A daemon left holding names on
+  a bus that has gone answers nobody.
+- `--final-exit 3` stops the respawn when the daemon exits 3, which `kdos-settingsd` and
+  `kdos-sysupdated` do when another process already owns one of their names. Restarting cannot
+  change that.
+
+An init script whose daemon owns a bus name calls `wait_bus_name <name>` after `supervise`, which
+holds the boot for up to ten seconds until the name has an owner, so the scripts after it find the
+name taken. `kdos-powerd`'s script waits for `io.kdos.Power1` only when a system bus is running:
+its socket answers whether or not the bus is up, and it retries the bus itself.
 
 ### The socket and the identity check
 
-Each daemon owns one socket in `/run`, named after the daemon, and removes a stale one before
-binding so that a socket file left by a crash cannot hold the name.
+The four daemons with a socket each own one in `/run`, named after the daemon, and remove a stale
+one before binding so that a socket file left by a crash cannot hold the name.
 
 The listening socket and every accepted connection are close-on-exec (`SOCK_CLOEXEC` on the
 `socket()` and on `accept4()`), so no program a daemon runs inherits a client's connection. A
 program that kept one open would hold it past the reply: `kdos-powerd`'s `firewall ssh on` starts
-`sshd` under its supervisor, and `kdos-mountd`'s verbs run `cryptsetup`, mount helpers and `mkfs`
-while its `subscribe` connections are open, and a client whose connection a running program still
-holds never reads the end of its answer.
+`sshd` under its supervisor, and a client whose connection a running program still holds never
+reads the end of its answer.
 
 The socket is mode 0666, and anyone may connect; the real check is the caller's identity. The
-daemon asks the kernel for the connecting process's user id (`SO_PEERCRED`, which the caller cannot
-forge) and answers `err not permitted` to anyone it does not admit. The file mode is left open on
-purpose: a mode that looked like the authorisation is a mode somebody eventually loosens.
+daemon asks the kernel for the connecting process's credentials (`SO_PEERCRED`, which the caller
+cannot forge) and answers `err not permitted` to anyone it does not admit. The file mode is left
+open on purpose: a mode that looked like the authorisation is a mode somebody eventually loosens.
 
-There is one implementation of that check, `kb_uid_allowed()` in `libkbase`. It admits uid 0
+There is one implementation of the group check, `kb_uid_allowed()` in `libkbase`. It admits uid 0
 outright; otherwise it looks the uid up in the password database and reads `/etc/group`, and admits
 the account when the group's id is its primary group or its name is in the group's member list.
 Membership is therefore read at the moment of the request, not from the caller's process
 credentials, and a group change applies to the next request without a new login. No daemon keeps
 its own copy of the rule: a copy per daemon is a rule that gets tightened on one socket and stays
-loose on the others. A daemon that needs a different rule states the difference beside its own
-call.
+loose on the others. A daemon that admits more than root and `wheel` states the difference beside
+its own call, as `kdos-oomd` and `kdos-powerd` do.
 
 The client never names a path. Every verb takes an identifier from a list the daemon itself
-published: a row number, a pack id, a service name.
+published: a firewall service name, an accent, a pack id.
 
 ### One request per connection
 
 The client connects, writes one short line, reads the answer and the connection closes. There is
-no session state. The one exception is `kdos-mountd`'s `subscribe`, which keeps its connection open
-and is written to when something changes; even then the daemon remembers only a file descriptor.
+no session state.
 
-Each daemon serves one request at a time. `kdos-energyd` and `kdos-oomd` give a connection two
-seconds to send its request, because the same loop drives their sampler and their pressure
-trigger, and a client that connected and said nothing would otherwise stop them. `kdos-mountd` sets
-no such limit although its loop also forwards hotplug events, so a connection that never speaks
-holds back every `changed` notification until it closes. `kdos-powerd` and `kdos-packd` set none
-either, so a connection that never speaks delays every later request until it closes.
+Each daemon serves one request at a time. `kdos-powerd`, `kdos-energyd` and `kdos-oomd` give a
+connection two seconds to send its request, because the same loop drives `kdos-powerd`'s bus face,
+`kdos-energyd`'s sampler and `kdos-oomd`'s pressure trigger, and a client that connected and said
+nothing would otherwise stop them. `kdos-packd` sets no such limit, so a connection that never
+speaks delays every later request until it closes.
+
+The two bus daemons never block on polkit. An interactive check lasts as long as somebody takes to
+type a password, so the question goes out asynchronously and the method call is answered when
+polkit is; the bus keeps answering other callers meanwhile.
 
 ### Fixtures, skips and test sockets
 
-`kdos-energyd`, `kdos-oomd`, `kdos-mountd` and `kdos-packd` each have a fixture mode: the daemon
-can be pointed at a recorded copy of the system state and made to print what it would do without
-doing it. This is how the selection logic, which decides what gets mounted, formatted or killed, is
-tested without a machine to lose. `kdos-powerd` has none; its `--explain` and `--set-*` flags
-run the same rules against a scratch `/etc` instead (see
-[Diagnosis and testing](#diagnosis-and-testing)).
+`kdos-energyd`, `kdos-oomd` and `kdos-packd` each have a fixture mode: the daemon can be pointed
+at a recorded copy of the system state and made to print what it would do without doing it. This
+is how the selection logic, which decides what gets measured, mounted or killed, is tested without
+a machine to lose. `kdos-powerd` has none; its `--explain`, `--firewall`, `--accent`, `--splash` and
+`--file-sharing` flags run the same rules against a scratch `/etc` instead (see
+[Diagnosis and testing](#diagnosis-and-testing)). `kdos-settingsd` reads a scratch tree from
+environment variables, and `kdos-sysupdated` serves a test bus over a fixture root; each is
+described in its own section.
 
-Each daemon reads another socket path from an environment variable (`KDOS_POWERD_SOCKET`,
-`KDOS_ENERGYD_SOCKET`, `KDOS_OOMD_SOCKET`, `KDOS_MOUNTD_SOCKET`, `KDOS_PACKD_SOCKET`) so the test
-suite can run it unprivileged. Moving the socket grants nothing: the check is the caller's
-identity, never the path. `kdos-powerd`, `kdos-oomd`, `kdos-mountd` and `kdos-packd` refuse to
-start on their real socket unless they are root, because an unprivileged daemon would answer `ok`
-to work it cannot do. `kdos-energyd` has no such check; it refuses to start when it cannot read the
-energy counter, which without root it cannot.
+Each socket daemon reads another socket path from an environment variable (`KDOS_POWERD_SOCKET`,
+`KDOS_ENERGYD_SOCKET`, `KDOS_OOMD_SOCKET`, `KDOS_PACKD_SOCKET`) so the test suite can run it
+unprivileged. Moving the socket grants nothing: the check is the caller's identity, never the
+path. `kdos-powerd`, `kdos-oomd` and `kdos-packd` refuse to start on their real socket unless they
+are root, because an unprivileged daemon would answer `ok` to work it cannot do. `kdos-energyd` has
+no such check; it refuses to start when it cannot read the energy counter, which without root it
+cannot.
 
 A socket address holds at most 107 bytes of path. `kdos-packd` refuses to start on a longer path,
 because truncating would bind a socket at a path nobody asked for, and the next start would fail
-with "address already in use" for a file that appears not to exist. `kdos-powerd`, `kdos-energyd`,
-`kdos-oomd` and `kdos-mountd` cut an over-long path to fit and bind at the shortened one.
+with "address already in use" for a file that appears not to exist. `kdos-powerd`, `kdos-energyd`
+and `kdos-oomd` cut an over-long path to fit and bind at the shortened one.
 
 ## kdos-powerd
 
-Suspend, power-off and reboot for a desktop that does not run as root, plus the few `/etc` writes
-that belong to an administrator: the time zone, the autologin account, the firewall's open services
-and the accent colour of the boot menu and text console.
+The few root-owned settings a desktop that is not root still changes: which named services the
+firewall lets in, the accent that everything drawn before a login wears (the boot menu, the
+splash, the text console and the login screen), and the splash's motion. It offers the same verbs
+twice: a socket for the `kdos` command, and `io.kdos.Power1` on the system bus for System Settings.
+The bus face alone also starts Samba once a folder has been shared; see
+[Starting Samba for a shared folder](#starting-samba-for-a-shared-folder).
 
-A setuid helper would put an argument-parsing root process within every user's reach for three
-verbs. polkit is installed, but its answer is to ask for a password, which a closing lid cannot
-do. There is no logind. The daemon is the smallest thing that can sit between the desktop and
-`/sys/power/state`.
+Suspend, power-off and reboot are not this daemon's. They belong to elogind, which Plasma's Leave
+menu, PowerDevil and the lid switch all reach through `org.freedesktop.login1`; see
+[What happens around a suspend](#what-happens-around-a-suspend).
 
-| Verb | Who | Does |
+| Verb | Who, over the socket | Does |
 |---|---|---|
-| `ping` | root, `seat`, `wheel` | Answers `ok`. Also tells a client whether it would be allowed to suspend |
-| `suspend` | root, `seat`, `wheel` | Suspend to RAM |
-| `poweroff` | root, `seat`, `wheel` | Power off |
-| `reboot` | root, `seat`, `wheel` | Reboot |
-| `timezone <Area/City>` | root, `wheel` | Point `/etc/localtime` and `TZ` at a zone, and set the Wi-Fi country from it |
-| `autologin <user>\|off` | root, `wheel` | Choose which account tty1 logs in without asking, or none |
-| `firewall list` | root, `wheel` | One row per named service: name, `on` or `off`, and a short description of what the service is for (the For column below, in the daemon's words; no port appears), tab-separated, then `ok` |
-| `firewall <service> on\|off` | root, `wheel` | Open or close one named service |
-| `accent <scheme>` | root, `wheel` | Recolour the boot menu, the text console and the boot splash |
+| `ping` | Anyone | Answers `ok` |
+| `firewall list` | Anyone | One row per named service: name, `on` or `off`, and what the service is for (the For column below, in the daemon's words), tab-separated, then `ok` |
+| `firewall knocks` | Anyone | One row per named service: name and the number of packets turned away while it was closed, or `-1` where nothing was counted, then `ok` |
+| `firewall <service> on\|off` | root, `wheel`, or polkit's `io.kdos.firewall.set` without a prompt | Open or close one named service |
+| `accent <scheme>` | root, `wheel`, or polkit's `io.kdos.accent.set` without a prompt | Recolour the boot menu, the splash, the text console and the login screen |
+| `splash phosphor\|modern` | The same as `accent` | Choose the boot splash's motion |
 
-The daemon checks the list the other way round: a `seat` member may use exactly the four words
-`ping`, `suspend`, `poweroff` and `reboot`, and every other verb is an administrator's. A verb added
-later is therefore an administrator's unless someone deliberately adds it to that list. Every
-refusal is written to the daemon's log with the caller's uid, so a dead power key can be attributed.
+The three reads answer anybody: a liveness check, a file every user can read, and counts of
+packets that were dropped. Every refusal is written to the daemon's log with the caller's uid and
+the action polkit did not grant, so a setting that did not change can be attributed.
 
 ### The client
 
 ```sh
-kdos-power [--no-lock] suspend|poweroff|reboot|ping
-kdos-power timezone <Area/City>
-kdos-power autologin <user>|off
-kdos-power firewall list|<service> on|off
+kdos-power suspend|poweroff|reboot
+kdos-power ping
+kdos-power firewall list|knocks|<service> on|off
 kdos-power accent <scheme>
+kdos-power splash phosphor|modern
 ```
 
-The request is one line of at most 62 bytes plus its newline (63 in all); the daemon reads nothing
-past that.
+`suspend`, `poweroff` and `reboot` never reach the daemon. The client replaces itself with
+`loginctl suspend`, `loginctl poweroff` or `loginctl reboot`, run as the caller, so elogind sees
+the caller, polkit answers about the caller's session, and the screen locker's sleep inhibitor
+gets its lock in before the machine goes down: the same path the Leave menu takes. When `loginctl`
+cannot be run the client says that elogind owns these and exits 1.
+
+Every other verb is one request line of at most 63 bytes, newline included; the daemon reads
+nothing past that.
 
 | Exit status | Means |
 |---|---|
-| 0 | The daemon answered `ok`, or closed the connection without answering any verb other than `ping` (for `suspend`, `poweroff` and `reboot` that is the machine going away) |
-| 1 | The daemon answered `err …`, or is not running (``kdos-power: no kdos-powerd — `service start powerd` ``) |
+| 0 | The daemon answered `ok` |
+| 1 | The daemon answered `err …`, closed without answering, or is not running (``kdos-power: no kdos-powerd — `service start powerd` ``) |
 | 2 | Bad usage, or an argument too long for the request line |
 
 When the daemon is not running, start it with the command the client prints, `service start
 powerd` (see [Starting and stopping one by hand](#starting-and-stopping-one-by-hand)).
 
-For every verb except `firewall`, an error is printed to standard error as `kdos-power: <reply>`.
-`firewall` prints the daemon's whole reply on standard output, the `err` line included, because
-`kdos-firewall` reads it through a capture that discards standard error.
+`firewall` prints the daemon's whole reply on standard output, the `err` line included, so a caller
+capturing the table reads all of it. For `accent` and `splash` an error is printed to standard error
+as `kdos-power: <reply>`, and a success that left something unchanged prints the daemon's note the
+same way, such as `kdos-power: (boot menu unchanged)`.
 
-### Suspend locks the screen first
+### io.kdos.Power1
 
-`kdos-power suspend` locks the session before the machine sleeps, so a resume never hands back an
-unlocked desktop. The order is:
+The bus face, at `/io/kdos/Power1` on interface `io.kdos.Power1`, is what the Firewall settings
+page and `kdos-fwask` call. Root owns the name; anybody may call it, and polkit decides who may
+change anything.
 
-1. Send `ping`. This runs the same identity check as `suspend`, so a caller who is not allowed to
-   suspend, or a machine with no `kdos-powerd`, is refused before the screen is locked. Locking
-   and then not suspending would be a password prompt in exchange for nothing.
-2. If no process named `kdos-lock` is running, start one in its own session and wait up to two
-   seconds for it to print `locked`, which it does once the compositor confirms the session is
-   locked. An existing lock client is left alone, because the compositor refuses a second one.
-3. Send `suspend`. If the lock did not confirm in time, the client prints
-   `kdos-power: no lock confirmation within 2s — suspending anyway` and suspends regardless: a
-   broken lock screen must not turn the suspend key into a no-op.
+| Member | Kind | Does |
+|---|---|---|
+| `ListFirewallServices() → a(sbs)` | Method | Each named service: name, whether it is open, what it is for |
+| `ListFirewallKnocks() → a(st)` | Method | Each closed service and the packets turned away |
+| `SetFirewallService(s name, b open)` | Method | polkit `io.kdos.firewall.set` |
+| `SetAccent(s scheme)` | Method | polkit `io.kdos.accent.set` |
+| `SetSplash(s motion)` | Method | polkit `io.kdos.accent.set` |
+| `StartFileSharing()` | Method | polkit `io.kdos.filesharing.start`; runs `/etc/init.d/83_samba.sh start` |
+| `Accent` (`s`) | Property, emits change | The scheme `/etc/kdos/accent` names |
+| `Accents` (`as`) | Property, constant | Every scheme this build knows |
+| `FirewallServicesChanged()` | Signal | After any firewall change, from either face |
 
-`--no-lock`, or a non-empty `KDOS_NO_LOCK_ON_SUSPEND` in the environment for a caller that cannot
-change its own arguments, skips steps 1 and 2.
+| Action | Active local session | Inactive | Any other |
+|---|---|---|---|
+| `io.kdos.firewall.set` | `auth_admin_keep` | `no` | `no` |
+| `io.kdos.accent.set` | `yes` | `no` | `no` |
+| `io.kdos.filesharing.start` | `yes` | `no` | `no` |
 
-The daemon answers `ok` before the machine goes down, so the client is not left waiting for a reply
-from a suspended kernel.
+The subject polkit is asked about is the caller's bus name, which polkitd resolves to a process
+and a session itself, so nothing the caller says about who it is takes part. A caller that did not
+allow a prompt is not prompted: a challenge it could have answered comes back as the standard
+`InteractiveAuthorizationRequired` error rather than `AccessDenied`. A bad name answers
+`io.kdos.Power1.Error.NoSuchService`, `NoSuchAccent` or `NoSuchMotion`.
+
+The socket comes up before the bus and does not wait for it. A system bus that cannot be reached is
+retried every five seconds from the daemon's loop while the socket answers, so the `kdos` command
+reaches the firewall on a machine whose bus is down.
+
+### Starting Samba for a shared folder
+
+`smbd` does not run until something is shared. At boot, Samba's service script
+`/etc/init.d/83_samba.sh` makes `/var/lib/samba/usershares` (root's, group `sambashare`, mode
+1770) and starts `smbd` only when that directory holds a usershare or `/etc/samba/smb.conf` defines
+a share below `[global]`; otherwise it prints `[SKIP] samba: nothing is shared`. A folder shared
+from Dolphin's Share tab is a file `net usershare add` writes into the directory as the user, with
+`smbd` still down.
+
+The session's `kded-kdos` module watches the directory and, when it goes from holding no share to
+holding one, calls `StartFileSharing()`; a share already there when the session starts is not
+asked about, because the boot decided on it. The method takes no argument, so a caller names nothing:
+after polkit's `io.kdos.filesharing.start`, which the person at the machine is granted, the daemon
+runs `/etc/init.d/83_samba.sh start` as an argument vector, and the script decides again whether
+anything is there to serve. That is all the next boot would do, which is why the action needs no
+password. The call is refused with `io.kdos.Power1.Error.Failed` while
+`/etc/service.disabled/samba` exists, the boot's own marker for a service an administrator turned
+off, or when Samba is not installed. A service already supervised is not started twice, so a
+repeated call costs one script run. Nothing stops `smbd` again: removing the last share leaves it
+serving nothing until the next boot, which does not start it.
 
 ### What happens around a suspend
 
-The daemon is the only thing on the machine that knows a suspend is happening (there is no logind
-to announce one), so it tells the two programs that must act around it:
+elogind runs a suspend; this daemon takes no part in it. What runs, in order:
 
-1. `sync`.
-2. NetworkManager's `Sleep(true)`, through `dbus-send --system --print-reply`, waited for with a
-   five-second reply timeout so the devices are down before the kernel freezes them.
-3. `tlp suspend`.
-4. Write `mem` to `/sys/power/state` (suspend to RAM). Hibernation is not offered, because the
-   initramfs sets up no resume device. The file is opened right after the `sync`; if it cannot be
-   opened, the daemon stops there, runs none of the hooks, and logs `suspend failed`.
-5. After waking, or at once if the kernel refused the write: `tlp resume`, then NetworkManager's
-   `Sleep(false)`.
+1. Whatever asked (`kdos-power suspend`, the Leave menu, PowerDevil, or the lid, which
+   `/etc/elogind/logind.conf.d/50-kdos.conf` sets to suspend unless the machine is docked) calls
+   login1's `Suspend`, and polkit answers for the caller's session.
+2. elogind emits `PrepareForSleep(true)` and waits up to five seconds (`InhibitDelayMaxSec=5`) for
+   the delay inhibitors to let go. kscreenlocker locks the session there, and NetworkManager, built
+   with `-Dsuspend_resume=elogind`, takes its devices down.
+3. The hooks in `/usr/lib/elogind/system-sleep` run, TLP's `49-tlp-sleep` among them, which saves
+   the radio states and applies TLP's suspend settings.
+4. The kernel suspends to RAM. `/etc/elogind/sleep.conf.d/50-kdos.conf` turns hibernation and the
+   hybrid modes off, because swap on KDOS is zram, which holds nothing across a power-off.
+5. On waking the hooks run again with `post`, and `PrepareForSleep(false)` brings NetworkManager
+   back.
 
-NetworkManager sleeps first and wakes last, so the radios TLP restores are back before it rescans.
-Without step 2, NetworkManager wakes trusting a Wi-Fi association and DHCP lease that the time
-asleep has ended. Without `tlp resume`, the radio states TLP saved, and the settings the firmware
-resets across suspend, are not restored. Each hook is skipped when `/usr/bin/dbus-send` or
-`/usr/sbin/tlp` is not installed, and none of them can stop the suspend.
-
-### Power-off and reboot
-
-`poweroff` and `reboot` ask init first, by running `/sbin/telinit 0` or `/sbin/telinit 6` through
-the argument-vector builder. Init ends the consoles, and then `/etc/init.d/rcK`, its first runlevel
-0 and 6 entry, stops every service but the firewall in reverse order, `kdos-powerd` among them,
-before anything is unmounted. Only if the daemon is still alive sixty seconds later, which means
-init never acted on the request, does it call `reboot(2)` directly. The wait has to outlast init's
-three seconds for the consoles plus `rcK`'s walk through every service that sorts after
-`55_powerd.sh`. Each stop returns as soon as that service's processes are gone, but a slow one is
-given its whole stop grace (PostgreSQL's is 30 seconds, Samba's 15), and a shorter wait would cut
-the power mid-shutdown. No signal can stand in for `telinit`: sysvinit ignores `SIGTERM`, and
-`SIGUSR2` closes `/run/initctl`, its request channel, for the rest of the boot. The shutdown walk
-is described in [Boot and init](../03-architecture/boot-and-init.md#shutdown).
+The power key powers off (`HandlePowerKey=poweroff`), which is init's ordinary shutdown through
+`rcK` (see [Boot and init](../03-architecture/boot-and-init.md#shutdown)).
 
 ### accent
 
@@ -308,90 +357,48 @@ is described in [Boot and init](../03-architecture/boot-and-init.md#shutdown).
 `kcol_find()`; anything else is refused with `err not an accent`. There is no path to aim and
 nothing to traverse, which is why this verb is safe to reach from a session.
 
-It writes only root-owned files:
+It writes only root-owned files and the login screen's own:
 
-- `/etc/kdos/accent`, which `rcS` reads to recolour the boot splash that is already running;
+- `/etc/kdos/accent`, which `rcS` reads to recolour the boot splash that is already running, and
+  which the bus face's `Accent` property reports;
 - the boot menu (`limine.conf` on the EFI system partition, the ESP) and the text-console palette
-  (`/etc/vtrgb`), by running `kdos-bootctl theme <scheme>`, which owns both files.
-  `kdos-bootctl` is found through the daemon's inherited `PATH`, as `iw` is for the
-  [timezone](#timezone) verb; every other program the daemon runs is named by absolute path.
+  (`/etc/vtrgb`), by running `kdos-bootctl theme <scheme>`, which owns both files. `kdos-bootctl` is
+  found through the daemon's inherited `PATH`; every other program the daemon runs is named by
+  absolute path;
+- the login screen. The SDDM greeter runs as the `sddm` account and takes its look from that
+  account's `~/.config/kdeglobals`, `plasmarc` and `kcminputrc` and the picture
+  `~/kdos-background.png`. One set per accent is built into `/usr/share/kdos/greeter/<accent>/`, a
+  light accent's carrying its dark partner because the greeter never follows day and night, and
+  the daemon copies the accent's set into the `sddm` home. The copy runs in a child with the
+  `sddm` account's uid and gid and no other group, so a link the account left in place of a file
+  is never followed as root. A set missing a file leaves the greeter as it was, and each file is
+  replaced by a rename.
 
-It recolours nothing on the desktop. That is `kdos theme`'s job, which runs as the user and touches
-only the user's own files; `kdos theme` calls this verb for the parts that need root.
+It recolours nothing inside a session. That is `kdos theme`'s job, which runs as the user and
+touches only the user's own files; `kdos theme` calls this verb for the parts that need root.
 
-A machine with no writable ESP is not a failure. The live medium is read-only, and a machine may
-have no `/boot/efi` at all. When `kdos-bootctl` fails or is absent, the verb answers
-`ok <scheme> (boot menu unchanged)` and succeeds, because refusing would make `kdos theme` look
-broken on the ISO, where everything else recolours correctly.
+A machine with no writable ESP, or no greeter, is not a failure. The live medium is read-only, and
+a machine may have no `/boot/efi` at all. When a part cannot be written the verb still succeeds and
+names what stayed as it was: `ok <scheme> (boot menu unchanged)`, `(login screen unchanged)` or
+`(boot menu and login screen unchanged)`. Refusing would make `kdos theme` look broken on the ISO,
+where everything else recolours correctly.
 
-### timezone
+### splash
 
-The time zone is set here rather than by a separate daemon because it is the same question: the
-files are root's, the person changing them is the one administering the machine, and `wheel` is
-already the answer to who that is.
-
-A zone name is checked twice:
-
-1. **As characters.** Letters, digits, `+`, `-`, `_` and `/` only; no dot at all; no leading,
-   trailing or doubled slash; at most 64 characters. A zone is `Area/City` or `Area/Sub/City`, so a
-   slash must be allowed, which makes `../../etc/shadow` look legal; this rule is what stops it.
-   Failure answers `err not a zone name`.
-2. **As a file.** It must exist under `/usr/share/zoneinfo`. Failure answers `err no such zone`.
-
-Then both halves are written, each to a temporary name and renamed into place:
-
-- `/etc/localtime` becomes a symlink to the zone file. Programs that read the zoneinfo tree follow
-  it.
-- `/etc/profile.d/20-timezone.sh` exports `TZ=':/etc/localtime'`. musl reads `TZ`, and it takes
-  precedence where it is set, which is on every KDOS login. The colon form points musl at the same
-  file, so the two can never name different rules. Writing only the symlink would leave `date`
-  reporting the old zone in every shell that had already read the profile.
-
-**The Wi-Fi country follows the zone.** The kernel's wireless layer starts in the "world"
-regulatory domain, which keeps every 5 GHz DFS channel (one shared with radar) closed and caps
-transmit power until something names a country, and some drivers never take one from an access
-point. The verb looks the zone up in `zone.tab`, which maps each zone to exactly one country code,
-then:
-
-- writes `options cfg80211 ieee80211_regdom=<CC>` to `/etc/modprobe.d/kdos-regdom.conf`, which
-  takes effect from the next boot;
-- runs `iw reg set <CC>` for the running boot, when an `iw` is found through the daemon's
-  inherited `PATH`; `kdos-bootctl` for [accent](#accent) is the other program looked up that way.
-
-A zone with no country, such as `UTC`, removes the file. Neither step failing fails the verb: a
-machine with no radio still has a time zone. The installer writes the same file from the zone
-chosen during installation.
-
-### autologin
-
-`autologin <user>` sets the `autologin` key in `/etc/kdos/login.conf`, which decides whether tty1
-logs straight into the desktop. `autologin off` turns it off.
-
-- The account must be one that can log in. `kb_users()` in `libkbase` decides that; a name it
-  would not list is refused: with `err not an account that can log in (a system account, or no
-  login shell)` when the account exists, as root does, and `err no such account` when it does
-  not. Pointing autologin at a service account
-  with `nologin` would give a machine that boots to a login nobody can complete.
-- `off` comments the key line out as it stands, so `autologin = alice` becomes
-  `#autologin = alice`, the form the installer writes, and a line already commented is left as it
-  is. The name stays in the file, so turning autologin back on by hand is deleting one `#`. The
-  login program treats an empty value, a commented line and a missing key alike: tty1 asks for a
-  password.
-- Only key lines change. A line counts as the key when it starts with `autologin`, or with
-  one `#` then `autologin`, and contains `=`. Prose that merely mentions the key is left alone.
-  Every other line, blank and long ones included, is written back byte for byte.
-- On a `login.conf` with no key line, `autologin <user>` appends `autologin = <user>`, so the
-  account the answer names is the one the next boot logs in. `autologin off` changes nothing there
-  and answers `ok`: a missing key already asks for a password.
-
-The file is written to `login.conf.new`, flushed, and renamed over the original.
+`splash phosphor|modern` sets the boot splash's motion: a CRT power-on with Phosphor mode, a flat
+mark without it. The splash runs in the initramfs before any root filesystem is mounted, so the
+kernel command line is the one thing it can read; the verb runs `kdos-bootctl splash <motion>`,
+which writes `kdos.splash=<motion>` on every KDOS entry in `limine.conf`. Any other word is refused
+with `err not a splash motion (phosphor or modern)`. On a machine whose boot menu cannot be written
+the answer is `ok <motion> (boot menu unchanged)`, for the accent's reason. `kdos phosphor on` and
+`off` send it.
 
 ### firewall
 
 `firewall` names services, never ports, and the table of what each name means belongs to the
 daemon. A client that could name a port could open any port; a client that can only name `ssh`
-opens exactly what the daemon's table says `ssh` is. `kdos-firewall` asks for the list rather than
-carrying its own copy.
+opens exactly what the daemon's table says `ssh` is. The Firewall settings page asks for the list
+rather than carrying its own copy.
 
 | Service | Opens | For |
 |---|---|---|
@@ -417,8 +424,20 @@ carrying its own copy.
 | `mosh` | UDP 60000–61000 | Incoming mosh sessions (needs `ssh` on as well) |
 | `syncthing` | TCP 22000, UDP 22000, UDP 21027 | Syncthing sync and local discovery |
 | `kdeconnect` | TCP 1714–1764, UDP 1714–1764 | KDE Connect with a phone on the LAN |
-| `vnc` | TCP 5900 | This desktop over VNC (`wayvnc`, which listens on 127.0.0.1 until its config or `wayvnc 0.0.0.0` says otherwise) |
+| `vnc` | TCP 5900 | This desktop over VNC (krfb, on its default port, while sharing is on in a session) |
+| `rdp` | TCP 3389 | This desktop over RDP (krdp, on its default port, while sharing is on in a session) |
 | `xonotic` | UDP 26000 | Hosting a Xonotic game for the LAN |
+
+A port moved in krfb's or krdp's own settings stays shut until a hand-written rule beside the
+daemon's file opens it.
+
+**A closed service is counted.** In the daemon's file an open service is its rule; a closed one is
+the same match counting into a named counter, `kdos_knock_<service>`, after which the packets meet
+the chain's policy and are dropped. `firewall knocks` and `ListFirewallKnocks` read those counters
+with `nft list counters`, which is how the Firewall page and `kdos-fwask` can say that a phone or an
+RDP client was turned away and offer to let it in by name. A reload rebuilds the table, so every
+change starts every counter from zero; a counter the kernel does not hold reads `-1`, which is not
+the same as nothing having knocked.
 
 How a change is applied:
 
@@ -426,11 +445,11 @@ How a change is applied:
    `/etc/nftables.d/50-kdos-services.nft`.
 2. It rewrites that file **whole** from the names that are on, as additions to the `input` chain of
    the `inet filter` table. It never merges, because merging means parsing nftables syntax, and a
-   parser that got it wrong would leave a port open that the surface showed as closed. Anything you
-   write by hand belongs in another file under `/etc/nftables.d`, which the daemon never reads or
-   touches. The new file is renamed into place before anything checks it, because the check reads
-   it through `/etc/nftables.conf`'s include. The daemon reads the current file first so that it
-   can put it back; a file that exists but cannot be read refuses the toggle with
+   parser that got it wrong would leave a port open that the settings page showed as closed.
+   Anything you write by hand belongs in another file under `/etc/nftables.d`, which the daemon
+   never reads or touches. The new file is renamed into place before anything checks it, because
+   the check reads it through `/etc/nftables.conf`'s include. The daemon reads the current file
+   first so that it can put it back; a file that exists but cannot be read refuses the toggle with
    `err cannot read the current rules`.
 3. It runs `nft --check -f /etc/nftables.conf`. If the ruleset would not load, the previous
    `50-kdos-services.nft` is put back, or removed if there was none, and the answer is
@@ -441,36 +460,40 @@ How a change is applied:
    and NetworkManager's for a hotspot survive a toggle. If the load itself fails, the previous file
    is put back the same way and the answer is `err the ruleset did not apply`.
 
-A successful toggle answers `ok <service> on|off`. An unknown name answers
-`err no service called that`; a state other than `on` or `off` answers `err a service is on or off`.
+A successful toggle answers `ok <service> on|off` and emits `FirewallServicesChanged`. An unknown
+name answers `err no service called that`; a state other than `on` or `off` answers
+`err a service is on or off`.
 
 ### Diagnosis and testing
 
 ```sh
 kdos-powerd --explain <user>
-kdos-powerd --set-timezone <Area/City>
-kdos-powerd --set-autologin <user|off>
-kdos-powerd --firewall list
+kdos-powerd --firewall list|knocks
 kdos-powerd --firewall <service> <on|off>
+kdos-powerd --accent <scheme>
+kdos-powerd --splash phosphor|modern
+kdos-powerd --file-sharing
 ```
 
-`--explain` answers "would this user be allowed, and why". It is the first thing to run when the
-power key or the panel's power item does nothing, because a refusal otherwise shows up only in the
-daemon's log. It asks `libkbase` the same question the socket asks, needs no privilege, and prints
-one line, for example:
+`--explain` answers "would this user be allowed, and why". It is the first thing to run when a
+settings change is refused, because a refusal otherwise shows up only in the daemon's log. It asks
+`libkbase` the same question the socket asks, needs no privilege, and prints one line, for example:
 
 ```text
-alice: uid 1001, primary gid 1001, in seat only — permitted to suspend, power off and reboot; refused the configuration verbs
+alice: uid 1001, primary gid 1001, not in wheel — permitted ping, the firewall list and its knocks; `firewall` only where polkit grants io.kdos.firewall.set and `accent` and `splash` only where it grants io.kdos.accent.set, each without a prompt (the shipped policy: the accent and the splash from an active session at the machine), otherwise refused
 ```
 
-It exits 0 when the user is allowed anything and 1 when refused.
+polkit's half is named and not asked: polkit answers about a process, and there is no process to
+ask it about. It exits 0 when the group rule admits the three changes and 1 otherwise.
 
 The other flags run a verb's own rules without the socket, which is the only way to test them: the
 socket's check needs two different users to exercise. They grant nothing, because the binary is
-writing to an `/etc` the person running it could already write to. Three environment variables
-point them at a scratch tree: `KDOS_POWERD_ETC` replaces `/etc` (and then runs neither `nft`,
-`iw` nor `70_sshd.sh`, so a `ssh` toggle only writes the marker),
-`KDOS_POWERD_ZONEDIR` replaces `/usr/share/zoneinfo`, and `KDOS_POWERD_SOCKET` moves the socket.
+writing to an `/etc` the person running it could already write to. `KDOS_POWERD_ETC` replaces
+`/etc`, and a daemon pointed at another `/etc` leaves the kernel's ruleset, `sshd`, Samba, the boot menu
+and the login screen alone: `KDOS_POWERD_NFT`, `KDOS_POWERD_BOOTCTL` and `KDOS_POWERD_SAMBA` name
+stand-ins for `nft`, `kdos-bootctl` and Samba's service script (unset, nothing is run), and `KDOS_POWERD_GREETER` and
+`KDOS_POWERD_SDDM_HOME` name the greeter sets and a home to copy them into. `KDOS_POWERD_SOCKET`
+moves the socket.
 
 ## kdos-energyd
 
@@ -494,10 +517,11 @@ kdos-energy [--json|ping]
 ```
 
 `kdos-energy` prints the report (or JSON with `--json`) and exits 0. It exits 1 when the daemon is
-not running or answered `err`, and 2 on bad usage. An `err` answer goes to standard error. The
-Energy page in `kdos-res` shows the same report, and its Boxes page shows each box's share. When
-the daemon is not running the client suggests `service start energyd` (see
-[Starting and stopping one by hand](#starting-and-stopping-one-by-hand)).
+not running or answered `err`, and 2 on bad usage. An `err` answer goes to standard error. System
+Monitor's KDOS sensors (`ksystemstats-kdos`) read `report-json`; each row there carries the display
+name, and beside it `app` and `box` (`null` for a process in no box), so a reader that groups by
+box never parses the display string. When the daemon is not running the client suggests
+`service start energyd` (see [Starting and stopping one by hand](#starting-and-stopping-one-by-hand)).
 
 This is the report the test fixture in `testing/fixtures/energy` produces (thirty seconds of
 recorded samples) when replayed with the fixture's own application table, as the test suite runs
@@ -514,7 +538,7 @@ rows differ.
 KDOS energy  —  30 s of samples, RAPL package-0
 
   firefox-esr (appbox kdos-apps)          75.5%  ███████████████       gpu 75.0%
-  kdos-comp                               15.4%  ███                   gpu 25.0%
+  kwin_wayland                            15.4%  ███                   gpu 25.0%
   gimp (appbox kdos-apps)                  0.4%                        gpu  0.0%
   short-lived and exited processes         8.7%
 
@@ -535,9 +559,8 @@ application was 41% of attributable CPU energy today" is a measurement; "this ap
 of your battery" would be a guess presented as a unit.
 
 The daemon samples every ten seconds. The interval is fixed and not configurable, for the reason
-given below, and it is short enough to stay far inside the counter's wrap period. A machine that
-wakes from a long suspend resumes sampling from the wake rather than catching up on the missed
-windows. Six rules each change the answer:
+given below, and it is short enough to stay far inside the counter's wrap period. Seven rules each
+change the answer:
 
 - Nested domains are dropped. The power interface lists a package beside that package's own
   sub-domains, so summing the list counts the cores twice (in the fixture, a 15 W idle floor
@@ -547,6 +570,11 @@ windows. Six rules each change the answer:
 - The counter wraps, roughly every half hour at a laptop's power draw. A naive subtraction would
   produce one enormous negative reading with nothing in the output saying so. The daemon reads each
   domain's `max_energy_range_uj` and corrects a single wrap per window.
+- A window the machine slept through is dropped. The daemon compares how far `CLOCK_BOOTTIME` and
+  `CLOCK_MONOTONIC` moved across each window; a difference over one second means a suspend inside
+  it. The counter after a resume runs from wherever the firmware left it, so the delta across one is
+  a wrap that never happened or a reset read as one. Such windows are counted and left out, and the
+  report says how many (`suspended_windows` in the JSON).
 - The idle floor is subtracted before anything is attributed. A processor draws power with
   nothing running, and a share model that ignored this would report a machine sitting at a login
   prompt as 90% one process. The floor is the lowest average power seen, and it is printed with the
@@ -564,6 +592,10 @@ windows. Six rules each change the answer:
   the report says that instead. A driver that publishes no per-client statistics gets no column
   rather than a column of zeroes.
 
+A process's box is found by walking its parents to the container supervisor that started it, not
+from its cgroup: a box started where rootless podman could write no cgroup of its own sits in its
+parent's, and an elogind session's delegated subtree is named for the session, not the box.
+
 **Why a daemon rather than a one-shot command.** The counter runs freely, so a one-shot command
 could only report what happened while it was watching. The counter is also readable only by root
 since Linux 5.10, because the PLATYPUS side-channel attack showed that fine-grained unprivileged
@@ -578,9 +610,10 @@ machine that uses no energy, which reads as "nothing is draining the battery". `
 the two cases apart: a machine with no energy domain at all, and a daemon that is not running.
 
 `kdos-energyd --fixture <dir> [--json]` replays recorded snapshots (`<dir>/0`, `<dir>/1`, … each
-holding a `proc` tree, a `powercap` tree and an optional `dt` in seconds) through the same sampler
-and report, and prints the result. `KDOS_ENERGY_PROC` and `KDOS_ENERGY_POWERCAP` point the reader
-at other `/proc` and powercap trees, and `KDOS_ALIEN_APPS` at another application-name table.
+holding a `proc` tree, a `powercap` tree, an optional `dt` in seconds and an optional `slept`, the
+seconds the machine was suspended inside that step's window) through the same sampler and report,
+and prints the result. `KDOS_ENERGY_PROC` and `KDOS_ENERGY_POWERCAP` point the reader at other
+`/proc` and powercap trees, and `KDOS_ALIEN_APPS` at another application-name table.
 
 ## kdos-oomd
 
@@ -612,16 +645,27 @@ modest machine.
   and a child inherits it, so a root program shields everything it will start by lowering its own
   first (`choom -n -1000 -p $$` in a shell). This is the contract a program uses to keep work it
   must finish out of reach; no program outside the desktop is protected by name.
-- The desktop is never a victim. Protected are process 1, kernel threads, the daemon itself,
-  and these by process name: `kdos-comp`, `kdos-shell`, `kdos-desk`, `kdos-notifyd`, `Xwayland`,
-  `dbus-daemon`, `seatd`, `ksvc`, `kdos-powerd`, `kdos-energyd`, `kdos-oomd`, `wireplumber`, and
-  every process whose name starts with `pipewire`. Killing the compositor to save the desktop is
-  not a trade, and killing the audio session manager leaves a machine whose sound stopped for no
-  visible reason.
+- The desktop is never a victim. Protected are process 1, kernel threads, the daemon itself, every
+  process whose name starts with `pipewire`, and these by process name: `kwin_wayland`,
+  `kwin_wayland_wr`, `plasmashell`, `ksmserver`, `kded6`, `plasma_session`, `kglobalacceld`,
+  `kscreenlocker_g`, `Xwayland`, `xdg-desktop-por`, `polkit-kde-auth`, `ksecretd`, `sddm`,
+  `sddm-helper`, `sddm-greeter-qt`, `elogind`, `turnstiled`, `dbus-daemon`, `ksvc`, `kdos-powerd`,
+  `kdos-energyd`, `kdos-oomd`, `kdos-settingsd`, `accounts-daemon` and `wireplumber`. Killing the
+  compositor to save the desktop is not a trade, and killing the audio session manager leaves a
+  machine whose sound stopped for no visible reason.
+- Every name in that list is a process name as the kernel keeps it, which is at most 15 bytes. The
+  kernel cuts the executable's name there, so `kwin_wayland_wrapper` is `kwin_wayland_wr`,
+  `kscreenlocker_greet` is `kscreenlocker_g`, `sddm-greeter-qt6` is `sddm-greeter-qt` and
+  `polkit-kde-authentication-agent-1` is `polkit-kde-auth`. A name spelled in full would match
+  nothing, and the process it was meant to spare would be the first one chosen.
+  `xdg-desktop-por` is every portal at once, the front end and the KDE back end. The greeter's
+  names run only before a login and the lock screen's only while the screen is locked; protecting a
+  name that is not running costs nothing.
 - A box over its declared memory budget goes first. A box profile's `memory` key is passed to
-  the container, but a rootless container on a machine with no cgroup delegation accepts the limit
-  and ignores it; this rule is what makes the key mean something (see
-  [memory and grants](kdos-appbox.md#memory-and-grants)). The daemon adds up the resident
+  the container, and the kernel enforces it only when the box's cgroup sits in an elogind session's
+  delegated subtree; a box started anywhere else has the limit accepted and ignored. This rule is
+  what makes the key mean something there too (see
+  [Memory and grants](kdos-appbox.md#memory-and-grants)). The daemon adds up the resident
   memory of each box's processes, and when a box is over its budget the largest process in that box
   is the victim. Budgets come from each user's own box profiles,
   `/home/<user>/.config/kdos/boxes/<box>.conf`; `KDOS_BOX_PROFILES`, when set, replaces that search
@@ -633,7 +677,7 @@ modest machine.
   preference would kill a small boxed helper while a host process many times its size kept the
   machine stalled.
 - The victim is named by its box. Identity comes from the same container-supervisor walk in
-  `libkproc` that `kdos-res` and `kdos-energyd` use.
+  `libkproc` that `kdos-energyd` uses.
 - The memory comes back immediately. The daemon takes a handle on the process first (a pidfd,
   so the next step cannot land on a recycled process id), sends SIGKILL, then calls
   `process_mrelease` to free the victim's memory at once rather than whenever it is reaped. On a
@@ -651,14 +695,22 @@ A trigger that finds memory not short logs nothing.
 ### The socket
 
 Nothing in the protocol names a process, so there is nothing to aim. The socket takes no argument
-and answers root, `seat` and `wheel`:
+and answers root, `wheel` and a user with the active session on a seat:
 
 | Verb | Answers |
 |---|---|
 | `ping` | `ok` |
 | `status` | `ok trigger 'full 150000 1000000', kills <n>` and, after the first kill, `, last: <name> [(appbox <box>)] (pid <pid>, <size> MB)` |
+| `protected` | `ok` and the protected names, space-separated, the prefix rule last as `pipewire*` |
 
-`kdos doctor` reports whether its socket is present.
+The active-session answer comes from elogind's `sd_uid_get_state()`, read through `libelogind`,
+which the daemon opens at first use rather than links. The daemon exists for the minute memory runs
+out, and a session library that is missing or broken must cost the read tier and never the killer.
+Root and `wheel` never reach that question.
+
+`kdos doctor` reports whether the socket is present and lists the protected names that are not
+running, naming those that run only at certain times. `kdos-notice` reads `status` to say how many
+processes have been killed since boot.
 
 ### Testing it
 
@@ -669,460 +721,16 @@ exits 0 when there is a candidate and 1 (printing `no candidate`) when there is 
 `no kill: <avail> of <total> kB available` and exits 1, the answer the daemon gives a trigger
 there; a tree without one is judged on the stall alone.
 
+`kdos-oomd --protected` prints the protected names one a line, the prefix rule last, which is what
+the check that holds each name to 15 bytes reads. `kdos-oomd --explain <user>` prints whether that
+user may read the socket and why, and exits 0 when permitted.
+
 `testing/oomd-fire.sh` exercises the real path in a booted virtual machine: it allocates and
 touches memory until the trigger fires, then asks the socket what happened rather than watching
 the allocating process die (the kernel's own killer would also have got it, later). A passing run
 shows `status` going from `kills 0` to `kills 1, last: <name> (pid <pid>, <size> MB)` while the
-script that started the allocation keeps running; the recorded run on a 4 GB guest answered
-`kills 1, last: python3 (pid 1615, 3644 MB)`. That run has one large process to
-choose; which process the daemon picks on a busy desktop is what `--fixture` tests.
-
-## kdos-mountd
-
-Removable media, encrypted volumes, SMART health and network shares for a desktop that is not root.
-udisks2 serves the natively ported toolkit applications (see
-[Administration](../02-user-guide/administration.md)); for the desktop's own surfaces this daemon is
-the whole of what stands between them and `mount`. Both read `/proc/mounts`, so a device udisks2
-mounted under `/run/media/<user>` is listed here as mounted, with its mountpoint.
-
-The client never names a path or a mountpoint. It asks for a row out of a list the daemon
-published, and the daemon decides the device, the mountpoint and the options. A design that takes
-"a path and a mountpoint" ends with someone mounting a stick over `/etc` from a shell.
-
-### Verbs
-
-A **row** below is a number from the daemon's own `list`; a **share row** is a number from
-`shares`. `<count>` is the byte length of a second frame, described under
-[The request format](#the-request-format).
-
-| Request | Does | Answer |
-|---|---|---|
-| `list` | The eligible devices | One row each: index, kernel name, label, filesystem, size in GiB (`28.7G`), mountpoint, tab-separated, with `-` for an empty label or mountpoint; then `ok` |
-| `mount <row>` | Mount the device | `ok <mountpoint>`; a device already mounted answers with its mountpoint |
-| `unmount <row>` | Unmount it and remove the mountpoint the daemon made | `ok <mountpoint>` |
-| `eject <row>` | Power the medium down. An ISO 9660 row (an optical disc) is ejected through its own node; any other row ejects its **parent disk**, because a stop command sent to one partition means nothing to the hardware | `ok <kname>` |
-| `unlock <row> <count>` | Open a LUKS volume. The passphrase is the second frame | `ok kdos-<kname>` |
-| `close <row>` | Close the mapping `unlock` made; `<row>` is the container's row, the one `unlock` was sent for, not the mapping's | `ok kdos-<kname>` |
-| `format <row> <fs> <count>` | Write a filesystem. **Off unless `format = yes`.** The second frame is the device's kernel name, typed by the person | `ok <kname>` |
-| `write <row> <count>` | Put a disk image over the whole disk the row is on, then read it back. **Off unless `write = yes`.** The image travels as a descriptor attached to the request; the second frame is the disk's name, typed by the person (see [Writing an image](#writing-an-image)) | `progress` lines, then `ok <disk> <bytes> verified` |
-| `smart <row>` | The drive's health | `ok <model>\t<serial>\t<health>` |
-| `cifs <server> <share> <user> <domain> <count>` | Mount an SMB share. The password is the second frame | `ok <mountpoint>` |
-| `krb5 <server> <share> <user\|-> <domain\|->` | Mount an SMB share with the Kerberos ticket `kinit` left in the caller's credential cache. **No second frame** | `ok <mountpoint>` |
-| `shares` | The mounted network shares | One row each: index, `//server/share`, mountpoint, tab-separated; then `ok` |
-| `browse` | Machines that answered an mDNS and a NetBIOS broadcast at the time of the request | One row each: `name<TAB>address`; then `ok` |
-| `disconnect <share row>` | Unmount a network share | `ok //server/share` |
-| `subscribe` | Hold the connection open and write `changed` on every block-device hotplug event | `ok`, then `changed` lines; never closes |
-| `ping` | — | `ok` |
-
-Every verb answers root, `seat` and `wheel`: mounting a stick is the desktop user's job whether or
-not they administer the machine. Every failure answers `err <reason>`, for example
-`err unmount it first` or `err no such device`.
-
-### The command-line client
-
-```sh
-kdos-mount list
-kdos-mount mount <index>
-kdos-mount unmount <index>
-kdos-mount smart <index>
-kdos-mount write <index> <image> <disk>
-kdos-mount shares
-kdos-mount browse
-kdos-mount krb5 <server> <share> <user|-> <domain|->
-kdos-mount ping
-kdos-mount subscribe
-```
-
-For example:
-
-```sh
-$ kdos-mount list
-0	sdb1	KDOS	vfat	28.7G	-
-1	sdb2	backup	ext4	120.0G	/media/kdos/backup
-ok
-$ kdos-mount mount 0
-ok /media/kdos/KDOS
-```
-
-The client prints the daemon's reply unchanged, flushing after every read so that `subscribe` can
-be piped into another program.
-
-| Exit status | Means |
-|---|---|
-| 0 | The daemon answered, **including when the answer was `err …`**. A script must check standard output for a leading `err` to tell a failed mount |
-| 2 | No `kdos-mountd` to ask (`kdos-mount: no kdos-mountd on <socket path> (<reason>)`), bad usage, or, for `write`, an image the client could not open (`kdos-mount: <image>: <reason>`) |
-
-The index is re-rendered as a number before it is sent, through `atoi`, so an argument that is not a
-number becomes row 0: `kdos-mount mount sdb1` acts on row 0 rather than being refused.
-`kdos-mount write <index> <image> <disk>` writes an image (see
-[Writing an image](#writing-an-image)): it opens the image itself, as you, and prints the daemon's
-progress lines as they arrive. The other verbs that carry a secret (`unlock`, `format`, `cifs`), and
-`eject`, `close` and `disconnect`, are reached from the desktop's surfaces rather than from
-`kdos-mount`:
-
-| Surface | Uses |
-|---|---|
-| [`kdos-devices`](kdos-shell.md#kdos-devices) | `list`, `mount`, `unmount` |
-| [`kdos-disks`](kdos-shell.md#kdos-disks) | `list`, `mount`, `unmount`, `unlock`, `close`, `format` (always as `ext4`), `smart`, `write` |
-| [`kdos-connect`](kdos-shell.md#kdos-connect) | `cifs`, `krb5`, `shares`, `browse`, `disconnect` |
-| `kdos-mediad` | `subscribe`, `list`, `mount`, `eject` |
-
-### The request format
-
-A request is one line, plus a second frame where a secret is involved.
-
-- **Frame one** is a verb and up to five tokens, separated by spaces or tabs, ending in a newline.
-  The line must be shorter than 1,024 bytes (`err too long` otherwise). That ceiling is set by
-  `cifs` alone: a DNS name may be 253 bytes, a share 80, a username 104 and an NT domain 255, so a
-  legal corporate share spells a request of about seven hundred.
-- **Frame two** is exactly the number of bytes frame one's last token declared, from 1 to 512. A
-  passphrase travels as a frame and not a token because the tokeniser splits on spaces and a
-  passphrase may contain them. A connection that closes before the whole frame arrives is answered
-  `err short frame`.
-- **A descriptor** rides on frame one for `write` only: the image, attached as `SCM_RIGHTS`. The
-  daemon reads frame one with `recvmsg` so the descriptor is not lost, keeps at most one, and closes
-  one that arrives with any other verb before it looks at the verb.
-
-Every token is checked before it means anything, and the token count is fixed per verb:
-
-- A row is one to three digits and must be inside the list the daemon has published for this request.
-- A count is one to four digits and between 1 and 512. A bad row or count on a two-frame verb
-  answers `err bad request`.
-- A trailing token nobody asked for makes the request unknown (`err unknown command`) rather than
-  ignored. A dispatcher that read an index and discarded the rest would accept
-  `mount 0 rm -rf /` as a well-formed mount.
-- A line with eight or more tokens is refused as `err too many arguments`.
-
-The device list is rescanned on every request rather than cached, so a stick pulled out between two
-requests is never still offered.
-
-### Which devices are offered
-
-The daemon walks `/sys/block`, ignoring `loop`, `ram`, `zram` and `dm-` devices, and considers each
-partition of a disk, and the whole disk when none of its partitions qualifies (a stick formatted
-without a partition table is the usual case). A device appears in `list` only
-if every one of these holds:
-
-| Rule | Why |
-|---|---|
-| Its disk is removable, or is on USB | An internal disk is the administrator's. An external drive in a USB enclosure reports itself as non-removable, so the bus is checked too |
-| It carries a filesystem the daemon recognises | See the list below |
-| It is not named in `/etc/fstab`: an entry's source field is exactly its device path or exactly `LABEL=<its label>`, so `/dev/sdb10` does not claim `/dev/sdb1` and `LABEL=foobar` does not claim `LABEL=foo` | An entry there is a decision somebody already made |
-| It is not on the disk this system runs from | Offering to unmount or eject the live medium, or the persistence store, is offering to end the session |
-
-A device that is already mounted is listed, with its mountpoint in the last column. The disk this
-system runs from is left out whole, every partition with it. It is a disk where:
-
-- the disk node or any of its partitions is mounted at `/`, `/boot`, `/mnt/iso` or `/mnt/persist`.
-  The initramfs moves the boot medium's mount to `/mnt/iso` under the node it found the medium on,
-  and a `KDOS_PERSIST` store's to `/mnt/persist`, so `/proc/mounts` names both. The persistence
-  store is the session's upper layer;
-- in a live session (root on an overlay), the disk node itself carries an ISO 9660 superblock.
-  That is the shipped isohybrid image on a stick: the superblock is the whole disk's, mounted as
-  `/dev/sda`; `sda1` is a 64-sector stub with no filesystem and `sda2` is the FAT EFI partition,
-  so no partition row carries the mount or probes as ISO 9660;
-- in a live session, any partition carries an ISO 9660 superblock.
-
-A live session also refuses every ISO 9660 medium on its own, mounted or not. The initramfs moves
-`/mnt/iso` into the running system only when it found `system.sfs` there, and this rule does not
-depend on that line existing. The cost is that neither a second data CD nor a stick holding
-another system's image can be mounted while running live.
-
-The label and filesystem type are read directly from the superblock rather than through a
-detection library. The daemon recognises, in this order:
-
-| On disk | Reported as |
-|---|---|
-| LUKS (checked first, because a LUKS header written over an old filesystem still carries that filesystem's superblock) | `crypto_LUKS` |
-| ext2, ext3, ext4 | `ext4` |
-| FAT12/16/32 | `vfat` |
-| NTFS | `ntfs3` |
-| exFAT | `exfat` |
-| ISO 9660 | `iso9660` |
-| btrfs | `btrfs` |
-
-**Kernel support is checked at mount time.** Before calling `mount(2)`, the daemon checks the type
-against `/proc/filesystems` and answers `err this kernel cannot mount <type>` when the driver is
-missing, instead of failing halfway.
-
-**Mount options.** `nosuid` and `nodev` always; `noexec` unless `exec = yes` is set in
-`/etc/kdos/mountd.conf`. A setuid-root binary on somebody else's stick is a local root hole, so
-executing from removable media is something you opt into. FAT, exFAT and NTFS have no ownership of
-their own, so they are mounted with `uid=` and `gid=` set to the caller and `fmask=0117,dmask=0007`;
-on a native filesystem the mountpoint itself is given to the caller.
-
-**The mountpoint** is `/media/<user>/<label>`, created mode 0700 and owned by the caller, and
-removed on unmount. The label is reduced to the characters `A–Z a–z 0–9 . _ -` before it becomes a
-path component, because it is whatever somebody else's computer wrote into a superblock. A device
-with no usable label is named after its kernel name, and failing that `disk`. A path too long to
-be a mountpoint is refused rather than shortened.
-
-### /etc/kdos/mountd.conf
-
-The image ships no `mountd.conf`; create it to change a default. The daemon reads it on each
-request that needs it.
-
-| Line | Default when absent | Effect |
-|---|---|---|
-| `exec = yes` | `noexec` | Removable media and network shares are mounted without `noexec`, so programs on them can run |
-| `format = yes` | `format` refused | The `format` verb is allowed |
-| `write = yes` | `write` refused | The `write` verb is allowed |
-
-The file holds one `key = value` per line; blanks around the key, the `=` and the value are
-ignored. A line whose first non-blank character is `#` is a comment, so `# exec = yes` leaves the
-setting off. The key must be exactly `exec`, `format` or `write` and the value exactly `yes`, and
-the last line for a key wins: `format = no` after `format = yes` turns formatting off.
-
-### Encrypted volumes
-
-The passphrase reaches `cryptsetup open` on standard input, through `--key-file=-`, and never in an
-argument list: `/proc/<pid>/cmdline` is readable by every user for the life of the process. One
-buffer holds it, and every way out of the request wipes it. A wrong passphrase and a header the
-installed `cryptsetup` will not open give the same answer, `err could not unlock`, so a failure
-says nothing about how close a guess was.
-
-The mapping name is the daemon's: `kdos-<kname>`, derived from the row. A client cannot ask for a
-mapping called anything else, and `close` finds the same name from the same row without being told
-it. Unlocking a volume that is already open is not an error.
-
-After an `unlock`, the opened mapping appears in `list` beside the container it came from, so the
-filesystem inside can be mounted like any other row. The daemon finds it by the name it chose
-itself rather than by walking `/sys/block/dm-*`; a mapping this daemon did not open, such as
-someone's own `cryptsetup open` of a root volume, is not offered. The row keeps the container's
-physical disk, so every destructive verb is still judged by that disk.
-
-### SMART
-
-`smart` answers for the whole drive, not the partition: SMART is a property of the drive, so a row
-per partition would repeat one answer and point a raw-device tool at an offset nothing owns.
-
-`smartctl` needs the raw block device, which no session may open. The alternatives, a setuid binary
-or a sudo rule, are both wider holes than one daemon answering one question. The daemon runs
-`smartctl -H -i` on the parent disk and filters the output down to three tab-separated fields: the
-model (`Device Model` or `Model Number`), the serial and the health line (`overall-health` or
-`SMART Health Status`), with `-` for a field it did not find. Its exit status is a bitfield rather
-than a failure flag: bits 3 to 7 mean the drive is unwell, which is often the answer rather than
-the absence of one, so only an empty capture is treated as "nothing learnt".
-
-### Network shares
-
-`cifs` mounts an SMB share with a password. `mount(2)` cannot open an SMB session by itself
-(dialect negotiation, authentication and the tree connect all happen inside `mount.cifs`), so this
-verb runs that helper.
-
-- Each of the four names is checked against its own character allowlist. Server: letters,
-  digits, `.` and `-`, up to 253 characters, not starting or ending with a separator and with no
-  `..`. Share: letters, digits, `.`, `_`, `-` and `$`, up to 80. User: letters, digits, `.`, `_`,
-  `@` and `-`, up to 104. Domain: letters, digits, `.` and `-`, up to 255, or `-` for none.
-  `mount.cifs` builds its option string by joining fields and escapes nothing but the password, so
-  a comma in any of these would become a new mount option, and a `/` or `\` in a server would
-  silently re-aim the mount. What is not on the list is refused rather than quoted.
-- The password reaches the helper on a file descriptor (`PASSWD_FD=0`, with the bytes on the
-  child's standard input). The other ways `mount.cifs` accepts one are worse: an option string is
-  visible in the process list, an environment value in `/proc/<pid>/environ`, and a file is a file
-  somebody has to delete.
-- Names musl cannot resolve are resolved here. `nsswitch.conf` has no effect on musl and there
-  is no winbind, so a `.local` name and a bare NetBIOS name are the two shapes `getaddrinfo` never
-  answers. The normal resolver is tried first (a name in `/etc/hosts` is one somebody wrote down,
-  and a broadcast must not override it); then a `.local` name goes to `avahi-resolve-host-name` and
-  a bare name to `nmblookup`. An address or a dotted DNS name never triggers a broadcast. Only the
-  address is substituted: the share mounts under the name that was typed, with the address passed
-  in `ip=`, so the mountpoint is one a person recognises. A name nothing answers to is refused
-  before anything is loaded or created.
-- The `cifs` module is loaded first. Nothing else on the image loads it, and
-  `/proc/filesystems` lists only what the kernel already has, so checking support before `modprobe`
-  would refuse every first connection.
-- The mount belongs to the caller. It lands at `/media/<user>/<server>-<share>` with
-  `uid=`, `gid=`, `file_mode=0600` and `dir_mode=0700`, because a server without Unix extensions
-  reports every file as owned by root. `nosuid` and `nodev` always; `noexec` unless `exec = yes`. A
-  share that is already mounted answers with its existing mountpoint. When the helper refuses, the
-  first line of its own error message is the answer.
-
-`shares` lists what `/proc/mounts` says is connected (type `cifs` or `smb3`). No list is held
-between requests, so a server that went away, or a share another session mounted, is reported as
-it is at that moment. `disconnect` rebuilds the same list before acting on a row.
-
-`browse` is two broadcasts, not a directory. There is no browse master to ask (samba is built
-without winbind and without a domain controller), so the list is `avahi-browse -ptrk _smb._tcp` for
-machines that advertise the service, plus `nmblookup -S -- '*'` for machines that answer a NetBIOS
-query. Of the NetBIOS answers, only a machine with a `<20>` (file server) entry is offered, since
-one without it is sharing nothing. At most 32 machines are listed. A browse row is not an index:
-`cifs` and `krb5` take a server name.
-
-`krb5` mounts with `sec=krb5`, using the ticket already in the caller's credential cache. No
-secret crosses the socket: the kernel's cifs module raises a `cifs.spnego` key request,
-`request-key` runs `cifs.upcall` against that cache, and the helper hands back the SPNEGO blob.
-That is why it is a verb of its own rather than `cifs` with an empty password.
-
-- The mount passes `cruid=<caller>`. Without it the upcall would look in root's credential cache,
-  which is empty, and the mount would fail with `Required key not available`, naming no user.
-- `-` means "no username" and "no domain", and for Kerberos that is the normal case: the principal
-  in the ticket already says who you are.
-- `/usr/sbin/cifs.upcall` and `/etc/request-key.d/cifs.spnego.conf` are checked before the module
-  is loaded and before the mountpoint is made. Without them the kernel's error is that same
-  unhelpful `Required key not available`, so the daemon names the missing file instead and leaves
-  no empty directory under `/media`.
-
-### What a destructive verb refuses
-
-`eject`, `unlock`, `format` and `write` pass through one check before they act. It refuses a device
-that is mounted (`err unmount it first`), a device on the boot medium, and a device node that has changed
-since the scan.
-
-The boot medium is refused by the disk, not by the partition. A live USB carries the system and a
-FAT EFI partition beside it. Every per-partition rule would offer the EFI partition (it is
-removable, it is FAT, it is unmounted and no fstab names it), and formatting it, or ejecting its
-disk, would destroy the running session. The disk this system runs from, as
-[Which devices are offered](#which-devices-are-offered) defines it, is never in `list`, so no row
-index reaches it: a verb naming the index its row would have taken is past the list. The same
-disk-level rule is checked again here and answers
-`err that is the medium this session booted from`.
-
-The device node is checked again at the moment of use. Between the scan that built the row and
-the call that acts on it, a path could become a symlink or a different device. The daemon opens it
-with `O_NOFOLLOW` and requires a block device whose device number matches the one `/sys` recorded.
-
-`format` requires the person to type the device's kernel name; a flag or the word yes is not
-enough. The daemon compares the second frame with the name it put in the list itself, by exact
-length and content, so a client cannot send a confirmation it was never shown. A mismatch
-answers `err type <kname> to confirm`.
-
-**`format` is opt-in**: without `format = yes` in `/etc/kdos/mountd.conf` it answers
-``err format is off; set `format = yes` in /etc/kdos/mountd.conf``. The filesystem is one of four,
-checked against a table (anything else answers `err unknown filesystem`), and every new filesystem
-is labelled `KDOS`:
-
-| Filesystem | Command |
-|---|---|
-| `ext4` | `/usr/sbin/mkfs.ext4 -F -L KDOS <node>` |
-| `btrfs` | `/usr/bin/mkfs.btrfs -f -L KDOS <node>` |
-| `vfat` | `/usr/sbin/mkfs.vfat -I -n KDOS <node>` |
-| `exfat` | `/usr/sbin/mkfs.exfat -n KDOS <node>` |
-
-### Writing an image
-
-`write <row> <count>` puts a disk image, such as an installer or a live system, over the whole disk
-the row is on, and then reads the disk back and compares it with the image. The image arrives as an
-open descriptor attached to the request, never as a path. The client opened it as the person asking,
-so it can only be a file that person can read; a root daemon that took a path would open it as root,
-and `write 0 /etc/shadow` would copy a file the caller cannot read onto a stick the caller can.
-
-**`write` is opt-in**: without `write = yes` in `/etc/kdos/mountd.conf` it answers
-``err write is off; set `write = yes` in /etc/kdos/mountd.conf``. It is a key of its own because
-turning on formatting says nothing about replacing a whole disk. Beyond the check every destructive
-verb passes, it refuses:
-
-| Refusal | Answer |
-|---|---|
-| No descriptor attached | `err no image: the file travels as a descriptor, not a name` |
-| Any row on the same disk mounted, or an unlocked mapping on it | `err unmount <kname> first`, `err close <kname> first` |
-| Any partition of the disk, or the disk itself, that `/etc/fstab` names (an entry's source field exactly its device path or exactly `LABEL=<its label>`) or the running system is mounted from — partitions `list` leaves out, which the write would replace all the same | `err <name> is in /etc/fstab or holds the running system` |
-| A second frame that is not the disk's name (`sdb` for a row on `sdb1`) | `err type <disk> to confirm` |
-| A descriptor that is not a regular file with something in it | `err the image is not a file with something in it` |
-| An image larger than the disk | `err the image is <n>G and <disk> is <m>G` |
-| The disk opened by anyone else | `err <disk> is in use — unmount and close everything on it` |
-
-The disk is opened with `O_EXCL`, which on a block device is the kernel's exclusive claim: it fails
-while any partition of the disk is mounted, mapped or claimed, and while the write holds it a mount,
-a format or a second write of that disk fails in turn. The node is opened with `O_NOFOLLOW` and its
-device number is checked against `/sys`, like every other verb's.
-
-The copy runs in a double-forked worker, so the daemon goes on answering every other client for the
-minutes a write takes. The connection stays open and carries the worker's progress, one line per
-step of about one per cent:
-
-```text
-progress write 1048576 3000000
-progress verify 3000000 3000000
-ok sdb 3000000 verified
-```
-
-After the copy the data is synced and the device's cached pages are dropped (`BLKFLSBUF`), so the
-verify reads what the disk hands back rather than what the worker just wrote; a stick that wraps
-writes past its real capacity fails there with `err verify failed: <disk> does not hold the image
-at byte <n>`. Last, the daemon asks the kernel to re-read the partition table (`BLKRRPART`), which
-makes the new partitions appear and sends every subscriber `changed`. A worker whose client has gone
-carries on to the end; its progress lines are dropped.
-
-A disk with no filesystem the daemon recognises is not in `list` at all, so an image cannot be
-written onto it through this verb; and in a live session any disk carrying an ISO 9660 superblock,
-on the disk or on a partition, is treated as the boot disk, so a stick that already holds another
-system's image is refused there.
-
-Every program it runs is named by absolute path: `/usr/bin/eject`, `/usr/sbin/cryptsetup`,
-`/usr/sbin/smartctl`, the `mkfs` programs above, `/sbin/modprobe`, `/sbin/mount.cifs`,
-`/usr/bin/avahi-resolve-host-name`, `/usr/bin/avahi-browse` and `/usr/bin/nmblookup`. Otherwise a
-root process would look programs up through an inherited `PATH`. `eject`, `cryptsetup`, `smartctl`,
-`nmblookup` and `avahi-resolve-host-name` get `--` before the device or name, so a leading dash
-cannot become an option. The `mkfs` node and the `mount.cifs` share are paths the daemon built
-itself (`/dev/<kname>` and `//<checked server>/<checked share>`), so neither can begin with a dash.
-
-### How the desktop hears about a new device
-
-`kdos-mediad` is the subscriber. It is a name of the `kdos-shell` binary, started once per session
-by the compositor alongside `kdos-notifyd`:
-
-1. `kdos-mediad` sends `subscribe` and keeps the connection open.
-2. The daemon listens to the kernel's own hotplug broadcast (`NETLINK_KOBJECT_UEVENT`), so hotplug
-   works with no udev rule file and without udev running. It reacts to block-device `add`,
-   `remove` and `change` events; `change` is included because that is what a drive reports when a
-   disc goes into a tray that was already there.
-3. On every block-device `add`, `remove` or `change` event the daemon writes `changed` to every
-   subscriber, without checking whether the offered list is different; an internal disk or a
-   mapping changing sends it too. It cannot say *which* device, because a row number is only true
-   of the list it came with, so the subscriber asks again with `list` and compares.
-4. `kdos-mediad` raises a notification with **Open** and **Eject** buttons. When a button is
-   clicked it reads the list again and finds the device by kernel name, rather than trusting the
-   row the notification was built from.
-
-The daemon only says that something moved; the session decides what it means. The daemon is root,
-starts before anybody logs in, and has no session bus to send a notification on. At most four
-subscribers are held at once; a fifth is answered `err too many subscribers`. A subscriber that
-hangs up is dropped before anything is written to it.
-
-The panel does not subscribe. A subscription would put a socket read in the panel's frame loop,
-which keeps blocking calls out of the way of drawing (the tray follows the same rule; see
-[kdos-shell](kdos-shell.md#the-tray)). `kdos-devices` asks when it is opened.
-
-If the daemon cannot open the hotplug socket it logs
-`kdos-mountd: no uevent source; subscribe will report nothing` and serves everything else.
-
-### Fixtures
-
-```sh
-kdos-mountd --fixture <sys> [dev]
-kdos-mountd --fixture-serve <sys> [dev]
-```
-
-`--fixture` prints what the daemon would offer from a recorded `/sys` tree (and optionally a `/dev`
-tree), one row per device with its size in bytes and a final `<n> eligible`, and mounts nothing.
-`--fixture-serve` runs the real request handling over a real socket (`KDOS_MOUNTD_SOCKET`) with the
-fixture's trees, admits any caller, and prints each command it would run (with its environment and
-the byte count, never the bytes, of anything it would feed on standard input) instead of running
-it. No name is resolved and nothing is broadcast. That is how a `format` aimed at the boot medium
-is proved to be refused without a disk to lose. A `write` in these modes prints `write <node>` and
-copies the image into the file `KDOS_MOUNTD_SINK` names instead of the disk, and verifies against
-that file, so the copy and the read-back really run with nothing that looks like a device touched.
-
-Only in these two modes does the daemon read the path overrides `KDOS_MOUNTD_SYS`,
-`KDOS_MOUNTD_DEV`, `KDOS_MOUNTD_MOUNTS`, `KDOS_MOUNTD_FSTAB`, `KDOS_MOUNTD_MEDIA`,
-`KDOS_MOUNTD_CONF`, `KDOS_MOUNTD_SINK` and `KDOS_MOUNTD_UEVENT` (a FIFO standing in for the
-kernel's hotplug socket).
-The daemon started by the init script reads none of them: an environment variable that moved its
-idea of `/dev` would be a way to aim a format at any device on the machine.
-
-The committed fixture, `testing/fixtures/mountd`, is a recorded `/sys/block` tree with hand-built
-device images. On removable disks: a FAT32 stick labelled `KDOSSTICK`, a LUKS container, a
-live-USB pair (an ISO 9660 partition and a FAT ESP beside it), the shipped isohybrid layout (`sde`:
-an ISO 9660 superblock on the whole disk, a 64-sector `sde1` with no filesystem, a FAT `sde2`), a
-whole-disk ext4 stick (`sdf`) standing in for a persistence store, and an optical disc. On a real
-root with nothing of theirs mounted all seven are offered; the selftest mounts `sde` at `/mnt/iso`
-and `sdf` at `/mnt/persist`, and serves a live session, and asserts that neither boot disk
-appears in `list` and that no verb reaches it. One more is an ext4 filesystem on an internal
-disk and is never offered. The fixture also carries
-an `fstab` that claims the stick by label, and a `mounts-live` table from a booted live medium with
-one mounted network share. The internal disk carries a real superblock so that a broken removable
-check shows up as an extra row rather than as nothing.
+script that started the allocation keeps running. That run has one large process to choose; which
+process the daemon picks on a busy desktop is what `--fixture` tests.
 
 ## kdos-packd
 
@@ -1144,16 +752,16 @@ combined into a box is in [Packs and boxes](../03-architecture/packs-and-boxes.m
 | `ping` | `ok` |
 | `status` | Tab-separated lines: `store`, `medium` and `staging` directories, `retain` count, mount `route` (`file-backed`, `loop device`, or `not yet used`), `packs` (installed, available and mounted counts), `boxes` (how many are composed), and a `box` line for each composed box (name, merged root, `ephemeral` or `persistent`), then `ok` |
 
-Every verb answers root and `wheel` only. The clients on the system are `kdos-appbox` and
-`kdos doctor`. Launching a boxed application sends `info` for the pack's environment and `compose`
-for its box; `kdos-box start` sends `compose` and `kdos-box remove` sends `decompose`.
-`kdos-appbox genlaunchers --packs` sends `list` and then `mount` for each installed pack.
-`kdos app import`, `kdos-appbox import` and `kdos-box import` copy a pack into the staging
-directory and send `install`. `kdos-appbox status` and `kdos doctor` ask for `status`, and
-`kdos doctor` reports the mount route. `kdos app install` and `kdos app remove` build and delete
-container images and ask this daemon nothing. No program on the system sends `unmount`, `remove`,
-`rollback`, `graft` or `ungraft`; those verbs are reached only by a client that speaks the socket
-directly.
+Every verb answers root and `wheel` only. Launching a boxed application sends `info` for the pack's
+environment and `compose` for its box; `kdos-box start` sends `compose` and `kdos-box remove` sends
+`decompose`. `kdos-appbox genlaunchers --packs` sends `list` and then `mount` for each installed
+pack. `kdos app import`, `kdos-appbox import` and `kdos-box import` copy a pack into the staging
+directory and send `install`, and an import of a data pack sends `graft`. Discover's KDOS backend
+sends `list` and `info` to show the packs, and `graft`, `ungraft` and `remove` when a person
+installs or removes one. `kdos-appbox status` and `kdos doctor` ask for `status`, and `kdos doctor`
+reports the mount route. `kdos app install` and `kdos app remove` build and delete container images
+and ask this daemon nothing. No program on the system sends `unmount` or `rollback`; those verbs
+are reached only by a client that speaks the socket directly.
 
 An id is at most 63 characters from `[A-Za-z0-9._-]` and does not begin with `.` or `-`; anything
 else is refused before it is looked up.
@@ -1166,12 +774,13 @@ Paths:
 | `/var/lib/kdos/packs/staging` | Where an unprivileged download lands; mode 01777, set when the daemon starts |
 | `/var/lib/kdos/packs/mnt` | Mountpoints |
 | `/mnt/iso/packs` | Packs on the boot medium |
-| `/var/lib/kdos/pack-manifest` | Every graft made, so an ungraft removes exactly what was added |
+| `/var/lib/kdos/packs/pack-manifest` | Every graft made, so an ungraft removes exactly what was added; in the shared store, so at start the daemon makes every host graft it names that this root lacks |
+| `/var/lib/kdos/packs/pack-manifest.ungrafted` | The paths an ungraft dropped, so the other slot unlinks its own copy of each at its next start |
 | `/etc/kdos/keys/packs` | The keys packs are verified against, separate from `/etc/kdos/keys`, which is `kpkg`'s package-repository ring |
 | `/etc/kdos/packd.conf` | Configuration |
 
-Unlike `kdos-mountd`'s overrides, the daemon reads these environment variables in normal operation,
-not only in fixture mode. The init script sets none of them:
+The daemon reads these environment variables in normal operation, not only in fixture mode. The
+init script sets none of them:
 
 | Variable | Effect |
 |---|---|
@@ -1220,7 +829,10 @@ pack mounts. Every pack is mounted read-only with `nosuid` and `nodev`, and a da
 
 The list is rescanned on every request, so a medium pulled out between two requests is not still
 offered. At start-up the daemon adopts whatever packs and boxes are already mounted, so a restart
-while boxes are running does not lose track of them.
+while boxes are running does not lose track of them, and then makes every host graft the store's
+`pack-manifest` names for a data pack in the store and this root lacks, so a data pack grafted from
+the other A/B slot is in place in this one; see
+[Grafts and data packs](../03-architecture/packs-and-boxes.md#grafts-and-data-packs).
 
 **An install replaces the old version safely.** If the old version is mounted but not in use, it is
 unmounted before the file is swapped, so the next compose reads the new file. If it is composed
@@ -1269,42 +881,306 @@ state, composes each application pack, grafts each data pack (printing each graf
 and prints the result, mounting nothing. `KDOS_PACKD_VERBOSE` shows its log lines; `KDOS_KEYS`
 points it at another key directory. The daemon reads `KDOS_KEYS` only in fixture mode; the
 `kdos-pack` tool reads it in normal use, to choose the ring its `verify` and `info` check against
-(default `/etc/kdos/keys/packs`).
+(default `/etc/kdos/keys/packs`). `kdos-packd --fixture-graft <store> <id>` is the `graft` verb and
+`kdos-packd --fixture-start <store>` the start-up re-graft over a scratch store, each mounting
+nothing but writing the links and the record for real, under `KDOS_PACK_SHARE` (instead of
+`/usr/share`) and `KDOS_PACK_HOME` (instead of the caller's home); two share directories over one
+store stand for the two slots of an A/B machine.
 
 The two mount routes, reference counting and adoption of existing mounts at start-up are described
 in [Packs and boxes](../03-architecture/packs-and-boxes.md).
 
+## kdos-settingsd
+
+The machine's name, clock, time zone, locale and keyboards, on the system bus. KDE changes these
+by calling three interfaces systemd defined, `org.freedesktop.hostname1`,
+`org.freedesktop.timedate1` and `org.freedesktop.locale1`, rather than by writing files. The Date &
+Time page of System Settings saves through timedate1 and nothing else; plasma-setup uses all three
+on an OEM first boot; the login screen's compositor runs `kwin_wayland --locale1` and takes its
+keyboard layout from locale1, following it when it changes; startplasma copies that layout into
+each session; System Monitor's OS sensors read hostname1. KDOS has no systemd, so this daemon
+answers for them, with every method and property systemd's three interfaces have except
+hostname1's `Describe`, which nothing on the system calls. It is C on `basu` and `libkbase` and
+links no glib and no Qt. What a person sees of it, page by page, is in
+[KDOS's settings pages](kdos-settings.md#kdos-settingsd).
+
+### Where each setting is kept
+
+Each setting is kept in the file the rest of the machine already reads, and nothing is cached:
+every getter reads its file, so a value the installer or a person with an editor wrote is what the
+next caller sees.
+
+| Setting | File |
+|---|---|
+| Static hostname | `/etc/hostname`, which `05_hostname.sh` gives the kernel at boot; the `127.0.1.1` line of `/etc/hosts` follows the name, because musl resolves the machine's own name from that file and nothing else before the DNS |
+| Pretty name, icon, chassis, deployment, location | `/etc/machine-info` |
+| Time zone | `/etc/localtime`, a symlink into `/usr/share/zoneinfo`, and `/etc/profile.d/20-timezone.sh`, which exports `TZ=':/etc/localtime'` |
+| Wi-Fi country | `/etc/modprobe.d/kdos-regdom.conf`, from the zone |
+| Network time | Whether `/etc/service.disabled/chrony` exists |
+| Locale | `/etc/locale.conf`, bare `NAME=value` lines, which SDDM puts into every session |
+| Console keymap | `/etc/keymap`, which `kdos-getty` loads on every console |
+| Graphical keyboard | `/etc/kdos/xkb.conf` (`XKBMODEL`, `XKBLAYOUT`, `XKBVARIANT`, `XKBOPTIONS`), never under `/etc/X11` |
+
+Both halves of a time zone are written or the call fails. musl reads `TZ` where it is set, and
+every KDOS login sets it, so writing only the link would leave every new login reporting the old
+zone. The colon form points musl at the link itself, the one value that cannot drift from it, and
+it is the form Qt reads as "follow `/etc/localtime`".
+
+**The Wi-Fi country follows the zone.** The kernel's wireless layer starts in the "world"
+regulatory domain, which keeps every 5 GHz DFS channel (one shared with radar) closed and caps
+transmit power until something names a country, and some drivers never take one from an access
+point. The daemon looks the zone up in `zone.tab`, which maps each zone to exactly one country
+code, writes `options cfg80211 ieee80211_regdom=<CC>` to `/etc/modprobe.d/kdos-regdom.conf` for the
+next boot, and runs `iw reg set <CC>` for this one. A zone with no country, such as `UTC`, removes
+the file. Neither step failing fails the zone: a machine with no radio still has a time zone. The
+installer writes the same file from the zone chosen during installation.
+
+**An empty layout follows the console.** The installer writes the console keymap alone and the
+shipped `xkb.conf` leaves `XKBLAYOUT` empty, so locale1's `X11Layout` is then the layout nearest
+`/etc/keymap`, and the login screen has the installed keyboard from the first boot. A derived
+layout is given only when `xkeyboard-config` carries it: KWin falls back to US for a layout it
+cannot compile and says so only in its log.
+
+**The hardware clock is UTC.** The kernel reads it as UTC at boot and writes it back every eleven
+minutes while chrony has the clock synchronised, so `LocalRTC` is false and `SetLocalRTC(true)` is
+refused. A clock set by hand is not synchronised, so `SetTime` writes the hardware clock itself.
+
+**Network time is chrony.** `CanNTP` is true when chrony's init script and `chronyd` are both
+installed. `SetNTP(true)` removes the marker and runs `service start chrony`; `SetNTP(false)` puts
+it back and runs `service stop chrony`. On a machine without chrony, `SetNTP(true)` answers
+`NoNTPSupport` and `SetNTP(false)` succeeds, as systemd-timedated's does: the Date & Time page sends
+`SetNTP(false)` on every Apply when `CanNTP` is false, and refusing it would fail the whole Apply.
+
+### Checking, then asking, then writing
+
+A method validates its arguments before polkit is asked, so a bad value is refused without a
+password prompt, and polkit answers before a single byte is written. Every value is checked
+against a character set and, where the machine carries the list, against the list: a zone must be
+a regular file in the zone tree that starts with the `TZif` magic, a console keymap must be one of
+`kbd`'s keymaps and an XKB layout one of `xkeyboard-config`'s `rules/evdev.lst`. A name that passes
+the character rule and names nothing is refused, because a keymap nobody can load and a layout no
+compositor can compile both fail silently later, at the login screen, where nobody can type the way
+out.
+
+Root is answered without asking polkit. Everyone else gets polkit's answer under systemd's own
+action ids, because plasma-setup's rule and the Date & Time page name them:
+
+| Action | Active local session |
+|---|---|
+| `org.freedesktop.timedate1.set-time` | `auth_admin_keep` |
+| `org.freedesktop.timedate1.set-timezone` | `yes` |
+| `org.freedesktop.timedate1.set-ntp` | `yes` |
+| `org.freedesktop.timedate1.set-local-rtc` | `auth_admin_keep` |
+| `org.freedesktop.locale1.set-locale` | `auth_admin_keep` |
+| `org.freedesktop.locale1.set-keyboard` | `auth_admin_keep` |
+| `org.freedesktop.hostname1.set-hostname`, `set-static-hostname`, `set-machine-info` | `auth_admin_keep` |
+| `org.freedesktop.hostname1.get-product-uuid`, `get-hardware-serial` | `auth_admin_keep` |
+
+`set-time` implies `set-timezone` and `set-ntp`, so the Date & Time page's one password covers its
+three calls. The last two guard the values that identify the machine, which the kernel makes
+root's alone. An interactive question may stay open for five minutes, after which the call is
+refused; no answer from polkit is a refusal.
+
+The programs it runs, `service`, `loadkeys` and `iw`, are argument vectors found through `PATH` and
+skipped when missing, because every argument they are given came over a bus.
+
+### Starting and testing it
+
+`43_settingsd.sh` starts the daemon under `ksvc` after `polkitd` and before the display manager,
+with `--restart-with dbus` and `--final-exit 3`, and waits for all three names. It exits 3 when
+another process owns one of them. A kernel left with no hostname, which is what
+`SetStaticHostname("")` and a missing `/etc/hostname` produce, is given the default name
+(`DEFAULT_HOSTNAME=` in os-release, else `kdos`) when the daemon starts.
+
+`KDOS_SETTINGSD_ETC`, `KDOS_SETTINGSD_SHARE` and `KDOS_SETTINGSD_SYS` replace `/etc`, `/usr/share`
+and `/sys`, and the first also keeps the daemon off the machine it runs on: with it set the
+kernel's hostname, the clock and the hardware clock are left alone. `testing/selftest.sh` drives
+every method that way, over a private bus, against a polkit stand-in in
+`testing/fixtures/settingsd/`.
+
+## kdos-sysupdated
+
+The bus face of a KDOS system update. Discover's stock SystemdSysupdate backend is how Plasma shows
+an operating-system update, and this daemon serves `org.freedesktop.sysupdate1` the way Discover
+6.8.2 calls it, so Discover drives a KDOS update with no patch. It does no update work itself:
+every check, download, install and boot decision is a run of `kdos update` or `kdos-bootctl`,
+executed with an argument vector, and the daemon waits for them without blocking the bus. It also
+serves `io.kdos.Slots1` for the System Versions page and the update notifier, and it is the root
+half of the boot confirmation that keeps a new slot. What an update is, where it comes from and how
+the slots are chosen are in [Updating a machine](../03-architecture/packaging.md#updating-a-machine)
+and [A/B slot selection](../03-architecture/boot-and-init.md#ab-slot-selection); how Discover
+drives it is in [Discover](discover.md#system-updates).
+
+### What Discover calls
+
+| Call | Answers |
+|---|---|
+| `Peer.Ping` | Whether the backend is there at all |
+| `Manager.ListTargets` | One target, `host`, at `/org/freedesktop/sysupdate1/target/host` |
+| `Manager.ListJobs`, `ListAppStream` | The running job; the AppStream URL |
+| `Target.GetAppStream` | `file:///run/kdos/sysupdate/io.kdos.system.metainfo.xml` |
+| `Target.GetVersion` | The running version |
+| `Target.CheckNew` | The version on offer, or empty for nothing |
+| `Target.List`, `Describe` | The installed and offered versions |
+| `Target.Acquire("", 0)` | All the long work: `kdos update apply --acquire --mount --progress 3`. Its reply is a job path, whose `Progress` Discover watches |
+| `Target.Install("", 0)` | The short arm: `kdos update apply --arm --mount --progress 3` |
+| `Target.Vacuum` | `0`: the slots are the history, and nothing is vacuumed |
+| `Job.Cancel` | Stops the running child |
+| `Manager.JobRemoved` | Sent once, when a job this daemon replied with ends |
+
+**Acquire answers only after `kdos update` has said `verified` or `refused`.** Discover shows a
+failed call's message in a banner and a failed job as nothing but "failed", so everything that can
+refuse an update (a release index, binhost index or image manifest no trusted key signed, a file
+the release index does not name, a package the binhost does not cover, a slot that cannot be
+mounted) is learned before the reply, and only an update that can go
+ahead becomes a job. `JobRemoved` is sent only for a job this daemon replied with, because Discover
+ends whatever transaction it is waiting on at the first one it sees.
+
+`Acquire` and `Install` take `""`, the offered version, which is what Discover sends, or that
+version by name; any other version answers that it is not available. Only one job runs at a time,
+and a call during the hourly check is refused until the check finishes, because the fetch holds the
+update lock the apply would take. Every one of these is checked again once polkit has answered, since an
+administrator's prompt can stay open for minutes: a call whose version is not the one offered or
+acquired at that moment is refused, and nothing other than the version that was authorised is installed.
+
+**A trial boot is offered nothing.** While this boot is the trial of the other slot, the slot an
+update would fill is the confirmed way back, so `CheckNew` answers empty and `Acquire` is refused
+until the trial is confirmed or rolled back. A machine with no second root slot is refused too,
+with a reply that names `kdos update apply`, which updates it in place.
+
+**The update document belongs to the root that wrote it.** `CheckNew` reads
+`/var/lib/kdos/update.json` and, at most once an hour (`--refresh-after`), runs
+`kdos update check --fetch` to fetch the signed tree and release index, and through that index the
+binhost index and slot image manifest, so what it offers is only what the index named. The
+document is in each
+slot, so the first boot of a slot, or the boot a rollback returns to, finds one written before
+that root was what it is now; a document whose `installed` is not the running version offers
+nothing, and the daemon rewrites it at start with `kdos update check --out`, which downloads
+nothing. The daemon watches `/var/lib/kdos` and regenerates the AppStream file whenever the
+document changes, so a check typed at a shell reaches Discover too.
+
+**The AppStream file lives on `/run`.** `/run/kdos/sysupdate/io.kdos.system.metainfo.xml` carries
+the release notes and, in its text, whether the update is the signed system image or the release's
+packages (the document's `lane`), the signer's fingerprint, the packages it changes and the size
+still to download; the copy in `/usr/share/kdos/update/` is the fallback that names the system and offers
+nothing. Discover asks `127.0.0.1:3129` for an update's size and shows 0 when nothing answers;
+nothing listens there.
+
+### io.kdos.Slots1
+
+The System Versions page and `kdos-notice` read the slots through `io.kdos.Slots1`: the properties
+`Configured`, `RunningSlot`, `ActiveSlot`, `TrySlot`, `TryAttempts`, `TryBootNext`, `Channel` and
+`State`, the methods `ListSlots`, `Try`, `CancelTry`, `SetChannel` and `Bless`, and the signal
+`SlotsChanged`. Its contract is the page's own `io.kdos.Slots1.xml`.
+
+### Confirming a boot
+
+A slot is confirmed only when two marks exist, tested together, both root's regular files in
+`/run/kdos/bless/`:
+
+| Mark | Written when |
+|---|---|
+| `userspace` | The end of `rcS`: every service started |
+| `graphical` | A Plasma session answered for a minute (`Bless`, which `kdos-notice --bless` calls), or the login greeter stayed up for a minute on a machine nobody logs in to |
+
+Then the daemon runs `kdos-bootctl mark-good`, once per boot, and writes `/run/kdos/bless/confirmed`
+after it succeeds. Either mark alone confirms nothing: a userland that boots and a desktop that
+crashes is the failure a trial exists to catch. The greeter counts only on a machine with no
+autologin and before any user session has existed this boot, because a greeter that came back
+after the session crashed must not confirm the slot that crashed it. The greeter is an
+`sddm-greeter` and a `kwin_wayland` both running as SDDM's account, `sddm`, the uid
+`/etc/passwd` gives it: the names alone are not enough, since any account can start two processes
+called that. A machine whose `inittab`
+starts no display manager has no graphical half to wait for, and the first mark is enough there.
+
+### Who may call it
+
+Root is answered without asking polkit, and the bus policy lets only root own the two names.
+
+| Action | Methods | Active local session | Inactive and any other |
+|---|---|---|---|
+| `org.freedesktop.sysupdate1.check` | `CheckNew` | `yes` | `auth_admin` |
+| `org.freedesktop.sysupdate1.update` | `Acquire`, `Install`, `Cancel` | `auth_admin_keep` | `auth_admin` |
+| `org.freedesktop.sysupdate1.update-to-version` | `Acquire` and `Install` naming a version | `auth_admin` | `auth_admin` |
+| `io.kdos.slots.try` | `Try`, `CancelTry` | `auth_admin_keep` | `auth_admin` |
+| `io.kdos.slots.channel` | `SetChannel` | `auth_admin_keep` | `auth_admin` |
+| `io.kdos.slots.bless` | `Bless`, never interactive | `yes` | `no` |
+
+### Running and testing it
+
+```text
+kdos-sysupdated [--session] [--root DIR] [--proc DIR]
+                [--bless-after SECONDS] [--tick SECONDS] [--refresh-after SECONDS]
+```
+
+| Option | Default | Effect |
+|---|---|---|
+| `--session` | off | Serve the session bus, which is where Discover looks with `DISCOVER_TEST_SYSUPDATE=1` |
+| `--root DIR` | `/` | Read and write every file under a fixture root |
+| `--proc DIR` | `/proc` | Read processes from another tree |
+| `--bless-after` | 60 | Seconds the greeter must stay up to earn the graphical mark |
+| `--tick` | 5 | Seconds between checks of the boot state |
+| `--refresh-after` | 3600 | Seconds between fetches by `CheckNew`; `0` never fetches |
+
+`--session --root` together is how the whole flow runs without root. Without `--session` the
+daemon refuses to start unless it is root. It exits 1 when its bus goes away, for the supervisor to
+restart it with the bus, 2 on bad usage, and 3 when another process owns one of its names.
+`SIGHUP` rereads every file it serves from. The children's standard error is the daemon's, so a
+failed update is read line by line in syslog under `kdos-sysupdated`.
+
+`46_sysupdated.sh` starts it under `ksvc` with `--restart-with dbus` and `--final-exit 3` and waits
+for `org.freedesktop.sysupdate1`. The interface is tested against Discover's own XML:
+`tests/org.freedesktop.sysupdate1.xml` beside the source is discover-6.8.2's, byte for byte, and
+`testing/selftest.sh` diffs the daemon's introspection against it and against the Slots1 contract.
+
 ## kdos-boxsock
 
 `kdos-boxsock` is not a root daemon and has no socket in `/run`. It is installed in `/usr/bin`, runs
-as the desktop user, one process per box, and gives that box its own Wayland socket so the
-compositor always knows which box a window came from.
+as the desktop user, one process per box launcher, and gives that launcher a Wayland socket of its
+own that KWin tags, so the compositor always knows which box a window came from. `kdos-appbox` runs
+it on every launch; the box's side of it is in [kdos-appbox](kdos-appbox.md#the-launch-path).
 
 ```sh
-kdos-boxsock <box> [instance-id]
+kdos-boxsock [-s confined|tagged] <box> [<launcher-id>]
 ```
 
 What it does:
 
-1. Checks the box name: 1 to 64 characters from `[A-Za-z0-9._-]`, the first a letter or a digit,
-   so an option is never taken for a name; a bad one exits 2 with `bad box name`. `-h` or `--help`
-   alone prints the usage and exits 0.
-2. Takes a lock on `$XDG_RUNTIME_DIR/kdos-box-<box>@<display>.lock`. If another `kdos-boxsock` for
-   the same box and compositor already holds it, this one exits 0 and does nothing. The lock, not
-   the socket file, answers "is this box already served", because a socket file is also left
-   behind by a crash.
-3. Binds `$XDG_RUNTIME_DIR/kdos-box-<box>@<display>.sock`, mode 0700, so only this user can
+1. Checks the box name: 1 to 63 characters from `[A-Za-z0-9._-]`, the first a letter or a digit,
+   so an option is never taken for a name. The launcher id is the box itself, the box plus one more
+   component (one launcher of a box with several, `<box>.<stem>`), or the box less its last
+   component (a throwaway box, `<launcher-id>.tw<n>`, whose windows are its application's); it
+   defaults to the box. `-s` is `confined` unless given. `-h` or `--help` alone prints the usage and
+   exits 0; bad usage exits 2.
+2. Checks that the box's private runtime directory, `$XDG_RUNTIME_DIR/kdos/box/<box>`, exists and is
+   this user's alone. `kdos-appbox` makes it; a box sees it as its whole `/run/user/<uid>`, so a
+   socket bound anywhere else is one the box cannot reach.
+3. Takes a lock on `$XDG_RUNTIME_DIR/kdos/box/.<box>.wl[.<stem>]@<display>.lock`, beside the private
+   directory and not inside it, so nothing in the box can take it. The holder writes its pid and its
+   engine into the lock. A second run for the same socket prints the holder's path when the holder
+   serves the same state, or stops the holder and takes over when it serves the other one.
+4. Binds `wl[.<stem>]@<display>` in the private directory, mode 0700, so only this user can
    connect.
-4. Hands it to the compositor through the Wayland security-context protocol, tagged with the engine
-   name `io.kdos.appbox`, the box name as the application id, and the instance id (the box name
-   when no instance is given).
-5. Prints the socket path on standard output and stays alive holding the descriptor that keeps the
-   tag valid. When the compositor exits, it removes the socket and exits too.
+5. Hands it to KWin through the Wayland security-context protocol, tagged with the engine
+   `io.kdos.appbox+private` for a confined box or `io.kdos.appbox+tagged` for one with a way past
+   the tag, the launcher id as the application id, and the box as the instance id.
+6. Prints `ready <path>` on standard output, or `error <reason>` when it cannot tag, closes
+   standard output so its caller reads to end of file, and stays alive holding the descriptor that
+   keeps the tag valid. When the compositor exits, it removes the socket and exits too.
 
-Every client that connects on that socket is tagged by the compositor itself; the client never
-sees the tag, so it cannot forge, choose or drop it. That tag is what the compositor's sandbox
-filter reads, what the box chip on a title bar shows, and what lets the panel say which box a
-window came from.
+Every client that connects on that socket is tagged by KWin itself; the client never sees the tag,
+so it cannot forge, choose or drop it. What the tag carries is read in three places:
+
+- **The application id is the launcher id.** KWin replaces a tagged window's app id with the
+  context's unless the window's own starts with it, and sets the window's class and desktop file
+  name from the result. The launcher id is the file name of the launcher `genlaunchers` wrote, so
+  the window shows that launcher's icon, lights its pinned task and matches its box's window rule.
+- **The instance id is the box.** KWin's sandbox policy reads that box's `grant` key from
+  `~/.config/kdos/boxes/<box>.conf`, and the window decoration's badge names it.
+- **The engine is the confinement state.** `kdos-appbox` decides which boundary held for the box
+  and the decoration shows it. An engine is fixed when a context is committed, so a holder serving
+  one state is replaced by a run asking for the other, and the replacement is what the next client
+  connects through.
 
 `<display>` is taken from `$WAYLAND_DISPLAY`: its last path component, reduced to
 `[A-Za-z0-9._-]` and cut to twelve characters, or `session` when nothing is left. It is in the path
@@ -1312,84 +1188,43 @@ because the listener belongs to the compositor this process connected to; a path
 alone would send a later launch through a compositor that may already be gone. `kdos-appbox`
 derives the same path from the same variables, so the two agree with nothing passed between them.
 
-If the compositor does not offer the security-context protocol, `kdos-boxsock` exits 1 with
-`compositor has no security-context-v1 — not tagging` rather than bind an untagged socket, and
-`kdos-appbox` runs the box on the session's shared socket. The box then starts, unconfined at the
-protocol level, instead of failing to start.
+If the compositor does not offer the security-context protocol, `kdos-boxsock` answers
+`error the compositor has no security-context-v1` rather than bind an untagged socket, and
+`kdos-appbox` refuses to start the box with that line as the reason. An untagged socket would be
+indistinguishable from the compositor's own.
 
 It is a separate program for two reasons:
 
 - The launcher replaces itself with the container command, so it cannot hold anything for the box's
-  lifetime, and the sandbox lasts exactly as long as the descriptor stays open. Something has to
+  lifetime, and the tag lasts exactly as long as the descriptor stays open. Something has to
   outlive the launch.
 - `kdos-appbox` links only `libkbase`, `libktui`, `libkcolor` and `libkxdg`, none of which speaks
   Wayland. Speaking Wayland would add a client library and generated protocol code to a program
   whose short dependency list is a deliberate property.
 
-## xdg-desktop-portal-kdos
+The port is `src/system/kdos-boxsock`, built in the `42_graphics` phase with `libwayland-client`.
 
-The portal backend, installed as `/usr/lib/xdg-desktop-portal-kdos` and started on demand over the
-session bus. It implements the FileChooser, Settings, AppChooser and Access backend interfaces; the
-access question that the Camera, Screenshot and Location portals ask is answered through
-`kdos-prompt`. It is covered in
-[The session](../03-architecture/session.md#the-kdos-backend), including the two rules that matter
-most: every request is answered, and the bus loop never blocks on a dialog.
+## The other services ksvc runs
 
-## kdos-lock
+These root services come from upstream ports, and KDOS starts each from `/etc/init.d` under
+`supervise` like its own daemons. None of them is started by D-Bus activation: each port ships no
+activation file, so a caller that came before the name was owned is refused rather than handed a
+second, unsupervised copy that would then hold the name the supervised one needs.
 
-The lock screen, in `/usr/bin`. It is not a root daemon, but it is the other long-lived program
-close to privilege. It is an `ext-session-lock-v1` client: it covers every output with a lock
-surface and checks the password by running `kdos-checkpass`, handing it the password on standard
-input.
+| Init script | Service | What it is for |
+|---|---|---|
+| `40_elogind.sh` | `elogind` | `org.freedesktop.login1`: every login registers here, KWin takes the seat through it, polkit asks it who is at the machine, and Plasma's Shut Down, Restart and Suspend are its calls. Configured by `/etc/elogind/logind.conf.d/50-kdos.conf` and `sleep.conf.d/50-kdos.conf`. Run with `SYSTEMD_REBOOT_TO_BOOT_LOADER_ENTRY=1`, so login1's `RebootToBootLoaderEntry` is the file `kdos-bootctl try` writes, `/run/systemd/reboot-to-boot-loader-entry`, and the logout screen can name the slot a restart boots |
+| `41_polkitd.sh` | `polkitd` | The authorisation every bus daemon here asks. What KDOS adds to the defaults is `/etc/polkit-1/rules.d/50-kdos.rules` |
+| `44_accounts.sh` | `accounts-daemon` | `org.freedesktop.Accounts`: the Users page, plasma-setup's first account, and the avatar the login screen shows |
+| `48_iio-sensor-proxy.sh` | `iio-sensor-proxy` | `net.hadess.SensorProxy`, for screen rotation and ambient-light brightness. Started only where udev tagged a sensor it can drive |
+| `55_tlp.sh` | `tlp` | Not supervised: it applies TLP's settings at boot and exits |
+| `56_tlppd.sh` | `tlp-pd` | Power profiles for PowerDevil and the battery applet, as `org.freedesktop.UPower.PowerProfiles` and `net.hadess.PowerProfiles`; each switch runs `tlp power-saver\|balanced\|performance` |
+| `65_turnstiled.sh` | `turnstiled` | Every login's runtime directory and every user's services under `ksvc`; the greeter cannot start without it |
+| `85_crond.sh` | `crond` | Users' crontabs, from cronie. The system's own scheduled jobs are snooze's timers, and cronie reads no `/etc/crontab` |
 
-- No password is accepted before the compositor confirms the lock. Until then the session may
-  still be on screen, and the field refuses keys.
-- The password buffer is wiped after every attempt and its length is capped.
-- There is no user switching, no power menu and no notification area on the lock screen, since
-  each would be a way to reach something else from a locked session.
-
-Once the compositor confirms the session is locked, `kdos-lock` prints `locked` on standard output;
-`kdos-power suspend` waits for that line.
-
-What the box shows answers what `kdos-checkpass` said: `Wrong password` when it exits 1, and
-`Cannot check the password` for any other failure, so a broken `/etc/shadow` is not mistaken for a
-typing error. A key pressed before the compositor confirms the lock shows `locking...`. Escape, or
-a left or right mouse press, clears the field. After a failed attempt the screen waits 1.2 seconds
-before it takes the next key.
-
-| `kdos-lock` exit | Means |
-|---|---|
-| 0 | The session was unlocked |
-| 1 | No lock surface could be created (no compositor, no session-lock support, or no font), or the compositor refused the lock because another client already holds it |
-
-The compositor, not the lock program, owns the locked state. If the lock program crashes, the
-screens stay covered and a new lock client may take over. See
-[kdos-comp](kdos-comp.md#who-owns-the-locked-state).
-
-### kdos-checkpass
-
-`kdos-checkpass` (`/usr/bin`, mode 4755) is the only setuid piece of the lock screen: `/etc/shadow`
-is readable only by root, and the lock screen must not run as root. Its place among the system's
-setuid programs is in [The security model](../03-architecture/security-model.md#kdos-checkpass).
-
-- It takes no arguments and checks the password of the user who ran it, identified by the real user
-  id, never by a name it was given. An argument would make it an oracle for any account's password.
-- It reads the password on standard input, because argument lists are visible to every user. A
-  single trailing newline is stripped.
-- It parses `/etc/shadow` directly rather than through the name-service layer, so no NSS module runs
-  in a setuid process.
-- It drops privilege as soon as the hash is read, so `crypt()` runs as the caller, and compares the
-  result in constant time.
-
-| `kdos-checkpass` exit | Means |
-|---|---|
-| 0 | Correct |
-| 1 | Wrong |
-| 2 | Could not tell: no such user, no readable shadow entry, an account with no password or a locked one (an empty, `!` or `*` hash), or an argument was given |
-
-Each wrong answer takes one second before `kdos-checkpass` exits, which limits how fast a password
-can be guessed by driving it directly; the lock screen adds its own pause after a failure. An
-account with no password, or a locked one, cannot unlock the lock screen at all.
+`elogind`, `accounts-daemon`, `iio-sensor-proxy` and `tlp-pd` are restarted with the system bus
+(`--restart-with dbus`). How each fits into the boot and the session is in
+[Boot and init](../03-architecture/boot-and-init.md) and [The session](../03-architecture/session.md).
 
 ## utmpd and wtmpd
 
@@ -1405,33 +1240,37 @@ may write to them and why every reader is built against utmps is in
 ## Adding a root daemon
 
 A new daemon should meet all of these. Where an existing one does not, the exception is stated in
-its section: `kdos-mountd` breaks rule 6 (see
-[One request per connection](#one-request-per-connection)), and `kdos-powerd` breaks rule 8 for
-`kdos-bootctl` and `iw` (see [accent](#accent)).
+its section: `kdos-powerd` and `kdos-settingsd` find `kdos-bootctl`, `service`, `loadkeys` and `iw`
+through `PATH` (rule 8).
 
-1. It runs in the foreground and is started by an `/etc/init.d` script through `supervise`.
+1. It runs in the foreground and is started by an `/etc/init.d` script through `supervise`, with no
+   D-Bus activation file.
 2. Its script skips with a printed reason, before supervision, when the machine cannot support it.
-3. It owns exactly one socket in `/run`, mode 0666, and refuses to serve that socket unless it is
-   root (or, like `kdos-energyd`, cannot start at all without root's access).
-4. It authorises on the caller's credentials (root and `wheel`, plus `seat` for what the person at
-   the machine needs without administering it) by calling `kb_uid_allowed()`, never a copy of that
-   test, and answers `err not permitted` otherwise.
+3. It owns exactly one socket in `/run`, mode 0666, or its names on the system bus with a bus
+   policy that lets only root own them, and refuses to serve its real socket or the system bus
+   unless it is root (or, like `kdos-energyd`, cannot start at all without root's access).
+4. A socket authorises on the caller's credentials, root and `wheel`, by calling
+   `kb_uid_allowed()`, never a copy of that test, and answers `err not permitted` otherwise; what it
+   admits beyond that comes from elogind or polkit, never from a group. A bus method asks polkit
+   about the caller's bus name, asynchronously, under an action id with its own `.policy` file.
 5. No verb takes a path. Identifiers come from a list the daemon published.
-6. A connection that never speaks cannot stall anything the daemon does on a timer or a trigger.
+6. A connection that never speaks, and a polkit prompt nobody answers, cannot stall anything the
+   daemon does on a timer, a trigger or the bus.
 7. It has a `--fixture` mode that decides and prints without acting, or, like `kdos-powerd`,
-   flags that run each verb's rules against a scratch tree.
+   `kdos-settingsd` and `kdos-sysupdated`, a way to run its rules against a scratch tree.
 8. Every program it runs is named by absolute path and executed through an argument vector, never a
    shell.
-9. It links only libraries whose every line you are willing to run as root.
+9. It links only libraries whose every line you are willing to run as root: `libkbase`,
+   `libkcolor`, `libkproc` and `basu` today, and no toolkit.
 10. Its refusals are documented in this chapter, including the ones that look like limitations.
 
 Where the pieces go is fixed as well. The source and its recipe (`kpkgbuild` and `build.sh`) are
-`src/daemons/<name>/`, the area that holds the five root daemons above (`kdos-boxsock`,
-`xdg-desktop-portal-kdos` and `kdos-lock` are session programs, sources under `src/desktop/` and
-named under the list's `src-desktop` heading); the port is named under the `src-daemons` heading of
+`src/daemons/<name>/`, the area that holds the six root daemons above (`kdos-boxsock` is a session
+program, under `src/system/`); the port is named under the `src-daemons` heading of
 `script/phases/50_desktop/packages.txt`, the only phase whose `PORT_REPO` includes `src/daemons`;
-and its init script is `fs/etc/init.d/<NN>_<service>.sh`, whose number places it after
-everything it needs, since `rcS` starts the scripts in numeric order (the five here are 55 to 59).
+and its init script is `fs/etc/init.d/<NN>_<service>.sh`, whose number places it after everything
+it needs, since `rcS` starts the scripts in numeric order. The six here are 43, 46, 55, 56, 57 and
+59: the bus daemons after `polkitd` (41), the others after the network.
 
 ## See also
 
@@ -1441,17 +1280,22 @@ everything it needs, since `rcS` starts the scripts in numeric order (the five h
   system
 - [Boot and init](../03-architecture/boot-and-init.md): how `rcS` starts them and `rcK` stops them
 - [The security model](../03-architecture/security-model.md): the authorisation argument in full
+- [Packaging](../03-architecture/packaging.md#updating-a-machine): what a system update is, which
+  `kdos-sysupdated` drives
 - [Packs and boxes](../03-architecture/packs-and-boxes.md): what the pack daemon implements
+- [Discover](discover.md#system-updates): the system updates `kdos-sysupdated` serves
+- [KDOS's settings pages](kdos-settings.md): the Firewall page over `io.kdos.Power1`, and the
+  pages `kdos-settingsd` answers
 - [kdos-appbox](kdos-appbox.md): the pack daemon's client and the launcher that starts
   `kdos-boxsock`
-- [kdos-res](kdos-res.md): the monitor that shows the energy daemon's answer
 - [kinstall](kinstall.md): which groups the installed account ends up in
 - [How KDOS is built](../05-developer/how-kdos-is-built.md#the-desktop-50_desktop): the build
   phase that compiles every daemon here
 - [The ports catalogue](../06-reference/ports-catalogue.md#srcdaemons): the daemon ports and
   their versions
-- [Filesystem and IPC](../06-reference/filesystem-and-ipc.md): every socket and verb in full
-- [Glossary](../06-reference/glossary.md): box, graft, pack, surface and the other terms used here
+- [Filesystem and IPC](../06-reference/filesystem-and-ipc.md): every socket, bus name and verb in
+  full
+- [Glossary](../06-reference/glossary.md): box, graft, pack and the other terms used here
 
 <!-- book-nav -->
 ---

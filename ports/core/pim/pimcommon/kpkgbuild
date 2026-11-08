@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = pimcommon
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = b93967e0d198893b5fcf8a90e76ae63c465d8613ee1b4529ac9425216c36f15e  pimcommon-26.08.2.tar.xz
+description = KDE PIM shared library: autocorrection, address completion, Akonadi folder widgets and plugin interfaces
+homepage    = https://invent.kde.org/pim/pimcommon
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later AND BSD-3-Clause AND MIT AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase karchive kcodecs kconfig kcontacts kcoreaddons ki18n kitemmodels kjobwidgets kcmutils kio knewstuff purpose kservice kwidgetsaddons kxmlgui kcolorscheme akonadi akonadi-contacts akonadi-search kimap kldap libkdepim ktextaddons plasma-activities

@@ -1,0 +1,28 @@
+Subject: Bind the shell completions to the command name step-cli
+
+KDOS installs Smallstep's command as step-cli, so that it does not take
+/usr/bin/step from KDE Step. Completions bound to the name step would answer
+for the physics simulator's command and never for this one.
+
+--- a/autocomplete/bash_autocomplete
++++ b/autocomplete/bash_autocomplete
+@@ -13,4 +13,4 @@
+ 	return 0
+ }
+ 
+-complete -o bashdefault -o default -o nospace -F _step_cli_bash_autocomplete step
++complete -o bashdefault -o default -o nospace -F _step_cli_bash_autocomplete step-cli
+--- a/autocomplete/zsh_autocomplete
++++ b/autocomplete/zsh_autocomplete
+@@ -1,4 +1,4 @@
+-#compdef step
++#compdef step-cli
+ 
+ _step() {
+ 
+@@ -20,4 +20,4 @@
+   return
+ }
+ 
+-compdef _step step
++compdef _step step-cli

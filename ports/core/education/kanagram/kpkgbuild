@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kanagram
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 3d3d4533c0668c0b9d1bf22f1d10cd172d6ef7e0b83f96c6dcf3a1fc129f8bda  kanagram-26.08.2.tar.xz
+description = KDE anagram game — unscramble words from KVTML vocabulary lists, with spoken hints
+homepage    = https://apps.kde.org/kanagram/
+license     = GPL-2.0-or-later AND GFDL-1.2-only
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtmultimedia qt6-qtspeech ki18n kcrash sonnet kconfig kconfigwidgets kcoreaddons kdoctools kio knewstuff kxmlgui libkeduvocdocument kdeedu-data

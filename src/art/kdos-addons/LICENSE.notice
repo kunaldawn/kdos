@@ -1,0 +1,54 @@
+KDOS Add-ons — what is in the set, and under which licence
+=============================================================
+
+Everything in the set is distributed under the MIT licence below.
+
+KDOS's own work, copyright KDOS contributors:
+
+    the four wallpapers (org.kdos.scanlines, org.kdos.blueprint,
+      org.kdos.horizon, org.kdos.eight), drawn by genaddons.py in the KDOS
+      accent colours
+    the VGA colour schemes, from the IBM VGA text-mode palette
+    the KWin scripts org.kdos.pinpip and org.kdos.activescreen
+    the widgets org.kdos.plasma.phosphorclock and org.kdos.plasma.focustimer
+    the Konsole and KDE colour-scheme files of every palette below, which
+      genaddons.py writes from that palette's published colours
+
+The palettes the colour schemes are made from, each under the MIT licence:
+
+    Nord              Copyright (c) 2016-present Arctic Ice Studio and Sven Greb
+                      https://www.nordtheme.com
+    Dracula           Copyright (c) 2016 Dracula Theme
+                      https://draculatheme.com
+    Gruvbox           Copyright (c) 2012-present Pavel Pertsev
+                      https://github.com/morhetz/gruvbox
+    Tokyo Night       Copyright (c) 2021 Folke Lemaitre
+                      https://github.com/folke/tokyonight.nvim
+    Catppuccin        Copyright (c) 2021 Catppuccin
+                      https://github.com/catppuccin/catppuccin
+
+Where a palette's colour is too faint to read as text on its own
+background (below WCAG AA, 4.5:1), the KDE colour scheme moves it toward the
+scheme's text colour until it passes; every other colour is the palette's own.
+
+
+The MIT licence
+---------------
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

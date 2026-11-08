@@ -1,12 +1,13 @@
-title: write the accent state file BEFORE the signal, not after
+title: write the accent state file BEFORE the switch, not after
 cite: kdos theme
 port: kdos-tools
 
-A running session is retinted by a SIGHUP rather than by being handed a
-palette: the shell repaints its chrome and the compositor re-reads the accent
-its CRT shader tints with, both by reading $XDG_CACHE_HOME/kdos/theme. Signal
-first and the session re-reads the accent it already had.
+`kdos theme` writes ~/.config/kdos/accent first, atomically, and only then
+applies the global theme. The KDOS kded module compares the Global Theme page
+against exactly that file: apply first and a reader in between sees the new
+theme beside the old accent, takes it for a foreign scheme, and undoes the
+switch the person asked for.
 
-The desktop needs no theme file at all — kdos-comp and kdos-shell link
-libkcolor and carry the same table. Everything else `kdos theme` writes exists
-for software that is NOT ours and cannot be told.
+Everything else `kdos theme` writes — qt5ct, Konsole, the terminal programs —
+exists for software that cannot read the accent from Plasma and cannot be
+told.

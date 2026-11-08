@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   The free-space warning.
+#
+# Plasma's free-space notifier warns when a volume's free space falls below
+# the SMALLER of minimumSpace (MiB) and minimumSpacePercentage of its size.
+# Upstream's 200 MiB therefore caps the warning at 200 MiB on any volume over
+# 4 GiB, whatever the percentage says; minimumSpace is raised to its maximum,
+# 100000 MiB, so the warning comes at 10% free on every volume up to about a
+# terabyte and at 100000 MiB above that. The notifier's settings, opened from
+# its notification, write a person's thresholds to ~/.config, which outranks
+# this.
+# ---------------------------------
+
+[General]
+minimumSpace=100000
+minimumSpacePercentage=10

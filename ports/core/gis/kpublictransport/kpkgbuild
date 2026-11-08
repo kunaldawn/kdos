@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = kpublictransport
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 929b0e12494892b4e3066919006e0d8f47d361111e42bde0502dfb638e93fe60  kpublictransport-26.08.2.tar.xz
+description = Library and QML module for public-transport journeys, departures and onboard train Wi-Fi APIs
+homepage    = https://invent.kde.org/libraries/kpublictransport
+license     = LGPL-2.0-or-later AND LGPL-2.1-or-later AND BSD-2-Clause AND BSD-3-Clause AND MIT AND CC0-1.0 AND ODbL-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtlocation qt6-qtpositioning zlib ki18n kcoreaddons kirigami kirigami-addons kitemmodels networkmanager-qt

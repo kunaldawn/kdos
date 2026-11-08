@@ -1,0 +1,137 @@
+#!/bin/sh
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#
+# kdos-session-wrapper — SDDM's [Wayland] SessionCommand on KDOS
+# (/etc/sddm.conf.d/00-kdos.conf).
+#
+# SDDM runs it as the user, after PAM has opened the session, with ONE
+# argument: the Exec= line of the session's .desktop file, for Plasma
+#
+#   /usr/lib/plasma-dbus-run-session-if-needed /usr/bin/startplasma-wayland
+#
+# exactly as plasma-workspace installs /usr/share/wayland-sessions/plasma.desktop,
+# which nothing here edits. Its stderr is the session log,
+# ~/.local/share/sddm/wayland-session.log; its stdout goes nowhere. It does the
+# job of SDDM's own wayland-session script and three things KDOS needs before
+# Plasma starts:
+#
+# 1. A LOGIN SHELL. It runs itself again under the user's shell with --login
+#    (bash and zsh), or sources the profiles itself (anything else), so
+#    /etc/profile, /etc/profile.d and the user's own profile reach Plasma and
+#    everything it starts, as they reach a tty login.
+#
+# 2. THE ONE SESSION BUS. Plasma, every box and every user service have to be
+#    on $XDG_RUNTIME_DIR/bus, the bus the user services start and the address
+#    kdos-appbox gives every box. plasma-dbus-run-session-if-needed starts a
+#    private bus whenever DBUS_SESSION_BUS_ADDRESS is empty, and a private bus
+#    is one no box can reach: notifications, single-instance applications and
+#    the portals all stop working, with nothing on the screen to say why. So
+#    the fixed bus has to answer, and the address is set to it whatever the
+#    login exported; when it does not answer, this refuses to start the
+#    session — the greeter comes back, and the reason is in the session log
+#    and in syslog.
+#
+# 3. THE DESKTOP'S ENVIRONMENT, before the first program that reads it:
+#    XDG_CURRENT_DESKTOP=KDE, XDG_CONFIG_DIRS with /etc/xdg and then the
+#    distribution's defaults in /usr/share/kdos/xdg (and the virtual-machine
+#    and live-medium overlays in front where they apply), and no QT_IM_MODULE
+#    or GTK_IM_MODULE, so each toolkit picks its own input-method route (Qt 6
+#    and GTK 4 KWin's text-input, GTK 3 fcitx5-gtk's module over D-Bus) and
+#    a profile's leftover cannot pick it. A
+#    person who wants either variable sets it in
+#    ~/.config/plasma-workspace/env/, which Plasma reads after this.
+#
+#    Nor TERM, LINES or COLUMNS. They describe a terminal, the profile fills
+#    them in for a login that has none, and the session has none: carried into
+#    Plasma they reach every program it starts, and a terminal program that
+#    Konsole runs for a launcher would draw at 80x24 in a larger window,
+#    because ncurses prefers the variables to the window's own size.
+#
+# Then the boxes behind the pinned favourites are warmed up, and the Exec line
+# is run, word-split as SDDM's script runs it.
+
+if [ -z "$KDOS_SESSION_LOGIN" ]; then
+    KDOS_SESSION_LOGIN=1
+    export KDOS_SESSION_LOGIN
+    case "$SHELL" in
+        */bash|*/zsh)
+            exec "$SHELL" --login "$0" "$@"
+            ;;
+    esac
+fi
+case "$SHELL" in
+    */bash|*/zsh) ;;
+    *)
+        # sh, or a shell whose login profile this cannot run itself.
+        [ -r /etc/profile ] && . /etc/profile
+        [ -r "$HOME/.profile" ] && . "$HOME/.profile"
+        ;;
+esac
+unset KDOS_SESSION_LOGIN
+[ -n "$ZSH_NAME" ] && emulate -R sh
+
+. /usr/local/lib/kdos/session-common.sh
+
+say() {
+    echo "kdos-session-wrapper: $*" >&2
+}
+
+refuse() {
+    say "$*; not starting the session"
+    command -v logger >/dev/null 2>&1 && \
+        logger -t kdos-session -p user.err "$*; the session was not started"
+    exit 1
+}
+
+if [ $# -eq 0 ]; then
+    refuse "no session command (SDDM passes the session's Exec= line)"
+fi
+
+if [ -z "$XDG_RUNTIME_DIR" ] || [ ! -d "$XDG_RUNTIME_DIR" ] || \
+   [ "$(stat -c %u "$XDG_RUNTIME_DIR")" != "$(id -u)" ]; then
+    refuse "no runtime directory of this user's (XDG_RUNTIME_DIR='$XDG_RUNTIME_DIR'); pam_turnstile makes it at login"
+fi
+
+# turnstile holds the login until the bus answers, up to its own limit; this
+# covers a bus that came up just after that.
+_bus="unix:path=$XDG_RUNTIME_DIR/bus"
+_up=0
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 \
+         21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40; do
+    if dbus-send --bus="$_bus" --print-reply --dest=org.freedesktop.DBus \
+        / org.freedesktop.DBus.Peer.Ping >/dev/null 2>&1; then
+        _up=1
+        break
+    fi
+    sleep 0.1
+done
+[ "$_up" = 1 ] || refuse "the session bus at $XDG_RUNTIME_DIR/bus does not answer (service --user status dbus)"
+if [ "$DBUS_SESSION_BUS_ADDRESS" != "$_bus" ]; then
+    say "DBUS_SESSION_BUS_ADDRESS was '${DBUS_SESSION_BUS_ADDRESS:-unset}'; using $_bus"
+fi
+DBUS_SESSION_BUS_ADDRESS=$_bus
+export DBUS_SESSION_BUS_ADDRESS
+say "session bus $_bus answers"
+
+XDG_CURRENT_DESKTOP=KDE
+export XDG_CURRENT_DESKTOP
+kdos_session_xdg_dirs
+kdos_session_open
+unset QT_IM_MODULE QT_IM_MODULES GTK_IM_MODULE
+unset TERM LINES COLUMNS
+
+kdos_session_boxes
+
+say "starting $*"
+# Word-split as SDDM's wayland-session does, and never globbed.
+set -f
+# shellcheck disable=SC2068
+exec $@

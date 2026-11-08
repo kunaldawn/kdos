@@ -16,12 +16,12 @@
  * THAT IS THE WHOLE DESIGN, and it is why the slot is keyed by CONTENT rather
  * than allocated per frame. Two frames drawing the same icon at the same size
  * must produce byte-identical cells, or every frame is a full repaint of every
- * row an icon sits in. The key is the caller's (libkicon hashes name + pixel
- * size + accent); slots persist until somebody drops one.
+ * row an icon sits in. The key is the caller's (an icon layer hashes name +
+ * pixel size + accent); slots persist until somebody drops one.
  *
  * libktui still links nothing but musl. The pointer is `const void *` and this
- * file never dereferences it — libkcell, which already links pixman, is what
- * turns it into pixels, and a backend that cannot draw pixels renders the
+ * file never dereferences it — a pixel backend, in an archive of its own, is
+ * what turns it into pixels, and a backend that cannot draw pixels renders the
  * fallback codepoint instead. Nothing in this toolkit may REQUIRE a sprite:
  * every consumer draws its glyph tier when ktui_sprite_put() answers -1, which
  * is what a full table, a missing icon theme and a tty all look like.

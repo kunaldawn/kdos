@@ -17,8 +17,6 @@ DESTDIR=$PKG meson install --no-rebuild -C build
 
 find "$PKG/usr/share/help" -mindepth 1 -maxdepth 1 ! -name C -exec rm -rf {} +
 
-rm -rf "$PKG/etc"
-
 for s in 48 64 128; do
 	install -d "$PKG/usr/share/icons/hicolor/${s}x${s}/apps"
 	rsvg-convert -w $s -h $s data/icons/org.gnome.DejaDup.svg \

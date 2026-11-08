@@ -22,3 +22,15 @@
 # them, or when a shelf file names a port an earlier phase installs.
 
 zeal
+
+accessibility-inspector
+kapptemplate
+kcachegrind
+kdebugsettings
+kde-dev-scripts
+kde-dev-utils
+kirigami-gallery
+massif-visualizer
+umbrello
+plasma-sdk
+selenium-webdriver-at-spi

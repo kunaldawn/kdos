@@ -63,7 +63,8 @@ meson setup build \
 	-Donnxruntime=disabled \
 	-Dlibffado=disabled \
 	-Dlibsystemd=disabled \
-	-Dlogind=disabled \
+	-Dlogind=enabled \
+	-Dlogind-provider=libelogind \
 	-Dsystemd-system-service=disabled \
 	-Dsystemd-user-service=disabled \
 	-Dsdl2=disabled \
@@ -75,7 +76,9 @@ meson setup build \
 	-Dgsettings-pulse-schema=disabled \
 	-Davb=enabled \
 	-Dsnap=disabled \
-	-Drlimits-install=false \
+	-Drlimits-install=true \
+	-Drlimits-match=@audio \
+	-Drlimits-memlock=4096 \
 	"-Dsession-managers=[]"
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build

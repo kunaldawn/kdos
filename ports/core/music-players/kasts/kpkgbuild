@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kasts
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 667c3bfbccfa62a6ac761ae17f0ee617f0f8e74803e134931067940d1a278da1  kasts-26.08.2.tar.xz
+description = Podcast player — subscriptions, an episode queue, downloads and chapters, on Kirigami
+homepage    = https://apps.kde.org/kasts/
+license     = (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL)
+depends     = cmake ninja extra-cmake-modules pkgconf qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qtmultimedia ki18n kcoreaddons kirigami syndication kconfig threadweaver kcolorscheme kiconthemes kdbusaddons kwindowsystem kcrash kirigami-addons breeze-icons taglib qtkeychain vlc gstreamer gst-plugins-base gst-plugins-good qqc2-desktop-style

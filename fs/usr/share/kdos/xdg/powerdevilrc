@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   How long the screen stays on when the machine is idle.
+#
+# On mains power the screen dims at 5 minutes and turns off at 15; the lock at
+# 10 is kscreenlockerrc's. The battery profiles keep PowerDevil's own shorter
+# timers, because there the screen is most of what the battery feeds. Suspend
+# on idle and the lid action stay PowerDevil's, which already never suspends
+# a virtual machine; /usr/share/kdos/xdg-vm turns the screen timers off there
+# as well.
+# ---------------------------------
+
+[AC][Display]
+DimDisplayIdleTimeoutSec=300
+TurnOffDisplayIdleTimeoutSec=900

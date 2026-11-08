@@ -15,7 +15,7 @@ desktop entry is hidden from the menu: it is a handler that pictures are opened 
   on the console through [libdrm](#port-libdrm) when no compositor runs.
 - `-Dcompositor=disabled` — Leaves out the integration with Sway's and Hyprland's IPC sockets,
   through which swayimg places its window over the focused one. Those are the only two
-  compositors it speaks to, and `kdos-comp` is neither.
+  compositors it speaks to, and KWin is neither.
 - `-Dliblua=luajit` — Embeds [luajit](#port-luajit) as the Lua engine; upstream's default, named.
 - `-Dexr=enabled`, `-Dgif=enabled`, `-Dheif=enabled`, `-Davif=enabled`, `-Djpeg=enabled`,
   `-Djp2=enabled`, `-Djxl=enabled`, `-Dpng=enabled`, `-Dsvg=enabled`, `-Dtiff=enabled`,

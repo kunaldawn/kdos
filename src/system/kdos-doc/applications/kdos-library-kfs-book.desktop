@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=KDOS from Scratch
+GenericName=Offline Book
+Comment=How this image was built, phase by phase and port by port
+Icon=distributor-logo-kdos
+Exec=khelpcenter file:///usr/share/doc/kfs/index.html
+TryExec=khelpcenter
+Categories=X-KDOS-Library;
+Keywords=kdos;kfs;book;build;ports;from scratch;
+X-KDOS-Library-Kind=Books
+X-KDOS-Library-Path=/usr/share/doc/kfs

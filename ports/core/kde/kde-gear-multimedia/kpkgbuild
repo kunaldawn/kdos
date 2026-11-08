@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kde-gear-multimedia
+version     = 1
+release     = 1
+description = KDE Gear audio and video: players, recorders, editors, CD ripping and burning
+homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
+depends     = dragon juk kmix kasts audex audiocd-kio k3b kamoso kwave kdenlive plasmatube telly-skout krecorder plasma-camera audiotube

@@ -1,9 +1,10 @@
 ## About
-`kdos-splash` is the boot animation: a CRT power-on drawn straight to `/dev/fb0`, then the list of
-boot stages under a progress bar, until `rcS` quits it just before the login prompt. One process
-covers the whole boot. The initramfs starts it, it survives `switch_root`, and later stages reach
-it through the FIFO `/dev/.kdos-splash`. What it draws, the commands it takes and the three facts
-about the framebuffer that constrain it are in
+`kdos-splash` is the boot animation, drawn straight to `/dev/fb0`: the KDOS mark fading in from
+black, or with `kdos.splash=phosphor` on the kernel command line Phosphor mode's CRT power-on,
+then the list of boot stages under a progress bar, until `rcS` hands the screen to the display
+manager. One process covers the whole boot. The initramfs starts it, it survives `switch_root`,
+and later stages reach it through the FIFO `/dev/.kdos-splash`. What it draws, the commands it
+takes and the three facts about the framebuffer that constrain it are in
 [The splash](../../../docs/kdos/03-architecture/boot-and-init.md#the-splash).
 
 The build compiles one C file and installs one font. `build.sh` compiles `kdos-splash.c` to a
@@ -24,6 +25,20 @@ missing the build warns and the machine boots with no splash.
 - `-O2`, `-Wall` — The tree's optimisation level, named again, and the usual warnings.
 
 ## Notes
+Two commands end the splash, and both return only once it has stopped drawing. `quit` leaves the
+console in text mode with its cursor shown, for a text prompt next: the initramfs's rescue shell
+and a single-user boot's `sulogin`. `handoff`, which `rcS` sends on every other boot, also puts
+tty1 into graphics mode with its text cleared and its cursor hidden, so nothing is drawn between
+the splash's last frame and the greeter compositor's first; `kdos-getty` puts the VT back into
+text mode when it has to show a prompt there instead. The client sets the VT's mode, not the
+running splash, because the splash was started in the initramfs and every path it opens after
+`switch_root` resolves in the emptied initramfs root.
+
+The motion comes from the kernel command line because the power-on runs in the initramfs, before
+any root filesystem with a setting in it is mounted. `KDOS_SPLASH_CMDLINE` names a file read in
+its place, and `kdos-splash preview` takes the motion as an optional last argument, so both
+motions can be rendered and compared on a development host.
+
 `splash.psf` is decompressed at build time because `font_load()` reads a bare PSF1 or PSF2 file:
 the static binary carries no decompressor. It falls back to
 `/usr/share/consolefonts/ter-v16n.psf` and then exits without drawing, which is what every

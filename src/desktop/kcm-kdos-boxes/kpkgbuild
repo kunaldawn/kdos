@@ -1,0 +1,17 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kcm-kdos-boxes
+version     = 1.0.0
+release     = 1
+description = System Settings page for boxes — per-box permissions, grants, colour and lifecycle over kdos-box
+homepage    = https://github.com/kunaldawn/kdos
+license     = MIT
+depends     = extra-cmake-modules qt6-qtbase qt6-qtdeclarative kcoreaddons ki18n kconfig kcolorscheme kservice kitemmodels kcmutils kirigami systemsettings kdos-appbox

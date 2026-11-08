@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = cxx-rust-cssparser
+version     = 1.1.0
+release     = 1
+source      = https://download.kde.org/stable/$name/$name-$version.tar.xz
+sha256      = c88f883f67d132240f7ef5c8b8fe4f743a79c448b98ac88f2be3b68264840358  cxx-rust-cssparser-1.1.0.tar.xz
+sha256      = eb810926a49963d8c850ee4fc291405728b92064c1c2f30241eaf021f11653bd  cxx-rust-cssparser-vendor-1.1.0.tar.xz
+description = C++ library over Mozilla's Rust cssparser crate, for Union's style sheets
+homepage    = https://invent.kde.org/libraries/cxx-rust-cssparser
+license     = (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND BSD-2-Clause AND MPL-2.0 AND MIT AND (MIT OR Apache-2.0) AND Zlib
+vendoring   = rust
+vendordir   = rust
+depends     = cmake ninja extra-cmake-modules corrosion rust

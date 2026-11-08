@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kaccounts-providers
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 356e8ebbd6793a2f6231f526277d5d390b897a788cbe09e2e4e5cf352bf0d0ce  kaccounts-providers-26.08.2.tar.xz
+description = Online account providers for KAccounts — Google, ownCloud and Nextcloud
+homepage    = https://invent.kde.org/network/kaccounts-providers
+license     = GPL-2.0-or-later AND GPL-3.0-or-later AND LGPL-2.0-or-later AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtwebengine ki18n kio kpackage kaccounts-integration qcoro signon-plugin-oauth2 signon-ui

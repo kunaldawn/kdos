@@ -1,0 +1,25 @@
+# A trimmed KDOS catalogue, in the shipped file's shapes.
+snapshot = auto
+meta app.early   Early|Office|1|dropped: above its own row
+image   alpine    alpine:3.24.1
+base    alpine    -
+base    base      -        bash ca-certificates
+runtime rt-qt     base     libqt6widgets6
+runtime rt-kde    rt-qt    plasma-integration kio
+runtime rt-gtk    base     libgtk-3-0t64
+app app.kcalc     rt-kde   kcalc
+app app.maxima    rt-sci   maxima wxmaxima
+app app.early     base     early
+app app.loop      app.loop loop
+app app.scribus   rt-gtk   scribus
+data data.tess    base     tesseract-ocr-eng
+env rt-qt   QT_QPA_PLATFORMTHEME=gtk3
+cmd app.kcalc kcalc
+graft data.tess usr/share/tesseract-ocr/5/tessdata tesseract-ocr/5/tessdata
+group office      Documents, spreadsheets and reading
+group office      app.scribus app.kcalc notaword
+group office      data.tess
+group games       Games and emulators
+meta app.kcalc    KCalc|Utility;Office;|4200000|Scientific calculator # a hash in a tagline
+meta app.scribus  Scribus|Office|99000000|Page layout|with a pipe
+meta data.tess    Tesseract languages|Office|30000000|OCR models

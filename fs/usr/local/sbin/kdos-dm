@@ -1,0 +1,153 @@
+#!/bin/sh
+# kdos-dm — the display manager on tty1, or a password prompt there when it
+# cannot run.
+#
+# Reached from /etc/inittab, which starts it only once rcS has returned: rcS
+# collapses the splash to black and lets go of the framebuffer synchronously
+# (`kdos-splash handoff`), so SDDM's greeter compositor never races the splash
+# for the DRM master. SDDM is never started from an rcS script for that reason.
+#
+# A MISSING OR FAILING SDDM STILL GIVES A CONSOLE. sddm is a daemon that stays
+# up across every login and logout, so every start of this script after the
+# first is sddm having exited. An sddm that is not executable, an account it
+# cannot run its greeter as, or three exits within a minute all end in a
+# password prompt on tty1 instead. That prompt is never an autologin: whatever
+# broke the greeter must not also hand somebody a shell. A login there that
+# ends respawns this script, and sddm is tried again once the minute is past.
+#
+# AN SDDM THAT KEEPS RUNNING AND NEVER DRAWS A GREETER IS NOT SEEN FROM HERE —
+# a greeter that fails is restarted by sddm itself, which does not exit. tty2
+# is the recovery console for that, and for a machine whose kdos-getty is
+# missing too.
+set -u
+
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
+SDDM=/usr/bin/sddm
+# SDDM's first greeter takes the VT its build names (SDDM_INITIAL_VT), and the
+# splash's handoff and this script's fallback both work on that same VT.
+TTY=tty1
+STARTS=/run/kdos/kdos-dm.starts
+WINDOW=60
+TRIES=3
+LOG=/var/log/sddm.log
+
+# The prompt that replaces the greeter. kdos-getty loads the console font,
+# the palette and the keymap and puts tty1 back into text mode, which the
+# splash's handoff left in graphics mode for the compositor.
+console() {
+	logger -t kdos-dm -p daemon.warning "$1 — a password prompt on $TTY instead" \
+		2>/dev/null
+	printf 'kdos-dm: %s — a password prompt on %s instead\n' "$1" "$TTY" >&2
+	if [ -x /usr/local/sbin/kdos-getty ]; then
+		exec /usr/local/sbin/kdos-getty "$TTY" /sbin/agetty --noclear \
+			"$TTY" 38400 linux
+	fi
+	exec /sbin/agetty --noclear "$TTY" 38400 linux
+}
+
+# SECONDS SINCE BOOT, NOT THE WALL CLOCK: chrony may step the clock between
+# two starts, and a step backwards would make three failures look like none.
+read -r _up _ 2>/dev/null < /proc/uptime || _up=0
+now=${_up%%.*}
+
+# Every start is recorded; the ones inside the window count. /run is a tmpfs,
+# so the count starts again at every boot, and a missing record is the first
+# start of this boot.
+first=1
+[ -e "$STARTS" ] && first=0
+recent=0
+kept=""
+if [ -r "$STARTS" ]; then
+	while read -r _t; do
+		case "$_t" in
+		'' | *[!0-9]*) continue ;;
+		esac
+		[ $((now - _t)) -lt "$WINDOW" ] || continue
+		kept="$kept$_t
+"
+		recent=$((recent + 1))
+	done < "$STARTS"
+fi
+mkdir -p /run/kdos
+printf '%s%s\n' "$kept" "$now" > "$STARTS"
+
+[ -x "$SDDM" ] || console "$SDDM is not executable"
+[ "$recent" -lt "$TRIES" ] || console "sddm exited $recent times in ${WINDOW}s"
+
+# THE GREETER RUNS AS `sddm`, and SDDM keeps that account's home as its state
+# directory: the last user and session, the greeter's own settings and its
+# output configuration. No tmpfiles service exists to make it, and a home
+# shipped in the image is root's, so it is made and handed to the account
+# here, at every start. The directory alone is chowned, never what is inside
+# it: a recursive chown run as root in a directory another account writes
+# follows whatever links that account leaves there. Only a home under /var/lib
+# is touched, and never a link or a path that climbs out of it: a home
+# anywhere else is the administrator's to prepare, and a home of / would hand
+# the root directory to the account.
+_home=""
+while IFS=: read -r _n _ _ _ _ _h _; do
+	[ "$_n" = sddm ] || continue
+	_home=$_h
+	break
+done < /etc/passwd
+[ -n "$_home" ] || console "there is no sddm account in /etc/passwd"
+case "$_home" in
+*/../* | */.. | */./* | */.) ;;
+/var/lib/?*)
+	if [ ! -L "$_home" ]; then
+		mkdir -p "$_home"
+		chown sddm:sddm "$_home" && chmod 0750 "$_home"
+	fi
+	;;
+esac
+
+# THE LANGUAGE THE GREETER SPEAKS. SDDM hands its own LANG and LC_* to the
+# greeter, and init gives it none. /etc/locale.conf is the machine's choice
+# (locale1 writes it); a value is taken only when it is a locale name, because
+# this file is read by a root shell and a value is never evaluated.
+LANG=C.UTF-8
+if [ -r /etc/locale.conf ]; then
+	while IFS='=' read -r _k _v; do
+		_v=${_v#\"}
+		_v=${_v%\"}
+		case "$_v" in
+		'' | *[!A-Za-z0-9_.@-]*) continue ;;
+		esac
+		case "$_k" in
+		LANG) LANG=$_v ;;
+		LC_CTYPE | LC_NUMERIC | LC_TIME | LC_COLLATE | LC_MONETARY | \
+			LC_MESSAGES | LC_PAPER | LC_NAME | LC_ADDRESS | LC_TELEPHONE | \
+			LC_MEASUREMENT | LC_IDENTIFICATION)
+			export "$_k=$_v"
+			;;
+		esac
+	done < /etc/locale.conf
+fi
+export LANG
+
+# tty1's TEXT IS CLEARED AND ITS CURSOR HIDDEN, after init has printed its
+# runlevel message there and before the compositor takes the VT. Nothing is
+# drawn while the VT is in graphics mode, but whoever puts it back into text
+# mode redraws what it holds. Escape sequences alone end no deferred fbcon
+# take-over. In a subshell: this script is init's session leader and has no
+# controlling terminal, and opening tty1 from here would make it one, which the
+# greeter session's TIOCSCTTY on tty1 then fails on.
+[ -c "/dev/$TTY" ] && (printf '\033[2J\033[H\033[?25l' > "/dev/$TTY") 2>/dev/null
+
+# sddm's log, and everything it and its helpers write to stdout and stderr: a
+# library that fails to load says so on stderr, before sddm's own logger is up.
+# init's stderr is the console, and the console on an installed machine is the
+# VT the greeter is about to take. A log that cannot be written is no reason
+# not to start: a redirection that fails would end this script before sddm.
+#
+# ONE BOOT PER FILE. Nothing rotates /var/log, and sddm appends to this file
+# at every start, so the first start of a boot moves the last boot's log to
+# sddm.log.old: the log of a boot that failed is still there after the reboot
+# that follows it, and the two files never hold more than two boots.
+if [ "$first" = 1 ] && [ -f "$LOG" ] && [ ! -L "$LOG" ]; then
+	mv -f "$LOG" "$LOG.old" 2>/dev/null
+fi
+(umask 027 && : >> "$LOG") 2>/dev/null || LOG=/dev/null
+exec "$SDDM" < /dev/null >> "$LOG" 2>&1

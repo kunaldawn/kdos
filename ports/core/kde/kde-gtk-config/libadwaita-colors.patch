@@ -1,0 +1,178 @@
+Subject: Write libadwaita's colours from the KDE scheme into colors.css
+
+libadwaita ignores the GTK theme and draws only from its own named colours,
+so with the Breeze names alone a libadwaita program keeps Adwaita's palette
+under every KDE colour scheme and follows only the accent and the light/dark
+preference the settings portal carries. The kded module now also writes
+accent, status, window, view, header bar, sidebar, card, dialog, popover and
+thumbnail colours from the same KColorScheme sets it already reads: as named
+colours for both GTK versions, and for GTK 4 as the CSS custom properties
+(--accent-bg-color and the rest) that libadwaita 1.6 and later reads instead.
+GTK 3 cannot parse custom properties, so its colors.css gets the names only.
+A status colour that fills a button takes the view's background or its text
+on top, whichever has the higher contrast ratio against it.
+
+--- a/kded/config_editor/custom_css.cpp
++++ b/kded/config_editor/custom_css.cpp
+@@ -84,7 +84,7 @@
+     }
+ }
+ 
+-void modifyColorsCssFile(const QMap<QString, QColor> &colorsDefinitions)
++void modifyColorsCssFile(const QMap<QString, QColor> &colorsDefinitions, const QMap<QString, QColor> &libadwaitaColors)
+ {
+     for (auto gtkVersion : Utils::s_gtkVersions) {
+         QString colorsCssPath = Utils::configDirPath(gtkVersion) + QStringLiteral("/colors.css");
+@@ -96,6 +96,23 @@
+             for (auto it = colorsDefinitions.cbegin(); it != colorsDefinitions.cend(); it++) {
+                 colorsCssStream << QStringLiteral("@define-color %1 %2;\n").arg(it.key(), it.value().name());
+             }
++
++            // libadwaita reads only its own names, never the Breeze ones above
++            for (auto it = libadwaitaColors.cbegin(); it != libadwaitaColors.cend(); it++) {
++                colorsCssStream << QStringLiteral("@define-color %1 %2;\n").arg(it.key(), it.value().name());
++            }
++
++            // libadwaita 1.6 and later draws every widget from CSS variables, which a named
++            // color does not reach; GTK 3 cannot parse custom properties, so only GTK 4 gets them
++            if (gtkVersion == 4 && !libadwaitaColors.isEmpty()) {
++                colorsCssStream << QStringLiteral(":root {\n");
++                for (auto it = libadwaitaColors.cbegin(); it != libadwaitaColors.cend(); it++) {
++                    QString variable = it.key();
++                    variable.replace(QLatin1Char('_'), QLatin1Char('-'));
++                    colorsCssStream << QStringLiteral("  --%1: %2;\n").arg(variable, it.value().name());
++                }
++                colorsCssStream << QStringLiteral("}\n");
++            }
+         }
+     }
+ }
+@@ -116,10 +133,10 @@
+     }
+ }
+ 
+-void setColors(const QMap<QString, QColor> &colorsDefinitions)
++void setColors(const QMap<QString, QColor> &colorsDefinitions, const QMap<QString, QColor> &libadwaitaColors)
+ {
+     addImportStatementsToGtkCssUserFile();
+-    modifyColorsCssFile(colorsDefinitions);
++    modifyColorsCssFile(colorsDefinitions, libadwaitaColors);
+     // addGtkModule is called in GtkConfig::setColors
+ }
+ 
+--- a/kded/config_editor/custom_css.h
++++ b/kded/config_editor/custom_css.h
+@@ -14,9 +14,11 @@
+ /**
+  * @note Make sure "colorreload-gtk-module" is added to the module list before calling this function
+  * @param colorsDefinitions a list of color definitions for GTK CSS
++ * @param libadwaitaColors libadwaita's named colors, written as named colors for both GTK
++ * versions and, for GTK 4, also as the CSS variables libadwaita 1.6 and later draws with
+  * @see GtkConfig::setColors
+  */
+-void setColors(const QMap<QString, QColor> &colorsDefinitions);
++void setColors(const QMap<QString, QColor> &colorsDefinitions, const QMap<QString, QColor> &libadwaitaColors);
+ 
+ void setCustomClientSideDecorations(const QStringList &windowDecorationsButtonsImages);
+ void disableCustomClientSideDecorations();
+--- a/kded/configvalueprovider.cpp
++++ b/kded/configvalueprovider.cpp
+@@ -502,6 +502,75 @@
+     return result;
+ }
+ 
++QMap<QString, QColor> ConfigValueProvider::libadwaitaColors() const
++{
++    using KCS = KColorScheme;
++
++    const KCS view(QPalette::Active, KCS::View);
++    const KCS window(QPalette::Active, KCS::Window);
++    const KCS selection(QPalette::Active, KCS::Selection);
++    const KCS inactiveWindow(QPalette::Inactive, KCS::Window);
++    const bool hasHeader = KCS::isColorSetSupported(kdeglobalsConfig, KCS::Header);
++    const KCS header(QPalette::Active, hasHeader ? KCS::Header : KCS::Window);
++    const KCS inactiveHeader(QPalette::Inactive, hasHeader ? KCS::Header : KCS::Window);
++
++    const QColor viewBackground = view.background(KCS::NormalBackground).color();
++    const QColor viewForeground = view.foreground(KCS::NormalText).color();
++    const QColor windowBackground = window.background(KCS::NormalBackground).color();
++    const QColor windowForeground = window.foreground(KCS::NormalText).color();
++    const QColor negative = view.foreground(KCS::NegativeText).color();
++    const QColor neutral = view.foreground(KCS::NeutralText).color();
++    const QColor positive = view.foreground(KCS::PositiveText).color();
++
++    // A status colour that fills a button carries the view's background or
++    // its text on top, whichever of the two reads better on it
++    const auto textOn = [&viewBackground, &viewForeground](const QColor &fill) {
++        return KColorUtils::contrastRatio(fill, viewBackground) >= KColorUtils::contrastRatio(fill, viewForeground) ? viewBackground : viewForeground;
++    };
++
++    return {
++        {QStringLiteral("accent_bg_color"), selection.background(KCS::NormalBackground).color()},
++        {QStringLiteral("accent_fg_color"), selection.foreground(KCS::NormalText).color()},
++        {QStringLiteral("accent_color"), view.foreground(KCS::LinkText).color()},
++
++        {QStringLiteral("destructive_bg_color"), negative},
++        {QStringLiteral("destructive_fg_color"), textOn(negative)},
++        {QStringLiteral("destructive_color"), negative},
++        {QStringLiteral("success_bg_color"), positive},
++        {QStringLiteral("success_fg_color"), textOn(positive)},
++        {QStringLiteral("success_color"), positive},
++        {QStringLiteral("warning_bg_color"), neutral},
++        {QStringLiteral("warning_fg_color"), textOn(neutral)},
++        {QStringLiteral("warning_color"), neutral},
++        {QStringLiteral("error_bg_color"), negative},
++        {QStringLiteral("error_fg_color"), textOn(negative)},
++        {QStringLiteral("error_color"), negative},
++
++        {QStringLiteral("window_bg_color"), windowBackground},
++        {QStringLiteral("window_fg_color"), windowForeground},
++        {QStringLiteral("view_bg_color"), viewBackground},
++        {QStringLiteral("view_fg_color"), viewForeground},
++
++        {QStringLiteral("headerbar_bg_color"), header.background(KCS::NormalBackground).color()},
++        {QStringLiteral("headerbar_fg_color"), header.foreground(KCS::NormalText).color()},
++        {QStringLiteral("headerbar_border_color"), header.foreground(KCS::NormalText).color()},
++        {QStringLiteral("headerbar_backdrop_color"), inactiveHeader.background(KCS::NormalBackground).color()},
++
++        {QStringLiteral("sidebar_bg_color"), windowBackground},
++        {QStringLiteral("sidebar_fg_color"), windowForeground},
++        {QStringLiteral("sidebar_backdrop_color"), inactiveWindow.background(KCS::NormalBackground).color()},
++
++        {QStringLiteral("card_bg_color"), viewBackground},
++        {QStringLiteral("card_fg_color"), viewForeground},
++        {QStringLiteral("dialog_bg_color"), windowBackground},
++        {QStringLiteral("dialog_fg_color"), windowForeground},
++        {QStringLiteral("popover_bg_color"), windowBackground},
++        {QStringLiteral("popover_fg_color"), windowForeground},
++        {QStringLiteral("thumbnail_bg_color"), viewBackground},
++        {QStringLiteral("thumbnail_fg_color"), viewForeground},
++    };
++}
++
+ qreal ConfigValueProvider::frameContrast() const
+ {
+     return KColorScheme::frameContrast();
+--- a/kded/configvalueprovider.h
++++ b/kded/configvalueprovider.h
+@@ -36,6 +36,9 @@
+     int doubleClickInterval() const;
+     int cursorBlinkRate() const;
+     QMap<QString, QColor> colors() const;
++    // libadwaita's named colours, from the same color scheme: libadwaita
++    // ignores the GTK theme and draws from these alone
++    QMap<QString, QColor> libadwaitaColors() const;
+     qreal frameContrast() const;
+ 
+     // The global scale factor, as X11 doesn't support mixed-DPI
+--- a/kded/gtkconfig.cpp
++++ b/kded/gtkconfig.cpp
+@@ -359,7 +359,7 @@
+     // modulesChanged signal will take some time to reach a GTK app, so explicitly wait a moment
+     QTimer::singleShot(200, this, [this] {
+         const QMap<QString, QColor> colors = configValueProvider->colors();
+-        CustomCssEditor::setColors(colors);
++        CustomCssEditor::setColors(colors, configValueProvider->libadwaitaColors());
+     });
+ }
+ 

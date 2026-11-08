@@ -151,6 +151,9 @@ static int foreign_stem(const char *base)
  *   - the manuals that are HTML and nothing else: mednafen's, the book
  *     kdos-doc renders, and KDOS from Scratch, which kdos-kfs renders with
  *     its one PDF beside it;
+ *   - the book's name among KDE's handbooks, HTML/en/kdos, the path KIO's
+ *     help: worker finds for help:/kdos/<page>, which a KDOS settings
+ *     page's Help button opens;
  *   - R's help.start() index and the R.css every page of its dynamic help
  *     server links;
  *   - the manuals behind a Help menu: geany's (Help > Help, html/index.html),
@@ -164,6 +167,7 @@ static const char *const DOC_KEEP[] = {
 	"usr/share/doc/mednafen",
 	"usr/share/doc/kdos",
 	"usr/share/doc/kfs",
+	"usr/share/doc/HTML/en/kdos",
 	"usr/share/doc/R/html",
 	"usr/share/doc/geany/html",
 	"usr/share/doc/gimagereader",

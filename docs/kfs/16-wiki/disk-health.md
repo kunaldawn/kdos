@@ -30,8 +30,8 @@ overlay, and both are enabled on the image (`/etc/service.disabled/` holds no ma
 | `52_smartd` | `smartd` | `smartd -n` under the [supervisor]{.idx term="supervisor (ksvc)"} | Stops for good, without a restart, when no disk answers SMART (exit 17), as in any [virtual machine]{.idx}, or when [`/etc/smartd.conf`]{.idx} cannot be parsed (2) or read (6) |
 | `53_xfs_healer` | `xfs_healer` | One `xfs_healer` per XFS filesystem mounted when it runs, each named `xfs_healer-N` | Skips a filesystem whose kernel has no XFS health monitor or whose `autofsck` property is `none`, and prints `no XFS filesystem to watch` when none is left. A healer stops for good, without a restart, when its filesystem goes away (exit 0) or on an error (1) |
 
-[`kdos-mountd`]{.idx} answers a SMART health question about a removable disk for the desktop, because no
-session may open a raw block device; see [SMART](../../kdos/04-programs/daemons.md#smart).
+[plasma-disks](#port-plasma-disks) reads each disk's SMART health for the desktop through
+`smartctl` behind a KAuth helper, because no session may open a raw block device.
 
 ## Configuration
 
@@ -72,7 +72,7 @@ set with `xfs_property` (`xfs_healer(8)`):
 ## Usage
 
 Every command that reads a disk needs root, because SMART is read from the raw block device;
-`kdos-mount` is the exception, because `kdos-mountd` reads the disk for it. In a virtual machine the disks answer no SMART and every command below reports that it cannot:
+udisks2 is the exception, because it reads the disk for the desktop. In a virtual machine the disks answer no SMART and every command below reports that it cannot:
 `smartctl --scan` lists nothing, a virtio disk answers `Unable to detect device type`, and an
 emulated USB stick `Unknown USB bridge`.
 
@@ -95,17 +95,10 @@ emulated USB stick `Unknown USB bridge`.
    a SCSI or SAS one. In `-x`, the reallocated, pending and uncorrectable sector
    counts, and the error log, show a drive in decline before the verdict changes.
 
-For a removable disk from the desktop, select it in `kdos-disks` and press `s`, or from a terminal
-as yourself:
-
-```bash
-kdos-mount list
-kdos-mount smart 0
-```
-
-which prints `ok` and the model, the serial and the health line, tab-separated, or `ok -	-	-`
-for a disk that answers no SMART, such as an emulated USB stick in a virtual machine. Only disks
-`kdos-mountd` lists can be asked this way, which leaves out every internal disk.
+From the desktop, the disk-health applet in the tray, from [plasma-disks](#port-plasma-disks),
+warns when a drive's SMART reports a failure, and System Settings → **Storage Device Health**
+lists every drive with its verdict. KDE Partition Manager's properties and GNOME Disks show the
+whole report.
 
 ### Running a self-test
 
@@ -204,7 +197,7 @@ made elsewhere, or set otherwise:
 
 `sudo xfs_scrub /srv/data` checks the same filesystem on demand, and ends with what it found and
 what it changed (`/srv/data: optimizations made: 3.`). An XFS filesystem mounted after boot, by
-hand or by `kdos-mountd`, has no healer until the service is restarted.
+hand or by udisks2, has no healer until the service is restarted.
 
 ### Setting a drive's power behaviour
 
@@ -297,7 +290,6 @@ follows when nothing was left.
 
 - [Services that skip themselves](../../kdos/02-user-guide/administration.md#services-that-skip-themselves): final exits and the supervisor
 - [Services](../../kdos/02-user-guide/administration.md#services): `52_smartd` and `53_xfs_healer` among the boot scripts
-- [SMART](../../kdos/04-programs/daemons.md#smart): the question `kdos-mountd` answers for the desktop
 - [Supervision and logging](../../kdos/04-programs/daemons.md#supervision-and-logging): the `/run/kdos-svc.*.log` files
 - [Logs](../../kdos/02-user-guide/administration.md#logs): where the system log is kept
 - [Filesystems and fstab](filesystems-and-fstab.md), [LVM and RAID](lvm-and-raid.md), [Storage and removable media](storage-and-removable-media.md), [Backups](backups.md), [Services](services.md)
@@ -305,4 +297,4 @@ follows when nothing was left.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 378.* Previous: [377. LVM and RAID](lvm-and-raid.md) · [Contents](../README.md) · Next: [379. Backups](backups.md)
+*Part XVI. System administration, chapter 402.* Previous: [401. LVM and RAID](lvm-and-raid.md) · [Contents](../README.md) · Next: [403. Backups](backups.md)

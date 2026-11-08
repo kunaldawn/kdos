@@ -2,15 +2,16 @@
 PipeWire is the media graph every sound and every captured screen on KDOS goes through. It is the
 sound server, with `pipewire-pulse` standing in for PulseAudio and its own `libjack.so.0` standing
 in for JACK, so PulseAudio, JACK and plain ALSA programs all land in the same graph; and it
-carries video, which is how a screencast reaches a recorder: `kdos-record` asks the ScreenCast
-portal for a node and reads it through PipeWire's GStreamer element. The session starts
+carries video, which is how a screencast reaches a recorder: KWin publishes the screen as a node,
+and Spectacle, OBS or a browser asks the ScreenCast portal for it. The session starts
 `pipewire`, then [wireplumber](#port-wireplumber), then `pipewire-pulse`, once per user; see
 [Audio](../../../../docs/kdos/03-architecture/session.md#audio).
-Many ports depend on it, from [kdos-shell](#port-kdos-shell) and the portals to the
-browsers and the music software.
+Many ports depend on it, from [kpipewire](#port-kpipewire), [plasma-pa](#port-plasma-pa)
+and the portals to the browsers and the music software.
 
 The KDOS build differs from a distribution's in three ways. It builds no session manager of its
-own (WirePlumber is a separate port), it carries no systemd, logind or X11 code, and it names
+own (WirePlumber is a separate port), it carries no systemd or X11 code and takes logind from
+[elogind](#port-elogind), and it names
 every optional feature on or off instead of leaving it to `auto`, because a meson feature left on
 `auto` turns itself off without a word when its library is missing, and the resulting PipeWire
 then lacks a codec or a module with nothing to say why. The `depends` line is the list of those
@@ -67,8 +68,7 @@ libraries.
 - `-Dopus=enabled` — [opus](#port-opus) for the Bluetooth codec above and, through Opus's custom
   modes, for the NetJack2 streaming modules.
 - `-Dgstreamer=enabled` — Build the GStreamer elements, `pipewiresrc` and `pipewiresink`. The
-  first is how anything reads a PipeWire node from a pipeline; `kdos-record` depends on it to read
-  the desktop. The cost is that every image with sound also carries
+  first is how anything reads a PipeWire node from a GStreamer pipeline, a screencast included. The cost is that every image with sound also carries
   [gstreamer](#port-gstreamer) and [gst-plugins-base](#port-gst-plugins-base), because a port is
   one package.
 - `-Dgstreamer-device-provider=enabled` — The GStreamer device provider, which lists PipeWire's
@@ -109,9 +109,15 @@ libraries.
   [libebur128](#port-libebur128).
 - `-Donnxruntime=disabled` — No neural-model filter node. No graph on KDOS loads one.
 - `-Dlibffado=disabled` — No FireWire audio driver module. libffado is not in the tree.
-- `-Dlibsystemd=disabled`, `-Dlogind=disabled`, `-Dsystemd-system-service=disabled`,
+- `-Dlibsystemd=disabled`, `-Dsystemd-system-service=disabled`,
   `-Dsystemd-user-service=disabled` — No systemd code and no unit files. KDOS has no systemd, and
-  the session starts PipeWire itself.
+  the user's services start PipeWire.
+- `-Dlogind=enabled` — With `-Dlogind-provider=libelogind`: link [elogind](#port-elogind)'s
+  `libelogind` into the V4L2 plugin, which then rechecks whether it may open each camera whenever
+  a session starts, ends or changes, instead of watching each device node with inotify. Access to
+  a camera follows the seat's active session, so after a user switch the camera appears in the
+  session that now holds the seat. The provider defaults to `libsystemd`, so without it the
+  enabled feature looks for a library KDOS does not have and stops the configure.
 - `-Dsdl2=disabled` — SDL 2 is used only by example video players. `-Dexamples=disabled` leaves
   out all of them but `pipewire-jack`'s `video-dsp-play`, which is built whenever SDL 2 is found, so this switch is what keeps SDL 2 out of the build.
 - `-Dx11=disabled`, `-Dx11-xfixes=disabled`, `-Dlibcanberra=disabled` — No X11 bell module and
@@ -122,11 +128,18 @@ libraries.
 - `-Dgsettings=disabled`, `-Dgsettings-pulse-schema=disabled` — No GSettings module and no
   GNOME schema for it.
 - `-Davb=enabled` — The AVB module, which streams audio over Ethernet with IEEE 1722.
-- `-Drlimits-install=false` — Install no PAM `limits.d` file. Nothing on KDOS reads one: `login`
-  is built without PAM, and the file's rule matches a group, `@pipewire`, that does not exist.
-  The real-time limits PipeWire needs are raised by `kdos-getty` instead, before the login, and
-  every process of the session inherits them; see
-  [The console](../../../../docs/kdos/03-architecture/boot-and-init.md#the-console).
+- `-Drlimits-install=true` — Install `/etc/security/limits.d/25-pw-rlimits.conf`, which
+  `pam_limits` applies to every PAM session: SDDM's, a console login's and the one `turnstiled`
+  opens for the user's services, which is where PipeWire runs. It grants real-time priority 95,
+  above PipeWire's server and client threads at 88 and 83, and nice -19 (upstream's defaults).
+  Without it `module-rt` cannot promote a thread, the graph runs at nice 0, and a cycle missed
+  under load is heard as a gap; KWin's own real-time request reads the same limit.
+- `-Drlimits-match=@audio` — Give those limits to the `audio` group, which every KDOS user
+  account is in. Upstream's `@pipewire` names a group that does not exist here, which would make
+  the file match no one.
+- `-Drlimits-memlock=4096` — Let a process of the group lock 4 MiB, which covers PipeWire's
+  locked buffer pool. The option is in kilobytes, and upstream's default of 4194304 would let an
+  unprivileged session pin 4 GiB.
 - `"-Dsession-managers=[]"` — Build no session manager as a meson subproject. Upstream's default,
   `['wireplumber']`, builds WirePlumber from a git checkout inside this build, which an offline
   build cannot fetch; KDOS builds it as its own port, [wireplumber](#port-wireplumber).

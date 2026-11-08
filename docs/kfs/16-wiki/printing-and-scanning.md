@@ -15,7 +15,7 @@ Every port below is in a phase list, so the image carries all of them.
 | Printers announced on the network | [cups-browsed](#port-cups-browsed) |
 | USB printers and scanners that speak IPP | [ipp-usb](#port-ipp-usb) |
 | Drivers for printers that need one | [gutenprint](#port-gutenprint), [hplip](#port-hplip), [brlaser](#port-brlaser), [splix](#port-splix), [foomatic-db](#port-foomatic-db) |
-| Setting printers up | [kdos-shell](#port-kdos-shell) ([`kdos-print`]{.idx}), [system-config-printer](#port-system-config-printer) |
+| Setting printers up | [print-manager](#port-print-manager): the **Printers** page of System Settings, the print queue window and the tray applet; [system-config-printer](#port-system-config-printer) |
 | Scanning | [sane-backends](#port-sane-backends), [sane-airscan](#port-sane-airscan) for network scanners, [skanlite](#port-skanlite) |
 | Label printers | [ptouch-print](#port-ptouch-print) |
 
@@ -31,7 +31,7 @@ The live medium starts all three. The installer turns CUPS off on an installed s
 turn it on: in its list of service choices, the last field of each entry is whether it starts
 ticked:
 
-<!-- kfs:include src/system/kdos-installer/conf.c lines=23-29 pin=9a2600b3e3b2 -->
+<!-- kfs:include src/system/kinstall-core/conf.c lines=25-31 pin=9a2600b3e3b2 -->
 
 The installer's choice writes [`/etc/service.disabled/cups`]{.idx} and nothing else, so `81_cups-browsed`
 and `82_ipp-usb` still start at boot.
@@ -56,7 +56,7 @@ on a local socket under [`/run/cups`]{.idx}:
 
 The `kdos` account is in that group, in the shipped `/etc/group`:
 
-<!-- kfs:include fs/etc/group lines=30-30 pin=7cbe296482c0 -->
+<!-- kfs:include fs/etc/group lines=31-31 pin=7cbe296482c0 -->
 
 A password asked for by the web interface is checked through PAM, with the file the cups port
 writes:
@@ -120,21 +120,16 @@ drives over raw USB rather than through CUPS, go to `lpadmin` instead, in
 
 ### Adding a printer from the desktop
 
-1. Open `kdos-print`: *Printers…* on the System page of Settings, or `kdos-print` at a prompt. Its
-   *Printers* page lists the queues, each with its state, and marks the default.
-2. Press `Right` for the *Discovered* page, which lists the device URIs `lpinfo -v` reports. URIs
-   of the `file` and `serial` kinds are left out, and so are the bare backend names `lpinfo -v`
-   prints for each backend that found no device (`network socket`, `direct hp`).
-3. Select the printer and press `Enter`. The queue is named after its URI: the scheme is dropped,
-   and each run of characters other than letters and digits becomes one underscore, so
-   `ipp://printer.local/ipp/print` becomes `printer_local_ipp_print`.
-4. Back on *Printers*, `d` makes the selected queue the default and `x` removes it. `r` reads both
-   lists again.
+1. System Settings → **Printers** → **Add Printer**. The wizard lists the printers CUPS finds:
+   network printers announced by mDNS, USB printers and IPP-over-USB devices.
+2. Select the printer. For a driverless printer, choose **IPP Everywhere** (or **driverless**) as
+   the driver; for one that needs a vendor driver, pick the make and model, whose PPD comes from
+   gutenprint, hplip, brlaser, splix or foomatic-db.
+3. Name the queue and **Finish**. **Set as Default** and **Remove** are on the printer's row.
 
-`kdos-print` sets a printer up only as IPP Everywhere (`lpadmin -m everywhere`), the [driverless]{.idx term="driverless printing"}
-protocol a printer advertises and CUPS configures with no PPD file. When `lpadmin` refuses, the
-window shows its message. For a printer that needs a vendor driver, use the terminal procedure
-below, or system-config-printer, *Print Settings* in the Start menu.
+CUPS lets a member of `lpadmin` change a queue; for anyone else the page asks for an
+administrator's name and password, which CUPS checks itself. The tray's printer applet shows the
+queue while a job prints.
 
 ### Adding a printer from a terminal
 
@@ -181,7 +176,7 @@ the authority CUPS checks. `lpoptions -d` sets your own default, which `lpstat -
 ### A USB printer
 
 1. Plug it in. A printer that speaks IPP over USB is served by `ipp-usb` on localhost and announced
-   there; it appears in `kdos-print` and in `lpinfo -v` like a network printer.
+   there; it appears in the Add Printer wizard and in `lpinfo -v` like a network printer.
 2. An older USB printer appears in `lpinfo -v` with a `usb://` URI. Add it with that URI and, where
    it is not driverless, a driver from `lpinfo -m`.
 
@@ -230,13 +225,12 @@ the authority CUPS checks. `lpoptions -d` sets your own default, which `lpstat -
    scanimage -d '<device>' > scan.pnm
    ```
 
-4. For a preview and a selection, open Skanlite from the Start menu. `kdos-devices` (`Super+F6`)
-   lists the same scanners, and does not scan.
+4. For a preview and a selection, open Skanlite from the application menu.
 
 ## Tips
 
-- CUPS's own web interface is at `http://localhost:631`, for every setting `kdos-print` does not
-  offer.
+- CUPS's own web interface is at `http://localhost:631`, for every setting the Printers page does
+  not offer.
 - `lpstat -t` prints everything CUPS knows at once: the scheduler, the default, every queue and
   every job.
 - An application in a box prints through the host's CUPS socket, `/run/cups`, which is shared into
@@ -261,7 +255,7 @@ sudo tail -n 40 /run/kdos-svc.cupsd.log
 
 A running service reports `[ OK ] cupsd  (pid N)` to `service status cups`.
 
-**`kdos-print` says `cupsd is not running (service start cups)`.** The scheduler is down; the
+**The Printers page says the print service is not available.** The scheduler is down; the
 procedure above starts it. `lpstat -r` says `scheduler is running` or `scheduler is not running`.
 
 **`lpadmin -m everywhere` fails.** `IPP Everywhere driver requires an IPP connection.` means the
@@ -313,7 +307,8 @@ the backend may not support the model; `lsusb` shows its USB ID.
 ## See also
 
 - [Printing](../../kdos/02-user-guide/administration.md#printing): the user guide's section
-- [kdos-print](../../kdos/04-programs/kdos-shell.md#kdos-print): why the window drives `lpadmin` and runs as you
+- [KDOS settings pages](../../kdos/04-programs/kdos-settings.md): the KDOS pages of System Settings,
+  beside KDE's Printers page
 - [Scanning, OCR and printing](../../kdos/02-user-guide/applications.md#scanning-ocr-and-printing): the applications and drivers
 - [The device groups and the udev rules](../../kdos/02-user-guide/administration.md#the-device-groups-and-the-udev-rules): the scanner and label-printer rules
 - [Avahi and mDNS](avahi-and-mdns.md), [udev and device groups](udev-and-device-groups.md),
@@ -322,4 +317,4 @@ the backend may not support the model; `lsusb` shows its USB ID.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 397.* Previous: [396. Bluetooth](bluetooth.md) · [Contents](../README.md) · Next: [398. Audio](audio.md)
+*Part XVI. System administration, chapter 421.* Previous: [420. Bluetooth](bluetooth.md) · [Contents](../README.md) · Next: [422. Audio](audio.md)

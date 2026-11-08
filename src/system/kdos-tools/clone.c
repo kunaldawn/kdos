@@ -156,8 +156,8 @@ static void parent_disk(const char *node, char *out, size_t n)
  * `switch_root` MS_MOVEs it across, which is what makes it visible here at all.
  * An installed system has `/` and `/boot`. Anything else with a filesystem
  * mounted anywhere is somebody's data and is not offered either: that is a
- * wider rule than kdos-mountd's, because mountd is choosing something to MOUNT
- * and this is choosing something to DESTROY.
+ * wider rule than a mounter needs, because a mounter is choosing something to
+ * MOUNT and this is choosing something to DESTROY.
  */
 static int in_use_disks(char out[][64], int max)
 {
@@ -246,9 +246,8 @@ static int sys_int(const char *fmt, const char *a, const char *b)
 	return v;
 }
 
-/* Removable, or on USB — kdos-mountd's rule, and for the same reason: an
- * external drive in an enclosure reports removable = 0 and is exactly as much
- * somebody else's disk as a stick is. */
+/* Removable, or on USB: an external drive in an enclosure reports
+ * removable = 0 and is exactly as much somebody else's disk as a stick is. */
 static int is_removable(const char *disk)
 {
 	char path[512], real[1024];

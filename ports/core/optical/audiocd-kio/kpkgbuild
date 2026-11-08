@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = audiocd-kio
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = f936e813eaa5515a2365b10f6238613229f6a17fa10a866d7ca20d4f95c0778c  audiocd-kio-26.08.2.tar.xz
+description = audiocd:/ KIO worker — browse audio CDs and rip them to WAV, FLAC, Ogg Vorbis, Opus or MP3
+homepage    = https://invent.kde.org/multimedia/audiocd-kio
+license     = GPL-2.0-or-later AND LGPL-2.1-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND LGPL-3.0-or-later AND BSD-3-Clause AND GFDL-1.2-or-later AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcmutils kconfig kdoctools ki18n kio kwidgetsaddons solid libkcddb cdparanoia flac libogg libvorbis lame opus-tools

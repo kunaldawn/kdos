@@ -41,9 +41,14 @@ that sizes the device, makes it swap at priority 100 and then changes the two ke
 
 **`/etc/fstab`** carries any disk swap. The image's own `fs/etc/fstab` has no swap line; the
 installer writes its own lines, swap among them, ahead of the image's, in one of these two forms,
-from `src/system/kdos-installer/install.c`:
+from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=1639-1646 pin=99d9a475fbf5 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=1835-1843 pin=ce989ec84df4 -->
+
+The first is a swap partition, or on the A/B layout the `swap` volume beside the two root slots.
+The second, a swap file, is written only on a single-root layout: a file inside one slot's root
+would be missing from the other slot after an update switches to it (see
+[A/B slots and rollback](ab-slots-and-rollback.md)).
 
 `rcS` turns on every swap line of `/etc/fstab` once the filesystems are mounted, from
 `fs/etc/init.d/rcS`:
@@ -53,7 +58,7 @@ from `src/system/kdos-installer/install.c`:
 and `/etc/inittab`, from `fs/etc/inittab`, turns all swap off again at power-off and reboot, after
 the services are stopped and before the filesystems are unmounted:
 
-<!-- kfs:include fs/etc/inittab lines=57-61 pin=3481280b9e99 -->
+<!-- kfs:include fs/etc/inittab lines=62-66 pin=3481280b9e99 -->
 
 ## Usage
 
@@ -177,7 +182,7 @@ with no disk swap and no message on the screen.
    ```
 
    These are the three ways the installer uses, chosen per filesystem in
-   `src/system/kdos-installer/conf.c`.
+   `src/system/kinstall-core/conf.c`.
 
 3. Turn it on:
 
@@ -280,4 +285,4 @@ says why.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 364.* Previous: [363. Modules and sysctl](modules-and-sysctl.md) · [Contents](../README.md) · Next: [365. Out of memory](out-of-memory.md)
+*Part XVI. System administration, chapter 388.* Previous: [387. Modules and sysctl](modules-and-sysctl.md) · [Contents](../README.md) · Next: [389. Out of memory](out-of-memory.md)

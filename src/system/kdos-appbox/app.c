@@ -49,12 +49,13 @@ static char *user_table(void)
 
 /*
  * `name<TAB>command`, with an optional third field naming the pack that
- * provides it. Readers split at the SECOND tab and a two-field line still
+ * provides it and an optional fourth naming the launcher id its application
+ * runs under. Readers split at the tabs they need and a shorter line still
  * parses: genlaunchers writes two fields for an app no pack provides, and
- * that row resolves its command and leaves the pack empty.
+ * three for a command with no launcher of its own.
  */
 static int table_lookup(const char *path, const char *name, char *cmd, size_t n,
-			char *pack, size_t pn)
+			char *pack, size_t pn, char *launcher, size_t ln)
 {
 	char *buf = kb_calloc(1, 1 << 18);
 	char *line, *save;
@@ -66,9 +67,11 @@ static int table_lookup(const char *path, const char *name, char *cmd, size_t n,
 	}
 	if (pack && pn)
 		pack[0] = '\0';
+	if (launcher && ln)
+		launcher[0] = '\0';
 	for (line = strtok_r(buf, "\n", &save); line && !found;
 	     line = strtok_r(NULL, "\n", &save)) {
-		char *tab, *tab2;
+		char *tab, *tab2, *tab3;
 		if (*line == '#')
 			continue;
 		tab = strchr(line, '\t');
@@ -80,6 +83,12 @@ static int table_lookup(const char *path, const char *name, char *cmd, size_t n,
 		tab2 = strchr(tab + 1, '\t');
 		if (tab2) {
 			*tab2 = '\0';
+			tab3 = strchr(tab2 + 1, '\t');
+			if (tab3) {
+				*tab3 = '\0';
+				if (launcher && ln)
+					snprintf(launcher, ln, "%s", tab3 + 1);
+			}
 			if (pack && pn)
 				snprintf(pack, pn, "%s", tab2 + 1);
 		}
@@ -189,6 +198,7 @@ static int table_pack_by_exec(const char *path, const char *exec, char *pack,
 		*tab2 = '\0';
 		app_exec_key(tab + 1, cb, sizeof(cb));
 		if (!strcmp(cb, eb)) {
+			tab2[1 + strcspn(tab2 + 1, "\t")] = '\0';
 			snprintf(pack, pn, "%s", tab2 + 1);
 			found = 1;
 		}
@@ -208,14 +218,21 @@ int app_pack_by_exec(const char *exec, char *pack, size_t pn)
 }
 
 /* User entries win over the baked table. */
-int app_lookup_pack(const char *name, char *cmd, size_t n, char *pack, size_t pn)
+int app_lookup(const char *name, char *cmd, size_t n, char *pack, size_t pn,
+	       char *launcher, size_t ln)
 {
 	char *ut = user_table();
-	int found = table_lookup(ut, name, cmd, n, pack, pn);
+	int found = table_lookup(ut, name, cmd, n, pack, pn, launcher, ln);
 	free(ut);
 	if (!found)
-		found = table_lookup(APP_TABLE, name, cmd, n, pack, pn);
+		found = table_lookup(APP_TABLE, name, cmd, n, pack, pn, launcher,
+				     ln);
 	return found;
+}
+
+int app_lookup_pack(const char *name, char *cmd, size_t n, char *pack, size_t pn)
+{
+	return app_lookup(name, cmd, n, pack, pn, NULL, 0);
 }
 
 int app_list(void)
@@ -240,6 +257,10 @@ int app_list(void)
 			if (!tab)
 				continue;
 			*tab = '\0';
+			/* The command alone; the pack and the launcher id are
+			 * the table's own columns and follow it. */
+			for (char *t = tab + 1; (t = strchr(t, '\t')); )
+				*t = ' ';
 			printf("%-24s %-8s %s\n", line,
 			       i ? "user" : "baked", tab + 1);
 		}

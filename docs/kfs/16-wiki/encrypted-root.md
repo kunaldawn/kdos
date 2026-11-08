@@ -16,14 +16,16 @@ device mapper. It is on the live medium as well as on an installed system, becau
 use it:
 
 - The installer, [kdos-installer](#port-kdos-installer) (built in
-  [130_kinstall](../03-bootstrap/130-kinstall.md)), creates the container and opens it while it
+  [130_kinstall](../03-bootstrap/130-kinstall.md)) and its graphical front end
+  [kdos-installer-gui](#port-kdos-installer-gui), which share one backend, creates the container and opens it while it
   installs.
 - The initramfs carries its own copy of `cryptsetup` and its libraries, put there by
   `script/phases/70_image/090_initramfs.sh`; see [The initramfs](../15-image/090-initramfs.md). An
   image built without it prints `Note: cryptsetup not installed — the initramfs cannot unlock a LUKS
   root` during that step.
-- [kdos-mountd](#port-kdos-mountd) runs it to unlock an encrypted removable disk for the desktop;
-  that task is on [Storage and removable media](storage-and-removable-media.md).
+- [udisks2](#port-udisks2) unlocks an encrypted removable disk for the desktop, through
+  libblockdev's crypto plugin, when Dolphin or the Device Notifier asks it to; that task is on
+  [Storage and removable media](storage-and-removable-media.md).
 
 The kernel side is the `dm-crypt` and `dm-mod` modules of the [linux](#port-linux) port, which the
 initramfs carries and loads.
@@ -44,9 +46,9 @@ the EFI system [partition]{.idx}, and the initramfs reads both.
 
 **The kernel command line**, in the boot entries of `/boot/efi/limine.conf`. The installer adds a
 `cryptdevice=` option naming the container beside the `root=` option naming the filesystem inside
-it, from `src/system/kdos-installer/install.c`:
+it, from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=2123-2141 pin=e0a09f9a5198 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=2398-2416 pin=e0a09f9a5198 -->
 
 The two UUIDs are different. `cryptdevice=UUID=<container>:kdosroot` is the LUKS container on the
 partition, and `root=UUID=<filesystem>` is the filesystem that appears only once the container is
@@ -58,9 +60,11 @@ and how to change a kernel option is on
 **The boot state**, `/boot/efi/EFI/kdos/bootstate`, records the container again as `crypt_a`, beside
 slot A's filesystem, from the same file:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=2373-2386 pin=ab8cb81addd9 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=2674-2686 pin=d5c38affc180 -->
 
-The initramfs asks `kdos-bootctl crypt` for the container of the slot it chose, and uses
+On the A/B layout both root slots are volumes of one LVM group inside the one container, so
+`crypt_b` names the same container as `crypt_a`, and one passphrase opens either slot. The
+initramfs asks `kdos-bootctl crypt` for the container of the slot it chose, and uses
 `cryptdevice=` only when the slot records none; see
 [A slot knows its own container](../../kdos/03-architecture/boot-and-init.md#a-slot-knows-its-own-container).
 
@@ -226,7 +230,7 @@ To repair or copy an installed system that will not boot:
 A second root slot in its own container is recorded with both UUIDs, the filesystem's and the
 container's: `sudo kdos-bootctl set-slot b <filesystem-uuid> <luks-uuid>`. The steps for making the
 slot are on [A/B slots and rollback](ab-slots-and-rollback.md). What is known about booting one is
-in [Nothing creates or first fills the second root slot](../../kdos/06-reference/known-gaps.md#nothing-creates-or-first-fills-the-second-root-slot).
+in [Only an LVM erase install gets a second root slot](../../kdos/06-reference/known-gaps.md#only-an-lvm-erase-install-gets-a-second-root-slot).
 
 ## Tips
 
@@ -296,7 +300,7 @@ running `e2fsck -f` before you mount.
 ## Known gaps
 
 - [A disk-encryption key is typed, not sealed in the TPM](../../kdos/06-reference/known-gaps.md#a-disk-encryption-key-is-typed-not-sealed-in-the-tpm)
-- [Nothing creates or first fills the second root slot](../../kdos/06-reference/known-gaps.md#nothing-creates-or-first-fills-the-second-root-slot),
+- [Only an LVM erase install gets a second root slot](../../kdos/06-reference/known-gaps.md#only-an-lvm-erase-install-gets-a-second-root-slot),
   and what it means for an encrypted second slot
 - [Secure Boot is not supported](../../kdos/06-reference/known-gaps.md#secure-boot-is-not-supported)
 - [An unattended install skips every check the pages make](../../kdos/06-reference/known-gaps.md#an-unattended-install-skips-every-check-the-pages-make),
@@ -312,11 +316,11 @@ running `e2fsck -f` before you mount.
 - [A slot knows its own container](../../kdos/03-architecture/boot-and-init.md#a-slot-knows-its-own-container): why the container is recorded per slot
 - [Encrypting the root](../../kdos/02-user-guide/installation.md#encrypting-the-root): the installer's side, in the user guide
 - [An encrypted root](../../kdos/04-programs/kinstall.md#an-encrypted-root): the commands the installer runs
-- [Encrypted volumes](../../kdos/04-programs/daemons.md#encrypted-volumes): unlocking a removable disk through `kdos-mountd`
+- [Storage and removable media](storage-and-removable-media.md): unlocking a removable disk through udisks2
 - [The initramfs init](../15-image/091-initramfs-init.md): every stage of the boot before `switch_root`
 - [LVM and RAID](lvm-and-raid.md), [Filesystems and fstab](filesystems-and-fstab.md), [A/B slots and rollback](ab-slots-and-rollback.md), [Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md), [Backups](backups.md)
 
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 376.* Previous: [375. Storage and removable media](storage-and-removable-media.md) · [Contents](../README.md) · Next: [377. LVM and RAID](lvm-and-raid.md)
+*Part XVI. System administration, chapter 400.* Previous: [399. Storage and removable media](storage-and-removable-media.md) · [Contents](../README.md) · Next: [401. LVM and RAID](lvm-and-raid.md)

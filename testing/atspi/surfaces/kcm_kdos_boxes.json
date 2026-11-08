@@ -1,0 +1,11 @@
+{
+  "app": "kcmshell6 kcm_kdos_boxes",
+  "mask": [
+    {
+      "name": "\\b\\d+([.,]\\d+)? ?([KMGT]i?B|%)\\b"
+    }
+  ],
+  "settle": 3,
+  "steps": [],
+  "allow_unnamed": []
+}

@@ -38,3 +38,5 @@ lirc
 # Which GPU is discrete, for a launcher's "run on the dedicated GPU". Here and
 # not in 41_system because it probes amdgpu, nouveau and xe through libdrm.
 switcheroo-control
+
+tlp-pd

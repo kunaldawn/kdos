@@ -195,4 +195,4 @@ The stage the splash stopped on narrows it down; see
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 370.* Previous: [369. Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md) · [Contents](../README.md) · Next: [371. Microcode and firmware](microcode-and-firmware.md)
+*Part XVI. System administration, chapter 394.* Previous: [393. Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md) · [Contents](../README.md) · Next: [395. Microcode and firmware](microcode-and-firmware.md)

@@ -1,0 +1,19 @@
+#!/bin/sh
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   about-libc — About this System's "C library" row
+#
+# musl and its version, from the first line of kpkg's record of the musl
+# package. Always two lines, at once: see about-slot.
+
+PATH=/usr/bin:/bin
+R=${KDOS_ABOUT_ROOT:-}
+v=
+[ -r "$R/var/lib/kpkg/db/musl" ] && read -r v _ <"$R/var/lib/kpkg/db/musl"
+case $v in '' | *[!0-9a-z.]*) v=musl ;; *) v="musl $v" ;; esac
+printf 'C library\n%s\n' "$v"

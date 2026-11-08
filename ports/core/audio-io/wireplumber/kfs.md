@@ -16,9 +16,15 @@ before `pipewire-pulse`; see
   installs, and stop the configure step if it is missing. Left at `auto`, upstream tries 5.5, 5.4
   and 5.3 in turn and builds against the first it finds, so a missing 5.5 would give a WirePlumber
   linked to an older Lua with no error.
-- `-Delogind=disabled` — No elogind integration. Seats and sessions on KDOS are seatd's, and left
-  at `auto` the option finds nothing and turns itself off without a word.
-- `-Dsystemd=disabled` — No systemd units and no logind integration; KDOS has no systemd.
+- `-Delogind=enabled` — Build `libwireplumber-module-logind` against
+  [elogind](#port-elogind)'s `libelogind`. It reports whether the user running WirePlumber has the
+  active session on a seat, and the Bluetooth monitor follows it: with seat monitoring on, which
+  is upstream's default, Bluetooth audio devices are taken by the user at the machine and released
+  when that user's session goes to the background, so after a user switch the headset moves to
+  the session now in front. `enabled` makes a missing elogind a setup error, where `auto` would
+  turn the module off without a word.
+- `-Dsystemd=disabled` — No systemd units and no `libsystemd`; KDOS has no systemd, and logind
+  comes from elogind through the flag above.
 - `-Ddoc=disabled` — Build no documentation.
 - `-Dtests=false` — Build no test suite.
 - `-Dintrospection=disabled` — Generate no GObject introspection bindings for `libwireplumber`.

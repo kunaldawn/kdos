@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kwin
+version     = 6.8.2
+release     = 1
+source      = https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = ea5e68d957c7d70abed97222a592d4445fda29129e20942658badd224ee138b4  kwin-6.8.2.tar.xz
+description = KDE Plasma's Wayland compositor and window manager, with Xwayland for X11 clients
+homepage    = https://invent.kde.org/plasma/kwin
+license     = GPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND GPL-3.0-or-later AND BSD-3-Clause AND BSD-2-Clause AND CC0-1.0 AND LGPL-2.0-or-later AND LGPL-2.0-only AND LGPL-2.1-or-later AND MIT
+group       = plasma
+depends     = cmake ninja pkgconf extra-cmake-modules python3 qt6-qtbase qt6-qtdeclarative qt6-qtwayland qt6-qtsvg qt6-qt5compat qt6-qttools kauth kcolorscheme kconfig kcoreaddons kcrash kdbusaddons kglobalaccel kguiaddons ki18n kidletime kpackage kservice ksvg kwidgetsaddons kwindowsystem kdeclarative kcmutils knewstuff kxmlgui krunner knotifications kdoctools kirigami kitemmodels kquickcharts knighttime kwayland kdecoration plasma-activities kglobalacceld kscreenlocker libplasma breeze aurorae milou plasma-wayland-protocols wayland wayland-protocols mesa libglvnd libepoxy vulkan-headers vulkan-loader libdrm libinput libxkbcommon eudev lcms2 libdisplay-info libxcvt libcanberra pipewire libei libevdev libcap libqaccessibilityclient hwdata libxcb xcb-util-cursor xcb-util-keysyms xcb-util-wm libX11 libXi xwayland

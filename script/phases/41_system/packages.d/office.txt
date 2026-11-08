@@ -23,7 +23,7 @@
 # them, or when a shelf file names a port an earlier phase installs.
 
 # SLIDES FROM A MARKDOWN FILE, drawn in the terminal — the pictures go through
-# the sixel and kitty protocols kdos-term speaks.
+# the sixel and kitty protocols Konsole speaks.
 presenterm
 
 # FreeXL reads spreadsheets for GDAL: the binary .xls, and through minizip
@@ -48,3 +48,7 @@ mdds
 libixion
 liborcus
 libofx
+
+libodfgen
+libwps
+libetonyek

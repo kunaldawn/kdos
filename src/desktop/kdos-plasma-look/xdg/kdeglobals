@@ -1,0 +1,89 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   The KDOS defaults every KDE program reads.
+#
+# /usr/share/kdos/xdg is the LAST directory of XDG_CONFIG_DIRS
+# (/etc/xdg:/usr/share/kdos/xdg), so every value here is a default and
+# nothing more: ~/.config, the session's ~/.config/kdedefaults and the
+# administrator's /etc/xdg each outrank it, key by key. A value a person sets
+# in System Settings lands in ~/.config/kdeglobals and wins. A process that
+# never received XDG_CONFIG_DIRS reads /etc/xdg alone and sees none of this,
+# which is why /etc/xdg/kdeglobals repeats LookAndFeelPackage and nothing else.
+#
+# The global theme org.kdos.<accent>.desktop applies fonts, colours, icons and
+# the widget style into kdedefaults at login; the fonts below are the same
+# values, for programs that run outside a Plasma session.
+#
+# THE COLOURS ARE NOT WRITTEN HERE. KColorScheme reads colours from the
+# [Colors:*] groups of kdeglobals and never from the file ColorScheme names,
+# so a program outside a session (pkexec, an early autostart) with no groups
+# draws Breeze. kdos-plasma-look's build appends the default accent's
+# [Colors:*] and [ColorEffects:*] groups, the colour keys of [WM] and
+# [General] ColorScheme with `kdos-theme greeter-globals`, from the palette;
+# a colour typed into this file is replaced by that merge.
+# ---------------------------------
+
+[General]
+# Noto Sans for the interface and JetBrains Mono for every fixed-width text.
+# plasma-integration's built-in monospace is Hack, which is not installed: an
+# unset `fixed` is a request for a face that does not exist, answered by
+# whatever fontconfig substitutes.
+font=Noto Sans,10
+menuFont=Noto Sans,10
+toolBarFont=Noto Sans,10
+smallestReadableFont=Noto Sans,8
+fixed=JetBrains Mono,10
+
+# Greyscale antialiasing with slight hinting, which renders the same at every
+# fractional scale. The Fonts page and the X resources Xwayland programs read
+# both take these three keys; fontconfig's own defaults (conf.d 10-*) already
+# match them for everything else.
+XftAntialias=true
+XftHintStyle=hintslight
+XftSubPixel=none
+
+# The terminal a "Run in terminal" entry, Dolphin's Shift+F4 and every
+# Terminal=true launcher open.
+TerminalApplication=konsole
+TerminalService=org.kde.konsole.desktop
+
+[WM]
+activeFont=Noto Sans,10
+
+[KDE]
+# The distribution's global theme, and the pair the light/dark switch moves
+# between: a dark accent and paper, the one light accent. Automatic switching
+# stays off; the Welcome tour offers it.
+LookAndFeelPackage=org.kdos.bone.desktop
+DefaultDarkLookAndFeel=org.kdos.bone.desktop
+DefaultLightLookAndFeel=org.kdos.paper.desktop
+AutomaticLookAndFeel=false
+
+# Every animation runs at half its length. 0 is reduced motion, which also
+# stops the phosphor pass's degauss and collapse.
+AnimationDurationFactor=0.5
+
+SingleClick=false
+
+# A drag between two places on one filesystem moves without asking; across
+# filesystems the Move/Copy/Link menu still opens.
+DndBehavior=MoveIfSameDevice
+
+[Icons]
+Theme=KDOS
+
+[Sounds]
+Theme=kdos
+
+# KNewStuff is off on every machine: no "Get New…" button, no store
+# download. [$i] makes the group immutable, so no higher file — ~/.config
+# included — can turn it back on, and every KNewStuff button and action reads
+# this through KAuthorized and hides itself. The curated offline set ships as
+# the kdos-addons package instead.
+[KDE Action Restrictions][$i]
+ghns=false

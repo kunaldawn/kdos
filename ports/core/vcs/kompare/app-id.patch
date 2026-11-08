@@ -1,0 +1,13 @@
+Subject: set the desktop entry's StartupWMClass to the Wayland app_id, org.kde.kompare
+
+--- a/src/app/org.kde.kompare.desktop
++++ b/src/app/org.kde.kompare.desktop
+@@ -136,7 +136,7 @@
+ Exec=kompare %U
+ Icon=kompare
+ X-DocPath=kompare/index.html
+-StartupWMClass=kompare
++StartupWMClass=org.kde.kompare
+ Terminal=false
+ Categories=Qt;KDE;Development;
+ InitialPreference=10

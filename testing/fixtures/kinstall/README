@@ -1,0 +1,8 @@
+kinstall-core's fixtures, driven by testing/selftest.sh through harness.c.
+
+root/ stands in for an install's target: the image's own kde_settings.conf,
+/etc/xdg/kdeglobals and /etc/kdos/xkb.conf (copied from fs/ — refresh them when
+those change), a passwd naming the sddm account, one accent's login-screen set
+under usr/share/kdos/greeter/amber, and empty kbd keymaps for the console
+keymap search. The selftest copies it before each run, so a writer never edits
+the fixture itself.

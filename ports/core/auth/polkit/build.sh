@@ -9,14 +9,14 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-patch -p1 -i "$PORT_SRC/ck-printerr-newline.patch"
+patch -p1 -i "$PORT_SRC/turnstile-session.patch"
 
 meson setup build \
 	--prefix=/usr --sysconfdir=/etc --libdir=lib --libexecdir=/usr/lib --localstatedir=/var \
 	--buildtype=release \
 	-Dauthfw=pam \
 	-Dpam_prefix=/etc/pam.d \
-	-Dsession_tracking=ConsoleKit \
+	-Dsession_tracking=elogind \
 	-Dintrospection=false \
 	-Dgtk_doc=false \
 	-Dman=true \

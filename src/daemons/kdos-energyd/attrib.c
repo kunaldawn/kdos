@@ -372,18 +372,21 @@ static const KeProc *find_pid(const KeSample *s, int pid)
  * the walk is a policy and the name is a reading, and two parsers would be two
  * answers to what a box is called.
  *
- * cgroups are the textbook answer and are unusable here: no systemd means
- * rootless podman gets no cgroup delegation, and the whole box frequently sits
- * in `0::/`. The ppid chain costs nothing extra — this walk is already reading
- * the stats it needs.
+ * cgroups are the textbook answer and do not name a box: a box started where
+ * rootless podman could write no cgroup of its own sits in its parent's, and
+ * an elogind session's delegated subtree is named for the session, not the
+ * box. The ppid chain costs nothing extra — this walk is already reading the
+ * stats it needs.
  */
-void ke_name_of(const KeSample *s, int idx, char *out, size_t cap)
+void ke_identity_of(const KeSample *s, int idx, char *appout, size_t appcap,
+		    char *box, size_t boxcap)
 {
 	ke_apps_load();
 
 	const KeProc *p = &s->p[idx];
 	const char *app = alien_name(p->comm);
-	char box[64] = "";
+
+	box[0] = '\0';
 
 	int pid = p->ppid;
 	for (int hop = 0; hop < 24 && pid > 1; hop++) {
@@ -396,7 +399,7 @@ void ke_name_of(const KeSample *s, int idx, char *out, size_t cap)
 			 * ours. Pointed at this program's root each time
 			 * because the fixture moves it per snapshot. */
 			kpr_root_set(ke_proc(), NULL);
-			kpr_conmon_name(up->pid, box, sizeof(box));
+			kpr_conmon_name(up->pid, box, boxcap);
 			break;		/* conmon is the boundary of the box */
 		}
 		const char *up_app = alien_name(up->comm);
@@ -404,21 +407,31 @@ void ke_name_of(const KeSample *s, int idx, char *out, size_t cap)
 			app = up_app;
 		pid = up->ppid;
 	}
+	kb_strlcpy(appout, app ? app : p->comm, appcap);
+}
 
-	if (app && *box)
+void ke_name_of(const KeSample *s, int idx, char *out, size_t cap)
+{
+	char app[64], box[64];
+
+	ke_identity_of(s, idx, app, sizeof(app), box, sizeof(box));
+	if (*box)
 		snprintf(out, cap, "%s (appbox %s)", app, box);
-	else if (app)
-		snprintf(out, cap, "%s", app);
-	else if (*box)
-		snprintf(out, cap, "%s (appbox %s)", p->comm, box);
 	else
-		snprintf(out, cap, "%s", p->comm);
+		snprintf(out, cap, "%s", app);
 }
 
 /* ── the ledger ────────────────────────────────────────────────────────── */
 
-static KeApp *app_slot(KeLedger *l, const char *name)
+static KeApp *app_slot(KeLedger *l, const KeSample *s, int idx)
 {
+	char app[64], box[64], name[KE_NAME];
+
+	ke_identity_of(s, idx, app, sizeof(app), box, sizeof(box));
+	if (*box)
+		snprintf(name, sizeof(name), "%s (appbox %s)", app, box);
+	else
+		snprintf(name, sizeof(name), "%s", app);
 	for (int i = 0; i < l->n; i++)
 		if (!strcmp(l->app[i].name, name))
 			return &l->app[i];
@@ -426,15 +439,21 @@ static KeApp *app_slot(KeLedger *l, const char *name)
 		return NULL;
 	KeApp *a = &l->app[l->n++];
 	kb_strlcpy(a->name, name, sizeof(a->name));
+	kb_strlcpy(a->app, app, sizeof(a->app));
+	kb_strlcpy(a->box, box, sizeof(a->box));
 	return a;
 }
 
 void ke_ledger_add(KeLedger *l, const KeSample *prev, const KeSample *cur,
-		   long long energy_uj)
+		   long long energy_uj, double slept_s)
 {
 	double dt = cur->when - prev->when;
 	if (dt <= 0 || energy_uj < 0)
 		return;
+	if (slept_s > KE_SLEPT_S) {
+		l->suspended++;
+		return;
+	}
 
 	l->samples++;
 	l->window += dt;
@@ -476,9 +495,7 @@ void ke_ledger_add(KeLedger *l, const KeSample *prev, const KeSample *cur,
 		unsigned long long g = cur->p[j].gpu_ns > prev->p[i].gpu_ns
 					? cur->p[j].gpu_ns - prev->p[i].gpu_ns : 0;
 		if (d || g) {
-			char name[KE_NAME];
-			ke_name_of(cur, j, name, sizeof(name));
-			KeApp *a = app_slot(l, name);
+			KeApp *a = app_slot(l, cur, j);
 			if (a) {
 				double w = (double)d / (double)busy;
 				a->we += w * (double)energy_uj;

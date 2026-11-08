@@ -39,6 +39,7 @@ Icon=elisa
 Terminal=false
 StartupWMClass=org.kde.elisa
 SingleMainWindow=true
+MimeType=audio/aac;audio/mp4;audio/mpeg;audio/mpegurl;audio/vnd.rn-realaudio;audio/vorbis;audio/x-flac;audio/x-mp3;audio/x-mpegurl;audio/x-ms-wma;audio/x-musepack;audio/x-flac+ogg;audio/x-pn-realaudio;audio/x-scpls;audio/x-speex+ogg;audio/x-vorbis;audio/x-wav;application/x-ogm-audio;audio/x-opus+ogg;audio/x-vorbis+ogg;audio/ogg;
 Categories=Qt;KDE;AudioVideo;Audio;Player;
 Keywords=music;player;audio;library;playlist;elisa;
 DESKTOP

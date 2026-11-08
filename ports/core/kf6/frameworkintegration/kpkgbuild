@@ -9,11 +9,11 @@
 # ---------------------------------
 
 name        = frameworkintegration
-version     = 6.30.0
+version     = 6.31.0
 release     = 1
 source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
-sha256      = 817c49b2f6abbfe624e32f9a21ffcac7edf6e0486a0883050a1441e2fef3c932  frameworkintegration-6.30.0.tar.xz
-description = KDE Frameworks: platform integration plugins and KPackage install handlers
+sha256      = b76c5fb0379c9c33641d2aebd6449dc3af6e727e9ce35bc469611b28e6f47ad1  frameworkintegration-6.31.0.tar.xz
+description = KDE Frameworks: KStyle and the platform integration plugin
 homepage    = https://invent.kde.org/frameworks/frameworkintegration
 license     = (LGPL-2.0-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.0-or-later
-depends     = cmake ninja extra-cmake-modules qt6-qtbase kcolorscheme kconfig ki18n kiconthemes knewstuff knotifications kpackage kwidgetsaddons
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcolorscheme kconfig kiconthemes knotifications kwidgetsaddons

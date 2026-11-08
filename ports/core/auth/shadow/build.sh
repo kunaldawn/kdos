@@ -40,3 +40,4 @@ make
 make DESTDIR=$PKG install
 
 chmod 4755 "$PKG/usr/bin/newuidmap" "$PKG/usr/bin/newgidmap"
+rm "$PKG/usr/bin/login" "$PKG/etc/login.access"

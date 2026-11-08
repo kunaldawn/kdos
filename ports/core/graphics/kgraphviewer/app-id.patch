@@ -1,0 +1,17 @@
+Subject: set StartupWMClass to the Wayland app_id org.kde.kgraphviewer
+
+KGraphViewer takes its app_id from KAboutData, which derives
+org.kde.kgraphviewer, the desktop file name; upstream's class names no
+window KGraphViewer opens.
+
+--- a/src/org.kde.kgraphviewer.desktop
++++ b/src/org.kde.kgraphviewer.desktop
+@@ -51,7 +51,7 @@
+ Exec=kgraphviewer -qwindowtitle %c %u
+ Icon=kgraphviewer
+ Type=Application
+-StartupWMClass=kgraphviewer
++StartupWMClass=org.kde.kgraphviewer
+ Categories=Qt;KDE;Graphics;Viewer;2DGraphics;DataVisualization;
+ X-DocPath=kgraphviewer/index.html
+ InitialPreference=10

@@ -1,0 +1,18 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   No timed lock in a virtual machine.
+#
+# A screen that locks itself by the clock is, over VNC or a viewer window,
+# indistinguishable from a desktop that has stopped. This directory goes
+# FIRST in XDG_CONFIG_DIRS, and only in a session that runs in a virtual
+# machine, so it outranks /etc/xdg there; the person's own choice in
+# ~/.config still outranks it. Meta+L and lock-on-resume still lock.
+# ---------------------------------
+
+[Daemon]
+Autolock=false

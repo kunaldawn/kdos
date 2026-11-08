@@ -19,24 +19,29 @@ si::sysinit:/etc/init.d/rcS
 # command line, and `telinit S` reaches it from a running system.
 ~~:S:wait:/sbin/sulogin
 
-# Local Console (QEMU Window / Physical) — the desktop's login.
+# Local Console (QEMU Window / Physical) — the display manager.
 #
-# kdos-login reads /etc/kdos/login.conf and hands the tty to agetty, with
-# `--autologin` where that file names an account. The desktop itself is
-# started by the login shell's profile, not from here.
+# kdos-dm execs SDDM, whose greeter compositor takes tty1. It is started here
+# and never from rcS: init reaches this line only once rcS has returned, and rcS
+# lets go of the framebuffer synchronously at its end (`kdos-splash handoff`),
+# so the compositor's modeset never races the splash for the DRM master.
 #
-# kdos-getty stays in the chain and stays FIRST: it loads the console font
-# and palette after fbcon's deferred take-over, and doing that in rcS is
-# futile because the take-over resets every VT's font. If the program named
-# here is missing it falls back to a bare agetty — with `--autologin` for the
-# account login.conf names, otherwise at a password prompt — so a broken
-# login path still gives a console.
-1:2345:respawn:/usr/local/sbin/kdos-getty tty1 /usr/local/sbin/kdos-login tty1
+# A MISSING OR FAILING SDDM STILL GIVES A CONSOLE. sddm stays up across every
+# login and logout, so a respawn here is sddm having exited; kdos-dm turns a
+# missing binary, a missing account or three exits in a minute into a password
+# prompt on tty1 through kdos-getty, never an autologin. Autologin is SDDM's
+# alone, in /etc/sddm.conf.d/kde_settings.conf.
+1:2345:respawn:/usr/local/sbin/kdos-dm
 
 # Second console, a login prompt for any account. THE RECOVERY CONSOLE: it
 # is a plain agetty with no --autologin, and nothing above may be allowed to
 # make it one too, because it is what is left when the desktop on tty1 does
-# not come up.
+# not come up — a greeter SDDM keeps restarting included, which no respawn
+# here ever sees. kdos-getty loads the console font and palette after fbcon's
+# deferred take-over; doing that in rcS is futile, because the take-over resets
+# every VT's font. agetty hands the name to /bin/login, util-linux's PAM login
+# (/etc/pam.d/login, through system-login), so a console login is a session
+# elogind knows and starts the user's services like any other.
 2:2345:respawn:/usr/local/sbin/kdos-getty tty2 /sbin/agetty --noclear tty2 38400 linux
 
 # Serial console. The live image logs root in with no password; the
@@ -50,10 +55,10 @@ ca::ctrlaltdel:/sbin/shutdown -r now
 
 # Runlevels 0 and 6. init first sends TERM, and KILL 3 s later, to every
 # entry above that the runlevel does not list (the consoles, and with tty1
-# the session), then runs these in order, each to completion. rcK stops
-# the services while the filesystems they save to are writable; killprocs
-# signals every process still alive; killpower may tell a UPS to cut the
-# power, so every filesystem is read-only before it runs.
+# SDDM and every session under it), then runs these in order, each to
+# completion. rcK stops the services while the filesystems they save to are
+# writable; killprocs signals every process still alive; killpower may tell a
+# UPS to cut the power, so every filesystem is read-only before it runs.
 k0:06:wait:/etc/init.d/rcK
 k1:06:wait:/etc/init.d/killprocs
 k2:06:wait:/sbin/swapoff -a

@@ -19,9 +19,9 @@
  * — and every other trash implementation on the machine, mc's included, reads
  * these.
  *
- * It lives here rather than in either consumer because `kdos-desk`'s Delete
- * key and `kdos trash` at a prompt must mean the same thing. Two
- * implementations would be two answers to what deleting is.
+ * It follows the spec to the letter because Dolphin's Delete key and `kdos
+ * trash` at a prompt must mean the same thing. Two readings of the spec would
+ * be two answers to what deleting is.
  */
 
 #include "kbase.h"

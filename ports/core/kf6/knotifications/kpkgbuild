@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = knotifications
-version     = 6.30.0
+version     = 6.31.0
 release     = 1
 source      = https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
-sha256      = 09ad50570b26aada0408bb9ccfaabf629c56ec89a9972c8b0e155ab780f577cf  knotifications-6.30.0.tar.xz
+sha256      = 34a9a071585bc3e0993ab19c9a9c7dd4813f5a6104b7b0a470e007f258beaf76  knotifications-6.31.0.tar.xz
 description = KDE Frameworks: desktop notifications through the freedesktop D-Bus interface
 homepage    = https://invent.kde.org/frameworks/knotifications
 license     = LGPL-2.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.0-only AND (LGPL-2.0-only OR LGPL-3.0-only)

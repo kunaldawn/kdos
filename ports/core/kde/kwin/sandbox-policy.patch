@@ -1,0 +1,336 @@
+Subject: wayland: deny desktop-shell globals to sandboxed clients unless granted
+
+KWin refuses a client that connected through a wp_security_context_v1
+listener seven globals and offers it every other one, the layer shell, output
+management, DPMS, the Plasma shell surface, the keyboard state, screen edges,
+virtual desktop management and external brightness among them. A sandboxed
+client draws its own windows; those globals reach the rest of the desktop.
+
+This refuses them as well, and lets a sandbox open named sets of them again
+through grants: window-list, fake-input, screencast, data-control,
+layer-shell, output-management, dpms and plasma-shell. The name
+input-method is accepted and opens nothing: the input-method globals stay
+with the input method KWin starts, as they are for every client. The
+security context's sandbox engine and instance id are kept on the client
+connection beside its app id, which is what a grant source needs to know
+which sandbox a client belongs to. The one source here is KDOS's box
+profiles, read for the engine io.kdos.appbox from
+~/.config/kdos/boxes/<instance-id>.conf (the `grant` key) once per client;
+a client of any other engine is granted nothing. wp_security_context_manager_v1
+and kde_lockscreen_overlay_v1 are never granted.
+
+diff -ruN a/src/wayland/clientconnection.cpp b/src/wayland/clientconnection.cpp
+--- a/src/wayland/clientconnection.cpp	2026-10-27 16:57:35.000000000 +0530
++++ b/src/wayland/clientconnection.cpp	2026-10-29 03:40:03.195312553 +0530
+@@ -69,6 +69,8 @@
+     gid_t group = 0;
+     QString executablePath;
+     QString securityContextAppId;
++    QString securityContextSandboxEngine;
++    QString securityContextInstanceId;
+     qreal scaleOverride = 1.0;
+     bool sandboxed = false;
+     bool tearingDown = false;
+@@ -199,6 +201,23 @@
+     return d->securityContextAppId;
+ }
+ 
++void ClientConnection::setSecurityContext(const QString &appId, const QString &sandboxEngine, const QString &instanceId)
++{
++    d->securityContextSandboxEngine = sandboxEngine;
++    d->securityContextInstanceId = instanceId;
++    setSecurityContextAppId(appId);
++}
++
++QString ClientConnection::securityContextSandboxEngine() const
++{
++    return d->securityContextSandboxEngine;
++}
++
++QString ClientConnection::securityContextInstanceId() const
++{
++    return d->securityContextInstanceId;
++}
++
+ ClientConnection *ClientConnection::get(wl_client *native)
+ {
+     return static_cast<ClientConnection *>(wl_client_get_user_data(native));
+diff -ruN a/src/wayland/clientconnection.h b/src/wayland/clientconnection.h
+--- a/src/wayland/clientconnection.h	2026-10-27 16:57:35.000000000 +0530
++++ b/src/wayland/clientconnection.h	2026-10-29 03:40:03.194407351 +0530
+@@ -137,6 +137,21 @@
+     QString securityContextAppId() const;
+ 
+     /**
++     * Marks the client as sandboxed by the security context it connected
++     * through: the context's app id, its sandbox engine and its instance id.
++     */
++    void setSecurityContext(const QString &appId, const QString &sandboxEngine, const QString &instanceId);
++    /**
++     * The sandbox engine of the security context the client connected through,
++     * empty for a client that did not connect through one.
++     */
++    QString securityContextSandboxEngine() const;
++    /**
++     * The instance id of the security context the client connected through.
++     */
++    QString securityContextInstanceId() const;
++
++    /**
+      * Returns the associated client connection object for the specified @a native wl_client object.
+      */
+     static ClientConnection *get(wl_client *native);
+diff -ruN a/src/wayland/display.cpp b/src/wayland/display.cpp
+--- a/src/wayland/display.cpp	2026-10-27 16:57:35.000000000 +0530
++++ b/src/wayland/display.cpp	2026-10-29 03:40:03.196306503 +0530
+@@ -242,12 +242,14 @@
+     wl_display_set_default_max_buffer_size(d->display, max);
+ }
+ 
+-SecurityContext::SecurityContext(Display *display, FileDescriptor &&listenFd, FileDescriptor &&closeFd, const QString &appId)
++SecurityContext::SecurityContext(Display *display, FileDescriptor &&listenFd, FileDescriptor &&closeFd, const QString &appId, const QString &sandboxEngine, const QString &instanceId)
+     : QObject(display)
+     , m_display(display)
+     , m_listenFd(std::move(listenFd))
+     , m_closeFd(std::move(closeFd))
+     , m_appId(appId)
++    , m_sandboxEngine(sandboxEngine)
++    , m_instanceId(instanceId)
+ {
+     qCDebug(KWIN_CORE) << "Adding listen fd for" << appId;
+ 
+@@ -282,7 +284,7 @@
+         return;
+     }
+ 
+-    client->setSecurityContextAppId(m_appId);
++    client->setSecurityContext(m_appId, m_sandboxEngine, m_instanceId);
+ }
+ 
+ void SecurityContext::onCloseFdActivated()
+diff -ruN a/src/wayland/display_p.h b/src/wayland/display_p.h
+--- a/src/wayland/display_p.h	2026-10-27 16:57:35.000000000 +0530
++++ b/src/wayland/display_p.h	2026-10-29 03:40:03.195565514 +0530
+@@ -58,7 +58,7 @@
+     Q_OBJECT
+ 
+ public:
+-    SecurityContext(Display *display, FileDescriptor &&listenFd, FileDescriptor &&closeFd, const QString &appId);
++    SecurityContext(Display *display, FileDescriptor &&listenFd, FileDescriptor &&closeFd, const QString &appId, const QString &sandboxEngine, const QString &instanceId);
+     ~SecurityContext() override;
+ 
+ private:
+@@ -68,6 +68,8 @@
+     FileDescriptor m_listenFd;
+     FileDescriptor m_closeFd;
+     QString m_appId;
++    QString m_sandboxEngine;
++    QString m_instanceId;
+ };
+ 
+ } // namespace KWin
+diff -ruN a/src/wayland/securitycontext_v1.cpp b/src/wayland/securitycontext_v1.cpp
+--- a/src/wayland/securitycontext_v1.cpp	2026-10-27 16:57:35.000000000 +0530
++++ b/src/wayland/securitycontext_v1.cpp	2026-10-29 03:40:03.196451940 +0530
+@@ -143,7 +143,7 @@
+     m_committed = true;
+ 
+     // lifespan is managed by the closeFD's state
+-    new SecurityContext(m_display, std::move(m_listenFd), std::move(m_closeFd), m_appId);
++    new SecurityContext(m_display, std::move(m_listenFd), std::move(m_closeFd), m_appId, m_sandboxEngine, m_instanceId);
+ }
+ 
+ void SecurityContextV1Interface::wp_security_context_v1_destroy_resource(Resource *resource)
+diff -ruN a/src/wayland_server.cpp b/src/wayland_server.cpp
+--- a/src/wayland_server.cpp	2026-10-27 16:57:35.000000000 +0530
++++ b/src/wayland_server.cpp	2026-10-29 03:40:52.592221088 +0530
+@@ -104,7 +104,9 @@
+ 
+ // Qt
+ #include <QDir>
++#include <QFile>
+ #include <QFileInfo>
++#include <QRegularExpression>
+ 
+ // system
+ #include <sys/socket.h>
+@@ -121,6 +123,115 @@
+ 
+ KWIN_SINGLETON_FACTORY(WaylandServer)
+ 
++/*
++ * Globals a sandboxed client is refused unless a grant names them: the ones
++ * that reach past the client's own windows to the rest of the desktop —
++ * every window, every input, every screen, the shell's own surfaces. A grant
++ * name opens a set of them at once, because a client that has one of a set
++ * and not the others is a client that half works.
++ */
++struct SandboxGrant
++{
++    const char *name;
++    QList<QByteArray> interfaces;
++};
++
++static const QList<SandboxGrant> &sandboxGrantTable()
++{
++    static const QList<SandboxGrant> table = {
++        {"window-list", {QByteArrayLiteral("org_kde_plasma_window_management"), QByteArrayLiteral("org_kde_plasma_activation_feedback"), QByteArrayLiteral("org_kde_plasma_virtual_desktop_management")}},
++        {"fake-input", {QByteArrayLiteral("org_kde_kwin_fake_input")}},
++        {"screencast", {QByteArrayLiteral("zkde_screencast_unstable_v1")}},
++        {"data-control", {QByteArrayLiteral("ext_data_control_manager_v1")}},
++        {"layer-shell", {QByteArrayLiteral("zwlr_layer_shell_v1")}},
++        {"output-management", {QByteArrayLiteral("kde_output_management_v2"), QByteArrayLiteral("kde_external_brightness_v1"), QByteArrayLiteral("wp_drm_lease_device_v1")}},
++        {"dpms", {QByteArrayLiteral("org_kde_kwin_dpms_manager")}},
++        {"plasma-shell", {QByteArrayLiteral("org_kde_plasma_shell"), QByteArrayLiteral("kde_screen_edge_manager_v1"), QByteArrayLiteral("org_kde_kwin_keystate")}},
++        // KWin offers the input-method globals to the input method it starts
++        // and to no other client, before this policy is asked, so a profile
++        // may name this grant and it opens nothing past that rule.
++        {"input-method", {QByteArrayLiteral("zwp_input_method_v1"), QByteArrayLiteral("zwp_input_panel_v1")}},
++    };
++    return table;
++}
++
++/*
++ * A box name as KDOS writes them, which is also a file name here: letters,
++ * digits, dots, dashes and underscores, not starting with a dot or a dash and
++ * never `..`, so it cannot name a file outside the profile directory.
++ */
++static bool isKdosBoxName(const QString &name)
++{
++    static const QRegularExpression valid(QStringLiteral("^[A-Za-z0-9_][A-Za-z0-9._-]{0,62}$"));
++    return valid.match(name).hasMatch() && !name.contains(QLatin1String(".."));
++}
++
++static QString kdosBoxProfile(const QString &box)
++{
++    return QDir::homePath() + QLatin1String("/.config/kdos/boxes/") + box + QLatin1String(".conf");
++}
++
++/*
++ * The grants of a client of a KDOS box: the `grant` key of the box's profile,
++ * ~/.config/kdos/boxes/<box>.conf. The box is the security context's instance
++ * id, which kdos-boxsock sets to the box; a context without one is matched by
++ * its app id, which is the box or the box and one launcher component. The
++ * profile is the user's — a box sees it read-only — and is read once per
++ * client, so a changed grant reaches a box's next client and no client's
++ * rights change under it.
++ */
++static QSet<QByteArray> kdosSandboxGrants(ClientConnection *client)
++{
++    const QString engine = client->securityContextSandboxEngine();
++    if (engine != QLatin1String("io.kdos.appbox") && !engine.startsWith(QLatin1String("io.kdos.appbox+"))) {
++        return {};
++    }
++
++    QString box = client->securityContextInstanceId();
++    if (!isKdosBoxName(box)) {
++        box = client->securityContextAppId();
++        if (!isKdosBoxName(box)) {
++            return {};
++        }
++        if (!QFile::exists(kdosBoxProfile(box)) && box.contains(QLatin1Char('.'))) {
++            box.truncate(box.lastIndexOf(QLatin1Char('.')));
++        }
++    }
++
++    QFile profile(kdosBoxProfile(box));
++    if (!profile.open(QIODevice::ReadOnly)) {
++        return {};
++    }
++    QString grant;
++    while (!profile.atEnd()) {
++        const QString line = QString::fromUtf8(profile.readLine()).trimmed();
++        if (line.startsWith(QLatin1Char('#'))) {
++            continue;
++        }
++        const int eq = line.indexOf(QLatin1Char('='));
++        if (eq > 0 && line.left(eq).trimmed() == QLatin1String("grant")) {
++            grant = line.mid(eq + 1).trimmed();
++        }
++    }
++
++    QSet<QByteArray> granted;
++    static const QRegularExpression separators(QStringLiteral("[\\s,]+"));
++    const QStringList names = grant.split(separators, Qt::SkipEmptyParts);
++    for (const QString &name : names) {
++        for (const SandboxGrant &entry : sandboxGrantTable()) {
++            if (name == QLatin1String(entry.name)) {
++                for (const QByteArray &interface : entry.interfaces) {
++                    granted.insert(interface);
++                }
++            }
++        }
++    }
++    if (!granted.isEmpty()) {
++        qCDebug(KWIN_CORE) << "Sandboxed client" << client->securityContextAppId() << "of box" << box << "is granted" << names;
++    }
++    return granted;
++}
++
+ class KWinDisplay : public FilteredDisplay
+ {
+ public:
+@@ -139,6 +250,29 @@
+         QByteArrayLiteral("ext_data_control_manager_v1"),
+     };
+ 
++    // The rest of the desktop shell, also refused to a sandboxed client unless
++    // a grant names it: a client of a sandbox draws its own windows and
++    // reaches nobody else's.
++    const QSet<QByteArray> desktopShellInterfaces = {
++        QByteArrayLiteral("zwlr_layer_shell_v1"),
++        QByteArrayLiteral("kde_output_management_v2"),
++        QByteArrayLiteral("kde_external_brightness_v1"),
++        QByteArrayLiteral("wp_drm_lease_device_v1"),
++        QByteArrayLiteral("org_kde_kwin_dpms_manager"),
++        QByteArrayLiteral("org_kde_plasma_shell"),
++        QByteArrayLiteral("kde_screen_edge_manager_v1"),
++        QByteArrayLiteral("org_kde_kwin_keystate"),
++        QByteArrayLiteral("org_kde_plasma_virtual_desktop_management"),
++    };
++
++    // Never granted: a nested security context would let a sandbox mint
++    // untagged-looking clients of its own, and the lock screen overlay draws
++    // over the lock screen.
++    const QSet<QByteArray> neverGrantedInterfaces = {
++        QByteArrayLiteral("wp_security_context_manager_v1"),
++        QByteArrayLiteral("kde_lockscreen_overlay_v1"),
++    };
++
+     const QSet<QByteArray> inputmethodInterfaces = {"zwp_input_panel_v1", "zwp_input_method_v1"};
+     const QSet<QByteArray> xwaylandInterfaces = {
+         QByteArrayLiteral("zwp_xwayland_keyboard_grab_manager_v1"),
+@@ -158,11 +292,32 @@
+         }
+ 
+         if (client->isSandboxed()) {
+-            return !restrictedInterfaces.contains(interfaceName);
++            if (!restrictedInterfaces.contains(interfaceName) && !desktopShellInterfaces.contains(interfaceName)) {
++                return true;
++            }
++            if (neverGrantedInterfaces.contains(interfaceName)) {
++                return false;
++            }
++            return grantsFor(client).contains(interfaceName);
+         }
+ 
+         return true;
+     }
++
++private:
++    const QSet<QByteArray> &grantsFor(ClientConnection *client)
++    {
++        auto it = m_sandboxGrants.find(client);
++        if (it == m_sandboxGrants.end()) {
++            it = m_sandboxGrants.insert(client, kdosSandboxGrants(client));
++            connect(client, &ClientConnection::aboutToBeDestroyed, this, [this, client]() {
++                m_sandboxGrants.remove(client);
++            });
++        }
++        return *it;
++    }
++
++    QHash<ClientConnection *, QSet<QByteArray>> m_sandboxGrants;
+ };
+ 
+ static size_t mibToBytes(size_t mib)

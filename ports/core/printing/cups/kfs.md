@@ -2,7 +2,7 @@
 CUPS is the print system: the `cupsd` scheduler that holds the queues, `libcups` that every
 printing application links, the `lp`, `lpstat` and `lpadmin` commands, and the filters and
 backends that carry a job to a printer. On KDOS it prints to driverless (IPP Everywhere) printers
-it discovers through [avahi](#port-avahi), and `kdos-print` manages its queues; see
+it discovers through [avahi](#port-avahi), and Plasma's print-manager manages its queues; see
 [Printing](../../../../docs/kdos/02-user-guide/administration.md#printing).
 `/etc/init.d/80_cups.sh` runs `cupsd -f` under supervision.
 
@@ -22,7 +22,7 @@ it discovers through [avahi](#port-avahi), and `kdos-print` manages its queues; 
   (`--with-cups-group=lp`); both are in `fs/etc/passwd` and `fs/etc/group`.
 - `--with-system-groups=lpadmin` — Members of `lpadmin` may manage printers. Without the switch
   configure picks the groups it finds in the build root's `/etc/group`, so the result would follow
-  the build machine. The `kdos` account is in `lpadmin`, which is the authority `kdos-print` acts
+  the build machine. The `kdos` account is in `lpadmin`, which is the authority print-manager acts
   with.
 - `--enable-acl` — Link [acl](#port-acl), so that `cupsd` can give every system group after the
   first read access to its local root certificate with a POSIX ACL. With `lpadmin` the only

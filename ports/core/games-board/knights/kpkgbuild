@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = knights
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 339c1259a82e0e12bb71ca5178d1454247d0a4b23f2648c0fab05261f98af3df  knights-26.08.2.tar.xz
+description = Chess board for local engines, two players at one desk or the Free Internet Chess Server
+homepage    = https://apps.kde.org/knights/
+license     = (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND GPL-2.0-or-later AND GFDL-1.2-or-later AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg qt6-qtspeech kcompletion kconfig kconfigwidgets kcoreaddons kcrash kdbusaddons kdoctools ki18n kio kplotting ksvg ktextwidgets kwallet kwidgetsaddons kxmlgui solid libplasma libkdegames gzip stockfish

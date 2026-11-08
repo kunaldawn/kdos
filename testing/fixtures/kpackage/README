@@ -1,0 +1,3 @@
+The metadata check's fixture: testing/preflight.sh reads this directory the
+way it reads src/, and every directory named bad-* must be reported at least
+once and no directory named good-* may be.

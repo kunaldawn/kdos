@@ -1,0 +1,14 @@
+Subject: drop the undefined application/x-kalm type from the desktop entry
+
+No shared MIME database file defines the type, so the claim matches no file.
+
+--- a/org.kde.kalm.desktop
++++ b/org.kde.kalm.desktop
+@@ -67,7 +67,6 @@
+ Comment[zh_TW]=呼吸技巧
+ Version=1.0
+ Exec=kalm
+-MimeType=application/x-kalm;
+ Icon=org.kde.kalm
+ Type=Application
+ Terminal=false

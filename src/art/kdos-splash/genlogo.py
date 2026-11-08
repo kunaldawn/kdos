@@ -114,7 +114,7 @@ WORDMARK = [
 
 TAGLINE = [
     "KD's Homebrew Linux Distro",
-    'musl · GNU · wlroots · no systemd',
+    'musl · GNU · KDE Plasma · no systemd',
 ]
 
 

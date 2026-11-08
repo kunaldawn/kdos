@@ -42,10 +42,10 @@ procps-ng
 psmisc
 lsof
 
-# Seats with no logind — kdos-comp talks to it through libseat.
-seatd
-
 # s6-ipcserver and s6-setuidgid run utmps' utmpd and wtmpd (06_utmps.sh);
 # execline is s6's library and gives the service its execline-cd.
 execline
 s6
+
+cronie
+util-linux-login

@@ -23,7 +23,11 @@
 kate
 geany
 qt-creator
-kdevelop
 jupyterlab
 spyder
 lite-xl
+
+kdev-php
+kdev-python
+ghostwriter
+kimagemapeditor

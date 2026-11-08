@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdsoap
+version     = 2.3.0
+release     = 1
+source      = https://github.com/KDAB/KDSoap/releases/download/$name-$version/$name-$version.tar.gz
+sha256      = d2184951145cb768cc30376a10701be13869a164c1272d09f831ba2d195f02de  kdsoap-2.3.0.tar.gz
+description = KDAB's Qt SOAP library, client and server, with the kdwsdl2cpp code generator
+homepage    = https://github.com/KDAB/KDSoap
+license     = MIT AND LGPL-2.0-or-later
+depends     = cmake ninja qt6-qtbase

@@ -1,0 +1,9 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Id": "org.kdos.fixture.generated",
+        "Name": "Generated fixture",
+        "Description": "A plasmoid whose script its build writes"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

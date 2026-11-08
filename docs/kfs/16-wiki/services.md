@@ -14,7 +14,7 @@ Services are part of every image. Three things provide them:
 - [kdos-tools](#port-kdos-tools) installs the supervisor, `/usr/sbin/ksvc`, and the command that
   manages services, `/usr/sbin/service`, which is a link to it:
 
-<!-- kfs:include src/system/kdos-tools/build.sh lines=25-27 pin=3545e2d02ffd -->
+<!-- kfs:include src/system/kdos-tools/build.sh lines=25-33 pin=8df9beee79e9 -->
 
 - The base filesystem, `fs/etc/init.d/` in the tree, supplies the scripts every image has, and
   `/etc/init.d/service_helper`, the shell functions those scripts call.
@@ -48,7 +48,7 @@ removing it. Nothing else records whether a service starts at boot. The image sh
 
 The installer writes or removes the markers for the services in its table:
 
-<!-- kfs:include src/system/kdos-installer/conf.c lines=23-29 pin=9a2600b3e3b2 -->
+<!-- kfs:include src/system/kinstall-core/conf.c lines=25-31 pin=9a2600b3e3b2 -->
 
 The last field is whether the service is on by default.
 
@@ -189,7 +189,7 @@ and prints `ok ssh off`. See
    ```
 
 Nothing else starts it again. NetworkManager has no D-Bus activation file, so a call to its name
-while it is stopped, such as the one `kdos-netagent` makes in every desktop session, fails with
+while it is stopped, such as the ones the network applet makes in every desktop session, fails with
 `org.freedesktop.DBus.Error.ServiceUnknown` and starts nothing; the marker is the only switch. The
 same holds for every daemon a service script supervises; see the configuration reference's
 [entry for the marker](../../kdos/06-reference/configuration.md#etcservicedisabledname).
@@ -315,4 +315,4 @@ sudo service start powerd
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 359.* Previous: [358. Init and runlevels](init-and-runlevels.md) · [Contents](../README.md) · Next: [360. Writing a service](writing-a-service.md)
+*Part XVI. System administration, chapter 383.* Previous: [382. Init and runlevels](init-and-runlevels.md) · [Contents](../README.md) · Next: [384. Writing a service](writing-a-service.md)

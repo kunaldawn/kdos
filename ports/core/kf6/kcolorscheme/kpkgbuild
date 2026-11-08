@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = kcolorscheme
-version     = 6.30.0
+version     = 6.31.0
 release     = 1
 source      = $name-$version.tar.xz::https://download.kde.org/stable/frameworks/${version%.*}/$name-$version.tar.xz
-sha256      = a4128e82e47cd474c777754c4dd8af28a00a57ecf388da1a62f8173d898890d0  kcolorscheme-6.30.0.tar.xz
+sha256      = 41a8b12a4d9f4fdada70e4853879a2f43a7bf43e870a18c6038eebd956a1f863  kcolorscheme-6.31.0.tar.xz
 description = KDE Frameworks: colour-scheme loading and roles
 homepage    = https://api.kde.org/frameworks/kcolorscheme/html/
 license     = LGPL-2.0-or-later

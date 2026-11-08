@@ -1,48 +1,51 @@
 # Installation
 
-This chapter is for anyone putting KDOS onto a disk. The installer, `kinstall`, copies the running
-live system onto a target disk, configures the copy for its new machine and makes it bootable on
-both UEFI and legacy BIOS firmware. It ships on every KDOS image, draws its own full-screen
-interface on a bare text console, a terminal window or a serial line, and can install a machine
-unattended from an answer file. Read [Getting
-started](getting-started.md) first if you do not yet have a booted live image. Terms this chapter
-does not define are in the [Glossary](../06-reference/glossary.md).
+This chapter is for anyone putting KDOS onto a disk. The installer copies the running live system
+onto a target disk, configures the copy for its new machine and makes it bootable on both UEFI and
+legacy BIOS firmware. It has two faces over one engine. **Install KDOS** is a window on the live
+desktop, and is what most people use. `kinstall` is the same installer full-screen on a bare text
+console, a terminal window or a serial line, and it installs a machine unattended from an answer
+file. Read [Getting started](getting-started.md) first if you do not yet have a booted live image.
+Terms this chapter does not define are in the [Glossary](../06-reference/glossary.md).
 
 The chapter follows the order in which you meet things. [Before you start](#before-you-start) lists
-what to decide and what the installer needs; [The pages](#the-pages) walks through the wizard screen
-by screen. The sections after that are reference: the filesystem choices, encryption, the A/B root
-slots, answer files for unattended installs, the inspection modes, and every file the installer
-writes. How the installer is built inside is in [kinstall](../04-programs/kinstall.md).
+what to decide and what the installer needs; [Installing from the desktop](#installing-from-the-desktop)
+walks through the window, and [The pages](#the-pages) through `kinstall`, screen by screen. The
+sections after that are reference: the filesystem choices, encryption, the A/B root slots, answer
+files for unattended installs, the inspection modes, and every file the installer writes. How the
+installer is built inside is in [kinstall](../04-programs/kinstall.md).
 
 ## Before you start
 
-Nothing reaches your disk until you press `BEGIN INSTALL` on the Summary page, with one exception:
-the *Partition it myself* plan. Its `Open cfdisk` button runs `cfdisk` on the target disk, and a
-partition table you write in `cfdisk` is on the disk the moment you quit it. Under `--dry-run` that
-button is disabled and the page says why, so a rehearsal writes nothing to any disk. Every other page before
-the Summary only records an answer, so `Back` returns to a page unchanged and quitting leaves the
-machine as you found it. Pressing `Next` on the Summary page does not start the install; it tells
-you to press `BEGIN INSTALL`, so a stray page-forward keystroke cannot erase a disk.
+Nothing reaches your disk until you confirm on the last page before the install, with one
+exception: partitioning by hand. **Partition Manager…** in the window, and `Open cfdisk` in
+`kinstall`, write a partition table the moment you apply it there. Under `kinstall --dry-run`
+the `cfdisk` button is disabled and the page says why, so a rehearsal writes nothing to any disk.
+Every other page only records an answer, so going back returns to a page unchanged and quitting
+leaves the machine as you found it.
 
 Two answers are worth settling before you begin, because changing either one later means installing
 again:
 
 - **The root filesystem**: ext4, btrfs, xfs or f2fs. See [The root
-  filesystem](#the-root-filesystem).
-- **Whether the root is encrypted.** Encryption is applied when the partition is created, so it
+  filesystem](#the-root-filesystem). The window always uses ext4; `kinstall` offers all four.
+- **Whether the system is encrypted.** Encryption is applied when the partition is created, so it
   cannot be added to or removed from an existing install. See
   [Encrypting the root](#encrypting-the-root).
 
 You need:
 
-- root privileges (run the installer with `sudo`);
+- administrator rights: the live account is an administrator, and the window asks nothing more on
+  the live medium; `kinstall` runs with `sudo`;
 - a target disk that is not the medium you booted from;
-- a disk at least 768 MiB larger than the install, which the Welcome page reports as *install
-  size*. Every package is on the medium and every one is copied, so the install is about 53 GB:
-  plan for a disk of about 56 GB or more. The medium itself needs a USB stick of 32 GB or more, or
-  a BD-R (see [Write the medium](getting-started.md#write-the-medium)).
+- a disk large enough. The Welcome page reports the *install size*, how much the install copies;
+  every package is on the medium and every one is copied. The default layout keeps two copies of the
+  system, each with half as much room again to grow, a shared home and the swap, so it needs several
+  times the install size; a disk that holds only one copy is installed with one, and loses the
+  ability to undo an update (see [A/B root slots](#ab-root-slots)). A disk smaller than the install
+  plus 768 MiB is refused.
 
-The wizard checks each of these and names the one that failed.
+The installer checks each of these and names the one that failed.
 
 The natively built applications are part of the system and are always copied. Applications from
 the catalogue are optional during the install. Read [8. Applications](#8-applications) before
@@ -51,32 +54,62 @@ your choice for the first login reaches the installed machine. The other two run
 own `kdos-appbox`, which writes into the live system's pack store and container storage rather than
 onto the new disk.
 
+## Installing from the desktop
+
+**Install KDOS** is on the live desktop as an icon, on the Welcome tour's live page and in Kickoff
+under System. It is a Kirigami window and a front end only: it asks `kinstall` what this machine
+holds (`kinstall --dump probe|look|apps|plan --json`), and when you confirm it runs
+`pkexec /usr/bin/kinstall --config - --unattended --events json`, writing your answers, passwords
+among them, to the installer's standard input and reading its progress back one event at a time.
+So the window and `kinstall` cannot disagree about what an install does, and the Summary page shows
+`kinstall`'s own plan for your answers. On the live medium a polkit rule lets the live session at
+the machine start the installer and Partition Manager without a password; the rule is written onto
+the medium's overlay at every live boot and never copied to an installed system.
+
+The pages, in order:
+
+| Page | Asks |
+|---|---|
+| Welcome | The time zone, beside what the installer measured about this machine: processor, memory, firmware and the disks it can write |
+| Keyboard | The keyboard layout and variant, typed into a box to try. The console keymap nearest it is chosen for the text consoles |
+| Disk | The disk to erase, or **Make the partitions yourself**, which opens Partition Manager and, when it closes, asks which partition is the EFI system partition and which the root. A disk that is the boot medium, read-only or too small is listed with the reason and cannot be chosen |
+| Encryption | Whether to encrypt, and the passphrase twice, with a strength meter. On an erased disk everything KDOS writes is inside the container; on partitions you made, the root is |
+| Account | The computer's name; then either your full name, user name and password, whether you are an administrator, and, on an encrypted machine, whether to log in automatically after the disk passphrase; or **let the first person to start it set it up**, which makes no account (see [Preparing a machine for someone else](#preparing-a-machine-for-someone-else)). Last, whether root is locked |
+| Look | The accent and the desk, each shown as it will look |
+| Applications | The catalogue's groups, with the route they will arrive by (see [8. Applications](#8-applications)), and whether to copy the live container store |
+| Summary | Everything above as the installer plans to carry it out, with what is erased in the warning colour, and the button that starts the install |
+
+The install page shows each step, the copy's progress and the log; the last page says how it ended,
+lists any warning and offers to restart. Everything the window does not ask for takes `kinstall`'s
+default: ext4, a 4096 MiB swap, the two-slot layout where the disk holds it, and the services of
+[Services](#services) at their defaults. Use `kinstall` for any other choice.
+
 ## Running the installer
 
-From a terminal on the live system:
+`kinstall` is the full-screen installer. From a terminal on the live system:
 
 ```sh
 sudo kinstall
 ```
 
-The *Install KDOS* entry in the live desktop's launcher runs the same command in a terminal window.
-
-If the desktop owns the screen, give the installer a text console of its own, and switch to that
-console with `Ctrl+Alt+F3`:
+On the desktop that opens it inside Konsole. To give it a text console of its own, switch to one
+with `Ctrl+Alt+F4` and log in there, or start it on one from Konsole:
 
 ```sh
-sudo sh -c 'kinstall < /dev/tty3 > /dev/tty3 2>&1'
+sudo sh -c 'kinstall < /dev/tty4 > /dev/tty4 2>&1'
 ```
 
 The redirections sit inside the root shell because a virtual console belongs to root: opened by your
 own shell before `sudo` runs, they fail with `Permission denied` and the installer never starts.
+Choose a console nothing else is on: `tty1` holds the login screen, `tty2` the recovery login, and
+a desktop started from the login screen takes `tty3`.
 
 Before it takes over the screen, the installer prints `kinstall: measuring the live system...` and
 walks the whole live tree once to measure how much it will copy. On a large live session this takes
 a few seconds.
 
 The interface works with both keyboard and mouse. On a bare text console it reads the mouse directly
-from `/dev/input`, so clicking works on `tty1` with no mouse daemon. It needs a terminal of at least
+from `/dev/input`, so clicking works with no mouse daemon. It needs a terminal of at least
 62 columns by 18 rows; below that it shows only a message asking for a larger one. The sidebar that
 lists the pages appears at 78 columns and wider, and its foot shows the accent, the mouse source
 (`evdev`, read from the kernel's input devices; `sgr`, reported by the terminal; or `off`) and the
@@ -97,16 +130,22 @@ it.
 | `L` | Toggle the full log on the Install page; open the log in a pager on the Done page |
 | `Ctrl+Q`, `Ctrl+C` | Quit. The installer always asks first, and during an install it warns that the target is left half written |
 
+Pressing `Next` on the Summary page does not start the install; it tells you to press
+`BEGIN INSTALL`, so a stray page-forward keystroke cannot erase a disk.
+
 ### Command-line options
 
 | Option | Effect |
 |---|---|
-| `--config FILE` | Read answers from `FILE`. See [Installing unattended](#installing-unattended) |
+| `--config FILE` | Read answers from `FILE`; `-` reads them from standard input. See [Installing unattended](#installing-unattended) |
 | `--save FILE` | Write the current answers to `FILE` and exit without installing |
 | `--unattended` | Skip the wizard and install from the answers loaded with `--config` |
+| `--events json` | With `--unattended`: draw nothing, and print one JSON event per line on standard output, as the window reads them |
 | `--dry-run` | Run the wizard and the install, logging every install command and executing none. See [Looking without installing](#looking-without-installing) |
 | `--dump probe` | Print the machine as the installer sees it, and exit |
 | `--dump plan` | Print the steps these answers would run, and exit |
+| `--dump apps` | Print the application groups, ticked as the answers have them, and exit |
+| `--dump look` | Print the accents and desks the answers may name, and exit |
 | `--json` | Print `--dump` output as JSON |
 | `--theme NAME` | Draw the installer in this accent and preselect it for the installed system: `phosphor`, `amber`, `ice`, `bone`, `norton`, `borland`, `perfect` or `paper` |
 | `--no-mouse` | Keyboard only |
@@ -114,16 +153,17 @@ it.
 | `--version`, `--help` | Print and exit |
 
 An unknown option prints the usage and exits with status 1, as does a `--config` file that cannot be
-read; `--dump` with anything but `probe` or `plan` exits with status 2. `--save` and `--dump` act
-before the screen is taken over and before the root check, so neither needs root. `--dump` still
-probes the machine; see [Looking without installing](#looking-without-installing) for what it
-can and cannot read without root.
+read. `--save` and `--dump` act before the screen is taken over and before the root check, so
+neither needs root. `--dump` still probes the machine; see
+[Looking without installing](#looking-without-installing) for what it can and cannot read without
+root.
 
-Every install, including a `--dry-run` rehearsal, appends to the log `/var/log/kinstall.log`.
+Every install, including a `--dry-run` rehearsal and every install the window starts, appends to
+the log `/var/log/kinstall.log`.
 
 ## The pages
 
-The wizard has eleven pages, always in this order. The sidebar marks the page you are on and the
+`kinstall` has eleven pages, always in this order. The sidebar marks the page you are on and the
 pages behind you; click a finished page to go back to it. Pages ahead cannot be clicked, because
 nothing has checked them yet. On the Applications page the `Next` button reads `Review`, to mark the
 end of the questions. `Next` runs the page's checks, and a refusal appears in the bottom line for
@@ -174,12 +214,14 @@ with a filter box because the list is long. Moving through the list applies each
 is skipped, the page says so, and the choice is still saved. The install writes it to `/etc/keymap`,
 which `kdos-getty`, the program that runs the login on each text console, loads on every console.
 
-The desktop uses the same setting. When the session starts it translates the console keymap name
-into the matching XKB layout (XKB is the keyboard-layout system the desktop uses), because the
-console and XKB name layouts differently: `uk` becomes `gb`, `sg` becomes `ch`, `dvorak` becomes
-`us` with the `dvorak` variant, and most other names are cut to their first two letters. A layout
-that is not present in the image's XKB data is named in the session log, and the desktop keeps its
-default layout.
+The login screen and the desktop use the same choice. The install leaves the graphical layout
+unset, which the machine's locale service, `kdos-settingsd`, reads as "the layout nearest the
+console keymap": `uk` becomes `gb`, `sg` becomes `ch`, `dvorak` becomes `us` with the `dvorak`
+variant, and most other names are cut to their first two letters. The login screen takes its layout
+from that service before anybody types, and every session starts with it. An answer file, or the
+window's Keyboard page, can name the graphical layout itself (`xkb_layout`, `xkb_variant`); the
+console keymap is then the one nearest it. The layout is changed later on System Settings'
+Keyboard page.
 
 ### 3. Time
 
@@ -190,7 +232,8 @@ The install records the zone in two places that always agree: `/etc/localtime` b
 link to the zone file, and `/etc/profile.d/20-timezone.sh` exports `TZ=':/etc/localtime'`. The
 leading colon makes the C library read that same file, so the link and the variable cannot describe
 different rules. The hardware clock is left as it is. If there is no zone file for the name you
-picked, the install log says so and the machine keeps UTC.
+picked, the install log says so and the machine keeps UTC. System Settings' Date & Time page, and
+`kdos timezone`, change the zone later the same way.
 
 The zone also sets the Wi-Fi country. The installer looks up the zone's country in tzdata's
 `zone.tab` and writes it to `/etc/modprobe.d/kdos-regdom.conf` as the wireless regulatory domain
@@ -212,12 +255,12 @@ smaller than the install plus 768 MiB.
 
 ### 5. Layout
 
-How the chosen disk is used: the plan, the root filesystem, swap, LVM (Linux's logical volume
-manager, which divides a partition into resizable volumes) and encryption.
+How the chosen disk is used: the plan, the root filesystem, swap, the two system slots (on LVM,
+Linux's logical volume manager, which divides a partition into resizable volumes) and encryption.
 
 | Plan | What happens |
 |---|---|
-| Erase the whole disk | A new GPT (GUID partition table): a 512 MiB EFI System Partition (ESP), a 1 MiB BIOS boot partition, a swap partition if you asked for one, then the root |
+| Erase the whole disk | A new GPT (GUID partition table): a 512 MiB EFI System Partition (ESP), a 1 MiB BIOS boot partition, a swap partition if you asked for one without the two slots, then the rest |
 | Use partitions that already exist | You choose the ESP and the root; every other partition on the disk is left alone and the Partition step is skipped. The root can be a partition or an existing LVM logical volume, and whichever you choose is always reformatted |
 | Partition it myself | `Open cfdisk` hands the screen to `cfdisk`. Create an EFI System partition and a Linux partition, and a 1 MiB partition of type *BIOS boot* for the disk to start on legacy BIOS too; write the table and quit. The installer rereads the disk and switches to the reuse plan, where you assign the ESP and the root |
 
@@ -227,37 +270,51 @@ it before writing anything.
 
 #### The erase plan
 
-On the erase plan the page offers swap, LVM and encryption, and draws what will be written: the
-partitions by name and size, as a bar and as a list. The ESP is always partition 1, the BIOS boot
-partition 2, a swap partition 3, and the root the last. The BIOS boot partition holds no filesystem:
-it is the raw space Limine's legacy-BIOS stage is written into, and it is what lets the disk start on
-both firmwares.
+On the erase plan the page offers swap, the two slots and encryption, and draws what will be
+written: the partitions and volumes by name and size, as a bar and as a list. The ESP is always
+partition 1, the BIOS boot partition 2, a swap partition 3 when there is one, and the rest the last.
+The BIOS boot partition holds no filesystem: it is the raw space Limine's legacy-BIOS stage is
+written into, and it is what lets the disk start on both firmwares.
 
 #### Swap
 
 Swap is a file on the root filesystem, a partition of its own, or none. The size starts at
-4096 MiB, and the page shows how much RAM the machine has beside it.
+4096 MiB, and the page shows how much RAM the machine has beside it. With the two slots, the swap
+is a volume of its own that both slots use, whichever of file or partition you picked.
 
 #### LVM
 
-`Put the root on LVM` makes the root partition the single physical volume of a volume group named
-`kdos`, with the root on its logical volume `root_a`. The ESP and a swap partition stay plain
-partitions. `root_a` is slot A's root and takes half the group, leaving the other half free for a
-second root slot; see [A/B root slots](#ab-root-slots). On a disk where half would not hold the
-install, its swap file and a 256 MiB margin, `root_a` takes all of it, and the page and the Summary
-say which. With encryption on as well, the volume group sits inside the encrypted container, so one
-passphrase opens both slots. The page refuses LVM on an image without the `lvm` tool, and refuses
-when a volume group named `kdos` already has any part of itself on another disk, because creating
-the new group would then fail after this disk had been erased. Rename the old group with `vgrename`
-or leave LVM off. How the installed machine finds a root on a logical volume at boot is in
+`Two system slots for safe updates (LVM)` is ticked by default. It makes the rest of the disk the
+single physical volume of a volume group named `kdos` and lays it out for A/B updates:
+
+| Volume | Holds |
+|---|---|
+| `kdos/root_a` | Slot A, the system you boot first |
+| `kdos/root_b` | Slot B, a copy of slot A, where the first update is written |
+| `kdos/swap` | The swap, used by both slots |
+| `kdos/home` | Everything left: `/home` for both slots, with the pack store beside the homes |
+
+Each slot is half as large again as the install, rounded up to a whole GiB and never under 8 GiB,
+so a release that grows still fits. On a disk where two slots, the swap and a 4 GiB home (plus the
+live container store, when it is copied) do not fit, `root_a` takes the whole group with the home
+on it, there is no second slot, and the page and the Summary say so in the warning colour. See
+[A/B root slots](#ab-root-slots) for what the layout does.
+
+With encryption on as well, the volume group sits inside the encrypted container, so one passphrase
+opens both slots, the home and the swap. The page refuses LVM on an image without the `lvm` tool,
+and refuses when a volume group named `kdos` already has any part of itself on another disk, because
+creating the new group would then fail after this disk had been erased. Rename the old group with
+`vgrename` or untick the slots. Unticked, the erase plan makes one plain root partition. How the
+installed machine finds a root on a logical volume at boot is in
 [Activating volume groups](../03-architecture/boot-and-init.md#activating-volume-groups).
 
 #### Encryption
 
 `Encrypt the root filesystem (LUKS2)` puts LUKS2, the standard Linux disk-encryption format, on the
-root. The checkbox is drawn on the erase plan only, because encrypting a partition destroys what is
-on it and the reuse plan exists for people who are keeping something. Tick it and two passphrase
-fields appear; they must match, and an image without `cryptsetup` is refused on this page.
+root (on the erase plan with the two slots, on the whole volume group). The checkbox is drawn on the
+erase plan only, because encrypting a partition destroys what is on it and the reuse plan exists for
+people who are keeping something. Tick it and two passphrase fields appear; they must match, and an
+image without `cryptsetup` is refused on this page.
 
 The tick is kept if you then switch to the reuse plan, or pick *Partition it myself*, which switches
 to the reuse plan after `cfdisk`. The root you choose there is then encrypted, destroying what was
@@ -294,50 +351,68 @@ the page says so, and on a machine that booted in legacy BIOS mode the page refu
 because the result could not start there. Add a 1 MiB BIOS boot partition with *Partition it
 myself*, or erase the disk.
 
-A software RAID array and an opened LUKS container are not offered as the root. The reuse plan shows
-no swap choice; the swap setting it installs with is the one the erase plan last showed, which is a
-4096 MiB swap file unless you changed it. A swap *partition* is only created by the erase plan, so
-on the reuse plan that setting installs no swap at all.
+The reuse plan installs one slot. A software RAID array and an opened LUKS container are not offered
+as the root. The reuse plan shows no swap choice; the swap setting it installs with is the one the
+erase plan last showed, which is a 4096 MiB swap file unless you changed it. A swap *partition* is
+only created by the erase plan, so on the reuse plan that setting installs no swap at all.
 
 ### 6. Accounts
 
 - **Hostname**: letters, digits and dashes.
+- **Who sets it up**: *Set up my account now*, the default, or *Let the first person to start it
+  set it up (OEM)*, which makes no account and hides the fields below; see
+  [Preparing a machine for someone else](#preparing-a-machine-for-someone-else).
 - **Full name and user name**: the user name is lowercase letters, digits, `-` and `_`, and does
-  not start with a digit.
+  not start with a digit. The full name may not hold a colon or a control character.
 - **Password**: required, typed twice, with a strength meter.
 - **Administrator**: ticked by default. Ticked, the account is in the `wheel` group and can use
-  `sudo` and the desktop's administrative actions. Unticked, the account is taken out of `wheel`; it
-  stays in `seat`, so it still has the desktop and can suspend, power off, reboot and mount
-  removable media.
+  `sudo` and the administrator's actions in System Settings and Discover. Unticked, the account is
+  taken out of `wheel`; it still has the desktop, and can suspend, power off, reboot, connect to
+  networks and mount removable media, because those are granted to whoever is at the machine
+  rather than to a group.
+- **Login**: on an encrypted root, *Log in automatically after the disk passphrase*, and under it
+  *Start the session locked (unlock with this password)*, ticked by default. On a plain root the
+  page says the login screen asks for the password, and offers nothing.
 - **Lock the root account**: ticked by default. Unticked, you set a root password, typed twice.
 
 Root locked together with a non-administrator account would leave nobody able to gain privileges,
 so `Next` refuses that combination.
 
-The installed machine asks for your password at `tty1`; only the live image logs in automatically.
+The login screen asks for your password on every installed machine but one: an encrypted machine
+whose account chose automatic login. The passphrase typed at boot already asks who is at the
+machine, so the session then starts by itself, and with *Start the session locked* it starts behind
+the lock screen, which takes the account's password. The choice is written to
+`/etc/sddm.conf.d/kde_settings.conf`, the file System Settings' Login Screen page edits too, so
+either can change it later. With automatic login the password store, KWallet, has no login
+password to open with, and asks for its own the first time a program stores a secret.
+
 The serial console `ttyS0` asks for a login too: the live image logs root in there with no
-password, and the installer removes that from the installed copy of `/etc/inittab`.
-The wizard has no automatic-login option. Set `autologin = yes` in an answer file (see
-[Installing unattended](#installing-unattended)), or after installing set `autologin = <username>`
-in `/etc/kdos/login.conf`. The live image's root password is never carried over: the root entry in
-`/etc/shadow` is always rewritten, locked or with the password you set, and the backup copies
-`/etc/passwd-`, `/etc/shadow-` and their kin are not copied.
+password, and the installer removes that from the installed copy of `/etc/inittab`. The live
+image's root password is never carried over: the root entry in `/etc/shadow` is always rewritten,
+locked or with the password you set, and the backup copies `/etc/passwd-`, `/etc/shadow-` and their
+kin are not copied.
 
 A user name other than `kdos` is a real rename. The installer rewrites `/etc/passwd` (name, full
 name and home directory), `/etc/group` (the membership lists and the primary group's name),
 `/etc/shadow`, and the owner of the `/etc/subuid` and `/etc/subgid` ranges that rootless containers
-use. It moves `/home/kdos` to the new name, and writes the new name into the `autologin` line of
-`/etc/kdos/login.conf`, which is the only place the desktop account is named.
+use. It moves `/home/kdos` to the new name.
 
 ### 7. System
 
-Three settings: the accent, the live container store, and which services start at boot.
+Four settings: the accent, the desk, the live container store, and which services start at boot.
 
 #### Accent
 
 There are eight accents, and the installer repaints itself in the one you select, so you choose by
-colour rather than by name. The installed system's desktop, GTK theme, icons, cursors, foot, btop
-and boot menu use it. See [Theming](theming.md).
+colour rather than by name. The installed machine's desktop, login screen, lock screen, splash,
+boot menu and text consoles all start in it. See [Theming](theming.md).
+
+#### Desk
+
+How the first login lays out its panels: *KDOS*, one bottom panel with the menu, the tasks, the
+meters, the tray and the clock; *Dock*, a top bar and a floating dock; or *Tiling*, a top bar, with
+windows tiled as they open. See [The desks](desktop.md#the-desks); every account can change it
+later.
 
 #### The alien app library
 
@@ -375,9 +450,8 @@ the system the installer copies, so they are on the new disk whatever you choose
 The application groups this medium's catalogue can build, with `essential` already ticked. The
 catalogue is `/usr/share/kdos/appstore/catalogue`, or the boot medium's
 `/mnt/iso/appstore/catalogue` where the live root has none; the groups and their descriptions come
-from it,
-and a group none of whose members is in the catalogue is not shown. The shipped catalogue has seven.
-`essential` holds Zathura.
+from it, and a group none of whose members is in the catalogue is not shown. The shipped catalogue
+has seven. `essential` holds Zathura.
 
 | Group | Description | Applications |
 |---|---|---|
@@ -415,7 +489,7 @@ into the live session's [pack store](../06-reference/glossary.md#pack-store) (wh
 packs live; see [Packs and boxes](../03-architecture/packs-and-boxes.md)) and container storage, which the installed
 machine never sees. The dependable way to get applications onto an installed machine is to install
 with no network and no set on a stick, so that the choice is recorded, or to skip the groups and
-install from the application store (`kdos app install`) after the first login.
+install from Discover after the first login.
 
 On the recorded route, your first desktop login shows a notification offering to build the recorded
 groups; `kdos app install --pending` builds them from a terminal. The offer is made once per user,
@@ -427,27 +501,25 @@ still completes and the choice is recorded for the first login instead.
 The installer looks for an exported set each time you arrive at the Applications page (an unattended
 install looks once, when it starts): the first file ending in `.ktar` at the top level of a
 directory directly under `/mnt`, `/media` or `/run/media`. A stick the desktop mounted is at
-`/media/<user>/<label>`, or at `/run/media/<user>/<label>` when an application mounted it, one
-level deeper than the installer looks, so its set is not found. Mount
-the stick directly under `/mnt` or `/media` before you reach the Applications page, or before an
-unattended install starts, for example with `sudo mount /dev/sdX1 /mnt/stick`. Only that one set is
-offered. See
-[Applications](applications.md#carrying-a-set-to-another-machine) for making one.
+`/run/media/<user>/<label>`, one level deeper than the installer looks, so its set is not found.
+Mount the stick directly under `/mnt` or `/media` before you reach the Applications page, or before
+an unattended install starts, for example with `sudo mount /dev/sdX1 /mnt/stick`. Only that one set
+is offered. See [Applications](applications.md#carrying-a-set-to-another-machine) for making one.
 
 On a medium with no catalogue the page says so and there is nothing to choose; install applications
-later from the application store.
+later from Discover.
 
 ### 9. Summary
 
-Your answers on one screen: keymap, time zone, hostname, user, root account, accent, whether the
-alien app library is copied, the application groups and their route, the enabled services, the
-target disk, the plan, the root and ESP on the reuse plan, the LVM layout when there is one, which
-firmwares the disk will start on (`UEFI and legacy BIOS`, or `UEFI only` for a reused GPT disk with
-no BIOS boot partition), and swap. Encryption is part of the LVM line when there is one; otherwise,
-whenever encryption is on, on either plan, an `encryption` line reads `root inside LUKS2`. The
-destructive parts are
-in the error colour, and a rule across the page reads `EVERYTHING ABOVE THIS LINE IS STILL
-REVERSIBLE`. Two buttons sit under it:
+Your answers on one screen: keymap, time zone, hostname, the user or the OEM choice, the login,
+root account, accent, desk, whether the alien app library is copied, the application groups and
+their route, the enabled services, the target disk, the plan, the root and ESP on the reuse plan,
+the slot layout when there is one (`slots A and B of N each, /home shared`, or `one slot` in the
+warning colour), which firmwares the disk will start on (`UEFI and legacy BIOS`, or `UEFI only` for
+a reused GPT disk with no BIOS boot partition), and swap. Encryption is part of the LVM line when
+there is one; otherwise, whenever encryption is on, on either plan, an `encryption` line reads
+`root inside LUKS2`. The destructive parts are in the error colour, and a rule across the page reads
+`EVERYTHING ABOVE THIS LINE IS STILL REVERSIBLE`. Two buttons sit under it:
 
 - `BEGIN INSTALL`: starts writing to the disk. Under `--dry-run` it reads `REHEARSE INSTALL`.
 - `Save answer file`: writes your answers to `/tmp/kinstall.conf` and installs nothing.
@@ -462,23 +534,23 @@ be followed from another console with `sudo tail -f /var/log/kinstall.log`.
 
 The page an install runs on, interactive or unattended (see [Installing
 unattended](#installing-unattended)): the work, with an overall progress bar, one line per step and
-the tail of the log. The install runs
-in a separate process, so the screen stays responsive during a multi-gigabyte copy. Each step is
-marked as it starts, finishes, is skipped (`not needed`) or fails; the Copy step shows the amount
-copied, the speed and the time remaining. `L` switches to the full log, where `PgUp` and `PgDn`
-scroll.
+the tail of the log. The install runs in a separate process, so the screen stays responsive during a
+multi-gigabyte copy. Each step is marked as it starts, finishes, is skipped (`not needed`) or fails;
+the two copy steps show the amount copied, the speed and the time remaining. `L` switches to the
+full log, where `PgUp` and `PgDn` scroll. The window's install page shows the same steps.
 
 | Step | What it does | Skipped when |
 |---|---|---|
 | Prepare | Checks the tools and the target, stops swap on disks (the compressed swap in memory stays on), unmounts the target and anything on the disk, and on the erase plan takes down volume groups and containers on it | |
 | Partition | Wipes the disk's signatures, writes the GPT layout and zeroes the BIOS boot partition | The plan is not "erase" |
-| Format | Encrypts and creates the volume group if asked, then makes the root filesystem, the ESP (when it is to be formatted) and the swap partition | |
-| Mount | Mounts the root at `/mnt/kinstall` and the ESP at `/mnt/kinstall/boot/efi`; the boot medium at `/mnt/iso` and any stick under `/mnt` stay reachable beside it | |
-| Copy system | Copies the live system with `rsync`, then removes the *Install KDOS* launcher entry from the copy. The installer and everything it starts run at `oom_score_adj` -900, so the memory guard, `kdos-oomd`, passes over the copy however long it stalls memory | |
+| Format | Encrypts and creates the volume group and its volumes if asked, then makes the root filesystem, slot B's and the home's, the ESP (when it is to be formatted) and the swap | |
+| Mount | Mounts the root at `/mnt/kinstall`, the home at `/mnt/kinstall/home` with the pack store bound under it, and the ESP at `/mnt/kinstall/boot/efi`; the boot medium at `/mnt/iso` and any stick under `/mnt` stay reachable beside it | |
+| Copy system | Copies the live system with `rsync`, leaving out the live session (see [What is not copied](#what-is-not-copied)). The installer and everything it starts run at `oom_score_adj` -900, so the memory guard, `kdos-oomd`, passes over the copy however long it stalls memory | |
 | Packs | Imports, builds or records the applications you chose | Nothing was chosen, or the medium has no catalogue |
-| Configure | `fstab`, hostname, `/etc/hosts`, time zone, Wi-Fi country, keymap, automatic login, the serial console's login, DNS resolver, services and the swap file | |
-| Accounts | Users, passwords, the administrator choice | |
-| Theme | Regenerates the chosen accent in `/etc/skel` and the new home directory | The accent is the default, `bone` |
+| Configure | `fstab`, hostname, `/etc/hosts`, time zone, Wi-Fi country, keymap and keyboard layout, the login screen's automatic login, the serial console's login, DNS resolver, services and the swap file | |
+| Accounts | Users, passwords, the administrator choice, and the new home filled from `/etc/skel`; on an OEM install, the live account removed instead | |
+| Theme | The accent and the desk the first login takes, the accent of the splash and the consoles, and the login screen's look | |
+| Slot B | Copies slot A, as configured, into slot B, with slot B's own root in its `fstab` | The layout has one slot |
 | Bootloader | Limine on the ESP, the BIOS boot code into the BIOS boot partition, and the firmware boot entry | |
 | Finish | Flushes and unmounts | |
 
@@ -490,23 +562,35 @@ unattended run instead ends by itself after five seconds.
 
 A warning is something the installed system will lack while the install carries on: no
 `BOOTIA32.EFI` for 32-bit UEFI, no BIOS boot code (on a UEFI machine: a reused GPT disk with no
-BIOS boot partition, no `limine` program, or a failed `limine bios-install`), no partition number for the firmware boot
-entry, an ESP too small for a second slot's kernel, or an application route that fell back to the
-first login. Each is listed under `WARNINGS` as it arrives and written to the log with a `warning:`
-prefix.
+BIOS boot partition, no `limine` program, or a failed `limine bios-install`), no partition number
+for the firmware boot entry, an ESP too small for a second slot's kernel, or an application route
+that fell back to the first login. Each is listed under `WARNINGS` as it arrives and written to the
+log with a `warning:` prefix.
 
 ### 11. Done
 
 What was installed, where, and how long it took, the warnings again under `FINISHED WITH WARNINGS`
 when there were any, and `Reboot now` (which asks first), `Back to the live desktop` and `View
-log`; `L` opens the same log pager. Remove the boot medium before restarting, or the firmware may start the live image again. An
-unattended run does not show this page.
+log`; `L` opens the same log pager. Remove the boot medium before restarting, or the firmware may
+start the live image again. An unattended run does not show this page.
+
+## Preparing a machine for someone else
+
+*Let the first person to start it set it up*, or `oem = 1` in an answer file, installs a machine
+with no account. The live account is removed, root stays locked, and `/etc/plasma-setup-done` is
+left absent. At every boot while that file is absent, the boot step `62_plasma-setup` arms Plasma's
+first-start wizard, plasma-setup: the login screen logs its own account in, and the wizard asks the
+person who switched the machine on for the language, keyboard, time zone and network and makes their
+account, an administrator. It then writes `/etc/plasma-setup-done`, and from the next boot the
+machine shows the ordinary login screen. Every install that makes an account writes the file, so the
+wizard never appears there.
 
 ## The root filesystem
 
 The installer offers four root filesystems. The one you pick sets the `mkfs` command, the mount
 options, the `fstab` line and how the swap file is made, together, so they cannot disagree. The root
-filesystem is always labelled `KDOS`.
+filesystem is always labelled `KDOS`, and the home volume of the two-slot layout takes the same
+filesystem.
 
 | Filesystem | Mount options | `fstab` pass | Swap file made with | Suited to |
 |---|---|---|---|---|
@@ -526,15 +610,16 @@ ext4, btrfs and xfs are built into the kernel; f2fs is a module, and the initram
 
 ## Encrypting the root
 
-Ticking encryption on the Layout page puts LUKS2 on the root partition. There is no recovery key and
-no way into the machine without the passphrase, which is asked for at every boot.
+Ticking encryption puts LUKS2 on the root partition, or on the whole volume group of the two-slot
+layout. There is no recovery key and no way into the machine without the passphrase, which is asked
+for at every boot.
 
 The installer runs `cryptsetup luksFormat --type luks2` and then `cryptsetup open`, feeding the
 passphrase on standard input both times. Passing it as an argument would expose it, through
 `/proc/<pid>/cmdline`, to every process on the machine while `cryptsetup` runs. The opened container
 is `/dev/mapper/kdosroot`, and everything after that (the `mkfs`, the mount, the `fstab` entry and
 the copy) works on that one name. With LVM on as well, the container is the volume group's
-physical volume instead, and those steps work on the logical volume `/dev/kdos/root_a` inside it.
+physical volume instead, and those steps work on the logical volumes inside it.
 
 The boot options then carry two different UUIDs, and it is easy to confuse them:
 
@@ -552,39 +637,59 @@ An image without `cryptsetup` refuses encryption on the Layout page, before anyt
 
 ## A/B root slots
 
-An installed KDOS machine is set up for two root filesystems, *slot A* and *slot B*, so that an
-update can be installed into the slot you are not running and rolled back if it fails to boot.
+An installed KDOS machine keeps two root filesystems, *slot A* and *slot B*, so that an update is
+written into the slot you are not running and a version that fails to start is rolled back.
 
-The installer creates slot A only. It writes the initial boot state to the ESP
-(`EFI/kdos/bootstate`): slot A is the filesystem it has made, slot B is empty, slot A's encrypted
-container (if any) is recorded beside it, and `bootstate=UUID=<esp>` is added to the kernel options.
-Slot A's kernel and initramfs go into their own ESP directory, `EFI/kdos/a/`, and each menu entry
-names its slot with `kdos_slot=a`.
+On the default layout the installer makes both. Slot A is the system it copied and configured; the
+Slot B step then copies slot A, as it stands after the Configure, Accounts and Theme steps, into
+slot B, rewriting only the root line of slot B's `fstab`. Both slots therefore hold the same system
+when the machine first boots, and the first update has a slot to go into. The installer writes the
+initial boot state to the ESP (`EFI/kdos/bootstate`): both slots, each slot's encrypted container (if
+any) recorded beside it, and `bootstate=UUID=<esp>` added to the kernel options. Each slot's kernel
+and initramfs go into their own ESP directory, `EFI/kdos/a/` and `EFI/kdos/b/`, and each menu entry
+names its slot with `kdos_slot=a` or `kdos_slot=b`.
 
-The installer does not create slot B; you create it by hand. Make a filesystem for it (on an LVM
-install, in the space left free in the volume group, with `lvcreate -n root_b -l 100%FREE kdos`),
-copy the system into it, and record it with `kdos-bootctl set-slot b <filesystem-uuid>
-[<luks-uuid>]`. The second UUID is needed only when slot B is encrypted: it names the LUKS
-container, and the first names the filesystem inside it. `blkid` gives both, for example `blkid -s
-UUID -o value /dev/kdos/root_b`. `set-slot` with fewer arguments prints its usage and exits with
-status 2. From then on, `kdos update apply` installs updates into the inactive slot, puts that
-slot's kernel in its own ESP directory, and marks the slot to be tried. See [Keeping it
-current](administration.md#keeping-it-current).
+What the slots share and what they do not:
 
-A trial works like this:
+- **`/home` is one volume both slots mount**, so your files are the same whichever slot is
+  running. The pack store lives there too, as `/home/.kdos/packs`, bound onto `/var/lib/kdos/packs`
+  by a line in each slot's `fstab`, so packs and the boxes built on them are never inside a slot and
+  survive every switch.
+- **`/etc` and `/var` belong to each slot.** Sharing them would share init scripts and package
+  records across two versions and break the rollback. An update carries this machine's state into
+  the new slot when it is armed: a configuration file you have not edited takes the new version's
+  default, one you edited keeps your copy (the new default is left beside it as `<file>.kdos-new`),
+  the account databases are merged by name, and machine state such as the network connections,
+  Bluetooth pairings, the login screen's state and the crontabs follows.
+
+Updates come through Discover or `kdos update`: the next release is written into the inactive slot,
+its kernel put in that slot's ESP directory, and the slot marked to be tried; see
+[Keeping it current](administration.md#keeping-it-current). A trial works like this:
 
 1. On UEFI, the candidate slot is booted once through the firmware's `BootNext` setting. Every boot
    after that starts the confirmed slot, so even a kernel that crashes before its initramfs is
    rolled back with no help. On BIOS, or where the firmware setting cannot be written, the boot
    menu leads the trial instead, for up to three boots.
 2. The initramfs counts the attempt before anything is mounted.
-3. The slot is promoted to active only when the boot scripts reach their end.
+3. The slot is promoted to confirmed only when the boot scripts have reached their end *and* a
+   Plasma session has run for a minute without the shell restarting, or, on a machine nobody logs
+   in to, the login screen has been up for a minute.
+
+System Settings' System Versions page lists both slots and starts the other one on the next boot,
+which is how you go back to the previous version by hand.
+
+A disk too small for two slots, the reuse plan, and an install with the slots unticked all get one
+slot. Such a machine has nowhere to write an update but over itself: `kdos update apply --in-place`
+does that, and gives up the rollback. A second slot can be made by hand later: make a filesystem
+for it, copy the system into it, and record it with `kdos-bootctl set-slot b <filesystem-uuid>
+[<luks-uuid>]`. The second UUID is needed only when slot B is encrypted: it names the LUKS
+container, and the first names the filesystem inside it. `blkid` gives both. `set-slot` with fewer
+arguments prints its usage and exits with status 2.
 
 Recording a container per slot is what lets A/B work with encryption. The kernel command line can
 name only one `cryptdevice=`, so the initramfs looks up the chosen slot's container after it has
-picked the slot. A second *encrypted* slot has not been booted; see [Known
-gaps](../06-reference/known-gaps.md#nothing-creates-or-first-fills-the-second-root-slot). [Boot and
-init](../03-architecture/boot-and-init.md#ab-slot-selection) describes the whole mechanism.
+picked the slot. [Boot and init](../03-architecture/boot-and-init.md#ab-slot-selection) describes
+the whole mechanism.
 
 ## Installing unattended
 
@@ -601,7 +706,8 @@ sudo kinstall --unattended --config answers.conf    # install with no questions
 `--save` on its own writes a template of the defaults. `--config` with `--save` writes the loaded
 answers back out in the same form. To capture a real set of answers, walk the wizard to the Summary
 page and press `Save answer file`, which writes `/tmp/kinstall.conf`; copy that off the machine and
-hand it back with `--config`.
+hand it back with `--config`. `--config -` reads the answers from standard input, which is how the
+desktop's installer hands them over.
 
 ### The keys
 
@@ -613,7 +719,7 @@ that setting's default.
 | Key | Value | Default |
 |---|---|---|
 | `keymap` | A console keymap name, as `/etc/keymap` holds it | `us` |
-| `autologin` | `yes` or `1` for automatic login at `tty1`; anything else, or no key, means a password prompt | off |
+| `xkb_layout`, `xkb_variant` | The graphical keyboard layout and variant. With a layout and no `keymap`, the console keymap is the one nearest it | none: the layout nearest the keymap |
 | `timezone` | The `TZ` value. The wizard always writes `:/etc/localtime` | `:/etc/localtime` |
 | `timezone_label` | The zone name `/etc/localtime` links to, such as `Europe/Berlin` | `UTC` |
 | `disk` | The whole-disk device, such as `/dev/sda` | none |
@@ -624,30 +730,32 @@ that setting's default.
 | `swap` | `file`, `partition` or `none`; any other value means `none` | `file` |
 | `swap_mb` | Swap size in MiB | `4096` |
 | `luks` | `1` for an encrypted root | `0` |
-| `lvm` | `1` to put the root on LVM; honoured on the `wipe` plan only | `0` |
+| `lvm` | `1` for the two-slot layout on LVM, `0` for one plain root; honoured on the `wipe` plan only | `1` |
 | `luks_passphrase` | The encryption passphrase, in plain text | none |
 | `hostname` | The machine's name | `kdos` |
+| `oem` | `yes` or `1` to make no account and let the first person to start the machine set it up | off |
 | `username`, `fullname` | The account | `kdos`, `KDOS User` |
 | `password` | The user's password, in plain text | none |
-| `root_locked` | `1` to lock root, `0` to set `root_password`. `0` with no `root_password` still locks it | `1` |
+| `admin` | `yes` or `1` for an administrator (in `wheel`); anything else for an account outside it | `yes` |
+| `autologin` | `yes` or `1` for automatic login after the disk passphrase. Refused without `luks = 1`, and with `oem` | off |
+| `autologin_lock` | With `autologin`: `yes` or `1` to start the session behind the lock screen | `yes` |
+| `root_locked` | `1` to lock root, `0` to set `root_password`. `0` with no `root_password` is refused | `1` |
 | `root_password` | The root password, in plain text | none |
 | `theme` | An accent name, such as `bone` | `bone` |
+| `desk` | `kdos`, `dock` or `tiling` | `kdos` |
 | `alien_apps` | `1` to copy the live container store, `0` to leave it out | `1` |
-| `apps` | Space-separated group ids, such as `essential office` | `essential` |
+| `apps` | Space-separated group ids, such as `essential office`, or `none` | `essential` |
 | `services` | Space-separated names from `networkmanager bluetooth alsa cups sshd`; a service not named does not start | `networkmanager bluetooth alsa` |
 | `reboot` | `1` to reboot when an unattended run finishes, `0` to exit | `1` |
 
 Things to watch for:
 
-- Automatic login is off unless you ask for it. The live medium logs in automatically, but an
-  answer file without `autologin = yes` installs a machine that asks for a password at `tty1`. The
-  install edits the target's `/etc/kdos/login.conf` in place: `autologin = <username>` for on, the
-  same line commented out for off.
+- Automatic login is off unless you ask for it, and an answer file that asks for it without an
+  encrypted root is refused. The live medium logs in automatically; an installed machine shows the
+  login screen.
 - `apps` takes groups, not applications. An application id such as `app.scribus` matches no group
   and is dropped. If none of the names is a known group, the selection falls back to `essential`
   rather than failing the install over a spelling mistake.
-- There is no key for the administrator choice. An account installed from an answer file is
-  always in `wheel`.
 - `luks = 1` is honoured on the `reuse` plan as well. The wizard draws the checkbox on the erase
   plan only, but an answer file that sets `luks = 1` with `plan = reuse` encrypts the chosen root,
   destroying what was on it.
@@ -658,26 +766,32 @@ Things to watch for:
 No password is ever written to an answer file. `--save` and the Summary button both leave out
 `password`, `root_password` and `luks_passphrase`, and the file's header says so. Adding them
 yourself is how an unattended install gets credentials, and it puts a plain-text credential on
-whatever medium the file lives on.
+whatever medium the file lives on. The desktop's installer never writes a file: it hands its
+answers to `kinstall` on standard input.
 
-Set `password` for an unattended run. Nothing asks for one, and without it the account keeps the
-live medium's password entry, under the old name if you also renamed the account.
+Set `password` for an unattended run that makes an account. Nothing asks for one, and the answers
+check refuses an account with none.
 
 ### What an unattended run checks
 
-An unattended run skips the wizard, and with it every check the pages make: it does not refuse the
-boot medium, a read-only or too-small disk, an existing `kdos` volume group on another disk, a
-missing passphrase, a hostname or user name the Accounts page would reject, or a locked root with
-no administrator (see [Known
-gaps](../06-reference/known-gaps.md#an-unattended-install-skips-every-check-the-pages-make)). Loading
-the same file into the wizard with `kinstall --config` and stepping through the pages runs those
-checks. What an unattended run does check is what the Prepare step checks on every install: a disk is named and exists, the installer runs as root, the required tools are
-present (including `cryptsetup` for `luks = 1` and `lvm` for `lvm = 1`), the chosen filesystem's
-`mkfs` exists, and, on a machine booted in legacy BIOS mode, `limine` is present and a reused GPT
-disk has a BIOS boot partition. Check an answer file with `--dump plan` and a `--dry-run` before you trust it with a
-disk. `--dry-run` does not change what happens when an unattended run ends: with the default
-`reboot = 1`, `kinstall --dry-run --unattended` reboots the live machine once the rehearsal
-finishes, so rehearse with `reboot = 0` in the answer file.
+An unattended run skips the wizard, but not the answers check the pages share: an accent or desk
+that does not exist, a hostname, user name, full name or time zone the pages would reject, a
+missing or mismatched password or passphrase, a reuse plan with no ESP or root, an unlocked root
+with no root password, a locked root with no administrator, and automatic login without an
+encrypted root are refused before anything is written, in the wizard, the window and an unattended
+run alike. What it
+does not check is what only a page shows: it does not refuse the boot medium, a read-only or
+too-small disk, or an existing `kdos` volume group on another disk (see [Known
+gaps](../06-reference/known-gaps.md#an-unattended-install-skips-every-check-the-pages-make)).
+Loading the same file into the wizard with `kinstall --config` and stepping through the pages runs
+those checks. On every install the Prepare step then checks that a disk is named and exists, the
+installer runs as root, the required tools are present (including `cryptsetup` for `luks = 1` and
+`lvm` for `lvm = 1`), the chosen filesystem's `mkfs` exists, and, on a machine booted in legacy BIOS
+mode, `limine` is present and a reused GPT disk has a BIOS boot partition. Check an answer file with
+`--dump plan` and a `--dry-run` before you trust it with a disk. `--dry-run` does not change what
+happens when an unattended run ends: with the default `reboot = 1`, `kinstall --dry-run
+--unattended` reboots the live machine once the rehearsal finishes, so rehearse with `reboot = 0` in
+the answer file.
 
 Beyond that:
 
@@ -685,7 +799,8 @@ Beyond that:
   so a typo in either does not stop the install.
 - An unattended run always ends by itself, whether the install worked or failed. It shows the
   Install page for five seconds so a watcher can see what happened, then reboots or exits
-  according to `reboot`, under `--dry-run` as well.
+  according to `reboot`, under `--dry-run` as well. With `--events json` it draws nothing and
+  prints its progress instead.
 - With `reboot = 0` it exits with status 0 when the install worked and 1 when it failed. With
   `reboot = 1` it reboots either way, so set `reboot = 0` when a script needs the result.
 
@@ -705,13 +820,13 @@ shows what `/sys` reports: a disk it cannot open has its partition table shown a
 partitions carry no filesystem type, label or ESP mark.
 
 `--dump plan` probes the machine as the install does (the firmware and the disks, and the install
-size when the answers put an erased disk's root on LVM) and uses the same planner as the wizard, so
-its step list and skips are the real ones: choosing `reuse` skips the Partition step, the default
-accent skips the Theme step, and a medium with no catalogue skips the Packs step. It names the ESP,
-the root and the BIOS boot partition the install will use, or says the disk will start on UEFI
-only, and on LVM whether `root_a` takes half the group or all of it. It also prints the `mkfs`
-command and the root's `fstab` line the filesystem choice turns into, and the application groups,
-their route and their estimated size. It does not run the pages' checks, so it does not say
+size when the answers lay the erased disk out on LVM) and uses the same planner as the wizard, so
+its step list and skips are the real ones: choosing `reuse` skips the Partition and Slot B steps, a
+disk too small for two slots skips Slot B, and a medium with no catalogue skips the Packs step. It
+names the ESP, the root and the BIOS boot partition the install will use, or says the disk will
+start on UEFI only, and on LVM whether there are two slots and how large each is. It also prints the
+`mkfs` command and the root's `fstab` line the filesystem choice turns into, and the application
+groups, their route and their estimated size. It does not run the pages' checks, so it does not say
 whether the disk is large enough, is the boot medium or is read-only. No password appears in either
 dump; the plan says only whether the root account is locked.
 
@@ -727,38 +842,49 @@ machine when the rehearsal finishes.
 
 | Where | What |
 |---|---|
-| The ESP | Formatted FAT32 with the label `KDOS_EFI` (on the reuse plan, only when you asked for it). Limine: both EFI loaders, `EFI/BOOT/BOOTX64.EFI` and `EFI/BOOT/BOOTIA32.EFI`, the BIOS second stage `limine-bios.sys`, and the generated `limine.conf`, all at fixed paths. Slot A's kernel and initramfs in `EFI/kdos/a/`, the A/B boot state `EFI/kdos/bootstate`, memtest86+ as `EFI/kdos/memtest.efi`, and the menu's font and wallpaper (`EFI/kdos/font.bin`, `EFI/kdos/wallpaper.png`) where the medium has them |
+| The ESP | Formatted FAT32 with the label `KDOS_EFI` (on the reuse plan, only when you asked for it). Limine: both EFI loaders, `EFI/BOOT/BOOTX64.EFI` and `EFI/BOOT/BOOTIA32.EFI`, the BIOS second stage `limine-bios.sys`, and the generated `limine.conf`, all at fixed paths. Each slot's kernel and initramfs in `EFI/kdos/a/` and `EFI/kdos/b/`, the A/B boot state `EFI/kdos/bootstate`, memtest86+ as `EFI/kdos/memtest.efi`, and the menu's font and wallpaper (`EFI/kdos/font.bin`, `EFI/kdos/wallpaper.png`) where the medium has them |
 | The disk | Limine's BIOS boot code: its boot sector in the disk's first sector, and its second stage in the BIOS boot partition (on a dos partition table, in the gap after the boot sector) |
 | Firmware | A boot entry labelled `KDOS`, on a machine booted through UEFI |
-| Root | The system, copied from the live medium with `rsync` |
-| `/etc/fstab` | Prepended to, never replaced: the root, the ESP at `/boot/efi` (`umask=0077`), and the swap partition or `/swapfile`, above the shipped entries, which include the `/tmp` mount graphical applications depend on |
+| Root | The system, copied from the live medium with `rsync`; with two slots, slot B is a copy of slot A |
+| `/etc/fstab` | Prepended to, never replaced: the root, the ESP at `/boot/efi` (`umask=0077`), the shared `/home` and the bind of `/home/.kdos/packs` onto `/var/lib/kdos/packs` on the two-slot layout, and the swap volume, partition or `/swapfile`, above the shipped entries, which include the `/tmp` mount graphical applications depend on |
 | `/etc/hostname`, `/etc/hosts` | The hostname, and the `127.0.1.1` line that resolves it locally |
-| `/etc/keymap` | The console keymap |
+| `/etc/keymap`, `/etc/kdos/xkb.conf`, `/etc/xdg/kxkbrc` | The console keymap; the graphical layout, when one was named, for the login screen and System Settings |
 | `/etc/localtime`, `/etc/profile.d/20-timezone.sh` | The time zone, as a link and as `TZ` |
 | `/etc/modprobe.d/kdos-regdom.conf` | The zone's country, as the Wi-Fi regulatory domain |
-| `/etc/kdos/login.conf` | The `autologin` line, edited in place |
+| `/etc/sddm.conf.d/kde_settings.conf` | The `[Autologin]` group: the account, on an encrypted machine that asked for it; otherwise none, so the login screen is shown |
+| `/etc/kdos/autologin-xdg/kscreenlockerrc` | With automatic login and *Start the session locked*: the setting that starts that session behind the lock screen, read by an automatic login alone |
+| `/etc/plasma-setup-done` | Written by every install that made an account; left absent by an OEM install, which arms plasma-setup |
 | `/etc/inittab` | The serial console's `S0` line, with its automatic root login removed; every other line as shipped |
-| `/etc/skel`, the new home directory | The *Install KDOS* launcher entry removed from both; the accent regenerated in both when it is not the default |
-| `/etc/passwd`, `/etc/group`, `/etc/shadow` | The account, renamed and with its password hashed (SHA-512 `crypt`); in `wheel` only if you chose administrator; root locked or with its password |
+| `/etc/xdg/kdeglobals` | The global theme of the chosen accent, `org.kdos.<accent>.desktop`, which every new account's first login applies |
+| `/etc/xdg/kdosrc` | The desk the first login of every account lays out |
+| `/etc/kdos/accent`, `/etc/vtrgb` | The accent of the boot splash and the sixteen colours of the text consoles |
+| The `sddm` account's home | The login screen's colours, style and pointer for the chosen accent |
+| `/etc/passwd`, `/etc/group`, `/etc/shadow` | The account, renamed and with its password hashed (SHA-512 `crypt`); in `wheel` only if you chose administrator; root locked or with its password. On an OEM install, the live account removed |
 | `/etc/subuid`, `/etc/subgid` | The account's subordinate ID ranges, under its new name |
+| The new home directory | Filled from `/etc/skel`, as a new account's is |
 | `/etc/service.disabled/` | One flag file per service you turned off |
 | `/etc/resolv.conf` | Copied from the live system, so the installed machine resolves names on first boot |
-| `/swapfile` | The swap file, when you chose one |
-| `/var/lib/kdos/packs` | The pack store, with the `staging` directory an import goes through and the `mnt` directory packs are mounted under, when the Packs step runs |
+| `/swapfile` | The swap file, when you chose one on a one-slot layout |
+| `/var/lib/kdos/packs` | The pack store, with the `staging` directory an import goes through and the `mnt` directory packs are mounted under; on the two-slot layout it is `/home/.kdos/packs`, bound there |
 | `/var/lib/kdos/apps-pending` | The application groups your first login offers, on the "recorded" route |
 
 ### What is not copied
 
 The copy leaves out the contents of `/dev`, `/proc`, `/sys`, `/tmp`, `/run`, `/mnt` and `/media`
 (the directories themselves are created, `/tmp` with mode 1777), `/lost+found`, and the live
-container store when you unticked it. The live session's own record stays on the medium too: every
-file under `/var/log` and `/var/cache` (the directories are kept), the installer's own log among
-them, so the installed system's log and `last` start at its first boot; the shell and atuin history
-of `root` and `kdos`; root's caches; and the live account's caches other than the theme and `bat`
-caches the image ships. Two files are deliberately left out as well:
-`/var/lib/dbus/machine-id` and the SSH host keys in `/etc/ssh/`. Each installed machine makes its
-own: the machine ID on first boot, and the host keys the first time the SSH server starts; copied,
-every machine installed from one medium would share the same identity and the same host keys.
+container store when you unticked it. The live session stays on the medium too: every file under
+`/var/log` and `/var/cache` (the directories are kept), the installer's own log among them, so the
+installed system's log and `last` start at its first boot; root's shell and atuin history and its
+caches; and the whole live home, `/home/kdos`, apart from the container store when it is copied and
+the `bat` cache the image ships. The live home holds the desktop that ran the install: its panels,
+its wallet, its file index, the Welcome tour marked as seen. Carried over, the installed account
+would find the desk already laid out and the tour already shown, so the Accounts step fills the new
+home from `/etc/skel` instead. The **Install KDOS** entry and the live session's installer polkit
+rule are left out, so an installed system never offers to install itself over its own disk. Two
+files are deliberately left out as well: `/var/lib/dbus/machine-id` and the SSH host keys in
+`/etc/ssh/`. Each installed machine makes its own: the machine ID on first boot, and the host keys
+the first time the SSH server starts; copied, every machine installed from one medium would share
+the same identity and the same host keys.
 
 ### The ESP and the bootloader
 
@@ -805,16 +931,17 @@ countdown and choose another entry:
 | `KDOS (single user)` | Described in the menu as *A root shell for root's password, no desktop*. A verbose boot to single-user mode: the services start, then root's password is asked for on the console and a root shell opens, with no desktop and no other consoles. Leaving the shell continues to the normal system. See [Single-user and emergency mode](../03-architecture/boot-and-init.md#single-user-and-emergency-mode) |
 | `Memory Test (memtest86+)` | memtest86+. Shown on UEFI only |
 
-When a second slot exists, `kdos-bootctl` rewrites the menu and adds an entry for it. A machine that
-will not boot needs one of these entries, which is why the countdown is long enough to catch.
+With two slots, `kdos-bootctl` writes an entry for the other slot as well, so the previous version
+can be booted from the menu. A machine that will not boot needs one of these entries, which is why
+the countdown is long enough to catch.
 
 ## See also
 
 - [Getting started](getting-started.md): building and booting the image you are installing from
 - [How KDOS is built](../05-developer/how-kdos-is-built.md): how the live image the installer
   copies is produced from source
-- [kinstall](../04-programs/kinstall.md): how the installer works inside
-- [Administration](administration.md): services, users and storage after the install
+- [kinstall](../04-programs/kinstall.md): how the installer works inside, and both of its front ends
+- [Administration](administration.md): services, users, storage and updates after the install
 - [Boot and init](../03-architecture/boot-and-init.md): A/B slots, encryption and the boot path
 - [Applications](applications.md): installing applications after the install
 - [Known gaps](../06-reference/known-gaps.md): what has not been booted or is not supported

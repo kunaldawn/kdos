@@ -30,3 +30,7 @@ picard
 strawberry
 rhythmbox
 audacious-plugins
+
+audiotube
+juk
+kasts

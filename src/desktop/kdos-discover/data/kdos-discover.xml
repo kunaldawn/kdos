@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The two files KDOS's packs travel as. Discover opens both through
+     io.kdos.discover.packs.desktop, and KdosBackend reads them. -->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/vnd.kdos.ktar">
+    <comment>KDOS application set</comment>
+    <sub-class-of type="application/x-tar"/>
+    <generic-icon name="package-x-generic"/>
+    <glob pattern="*.ktar"/>
+  </mime-type>
+  <mime-type type="application/vnd.kdos.kpack">
+    <comment>KDOS pack</comment>
+    <generic-icon name="package-x-generic"/>
+    <glob pattern="*.kpack"/>
+  </mime-type>
+</mime-info>

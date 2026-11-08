@@ -1,0 +1,200 @@
+#!/bin/bash
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+#
+# ksvc — turnstile's backend on KDOS: a user's services are the scripts in
+# /etc/kdos/user-services, run under ksvc exactly as /etc/init.d's are, from
+# the user's first login to the user's last logout.
+#
+# turnstiled runs this as the user, with an action and its arguments
+# (turnstile's backend contract; its own backend/dinit is the reference):
+#
+#   run FIFO SRVDIR CONFDIR   at the first login, inside the `turnstiled` PAM
+#                             session (pam_limits, pam_elogind). What this
+#                             leaves running is the user's service manager.
+#   ready STRING              once run has written STRING to FIFO. The logins
+#                             wait until it exits.
+#   stop PID                  at the last logout, unless the user lingers.
+#                             PID is the service manager.
+#
+# THE SAME TABLE SHAPE AND THE SAME HELPER. Each NN_name.sh is run with
+# `start` in order, sourcing /etc/init.d/service_helper, and KSVC_RUN_DIR names
+# $XDG_RUNTIME_DIR/ksvc, so the helper's plain `ksvc supervise` puts the pid,
+# state and log files there instead of in /run. `service --user` reaches the
+# same table afterwards. A script disabled with `service --user disable NAME`
+# is skipped.
+#
+# READY BEFORE THE FIFO, AND NOT AFTER IT. Each script is asked `ready` before
+# the next one starts — 0 when it is up or has nothing to wait for, 75 while it
+# is coming up — so pipewire's socket exists before WirePlumber connects to it,
+# and the FIFO is written only after the last. turnstile holds the login until
+# `ready` exits, which here it does at once, so by then the session bus
+# answers at $XDG_RUNTIME_DIR/bus — the address turnstile exports into the
+# login's PAM environment only if the socket already exists — and
+# pipewire-pulse answers before startplasma-wayland runs. The waits are
+# bounded, READY_EACH per script and READY_ALL in all, well under
+# turnstiled.conf's login_timeout: a login whose manager has not reported by
+# then is ended by turnstiled, rundir and all.
+#
+# THE MANAGER IS A PROCESS THAT WAITS. Every service is watched by its own ksvc
+# supervisor, in a session of its own, so there is nothing for a manager to
+# do but exist: turnstile restarts it if it dies (run again, and every
+# `supervise` of a running name is a [SKIP]) and signals it at the last logout.
+# `stop` stops the services, the table backwards, and only then ends the
+# manager, because turnstile clears the runtime directory the moment the
+# manager is gone and a service still holding a socket in it would be left
+# with none.
+#
+# A SYSTEM ACCOUNT GETS A RUNTIME DIRECTORY AND NO SERVICES. The SDDM greeter
+# logs in as `sddm` through pam_turnstile, which is the only thing that makes
+# its /run/user/<uid> — its KWin will not start without one — and turnstiled
+# has one backend for every user. So below UID_MIN nothing is started and the
+# login is released at once; nobody at UID_MAX or above (nobody, 65534) runs
+# any either.
+#
+# EXCEPT THE FIRST-BOOT WIZARD'S ACCOUNT. plasma-setup is a system account,
+# made by /etc/init.d/62_plasma-setup.sh as upstream's sysusers.d makes it,
+# and SDDM logs it into a whole Plasma session to run the wizard. That
+# session needs the session bus at $XDG_RUNTIME_DIR/bus like any other —
+# kdos-session-wrapper refuses to start Plasma without it — so the accounts
+# named in SERVICE_ACCOUNTS get the user services whatever their uid.
+
+# KDOS_USER_SERVICES, KDOS_USER_UID_MIN and KDOS_USER_PROFILE move the table,
+# the account floor and the profile for the selftest fixture; turnstiled
+# starts this with none of them set.
+SERVICES=${KDOS_USER_SERVICES:-/etc/kdos/user-services}
+UID_MIN=${KDOS_USER_UID_MIN:-1000}
+SERVICE_ACCOUNTS="plasma-setup"
+PROFILE=${KDOS_USER_PROFILE:-/etc/profile}
+UID_MAX=65534
+READY_EACH=3
+READY_ALL=10
+
+# 0 when the account this runs as gets the user services.
+wants_services() {
+    _uid=$(id -u)
+    if [ "$_uid" -ge "$UID_MIN" ] && [ "$_uid" -lt "$UID_MAX" ]; then
+        return 0
+    fi
+    _name=$(id -un 2>/dev/null) || return 1
+    for _a in $SERVICE_ACCOUNTS; do
+        [ "$_name" = "$_a" ] && return 0
+    done
+    return 1
+}
+
+# The environment the services run in, for the user this runs as.
+user_env() {
+    _uid=$(id -u)
+    export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$_uid}"
+    export KSVC_RUN_DIR="$XDG_RUNTIME_DIR/ksvc"
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+    _off="${XDG_CONFIG_HOME:-$HOME/.config}/kdos/user-services.disabled"
+}
+
+# NN_<name>.sh -> <name>, the name `service --user disable` writes.
+script_name() {
+    _b=${1##*/}
+    _b=${_b#[0-9][0-9]_}
+    printf '%s' "${_b%.sh}"
+}
+
+enabled_scripts() {
+    for _s in "$SERVICES"/[0-9][0-9]_*.sh; do
+        [ -x "$_s" ] || continue
+        [ -e "$_off/$(script_name "$_s")" ] && continue
+        printf '%s\n' "$_s"
+    done
+}
+
+case "$1" in
+    run)
+        ;;
+    ready)
+        exit 0
+        ;;
+    stop)
+        if wants_services; then
+            # `stop` runs with turnstiled's environment, which is root's —
+            # /root and /run/user/0 when an administrator restarted it from a
+            # shell — so a home or runtime directory that is not this user's
+            # own is replaced before anything reads it: the home from the
+            # password file, the runtime directory by turnstile's path.
+            unset XDG_CONFIG_HOME KSVC_RUN_DIR
+            if [ -z "$HOME" ] || [ ! -O "$HOME" ]; then
+                HOME=$(awk -F: -v u="$_uid" '$3 == u { print $6; exit }' /etc/passwd)
+                export HOME
+            fi
+            if [ -n "$XDG_RUNTIME_DIR" ] && [ ! -O "$XDG_RUNTIME_DIR" ]; then
+                unset XDG_RUNTIME_DIR
+            fi
+            # shellcheck source=/dev/null
+            [ -r "$PROFILE" ] && . "$PROFILE" >/dev/null 2>&1
+            user_env
+            _log="$KSVC_RUN_DIR/kdos-user-services.log"
+            [ -d "$KSVC_RUN_DIR" ] || _log=/dev/null
+            # Every script, disabled or not: a service started before it was
+            # disabled is still running, and stopping one that is not is a
+            # no-op that says so.
+            for _s in $(printf '%s\n' "$SERVICES"/[0-9][0-9]_*.sh | sort -r); do
+                [ -x "$_s" ] && "$_s" stop
+            done >>"$_log" 2>&1
+        fi
+        kill -TERM "$2"
+        exit 0
+        ;;
+    *)
+        exit 32
+        ;;
+esac
+
+READY=$2
+if [ ! -p "$READY" ]; then
+    echo "ksvc backend: no readiness fifo '$READY'" >&2
+    exit 69
+fi
+shift $#
+
+if ! wants_services; then
+    printf 'none\0' > "$READY"
+    exec sleep infinity
+fi
+if [ -z "$HOME" ] || [ ! -d "$HOME" ]; then
+    echo "ksvc backend: no home directory '$HOME'" >&2
+    exit 70
+fi
+
+# The system profile and not the user's: PATH reaching /usr/local, the
+# toolkit variables, XDG_CONFIG_DIRS — what every daemon of the user's should
+# see whichever login started it. Its output is nobody's.
+# shellcheck source=/dev/null
+[ -r "$PROFILE" ] && . "$PROFILE" >/dev/null 2>&1
+user_env
+[ -d "$KSVC_RUN_DIR" ] || mkdir -m 0700 "$KSVC_RUN_DIR"
+_log="$KSVC_RUN_DIR/kdos-user-services.log"
+
+_all=$((EPOCHSECONDS + READY_ALL))
+for _s in $(enabled_scripts); do
+    "$_s" start >>"$_log" 2>&1
+    _until=$((EPOCHSECONDS + READY_EACH))
+    [ "$_until" -le "$_all" ] || _until=$_all
+    while :; do
+        "$_s" ready >/dev/null 2>&1
+        [ $? = 75 ] || break
+        if [ "$EPOCHSECONDS" -ge "$_until" ]; then
+            echo "[WARN] $(script_name "$_s"): not ready after waiting; the login goes on" >>"$_log"
+            break
+        fi
+        sleep 0.1
+    done
+done
+
+printf 'ksvc\0' > "$READY"
+exec sleep infinity

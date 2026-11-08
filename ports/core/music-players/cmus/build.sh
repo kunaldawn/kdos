@@ -10,6 +10,7 @@
 # ---------------------------------
 
 patch -p1 -i "$PORT_SRC/ffmpeg8.patch"
+patch -p1 -i "$PORT_SRC/mpris-basu.patch"
 ./configure \
 	prefix=/usr \
 	mandir=/usr/share/man \

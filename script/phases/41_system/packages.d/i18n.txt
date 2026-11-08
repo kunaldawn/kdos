@@ -42,3 +42,6 @@ opencc
 snowball
 utfcpp
 oniguruma
+
+libphonenumber
+liblangtag

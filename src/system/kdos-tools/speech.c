@@ -5,12 +5,19 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   `kdos speech` — the transcription models beyond the one the image carries
+ *   `kdos speech` — transcription and reading aloud, on this machine
  *
- *   kdos speech list            what there is, and which one is here
+ *   kdos speech transcribe [--notify] [--] FILE...   a .txt beside each file
+ *   kdos speech say [--voice NAME] [--] [TEXT...]    read TEXT, or stdin, aloud
+ *   kdos speech sync                                 Klipper's Read Aloud action
+ *   kdos speech list            the transcription models, and which are here
  *   kdos speech get base.en     fetch one into the user's own data directory
  *   kdos speech where           the directories searched, and the models in each
  *   kdos speech remove NAME     delete one
+ *
+ * EVERYTHING RUNS HERE AND NOTHING IS SENT ANYWHERE: whisper.cpp hears and
+ * Piper speaks, each from a model file on the disk. Dolphin's Transcribe
+ * action runs `transcribe`, and Klipper's Read Aloud action runs `say`.
  *
  * ONE MODEL SHIPS: base.en, from the whisper-model-base-en port, in
  * /usr/share/whisper.cpp/models. Every other one is a personal choice —
@@ -18,9 +25,9 @@
  * image carries the English default and this carries the way to get the
  * rest.
  *
- * IT WRITES TO THE USER'S DATA DIRECTORY AND NEVER TO /usr. `kdos-rec`
- * searches $KDOS_WHISPER_MODEL, then $XDG_DATA_HOME/whisper.cpp/models, then
- * /usr/share/whisper.cpp/models; this writes the second, which needs no
+ * IT WRITES TO THE USER'S DATA DIRECTORY AND NEVER TO /usr. A model is found
+ * at $KDOS_WHISPER_MODEL, then in $XDG_DATA_HOME/whisper.cpp/models, then in
+ * /usr/share/whisper.cpp/models; `get` writes the second, which needs no
  * privilege and is what a per-user choice should be. A model in the third is
  * a model somebody packaged.
  *
@@ -32,8 +39,8 @@
  * applies: see the security model on unsigned content.
  *
  * A NAME IS LOOKED UP IN THE TABLE AND NEVER INTERPOLATED INTO A URL. The
- * argument reaches this from a command line and, through kdos-rec, from a
- * button; a name pasted into a URL is a name that can name another host.
+ * argument reaches this from a command line and from a settings page; a name
+ * pasted into a URL is a name that can name another host.
  * ---------------------------------
  */
 
@@ -54,8 +61,7 @@
  */
 #define HF_BASE "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
 
-/* A ggml file starts `lmgg`. The same gate kdos-rec applies, applied here as
- * well: a checksum says the bytes arrived and the magic says they are a
+/* A ggml file starts `lmgg`. A checksum says the bytes arrived and the magic says they are a
  * model, and a download that passed one and failed the other is worth saying
  * out loud rather than leaving for the button to discover. */
 #define GGML_MAGIC "lmgg"
@@ -106,8 +112,8 @@ static const struct model *find_model(const char *name)
 }
 
 /*
- * $XDG_DATA_HOME/whisper.cpp/models, or $HOME/.local/share/... — kdos-rec's
- * second search path, spelled the same way it spells it. NOT the third:
+ * $XDG_DATA_HOME/whisper.cpp/models, or $HOME/.local/share/... — the second
+ * place a model is searched for. NOT the third:
  * /usr/share is root's and a model is a per-user choice. The third is only
  * read, so `list` and `where` report the model the image carries.
  */
@@ -199,8 +205,8 @@ static int cmd_where(void)
 		       "answer: no directory is searched behind it\n");
 		return is_ggml(env) ? 0 : 1;
 	}
-	/* In kdos-rec's order: any model in the first directory is used
-	 * before every model in the second. */
+	/* In search order: any model in the first directory is used before
+	 * every model in the second. */
 	const char *dirs[2] = { dir, SYSTEM_MODEL_DIR };
 
 	for (int d = 0; d < 2; d++) {
@@ -220,7 +226,7 @@ static int cmd_where(void)
 /*
  * THE FETCH. curl writes to a `.part` beside the destination and the rename
  * happens only after both checks pass, so an interrupted download is never a
- * file kdos-rec's gate has to reject — and a model directory never holds a
+ * file the magic check has to reject — and a model directory never holds a
  * truncated file under the name of a good one.
  */
 static int cmd_get(const char *name)
@@ -302,7 +308,7 @@ static int cmd_get(const char *name)
 		kb_die("cannot put it at %s: %s", dest, strerror(errno));
 	}
 	printf("==> %s\n", dest);
-	printf("    Transcribe in kdos-rec is live the next time it opens.\n");
+	printf("    `kdos speech transcribe` uses it from now on.\n");
 	return 0;
 }
 
@@ -324,27 +330,535 @@ static int cmd_remove(const char *name)
 	return 0;
 }
 
-static int usage(void)
+static int speech_usage(int rc);
+
+/* ── transcribe ────────────────────────────────────────────────────────── */
+
+/*
+ * The model to hear with, in search order: $KDOS_WHISPER_MODEL, then the
+ * person's directory, then the image's. Within one directory the largest
+ * catalogue model wins: a person who fetched a bigger one fetched it to use.
+ */
+static char *find_whisper(void)
 {
-	printf("usage: kdos speech <command>\n"
+	const char *env = getenv("KDOS_WHISPER_MODEL");
+	char *dirs[2] = { model_dir(), kb_strdup(SYSTEM_MODEL_DIR) };
+	char *hit = NULL;
+
+	if (env && *env && is_ggml(env)) {
+		free(dirs[0]);
+		free(dirs[1]);
+		return kb_strdup(env);
+	}
+	for (int d = 0; d < 2 && !hit; d++)
+		for (int i = NMODELS - 1; i >= 0 && !hit; i--) {
+			char *p = model_path_in(dirs[d], MODELS[i].name);
+
+			if (is_ggml(p))
+				hit = p;
+			else
+				free(p);
+		}
+	free(dirs[0]);
+	free(dirs[1]);
+	return hit;
+}
+
+/* FILE.txt, or FILE.2.txt, FILE.3.txt… — never a text a person already has.
+ * Returns the stem whisper-cli is given (it adds the .txt itself). */
+static char *text_stem(const char *file)
+{
+	char path[4096];
+
+	snprintf(path, sizeof(path), "%s.txt", file);
+	if (!kb_path_exists(path)) {
+		snprintf(path, sizeof(path), "%s", file);
+		return kb_strdup(path);
+	}
+	for (int n = 2; n < 1000; n++) {
+		snprintf(path, sizeof(path), "%s.%d.txt", file, n);
+		if (!kb_path_exists(path)) {
+			snprintf(path, sizeof(path), "%s.%d", file, n);
+			return kb_strdup(path);
+		}
+	}
+	return NULL;
+}
+
+/*
+ * One file: decoded by ffmpeg to the 16 kHz mono PCM whisper reads, into a
+ * private file in the runtime directory that is removed on every path out,
+ * then heard. Returns the text file's path, or NULL with `why` filled.
+ */
+static char *transcribe_one(const char *model, const char *file, char *why,
+			    size_t n)
+{
+	char wav[512], *stem, *out = NULL;
+	KbArgv f = { 0 }, w = { 0 };
+	int fd;
+
+	if (!kb_path_exists(file)) {
+		snprintf(why, n, "%s: no such file", file);
+		return NULL;
+	}
+	if (!(stem = text_stem(file))) {
+		snprintf(why, n, "%s: no free name for its text", file);
+		return NULL;
+	}
+	snprintf(wav, sizeof(wav), "%s/kdos-transcribe.XXXXXX.wav",
+		 kb_runtime_dir());
+	fd = mkstemps(wav, 4);
+	if (fd < 0) {
+		snprintf(why, n, "%.300s: %s", wav, strerror(errno));
+		free(stem);
+		return NULL;
+	}
+	close(fd);
+	kb_argv_add(&f, "ffmpeg");
+	kb_argv_add(&f, "-nostdin");
+	kb_argv_add(&f, "-v");
+	kb_argv_add(&f, "error");
+	kb_argv_add(&f, "-y");
+	kb_argv_add(&f, "-i");
+	kb_argv_add(&f, file);
+	kb_argv_add(&f, "-ar");
+	kb_argv_add(&f, "16000");
+	kb_argv_add(&f, "-ac");
+	kb_argv_add(&f, "1");
+	kb_argv_add(&f, "-c:a");
+	kb_argv_add(&f, "pcm_s16le");
+	kb_argv_add(&f, wav);
+	kb_argv_end(&f);
+	if (kb_run(&f) != 0) {
+		snprintf(why, n, "%s: ffmpeg could not decode it",
+			 kb_basename(file));
+		goto done;
+	}
+	kb_argv_add(&w, "whisper-cli");
+	kb_argv_add(&w, "-m");
+	kb_argv_add(&w, model);
+	kb_argv_add(&w, "-np");
+	kb_argv_add(&w, "-otxt");
+	kb_argv_add(&w, "-of");
+	kb_argv_add(&w, stem);
+	kb_argv_add(&w, "-f");
+	kb_argv_add(&w, wav);
+	kb_argv_end(&w);
+	if (kb_run(&w) != 0) {
+		snprintf(why, n, "%s: whisper-cli failed", kb_basename(file));
+		goto done;
+	}
+	out = kb_calloc(strlen(stem) + 5, 1);
+	sprintf(out, "%s.txt", stem);
+done:
+	unlink(wav);
+	free(stem);
+	return out;
+}
+
+static int cmd_transcribe(int argc, char **argv)
+{
+	int notify = 0, first = 0, failed = 0, done = 0;
+	char *model;
+	KbBuf names = { 0 }, errs = { 0 };
+
+	for (; first < argc; first++) {
+		if (!strcmp(argv[first], "--notify"))
+			notify = 1;
+		else if (!strcmp(argv[first], "--")) {
+			first++;
+			break;
+		} else if (argv[first][0] == '-')
+			return speech_usage(2);
+		else
+			break;
+	}
+	if (first >= argc)
+		return speech_usage(2);
+	if (!(model = find_whisper())) {
+		fprintf(stderr, "kdos speech: no transcription model — "
+				"kdos speech get %s\n", DEFAULT_MODEL);
+		if (notify)
+			kb_notify("kdos", "Transcription failed",
+				  "no transcription model is installed");
+		return 1;
+	}
+	for (int i = first; i < argc; i++) {
+		char why[512] = "", *txt = transcribe_one(model, argv[i], why,
+							  sizeof(why));
+
+		if (txt) {
+			printf("%s\n", txt);
+			kb_buf_printf(&names, "%s%s", done ? ", " : "",
+				      kb_basename(txt));
+			done++;
+			free(txt);
+		} else {
+			fprintf(stderr, "kdos speech: %s\n", why);
+			kb_buf_printf(&errs, "%s%s", failed ? "; " : "", why);
+			failed++;
+		}
+	}
+	if (notify) {
+		if (failed)
+			kb_notify("kdos", "Transcription failed", errs.p);
+		else
+			kb_notify("kdos", "Transcription finished", names.p);
+	}
+	kb_buf_free(&names);
+	kb_buf_free(&errs);
+	free(model);
+	return failed ? 1 : 0;
+}
+
+/* ── say ───────────────────────────────────────────────────────────────── */
+
+#define SYSTEM_VOICE_DIR "/usr/share/piper/voices"
+
+/* A voice is <name>.onnx with its <name>.onnx.json beside it; the person's
+ * own directory first, then the image's. */
+static char *voice_dir(void)
+{
+	return kdt_data_home("piper/voices");
+}
+
+static char *find_voice(const char *want)
+{
+	char *dirs[2] = { voice_dir(), kb_strdup(SYSTEM_VOICE_DIR) };
+	char *hit = NULL;
+
+	for (int d = 0; d < 2 && !hit; d++) {
+		int n = 0;
+		char **v = kb_listdir(dirs[d], &n);
+
+		for (int i = 0; i < n && !hit; i++) {
+			size_t l = strlen(v[i]);
+			char *p, *js;
+
+			if (l < 6 || strcmp(v[i] + l - 5, ".onnx"))
+				continue;
+			if (want && (strncmp(v[i], want, l - 5) ||
+				     strlen(want) != l - 5))
+				continue;
+			p = kb_path_join(dirs[d], v[i]);
+			js = kb_calloc(strlen(p) + 6, 1);
+			sprintf(js, "%s.json", p);
+			if (kb_path_exists(js))
+				hit = p;
+			else
+				free(p);
+			free(js);
+		}
+		kb_strv_free(v);
+	}
+	free(dirs[0]);
+	free(dirs[1]);
+	return hit;
+}
+
+static int cmd_say(int argc, char **argv)
+{
+	const char *want = NULL;
+	char *voice, wav[512];
+	KbBuf text = { 0 };
+	KbArgv p = { 0 }, w = { 0 };
+	int i = 0, fd, rc = 1;
+
+	for (; i < argc; i++) {
+		if (!strcmp(argv[i], "--voice") && i + 1 < argc)
+			want = argv[++i];
+		else if (!strcmp(argv[i], "--")) {
+			i++;
+			break;
+		} else if (argv[i][0] == '-')
+			return speech_usage(2);
+		else
+			break;
+	}
+	if (want && (!*want || strchr(want, '/')))
+		return speech_usage(2);
+	if (!(voice = find_voice(want))) {
+		fprintf(stderr, "kdos speech: %s — a voice is <name>.onnx with "
+				"its .onnx.json, in %s or %s\n",
+			want ? "no such voice" : "no voice is installed",
+			"~/.local/share/piper/voices", SYSTEM_VOICE_DIR);
+		return 1;
+	}
+	for (int k = i; k < argc; k++)
+		kb_buf_printf(&text, "%s%s", k > i ? " " : "", argv[k]);
+	if (i >= argc) {
+		char buf[4096];
+		size_t got;
+
+		while ((got = fread(buf, 1, sizeof(buf), stdin)) > 0)
+			kb_buf_add(&text, buf, got);
+	}
+	if (!text.n) {
+		free(voice);
+		kb_buf_free(&text);
+		return 0;
+	}
+	snprintf(wav, sizeof(wav), "%s/kdos-say.XXXXXX.wav", kb_runtime_dir());
+	if ((fd = mkstemps(wav, 4)) < 0) {
+		fprintf(stderr, "kdos speech: %s: %s\n", wav, strerror(errno));
+		goto out;
+	}
+	close(fd);
+	/* The text goes in on stdin, never in an argument: a clipboard can
+	 * hold a password. */
+	kb_argv_add(&p, "piper");
+	kb_argv_add(&p, "-m");
+	kb_argv_add(&p, voice);
+	kb_argv_add(&p, "-f");
+	kb_argv_add(&p, wav);
+	kb_argv_end(&p);
+	if (kb_run_feed(&p, text.p, text.n) != 0) {
+		fprintf(stderr, "kdos speech: piper could not speak with %s\n",
+			kb_basename(voice));
+		goto out;
+	}
+	kb_argv_add(&w, "pw-play");
+	kb_argv_add(&w, wav);
+	kb_argv_end(&w);
+	rc = kb_run(&w) == 0 ? 0 : 1;
+	if (rc)
+		fprintf(stderr, "kdos speech: pw-play could not play it\n");
+out:
+	unlink(wav);
+	free(voice);
+	kb_buf_free(&text);
+	return rc;
+}
+
+/* ── sync: Klipper's Read Aloud action ─────────────────────────────────── */
+
+/*
+ * KLIPPER HAS NO PER-ACTION CONDITION, so the action exists only while a
+ * voice does: added when one is installed, removed — exactly that action,
+ * found by its description and command — when the last one goes. Every
+ * other action is the person's and is not touched; one that sat after ours
+ * moves down a place, which is how Klipper itself numbers them.
+ *
+ * Written through kwriteconfig6, because klipperrc is a file KConfig writes
+ * whole; Klipper reads it when the clipboard applet next starts.
+ */
+#define RA_DESC "Read Aloud"
+#define RA_CMD "kdos speech say -- %s"
+
+typedef struct {
+	char *group, *key, *val;
+} KEnt;
+
+/* Every key of the person's klipperrc, raw, in file order. */
+static KEnt *klipper_read(int *n)
+{
+	char *p = kdt_cfg_home("klipperrc"), *data = kb_read_all(p, NULL);
+	char group[256] = "";
+	KEnt *e = NULL;
+	int cap = 0;
+
+	free(p);
+	*n = 0;
+	for (char *l = data, *next; l && *l; l = next) {
+		char *nl = strchr(l, '\n'), *eq;
+
+		next = nl ? nl + 1 : NULL;
+		if (nl)
+			*nl = '\0';
+		if (l[0] == '[') {
+			char *end = strrchr(l, ']');
+
+			if (end) {
+				*end = '\0';
+				snprintf(group, sizeof(group), "%s", l + 1);
+			}
+			continue;
+		}
+		if (!*group || l[0] == '#' || !(eq = strchr(l, '=')))
+			continue;
+		*eq = '\0';
+		if (*n == cap) {
+			cap = cap ? cap * 2 : 32;
+			e = kb_realloc(e, (size_t)cap * sizeof(*e));
+		}
+		e[*n].group = kb_strdup(group);
+		e[*n].key = kb_strdup(l);
+		e[*n].val = kb_strdup(eq + 1);
+		(*n)++;
+	}
+	free(data);
+	return e;
+}
+
+static const char *kent(KEnt *e, int n, const char *group, const char *key)
+{
+	for (int i = 0; i < n; i++)
+		if (!strcmp(e[i].group, group) && !strcmp(e[i].key, key))
+			return e[i].val;
+	return NULL;
+}
+
+/* A key spelled with a flag (`Commandline[$e]`) is written back as the key
+ * KConfig reads it as. */
+static void bare_key(const char *k, char *out, size_t n)
+{
+	snprintf(out, n, "%s", k);
+	out[strcspn(out, "[")] = '\0';
+}
+
+/* Is Action_<i> ours? */
+static int ours(KEnt *e, int n, int i)
+{
+	char g[64];
+	const char *d, *c;
+
+	snprintf(g, sizeof(g), "Action_%d", i);
+	d = kent(e, n, g, "Description");
+	snprintf(g, sizeof(g), "Action_%d/Command_0", i);
+	c = kent(e, n, g, "Commandline[$e]");
+	if (!c)
+		c = kent(e, n, g, "Commandline");
+	return d && c && !strcmp(d, RA_DESC) && !strcmp(c, RA_CMD);
+}
+
+static int set(const char *g, const char *k, const char *v)
+{
+	return kdt_kcfg_set("klipperrc", g, k, v, 0);
+}
+
+/* Every key of `from` (and its commands) written into `to`, raw values
+ * unescaped for kwriteconfig6 to escape again. */
+static int move_action(KEnt *e, int n, int from, int to)
+{
+	char fg[64], tg[96], key[128];
+	int rc = 0;
+
+	snprintf(fg, sizeof(fg), "Action_%d", from);
+	for (int i = 0; i < n; i++) {
+		const char *g = e[i].group;
+		size_t fl = strlen(fg);
+		char *v;
+
+		if (strncmp(g, fg, fl) || (g[fl] && g[fl] != '/'))
+			continue;
+		snprintf(tg, sizeof(tg), "Action_%d%s", to, g + fl);
+		bare_key(e[i].key, key, sizeof(key));
+		v = kdt_kcfg_unescape(e[i].val);
+		rc |= set(tg, key, v);
+		free(v);
+	}
+	return rc;
+}
+
+static int drop_action(KEnt *e, int n, int idx)
+{
+	char g[64], key[128];
+	int rc = 0;
+
+	snprintf(g, sizeof(g), "Action_%d", idx);
+	for (int i = 0; i < n; i++) {
+		size_t gl = strlen(g);
+
+		if (strncmp(e[i].group, g, gl) ||
+		    (e[i].group[gl] && e[i].group[gl] != '/'))
+			continue;
+		bare_key(e[i].key, key, sizeof(key));
+		rc |= set(e[i].group, key, NULL);
+	}
+	return rc;
+}
+
+static int cmd_sync(void)
+{
+	char *voice = find_voice(NULL);
+	int n = 0, count, at = -1, rc = 0;
+	KEnt *e = klipper_read(&n);
+	const char *cs = kent(e, n, "General", "Number of Actions");
+	char num[16], g[64];
+
+	count = cs ? atoi(cs) : 0;
+	for (int i = 0; i < count && at < 0; i++)
+		if (ours(e, n, i))
+			at = i;
+
+	if (voice && at < 0) {
+		snprintf(g, sizeof(g), "Action_%d", count);
+		rc |= set(g, "Automatic", "false");
+		rc |= set(g, "Description", RA_DESC);
+		rc |= set(g, "Number of commands", "1");
+		rc |= set(g, "Regexp", "(?s).+");
+		snprintf(g, sizeof(g), "Action_%d/Command_0", count);
+		rc |= set(g, "Commandline", RA_CMD);
+		rc |= set(g, "Description", RA_DESC);
+		rc |= set(g, "Enabled", "true");
+		rc |= set(g, "Icon", "audio-speakers-symbolic");
+		rc |= set(g, "Output", "0");
+		snprintf(num, sizeof(num), "%d", count + 1);
+		rc |= set("General", "Number of Actions", num);
+		if (!rc)
+			printf("Klipper offers Read Aloud\n");
+	} else if (!voice && at >= 0) {
+		for (int i = at + 1; i < count; i++) {
+			rc |= drop_action(e, n, i - 1);
+			rc |= move_action(e, n, i, i - 1);
+		}
+		rc |= drop_action(e, n, count - 1);
+		snprintf(num, sizeof(num), "%d", count - 1);
+		rc |= set("General", "Number of Actions", num);
+		if (!rc)
+			printf("Klipper no longer offers Read Aloud: no voice "
+			       "is installed\n");
+	}
+	for (int i = 0; i < n; i++) {
+		free(e[i].group);
+		free(e[i].key);
+		free(e[i].val);
+	}
+	free(e);
+	free(voice);
+	if (rc) {
+		fprintf(stderr, "kdos speech: kwriteconfig6 could not write "
+				"klipperrc\n");
+		return 1;
+	}
+	return 0;
+}
+
+/* ── the verb ──────────────────────────────────────────────────────────── */
+
+static int speech_usage(int rc)
+{
+	FILE *o = rc ? stderr : stdout;
+
+	fprintf(o,
+	       "usage: kdos speech <command>\n"
 	       "\n"
-	       "  list             every model this knows, and which are here\n"
+	       "  transcribe [--notify] [--] FILE...   FILE.txt beside each\n"
+	       "  say [--voice NAME] [--] [TEXT...]    read aloud (stdin with"
+	       " no TEXT)\n"
+	       "  sync             Klipper's Read Aloud action, while a voice"
+	       " exists\n"
+	       "  list             every transcription model, and which are"
+	       " here\n"
 	       "  get NAME         download one into your own data directory\n"
 	       "  where            the directories searched, and what is in each\n"
 	       "  remove NAME      delete one\n"
 	       "\n"
 	       "KDOS ships %s in " SYSTEM_MODEL_DIR ", which\n"
-	       "kdos-rec's Transcribe uses when none of yours is here.\n"
-	       "Any other model is one `get` away:\n"
-	       "\n"
-	       "  kdos speech get small.en-q5_1\n", DEFAULT_MODEL);
-	return 0;
+	       "transcribe uses when none of yours is here.\n", DEFAULT_MODEL);
+	return rc;
 }
 
 int kdt_speech(int argc, char **argv)
 {
 	const char *cmd = argc > 0 ? argv[0] : "list";
 
+	if (!strcmp(cmd, "transcribe"))
+		return cmd_transcribe(argc - 1, argv + 1);
+	if (!strcmp(cmd, "say"))
+		return cmd_say(argc - 1, argv + 1);
+	if (!strcmp(cmd, "sync") && argc == 1)
+		return cmd_sync();
 	if (!strcmp(cmd, "list"))
 		return cmd_list();
 	if (!strcmp(cmd, "where"))
@@ -354,8 +868,7 @@ int kdt_speech(int argc, char **argv)
 	if (!strcmp(cmd, "remove") && argc > 1)
 		return cmd_remove(argv[1]);
 	if (!strcmp(cmd, "help") || !strcmp(cmd, "-h") || !strcmp(cmd, "--help"))
-		return usage();
+		return speech_usage(0);
 	fprintf(stderr, "kdos speech: unknown command '%s'\n", cmd);
-	usage();
-	return 1;
+	return speech_usage(2);
 }

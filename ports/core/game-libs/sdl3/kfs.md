@@ -25,7 +25,7 @@ PipeWire, PulseAudio and JACK, the last three all served by [pipewire](#port-pip
   Fribidi and libthai support, which upstream ties to the X11 driver, is off too.
 - `-DSDL_KMSDRM=OFF` — Builds no KMS/DRM video driver, the one that draws straight to the display
   with no compositor. Such a program would take the card and the input devices from the running
-  compositor; without the driver, an SDL program started outside `kdos-comp` exits with "No
+  compositor; without the driver, an SDL program started outside KWin exits with "No
   available video device".
 - `-DSDL_WAYLAND=ON` — The Wayland video driver, the only one built.
 - `-DSDL_WAYLAND_LIBDECOR=ON` — Draws a window's title bar and borders itself, through

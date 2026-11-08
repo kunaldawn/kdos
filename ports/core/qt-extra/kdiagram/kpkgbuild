@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdiagram
+version     = 3.0.1
+release     = 1
+source      = https://download.kde.org/stable/$name/$version/$name-$version.tar.xz
+sha256      = 4659b0c2cd9db18143f5abd9c806091c3aab6abc1a956bbf82815ab3d3189c6d  kdiagram-3.0.1.tar.xz
+description = KDE charting widgets: KChart for business charts and KGantt for Gantt diagrams
+homepage    = https://invent.kde.org/graphics/kdiagram
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg

@@ -6,7 +6,10 @@
 # ~/.config/gtk-3.0/settings.ini.
 #
 # These are DEFAULTS, not settings: a value a person sets with `gsettings set`
-# lives in their dconf database and wins over this file.
+# lives in their dconf database and wins over this file. In a Plasma session
+# kde-gtk-config's kded module writes every one of these keys into that
+# database from the KDE settings, so this file answers only before the first
+# session, and for a GTK program started outside one.
 #
 # An override takes effect only once glib-compile-schemas has read it into
 # gschemas.compiled. kpkg's schemas trigger rebuilds that index whenever an
@@ -14,18 +17,27 @@
 # rebuilds it once more, so a change here reaches an image without a schema
 # package being reinstalled.
 #
-# Every value matches what xdg-desktop-portal-kdos answers for the same key.
-# `KDOS` is the link `kdos theme` points at the accent in force; an application
-# that reads it here does not restyle on an accent switch, which only the
-# portal announces. The two fonts are the faces fontconfig puts first for
-# `sans-serif` and `monospace` (noto-fonts' 56-noto-preferred.conf), and the
-# same names are in `kdos theme`'s kdeglobals and qt5ct/qt6ct files.
+# Every value is what kde-gtk-config writes for the default look, bone: the
+# Breeze GTK theme, which colours itself from the KDE scheme, the KDOS icons,
+# Breeze's cursor, and the two faces kdeglobals names, which fontconfig also
+# puts first for `sans-serif` and `monospace`. Bone is dark, so the colour
+# scheme preference is dark. Font rendering needs no line: the schema's own
+# defaults, greyscale antialiasing with slight hinting, are the rendering
+# kdeglobals names.
+#
+# This override is the only GTK default KDOS ships. GTK reads every
+# gtk-3.0/settings.ini and gtk-4.0/settings.ini along /etc and
+# XDG_CONFIG_DIRS in list order with the LAST one winning, so a settings.ini
+# in /usr/share/kdos/xdg would outrank the administrator's in /etc; and on
+# Wayland GTK takes these keys from GSettings, which this file seeds, before
+# any settings.ini.
 
 [org.gnome.desktop.interface]
-gtk-theme='KDOS'
+gtk-theme='Breeze'
 icon-theme='KDOS'
-cursor-theme='KDOS-cursors'
+cursor-theme='breeze_cursors'
 cursor-size=24
 color-scheme='prefer-dark'
 font-name='Noto Sans 10'
-monospace-font-name='Noto Sans Mono 10'
+document-font-name='Noto Sans 10'
+monospace-font-name='JetBrains Mono 10'

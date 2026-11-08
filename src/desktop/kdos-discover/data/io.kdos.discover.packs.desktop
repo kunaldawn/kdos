@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Discover
+GenericName=Install a KDOS pack
+Comment=Install the applications a .ktar set or a .kpack pack carries
+Exec=plasma-discover %F
+Icon=plasmadiscover
+NoDisplay=true
+MimeType=application/vnd.kdos.ktar;application/vnd.kdos.kpack;
+X-KDE-AliasFor=org.kde.discover

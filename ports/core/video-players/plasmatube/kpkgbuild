@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = plasmatube
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 1c950892b09098040fd03d60d13a029947d647d662d3489bfdee6f2ef30bf16e  plasmatube-26.08.2.tar.xz
+description = Video client — watch YouTube through Invidious or Piped, and PeerTube, played by mpv
+homepage    = https://apps.kde.org/plasmatube/
+license     = GPL-3.0-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.0-or-later AND LGPL-2.1-or-later AND CC-BY-SA-4.0 AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtsvg kcoreaddons kconfig kirigami ki18n kirigami-addons kdbusaddons kwindowsystem kitemmodels kdeclarative knotifications purpose mpvqt qtkeychain mpv yt-dlp

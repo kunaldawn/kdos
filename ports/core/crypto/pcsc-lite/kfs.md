@@ -18,10 +18,10 @@ go through udev; see [Services](../../../../docs/kdos/02-user-guide/administrati
   alternative, and the two cannot both be on.
 - `-Dpolkit=true` — Ask polkit whether a client may use PC/SC and each card. pcscd then refuses
   any client that [polkit](#port-polkit) does not grant `org.debian.pcsc-lite.access_pcsc` and
-  `org.debian.pcsc-lite.access_card`; KDOS grants both to `wheel` in
-  `/etc/polkit-1/rules.d/50-kdos.rules`, so a user outside `wheel` reaches no reader. The two
-  actions are in
-  [What is granted instead](../../../../docs/kdos/03-architecture/security-model.md#what-is-granted-instead-50-kdosrules).
+  `org.debian.pcsc-lite.access_card`; upstream's policy grants both to the active local session,
+  so the person at the machine reaches a reader and a login from elsewhere does not, and
+  `/etc/polkit-1/rules.d/50-kdos.rules` leaves them at that (see
+  [What `50-kdos.rules` changes](../../../../docs/kdos/03-architecture/security-model.md#what-50-kdosrules-changes)).
 - `-Dusb=true`, `-Dserial=true` — Support USB readers, and serial readers configured by files in
   `/etc/reader.conf.d`.
 - `-Dfilter_names=true` — Honour `PCSCLITE_FILTER_IGNORE_READER_NAMES` and

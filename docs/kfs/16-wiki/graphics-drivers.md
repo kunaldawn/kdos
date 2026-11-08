@@ -4,8 +4,8 @@ This page covers the graphics stack of a KDOS machine: which kernel driver drive
 [Mesa]{.idx} drivers above it for OpenGL, [Vulkan]{.idx}, video decoding and OpenCL, the [firmware]{.idx} some
 GPUs need before they start, and how to tell what a machine is actually using. It also covers
 choosing the second GPU of a laptop that has two. Everything here is the same on the live medium
-and on an installed system. The compositor's own use of the GPU, and why it switches its shader off
-on software rendering, is in [The phosphor pass](../../kdos/04-programs/kdos-comp.md#the-phosphor-pass);
+and on an installed system. KWin's own use of the GPU, and why Phosphor mode refuses software
+rendering, is in [Phosphor mode](../../kdos/04-programs/kwin.md#phosphor-mode);
 the video-decoding drivers per GPU are tabled in
 [Media, colour and time](../../kdos/02-user-guide/administration.md#media-colour-and-time).
 
@@ -131,17 +131,15 @@ A value you set yourself, empty included, is kept.
 
 ### Checking that the desktop is accelerated
 
-1. Read the compositor's log for the phosphor pass:
+1. Ask KWin which renderer it uses:
 
    ```bash
-   grep 'crt:' "$XDG_RUNTIME_DIR/kdos-comp.log"
+   qdbus6 org.kde.KWin /KWin supportInformation | grep -i -A3 'OpenGL'
    ```
 
-   `crt: on — intensity …` means the compositor runs on the GPU. `crt: off — this is not the
-   GLES2 renderer` means it fell back to software rendering, and `crt: off — the GL renderer is
-   llvmpipe` means it runs GLES2 on Mesa's software rasteriser because no hardware driver took
-   the GPU. `crt: off (crt = 0)` says only that the pass is turned off in `comp.conf`, and the
-   renderer is then not checked at all.
+   An `OpenGL renderer string` naming the GPU means KWin composites on it; `llvmpipe` means Mesa's
+   software rasteriser, because no hardware driver took the GPU. System Settings → **About this
+   System** shows the same as **Graphics Processor**.
 2. Ask EGL which driver answers: `eglinfo -B`.
 3. Ask Vulkan: `vulkaninfo --summary`. A list holding only `llvmpipe` means no hardware Vulkan
    driver loaded. `vkcube` draws a spinning cube in a window.
@@ -173,9 +171,8 @@ fault from a fault in the program.
 
 ### Watching the GPU
 
-- `kdos-res` has a GPU page: utilisation where the driver publishes it (`amdgpu`), engine time
-  otherwise, with memory, clock, temperature and power where the driver gives them; see
-  [GPU](../../kdos/04-programs/kdos-res.md#gpu).
+- System Monitor shows the GPU's utilisation, memory, clock, temperature and power where the driver
+  publishes them; see [System Monitor](../../kdos/04-programs/plasma-shell.md#system-monitor).
 - `nvtop` shows the same per process, in a terminal.
 - `GALLIUM_HUD=fps <program>` draws Mesa's own overlay over a GL client on a Gallium driver;
   `GALLIUM_HUD=help <program>` lists what it can show. See
@@ -183,9 +180,9 @@ fault from a fault in the program.
 
 ## Tips
 
-- In a virtual machine with plain graphics the compositor runs on software rendering and the
-  phosphor pass is off. That is expected; the [rig](../../kdos/05-developer/testing.md) photographs
-  are taken that way. The checks above behave differently there: `eglinfo -B` and `vulkaninfo`
+- In a virtual machine with plain graphics KWin runs on software rendering and Phosphor mode is
+  unavailable. That is expected; the [rig](../../kdos/05-developer/testing.md) photographs are
+  taken that way unless it is started with `--gl`. The checks above behave differently there: `eglinfo -B` and `vulkaninfo`
   crash with a segmentation fault in the desktop session, `vainfo` loads
   `virtio_gpu_drv_video.so` and stops at `vaInitialize failed with error code 2`, and `nvtop` says
   `No GPU to monitor.`. `LIBGL_ALWAYS_SOFTWARE=true eglinfo -B` and
@@ -199,8 +196,7 @@ fault from a fault in the program.
 
 ## Troubleshooting
 
-**The desktop is slow and `kdos-comp.log` says the pass is off because this is not GLES2, or
-because the GL renderer is `llvmpipe`.** The compositor found no hardware renderer.
+**The desktop is slow, and KWin's renderer is `llvmpipe`.** KWin found no hardware renderer.
 
 1. Run the steps in [Finding which driver a GPU uses](#finding-which-driver-a-gpu-uses). A GPU
    with no `Kernel driver in use:` line was not claimed.
@@ -236,19 +232,19 @@ GPU is `[SKIP] switcheroo-control: fewer than two GPUs`.
 - [Broad hardware support is not a goal](../../kdos/06-reference/known-gaps.md#broad-hardware-support-is-not-a-goal)
 - [`btop`'s GPU panel is empty on Intel graphics unless btop runs as root](../../kdos/06-reference/known-gaps.md#btops-gpu-panel-is-empty-on-intel-graphics-unless-btop-runs-as-root)
 - [Intel Quick Sync through oneVPL has no runtime](../../kdos/06-reference/known-gaps.md#intel-quick-sync-through-onevpl-has-no-runtime)
-- [The phosphor shader is not in any rig photograph](../../kdos/06-reference/known-gaps.md#the-phosphor-shader-is-not-in-any-rig-photograph)
 - [`kdos doctor` cannot check hardware a machine does not have](../../kdos/06-reference/known-gaps.md#kdos-doctor-cannot-check-hardware-a-machine-does-not-have)
 - [Features whose library has no port](../../kdos/06-reference/known-gaps.md#features-whose-library-has-no-port):
   VDPAU, CUDA and NVENC among them
 
 ## See also
 
-- [The phosphor pass](../../kdos/04-programs/kdos-comp.md#the-phosphor-pass) and
-  [Debugging](../../kdos/04-programs/kdos-comp.md#debugging): the compositor's renderer and its log
+- [Phosphor mode](../../kdos/04-programs/kwin.md#phosphor-mode) and
+  [Debugging](../../kdos/04-programs/kwin.md#debugging): KWin's renderer and its log
 - [Media, colour and time](../../kdos/02-user-guide/administration.md#media-colour-and-time):
   hardware video decoding and OpenCL
 - [Firmware](../../kdos/02-user-guide/administration.md#firmware)
-- [GPU](../../kdos/04-programs/kdos-res.md#gpu): what the resource monitor reads
+- [System Monitor](../../kdos/04-programs/plasma-shell.md#system-monitor): the sensors System
+  Monitor reads
 - [kdos doctor](../../kdos/04-programs/kdos-command.md#kdos-doctor)
 - [Microcode and firmware](microcode-and-firmware.md): the firmware a GPU driver loads
 - [Displays and scaling](displays-and-scaling.md): outputs, modes and scale
@@ -257,4 +253,4 @@ GPU is `[SKIP] switcheroo-control: fewer than two GPUs`.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 400.* Previous: [399. Displays and scaling](displays-and-scaling.md) · [Contents](../README.md) · Next: [401. Power management](power-management.md)
+*Part XVI. System administration, chapter 424.* Previous: [423. Displays and scaling](displays-and-scaling.md) · [Contents](../README.md) · Next: [425. Power management](power-management.md)

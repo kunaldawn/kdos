@@ -9,11 +9,12 @@
 # ---------------------------------
 
 name        = libksysguard
-version     = 6.7.5
+version     = 6.8.2
 release     = 1
 source      = https://download.kde.org/stable/plasma/$version/libksysguard-$version.tar.xz
-sha256      = 9069bcf3fe4e491ea774d0d70eb17f99b567299871045a38543fcabcdb56dfc4  libksysguard-6.7.5.tar.xz
-description = Process list, sensors and system statistics libraries, for KDevelop's attach to process
+sha256      = b9dbdcf73f32b88bf6ada9ff9fdb90d7bea4edb66ce708abb107eb64fad26a3f  libksysguard-6.8.2.tar.xz
+description = Process list, sensors and system statistics libraries behind System Monitor, ksystemstats and KDevelop's attach to process
 homepage    = https://invent.kde.org/plasma/libksysguard
 license     = LGPL-2.0-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL)
-depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kcoreaddons kconfig ki18n kauth kservice kpackage knewstuff solid zlib libnl lm-sensors eudev libdrm kquickcharts
+group       = plasma
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qt5compat kcoreaddons kconfig ki18n kauth kservice kpackage knewstuff solid kirigami kitemmodels kdeclarative kquickcharts zlib libnl lm-sensors eudev libdrm

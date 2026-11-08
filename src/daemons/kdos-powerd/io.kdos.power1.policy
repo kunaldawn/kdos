@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD polkit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/software/polkit/policyconfig-1.dtd">
+<!--
+  kdos-powerd's changes, asked for each caller of io.kdos.Power1 and for
+  each socket client outside wheel.
+
+  The firewall needs an administrator, once per agent session: a named
+  service opened is a port the LAN can reach. The accent and the splash's
+  motion are the look of the machine before anyone logs in — the boot menu,
+  the splash, the console and the login screen — and the person at the
+  machine sets them; nobody away from it does.
+
+  Starting Samba is the person at the machine's too, with no prompt: it takes
+  no argument and runs Samba's service script, which serves only shares that
+  already exist in /var/lib/samba/usershares or smb.conf, and nothing when
+  there are none. Making a usershare needs membership of sambashare, so the
+  call starts what the next boot would start anyway.
+
+  A caller's details name the change: `service` and `state` for the firewall,
+  `accent` for the accent and `splash` for the motion, so a rules file can
+  decide on them through action.lookup(). Starting Samba carries none.
+-->
+<policyconfig>
+  <vendor>KDOS</vendor>
+  <vendor_url>https://github.com/kunaldawn/kdos</vendor_url>
+
+  <action id="io.kdos.firewall.set">
+    <description>Open or close a service in the firewall</description>
+    <message>Authentication is required to change which services the firewall lets in.</message>
+    <icon_name>security-high</icon_name>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
+  <action id="io.kdos.accent.set">
+    <description>Change how the boot menu, the splash, the console and the login screen look</description>
+    <message>Authentication is required to change how this machine looks before anyone logs in.</message>
+    <icon_name>preferences-desktop-color</icon_name>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+
+  <action id="io.kdos.filesharing.start">
+    <description>Start the file server for folders shared on this machine</description>
+    <message>Authentication is required to start sharing folders with other computers.</message>
+    <icon_name>folder-remote</icon_name>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+  </action>
+</policyconfig>

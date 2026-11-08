@@ -1,0 +1,19 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "KDOS"
+            }
+        ],
+        "Category": "Date and Time",
+        "Description": "The time in the KDOS monospace face, with a blinking separator in the accent colour",
+        "Icon": "preferences-system-time",
+        "Id": "org.kdos.plasma.phosphorclock",
+        "License": "MIT",
+        "Name": "Phosphor Clock",
+        "Version": "1.0",
+        "Website": "https://github.com/kunaldawn/kdos"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

@@ -87,9 +87,14 @@ kfilemetadata
 
 breeze-icons
 
-# Built without its indexer service.
+# File search, with the per-user indexer each Plasma session starts.
 baloo
 
 kimageformats
 kmime
 ktexttemplate
+
+krunner
+ksvg
+syndication
+kdav

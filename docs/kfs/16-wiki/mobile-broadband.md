@@ -57,11 +57,10 @@ available*.
 
 ### Who may drive the modem
 
-<!-- kfs:include fs/etc/polkit-1/rules.d/50-kdos.rules lines=88-97 pin=9cc511da443e -->
-
-ModemManager is built with `-Dpolkit=strict`, so without this rule only root may unlock a SIM,
-enable a modem or read its messages. With it, members of `wheel` may do all three with `mmcli` and
-no `sudo`. NetworkManager itself needs no rule, because it runs as root.
+ModemManager asks polkit before it unlocks a SIM, enables a modem or reads its messages. Its
+actions are `allow_active` upstream, so the person in the active session at the machine does all
+three with `mmcli`, or from the network applet, with no password, and KDOS's rule file adds no rule
+for them; an SSH login needs `sudo`. NetworkManager itself needs no rule, because it runs as root.
 
 ### The connection profile
 
@@ -102,7 +101,8 @@ mmcli -i any --pin=<PIN>
 ```
 
 If you skip this, NetworkManager asks for the PIN when it first connects, through
-[`kdos-netagent`](../../kdos/04-programs/kdos-shell.md#kdos-netagent) in a desktop session.
+the networks applet's password dialog in a desktop session (see
+[The system tray](../../kdos/04-programs/plasma-shell.md#the-system-tray)).
 
 ### Connecting
 
@@ -127,7 +127,7 @@ If you skip this, NetworkManager asks for the PIN when it first connects, throug
 
 A phone that offers only dial-up networking over Bluetooth is a modem to ModemManager.
 
-1. Pair the phone in `kdos-bt`; see [Bluetooth](bluetooth.md#pairing-a-device-from-the-desktop).
+1. Pair the phone in the Bluetooth applet; see [Bluetooth](bluetooth.md#pairing-a-device-from-the-desktop).
 2. Create a Bluetooth profile of the `dun` kind, with the phone's address and the carrier's APN:
 
    ```bash
@@ -200,11 +200,11 @@ shows what it says to the modem. The level holds until ModemManager exits;
 - [Networking](../../kdos/02-user-guide/administration.md#networking): mobile broadband and the
   other connection types
 - [How polkit and ModemManager are started](../../kdos/03-architecture/security-model.md#how-polkit-and-modemmanager-are-started)
-- [What is granted instead: 50-kdos.rules](../../kdos/03-architecture/security-model.md#what-is-granted-instead-50-kdosrules)
+- [What 50-kdos.rules changes](../../kdos/03-architecture/security-model.md#what-50-kdosrules-changes)
 - [NetworkManager](networkmanager.md), [DNS](dns.md)
 - [Bluetooth](bluetooth.md), [sudo, PAM and polkit](sudo-pam-polkit.md)
 
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 390.* Previous: [389. VPN](vpn.md) · [Contents](../README.md) · Next: [391. Access point](access-point.md)
+*Part XVI. System administration, chapter 414.* Previous: [413. VPN](vpn.md) · [Contents](../README.md) · Next: [415. Access point](access-point.md)

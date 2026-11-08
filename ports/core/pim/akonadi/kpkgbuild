@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = akonadi
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 85746817161152a3c887c32caabaf2163396796f2ad8fc3ac638e2c91f4b0fbd  akonadi-26.08.2.tar.xz
+description = KDE PIM storage service: the Akonadi server, its agent framework and its client libraries
+homepage    = https://invent.kde.org/pim/akonadi
+license     = LGPL-2.0-or-later AND LGPL-2.1-or-later AND GPL-2.0-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND (LGPL-2.0-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND LGPL-2.0-only AND BSD-2-Clause AND BSD-3-Clause AND CC0-1.0 AND MIT
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kconfig kconfigwidgets kcoreaddons ki18n kiconthemes kitemmodels kwidgetsaddons kxmlgui kcrash kcolorscheme xz shared-mime-info libxslt libxml2 kirigami kirigami-addons

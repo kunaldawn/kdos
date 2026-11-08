@@ -1,0 +1,58 @@
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<!--
+  The firewall members of io.kdos.Power1, kdos-powerd's face on the system
+  bus, at /io/kdos/Power1 (src/daemons/kdos-powerd/bus.c). This is what the
+  Firewall settings page and kdos-fwask call, and what their tests serve
+  from a fake. The interface has other members (SetAccent, SetSplash, Accent,
+  Accents) that neither program uses.
+
+  NAMES, NEVER PORTS. A name is a row of kdos-powerd's own table; a name the
+  table does not carry is refused with io.kdos.Power1.Error.NoSuchService,
+  and nothing here can name a port.
+-->
+<node>
+  <interface name="io.kdos.Power1">
+    <!--
+      One struct per row of the table, in its order: the name, whether it is
+      open, and what it is for. Answered to anyone; it is the list
+      `kdos-power firewall list` prints.
+    -->
+    <method name="ListFirewallServices">
+      <arg name="services" type="a(sbs)" direction="out"/>
+    </method>
+    <!--
+      Open or close one named service. polkit io.kdos.firewall.set, with
+      interactive authorisation honoured: the caller sets the
+      ALLOW_INTERACTIVE_AUTHORIZATION flag and polkit's agent asks for the
+      password. Errors: org.freedesktop.DBus.Error.AccessDenied when polkit
+      refuses, cannot be asked or the prompt is dismissed,
+      org.freedesktop.DBus.Error.InteractiveAuthorizationRequired when the
+      caller left the flag unset and a password would have been accepted,
+      io.kdos.Power1.Error.NoSuchService before polkit is asked,
+      io.kdos.Power1.Error.Failed with the daemon's own reason as its message.
+    -->
+    <method name="SetFirewallService">
+      <arg name="name" type="s" direction="in"/>
+      <arg name="open" type="b" direction="in"/>
+    </method>
+    <!--
+      For each CLOSED service, in the table's order, the packets its knock
+      counter has turned away since the ruleset was last loaded. Answered to
+      anyone, with no polkit question: the counts say only that something
+      knocked. A reload (every change is one) starts each counter again from
+      zero. Counters the kernel could not be asked about are
+      io.kdos.Power1.Error.Failed, and a daemon without them answers
+      org.freedesktop.DBus.Error.UnknownMethod; both clients then carry on
+      without counts.
+    -->
+    <method name="ListFirewallKnocks">
+      <arg name="knocks" type="a(st)" direction="out"/>
+    </method>
+    <!--
+      After a change is applied, over D-Bus or over the socket. It names no
+      service: a listener asks ListFirewallServices again.
+    -->
+    <signal name="FirewallServicesChanged"/>
+  </interface>
+</node>

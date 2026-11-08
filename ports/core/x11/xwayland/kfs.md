@@ -4,12 +4,11 @@ Xwayland is an X server that runs as a client of a Wayland compositor, drawing e
 a Wayland surface of its own. In KDOS it is the one X server on the system: there is no Xorg
 server, no display manager and nothing X on the login path, and every program that has no Wayland
 path (Motif, Tk and Swing programs, [VLC](#port-vlc) 3, an X11-only application inside a box)
-runs on it. The compositor starts it rootless, through [wlroots](#port-wlroots), when the first
-X11 client connects; wlroots is built with Xwayland support and is the only port that depends on this one.
+runs on it. The compositor, [KWin](#port-kwin), starts it rootless when the first X11 client
+connects, and is the only port that depends on this one: KWin's Xwayland support is optional at
+configure time, so the dependency is what keeps it built in.
 What the carve-out allows and what it keeps out is in
-[Principles](../../../../docs/kdos/01-philosophy/principles.md#no-xorg-server-and-one-carve-out),
-and how the compositor runs it is in
-[kdos-comp](../../../../docs/kdos/04-programs/kdos-comp.md#xwayland).
+[Principles](../../../../docs/kdos/01-philosophy/principles.md#no-xorg-server-and-one-carve-out).
 
 The source is the X.Org server tree cut down to its Xwayland part, so the switches below are the
 X server's own. The build turns off every other server and every feature that needs something KDOS

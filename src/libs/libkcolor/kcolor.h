@@ -37,10 +37,10 @@
  * clears those two floors.
  *
  * A SCHEME'S GROUND MAY BE EITHER END, and what decides whether one is usable
- * is the PLATE LADDER rather than the ground. `libkchrome` solves the focused
- * plate along `dim`-to-`pdark` and writes `text` on it, and that plate has to
- * do two things that pull against each other: stand off the bar, and carry its
- * own label. A palette whose `dim`, `pdark` and `variant` leave no mix doing
+ * is the PLATE LADDER rather than the ground. A focused plate is a mix along
+ * `dim`-to-`pdark` with `text` written on it — src/libs/selftest.c walks that
+ * mix for every scheme — and that plate has to do two things that pull
+ * against each other: stand off the bar, and carry its own label. A palette whose `dim`, `pdark` and `variant` leave no mix doing
  * both is unusable whichever end its ground is; one that leaves a mix doing
  * both is usable whichever end its ground is.
  *
@@ -223,6 +223,29 @@ void kcol_format(uint32_t rgb, char *buf);
 void kcol_to_hls(uint32_t rgb, double *h, double *l, double *s);
 uint32_t kcol_from_hls(double h, double l, double s);
 
+/*
+ * THE SIXTEEN TERMINAL COLOURS of a scheme: ANSI 0-7 in `normal`, 8-15 in
+ * `bright`. Konsole's colour schemes (kdos-theme) and every terminal
+ * program `kdos theme` configures (tmux, btop, bat, ...) take them from
+ * here, so a status line drawn in one program's blue sits in a terminal
+ * whose blue is the same; a second copy of the derivation is a second
+ * palette the first time either is tuned.
+ *
+ * Two derivations, because the anchors relate to the scheme two ways. A
+ * BRIGHT variant of a scheme slot (bright green is bright PRIMARY)
+ * transplants the anchor's hue, lightness and saturation offset from the
+ * phosphor slot onto this scheme's slot. A hue the scheme cannot supply
+ * (blue, magenta, cyan) keeps the anchor's hue and follows only the
+ * scheme's text lightness, so an amber terminal gets a warm-dark blue
+ * rather than a green. For phosphor itself the bright slots are the
+ * anchors, byte for byte.
+ */
+typedef struct {
+	uint32_t normal[8], bright[8];
+} KcolAnsi;
+
+void kcol_ansi(const KcolScheme *sc, KcolAnsi *out);
+
 /* Linear blend, pct 0..100 of `b` over `a`. Integer maths, which the
  * committed generated files were written with, so they do not shift by one. */
 uint32_t kcol_mix(uint32_t a, uint32_t b, int pct);
@@ -268,10 +291,11 @@ uint32_t kcol_muted(const KcolScheme *sc);
  *
  * Integer and table-driven, because this library does not link libm. They
  * exist so a derived tone can be SOLVED against a legibility floor rather than
- * picked: see kch_tone(), where the focused plate walks toward the background
- * until the label on it clears 7:1. The KDOS palette's dark end is compressed
- * enough — deep, backdrop and variant are within 1.19:1 of each other — that
- * judging any of this by eye gives the wrong answer.
+ * picked: see the plate walk in src/libs/selftest.c, where the focused plate
+ * walks toward the background until the label on it clears 7:1. The KDOS
+ * palette's dark end is compressed enough — deep, backdrop and variant are
+ * within 1.19:1 of each other — that judging any of this by eye gives the
+ * wrong answer.
  */
 uint32_t kcol_lum(uint32_t rgb);
 int kcol_contrast(uint32_t a, uint32_t b);
@@ -361,11 +385,11 @@ char *kcol_retint_text(const char *in, size_t len, const KcolScheme *sc,
 		       size_t *outlen);
 
 /*
- * The accent `kdos theme` last wrote, from $XDG_CACHE_HOME/kdos/theme.
+ * The accent `kdos theme` last wrote, from $XDG_CONFIG_HOME/kdos/accent.
  *
  * THE ONE READ OF THAT FILE, for every front end that links this library: the
- * two paths and their order are a contract with `kdos theme`, and a second
- * resolution of them drifts from this one the first time the fallback moves.
+ * path is a contract with `kdos theme` and kded-kdos, and a second resolution
+ * of it drifts from this one the first time it moves.
  * What a front end does with the name is its own. Empty `out` means the
  * default scheme, which is not an error.
  */

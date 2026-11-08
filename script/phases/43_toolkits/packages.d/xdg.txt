@@ -30,3 +30,6 @@ libayatana-indicator
 libdbusmenu
 libayatana-appindicator
 zenity
+
+appstream
+kunifiedpush

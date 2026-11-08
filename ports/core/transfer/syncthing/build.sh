@@ -71,9 +71,10 @@ Name=File Sync
 GenericName=Syncthing
 Comment=Keep folders the same on the machines on this network
 Exec=kdos-syncthing
-Icon=folder-syncthing
+Icon=syncthing
 Terminal=true
 Categories=Network;FileTransfer;
 Keywords=sync;syncthing;folder;share;backup;
 EOF
 chmod 644 "$PKG/usr/share/applications/syncthing.desktop"
+install -Dm644 assets/logo-only.svg "$PKG/usr/share/icons/hicolor/scalable/apps/syncthing.svg"

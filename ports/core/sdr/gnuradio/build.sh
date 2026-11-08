@@ -34,7 +34,7 @@ cmake -B build -G Ninja \
 	-DENABLE_GR_CTRLPORT=ON \
 	-DENABLE_CTRLPORT_THRIFT=ON \
 	-DENABLE_GRC=ON \
-	-DGRC_XTERM_EXE=/usr/bin/foot \
+	-DGRC_XTERM_EXE=/usr/bin/konsole \
 	-DENABLE_JSONYAML_BLOCKS=ON \
 	-DENABLE_GR_BLOCKS=ON \
 	-DENABLE_GR_FEC=ON \
@@ -86,6 +86,6 @@ install -d "$PKG$_site"
 printf 'from PyQt5.sip import *\n' > "$PKG$_site/sip.py"
 chmod 644 "$PKG$_site/sip.py"
 test -x "$PKG/usr/bin/gnuradio-companion"
-grep -qx 'xterm_executable = /usr/bin/foot' "$PKG/etc/gnuradio/conf.d/grc.conf"
+grep -qx 'xterm_executable = /usr/bin/konsole' "$PKG/etc/gnuradio/conf.d/grc.conf"
 test -n "$(find "$PKG"/usr/lib/python3*/site-packages/gnuradio/gr -name '*.so' | head -1)"
 test -n "$(find "$PKG"/usr/lib/python3*/site-packages/gnuradio/qtgui -name '*.so' | head -1)"

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kgraphviewer
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 2841af8c2228f933febd0c3ae89923690923b29b7b9a0e0fb2ebeec74d153177  kgraphviewer-26.08.2.tar.xz
+description = Graphviz viewer — DOT graphs laid out and drawn, with zoom, a bird's-eye view and printing
+homepage    = https://apps.kde.org/kgraphviewer/
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg qt6-qt5compat kcoreaddons ki18n kparts kwidgetsaddons kdoctools boost graphviz

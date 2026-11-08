@@ -1,0 +1,32 @@
+Subject: login: Queue session for garbage collection on leader death
+
+This ensures sessions are cleaned up properly in case the user service
+manager was manually stopped.
+
+(cherry picked from commit a6bccda28d398925397d3a8f0c7491ba03941f23)
+Signed-off-by: Achill Gilgenast <achill@achill.org>
+
+Carried from Alpine's elogind 255.24-r2 (aports community/elogind).
+
+diff --git a/src/login/logind-session.c b/src/login/logind-session.c
+index 22dc0a63c398..f9e4576dbae8 100644
+--- a/src/login/logind-session.c
++++ b/src/login/logind-session.c
+@@ -1488,6 +1488,8 @@ static int session_dispatch_fifo(sd_event_source *es, int fd, uint32_t revents,
+         session_stop(s, /* force = */ false);
+         session_add_to_gc_queue(s);
+ 
++        session_add_to_gc_queue(s);
++
+         return 1;
+ }
+ 
+@@ -1569,6 +1571,8 @@ static int session_dispatch_leader_pidfd(sd_event_source *es, int fd, uint32_t r
+         session_stop(s, /* force= */ false);
+         session_add_to_gc_queue(s);
+ 
++        session_add_to_gc_queue(s);
++
+         return 1;
+ }
+ 

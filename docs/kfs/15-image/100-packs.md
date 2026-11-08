@@ -147,4 +147,4 @@ empty. With `KDOS_PACK_KDOS=1` and both tools installed, `build/kdos-base/` hold
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 355.* Previous: [354. The initramfs init](091-initramfs-init.md) · [Contents](../README.md) · Next: [356. The recipe tree and the source offer](105-ports.md)
+*Part XV. The image, chapter 379.* Previous: [378. The initramfs init](091-initramfs-init.md) · [Contents](../README.md) · Next: [380. The recipe tree and the source offer](105-ports.md)

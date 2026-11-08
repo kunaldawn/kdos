@@ -1,0 +1,26 @@
+#!/bin/sh
+# A stand-in for `kdos privacy`, driven by KDOS_FAKE_MODE, recording every
+# action's arguments in KDOS_FAKE_LOG.
+case "$1 $2" in
+"privacy --watch")
+	case "$KDOS_FAKE_MODE" in
+	usage)
+		echo "kdos: unknown command 'privacy'" >&2
+		exit 2
+		;;
+	stream)
+		echo '{"version":1,"mic":[{"id":"pw:57","app":"Firefox","icon":"firefox","box":"www","pid":42,"muted":false,"mutable":true,"stoppable":false}],"camera":[],"screen":[]}'
+		sleep 1
+		printf '%s' '{"version":1,"mic":[],"camera":[{"id":"video0:42","app":"Firefox","box":"www","pid":42,"stoppable":true}],'
+		sleep 0.2
+		echo '"screen":[]}'
+		sleep 1
+		echo '{"version":2,"mic":[{"id":"pw:1","app":"Ignored"}]}'
+		sleep 1
+		exit 0
+		;;
+	esac
+	exit 1
+	;;
+esac
+printf '%s\n' "$*" >>"${KDOS_FAKE_LOG:-/dev/null}"

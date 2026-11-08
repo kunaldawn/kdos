@@ -29,3 +29,14 @@ adwaita-icon-theme-legacy
 # The style that, with plasma-integration's platform theme, makes a Qt
 # application read kdeglobals.
 breeze
+
+breeze-gtk
+oxygen
+
+# qt5ct hands the Qt 5 applications the desktop's palette; Qt 6 applications
+# take it from Plasma's own platform theme. kdos-plasma-look depends on it for
+# the palettes it installs, so it is not a leaf.
+qt5ct
+ocean-sound-theme
+oxygen-sounds
+plasma-workspace-wallpapers

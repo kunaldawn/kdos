@@ -1,0 +1,22 @@
+{
+    "KPackageStructure": "KWin/Effect",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "kunal.dawn@gmail.com",
+                "Name": "Kunal Dawn"
+            }
+        ],
+        "Category": "Appearance",
+        "Description": "Fold away the windows a logout closes and keep the desktop on screen until the session ends",
+        "EnabledByDefault": false,
+        "Icon": "preferences-system-windows-effect-logout",
+        "Id": "kdos_quit",
+        "License": "MIT",
+        "Name": "KDOS Power-Down",
+        "Website": "https://github.com/kunaldawn/kdos"
+    },
+    "X-KDE-Ordering": 40,
+    "X-KWin-Internal": "true",
+    "X-Plasma-API": "javascript"
+}

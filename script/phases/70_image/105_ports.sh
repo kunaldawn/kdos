@@ -112,8 +112,8 @@ echo "  $nports ports ($nfiles files), $nsrc of our own under src/, $(du -sh "$S
 # TREE names the commit this tree is and when it was made. `kdos update fetch`
 # treats a tree naming the same commit as current, refuses one whose time is
 # older, and replaces /ports with any other signed tree, so an image without
-# the stamp takes any signed tree, an older one included. The format
-# is the one `ports/publish --release` writes into the published tree.
+# the stamp takes any signed tree, an older one included. `ports/publish
+# --release` writes the same lines into a published tree, and `version <tag>`.
 #
 # THE RELEASE KEY'S PUBLIC HALF GOES INTO /etc/kdos/keys/tree, the ring
 # `kdos update fetch` verifies a published tree against. It is the key

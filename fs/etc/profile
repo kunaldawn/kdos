@@ -13,7 +13,7 @@
 export PATH=/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
 export PKG_CONFIG_PATH="/usr/share/pkgconfig:/usr/lib/pkgconfig:/usr/lib64/pkgconfig:/usr/local/share/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig"${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
 # TERM describes the TERMINAL and belongs to whoever opened it — agetty says
-# `linux` on a VT, foot says `foot`, ssh forwards the client's, and the
+# `linux` on a VT, Konsole says `xterm-256color`, ssh forwards the client's, and the
 # serial console's agetty says `vt102`. Exporting one value here would
 # override all of them, and on tty1 that breaks the one thing on this distro
 # that reads it: libktui takes TERM=linux to mean the 512-glyph console
@@ -43,7 +43,7 @@ export COLUMNS=${COLUMNS:-80}
 export USER LOGNAME HOME
 
 # Aliases and prompt live in /etc/bash.bashrc so that non-login shells (every
-# terminal window: foot, a distrobox enter, ssh -t) get them too. Login shells
+# terminal window: Konsole, a distrobox enter, ssh -t) get them too. Login shells
 # do not read it on their own, hence this line.
 [ -n "$BASH" ] && [ -r /etc/bash.bashrc ] && . /etc/bash.bashrc
 

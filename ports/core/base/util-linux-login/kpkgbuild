@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = util-linux-login
+version     = 2.42.4
+release     = 1
+source      = util-linux-$version.tar.xz::https://mirrors.edge.kernel.org/pub/linux/utils/util-linux/v${version%.*}/util-linux-$version.tar.xz
+sha256      = fbd62a100ab7bb8746ba0661255c3c48185b1e9021507c624da01fbc696330ec  util-linux-2.42.4.tar.xz
+description = util-linux's login, built against PAM: the console login that registers an elogind session
+homepage    = https://github.com/util-linux/util-linux
+license     = GPL-2.0-or-later
+group       = util-linux
+depends     = pam utmps shadow
+replaces    = shadow

@@ -14,35 +14,28 @@ needs installing.
 
 | Task | Ports | What starts it |
 |:--|:--|:--|
-| Mounting an SMB share as a user | [kdos-mountd](#port-kdos-mountd), [cifs-utils](#port-cifs-utils), [kdos-shell](#port-kdos-shell) ([`kdos-connect`]{.idx}) | `58_mountd`, at every boot |
+| Opening an SMB share as a user | [kio-extras](#port-kio-extras), its `smb:/` worker, in Dolphin and every KDE program | the program, on use |
+| Mounting an SMB share as root | [cifs-utils](#port-cifs-utils) | `mount -t cifs`, by hand |
 | Mounting with a Kerberos ticket | [krb5](#port-krb5), [cifs-utils](#port-cifs-utils) | the kernel, through `request-key`, on the mount |
-| Serving SMB | [samba](#port-samba) | `83_samba`, once [`/etc/samba/smb.conf`]{.idx} exists |
+| Serving SMB | [samba](#port-samba), with [kdenetwork-filesharing](#port-kdenetwork-filesharing) for Dolphin's **Share** tab | `83_samba`, at boot once something is shared; the first share made in a session starts it through [kded-kdos](#port-kded-kdos) and [kdos-powerd](#port-kdos-powerd) |
 | Mounting and serving NFSv4 | [nfs-utils](#port-nfs-utils) | `72_nfsd`, once [`/etc/exports`]{.idx} names a share; `63_gssd`, once [`/etc/krb5.keytab`]{.idx} exists |
-| Syncing folders | [syncthing](#port-syncthing) | **File Sync** in the Start menu, by hand |
+| Syncing folders | [syncthing](#port-syncthing) | **File Sync** in the application menu, by hand |
 | Sending one file | [croc](#port-croc), [kdos-tools](#port-kdos-tools) (`kdos share`) | by hand |
 | Shares in GTK file managers | [gvfs](#port-gvfs) | the session bus, on first use |
 
-`58_mountd` is in `fs/etc/init.d`, so every image has it. `72_nfsd`, `63_gssd` and `83_samba` are
-written by their ports' `build.sh` and exist only while the port is installed. None of the three
-servers is in the installer's list of service choices, so they behave the same on the live medium
-and on an installed system: each skips itself at boot, with a `[SKIP]` line, until its
-configuration file exists. The lines are in `/run/kdos-init.samba.log`, `/run/kdos-init.nfsd.log`
-and `/run/kdos-init.gssd.log`: `[SKIP] samba: no /etc/samba/smb.conf`, `[SKIP] nfsd: no share in
-/etc/exports` and `[SKIP] gssd: no /etc/krb5.keytab`. `service status nfsd` names the daemon it
+`72_nfsd`, `63_gssd` and `83_samba` are written by their ports' `build.sh` and exist only while
+the port is installed. None of the three servers is in the installer's list of service choices,
+so they behave the same on the live medium and on an installed system. Each skips itself at boot,
+with a `[SKIP]` line, while it has nothing to serve: `83_samba` until a folder is shared, the
+other two until their configuration file exists. The lines are in `/run/kdos-init.nfsd.log`
+and `/run/kdos-init.gssd.log`: `[SKIP] nfsd: no share in /etc/exports` and
+`[SKIP] gssd: no /etc/krb5.keytab`. `service status nfsd` names the daemon it
 watches, `nfsv4.exportd`. What differs is where the configuration lives. On the live medium
 `/etc` is in memory and is lost at power-off unless a persistence store exists
 ([`kdos persist`](../../kdos/04-programs/kdos-command.md#kdos-persist)); on an installed system it
 is on the root filesystem.
 
 ## Configuration
-
-### /etc/kdos/mountd.conf
-
-`kdos-mountd` mounts every share it connects with `nosuid`, `nodev` and `noexec`. The image ships
-no `mountd.conf`; a line `exec = yes` in it drops `noexec` from removable media and network shares
-alike. Only a line that is exactly `exec = yes`, with the blanks around `=` optional, turns it on;
-a commented-out `# exec = yes` leaves the setting off. The three settings are in
-[/etc/kdos/mountd.conf](../../kdos/04-programs/daemons.md#etckdosmountdconf).
 
 ### /etc/request-key.d/cifs.spnego.conf
 
@@ -53,10 +46,29 @@ rule that joins them:
 
 ### /etc/samba/smb.conf
 
-The samba port installs no `smb.conf`. Its service script starts [`smbd`]{.idx} only once a non-empty one
-exists, and starts `smbd` alone: no `nmbd` and no `winbindd`.
+The image ships a standalone server whose shares are the users' own usershares, made from
+Dolphin's **Share** tab, from `fs/etc/samba/smb.conf`:
 
-<!-- kfs:include ports/core/servers/samba/build.sh lines=62-92 pin=88369dbfc015 -->
+<!-- kfs:include fs/etc/samba/smb.conf -->
+
+The samba port's service script starts [`smbd`]{.idx} alone: no `nmbd` and no `winbindd`. With a
+non-empty `smb.conf` it makes the usershare directory at every boot, root's, group `sambashare`,
+mode 1770, which a package cannot carry, and then starts `smbd` only if something is there to
+serve: a regular file in that directory, not a symbolic link, which `smbd` would refuse, whose
+name does not begin with `:` (`net usershare` writes each share through a `:tmp` file it
+renames), or a section of `smb.conf` other than `[global]`.
+Otherwise it prints `[SKIP] samba: nothing is shared`, and nothing listens on the SMB ports:
+
+<!-- kfs:include ports/core/servers/samba/build.sh lines=62-101 pin=575fa9e91193 -->
+
+The first folder shared in a session is served without a reboot. [kded-kdos](#port-kded-kdos), in
+the session of a `sambashare` member, watches the usershare directory and, when it goes from
+holding no share to holding one, calls `StartFileSharing` on
+[kdos-powerd](#port-kdos-powerd)'s `io.kdos.Power1`. The daemon asks polkit
+(`io.kdos.filesharing.start`, granted to the person at the machine with no prompt) and runs
+`/etc/init.d/83_samba.sh start`, which makes the same test again; it refuses while
+`/etc/service.disabled/samba` exists. Removing the last share leaves `smbd` running, serving
+nothing, until the next boot, which does not start it.
 
 The configure options set where Samba keeps its files: the configuration under [`/etc/samba`]{.idx}, the
 password database under `/var/lib/samba/private` and the logs under [`/var/log/samba`]{.idx}:
@@ -106,64 +118,28 @@ transfer on the local network. `croc-relay` is the same program with upstream's 
 
 ## Usage
 
-### Mounting an SMB share from the desktop
+### Opening an SMB share from the desktop
 
-1. Open `kdos-connect`: type its name at a prompt, or choose the row *Connect to server…* on the System page
-   of Settings. The window lists the shares you have connected. `F1` opens its help page, which is
-   also `kdos-doc connect`.
-2. Press `b` to list the machines that answered a broadcast, and `Enter` on one to put its name in
-   the Server field; `Esc` goes back to the list of connected shares. To type the server
-   yourself, press `Enter` on the list of connected shares instead.
-3. Fill in Share, User and Domain. `Tab` or `Down` moves to the next field, `Shift+Tab` or `Up` to
-   the one before. A server chosen from the broadcast list opens the form on the Password row, so
-   move back up to Share first. User is your account on the server; leave Domain empty where
-   there is none. `Enter` in any field sends the form.
-4. On *Sign in*, `Space` chooses between a password and the Kerberos ticket [`kinit`]{.idx} left in your
-   credential cache. Type the password if one is asked for, then press `Enter` to connect.
-5. The share is mounted at `/media/<user>/<server>-<share>`, owned by you, with files at mode
-   0600 and directories at 0700.
-6. To disconnect, select the share in the list and press `d`.
+1. In Dolphin, open **Network** in the Places panel, then **Shared Folders (SMB)**, which lists the
+   file servers that answer mDNS, NetBIOS or WS-Discovery; or type the address in the location bar:
+   `smb://fileserver/projects`.
+2. Give your account on the server and its password when asked; **Remember password** keeps it
+   in KWallet.
+3. The share opens as a folder. **Add to Places** keeps it in the Places panel. Every KDE program
+   opens and saves files there directly; a program that is not KDE's is given a local copy.
+
+GTK applications reach the same shares through gvfs, as `smb://server/share`.
 
 ### Mounting an SMB share from a terminal
 
-[`kdos-mount`]{.idx} reaches the same daemon. The verbs that carry a password are reached from
-`kdos-connect` only, so a password never appears on a command line; a Kerberos mount carries none
-and has a verb here. There is no verb that disconnects a share; do that in `kdos-connect`.
-
-1. List the file servers that answer a broadcast:
-
-   ```bash
-   kdos-mount browse
-   ```
-
-2. With a ticket, mount a share. `-` stands for "no user" and "no domain", which is the usual case
-   with a ticket:
-
-   ```bash
-   kinit you@EXAMPLE.ORG
-   kdos-mount krb5 fileserver projects - -
-   ```
-
-3. List what is mounted:
-
-   ```bash
-   kdos-mount shares
-   ```
-
-Each verb answers `ok`, followed by its rows, or `err` and a reason, such as `err no machine on
-this network answers to the name fileserver`. `kdos-mount` exits 0 whenever the daemon answered,
-including when the answer is a refusal, so a script tests the output for a leading `err`.
-`kdos-mount` with no verb prints every verb it has. See
-[The command-line client](../../kdos/04-programs/daemons.md#the-command-line-client).
-
-Every member of `seat` or `wheel` may use these verbs. As root, `mount.cifs` works directly as on
-any Linux system:
+As root, `mount.cifs` mounts a share into the filesystem, for programs that need a real path:
 
 ```bash
 sudo mkdir -p /mnt/share
 sudo mount -t cifs //fileserver/projects /mnt/share -o username=you,uid=$(id -u),gid=$(id -g)
 ```
 
+With a Kerberos ticket, `kinit you@EXAMPLE.ORG` first and mount with `-o sec=krb5,cruid=$(id -u)`.
 Mount on a directory of its own rather than on `/mnt`: on the live medium `/mnt` holds the boot
 medium at `/mnt/iso` and the persistence store at `/mnt/persist`, and a mount over `/mnt` hides
 both until it is undone.
@@ -205,55 +181,28 @@ both until it is undone.
 
 ### Serving a folder over SMB
 
-1. Write `/etc/samba/smb.conf`. A minimal standalone server with one share, for the account
-   `kdos`, is:
-
-   ```ini
-   [global]
-      server role = standalone server
-
-   [share]
-      path = /srv/share
-      read only = no
-      valid users = kdos
-   ```
-
-2. Create the shared folder, owned by the account, since the server writes into it as that
-   account and a folder root owns refuses every write with *Permission denied*:
-
-   ```bash
-   sudo install -d -o kdos -g kdos /srv/share
-   ```
-
-3. Check the file, and give the account a Samba password (Samba keeps its own; it does not use
-   the login password):
-
-   ```bash
-   testparm -s
-   sudo smbpasswd -a kdos
-   ```
-
-   `testparm` prints `Loaded services file OK.` and the file back; `smbpasswd` ends with `Added
-   user kdos.`
-
-4. Start the server; it starts at every boot from here on, because the file exists:
-
-   ```bash
-   sudo service start samba
-   ```
-
-   `smbclient -L localhost -U kdos` lists the share, and the server writes
-   `/var/log/samba/log.smbd`.
-
-5. Open the firewall to other machines. This needs membership of `wheel`:
+1. In Dolphin, right-click the folder → **Properties** → **Share**.
+2. Tick **Share with SMB**. The first time, the tab offers to add you to `sambashare` and to set
+   your Samba password, which Samba keeps apart from the login password; both ask for an
+   administrator's password. Log out and in again after joining the group.
+3. Choose who may read or write it, and **OK**. The share is a usershare under
+   `/var/lib/samba/usershares`. If it is the machine's first, the session starts `smbd` for it
+   then, with no prompt; otherwise the running `smbd` picks it up at once.
+4. Open the firewall to other machines:
 
    ```bash
    kdos-power firewall smb on
    ```
 
-   `smb` opens TCP 445 only.
+   or turn on **smb** on System Settings → **Firewall**. `smb` opens TCP 445 only.
 
-On the live medium, `smb.conf`, the shared folder of step 2 and the Samba password under
+From a terminal, a member of `sambashare` makes the same share with
+`net usershare add <name> <path> "<comment>" <acl> guest_ok=n`, which a running desktop session
+of that member notices as well, and a share defined in `smb.conf` below `[global]` is served too;
+`sudo service start samba` starts `smbd` after either when nothing else has. `testparm -s` checks
+the file, and `smbclient -L localhost -U <you>` lists what is served.
+
+On the live medium, the shares, the group membership and the Samba password under
 `/var/lib/samba/private` are all held in memory and are gone at the next reboot, unless the medium
 has a persistence store ([Live persistence](live-persistence.md)).
 
@@ -298,7 +247,7 @@ An export below `/` on an installed system, whose root is a real filesystem, has
 
 ### Syncing a folder with Syncthing
 
-1. On each machine, open **File Sync** from the Start menu. It runs `kdos-syncthing` in a terminal
+1. On each machine, open **File Sync** from the application menu. It runs `kdos-syncthing` in a terminal
    and serves the web interface on `127.0.0.1:8384`; closing the terminal stops syncing.
 2. On each machine, open the firewall name:
 
@@ -327,42 +276,29 @@ An export below `/` on an installed system, whose root is a real filesystem, has
    croc <code>
    ```
 
-*Share* in a file's menu runs the same command, which then opens a terminal of its own. Every
+**Share** in a file's context menu in Dolphin runs the same command, which then opens a terminal
+of its own. Every
 option is in [kdos share](../../kdos/04-programs/kdos-command.md#kdos-share).
 
 ## Tips
 
-- Typing a server's address or full DNS name into `kdos-connect` needs no broadcast. A `.local`
-  name and a bare NetBIOS name are resolved by one, because the C library cannot resolve either;
-  a name you put in `/etc/hosts` is tried first and wins.
-- GTK applications reach SMB shares through gvfs, as `smb://server/share`. kio-extras is configured
-  with `-D CMAKE_DISABLE_FIND_PACKAGE_Samba=ON`, which leaves out its SMB worker, so in Dolphin and
-  the other KDE applications mount the share with `kdos-connect` first and open its folder under
-  `/media/<user>`.
-- A share mounted by `kdos-mountd` belongs to the account that asked for it. Another account on
-  the same machine cannot read it.
+- A `.local` name and a bare NetBIOS name in an `smb://` address are resolved by the network
+  view's own discovery; a name you put in `/etc/hosts` is tried first and wins.
+- Dolphin's **Share** tab and `net usershare` need membership of `sambashare` (gid 65); see
+  [Users and groups](users-and-groups.md).
 - `kdos why /etc/init.d/83_samba.sh` names the package that owns a file and the recipe it was built
   from.
 
 ## Troubleshooting
 
-**`kdos-connect` or `kdos-mount` answers `err` and a reason.** The reason is the first line of the
-mount helper's own message, or the daemon's refusal. A name the daemon cannot resolve is refused
-before anything is mounted: check that the server is up, and for a `.local` name that Avahi is
-running (`service status avahi`). Every refusal is listed in
-[Network shares](../../kdos/04-programs/daemons.md#network-shares).
-
-**`kdos-mount browse` lists nothing, or not the machine you want.** An empty list is the line `ok`
-alone. The list is whatever answered
-an mDNS and a NetBIOS broadcast at that moment. A machine that is asleep, on another subnet or
-behind a router that does not forward broadcasts is missing; type its name or address instead.
+**Dolphin's network view lists nothing, or not the machine you want.** The list is whatever
+answered an mDNS query, a NetBIOS broadcast and a WS-Discovery probe at that moment. A machine that
+is asleep, on another subnet or behind a router that does not forward multicast is missing; type
+its name or address instead. Check that Avahi runs (`service status avahi`).
 
 **A Kerberos mount fails with `Required key not available`.** The kernel found no ticket. Check
 `klist` as the user who asked for the mount, and run `kinit` again when the ticket has expired.
-When `cifs.upcall` or [`/etc/request-key.d/cifs.spnego.conf`]{.idx} is missing, the daemon says which.
-
-**A program on a share does not run.** The share is mounted `noexec`. Add `exec = yes` to
-`/etc/kdos/mountd.conf`, then disconnect and connect the share again.
+[`/etc/request-key.d/cifs.spnego.conf`]{.idx} and `cifs.upcall` must both be there.
 
 **`smbd` does not start.** Read what its script printed at boot:
 
@@ -370,10 +306,19 @@ When `cifs.upcall` or [`/etc/request-key.d/cifs.spnego.conf`]{.idx} is missing, 
 cat /run/kdos-init.samba.log
 ```
 
-`[SKIP] samba: no /etc/samba/smb.conf` means the file is missing or empty. The file holds the
-boot's output only; a later `sudo service start samba` prints on the terminal. Otherwise run
+`[SKIP] samba: nothing is shared` is the normal line on a machine with no share: `smbd` starts
+with the first one. `[SKIP] samba: no /etc/samba/smb.conf` means the file was removed or emptied.
+The file holds the boot's output only; a later `sudo service start samba` prints on the terminal.
+A first share made in a session that did not start `smbd` is in that session's log:
+`grep io.kdos.kded ~/.local/share/sddm/wayland-session.log` shows whether the module watched the
+directory (it does not in a session that is not yet in `sambashare`) and what `kdos-powerd`
+answered, and a refusal raises a *Shared folder not served* notification. Otherwise run
 `testparm -s`, and read the supervisor's log, `/run/kdos-svc.samba.log`, and
 `/var/log/samba/log.smbd`.
+
+**The Share tab says sharing is not set up, or a share is refused.** The usershare directory must
+be root's, group `sambashare`, mode 1770: `ls -ld /var/lib/samba/usershares`. `sudo service restart
+samba` makes it again. Your account must be in `sambashare` in this session: `id`.
 
 **Another machine cannot reach this one's share.** The firewall drops it. `kdos-power firewall
 list` shows which names are on; `smb` serves SMB and `nfs` serves NFS.
@@ -392,19 +337,18 @@ both must be on the same network: global discovery and relays are off in the con
 
 ## Known gaps
 
-- [The list of Windows shares on the network is whatever answered a broadcast](../../kdos/06-reference/known-gaps.md#the-list-of-windows-shares-on-the-network-is-whatever-answered-a-broadcast)
 - [An NFSv3 mount needs `-o nolock`](../../kdos/06-reference/known-gaps.md#an-nfsv3-mount-needs--o-nolock)
 - [Kerberos is built and has never been given a ticket](../../kdos/06-reference/known-gaps.md#kerberos-is-built-and-has-never-been-given-a-ticket):
-  `kdos-mount krb5` and `63_gssd` have not been used against a real domain
+  a Kerberos share mount and `63_gssd` have not been used against a real domain
 - An NFS export below `/` cannot be mounted from a live session; see
   [Serving a folder over NFS](#serving-a-folder-over-nfs)
-- Not run on a booted image: the `kdos-connect` window, a `kdos share` transfer, and Syncthing
-  between two machines
+- Not run on a booted image: Dolphin's Share tab, a `kdos share` transfer, and Syncthing between
+  two machines
 
 ## See also
 
-- [kdos-mountd](../../kdos/04-programs/daemons.md#kdos-mountd): the daemon's verbs, its refusals and how it mounts a share
-- [kdos-connect](../../kdos/04-programs/kdos-shell.md#kdos-connect): the network-share window
+- [Firewall](../../kdos/04-programs/kdos-settings.md#firewall): opening the `smb` service, and the
+  prompt that offers to let a sharing program in
 - [Syncing and serving on the network](../../kdos/02-user-guide/administration.md#syncing-and-serving-on-the-network): Syncthing, mosh and Caddy
 - [Services](../../kdos/02-user-guide/administration.md#services): `72_nfsd`, `63_gssd` and `83_samba` in the boot order
 - [Opening a service](../../kdos/02-user-guide/administration.md#opening-a-service): every firewall name
@@ -415,4 +359,4 @@ both must be on the same network: global discovery and relays are off in the con
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 393.* Previous: [392. Wireless regulatory domain](wireless-regulatory-domain.md) · [Contents](../README.md) · Next: [394. Avahi and mDNS](avahi-and-mdns.md)
+*Part XVI. System administration, chapter 417.* Previous: [416. Wireless regulatory domain](wireless-regulatory-domain.md) · [Contents](../README.md) · Next: [418. Avahi and mDNS](avahi-and-mdns.md)

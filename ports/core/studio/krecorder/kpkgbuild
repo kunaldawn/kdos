@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = krecorder
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 36bd1ee2d6cd27b65e50fe0cd29d8a1ca7bc7d06e186a7625c64b6d24a8b2f79  krecorder-26.08.2.tar.xz
+description = KDE audio recorder — record, list and play back voice clips
+homepage    = https://apps.kde.org/krecorder/
+license     = GPL-3.0-or-later AND BSD-3-Clause AND CC0-1.0 AND CC-BY-4.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtmultimedia qt6-qtsvg ki18n kcoreaddons kconfig kio kirigami kirigami-addons qqc2-desktop-style

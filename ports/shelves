@@ -77,7 +77,7 @@ chat              1  Instant messaging, IRC, XMPP, Matrix, fediverse and voice c
 browsers          1  Web, Gemini and text-mode browsers
 web-engines       4  Browser engines and the libraries that make them up
 x11               4  X11 protocol, client libraries and data, plus Xwayland, the one X server
-wl                4  Wayland libraries and protocols, wlroots, and Wayland-only desktop utilities
+wl                4  Wayland libraries and protocols, and Wayland-only desktop utilities
 gpu               2  The GPU stack: Mesa, DRM, GL and Vulkan loaders and headers, shader compilers, VA-API, OpenCL
 graphics-libs     2  2D rendering, vector and SVG, text layout, colour management and graph drawing libraries
 image-libs        3  Raster image formats, codecs, metadata, processing, barcodes, and terminal image output

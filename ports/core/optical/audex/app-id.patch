@@ -1,0 +1,20 @@
+Subject: set StartupWMClass to org.kde.audex and drop the undefined MIME type
+
+Audex sets its desktop file name, and so its Wayland app_id, to
+org.kde.audex; upstream's class names no window Audex opens. No shared MIME
+database file defines application/x-audex, so that claim matches no file.
+
+--- a/org.kde.audex.desktop
++++ b/org.kde.audex.desktop
+@@ -78,10 +78,9 @@
+ GenericName[zh_CN]=CDDA 翻录
+ GenericName[zh_TW]=CDDA 翻錄
+ Exec=audex
+-StartupWMClass=audex
++StartupWMClass=org.kde.audex
+ Icon=org.kde.audex
+ Type=Application
+-MimeType=application/x-audex;
+ Categories=Qt;KDE;AudioVideo;
+ Terminal=false
+ X-DocPath=https://userbase.kde.org/Audex

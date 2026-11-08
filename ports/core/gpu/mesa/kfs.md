@@ -2,10 +2,9 @@
 Mesa is the graphics driver stack: the OpenGL, OpenGL ES, EGL, GBM and Vulkan drivers for every
 GPU family the image supports, the software renderers that stand in when there is none, a VA-API
 video driver and an OpenCL implementation. On KDOS the port that leans on it hardest is
-[kdos-comp](#port-kdos-comp): the compositor draws through EGL and GLES2 from here, and on a
-machine with only software rendering, such as a virtual machine with plain graphics, it turns its
-phosphor pass off
-([The phosphor pass](../../../../docs/kdos/04-programs/kdos-comp.md#the-phosphor-pass)).
+[KWin](#port-kwin): the compositor draws through EGL and OpenGL ES from here, and on a machine
+with only software rendering, such as a virtual machine with plain graphics, Phosphor mode's
+effect stays off.
 
 Mesa is built behind [libglvnd](#port-libglvnd), which owns `libGL`, `libEGL` and `libGLX` and
 dispatches to Mesa's `libEGL_mesa` and `libGLX_mesa`. It is built for Wayland and for X11 alike:

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kclock
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 87118a36faa3c24dbec85769544d16f73a35fed65ef2afe11607ba6427d8107c  kclock-26.08.2.tar.xz
+description = Clock — alarms, timers, a stopwatch and world clocks, with a panel widget
+homepage    = https://apps.kde.org/kclock/
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qtmultimedia qt6-qtwayland kconfig ki18n kcoreaddons kirigami knotifications kdbusaddons kcrash kstatusnotifieritem ksvg kio kjobwidgets kwindowsystem kcmutils libplasma wayland wayland-protocols plasma-wayland-protocols kirigami-addons ocean-sound-theme qqc2-desktop-style

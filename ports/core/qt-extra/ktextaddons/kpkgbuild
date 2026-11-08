@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ktextaddons
+version     = 2.2.0
+release     = 1
+source      = https://download.kde.org/stable/$name/$name-$version.tar.xz
+sha256      = 26b78fab82ce76fa19d8d2a47757631d21dcaddb6814442b6dd2853e65cd5a81  ktextaddons-2.2.0.tar.xz
+description = KDE text add-ons: translation, grammar check, autocorrection, emoji and text-to-speech for text editors
+homepage    = https://invent.kde.org/libraries/ktextaddons
+license     = LGPL-2.0-or-later AND LGPL-2.0-only AND LGPL-2.1-or-later AND GPL-2.0-or-later AND BSD-3-Clause AND MIT AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtmultimedia qt6-qtspeech qtkeychain ki18n kconfig kcolorscheme karchive kcoreaddons sonnet kservice syntax-highlighting kwidgetsaddons ktextwidgets kitemviews kiconthemes kio

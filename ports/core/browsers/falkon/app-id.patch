@@ -1,5 +1,14 @@
---- a/linux/applications/org.kde.falkon.desktop	2026-09-28 03:11:23.585749632 +0530
-+++ b/linux/applications/org.kde.falkon.desktop	2026-09-28 03:11:40.643951684 +0530
+Subject: Set StartupWMClass in falkon's desktop entry to org.kde.falkon and drop its MimeType= claims
+
+Falkon's Wayland app_id is its desktop file name, org.kde.falkon, which
+Plasma's task manager matches against StartupWMClass; upstream's Falkon
+matches no window. The MimeType= line claimed text/html,
+application/xhtml+xml, http, https and application/x-mimearchive: the web
+types are Firefox ESR's, its default in the shipped MIME associations, and
+a desktop entry claims a type only where nothing else does.
+
+--- a/linux/applications/org.kde.falkon.desktop
++++ b/linux/applications/org.kde.falkon.desktop
 @@ -141,8 +141,7 @@
  GenericName[zh_CN]=网页浏览器
  GenericName[zh_TW]=網路瀏覽器

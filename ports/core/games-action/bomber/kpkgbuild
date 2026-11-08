@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = bomber
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = d902525fcae153c261a34b8846e0a7b15fc589d8a6a3c8787660930da4ff7cfe  bomber-26.08.2.tar.xz
+description = Arcade game: bomb the city flat before the plane comes down on the buildings
+homepage    = https://apps.kde.org/bomber/
+license     = LGPL-2.0-or-later AND GFDL-1.2-or-later AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kconfig kcoreaddons kcrash kdbusaddons kdoctools ki18n kiconthemes kwidgetsaddons kxmlgui libkdegames gzip

@@ -34,9 +34,12 @@ library and talks to PipeWire without knowing it; see
 - `-Dx11=disabled` — Leave out `pax11publish` and the client's reading of the server address and
   cookie from X11 root-window properties. The session is Wayland; see
   [no Xorg server](../../../../docs/kdos/01-philosophy/principles.md#no-xorg-server-and-one-carve-out).
-- `-Dsystemd=disabled`, `-Delogind=disabled`, `-Dconsolekit=disabled` — KDOS has
-  [no systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd), and neither of the
-  other two session trackers is a port.
+- `-Dsystemd=disabled`, `-Delogind=disabled`, `-Dconsolekit=disabled` — The three session
+  trackers feed only the daemon's `module-systemd-login` and `module-console-kit`, and meson reads
+  the options only inside its daemon section, so with `-Ddaemon=false` none of them builds or
+  links anything whatever its value. They are named off for the reason in the note below. KDOS
+  has [no systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd-init-units-or-service-manager);
+  its session tracker, [elogind](#port-elogind), is something only a server would use.
 - `-Doss-output=disabled` — Builds no `padsp`, the `LD_PRELOAD` wrapper that turns OSS calls into
   PulseAudio ones. It resolves the functions it passes through by their large-file alias names,
   which musl does not export.

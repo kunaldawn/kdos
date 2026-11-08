@@ -1,0 +1,24 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   The login and logout sounds.
+#
+# Plasma plays a sound at login only when this event's Action includes Sound
+# and Sound names one; nothing in Plasma ships the event, so without this
+# file the session starts silent. The names are XDG sound names, looked up in
+# kdeglobals' [Sounds] Theme (kdos, which inherits ocean and freedesktop), so
+# an accent or theme change needs no edit here. The Notifications page writes
+# a person's choice to ~/.config/plasma_workspace.notifyrc.
+# ---------------------------------
+
+[Event/startkde]
+Action=Sound
+Sound=desktop-login
+
+[Event/exitkde]
+Action=Sound
+Sound=desktop-logout

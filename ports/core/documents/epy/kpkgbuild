@@ -10,7 +10,7 @@
 
 name        = epy
 version     = 2023.6.11
-release     = 1
+release     = 2
 source      = $name-$version.tar.gz::https://github.com/wustho/$name/archive/refs/tags/v$version.tar.gz
 sha256      = 9f29b7fdc6312bc89adafd86acce93959b5d9eb62ea0a942c8d345c18ee5c87f  epy-2023.6.11.tar.gz
 sha256      = ebe762db38607343614e3628b321194ce00be642a40ac81f930485b3508a2a01  epy-vendor-2023.6.11.tar.xz

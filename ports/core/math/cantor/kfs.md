@@ -8,6 +8,9 @@ installed.
 
 ## Flags
 
+- `-D KF_SKIP_PO_PROCESSING=ON` — Builds none of the interface translations in `po/`; the image is
+  English only (see
+  [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
 - `-D BUILD_DOC=ON` — Build the handbook with [kdoctools](#port-kdoctools), which the option then
   requires. It is the option's own default, named in the recipe.
 - `-D ENABLE_EMBEDDED_DOCUMENTATION=ON` — Build the panel that shows a backend's own documentation

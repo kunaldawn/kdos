@@ -188,9 +188,10 @@ for id in $ids; do
     fi
 
     # 3/4. launch, and wait for the compositor to name the window.
-    # A `Terminal=true` entry is launched the way the Start menu launches
-    # it — in foot — and the window to wait for is foot's: R with a pipe for
-    # stdin exits on "you must specify --save", which is R being right.
+    # A `Terminal=true` entry is launched the way Kickoff launches it — in
+    # Konsole — and the window to wait for is Konsole's, whose app_id is
+    # org.kde.konsole: R with a pipe for stdin exits on "you must specify
+    # --save", which is R being right.
     t0=$(date +%s%3N 2>/dev/null || echo 0)
     term=""
     # The box is named BETWEEN the binary and the verb for an app that
@@ -202,8 +203,8 @@ for id in $ids; do
     if grep -ls "^Exec=kdos-appbox \(\(-b\|--box\) [^ ]* \)\?run $shim\( \|$\)" \
          /home/$U/.local/share/applications/*.desktop 2>/dev/null \
        | xargs -r grep -lq "^Terminal=true" 2>/dev/null; then
-        term=foot
-        asuser "nohup foot -e /home/$U/.local/bin/$shim >/tmp/$id.log 2>&1 &" >/dev/null 2>&1
+        term=org.kde.konsole
+        asuser "nohup konsole -e /home/$U/.local/bin/$shim >/tmp/$id.log 2>&1 &" >/dev/null 2>&1
     else
         asuser "nohup $shim >/tmp/$id.log 2>&1 &" >/dev/null 2>&1
     fi
@@ -264,7 +265,7 @@ for id in $ids; do
         # 5. it drew something — the blank check is the host's, on the pixels
         sleep "$SETTLE"
         shot="$OUT/$id.png"
-        asuser "grim $shot" >/dev/null 2>&1
+        asuser "spectacle -b -n -f -o $shot" >/dev/null 2>&1
         bytes=$(stat -c %s "$shot" 2>/dev/null || echo 0)
         if [ "$bytes" = 0 ]; then
             record "$id" fail "no shot" "$appid" "$id" "$ms" 0

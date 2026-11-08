@@ -8,19 +8,13 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-# ~/.bash_profile — read by login bash (tty, serial, ssh) after /etc/profile.
-# Pull in the interactive config so a login shell behaves like a terminal one.
-[ -r "$HOME/.bashrc" ] && . "$HOME/.bashrc"
-
-# THE DESKTOP IS THE DEFAULT SESSION, on tty1 and nowhere else. tty2 is the
-# recovery console and must stay a shell; a serial line and an ssh session have
-# no screen to take.
+# ~/.bash_profile — read by every login bash after /etc/profile: a console, the
+# serial line, ssh, and the login shell kdos-session-wrapper starts Plasma
+# from. Pull in the interactive config so a login shell behaves like a
+# terminal one.
 #
-# NOT exec'd. A session that fails to come up leaves this shell to fall through
-# to a prompt, which is the difference between a machine you can fix and one
-# that shows a message and takes the tty with it.
-if [ -z "$WAYLAND_DISPLAY" ] && \
-   [ "$(tty 2>/dev/null)" = /dev/tty1 ] && \
-   command -v kdos-desktop >/dev/null 2>&1; then
-	kdos-desktop
-fi
+# WHAT IS ADDED HERE RUNS BEFORE THE DESKTOP. The desktop's login reads this
+# file before Plasma starts, so a command here that waits holds the session
+# back behind the login screen, and one that prints writes into the session's
+# log rather than to anyone.
+[ -r "$HOME/.bashrc" ] && . "$HOME/.bashrc"

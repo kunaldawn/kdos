@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ksnakeduel
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 656b8796b798f73d77e84097fdaa8f1572f36c8e2ef57d0b4d743eb2cf0e82ee  ksnakeduel-26.08.2.tar.xz
+description = Light-cycle duel: make the other snake crash first, against the computer or a second player
+homepage    = https://apps.kde.org/ksnakeduel/
+license     = GPL-2.0-or-later AND GFDL-1.2-or-later AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg kcompletion kconfig kconfigwidgets kcoreaddons kcrash kdbusaddons kdoctools kguiaddons ki18n kiconthemes kwidgetsaddons kxmlgui libkdegames gzip

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = merkuro
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = ca036db50a0e3daaac96be9e1da48f1e8d73ce5dfb942bcbaedf3785cb66a91f  merkuro-26.08.2.tar.xz
+description = Kirigami calendar, contacts and mail applications on Akonadi, with a Plasma contacts widget
+homepage    = https://apps.kde.org/merkuro/
+license     = LGPL-2.1-or-later AND LGPL-2.0-or-later AND GPL-2.0-or-later AND LGPL-3.0-or-later AND GPL-3.0-or-later AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND GPL-3.0-only AND GPL-2.0-or-later WITH LicenseRef-Qt-Commercial-exception-1.0 AND BSD-2-Clause AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qtlocation qt6-qt5compat kcalendarcore kcodecs kconfig kconfigwidgets kcontacts kcoreaddons kcrash kdbusaddons kdeclarative kholidays ki18n kiconthemes kio kirigami kirigami-addons kitemmodels kmime knotifications kwindowsystem kxmlgui prison qqc2-desktop-style ksvg gpgmepp libkleo akonadi akonadi-calendar akonadi-contacts akonadi-mime akonadi-search kcalutils kidentitymanagement kmailtransport kmbox libkdepim mailcommon messagelib mimetreeparser pimcommon libplasma kdepim-runtime

@@ -1,0 +1,21 @@
+{
+    "KPackageStructure": "KWin/Effect",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "kunal.dawn@gmail.com",
+                "Name": "Kunal Dawn"
+            }
+        ],
+        "Category": "Tools",
+        "Description": "A searchable card of every global keyboard shortcut, read live from the shortcut service; Meta+F1 or Meta+/ opens it",
+        "EnabledByDefault": true,
+        "Icon": "preferences-desktop-keyboard-shortcut",
+        "Id": "kdos_keys",
+        "License": "MIT",
+        "Name": "KDOS Key Card",
+        "Website": "https://github.com/kunaldawn/kdos"
+    },
+    "X-KDE-Ordering": 60,
+    "X-Plasma-API": "declarativescript"
+}

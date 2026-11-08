@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = lskat
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 157101e69d4c1356129419b4bb820258db2b77eeedb8beb63d79f5bd35a5a73e  lskat-26.08.2.tar.xz
+description = Lieutenant Skat: a card game for two, from the Skat family
+homepage    = https://apps.kde.org/lskat/
+license     = LGPL-2.0-or-later AND LGPL-2.0-only AND GFDL-1.2-or-later AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtsvg kconfig kcoreaddons kcrash kdbusaddons kdoctools kguiaddons ki18n kiconthemes kwidgetsaddons kxmlgui libkdegames gzip

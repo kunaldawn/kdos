@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = konversation
-version     = 26.08.1
+version     = 26.08.2
 release     = 1
 source      = $name-$version.tar.xz::https://download.kde.org/stable/release-service/$version/src/konversation-$version.tar.xz
-sha256      = 0ee0926868f312379f5a51e9f81897f1a8b122d01207733393b3804a8f9ef886  konversation-26.08.1.tar.xz
+sha256      = 0b32ae352d186ae66a619b58c0cf8046a998772b679ae0e9cb8248292ee7cd92  konversation-26.08.2.tar.xz
 description = IRC client (Qt 6, KDE Frameworks) with TLS, DCC transfers and Blowfish-encrypted channels
 homepage    = https://konversation.kde.org/
 license     = GPL-2.0-or-later

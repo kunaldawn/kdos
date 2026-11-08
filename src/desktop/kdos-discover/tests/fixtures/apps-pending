@@ -1,0 +1,3 @@
+# Chosen during the install and not yet built.
+# `kdos app install --pending` builds them.
+office

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = korganizer
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = e0b736e452a0203e265255a1e46c27526fe23d85e8aa8b8b62c40cd79b21dcce  korganizer-26.08.2.tar.xz
+description = KDE calendar and scheduler — events, to-dos and journals on Akonadi
+homepage    = https://apps.kde.org/korganizer/
+license     = GPL-2.0-or-later WITH LicenseRef-Qt-Commercial-exception-1.0 AND GPL-2.0-or-later AND LGPL-2.0-or-later AND LGPL-2.1-or-later AND (LGPL-2.0-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND CC-BY-3.0 AND BSD-3-Clause AND CC0-1.0 AND MIT
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qttools kcalendarcore kcmutils kconfig kcontacts kcoreaddons kcrash kdoctools kholidays ki18n kiconthemes kio kitemviews kjobwidgets kmime kparts kwidgetsaddons kwindowsystem kxmlgui ktextaddons akonadi akonadi-calendar akonadi-contacts calendarsupport eventviews incidenceeditor kcalutils kidentitymanagement kldap kmailtransport kontactinterface libkdepim pimcommon plasma-activities kdepim-runtime

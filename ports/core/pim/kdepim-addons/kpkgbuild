@@ -1,0 +1,22 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdepim-addons
+version     = 26.08.2
+release     = 1
+vendordir   = plugins/webengineurlinterceptor/adblock
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = d01ea99b6e7938f05f0d3b6332c60e1a4148a14883f1b48acd69951d95c39dc2  kdepim-addons-26.08.2.tar.xz
+sha256      = dc25e65f12cdf455a6caefbbd8726cbc7eb70f67071fee4583639b147c696165  kdepim-addons-vendor-26.08.2.tar.xz
+description = Plugins for KDE PIM — message viewer formatters, an ad blocker, editor tools, and calendar events for the Plasma clock
+homepage    = https://invent.kde.org/pim/kdepim-addons
+license     = GPL-2.0-or-later AND LGPL-2.0-or-later AND GPL-2.0-only AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND GPL-2.0-or-later WITH Qt-Commercial-exception-1.0 AND (LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND (LGPL-2.0-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND BSD-3-Clause AND MIT AND CC0-1.0 AND MPL-2.0 AND (MIT OR Apache-2.0) AND Apache-2.0 AND Unicode-3.0 AND Zlib AND (Unlicense OR MIT) AND (Apache-2.0 OR BSL-1.0)
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtwebengine kcalendarcore kcmutils kcolorscheme kconfig kconfigwidgets kcontacts kdbusaddons kdeclarative kguiaddons kholidays ki18n kiconthemes kio kmime kparts kxmlgui prison syntax-highlighting ktexttemplate akonadi akonadi-calendar akonadi-contacts akonadi-import-wizard calendarsupport grantleetheme incidenceeditor kaddressbook kcalutils kidentitymanagement kimap kitinerary kldap kmailtransport kpimtextedit kpkpass ktnef libgravatar libkdepim libkleo libksieve mailcommon mailimporter messagelib pimcommon ktextaddons plasma-activities gpgmepp discount corrosion rust
+vendoring   = rust

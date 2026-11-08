@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = akonadi-calendar
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = efe0c094908a4febe939ff5c96fb191cf251d3821314108b5ebcfdd488c0346b  akonadi-calendar-26.08.2.tar.xz
+description = KDE PIM library that keeps calendars in Akonadi, with iTIP handling and the kalendarac reminder daemon
+homepage    = https://invent.kde.org/pim/akonadi-calendar
+license     = LGPL-2.0-or-later AND LGPL-2.1-or-later AND GPL-2.0-or-later AND GPL-2.0-or-later WITH LicenseRef-Qt-Commercial-exception-1.0 AND GPL-3.0-or-later AND BSD-2-Clause AND BSD-3-Clause AND CC0-1.0 AND MIT
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kconfig kcoreaddons kmime ki18n kwidgetsaddons kxmlgui kio kcodecs kdbusaddons knotifications kjobwidgets kcalendarcore kcrash kmailtransport kidentitymanagement kcalutils messagelib libkleo akonadi akonadi-contacts akonadi-mime gpgmepp qgpgme

@@ -25,7 +25,7 @@ because rootless podman and skopeo stage pulled image layers in it.
 
 ## /var/run and /var/lock
 
-<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=37-46 pin=071a99762a4a -->
+<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=36-45 pin=071a99762a4a -->
 
 `/var/run` is a link to `../run`, and `/var/lock` to `../run/lock`. Libraries built with upstream's
 defaults still have the older path compiled in: basu, the sd-bus library KDOS uses, defaults to
@@ -42,7 +42,7 @@ that.
 
 The script changes into `build/fs` for these four links, so each target is relative to the root:
 
-<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=57-60 pin=9eb925b3be84 -->
+<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=56-59 pin=9eb925b3be84 -->
 
 The four top-level names are links into `/usr`, so there is one `bin`, one `sbin` and one library
 directory, and a path such as `/bin/sh` or `/lib/ld-musl-x86_64.so.1` resolves to the file under
@@ -64,7 +64,7 @@ surrounded by the work below, in the order the script does it.
 
 ### Accounts survive the copy
 
-<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=72-82 pin=202e46a424dd -->
+<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=71-81 pin=202e46a424dd -->
 
 Install hooks of the package phases add service accounts, such as `polkitd` and `geoclue`, to
 `/etc/passwd`, `/etc/group` and `/etc/shadow` long after this step first runs. Copying `fs/` over
@@ -74,7 +74,7 @@ entries that exist only in the tree survive.
 
 ### Files gone from fs/ are removed
 
-<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=94-104 pin=ccd12b012d65 -->
+<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=93-103 pin=ccd12b012d65 -->
 
 A copy overwrites but never deletes, so a file removed from `fs/` would stay in the tree for good.
 The step keeps a [manifest]{.idx} of what `fs/` provided, in `/var/lib/kdos/fs-manifest`, and on the next
@@ -86,7 +86,7 @@ provided even when its target resolves to nothing inside `fs/`, as `etc/mtab`'s,
 
 ### The copy
 
-<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=112-119 pin=77680c6ebbee -->
+<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=111-118 pin=77680c6ebbee -->
 
 `fs/usr/lib64` is a link to `lib`. `cp` cannot replace a real directory with a link, so on a tree
 whose `usr/lib64` is still a directory that one path fails to copy. The step reports the directory
@@ -97,7 +97,7 @@ build.
 
 ### Modes follow fs/
 
-<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=128-136 pin=c16a1118216e -->
+<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=127-135 pin=c16a1118216e -->
 
 `cp` keeps the mode of a file that already exists at the destination, so without this loop a file
 made executable in `fs/` would stay non-executable in a tree synced before. That breaks things
@@ -107,15 +107,15 @@ what `cp` gives a new file under this build's umask, so a first copy and a later
 
 ### Modes and owners git cannot carry
 
-<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=171-193 pin=ad17f2fc6f55 -->
+<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=170-192 pin=ad17f2fc6f55 -->
 
 git records whether a file is executable and nothing else: no narrower mode and no owner. The loop
 above therefore gives every non-executable file 644, and a file in the tree belongs to whoever ran
 the build. For three paths that is a hole:
 
 - `/etc/shadow` at 644 would let every account read every password hash. It is 600 and owned by
-  root. `kdos-checkpass`, the setuid helper the lock screen calls, exists so that nothing else opens
-  this file, and a readable shadow file would undo it.
+  root. `unix_chkpwd`, the setuid helper PAM calls for a process that is not root, such as the lock
+  screen, exists so that nothing else opens this file, and a readable shadow file would undo it.
 - [`/etc/polkit-1/rules.d`]{.idx} and `50-kdos.rules` in it are root's. polkitd reads every rule it finds
   there without checking ownership, so a directory the desktop user could write would let that user
   grant themselves anything.
@@ -128,7 +128,7 @@ A path in the list that the tree does not have is reported rather than skipped s
 
 ### The manifest and the accounts are written
 
-<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=195-211 pin=e4300e9cfca0 -->
+<!-- kfs:include script/phases/10_bootstrap/000_file_system.sh lines=194-210 pin=e4300e9cfca0 -->
 
 The manifest lists every file and link in `fs/`, sorted. It is built with POSIX `find` and `sed`
 because the step runs on the container's userland, not the tree's. The saved account lines are

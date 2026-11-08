@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = konquest
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 74de272b1778ebf7825bf24111a81e4bf54e16f23b9cd2329144dbd8c3f3d914  konquest-26.08.2.tar.xz
+description = Conquer the galaxy by sending fleets of ships between planets
+homepage    = https://apps.kde.org/konquest/
+license     = GPL-2.0-or-later AND GFDL-1.2-or-later AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtscxml qt6-qtsvg kcolorscheme kconfig kcoreaddons kcrash kdbusaddons kdoctools kguiaddons ki18n kwidgetsaddons kxmlgui libkdegames

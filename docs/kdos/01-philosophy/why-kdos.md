@@ -10,11 +10,13 @@ were close and what lost.
 
 ## What KDOS is
 
-KDOS is a Linux distribution for x86_64 machines, built from source, with a desktop of its own,
-graphical applications ported to it natively, and a catalogue of further applications that run in
-containers. The software written for it is
-small enough for one person to read, and it still runs the large graphical applications people
-expect.
+KDOS is a Linux distribution for x86_64 machines, built from source on the musl C library, with KDE
+Plasma as its desktop, graphical applications ported to it natively, a catalogue of further
+applications that run in containers, and updates of the operating system that arrive as signed
+images written into a second root slot. The software written for it (the package manager, the
+`kdos` command, the daemons, the installer, and the code that brings KDOS's packs, boxes and slots
+onto Plasma's own surfaces) is small enough for one person to read, and everything around it,
+Plasma included, is compiled here from pinned upstream source.
 
 Those two aims usually pull against each other. A system you can read end to end tends to stop at
 a shell prompt; a system with a browser, a CAD package and a video editor tends to be too large
@@ -47,35 +49,36 @@ built and who maintains it:
 
 | Ring | Where it is in the repository | What it holds | How it is built |
 |---|---|---|---|
-| Core | `ports/core/`, about 2,000 recipes | musl, the GNU userland, sysvinit, the toolchains, the libraries, the services, the kernel and its firmware, and the natively ported applications | Compiled here from upstream source archives, each pinned by its sha256 |
-| Desktop | `src/`, about two dozen recipes | The compositor, the panel, the terminal, the root daemons, the installer, the `kdos` command and the 17 C libraries they share | Compiled here from source written for KDOS; `kpkg` and the installer by two bootstrap scripts |
+| Core | `ports/core/`, about 2,400 recipes | musl, the GNU userland, sysvinit, the toolchains, the libraries, the services, KDE Plasma and its frameworks, the kernel and its firmware, and the natively ported applications, KDE Gear among them | Compiled here from upstream source archives, each pinned by its sha256 |
+| Desktop | `src/`, a few dozen recipes | KDOS's own software: the package manager, the `kdos` command, the root daemons, the installer, the pack and box tools, the Plasma components that reach them (settings pages, plasmoids, the Discover backend, KWin effects and the look packages) and the nine C libraries they share | Compiled here from source written for KDOS; `kpkg` and the installer by two bootstrap scripts |
 | Outer | `src/system/kdos-appbox/catalogue` | 73 graphical and command-line applications over 7 shared runtimes | Declared as Debian packages and built by podman on the machine that asks for them |
 
 The core ring starts from [musl](https://musl.libc.org/), the small C library KDOS uses in place
 of glibc, and the GNU tools (coreutils, grep, sed, gawk, findutils), each a program of its own,
-as the core commands. The 17 libraries of the
+as the core commands. The nine libraries of the
 desktop ring have no recipes of their own; each program that uses one compiles it in.
 
-A running machine is a short chain of programs with no systemd in it. The Limine boot loader starts
-the kernel and an initramfs, a small early root filesystem whose one job is to find the real one;
-sysvinit's `init` runs the numbered scripts in `/etc/init.d/`, and `ksvc` supervises the long-running
-services they start. `tty1` logs in the account that `/etc/kdos/login.conf` names, with no
-password prompt on the live image, and that account's login profile starts `kdos-desktop`, which
-starts the compositor, `kdos-comp`. The compositor in turn starts and supervises the panel,
-`kdos-shell`. Every KDOS surface, the panel and the terminal included, is drawn as a grid of
-character cells by the `libk*` libraries. An application from the catalogue runs in a container
-under podman, a container runtime run as the ordinary user rather than as root, but appears on the
-desktop as ordinary software.
+A running machine is a short chain of programs with no systemd init in it. The Limine boot loader
+starts the kernel and an initramfs, a small early root filesystem whose one job is to find the real
+one; sysvinit's `init` runs the numbered scripts in `/etc/init.d/`, and `ksvc` supervises the
+long-running services they start, among them elogind, which keeps track of logins. When the
+scripts have finished and the boot splash has gone dark, `init` starts SDDM, the login screen, on
+the first virtual terminal; the live image logs the `kdos` account in with no password prompt. A
+login passes through PAM, where elogind records the session and turnstile starts the account's own
+services (its message bus and PipeWire), and SDDM then starts Plasma: KWin, the compositor, and the
+Plasma shell with its panel. An application from the catalogue runs in a container under podman, a
+container runtime run as the ordinary user rather than as root, but appears on the desktop as
+ordinary software.
 
 [Architecture overview](../03-architecture/overview.md) draws that chain in full, names every
 process on a working desktop and says where each kind of state is kept.
 
 ## Built from source, with named exceptions
 
-The host is compiled in this repository from about 2,000 recipes under `ports/core` for upstream
-software and some two dozen under `src/` for the desktop, the daemons and the tools written for KDOS, and
-from two scripts: one builds `kpkg` itself, which has no recipe, and the other builds the
-installer, `kinstall`, whose recipe exists but is named in no phase list.
+The host is compiled in this repository from about 2,400 recipes under `ports/core` for upstream
+software and a few dozen under `src/` for the tools, the daemons and the Plasma components written
+for KDOS, and from two scripts: one builds `kpkg` itself, which has no recipe, and the other builds
+the installer, `kinstall`, whose recipe exists but is named in no phase list.
 
 The build runs in thirteen phases, numbered in bands of ten from `00_cross` to `70_image`. It starts
 with a cross toolchain (`00_cross`), builds a base userland on musl (`10_bootstrap`), rebuilds that
@@ -101,13 +104,17 @@ built](../05-developer/how-kdos-is-built.md) follows the build from `git clone` 
 and [The ports catalogue](../06-reference/ports-catalogue.md) lists every recipe by shelf, the
 subject directory it is filed under in `ports/core`, with its phase.
 
+A machine that updates installs what this build produced. A release publishes the packages it
+built from these recipes, on a signed binhost and as whole-slot images, signed with the release
+key, so nothing in it was built anywhere else; `kdos update apply --source` builds the same recipes
+on the machine instead of installing them.
+
 The claim has exceptions, and they are [listed in full](#what-is-not-built-from-source) at the end
 of this chapter. Five classes are exempt from building from source: firmware and code for other
 processors, bootstrap seeds, compiled font data, data that has no other source form, and JavaScript
-built upstream. Two further entries are listed so that the inventory is complete, though neither is
-an exemption: recoloured upstream artwork (SVG icons, Xcursor images and a GTK theme), committed
-here and processed at build time, and four pieces of third-party code under `src/`, which are
-compiled here like everything else. The application catalogue sits outside the rule altogether,
+built upstream. One further entry is listed so that the inventory is complete, though it is not an
+exemption: two pieces of third-party code under `src/`, which are compiled here like everything
+else. The application catalogue sits outside the rule altogether,
 because nothing in it runs on the host. The rule and its exempt classes are stated in
 [Principles](principles.md#everything-that-runs-on-the-host-is-built-from-source).
 
@@ -129,9 +136,10 @@ The toolchains survive onto the shipped image, because the build installs them r
 removing them. A running KDOS carries `gcc`, `binutils`, `clang`, `rust`, `go`, `cmake`, `meson`,
 `ninja`, `python3`, `make` and `kpkg`, so any single recipe, the compiler and the kernel included,
 can be rebuilt on the machine itself and offline once its source is present, with `kpkg`.
-`kdos update fetch` brings a newer signed recipe tree over the network, and `kdos update apply`
-brings every package that is behind its recipe up to date, downloading its source and compiling it
-on the machine. [How KDOS differs](how-kdos-differs.md#self-hosting) compares this with other
+`kdos update fetch` brings the newest signed recipe tree over the network, and
+`kdos update apply --source` brings every package that is behind it up to date by downloading its
+source and compiling it on the machine, where an update otherwise installs the release's signed
+binaries. [How KDOS differs](how-kdos-differs.md#self-hosting) compares this with other
 distributions.
 
 A full rebuild, every phase from the cross toolchain to the ISO, is driven by [`kdos
@@ -191,22 +199,28 @@ KDOS ports the applications a machine needs natively, with the toolkit each is w
 machine installed from KDOS media has a browser, an office suite, graphics and media tools, maps and
 an offline library with no network at all. These are ordinary recipes under `ports/core`, filed on
 shelves named for what they are for, such as `browsers`, `mail`, `office`, `graphics`, `education`
-and `cad`, and built in the last two userland phases, `43_toolkits` and `44_apps`. GTK, Qt, KDE
-Frameworks, WebKitGTK, QtWebEngine, wxWidgets, FLTK and Tk are built for them, each with its Wayland
-backend as the default and its X11 backend for the applications that need Xwayland. The desktop
-under them links no toolkit; see
-[Principles](principles.md#toolkits-are-for-applications-not-the-desktop). [The ports
+and `cad`, and built in the last two userland phases, `43_toolkits` and `44_apps`; all of KDE Gear
+is among them. GTK, Qt, KDE Frameworks, WebKitGTK, QtWebEngine, wxWidgets, FLTK and Tk are built
+for them, each with its Wayland backend as the default and its X11 backend for the applications
+that need Xwayland. Qt and KDE Frameworks carry the desktop as well; see
+[Principles](principles.md#the-desktop-is-kde-plasma). [The ports
 catalogue](../06-reference/ports-catalogue.md) lists every application by shelf.
+
+Discover is the one place to find all of it: the native ports, the catalogue's boxes and packs,
+updates of the system and firmware, through backends KDOS adds for its own kinds of software.
+There is no Flathub and no "Get New…": everything Discover offers is described in this repository
+or carried on the medium.
 
 The outer ring is a catalogue of 73 applications. Each is declared as a chain of packages rather
 than shipped as bytes: an application row sits on one of 7 shared runtimes (GTK, Qt, KDE, media,
 scientific Python, Electron and Wine) or directly on the base, and podman builds the chain on
 the machine that asks for it, storing each runtime once however many applications share it. An
 installed application runs in its own rootless container and behaves like ordinary system
-software: it appears in the launcher, registers as a handler for its file types, takes the
-desktop's GTK theme, icons and cursors, and can be started from a terminal by name. A Qt
-application follows the accent too, through the platform theme its runtime declares in the
-catalogue; see [Theming](../02-user-guide/theming.md#theming-applications-inside-boxes).
+software: it appears in the launcher under its own icon, registers as a handler for its file
+types, follows the desktop's light or dark preference through the Settings portal where its
+toolkit reads it, and can be started from a terminal by name. A Qt application follows the accent
+too, through the platform theme its runtime declares in the catalogue; see
+[Theming](../02-user-guide/theming.md).
 
 Some catalogue entries are commands rather than windows. Twenty-five `cmd` rows across 16
 applications expose solvers, converters, emulators and toolchains to be run from a prompt. They
@@ -221,15 +235,16 @@ asks.
 
 ## Who should run KDOS
 
-KDOS assumes a reader who is comfortable with a build log, a package recipe, and the C that draws
-the panel. The image ships one user account, `kdos` (the installer lets you rename it), no
-first-boot wizard, no telemetry, and no configuration layer between you and the file that takes
-effect.
+KDOS assumes a reader who is comfortable with a build log, a package recipe, and the C and Qt code
+that join KDOS to Plasma. The image ships one user account, `kdos` (the installer lets you rename
+it), no telemetry, and no configuration generated from a declaration: every setting is a file you
+can open, yours under `~/.config`, the machine owner's under `/etc`, and KDOS's defaults under
+`/usr/share/kdos/xdg` beneath both.
 
 It suits you if:
 
-- you want to change the desktop, the package manager or the installer rather than configure
-  around them;
+- you want to change the package manager, the installer or the way the desktop is put together
+  rather than configure around them;
 - you want a workstation that carries its applications on its own medium and needs no network
   to install them; or
 - you want to keep an offline, reproducible source for the exact system you are running.
@@ -257,14 +272,12 @@ Each of these is a decision with an argument behind it. The arguments are in
 
 | Absent | Instead |
 |---|---|
-| systemd | sysvinit's `init`, numbered scripts in `/etc/init.d/`, and `ksvc` to supervise services; for the rest, `seatd` (device access for the session), `basu` (the sd-bus library on its own), `eudev` (device events), `dbus` (the message bus) and `dnsmasq` (the local DNS cache) |
-| An Xorg server | Wayland only, with Xwayland, the X server that runs as a Wayland client, as the single carve-out for X11 clients, boxed or native |
-| A toolkit under the desktop | Every KDOS surface drawn as a character-cell grid by libraries written for it; the compositor draws its own titlebars, root menu and window switcher with pango, the text layout library, at a size matched to the grid. Applications use their own toolkits |
-| A display manager | `tty1` logs in the account `/etc/kdos/login.conf` names, with no password prompt on the live image (`kdos`); an installed machine asks for a password unless automatic login was chosen (`autologin = <user>` in that file). That login shell's profile starts `kdos-desktop` |
-| A first-boot wizard | The installer asks its questions once, then the system is yours |
-| A vendor app store | `kdos-store` lists the catalogue held in this repository and builds from it; there is no account and nothing to sign up to |
-| Telemetry | No KDOS program sends usage data; boxed applications behave as their Debian packages do |
-| A binary package archive | Ports built here, and every update built on the machine from a signed recipe tree; `kpkg` can install from a signed [binhost](../06-reference/glossary.md#binhost) (a package server) you run yourself, by hand |
+| systemd's init, units and service manager | sysvinit's `init`, numbered scripts in `/etc/init.d/`, and `ksvc` to supervise services, a user's included; turnstile to start a user's services at login. Three pieces of systemd's tree run on their own: elogind (logins and seats), `basu` (the sd-bus library) and `eudev` (device events); `dbus` is the message bus and `dnsmasq` the local DNS cache |
+| An X server on the login path, and X11 sessions | Wayland only. SDDM's greeter runs on `kwin_wayland`, the only session is Plasma on Wayland, and Xwayland, the X server that runs as a Wayland client, is the single carve-out for X11 clients, boxed or native, started by KWin inside a session |
+| Flatpak and Flathub | Discover lists the ports, packs and boxes this repository describes, and firmware; there is no account and nothing to sign up to |
+| "Get New…" | KNewStuff is switched off system-wide; a curated add-on pack on the medium carries the wallpapers, colour schemes and KWin scripts KDOS offers |
+| Telemetry | No KDOS program sends usage data and KUserFeedback is not ported; boxed applications behave as their Debian packages do |
+| Binaries built elsewhere | Every package and slot image a release publishes is built from this tree's recipes and signed with the release key; `kdos update apply --source` builds them on the machine instead |
 
 ## The system in numbers
 
@@ -275,11 +288,13 @@ counts are kept in [Status](../06-reference/status.md#scale) and
 
 | | |
 |---|---|
-| Port recipes in `ports/core` | about 2,000 |
-| Port recipes under `src/` for KDOS's own software | about two dozen, in `src/system`, `src/art`, `src/desktop` and `src/daemons` |
+| Port recipes in `ports/core` | about 2,400 |
+| Port recipes under `src/` for KDOS's own software | a few dozen, in `src/system`, `src/art`, `src/desktop` and `src/daemons` |
 | Shelves the upstream recipes are filed on | 102 |
-| Upstream recipes that no phase list or dependency reaches, and so are not built | 1, `texlive-doc`, named in `ports/unbuilt`; `testing/bookcounts.py` refuses any other |
-| C libraries written for this system, under `src/libs` | 17, one of them (`libkvt`) a fork of libtsm |
+| Upstream recipes that no phase list or dependency reaches, and so are not built | the ones named in `ports/unbuilt`, `texlive-doc` among them; `testing/bookcounts.py` refuses any other |
+| C libraries written for this system, under `src/libs` | 9 |
+| Plasma's own modules left out | 13, each because it needs systemd, KDE Frameworks 5, Flatpak, GRUB, Plymouth or another firewall, or is a shell for phones and televisions |
+| KDE Gear modules left out | 4: kjournald, kmag, kmousetool and plasma-settings |
 | Kernel | Linux 7.2.11 |
 | Applications in the catalogue | 73 |
 | Shared runtimes beneath them | 7 |
@@ -372,10 +387,11 @@ it did not build.
 
 ### Compiled font data
 
-`noto-fonts` (2.015), `noto-cjk` (2.004), `noto-fonts-extra` and `nerd-fonts-symbols` (3.5.1)
-ship as built font files because upstream publishes them that way, and the sources behind them
-compile through toolchains this tree does not carry: fontmake and gftools for Noto, AFDKO for Noto
-CJK, and the Nerd Fonts patcher and its icon sets for the symbols. Each recipe unpacks an archive
+`noto-fonts` (2.015), `noto-cjk` (2.004), `noto-fonts-extra`, `nerd-fonts-symbols` (3.5.1) and
+`ttf-jetbrains-mono`, the desktop's monospace face, ship as built font files because upstream
+publishes them that way, and the sources behind them compile through toolchains this tree does not
+carry: fontmake and gftools for Noto, AFDKO for Noto CJK, the Nerd Fonts patcher and its icon sets
+for the symbols, and `gftools builder` over Glyphs sources for JetBrains Mono. Each recipe unpacks an archive
 and installs the `.ttf`, `.ttc` or `.otf` files in it. `font-carlito` and `font-caladea` are the
 crosextrafonts builds LibreOffice pins, metric-compatible with Calibri and Cambria; later Carlito
 sources compile only through fontmake, and later Caladea changed its metrics.
@@ -435,7 +451,7 @@ There is nothing earlier to build it from:
 | Port | Data |
 |---|---|
 | `tessdata-eng` | `eng.traineddata` and `osd.traineddata`, `tessdata_fast`'s English and script-detection models for `tesseract`, two `source =` lines |
-| `whisper-model-base-en` | The Whisper `base.en` speech model in ggml form, for `whisper.cpp` and `kdos-rec` |
+| `whisper-model-base-en` | The Whisper `base.en` speech model in ggml form, which `whisper-cli` reads when Dolphin's Transcribe action runs it |
 | `fluidr3-gm-sf3` | The FluidR3 Mono General MIDI SoundFont, compressed, the default instrument set for every MIDI player |
 | `perl-xml-parser` | The `.enc` encoding maps under `share/` |
 | `fcitx5-chinese-addons` | The pinyin-to-character and stroke tables, two further `source =` lines |
@@ -470,26 +486,22 @@ own, as `cncjs` carries, and upstream's bundler, so each ships as upstream relea
 | `pat` | `web/dist`, the webpack bundle upstream commits and the binary embeds |
 | `kodi` | The default web interface, `webinterface.default` |
 | `yarn` | `cli-dist`'s `yarn.js`, one bundled script run by `node`, which inlines an emscripten build of libzip |
-
-### Vendored artwork, recoloured rather than redrawn
-
-`kdos-icons` (a pruned set of Papirus SVG icons), `kdos-cursors` (Bibata Xcursor images) and
-`kdos-gtk-theme` (adw-gtk3, for GTK applications, native and boxed) are upstream assets committed
-under `src/art/` and recoloured to the KDOS palette at build time. The palette is this project's;
-the shapes are not. Each package carries a `LICENSE.notice` recording exactly what was changed, and
-an `UPSTREAM` file naming the release it was taken from. See [Theming](../02-user-guide/theming.md).
+| `ghostwriter` | The React and MathJax bundles its preview loads |
+| `arianna` | foliate-js, the renderer that draws its pages, and the built `pdf.js`, `zip.js`, `fflate.js` and `jszip.min.js`, compiled into its resources |
 
 ### Third-party code under `src/`
 
-Most of `src/` is written for KDOS. Four pieces are not, and each is compiled here like everything
+Most of `src/` is written for KDOS. Two pieces are not, and each is compiled here like everything
 else:
 
 | Where | What |
 |---|---|
 | `src/libs/libksig/monocypher/` | Monocypher 4.0.3, four files of C99 providing Ed25519, dual-licensed BSD-2-Clause and CC0, vendored verbatim. [`libksig`](../05-developer/c-libraries.md) exists to wrap it |
-| `src/desktop/kdos-comp` | A frozen hard fork of the labwc 0.20.0 compositor; see [Decisions](decisions.md#the-compositor-is-a-frozen-fork-of-labwc) |
-| `src/libs/libkvt` | A hard fork of the libtsm 4.7.1 terminal state machine; see [Decisions](decisions.md#forking-libtsm-rather-than-writing-a-terminal) |
 | `src/art/kdos-bb` | A frozen hard fork of the AA-project's `bb` 1.3rc1 demo; see [Decisions](decisions.md#freezing-a-demo-rather-than-writing-one) |
+
+KDOS's Plasma packages that differ from Breeze, such as its login-screen theme, are not vendored:
+each copies the installed Breeze files at build time and applies a patch to them, so the upstream
+part is always the version the tree builds.
 
 ### The application catalogue is Debian
 
@@ -504,22 +516,22 @@ See [Packs and boxes](../03-architecture/packs-and-boxes.md).
 
 ### Everything else
 
-Everything else on the host, including every library, every daemon, the compiler, the kernel and
-the whole desktop, is compiled here from a source file whose URL and sha256 are in this
-repository. A prebuilt object for the host that a tarball carries and that fits none of these
-classes is deleted from the package or never taken from the tarball: `go` drops its race-detector
-runtime and BoringCrypto module, `john` drops its ZTEX FPGA bitstreams and controller image,
-`kolibri` drops the shared objects built elsewhere under its `dist`, `hplip` fails its build if an
-upstream-built HP object reaches the package, and `xonotic-data` and `sauerbraten` take only the
-data from release archives that also carry prebuilt engines. `libdvdcss`, which reads
+Everything else on the host, including every library, every daemon, the compiler, the kernel and the
+whole desktop, Plasma and its frameworks included, is compiled here from a source file whose URL and
+sha256 are in this repository. A prebuilt object for the host that a tarball carries and that fits
+none of these classes is deleted from the package or never taken from the tarball: `go` drops its
+race-detector runtime and BoringCrypto module, `john` drops its ZTEX FPGA bitstreams and controller
+image, `kolibri` drops the shared objects built elsewhere under its `dist`, `hplip` fails its build
+if an upstream-built HP object reaches the package, and `xonotic-data` and `sauerbraten` take only
+the data from release archives that also carry prebuilt engines. `libdvdcss`, which reads
 CSS-encrypted DVDs, is compiled here from its source like any other library.
 
 ## See also
 
 - [How KDOS differs](how-kdos-differs.md) — KDOS compared with other distributions, problem by
-  problem: the C library, the core userland, init, the display stack, toolkits, the desktop,
-  packages, source pinning, self-hosting, reproducibility, configuration, applications, updates,
-  security, and hardware and support
+  problem: the C library, the core userland, init, the display stack, toolkits, the desktop and
+  how other distributions ship Plasma, packages, source pinning, self-hosting, reproducibility,
+  configuration, applications, updates, security, and hardware and support
 - [Principles](principles.md) — the rules these four properties produce
 - [Decisions](decisions.md) — the choices that were close, and what lost
 - [Getting started](../02-user-guide/getting-started.md) — building an image and booting it

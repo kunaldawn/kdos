@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = plasma-camera
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 773eebdb3a09bb9a5750e2c5f8dbdd5e88298a3edf458f4ae2ac413899e46549  plasma-camera-26.08.2.tar.xz
+description = Camera app — photos and video from libcamera devices such as laptop webcams
+homepage    = https://apps.kde.org/plasma.camera/
+license     = GPL-2.0-or-later AND GPL-3.0-or-later AND (LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only) AND LGPL-2.1-or-later AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules pkgconf qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qtsensors qt6-qtmultimedia kirigami kirigami-addons kcoreaddons ki18n kconfig exiv2 libcamera

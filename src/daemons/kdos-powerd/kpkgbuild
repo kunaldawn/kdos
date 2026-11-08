@@ -9,9 +9,9 @@
 # ---------------------------------
 
 name        = kdos-powerd
-version     = 0.1.0
-release     = 2
-description = Suspend, poweroff and reboot for a desktop that is not root
+version     = 0.2.0
+release     = 1
+description = The firewall's named services and the look of the machine before a login, for a desktop that is not root
 homepage    = https://github.com/kunaldawn/kdos
 license     = MIT
-depends     = sysvinit
+depends     = basu

@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = plasma5support
+version     = 6.8.2
+release     = 1
+source      = https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = 6d98603d6ec0826bd1fb7348a15e73d9011fd2035f03bda5f8e55210d62b24ed  plasma5support-6.8.2.tar.xz
+description = Plasma 5's data engines and services, kept for the Plasma 6 widgets that read them
+homepage    = https://invent.kde.org/plasma/plasma5support
+license     = LGPL-2.0-or-later AND LGPL-2.0-only AND GPL-2.0-or-later AND LGPL-2.1-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL)
+group       = plasma
+depends     = cmake ninja extra-cmake-modules pkgconf qt6-qtbase qt6-qtdeclarative kconfig kcoreaddons kguiaddons ki18n knotifications solid kservice kidletime kio kjobwidgets kunitconversion kholidays kwindowsystem libksysguard networkmanager-qt plasma-activities gpsd lsof

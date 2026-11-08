@@ -3,16 +3,14 @@ NetworkManager is the daemon that brings links up and keeps them up: Ethernet, W
 `wpa_supplicant`, mobile broadband through ModemManager, PPPoE and serial modems through `pppd`,
 Bluetooth tethering, VPNs and a shared hotspot. It also installs `nmcli`, `nmtui` and `libnm`, the
 client library that [networkmanager-qt](#port-networkmanager-qt) and the OpenVPN plugin
-[networkmanager-openvpn](#port-networkmanager-openvpn) build on. KDOS's own front ends,
-`kdos-net` and `kdos-netagent` in [kdos-shell](#port-kdos-shell), do not link `libnm`: they speak
-to the daemon over the system bus. `/etc/init.d/42_networkmanager.sh` starts it under the
+[networkmanager-openvpn](#port-networkmanager-openvpn) build on. Plasma's network applet,
+[plasma-nm](#port-plasma-nm), drives it through networkmanager-qt. `/etc/init.d/42_networkmanager.sh` starts it under the
 supervisor with `--no-daemon`, after polkit and ModemManager.
 
-What sets the KDOS build apart is what is missing around it. There is no systemd and no logind,
-so the build names no unit directory, no journal and no session tracker, and NetworkManager runs
-with no idea which users are logged in. The consequences of that for who may change a connection
-are in [Why `settings.modify.system` is granted](../../../../docs/kdos/03-architecture/security-model.md#why-settingsmodifysystem-is-granted).
-Every helper program it runs (`dnsmasq`, `pppd`, `dhcpcd`, `nft`, `resolvconf`, `modprobe`) is
+What sets the KDOS build apart is what is missing around it. There is no systemd, so the build
+names no unit directory and no journal; logins are tracked by [elogind](#port-elogind), which
+NetworkManager asks which users have a session and when the machine is about to suspend. Every
+helper program it runs (`dnsmasq`, `pppd`, `dhcpcd`, `nft`, `resolvconf`, `modprobe`) is
 named by absolute path at configure time, so the paths compiled into the binary are the ones the
 image installs.
 
@@ -36,31 +34,30 @@ describes the result). `nmtui.desktop` gives `nmtui` a menu entry as *Network*, 
   this build does not make.
 - `-Dtests=no` — Build none of upstream's test programs.
 - `-Dsystemd_journal=false` — Log without `libsystemd`'s journal API. KDOS has no systemd
-  ([No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd)),
+  ([No systemd](../../../../docs/kdos/01-philosophy/principles.md#no-systemd-init-units-or-service-manager)),
   and upstream's default needs it.
 - `-Dsystemdsystemunitdir=no`, `-Dsystemdsystemgeneratordir=no` — Install no systemd unit files
   and no generator. Left empty, each is looked up through systemd's pkg-config file and the
   configure step stops when that is missing.
-- `-Dsession_tracking=no` — Build no logind session tracker (upstream's choices are `systemd`,
-  `elogind` and `no`). Neither logind exists here, so NetworkManager treats every user as having
-  no session. A profile that names an owner in its `permissions` list is then invisible and never
-  connects on its own, which is why `kdos-net` creates every profile as a system connection; see
-  [Why `settings.modify.system` is granted](../../../../docs/kdos/03-architecture/security-model.md#why-settingsmodifysystem-is-granted).
-- `-Dsession_tracking_consolekit=false` — Build no ConsoleKit session tracker either. ConsoleKit
-  is not in the tree, and with it on NetworkManager would watch ConsoleKit's database for sessions
+- `-Dsession_tracking=elogind` — Track logins through [elogind](#port-elogind)'s `libelogind`
+  (upstream's choices are `systemd`, `elogind` and `no`). NetworkManager then knows which users
+  have a session, so a profile that names an owner in its `permissions` list (a `user:` profile,
+  which Plasma's network applet creates for a connection marked as not shared with other users)
+  is visible to that user and connects on its own while they are logged in. Without a tracker
+  every user counts as having no session, and such a profile is invisible and never connects.
+- `-Dsession_tracking_consolekit=false` — Build no ConsoleKit session tracker beside elogind's.
+  ConsoleKit is not in the tree, and with it on NetworkManager would watch ConsoleKit's database for sessions
   that never appear.
 - `-Dpolkit=true` — Ask polkit before every privileged request a client makes. The actions
   `wheel` is granted, and those it is not, are listed in
-  [polkit, and why the desktop has no authentication agent](../../../../docs/kdos/03-architecture/security-model.md#polkit-and-why-the-desktop-has-no-authentication-agent).
+  [polkit and the authentication agent](../../../../docs/kdos/03-architecture/security-model.md#polkit-and-the-authentication-agent).
 - `-Dpolkit_agent_helper_1=/usr/lib/polkit-1/polkit-agent-helper-1` — The setuid helper `nmcli`
   runs when it acts as a polkit authentication agent itself (`nmcli agent polkit`). The path is
   where the [polkit](#port-polkit) port installs it, compiled in rather than searched for.
-- `-Dsuspend_resume=consolekit` — Choose which service's suspend signal NetworkManager listens
-  for: `systemd` and `elogind` need their libraries at build time, and `consolekit` needs only the
-  D-Bus name `org.freedesktop.ConsoleKit`, which nothing on KDOS owns. It is the only backend that
-  builds without those libraries, and it hears nothing. Suspend reaches NetworkManager instead from `kdos-powerd`,
-  which calls its `Sleep(true)` before the kernel suspends and `Sleep(false)` after; see
-  [What happens around a suspend](../../../../docs/kdos/04-programs/daemons.md#what-happens-around-a-suspend).
+- `-Dsuspend_resume=elogind` — Listen for elogind's `PrepareForSleep` signal and take a delay
+  inhibitor, so NetworkManager takes its devices down before the machine sleeps and brings them
+  back after it wakes, whatever started the suspend: the lid, the power menu or `loginctl`. Nothing
+  else may call NetworkManager's `Sleep()` around a suspend, or it sleeps and wakes twice.
 - `-Dmodem_manager=true` — Drive mobile broadband modems through
   [modemmanager](#port-modemmanager)'s D-Bus interface, with
   [mobile-broadband-provider-info](#port-mobile-broadband-provider-info) for a carrier's APN.
@@ -139,7 +136,7 @@ describes the result). `nmtui.desktop` gives `nmtui` a menu entry as *Network*, 
 `/usr/sbin/NetworkManager` is executable and `/etc/service.disabled/networkmanager` is absent, and
 the marker alone keeps NetworkManager off. With systemd off the build installs no D-Bus activation
 file for `org.freedesktop.NetworkManager`, and the image adds none, so the system bus never starts
-NetworkManager: the call `kdos-netagent` makes in every session while the name has no owner is
+NetworkManager: a call plasma-nm makes while the name has no owner is
 refused rather than answered by a second, unsupervised NetworkManager; see
 [`/etc/service.disabled/<name>`](../../../../docs/kdos/06-reference/configuration.md#etcservicedisabledname).
 

@@ -1,0 +1,8 @@
+[General]
+count=3
+rules=1f3c
+
+[1f3c]
+Description=A count that names a rule that is not there
+wmclass=org.kde.konsole
+wmclassmatch=1

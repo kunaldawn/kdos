@@ -111,11 +111,10 @@ int ktui_theme_night(int on)
 }
 
 /*
- * The scheme and the warm cast together, in that order: the scheme is what
- * project() copies from, so a warm shift applied first would be thrown away
- * by the scheme that followed it. The night toggle is applied whether or not
- * a state file named a scheme, because turning it OFF is a retint too, and a
- * surface that returned early on a missing file would stay warm.
+ * The default scheme when no state file names one: a TUI started where `kdos
+ * theme` never ran must not keep whatever scheme an earlier call left set.
+ * The warm cast is not read here; Night Light is the compositor's, and a
+ * palette warmed again inside a warmed screen would be cast twice.
  */
 void ktui_theme_load(void)
 {
@@ -125,7 +124,6 @@ void ktui_theme_load(void)
 		ktui_theme_set(name);
 	else
 		ktui_theme_set(ktui_themes[KCOL_DEFAULT_INDEX].name);
-	ktui_theme_night(kb_toggle_on("night-light"));
 }
 
 /* No sqrt: comparing squares orders identically to comparing roots, and this

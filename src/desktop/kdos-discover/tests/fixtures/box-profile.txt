@@ -1,0 +1,18 @@
+box         = work
+base        = pack:box.work
+accent      = amber       title bars in KDOS-Amber (KWin rule kdos-box-work)
+grant       = screencast, mystery
+              screencast        the screen-cast portal, through KWin's own picker
+            ! grant 'mystery' is no name KWin's sandbox policy or the bus proxy knows — it opens nothing
+persistence = persistent  kdos-packd's upper, kept
+network     = private     --unshare-netns
+ipc         = private     --unshare-ipc
+devices     = private     --unshare-devsys
+processes   = private     --unshare-process
+home        = shared      the user's own $HOME
+wayland     = yes         the session's Wayland socket, tagged with this box's security context
+audio       = no          no PipeWire socket
+x11         = auto        Xwayland when the application has no Wayland path
+memory      = unlimited   no --memory
+cpus        = all         no --cpus
+gpu         = no          no /dev/dri

@@ -2,7 +2,7 @@
 
 Three kinds of hardware can stand in for, or add to, a password on KDOS: a fingerprint reader, a
 FIDO2 or U2F security key, and a [smart card]{.idx} in a reader. This page covers what each needs, the
-files that set it up, and the procedures that use it: enrolling a finger for [`sudo`]{.idx}, making an SSH
+files that set it up, and the procedures that use it: enrolling a finger for [`sudo`]{.idx} and the lock screen, making an SSH
 key that lives on a security key, and reaching a smart card's certificates. What each one does
 not reach is listed under [Known gaps](#known-gaps).
 
@@ -16,9 +16,10 @@ All of these are installed by `41_system` on every image, live and installed:
 | FIDO2 / U2F key | [libfido2](#port-libfido2) (the library and the `fido2-token`, `fido2-cred` and `fido2-assert` tools); [openssh](#port-openssh), built `--with-security-key-builtin` | Nothing: the key is a USB HID device, opened by the program that uses it |
 | Smart card | [pcsc-lite](#port-pcsc-lite) ([`pcscd`]{.idx}), [ccid](#port-ccid) (the driver for USB CCID readers), [opensc](#port-opensc) (`opensc-pkcs11.so` and the `pkcs11-tool` and `opensc-tool` tools), [p11-kit](#port-p11-kit) | [`/etc/init.d/47_pcscd.sh`]{.idx}, at boot, after `41_polkitd` |
 
-[pam](#port-pam) provides the [PAM]{.idx} stacks, and [sudo](#port-sudo) is the one program on the image
-whose stack asks for a finger. The console login and SSH do not use PAM: shadow is built
-`--without-libpam` and openssh without `--with-pam`.
+[pam](#port-pam) provides the [PAM]{.idx} stacks. Two of them ask for a finger: [sudo](#port-sudo)'s,
+and the lock screen's `kde-fingerprint` from [kscreenlocker](#port-kscreenlocker). The greeter's and
+the consoles' logins ask for the password alone, and SSH does not use PAM: openssh is built without
+`--with-pam`.
 
 `pcscd` is enabled on both the live medium and an installed system; `service list` shows it as
 `pcscd`. A fingerprint enrolled on the live medium is kept in the overlay's upper layer, so it is
@@ -80,15 +81,16 @@ variables. A value is taken as written, without its quotes; `$HOSTNAME` is the o
 
 ### /etc/polkit-1/rules.d/50-kdos.rules
 
-`pcscd` asks polkit about every client and every reader. The rule from `fs/etc/polkit-1/rules.d/`
-grants both actions to [`wheel`]{.idx}:
+`pcscd` asks polkit about every client and every reader. KDOS's rule file leaves both actions to
+pcsc-lite's own defaults, which are `allow_active`: the person in the active session at the
+machine reaches every reader with no password, and an SSH login or a session switched away from
+reaches none. The comment at the head of the rule file says so, from
+`fs/etc/polkit-1/rules.d/50-kdos.rules`:
 
-<!-- kfs:include fs/etc/polkit-1/rules.d/50-kdos.rules lines=43-58 pin=261550fdeb7d -->
+<!-- kfs:include fs/etc/polkit-1/rules.d/50-kdos.rules lines=37-43 pin=2258ea67bb76 -->
 
-An account outside `wheel` reaches no smart card, and that includes an account the installer made
-with its Administrator box unticked, which it takes out of `wheel`. The whole rule file is
-explained in
-[What is granted instead](../../kdos/03-architecture/security-model.md#what-is-granted-instead-50-kdosrules).
+The whole rule file is explained in
+[What `50-kdos.rules` changes](../../kdos/03-architecture/security-model.md#what-50-kdosrules-changes).
 
 ### Other files
 
@@ -114,11 +116,11 @@ Not verified on real hardware: no reader has been through these steps on this sy
    `fprintd-*` command answers the same way without a reader; `fprintd-enroll` prints
    `Impossible to enroll: GDBus.Error:net.reactivated.Fprint.Error.NoSuchDevice: No devices available`.
 
-2. Enrol. The command must run as root, because fprintd's polkit actions are granted only to an
-   active session, which nothing on KDOS is:
+2. Enrol, from System Settings → **Users** → **Configure Fingerprint Authentication**, or from
+   Konsole in the session, which fprintd's polkit actions allow for the active session:
 
    ```bash
-   sudo fprintd-enroll "$USER"
+   fprintd-enroll
    ```
 
    Touch the reader each time it asks, until it prints `Enroll result: enroll-completed`. Without
@@ -128,11 +130,12 @@ Not verified on real hardware: no reader has been through these steps on this sy
 3. Check it:
 
    ```bash
-   sudo fprintd-verify "$USER"
+   fprintd-verify
    ```
 
-4. Use it: the next `sudo` waits for a finger on the reader before it asks for the password. A
-   failed or skipped finger falls through to the password.
+4. Use it: the next `sudo` waits for a finger on the reader before it asks for the password, and
+   the lock screen accepts a finger beside the password. A failed or skipped finger falls through
+   to the password.
 
 To remove every print of an account, run `sudo fprintd-delete "$USER"`.
 
@@ -250,12 +253,13 @@ The system bus could not start the daemon. Run `kdos doctor` and read the
 `dbus-daemon-launch-helper` line in the Desktop section; then check that
 `/usr/share/dbus-1/system-services/net.reactivated.Fprint.service` exists.
 
-**`fprintd-enroll` without `sudo` prints `failed to claim device`.**
-fprintd's polkit actions allow only an active session. Run it with `sudo`, as above.
+**`fprintd-enroll` prints `failed to claim device`.**
+fprintd's polkit actions allow the active session at the machine; from SSH or a session switched
+away from, run it as `sudo fprintd-enroll <user>`.
 
 **`sudo` over SSH waits before asking for the password.**
 For an account with a finger enrolled, `pam_fprintd` waits on the machine's reader first; see
-[A fingerprint unlocks sudo and nothing else](../../kdos/06-reference/known-gaps.md#a-fingerprint-unlocks-sudo-and-nothing-else). Wait for it to time out, or remove the account's prints with
+[A fingerprint unlocks sudo and the lock screen, and nothing else](../../kdos/06-reference/known-gaps.md#a-fingerprint-unlocks-sudo-and-the-lock-screen-and-nothing-else). Wait for it to time out, or remove the account's prints with
 `sudo fprintd-delete <user>` if it never uses the reader locally.
 
 **`fido2-token -L` prints nothing, or `ssh-keygen -t ed25519-sk` ends `Key enrollment failed: device not found`.**
@@ -275,7 +279,7 @@ Run `service status pcscd`; start it with `sudo service start pcscd`. Check that
 
 ## Known gaps
 
-- [A fingerprint unlocks sudo and nothing else](../../kdos/06-reference/known-gaps.md#a-fingerprint-unlocks-sudo-and-nothing-else)
+- [A fingerprint unlocks sudo and the lock screen, and nothing else](../../kdos/06-reference/known-gaps.md#a-fingerprint-unlocks-sudo-and-the-lock-screen-and-nothing-else)
 - [Smart cards, drawing tablets and software radios have not met hardware](../../kdos/06-reference/known-gaps.md#smart-cards-drawing-tablets-and-software-radios-have-not-met-hardware)
 - No port provides a PAM module for FIDO keys, so a security key cannot log in to the console or
   unlock `sudo`.
@@ -284,7 +288,7 @@ Run `service status pcscd`; start it with `sudo service start pcscd`. Check that
 
 - [The device groups and the udev rules](../../kdos/02-user-guide/administration.md#the-device-groups-and-the-udev-rules):
   why `dialout`, and why upstream's `plugdev` rules are left out
-- [polkit, and why the desktop has no authentication agent](../../kdos/03-architecture/security-model.md#polkit-and-why-the-desktop-has-no-authentication-agent):
+- [polkit and the authentication agent](../../kdos/03-architecture/security-model.md#polkit-and-the-authentication-agent):
   why fprintd's actions need `sudo`
 - [Thunderbolt, phones, smart cards and firmware updates](../../kdos/02-user-guide/administration.md#thunderbolt-phones-smart-cards-and-firmware-updates)
 - [sudo, PAM and polkit](sudo-pam-polkit.md), [udev and device groups](udev-and-device-groups.md),
@@ -293,4 +297,4 @@ Run `service status pcscd`; start it with `sudo service start pcscd`. Check that
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 383.* Previous: [382. Screen lock](screen-lock.md) · [Contents](../README.md) · Next: [384. Firewall](firewall.md)
+*Part XVI. System administration, chapter 407.* Previous: [406. Screen lock](screen-lock.md) · [Contents](../README.md) · Next: [408. Firewall](firewall.md)

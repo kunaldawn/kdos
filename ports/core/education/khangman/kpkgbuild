@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = khangman
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 31d5a4d4c59bf12336c27c4175a60327c9caaf7b4596708f421e729e3e916296  khangman-26.08.2.tar.xz
+description = KDE hangman game — guess words from KVTML vocabulary lists in many languages
+homepage    = https://apps.kde.org/khangman/
+license     = GPL-2.0-or-later AND LGPL-2.1-or-later AND BSD-2-Clause AND GFDL-1.2-only AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qtmultimedia ki18n kcrash kcompletion kconfig kcoreaddons knewstuff knotifications kio kdoctools libkeduvocdocument kirigami kirigami-addons kdeedu-data

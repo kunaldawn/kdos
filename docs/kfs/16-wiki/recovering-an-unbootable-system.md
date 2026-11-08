@@ -29,7 +29,7 @@ The live medium carries every tool the procedures below use: `cryptsetup`, `lvm`
 
 The consoles and single-user mode are entries of `/etc/inittab`, shipped from `fs/etc/inittab`:
 
-<!-- kfs:include fs/etc/inittab lines=11-40 pin=c1172d0a1a26 -->
+<!-- kfs:include fs/etc/inittab lines=11-45 pin=9f2b3ac98115 -->
 
 `sulogin` asks for **root's** password. The installer locks root unless it was asked to set a root
 password (`root_locked` in an answer file, see
@@ -71,10 +71,11 @@ The full table of stages and their logs is in
 1. Press `Ctrl+Alt+F2` (`Alt+F2` if the screen is a text console) and log in on `tty2`.
 2. Run `kdos doctor`, and read its Session and Desktop sections.
 3. Read the service logs of this boot: `ls /run/kdos-init.*.log`, and
-   `/run/kdos-svc.<name>.log` for a supervised daemon.
-4. Read the console's own log for `tty1`: `/run/kdos-getty.tty1.log`.
-5. The session itself is described in [The session](../../kdos/03-architecture/session.md); a
-   session that fails leaves a shell on `tty1`, not a black screen.
+   `/run/kdos-svc.<name>.log` for a supervised daemon, elogind's among them.
+4. Read the display manager's log, `/var/log/sddm.log`, and `grep kdos-dm /var/log/messages`:
+   SDDM that cannot run leaves a text password prompt on `tty1` instead of a black screen.
+5. The procedures for each stage from the greeter to the desktop are on
+   [Desktop troubleshooting](desktop-troubleshooting.md).
 
 ### A service that fails or hangs
 
@@ -222,10 +223,10 @@ With the ESP mounted at `/mnt/target/boot/efi`, and the whole disk as `/dev/sdX`
    from nothing; its shape is on [Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md#the-installed-machines-menu).
    Writing the three `/KDOS` entries by hand, with the right `kdos_slot=`, `bootstate=UUID=` and
    `root=UUID=` words, is enough: the next `kdos-bootctl` write (a `set-slot`, a `deploy`, the
-   `mark-good` at the end of the boot) regenerates the other entries, and, once the machine runs
+   `mark-good` that confirms a boot) regenerates the other entries, and, once the machine runs
    again, `kdos theme <accent>` (or `sudo kdos-bootctl theme <accent>`) puts the theme keys back.
 
-These are the installer's own steps (`src/system/kdos-installer/install.c`), run by hand. Steps 1,
+These are the installer's own steps (`src/system/kinstall-core/install.c`), run by hand. Steps 1,
 3 and 4 have been run from the live medium against an installed virtual machine, which then
 booted through UEFI; step 2, on a disk with the erase plan's layout, made it start Limine and its
 kernel on SeaBIOS.
@@ -290,7 +291,6 @@ graphical session. Use `sudo poweroff`.
 - [Secure Boot is not supported](../../kdos/06-reference/known-gaps.md#secure-boot-is-not-supported)
 - [A disk-encryption key is typed, not sealed in the TPM](../../kdos/06-reference/known-gaps.md#a-disk-encryption-key-is-typed-not-sealed-in-the-tpm)
 - [A root filesystem on LVM has been booted in one shape only](../../kdos/06-reference/known-gaps.md#a-root-filesystem-on-lvm-has-been-booted-in-one-shape-only)
-- [The power button and the sleep key work only inside a graphical session](../../kdos/06-reference/known-gaps.md#the-power-button-and-the-sleep-key-work-only-inside-a-graphical-session)
 - [Per-slot kernels have been booted on virtual firmware only](../../kdos/06-reference/known-gaps.md#per-slot-kernels-have-been-booted-on-virtual-firmware-only)
 
 ## See also
@@ -316,4 +316,4 @@ graphical session. Use `sudo poweroff`.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 421.* Previous: [420. Desktop troubleshooting](desktop-troubleshooting.md) · [Contents](../README.md) · Next: [Part XVII. Appendices](../17-appendices/intro.md)
+*Part XVI. System administration, chapter 445.* Previous: [444. Desktop troubleshooting](desktop-troubleshooting.md) · [Contents](../README.md) · Next: [Part XVII. Appendices](../17-appendices/intro.md)

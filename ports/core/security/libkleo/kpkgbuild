@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = libkleo
-version     = 26.08.1
+version     = 26.08.2
 release     = 1
 source      = $name-$version.tar.xz::https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
-sha256      = 57868f2f89ec307423d4986aa181380be58bea311e45fc29a617f7f0a32e4eec  libkleo-26.08.1.tar.xz
+sha256      = 70dce52fad62d32a3122542bfb4efa20cd1e0e3de92273bcbaae704f32ed3f32  libkleo-26.08.2.tar.xz
 description = KDE PIM library for key management and cryptography widgets over GnuPG
 homepage    = https://invent.kde.org/pim/libkleo
 license     = GPL-2.0-or-later

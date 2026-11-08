@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kontactinterface
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = c318a9eaef9df8f3e3bce515f4379c5284255f7b2cb424950ae7cc5fff99eca3  kontactinterface-26.08.2.tar.xz
+description = KDE PIM library that embeds PIM applications in Kontact as plugins
+homepage    = https://invent.kde.org/pim/kontactinterface
+license     = LGPL-2.0-or-later AND LGPL-2.1-or-later AND (LGPL-2.0-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL) AND BSD-3-Clause AND CC0-1.0 AND MIT
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kcoreaddons kparts kwindowsystem ki18n kxmlgui kio libX11

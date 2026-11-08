@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = ktuberling
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = d5b45e7f861d9c22b25877603ac269e630237e29f0a7727894af56a47c41706e  ktuberling-26.08.2.tar.xz
+description = Potato Guy: a picture-stamping game for children, with sounds and several playgrounds
+homepage    = https://apps.kde.org/ktuberling/
+license     = GPL-2.0-or-later AND GFDL-1.2-or-later AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtmultimedia qt6-qtsvg kcompletion kconfig kconfigwidgets kcoreaddons kcrash kdbusaddons kdoctools ki18n kio kwidgetsaddons kxmlgui libkdegames

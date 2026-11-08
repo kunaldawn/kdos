@@ -16,8 +16,8 @@ meson setup build \
 	--buildtype=release \
 	-Dsystemd=false \
 	-Dstemming=true \
-	-Dqt=false \
-	-Dcompose=false \
+	-Dqt=true \
+	-Dcompose=true \
 	-Dvapi=false \
 	-Dgir=true \
 	-Dtools=true \
@@ -29,7 +29,7 @@ meson setup build \
 	-Ddocs=false \
 	-Dapidocs=false \
 	-Dinstall-docs=false \
-	-Dman=false
+	-Dman=true
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
 

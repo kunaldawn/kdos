@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kweather
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = b666c8f4f8bc6669512ec244f119bfdb2256338595f2cd2c58095c9a2349bdf1  kweather-26.08.2.tar.xz
+description = Weather forecasts — hourly and daily forecasts for saved places, with a Plasma widget and a KRunner plugin
+homepage    = https://apps.kde.org/kweather/
+license     = GPL-2.0-or-later AND LGPL-2.1-or-later AND Apache-2.0 AND BSD-3-Clause AND CC-BY-4.0 AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qtsvg qt6-qtcharts kconfig kirigami ki18n kcoreaddons knotifications kcrash kholidays kirigami-addons kweathercore libplasma krunner

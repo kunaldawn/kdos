@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = libkomparediff2
-version     = 26.08.1
+version     = 26.08.2
 release     = 1
 source      = https://download.kde.org/stable/release-service/$version/src/libkomparediff2-$version.tar.xz
-sha256      = d222901b0a90f853f21e86bf08db73c3edb65e8d4bbf820626512df82c8430c2  libkomparediff2-26.08.1.tar.xz
+sha256      = ffdc293a6904a62740357168a89b7a61c955557cddbb69598015940d19d368db  libkomparediff2-26.08.2.tar.xz
 description = Diff parsing and models, for KDevelop's patch review
 homepage    = https://invent.kde.org/sdk/libkomparediff2
 license     = GPL-2.0-or-later

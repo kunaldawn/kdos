@@ -1,0 +1,31 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   The profile a new Konsole tab opens in.
+#
+# Konsole installs no konsolerc of its own (its defaults are compiled in), so
+# this file collides with nothing a package updates. A choice made in
+# Konsole's Settings lands in ~/.config/konsolerc and outranks it.
+#
+# DefaultProfile names a FILE in /usr/share/konsole; the two LightDarkTheme
+# profiles are profile NAMES (the `Name=` line inside such a file). A name that
+# matches no installed profile falls back to Konsole's built-in profile in
+# silence. SyncProfileWithSystemTheme is what makes the pair act at all: with
+# it set, a new tab follows the desktop's light/dark state and DefaultProfile
+# is not consulted; without it, the pair is ignored. Dolphin's, Kate's and
+# Yakuake's terminal panels read the same default when their own rc names
+# none. `kdos theme` moves all three to the chosen accent, and only while
+# they still name a KDOS profile.
+# ---------------------------------
+
+[Desktop Entry]
+DefaultProfile=KDOS-Bone.profile
+
+[LightDarkTheme]
+SyncProfileWithSystemTheme=true
+DarkThemeProfile=KDOS Bone
+LightThemeProfile=KDOS Paper

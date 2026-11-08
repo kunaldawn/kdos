@@ -1,0 +1,8 @@
+The Gear meta check's fixture: set/ is a tree of recipes, filed the way
+ports/core files them, in which every Gear application no other port depends
+on is named by exactly one kde-gear-* meta. dolphin and libkdegames are named
+by none and pass, because dolphin-plugins and the games depend on them and
+bring them in; the Frameworks are no Gear family's. testing/preflight.sh
+checks that set/ passes, then copies it twice: once with kapman dropped from
+kde-gear-games, which must fail as named by no meta, and once with bovo added
+to kde-gear-core, which must fail as named by two.

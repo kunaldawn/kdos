@@ -21,7 +21,7 @@ is in [The kernel](../14-kernel/intro.md). Every command on this page runs on a 
   `/usr/lib/modprobe.d/dist-blacklist.conf`, [stlink](#port-stlink) installs
   [`/etc/modprobe.d/stlink_v1.conf`]{.idx}, and [ndctl](#port-ndctl) installs upstream's
   `/etc/modprobe.d/nvdimm-security.conf`, which loads the NVDIMM keys before `libnvdimm`.
-- The installer, and `kdos-power timezone` on a running system, write
+- The installer, and kdos-settingsd on a running system when the time zone changes, write
   `/etc/modprobe.d/kdos-regdom.conf`, the Wi-Fi country.
 
 Every service involved is enabled on every image. On the live medium a file added under `/etc` is
@@ -64,9 +64,9 @@ their own:
 
 The installer's file is written from the time zone's country:
 
-<!-- kfs:include src/system/kdos-installer/install.c lines=1751-1759 pin=5a0dbdc98892 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=1947-1955 pin=5a0dbdc98892 -->
 
-`kdos-power timezone` writes the same `options cfg80211` line when the zone changes, and removes
+kdos-settingsd writes the same `options cfg80211` line when the zone changes, and removes
 the file for a zone with no country, such as `UTC`. What the country changes is on
 [Wireless regulatory domain](wireless-regulatory-domain.md).
 
@@ -276,4 +276,4 @@ A key the running kernel lacks is reported there. A setting a later script or pr
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 363.* Previous: [362. Logs](logs.md) · [Contents](../README.md) · Next: [364. zram and swap](zram-and-swap.md)
+*Part XVI. System administration, chapter 387.* Previous: [386. Logs](logs.md) · [Contents](../README.md) · Next: [388. zram and swap](zram-and-swap.md)

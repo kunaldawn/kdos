@@ -23,12 +23,11 @@ BUILD_ARGS ?=
 
 # WHAT SIZE A VM COMES UP AT, for every run target and for testing/qemu-hw.
 #
-# 1920x1080 rather than QEMU's own 1280x800 default for virtio-gpu: the cell
-# grid is the mode divided by the font's cell, so the default is a desktop of
-# about 160x50 characters — enough to look like the screen is small and not
-# enough to lay a three-column menu out the way it ships. It is the preferred
-# mode the guest is told about through EDID, so the desktop picks it without
-# being configured.
+# 1920x1080 rather than QEMU's own 1280x800 default for virtio-gpu: Plasma
+# sizes its panel, Kickoff and its windows from the screen, so a run at
+# QEMU's default shows a layout no 1080p panel does. It is the preferred mode
+# the guest is told about through EDID, so KWin and the greeter pick it
+# without being configured.
 #
 #   make run KDOS_RES=2560x1440
 KDOS_RES ?= 1920x1080
@@ -225,7 +224,7 @@ debug-boot: ## boot the kernel and initramfs directly, serial console
 
 # HW-accelerated run via a containerized QEMU 10 (virgl+blob on the host GPU).
 # `run`/`rundisk` above use the host's QEMU with software GL, which needs neither
-# blob nor virgl support; these render kdos-comp on the real GPU. GPU and
+# blob nor virgl support; these render KWin on the real GPU. GPU and
 # display flags (including gl=es — gl=on blanks the window) live in
 # testing/qemu-hw/run.sh. Needs Docker + NVIDIA Container Toolkit.
 run-hw: check-hw ## boot the ISO with GPU acceleration (containerised QEMU)
@@ -237,7 +236,7 @@ rundisk-hw: check-hw ## boot the disk image with GPU acceleration
 check-hw:
 	command -v docker >/dev/null || { echo "ERROR: docker not found — run-hw needs Docker + NVIDIA Container Toolkit"; exit 1; }
 	docker info 2>/dev/null | grep -q ' nvidia' || { echo "WARNING: docker has no 'nvidia' runtime — virgl will fall back to software or fail"; }
-	test -c /dev/udmabuf || { echo "WARNING: /dev/udmabuf not found — blob resources unavailable, kdos-comp will blank"; }
+	test -c /dev/udmabuf || { echo "WARNING: /dev/udmabuf not found — blob resources unavailable, KWin will blank"; }
 
 cleandisk: ## recreate an empty build/kdos.qcow2, sparse, 96G unless KDOS_DISK says otherwise
 	qemu-img create -f qcow2 build/kdos.qcow2 $(KDOS_DISK)
@@ -268,18 +267,27 @@ clean: ## wipe build/ except keys and binhost-key
 	test -d build && find build -mindepth 1 -maxdepth 1 \
 		! -name keys ! -name binhost-key -exec rm -rf {} + || true
 
-# The checks that stand in for a build. check runs the seven that need no built
-# tree; depdrift, debuginfo, unowned, linkcheck and entrycheck read build/fs,
+# The checks that stand in for a build. check runs the twelve that need no built
+# tree (atspi-selftest is the AT-SPI gate on its fixtures, no ISO; aboutcheck
+# is the About-page check's proof, since the check itself reads a booted tree);
+# depdrift, debuginfo, unowned, linkcheck and entrycheck read build/fs,
 # which is root's, so they are run from a container or as root. SELFTEST_CC is
 # the compiler selftest-asan uses. docscheck, anchorcheck and booknav cover
 # both books, docs/kdos and docs/kfs; `make booknav-write` rewrites the
 # chapter footers and KDOS from Scratch's contents that booknav checks.
 # KFSCHECK_ARGS goes to kfscheck, e.g.
 #   make kfscheck KFSCHECK_ARGS="--strict --base origin/main"
+# plasmatest is the Qt half of the net and is not part of check: it builds
+# KDOS's Qt ports with their QtTest suites, loads their plugins, installs their
+# packages and lints their QML, which needs Qt 6, KF6 and Plasma's development
+# files. It runs in the development image (testing/devdeps-image.sh plasmatest)
+# and refuses on any host without them. PLASMATEST_ARGS goes to it, e.g.
+#   make plasmatest PLASMATEST_ARGS="--selftest"
 SELFTEST_CC ?= cc -fsanitize=address,undefined -g
+PLASMATEST_ARGS ?=
 KFSCHECK_ARGS ?=
 
-check: preflight selftest docscheck anchorcheck booknav kfscheck phaseclosure ## preflight + selftest + docscheck + anchorcheck + booknav + kfscheck + phaseclosure
+check: preflight selftest docscheck anchorcheck booknav kfscheck phaseclosure defaultscheck xdgcheck lnfcheck aboutcheck atspi-selftest ## preflight + selftest + docscheck + anchorcheck + booknav + kfscheck + phaseclosure + defaultscheck + xdgcheck + lnfcheck + aboutcheck + atspi-selftest
 
 preflight: ## the build's wiring, minus the build (~2.5 min)
 	testing/preflight.sh
@@ -289,6 +297,9 @@ selftest: ## the libk* libraries and their consumers (~2.5 min)
 
 selftest-asan: ## selftest under AddressSanitizer and UBSan (parsers)
 	CC="$(SELFTEST_CC)" testing/selftest.sh
+
+plasmatest: ## the Qt suite: QtTest, plugins, packages, qmllint (development image only)
+	testing/plasmatest.sh $(PLASMATEST_ARGS)
 
 docscheck: ## both books: links, prose, page contract, the wiki skeleton, port counts
 	bash testing/docscheck.sh
@@ -307,6 +318,19 @@ kfscheck: ## KDOS from Scratch: sidecars, notes, patch headers, data stamp, incl
 
 phaseclosure: ## every phase installs exactly the ports its list names
 	python3 testing/phaseclosure.py
+
+defaultscheck: ## every KDOS default for a KDE program reads back as testing/fixtures/defaultscheck says
+	python3 testing/defaultscheck.py
+
+xdgcheck: ## KDOS's defaults stay in /usr/share/kdos/xdg, out of the administrator's /etc/xdg
+	bash testing/xdgcheck.sh
+
+lnfcheck: ## the KDOS global themes and desks hold only what Plasma reads, and their proof
+	python3 testing/lnfcheck.py
+	python3 testing/lnfcheck.py --self-test
+
+aboutcheck: ## the proof that each About-page verdict can fail; the full run needs a booted tree
+	bash testing/aboutcheck.sh --selftest
 
 depdrift: ## undeclared same-phase link dependencies in build/fs
 	python3 testing/depdrift.py
@@ -354,18 +378,48 @@ book-stamp: ## rewrite docs/kfs/data/recipes.stamp alone, from the checkout; no 
 
 # The fast loop and the images it and the rig run in. QUICK names the ports
 # (comma-separated); QUICK_ARGS goes to the rig after `--`, e.g.
-#   make quick QUICK=kdos-shell QUICK_ARGS="--keys meta_l-ctrl-q --sleep 3 --shot build/shots/x.png"
+#   make quick QUICK=plasmoid-kdos-privacy QUICK_ARGS="--sleep 3 --shot /kdos/build/shots/x.png"
 QUICK ?=
 QUICK_ARGS ?=
 
 quick: ## rebuild QUICK's ports and patch them into a booted ISO
-	@test -n "$(QUICK)" || { echo "ERROR: name the ports, e.g. QUICK=kdos-shell"; exit 1; }
+	@test -n "$(QUICK)" || { echo "ERROR: name the ports, e.g. QUICK=plasmoid-kdos-privacy"; exit 1; }
 	testing/quick.sh $(QUICK) -- $(QUICK_ARGS)
+
+# The booted ISO, checked on the rig; each boots build/iso-build/kdos.iso once.
+# session-probe measures the time to the panel and the idle memory
+# (testing/session-cost.sh) and then asserts the Plasma session is whole
+# (testing/plasma-probe.sh); SESSION_ARGS goes to session-cost.sh (--gl,
+# --settle N) and PROBE_ARGS to the probe (--desk dock, --phosphor). shots
+# photographs the desktop, Kickoff, KRunner and the Overview into build/shots.
+# atspi dumps every KDOS surface's accessibility tree and checks it against
+# testing/atspi/goldens; ATSPI_ARGS=--update writes the goldens. atspi-selftest
+# needs no ISO: the dump format and the gate, on fixtures.
+SESSION_ARGS ?=
+PROBE_ARGS ?=
+ATSPI_ARGS ?=
+RIG = docker run --rm --device /dev/kvm -v "$$PWD:/kdos" -w /kdos kdos-qemu-py:latest python3 testing/vnc-shot.py --size $(KDOS_RES)
+
+session-probe: ## boot the ISO: time to the panel, idle memory, then the Plasma session probe
+	testing/session-cost.sh $(SESSION_ARGS) -- --root-script 'testing/plasma-probe.sh $(PROBE_ARGS)'
+
+shots: ## boot the ISO and photograph the desktop, Kickoff, KRunner and the Overview into build/shots
+	mkdir -p build/shots
+	$(RIG) --dismiss-picker --shot /kdos/build/shots/desktop.ppm \
+		--keys meta_l --sleep 2 --shot /kdos/build/shots/kickoff.ppm --keys esc --sleep 1 \
+		--chord alt+space --sleep 2 --shot /kdos/build/shots/krunner.ppm --keys esc --sleep 1 \
+		--chord meta+w --sleep 2 --shot /kdos/build/shots/overview.ppm --keys esc
+
+atspi: ## boot the ISO and check every KDOS surface's AT-SPI tree against its golden
+	testing/atspi/golden.sh $(ATSPI_ARGS)
+
+atspi-selftest: ## the AT-SPI dump format and gate, on fixtures; no ISO
+	python3 -I testing/atspi/atspi.py selftest
 
 rig-image: ## build the rig container kdos-qemu-py:latest (networked, once)
 	testing/rig-image.sh
 
-devdeps-image: ## build kdos-devdeps:latest and run the suite in it
+devdeps-image: ## build kdos-devdeps:latest and run selftest in it (testing/devdeps-image.sh plasmatest runs the Qt suite)
 	testing/devdeps-image.sh
 
-.PHONY: all help build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch fetch-check updates publish publish-dry publish-check publish-plan publish-describe publish-rehome publish-retire publish-orphans need-tag freeze release release-publish check preflight selftest selftest-asan docscheck anchorcheck booknav booknav-write kfscheck phaseclosure depdrift debuginfo unowned linkcheck entrycheck book book-data book-stamp quick rig-image devdeps-image
+.PHONY: all help build check-iso-free snapshots run rundisk run-hw rundisk-hw check-hw debug-boot cleandisk cleanbuild clean fetch fetch-check updates publish publish-dry publish-check publish-plan publish-describe publish-rehome publish-retire publish-orphans need-tag freeze release release-publish check preflight selftest selftest-asan plasmatest docscheck anchorcheck booknav booknav-write kfscheck phaseclosure defaultscheck xdgcheck lnfcheck aboutcheck depdrift debuginfo unowned linkcheck entrycheck book book-data book-stamp quick session-probe shots atspi atspi-selftest rig-image devdeps-image

@@ -17,7 +17,7 @@ cmake -S . -B build -G Ninja \
 	-D BUILD_TESTING=OFF \
 	-D KF_SKIP_PO_PROCESSING=ON \
 	-D BUILD_DESIGNERPLUGIN=OFF \
-	-D CMAKE_DISABLE_FIND_PACKAGE_KF6Syndication=ON \
+	-D CMAKE_REQUIRE_FIND_PACKAGE_KF6Syndication=ON \
 	-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build

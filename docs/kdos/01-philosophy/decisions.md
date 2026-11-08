@@ -1,12 +1,14 @@
 # Decisions
 
 This chapter records the choices in KDOS where a reasonable engineer could have gone the other way:
-the compositor, the application catalogue, the C library, the base userland and PID 1, where
-upstream sources are kept, how the ports tree, KDOS's own code and the build phases are laid out,
-how CPU optimisation is chosen, and about twenty smaller ones. It is written for readers who want to know why the system has the shape
-it has, and for contributors about to propose a different approach, whose objection may already have
-an answer here. Read [Why KDOS](why-kdos.md), [How KDOS differs](how-kdos-differs.md) and
-[Principles](principles.md) first; the entries assume the goals and rules set out there.
+the desktop, its compositor, the login and the look, how software is found and the application
+catalogue, the C library, the base userland and PID 1, where upstream sources are kept, how the
+ports tree, KDOS's own code and the build phases are laid out, how CPU optimisation is chosen, how
+the system updates and installs, and several smaller ones. It is written for readers who want to
+know why the system has the shape it has, and for contributors about to propose a different
+approach, whose objection may already have an answer here. Read [Why KDOS](why-kdos.md), [How KDOS
+differs](how-kdos-differs.md) and [Principles](principles.md) first; the entries assume the goals
+and rules set out there.
 
 Each entry gives the conclusion first. Most then give the question it answers, the alternatives and
 why they were not taken, and what the choice costs; an entry leaves a part out where there is
@@ -18,59 +20,175 @@ decisions that look like missing features.
 
 | Decision | Conclusion |
 |---|---|
-| [The compositor](#the-compositor-is-a-frozen-fork-of-labwc) | A frozen hard fork of labwc 0.20.0, never merged from again |
+| [The desktop](#kde-plasma-and-all-of-gear-as-the-desktop) | KDE Plasma and all of KDE Gear that can run here, each family pinned to one release |
+| [The compositor](#kwin-is-the-compositor) | KWin, configured and patched, never forked |
+| [The login](#sddm-with-a-wayland-greeter) | SDDM, its greeter on `kwin_wayland`, and no X11 session |
+| [The look](#kdos-modern-with-phosphor-mode-on-request) | KDOS Modern in eight accents from one palette; Phosphor mode off until asked for |
+| [Windows](#floating-windows-with-smart-snap-tiling-on-request) | Floating windows with edge and quarter snap; an automatic tiler bundled and off |
 | [Application delivery](#native-applications-on-the-medium-a-store-that-builds-the-rest) | The medium carries native ports; podman builds catalogue applications on request |
+| [Finding software](#discover-with-kdos-backends-as-the-one-software-centre) | Discover, with KDOS backends for ports, packs, boxes and the root slots; no Flathub and no "Get New…" |
 | [Application packaging](#one-pack-per-application-not-one-image) | One artefact per application over shared runtimes, never one image |
 | [The base distribution in boxes](#debian-inside-boxes-not-alpine) | Debian trixie, with Alpine carried as a scratch base |
 | [The host C library](#musl-as-the-host-c-library) | musl, which forecloses runtime CPU dispatch |
 | [The base userland](#gnu-at-every-name-no-multi-call-userland) | GNU coreutils in full, grep, sed, gawk, findutils, diffutils, patch and tar; no toybox, BusyBox or uutils |
-| [PID 1](#sysvinit-as-pid-1) | sysvinit 3.18 with runlevels; util-linux `agetty` and `sulogin` |
-| [The host desktop](#no-kde-gnome-or-any-existing-desktop-on-the-host) | A desktop written for this system; KDE's and GNOME's applications, never their shells |
+| [PID 1](#sysvinit-as-pid-1) | sysvinit 3.18 with runlevels; util-linux `agetty` and `sulogin`; elogind for logins and turnstile for a user's services |
 | [Where upstream sources live](#upstream-archives-are-hash-checked-release-assets) | Numbered volumes of shelves, each file under `<shelf>--<file>` and checked by its sha256, fetched by `make fetch` |
 | [CPU optimisation](#-march-measured-per-machine-not-chosen-for-a-population) | Measured per machine by `kdos march`, never a shipped feature level |
 | [Compiler flags](#one-release-flag-set-raised-per-port) | `-O2` with hardening for every port; `-O3` per port on precedent; LTO only for a listed set of hot libraries |
 | [The vulnerability database](#alpines-security-database-not-nvd-or-osv) | A vendored, pruned copy of Alpine's secdb, answered offline |
 | [Recipe format](#the-build-shell-lives-beside-the-recipe) | Two files: parsed metadata, plus ordinary bash |
 | [The ports tree](#ports-are-shelved-by-subject-identity-is-the-bare-name) | 102 subject shelves under `ports/core`; a port is its bare name, unique across the tree |
-| [KDOS's own code](#kdoss-own-code-is-divided-by-what-each-program-is) | Six areas under `src/`, every port exactly two levels deep |
+| [KDOS's own code](#kdoss-own-code-is-divided-by-what-each-program-is) | Six areas under `src/`, every port exactly two levels deep; only `src/desktop` links a toolkit, and only Qt and KDE's |
 | [Build phases](#build-phases-are-named-banded-and-closed) | Thirteen named phases in bands of ten, split by the dependency graph; each list names exactly what its phase installs |
 | [Binhost signing](#signing-the-index-not-every-package) | One signature over the index; a signature file holds several |
-| [Updates](#updates-build-a-signed-tree-from-source) | Every image carries its recipe tree; a newer one arrives signed over the network and is built on the machine; no binhost |
+| [Updates](#updates-are-signed-slot-images-with-a-binhost-on-the-way) | The release's signed image, or its signed packages, written into the inactive root slot and kept after a healthy session; a source build on request |
+| [The installer](#one-installer-backend-two-front-ends) | One backend under a Kirigami front end and a text one; Partition Manager for manual layouts |
 | [The ASCII demo](#freezing-a-demo-rather-than-writing-one) | A frozen hard fork of the AA-project's `bb` 1.3rc1 |
-| [The terminal state machine](#forking-libtsm-rather-than-writing-a-terminal) | `libkvt`, a hard fork of libtsm 4.7.1 |
-| [The file chooser](#one-file-chooser-at-one-width) | One program at 64×22 for portal and native callers alike |
 | [Narrowings](#narrowings) | Small decisions that read like gaps |
 
-## The compositor is a frozen fork of labwc
+## KDE Plasma and all of Gear as the desktop
 
-KDOS runs a frozen hard fork of the labwc 0.20.0 Wayland compositor. `src/desktop/kdos-comp` is
-upstream's source, imported whole, renamed, and never merged from again. `KDOS-FORK` at its root
-records the upstream tarball and its sha256. KDOS's additions live in twenty-three files named
-`src/kdos-*.c`, and the upstream files carry small hooks marked `/* KDOS */` (or `# KDOS` in a
-`meson.build`), so `grep` finds every point where the fork touches upstream code.
+The desktop is KDE Plasma, Wayland only, with KDE Frameworks under it and every module of KDE Gear
+beside it that can run on KDOS. KDOS does not maintain a desktop of its own. It integrates Plasma:
+the look, the defaults, and the settings pages, plasmoids, KWin plugins and Discover backends that
+bring KDOS's own mechanisms (packs, boxes, the two root slots, the firewall) onto Plasma's own
+surfaces.
 
-The question was what to do about a compositor that needs things no existing one offers: the
-phosphor shader (the pass that renders the screen as a CRT in the current accent), a wallpaper the
-compositor owns, a frame-timing channel, an idle policy and per-box client identity. The choice was
-to write one on wlroots or to take an existing one.
+The question was what a person sits in front of. A desktop written for KDOS was the alternative,
+and its appeal is the one the rest of the system has: small enough to read whole. It was not taken
+because most of what a desktop has to do is not specific to KDOS: window management, a lock screen
+that survives its own crash, screen capture through portals, input methods, a screen reader,
+several monitors at different scales, colour management, drag and drop, session restore. Each of
+those is a protocol whose behaviour shows only under real applications and real hardware, Plasma
+has had years of both, and everything KDOS wants to add fits the plug-in points Plasma already
+has.
 
-A compositor written from scratch was rejected because window management, session lock, screen
-capture, the clipboard, the input-method relay, Xwayland integration and security-context
-filtering are not what this project is about, and each is a protocol whose semantics only show
-under real clients. Taking labwc's implementation brings parts that people outside this project
-have exercised for years — both generations of the capture protocols (`wlr-screencopy` and
-`ext-image-copy-capture`), both data-control managers, the text-input and input-method relay — and
-leaves the effort for the parts that are specific to KDOS.
+Plasma was chosen among the complete desktops for three reasons. Its 6.8 series runs on Wayland
+alone, which is the display rule KDOS keeps anyway
+([Principles](principles.md#no-xorg-server-and-one-carve-out)). It runs without systemd: Alpine,
+Chimera Linux, Gentoo and Void ship it on elogind with inits of their own, so each part KDOS needs
+has a working precedent, on musl among them. And its configuration is layered files, so KDOS's
+defaults are a directory in the configuration search path, after the machine owner's `/etc/xdg`,
+rather than patches to the programs that read them.
 
-A fork was chosen over a patch series because a `.patch` file against a compositor becomes a merge
-conflict at the next upstream release, and these additions would not be accepted upstream: they
-are one distribution's opinions. Freezing means the source in the tree is the source that builds,
-readable in a pager, with no patch step between the two.
+All of Gear is ported rather than a selection, because a machine with no network has only what its
+medium carries ([Principles](principles.md#offline-by-construction)), and Gear's applications are
+written against the same frameworks, so they share the look, the file dialogs, the shortcuts and the
+settings without integration work per application. Four Gear modules are left out because they
+cannot work here: kjournald needs libsystemd, kmag reads the screen in a way Wayland does not
+allow, kmousetool needs X11, and plasma-settings is Plasma Mobile's settings shell. Thirteen of
+Plasma's own modules are left out for the same kind of reason: the GRUB and Plymouth themes and the
+Plymouth settings page (KDOS boots with Limine and its own splash), DrKonqi (it needs
+`systemd-coredump`), the Flatpak settings page (there is no Flatpak), the KDE Frameworks 5
+integration plug-in (no KDE Frameworks 5 are built), plasma-firewall (it drives firewalld or ufw
+through systemd), the Plasma Login Manager (it needs systemd), and the Bigscreen and Mobile shells
+with the phone dialer, the text-message client and the nano shell they share.
 
-The cost is that upstream fixes do not arrive. A security fix in labwc has to be read and applied
-by hand. That is accepted; the alternative is maintaining a compositor outright.
+**One version per family.** Every Plasma module is at one version, every framework at one and every
+Gear module at one, and a family moves in one change that rebuilds it, because Plasma's modules
+require each other at the same version and Gear's PIM modules pin each other exactly. Plasma
+follows its latest bugfix release, and a new minor release only once every KDOS plugin tied to it
+has been rebuilt and passes its tests. KDE Frameworks moves when Plasma requires it or a fix is
+needed, always as the whole set. Gear takes each point release of its series, and a new series
+after that series' first bugfix release. A change that moves one module of a family alone fails
+preflight. [Packaging](../03-architecture/packaging.md) gives the set the tree pins.
 
-See [kdos-comp](../04-programs/kdos-comp.md) for the fork as built.
+The cost is weight and a release lock. Qt, KDE Frameworks, Plasma and Gear are hundreds of recipes
+and more code than the rest of the host, and they lengthen the first build by hours. KDOS's code
+that uses Plasma's internal interfaces (the Discover backend, the System Monitor plugin and the KWin
+effect) is rebuilt and tested again at every Plasma minor release. And KDE's translations are not
+built: the image is English only, as the rest of the system is, while KDOS's own Qt code marks
+every string for translation so that a translated release is a build flag rather than a rewrite.
+
+## KWin is the compositor
+
+The compositor is KWin, Plasma's own, built from its release tarball with the options KDOS needs
+and a small number of carried patches. KDOS does not fork it. KWin's behaviour is set through its
+configuration (defaults for `kwinrc`, `kwinrulesrc` and `kglobalshortcutsrc` in
+`/usr/share/kdos/xdg`), through KWin scripts and effects, and through window rules; what none of
+those reaches is a `.patch` with a `Subject:` line, offered upstream when it is written.
+
+A fork of the compositor was the alternative, and it would let KDOS change anything. It was not
+taken because a fork stops receiving upstream's fixes, and a compositor's fixes are security and
+hardware fixes more often than features, each of which a fork's owner reads and applies by hand. A
+patch is a smaller promise: at the next release it applies or it fails loudly, and it never drifts
+in silence.
+
+Two needs show where the line falls:
+
+- **Phosphor mode's CRT pass** is a full-screen effect over every output, which only a C++ effect
+  that paints the whole screen can be; KWin's scripted effects paint one window at a time. An
+  effect built outside KWin records the exact KWin version it was built against, and KWin refuses
+  to load it at any other version, point releases included, so a separately packaged effect would
+  stop loading at the next bugfix release without a word. Built into KWin by a patch, the effect is
+  compiled with every KWin and can only fail to build, never fail to load.
+- **What a boxed application may bind.** KWin denies a client that arrives through a tagged
+  security-context socket a short list of interfaces, among them window management, fake input,
+  screen casting and clipboard control. KDOS's patch extends the list to the rest of the
+  desktop-shell interfaces and lets a box's profile grant one back by name.
+
+The cost is a rebase of every patch at every Plasma release, and a set of KDOS plugins tied to
+KWin's internal interfaces that are rebuilt with it. Each patch's merge request is named in the KWin
+port's notes, and a patch upstream accepts is dropped at the release that carries it.
+
+## SDDM with a Wayland greeter
+
+The login screen is SDDM. `init` starts it on the first virtual terminal once the boot splash has
+gone dark; its greeter runs on `kwin_wayland` with no Xwayland, and it offers one session, Plasma
+on Wayland. A login goes through PAM, where elogind records the session and turnstile starts the
+user's services, and SDDM then starts Plasma. The second virtual terminal keeps a text login for
+recovery, and when no SDDM can start, `init` falls back to a password prompt on the first one,
+never to an automatic login.
+
+A text login on the first terminal that starts the desktop from the shell profile was the
+alternative, and it is one program fewer. It was not taken because Plasma's session expects a
+display manager: Switch User asks it for a second greeter on a free terminal, logging out returns
+to it, and its settings page is where autologin and the login screen's look are set.
+Plasma's own login manager was the other candidate. It needs systemd, at build time and in its
+greeter, and SDDM does not.
+
+SDDM's Wayland greeter is the path both SDDM's upstream and Plasma's mark as experimental. KDOS
+takes it because an X11 greeter would put an X server on the login path, which
+[Principles](principles.md#no-xorg-server-and-one-carve-out) rules out. That is the cost: the login
+screen runs on a code path few distributions ship, so every boot, login, logout, user switch, lock
+and suspend through it is a test KDOS has to run itself.
+
+## KDOS Modern, with Phosphor mode on request
+
+The look is KDOS Modern: Plasma's Breeze widgets and window decoration, configured square and
+painted in KDOS's colours, with a KDOS Plasma style, marks in the icon theme, wallpapers, a splash
+and a login screen in the same style. There are eight accents, `bone` by default, and each is a
+separately named KDE colour scheme and global theme. Every colour file, Konsole scheme, wallpaper
+and login-screen palette is generated at build time from the one palette in `libkcolor`, the table
+the boot menu, the splash and the text consoles take their colours from, so the machine wears one
+accent from the firmware to the desktop. Every text colour of every generated scheme must clear
+4.5:1 against the backgrounds it is drawn on.
+
+Forking Breeze, the lock screen or the login theme was the alternative, and it gives the most
+control. It was not taken because forked QML and third-party widget engines break at Plasma
+releases, often as a lock screen that draws nothing rather than as a failed build. KDOS derives
+instead: a package that has to differ from Breeze starts from the installed Breeze files at build
+time and carries a patch with a `Subject:` line, so upstream drift is a build that fails.
+
+Phosphor mode is an extra layer on KDOS Modern, off until somebody turns it on: a CRT pass over the
+whole screen in the current accent, CRT motion for windows, the login, the lock screen and the
+logout, and the retro accents. It is opt-in for three reasons. Its scanlines cost contrast; it
+cannot run on software rendering, so a first boot in a virtual machine would look different from the
+same image on hardware; and while it runs, the screen gives up direct scanout and the hardware
+cursor plane. It is offered once, on the welcome tour, behind one switch.
+
+## Floating windows with smart snap, tiling on request
+
+Windows float where KWin places them, and snap: dragged to an edge a window takes half the screen,
+dragged to a corner a quarter, and each virtual desktop keeps its own layout of custom tiles. An
+automatic tiler, the Krohnkite KWin script, ships with the system and is off; choosing the tiling
+desk on the welcome tour, or the one switch for it, turns it on.
+
+Tiling by default was the alternative, and it suits a person who lives in terminals. It was not
+taken because it surprises everybody who expects a new window to open where it can be seen whole,
+and it turns every application's first window into a layout decision. One tiler is bundled, not
+two, so there is one behaviour to document and test. The cost is a third-party script tied to
+KWin's scripting interface, pinned to a release and tested again at every Plasma minor release.
 
 ## Native applications on the medium, a store that builds the rest
 
@@ -83,11 +201,11 @@ everything else, the medium carries a catalogue, and podman builds what somebody
 catalogue row is a parent chain of apt packages: installing a row builds a podman image per row in
 its chain, each `FROM` the one below, and creates a [box](../06-reference/glossary.md#box) (a rootless
 podman container one application runs in) over the top one. The catalogue file installs to
-`/usr/share/kdos/appstore/catalogue`, and it is what the store, kinstall (the installer) and `kdos
-app` all read, so adding an application to KDOS is one line in a text file. `kdos-store`, the
-panel's graphical catalogue, and kinstall both offer the catalogue by group — seven of them, from
-one application each in `essential`, `creative`, `make` and `games` to six in `science` — so
-choosing the six science applications is one choice rather than six.
+`/usr/share/kdos/appstore/catalogue`, and it is what Discover's KDOS backend, kinstall (the
+installer) and `kdos app` all read, so adding an application to KDOS is one line in a text file.
+Discover lists the catalogue beside the native ports, and kinstall offers it by group — seven of
+them, from one application each in `essential`, `creative`, `make` and `games` to six in
+`science` — so choosing the six science applications is one choice rather than six.
 
 Carrying every catalogue application prebuilt on the ISO, as
 [packs](../06-reference/glossary.md#pack) (the application images described below), was rejected: it
@@ -119,6 +237,27 @@ archive carries. An imported application is better verified than a store-install
 network. kinstall imports a set it finds on a stick, but into the live session rather than onto the
 new disk (see [Installation](../02-user-guide/installation.md#8-applications)). The pack format is
 how a set is carried, not how software is distributed.
+
+## Discover, with KDOS backends, as the one software centre
+
+Discover is where software is found, installed, removed and updated. KDOS builds it with a backend
+of its own for the native ports, the catalogue's packs and boxes, the boxes already installed, and
+packs on an attached medium or opened from a file; with its `sysupdate1` backend, which
+`kdos-sysupdated` answers for the two root slots; and with its fwupd backend for firmware. The
+Flatpak, Snap, PackageKit and KNewStuff backends are not built, and there is no Flathub: every
+source Discover offers is described in this repository or carried on the medium
+([Principles](principles.md#offline-by-construction)), and the catalogue's boxes fill Flathub's
+role under KDOS's own confinement.
+
+A software centre of KDOS's own was the alternative, and it would understand packs and boxes with
+no translation. It was not taken because it would be a second place to look, beside the one every
+Plasma user already knows and every update notification already opens.
+
+The cost is twofold. The KDOS backend is written against Discover's internal programming
+interface, so it is rebuilt and tested again at every Plasma minor release. And Discover shows
+nothing that has no AppStream metadata, so the image build generates that metadata for the ports,
+the packs and the catalogue; a port, pack or box without it is invisible there, though it still
+installs from the command line.
 
 ## One pack per application, not one image
 
@@ -226,12 +365,12 @@ and `killall5`, and nothing else from that package. Every console is util-linux'
 single-user mode is util-linux's `sulogin`.
 
 The question was which init runs the numbered shell scripts, with systemd ruled out by
-[principle](principles.md#no-systemd). sysvinit gives runlevels, so single-user mode, power-off and
-reboot are states of `/etc/inittab` rather than code paths of their own; it builds on musl and
-against utmps with no patch, so it writes the boot and runlevel records `who -b` and `who -r`
-read and the `/run/runlevel` file `runlevel` falls back on;
-and its shutdown order is a list of `wait` entries anyone can read. It does not supervise services:
-that stays `ksvc`'s job, so the choice of PID 1 changes nothing about how a daemon is run.
+[principle](principles.md#no-systemd-init-units-or-service-manager). sysvinit gives runlevels, so
+single-user mode, power-off and reboot are states of `/etc/inittab` rather than code paths of their
+own; it builds on musl and against utmps with no patch, so it writes the boot and runlevel records
+`who -b` and `who -r` read and the `/run/runlevel` file `runlevel` falls back on; and its shutdown
+order is a list of `wait` entries anyone can read. It does not supervise services: that stays
+`ksvc`'s job, so the choice of PID 1 changes nothing about how a daemon is run.
 
 The constraint it brings is that `telinit` is the only way to ask it for a runlevel. It ignores
 `SIGTERM`, and `SIGUSR2` closes its control FIFO for the rest of the boot, so a program that wants
@@ -239,28 +378,30 @@ the machine off runs `telinit 0` and never signals PID 1. See
 [Boot and init](../03-architecture/boot-and-init.md#shutdown) for how the machine is taken down, and
 [Login records](../03-architecture/boot-and-init.md#login-records) for the records `init` writes.
 
-## No KDE, GNOME or any existing desktop on the host
+sysvinit has no notion of a login, and Plasma is built on one, so **elogind** runs beside it:
+logind, taken out of systemd's source tree and built on its own. It serves
+`org.freedesktop.login1`, through which SDDM records sessions and switches users, KWin opens the
+display and the input devices, PowerDevil suspends the machine and owns the lid, and the lock screen
+locks before sleep. It runs under `ksvc` like any daemon, and its power-off and reboot paths are
+sysvinit's, so a Shut Down from Plasma still goes through runlevel 0 and `rcK`. **turnstile** runs
+beside elogind for the part of `systemd --user` Plasma needs: it counts a user's logins across SDDM
+and the text consoles, creates `/run/user/<uid>` at the first and removes it at the last, and has a
+backend start that user's services. On KDOS the backend is a short script that runs
+`/etc/kdos/user-services/` under `ksvc`, so a user's session bus and PipeWire are supervised exactly
+as the system's daemons are.
 
-The host runs a desktop written for it, in which every surface KDOS paints is a character-cell
-grid: the panel and all its surfaces, the file chooser, the resource monitor, the terminal, the
-lock screen, the installer, the boot splash and `tty1`. The compositor is the one place with pixels
-of its own. It links `cairo` and `pangocairo` and draws titlebars, the root menu and the
-window-switcher display with pango, at a size matched to the grid. An application, native or in a
-box, draws whatever its toolkit draws.
+systemd itself was the obvious way to get all of that, and it was not taken for reasons beyond the
+principle. Its upstream calls its musl support incomplete and makes no promise to keep it; from
+version 260 it runs no SysV scripts, so every script in `/etc/init.d` would have to become a unit;
+and it would make one project of the journal, the units and the user manager, jobs this system
+gives one program each. dinit, on which Chimera Linux runs Plasma with elogind and
+turnstile, was the other candidate. It would replace both sysvinit and `ksvc` with a service manager
+that orders services by a dependency graph, and gain nothing Plasma needs: turnstile asks its
+backend only to start a user's services and to say when they are ready.
 
-The question was why KDOS does not run one of the complete desktops that exist. It has two
-reasons: the cell grid is the project's identity, and keeping it keeps every large toolkit out of
-the desktop itself, which is what makes compiling and reading the desktop in one sitting tractable.
-
-KDE Plasma on the host was the serious alternative. It was rejected because it would put Qt and
-KDE Frameworks, a body of code larger than the rest of the host combined, under the desktop's own
-surfaces, and bring a second session with its own daemons, portals and lock screen.
-
-This does not reject KDE's or GNOME's applications. Dolphin, Kate, Okular, Kdenlive, GIMP and
-others are ported natively with their toolkits and run as ordinary clients of `kdos-comp`, and the
-catalogue carries more on the shared `rt-kde` and `rt-gtk` runtimes. None of them needs Plasma or
-GNOME Shell running. See [Principles](principles.md#toolkits-are-for-applications-not-the-desktop)
-and [Packs and boxes](../03-architecture/packs-and-boxes.md).
+The cost is about 226,000 lines of C from systemd's tree on the host, built with the patches
+Alpine carries for musl, and pinned: elogind moves to a new release only with its patches proven
+again through a full boot, login, logout, user switch, lock and suspend.
 
 ## Upstream archives are hash-checked release assets
 
@@ -382,9 +523,9 @@ work. A distribution that shipped v3 everywhere would ship those regressions and
 them. Runtime dispatch, which would choose between variants at load time, is not available on musl
 (see [musl as the host C library](#musl-as-the-host-c-library)).
 
-Because KDOS rebuilds itself on the machine it runs on, rebuilding per machine is available here in
-a way it is not for a binary distribution. That turns "which flags" into "did they help on this
-machine", which is a question with a measurable answer.
+Because every KDOS machine carries its compilers and its recipe tree, rebuilding per machine is
+available here in a way it is not for a binary distribution. That turns "which flags" into "did they
+help on this machine", which is a question with a measurable answer.
 
 ## One release flag set, raised per port
 
@@ -503,15 +644,15 @@ See [Writing ports](../05-developer/writing-ports.md) for the format as built.
 
 ## Ports are shelved by subject; identity is the bare name
 
-The upstream ports, about 2,000, are filed on 102 **shelves**, one directory per subject:
-`ports/core/<shelf>/<name>/`, such as `ports/core/wl/wlroots/` or `ports/core/games-board/kpat/`.
+The upstream ports, about 2,400, are filed on 102 **shelves**, one directory per subject:
+`ports/core/<shelf>/<name>/`, such as `ports/core/kde/kwin/` or `ports/core/games-board/kpat/`.
 The shelf list is closed. It is the file `ports/shelves`, one line per shelf giving its id, the
 source-archive volume that keeps its files, and what belongs on it, and a port may sit only on a
 shelf that file lists. A port's identity is its
 bare name: the shelf is where the recipe is filed and nothing more.
 
-The question was how a person finds, reviews and places a port among two thousand. A single flat
-directory answers none of those: `ls` shows two thousand names in alphabetical order, and nothing
+The question was how a person finds, reviews and places a port among some 2,400. A single flat
+directory answers none of those: `ls` shows thousands of names in alphabetical order, and nothing
 says that `kpat` and `gnome-mines` are the same kind of thing or that a new card game belongs beside
 them. Subject directories answer all three, in the way T2 SDE's `package/<repository>/<name>/`
 does.
@@ -527,8 +668,8 @@ Several details follow from what the rest of the system already assumes:
   recipe would change every hash and, under strict recipe matching, rebuild the whole tree. A key
   would also be a second statement of the shelf that could disagree with the first.
 - **Everything names a port by its bare name.** `depends =` lines, the package lists, the package
-  database, the binary host's index, delta names and `ports/sources.idx` all say `wlroots`, never
-  `wl/wlroots`, so moving a port to another shelf is a `git mv` plus moving its name to that
+  database, the binary host's index, delta names and `ports/sources.idx` all say `kwin`, never
+  `kde/kwin`, so moving a port to another shelf is a `git mv` plus moving its name to that
   shelf's file in its phase's package list, and changes no hash and no package. The same holds for prose: a comment or a page that means a port names the
   port, not its shelved path, since a path goes stale the day the port moves; a path appears only
   to show the layout itself.
@@ -569,7 +710,7 @@ rather than two that drift apart. See
 
 The cost is judgement. Some ports fit two shelves, and a rule has to pick one; where the rules do
 not settle it, the shelf of the port's only main consumer wins, or failing that the shelf a person
-would open first. A name also has to be unique across all two thousand ports, which one flat
+would open first. A name also has to be unique across every one of the ports, which one flat
 directory would enforce by construction and which, across shelves, the tools check. And every tool
 that walks the tree descends exactly one level: a walker that did not would see no ports at all and
 report success, which is why `kpkg` warns about a repository that holds no port at either depth.
@@ -578,38 +719,41 @@ report success, which is why `kpkg` warns about a repository that holds no port 
 
 KDOS's own software lives in six areas under `src/`, each one kind of thing:
 
-| Area | Holds | Recipes |
-|---|---|---|
-| `src/desktop` | Programs that draw the session or serve it over Wayland or D-Bus | 8 |
-| `src/daemons` | Root daemons whose client is the desktop account | 5 |
-| `src/system` | The package manager, the `kdos` command and its services, packs and boxes, the installer, and the two books as installed documentation | 7, and `kdos-kpkg`, built by script |
-| `src/art` | Themes, pictures and the programs that generate them | 6 |
-| `src/libs` | The 17 `libk*` libraries | none |
-| `src/devtools` | Programs that run on the build machine and are never installed: `kdosbuild` and `kdos-portup` | none |
+| Area | Holds |
+|---|---|
+| `src/desktop` | KDOS's part of the Plasma desktop: Qt 6 and KDE Frameworks code (settings pages, plasmoids, the KRunner runner, KWin effects and scripts, the Discover backend, the look-and-feel packages, the installer's graphical front end) and the small C helpers the session runs, which link no toolkit |
+| `src/daemons` | Root daemons whose client is the desktop account |
+| `src/system` | The package manager, the `kdos` command and its services, packs and boxes and the socket that tags a box's windows, the installer's backend and text front end, and the two books as installed documentation; `kdos-kpkg` is built by script |
+| `src/art` | Themes, pictures, sounds and the programs that generate them |
+| `src/libs` | The nine `libk*` libraries |
+| `src/devtools` | Programs that run on the build machine and are never installed: `kdosbuild` and `kdos-portup` |
 
 A new program goes to the first area that fits: a library to `src/libs`, a program not installed on
-the target to `src/devtools`, one that draws or speaks the session's protocols to `src/desktop`, a
-root daemon for the desktop account to `src/daemons`, a picture, theme or generator to `src/art`,
-and anything else to `src/system`.
+the target to `src/devtools`, code that is part of the Plasma desktop or that only the graphical
+session runs to `src/desktop`, a root daemon for the desktop account to `src/daemons`, a picture,
+theme, sound or generator to `src/art`, and anything else to `src/system`, box infrastructure
+included. Only `src/desktop` may link a toolkit, and only Qt 6, KDE Frameworks and Plasma's own
+libraries; preflight refuses any other `src/` port that links one
+([Principles](principles.md#the-desktop-is-kde-plasma)).
 
 Every port sits exactly two levels below `src/`, at `src/<area>/<name>/`. That depth is not a
-style: seventeen recipes find the libraries at `$PORT_SRC/../../libs`, the recipe hash of every
-source-less port walks the same path, and `kdos-installer` compiles a file from its sibling
-`kdos-appbox`. A third level would break all three.
+style: every recipe that compiles a `libk*` library finds it at `$PORT_SRC/../../libs`, the recipe
+hash of every source-less port walks the same path, and `kdos-installer` compiles a file from its
+sibling `kdos-appbox`. A third level would break all three.
 
 The areas also carry the build's phase split. `40_lang` to `44_apps` and `60_kernel` search
-`src/system` and `src/art`, and only `50_desktop` adds `src/desktop` and `src/daemons`, so no
-userland port can come to depend on the compositor or a desktop daemon: the phase building it could
-not resolve the name. That makes five repositories in the desktop phase, under the eight
-`PORT_REPO` holds.
+`src/system` and `src/art`, and only `50_desktop` adds `src/desktop` and `src/daemons`. KDOS's
+settings pages, plasmoids, KWin plugins and Discover backend link libplasma, KWin and libdiscover,
+which `50_desktop` builds, and the daemons serve the session it assembles, so no userland port can
+come to depend on either: the phase building it could not resolve the name. That makes five
+repositories in the desktop phase, under the eight `PORT_REPO` holds.
 
 Flattening every program into `src/<name>/` was rejected: `../../libs` would stop resolving, the
 libraries would sit among the programs, and the phase split would have nothing to hang on.
-Grouping the libraries by kind (drawing apart from system) was rejected because their `libk`
-prefix already namespaces them, and moving them would change every `-I` flag in seventeen build
-scripts and every path the recipe hash walks for no gain. Shelving KDOS's own ports under
-`ports/core` with the upstream ones was rejected for the depth reason: a shelved port's `../../libs`
-is inside `ports/core`.
+Grouping the libraries by kind was rejected because their `libk` prefix already namespaces them,
+and moving them would change every `-I` flag in every build script that uses one and every path the
+recipe hash walks, for no gain. Shelving KDOS's own ports under `ports/core` with the upstream ones
+was rejected for the depth reason: a shelved port's `../../libs` is inside `ports/core`.
 
 ## Build phases are named, banded and closed
 
@@ -702,25 +846,56 @@ format change every client has to understand. The key id inside a signature is a
 selector: every line is tried against every key in the local keyring and against nothing outside
 it, so the id can never supply a key. See [Packaging](../03-architecture/packaging.md#signing).
 
-## Updates build a signed tree from source
+## Updates are signed slot images, with a binhost on the way
 
-Every image carries its recipe-only ports tree at `/ports`. `kdos update fetch` replaces it with the
-tree of the latest release, `kdos-ports.tar.xz`, once its Ed25519 signature verifies against
-`/etc/kdos/keys/tree`, which holds the public half of the release key the image was built with.
-`kdos update apply` builds every package that tree pins newer, on the machine, fetching each source
-from the `sources-<N>` archive and then upstream and checking it against the recipe's `sha256 =`.
-No binhost takes part, and `kdos update` has no option or setting that names one.
+An update of the operating system is a release, written into the root slot that is not running and
+booted on trial. Each release publishes, signed with its release key, what its build produced: the
+packages on a binhost with deltas against the release before, and whole-slot images with deltas
+from each of the two releases before it. `kdos update apply`, and Discover through
+`kdos-sysupdated`, which answers Discover's `sysupdate1` calls, do all the downloading and writing
+in one step while the running system is untouched, then ask for a restart. Nothing is applied
+unasked, and the nightly check reads only what is already on the machine. A release that carries
+an image updates by image. Otherwise the inactive slot is filled from the binhost, and a machine
+with a package the binhost does not match is told so before the slot is touched.
+`kdos update apply --source` builds the release's signed recipe tree on the machine instead.
 
-A binhost was rejected for updates because it answers a question a recipe tree already answers.
-A prebuilt package is usable only when its recipe hash and build-config hash equal this machine's,
-so it saves compiling and says nothing about what is newer; it also adds a second thing to publish,
-sign and keep in step with every tree. One signed tree is the whole trust root: every source an
-update builds is checked against a hash the tree names.
+The new slot is kept only once a boot of it has finished `rcS` and then had a Plasma session (or,
+on a machine where nobody logs in, the login screen) up and answering for a minute; `kdos-sysupdated`
+marks it good only when both have happened. A trial that never gets that far uses up its attempts
+and the next boot falls back to the slot that worked.
 
-The cost is in time and in the network. An update needs the network for the tree and for every
-source, and compiles on the machine, which is hours for a large set: a new compiler, a browser or
-Qt. A machine offline cannot update, and says so in the panel's badge rather than looking current.
-See [Packaging](../03-architecture/packaging.md#updating-a-machine).
+Building every update on the machine was the alternative, and it needs no published binaries at
+all: one signed recipe tree is the whole trust root, and every source is checked against a hash it
+names. It was not taken as the default because an update that compiles a new Qt or a browser takes
+hours and the network for every source, a machine offline cannot update, and a person who asked for
+a desktop should not wait for a compiler. Images are preferred to packages because an image is one
+hash for the whole root: it cannot half-apply, and the slot it writes is the slot that was tested.
+
+The costs: a release has to build, sign and publish its binhost and images beside the ISO; the
+release key vouches for binaries, not only for a recipe tree; and every update ends in a restart.
+Every binary is still built from this tree's recipes, so a published package can be rebuilt and
+compared byte for byte ([Principles](principles.md#reproducible-by-construction)). See
+[Packaging](../03-architecture/packaging.md#updating-a-machine).
+
+## One installer backend, two front ends
+
+The installer is one backend, `kinstall`'s probing, configuration and installation code, under two
+front ends: a Kirigami application on the live desktop, and a text interface for a serial console
+and for unattended installs. The graphical front end asks the same questions the text one does,
+runs as the live session's user, asks the backend what the machine holds and what an answer would
+do, starts it as root through polkit with the answers on its standard input, and follows its
+progress as a stream of JSON events, so no Qt code runs as root and the two front ends share one
+check of the answers.
+A manual disk layout is made in KDE Partition Manager, and the installer takes it from there. At the
+account step the installer either creates the user, which is the default, or leaves the machine for
+its first owner, who meets plasma-setup at the first boot.
+
+Two installers were the alternative: a graphical one written in Qt beside the text one kept for
+serial consoles. It was not taken because two installers are two implementations of what a disk
+layout, an encrypted root and a pair of root slots mean, and the one nobody is testing drifts
+([Principles](principles.md#one-implementation-of-an-idea)). The backend links no toolkit, so it
+still runs from a serial console and before any desktop exists. The cost is an event protocol
+between the backend and the graphical front end that both sides have to keep.
 
 ## Freezing a demo rather than writing one
 
@@ -740,8 +915,8 @@ musl does not tolerate it. `REGISTERS(n)` expands to nothing, because the x86-32
 attribute warns on every declaration here. The drawing is paced on a deadline grid of one frame per
 16 ms, the mixer runs on its own thread so the music does not starve while a frame is drawn, and
 the scene clock follows the music player so the two stay in step. Each frame is wrapped in
-synchronized output (DECSET 2026), so a terminal that supports it, `kdos-term` included, draws
-whole frames rather than halves of two.
+synchronized output (DECSET 2026), so a terminal that supports it draws whole frames rather than
+halves of two.
 
 The rest change what the demo shows and how it starts. It starts by itself, with `-nosound` and
 `-mixer` as flags in place of upstream's two start-up questions; the flash words and the closing
@@ -755,64 +930,6 @@ A demo written from scratch was the alternative. `bb` is a set of scenes paced a
 tracker modules it ships with, and reaching that from nothing would be a project of its own, where
 the fork needed only the changes listed above. See [kdos-bb](../04-programs/kdos-bb.md).
 
-## Forking libtsm rather than writing a terminal
-
-`libkvt` is a hard fork of libtsm 4.7.1, kmscon's VT100–VT520 state machine, with its `tsm_` and
-`shl_` prefixes renamed to `kvt_` and `kvt_shl_`. A terminal emulator is a decade of edge cases —
-character sets, the alternate screen, DEC private modes, wrapping rules that differ between
-terminals that both claim VT100 — and none of it is a place to be original. What is original here
-is the boundary to the toolkit, not the parser. Like the compositor, the fork is pinned and does
-not rebase onto upstream.
-
-A *cell* is the record for one character position on the screen: the character, its colours and its
-attributes. `libkvt` keeps libtsm's own cell record internally and produces the toolkit's shared
-cell type — `KtuiCell`, defined in `libktui`'s `ktui.h` — only when the screen is drawn. `libkcell`
-paints `KtuiCell`s directly rather than defining a cell type of its own, but that is about the
-toolkit's libraries agreeing with each other, not about a terminal's private screen buffer, which
-nothing outside the library sees. Upstream's cell is kept because it carries 24-bit colour, a
-per-cell age that drives damage tracking, and a symbol-table handle that makes combining characters
-possible. The conversion to a `KtuiCell` happens at one render boundary, once per frame, over the
-runs the screen reports as changed, so none of that is lost before the screen is drawn. The library
-reaches the toolkit only through narrow calls: key codes, character width, mouse selection, and
-libkbase's base64 decoder for OSC 52 clipboard writes.
-
-libtsm borrows an LGPL hash table from CCAN, and the fork replaces it with one written here,
-because `libkvt` is MIT and a library that put relinking obligations on every binary linking it
-could not be carried.
-
-The terminal's colours reduce onto the palette's [slots](../06-reference/glossary.md#slot) (named colour
-roles) by the same rule as every other surface, so `kdos theme` recolours a terminal too; the rule
-is described with the library in [The C libraries](../05-developer/c-libraries.md#libkvt).
-
-The cost is the compositor's: upstream fixes do not arrive, and are read and applied by hand. See
-[The C libraries](../05-developer/c-libraries.md#libkvt) for the library as built.
-
-## One file chooser at one width
-
-The chooser a boxed application reaches through the FileChooser portal and the chooser this
-desktop's own programs open are one program, `kdos-pick`, at one size: 64 columns by 22 rows. The
-portal does not get a wider one to hold a sidebar column.
-
-The width is not a free parameter. Laid out inside a classic 80-column by 24-row terminal, a
-64-column dialog leaves eight cells of ground either side of it and two rows below it for the
-taskbar. A sidebar wide enough to read a place name is about sixteen more columns, and a chooser
-needing 80 columns would be a chooser with no frame, no ground and no room for the taskbar at that
-size. The chooser's [goldens](../06-reference/glossary.md#golden) (committed reference frames of a
-surface, compared byte for byte by the tests) are taken at 80 by 24 and 132 by 43, and also at 56
-by 24, where the dialog shrinks to the screen.
-
-A third column is what a sidebar would cost. When the selected row is an image, the chooser
-already carves a preview pane from the right-hand third of the list, so a sidebar would take its
-width from the names: about thirty cells for a filename, in the window whose purpose is showing
-filenames.
-
-So the places are an overlay and not a column. `Ctrl+P` opens them over the file list, and `Esc`
-closes them. The list starts with the places `kxdg_places()` gives the Start menu and adds the
-recently visited directories that `zoxide` reports, every place at full width, and nothing is taken
-from the names while it is closed. A boxed application's Open and Save get exactly what a native one
-gets, which is the other half of the decision: two dialogs of two widths would be two layouts to
-maintain, two sets of reference frames, and two answers to how wide a chooser is.
-
 ## Narrowings
 
 A narrowing is a decision that reads like a gap. The thing is not there, and it is not there because
@@ -820,82 +937,15 @@ a smaller answer was chosen over a larger one. Each of these is too small for a 
 own, and each has the same shape: what was asked for, what is built instead, and what the larger
 answer would have cost.
 
-### Drops reach only the trash
-
-A drop on the desktop reaches the trash and nothing else. Dropping a file onto a folder icon
-would be a move, and a move across filesystems is a copy and an unlink that can half-succeed. A
-desktop offering the gesture has to say what it did with the file when the second half failed, on
-a surface with nowhere to say it. The trash is the one target whose failure mode is that nothing
-happened.
-
-### Screens are ordered, not placed
-
-Screens are placed edge to edge in list order, not at coordinates. `kdos-display` lays the
-outputs out from `x = 0` with their tops aligned, in the order of its list, and `[` and `]` move a
-screen along it. A vertical arrangement, an overlap and a deliberate gap cannot be expressed. What
-people reach a screen tool for is which screen is left of which, and an order answers that in a
-list; a geometry answers it with a canvas, a drag, a snapping rule and a validity check for the
-arrangements that leave a hole.
-
-### Tabs stack; they do not tile
-
-The compositor's `AddToTabGroup` action folds the focused window onto the one behind it, and there
-are no tile groups — two windows side by side that move, resize and minimise together. A window's
-`tiled` state is a set of edges resolved against the work area, never against a neighbour, and
-`libkwm`, which computes window rectangles, has no notion of a neighbour at all. A group is a
-relation between windows, which is the one thing the window model does not hold, so a tile group
-would reuse none of the machinery a tab stack reuses. See
-[The window model](../03-architecture/window-model.md).
-
-### One font for every output
-
-The desktop uses one font for every output. `~/.config/kdos/comp.conf` holds `chrome_font` and
-`panel_font`, and each is one value for every output, so they are right on a machine with one screen
-and wrong on two of different densities. `kdos-style`'s font page offers fontconfig's monospace
-families and writes those two keys, which the desktop reads at the next login; setting the face on
-every output keeps two screens agreeing rather than letting each be right. A per-output font is a
-different design — a font per connector, a picker that asks which, and a cell size that changes
-under a window as it is dragged across the boundary — not a missing call.
-
-### No ReGIS or Tektronix
-
-The terminal implements neither ReGIS nor Tektronix graphics. They are vector graphics protocols
-from DEC and Tektronix hardware, and nothing in the catalogue emits either. The three raster
-protocols the terminal implements (sixel, the kitty graphics protocol and iTerm2's inline images)
-are what current programs use. See [kdos-term](../04-programs/kdos-term.md).
-
-### Braille and speech do not read the desktop
-
-Braille and speech are ports, and neither reads the desktop. `brltty` reads `/dev/vcsa` by
-default, so it covers `tty1` and the installer; its other screen drivers read a `tmux` session or a
-terminal run under `brltty-pty`, and none of them reads anything the compositor draws. It carries a
-driver for nearly every braille display, loaded by name from `/etc/brltty.conf`.
-`speech-dispatcher` is the interface a screen reader speaks to and `espeak-ng` is the voice behind
-it. No KDOS program links BrlAPI; the API server stays on for BRLTTY's own clients, such as
-`brltty-clip`. No KDOS surface talks to `brltty`, `speech-dispatcher` or
-`espeak-ng`. They are on the image because they are useful to somebody at a terminal, not because
-the desktop is readable; see [Accessibility](../02-user-guide/accessibility.md).
-
-### A tray menu is read once
-
-A tray icon's menu is read when it opens and not watched while it is open. `kdos-shell`'s tray menu
-listens to neither `LayoutUpdated` nor `ItemsPropertiesUpdated`, the two signals an application
-sends when its menu changes (`src/desktop/kdos-shell/traymenu.c`). A menu is open for as long as
-somebody is looking at it, and a menu whose rows move under the pointer activates the wrong row.
-`AboutToShow` is sent first, which is where an application fills a submenu in; the layout is read
-once its reply arrives, and that read is the only one taken. Following the signals would mean a
-policy for every row that moves, appears or disappears under a pointer that is already on its way to
-it. See [kdos-shell](../04-programs/kdos-shell.md).
-
 ### Invitations are read, not answered
 
-An invitation in a message is read and never answered. The shipped `aerc` configuration sends
-`text/calendar` parts through `kdos-part ics`, which runs aerc's own calendar filter: it prints the
-event — summary, times, location, who was asked — and writes nothing anywhere. A filter runs every
-time a message scrolls past, so one that imported would accept every meeting it was scrolled over,
-and no `text/calendar` handler is registered for the same reason. Filing an invitation is manual
-and works: `:save` the part out of the message and `khal import` it, and the day carries a mark in
-the panel's calendar.
+An invitation in a message `aerc` shows is read and never answered. The shipped `aerc`
+configuration sends `text/calendar` parts through `kdos-part ics`, which runs aerc's own calendar
+filter: it prints the event — summary, times, location, who was asked — and writes nothing
+anywhere. A filter runs every time a message scrolls past, so one that imported would accept every
+meeting it was scrolled over. Filing an invitation from aerc is manual and works: `:save` the part
+out of the message and `khal import` it, or open it, which hands it to the system's calendar
+handler, Thunderbird.
 
 ### No raw-block-device applications
 
@@ -905,34 +955,39 @@ launcher that opens onto a permission error teaches somebody that the machine is
 are native tools on the host, where the privilege is: `parted`, `gptfdisk`, `smartmontools`,
 `testdisk` and `ddrescue` are ports.
 
-### No compositor-private protocols
+### No other compositor's private protocols
 
-Applications requiring a particular compositor's private protocols are out. Spectacle, KDE's
-screenshot tool, asks for KWin's own screenshot interface on Wayland and opens an error dialog on
-any other compositor, so it is not in the catalogue. Screenshots are the host's `kdos-shot`, which
-runs where the capture protocols are.
+Programs that need another compositor's private protocols are not on the host. `grim` and
+`wf-recorder` capture the screen through the wlroots capture protocols, which KWin does not
+implement, so screenshots and recordings are Spectacle's, which asks KWin's own screenshot
+interface and the screen-cast portal, and `kdos-shot` is a front end to it. The desktop is shared
+over VNC by krfb and over RDP by krdp, which reach the screen the same way.
 
 ### Nothing downloads at run time
 
 Nothing downloads a component at run time. `winetricks` is not in the catalogue, because it
 fetches Windows runtimes from the network when it runs, and for the same reason Wine gets no
 Microsoft core fonts: a Windows program that wants a specific proprietary font gets a substitute.
-Once installed, nothing may depend on a download an offline machine cannot make.
+KDE's "Get New…" service, KNewStuff, is switched off for every program (`ghns=false` under
+`[KDE Action Restrictions]` in the distribution's `kdeglobals`), so no settings page offers to
+fetch a theme, a wallpaper or a script from store.kde.org; what KDOS offers instead is a curated
+add-on pack on the medium, which Discover lists. Once installed, nothing may depend on a download
+an offline machine cannot make.
 
 ### A library edit rebuilds every in-tree port
 
 Editing a library rebuilds every port of KDOS's own software that builds from the tree, not only its
-consumers. A port under `src/` with no `source =` line builds from the tree, as all 26 there do,
-and seventeen of them compile `libk*` libraries into themselves, each `build.sh` naming the ones it uses as a
-glob under `$LIBS`. Working out which ports an edit reaches would need a shell parser inside the
-package manager, so `kp_hash.c` puts the whole of `src/libs` into the recipe hash of every such port
-instead. The test is the recipe and where it sits: the hash walks `src/libs` for every port with no
-source (no `source =` line, or an empty one) whose directory has a `../../libs` beside it, which is
-every port under `src/`, since each sits at `src/<area>/<name>/`. The two source-less ports under
-`ports/core`, `musl-ldd` and `containers-common`, sit on a shelf, where `../../libs` is
-`ports/core/libs`, a name no shelf may take, and hash their own directory alone, and every other
-port under `ports/core` is unaffected. Each rebuild takes seconds, while a parser would be a second
-build system whose mistakes show only as missed rebuilds.
+consumers. A port under `src/` with no `source =` line builds from the tree, as every port there
+does, and each one that uses a `libk*` library compiles it into itself, its `build.sh` naming the
+ones it uses as a glob under `$LIBS`. Working out which ports an edit reaches would need a shell
+parser inside the package manager, so `kp_hash.c` puts the whole of `src/libs` into the recipe hash
+of every such port instead. The test is the recipe and where it sits: the hash walks `src/libs` for
+every port with no source (no `source =` line, or an empty one) whose directory has a `../../libs`
+beside it, which is every port under `src/`, since each sits at `src/<area>/<name>/`. The two
+source-less ports under `ports/core`, `musl-ldd` and `containers-common`, sit on a shelf, where
+`../../libs` is `ports/core/libs`, a name no shelf may take, and hash their own directory alone, and
+every other port under `ports/core` is unaffected. Each rebuild takes seconds, while a parser would
+be a second build system whose mistakes show only as missed rebuilds.
 
 ### util-linux switch_root in the initramfs
 
@@ -950,7 +1005,9 @@ or `blkid` does not name util-linux in its `--version`. See
 - [How KDOS differs](how-kdos-differs.md) — how other distributions answer the same questions
 - [Principles](principles.md) — the rules that follow from them
 - [Packs and boxes](../03-architecture/packs-and-boxes.md) — the pack and store decisions as built
-- [kdos-comp](../04-programs/kdos-comp.md) — the compositor fork as built
+- [Session](../03-architecture/session.md) — the login, elogind, turnstile and Plasma's start-up
+  as built
+- [The window model](../03-architecture/window-model.md) — KWin as KDOS configures it
 - [Writing ports](../05-developer/writing-ports.md) — the recipe format and publishing sources
 - [How KDOS is built](../05-developer/how-kdos-is-built.md) — the build from a clone to an ISO,
   where the source archive and the recipe hash come into play

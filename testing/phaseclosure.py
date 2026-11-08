@@ -36,9 +36,12 @@
 # docs/kdos/05-developer/writing-ports.md, "Which phase lists a port", for
 # every port each one installs. The graphics stack is GRAPHICS_ROOTS, a
 # toolkit is TOOLKIT_ROOTS, the application shelves are APP_SHELVES, and a
-# port nothing depends on is one no `depends =` of any port a phase installs
-# names; the table, its shelf list and these three sets are one rule, and a
-# change to one changes the others.
+# port nothing depends on is one no `depends =` of any port 44_apps or an
+# earlier phase installs names; the table, its shelf list and these three sets
+# are one rule, and a change to one changes the others. A later phase's
+# `depends` builds after every table phase and orders nothing in them, so the
+# meta ports in 50_desktop, which name every Gear application, leave each one
+# a 44_apps leaf.
 #   41_system    reaches neither the graphics stack nor a toolkit
 #   42_graphics  reaches the graphics stack and no toolkit, and is not a port
 #                nothing depends on that sits on an application shelf
@@ -200,6 +203,8 @@ def phase_rule(phases, res):
             home.setdefault(p, ph)
     depended = set()
     for p, ph in home.items():
+        if ph['dir'] > '44_apps':
+            continue
         pdir = res.find(ph['repos'], p)
         if pdir:
             depended.update(read_depends(pdir))

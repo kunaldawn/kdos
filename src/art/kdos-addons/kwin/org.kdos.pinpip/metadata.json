@@ -1,0 +1,21 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "KDOS"
+            }
+        ],
+        "Category": "Window Management",
+        "Description": "Keeps picture-in-picture video windows above every other window, on every desktop",
+        "EnabledByDefault": false,
+        "Icon": "window-restore-pip",
+        "Id": "org.kdos.pinpip",
+        "License": "MIT",
+        "Name": "Picture-in-Picture on Top",
+        "Version": "1.0",
+        "Website": "https://github.com/kunaldawn/kdos"
+    },
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js"
+}

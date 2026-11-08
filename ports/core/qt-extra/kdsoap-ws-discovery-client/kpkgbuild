@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdsoap-ws-discovery-client
+version     = 0.4.0
+release     = 1
+source      = https://download.kde.org/stable/$name/$name-$version.tar.xz
+sha256      = 2cd247c013e75f410659bac372aff93d22d71c5a54c059e137b9444af8b3427a  kdsoap-ws-discovery-client-0.4.0.tar.xz
+description = WS-Discovery client over KDSoap, which finds SMB hosts on the local network for KIO's smb worker
+homepage    = https://invent.kde.org/libraries/kdsoap-ws-discovery-client
+license     = GPL-3.0-or-later AND LicenseRef-OASIS AND LicenseRef-WS-Discovery AND LicenseRef-WS-Addressing AND W3C AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kdsoap

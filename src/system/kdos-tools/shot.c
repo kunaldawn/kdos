@@ -7,9 +7,16 @@
  * ---------------------------------
  *   kdos-shot [region|screen|full|window|qr]
  *
- * Screenshot to the clipboard AND to disk. One keystroke, region selected
- * with the mouse, image on the clipboard ready to paste, a copy filed under
- * ~/Pictures/Screenshots, and a notification so you know it worked.
+ * Screenshot to the clipboard AND to disk, through Spectacle. One keystroke,
+ * region selected with the mouse, image on the clipboard ready to paste, a
+ * copy filed under ~/Pictures/Screenshots, and a notification so you know it
+ * worked.
+ *
+ * SPECTACLE TAKES THE PICTURE, in its background mode (`-b`), without its own
+ * notification (`-n`): it is the one program KWin hands a screen to, through
+ * its ScreenShot2 interface, and there is no other capture path on this
+ * desktop. What is left here is the naming, the clipboard, the one
+ * notification and `qr`.
  * ---------------------------------
  */
 
@@ -52,22 +59,6 @@ static void clip(const char *file)
 	int st;
 	while (waitpid(pid, &st, 0) < 0)
 		;
-}
-
-/* grim needs ext-image-copy-capture or, failing that, wlr-screencopy.
- * kdos-comp implements both (wlroots supplies them), so this probe should
- * always succeed — it stays because the failure it catches is otherwise mute:
- * grim exits non-zero with nothing useful on stderr when neither global is
- * there. */
-static int grim_works(void)
-{
-	KbArgv a = {0};
-	kb_argv_add(&a, "grim");
-	kb_argv_add(&a, "-t");
-	kb_argv_add(&a, "png");
-	kb_argv_add(&a, "/dev/null");
-	kb_argv_end(&a);
-	return kb_run(&a) == 0;
 }
 
 /*
@@ -128,8 +119,8 @@ static int shot_qr(const char *png)
 		toast("QR", "nothing here can reach the clipboard");
 		return 1;
 	}
-	/* The LENGTH, never the payload: a toast is drawn on a screen somebody
-	 * else may be looking at. */
+	/* Never the payload: a toast is drawn on a screen somebody else may be
+	 * looking at. */
 	toast("QR copied", "the code is on the clipboard");
 	return 0;
 }
@@ -141,14 +132,21 @@ static void shot_usage(FILE *o)
 
 /*
  * EVERY ARGUMENT IS READ BEFORE ANYTHING IS DONE. The default mode is region,
- * which waits in slurp for a drag: an argument taken for "no mode given" would
- * leave a script that asked for help, or passed a typo, waiting on a pointer
- * nobody is moving. So an option is either one of the two below or an error,
- * and a refusal comes before the screenshot directory is made.
+ * which waits for a drag: an argument taken for "no mode given" would leave a
+ * script that asked for help, or passed a typo, waiting on a pointer nobody is
+ * moving. So an option is either one of the two below or an error, and a
+ * refusal comes before the screenshot directory is made.
  */
 int shot_main(int argc, char **argv)
 {
-	const char *mode = NULL;
+	static const struct { const char *mode, *flag; } MODES[] = {
+		{ "region", "-r" },
+		{ "qr", "-r" },
+		{ "screen", "-m" },
+		{ "full", "-f" },
+		{ "window", "-a" },
+	};
+	const char *mode = NULL, *flag = NULL;
 
 	for (int i = 1; i < argc; i++) {
 		const char *a = argv[i];
@@ -169,12 +167,15 @@ int shot_main(int argc, char **argv)
 	}
 	if (!mode)
 		mode = "region";
-	if (!strcmp(mode, "window"))
-		mode = "region";	/* per-window needs the compositor's help */
-
-	if (strcmp(mode, "region") && strcmp(mode, "screen") &&
-	    strcmp(mode, "full") && strcmp(mode, "qr")) {
+	for (size_t i = 0; i < sizeof(MODES) / sizeof(MODES[0]); i++)
+		if (!strcmp(mode, MODES[i].mode))
+			flag = MODES[i].flag;
+	if (!flag) {
 		shot_usage(stderr);
+		return 1;
+	}
+	if (!kb_have_prog("spectacle")) {
+		fprintf(stderr, "kdos-shot: spectacle is not installed\n");
 		return 1;
 	}
 
@@ -188,12 +189,6 @@ int shot_main(int argc, char **argv)
 	 * having been read. */
 	if (strcmp(mode, "qr"))
 		kb_mkdir_p(dir);
-
-	if (!kb_have_prog("grim"))
-		kb_die("grim is not installed");
-	if (!grim_works())
-		kb_die("grim cannot capture — the compositor does not offer "
-		       "wlr-screencopy");
 
 	time_t now = time(NULL);
 	struct tm tm;
@@ -213,41 +208,26 @@ int shot_main(int argc, char **argv)
 	} else {
 		file = kb_path_join(dir, leaf);
 	}
+	unlink(file);
 
 	KbArgv g = {0};
-	kb_argv_add(&g, "grim");
-
-	/* A QR is selected the way a region is: it is a rectangle of the
-	 * screen, and there is no other way to say which one. */
-	if (!strcmp(mode, "region") || !strcmp(mode, "qr")) {
-		if (!kb_have_prog("slurp"))
-			kb_die("slurp is not installed");
-		char sel[128] = {0};
-		KbArgv s = {0};
-		kb_argv_add(&s, "slurp");
-		kb_argv_add(&s, "-b");
-		kb_argv_add(&s, "000a03cc");
-		kb_argv_add(&s, "-c");
-		kb_argv_add(&s, "39ff14ff");
-		kb_argv_add(&s, "-s");
-		kb_argv_add(&s, "39ff1420");
-		kb_argv_add(&s, "-w");
-		kb_argv_add(&s, "2");
-		kb_argv_end(&s);
-		/* slurp writes nothing and exits non-zero when the selection is
-		 * cancelled with Escape — that is a user decision, not a
-		 * failure. */
-		if (kb_run_capture(&s, sel, sizeof(sel)) != 0 || !sel[0])
-			return 0;
-		kb_argv_add(&g, "-g");
-		kb_argv_add(&g, sel);
-	}
-
+	kb_argv_add(&g, "spectacle");
+	kb_argv_add(&g, "-b");
+	kb_argv_add(&g, "-n");
+	kb_argv_add(&g, flag);
+	kb_argv_add(&g, "-o");
 	kb_argv_add(&g, file);
 	kb_argv_end(&g);
-	if (kb_run(&g) != 0) {
-		toast("Screenshot failed", "grim could not capture");
-		return 1;
+	/* A selection cancelled with Escape writes no file, and is a person's
+	 * decision rather than a failure: nothing is said. */
+	if (kb_run(&g) != 0 || !kb_path_exists(file)) {
+		if (strcmp(mode, "region") && strcmp(mode, "qr"))
+			toast("Screenshot failed", "Spectacle could not "
+				  "capture the screen");
+		unlink(file);
+		free(dir);
+		free(file);
+		return strcmp(mode, "region") && strcmp(mode, "qr") ? 1 : 0;
 	}
 
 	if (!strcmp(mode, "qr")) {

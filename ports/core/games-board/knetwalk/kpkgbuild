@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = knetwalk
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = bfbfb7207226581b956391b4a193eb84a344e6598894249c13f308e6c02fe97a  knetwalk-26.08.2.tar.xz
+description = Turn the cable pieces until every terminal is connected to the server
+homepage    = https://apps.kde.org/knetwalk/
+license     = GPL-2.0-or-later AND GFDL-1.2-or-later AND BSD-3-Clause AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kconfig kconfigwidgets kcoreaddons kcrash kdbusaddons kdoctools ki18n kiconthemes ktextwidgets kwidgetsaddons kxmlgui libkdegames gzip

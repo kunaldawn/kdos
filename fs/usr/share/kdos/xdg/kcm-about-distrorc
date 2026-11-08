@@ -1,0 +1,28 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   System Settings → About this System.
+#
+# Name, version and variant come from /etc/os-release; this file adds the
+# logo, the build stamp 70_image writes there as BUILD_ID, and six KDOS rows.
+#
+# EVERY ExtraSoftwareData PROGRAM MUST PRINT TWO LINES, a label and a value,
+# on every machine and on every error. kinfocenter runs each one twice, on the
+# GUI thread, and calls qFatal on fewer than two lines — which takes down the
+# About page and System Settings with it. A program named here that is not
+# installed prints nothing, so one is listed only once a package installs it:
+# all six are kcm-kdos-health's, the port of the Health page beside About.
+# testing/aboutcheck.sh runs each one on a booted image and asserts the two
+# lines and a run under 100 ms.
+# ---------------------------------
+
+[General]
+LogoPath=distributor-logo-kdos
+Website=https://github.com/kunaldawn/kdos
+UseOSReleaseVersion=true
+ShowBuild=true
+ExtraSoftwareData=/usr/libexec/kdos/about-slot;/usr/libexec/kdos/about-update;/usr/libexec/kdos/about-tree;/usr/libexec/kdos/about-accent;/usr/libexec/kdos/about-libc;/usr/libexec/kdos/about-boxes

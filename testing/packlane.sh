@@ -226,15 +226,12 @@ say "6. telemetry names the box"
 asuser "kdos-box enter $BOX sh -c 'while :; do :; done' >/dev/null 2>&1 &" >/dev/null 2>&1
 sleep 8
 run "pgrep -af conmon | head -5"
-run "asuser 'kdos-res --page boxes --dump --dump-size 132x43'"
 
 check "conmon supervises the box"       "pgrep -af conmon | grep -q '$BOX'"
-check "kdos-res Boxes lists it"         "asuser 'kdos-res --page boxes --dump' 2>&1 | grep -q '$BOX'"
 
-# THE TWO DAEMONS ARE ENVIRONMENTAL AND ARE REPORTED AS SUCH. kdos-energyd
-# refuses to start where there is no readable RAPL domain, which is most VMs,
-# and `kdos stutter` has nothing to join without the compositor's frames
-# socket. A machine that cannot answer is a SKIP with the reason on the line;
+# THE DAEMON IS ENVIRONMENTAL AND IS REPORTED AS SUCH. kdos-energyd refuses to
+# start where there is no readable RAPL domain, which is most VMs. A machine
+# that cannot answer is a SKIP with the reason on the line;
 # calling it a failure would make every VM look like a broken distro, and
 # calling it a pass would be a green line for something never tested.
 if pgrep -x kdos-energyd >/dev/null; then
@@ -242,17 +239,6 @@ if pgrep -x kdos-energyd >/dev/null; then
 	check "kdos-energy names the box"   "timeout 20 kdos-energy 2>&1 | grep -q '$BOX'"
 else
 	skipped "kdos-energy names the box" "no kdos-energyd — this machine publishes no RAPL domain"
-fi
-
-# AS THE USER, NOT AS ROOT. The frames socket lives in the SESSION's runtime
-# directory, so `kdos stutter` run from the serial root shell looks in
-# /run/user/0 and reports that nothing is serving it — which is true of root
-# and says nothing about the desktop.
-if [ -S "/run/user/1000/kdos-frames.sock" ]; then
-	run "asuser 'timeout 25 kdos stutter' 2>&1 | head -30"
-	skipped "kdos stutter names the box" "a stutter has to HAPPEN; the transcript is the evidence"
-else
-	skipped "kdos stutter names the box" "no frames socket in /run/user/1000 — no compositor is reporting"
 fi
 
 pkill -f 'while :; do :; done' 2>/dev/null

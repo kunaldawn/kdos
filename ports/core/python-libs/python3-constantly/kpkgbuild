@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = python3-constantly
+version     = 23.10.4
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/c/constantly/constantly-$version.tar.gz
+sha256      = aa92b70a33e2ac0bb33cd745eb61776594dc48764b06c35e0efd050b7f1c7cbd  python3-constantly-23.10.4.tar.gz
+description = Symbolic constants for Python: named, valued and flag constants grouped in containers
+homepage    = https://github.com/twisted/constantly
+license     = MIT
+depends     = python3 python3-pip python3-setuptools python3-versioneer

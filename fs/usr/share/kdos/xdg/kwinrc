@@ -1,0 +1,49 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KWin's defaults on KDOS.
+#
+# Read after ~/.config, kdedefaults and /etc/xdg, so a change made on the
+# Virtual Desktops or KWin Scripts page outranks every line here. The
+# decoration, placement and window switcher come from the global theme, not
+# from this file.
+# ---------------------------------
+
+# Four desktops in one row, named as KDOS's workspaces always were. Each has
+# a fixed id: KWin generates a fresh one for a desktop with none and keeps it
+# only once something writes the group, and windows are restored to their
+# desktop by id, so an id that changed at every login would scatter a
+# restored session onto desktop 1.
+[Desktops]
+Number=4
+Rows=1
+Id_1=5318b75b-7c55-447d-9c18-981db2306e7d
+Id_2=e48a0f08-c8c6-4943-b478-4272b506a27f
+Id_3=5261bdfd-b82a-4347-a0e6-a56e0e079cbd
+Id_4=589fb33e-a92a-46f2-900a-20224832d1d0
+Name_1=main
+Name_2=www
+Name_3=hack
+Name_4=misc
+
+# Alt+Tab walks applications, not windows: one entry per application, its
+# most recent window, so two Konsoles and a Kate are two entries. The window
+# switcher's look is the global theme's; this is the one switcher setting it
+# does not carry. Mode 1 is TabBoxConfig::OneWindowPerApplication.
+[TabBox]
+ApplicationsMode=1
+
+# The bundled auto-tiler is installed but off; `kdos tiling on`, the Desk
+# page of the Welcome tour and the KWin Scripts page turn it on.
+[Plugins]
+krohnkiteEnabled=false
+
+# KWin starts fcitx5 as the session's input method and restarts it if it
+# dies; nothing else starts it. The Virtual Keyboard page writes a person's
+# choice of another to ~/.config/kwinrc. Its hotkeys are fcitx5/config's.
+[Wayland]
+InputMethod=/usr/share/applications/org.fcitx.Fcitx5.desktop

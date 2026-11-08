@@ -49,9 +49,11 @@
 /* The shelf names of one repository, NUL-separated. A repository whose
  * shelves outgrow it is listed on every lookup instead of from the cache. */
 #define KP_SHELF_BYTES 4096
-/* KP_MAX_DEPS bounds ONE recipe's `depends` line: kp_depends stops reading at
- * it, so a recipe naming more loses the rest from its build closure. The
- * largest recipes (vlc, chromium, libreoffice) name 65-77. */
+/* KP_MAX_DEPS bounds ONE recipe's `depends` line, and a recipe naming more is
+ * refused, never read short: kp_depends_scan returns the error and kp_depends
+ * dies with it ("<port>: depends names N ports; the limit is 128"), and
+ * testing/preflight.sh fails the same recipe before a build reads it. A meta
+ * port that would outgrow it is split into metas that each fit. */
 #define KP_MAX_DEPS  128
 #define KP_MAX_ORDER 4096
 
@@ -137,9 +139,17 @@ char **kp_all_ports(const KpConf *c, int *count);
 
 /*
  * `depends<blank>*=<blank>*` from a recipe, split on SPACES only — a tab
- * inside the list stays part of its token.
- * Fills up to KP_MAX_DEPS names; returns how many.
+ * inside the list stays part of its token. Fills `out` and returns how many
+ * names the line holds; 0 when the port has no recipe. -1, with `err` set to
+ * "<port>: depends names N ports; the limit is <max>", when the line names
+ * more than `max`: the first `max` alone are a closure the build would trust.
  */
+int kp_depends_scan(const char *portdir, char out[][128], int max, char *err,
+		    size_t errcap);
+
+/* kp_depends_scan that DIES on a recipe naming more than `max`, for the same
+ * reason kp_port_dir dies on a name filed twice: every caller reads its return
+ * as the whole closure, and a short one builds without the rest. */
 int kp_depends(const char *portdir, char out[][128], int max);
 
 /* One declarative key out of a recipe, verbatim. "" when it has none. The

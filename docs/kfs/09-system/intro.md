@@ -37,8 +37,8 @@ The list is `script/phases/41_system/packages.d/`, one file per shelf named afte
 of [`ports/shelves`]{.idx} has a file here. Most of the chapters fall into these groups:
 
 The machine itself
-: `base` (the D-Bus daemon, the system logger, `seatd`, `snooze`, the s6 tools, procps),
-  `auth` (PAM, polkit, sudo, Kerberos, fingerprint readers), `boot` (Limine, `efibootmgr`, the
+: `base` (the D-Bus daemon, the system logger, `snooze`, the s6 tools, procps),
+  `auth` (PAM, polkit, elogind, turnstile, sudo, Kerberos, fingerprint readers), `boot` (Limine, `efibootmgr`, the
   firmware and microcode), `disk` and `filesystem` (partitioning, LVM, RAID, LUKS, SMART, and the
   tools of every file system KDOS can create or read), `containers` (`crun`, `conmon`, `netavark`,
   `passt` and the other pieces podman runs on), and `network` (NetworkManager, `wpa_supplicant`,
@@ -66,8 +66,8 @@ Science and hardware
   microcontrollers, radio drivers, and the device tools.
 
 KDOS's own
-: `src-art` (the theme generator `kdos-theme`, the icon, cursor and GTK themes it generates, the
-  boot splash and the `kdos-bb` demo) and `src-system` (`kdos-pack`, `kdos-boxinit`, and the two
+: `src-art` (the theme generator `kdos-theme`, the KDOS icon themes, the wallpapers, the boot
+  splash and the `kdos-bb` demo) and `src-system` (`kdos-pack`, `kdos-boxinit`, and the two
   books, `kdos-doc` and `kdos-kfs`). They come last in the part, after every shelf.
 
 The other chapters, such as `toolchain`, `security`, `printing` and the game shelves, hold the
@@ -98,7 +98,7 @@ serial run would have refused, it names the pair and asks for it to be pinned he
 ## Which ports have full pages
 
 The [Tier A]{.idx} ports of this phase are the parts of the KDOS spine that need no graphics: the D-Bus
-daemon, `seatd`, `sysklogd`, `snooze` and polkit; Limine, `efibootmgr` and `linux-firmware`; the
+daemon, `sysklogd`, `snooze`, polkit, elogind and turnstile; Limine, `efibootmgr` and `linux-firmware`; the
 file-system, image and encryption tools (`e2fsprogs`, `dosfstools`, `mtools`, `erofs-utils`,
 `squashfs-tools`, `cpio`, `libisoburn` and `cryptsetup`); `crun`, the OCI runtime that
 `containers-common` configures podman with; `nftables` and NetworkManager; `libinput`; and every

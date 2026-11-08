@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = plasma-disks
+version     = 6.8.2
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = 3432198413c86745e0fdf551361c55b26684b580ce5116a05d9cf973beb92a28  plasma-disks-6.8.2.tar.xz
+description = Drive health monitor — reads SMART through smartctl and warns before a disk fails
+homepage    = https://invent.kde.org/plasma/plasma-disks
+license     = GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
+group       = plasma
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kconfig kcoreaddons kdbusaddons knotifications ki18n solid kservice kio kauth kcmutils kirigami kdeclarative smartmontools udisks2

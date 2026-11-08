@@ -9,6 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/no-pamx.patch"
 cp config.mk.in config.mk
 
 conf=(

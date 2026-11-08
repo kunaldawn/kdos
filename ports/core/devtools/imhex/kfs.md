@@ -26,7 +26,7 @@ the patterns, magic files, encodings and constants the editor ships with, from i
   submodules.
 - `-DIMHEX_USE_GTK_FILE_PICKER=OFF` — Open files through the FileChooser portal
   (`NFD_PORTAL`), not a GTK dialog. It is upstream's default; on KDOS the portal is
-  [xdg-desktop-portal-kdos](../../../../docs/kdos/03-architecture/session.md#portals).
+  [xdg-desktop-portal-kde](#port-xdg-desktop-portal-kde).
 - `-DIMHEX_STRICT_WARNINGS=OFF` — Do not turn on ImHex's warnings-as-errors set, which is on by
   default.
 - `-DIMHEX_STRIP_RELEASE=OFF`, `-DIMHEX_COMPRESS_DEBUG_INFO=OFF` — Leave stripping to kpkg (the

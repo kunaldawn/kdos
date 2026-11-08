@@ -11,3 +11,4 @@ chess-tui aws-lc-sys aws-lc 1.72.0
 mqttui aws-lc-sys aws-lc 5.5.0
 surfer aws-lc-sys aws-lc 1.71.0
 sniffnet aws-lc-sys aws-lc 5.2.0
+kdeplasma-addons hidapi hidapi 0.15.0

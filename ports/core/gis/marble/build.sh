@@ -29,10 +29,11 @@ cmake -S . -B build -G Ninja \
 	-DWITH_libshp=ON \
 	-DWITH_ZLIB=ON \
 	-DWITH_Phonon4Qt6=OFF \
-	-DWITH_Plasma=OFF \
+	-DWITH_Plasma=ON \
+	-DCMAKE_REQUIRE_FIND_PACKAGE_Plasma=ON \
 	-DWITH_libwlocate=OFF \
 	-Wno-dev
-for v in Protobuf_PROTOC_EXECUTABLE LIBGPS_LIBRARIES LIBSHP_LIBRARIES; do
+for v in Protobuf_PROTOC_EXECUTABLE LIBGPS_LIBRARIES LIBSHP_LIBRARIES KF6Runner_DIR; do
 	grep -Eq "^$v:[A-Z]+=/" build/CMakeCache.txt ||
 		{ echo "marble: $v not found at configure" >&2; exit 1; }
 done

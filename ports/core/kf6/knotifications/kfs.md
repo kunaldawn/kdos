@@ -1,11 +1,11 @@
 ## About
 
 KNotifications sends desktop notifications from a KDE program through the freedesktop
-`org.freedesktop.Notifications` D-Bus interface, whose name `kdos-notifyd` owns in a KDOS session
-(see [Notifications](../../../../docs/kdos/04-programs/kdos-shell.md#notifications)), and plays a
-notification's event sound through [libcanberra](#port-libcanberra). A program
-describes its events in a `.notifyrc` file; the QML module `org.kde.notification` exposes the same
-API to Qt Quick programs.
+`org.freedesktop.Notifications` D-Bus interface, whose name `plasmashell` from
+[plasma-workspace](#port-plasma-workspace) owns in a Plasma session, and plays a notification's
+event sound through [libcanberra](#port-libcanberra), which the configure requires on Linux. A
+program describes its events in a `.notifyrc` file; the QML module `org.kde.notification` exposes
+the same API to Qt Quick programs.
 
 ## Flags
 

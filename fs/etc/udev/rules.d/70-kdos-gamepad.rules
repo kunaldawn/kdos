@@ -5,7 +5,9 @@
 # DualSense lightbar, gyro and adaptive triggers, the Switch Pro and Joy-Con,
 # the Steam Controller — is spoken over /dev/hidraw*, which the kernel makes
 # root-only; the rules other distributions ship for these pads grant through a
-# `uaccess` tag, which nothing here consumes.
+# `uaccess` tag, which reaches only the user of the active session on the seat
+# (elogind's 73-seat-late.rules), never a game run over ssh or by a lingering
+# user's service.
 # Without this, those pads fall back to evdev and the features are absent
 # without an error.
 #

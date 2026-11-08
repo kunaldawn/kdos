@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kaccounts-integration
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 1d8b11fb01151f4a44cae517bb21b10740c130856b99ab42cefd72d4945d62ca  kaccounts-integration-26.08.2.tar.xz
+description = Online accounts for KDE: the KAccounts library, its QML module, the Online Accounts settings page and the kded module
+homepage    = https://invent.kde.org/network/kaccounts-integration
+license     = GPL-2.0-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND LGPL-2.0-or-later AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kcmutils ki18n kcoreaddons kdbusaddons kwallet kio kirigami libaccounts-qt signond qcoro signon-plugin-oauth2 signon-kwallet-extension

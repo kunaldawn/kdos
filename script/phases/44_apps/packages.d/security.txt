@@ -29,3 +29,9 @@ pass-otp
 keepassxc
 kleopatra
 zenmap
+
+keepsecret
+keysmith
+kgpg
+kwalletmanager
+sweeper

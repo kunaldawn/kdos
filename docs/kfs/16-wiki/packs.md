@@ -76,7 +76,8 @@ its secret half would be accepted. Delete it if you want the ring to hold only k
 | `/var/lib/kdos/packs/staging/` | The one place an unprivileged write lands, mode `01777` |
 | `/var/lib/kdos/packs/mnt/<id>/` | Where a pack is mounted, read-only, `nosuid` and `nodev`, and `noexec` too for a data pack |
 | `/mnt/iso/packs/` | Packs on the boot medium, mounted from there |
-| [`/var/lib/kdos/pack-manifest`]{.idx} | Every [graft]{.idx} made, for `ungraft` |
+| [`/var/lib/kdos/packs/pack-manifest`]{.idx} | Every [graft]{.idx} made, for `ungraft`; in the store, so both A/B slots read it, and kdos-packd makes at start every host graft it names that the root lacks |
+| `/var/lib/kdos/packs/pack-manifest.ungrafted` | The paths an `ungraft` dropped; kdos-packd unlinks each in the other slot at that slot's next start |
 
 The daemon does not install the staged file itself. It copies it into a private file in the store,
 owned by root with mode `0644`, verifies that copy and renames it to `<id>.kpack`, then deletes the
@@ -379,4 +380,4 @@ A frozen box imports and its box is not created
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 407.* Previous: [406. Local rebuilds and kdos march](local-rebuilds-and-march.md) · [Contents](../README.md) · Next: [408. Boxes](boxes.md)
+*Part XVI. System administration, chapter 431.* Previous: [430. Local rebuilds and kdos march](local-rebuilds-and-march.md) · [Contents](../README.md) · Next: [432. Boxes](boxes.md)

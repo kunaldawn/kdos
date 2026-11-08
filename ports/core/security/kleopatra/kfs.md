@@ -23,11 +23,14 @@ daemons.
   built only when [kdoctools](#port-kdoctools) is found; required, a missing kdoctools stops the
   configure instead of quietly dropping the handbooks (see
   [a graphical application](../../../../docs/kdos/05-developer/writing-ports.md#a-graphical-application)).
-- `-D CMAKE_DISABLE_FIND_PACKAGE_KPim6IdentityManagementCore=ON` — with
-  `KPim6MailTransport` and `KPim6AkonadiMime`: the three KDE PIM libraries behind Kleopatra's mail
-  integration, such as exporting an OpenPGP key through a Web Key Service. All
-  three must be found for it to build, none of them is a port, and disabling the searches keeps
-  the feature off whatever is installed.
+- `-D CMAKE_REQUIRE_FIND_PACKAGE_KPim6IdentityManagementCore=ON` — with
+  `-D CMAKE_REQUIRE_FIND_PACKAGE_KPim6MailTransport=ON` and
+  `-D CMAKE_REQUIRE_FIND_PACKAGE_KPim6AkonadiMime=ON`: require
+  [kidentitymanagement](#port-kidentitymanagement), [kmailtransport](#port-kmailtransport) and
+  [akonadi-mime](#port-akonadi-mime), the three KDE PIM libraries behind "Publish at Mail
+  Provider", which sends an OpenPGP key to the mail provider's Web Key Service from the user's
+  mail identity. Upstream builds the command only when all three are found and otherwise leaves
+  it out without an error.
 
 ## Notes
 
@@ -37,3 +40,8 @@ the `kde.org` domain, so the Wayland app ids are `org.kde.kleopatra` and `org.kd
 not the program names, and the replacement entries name those ids. They also add search keywords
 and the `Security` category. Upstream's main entry claims no MIME type; opening key and
 certificate files is left to upstream's `kleopatra_import.desktop`, which is installed unchanged.
+
+"Publish at Mail Provider" queues the request through Akonadi's outbox, on the mail identity and
+transport KMail sets up, so it sends only once a KMail account exists and the Akonadi server runs.
+Without them Kleopatra's other ways of sending a key, a keyserver upload and an exported file,
+are unaffected.

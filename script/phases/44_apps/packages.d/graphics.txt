@@ -48,3 +48,8 @@ converseen
 gthumb
 gimp
 grafx2
+
+kcolorchooser
+koko
+kontrast
+kruler

@@ -27,9 +27,8 @@ chmod 1777 $SYSROOT/tmp $SYSROOT/var/tmp
 # `unix:path=/var/run/dbus/system_bus_socket`, and other upstream code carries
 # the same /var/run path compiled in. dbus-daemon listens on
 # /run/dbus/system_bus_socket, so with /var/run a real empty directory every
-# sd-bus client on this machine fails to reach the system bus: kdos-net reports
-# NetworkManager unreachable and kdos-audio's bluetooth pane reports bluetoothd
-# unreachable while both are running. The link serves every such client at
+# sd-bus client on this machine fails to reach the system bus, and reports
+# NetworkManager or bluetoothd unreachable while both are running. The link serves every such client at
 # once. /var/lock is a link to /run/lock for the same reason.
 # A directory left by an earlier build has to go first: `ln -sfT` refuses to
 # replace one. This is the build tree, never a running system, so there is no
@@ -143,8 +142,8 @@ done
 # correct. For a password database it is not: /etc/shadow at 644 is every
 # hash on the machine readable by every account on it.
 #
-# THIS IS WHAT `kdos-checkpass` EXISTS FOR. It is setuid root so that the
-# lock screen never opens the shadow file itself; a world-readable shadow
+# THIS IS WHAT pam_unix's `unix_chkpwd` EXISTS FOR. It is setuid root so that
+# the lock screen never opens the shadow file itself; a world-readable shadow
 # makes that setuid bit decoration and hands the hashes out anyway.
 #
 # OWNERSHIP TOO, AND FOR THE SAME REASON. git records no owner at all, so a

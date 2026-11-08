@@ -5,8 +5,13 @@ desktop window `kalgebra`, the Kirigami touch interface `kalgebramobile`, and `c
 calculator for the terminal.
 
 ## Flags
-- `-D CMAKE_DISABLE_FIND_PACKAGE_Plasma=ON` — do not look for Plasma, so the plasmoid under
-  `plasmoids/` is never built. KDOS has no Plasma shell to host it.
+
+- `-D KF_SKIP_PO_PROCESSING=ON` — Builds none of the interface translations in `po/`; the image is
+  English only (see
+  [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
+- `-D CMAKE_REQUIRE_FIND_PACKAGE_Plasma=ON` — stop the configure if [libplasma](#port-libplasma) is
+  missing. Upstream installs the Graph plasmoid under `plasmoids/`, a desktop and panel widget that
+  plots a function, only when it finds libplasma, and otherwise drops it without an error.
 - `-D CMAKE_REQUIRE_FIND_PACKAGE_Qt6WebEngineWidgets=ON` — stop the configure if QtWebEngine's
   widgets are missing. Upstream builds the desktop window only when KDocTools,
   Qt6WebEngineWidgets, KConfigWidgets, KWidgetsAddons and KIO are all found, and otherwise drops it
@@ -21,7 +26,7 @@ The two `test -x` lines after the install fail the build when `kalgebra` or `cal
 from the package, since a configure that dropped either would otherwise finish without an error.
 
 Both desktop entries are KDOS's own, written over upstream's. They add `StartupWMClass`, matching
-the Wayland app id `org.kde.<program>` that KAboutData sets, so the panel can match each window to
-its entry (see [`kdos appid`](../../../../docs/kdos/04-programs/kdos-command.md#kdos-appid)). They
+the Wayland app id `org.kde.<program>` that KAboutData sets, so the task manager can match each
+window to its entry. They
 claim no MIME type: upstream's claim `application/x-kalgebra`, which the shared MIME database does
 not define.

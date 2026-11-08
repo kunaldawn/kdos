@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kdecoration
+version     = 6.8.2
+release     = 1
+source      = https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = 9f88bed244082444787fda9c08b4c733796da3d75861abde0c25fe69b5216b35  kdecoration-6.8.2.tar.xz
+description = KDecoration3 — the plugin library KWin's window decorations are written against
+homepage    = https://invent.kde.org/plasma/kdecoration
+license     = LGPL-2.1-only OR LGPL-3.0-only OR LicenseRef-KDE-Accepted-LGPL
+group       = plasma
+depends     = cmake ninja extra-cmake-modules qt6-qtbase ki18n

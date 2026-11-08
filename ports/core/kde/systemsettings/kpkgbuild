@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = systemsettings
+version     = 6.8.2
+release     = 1
+source      = $name-$version.tar.xz::https://download.kde.org/stable/plasma/$version/$name-$version.tar.xz
+sha256      = fd2c60fc07e6e897e0dc3ec357d5d0350a581ff26eeb3241c48b5901eeb410a5  systemsettings-6.8.2.tar.xz
+description = KDE System Settings — the window that hosts every settings module, with its search and KRunner entry
+homepage    = https://invent.kde.org/plasma/systemsettings
+license     = GPL-2.0-or-later AND LGPL-2.0-only AND CC0-1.0 AND BSD-3-Clause AND MIT AND BSD-2-Clause AND LGPL-2.1-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL)
+group       = plasma
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kauth kcmutils kcolorscheme kconfig kcoreaddons kcrash kdbusaddons kdoctools kguiaddons ki18n kiconthemes kio kirigami kitemmodels kitemviews kjobwidgets krunner kservice kwidgetsaddons kwindowsystem kxmlgui plasma-activities

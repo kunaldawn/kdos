@@ -22,10 +22,6 @@ of the desktop links it.
   package-wide English-only rule would remove anyway (see
   [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
 
-## Patches
-
-- `app-id.patch` — Changes `StartupWMClass=dolphin` to `StartupWMClass=org.kde.dolphin` in upstream's desktop entry. Dolphin's Wayland app_id is its desktop file name, `org.kde.dolphin`, and upstream's shorter class matches no window Dolphin opens.
-
 ## Notes
 
 musl has no `fts(3)`. The folder-size counter's configure check finds `fts.h` and `libfts` from

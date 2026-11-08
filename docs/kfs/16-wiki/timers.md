@@ -1,12 +1,14 @@
 # Timers
 
-KDOS has no cron daemon. A periodic job is one line in a `.timer` file, and [`snooze`]{.idx}, a program
-that sleeps until the clock matches its options and then runs one command, does the waiting. There
-are two tables: the system's, [`/etc/kdos/timers.d/`]{.idx term="/etc/kdos/timers.d"}, whose jobs run as root under the service
-supervisor from boot, and each user's, `~/.config/kdos/timers.d/`, whose jobs the desktop session
-starts at login. This page covers both: reading and checking a schedule, adding and removing a
-job, running one now, and finding out why one did not fire. Every command on this page runs on a
-running KDOS machine.
+A periodic job on KDOS is one line in a `.timer` file, and [`snooze`]{.idx}, a program that sleeps
+until the clock matches its options and then runs one command, does the waiting. There are three
+tables: the system's, [`/etc/kdos/timers.d/`]{.idx term="/etc/kdos/timers.d"}, whose jobs run as
+root under the service supervisor from boot; `/etc/kdos/user-services/timers.d/`, whose jobs run
+for every user, as that user; and each user's own, `~/.config/kdos/timers.d/`. The two user tables
+run under the user's services from the user's first login to the last. Users' crontabs, written
+with `crontab -e` or System Settings' Task Scheduler, are [cronie]{.idx}'s, which reads no
+`/etc/crontab`, so no job is in both. This page covers the tables: reading and checking a
+schedule, adding and removing a job, running one now, and finding out why one did not fire.
 
 ## Installation
 
@@ -14,15 +16,17 @@ running KDOS machine.
   reference for every time option.
 - The base filesystem supplies [`/etc/init.d/18_timers.sh`]{.idx}, the service `timers`, which starts one
   supervised `snooze` per line of the system table at boot; the system table itself with its
-  shipped jobs; and the user table's skeleton, `/etc/skel/.config/kdos/timers.d/`, copied into each
-  new home directory.
-- The desktop session starts the user table. The code is in `/usr/local/lib/kdos/session-common.sh`,
-  from `fs/usr/local/lib/kdos/session-common.sh`.
-- Ports add system jobs: [fwupd](#port-fwupd) installs `30-fwupd-refresh.timer`.
+  shipped jobs; the user service `/etc/kdos/user-services/30_timers.sh`, which runs
+  `/usr/local/lib/kdos/user-timers` for the two user tables; the every-user table with its one
+  job; and the user table's skeleton, `/etc/skel/.config/kdos/timers.d/`, copied into each new
+  home directory. `/usr/local/lib/kdos/timers.sh` is the one parser all three share.
+- [cronie](#port-cronie) installs `crond` and the setuid `crontab`, started by
+  `/etc/init.d/85_crond.sh`, for users' crontabs; [kcron](#port-kcron) is the Task Scheduler page.
 - `kdos remind`, from [kdos-tools](#port-kdos-tools), writes reminders into the user table.
 
-The service `timers` is enabled on the live medium and on an installed system alike. On the live
-medium a job added to either table is kept only when a persistence store exists (`kdos persist`).
+The services `timers` and `crond` are enabled on the live medium and on an installed system alike.
+On the live medium a job added to any table is kept only when a persistence store exists
+(`kdos persist`).
 
 ## Configuration
 
@@ -52,9 +56,7 @@ The two jobs the base system ships:
 
 <!-- kfs:include fs/etc/kdos/timers.d/20-fstrim.timer -->
 
-The one a port adds, from the [fwupd](#port-fwupd) port's `build.sh`:
-
-<!-- kfs:include ports/core/boot/fwupd/build.sh lines=55-62 pin=8606213f3c62 -->
+No port adds a system job.
 
 ### /etc/init.d/18_timers.sh
 
@@ -62,7 +64,20 @@ How a line becomes a supervised job. A command that is not installed is skipped 
 line; everything else is handed to `supervise` as the service `kdos-timer-NAME`. A status
 query fails when any one job is down, not only the last one read:
 
-<!-- kfs:include fs/etc/init.d/18_timers.sh lines=85-105 pin=643feb896825 -->
+<!-- kfs:include fs/etc/init.d/18_timers.sh lines=36-61 pin=51b52355efa2 -->
+
+### /etc/kdos/user-services/timers.d/
+
+Rows here run for every user, as that user, beside the user's own table. The one KDOS ships gives
+idle boxes back, from `fs/etc/kdos/user-services/timers.d/40-box-gc.timer`:
+
+<!-- kfs:include fs/etc/kdos/user-services/timers.d/40-box-gc.timer -->
+
+### The user service
+
+From `fs/etc/kdos/user-services/30_timers.sh`, how the two user tables are run:
+
+<!-- kfs:include fs/etc/kdos/user-services/30_timers.sh lines=4-17 pin=76121c3308aa -->
 
 ### ~/.config/kdos/timers.d/
 
@@ -165,18 +180,21 @@ every boot, `sudo service disable timers`.
 ### Adding a job of your own
 
 1. Write the line into a file ending `.timer` under `~/.config/kdos/timers.d/`.
-2. Check it, since a line the session cannot use is skipped without a word:
+2. Check it, since a line the runner cannot use is skipped without a word:
 
    ```bash
    snooze -n -H 7 -M 30
    command -v <the command's first word>
    ```
 
-3. Log out, and at the `tty1` prompt Log Out leaves either type `kdos-desktop` to start the
-   desktop again, or type `exit` and log in again (with autologin on, the login after `exit` is
-   automatic). The session reads the table only when it starts. Log Out alone stops no loop; the
-   end of the login ends them, and a session started again within one login stops the loops the
-   previous start left before starting its own.
+3. Read the tables again:
+
+   ```bash
+   service --user restart timers
+   ```
+
+   This stops every user job running at that moment. The loops run from the user's first login
+   to the last, whether that is the desktop, a console or both.
 
 A reminder needs none of this: `kdos remind in 20m tea` writes a row of its own and also starts a
 `snooze` for it at once; see [kdos remind](../../kdos/04-programs/kdos-command.md#kdos-remind).
@@ -194,11 +212,11 @@ A reminder needs none of this: `kdos remind in 20m tea` writes a row of its own 
   as `kdos-updatedb` does.
 - **Give each job a minute of its own.** A laptop that wakes after several slots have passed runs
   every job whose slack covers the gap at the same moment.
-- **`*` is safe in a timespec.** `18_timers.sh` and the session both split the line with pathname
+- **`*` is safe in a timespec.** `18_timers.sh` and the user runner both split the line with pathname
   expansion off, so `-M *` reaches `snooze` as written.
 - **A command that needs a pipe or a redirection** has to be a script of its own, named on the line.
 - **The times are local times.** `snooze` reads the clock through the machine's time zone,
-  `/etc/localtime`, which `kdos-power timezone` sets.
+  `/etc/localtime`, which a time-zone change through timedate1 sets.
 - `kdos why /etc/kdos/timers.d/10-update-check.timer` reports that no package owns the file; it is
   part of the base filesystem.
 
@@ -233,10 +251,12 @@ sudo cat /run/kdos-svc.kdos-timer-NAME.log
 grep kdos-timer-NAME /var/log/messages
 ```
 
-**A user job never fires.** The session reports nothing. Check the timespec with `snooze -n` and the
+**A user job never fires.** `service --user status timers` must say the service runs; its log is
+`$XDG_RUNTIME_DIR/ksvc/kdos-svc.timers.log`. Check the timespec with `snooze -n` and the
 command with `command -v`, as in [Adding a job of your own](#adding-a-job-of-your-own), and check
-that the file name ends in `.timer`. Its output is discarded, so a job that must leave a trace
-should write one itself.
+that the file name ends in `.timer`. Its standard output is discarded and its standard error goes
+to that log and to syslog, so a job that must leave a trace
+writes it to standard error.
 
 **A job missed its slot while the machine was off.** That is how `-s` behaves; add `-t FILE`, as in
 [Tips](#tips).
@@ -245,8 +265,7 @@ should write one itself.
 
 - Nothing installs updates on a timer: the update-check job only fetches the ports tree and reports
   what is behind. See [Security](../../kdos/06-reference/known-gaps.md#security).
-- The user table's loops outlive Log Out and end only with the login; see
-  [Log Out ends the desktop, not the login](../../kdos/06-reference/known-gaps.md#log-out-ends-the-desktop-not-the-login).
+- The user tables' loops run only while the user has a login, unless the user lingers.
 
 ## See also
 
@@ -259,4 +278,4 @@ should write one itself.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 361.* Previous: [360. Writing a service](writing-a-service.md) · [Contents](../README.md) · Next: [362. Logs](logs.md)
+*Part XVI. System administration, chapter 385.* Previous: [384. Writing a service](writing-a-service.md) · [Contents](../README.md) · Next: [386. Logs](logs.md)

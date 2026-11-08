@@ -59,3 +59,5 @@ lnav
 # On a keyboard-driven desktop typing speed is throughput. ttyper rather than
 # gtypist, whose last release was 2011.
 ttyper
+
+aha

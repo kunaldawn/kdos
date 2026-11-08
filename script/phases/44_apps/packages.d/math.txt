@@ -27,3 +27,8 @@ octave
 rkward
 labplot
 veusz
+
+kig
+kmplot
+kalk
+kcalc

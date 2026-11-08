@@ -9,33 +9,27 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
-kdos-theme icons "$PKG/usr/share/icons/KDOS" phosphor \
-	--src "$PORT_SRC/art" --marks "$PORT_SRC/marks"
+ICONS="$PKG/usr/share/icons"
 
-install_mark() {
-	_src=$1; _name=$2
-	rm -f "$PKG/usr/share/icons/hicolor/scalable/apps/$_name.svg"
-	for f in "$PORT_SRC"/marks/"$_src"-*.png; do
-		[ -e "$f" ] || continue
-		s="${f##*/$_src-}"; s="${s%.png}"
-		install -Dm644 "$f" \
-			"$PKG/usr/share/icons/hicolor/${s}x${s}/apps/$_name.png"
+for s in 16 22 24 32 48 64 128 256; do
+	install -Dm644 "$PORT_SRC/marks/tux-$s.png" \
+		"$ICONS/hicolor/${s}x${s}/apps/start-here-kdos.png"
+	install -Dm644 "$PORT_SRC/marks/logo-$s.png" \
+		"$ICONS/hicolor/${s}x${s}/apps/distributor-logo-kdos.png"
+	install -Dm644 "$PORT_SRC/marks/logo-$s.png" \
+		"$ICONS/hicolor/${s}x${s}/apps/kdos.png"
+done
+
+for theme in KDOS KDOS-Light; do
+	install -Dm644 "$PORT_SRC/themes/$theme/index.theme" "$ICONS/$theme/index.theme"
+	for s in 16 22 24 32 48 64 128 256; do
+		d="$ICONS/$theme/${s}x${s}/places"
+		install -Dm644 "$PORT_SRC/marks/tux-$s.png" "$d/start-here-kde.png"
+		for alias in start-here-kde-symbolic start-here-kde-plasma \
+			     start-here-kde-plasma-symbolic; do
+			ln -s start-here-kde.png "$d/$alias.png"
+		done
 	done
-}
-install_mark tux  kdos-launcher
-install_mark logo start-here
-install_mark logo distributor-logo-kdos
+done
 
-mkdir -p "$PKG/usr/share/kdos/icons"
-cp -a "$PORT_SRC/marks" "$PKG/usr/share/kdos/icons/marks"
-cp -a "$PORT_SRC/art" "$PKG/usr/share/kdos/icons/art"
-
-if [ -f "$PORT_SRC/atlas/atlas.kia" ]; then
-	install -Dm644 "$PORT_SRC/atlas/atlas.kia" \
-		"$PKG/usr/share/kdos/icons/atlas.kia"
-fi
-
-install -Dm644 "$PORT_SRC/LICENSE.notice" \
-	"$PKG/usr/share/licenses/kdos-icons/LICENSE.notice"
-install -Dm644 "$PORT_SRC/art/LICENSE.upstream" \
-	"$PKG/usr/share/licenses/kdos-icons/LICENSE.papirus"
+install -Dm644 "$PORT_SRC/themes/default/index.theme" "$ICONS/default/index.theme"

@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kimagemapeditor
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = a6e4dfd208c42984758ce70185c40990328220c3654a14c6ad68a9632ebe8cb7  kimagemapeditor-26.08.2.tar.xz
+description = HTML image-map editor — draw clickable regions over an image and write the map markup
+homepage    = https://apps.kde.org/kimagemapeditor/
+license     = GPL-2.0-or-later
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtwebengine kconfig kconfigwidgets kcoreaddons kcrash kdbusaddons kdoctools kguiaddons kparts ki18n kwidgetsaddons kxmlgui

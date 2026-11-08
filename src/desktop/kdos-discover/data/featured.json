@@ -1,0 +1,10 @@
+[
+    "kdos-backend://set/essential",
+    "kdos-backend://catalogue/app.scribus",
+    "kdos-backend://catalogue/app.hugin",
+    "kdos-backend://catalogue/app.xournalpp",
+    "kdos-backend://catalogue/app.kstars",
+    "kdos-backend://catalogue/app.meshlab",
+    "kdos-backend://catalogue/app.vscodium",
+    "kdos-backend://catalogue/app.gnome-chess"
+]

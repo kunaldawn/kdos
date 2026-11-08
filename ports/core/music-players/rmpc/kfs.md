@@ -27,12 +27,9 @@ there.
 
 The desktop entry is KDOS's own. It is `NoDisplay=true`: rmpc exits at once when no mpd is
 running, and the session starts mpd only once an `mpd.conf` exists, which the image does not ship,
-so Start does not list it. `Super+Shift+U` does not use this entry: a binding in the compositor's
-`rc.xml` raises a running rmpc or starts one as `kdos-term --app-id rmpc -e rmpc`, for the same
-reason the entry asks for kdos-term. The entry sets `Terminal=true` and
-`X-KDOS-Term=kdos-term`, which asks for
-[kdos-term](../../../../docs/kdos/04-programs/kdos-term.md) whatever the session's terminal is,
-because the album art is drawn in the terminal's cell grid; see
-[Terminal entries](../../../../docs/kdos/04-programs/kdos-appbox.md#terminal-entries). rmpc's
+so Start does not list it. `Meta+Shift+U` does not use this entry: the KDOS run-or-raise
+shortcuts (`kwin-script-kdos-runraise`) raise a running rmpc or
+start one as `konsole -e rmpc`. The entry sets `Terminal=true`, so it opens in the session's
+terminal, Konsole, which draws the album art with the kitty graphics protocol. rmpc's
 visualiser pane runs `cava`, which is not a port, so that pane draws nothing (see
 [Features whose library has no port](../../../../docs/kdos/06-reference/known-gaps.md#features-whose-library-has-no-port)).

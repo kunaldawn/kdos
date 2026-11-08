@@ -62,4 +62,4 @@ whatis ls
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 350.* Previous: [349. Creating the homes](070-user.md) · [Contents](../README.md) · Next: [351. The font cache](085-fontcache.md)
+*Part XV. The image, chapter 373.* Previous: [372. Creating the homes](070-user.md) · [Contents](../README.md) · Next: [374. The font cache](085-fontcache.md)

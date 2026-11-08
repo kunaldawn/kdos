@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kwalletmanager
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 579cf90c9d6e9aa9ff103747208c66a172efcf3338a5f0d7384e63c79e17b66a  kwalletmanager-26.08.2.tar.xz
+description = KWallet manager — browse, create and edit wallets and their passwords, with the wallet settings page
+homepage    = https://apps.kde.org/kwalletmanager5/
+license     = GPL-2.0-or-later AND (GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL) AND LGPL-2.0-or-later AND LGPL-2.0-only AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules qt6-qtbase kauth karchive kconfig kconfigwidgets kcoreaddons kdbusaddons ki18n kcmutils kio kwallet kwindowsystem kxmlgui kcrash kstatusnotifieritem kservice kdoctools kitemviews kcodecs

@@ -24,28 +24,30 @@
  * takes effect once the box is removed and created again, rather than
  * silently doing nothing.
  *
- * THE PROTOCOL HALF IS NOT THIS FILE'S. kdos-comp's filter
- * (allow_for_sandbox() in its server.c) denies screencopy, data-control,
- * input-method, layer-shell and the other globals that reach past a client's
- * own windows to every tagged client, and kdos-grant.c reads this profile's
- * `grant` key to let one box bind named ones beyond that. This file parses
- * and writes `grant` and enforces nothing of it; what it owns is the
- * namespace half — the keys applied at create time.
+ * THE PROTOCOL HALF IS NOT THIS FILE'S. KWin denies the globals that reach
+ * past a client's own windows — the window list, fake input, screencast,
+ * data control, layer shell, output management and the rest — to every
+ * client of a tagged socket, and its sandbox policy (ports/core/kde/kwin's
+ * sandbox-policy.patch) reads this profile's `grant` key to let one box bind
+ * named ones beyond that. keeper.c turns the `secrets` grant into a bus rule.
+ * This file parses and writes `grant` and owns the namespace half: the keys
+ * applied at create time, and what the box's private runtime directory holds.
  *
- * A KEY THAT ENFORCES NOTHING IS PRINTED AS SUCH, never silently, which is
- * what the `audio` note does: a setting that quietly does nothing is worse
- * than an absent one. `persistence`, `wayland=no` and `export` are in that
- * state and profile_print() says so. `wayland` cannot take a display away,
- * because the box shares $XDG_RUNTIME_DIR and a client that opens the
- * default `wayland-0` reaches the session's own socket — withholding WAYLAND_DISPLAY would advertise
- * confinement the sandbox does not deliver. `export` triggers nothing:
+ * A KEY THAT ENFORCES NOTHING IS PRINTED AS SUCH, never silently: a setting
+ * that quietly does nothing is worse than an absent one. Which keys are in
+ * that state depends on the box's LANE (box_lane()): a pack box and a store
+ * box see their own runtime directory as /run/user/<uid>, so `wayland`,
+ * `audio` and `x11` decide which sockets are in it, and `persistence` maps
+ * onto `--rootfs …:O` and `--rm`; a box distrobox made from somebody else's
+ * image shares the session's runtime directory, and every socket in it is
+ * reachable whatever those keys say. `export` triggers nothing anywhere:
  * `kdos-appbox genlaunchers` covers every installed pack and every store box
  * at once and `kdos-box export` is the per-application route.
  *
  * The path is resolved from $HOME/.config and NOT from $XDG_CONFIG_HOME, and
- * kdos-comp deliberately copies that rather than doing the more correct thing,
- * because the two resolving it differently is the one failure this design must
- * not have.
+ * KWin's grant check deliberately copies that rather than doing the more
+ * correct thing, because the two resolving it differently is the one failure
+ * this design must not have.
  */
 
 #include "kdos-appbox.h"
@@ -77,6 +79,117 @@ void profile_defaults(Profile *p, const char *box)
 	 * means software — and the two literal values are what overrule it.
 	 */
 	kb_strlcpy(p->render, "auto", sizeof(p->render));
+	kb_strlcpy(p->x11, "auto", sizeof(p->x11));
+}
+
+/*
+ * A box name is a container name, a profile file name, a socket path
+ * component and a KWin app id at once. It starts with a letter or a digit: a
+ * leading `-` is an option to every program it is handed to, and a leading
+ * `.` is a hidden file and the parent directory's spelling.
+ */
+int box_name_ok(const char *s)
+{
+	if (!s || !*s || strlen(s) >= 64)
+		return 0;
+	if (*s == '.' || *s == '-')
+		return 0;
+	for (const char *c = s; *c; c++)
+		if (!isalnum((unsigned char)*c) && *c != '.' && *c != '_' &&
+		    *c != '-')
+			return 0;
+	return 1;
+}
+
+/*
+ * THE GRANT VOCABULARY, and the one spelling of it in this program. KWin's
+ * sandbox policy maps each name onto the globals it opens, and keeper.c maps
+ * `secrets` onto the bus; a name in neither table opens nothing, which
+ * profile_print() says rather than letting the word read as a permission.
+ * The order is the one the Boxes page lists them in.
+ */
+static const struct {
+	const char *name;
+	const char *what;
+} GRANTS[] = {
+	{ "window-list", "lists and acts on every window (org_kde_plasma_window_management)" },
+	{ "fake-input", "types and clicks into other windows (org_kde_kwin_fake_input)" },
+	{ "screencast", "records the screen without asking (zkde_screencast_unstable_v1)" },
+	{ "data-control", "reads and sets the clipboard at any time (ext_data_control_manager_v1)" },
+	{ "layer-shell", "draws panels and overlays (zwlr_layer_shell_v1)" },
+	{ "output-management", "changes the screens' modes and layout (kde_output_management_v2)" },
+	{ "dpms", "switches the screens off and on (org_kde_kwin_dpms_manager)" },
+	{ "plasma-shell", "places its windows as the shell does (org_kde_plasma_shell)" },
+	{ "input-method", "passes KWin's filter for the input-method globals, which KWin still offers only to the input method it started" },
+	{ "secrets", "reaches the password store (org.freedesktop.secrets on the bus)" },
+};
+
+int profile_granted(const Profile *p, const char *name)
+{
+	char copy[sizeof(p->grant)], *save = NULL;
+
+	kb_strlcpy(copy, p->grant, sizeof(copy));
+	for (char *t = strtok_r(copy, " ,\t", &save); t;
+	     t = strtok_r(NULL, " ,\t", &save))
+		if (!strcmp(t, name))
+			return 1;
+	return 0;
+}
+
+int box_lane(const Profile *p)
+{
+	if (!strncmp(p->base, "image:" STORE_IMG_PREFIX,
+		     6 + sizeof(STORE_IMG_PREFIX) - 1))
+		return BOX_LANE_STORE;
+	if (!strncmp(p->base, "image:", 6) ||
+	    (!p->base[0] && p->image[0]))
+		return BOX_LANE_DISTROBOX;
+	return BOX_LANE_PACK;
+}
+
+/*
+ * WHETHER A BOX IS HANDED THE X11 DISPLAY. Xwayland is one client to KWin, so
+ * an X11 window in a box is drawn untagged: nothing it binds is filtered, and
+ * the box's tag means nothing for it. A box that is not given the session's
+ * cookie cannot connect — KWin's Xwayland requires one, and the cookie lives
+ * in the session's runtime directory, which a private-layout box does not see.
+ *
+ * `auto` gives the display only to an application that says it needs one: a
+ * runtime or an application whose `env` rows force an X11 backend
+ * (GDK_BACKEND=x11, QT_QPA_PLATFORM=xcb, …), which is how the catalogue
+ * records an X11-only program. A box distrobox made from somebody else's image
+ * shares the session's runtime directory, cookie included, so `auto` is `yes`
+ * for one: a display it can reach anyway is better handed over than left for
+ * every X11 program in it to fail on.
+ */
+int profile_x11(const Profile *p, const char *pack)
+{
+	char env[PACK_ENV_MAX][256];
+	char err[256];
+	int n = 0, want = 0;
+
+	if (!strcmp(p->x11, "yes"))
+		return 1;
+	if (!strcmp(p->x11, "no"))
+		return 0;
+	if (box_lane(p) == BOX_LANE_DISTROBOX)
+		return 1;
+	if (pack && *pack) {
+		n = pack_env(pack, env, PACK_ENV_MAX);
+	} else if (box_lane(p) == BOX_LANE_STORE) {
+		/* The catalogue is loaded only for this question when nobody
+		 * has it loaded, and freed again, so a caller's own load is
+		 * neither replaced nor leaked. */
+		int mine = !cat_count() && cat_load(NULL, err, sizeof(err)) == 0;
+
+		if (cat_find(p->name))
+			n = cat_env(p->name, env, PACK_ENV_MAX);
+		if (mine)
+			cat_free();
+	}
+	for (int i = 0; i < n && !want; i++)
+		want = env_forces_x11(env[i]);
+	return want;
 }
 
 /*
@@ -256,6 +369,18 @@ int profile_set(Profile *p, const char *kv)
 		p->audio = truthy(eq) || !strcmp(eq, "shared");
 	else if (!strcmp(key, "gpu"))
 		p->gpu = truthy(eq) || !strcmp(eq, "shared");
+	else if (!strcmp(key, "x11")) {
+		/* yes | no | auto. Anything that reads as a yes is a yes, a
+		 * plain refusal is a no, and every other word is the default,
+		 * so a value nobody wrote on purpose asks the application. */
+		if (truthy(eq))
+			kb_strlcpy(p->x11, "yes", sizeof(p->x11));
+		else if (!strcmp(eq, "no") || !strcmp(eq, "off") ||
+			 !strcmp(eq, "0") || !strcmp(eq, "false"))
+			kb_strlcpy(p->x11, "no", sizeof(p->x11));
+		else
+			kb_strlcpy(p->x11, "auto", sizeof(p->x11));
+	}
 	else if (!strcmp(key, "export"))
 		p->autoexport = !strcmp(eq, "auto");
 	else if (!strcmp(key, "display"))
@@ -272,10 +397,9 @@ int profile_set(Profile *p, const char *kv)
 		p->autostop_s = duration(eq);
 	else {
 		/*
-		 * REPORTED BY NAME, never ignored. The promise comp.conf's
-		 * reload already makes, for the same reason: a typo that
-		 * produces silence is indistinguishable from a setting that
-		 * does nothing.
+		 * REPORTED BY NAME, never ignored: a typo that produces
+		 * silence is indistinguishable from a setting that does
+		 * nothing.
 		 */
 		if (p->nunknown < 8)
 			snprintf(p->unknown[p->nunknown++], 64, "%s", key);
@@ -404,6 +528,7 @@ int profile_save(const Profile *p)
 		 "wayland=%s\n"
 		 "audio=%s\n"
 		 "gpu=%s\n"
+		 "x11=%s\n"
 		 "display=%s\n"
 		 "render=%s\n"
 		 "export=%s\n"
@@ -424,6 +549,7 @@ int profile_save(const Profile *p)
 		 p->wayland ? "yes" : "no",
 		 p->audio ? "yes" : "no",
 		 p->gpu ? "yes" : "no",
+		 p->x11[0] ? p->x11 : "auto",
 		 p->display[0] ? p->display : "window",
 		 p->render[0] ? p->render : "auto",
 		 p->autoexport ? "auto" : "manual",
@@ -450,25 +576,71 @@ void profile_print(const Profile *p)
 		printf("image       = %s\n", p->image);
 	else
 		printf("base        = (none yet — the first launch records the pack)\n");
-	printf("accent      = %s\n", p->accent[0] ? p->accent : "the session's");
-	printf("grant       = %s\n", p->grant[0] ? p->grant
-		: "none        (screencopy, data-control, … past the sandbox allowlist)");
 	/*
-	 * RECORDED, NOT IMPOSED. A box's upper layer is wherever its runtime
-	 * puts it: `distrobox create` makes a named container whose writes land
-	 * on disk, and the pack lane's ephemeral-or-not is kdos-packd's own
-	 * decision from the pack. No launch here consults this key, so only
-	 * `persistent` happens to describe what the box does, and the other two
-	 * are a preference the profile remembers for whatever reads it next.
+	 * THE TITLE BAR'S COLOUR IS A KWin RULE, written by rules.c for every
+	 * box the user has, and it is named here by the scheme it forces.
 	 */
-	printf("persistence = %-11s %s\n", persist_name(p->persist),
-	       "recorded in the profile");
-	if (p->persist != PERSIST_PERSISTENT)
-		printf("            ! %s is not enforced — a box's writes land"
-		       " where its runtime puts them: inside the container for"
-		       " an image box, and for a pack box wherever kdos-packd"
-		       " puts the upper, on disk or on tmpfs when $HOME cannot"
-		       " hold one\n", persist_name(p->persist));
+	{
+		char scheme[64];
+
+		rules_scheme(p->accent, scheme, sizeof(scheme));
+		printf("accent      = %-11s title bars in %s (KWin rule kdos-box-%s)\n",
+		       p->accent[0] ? p->accent : "session", scheme, p->name);
+	}
+	/*
+	 * EVERY GRANT IS NAMED WITH WHAT IT OPENS, and a name that opens nothing
+	 * is said to: a misspelt grant would otherwise read as a permission.
+	 */
+	if (!p->grant[0]) {
+		printf("grant       = none        KWin denies its windows the desktop-wide globals\n");
+	} else {
+		char copy[sizeof(p->grant)], *save = NULL;
+
+		printf("grant       = %s\n", p->grant);
+		kb_strlcpy(copy, p->grant, sizeof(copy));
+		for (char *t = strtok_r(copy, " ,\t", &save); t;
+		     t = strtok_r(NULL, " ,\t", &save)) {
+			int known = 0;
+
+			for (size_t i = 0; i < sizeof(GRANTS) / sizeof(*GRANTS); i++)
+				if (!strcmp(GRANTS[i].name, t)) {
+					printf("              %-17s %s\n", t,
+					       GRANTS[i].what);
+					known = 1;
+				}
+			if (!known)
+				printf("            ! grant '%s' is no name KWin's sandbox "
+				       "policy or the bus proxy knows — it opens nothing\n",
+				       t);
+		}
+	}
+	/*
+	 * WHAT A BOX WRITES, BY LANE. A pack box's root is kdos-packd's overlay,
+	 * and `--rootfs …:O` lays a second, throwaway one over it, whose writes
+	 * podman destroys when the container stops; `--rm` then removes the
+	 * container itself. A store box keeps its writes in its container, so
+	 * `ephemeral` is that container removed at stop and `frozen` has nothing
+	 * to discard them with. A distrobox box keeps everything.
+	 */
+	{
+		int lane = box_lane(p);
+		const char *how = "writes kept";
+
+		if (lane == BOX_LANE_PACK)
+			how = p->persist == PERSIST_EPHEMERAL ? "--rootfs …:O --rm"
+			    : p->persist == PERSIST_FROZEN    ? "--rootfs …:O"
+			    : "kdos-packd's upper, kept";
+		else if (lane == BOX_LANE_STORE && p->persist == PERSIST_EPHEMERAL)
+			how = "--rm";
+		printf("persistence = %-11s %s\n", persist_name(p->persist), how);
+		if (p->persist != PERSIST_PERSISTENT &&
+		    (lane == BOX_LANE_DISTROBOX ||
+		     (lane == BOX_LANE_STORE && p->persist == PERSIST_FROZEN)))
+			printf("            ! %s is not enforced — this box keeps its"
+			       " writes inside its container, and nothing discards"
+			       " them short of `kdos-box remove`\n",
+			       persist_name(p->persist));
+	}
 	printf("network     = %-11s %s\n",
 	       p->netnone ? "none" : p->netns ? "private" : "host",
 	       p->netnone ? "--network none" :
@@ -482,20 +654,59 @@ void profile_print(const Profile *p)
 	printf("home        = %-11s %s\n", p->privhome ? "private" : "shared",
 	       p->privhome ? "--home" : "the user's own $HOME");
 	/*
-	 * THE DISPLAY IS NOT THIS KEY'S TO TAKE AWAY. The box shares
-	 * $XDG_RUNTIME_DIR, so a client that opens the default `wayland-0`
-	 * finds the session's own socket whatever the profile says, and a
-	 * launch that withheld WAYLAND_DISPLAY would print a confinement the
-	 * sandbox does not deliver. What a launch adds is a per-box
-	 * kdos-boxsock socket; the tag on that is what kdos-comp's allowlist
-	 * filters screencopy, data-control, input-method and layer-shell on.
+	 * A SHARED HOME IS A WAY OUT, and the profile says so wherever it is
+	 * shared: a program that can write ~/.config/autostart or a shell's
+	 * profile decides what the next login runs, outside every box. The box
+	 * profiles themselves are bound read-only into a box, so a box cannot
+	 * grant itself what its profile withholds.
 	 */
-	printf("wayland     = %-11s %s\n", p->wayland ? "yes" : "no",
-	       "tagged through kdos-boxsock");
-	if (!p->wayland)
-		printf("            ! wayland=no cannot be enforced — the box"
-		       " shares $XDG_RUNTIME_DIR and the session's socket is"
-		       " in it\n");
+	if (!p->privhome)
+		printf("            ! home=shared lets the box change what the next"
+		       " login runs (~/.config/autostart, ~/.bashrc); only"
+		       " home=private keeps its writes inside the box\n");
+	/*
+	 * THE SOCKETS ARE THE RUNTIME DIRECTORY'S, AND ONLY A PRIVATE ONE CAN
+	 * WITHHOLD THEM. A pack box or a store box sees
+	 * $XDG_RUNTIME_DIR/kdos/box/<box> as its /run/user/<uid>, and what a
+	 * launch puts in it is all there is: the tagged Wayland socket KWin
+	 * filters on, the audio sockets, the X11 cookie. A distrobox box sees the
+	 * session's own directory, `wayland-0`, PipeWire and the cookie
+	 * included, whatever these keys say — which is why a box made that way
+	 * is at most `tagged`.
+	 */
+	{
+		int priv = box_lane(p) != BOX_LANE_DISTROBOX;
+		int x11 = profile_x11(p, !strncmp(p->base, "pack:", 5)
+				      ? p->base + 5 : "");
+
+		printf("wayland     = %-11s %s\n", p->wayland ? "yes" : "no",
+		       p->wayland ? "a tagged socket from kdos-boxsock in its runtime directory"
+		       : priv ? "no Wayland socket in its runtime directory"
+		       : "the session's socket is still in reach");
+		if (!p->wayland && !priv)
+			printf("            ! wayland=no cannot be enforced — this box"
+			       " shares the session's runtime directory, and the"
+			       " session's socket is in it\n");
+		printf("audio       = %-11s %s\n", p->audio ? "yes" : "no",
+		       p->audio ? "PipeWire and PulseAudio sockets linked into its runtime directory"
+		       : priv ? "no audio socket in its runtime directory"
+		       : "the session's audio sockets are still in reach");
+		if (!p->audio && !priv)
+			printf("            ! audio=no cannot be enforced — this box"
+			       " shares the session's runtime directory, PipeWire's"
+			       " socket included\n");
+		printf("x11         = %-11s %s\n", p->x11[0] ? p->x11 : "auto",
+		       x11 ? "DISPLAY and the session's cookie: its X11 windows reach KWin untagged"
+		       : "no X11 cookie: Xwayland refuses it");
+		if (!x11 && !priv)
+			printf("            ! x11=no cannot be enforced — the session's"
+			       " X11 cookie is in the runtime directory this box"
+			       " shares\n");
+		else if (!x11 && x11_cookie_exposed(p))
+			printf("            ! x11=no cannot be enforced — the session's"
+			       " X11 cookie is where this box can read it ($XAUTHORITY"
+			       " under /tmp or a home it shares)\n");
+	}
 	/*
 	 * THE RENDERER, AND THE MACHINE'S ANSWER BESIDE IT. The key is a
 	 * request and the render node is what grants it, so printing the word
@@ -531,6 +742,24 @@ void profile_print(const Profile *p)
 	       p->cpus[0] ? "--cpus" : "");
 	if (p->pids)
 		printf("pids        = %-11d --pids-limit\n", p->pids);
+	/*
+	 * A PACK BOX'S CGROUP IS ITS LOGIN SESSION'S, the one place a rootless
+	 * podman may apply `memory`, `cpus` and `pids`. A store box takes no
+	 * session's cgroup, because its writes are in its container and a
+	 * container whose cgroup parent went with an old session can never
+	 * start again; it has the flags accepted and enforced by nothing but
+	 * kdos-oomd's budget check. Nor does a pack box created in a login
+	 * whose cgroup cannot take it (box_cgroup_parent says why).
+	 */
+	if (p->memory[0] || p->cpus[0] || p->pids > 0) {
+		char scope[1024];
+
+		if (box_lane(p) != BOX_LANE_PACK ||
+		    !box_cgroup_parent(p->name, scope, sizeof(scope)))
+			printf("            ! the limits are podman flags this box"
+			       " gets no cgroup of its own for — kdos-oomd's budget"
+			       " check is what holds it to `memory`\n");
+	}
 	if (p->autostop_s)
 		printf("autostop    = %-11d seconds after start with no window,"
 		       " enforced by `kdos-box gc`\n", p->autostop_s);
@@ -549,7 +778,13 @@ void profile_print(const Profile *p)
 		       " every pack and store box\n");
 	if (p->privhome) {
 		char *h = profile_home(p->name);
-		printf("home-path   = %s\n", h);
+		/* A pack or store box has it at the user's home path, from the
+		 * layer directory's `home`; distrobox's --home is the path. */
+		if (box_lane(p) != BOX_LANE_DISTROBOX)
+			printf("home-path   = %s/home (seen in the box as %s)\n", h,
+			       kb_home_dir());
+		else
+			printf("home-path   = %s\n", h);
 		free(h);
 	}
 	/*
@@ -574,11 +809,13 @@ void profile_print(const Profile *p)
 	 * avoids. There is no podman flag that grants a box a speaker and
 	 * denies it a camera, which is why this is printed only for the shared
 	 * case: with `devices = private` the box starts with no /dev at all and
-	 * `gpu` is the flag above that binds the card back.
+	 * `gpu` is the flag above that binds the card back. `audio = no` still
+	 * takes the audio SOCKETS away, above; the sound card is a device.
 	 */
 	if (!p->devsys && (!p->audio || !p->gpu))
-		printf("            ! audio=%s gpu=%s cannot be enforced separately"
-		       " — both follow `devices`\n",
+		printf("            ! audio=%s gpu=%s cannot take a device away"
+		       " — /dev is shared whole, so the sound card and the"
+		       " graphics card follow `devices`\n",
 		       p->audio ? "yes" : "no", p->gpu ? "yes" : "no");
 	for (int i = 0; i < p->nunknown; i++)
 		printf("            ! boxes/%s.conf: unknown key '%s'\n", p->name,
@@ -734,6 +971,12 @@ int box_create(const Profile *p)
 	if (kb_path_exists("/run/cups/cups.sock")) {
 		kb_argv_add(&a, "--volume");
 		kb_argv_add(&a, "/run/cups:/run/cups");
+	}
+	/* KDOS's distribution defaults, read-only at the host's path, for the
+	 * XDG_CONFIG_DIRS every launch sets (pack_box_create says why). */
+	if (kb_is_dir(BOX_KDOS_XDG)) {
+		kb_argv_add(&a, "--volume");
+		kb_argv_add(&a, BOX_KDOS_XDG ":" BOX_KDOS_XDG ":ro");
 	}
 	/*
 	 * THE RENDER NODES, FOR A BOX THAT HAS NO /dev OF THE HOST'S.

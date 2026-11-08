@@ -1,0 +1,19 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = kde-dev-scripts
+version     = 26.08.2
+release     = 1
+source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
+sha256      = 5a37ca085d94309d063e2833cab18c7115141277ab4c88cadea05ce5224ee038  kde-dev-scripts-26.08.2.tar.xz
+description = KDE developer scripts — include and moc fixers, extractrc, export-header generation and uncrustify settings
+homepage    = https://invent.kde.org/sdk/kde-dev-scripts
+license     = GPL-2.0-or-later AND BSD-2-Clause AND GFDL-1.2-or-later AND CC0-1.0
+depends     = cmake ninja extra-cmake-modules kdoctools perl python3 bash git

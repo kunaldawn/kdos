@@ -10,8 +10,8 @@
 
 name        = kdos-doc
 version     = 1.0.0
-release     = 1
-description = The KDOS book as HTML, kdos(7) and a manual page per kdos-* command
+release     = 2
+description = The KDOS book as HTML, kdos(7), kdos-doc and a manual page per kdos-* command
 homepage    = https://github.com/kunaldawn/kdos
 license     = MIT
 depends     = lowdown python3

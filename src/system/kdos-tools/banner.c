@@ -329,7 +329,7 @@ static void animate(double delay)
 
 /*
  * One recorded lesson under the banner, in the secondary colour (SGR 33 — the
- * slot /etc/vtrgb and the generated foot palette both point at the scheme's
+ * slot /etc/vtrgb and the accent's Konsole scheme both point at the scheme's
  * secondary; never bold, because on a 512-glyph VT the intensity bit selects
  * the second font page).
  *
