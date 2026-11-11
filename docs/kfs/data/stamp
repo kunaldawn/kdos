@@ -1,11 +1,13 @@
 # The built tree docs/kfs/data was taken from: written by make_data.py
-commit 78a21d81
-date 2026-10-24
-packages 2107
-sbu-seconds 43.41
-sbu-machine -
+commit ac80d2c80
+date 2026-11-11
+packages 2430
+sbu-seconds 44.55
+sbu-machine 1
 machine-1 AMD Ryzen 7 5700G with Radeon Graphics, 16 CPUs, 61.2 GiB, KDOS_JOBS unset
-machine-1-ports 102
-unrecorded-ports 151
-measured-phases 20_selfhost 30_foundation 31_compilers 40_lang 41_system 42_graphics 43_toolkits 44_apps 50_desktop
-unmeasured-phases 60_kernel
+machine-1-ports 1042
+machine-2 AMD Ryzen 7 5700G with Radeon Graphics, 16 CPUs, 61.2 GiB, KDOS_JOBS unset
+machine-2-ports 1388
+unrecorded-ports 0
+measured-phases 20_selfhost 30_foundation 31_compilers 40_lang 41_system 42_graphics 43_toolkits 44_apps 50_desktop 60_kernel
+unmeasured-phases -
