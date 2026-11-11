@@ -72,17 +72,49 @@ Welcome.ScrollablePage {
             Repeater {
                 model: ["org.kiwix.desktop", "org.kde.khelpcenter", "app.organicmaps.desktop", "org.zealdocs.zeal", "org.kde.marble"]
 
-                delegate: Welcome.ApplicationIcon {
-                    id: launcher
+                // A tile of its own rather than Welcome.ApplicationIcon: under
+                // the desktop style a ToolButton's background paints the
+                // button's icon and text itself, so a button that also draws
+                // them in its content shows both twice. This one gives the
+                // style neither, and draws them once in its content.
+                delegate: QQC2.ToolButton {
+                    id: tile
 
                     required property string modelData
 
-                    application: Welcome.ApplicationInfo {
-                        desktopName: launcher.modelData
+                    readonly property Welcome.ApplicationInfo application: Welcome.ApplicationInfo {
+                        desktopName: tile.modelData
                     }
-                    size: Kirigami.Units.iconSizes.huge
+
                     visible: application.exists
-                    Accessible.name: application.name
+                    display: QQC2.AbstractButton.IconOnly
+                    onClicked: Welcome.Utils.launchApp(application.desktopName)
+
+                    contentItem: ColumnLayout {
+                        spacing: Kirigami.Units.largeSpacing
+
+                        Kirigami.Icon {
+                            Layout.alignment: Qt.AlignHCenter
+                            Layout.preferredWidth: Kirigami.Units.iconSizes.huge
+                            Layout.preferredHeight: Kirigami.Units.iconSizes.huge
+                            source: tile.application.icon || "application-x-executable"
+                        }
+
+                        Kirigami.Heading {
+                            Layout.alignment: Qt.AlignHCenter
+                            Layout.bottomMargin: Kirigami.Units.gridUnit
+                            text: tile.application.name ?? ""
+                            wrapMode: Text.WordWrap
+                            level: 3
+                        }
+                    }
+
+                    Accessible.name: application.name ?? ""
+                    Accessible.description: i18ndc("kdos-welcome", "@info:tooltip %1 is an application", "Launch %1 now", application.name ?? "")
+
+                    QQC2.ToolTip.visible: hovered
+                    QQC2.ToolTip.text: i18ndc("kdos-welcome", "@info:tooltip %1 is an application", "Launch %1 now", application.name ?? "")
+                    QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
                 }
             }
         }

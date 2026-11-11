@@ -33,8 +33,13 @@
  *
  * SOFTWARE RENDERING IS REFUSED BEFORE ANYTHING IS WRITTEN. The effect's
  * supported() is false on llvmpipe, where a full-screen pass per frame would
- * be the desktop's whole budget; KWin's answer is asked first, and a refusal
- * leaves no state file and no key behind.
+ * be the desktop's whole budget; `on` asks KWin's answer first, and its
+ * refusal leaves no state file and no key behind. The option verbs (`preset`,
+ * `terminus`, `fullscreen`) refuse nothing: each records its option, which
+ * takes effect at once while the mode is on and at the next `on` otherwise.
+ * `status --json` names a refusal twice: "reason", the sentence `on` would
+ * print, and "refusal", "session" or "gpu" (exit status 2 or 3), for a
+ * front end that says it in its own words.
  * ---------------------------------
  */
 
@@ -1007,7 +1012,7 @@ static int cmd_status(int argc, char **argv)
 {
 	int json = 0, strength, scanlines, curve, full, sup = 0, on, term;
 	int loaded[4] = { 0 };
-	const char *reason = NULL;
+	const char *reason = NULL, *refusal = NULL;
 	char *phase = NULL;
 	State s = { 0 };
 	KdtBus *b;
@@ -1028,10 +1033,13 @@ static int cmd_status(int argc, char **argv)
 	b = kdt_bus_open(0);
 	if (!b || kdt_bus_has_owner(b, KWIN) != 1) {
 		reason = REFUSE_SESSION;
+		refusal = "session";
 	} else {
 		sup = eff(b, "isEffectSupported", "kdos_crt") == 1;
-		if (!sup)
+		if (!sup) {
 			reason = REFUSE_GPU;
+			refusal = "gpu";
+		}
 		for (int i = 0; i < 4; i++)
 			loaded[i] = eff(b, "isEffectLoaded", OURS[i]) == 1;
 		if (loaded[0])
@@ -1050,6 +1058,11 @@ static int cmd_status(int argc, char **argv)
 			      sup ? "true" : "false");
 		if (reason)
 			kb_json_str(&o, reason);
+		else
+			kb_buf_str(&o, "null");
+		kb_buf_str(&o, ", \"refusal\": ");
+		if (refusal)
+			kb_json_str(&o, refusal);
 		else
 			kb_buf_str(&o, "null");
 		kb_buf_printf(&o, ", \"preset\": \"%s\", \"strength\": %d, "

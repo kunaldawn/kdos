@@ -10,7 +10,7 @@ a [password]{.idx}, and why a login is refused.
 [openssh](#port-openssh), installed by `41_system` on every image, provides `sshd`, the client
 `ssh`, `scp`, `sftp`, `ssh-keygen`, `ssh-agent` and `ssh-copy-id`. Its `build.sh`:
 
-<!-- kfs:include ports/core/servers/openssh/build.sh lines=12-39 pin=255eb66d5379 -->
+<!-- kfs:include ports/core/servers/openssh/build.sh lines=12-33 pin=fb4eaecaa0b1 -->
 
 It is built without `--with-pam`, so `sshd` checks passwords against `/etc/shadow` itself and runs
 no PAM module. `--with-security-key-builtin` lets it take keys held on a FIDO security key.
@@ -63,7 +63,7 @@ boot. It is the one marker the image ships; see
 `kdos-powerd` treats `ssh` as both a port and a daemon. The comment above the code that does it,
 from `src/daemons/kdos-powerd/main.c`:
 
-<!-- kfs:include src/daemons/kdos-powerd/main.c lines=475-483 pin=9d44e95d2ac3 -->
+<!-- kfs:include src/daemons/kdos-powerd/main.c lines=485-493 pin=9d44e95d2ac3 -->
 
 The rule it writes goes into [`/etc/nftables.d/50-kdos-services.nft`]{.idx}; see [Firewall](firewall.md).
 
@@ -76,8 +76,12 @@ empty directory. The account comes from `fs/etc/passwd`:
 
 ### /etc/profile.d/50-ssh-agent.sh
 
-Written by the openssh `build.sh` (above). Every login shell that has a runtime directory gets one
-`ssh-agent`, at `$XDG_RUNTIME_DIR/ssh-agent.socket`, shared by the account's later logins.
+Written by the openssh `build.sh` (above). It exports `SSH_AUTH_SOCK` to
+`$XDG_RUNTIME_DIR/ssh-agent.socket` once that socket exists, and starts nothing. The agent is the
+`ssh-agent` user service, which runs from the account's first login to its last logout, shared by
+every login; see [the user's services](../../kdos/03-architecture/session.md#the-users-services):
+
+<!-- kfs:include fs/etc/kdos/user-services/15_ssh-agent.sh -->
 
 ## Usage
 

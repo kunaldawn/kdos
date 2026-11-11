@@ -86,8 +86,18 @@ public:
     static QString cpuSpelling(int tenths);
     static int parseDurationSeconds(const QString &raw);
 
-    /* Parses `kdos-box profile <box>` output into mechanisms and notes. */
+    /* Parses `kdos-box profile <box>` output into mechanisms and notes.
+     * The notes and mechanisms keep kdos-box's words exactly; markup() is
+     * how the page shows them. */
     void applyReport(const QString &report);
+
+    /* kdos-box's terminal text as rich text for a label: escaped, with each
+     * `quoted` word and each key=value set in code, and, for a sentence, its
+     * first word capitalised. The words stay kdos-box's, so the page and a
+     * prompt never disagree. */
+    static QString markup(const QString &text, bool sentence);
+    Q_INVOKABLE QString noteMarkup(const QString &text) const;
+    Q_INVOKABLE QString mechanismMarkup(const QString &text) const;
     /* Reads the profile file; the report is applied separately. */
     void loadFile(const QString &name);
 

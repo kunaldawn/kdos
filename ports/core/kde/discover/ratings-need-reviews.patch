@@ -1,0 +1,78 @@
+Subject: discover: show ratings and reviews only where a reviews backend serves them
+
+The application page showed the rating row ("0 ratings") and the Reviews
+section with "Write a Review" for every non-technical package, even when
+the resource's backend has no reviews backend, so the dialog had nowhere
+to send a review. Both now require one. The Home page's "Highest-Rated
+Games" and "Highest-Rated Developer Tools" rows rank by rating, and without
+a reviews backend for the current application backend their order means
+nothing, so they hold no rows.
+
+diff --git a/discover/qml/ApplicationPage.qml b/discover/qml/ApplicationPage.qml
+index 68b53b9..67cd7bb 100644
+--- a/discover/qml/ApplicationPage.qml
++++ b/discover/qml/ApplicationPage.qml
+@@ -459,10 +459,11 @@ DiscoverPage {
+             }
+         }
+ 
+-        // Reviews section
++        // Reviews section, only where a reviews backend serves this
++        // application's backend
+         ColumnLayout {
+             spacing: Kirigami.Units.smallSpacing
+-            visible: !appInfo.isTechnicalPackage
++            visible: !appInfo.isTechnicalPackage && reviewsModel.backend !== null
+ 
+             Kirigami.Heading {
+                 Layout.fillWidth: true
+diff --git a/discover/qml/ApplicationPageFullComponent.qml b/discover/qml/ApplicationPageFullComponent.qml
+index fcf075e..a1734f7 100644
+--- a/discover/qml/ApplicationPageFullComponent.qml
++++ b/discover/qml/ApplicationPageFullComponent.qml
+@@ -134,9 +134,10 @@ Kirigami.Padding {
+                         }
+                     }
+ 
+-                    // Rating
++                    // Rating, only where a reviews backend serves this
++                    // application's backend
+                     RowLayout {
+-                        visible: !fullComponent.isTechnicalPackage
++                        visible: !fullComponent.isTechnicalPackage && (fullComponent.application.backend.reviewsBackend ?? null) !== null
+ 
+                         Rating {
+                             value: fullComponent.application.rating.rating
+diff --git a/discover/qml/BrowsingPage.qml b/discover/qml/BrowsingPage.qml
+index 7670fed..7fc32a5 100644
+--- a/discover/qml/BrowsingPage.qml
++++ b/discover/qml/BrowsingPage.qml
+@@ -30,6 +30,10 @@ DiscoverPage {
+ 
+     readonly property bool isHome: true
+ 
++    // The "Highest-Rated" rows rank by ratings, which only a reviews backend
++    // serves; without one their order says nothing and they are left out.
++    readonly property bool hasRatings: (Discover.ResourcesModel.currentApplicationBackend?.reviewsBackend ?? null) !== null
++
+     Kirigami.Theme.colorSet: Kirigami.Theme.Window
+     Kirigami.Theme.inherit: false
+ 
+@@ -221,7 +225,7 @@ DiscoverPage {
+         Repeater {
+             id: gamesRep
+             model: DiscoverApp.LimitedRowCountProxyModel {
+-                pageSize: apps.maximumColumns
++                pageSize: page.hasRatings ? apps.maximumColumns : 0
+                 sourceModel: Discover.ResourcesProxyModel {
+                     filteredCategoryName: "Games"
+                     backendFilter: Discover.ResourcesModel.currentApplicationBackend
+@@ -276,7 +280,7 @@ DiscoverPage {
+         Repeater {
+             id: devRep
+             model: DiscoverApp.LimitedRowCountProxyModel {
+-                pageSize: apps.maximumColumns
++                pageSize: page.hasRatings ? apps.maximumColumns : 0
+                 sourceModel: Discover.ResourcesProxyModel {
+                     filteredCategoryName: "Development"
+                     backendFilter: Discover.ResourcesModel.currentApplicationBackend

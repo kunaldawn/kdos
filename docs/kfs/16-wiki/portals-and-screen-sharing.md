@@ -35,10 +35,13 @@ interface. A file of your own in `~/.config/xdg-desktop-portal/` overrides it pe
 ### Which application is asking
 
 Built without systemd, the front end names a caller's application from the cgroup its process is
-in: the scope systemd's naming would give it, `app-<launcher>-<id>-<n>.scope`. A KDOS box is
-created in `app-kdos-<box>-<n>.scope`, so the portal sees each box's requests under the box's
-launcher id, and the permission store remembers a choice per box. A program started from a
-terminal has no such scope and an empty id, so nothing is remembered for it.
+in: the scope systemd's naming would give it, `app-<launcher>-<id>-<n>.scope`. No caller is in
+one. A program Plasma or a terminal starts runs in the login's own cgroup, and a box's
+`app-kdos-<box>-<n>.scope` is never made, because elogind leaves
+`/sys/fs/cgroup/<session>/cgroup.procs` root's. Every caller has the empty id, KDE's dialogs ask
+for "an unidentifiable application", and the permission store keeps one answer for all of them:
+a choice remembered for one program is the choice for every program and every box. Deleting the
+portal's file under `~/.local/share/flatpak/db/` makes it ask again.
 
 ### The capture keys
 
@@ -84,14 +87,18 @@ first connection is let in.
 ### Opening files from a boxed application
 
 A boxed application's **Open** and **Save** dialogs are the KDE file dialog, drawn outside the
-box, and the box receives only the file you pick, through the document portal.
+box. The portal hands a box, which is no Flatpak, the real path of the file you pick, and the box
+opens it through the home it shares; a box with `home = private` cannot reach a file the dialog
+picks outside it. The document portal's own mount is not in a box: the portal mounts it for your
+user alone, and a box's root, a subordinate uid, could not even stat it.
 
 ## Tips
 
 - `kdos privacy` lists what is capturing the microphone, the camera or the screen right now, and
   in which box.
-- GTK applications use the portal file chooser because every login shell exports
-  `GTK_USE_PORTAL=1`.
+- GTK 4 applications use the portal file chooser by themselves, and GTK 3 ones that use GTK's
+  native chooser do because every login shell exports `GTK_USE_PORTAL=1`; a GTK 3 application
+  that builds GTK's own dialog, such as AbiWord, keeps it.
 
 ## Troubleshooting
 
@@ -110,11 +117,12 @@ the request fails; the log names the module.
 software rendering, or for a window that was minimised. Share the screen instead of the window,
 or check `qdbus6 org.kde.KWin /KWin supportInformation` for the renderer.
 
-**A box's dialog does not remember the choice.** The box's process is not in its
-`app-kdos-<box>-<n>.scope`: `cat /proc/<pid>/cgroup` for the program shows where it is.
+**A dialog names no application.** `cat /proc/<pid>/cgroup` for the program shows where it is:
+`0::/<session>/session` is the login's own cgroup, from which the portal reads no id.
 
 ## Known gaps
 
+- [Host applications and boxes reach the portals unidentified](../../kdos/06-reference/known-gaps.md#host-applications-and-boxes-reach-the-portals-unidentified)
 - [Known gaps](../../kdos/06-reference/known-gaps.md): the desktop's open items
 
 ## See also

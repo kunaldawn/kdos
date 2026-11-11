@@ -209,7 +209,7 @@ A **box** is the container an application runs in; see the [glossary](glossary.m
 | `xdg-terminal-exec` | `/usr/local/bin` | Run a command in a Konsole window, for `Terminal=true` handlers launched through GLib | [kdos-appbox](../04-programs/kdos-appbox.md#terminal-entries) |
 | `kdos-boxsock` | `/usr/bin` | Open a launcher's tagged Wayland socket in a box's private runtime directory, so KWin knows which box a window came from; `kdos-boxsock [-s confined\|tagged] BOX [LAUNCHER-ID]` | [The daemons](../04-programs/daemons.md#kdos-boxsock) |
 | `kdos-boxinit` | `/usr/libexec/kdos` | Process 1 inside a pack box | [Packs and boxes](../03-architecture/packs-and-boxes.md#the-box) |
-| `kdos-openarchive` | `/usr/local/bin` | Extract, with `ouch`, an archive beside itself; the default handler for the archive types | [Applications](../02-user-guide/applications.md) |
+| `kdos-openarchive` | `/usr/local/bin` | Extract, with `ouch`, an archive beside itself; the default handler for comic books packed as 7z or rar | [Applications](../02-user-guide/applications.md) |
 | `kdos-pack` | `/usr/bin` | Build, sign, re-stamp, index and diff packs | [Packs and boxes](../03-architecture/packs-and-boxes.md#building-a-pack) |
 | `kdos-podman-api` | `/usr/bin` | Run a container client against this account's Podman API socket, starting `podman system service` when nothing answers on it | [Configuration](configuration.md#containers) |
 | `kdos-ports-helper` | `/usr/libexec/kdos-discover` | Install one port and what it lacks from the signed binary host, as root through polkit, for Discover: `kdos-ports-helper install PORT` | [Discover](../04-programs/discover.md) |
@@ -271,7 +271,7 @@ is the command that updates the system; see
 | `kinstall` | `/usr/bin` | The installer: the terminal wizard, and the backend the graphical installer drives through `--events` | [kinstall](../04-programs/kinstall.md) |
 
 `/etc/inittab` runs `kdos-dm` on the first console and
-`kdos-getty tty2 /sbin/agetty --noclear tty2 38400 linux` on the second, the recovery console.
+`kdos-getty tty2 /sbin/agetty --noclear --issue-file /etc/issue tty2 38400 linux` on the second, the recovery console.
 
 `ksvc` (and `service`) takes `list`, `status NAME`, `start NAME`, `stop NAME`, `restart NAME`,
 `enable NAME`, `disable NAME` and `help`, the commands a person types; `--user` before the command
@@ -329,7 +329,7 @@ procedures call them by name. `/sbin` is a link to `/usr/sbin`.
 |---|---|---|---|
 | `kdos-bb` | `/usr/bin` | The ASCII-art demo | [kdos-bb](../04-programs/kdos-bb.md) |
 | `kdos-doc` | `/usr/bin` | Open the KDOS book in the Help Center, at a page: `kdos-doc [CHAPTER/PAGE[#ANCHOR]]` | [The kdos command](../04-programs/kdos-command.md#manual-pages-and-the-book) |
-| `kdos-theme` | `/usr/bin` | Generate the identity kit for an accent at build time: `kde-colors`, `konsole`, `qt5ct-colors`, `wallpaper`, `greeter-globals`, `contrast`, `accents` | [Theming](../02-user-guide/theming.md#how-the-theme-is-generated) |
+| `kdos-theme` | `/usr/bin` | Generate the identity kit for an accent at build time: `kde-colors`, `syntax-themes`, `konsole`, `qt5ct-colors`, `wallpaper`, `greeter-globals`, `contrast`, `accents` | [Theming](../02-user-guide/theming.md#how-the-theme-is-generated) |
 | `kdos-share` | `/usr/local/bin` | Send files to another machine over `croc`; `--clipboard` sends the clipboard | [The kdos command](../04-programs/kdos-command.md#kdos-share) |
 | `kdos-sfx` | `/usr/local/bin` | The machine's sounds: `login`, `notify`, `error`, `degauss`, `logout`, `warning`, `complete`, `added`, `removed`; `--route` prints the output it would use; `render DIR [--format oga\|wav]` writes the sound theme | [The kdos command](../04-programs/kdos-command.md#kdos-sfx) |
 | `kdos-mpctl` | `/usr/local/bin` | Music control: `toggle`, `stop`, `next`, `prev` to mpd or an MPRIS player; `mpris` serves mpd on the session bus as `org.mpris.MediaPlayer2.mpd` | [The kdos command](../04-programs/kdos-command.md#kdos-mpctl) |
@@ -381,7 +381,7 @@ uses them, from `make fetch` to a bootable ISO.
 | `make quick`, `make rig-image`, `make devdeps-image` | Rebuild the ports `QUICK` names and patch them into a booted ISO (`QUICK_ARGS` reaches the rig); build the rig's container, `kdos-qemu-py`; build the development image, `kdos-devdeps`, and run the self-test in it | [Testing](../05-developer/testing.md#the-fast-loop) |
 
 `KDOS_RES` (default `1920x1080`) sets the virtual screen for `make run`, `rundisk`,
-`run-hw` and `rundisk-hw`. `KDOS_DISK` (default `96G`) is the size of the sparse
+`run-hw` and `rundisk-hw`. `KDOS_DISK` (default `192G`) is the size of the sparse
 `build/kdos.qcow2` that `make run` creates when it is missing and `make cleandisk` creates afresh.
 
 ### Scripts and programs

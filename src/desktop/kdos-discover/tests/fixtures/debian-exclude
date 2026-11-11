@@ -1,0 +1,3 @@
+# What /usr/share/kdos/discover/debian-exclude holds: package names, and
+# comments after a #.
+kmag   # works only on an X server's own screen

@@ -6,8 +6,8 @@
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
  *   kdos-powerd — the firewall's named services, the look of the machine
- *   before a login, and Samba once a folder is shared, for a desktop that is
- *   not root
+ *   before a login, and Samba once an account can share folders, for a
+ *   desktop that is not root
  *
  * Two faces on one set of verbs: the SO_PEERCRED socket in main.c, which the
  * `kdos` command and `kdos-power` speak, and io.kdos.Power1 on the system bus
@@ -36,8 +36,8 @@
  * splash motion: both are how the machine looks before anyone logs in. */
 #define KP_ACT_FIREWALL "io.kdos.firewall.set"
 #define KP_ACT_ACCENT   "io.kdos.accent.set"
-/* Starting Samba for the shares users have made: the bus face alone asks it,
- * because the caller is kded-kdos in a session. */
+/* Starting Samba for the accounts that share folders: the bus face alone
+ * asks it, because the caller is kded-kdos in a session. */
 #define KP_ACT_SHARING  "io.kdos.filesharing.start"
 
 /* ── the firewall table (main.c) ───────────────────────────────────────── */
@@ -61,8 +61,8 @@ int kp_fw_knocks(long long *knocks);
 
 /* ── file sharing (main.c) ─────────────────────────────────────────────── */
 
-/* Run Samba's service script with `start`, which serves the usershares and
- * any share smb.conf defines, or starts nothing when there are none. 0 and
+/* Run Samba's service script with `start`, which starts smbd when sambashare
+ * has a member or a share exists, and starts nothing otherwise. 0 and
  * `ok`, or -1 and `err …` when samba is disabled, missing or would not
  * start. */
 int kp_share_start(char *out, size_t nout);

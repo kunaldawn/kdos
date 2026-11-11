@@ -41,3 +41,17 @@ which has no repository to read here.
 `build.sh` writes its own `dasher.desktop` over the one upstream installs, with `TryExec`,
 `StartupWMClass=dasher` and search keywords, and without upstream's `GNOME` category, its GNOME
 Bugzilla keys and the translated names and comments its build merges in from `po/`.
+
+`keep-panes-visible.patch` makes the main window's minimum size include the text pane and the
+canvas. Upstream packs both shrinkable, so a window the window manager gives its minimum size
+shows its menu bar, toolbar and speed bar and nothing else, and maximising it then leaves the text
+pane at no height. With the patch the smallest window is about 270 by 410 pixels and shows a text
+pane of 75 pixels above a canvas of 200. It is to be offered upstream.
+
+`alphabet-combo-before-interface.patch` makes `dasher_main_populate_alphabet_combo` return while
+the alphabet list does not exist yet. Building the interface sets the alphabet, whose change
+notification would fill the toolbar's alphabet combo before `dasher_main_load_interface` has
+created the combo and its list store, and every start would log a run of `Gtk-CRITICAL` assertions from
+`gtk_list_store_*`, `gtk_combo_box_set_active_iter` and `g_signal_handlers_unblock_matched` on a
+null object. `dasher_main_populate_controls` fills the combo once the interface is built, so
+nothing is lost. It is to be offered upstream.

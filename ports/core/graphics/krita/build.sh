@@ -79,3 +79,9 @@ Categories=Qt;KDE;Graphics;2DGraphics;RasterGraphics;
 Keywords=paint;painting;drawing;illustration;sketch;animation;brush;tablet;
 EOF
 chmod 644 "$PKG/usr/share/applications/org.kde.krita.desktop"
+
+install -d "$PKG/etc/xdg"
+cat > "$PKG/etc/xdg/kritarc" <<'EOF2'
+defaultExportMimeType=image/png
+EOF2
+chmod 644 "$PKG/etc/xdg/kritarc"

@@ -1,0 +1,26 @@
+Subject: Set the desktop file name before the first window is created
+
+The content manager can open an error dialog while it is constructed, before
+init() set the desktop file name, so that dialog took the executable's name
+as its Wayland app id. Set org.kiwix.desktop first in init().
+
+--- a/src/kiwixapp.cpp
++++ b/src/kiwixapp.cpp
+@@ -76,6 +76,9 @@
+ 
+ void KiwixApp::init()
+ {
++    // Before the first window, the content manager's error dialogs included:
++    // it is every window's Wayland app id.
++    setDesktopFileName("org.kiwix.desktop");
+     mp_manager = new ContentManager(&m_library);
+     mp_manager->setLocal(!m_library.getBookIds().isEmpty());
+ 
+@@ -84,7 +87,6 @@
+     setWindowIcon(icon);
+ 
+     setApplicationName("Kiwix");
+-    setDesktopFileName("org.kiwix.desktop.desktop");
+     setStyleSheet(getFileContent(":/css/style.css"));
+ 
+     createActions();

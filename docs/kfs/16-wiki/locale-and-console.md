@@ -34,9 +34,10 @@ or plasma-setup:
 
 <!-- kfs:include fs/etc/locale.conf -->
 
-**`/etc/profile`**, from `fs/etc/profile`, sets the locale of every login shell that has none:
+**`/etc/profile`**, from `fs/etc/profile`, sets the locale of every login shell that has none, and
+keeps the one a session already has:
 
-<!-- kfs:include fs/etc/profile lines=33-33 pin=d682fd279e6d -->
+<!-- kfs:include fs/etc/profile lines=33-36 pin=b3b8a2c8b9d0 -->
 
 **[`/etc/profile.d/00locale.sh`]{.idx}** is installed by musl-locales. Its build names the option that
 installs the file, `LOCALE_PROFILE`, in `ports/core/toolchain/musl-locales/build.sh`:
@@ -50,7 +51,7 @@ from and `locale -a` lists.
 Keyboard page; the image does not ship it, so the live medium uses the kernel's built-in US map.
 `kdos-getty` loads it on every console, in `src/system/kdos-tools/getty.c`:
 
-<!-- kfs:include src/system/kdos-tools/getty.c lines=256-266 pin=1d8052890c4d -->
+<!-- kfs:include src/system/kdos-tools/getty.c lines=319-330 pin=03c45ba10f06 -->
 
 **[`/etc/kdos/xkb.conf`]{.idx}** is the graphical layout of the login screen and of every new
 session, which kdos-settingsd serves as locale1's `X11Layout` and the rest. Its `XKBLAYOUT` is
@@ -62,7 +63,7 @@ sessions.
 
 **The console font** is compiled into `kdos-getty` and has no setting:
 
-<!-- kfs:include src/system/kdos-tools/getty.c lines=60-61 pin=e884f1c51cdf -->
+<!-- kfs:include src/system/kdos-tools/getty.c lines=72-73 pin=e884f1c51cdf -->
 
 **[`/etc/vtrgb`]{.idx}**, shipped from `fs/etc/vtrgb`, holds the sixteen console colours as three lines of
 red, green and blue values. `kdos-getty` loads it with `setvtrgb`, and setting the accent rewrites
@@ -72,7 +73,7 @@ it; see [accent](../../kdos/04-programs/daemons.md#accent).
 
 **`/etc/inittab`**, from `fs/etc/inittab`, puts `kdos-getty` in front of the login on `tty2`:
 
-<!-- kfs:include fs/etc/inittab lines=36-45 pin=9c6ed9e54510 -->
+<!-- kfs:include fs/etc/inittab lines=38-51 pin=f39604cc4abd -->
 
 ## Usage
 

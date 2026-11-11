@@ -2,5 +2,5 @@
 Type=Application
 Name=micro in a New Window
 Comment=Open micro in a new terminal window. The KDOS Raise key brings back the one already open.
-Exec=konsole -p tabtitle=micro -e micro
+Exec=konsole --hold -p tabtitle=micro -e micro
 Icon=utilities-terminal

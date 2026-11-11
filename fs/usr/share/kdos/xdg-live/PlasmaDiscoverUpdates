@@ -10,8 +10,9 @@
 # A machine booted from the medium is a demonstration or an installer, and
 # an "updates available" notification there offers an update nobody can keep.
 # A negative RequiredNotificationInterval stops Discover's notifier from ever
-# raising it; the tray icon still shows the state. The directory goes first
-# in XDG_CONFIG_DIRS, and only on the live medium.
+# raising it, and hides the tray icon for an available update as well; the
+# icon still appears while an update job runs or a restart is pending. The
+# directory goes first in XDG_CONFIG_DIRS, and only on the live medium.
 # ---------------------------------
 
 [Global]

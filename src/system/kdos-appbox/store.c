@@ -314,8 +314,12 @@ static int build_one(const CatPack *p, const CatPack *parent, int dry)
  * reach it.
  *
  * `--packs-dir` is the shape that fits: one directory per id, each holding
- * `usr/share/applications`, which is exactly what `podman cp` gives from a
- * built image. The directory NAME is the id the launcher table's third field
+ * the image's `usr/share/applications`, `usr/share/icons/hicolor` and
+ * `usr/share/pixmaps`, which is what `podman cp` gives from a built image.
+ * The icons are what genlaunchers copies out under the launcher id: without
+ * them a launcher keeps upstream's icon name, which no icon theme on the host
+ * carries, and the Start menu, the Task Manager and the Boxes page draw a
+ * generic icon. The directory NAME is the id the launcher table's third field
  * carries, so a launcher clicked here dispatches to the box that was created.
  *
  * EVERY INSTALLED APPLICATION IS RE-READ, not just the new one. The table,
@@ -353,6 +357,27 @@ static int extract_entries(const char *id, const char *root)
 		kb_argv_end(&c);
 		rc = kb_run(&c);
 	}
+	/* The icons, neither of them required: an image with no hicolor tree
+	 * or no pixmaps directory only leaves its launcher without them. */
+	{
+		static const char *const from[2] = { "/usr/share/icons/hicolor",
+						     "/usr/share/pixmaps" };
+		char to[sizeof(dir) + 8];
+
+		snprintf(to, sizeof(to), "%s/icons", dir);
+		kb_mkdir_p(to);
+		for (int i = 0; i < 2; i++) {
+			KbArgv c = {0};
+
+			snprintf(src, sizeof(src), "%s:%s", cid, from[i]);
+			kb_argv_add(&c, "podman");
+			kb_argv_add(&c, "cp");
+			kb_argv_add(&c, src);
+			kb_argv_add(&c, i ? dir : to);
+			kb_argv_end(&c);
+			kb_run(&c);
+		}
+	}
 	{
 		KbArgv r = {0};
 		kb_argv_add(&r, "podman");
@@ -365,8 +390,8 @@ static int extract_entries(const char *id, const char *root)
 }
 
 /*
- * Regenerate the user's launchers from every store box that exists AND every
- * installed app pack. Called after an install, an uninstall and an import,
+ * Regenerate the user's launchers from every store box made from its store
+ * image AND every installed app pack. Called after an install, an uninstall and an import,
  * and by `genlaunchers --packs --user`: the user tree is written whole, so a
  * regeneration from either source alone deletes the other's launchers. With
  * no catalogue or no podman answer it is the pack walk alone.
@@ -403,6 +428,18 @@ int store_launchers(void)
 	for (line = strtok_r(boxes, "\n", &save); line;
 	     line = strtok_r(NULL, "\n", &save)) {
 		const CatPack *p = cat_find(line);
+		Profile prof;
+		char img[sizeof(prof.base)];
+
+		/* A box whose profile names another base takes no entries from
+		 * the store image of its name. A box moved onto an imported
+		 * pack gets its launchers from the pack walk, and the image it
+		 * left behind would add a second launcher for the same program.
+		 * A profile with no base is a store box all the same. */
+		profile_load(&prof, line);
+		snprintf(img, sizeof(img), "image:%s%s", STORE_IMG_PREFIX, line);
+		if (prof.base[0] && strcmp(prof.base, img))
+			continue;
 
 		/* An app row, or a box of the Debian lane (`deb.<package>`,
 		 * which no row names). A runtime's applications directory is
@@ -444,6 +481,45 @@ int store_launchers(void)
 
 /* ── install ───────────────────────────────────────────────────────────── */
 
+/*
+ * ROOM FOR THE BUILD, ASKED BEFORE IT STARTS. A build that fills its
+ * filesystem fails part-way with apt's or podman's sentence about a write,
+ * and on a live session the filesystem is the RAM overlay: the whole session
+ * then runs out of memory to write to, with nothing having said so first.
+ *
+ * THE ESTIMATE IS EVERY ROW STILL TO BUILD. A row's `meta` size is its
+ * installed size, and the build holds the downloaded packages beside the
+ * unpacked ones, so it counts twice. The base and runtime rows carry measured
+ * sizes too; a row with no size counts STORE_ROW_FLOOR, which is what one
+ * measured on trixie (a base and rt-gtk under Mousepad took 692 MB together).
+ */
+#define STORE_ROW_FLOOR (384ULL << 20)
+
+static int store_room(const CatPack *const *chain, int n, const char *id)
+{
+	char dir[MAX_LINE];
+	unsigned long long need = 0, have;
+
+	for (int i = 0; i < n; i++)
+		if (!row_built(chain[i]->id))
+			need += chain[i]->bytes ? 2 * chain[i]->bytes
+						: STORE_ROW_FLOOR;
+	if (!need)
+		return 0;
+	podman_storage_dir(dir, sizeof(dir));
+	have = fs_free_bytes(dir);
+	if (!have || have >= need)
+		return 0;
+	fprintf(stderr, "  %s: not enough room — the build needs about %s and "
+		"%s is free where podman keeps its images", id,
+		kb_human_size(need), kb_human_size(have));
+	if (fs_in_memory(dir))
+		fprintf(stderr, ", which on this live session is the memory "
+			"overlay: everything the session writes shares it");
+	fputs("\n", stderr);
+	return -1;
+}
+
 int store_install(const char *id, int dry)
 {
 	const CatPack *chain[CAT_CHAIN_MAX];
@@ -465,6 +541,8 @@ int store_install(const char *id, int dry)
 		if (!row_built(nd[i]) && store_install(nd[i], dry) != 0)
 			fprintf(stderr, "  %s: its data row %s did not build\n",
 				id, nd[i]);
+	if (!dry && store_room(chain, n, id) != 0)
+		return -1;
 
 	for (int i = 0; i < n; i++) {
 		if (done_this_run(chain[i]->id))
@@ -498,9 +576,14 @@ int store_install(const char *id, int dry)
 	kb_argv_add(&a, id);
 	kb_argv_addf(&a, "base=image:%s%s", STORE_IMG_PREFIX, id);
 	kb_argv_end(&a);
-	if (kb_run(&a) != 0) {
-		fprintf(stderr, "  %s: the image built and the box did not\n", id);
-		return -1;
+	{
+		char why[512];
+
+		if (run_last_line(&a, why, sizeof(why)) != 0) {
+			fprintf(stderr, "  %s: the image built and the box did "
+				"not: %s\n", id, why);
+			return -1;
+		}
 	}
 
 	store_launchers();
@@ -571,18 +654,51 @@ static int still_wanted(const char *img_id, const char *dropped)
 	return 0;
 }
 
+/*
+ * THE BOX GOES BEFORE ITS IMAGE: STOPPED, THEN REMOVED. `exists` is what
+ * `podman container exists` returned for it, 0 or 1.
+ *
+ * A box outlives its application's last window — it stops on its own later —
+ * and `kdos-box remove` refuses a running one, so the stop sequence runs
+ * first, and an uninstall right after quitting the app goes through. A box
+ * installed and never started has a profile and no container; `kdos-box
+ * remove` deletes that profile, without which `kdos-box list` keeps listing
+ * the box as `not created` after its app is gone. Returns 0 when the box is
+ * gone; otherwise it has said why, and the uninstall stops.
+ */
+static int drop_box(const char *box, int exists)
+{
+	KbArgv a = {0};
+
+	if (exists == 1) {
+		char *pp = profile_path(box);
+		int had = kb_path_exists(pp);
+
+		free(pp);
+		if (!had)
+			return 0;
+	} else if (box_stop_many(&box, 1, 10) != 0) {
+		fprintf(stderr, "kdos-appbox: %s did not stop\n", box);
+		return 1;
+	}
+	kb_argv_add(&a, "kdos-box");
+	kb_argv_add(&a, "remove");
+	kb_argv_add(&a, box);
+	kb_argv_end(&a);
+	return kb_run_tty(&a) != 0;
+}
+
 int store_uninstall(const char *id)
 {
 	const CatPack *chain[CAT_CHAIN_MAX];
-	KbArgv a = {0};
 	KbArgv q = {0};
 	int n, rc;
 
 	/* An image still holding a container cannot be removed, so a box that
-	 * refused to go ends the uninstall here; kdos-box has said why. One
-	 * that was never created (`podman container exists` exits 1) has
-	 * nothing to refuse. Any other status is a podman that could not tell,
-	 * and the uninstall stops before an image is touched. */
+	 * refused to go ends the uninstall here; kdos-box has said why. Any
+	 * status of `podman container exists` but 0 (a container) and 1 (none)
+	 * is a podman that could not tell, and the uninstall stops before an
+	 * image is touched. */
 	kb_argv_add(&q, "podman");
 	kb_argv_add(&q, "container");
 	kb_argv_add(&q, "exists");
@@ -595,22 +711,15 @@ int store_uninstall(const char *id)
 			"%s was not uninstalled\n", id, rc, id);
 		return rc;
 	}
-	if (rc == 0) {
-		kb_argv_add(&a, "kdos-box");
-		kb_argv_add(&a, "remove");
-		kb_argv_add(&a, id);
-		kb_argv_end(&a);
-		if (kb_run_tty(&a) != 0) {
-			fprintf(stderr, "kdos-appbox: %s was not uninstalled\n",
-				id);
-			return 1;
-		}
+	if (drop_box(id, rc) != 0) {
+		fprintf(stderr, "kdos-appbox: %s was not uninstalled\n", id);
+		return 1;
 	}
 
 	n = cat_chain(id, chain);
 	/* The application's own image first, then any runtime above the base
 	 * that nothing else needs. The base itself is never removed: it is
-	 * every chain's floor and 80 MB. */
+	 * every chain's floor and about 550 MB. */
 	for (int i = n - 1; i >= 1; i--) {
 		KbArgv r = {0};
 
@@ -706,6 +815,8 @@ int store_deb_install(const char *spec, int dry)
 				"install %s on\n", pkg);
 		return 1;
 	}
+	if (!dry && store_room(chain, n, spec) != 0)
+		return 1;
 	for (int i = 0; i < n; i++) {
 		if (!dry && row_built(chain[i]->id)) {
 			printf("    %s%s is already here\n", STORE_IMG_PREFIX,
@@ -737,10 +848,14 @@ int store_deb_install(const char *spec, int dry)
 	kb_argv_add(&a, box);
 	kb_argv_addf(&a, "base=image:%s%s", STORE_IMG_PREFIX, box);
 	kb_argv_end(&a);
-	if (kb_run(&a) != 0) {
-		fprintf(stderr, "  %s: the image built and the box did not\n",
-			spec);
-		return 1;
+	{
+		char why[512];
+
+		if (run_last_line(&a, why, sizeof(why)) != 0) {
+			fprintf(stderr, "  %s: the image built and the box did "
+				"not: %s\n", spec, why);
+			return 1;
+		}
 	}
 	store_launchers();
 	printf("==> %s installed\n", spec);
@@ -751,7 +866,7 @@ int store_deb_install(const char *spec, int dry)
 int store_deb_uninstall(const char *spec)
 {
 	char pkg[64], box[80];
-	KbArgv q = {0}, a = {0}, r = {0};
+	KbArgv q = {0}, r = {0};
 	int rc;
 
 	if (deb_name(spec, pkg, sizeof(pkg), box, sizeof(box)) != 0) {
@@ -770,16 +885,9 @@ int store_deb_uninstall(const char *spec)
 			"has a container; %s was not uninstalled\n", box, spec);
 		return 1;
 	}
-	if (rc == 0) {
-		kb_argv_add(&a, "kdos-box");
-		kb_argv_add(&a, "remove");
-		kb_argv_add(&a, box);
-		kb_argv_end(&a);
-		if (kb_run_tty(&a) != 0) {
-			fprintf(stderr, "kdos-appbox: %s was not uninstalled\n",
-				spec);
-			return 1;
-		}
+	if (drop_box(box, rc) != 0) {
+		fprintf(stderr, "kdos-appbox: %s was not uninstalled\n", spec);
+		return 1;
 	}
 	kb_argv_add(&r, "podman");
 	kb_argv_add(&r, "rmi");
@@ -1323,7 +1431,7 @@ int store_import(const char *archive, const char *const *ids, int n)
 	char *sel;
 	size_t sn = 0;
 	KbArgv t = {0};
-	int nw = 0, done = 0, failed = 0, staged_index;
+	int nw = 0, done = 0, failed = 0, skipped = 0, staged_index;
 
 	setvbuf(stdout, NULL, _IOLBF, 0);
 	if (!kb_path_exists(archive)) {
@@ -1375,6 +1483,19 @@ int store_import(const char *archive, const char *const *ids, int n)
 			continue;
 		}
 		printf("==> %s\n", id);
+		/* AN ID WHOSE BOX EXISTS IS SKIPPED, NOT FAILED. The create below
+		 * would refuse it as a duplicate — a store box of that name, or
+		 * the box an earlier import made — and installing its pack
+		 * first would leave a pack no box is made of. Moving such a box
+		 * onto this set's pack is `kdos-box remove <id>` and the import
+		 * again. */
+		if (box_exists(id)) {
+			printf("  %s: already installed (box %s exists — "
+			       "`kdos-box remove %s` first to take this set's "
+			       "pack)\n", id, id, id);
+			skipped++;
+			continue;
+		}
 		if (stage_and_install(kpack, staged_index ? index : NULL, got,
 				      sizeof(got)) != 0) {
 			failed++;
@@ -1389,11 +1510,29 @@ int store_import(const char *archive, const char *const *ids, int n)
 		kb_argv_add(&c, id);
 		kb_argv_addf(&c, "base=pack:%s", got[0] ? got : id);
 		kb_argv_end(&c);
-		if (kb_run(&c) != 0) {
-			fprintf(stderr, "  %s: the pack installed and the box "
-					"did not\n", id);
-			failed++;
-			continue;
+		/* A box that is not made takes its pack back out: an installed
+		 * pack no box is made of is hundreds of megabytes the person
+		 * was told did not import, and the next import of the same set
+		 * would find it in the way. */
+		{
+			char why[512], req[CAT_ID_MAX + 8], msg[256];
+
+			if (run_last_line(&c, why, sizeof(why)) != 0) {
+				fprintf(stderr, "  %s: the pack installed and the "
+					"box did not: %s\n", id, why);
+				snprintf(req, sizeof(req), "remove %s",
+					 got[0] ? got : id);
+				if (packd_ask(req, msg, sizeof(msg)) == 0)
+					fprintf(stderr, "  %s: its pack is removed "
+						"again\n", id);
+				else
+					fprintf(stderr, "  %s: its pack stays "
+						"installed: %s\n", id,
+						msg[0] ? msg : "kdos-packd "
+						"is not running");
+				failed++;
+				continue;
+			}
 		}
 		done++;
 	}
@@ -1410,7 +1549,11 @@ int store_import(const char *archive, const char *const *ids, int n)
 		kb_argv_end(&rm);
 		kb_run(&rm);
 	}
-	printf("==> %d imported, %d failed\n", done, failed);
+	if (skipped)
+		printf("==> %d imported, %d already installed, %d failed\n",
+		       done, skipped, failed);
+	else
+		printf("==> %d imported, %d failed\n", done, failed);
 	return failed ? 1 : 0;
 }
 

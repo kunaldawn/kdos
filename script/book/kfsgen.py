@@ -102,7 +102,12 @@
 # relative to its own file. A link to another page of docs/kfs becomes a
 # link to that page's anchor;
 # a link into docs/kdos or anywhere else in the tree becomes a link to the
-# file on GitHub. A link to an anchor that does not exist is printed as a
+# file on GitHub. With `--kdos-book PREFIX`, a link to a page of docs/kdos,
+# or to one of its directories that holds a README.md, becomes PREFIX plus
+# that page's path as kdos-doc installs it (`.md` to `.html`, a directory to
+# its README.html), fragment kept: kdos-doc gives every installed heading
+# GitHub's id, so the same fragment lands on both. Every other file of the
+# tree stays on GitHub, because the image carries no copy of it. A link to an anchor that does not exist is printed as a
 # warning and rendered as its text, because typst refuses a document with a
 # link to a missing label. A code span is found as CommonMark finds it (a
 # run of N backquotes closes only at the next run of exactly N), and a link
@@ -1272,9 +1277,10 @@ def include(root, arg, warn):
 
 
 class Book:
-    def __init__(self, root, data):
+    def __init__(self, root, data, kdos_book=None):
         self.root = root
         self.data = data
+        self.kdos_book = kdos_book
         self.warnings = []
         self.ids = set()
         self.units = []
@@ -1403,8 +1409,27 @@ class Book:
         if relr.startswith(".."):
             self.warn("%s: link %s leaves the tree" % (page.rel, target))
             return text
-        url = GITHUB + relr + (("#" + frag) if frag else "")
+        url = (self._kdos_book_url(absf) or GITHUB + relr) + (("#" + frag) if frag else "")
         return "%s[%s](<%s>%s)" % (bang, text, url, title)
+
+    def _kdos_book_url(self, absf):
+        """The installed KDOS book's copy of a docs/kdos page or directory,
+        or None when there is no installed book or no installed copy."""
+        if not self.kdos_book:
+            return None
+        kdos = os.path.join(self.root, "docs/kdos")
+        if absf != kdos and not absf.startswith(kdos + os.sep):
+            return None
+        rel = os.path.relpath(absf, kdos)
+        if os.path.isdir(absf):
+            if not os.path.isfile(os.path.join(absf, "README.md")):
+                return None
+            rel = os.path.normpath(os.path.join(rel, "README.html"))
+        elif rel.endswith(".md"):
+            rel = rel[:-3] + ".html"
+        else:
+            return None
+        return self.kdos_book + rel
 
 
 def code_spans(line):
@@ -2168,6 +2193,8 @@ def main():
     ap.add_argument("--root", default=".")
     ap.add_argument("--data")
     ap.add_argument("--out")
+    ap.add_argument("--kdos-book", metavar="PREFIX",
+                    help="send docs/kdos links to PREFIX<page>.html, the installed KDOS book")
     a = ap.parse_args()
     root = os.path.abspath(a.root)
     data = Data(a.data or os.path.join(root, BOOK, "data"))
@@ -2182,7 +2209,7 @@ def main():
     optional = load_optional(root, ports)
     phase_by = {ph.name: ph for ph in phases}
 
-    book = Book(root, data)
+    book = Book(root, data, a.kdos_book)
     for n in sorted(data.tier_a - set(ports)):
         book.warn("tier-a.txt names %s, which is not a port" % n)
     pages = {}

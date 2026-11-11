@@ -3,9 +3,10 @@
 Qt Creator is the Qt project's IDE for C++, QML and Python: an editor with a clangd code model,
 CMake and qmake project support, a debugger front end for [gdb](#port-gdb), the Clang-Tidy and
 Clazy runners, and a perf profiler. In KDOS its code model uses the [clang](#port-clang) port's
-libraries at build time and its `clangd` at run time. The help viewer shows installed Qt
+libraries at build time and its `clangd` at run time. The help viewer shows Qt
 documentation (`.qch` files) through the bundled litehtml renderer, so the port needs no
-QtWebEngine.
+QtWebEngine. No port installs any `.qch` file, as QDoc is not built in
+[qt6-qttools](#port-qt6-qttools), so Help mode and the Welcome page's example list start empty.
 
 ## Flags
 

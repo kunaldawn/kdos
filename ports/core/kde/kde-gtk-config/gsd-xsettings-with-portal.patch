@@ -1,0 +1,25 @@
+Subject: Serve org.gtk.Settings whatever GTK_USE_PORTAL says
+
+GTK_USE_PORTAL=1 tells GTK 3 programs to use the portal file chooser and
+print dialog; it says nothing about kded. GTK 3 on Wayland takes
+gtk-modules only from the Modules property of org.gtk.Settings, so a
+session that exports the variable gets no org.gtk.Settings, never loads
+colorreload-gtk-module, and a running GTK 3 program does not repaint when
+the colour scheme changes. Create the settings manager on every Wayland
+session.
+
+diff --git a/kded/gtkconfig.cpp b/kded/gtkconfig.cpp
+index b1f7ad5..38a1f39 100644
+--- a/kded/gtkconfig.cpp
++++ b/kded/gtkconfig.cpp
+@@ -44,7 +44,9 @@ GtkConfig::GtkConfig(QObject *parent, const QVariantList &)
+     dbus.registerService(QStringLiteral("org.kde.GtkConfig"));
+     dbus.registerObject(QStringLiteral("/GtkConfig"), this, QDBusConnection::ExportScriptableSlots);
+ 
+-    if (qgetenv("GTK_USE_PORTAL") != "1" && KWindowSystem::isPlatformWayland()) {
++    // GTK 3 on Wayland reads gtk-modules only from org.gtk.Settings, so without this service
++    // colorreload-gtk-module never loads and a running GTK 3 program keeps its old colours
++    if (KWindowSystem::isPlatformWayland()) {
+         m_gsdXsettingsManager = new GSDXSettingsManager(this);
+     }
+ 

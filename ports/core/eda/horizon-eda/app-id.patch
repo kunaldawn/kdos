@@ -1,0 +1,30 @@
+Subject: Use the desktop entry's name, org.horizon_eda.HorizonEDA, as the Wayland app id
+
+The project manager and the editor both set the program name to
+org.horizon_eda.HorizonEDA, the name of the desktop entry Horizon installs, in
+place of horizon-eda (the editor) and the executable's name (the manager).
+
+--- a/src/imp/imp.cpp
++++ b/src/imp/imp.cpp
+@@ -971,7 +971,8 @@
+ 
+     Gtk::Window::set_default_icon_name("horizon-eda");
+ 
+-    Glib::set_prgname("horizon-eda"); // Fixes icons on wayland
++    // The Wayland app id: the desktop entry the compositor finds the icon in.
++    Glib::set_prgname("org.horizon_eda.HorizonEDA");
+ 
+     app->signal_startup().connect([this, app] {
+         app->add_window(*main_window);
+--- a/src/pool-prj-mgr/pool-prj-mgr-app.cpp
++++ b/src/pool-prj-mgr/pool-prj-mgr-app.cpp
+@@ -207,6 +207,9 @@
+     Gtk::IconTheme::get_default()->add_resource_path("/org/horizon-eda/horizon/icons");
+     Gtk::Window::set_default_icon_name("horizon-eda");
+ 
++    // The Wayland app id: the desktop entry the compositor finds the icon in.
++    Glib::set_prgname("org.horizon_eda.HorizonEDA");
++
+     auto cssp = Gtk::CssProvider::create();
+     cssp->load_from_resource("/org/horizon-eda/horizon/global.css");
+     Gtk::StyleContext::add_provider_for_screen(Gdk::Screen::get_default(), cssp, 700);

@@ -19,8 +19,8 @@ and why windows float rather than tile by default is in
 | What | File | Read by |
 |---|---|---|
 | Four virtual desktops in one row, one window switcher entry per application, the input method, the auto-tiler's switch | `/usr/share/kdos/xdg/kwinrc` | KWin |
-| Centred placement, the thumbnail-grid window switcher, the Breeze decoration at normal borders | Each global theme's `contents/defaults` | Plasma, which writes them into the account's defaults when the theme is applied |
-| Square corners, the outline, the title alignment | `/usr/share/kdos/xdg/breezerc` | The Breeze decoration |
+| Centred placement, the thumbnail-grid window switcher, the Breeze decoration with no side or bottom border | Each global theme's `contents/defaults` | Plasma, which writes them into the account's defaults when the theme is applied |
+| Square corners, the accent outline, the title alignment | `/usr/share/kdos/xdg/breezerc` | The Breeze decoration, through the two options the `breeze` port's patch adds |
 | The shortcuts KDOS adds or moves | `/usr/share/kdos/xdg/kglobalshortcutsrc` | `plasma-workspace/env/kdos-shortcuts.sh`, which seeds them into the account's own file at login |
 | The colour of each box's title bars | `~/.config/kwinrulesrc`, groups `kdos-box-<box>` | KWin's window rules |
 | Window memory, run-or-raise, the key card | KWin scripts and a KWin effect under `/usr/share/kwin/` | KWin |
@@ -46,21 +46,47 @@ global theme sets `kwinrc [Windows] Placement=Centered`, which is also KWin's ow
 client cannot choose its own position, so on KDOS where a window first appears is always KWin's
 decision, or the window memory's below.
 
+KWin places a window once, at its first size, and a program's later resize keeps the top-left
+corner. A window whose first size is a placeholder — a 1x1 X11 window, a Wayland surface whose first
+commit is tiny — would keep its top-left at the centre of the screen and grow off the bottom right,
+under the panel. The window memory script centres such a window again when it takes its real size,
+inside the usable area, within two seconds of opening and only while nobody has moved it. A window
+with no record that a program sizes larger than the usable area — Chromium's first window is taller
+than the screen — is moved and shrunk into the area in the same two seconds. A program
+whose first window is only as large as its widgets' minimum keeps that size; see
+[Known gaps](../06-reference/known-gaps.md#some-programs-open-their-first-window-at-their-minimum-size).
+
 ## Window memory
 
 `kwin-script-kdos-window-memory` makes a program's window open where its last window closed, at the
 same size, and maximised when it closed maximised. It is a KWin script, on by default and turned off
 on System Settings' KWin Scripts page. It records one place per program, keyed by the window's
-desktop-file name (its class when it has none), in `$XDG_STATE_HOME/kdos/window-memory`, most
-recent first and at most 200 programs; the file is written through a temporary file and a rename,
-so a crash leaves the old record or the new one.
+desktop-file name (its class when it has none), with the device pixel ratio of the screen it was on,
+in `$XDG_STATE_HOME/kdos/window-memory`, most recent first and at most 200 programs; the file is
+written through a temporary file and a rename, so a crash leaves the old record or the new one.
+
+The rectangle it records is the one a window has while it floats. KWin reports a commit's new frame
+before its new maximised or full-screen state, so the script reads a window's state once the commit
+is done, and a window maximised by a double-click on its title still has its own rectangle
+remembered.
 
 What it leaves alone:
 
-- a window that opens maximised, full screen or tiled;
-- a dialog, a panel, or any window that is not a program's ordinary top-level window, because a
-  dialog carries its parent's application id and remembering one would put the next document
-  window where the last dialog was;
+- a window that opens maximised, full screen or tiled, as its program or a rule asked; its first
+  restore goes to the remembered rectangle, which KWin has none of for a window that never floated;
+- a dialog, a panel, a window that cannot be resized, or any window that is not a program's ordinary
+  top-level window, because a dialog carries its parent's application id and remembering one would
+  put the next document window where the last dialog was. A Wayland client's window carries no
+  type, so a parentless message box or notice is told apart only by its fixed size;
+- a prelude, such as a splash screen or a first-run notice: a window its process closes within
+  three seconds before opening the next, or within three seconds after opening the next beside it.
+  Its rectangle is not recorded, and the program's record is marked as one that opens with a
+  prelude. The first window of that program's next launch is then left where KWin places it, at its
+  own size, and the window that follows it within three seconds, or opens beside it, is restored. A
+  first window that stays open longer than that and has no successor was the program's own: closing
+  it records its rectangle and clears the mark. The costs are one missed update when a program
+  closes a window and opens another within three seconds, and one launch left where KWin places it
+  after a program stops showing its splash or notice;
 - a window whose remembered top-left corner is within eight pixels of an open window of the same
   program's, which would hide that window; KWin's own placement handles it;
 - the programs on its exclusion list, which place their own windows or are prompts: the panel,
@@ -68,11 +94,15 @@ What it leaves alone:
   video bridge.
 
 A remembered place is moved and shrunk into the usable area of the screen nearest to it, so a
-window remembered on a screen that is gone, or on a wider one, opens whole on one that is there. A
-window rule that forces a position wins over it, because KWin refuses the move. Two settings in
-`kwinrc [Script-kdos_window_memory]` change it: `Exclude`, a comma-separated list of application ids
-that replaces the built-in one, and `RememberDesktop`, off by default, which also moves a window
-back to the virtual desktop it closed on.
+window remembered on a screen that is gone, or on a wider one, opens whole on one that is there. The
+shrink is not remembered: while the window keeps the rectangle it was given, its record keeps the
+remembered one, and only a size the person or the program then sets replaces it. A record made at
+another device pixel ratio gives the place only, and the window keeps the size its program picked
+for this ratio, because a logical size from another scale is too large or too small there, and an
+X11 client handed one is cut off. A window rule that forces a position wins over it, because KWin
+refuses the move. Two settings in `kwinrc [Script-kdos_window_memory]` change it: `Exclude`, a
+comma-separated list of application ids that replaces the built-in one, and `RememberDesktop`, off
+by default, which also moves a window back to the virtual desktop it closed on.
 
 ## Snapping and custom tiles
 
@@ -112,10 +142,11 @@ windows floating on the rest. Krohnkite itself names the desktops it ignores
 desktop's name, read from KWin; it therefore needs a running session. A plain `on` clears the list.
 
 Krohnkite's own default shortcuts collide with keys KDE and KDOS already use, so the shipped
-`kglobalshortcutsrc` leaves seven of them unbound: Focus Next (Meta+., the emoji picker), Focus
-Right (Meta+L, the lock), Decrease (Meta+D, Show Desktop), Rotate and Rotate Part (Meta+R and
-Meta+Shift+R, Spectacle's recording), Set Master (Meta+Return, Konsole) and Select Layout – Tile
-(Meta+T, the tile editor). Each can be bound on the Shortcuts page. The key card leaves out
+`kglobalshortcutsrc` leaves eight of them unbound: Focus Next (Meta+., the emoji picker), Focus
+Right (Meta+L, the lock), Decrease (Meta+D, Show Desktop), Increase (Meta+I, System Settings),
+Rotate and Rotate Part (Meta+R and Meta+Shift+R, Spectacle's recording), Set Master (Meta+Return,
+Konsole) and Select Layout – Tile (Meta+T, the tile editor). Each can be bound on the Shortcuts
+page. The key card leaves out
 Krohnkite's rows while the script is off, because kglobalaccel goes on listing a script's keys after
 it is unloaded.
 
@@ -139,6 +170,7 @@ but no activity switcher is offered: its key, Meta+Q, closes a window instead.
 | Alt+\`, Meta+\` | Walk the windows of the current application |
 | Meta+1 to Meta+9 | The task manager's entry in that position |
 | Meta+D | Show the desktop |
+| Meta+F9, Meta+F10, Meta+F7 | Present Windows: the windows of this desktop, of every desktop, or of the current application (Ctrl+F9, Ctrl+F10 and Ctrl+F7 too) |
 
 ## Run or raise
 
@@ -157,8 +189,11 @@ its windows it moves to the next, so repeated presses walk all of them.
 | Meta+Shift+W | `micro`, the editor |
 
 Konsole gives every window one application id, so a program's window is found by its caption: a
-window the key opened runs `konsole -p tabtitle=<program> -e <program>`, and a window opened any
-other way carries Konsole's own tab title `<directory> : <program>`; both are matched. A KWin
+window the key opened runs `konsole --hold -p tabtitle=<program> -e <program>`, and a window opened
+any other way carries Konsole's own tab title `<directory> : <program>`; both are matched.
+`--hold` keeps the window, and whatever the program printed, after it exits, so a program that
+cannot start leaves its error readable; the held window keeps its caption and the key raises it
+until it is closed. A KWin
 script cannot start a program, so each program has a desktop entry under `/usr/share/kglobalaccel`
 that the script invokes over D-Bus to open a window. The keys are KWin actions and can be changed on
 the Shortcuts page.
@@ -178,7 +213,7 @@ free, and moves two of KDE's:
 | Meta+Shift+T | Toggle auto-tiling | None |
 | Shift+Print, Meta+Shift+S | Spectacle: a rectangular region (beside Meta+Shift+Print) | None |
 | Alt+Print, Meta+R | Spectacle: record a region (beside Meta+Shift+R) | None |
-| Meta+Ctrl+Shift+N | Turn Night Light on or off | None |
+| Meta+Ctrl+Shift+N | Turn Night Light on, warm all day, or off (`kdos toggle night-light`) | None; KWin's Suspend/Resume Night Light stays without a key |
 
 Print opens Spectacle. Phosphor mode has no key, so a stray chord cannot flash the whole screen.
 Meta+Space is also fcitx5's default key for switching input-method groups; KWin sees every key
@@ -189,19 +224,22 @@ kglobalaccel reads only the account's own `~/.config/kglobalshortcutsrc`, never 
 configuration directory, so `plasma-workspace/env/kdos-shortcuts.sh` copies each shipped entry into
 it at login, once per entry and only where the account has no value of its own; a key a person
 changes or resets stays as they set it. `testing/chordcheck.py` fails a chord with two owners
-among everything KDOS ships, KDE's defaults and fcitx5's.
+among everything KDOS ships, KDE's defaults and fcitx5's, and a chord a script that is off would
+take once KDOS's own switch for it turns it on.
 
 The **key card** (`kwin-effect-kdos-keys`) is a full-screen, searchable card of every global
 shortcut the session holds, grouped into Windows, Desktops, Launch, KDOS, Accessibility and System.
 It asks kglobalaccel each time it opens, so a chord changed on the Shortcuts page is on the card
-the next time, and it opens under software rendering too.
+the next time, and it opens under software rendering too. Tab and the arrow keys walk its rows,
+and a screen reader speaks each as its action and keys.
 
 ## Window rules KDOS writes
 
 A boxed application's windows are told apart from the host's by the box's colour. `kdos-appbox`
 writes one KWin window rule per box into `~/.config/kwinrulesrc`, in a group named
 `kdos-box-<box>`, which forces the title bar's colour scheme: `KDOS<Title>` of the accent in the
-box's profile (`accent =` in `~/.config/kdos/boxes/<box>.conf`), or `KDOSBox` for a box with none.
+box's profile (`accent =` in `~/.config/kdos/boxes/<box>.conf`), or `KDOSBox` for a box with none,
+whose grey title bar is lighter than any accent's.
 
 The rule is per box and not per application because of how KWin names a sandboxed window: it
 replaces the window's own application id with the security context's app id, which `kdos-boxsock`
@@ -223,7 +261,8 @@ do and do not guarantee is in [Sandboxed clients](security-model.md#sandboxed-cl
 Screens are arranged by KScreen, on System Settings' Display Configuration page, which writes the
 layout per set of connected screens and restores it when the same set returns. A new window opens on
 the screen that has the focus. The window memory moves a remembered window onto the nearest screen
-that exists. The `kdos-addons` set carries `org.kdos.activescreen`, a KWin script, off until it is
+that exists, and at its remembered size only when that screen has the pixel ratio it was remembered
+at. The `kdos-addons` set carries `org.kdos.activescreen`, a KWin script, off until it is
 enabled on the KWin Scripts page, that opens each new window on the screen under the pointer
 instead, and `org.kdos.pinpip`, which keeps a browser's picture-in-picture video above every window
 on every desktop.

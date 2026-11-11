@@ -37,6 +37,20 @@ void tracef(const char *fmt, ...);
 void notify(const char *summary, const char *body);
 unsigned long long proc_start_time(long pid);
 
+/* Where writes to `path` land, asked of its nearest existing directory. A
+ * live session's $HOME is an overlay whose upper is RAM, and a box made there
+ * keeps its writes only as long as the session. */
+#define FS_OVERLAY_MAGIC 0x794c7630UL
+#define FS_TMPFS_MAGIC   0x01021994UL
+int  fs_in_memory(const char *path);	/* overlayfs or tmpfs */
+int  fs_is_overlay(const char *path);
+unsigned long long fs_free_bytes(const char *path);
+void podman_storage_dir(char *out, size_t n);
+/* Run with stderr captured; on a failure `why` is its last line that says
+ * something (podman's `Error: ` dropped), else the exit status. Returns the
+ * child's status. */
+int  run_last_line(const KbArgv *a, char *why, size_t n);
+
 /* ----------------------------------------------------------------- box.c */
 
 /*
@@ -124,6 +138,12 @@ int   profile_load(Profile *p, const char *box);
 int   profile_save(const Profile *p);
 int   profile_set(Profile *p, const char *kv);
 void  profile_print(const Profile *p);
+/* An accent as a person reads it: `none` for no accent, whose stored token is
+ * `session`. */
+const char *accent_shown(const char *accent);
+/* 1 for no accent or a libkcolor accent name; 0 for a name the title-bar rule
+ * cannot colour, which falls back to the neutral scheme. */
+int   accent_known(const char *accent);
 const char *persist_name(Persistence p);
 char *profile_path(const char *box);
 char *profile_home(const char *box);
@@ -161,9 +181,10 @@ int  box_name_ok(const char *s);
 /*
  * THE BOX'S PRIVATE RUNTIME DIRECTORY, $XDG_RUNTIME_DIR/kdos/box/<box>, is
  * what the box sees as its whole /run/user/<uid>: its tagged Wayland sockets,
- * its proxied bus, links to the audio sockets, the document portal, the
+ * its proxied bus, links to the audio sockets, the
  * accessibility bus when it is wanted and the X11 cookie when it is granted.
- * The session's `wayland-0` and `bus` are never in it.
+ * The session's Wayland socket (KWin's `wayland-1`) and `bus` are never in
+ * it.
  */
 #define BOX_PROXY_LEAF "dbus-proxy"
 
@@ -181,12 +202,9 @@ int  box_private_dir(const char *box, char *out, size_t n);
  * launch ledgers. Made before kdos-packd is asked anything, because the
  * daemon creates the same parent as root when it gets there first. */
 int  box_state_dir(char *out, size_t n);
-/*
- * Make the private directory and refresh what it links. `start` adds the
- * work worth doing only when a container is about to start: the document
- * portal's mount point. Returns 0, or -1 with the reason printed.
- */
-int  rundir_prepare(const Profile *p, const char *pack, int start);
+/* Make the private directory and refresh what it links. Returns 0, or -1
+ * with the reason printed. */
+int  rundir_prepare(const Profile *p, const char *pack);
 /* The audio and accessibility sockets, linked into the private directory.
  * Idempotent; the keeper runs it again whenever one of them is replaced. */
 void rundir_link_sockets(const char *box, int audio, int a11y);
@@ -291,11 +309,19 @@ int  boxes_selftest(void);
 
 int  box_exists(const char *box);
 int  box_state(const char *box, char *buf, size_t n);
-/* Wait a `stopping` container out, then force it back to a startable state.
- * Answers 0 (it was not stuck), 1 (it settled on its own), 2 (killed),
- * 3 (a pack box, removed, so the caller must create it again) or 4 (any
- * other box, still stuck and kept, because its writes are in the container). */
+/* Force a `stopping` container back to a startable state with the stop
+ * sequence. Answers 0 (it was not stuck), 2 (killed), 3 (a pack box, removed,
+ * so the caller must create it again) or 4 (any other box, still stuck and
+ * kept, because its writes are in the container). */
 int  box_unstick(const char *box, char *state, size_t n);
+/* `sig` to every process of the box but its init — the applications its
+ * launches started — by the init's mount namespace, or by KDOS_BOX once the
+ * init is gone. Signal 0 counts them. Returns how many were signalled. */
+int  box_signal_all(const char *box, int sig);
+/* Stop boxes without `podman stop`: SIGTERM to the applications and the init,
+ * `grace` seconds, then SIGKILL and three more. Returns how many are still
+ * up. */
+int  box_stop_many(const char *const *boxes, int n, int grace);
 int  box_create(const Profile *p);
 int  box_list(void);
 int  box_setup_done(const char *box);
@@ -332,6 +358,14 @@ int  pack_box_create(const Profile *p, const char *merged,
 		     const char *const *extra, int nextra, int sealed);
 int  pack_box_ensure(const char *box, const char *id);
 int  pack_box_start(const char *box);
+/* Why the last create or start failed: podman's last line, or this program's
+ * own reason; never empty. */
+const char *pack_box_error(void);
+void pack_box_set_error(const char *fmt, ...)
+	__attribute__((format(printf, 1, 2)));
+/* Run podman with its stderr captured. On a failure its last line is printed
+ * against `box` and kept for pack_box_error(); returns podman's status. */
+int  podman_run_reason(const KbArgv *a, const char *box);
 
 /* ----------------------------------------------------------------- app.c */
 

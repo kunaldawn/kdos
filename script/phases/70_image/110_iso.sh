@@ -305,10 +305,20 @@ fi
 # entry, the clean session and memtest86+, and a machine that will not boot
 # needs one of those. A countdown short enough to miss makes them unreachable
 # on exactly the machine that needs them, which costs far more than the wait.
-# Any keypress cancels it and leaves the menu up indefinitely.
+# Up or Down stops it and leaves the menu up indefinitely; Enter, Space and
+# Right boot the highlighted entry at once, as Limine reads them as "boot" even
+# while it counts down.
 #
 # `timeout: 0` is NOT an immediate boot with a menu; it boots the default entry
 # without drawing one at all, and those entries become unreachable.
+#
+# THE VERBOSE ENTRY PUTS THE BOOT ON THE SCREEN. /dev/console is the LAST
+# console=, so the quiet entries name ttyS0 last and the screen stays the
+# splash's; the verbose entry names tty0 last, so the initramfs's and rcS's
+# output reach the screen as well as the kernel's. It leaves out `quiet`, and
+# kdos-splash draws nothing on a command line without it — a splash there
+# would cover the text this entry exists to show. `loglevel=7` holds for the
+# whole boot: 20_dmesg.sh leaves a level the command line set alone.
 BOOT_THEME=$(kdos-bootctl theme --print "$KDOS_ACCENT")
 
 cat > $ISO_ROOT/boot/limine/limine.conf <<EOF
@@ -334,11 +344,11 @@ $FONT_LINES
     cmdline: root=/dev/ram0 rw console=tty0 console=ttyS0 quiet loglevel=3 nopersist
 
 /KDOS Live (verbose)
-    comment: Every kernel message on the console
+    comment: Every kernel and boot message on the screen, no splash
     protocol: linux
     path: boot():/boot/vmlinuz
     module_path: boot():/boot/initramfs.cpio.gz
-    cmdline: root=/dev/ram0 rw console=tty0 console=ttyS0 loglevel=7
+    cmdline: root=/dev/ram0 rw console=ttyS0 console=tty0 loglevel=7
 EOF
 
 # 3b. memtest86+, and it is a MENU ENTRY rather than a program because bad RAM

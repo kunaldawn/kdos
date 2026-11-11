@@ -29,6 +29,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <grp.h>
 #include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -89,7 +90,7 @@ static const struct {
 	{ "Format",      "encrypt and make the volume group if asked, then the filesystems" },
 	{ "Mount",       "attach the target at " TARGET },
 	{ "Copy system", "the live system, without the live session" },
-	{ "Packs",       "the applications chosen from the medium" },
+	{ "Packs",       "the chosen applications, recorded for the first login" },
 	{ "Configure",   "fstab, hostname, keyboard, login screen, services" },
 	{ "Accounts",    "users, passwords, sudo, the home" },
 	{ "Theme",       "the accent and the desk the first login takes" },
@@ -177,6 +178,30 @@ static void shield_from_oomd(void)
 	close(fd);
 }
 
+/*
+ * THE LOG IS READABLE BY `wheel`, mode 0640, so the live session's account,
+ * an administrator, can open the file the window's Done page names. It
+ * holds commands and their output and never a secret: passwords and the
+ * passphrase reach their programs on a pipe, never in argv, and nothing
+ * logs them. Set on every open, because O_CREAT's mode reaches only a new
+ * file.
+ */
+static int open_log(void)
+{
+	int fd = open("/var/log/kinstall.log",
+		      O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0640);
+	struct group *g;
+
+	if (fd < 0 || geteuid() != 0)
+		return fd;
+	g = getgrnam("wheel");
+	if (g && fchown(fd, 0, g->gr_gid) == 0)
+		fchmod(fd, 0640);
+	else
+		fchmod(fd, 0600);
+	return fd;
+}
+
 void install_start(int from_step)
 {
 	int fds[2];
@@ -189,8 +214,7 @@ void install_start(int from_step)
 	if (!inst.log)
 		inst.log = kb_calloc(LOG_LINES, LOG_COLS);
 	if (!inst.logfd)
-		inst.logfd = open("/var/log/kinstall.log",
-				  O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0600);
+		inst.logfd = open_log();
 	if (inst.logfd <= 0)
 		inst.logfd = -1;
 
@@ -852,18 +876,45 @@ static void release_disk(const char *disk)
 /* ──────────────────────────────────────────────────────────────────────── */
 
 static double rsync_total_pct;
+/* What the running copy will carry in all, for the note's "of"; 0 when it
+ * was not measured. */
+static unsigned long long rsync_total_bytes;
+
+/* rsync's progress2 byte count, which it prints with thousands separators
+ * when run without -h: 10,544,196,181. */
+static unsigned long long rsync_bytes(const char *s)
+{
+	unsigned long long v = 0;
+
+	for (; *s; s++) {
+		if (*s == ',')
+			continue;
+		if (!isdigit((unsigned char)*s))
+			break;
+		v = v * 10 + (unsigned long long)(*s - '0');
+	}
+	return v;
+}
 
 static void rsync_parse(const char *line)
 {
-	/*   1.23G  45%  45.67MB/s    0:00:12 (xfr#123, to-chk=456/789) */
+	/* 10,544,196,181  45%  45.67MB/s    0:00:12 (xfr#123, to-chk=456/789) */
 	char size[32], pct[16], speed[32], eta[32];
 	int n = sscanf(line, "%31s %15s %31s %31s", size, pct, speed, eta);
 	if (n >= 3 && strchr(pct, '%')) {
+		unsigned long long done = rsync_bytes(size);
 		int p = atoi(pct);
+
 		rsync_total_pct = p / 100.0;
 		emit('P', "%.4f", rsync_total_pct);
-		emit('N', "%s copied  %s  ETA %s", size, speed,
-		     n >= 4 ? eta : "--:--:--");
+		if (rsync_total_bytes)
+			emit('N', "%s of %s, %s, about %s left",
+			     kb_human_size(done), kb_human_size(rsync_total_bytes),
+			     speed, n >= 4 ? eta : "--:--:--");
+		else
+			emit('N', "%s copied, %s, about %s left",
+			     kb_human_size(done), speed,
+			     n >= 4 ? eta : "--:--:--");
 		return;
 	}
 	if (line[0] && line[0] != ' ')
@@ -1157,6 +1208,8 @@ static void do_prepare(void)
 		fail("%s has gone away", cfg.disk);
 	if (geteuid() != 0)
 		fail("kinstall must run as root");
+	if (ki_target_check(why, sizeof(why)))
+		fail("%s", why);
 
 	if (cfg.luks && !kb_have_prog("cryptsetup"))
 		fail("cryptsetup is not installed — cannot create an encrypted "
@@ -1653,6 +1706,7 @@ static void do_copy(void)
 	emit('N', "copying the live tree");
 	emit('P', "0");
 	rsync_total_pct = 0;
+	rsync_total_bytes = ki_need_bytes();
 
 	/* 24 is "some files vanished before transfer" — on a live system with
 	 * a running session that is the normal case, not a failure. */
@@ -1675,21 +1729,12 @@ static void do_copy(void)
 /*
  * The chosen applications.
  *
- * NOTHING IS BAKED ONTO THE MEDIUM, so there is no copy to make. What this
- * does depends on what `ki_apps_route()` decided, and the Applications page
- * has already SAID which — a person must not discover at first boot that
- * nothing was installed.
- *
- *   import   an exported set on a mounted device, run through the live
- *            session's `kdos-appbox import` with no target root: the packs
- *            land in the live store and end with it, and the target gets
- *            only the empty store below. Offline.
- *   network  `kdos-appbox install` in the live session, with no target root:
- *            what it builds lands in the live store, as with import.
- *   pending  recorded in /var/lib/kdos/apps-pending; the first session offers
- *            them. Building is podman and apt and can be most of an hour, and
- *            an installer that did that silently is an installer that appears
- *            to have hung.
+ * NOTHING IS BAKED ONTO THE MEDIUM, and nothing is built here: `kdos-appbox`
+ * has no target root, so an import or a build run now would land in the live
+ * session's pack store and container storage and end with the medium. The
+ * selection is recorded in the target's /var/lib/kdos/apps-pending, and the
+ * first login offers to build it; `kdos app install --pending` does the same
+ * from a terminal.
  *
  * EITHER WAY THE STORE'S DIRECTORIES ARE MADE. kdos-packd sets the staging
  * mode at startup, but a first boot that inherited 0755 would refuse an import
@@ -1697,7 +1742,8 @@ static void do_copy(void)
  */
 static void do_apps(void)
 {
-	int route = ki_apps_route();
+	KbBuf b = {0};
+	char path[512];
 	int n = 0;
 
 	mkpath("%s/var/lib/kdos/packs", TARGET);
@@ -1709,68 +1755,28 @@ static void do_apps(void)
 	for (int i = 0; i < ki_ngroup; i++)
 		if (ki_group[i].chosen)
 			n++;
-	if (route == APPS_NONE || !n) {
+	if (ki_apps_route() == APPS_NONE || !n) {
 		emit('L', "no applications chosen");
 		emit('P', "1");
 		return;
 	}
 
-	if (route == APPS_IMPORT) {
-		KbArgv a = {0};
-
-		emit('N', "importing %s", ki_apps_archive);
-		kb_argv_add(&a, "kdos-appbox");
-		kb_argv_add(&a, "import");
-		kb_argv_add(&a, ki_apps_archive);
-		kb_argv_end(&a);
-		if (!cfg.dry_run && kb_run(&a) != 0) {
-			/* NOT `fail`. The system is installed and bootable;
-			 * an archive that would not import is a reason to say
-			 * so and carry on, not to abandon a disk mid-install
-			 * and leave a machine with no operating system. */
-			emit('W', "the set would not import — the selection is "
-				  "recorded instead");
-			route = APPS_PENDING;
-		} else {
-			emit('L', "imported from %s", ki_apps_archive);
-		}
-	} else if (route == APPS_NETWORK) {
-		KbArgv a = {0};
-
-		emit('N', "building %d group(s) — this takes minutes", n);
-		kb_argv_add(&a, "kdos-appbox");
-		kb_argv_add(&a, "install");
-		for (int i = 0; i < ki_ngroup; i++)
-			if (ki_group[i].chosen)
-				kb_argv_add(&a, ki_group[i].id);
-		kb_argv_end(&a);
-		if (!cfg.dry_run && kb_run(&a) != 0) {
-			emit('W', "some did not build — the selection is "
-				  "recorded for the first login");
-			route = APPS_PENDING;
-		} else {
-			emit('L', "%d group(s) built", n);
-		}
-	}
-
-	if (route == APPS_PENDING) {
-		KbBuf b = {0};
-		char path[512];
-
-		kb_buf_printf(&b, "# Chosen during the install and not yet "
-				  "built.\n# `kdos app install --pending` "
-				  "builds them.\n");
-		for (int i = 0; i < ki_ngroup; i++)
-			if (ki_group[i].chosen)
-				kb_buf_printf(&b, "%s\n", ki_group[i].id);
-		snprintf(path, sizeof(path), "%s/var/lib/kdos/apps-pending",
-			 TARGET);
-		mkpath("%s/var/lib/kdos", TARGET);
-		if (!cfg.dry_run)
-			kb_write_all(path, b.p, b.n);
-		kb_buf_free(&b);
-		emit('L', "%d group(s) recorded for the first login", n);
-	}
+	kb_buf_printf(&b, "# Chosen during the install and not yet "
+			  "built.\n# `kdos app install --pending` "
+			  "builds them.\n");
+	for (int i = 0; i < ki_ngroup; i++)
+		if (ki_group[i].chosen)
+			kb_buf_printf(&b, "%s\n", ki_group[i].id);
+	snprintf(path, sizeof(path), "%s/var/lib/kdos/apps-pending", TARGET);
+	mkpath("%s/var/lib/kdos", TARGET);
+	if (!cfg.dry_run && kb_write_all(path, b.p, b.n) < 0)
+		emit('W', "the chosen applications could not be recorded in %s "
+			  "— install them from Discover after the first login",
+		     path);
+	else
+		emit('L', "%s %d group(s) for the first login: %s",
+		     cfg.dry_run ? "would record" : "recorded", n, cfg.apps);
+	kb_buf_free(&b);
 	emit('P', "1");
 }
 
@@ -1801,7 +1807,13 @@ static void do_config(void)
 	}
 	if (!root_uuid[0] && !cfg.dry_run)
 		fail("cannot read a UUID back from %s", part_root);
-	logf_("root UUID %s", root_uuid);
+	/* The root is always formatted, so what a dry run reads from it is the
+	 * filesystem mkfs would replace: only a real run has the UUID to log. */
+	if (root_uuid[0] && !cfg.dry_run)
+		logf_("root UUID %s", root_uuid);
+	else
+		logf_("root UUID: read back from %s after mkfs, which a dry "
+		      "run does not run", part_root);
 
 	/* fstab is never replaced: the installer's root, ESP, home and swap
 	 * lines go first and the shipped file follows them. The shipped file
@@ -2180,9 +2192,9 @@ static void do_accounts(void)
 	const char *uhash = NULL, *rhash = NULL;
 
 	if (cfg.oem) {
-		/* No account: the first person makes one in plasma-setup. Root
-		 * stays locked, as the image ships it; the account plasma-setup
-		 * makes is an administrator. */
+		/* No account: the first person makes one in plasma-setup, and
+		 * the account it makes is an administrator. Root keeps the
+		 * image's lock unless the answers gave it a password. */
 		emit('N', "removing the live account for the first boot's setup");
 		drop_account("kdos");
 		rewrite_accounts("kdos", "kdos", "KDOS User", NULL,
@@ -2269,6 +2281,10 @@ static void do_slotb(void)
 	static const int ok[] = { 0 };
 	emit('N', "copying slot A into slot B");
 	emit('P', "0");
+	rsync_total_pct = 0;
+	rsync_total_bytes = (ki_sys.payload_kb > ki_sys.appbox_kb
+				     ? ki_sys.payload_kb - ki_sys.appbox_kb
+				     : 0) * 1024;
 	if (run_full(argv, NULL, rsync_parse, ok, 1))
 		fail("rsync into slot B failed");
 
@@ -2291,6 +2307,9 @@ static void do_slotb(void)
 				fail("cannot write %s/etc/fstab", TARGET_B);
 		} else if (!cfg.dry_run) {
 			fail("slot B's fstab names no root UUID=%s", a_uuid);
+		} else {
+			logf_("would write %s/etc/fstab with slot B's root UUID, "
+			      "read back after mkfs", TARGET_B);
 		}
 	}
 

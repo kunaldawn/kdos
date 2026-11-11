@@ -20,6 +20,7 @@ export XSLTPROC="xsltproc --maxdepth 10000"
 	--libdir=/usr/lib \
 	--localstatedir=/var \
 	--with-piddir=/run/samba \
+	--with-lockdir=/var/lib/samba/lock \
 	--with-privatedir=/var/lib/samba/private \
 	--with-logfilebase=/var/log/samba \
 	--bundled-libraries='!talloc,!tdb,!tevent,ALL' \
@@ -56,7 +57,8 @@ grep -q 'define HAVE_CUPS 1' bin/default/include/config.h || {
 grep -q 'define HAVE_LINUX_RTNETLINK_H 1' bin/default/include/config.h
 make
 make DESTDIR=$PKG install
-rm -rf "$PKG/run" "$PKG/var/run" "$PKG/var/lock"
+rm -rf "$PKG/run" "$PKG/var/run"
+install -d -m 755 "$PKG/var/lib/samba/lock"
 PKG_CONFIG_PATH="$PKG/usr/lib/pkgconfig" pkg-config --exists ndr_standard samba-util smbclient
 
 install -d "$PKG/etc/init.d"
@@ -67,6 +69,10 @@ cat > "$PKG/etc/init.d/83_samba.sh" <<'KDOS_SH'
 NAME="samba"
 DAEMON="/usr/sbin/smbd"
 USERSHARES="/var/lib/samba/usershares"
+
+has_member() {
+    grep -Eq '^sambashare:[^:]*:[^:]*:[^:[:space:]]' /etc/group
+}
 
 has_shares() {
     for f in "$USERSHARES"/*; do
@@ -86,8 +92,8 @@ case "$1" in
         fi
         install -d -m 755 /var/log/samba /var/cache/samba
         install -d -m 1770 -o root -g sambashare "$USERSHARES"
-        if ! has_shares; then
-            echo "[SKIP] $NAME: nothing is shared"
+        if ! has_member && ! has_shares; then
+            echo "[SKIP] $NAME: no account shares folders"
             exit 0
         fi
         echo "[KDOS] Starting $NAME..."

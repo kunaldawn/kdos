@@ -1,0 +1,214 @@
+Subject: Run krdpserver from the settings page when no systemd user manager is on the session bus
+
+The Remote Desktop page starts, stops, enables and reads krdpserver only
+through org.freedesktop.systemd1, so without systemd it hides its switch
+and says the server needs manual activation. krdpserver now owns a
+unique D-Bus name through KDBusService (org.kde.krdp-server), and when
+systemd1 is absent the page starts the program itself, stops it through
+that name's /MainApplication quit, reads its state from the name, and
+turns "start at login" into an autostart entry, a copy of
+org.kde.krdpserver.desktop in the user's autostart folder. With systemd
+nothing changes.
+
+diff -ruN a/server/main.cpp b/server/main.cpp
+--- a/server/main.cpp
++++ b/server/main.cpp
+@@ -11,6 +11,7 @@
+ 
+ #include <KAboutData>
+ #include <KCrash>
++#include <KDBusService>
+ #include <KSharedConfig>
+ #include <KSignalHandler>
+ 
+@@ -80,6 +81,11 @@
+     parser.process(application);
+     about.processCommandLine(&parser);
+ 
++    // One server per session, reachable as org.kde.krdp-server: the settings
++    // page reads whether it runs from that name and stops it through
++    // /MainApplication when no service manager does.
++    KDBusService dbusService(KDBusService::Unique);
++
+     KSignalHandler::self()->watchSignal(SIGINT);
+     KSignalHandler::self()->watchSignal(SIGTERM);
+     QObject::connect(KSignalHandler::self(), &KSignalHandler::signalReceived, &application, [](int) {
+diff -ruN a/src/kcm/kcmkrdpserver.cpp b/src/kcm/kcmkrdpserver.cpp
+--- a/src/kcm/kcmkrdpserver.cpp
++++ b/src/kcm/kcmkrdpserver.cpp
+@@ -12,9 +12,12 @@
+ #include <QClipboard>
+ #include <QDBusArgument>
+ #include <QDBusConnection>
++#include <QDBusConnectionInterface>
++#include <QDBusServiceWatcher>
+ #include <QDBusPendingCallWatcher>
+ #include <QDBusReply>
+ #include <QDir>
++#include <QFile>
+ #include <QFileInfo>
+ #include <QFutureWatcher>
+ #include <QGuiApplication>
+@@ -22,6 +25,7 @@
+ #include <QNetworkInterface>
+ #include <QProcess>
+ #include <QQmlEngine>
++#include <QStandardPaths>
+ #include <QtConcurrentRun>
+ #include <qt6keychain/keychain.h>
+ 
+@@ -39,6 +43,20 @@
+ static const QString dbusSystemdUnitInterface = u"org.freedesktop.systemd1.Unit"_s;
+ static const QString dbusSystemdManagerInterface = u"org.freedesktop.systemd1.Manager"_s;
+ static const QString dbusSystemdPropertiesInterface = u"org.freedesktop.DBus.Properties"_s;
++// The name krdpserver's KDBusService owns: its organisation domain reversed
++// and its application name.
++static const QString dbusKrdpServerName = u"org.kde.krdp-server"_s;
++static const QString krdpServerDesktopFile = u"org.kde.krdpserver.desktop"_s;
++
++// Without a systemd user manager on the session bus the page runs krdpserver
++// itself: it starts the program, stops it through the D-Bus name it owns,
++// reads its state from that name and starts it at login with an autostart
++// entry.
++static bool systemdAvailable()
++{
++    static const bool available = QDBusConnection::sessionBus().interface()->isServiceRegistered(u"org.freedesktop.systemd1"_s);
++    return available;
++}
+ 
+ KRDPServerConfig::KRDPServerConfig(QObject *parent, const KPluginMetaData &data)
+     : KQuickManagedConfigModule(parent, data)
+@@ -55,6 +73,24 @@
+         generateCertificate();
+     }
+ 
++    if (!systemdAvailable()) {
++        auto watcher = new QDBusServiceWatcher(dbusKrdpServerName,
++                                               QDBusConnection::sessionBus(),
++                                               QDBusServiceWatcher::WatchForRegistration | QDBusServiceWatcher::WatchForUnregistration,
++                                               this);
++        connect(watcher, &QDBusServiceWatcher::serviceRegistered, this, [this] {
++            setServerStatus(SystemdService::Status::Running);
++        });
++        connect(watcher, &QDBusServiceWatcher::serviceUnregistered, this, [this] {
++            setServerStatus(SystemdService::Status::Stopped);
++            if (m_restartPending) {
++                m_restartPending = false;
++                startServerProcess();
++            }
++        });
++        return;
++    }
++
+     QDBusConnection::sessionBus().connect(dbusSystemdDestination,
+                                           dbusKrdpServerServicePath,
+                                           dbusSystemdPropertiesInterface,
+@@ -259,12 +295,40 @@
+ 
+ bool KRDPServerConfig::managementAvailable() const
+ {
+-    static bool managementAvailable = QDBusConnection::sessionBus().interface()->isServiceRegistered(u"org.freedesktop.systemd1"_s);
+-    return managementAvailable;
++    return systemdAvailable() || !QStandardPaths::findExecutable(u"krdpserver"_s).isEmpty();
++}
++
++void KRDPServerConfig::startServerProcess()
++{
++    const QString program = QStandardPaths::findExecutable(u"krdpserver"_s);
++    if (program.isEmpty() || !QProcess::startDetached(program, {})) {
++        qCWarning(KRDPKCM) << "Could not start krdpserver";
++        setServerStatus(SystemdService::Status::Failed);
++    }
++}
++
++void KRDPServerConfig::quitServerProcess()
++{
++    auto msg = QDBusMessage::createMethodCall(dbusKrdpServerName, u"/MainApplication"_s, u"org.qtproject.Qt.QCoreApplication"_s, u"quit"_s);
++    QDBusConnection::sessionBus().asyncCall(msg);
+ }
+ 
+ void KRDPServerConfig::toggleAutoconnect(const bool enabled)
+ {
++    if (!systemdAvailable()) {
++        const QString autostartDir = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + u"/autostart"_s;
++        const QString entry = autostartDir + u'/' + krdpServerDesktopFile;
++        QFile::remove(entry);
++        if (enabled) {
++            const QString source = QStandardPaths::locate(QStandardPaths::ApplicationsLocation, krdpServerDesktopFile);
++            if (source.isEmpty() || !QDir().mkpath(autostartDir) || !QFile::copy(source, entry)) {
++                qCWarning(KRDPKCM) << "Could not write the autostart entry" << entry;
++            }
++            createRestoreToken();
++        }
++        return;
++    }
++
+     qDebug(KRDPKCM) << "Setting KRDP Server service autostart on login to " << enabled << "over QDBus";
+ 
+     auto msg = QDBusMessage::createMethodCall(dbusSystemdDestination,
+@@ -285,6 +349,17 @@
+ 
+ void KRDPServerConfig::toggleServer(const bool enabled)
+ {
++    if (!systemdAvailable()) {
++        m_restartPending = false;
++        if (enabled) {
++            createRestoreToken();
++            startServerProcess();
++        } else {
++            quitServerProcess();
++        }
++        return;
++    }
++
+     auto msg = QDBusMessage::createMethodCall(dbusSystemdDestination, dbusKrdpServerServicePath, dbusSystemdUnitInterface, enabled ? u"Start"_s : u"Stop"_s);
+ 
+     msg.setArguments({u"replace"_s});
+@@ -300,6 +375,15 @@
+ void KRDPServerConfig::restartServer()
+ {
+     qDebug(KRDPKCM) << "Restarting KRDP Server";
++    if (!systemdAvailable()) {
++        if (QDBusConnection::sessionBus().interface()->isServiceRegistered(dbusKrdpServerName)) {
++            m_restartPending = true;
++            quitServerProcess();
++        } else {
++            startServerProcess();
++        }
++        return;
++    }
+     auto restartMsg = QDBusMessage::createMethodCall(dbusSystemdDestination, dbusKrdpServerServicePath, dbusSystemdUnitInterface, u"Restart"_s);
+     restartMsg.setArguments({u"replace"_s});
+     auto pendingCall = QDBusConnection::sessionBus().asyncCall(restartMsg);
+@@ -363,6 +447,11 @@
+ 
+ void KRDPServerConfig::updateServerStatus()
+ {
++    if (!systemdAvailable()) {
++        const bool running = QDBusConnection::sessionBus().interface()->isServiceRegistered(dbusKrdpServerName);
++        setServerStatus(running ? SystemdService::Status::Running : SystemdService::Status::Stopped);
++        return;
++    }
+     auto msg = QDBusMessage::createMethodCall(dbusSystemdDestination, dbusKrdpServerServicePath, dbusSystemdPropertiesInterface, u"Get"_s);
+     msg.setArguments({u"org.freedesktop.systemd1.Unit"_s, u"ActiveState"_s});
+ 
+diff -ruN a/src/kcm/kcmkrdpserver.h b/src/kcm/kcmkrdpserver.h
+--- a/src/kcm/kcmkrdpserver.h
++++ b/src/kcm/kcmkrdpserver.h
+@@ -113,6 +113,8 @@
+ 
+ private:
+     void probeH264Support();
++    void startServerProcess();
++    void quitServerProcess();
+     void setServerStatus(SystemdService::Status status);
+     void setErrorMessage(const QString &errorMessage);
+     void createRestoreToken();
+@@ -127,6 +129,7 @@
+     H264::Support m_h264Support{H264::Unknown};
+     SystemdService::Status m_currentServerStatus;
+     QString m_lastErrorMessage;
++    bool m_restartPending = false;
+ 
+     template<typename Output, typename Input>
+     Output narrow(Input i)

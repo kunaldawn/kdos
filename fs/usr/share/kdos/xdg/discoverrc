@@ -24,6 +24,10 @@
 # currentApplicationBackend is the source an application install goes to
 # when more than one could take it; a person's choice in Discover's settings
 # lands in ~/.config/discoverrc and wins.
+#
+# appsListPageSorting=256 is ResourcesProxyModel::NameRole: a category or
+# search lists by name. Discover's own default sorts by the number of
+# reviews, and no KDOS source has reviews, so that order says nothing.
 # ---------------------------------
 
 [Software]
@@ -32,3 +36,6 @@ UseOfflineUpdates=false
 
 [ResourcesModel]
 currentApplicationBackend=kdos-backend
+
+[DiscoverUI]
+appsListPageSorting=256

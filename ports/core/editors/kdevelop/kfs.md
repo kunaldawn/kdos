@@ -4,7 +4,8 @@ KDevelop is KDE's IDE, strongest on C and C++: its code model is libclang, from 
 [clang](#port-clang) port, and it understands CMake, meson, qmake and plain make projects. The
 port builds it with the plugins that drive clang-tidy, [cppcheck](#port-cppcheck), the
 [gdb](#port-gdb) and [lldb](#port-lldb) debuggers, git, patch review, and the Qt Help and manual
-page documentation, which it shows in a QtWebEngine view.
+page documentation, which it shows in a QtWebEngine view. No port installs a Qt Help (`.qch`)
+file, so its Qt documentation lists nothing; manual pages ship.
 
 ## Flags
 

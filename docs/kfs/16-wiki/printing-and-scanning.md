@@ -49,19 +49,19 @@ no flag; `ipp-usb` runs in `standalone` mode, which keeps it running between dev
 
 ### Who may manage printers
 
-CUPS is configured with [`lpadmin`]{.idx} as its administrative group, runs filters as `lp`, and listens
+CUPS is configured with [`lpadmin`]{.idx} and `root` as its administrative groups, runs filters as `lp`, and listens
 on a local socket under [`/run/cups`]{.idx}:
 
-<!-- kfs:include ports/core/printing/cups/build.sh lines=21-26 pin=61b8c5b3218f -->
+<!-- kfs:include ports/core/printing/cups/build.sh lines=23-28 pin=f36619f7c808 -->
 
-The `kdos` account is in that group, in the shipped `/etc/group`:
+The `kdos` account is in `lpadmin`, in the shipped `/etc/group`:
 
 <!-- kfs:include fs/etc/group lines=31-31 pin=7cbe296482c0 -->
 
 A password asked for by the web interface is checked through PAM, with the file the cups port
 writes:
 
-<!-- kfs:include ports/core/printing/cups/build.sh lines=44-49 pin=06a021f5fcdc -->
+<!-- kfs:include ports/core/printing/cups/build.sh lines=46-51 pin=06a021f5fcdc -->
 
 ### /etc/cups/
 
@@ -171,7 +171,7 @@ queue while a job prints.
    `cancel <job>` removes one.
 
 `lpadmin`, `lpoptions`, `lp`, `lpstat` and `cancel` need no `sudo`: membership of `lpadmin` is
-the authority CUPS checks. `lpoptions -d` sets your own default, which `lpstat -d` then reports.
+the authority CUPS checks. Root is granted the same, so the commands work under `sudo` too. `lpoptions -d` sets your own default, which `lpstat -d` then reports.
 
 ### A USB printer
 
@@ -268,9 +268,8 @@ the `-G` list named it; add it with `sudo usermod -aG lpadmin <user>` and log in
 
 **`cupsctl` says `Unauthorized` or `Forbidden`.** `Unauthorized` means no password reached CUPS:
 `cupsctl` asks for one only on a terminal, so run it at a prompt rather than from a script, and
-answer with your login password. `Forbidden` is what `sudo cupsctl` gets: CUPS's system group is
-`lpadmin` alone, and root is not in it. Run it as a member of `lpadmin`, or as root with
-`cupsctl -h localhost:631 -U <member> …` and that member's password.
+answer with your login password. `Forbidden` means the account that asked is in neither of CUPS's
+system groups, `lpadmin` and `root`: run it as a member of `lpadmin`, or with `sudo`.
 
 **A job stays in the queue.** `lpstat -t` shows the queue's state and the printer's last message.
 CUPS's log is `/var/log/cups/error_log`; for more detail, run `cupsctl --debug-logging`, print

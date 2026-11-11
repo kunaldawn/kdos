@@ -1,0 +1,38 @@
+Subject: sandbox: allocate nothing in the user-namespace probe child
+
+Credentials::CanCreateProcessInNewUserNS() probes with a raw clone(), which
+runs none of libc's fork handling, and its child called
+SetGidAndUidMaps(), whose KernelSupportsDenySetgroups() builds a
+base::FilePath and so allocates. With musl's single heap lock, a child
+cloned while another thread of the host process held that lock waits on it
+for ever, and the host waits on the child: a Qt WebEngine host such as
+plasmashell hangs at start. The child now writes setgroups, gid_map and
+uid_map with open() and write() alone, and takes a missing
+/proc/self/setgroups for a kernel that needs no deny, as
+KernelSupportsDenySetgroups() does.
+
+--- a/src/3rdparty/chromium/sandbox/linux/services/credentials.cc
++++ b/src/3rdparty/chromium/sandbox/linux/services/credentials.cc
+@@ -288,11 +288,19 @@
+   }
+ 
+   // The parent process could have had threads. In the child, these threads
+-  // have disappeared.
++  // have disappeared, and so has anything that would release a lock one of
++  // them held: ForkWithFlags() is a raw clone() that runs none of libc's fork
++  // handling, so the child holds a copy of the allocator's lock if any thread
++  // held it. musl's allocator has one lock for the whole heap, and a child
++  // that allocates then waits on it for ever while the parent waits on the
++  // child. Nothing below may allocate.
+   if (pid == 0) {
+     // unshare() requires the effective uid and gid to have a mapping in the
+-    // parent namespace.
+-    if (!SetGidAndUidMaps(gid, uid))
++    // parent namespace. A kernel without /proc/self/setgroups needs no deny.
++    if (!NamespaceUtils::DenySetgroups() && errno != ENOENT)
++      _exit(kExitFailure);
++    if (!NamespaceUtils::WriteToIdMapFile("/proc/self/gid_map", gid) ||
++        !NamespaceUtils::WriteToIdMapFile("/proc/self/uid_map", uid))
+       _exit(kExitFailure);
+ 
+     // Make sure we drop CAP_SYS_ADMIN.

@@ -13,7 +13,9 @@
 #include <KLocalizedString>
 
 #include <QCollator>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QHash>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -42,7 +44,10 @@ bool KeyboardModel::load(const QString &path)
         parse(QByteArrayLiteral("! layout\n  us              English (US)\n"));
         return false;
     }
-    parse(f.readAll());
+    /* <xkb>/rules/evdev.lst beside <xkb>/symbols. */
+    const QDir rules = QFileInfo(p).absoluteDir();
+    const QString symbols = rules.absoluteFilePath(QStringLiteral("../symbols"));
+    parse(f.readAll(), QDir(symbols).exists() ? QDir::cleanPath(symbols) : QString());
     return true;
 }
 
@@ -52,7 +57,7 @@ bool KeyboardModel::load(const QString &path)
  * other section (models, options) is skipped. Layouts are sorted by
  * description, which is what a person reads.
  */
-void KeyboardModel::parse(const QByteArray &lst)
+void KeyboardModel::parse(const QByteArray &lst, const QString &symbolsDir)
 {
     static const QRegularExpression row(QStringLiteral("^\\s+(\\S+)\\s+(.*)$"));
     QList<Layout> layouts;
@@ -70,6 +75,11 @@ void KeyboardModel::parse(const QByteArray &lst)
             continue;
         }
         if (section == QLatin1String("layout")) {
+            /* A layout with no symbols file fails to compile at login, and
+             * the session falls back to US. */
+            if (!symbolsDir.isEmpty() && !QFile::exists(symbolsDir + QLatin1Char('/') + m.captured(1))) {
+                continue;
+            }
             layouts.append({m.captured(1), m.captured(2).trimmed(), {}});
         } else if (section == QLatin1String("variant")) {
             const QString rest = m.captured(2);
@@ -145,6 +155,20 @@ QStringList KeyboardModel::variants(const QString &layout) const
 {
     const int i = indexOf(layout);
     return i < 0 ? QStringList{QString(), i18nc("@item:inlistbox the layout with no variant", "Default")} : m_layouts.at(i).variants;
+}
+
+QString KeyboardModel::variantDescription(const QString &layout, const QString &variant) const
+{
+    if (variant.isEmpty()) {
+        return QString();
+    }
+    const QStringList v = variants(layout);
+    for (qsizetype i = 0; i + 1 < v.size(); i += 2) {
+        if (v.at(i) == variant) {
+            return v.at(i + 1);
+        }
+    }
+    return variant;
 }
 
 }

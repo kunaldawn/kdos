@@ -10,7 +10,7 @@
 
 name        = konqueror
 version     = 26.08.2
-release     = 1
+release     = 2
 source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
 sha256      = df13ccf0350b898ad35c12f15a574229788945f59a352432d90ae1ae9b7b273b  konqueror-26.08.2.tar.xz
 description = Web browser and file manager — QtWebEngine pages and KIO folders in one window, with tabs, split views and a sidebar

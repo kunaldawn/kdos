@@ -39,10 +39,10 @@ AccentModel::AccentModel(QObject *parent)
         {u"paper"_s, i18nc("@item:inlistbox accent", "Paper")},
     };
     for (const auto &[id, label] : accents) {
-        Accent a{id, label, {}, {}};
+        Accent a{id, label, {}, {}, {}};
         const QString path = QStandardPaths::locate(QStandardPaths::GenericDataLocation, u"color-schemes/"_s + schemeName(id) + u".colors"_s);
         if (!path.isEmpty()) {
-            a.color = titleBarColor(path, &a.text);
+            a.color = titleBarColor(path, &a.text, &a.accent);
         }
         m_accents << a;
     }
@@ -56,7 +56,7 @@ QString AccentModel::schemeName(const QString &id)
     return u"KDOS"_s + id.left(1).toUpper() + id.mid(1);
 }
 
-QColor AccentModel::titleBarColor(const QString &schemePath, QColor *text)
+QColor AccentModel::titleBarColor(const QString &schemePath, QColor *text, QColor *accent)
 {
     KSharedConfigPtr cfg = KSharedConfig::openConfig(schemePath, KConfig::SimpleConfig);
     /* The Header set is what a Breeze title bar is drawn from when the
@@ -66,11 +66,17 @@ QColor AccentModel::titleBarColor(const QString &schemePath, QColor *text)
         if (text) {
             *text = scheme.foreground(KColorScheme::NormalText).color();
         }
+        if (accent) {
+            *accent = scheme.decoration(KColorScheme::FocusColor).color();
+        }
         return scheme.background(KColorScheme::NormalBackground).color();
     }
     const KConfigGroup wm(cfg, u"WM"_s);
     if (text) {
         *text = wm.readEntry("activeForeground", QColor());
+    }
+    if (accent) {
+        *accent = wm.readEntry("activeBlend", QColor());
     }
     return wm.readEntry("activeBackground", QColor());
 }
@@ -96,6 +102,8 @@ QVariant AccentModel::data(const QModelIndex &index, int role) const
         return a.color;
     case TextColorRole:
         return a.text;
+    case AccentColorRole:
+        return a.accent;
     case AvailableRole:
         return a.color.isValid();
     case SchemeRole:
@@ -112,6 +120,7 @@ QHash<int, QByteArray> AccentModel::roleNames() const
         {LabelRole, "label"},
         {ColorRole, "swatchColor"},
         {TextColorRole, "swatchTextColor"},
+        {AccentColorRole, "swatchAccentColor"},
         {AvailableRole, "available"},
         {SchemeRole, "scheme"},
     };

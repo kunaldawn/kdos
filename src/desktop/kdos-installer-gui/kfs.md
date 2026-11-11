@@ -8,9 +8,11 @@ install is `pkexec /usr/bin/kinstall --config - --unattended --events json`, wit
 passwords among them, written to kinstall's standard input and the progress read back as one JSON
 event per line. The summary page is kinstall's own plan for the same answers, so what it shows is
 what runs, and answers kinstall would refuse are refused there. The Disk page's "Partition
-Manager…" opens Partition Manager and probes the disks again when it closes. The port is KDOS's own
-code with no upstream source, C++ and QML built with CMake against Kirigami, KI18n, KConfig,
-KColorScheme and KItemModels; every program it starts is an argument vector given to QProcess,
+Manager…" opens Partition Manager and probes the disks again when it closes. One window runs per
+session: the program is unique on the session bus as `io.kdos.kdos-installer-gui` through
+KDBusAddons, and a second launch raises the first window. The port is KDOS's own code with no
+upstream source, C++ and QML built with CMake against Kirigami, KI18n, KConfig, KColorScheme,
+KItemModels and KDBusAddons; every program it starts is an argument vector given to QProcess,
 never a shell.
 
 ## Flags
@@ -18,7 +20,9 @@ never a shell.
 - `-D BUILD_TESTING=OFF` — Build no tests into the package. `testing/plasmatest.sh` configures
   the same sources with tests on: `installertest` reads the answer file the pages produce back as
   kinstall's `key = value` lines, replays event streams kinstall wrote (`tests/fixtures`) through
-  the parser in pieces that cut lines, and parses a fixture `evdev.lst`.
+  the parser in pieces that cut lines, checks that a stream pkexec ended before any event reads as
+  permission refused, parses a fixture `evdev.lst` against a fixture symbols directory, and reads a
+  fixture `zone1970.tab`.
 - `-D KDOS_KINSTALL=/usr/bin/kinstall` — The binary the installer runs and the pkexec policy
   `io.kdos.installer.run` names by its `exec.path`. pkexec matches the path exactly, so it is
   compiled in and never looked up on `$PATH`; the two must name the same file.

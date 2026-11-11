@@ -37,6 +37,7 @@ Comment=Pictures and video in a terminal
 Exec=timg %F
 Icon=image-x-generic
 Terminal=true
+NoDisplay=true
 Categories=Graphics;Viewer;
 MimeType=image/png;image/jpeg;image/gif;image/webp;image/bmp;image/tiff;
 Keywords=image;picture;photo;view;sixel;kitty;timg;

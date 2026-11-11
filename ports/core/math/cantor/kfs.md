@@ -4,7 +4,8 @@ Cantor is KDE's mathematical worksheet: a document of input cells and their resu
 formulas and plots, run against a backend chosen per worksheet. Python, R, Qalculate, KAlgebra
 and Lua are built in as plugins that link their libraries; Maxima, Octave, Sage and Scilab
 backends are always built and drive the program itself, so each works once that program is
-installed.
+installed. [octave](#port-octave) is a port; Maxima, Sage and Scilab are not, so a worksheet
+offers those three and cannot start them.
 
 ## Flags
 

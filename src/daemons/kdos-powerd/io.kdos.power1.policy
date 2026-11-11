@@ -13,10 +13,11 @@
   machine sets them; nobody away from it does.
 
   Starting Samba is the person at the machine's too, with no prompt: it takes
-  no argument and runs Samba's service script, which serves only shares that
-  already exist in /var/lib/samba/usershares or smb.conf, and nothing when
-  there are none. Making a usershare needs membership of sambashare, so the
-  call starts what the next boot would start anyway.
+  no argument and runs Samba's service script, which starts smbd only when
+  the sambashare group has a member or a share already exists in
+  /var/lib/samba/usershares or smb.conf, and nothing otherwise. Joining
+  sambashare takes an administrator, so the call starts what the next boot
+  would start anyway.
 
   A caller's details name the change: `service` and `state` for the firewall,
   `accent` for the accent and `splash` for the motion, so a rules file can

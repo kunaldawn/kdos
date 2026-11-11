@@ -9,6 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/potd-default-provider.patch"
 tar xf "$PORT_SRC/$name-vendor-$version.tar.xz" -C kdeds/kameleon/qmk/kameleon-qmk-helper
 export CARGO_HOME="$SRC_ROOT/.cargo"
 export RUSTFLAGS="-C target-feature=-crt-static"
@@ -29,3 +30,7 @@ cmake -S . -B build -G Ninja \
 	-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build
+rm "$PKG/usr/lib/qt6/plugins/plasma/applets/org.kde.plasma.comic.so" \
+	"$PKG/usr/lib/qt6/plugins/kf6/packagestructure/plasma_comic.so" \
+	"$PKG/usr/share/knsrcfiles/comic.knsrc" \
+	"$PKG/usr/lib/qt6/plugins/potd/plasma_potd_apodprovider.so"

@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/settings-portal-gtk-modules.patch"
+
 export XML_CATALOG_FILES=/etc/xml/catalog
 
 meson setup build \

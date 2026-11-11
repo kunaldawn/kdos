@@ -30,7 +30,10 @@ if [ -z "$TERM" ] || [ "$TERM" = "dumb" ]; then
 	esac
 fi
 export TERM
-export LANG=C.UTF-8
+# A LANG already set is kept: a Plasma session sources this file after SDDM
+# gave it the LANG of /etc/locale.conf, and overwriting it here would put
+# every session back on the default whatever locale1 chose.
+export LANG="${LANG:-en_US.UTF-8}"
 export LINES=${LINES:-24}
 export COLUMNS=${COLUMNS:-80}
 # HOME/USER/LOGNAME come from login(1). Only derive them when a login shell was

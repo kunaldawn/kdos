@@ -1,0 +1,36 @@
+Subject: Probe the X11 cut buffer only through an xclip or xsel that is installed
+
+--- a/kivy/core/clipboard/__init__.py
++++ b/kivy/core/clipboard/__init__.py
+@@ -19,6 +19,8 @@
+ 
+ __all__ = ('ClipboardBase', 'Clipboard')
+ 
++import shutil
++
+ from kivy import Logger
+ from kivy.core import core_select_lib
+ from kivy.utils import platform
+@@ -142,14 +144,19 @@
+ CutBuffer = None
+ 
+ if platform == 'linux':
++    # The cut buffer is X11's primary selection, reached only through the
++    # xclip or xsel program; with neither installed there is nothing to probe,
++    # and probing would log each missing program as a critical error.
+     _cutbuffers = [
+-        ('xclip', 'clipboard_xclip', 'ClipboardXclip'),
+-        ('xsel', 'clipboard_xsel', 'ClipboardXsel'),
++        c for c in (
++            ('xclip', 'clipboard_xclip', 'ClipboardXclip'),
++            ('xsel', 'clipboard_xsel', 'ClipboardXsel'),
++        ) if shutil.which(c[0])
+     ]
+ 
+     if Clipboard.__class__.__name__ in (c[2] for c in _cutbuffers):
+         CutBuffer = Clipboard
+-    else:
++    elif _cutbuffers:
+         CutBuffer = core_select_lib('cutbuffer', _cutbuffers, True,
+                                     basemodule='clipboard')
+ 

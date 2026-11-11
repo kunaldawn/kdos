@@ -28,7 +28,7 @@ python3 ./waf install --destdir="$PKG"
 
 install -Dm644 ardour.1 "$PKG/usr/share/man/man1/ardour9.1"
 
-cat > "$PKG/usr/share/applications/ardour9.desktop" <<'DESKTOP'
+cat > "$PKG/usr/share/applications/ardour9.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
 Name=Ardour
@@ -37,7 +37,7 @@ Comment=Record, edit and mix multitrack audio and MIDI
 Exec=ardour9
 Icon=ardour9
 Terminal=false
-StartupWMClass=Ardour
+StartupWMClass=Ardour-$version
 Categories=AudioVideo;Audio;AudioVideoEditing;Recorder;Mixer;
 MimeType=application/x-ardour;
 Keywords=daw;audio;recording;mixing;multitrack;midi;lv2;

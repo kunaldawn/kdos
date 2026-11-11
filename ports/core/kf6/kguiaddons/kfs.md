@@ -25,3 +25,15 @@ or dark colour scheme. [kcolorscheme](#port-kcolorscheme), [kxmlgui](#port-kxmlg
   and the shipped default for `geo:` is Organic Maps, which reads its maps from the disk.
 - `-D BUILD_PYTHON_BINDINGS=OFF` — Build no Python bindings. Upstream's default is on, and the
   configure then requires Shiboken6 and PySide6, which this port's `depends` does not name.
+
+## Patches
+
+`release-pending-clipboard-locks.patch` fixes a deadlock in the Wayland `KSystemClipboard`.
+`mimeData()` returns data its clipboard thread owns, so it takes the shared clipboard lock for the
+caller and leaves the unlock to a zero-length timer. When the event loop quits before that timer
+runs, the main thread still holds the lock as the `WaylandClipboard` destructor waits for the
+clipboard thread, and the thread waits for the lock: the program never exits. A `plasmashell`
+quit with a Dictionary widget on the desktop hangs this way about once in forty. The patch counts
+the deferred locks and releases every one before either place that joins the thread, and a timer
+that runs afterwards finds nothing to release. It is to be offered upstream as a merge request
+against `frameworks/kguiaddons`.

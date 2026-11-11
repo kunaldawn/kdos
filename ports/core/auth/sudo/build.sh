@@ -21,6 +21,7 @@ patch -p1 -i $PORT_SRC/eventlog-mailer-gid.patch
         --with-editor=/usr/bin/nvim:/usr/bin/nano \
         --with-rundir=/run/sudo \
         --with-vardir=/var/lib/sudo \
+        --without-lecture \
         --with-passprompt="[sudo] password for %p: " \
         --with-pam \
         --enable-zlib=system \

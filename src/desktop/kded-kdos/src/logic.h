@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <QList>
 #include <QString>
 #include <QStringList>
 
@@ -49,11 +50,9 @@ QString readAccent(const QString &path);
  * thousand files at its root costs a bounded read. */
 QStringList ktarSets(const QString &dir, int max, int scanLimit);
 
-/* Whether `dir` holds a Samba usershare: a regular file, not a symlink, whose
- * name begins with neither `.` nor `:`. `net usershare add` writes each share
- * to a `:tmpXXXXXX` file and renames it to the share's name, so a share still
- * being written is not one yet; Samba's service script applies the same
- * test. The walk stops after `scanLimit` directory entries. */
-bool hasUsershare(const QString &dir, int scanLimit);
+/* Whether one more start at `now` keeps to `max` starts in any `windowMs`
+ * milliseconds. `starts` holds the earlier ones; those older than the window
+ * are dropped from it, and `now` is added when the answer is yes. */
+bool startAllowed(QList<qint64> &starts, qint64 now, int max, qint64 windowMs);
 
 }

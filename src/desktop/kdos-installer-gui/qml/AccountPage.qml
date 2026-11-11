@@ -50,6 +50,9 @@ WizardPage {
         if (!answers.usernameOk(answers.username)) {
             return i18n("The user name may hold lowercase letters, digits, - and _, and not start with a digit.");
         }
+        if (answers.usernameReserved(answers.username)) {
+            return i18n("That user name belongs to the system; choose another.");
+        }
         if (pass.text.length === 0) {
             return i18n("Choose a password.");
         }
@@ -83,6 +86,7 @@ WizardPage {
     QQC2.Label {
         Layout.fillWidth: true
         Layout.leftMargin: Kirigami.Units.gridUnit * 2
+        Layout.maximumWidth: Kirigami.Units.gridUnit * 30
         visible: page.answers.oem
         wrapMode: Text.Wrap
         text: i18n("No account is made now. The first time the computer starts, a setup wizard asks for the language, keyboard, time zone and network, and makes an administrator's account. Use this for a computer you are preparing for someone else.")
@@ -124,6 +128,11 @@ WizardPage {
             Accessible.name: i18nc("@label:textbox", "Password")
             onTextChanged: page.answers.password = text
         }
+        StrengthLabel {
+            visible: !page.answers.oem && pass.text.length > 0
+            secret: pass.text
+            passphrase: false
+        }
         Kirigami.PasswordField {
             id: again
             Kirigami.FormData.label: i18nc("@label:textbox", "Again:")
@@ -160,6 +169,7 @@ WizardPage {
         QQC2.Label {
             visible: !page.answers.oem
             Layout.fillWidth: true
+            Layout.maximumWidth: Kirigami.Units.gridUnit * 24
             wrapMode: Text.Wrap
             text: page.answers.luks
                 ? i18n("The passphrase at every start already asks who is at the computer. Without a password at login, the password store has nothing to open with and asks for its own the first time it is used.")

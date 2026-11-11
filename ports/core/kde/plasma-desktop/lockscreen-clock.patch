@@ -1,0 +1,97 @@
+Subject: Set the lock screen clock in the fixed-width face, above the wallpaper mark
+
+The lock screen draws its own clock, MonoClock.qml: Breeze's Clock in
+the fixed-width face with tabular figures, as the KDOS login screen
+draws it. It is placed in the band above the centred mark of the KDOS
+wallpapers, the top 19% of the screen, rather than half way between
+the top and the user list, where the date would cross the mark; the
+date is left out when the time and the date together do not fit the band.
+
+diff -ruN a/desktoppackage/contents/lockscreen/LockScreenUi.qml b/desktoppackage/contents/lockscreen/LockScreenUi.qml
+--- a/desktoppackage/contents/lockscreen/LockScreenUi.qml
++++ b/desktoppackage/contents/lockscreen/LockScreenUi.qml
+@@ -261,12 +261,16 @@
+             }
+         }
+ 
+-        Clock {
++        // The clock keeps to the band above the wallpaper's centred mark, 62%
++        // of the screen's height tall, so the band is the top 19%: placed
++        // between the top and the user list it would cross the mark.
++        MonoClock {
+             id: clock
+             property Item shadow: clockShadow
+-            visible: y > 0 && config.alwaysShowClock
++            visible: config.alwaysShowClock
+             anchors.horizontalCenter: parent.horizontalCenter
+-            y: (mainBlock.userList.y + mainStack.y)/2 - height/2
++            room: lockScreenRoot.height * 0.19 - Kirigami.Units.gridUnit
++            y: Math.max(Kirigami.Units.gridUnit / 2, (lockScreenRoot.height * 0.19 - height) / 2)
+             Layout.alignment: Qt.AlignBaseline
+         }
+ 
+diff -ruN a/desktoppackage/contents/lockscreen/MonoClock.qml b/desktoppackage/contents/lockscreen/MonoClock.qml
+--- a/desktoppackage/contents/lockscreen/MonoClock.qml
++++ b/desktoppackage/contents/lockscreen/MonoClock.qml
+@@ -0,0 +1,61 @@
++/*
++    SPDX-FileCopyrightText: 2016 David Edmundson <davidedmundson@kde.org>
++    SPDX-FileCopyrightText: 2025 Thomas Duckworth <tduck@filotimoproject.org>
++
++    SPDX-License-Identifier: LGPL-2.0-or-later
++*/
++
++// The Breeze lock screen's clock (org.kde.breeze.components Clock.qml) set in
++// the fixed-width face, held to a band of the screen: the time always shows,
++// and the date only while both fit in `room`, so the clock never runs down
++// into what the wallpaper draws below the band. Tabular figures keep the
++// width still as it ticks. The time's spaces are plain ones: a locale's short
++// format may put U+202F before AM or PM, the fixed-width face has no glyph for
++// it, and the fallback face's taller line takes the room the date needs.
++
++import QtQuick
++import QtQuick.Layouts
++
++import org.kde.plasma.clock as PlasmaClock
++import org.kde.plasma.components as PlasmaComponents3
++import org.kde.kirigami as Kirigami
++
++ColumnLayout {
++    id: root
++
++    property real room: Infinity
++    readonly property bool softwareRendering: GraphicsInfo.api === GraphicsInfo.Software
++
++    PlasmaComponents3.Label {
++        id: time
++        text: Qt.formatTime(timeSource.dateTime, Qt.locale(), Locale.ShortFormat).replace(/[\u00a0\u202f]/g, " ")
++        textFormat: Text.PlainText
++        style: root.softwareRendering ? Text.Outline : Text.Normal
++        styleColor: root.softwareRendering ? Kirigami.Theme.backgroundColor : "transparent" //no outline, doesn't matter
++        font.family: Kirigami.Theme.fixedWidthFont.family
++        font.pointSize: Math.round(Kirigami.Theme.defaultFont.pointSize * 7.2)
++        font.weight: Font.DemiBold
++        font.features: { "tnum": 1 }
++        renderType: Text.NativeRendering
++        Layout.alignment: Qt.AlignHCenter
++        Accessible.name: text
++    }
++    PlasmaComponents3.Label {
++        id: date
++        text: Qt.formatDate(timeSource.dateTime, Qt.locale(), Locale.LongFormat)
++        textFormat: Text.PlainText
++        style: root.softwareRendering ? Text.Outline : Text.Normal
++        styleColor: root.softwareRendering ? Kirigami.Theme.backgroundColor : "transparent" //no outline, doesn't matter
++        font.family: Kirigami.Theme.fixedWidthFont.family
++        font.pointSize: Math.round(Kirigami.Theme.defaultFont.pointSize * 2.4)
++        renderType: Text.NativeRendering
++        visible: time.implicitHeight + root.spacing + implicitHeight <= root.room
++        Layout.alignment: Qt.AlignHCenter
++        Accessible.name: text
++    }
++
++    PlasmaClock.Clock {
++        id: timeSource
++        trackSeconds: Qt.locale().timeFormat(Locale.ShortFormat).includes("s")
++    }
++}

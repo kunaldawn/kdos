@@ -44,19 +44,19 @@ tzdata's `zone.tab`, which gives each zone one country.
 
 The installer writes it from the zone chosen on its *Time* page:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=1947-1955 pin=5a0dbdc98892 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=1959-1967 pin=5a0dbdc98892 -->
 
 kdos-settingsd writes it whenever the time zone is changed later, and runs `iw reg set` so the
-running radio follows at once. A zone with no country, such as `UTC`, removes the file, from
+running radio follows at once; for a zone with no country, such as `UTC`, it runs `iw reg set 00`,
+which returns the running radio to the world domain. Such a zone removes the file, from
 `src/daemons/kdos-settingsd/store.c`:
 
-<!-- kfs:include src/daemons/kdos-settingsd/store.c lines=995-1007 pin=6f7d102e34f9 -->
+<!-- kfs:include src/daemons/kdos-settingsd/store.c lines=1001-1013 pin=6f7d102e34f9 -->
 
 The file is read when `cfg80211` loads, which is during boot, as the first wireless driver loads,
 or, on a machine with no wireless driver, when a program such as `iw` first asks for the wireless
-layer. A change to it takes effect at the next boot. Removing it changes nothing in the running
-kernel either: after a change to `UTC` the radio keeps the country it had until the next boot. The
-key is described in
+layer. A change to the file alone, made with an editor, takes effect at the next boot; the time zone
+changes the running kernel's country too, through `iw`. The key is described in
 [/etc/modprobe.d/kdos-regdom.conf](../../kdos/06-reference/configuration.md#etcmodprobedkdos-regdomconf).
 
 ## Usage

@@ -10,7 +10,7 @@
 
 name        = ksystemstats-kdos
 version     = 1.0.0
-release     = 1
+release     = 2
 description = KDOS sensors for System Monitor: boxes, energy by application, the A/B slots; the KDOS Meters face and page
 homepage    = https://github.com/kunaldawn/kdos
 license     = MIT

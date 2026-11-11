@@ -355,7 +355,8 @@ static int on_server_owner(sd_bus_message *m, void *ud, sd_bus_error *err)
 	    strcmp(name, NOTIFY_DEST))
 		return 0;
 	for (int k = 0; k < KN_COUNT; k++) {
-		if (g_state.id[k] && (k == KN_RESTARTS || k == KN_CVE))
+		if (g_state.id[k] && (k == KN_RESTARTS || k == KN_CVE ||
+				      k == KN_PENDING))
 			g_state.key[k][0] = '\0';
 		g_state.id[k] = 0;
 		g_token[k][0] = '\0';

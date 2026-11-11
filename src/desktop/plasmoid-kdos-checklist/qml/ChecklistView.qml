@@ -72,20 +72,44 @@ ColumnLayout {
             visible: !row.dismissed || row.done
             spacing: Kirigami.Units.largeSpacing
 
-            Accessible.role: Accessible.CheckBox
-            Accessible.checkable: true
-            Accessible.checked: row.done
-            Accessible.name: row.title
-            Accessible.description: row.done ? i18ndc("kdos-plasmoid-checklist", "@info:accessible", "Done") : row.explanation
+            /* The status mark is the row's check box for the keyboard and
+             * assistive tools: it takes focus first in the row, so a screen
+             * reader reads the title and state before the buttons, and a
+             * done row, which has no buttons, can still be reached. The
+             * row itself carries no accessible role, or its state would be
+             * read again as context for every button inside it. */
+            Item {
+                id: mark
 
-            Kirigami.Icon {
                 Layout.alignment: Qt.AlignTop
-                Layout.preferredWidth: Kirigami.Units.iconSizes.medium
-                Layout.preferredHeight: Kirigami.Units.iconSizes.medium
-                source: row.done ? "checkmark-symbolic" : row.iconName
-                isMask: true
-                color: row.done ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.textColor
-                Accessible.ignored: true
+                Layout.preferredWidth: Kirigami.Units.iconSizes.medium + Kirigami.Units.smallSpacing * 2
+                Layout.preferredHeight: Kirigami.Units.iconSizes.medium + Kirigami.Units.smallSpacing * 2
+                activeFocusOnTab: true
+
+                Accessible.role: Accessible.CheckBox
+                Accessible.checkable: true
+                Accessible.checked: row.done
+                Accessible.name: row.title
+                Accessible.description: row.done ? i18ndc("kdos-plasmoid-checklist", "@info:accessible", "Done") : row.explanation
+
+                Rectangle {
+                    anchors.fill: parent
+                    visible: mark.activeFocus
+                    color: "transparent"
+                    radius: Kirigami.Units.cornerRadius
+                    border.width: 2
+                    border.color: Kirigami.Theme.focusColor
+                }
+
+                Kirigami.Icon {
+                    anchors.centerIn: parent
+                    width: Kirigami.Units.iconSizes.medium
+                    height: Kirigami.Units.iconSizes.medium
+                    source: row.done ? "checkmark-symbolic" : row.iconName
+                    isMask: true
+                    color: row.done ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.textColor
+                    Accessible.ignored: true
+                }
             }
 
             ColumnLayout {

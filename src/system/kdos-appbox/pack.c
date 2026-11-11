@@ -31,9 +31,9 @@
  * host ipc/net/pid unless the profile says otherwise, /tmp shared — and ONE
  * flag distrobox does not have: the box's /run/user/<uid> is its own private
  * runtime directory (rundir.c), which holds its tagged Wayland socket, its
- * proxied bus and the audio sockets, and never the session's `wayland-0` or
- * `bus`. A store box is the same create over the image this machine built for
- * it instead of a composed root.
+ * proxied bus and the audio sockets, and never the session's Wayland socket
+ * ($WAYLAND_DISPLAY, KWin's `wayland-1`) or `bus`. A store box is the same
+ * create over the image this machine built for it instead of a composed root.
  *
  * KEEP-ID, AND PACKS THEREFORE PRESENT AS THE USER RATHER THAN AS ROOT. Both
  * routes were measured over a real three-pack stack:
@@ -59,6 +59,7 @@
 
 #include <errno.h>
 #include <pwd.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -79,6 +80,39 @@ const char *pack_store(void)
 {
 	const char *p = getenv("KDOS_PACK_STORE");
 	return p && *p ? p : "/var/lib/kdos/packs";
+}
+
+/*
+ * WHY THE LAST CREATE OR START FAILED. podman's own sentence is the only
+ * diagnosis there is, and kb_run sends a child's stderr to /dev/null, so
+ * podman runs here with its stderr captured, its last line is printed and
+ * kept, and a launch hands it to the notification that said the app was
+ * starting — and `kdos-box start` to the Boxes page, which prints what follows
+ * "did not start:".
+ */
+static char g_box_err[512];
+
+const char *pack_box_error(void)
+{
+	return g_box_err[0] ? g_box_err : "podman gave no reason";
+}
+
+void pack_box_set_error(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	vsnprintf(g_box_err, sizeof(g_box_err), fmt, ap);
+	va_end(ap);
+}
+
+int podman_run_reason(const KbArgv *a, const char *box)
+{
+	int rc = run_last_line(a, g_box_err, sizeof(g_box_err));
+
+	if (rc != 0)
+		kb_warn("%s: %s", box, g_box_err);
+	return rc;
 }
 
 /*
@@ -277,15 +311,20 @@ int pack_decompose(const char *box)
  *                      expects are the host's
  *   /run/user/<uid>    the box's PRIVATE runtime directory, never the
  *                      session's: what is in it is what the box can reach,
- *                      and the session's `wayland-0` and `bus` are not in it
- *   /run/user/<uid>/doc the document portal's mount, bound on top, so a file
- *                      the portal hands a box is a path that exists in it
+ *                      and the session's Wayland socket and `bus` are not
+ *                      in it
  *   /tmp shared        GTK's lock files and a dozen programs' scratch are
  *                      there, and /tmp must be 1777 on the host or every GTK
  *                      app fails to make its lock file; a sealed box's is
  *                      its own (below)
  *   /dev and /sys      a GPU, a camera and an audio device are all in there,
  *                      and with private devices `gpu` binds /dev/dri back alone
+ *   devpts on /dev/pts a pty instance of the box's own over the shared /dev:
+ *                      the host's devpts belongs to the host's user namespace,
+ *                      so crun cannot chown a pty there to the exec user and
+ *                      every `--tty` exec (a shim typed at a prompt, `kdos-box
+ *                      enter`) dies on `chown /dev/pts/N: Operation not
+ *                      permitted`
  *   the box profiles   bound READ-ONLY over the shared home, because KWin
  *                      reads a box's `grant` there: a box that could write its
  *                      own profile would grant itself the desktop
@@ -465,27 +504,26 @@ int pack_box_create(const Profile *p, const char *merged,
 		kb_argv_add(&a, "/dev:/dev:rslave");
 		kb_argv_add(&a, "--volume");
 		kb_argv_add(&a, "/sys:/sys:rslave");
+		kb_argv_add(&a, "--mount");
+		kb_argv_add(&a, "type=devpts,destination=/dev/pts");
 	} else if (p->gpu && kb_path_exists("/dev/dri")) {
 		kb_argv_add(&a, "--volume");
 		kb_argv_add(&a, "/dev/dri:/dev/dri");
 	}
 	/*
 	 * THE PRIVATE RUNTIME DIRECTORY, AND NOTHING OF THE SESSION'S BESIDE IT.
-	 * rslave, so the document portal's FUSE mount and anything else mounted
-	 * under it later reaches a box that is already running.
+	 *
+	 * THE DOCUMENT PORTAL'S MOUNT IS NOT BOUND IN. xdg-document-portal
+	 * mounts its FUSE filesystem without allow_other, so FUSE answers every
+	 * uid but the user's with EPERM, and crun, which runs as the box's
+	 * root — a subuid — stats each bind source before it starts the box: a
+	 * box with that bind never starts (`crun: cannot stat self/fd/N:
+	 * Permission denied`). A box reaches the portal over its filtered bus,
+	 * and the portal hands a caller that is not a Flatpak real paths, so
+	 * the bind would carry nothing a box uses.
 	 */
 	kb_argv_add(&a, "--volume");
 	kb_argv_addf(&a, "%s:%s:rslave", pdir, box_inbox_rundir());
-	{
-		char doc[MAX_LINE];
-
-		snprintf(doc, sizeof(doc), "%s/doc", box_rundir());
-		if (kb_is_dir(doc)) {
-			kb_argv_add(&a, "--volume");
-			kb_argv_addf(&a, "%s:%s/doc:rslave", doc,
-				     box_inbox_rundir());
-		}
-	}
 	if (!p->privhome) {
 		char *pd = kb_path_join(home, ".config/kdos/boxes");
 
@@ -574,7 +612,7 @@ int pack_box_create(const Profile *p, const char *merged,
 	}
 
 	kb_argv_end(&a);
-	return kb_run(&a);
+	return podman_run_reason(&a, p->name);
 }
 
 /*
@@ -637,7 +675,9 @@ int pack_box_ensure(const char *box, const char *id)
 	}
 	/* The private runtime directory is the source of a volume, and podman
 	 * refuses to create a container over a source that is not there. */
-	if (rundir_prepare(&p, id, 1) != 0) {
+	if (rundir_prepare(&p, id) != 0) {
+		pack_box_set_error("its private runtime directory could not be "
+				   "made");
 		if (fd >= 0)
 			close(fd);
 		return 1;
@@ -670,9 +710,11 @@ int pack_box_ensure(const char *box, const char *id)
 		if (fd >= 0)
 			close(fd);
 		if (rc < 0)
-			kb_warn("kdos-packd is not running — no pack can be mounted");
+			pack_box_set_error("kdos-packd is not running — no pack "
+					   "can be mounted");
 		else
-			kb_warn("%s: %s", id, merged);
+			pack_box_set_error("%s: %s", id, merged);
+		kb_warn("%s", g_box_err);
 		return 1;
 	}
 	tracef("composed %s", merged);
@@ -717,22 +759,45 @@ int pack_box_start(const char *box)
 	if (!strcmp(state, "running"))
 		return 0;
 
-	/* A STOPPED BOX IS OFTEN STILL `stopping`. `podman stop` sends SIGTERM
-	 * and waits out its timeout while kdos-boxinit stays alive reaping, so
-	 * `kdos-box stop x` followed by `kdos-box enter x` asks podman to start
-	 * a container it will refuse — `container state improper`, which names
-	 * nothing a reader can act on, and the box then looks permanently
-	 * broken. `box_unstick` is the recovery, shared with the app-launch
-	 * path in main.c. Only a pack box is removed, and the create path then
-	 * runs again over the same packs; any other box that will not settle
-	 * is left stuck with its writes, and this start fails. */
+	/* A BOX LEFT `stopping` IS NOT STARTABLE. A `podman stop` from outside
+	 * this program signals nothing in a box that shares the host's PID
+	 * namespace (box.c), and podman then refuses a start with `container
+	 * state improper`, which names nothing a reader can act on.
+	 * `box_unstick` is the recovery, shared with the app-launch path in
+	 * main.c. Only a pack box is removed, and the create path then runs
+	 * again over the same packs; any other box that will not settle is
+	 * left stuck with its writes, and this start fails. */
 	switch (box_unstick(box, state, sizeof(state))) {
 	case 3:
 		if (pack_box_ensure(box, p.base + 5) != 0)
 			return 1;
 		break;
 	case 4:
+		pack_box_set_error("it is stuck stopping, and its writes are "
+				   "inside its container");
 		return 1;
+	}
+	/* A BOX WITH NO CONTAINER IS NOT MADE HERE. podman's refusal (`no
+	 * container with name or ID`) names nothing a reader can act on, so
+	 * the reason says what makes one. Only an exit of 1 from `podman
+	 * container exists` is "none"; any other status leaves podman's own
+	 * sentence to say what went wrong. */
+	if (!strcmp(state, "absent")) {
+		KbArgv q = {0};
+
+		kb_argv_add(&q, "podman");
+		kb_argv_add(&q, "container");
+		kb_argv_add(&q, "exists");
+		kb_argv_add(&q, box);
+		kb_argv_end(&q);
+		if (kb_run(&q) == 1) {
+			pack_box_set_error("it has no container yet: its "
+					   "application's first launch, or "
+					   "`kdos-box create %s`, makes it",
+					   box);
+			kb_warn("%s: %s", box, g_box_err);
+			return 1;
+		}
 	}
 	/* Stopped, so a pack box whose container is out of date — over the
 	 * session's runtime directory, or under a dead session's cgroup — is
@@ -745,12 +810,16 @@ int pack_box_start(const char *box)
 	/*
 	 * THE RUNTIME DIRECTORY IS A VOLUME SOURCE, AND /run/user IS NEW EVERY
 	 * BOOT. A box created in an earlier session finds its private directory
-	 * and the portal's mount point gone, and podman refuses to start a
-	 * container over a bind source that is not there.
+	 * gone, and podman refuses to start a container over a bind source
+	 * that is not there.
 	 */
-	if (rundir_prepare(&p, !strncmp(p.base, "pack:", 5) ? p.base + 5 : "",
-			   1) != 0)
+	if (rundir_prepare(&p, !strncmp(p.base, "pack:", 5) ? p.base + 5 : "")
+	    != 0) {
+		pack_box_set_error("its private runtime directory could not be "
+				   "made");
+		kb_warn("%s: %s", box, g_box_err);
 		return 1;
+	}
 
 	/*
 	 * COMPOSE FIRST, BECAUSE THE OVERLAY DOES NOT SURVIVE A REBOOT.
@@ -779,7 +848,5 @@ int pack_box_start(const char *box)
 	kb_argv_add(&a, "start");
 	kb_argv_add(&a, box);
 	kb_argv_end(&a);
-	if (kb_run(&a) != 0)
-		return 1;
-	return 0;
+	return podman_run_reason(&a, box) != 0;
 }

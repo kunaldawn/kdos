@@ -39,7 +39,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/vfs.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
@@ -195,9 +194,26 @@ static int cmd_box_list(int json)
 	kb_strv_free(profiles);
 	free(pdir);
 
+	/* The BOX and BASE columns are as wide as their longest entry: a
+	 * store box's base is image:kdos/<id>, longer than any fixed width,
+	 * and one overlong cell would push every column after it. */
+	int wname = 16, wbase = 24;
+
+	for (int i = 0; !json && i < nrows; i++) {
+		Profile p;
+		const char *b;
+		int l;
+
+		profile_load(&p, rows[i].name);
+		b = p.base[0] ? p.base : p.image[0] ? p.image : "-";
+		if ((l = (int)strlen(rows[i].name)) > wname)
+			wname = l;
+		if ((l = (int)strlen(b)) > wbase)
+			wbase = l;
+	}
 	if (!json)
-		printf("%-16s %-24s %-10s %-11s %8s  %s\n", "BOX", "BASE",
-		       "STATE", "PERSIST", "DISK", "ACCENT");
+		printf("%-*s %-*s %-11s %-11s %8s  %s\n", wname, "BOX", wbase,
+		       "BASE", "STATE", "PERSIST", "DISK", "ACCENT");
 	else
 		kb_buf_str(&j, "[");
 	for (int i = 0; i < nrows; i++) {
@@ -212,10 +228,11 @@ static int cmd_box_list(int json)
 		profile_load(&p, rows[i].name);
 		base = p.base[0] ? p.base : p.image[0] ? p.image : "-";
 		if (!json) {
-			printf("%-16s %-24s %-10s %-11s %8s  %s\n", rows[i].name,
-			       base, rows[i].state, persist_name(p.persist),
+			printf("%-*s %-*s %-11s %-11s %8s  %s\n", wname,
+			       rows[i].name, wbase, base, rows[i].state,
+			       persist_name(p.persist),
 			       created ? kb_human_size(disk) : "-",
-			       p.accent[0] ? p.accent : "session");
+			       accent_shown(p.accent));
 			continue;
 		}
 		box_confinement(rows[i].name, conf, sizeof(conf));
@@ -339,8 +356,8 @@ static int cmd_box_create(int argc, char **argv)
 	/* The box's private runtime directory is a volume source of every
 	 * create below but distrobox's, and podman refuses a missing one. */
 	if (box_lane(&p) != BOX_LANE_DISTROBOX &&
-	    rundir_prepare(&p, !strncmp(p.base, "pack:", 5) ? p.base + 5 : "",
-			   1) != 0)
+	    rundir_prepare(&p, !strncmp(p.base, "pack:", 5) ? p.base + 5 : "")
+	    != 0)
 		return 1;
 	if (!strncmp(p.base, "pack:", 5)) {
 		rc = pack_compose(box, p.base + 5, merged, sizeof(merged));
@@ -353,9 +370,9 @@ static int cmd_box_create(int argc, char **argv)
 		if (rc != 0) {
 			pack_decompose(box);
 			/*
-			 * A CREATE THAT FAILS MUST SAY SO. podman's own
-			 * diagnostic goes to stderr and there are runs where
-			 * it prints nothing at all — a bare exit 125 with a
+			 * A CREATE THAT FAILS MUST SAY SO. pack_box_create
+			 * prints podman's last line, and there are runs where
+			 * podman prints nothing at all — a bare exit 125 with a
 			 * profile left on disk reads as a box that exists and
 			 * will not start. The one cause this program can name
 			 * for itself is the live session: an overlay upper
@@ -364,11 +381,7 @@ static int cmd_box_create(int argc, char **argv)
 			 * already reports. Anything else is podman's to
 			 * explain and this says which exit status it gave.
 			 */
-			struct statfs st;
-			const char *h = kb_home_dir();
-
-			if (statfs(h, &st) == 0 &&
-			    (unsigned long)st.f_type == 0x794c7630UL)
+			if (fs_is_overlay(kb_home_dir()))
 				kb_warn("%s: $HOME is on overlayfs (a live "
 					"session), so a box's overlay upper "
 					"has nowhere to go — a persistent box "
@@ -1006,32 +1019,41 @@ static int cmd_box_rollback(const char *box, const char *tag)
 
 /* ── lifecycle ─────────────────────────────────────────────────────────── */
 
-static int cmd_box_stop(const char *box)
+/*
+ * `kdos-box stop <box>...`: box_stop_many, never `podman stop`, which signals
+ * nothing in a box that shares the host's PID namespace (box.c says why). The
+ * boxes are stopped together, so the logout's stop of every box fits one
+ * grace period rather than one per box. 0 when every one is down; otherwise
+ * each box still up is named with its state, and 1.
+ */
+static int cmd_box_stop(const char *const *boxes, int n)
 {
-	const char *w[3];
+	char state[64];
+	int left;
 
-	if (!name_ok(box))
-		kb_die("a box name is [A-Za-z0-9._-]");
-	w[0] = "stop";
-	w[1] = "-t";
-	w[2] = "10";
-	{
-		KbArgv a = {0};
-		kb_argv_add(&a, "podman");
-		for (int i = 0; i < 3; i++)
-			kb_argv_add(&a, w[i]);
-		kb_argv_add(&a, box);
-		kb_argv_end(&a);
-		return kb_run(&a);
+	for (int i = 0; i < n; i++)
+		if (!name_ok(boxes[i]))
+			kb_die("a box name is [A-Za-z0-9._-]");
+	left = box_stop_many(boxes, n, 10);
+	if (!left)
+		return 0;
+	for (int i = 0; i < n; i++) {
+		box_state(boxes[i], state, sizeof(state));
+		if (!strcmp(state, "running") || !strcmp(state, "stopping"))
+			kb_warn("%s did not stop: it is still %s after SIGKILL",
+				boxes[i], state);
+		else if (box_signal_all(boxes[i], 0) > 0)
+			kb_warn("%s stopped, and processes it started are still "
+				"alive", boxes[i]);
 	}
+	return 1;
 }
 
 /*
  * The stack is released only once the container is gone: decomposing under a
- * container podman refused to remove (a running box without --force, or one
- * that outlasts `podman rm -f`) pulls the root out from under a live box.
- * Podman's own sentence is the diagnosis, so its stderr is kept, as `create`
- * keeps it.
+ * container podman refused to remove (a running box without --force) pulls
+ * the root out from under a live box. Podman's own sentence is the diagnosis,
+ * so it is printed.
  */
 static int cmd_box_remove(const char *box, int force)
 {
@@ -1075,13 +1097,24 @@ static int cmd_box_remove(const char *box, int force)
 			box, rc);
 		return rc;
 	}
+	/* `--force` is the stop sequence first, and so is a box that is down:
+	 * an application a stopped box still runs holds an exec session that
+	 * `podman rm` refuses over, and `rm -f` would wait on a `podman stop`
+	 * that reaches nothing. */
+	{
+		char state[64];
+
+		box_state(box, state, sizeof(state));
+		if (force || (strcmp(state, "running") && strcmp(state, "stopping")))
+			box_stop_many(&box, 1, 10);
+	}
 	kb_argv_add(&a, "podman");
 	kb_argv_add(&a, "rm");
 	if (force)
 		kb_argv_add(&a, "-f");
 	kb_argv_add(&a, box);
 	kb_argv_end(&a);
-	rc = kb_run(&a);
+	rc = podman_run_reason(&a, box);
 	if (rc != 0) {
 		kb_warn("%s was not removed (podman rm exited %d)%s", box, rc,
 			force ? "" : " — a running box needs `kdos-box stop` "
@@ -1223,7 +1256,9 @@ static int cmd_box_gc(int dry, int session_end)
 		} else {
 			printf("  %-16s up past %ds, no window — stopping\n",
 			       line, p.autostop_s);
-			cmd_box_stop(line);
+			const char *one = line;
+
+			cmd_box_stop(&one, 1);
 		}
 		stopped++;
 	}
@@ -1250,7 +1285,8 @@ static int box_usage(void)
 "       kdos-box import <file.kpack> [as <name>]\n"
 "       kdos-box clone  <src> <dst>\n"
 "       kdos-box snapshot <name> [tag]      also: snapshots, rollback\n"
-"       kdos-box start | stop | restart <name>\n"
+"       kdos-box start | restart <name>\n"
+"       kdos-box stop   <name> ...          SIGTERM, 10 s, then SIGKILL\n"
 "       kdos-box remove <name> [--force]   --force removes a running box\n"
 "       kdos-box profile <name> [key=value ...]\n"
 "       kdos-box gc [--dry-run] [--session-end]\n"
@@ -1352,9 +1388,10 @@ int box_main(int argc, char **argv)
 	if (BCMD("start") && argc > 1)
 		return pack_box_start(argv[1]);
 	if (BCMD("stop") && argc > 1)
-		return cmd_box_stop(argv[1]);
+		return cmd_box_stop((const char *const *)argv + 1, argc - 1);
 	if (BCMD("restart") && argc > 1) {
-		cmd_box_stop(argv[1]);
+		if (cmd_box_stop((const char *const *)argv + 1, 1) != 0)
+			return 1;
 		return pack_box_start(argv[1]);
 	}
 	if (BCMD("remove") && argc > 1)
@@ -1367,6 +1404,8 @@ int box_main(int argc, char **argv)
 		profile_load(&p, argv[1]);
 		if (argc > 2) {
 			char before[sizeof(p.accent)];
+			Profile old = p;
+			int only_accent;
 
 			kb_strlcpy(before, p.accent, sizeof(before));
 			for (int i = 2; i < argc; i++)
@@ -1376,10 +1415,18 @@ int box_main(int argc, char **argv)
 			 * flag: it is written again now, and KWin told. */
 			if (strcmp(before, p.accent))
 				box_rules_refresh();
+			/* Whether anything but the accent changed, field by
+			 * field: an accent alone needs no new container. */
+			memcpy(old.accent, p.accent, sizeof(old.accent));
+			only_accent = strcmp(before, p.accent) &&
+				      !memcmp(&old, &p, sizeof(p));
 			/* Only a box with a container is removed and made
 			 * again: removing one without a container deletes the
 			 * profile just written. */
-			if (box_exists(argv[1]))
+			if (only_accent)
+				printf("%s: written — the title-bar colour "
+				       "changes now.\n", argv[1]);
+			else if (box_exists(argv[1]))
 				printf("%s: written — namespaces and volumes "
 				       "apply at CREATE time, so run `kdos-box "
 				       "remove %s` and create it again for those "

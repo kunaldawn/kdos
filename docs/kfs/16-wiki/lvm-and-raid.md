@@ -76,7 +76,7 @@ system log (`mdadm.conf(5)`).
 **The RAID step of the initramfs**, from `script/phases/70_image/090_initramfs.sh`, assembles every
 array whose members it finds, on the live medium and on an installed system:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=606-614 pin=1019c6f0eacb -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=620-628 pin=1019c6f0eacb -->
 
 ## Usage
 
@@ -301,7 +301,7 @@ cannot use. Its own lines are in `/run/kdos-svc.mdmonitor.log`; once the last re
 stopped they end `mdadm: No array with redundancy detected, stopping` and
 `Exited with code 0, a final status: not restarting`.
 
-**An array is degraded.** `grep mdadm /var/log/messages` shows the monitor's events with the
+**An array is degraded.** `sudo grep mdadm /var/log/messages` shows the monitor's events with the
 member named, such as `Fail event detected on md device /dev/md0, component device /dev/sdc1`;
 replace it as in [Replacing a failed disk](#replacing-a-failed-disk).
 

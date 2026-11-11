@@ -514,7 +514,7 @@ private Q_SLOTS:
         QCOMPARE(m_kcm->messageType(), int(Kdos::BoxesModule::Positive));
 
         const QString log = calls();
-        const qsizetype stop = log.indexOf(u"podman stop -t 10 dev"_s);
+        const qsizetype stop = log.indexOf(u"podman kill --signal TERM dev"_s);
         const qsizetype rm = log.indexOf(u"podman rm dev"_s);
         const qsizetype create = log.indexOf(u"distrobox create --name dev"_s);
         QVERIFY2(stop >= 0 && rm > stop && create > rm, qPrintable(log));
@@ -561,6 +561,59 @@ private Q_SLOTS:
         QVERIFY(!QFile::exists(root(u"home/.config/kdos/boxes/app.later.conf"_s)));
         QCOMPARE(m_kcm->currentBox(), QString());
         QTRY_COMPARE(m_kcm->boxes()->indexOf(u"app.later"_s), -1);
+    }
+
+    /* kdos-box's words reach the page as prose: quoted words and settings
+     * as code, a sentence's first word capitalised, nothing else changed. */
+    void notesReadAsProse_data()
+    {
+        QTest::addColumn<QString>("text");
+        QTest::addColumn<bool>("sentence");
+        QTest::addColumn<QString>("markup");
+        QTest::newRow("quoted word") << u"the limits are podman flags — kdos-oomd holds it to `memory`"_s << true
+                                     << u"<span>The limits are podman flags — kdos-oomd holds it to <code>memory</code></span>"_s;
+        QTest::newRow("setting first") << u"audio=no gpu=yes cannot be enforced."_s << true
+                                       << u"<span><code>audio=no</code> <code>gpu=yes</code> cannot be enforced.</span>"_s;
+        QTest::newRow("path first") << u"boxes/dev.conf: unknown key 'bogus'"_s << true << u"<span>boxes/dev.conf: unknown key 'bogus'</span>"_s;
+        QTest::newRow("escaped") << u"a <b> & c"_s << true << u"<span>A &lt;b&gt; &amp; c</span>"_s;
+        QTest::newRow("mechanism") << u"enforced by `kdos-box gc`"_s << false << u"<span>enforced by <code>kdos-box gc</code></span>"_s;
+    }
+
+    void notesReadAsProse()
+    {
+        QFETCH(QString, text);
+        QFETCH(bool, sentence);
+        QFETCH(QString, markup);
+        QCOMPARE(Kdos::BoxProfile::markup(text, sentence), markup);
+    }
+
+    /* A command that fails and prints nothing gets a sentence with no
+     * colon, and a listing that runs during it never becomes its progress
+     * line. */
+    void silentFailureHasNoEmptyReason()
+    {
+        module();
+        open(u"dev"_s);
+        /* kdos-box itself, except that `start` fails without a word. */
+        const QString tool = root(u"bin/kdos-box"_s);
+        QVERIFY(QDir().mkpath(root(u"real"_s)));
+        QVERIFY(QFile::link(QStringLiteral(KDOS_APPBOX_PATH), root(u"real/kdos-box"_s)));
+        QVERIFY(QFile::remove(tool));
+        put(u"bin/kdos-box"_s, u"#!/bin/sh\n[ \"$1\" = start ] && { sleep 1; exit 1; }\nexec \"%1\" \"$@\"\n"_s.arg(root(u"real/kdos-box"_s)));
+        QVERIFY(QFile::setPermissions(tool, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        QStringList progress;
+        const auto watch = connect(m_kcm.get(), &Kdos::BoxesModule::progressTextChanged, this, [this, &progress] {
+            progress << m_kcm->progressText();
+        });
+        m_kcm->startBox();
+        m_kcm->boxes()->refresh();
+        QTRY_VERIFY_WITH_TIMEOUT(!m_kcm->isBusy(), 20000);
+        QCOMPARE(m_kcm->messageType(), int(Kdos::BoxesModule::Error));
+        disconnect(watch);
+        QCOMPARE(m_kcm->message(), u"dev did not start."_s);
+        for (const QString &line : std::as_const(progress)) {
+            QVERIFY2(!line.startsWith(u'[') && !line.startsWith(u'{'), qPrintable(line));
+        }
     }
 
     void startAndStop()
@@ -682,8 +735,9 @@ private Q_SLOTS:
     void accentsCarryTheirSchemesColours()
     {
         put(u"home/.local/share/color-schemes/KDOSAmber.colors"_s,
-            u"[General]\nName=KDOS Amber\n[Colors:Header]\nBackgroundNormal=74,47,0\nForegroundNormal=255,176,0\n"_s);
-        put(u"home/.local/share/color-schemes/KDOSIce.colors"_s, u"[General]\nName=KDOS Ice\n[WM]\nactiveBackground=18,58,74\nactiveForeground=191,238,255\n"_s);
+            u"[General]\nName=KDOS Amber\n[Colors:Header]\nBackgroundNormal=74,47,0\nForegroundNormal=255,176,0\nDecorationFocus=255,200,0\n"_s);
+        put(u"home/.local/share/color-schemes/KDOSIce.colors"_s,
+            u"[General]\nName=KDOS Ice\n[WM]\nactiveBackground=18,58,74\nactiveForeground=191,238,255\nactiveBlend=77,215,255\n"_s);
         Kdos::AccentModel model;
         QCOMPARE(model.rowCount(), 9);
         QCOMPARE(model.data(model.index(0), Kdos::AccentModel::IdRole).toString(), u"session"_s);
@@ -693,6 +747,8 @@ private Q_SLOTS:
         QCOMPARE(model.data(amber, Kdos::AccentModel::TextColorRole).value<QColor>(), QColor(255, 176, 0));
         const QModelIndex ice = model.index(model.indexOf(u"ice"_s));
         QCOMPARE(model.data(ice, Kdos::AccentModel::ColorRole).value<QColor>(), QColor(18, 58, 74));
+        QCOMPARE(model.data(amber, Kdos::AccentModel::AccentColorRole).value<QColor>(), QColor(255, 200, 0));
+        QCOMPARE(model.data(ice, Kdos::AccentModel::AccentColorRole).value<QColor>(), QColor(77, 215, 255));
         const QModelIndex paper = model.index(model.indexOf(u"paper"_s));
         QVERIFY(!model.data(paper, Kdos::AccentModel::AvailableRole).toBool());
         QCOMPARE(Kdos::AccentModel::schemeName(u"session"_s), u"KDOSBox"_s);

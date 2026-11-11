@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/app-id.patch"
+
 cp -a "$SRC_ROOT/imgui-$_imgui/." thirdparty/imgui/
 cp -a "$SRC_ROOT/miniaudio-$_miniaudio/." thirdparty/miniaudio/
 
@@ -62,7 +64,7 @@ TryExec=celestia-qt6
 Exec=celestia-qt6 %f
 Icon=celestia
 Terminal=false
-StartupWMClass=celestia-qt6
+StartupWMClass=space.celestiaproject.celestia_qt6
 MimeType=application/x-celestia-script;
 Categories=Qt;Education;Science;Astronomy;
 Keywords=astronomy;space;planets;stars;galaxy;simulator;celestia;
@@ -75,9 +77,10 @@ GenericName=Space Simulator
 Comment=Explore the universe, with the light SDL interface
 TryExec=celestia-sdl
 Exec=celestia-sdl
+Path=/usr/share/celestia
 Icon=celestia
 Terminal=false
-StartupWMClass=celestia-sdl
+StartupWMClass=space.celestiaproject.celestia_sdl
 Categories=Education;Science;Astronomy;
 Keywords=astronomy;space;planets;stars;galaxy;simulator;celestia;
 DESKTOP

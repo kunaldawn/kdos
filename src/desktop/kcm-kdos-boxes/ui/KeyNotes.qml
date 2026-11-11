@@ -12,7 +12,9 @@
  * What kdos-box says about one key, under the control that sets it: the
  * mechanism that applies it, and every `!` line about a value it cannot
  * deliver. A setting that does nothing is shown as doing nothing, beside
- * the switch, not in a manual.
+ * the switch, not in a manual. The words are kdos-box's, set as rich text
+ * by BoxProfile::markup so its `quoted` words and key=value settings read
+ * as code rather than as terminal punctuation.
  */
 
 pragma ComponentBehavior: Bound
@@ -37,8 +39,8 @@ ColumnLayout {
     QQC2.Label {
         Layout.fillWidth: true
         visible: notes.mechanism !== ""
-        text: i18nc("@info %1 how kdos-box applies a setting", "How it applies: %1", notes.mechanism)
-        textFormat: Text.PlainText
+        text: i18nc("@info %1 how kdos-box applies a setting", "How it applies: %1", kcm?.profile.mechanismMarkup(notes.mechanism) ?? "")
+        textFormat: Text.RichText
         wrapMode: Text.Wrap
         font: Kirigami.Theme.smallFont
         color: Kirigami.Theme.disabledTextColor
@@ -53,7 +55,8 @@ ColumnLayout {
             Layout.fillWidth: true
             visible: true
             type: Kirigami.MessageType.Warning
-            text: modelData
+            /* `kcm` is gone before a delegate is when the page closes. */
+            text: kcm?.profile.noteMarkup(modelData) ?? ""
         }
     }
 }

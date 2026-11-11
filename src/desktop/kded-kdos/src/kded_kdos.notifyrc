@@ -9,8 +9,13 @@ Comment=A drive you connected holds an exported KDOS application set
 Action=Popup
 
 [Event/shareStartFailed]
-Name=Shared folder not served
-Comment=A folder was shared, but the file server could not be started to serve it
+Name=Folder sharing unavailable
+Comment=You can share folders, but the file server could not be started to serve them
+Action=Popup
+
+[Event/shellRespawnLimit]
+Name=Desktop shell keeps stopping
+Comment=The panel and desktop stopped several times in a minute and were not started again
 Action=Popup
 
 [Event/syncFailed]

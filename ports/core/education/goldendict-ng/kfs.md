@@ -36,6 +36,12 @@ text. The program is called `goldendict`.
 
 ## Notes
 
+No port installs dictionary data, and with the online sources off a new profile has nothing to
+look a word up in. On its first start the program adds `/usr/share/stardict/dic`, which
+[sdcv](#port-sdcv) creates, as a recursive source, so dictionary files copied there are found at the
+next rescan (see
+[GoldenDict-ng ships with no dictionary](../../../../docs/kdos/06-reference/known-gaps.md#goldendict-ng-ships-with-no-dictionary)).
+
 `build.sh` removes `/usr/share/goldendict/locale`; English is the program's untranslated source
 text. Upstream's menu entry is replaced: `setDesktopFileName` makes the Wayland app_id
 `io.github.xiaoyifang.goldendict_ng`, which the entry gives as `StartupWMClass`.

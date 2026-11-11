@@ -19,8 +19,12 @@
  *                battery applet lists it as blocking. PowerDevil drops an
  *                inhibition the moment its holder leaves the bus, so the
  *                holder IS the state, and its pid file says where it is.
- *   night-light  KWin's own "Toggle Night Color" shortcut, invoked through
- *                kglobalaccel: exactly what the key does.
+ *   night-light  kwinrc [NightColor] Active, the key the Night Light page
+ *                writes and KWin watches, with Mode=Constant on the way on, so
+ *                the screen warms at once and all day rather than on the
+ *                evening schedule. KWin's "Toggle Night Color" only suspends
+ *                and resumes; it is pressed only to lift a suspension that
+ *                would hide the switch being on.
  *   dnd          plasmanotifyrc [DoNotDisturb] Until, the key the
  *                notification applet's own switch writes, set far ahead;
  *                deleted to switch it off.
@@ -221,39 +225,89 @@ static int awake_set(int on, char *why, size_t n)
 
 /* ── night light ───────────────────────────────────────────────────────── */
 
-/* KWin's Night Light reports its own state on the bus; its shortcut is a
- * flip, so the state is read first and the key pressed only when it has to
- * change. */
-static int night_on(void)
+/* KWin's Night Light on the bus; 0 when it answers, -1 when it does not. */
+static int night_prop(const char *prop, int *val)
 {
 	KdtBus *b = kdt_bus_open(0);
 	KdtMsg *r = NULL;
-	int on = 0;
+	int rc = -1;
 
+	*val = 0;
 	if (b && kdt_bus_get_prop(b, "org.kde.KWin", "/org/kde/KWin/NightLight",
-				  "org.kde.KWin.NightLight", "running", "b",
-				  &r, NULL, 0) == 0)
-		kdt_bus_read(b, r, "b", &on);
+				  "org.kde.KWin.NightLight", prop, "b", &r, NULL,
+				  0) == 0 &&
+	    kdt_bus_read(b, r, "b", val) > 0)
+		rc = 0;
 	kdt_bus_free(b, r);
 	kdt_bus_close(b);
-	return !!on;
+	return rc;
 }
 
-static int night_set(int on, char *why, size_t n)
+/* On is enabled and not suspended: `running` alone is false by day under a
+ * schedule, and `enabled` alone is true while the person's suspension holds
+ * the screen cold. With no KWin to ask, the configuration says. */
+static int night_on(void)
 {
-	KdtBus *b;
-	int rc;
+	int en, inh;
+	char *v;
 
-	if (night_on() == on)
-		return 0;
-	b = kdt_bus_open(0);
-	rc = kdt_bus_call(b, "org.kde.kglobalaccel", "/component/kwin",
-			  "org.kde.kglobalaccel.Component", "invokeShortcut",
-			  NULL, why, n, "s", "Toggle Night Color");
+	if (night_prop("enabled", &en) == 0 &&
+	    night_prop("inhibited", &inh) == 0)
+		return en && !inh;
+	v = kdt_kcfg_cascade("kwinrc", "NightColor", "Active");
+	en = kdt_kcfg_bool(v, 0);
+	free(v);
+	return en;
+}
+
+static int night_press(char *why, size_t n)
+{
+	KdtBus *b = kdt_bus_open(0);
+	int rc = kdt_bus_call(b, "org.kde.kglobalaccel", "/component/kwin",
+			      "org.kde.kglobalaccel.Component", "invokeShortcut",
+			      NULL, why, n, "s", "Toggle Night Color");
+
 	kdt_bus_close(b);
 	if (rc != 0 && !*why)
 		snprintf(why, n, "kglobalaccel did not answer");
 	return rc;
+}
+
+/* The suspension KWin's key takes is a flag of its own on top of a count any
+ * program may add to, so a press that leaves Night Light still suspended has
+ * turned the flag on: it is pressed again to put it back, and the switch
+ * reports what holds it. */
+static int night_resume(char *why, size_t n)
+{
+	int inh = 0;
+	struct timespec ts = { 0, 100 * 1000 * 1000 };
+
+	if (night_prop("inhibited", &inh) != 0 || !inh)
+		return 0;
+	if (night_press(why, n) != 0)
+		return -1;
+	for (int i = 0; i < 20; i++) {
+		if (night_prop("inhibited", &inh) != 0 || !inh)
+			return 0;
+		nanosleep(&ts, NULL);
+	}
+	night_press(why, n);
+	snprintf(why, n, "another program is holding Night Light off");
+	return -1;
+}
+
+static int night_set(int on, char *why, size_t n)
+{
+	if (on && kdt_kcfg_set("kwinrc", "NightColor", "Mode", "Constant", 1)) {
+		snprintf(why, n, "kwriteconfig6 could not write kwinrc");
+		return -1;
+	}
+	if (kdt_kcfg_set("kwinrc", "NightColor", "Active",
+			 on ? "true" : "false", 1) != 0) {
+		snprintf(why, n, "kwriteconfig6 could not write kwinrc");
+		return -1;
+	}
+	return on ? night_resume(why, n) : 0;
 }
 
 /* ── do not disturb ────────────────────────────────────────────────────── */

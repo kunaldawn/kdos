@@ -9,8 +9,10 @@
  *
  * A finished install offers the restart; the warnings, things the installed
  * system will lack though it installed, are listed with it. A failed one
- * says why in kinstall's words, shows the last of the log, and goes back to
- * the summary, where the answers can be changed and the install run again.
+ * says why in kinstall's words, shows the last of the log where kinstall
+ * sent any, and goes back to the summary, where the answers can be changed
+ * and the install run again. The log file is named, and offered, only when
+ * kinstall ran: an install refused permission never wrote one.
  */
 
 import QtQuick
@@ -39,7 +41,7 @@ WizardPage {
                : Backend.answers.autologin && Backend.answers.luks
                  ? i18n("After the disk passphrase, the session starts by itself.")
                  : i18n("Log in with the account you made."))
-            : i18n("The full log is /var/log/kinstall.log on this live system.")
+            : page.events.started ? i18n("The full log is %1 on this live system.", Backend.logPath) : ""
     }
 
     Kirigami.InlineMessage {
@@ -66,6 +68,12 @@ WizardPage {
             onClicked: page.retry()
         }
         QQC2.Button {
+            visible: page.events.started && Backend.logReadable()
+            text: i18nc("@action:button", "Open the Log")
+            icon.name: "text-x-log"
+            onClicked: Backend.openLog()
+        }
+        QQC2.Button {
             text: i18nc("@action:button", "Close")
             icon.name: "window-close"
             onClicked: Qt.quit()
@@ -73,12 +81,12 @@ WizardPage {
     }
 
     QQC2.Label {
-        visible: !page.ok
+        visible: !page.ok && page.events.log.length > 0
         text: i18nc("@title:group", "The end of the log")
         font.bold: true
     }
     QQC2.TextArea {
-        visible: !page.ok
+        visible: !page.ok && page.events.log.length > 0
         Layout.fillWidth: true
         Layout.preferredHeight: Kirigami.Units.gridUnit * 12
         readOnly: true

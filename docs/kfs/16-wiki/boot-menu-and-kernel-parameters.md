@@ -35,13 +35,13 @@ the firmware boot entry labelled `KDOS` is written by the installer with
 The medium's menu is a heredoc in the ISO step, written into the ISO tree and never into the root
 filesystem:
 
-<!-- kfs:include script/phases/70_image/110_iso.sh lines=314-342 pin=315b5e610a4f -->
+<!-- kfs:include script/phases/70_image/110_iso.sh lines=324-352 pin=27763b733baa -->
 
 `$BOOT_THEME` is the output of `kdos-bootctl theme --print` for the [accent]{.idx} the image is built in;
 `$WALLPAPER` and `$FONT_LINES` name the backdrop and the converted Terminus face, when the build
 found them. The memory test entry is appended after it:
 
-<!-- kfs:include script/phases/70_image/110_iso.sh lines=356-370 pin=0c1a7fc58339 -->
+<!-- kfs:include script/phases/70_image/110_iso.sh lines=366-380 pin=0c1a7fc58339 -->
 
 The medium is ISO9660 and read-only, so this file cannot be edited on a written stick. A change
 for one boot is made in Limine's editor (see [Usage](#usage)); a lasting change is a change to
@@ -53,7 +53,7 @@ for one boot is made in Limine's editor (see [Usage](#usage)); a lasting change 
 between `kdos_slot=a` and `root=` become `bootstate=UUID=<esp>` and, on an encrypted install,
 `cryptdevice=UUID=<luks>:kdosroot`, from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=2616-2648 pin=a862490fe7d7 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=2635-2667 pin=a862490fe7d7 -->
 
 `KI_QUIET` is `quiet loglevel=3 vt.global_cursor_default=0`: no kernel message below an error and
 no text cursor is drawn between the splash and the login screen.
@@ -110,21 +110,24 @@ described on [Microcode and firmware](microcode-and-firmware.md#the-regulatory-d
 ### Reaching the menu
 
 1. Start the machine. The menu counts down for the number of seconds `timeout:` names.
-2. Press any key during the countdown. The countdown stops and the menu waits.
+2. Press Up or Down during the countdown. The countdown stops and the menu waits. Enter, Space
+   and Right boot the highlighted entry at once, even during the countdown.
 3. Choose an entry with the arrow keys and press Enter.
 
 | Live medium | Installed machine |
 |---|---|
 | `KDOS Live` | `KDOS` |
-| `KDOS Live (clean session)`: adds `nopersist` | `KDOS (verbose)`: `loglevel=7` |
-| `KDOS Live (verbose)`: `loglevel=7` | `KDOS (single user)`: `loglevel=7 single` |
+| `KDOS Live (clean session)`: adds `nopersist` | `KDOS (verbose)`: `loglevel=7`, no `quiet` and no splash |
+| `KDOS Live (verbose)`: `loglevel=7`, no `quiet` and no splash | `KDOS (single user)`: `loglevel=7 single`, no splash |
 | `Memory Test (memtest86+)`, UEFI only | `KDOS (slot <x>)`, when the other root slot has a root and a kernel |
 | | `Memory Test (memtest86+)`, UEFI only |
 
-The live medium's entries carry `console=tty0 console=ttyS0`. The kernel prints its messages on
-both, and the last one named, the serial line, becomes `/dev/console`, where the initramfs and
-`rcS` print theirs. An installed machine's entries carry `console=tty0` alone, so everything prints
-on the screen. See
+The live medium's quiet entries carry `console=tty0 console=ttyS0`. The kernel prints its
+messages on both, and the last one named, the serial line, becomes `/dev/console`, where the
+initramfs and `rcS` print theirs. `KDOS Live (verbose)` names them the other way round, so there
+the screen is `/dev/console`. An installed machine's entries carry `console=tty0` alone, so
+everything prints on the screen. An entry without `quiet` runs no splash, and its console log
+level stays the one `loglevel=` set for the whole boot. See
 [the table of parameters](../../kdos/03-architecture/boot-and-init.md#command-line-parameters-kdos-reads)
 for every word KDOS reads.
 

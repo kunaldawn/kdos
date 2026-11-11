@@ -119,6 +119,11 @@ bool SystemVersionsModule::isConfigured() const
     return m_client->isConfigured();
 }
 
+bool SystemVersionsModule::isLive() const
+{
+    return m_client->isLive();
+}
+
 bool SystemVersionsModule::isBusy() const
 {
     return m_client->isBusy();
@@ -476,6 +481,13 @@ void SystemVersionsModule::openUpdates()
 {
     if (!QProcess::startDetached(u"plasma-discover"_s, {u"--mode"_s, u"update"_s})) {
         setMessage(i18nc("@info", "Discover could not be started, so updates cannot be checked from here."), Error);
+    }
+}
+
+void SystemVersionsModule::openInstaller()
+{
+    if (!QProcess::startDetached(u"kdos-installer-gui"_s, {})) {
+        setMessage(i18nc("@info", "The installer could not be started. Open Install KDOS from the desktop or the launcher."), Error);
     }
 }
 

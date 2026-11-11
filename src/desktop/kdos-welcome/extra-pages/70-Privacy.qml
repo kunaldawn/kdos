@@ -43,7 +43,7 @@ Welcome.ScrollablePage {
     property string failure: ""
 
     function open(argv: list<string>): void {
-        run.run(argv, (code, text) => page.failure = code === 0 ? "" : text);
+        run.launch(argv, (code, text) => page.failure = text);
     }
 
     Component.onCompleted: run.config("/etc/sddm.conf.d/kde_settings.conf", "Autologin", "User", "", user => page.autologinUser = user)

@@ -47,20 +47,26 @@ is the reference for every directive, `include` among them.
 
 <!-- kfs:include fs/etc/init.d/20_dmesg.sh -->
 
-At level 3 the console shows only the kernel's messages more urgent than an error: critical, alert
-and emergency. The next script, `22_syslog.sh`, starts `syslogd`, which lowers it further: when
-it opens the kernel's log it turns the kernel's console logging off, which leaves the level at 1,
-emergencies only, for as long as it runs (`syslogd -l` would keep the level as set).
-`cat /proc/sys/kernel/printk` on a booted machine starts `1`. Every message still reaches the ring
-buffer and the system log.
+What the console shows depends on whether the command line carries `quiet`:
+
+- **With `quiet`** (every entry that boots to the desktop), `20_dmesg.sh` sets level 3, so the
+  console shows only the kernel's messages more urgent than an error: critical, alert and
+  emergency. `22_syslog.sh` then starts `syslogd`, which lowers it further: when it opens the
+  kernel's log it turns the kernel's console logging off, which leaves the level at 1, emergencies
+  only, for as long as it runs. `cat /proc/sys/kernel/printk` starts `1`.
+- **Without `quiet`** (the verbose and single-user entries), `20_dmesg.sh` leaves the level the
+  `loglevel=` word set, and `22_syslog.sh` starts `syslogd -l`, which keeps the kernel's console
+  logging on. `cat /proc/sys/kernel/printk` starts `7`.
+
+Either way every message still reaches the ring buffer and the system log.
 
 ### Where each kind of message goes
 
 | Message | File | Kept |
 |:--|:--|:--|
-| Everything but authentication | [`/var/log/messages`]{.idx} | Rotated by size, as `rotate_size` and `rotate_count` say; older copies gzipped |
+| Everything but authentication | [`/var/log/messages`]{.idx} (root only, mode 0600, set by `22_syslog.sh` before `syslogd` starts) | Rotated by size, as `rotate_size` and `rotate_count` say; older copies gzipped |
 | Logins, `sudo`, polkit, other authentication | `/var/log/auth.log` (root only, mode 0600, set by `22_syslog.sh` before `syslogd` starts) | The same |
-| The kernel | [`/var/log/kern.log`]{.idx}, and `dmesg` | The same; the ring buffer until it wraps |
+| The kernel | [`/var/log/kern.log`]{.idx} (root only, mode 0600, the same way), and `dmesg` | The same; the ring buffer until it wraps |
 | The `cron` facility | `/var/log/cron`; nothing on the image logs there | The same |
 | A service script's output at boot | `/run/kdos-init.<service>.log` | Until reboot |
 | A supervised daemon's output | `/run/kdos-svc.<name>.log` (root only, mode 0640), and the system log tagged `<name>` | 64 KiB, one `.old` beside it |
@@ -90,14 +96,14 @@ print.
 1. Page through it, or follow it as messages arrive:
 
    ```bash
-   less /var/log/messages
-   tail -f /var/log/messages
+   sudo less /var/log/messages
+   sudo tail -f /var/log/messages
    ```
 
 2. Pick out one daemon. Each supervised daemon's lines carry its name as the tag:
 
    ```bash
-   grep 'kdos-powerd' /var/log/messages
+   sudo grep 'kdos-powerd' /var/log/messages
    ```
 
    A line carries the time, the host name, the tag and the message:
@@ -106,7 +112,7 @@ print.
    is written as it was sent and the file stays text. ASCII control characters in a message are
    still written as `^x`.
 
-3. Authentication is kept apart:
+3. Authentication is kept apart, in a file of its own:
 
    ```bash
    sudo tail -n 50 /var/log/auth.log
@@ -117,7 +123,7 @@ print.
 
    ```bash
    ls -l /var/log
-   zcat /var/log/messages.1.gz | less
+   sudo zcat /var/log/messages.1.gz | less
    ```
 
 ### Reading what a boot printed
@@ -150,7 +156,8 @@ sudo dmesg --level=err,warn
 
 The ring buffer holds messages from before `syslogd` started. Reading it takes root, because the
 kernel is built with `CONFIG_SECURITY_DMESG_RESTRICT`, which sets `kernel.dmesg_restrict` to 1;
-`/etc/sysctl.conf` leaves it there. The kernel's messages are also in `/var/log/kern.log`.
+`/etc/sysctl.conf` leaves it there. The kernel's messages are also in `/var/log/kern.log` and
+`/var/log/messages`, which are root only for the same reason.
 
 ### Writing a message
 

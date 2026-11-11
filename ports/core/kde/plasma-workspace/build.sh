@@ -40,4 +40,5 @@ cmake --build build --target shell/qwayland-plasma-shell.h shell/wayland-plasma-
 cmake --build build
 DESTDIR=$PKG cmake --install build
 rm -rf "$PKG/usr/lib/systemd"
+rm "$PKG/usr/lib/qt6/plugins/kf6/kded/oom_notifier.so" "$PKG/usr/share/knotifications6/oom_notifier.notifyrc"
 ln -s plasma-applications.menu "$PKG/etc/xdg/menus/applications.menu"

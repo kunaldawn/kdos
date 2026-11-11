@@ -33,10 +33,10 @@ the desk.
 | Right of the tasks | The meters: processor, memory and network, drawn by the KDOS Meters face |
 | Right | The system tray: volume, network, Bluetooth, battery, notifications, devices, the clipboard, the update tray and, while something is capturing, the privacy lamps |
 | Far right | The clock with the date, in the monospace face; then Show Desktop |
-| The desktop | The wallpaper. Right-click it for **Configure Desktop and Wallpaper**, **Add Widgets** and **Enter Edit Mode** |
+| The desktop | The wallpaper. Right-click it for **Enter Edit Mode** and **Desktop and Wallpaper** (`Ctrl+Shift+D`), beside Create New, Icons and Display Configuration; widgets are added from Edit Mode's **Add or Manage Widgets…** |
 
-Every panel, applet and widget is Plasma's and is changed the Plasma way: right-click the panel and
-choose **Enter Edit Mode**, or **Show Panel Configuration**. A change made there is yours and
+Every panel, applet and widget is Plasma's and is changed the Plasma way: right-click an empty part
+of the panel and choose **Add or Manage Widgets…** or **Show Panel Configuration**. A change made there is yours and
 outlives every accent switch and every update; only laying out a desk again replaces it (see
 [The desks](#the-desks)).
 
@@ -71,6 +71,16 @@ panels were changed since they were last laid out, the tour asks before replacin
 also sets auto-tiling: the Tiling desk turns it on and the other two turn it off, so a desk is the
 whole arrangement and never half of one.
 
+The KDOS desk's panel needs about 1,400 logical pixels, the screen's width divided by its scale
+(78 grid units at the default font), to hold everything. On a narrower screen it is laid out with less: under 1,400 logical pixels (1920
+wide at 150%, 1366×768 at 100%) Start shows the mark alone and the network meter is left out, and
+under 1,150 (1920 wide at 175% or 200%, 1024 wide at 100%) the pager is left out too. Under 900
+logical pixels the panel does not fit at all; use the Dock or Tiling desk there. The width is the
+one the screen has when the desk is laid out. When the screen later becomes narrower, through its
+scale, its resolution or a larger font, the panel keeps everything by shrinking the pinned
+applications' icons and the meters' charts, the figures staying whole; run `kdos desk kdos` to lay
+it out again for the new width.
+
 The pinned applications on the KDOS and Dock desks are Konsole, Dolphin, Firefox ESR and Kate, the
 first entries of `~/.config/kdos/favorites`. That file is also the list of boxes started in the
 background at login, so a pinned boxed application opens without waiting for its box (see
@@ -91,10 +101,14 @@ the accent. Its height follows the font size.
 
 Three small charts show the processor, memory and network, through the **KDOS Meters** face: a
 sparkline in the accent and the current figure in the monospace face, over a scanline ground when
-Phosphor mode is on. Click one to open System Monitor. Each is a Plasma System Monitor widget, so
+Phosphor mode is on. The network meter is two, side by side: ↓ download and ↑ upload. Click one
+for a larger chart of its sensors in a popup, which grows its charts when you resize it; System
+Monitor itself is in the Start menu. Each is a Plasma System Monitor widget, so
 **Configure** on its right-click menu chooses other sensors, including the KDOS ones: each box's
 processor, memory, disk and energy use, the energy each application has used, and the A/B slot
-state. System Monitor itself has a KDOS page with the same, under Overview, Boxes, Energy and Slots.
+state. System Monitor opens on an Overview of the processor, graphics card, memory, disks, network
+and applications, and has a KDOS page with the box, energy and slot sensors, under Overview, Boxes,
+Energy and Slots.
 On the Tiling desk the processor and memory are plain text.
 
 ### The system tray
@@ -109,7 +123,9 @@ the Device Notifier, the clipboard, Night Light, KDE Connect when paired) and th
 | **Getting started** | A first-run checklist that ticks itself as the machine finds each step done: a backup set up, a phone paired, the regional formats set, a box made, no firmware update waiting, the disk encrypted. An item whose program is not installed is left out, and the item hides once everything is done | Opens the list, where an item can be dismissed |
 
 Plasma's own microphone item and camera indicator are kept out of the tray, because the privacy
-lamps show both and name the box behind each.
+lamps show both and name the box behind each. Merkuro's contacts widget is kept out too: loading it
+starts Akonadi, KDE's PIM store, and its agents at every login. Each can be turned back on in the
+tray's settings.
 
 ## The Start menu
 
@@ -134,38 +150,46 @@ Applications…** opens the menu editor.
 
 `Meta+Space`, `Alt+Space` or `Alt+F2` opens KRunner, a search box at the top of the screen. It
 finds applications, files, settings pages, open windows, bookmarks and contacts, does arithmetic
-and unit conversion, and runs a command typed after `>`. KDOS adds two runners to it, served by one
-small program, `kdos-runner`, which the session bus starts on the first query.
+and unit conversion, and runs a command line typed as it is (`ls -la` offers *Run ls -la*). KDOS
+adds two runners to it, served by one small program, `kdos-runner`, which the session bus starts
+on the first query.
 
 **The KDOS command palette** offers the `kdos` verbs with their arguments filled in, so a word or
-two runs them:
+two runs them. Its rows come first, above Applications and System Settings, so `night light` and
+`Enter` run the verb rather than an application whose name starts the same way:
 
 | Type | Gets |
 |---|---|
-| `accent amber`, `phosphor on`, `night light` | The accent, Phosphor mode, Night Light |
+| `accent amber`, `accent next`, `phosphor on`, `night light`, `reduced motion` | The accent, or the next or previous one; Phosphor mode, Night Light, reduced motion |
 | `desk dock`, `tiling off` | A desk; auto-tiling on or off |
 | `update check`, `doctor` | The update check; `kdos doctor` |
 | `box stop www`, `install gimp` | A box's lifecycle; an application from the catalogue |
 | `why /etc/fstab` | What provides a file and why it is that way |
 | `keys tile` | The global shortcuts whose names match, with their current keys |
 | a favourite's two-letter code | The favourite: the `code=` field of its line in `~/.config/kdos/favorites` |
-| `gimp` | Also the packs and sets on the boot medium, opened in Discover |
+| `install gimp` | Also the packs and sets on the boot medium, opened in Discover |
+| `setup network` | A route of `/etc/kdos/menu.conf` by the words of its name, shown as *Set up network* over its name `route:setup.network` |
+| `lib photosynthesis` | KRunner again, with the offline library alone |
 | `ask what is a box?` | The answer of the language model on this machine, when a model pack is installed; Enter copies it ([Ask](../04-programs/plasma-shell.md#ask)) |
 
-KDOS's own System Settings pages are found by what they are for, not only by their names:
-`previous version` finds System Versions.
+KDOS's own System Settings pages are found by System Settings' own runner, by the keywords in
+their metadata as well as their names: `previous version` finds System Versions.
+
+**Files** are found from the file index, which an installed system keeps of file names. The live
+medium keeps no index, so there KRunner offers recent documents and typed paths, and Dolphin's
+search, which walks the folder, finds a file by name.
 
 **The offline library** finds headings in the KDOS and *KDOS from Scratch* books, `kdos*` manual
 pages, entries of every Zeal docset, a typed coordinate as a map location, title suggestions from
 the ZIM archives `kiwix-serve` serves, and Kolibri's resources. Its results rank below everything
-else; a query that starts with `?` asks the library alone.
+else; `lib <words>` opens KRunner again on those words with the library alone.
 
 ## Windows
 
-Windows float. KWin places a new window where it overlaps least, and a program's window opens
-again where its last window closed, at the same size and maximized if it was: KDOS's window-memory
-script records one place per application in `$XDG_STATE_HOME/kdos/window-memory`, and is turned off
-on System Settings' KWin Scripts page.
+Windows float. KWin centres a new window on the screen that has the focus, and a program's window
+opens again where its last window closed, at the same size and maximized if it was: KDOS's
+window-memory script records one place per application in `$XDG_STATE_HOME/kdos/window-memory`,
+and is turned off on System Settings' KWin Scripts page.
 
 Dragging a window to an edge or a corner snaps it: to the left or right half, a quarter, or the
 whole screen at the top. `Meta` with an arrow key does the same from the keyboard. Beyond halves and
@@ -177,17 +201,17 @@ rules, is in [The window model](../03-architecture/window-model.md).
 Krohnkite script, off by default, and `Meta+Shift+T` switches it on and off; so do `kdos tiling
 on|off|toggle`, the Welcome tour's Desk page and the KWin Scripts page. `kdos tiling on --only
 hack,misc` tiles those desktops alone. While it is on, its own keys are listed on the key card; the
-seven chords Krohnkite would take from the session (`Meta+L`, `Meta+D`, `Meta+T`, `Meta+.`,
-`Meta+R`, `Meta+Shift+R` and `Meta+Return`) are left unbound for it, so turning it on never moves
-a key you use.
+eight chords Krohnkite would take from the session (`Meta+L`, `Meta+D`, `Meta+T`, `Meta+.`,
+`Meta+I`, `Meta+R`, `Meta+Shift+R` and `Meta+Return`) are left unbound for it, so turning it on
+never moves a key you use.
 
 **Boxed windows** wear the box's colour. Each box gets a KWin window rule that paints its windows'
 title bars in the colours of one of the accents, chosen on the box's page in System Settings, so the
 windows of one box are told apart from the host's and from another box's at a glance. The task
 manager's tooltip for a boxed window names its box. See [Boxes](applications.md#boxes).
 
-The title bar is Breeze's decoration with square corners, a one-pixel outline in the accent and
-the title on the left. Right-click it, or press `Alt+F3`, for the window menu: move, resize, keep
+The title bar is Breeze's decoration with square corners, a one-pixel outline in the accent around
+the active window and the title on the left. Right-click it, or press `Alt+F3`, for the window menu: move, resize, keep
 above, move to another desktop or screen, fullscreen, and **More Actions → Configure Special
 Window Settings**, which writes a rule for that window.
 
@@ -209,7 +233,7 @@ card:
 
 | Key | Opens |
 |---|---|
-| `Meta+F1`, `Meta+/` | The key card: every global shortcut the session holds, grouped into Windows, Desktops, Launch, KDOS, Accessibility and System, with a search box. It asks KWin's shortcut daemon for the current keys each time it opens, so a chord you rebound is shown as it now is. The same keys, or `Esc`, close it |
+| `Meta+F1`, `Meta+/` | The key card: every global shortcut the session holds, grouped into Windows, Desktops, Launch, KDOS, Accessibility and System, with a search box; `Tab` and the arrow keys move from the search box through the rows. It asks KWin's shortcut daemon for the current keys each time it opens, so a chord you rebound is shown as it now is. The same keys, or `Esc`, close it |
 
 `kdos help --keys` prints the same list in a terminal. The tables below are the shortcuts KDOS adds
 or moves, and the KDE ones a newcomer reaches for first.
@@ -228,7 +252,9 @@ or moves, and the KDE ones a newcomer reaches for first.
 ### Terminal programs, one key each
 
 Seven terminal programs each have a key that raises the program's window when one is open and opens
-one in Konsole when none is; pressed again from one of its windows, it moves to the next.
+one in Konsole when none is; pressed again from one of its windows, it moves to the next. The Konsole
+window stays open after the program exits, so an error it printed stays readable, and until that
+window is closed the key raises it rather than starting the program again.
 
 | Key | Program |
 |---|---|
@@ -266,7 +292,7 @@ They are KWin actions, listed under KWin on the Shortcuts page, where each can b
 
 | Key | Action |
 |---|---|
-| `Meta+Ctrl+Shift+N` | Night Light on or off, at once; KDE leaves it without a chord, and this one is KDOS's |
+| `Meta+Ctrl+Shift+N` | Night Light on or off, at once: on warms the screen now and all day, whatever schedule the Night Light page had; KDE leaves it without a chord, and this one is KDOS's |
 
 Do Not Disturb, Night Light, staying awake and reduced motion are also switches from a prompt or
 KRunner, each the same switch Plasma's own applet or settings page shows:
@@ -302,7 +328,7 @@ from Kickoff, offers every other mode, and `kdos-shot` takes the same shots from
 
 | Key | Action |
 |---|---|
-| `Meta+Alt+S` | The Orca screen reader on or off, on the desktop and on the login screen |
+| `Meta+Alt+S` | The Orca screen reader on or off, on the desktop and on the login screen (silent there; see [Known gaps](../06-reference/known-gaps.md#the-screen-reader-at-the-login-screen-has-no-sound)) |
 | `Meta+=`, `Meta+-`, `Meta+0` | Zoom in, zoom out, back to actual size |
 
 The rest is in [Accessibility](accessibility.md).
@@ -320,8 +346,9 @@ and a chord you moved stays moved. Plasma's shortcut daemon reads only your own 
 cascade of configuration directories other KDE settings follow, which is why the chords are copied
 rather than read in place.
 
-The input-method switch is not a global shortcut: fcitx5 switches input methods on `Ctrl+Space`
-and keyboard groups on `Meta+Alt+Space`, moved off `Meta+Space` so KRunner can have it (see
+The input-method switch is not a global shortcut: fcitx5 turns the input method on and off on
+`Ctrl+Space` and cycles its input-method groups on `Meta+Alt+Space`, moved off `Meta+Space` so
+KRunner can have it; keyboard layouts switch with KWin's `Meta+Alt+K` (see
 [Input methods](administration.md#input-methods)).
 
 ## Notifications
@@ -353,8 +380,8 @@ and `kdos remind in 10m "tea"` one later.
 Dolphin is the file manager, on `Meta+E` and pinned to the panel. Its **Places** hold your home
 and its folders, the trash, network locations and removable devices as they appear, and the KDOS
 **Library**, `library:/`: Books (ZIM archives and the two KDOS books), Maps, Models (language
-models, speech models and voices), Docsets and Courses, each with its size and the pack it came
-from. Opening an item opens it with its program. `kdos places` lists the Places and
+models, speech models and voices), Docsets and Courses, each with its size. Opening an item opens
+it with its program; a map opens Organic Maps. `kdos places` lists the Places and
 `kdos places add DIR` adds one from a prompt.
 
 Dolphin keeps its own defaults, which KDOS does not change: folders sort before files, every
@@ -366,7 +393,7 @@ Dolphin's right-click menu gains five KDOS actions:
 | Action | Does |
 |---|---|
 | **Open in a throwaway box** | Opens the file with the boxed application for its type, in a box made for that one file: no network, an empty home, no camera, nothing of the session's processes, and only the file itself, read-only. Whatever the application writes is destroyed with the box when it exits. For a document from somewhere you do not trust |
-| **Share** | Sends the selected files or folders to another machine over one code word, with [`kdos share`](../04-programs/kdos-command.md#kdos-share), in a Konsole window that shows the code and its QR code |
+| **Send with a Code Word** | Sends the selected files or folders to another machine over one code word, with [`kdos share`](../04-programs/kdos-command.md#kdos-share), in a Konsole window that shows the code and its QR code |
 | **Git Status Here** | On a folder: opens lazygit in Konsole there |
 | **Verify** | On any file: checks it against a `.sha256`, `.sha512`, `SHA256SUMS` or `SHA512SUMS` beside it, and a `.kpack`'s or a package's KDOS signature, with [`kdos verify`](../04-programs/kdos-command.md#kdos-verify), and says in a notification whether it matched |
 | **Transcribe** | On a local audio or video file: writes its speech as text beside it, with the local Whisper model. Offered only while `whisper-cli` and a model are installed |
@@ -389,9 +416,11 @@ Double-clicking a file opens it with its type's default application. The default
 applications unless an application on the image is clearly better at the job: folders open in
 Dolphin, PDF in Okular, e-books in Calibre's viewer, text in Kate, pictures in Gwenview, video in
 Haruna, music in Elisa, web links in Firefox ESR and mail links in Thunderbird. The full table is in
-[Default applications](applications.md#default-applications). Right-click a file for **Open With**,
-where *Remember application association* makes another choice the default for that type; your
-choices are kept in `~/.config/mimeapps.list` and outrank the shipped ones.
+[Default applications](applications.md#default-applications). Right-click a file for **Open With**
+and *Other Application…*, where *Set as default app to open … files* makes the choice the default
+for that type; System Settings' Default Applications page sets the default for each role, and its
+File Associations page for one type. Your choices are kept in `~/.config/mimeapps.list` and
+outrank the shipped ones.
 
 A boxed application can open a file like any other, and a link clicked inside a box opens on the
 host through the desktop portal.
@@ -420,7 +449,7 @@ before every sleep, so a machine never wakes unlocked. `Meta+L` locks at once.
 The lock screen and the login screen are drawn alike, in the accent. A virtual machine and the live
 medium never lock by themselves: KDOS puts a set of defaults in front of its usual ones there, and
 `Meta+L` and the lock before sleep still work. In a virtual machine the screen does not dim or turn
-off either.
+off either, and the machine does not go to sleep when idle or when a lid closes.
 
 `kdos toggle stay-awake` holds off sleep and the screen locker until it is switched off again, for
 a presentation or a long job; the battery item lists it as what is blocking sleep.
@@ -448,6 +477,10 @@ it mounts it, as you, at `/run/media/<user>/<label>`; **Safely remove** unmounts
 Mounting, unlocking an encrypted stick and ejecting removable media need no password for the person
 at the machine. An internal disk is the administrator's: for a member of `wheel` at the machine it
 mounts without a password too, and anyone else is asked for an administrator's password.
+
+In a live session the medium the system is running from is not listed: it is in use for the whole
+session and cannot be removed, and its files stay at `/mnt/iso`. The RAM root of the live session
+is not listed as a device either.
 
 When a stick holds an application set (a `.ktar` file at its top level), a notification offers to
 open it in Discover, which installs it offline.
@@ -477,9 +510,10 @@ kdos privacy --watch --json   # one line now and one at every change
 kdos privacy mute <id>        # mute one capture the list names; also unmute, stop
 ```
 
-The microphone and the screen are seen through PipeWire's streams and the desktop portal's
-screen-sharing sessions, and the camera through PipeWire's camera nodes and the holders of
-`/dev/video*`, so a program that opens a camera device directly is seen too.
+The microphone and the screen are seen through PipeWire's streams, the screen as KWin's
+screencast streams whether Spectacle or a program sharing the screen asked for them, and the
+camera through PipeWire's camera nodes and the holders of `/dev/video*`, so a program that opens a
+camera device directly is seen too.
 
 ## When the desktop misbehaves
 
@@ -489,11 +523,11 @@ service) along with the rest of the machine; System Settings' Health page shows 
 
 | Symptom | What to do |
 |---|---|
-| The panel or the desktop is frozen or gone | `plasmashell --replace &` from Konsole or KRunner, or log out and in. The panels are kept in `~/.config/plasma-org.kde.plasma.desktop-appletsrc` |
+| The panel or the desktop is frozen or gone | A shell that stopped comes back by itself within a few seconds. One that is frozen: `kquitapp6 plasmashell; kstart plasmashell` from Konsole or KRunner (`kstart` detaches it, so closing the Konsole leaves it running), or log out and in. The panels are kept in `~/.config/plasma-org.kde.plasma.desktop-appletsrc` |
 | The panels are not as you left them | `kdos desk undo` puts back the panels the last desk replaced; older layouts are under `~/.local/share/kdos/desk-backup/` |
 | Windows tile when they should float | `kdos tiling off`, or `Meta+Shift+T` |
 | A key does nothing | The key card, `Meta+F1`, shows what the key is bound to now; System Settings → Keyboard → Shortcuts changes it |
-| The screen is black, or the session will not start | `Ctrl+Alt+F2` for the recovery console. The session's log is `~/.local/share/sddm/wayland-session.log`, the login screen's is `/var/log/sddm.log`, and the system log `/var/log/messages` |
+| The screen is black, or the session will not start | `Ctrl+Alt+F2` for the recovery console. The session's log is `~/.local/share/sddm/wayland-session.log`, the login screen's is `/var/log/sddm.log`, and the system log `/var/log/messages`, read with `sudo` |
 | The look is wrong after an accent change | `kdos theme --audit` reports what does not match the palette; `kdos theme <accent>` repairs it |
 | Phosphor mode left the screen hard to read | `kdos phosphor off`, from a prompt or KRunner |
 

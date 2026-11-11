@@ -129,7 +129,7 @@ before the daemon has ever run:
    ```text
    Boxes
      [ ok ] erofs is available to the kernel
-     [ ok ] kdos-packd is answering — not yet used
+     [ ok ] kdos-packd is answering (mount route: not yet used)
      [warn] $HOME is on overlayfs (a live session), so a persistent box cannot exist — its upper falls back to tmpfs and its changes end with the session
      [skip] nothing is mounted from the pack store
    ```
@@ -361,7 +361,6 @@ A frozen box imports and its box is not created
 
 ## Known gaps
 
-- [Applications imported or built during an install stay in the live session](../../kdos/06-reference/known-gaps.md#applications-imported-or-built-during-an-install-stay-in-the-live-session)
 - [A live session cannot create a persistent box](../../kdos/06-reference/known-gaps.md#a-live-session-cannot-create-a-persistent-box)
 - [A catalogue change reaches an installed application only when it is rebuilt](../../kdos/06-reference/known-gaps.md#a-catalogue-change-reaches-an-installed-application-only-when-it-is-rebuilt)
 - A data set built by `kdos app install` is an image and is grafted nowhere; only an imported data

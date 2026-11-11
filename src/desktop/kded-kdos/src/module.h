@@ -7,10 +7,11 @@
  * ---------------------------------
  *   kded-kdos — the kded6 module
  *
- * Three jobs in one module, because each is something the session has to
+ * Four jobs in one module, because each is something the session has to
  * notice while nobody is looking at a KDOS window: the accent a Plasma page
- * chose, a stick carrying an application set, and the first folder shared
- * from Dolphin, which Samba is started to serve.
+ * chose, a stick carrying an application set, a login that can share
+ * folders from Dolphin, for which Samba is started, and a plasmashell that
+ * has stopped, which is started again.
  *
  * Its state is on the session bus at org.kde.kded6 /modules/kdos, interface
  * io.kdos.Kded1, for a settings page or a script to ask: the accent the
@@ -30,7 +31,8 @@ namespace Kdos
 {
 
 class AccentSync;
-class ShareWatch;
+class ShareStart;
+class ShellWatch;
 class StickOffer;
 
 class Module : public KDEDModule
@@ -54,7 +56,8 @@ Q_SIGNALS:
 private:
     AccentSync *m_sync;
     StickOffer *m_stick;
-    ShareWatch *m_share;
+    ShareStart *m_share;
+    ShellWatch *m_shell;
 };
 
 }

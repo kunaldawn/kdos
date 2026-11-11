@@ -23,11 +23,11 @@ install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/numbat.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=Calculator
+Name=Numbat
 GenericName=Unit Calculator
 Comment=Arithmetic that knows its units
 Exec=numbat
-Icon=system-run
+Icon=accessories-calculator
 Terminal=true
 Categories=Utility;Calculator;
 Keywords=calculator;units;convert;maths;numbat;

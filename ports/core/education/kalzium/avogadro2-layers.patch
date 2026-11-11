@@ -1,0 +1,172 @@
+Subject: Register molecules with the avogadrolibs 2 layer manager so the viewer draws them
+
+avogadrolibs 2 keeps whether a scene plugin is enabled per molecule in
+its layer manager, and only a molecule handed to RWLayerManager::addMolecule
+becomes the active one. KalziumGLWidget never did that, so every
+setEnabled() was a no-op, activeScenePlugins() stayed empty and the
+Molecular Editor drew nothing. The widget now registers each molecule it
+is given, enables the style the dialog chose by the plugin's name() and
+reapplies it on every new molecule. The view also takes an opaque
+background from the palette's Base colour, since the scene default is
+transparent and shows the window behind it on Wayland.
+
+--- a/compoundviewer/kalziumglwidget.cpp
++++ b/compoundviewer/kalziumglwidget.cpp
+@@ -8,6 +8,8 @@
+ #include "kalziumglwidget.h"
+ #include "iowrapper.h"
+ 
++#include <avogadro/core/vector.h>
++#include <avogadro/qtgui/layermodel.h>
+ #include <avogadro/qtgui/molecule.h>
+ #include <avogadro/qtgui/sceneplugin.h>
+ #include <avogadro/qtgui/toolplugin.h>
+@@ -15,12 +17,16 @@
+ #include <avogadro/rendering/primitive.h>
+ 
+ #include <QDebug>
++#include <QEvent>
++#include <QPalette>
+ #include <QWidget>
+ 
+ #include <config-kalzium.h>
+ 
+ KalziumGLWidget::KalziumGLWidget(QWidget *parent)
+     : Avogadro::QtOpenGL::GLWidget(parent)
++    , m_layerModel(new Avogadro::QtGui::LayerModel(this))
++    , m_sceneStyle(QStringLiteral("Ball and Stick"))
+ {
+     // work around a bug in OpenBabel: the chemical data files parsing
+     // is dependent on the LC_NUMERIC locale.
+@@ -45,12 +51,7 @@
+     // load render engines
+     QList<Avogadro::QtGui::ScenePluginFactory *> scenePluginFactories = manager->pluginFactories<Avogadro::QtGui::ScenePluginFactory>();
+     foreach (auto *factory, scenePluginFactories) {
+-        auto *scenePlugin = factory->createInstance();
+-        // enable Ball-and-Sticks
+-        if (scenePlugin->objectName() == QLatin1String("BallStick")) {
+-            scenePlugin->setEnabled(true);
+-        }
+-        sceneModel().addItem(scenePlugin);
++        sceneModel().addItem(factory->createInstance());
+     }
+ 
+     // load tools
+@@ -70,6 +71,7 @@
+         }
+     }
+ 
++    applyBackground();
+     setMolecule(new Avogadro::QtGui::Molecule(this));
+     update();
+ }
+@@ -99,4 +101,47 @@
+     return true;
+ }
+ 
++void KalziumGLWidget::setMolecule(Avogadro::QtGui::Molecule *molecule)
++{
++    if (molecule) {
++        m_layerModel->addMolecule(molecule);
++    }
++    Avogadro::QtOpenGL::GLWidget::setMolecule(molecule);
++    applySceneStyle();
++    updateScene();
++}
++
++void KalziumGLWidget::setSceneStyle(const QString &name)
++{
++    m_sceneStyle = name;
++    applySceneStyle();
++    updateScene();
++}
++
++void KalziumGLWidget::applySceneStyle()
++{
++    const auto plugins = sceneModel().scenePlugins();
++    for (auto *plugin : plugins) {
++        plugin->setEnabled(plugin->name() == m_sceneStyle);
++    }
++}
++
++// The scene's own background is transparent black, which a Wayland
++// surface with alpha composites as a hole in the window; the view takes
++// the palette's opaque base colour instead.
++void KalziumGLWidget::applyBackground()
++{
++    const QColor base = palette().color(QPalette::Base);
++    renderer().scene().setBackgroundColor(Avogadro::Vector4ub(base.red(), base.green(), base.blue(), 255));
++}
++
++void KalziumGLWidget::changeEvent(QEvent *event)
++{
++    Avogadro::QtOpenGL::GLWidget::changeEvent(event);
++    if (event->type() == QEvent::PaletteChange) {
++        applyBackground();
++        update();
++    }
++}
++
+ #include "moc_kalziumglwidget.cpp"
+--- a/compoundviewer/kalziumglwidget.h
++++ b/compoundviewer/kalziumglwidget.h
+@@ -11,6 +11,11 @@
+ 
+ #include "compoundviewer_export.h"
+ 
++namespace Avogadro::QtGui
++{
++class LayerModel;
++}
++
+ class COMPOUNDVIEWER_EXPORT KalziumGLWidget : public Avogadro::QtOpenGL::GLWidget
+ {
+     Q_OBJECT
+@@ -18,11 +23,28 @@
+     explicit KalziumGLWidget(QWidget *parent = nullptr);
+     virtual ~KalziumGLWidget();
+ 
++    // Hides GLWidget::setMolecule. avogadrolibs keeps each scene plugin's
++    // enabled state per molecule in its layer manager, and a molecule the
++    // manager has not been given enables no plugin, so nothing is drawn.
++    void setMolecule(Avogadro::QtGui::Molecule *molecule);
++
+ public slots:
+     bool openFile(const QString &file);
+ 
++    // Enables the one scene plugin whose name() is @p name and redraws.
++    void setSceneStyle(const QString &name);
++
+ protected:
++    void changeEvent(QEvent *event) override;
++
+     QByteArray m_lc_numeric;
++
++private:
++    void applySceneStyle();
++    void applyBackground();
++
++    Avogadro::QtGui::LayerModel *m_layerModel;
++    QString m_sceneStyle;
+ };
+ 
+ #endif // KALZIUMGLWIDGET_H
+--- a/src/tools/moleculeview.cpp
++++ b/src/tools/moleculeview.cpp
+@@ -148,15 +148,7 @@
+ 
+ void MoleculeDialog::slotUpdateScenePlugin()
+ {
+-    const QString text = ui.styleCombo->currentText();
+-    for (int i = 0; i < ui.glWidget->sceneModel().rowCount(QModelIndex()); ++i) {
+-        QModelIndex index = ui.glWidget->sceneModel().index(i, 0);
+-        if (text == ui.glWidget->sceneModel().data(index, Qt::DisplayRole)) {
+-            ui.glWidget->sceneModel().setData(index, Qt::Checked, Qt::CheckStateRole);
+-        } else {
+-            ui.glWidget->sceneModel().setData(index, Qt::Unchecked, Qt::CheckStateRole);
+-        }
+-    }
++    ui.glWidget->setSceneStyle(ui.styleCombo->currentText());
+ }
+ 
+ void MoleculeDialog::loadMolecule(const QString &filename)

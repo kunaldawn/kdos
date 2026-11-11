@@ -11,8 +11,8 @@ and any other name is a shim, a link named after an application that runs it in 
 it at login. Under KWin it is also what confines a box: each box sees a private runtime directory
 of its own as `/run/user/<uid>`, holding the tagged Wayland socket
 [kdos-boxsock](#port-kdos-boxsock) serves, a bus filtered by
-[xdg-dbus-proxy](#port-xdg-dbus-proxy) and the audio sockets, and never the session's `wayland-0`
-or `bus`. It writes each boxed launcher under the id KWin gives the box's windows, one KWin window
+[xdg-dbus-proxy](#port-xdg-dbus-proxy) and the audio sockets, and never the session's Wayland
+socket (KWin's `wayland-1`) or `bus`. It writes each boxed launcher under the id KWin gives the box's windows, one KWin window
 rule per box that tints its title bar in the box's accent, a Dolphin service menu that opens a file
 in a throwaway box, and the record that brings a session's boxes back at the next login. Everything
 it does is described in [kdos-appbox](../../../docs/kdos/04-programs/kdos-appbox.md).

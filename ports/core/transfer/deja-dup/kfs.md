@@ -16,10 +16,13 @@ though none is linked. The passphrase is kept through libsecret, by whatever ans
   existing Duplicity backups, and makes new backups with restic. Here every backup is a restic
   one, and a Duplicity backup made elsewhere cannot be restored; it is a row of
   [Features whose library has no port](../../../../docs/kdos/06-reference/known-gaps.md#features-whose-library-has-no-port).
-- **The scheduler is started by the session.** Upstream installs
-  `org.gnome.DejaDup.Monitor.desktop` into `/etc/xdg/autostart`, and Plasma starts
-  `/usr/libexec/deja-dup/deja-dup-monitor` from it at every login; the entry names no
-  `OnlyShowIn`, so it runs under KDE. Without the monitor, "Back up automatically" never backs up.
+- **The scheduler is not started by the session.** `build.sh` deletes upstream's
+  `/etc/xdg/autostart/org.gnome.DejaDup.Monitor.desktop`: it names no `OnlyShowIn`, and Plasma
+  would start `/usr/libexec/deja-dup/deja-dup-monitor` at every login, which activates dconf and
+  four gvfs volume monitors even with "Back up automatically" off. Kup, the Backups page in System
+  Settings, is the desktop's scheduled backup. "Back up automatically" backs up only while
+  `deja-dup-monitor` runs, started by hand or from an autostart entry the user adds in System
+  Settings' Autostart page; "Back Up Now" and restores work without it.
 - **The menu icon.** Upstream installs the application icon as `org.gnome.DejaDup.svg` only, and
   the panel reads hicolor PNGs, so `build.sh` renders 48, 64 and 128 pixel PNGs with `rsvg-convert`.
 - **The menu entry is replaced.** The GtkApplication id, `org.gnome.DejaDup`, is the Wayland

@@ -10,6 +10,7 @@
 # ---------------------------------
 
 patch -p1 -i "$PORT_SRC/kiosk-get-new.patch"
+patch -p1 -i "$PORT_SRC/avogadro2-layers.patch"
 
 export LDFLAGS="$LDFLAGS -Wl,--strip-debug"
 

@@ -1,0 +1,30 @@
+Subject: StandardBackendUpdater: keep a failed update listed on the Updates page
+
+A transaction that ends in DoneWithErrorStatus was reported to the
+Updates page as Done. The page filters out rows whose state is done, and
+UpdateModel keeps the same rows when the list of offered resources does
+not change, which it does not after a refused or failed update: the page
+listed nothing, with Update All still enabled, until a refresh. A failed
+transaction now reports None, as a cancelled one does.
+
+--- a/libdiscover/resources/StandardBackendUpdater.cpp
++++ b/libdiscover/resources/StandardBackendUpdater.cpp
+@@ -120,13 +120,17 @@
+     case Transaction::SetupStatus:
+     case Transaction::QueuedStatus:
+     case Transaction::CancelledStatus:
++    // A failed update leaves its resource where it was. Done would keep the
++    // Updates page's row filtered out (resourceStateIsDone) while the
++    // resource is still offered, and the page would list nothing until a
++    // refresh made new rows.
++    case Transaction::DoneWithErrorStatus:
+         return AbstractBackendUpdater::None;
+     case Transaction::DownloadingStatus:
+         return AbstractBackendUpdater::Downloading;
+     case Transaction::CommittingStatus:
+         return AbstractBackendUpdater::Installing;
+     case Transaction::DoneStatus:
+-    case Transaction::DoneWithErrorStatus:
+         return AbstractBackendUpdater::Done;
+     }
+     Q_UNREACHABLE();

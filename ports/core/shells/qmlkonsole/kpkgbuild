@@ -10,7 +10,7 @@
 
 name        = qmlkonsole
 version     = 26.08.2
-release     = 1
+release     = 2
 source      = https://download.kde.org/stable/release-service/$version/src/$name-$version.tar.xz
 sha256      = da34a921aaa30035f0435dcbbf7ea01bc4e9989be31b68d9518c07676c278bb4  qmlkonsole-26.08.2.tar.xz
 description = Touch terminal emulator — a Kirigami terminal with a toolbar of special keys

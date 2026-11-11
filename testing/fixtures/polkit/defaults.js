@@ -40,9 +40,9 @@ d["org.freedesktop.NetworkManager.wifi.share.protected"] = ["no", "no", "yes"];
 
 /* ModemManager */
 d["org.freedesktop.ModemManager1.Control"] = ["no", "no", "auth_admin"];
-d["org.freedesktop.ModemManager1.Device.Control"] = ["no", "no", "yes"];
-d["org.freedesktop.ModemManager1.Location"] = ["no", "no", "yes"];
-d["org.freedesktop.ModemManager1.Messaging"] = ["no", "no", "yes"];
+d["org.freedesktop.ModemManager1.Device.Control"] = ["no", "no", "auth_self_keep"];
+d["org.freedesktop.ModemManager1.Location"] = ["no", "no", "auth_self_keep"];
+d["org.freedesktop.ModemManager1.Messaging"] = ["no", "no", "auth_self_keep"];
 
 /* pcsc-lite */
 d["org.debian.pcsc-lite.access_card"] = ["no", "no", "yes"];

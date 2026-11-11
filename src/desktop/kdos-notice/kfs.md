@@ -26,7 +26,8 @@ slot) and posts only when the key differs from the one it last posted, which
 `$XDG_STATE_HOME/kdos/notice` keeps across logins: the same CVE list is not announced at every
 login, and a changed one replaces the old notification instead of stacking beside it. A notice
 whose state ends is withdrawn. A command that did not answer changes nothing, so a missing secdb
-never withdraws a CVE notice. Deleting the state file announces everything once more.
+never withdraws a CVE notice. The state file is read when kdos-notice starts, so deleting it announces everything once more
+at the next login.
 
 Nothing polls a command. An inotify watch on `/var/lib/kpkg/db` and on
 `/var/lib/kdos/update.json` asks `kdos restarts` and `kdos cve` ten seconds after the last change,
@@ -41,11 +42,14 @@ A notification's id is good only while the server that issued it runs. Plasma ta
 `replaces_id` it never issued as the new notification's own number, so replacing or closing an
 id from an earlier login, or from a plasmashell that has since restarted, would replace or close
 another program's notification. kdos-notice forgets every id when it starts and when the server
-changes owner; a notice that was waiting for a person (restarts, CVEs) is then posted again to the
+changes owner; a notice that was waiting for a person (restarts, CVEs, the applications still to install) is
+then posted again to the
 new server, since a restarted plasmashell lost it.
 
-The actions are fixed argument vectors: Details opens Konsole on `kdos cve` or `kdos restarts`, or
-System Settings at System Versions, and Log Out asks Plasma's logout prompt over D-Bus. A signal
+The actions are fixed argument vectors: Details opens Konsole on `kdos cve`, or System Settings at
+System Versions for the trial and rollback notices; Show Programs opens Konsole on `kdos restarts`;
+Open Discover opens Discover at "Selected during install"; and Log Out asks Plasma's logout prompt
+over D-Bus. A signal
 that claims to be the notification server's is acted on only when its sender owns
 `org.freedesktop.Notifications` at that moment. The activation token the server sends before
 an action goes to the program it starts, so its window takes focus.

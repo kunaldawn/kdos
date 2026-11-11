@@ -17,13 +17,22 @@
  *               to put in it, or Kup is on with a restic plan
  *   phone       KDE Connect has a paired device
  *   language    Formats were set, or a second keyboard layout added (the
- *               image is English-only, A1, so this is the regional half)
+ *               image is English-only, A1, so this is the regional half).
+ *               A [Formats] LANG equal to /etc/locale.conf's (a C
+ *               locale when that names none) is not a choice: Plasma writes the session's LANG there at every
+ *               account's first login. Any other [Formats] key, or a LANG
+ *               that differs, is.
  *   box         a box exists
  *   firmware    fwupd has no update waiting
  *   encryption  the root filesystem sits on LUKS
  *
  * AN ITEM WHOSE COMPONENT IS ABSENT IS LEFT OUT, not shown undone: a phone
- * item on a machine with no KDE Connect is a task nobody can finish.
+ * item on a machine with no KDE Connect is a task nobody can finish. So is
+ * encryption on a root that is not a block device, such as the live
+ * medium's overlay.
+ *
+ * KDOS_CHECKLIST_ROOT, for tests, names a recorded root read in place of
+ * / for etc/locale.conf and proc/self/mounts.
  *
  * FAST FROM CACHE. The tray asks every five seconds while anything is open,
  * so the two slow questions are remembered: fwupd's for six hours, the root
@@ -47,6 +56,22 @@ static const char *const IDS[] = { "backup", "phone", "language", "box",
 #define NIDS ((int)(sizeof(IDS) / sizeof(IDS[0])))
 
 #define FW_TTL (6 * 3600)
+
+/* A system file, under KDOS_CHECKLIST_ROOT when that is set. */
+static char *sys_path(const char *abs)
+{
+	const char *r = getenv("KDOS_CHECKLIST_ROOT");
+	char *p;
+
+	if (!r || !*r)
+		return strdup(abs);
+	p = malloc(strlen(r) + strlen(abs) + 1);
+	if (p) {
+		strcpy(p, r);
+		strcat(p, abs);
+	}
+	return p;
+}
 
 /* ── backup ────────────────────────────────────────────────────────────── */
 
@@ -136,19 +161,75 @@ static int phone_done(void)
 
 /* ── language ──────────────────────────────────────────────────────────── */
 
+/* The system's LANG, from /etc/locale.conf, into out; "" when it names
+ * none. A value may be quoted, as locale.conf allows. */
+static void system_lang(char *out, size_t n)
+{
+	char *p = sys_path("/etc/locale.conf");
+	char *data = p ? kb_read_all(p, NULL) : NULL;
+
+	free(p);
+	out[0] = '\0';
+	for (char *sp = NULL, *ln = data ? strtok_r(data, "\n", &sp) : NULL;
+	     ln; ln = strtok_r(NULL, "\n", &sp)) {
+		size_t l;
+
+		ln += strspn(ln, " \t");
+		if (strncmp(ln, "LANG=", 5))
+			continue;
+		ln += 5;
+		l = strcspn(ln, " \t\r#");
+		if (l >= 2 && (ln[0] == '"' || ln[0] == '\'') &&
+		    ln[l - 1] == ln[0]) {
+			ln++;
+			l -= 2;
+		}
+		snprintf(out, n, "%.*s", (int)l, ln);
+	}
+	free(data);
+}
+
+/* With no locale.conf the session's LANG is the C library's default, one
+ * of these. */
+static int c_locale(const char *v, size_t l)
+{
+	static const char *const C[] = { "C", "C.UTF-8", "C.utf8", "POSIX" };
+
+	for (size_t i = 0; i < sizeof(C) / sizeof(C[0]); i++)
+		if (l == strlen(C[i]) && !strncmp(v, C[i], l))
+			return 1;
+	return 0;
+}
+
 static int language_done(void)
 {
 	char *p = kdt_cfg_home("plasma-localerc"), *data, *layouts;
+	char sys[128];
 	int done = 0, in = 0;
 
+	system_lang(sys, sizeof(sys));
 	data = kb_read_all(p, NULL);
 	free(p);
 	for (char *sp = NULL, *ln = data ? strtok_r(data, "\n", &sp) : NULL;
 	     ln && !done; ln = strtok_r(NULL, "\n", &sp)) {
-		if (ln[0] == '[')
+		char *eq;
+
+		if (ln[0] == '[') {
 			in = !strncmp(ln, "[Formats]", 9);
-		else if (in && strchr(ln, '='))
+			continue;
+		}
+		if (!in || !(eq = strchr(ln, '=')))
+			continue;
+		if (!strncmp(ln, "LANG", 4) &&
+		    ln + 4 + strspn(ln + 4, " \t") == eq) {
+			char *v = eq + 1 + strspn(eq + 1, " \t");
+			size_t l = strcspn(v, " \t\r");
+
+			done = !(l == strlen(sys) && !strncmp(v, sys, l)) &&
+			       !(!*sys && c_locale(v, l));
+		} else {
 			done = 1;
+		}
 	}
 	free(data);
 	layouts = kdt_kcfg_user("kxkbrc", "Layout", "LayoutList");
@@ -217,20 +298,24 @@ static int firmware_done(void)
 	return done;
 }
 
-/* The root's source device, from the mount table. */
+/* The root's source device, from the mount table; 0 when the root is
+ * not on a block device. */
 static int root_device(char *out, size_t n)
 {
-	char *m = kb_read_all("/proc/self/mounts", NULL);
+	char *mp = sys_path("/proc/self/mounts");
+	char *m = mp ? kb_read_all(mp, NULL) : NULL;
 	int found = 0;
 
+	free(mp);
 	for (char *sp = NULL, *ln = m ? strtok_r(m, "\n", &sp) : NULL; ln;
 	     ln = strtok_r(NULL, "\n", &sp)) {
 		char dev[256], mnt[256];
 
 		if (sscanf(ln, "%255s %255s", dev, mnt) == 2 &&
-		    !strcmp(mnt, "/") && dev[0] == '/') {
-			snprintf(out, n, "%s", dev);
-			found = 1;
+		    !strcmp(mnt, "/")) {
+			found = dev[0] == '/';
+			if (found)
+				snprintf(out, n, "%s", dev);
 		}
 	}
 	free(m);
@@ -315,7 +400,11 @@ static int present(int i)
 	case 2: return 1;
 	case 3: return kb_have_prog("kdos-box");
 	case 4: return kb_have_prog("fwupdmgr");
-	default: return kb_have_prog("lsblk");
+	default: {
+		char dev[256];
+
+		return kb_have_prog("lsblk") && root_device(dev, sizeof(dev));
+	}
 	}
 }
 

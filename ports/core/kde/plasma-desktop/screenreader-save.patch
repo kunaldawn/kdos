@@ -1,0 +1,17 @@
+Subject: screenreader: save the setting in setEnabled(), as toggle() does
+
+Without systemd the module keeps whether Orca runs in kaccessrc and starts
+it at login only when that file says so. toggle() saves the change;
+setEnabled(), which System Settings and other D-Bus callers use, changed
+only the value in memory, so its choice was lost at the next login.
+
+--- a/kded/screenreader/screenreader.cpp
++++ b/kded/screenreader/screenreader.cpp
+@@ -156,6 +156,7 @@
+         }
+     } else {
+         m_settings.setEnabled(enabled);
++        m_settings.save();
+ 
+         if (enabled) {
+             startScreenReaderFallback();

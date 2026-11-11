@@ -22,6 +22,10 @@
 # an image with no boot code in its MBR. Measured: the same image that produced
 # nothing over `-usb` reached a root shell over `qemu-xhci`.
 #
+# THE STICK IS READ-ONLY, so the run never writes the shipped image and takes
+# no write lock on it: rig VMs attach the same file as a CD, and a writable
+# stick fails to start beside them with "Failed to get write lock".
+#
 # PROOF IS THE SERIAL LOG AND NOT THE EXIT STATUS. qemu is killed rather than
 # shut down, so it always exits non-zero; what says the boot worked is the
 # initramfs finding the medium and reaching switch_root.
@@ -49,7 +53,7 @@ q = subprocess.Popen([
     "qemu-system-x86_64", "-enable-kvm", "-cpu", "host", "-smp", "4", "-m", "2G",
     "-display", "none", "-vga", "std",
     "-device", "qemu-xhci,id=xhci",
-    "-drive", "if=none,id=stick,format=raw,file=/kdos/build/iso-build/kdos.iso",
+    "-drive", "if=none,id=stick,format=raw,readonly=on,file=/kdos/build/iso-build/kdos.iso",
     "-device", "usb-storage,bus=xhci.0,drive=stick,removable=on",
     "-monitor", "unix:/tmp/mon.sock,server,nowait",
     "-serial", "file:/kdos/build/shots/bios-serial.log",

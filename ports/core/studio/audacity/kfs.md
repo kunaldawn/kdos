@@ -77,3 +77,8 @@ The engine applies its own patches to the dependency sources with `git apply`, s
 to `org.audacityteam.Audacity.desktop`, so its Wayland app id is `org.audacityteam.Audacity`, which
 the entry repeats in `StartupWMClass`. The entry claims only `application/x-audacity`, Audacity's
 own project type, and leaves audio files to the music player.
+
+On a machine with no capture device, Audacity shows "Error opening recording device ... Invalid
+sample rate" whenever a project opens: it starts input monitoring through PortAudio, and no switch
+or system default turns that off (see
+[Known gaps](../../../../docs/kdos/06-reference/known-gaps.md#audacity-reports-a-recording-error-on-a-machine-with-no-microphone)).

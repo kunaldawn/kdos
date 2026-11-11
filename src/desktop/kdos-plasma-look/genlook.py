@@ -431,12 +431,13 @@ def write_jpeg(path, raster, scratch):
 def mascot_palette(sc, mark):
     """kdos-splash's peng_pal in this scheme's roles: index 1 is the mascot's
     body, 2 its rim (the text mixed towards the mascot's glow colour), 3
-    secondary, 4 the accent, 5 the accent's dark (the Window DecorationHover)."""
+    secondary, 4 the accent (the Window DecorationFocus), 5 the accent's dark
+    (the Window DecorationHover)."""
     return {
         1: mark.body,
         2: spl_mix(sc.window_fg, mark.glow_to, mark.glow_pct),
         3: sc.neutral,
-        4: sc.sel_bg,
+        4: sc.window_focus,
         5: sc.window_hover,
     }
 
@@ -495,7 +496,7 @@ def draw_mark(r, mark, sc, lay):
     the wordmark flat, its lower half part of the way to the accent's dark,
     then the penguin. (The four-way phosphor bleed is Phosphor mode's.)"""
     cw, chh, lt = lay["art_cw"], lay["art_ch"], lay["art_lt"]
-    draw_art(r, mark, lay["art_x"], lay["art_y"], cw, chh, lt, sc.sel_bg, sc.window_hover)
+    draw_art(r, mark, lay["art_x"], lay["art_y"], cw, chh, lt, sc.window_focus, sc.window_hover)
     s = lay["peng_scale"]
     draw_penguin(r, mark, lay["peng_x"], lay["peng_y"], mark.w * s, mark.h * s, mascot_palette(sc, mark))
 
@@ -548,21 +549,21 @@ def render_preview(w, h, sc, mark):
     ph = max(4, int(46 * u))
     py = h - ph
     r.fill(0, py, w, ph, sc.window_bg)
-    r.fill(0, py, w, max(1, int(u)), sc.sel_bg)
+    r.fill(0, py, w, max(1, int(u)), sc.window_focus)
     isz = max(3, int(30 * u))
     iy = py + (ph - isz) // 2
     x = int(10 * u)
     draw_penguin(r, mark, x, iy, isz, isz, mascot_palette(sc, mark))
     x += isz + int(16 * u)
     for i in range(4):
-        r.fill(x, iy + isz // 4, isz // 2, isz // 2, sc.sel_bg if i == 0 else sc.window_inactive)
+        r.fill(x, iy + isz // 4, isz // 2, isz // 2, sc.window_focus if i == 0 else sc.window_inactive)
         x += isz // 2 + int(6 * u)
     x += int(14 * u)
     for i in range(4):
         r.fill(x, iy, isz, isz, sc.button_bg)
         r.fill(x + isz // 4, iy + isz // 4, isz // 2, isz // 2, sc.button_fg)
         if i == 1:
-            r.fill(x - int(6 * u), py + ph - max(2, int(3 * u)), isz + int(12 * u), max(2, int(3 * u)), sc.sel_bg)
+            r.fill(x - int(6 * u), py + ph - max(2, int(3 * u)), isz + int(12 * u), max(2, int(3 * u)), sc.window_focus)
         x += isz + int(18 * u)
     cx = w - int(150 * u)
     r.fill(cx, iy + int(2 * u), int(64 * u), max(2, int(10 * u)), sc.window_fg)
@@ -598,7 +599,7 @@ def render_splash(w, h, sc, mark):
     if seg_w >= 2:
         lit = BAR_SEGS // 2
         for i in range(BAR_SEGS):
-            c = sc.sel_bg if i < lit else (sc.neutral if i == lit else unlit)
+            c = sc.window_focus if i < lit else (sc.neutral if i == lit else unlit)
             r.fill(seg_x + i * (seg_w + gap), lay["bar_y"] + s * 3, seg_w, seg_h, c)
     return r
 
@@ -636,7 +637,6 @@ def lnf_defaults(sc, splash_id):
         ("kwinrc][org.kde.kdecoration2", [
             ("library", "org.kde.breeze"),
             ("theme", "Breeze"),
-            ("BorderSize", "Normal"),
         ]),
         ("kwinrc][WindowSwitcher", [("LayoutName", "thumbnail_grid")]),
         ("kwinrc][Windows", [("Placement", "Centered")]),
@@ -833,6 +833,15 @@ def uniform(m):
     return {s: m for s in SIDES}
 
 
+# The accent in the Plasma style's SVGs. KSvg's Highlight class is the
+# scheme's selection, which on a dark accent is the accent darkened until the
+# view's text reads on it; a rule or an outline drawn in it would be that
+# muddier colour. ButtonFocus is the Button set's DecorationFocus, the accent
+# itself in every KDOS scheme. Translucent fills under text stay Highlight,
+# the colour text is solved to read on.
+ACCENT = "ButtonFocus"
+
+
 def theme_plate(sc, bg_cls, rule_cls, rule_op):
     """Panel, popup and tooltip: one opaque plate with a one-pixel rule on
     every edge. FrameSvg disables the edges a panel sits against, so a bottom
@@ -844,7 +853,7 @@ def theme_plate(sc, bg_cls, rule_cls, rule_op):
 
 
 def theme_panel(sc):
-    svg, y = theme_plate(sc, "Background", "Highlight", 1.0)
+    svg, y = theme_plate(sc, "Background", ACCENT, 1.0)
     # Panel.qml pads applets with the `thick` margins; Breeze's values, so a
     # KDOS panel lays its applets out exactly where a Breeze one does.
     margins = {"top": 8, "bottom": 8, "left": 4, "right": 4}
@@ -857,7 +866,7 @@ def theme_panel(sc):
 
 
 def theme_dialog(sc):
-    return theme_plate(sc, "Background", "Highlight", 1.0)[0].text()
+    return theme_plate(sc, "Background", ACCENT, 1.0)[0].text()
 
 
 def theme_tooltip(sc):
@@ -872,11 +881,11 @@ def theme_button(sc):
     specs = [
         ("normal", [("ButtonBackground", 1.0, "fill")] + [("ButtonText", 0.3) + o for o in outline]),
         ("pressed", [("ButtonBackground", 1.0, "fill"), ("Highlight", 0.3, "fill")]
-         + [("Highlight", 1.0) + o for o in outline]),
+         + [(ACCENT, 1.0) + o for o in outline]),
         ("hover", [("ButtonHover", 1.0) + o for o in outline]),
         ("focus", [("ButtonFocus", 1.0) + o for o in outline]),
-        ("toolbutton-hover", [("Highlight", 0.14, "fill")] + [("Highlight", 0.6) + o for o in outline]),
-        ("toolbutton-pressed", [("Highlight", 0.3, "fill")] + [("Highlight", 1.0) + o for o in outline]),
+        ("toolbutton-hover", [("Highlight", 0.14, "fill")] + [(ACCENT, 0.6) + o for o in outline]),
+        ("toolbutton-pressed", [("Highlight", 0.3, "fill")] + [(ACCENT, 1.0) + o for o in outline]),
         ("toolbutton-focus", [("ButtonFocus", 1.0) + o for o in outline]),
     ]
     for prefix, layers in specs:
@@ -898,8 +907,8 @@ def theme_tasks(sc):
         def p(name):
             return (loc + "-" + name) if loc else name
         states = [
-            ("normal", [("Highlight", 0.6, "line", edge, 2)]),
-            ("focus", [("Highlight", 0.16, "fill"), ("Highlight", 1.0, "line", edge, 3)]),
+            ("normal", [(ACCENT, 0.6, "line", edge, 2)]),
+            ("focus", [("Highlight", 0.16, "fill"), (ACCENT, 1.0, "line", edge, 3)]),
             ("hover", [("Highlight", 0.1, "fill"), ("ButtonHover", 1.0, "line", edge, 2)]),
             ("attention", [("NeutralText", 0.16, "fill"), ("NeutralText", 1.0, "line", edge, 3)]),
             ("minimized", [("Text", 0.35, "line", edge, 2)]),
@@ -932,6 +941,27 @@ def theme_tasks(sc):
     return svg.text()
 
 
+# The pager's desktop cells keep the panel's own ground and carry no fill:
+# the desktop's label is drawn in the plain text colour whatever the state,
+# so a filled cell would put light text on a light accent. The current
+# desktop is an accent outline over a two-pixel accent rule along its bottom,
+# a hovered one a hover-coloured outline, and the rest a faint outline that
+# shows where each cell ends.
+def theme_pager(sc):
+    svg = Svg(sc)
+    y = 0
+    outline = [("line", s, 1) for s in SIDES]
+    m = uniform(2)
+    specs = [
+        ("normal", [("Text", 0.25) + o for o in outline]),
+        ("hover", [("ButtonHover", 1.0) + o for o in outline]),
+        ("active", [(ACCENT, 1.0) + o for o in outline] + [(ACCENT, 1.0, "line", "bottom", 2)]),
+    ]
+    for prefix, layers in specs:
+        y = frame(svg, prefix, 0, y, 2, layers, m)
+    return svg.text()
+
+
 def svgz(path, text):
     """gzip with no name and no timestamp, so the bytes depend on the text."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -953,6 +983,7 @@ def write_desktoptheme(args, sc):
         svgz(os.path.join(root, sub + "widgets/tooltip.svgz"), tooltip)
     svgz(os.path.join(root, "widgets/button.svgz"), theme_button(sc))
     svgz(os.path.join(root, "widgets/tasks.svgz"), theme_tasks(sc))
+    svgz(os.path.join(root, "widgets/pager.svgz"), theme_pager(sc))
 
 
 # ─── the desk templates ───────────────────────────────────────────────────

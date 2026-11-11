@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/app-id.patch"
+
 export CPPFLAGS="$CFLAGS -D_POSIX_PRIORITY_SCHEDULING -DHAVE_STRCASESTR -Wno-implicit-function-declaration"
 _make=(
 	PREFIX=/usr

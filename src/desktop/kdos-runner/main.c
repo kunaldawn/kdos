@@ -235,7 +235,6 @@ static int reply_rows(sd_bus_message *m, RnList *l)
 typedef struct Pending {
 	sd_bus_message *call;
 	RnQuery q;
-	int only;
 	RnList rows;
 	RnAsk *asks;
 	uint64_t deadline;
@@ -264,7 +263,7 @@ static void pending_finish(Pending *p)
 {
 	for (RnAsk *a = p->asks; a; a = a->next)
 		if (a->done == 1)
-			rn_library_answer(a, &p->q, p->only, &p->rows);
+			rn_library_answer(a, &p->q, &p->rows);
 	rn_list_sort(&p->rows);
 	reply_rows(p->call, &p->rows);
 	sd_bus_message_unref(p->call);
@@ -381,16 +380,14 @@ static int m_match(sd_bus_message *m, void *ud, sd_bus_error *err)
 	}
 
 	{
-		int only;
-		const char *text = rn_library_query(query, &only);
+		const char *text = rn_library_query(query);
 		Pending *p;
 
 		if (!text)
 			return reply_rows(m, &rows) < 0 ? -EIO : 1;
 		p = kb_calloc(1, sizeof(*p));
 		rn_query(&p->q, text);
-		p->only = only;
-		rn_library_match(&p->q, only, &p->rows);
+		rn_library_match(&p->q, &p->rows);
 		rn_library_asks(&p->q, &p->asks);
 		for (RnAsk *a = p->asks; a; a = a->next)
 			rn_http_start(a);
@@ -420,8 +417,8 @@ static int m_config(sd_bus_message *m, void *ud, sd_bus_error *err)
 {
 	(void)ud;
 	(void)err;
-	/* Two letters is a favourite's code; the library wants three, which a
-	 * leading `?` counts toward. */
+	/* Two letters is a favourite's code; the library wants three, since
+	 * every docset and book holds thousands of two-letter prefixes. */
 	return sd_bus_reply_method_return(m, "a{sv}", 1, "MinLetterCount", "i",
 					  is_library(m) ? 3 : 2);
 }

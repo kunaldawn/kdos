@@ -35,7 +35,7 @@ them. `kdos` is installed as
 constraint in the system and its consequence. The [kdos-tools](#port-kdos-tools) port installs it,
 with the vulnerability database, from `src/system/kdos-tools/build.sh`:
 
-<!-- kfs:include src/system/kdos-tools/build.sh lines=51-55 pin=9fb84a77f3e2 -->
+<!-- kfs:include src/system/kdos-tools/build.sh lines=53-57 pin=9fb84a77f3e2 -->
 
 Each document begins with a header. One from `src/system/kdos-tools/reasons/`:
 

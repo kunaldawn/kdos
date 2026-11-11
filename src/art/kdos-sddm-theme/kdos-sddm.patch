@@ -1,22 +1,23 @@
-Subject: derive the KDOS greeter from the Breeze SDDM theme: KDOS mark, accent background, monospace clock, credit, screen-reader chord, fade through black
+Subject: derive the KDOS greeter from the Breeze SDDM theme: KDOS mark, accent background and ground, monospace clock, credit, KWin layout switcher, screen-reader chord, fade through black
 
 --- a/Main.qml
 +++ b/Main.qml
-@@ -14,6 +14,7 @@
+@@ -14,6 +14,8 @@
  import org.kde.plasma.private.keyboardindicator as KeyboardIndicator
  import org.kde.plasma.workspace.keyboardlayout as Keyboards
  import org.kde.kirigami as Kirigami
 +import org.kde.plasma.plasma5support as P5Support
++import org.kde.plasma.workspace.components as WorkspaceComponents
  
  import org.kde.breeze.components
  
-@@ -43,6 +44,15 @@
+@@ -43,13 +45,26 @@
      Item {
          id: wallpaper
          anchors.fill: parent
 +        // The scheme's ground under the picture: the background is a file
-+        // kdos-powerd writes per accent, and a greeter that starts before it
-+        // exists shows the accent's ground instead of an empty window.
++        // the sddm account's home holds per accent, and a greeter that finds
++        // none shows the accent's ground instead of an empty window.
 +        Rectangle {
 +            anchors.fill: parent
 +            Kirigami.Theme.colorSet: Kirigami.Theme.Window
@@ -26,7 +27,19 @@ Subject: derive the KDOS greeter from the Breeze SDDM theme: KDOS mark, accent b
          Repeater {
              model: screenModel
  
-@@ -133,7 +143,7 @@
+             Background {
+                 x: geometry.x; y: geometry.y; width: geometry.width; height: geometry.height
+                 sceneBackgroundType: config.type
+-                sceneBackgroundColor: config.color
++                // A colour background is the scheme's ground, as under the
++                // picture: theme.conf names no colour of its own.
++                Kirigami.Theme.colorSet: Kirigami.Theme.Window
++                Kirigami.Theme.inherit: false
++                sceneBackgroundColor: Kirigami.Theme.backgroundColor
+                 sceneBackgroundImage: config.background
+             }
+         }
+@@ -133,7 +148,7 @@
              }
          }
  
@@ -35,7 +48,35 @@ Subject: derive the KDOS greeter from the Breeze SDDM theme: KDOS mark, accent b
              id: clock
              property Item shadow: clockShadow
              visible: y > 0 && config.showClock === "true"
-@@ -500,6 +510,15 @@
+@@ -459,10 +474,25 @@
+                 }
+             }
+ 
+-            KeyboardButton {
++            // The layouts come from the greeter's KWin over its session bus,
++            // as on the lock screen (loginlockscreen's Footer.qml): SDDM's own
++            // keyboard model lists no layouts on a Wayland greeter.
++            PlasmaComponents3.ToolButton {
+                 id: keyboardButton
+ 
+-                onKeyboardLayoutChanged: {
++                Accessible.description: i18ndc("plasmashellprivateplugin", "Button to change keyboard layout", "Switch layout")
++                icon.name: "input-keyboard"
++                text: keyboardLayoutSwitcher.layoutNames.longName
++                visible: keyboardLayoutSwitcher.hasMultipleKeyboardLayouts
++
++                WorkspaceComponents.KeyboardLayoutSwitcher {
++                    id: keyboardLayoutSwitcher
++                    anchors.fill: parent
++                    acceptedButtons: Qt.NoButton
++                }
++
++                onClicked: {
++                    keyboardLayoutSwitcher.keyboardLayout.switchToNextLayout();
+                     // Otherwise the password field loses focus and virtual keyboard
+                     // keystrokes get eaten
+                     userListComponent.mainPasswordBox.forceActiveFocus();
+@@ -500,6 +530,15 @@
                  Layout.fillWidth: true
              }
  
@@ -51,7 +92,7 @@ Subject: derive the KDOS greeter from the Breeze SDDM theme: KDOS mark, accent b
              Battery {}
          }
      }
-@@ -519,6 +538,7 @@
+@@ -519,6 +558,7 @@
              //takes to complete the init
              mainStack.opacity = 0
              footer.opacity = 0
@@ -59,7 +100,7 @@ Subject: derive the KDOS greeter from the Breeze SDDM theme: KDOS mark, accent b
          }
      }
  
-@@ -533,4 +553,42 @@
+@@ -533,4 +573,42 @@
          interval: 3000
          onTriggered: notificationMessage = ""
      }
@@ -104,7 +145,7 @@ Subject: derive the KDOS greeter from the Breeze SDDM theme: KDOS mark, accent b
  }
 --- /dev/null
 +++ b/MonoClock.qml
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,56 @@
 +/*
 +    SPDX-FileCopyrightText: 2016 David Edmundson <davidedmundson@kde.org>
 +    SPDX-FileCopyrightText: 2025 Thomas Duckworth <tduck@filotimoproject.org>
@@ -115,6 +156,9 @@ Subject: derive the KDOS greeter from the Breeze SDDM theme: KDOS mark, accent b
 +// The Breeze greeter's clock (org.kde.breeze.components Clock.qml) set in the
 +// fixed-width face: the time and the date read in the monospace the rest of
 +// KDOS uses for numerals. Tabular figures keep the width still as it ticks.
++// The time's spaces are plain ones: a locale's short format may put U+202F
++// before AM or PM, the fixed-width face has no glyph for it, and the fallback
++// face's taller line pushes the date down.
 +
 +import QtQuick
 +import QtQuick.Layouts
@@ -129,7 +173,7 @@ Subject: derive the KDOS greeter from the Breeze SDDM theme: KDOS mark, accent b
 +    readonly property bool softwareRendering: GraphicsInfo.api === GraphicsInfo.Software
 +
 +    PlasmaComponents3.Label {
-+        text: Qt.formatTime(timeSource.dateTime, Qt.locale(), Locale.ShortFormat)
++        text: Qt.formatTime(timeSource.dateTime, Qt.locale(), Locale.ShortFormat).replace(/[\u00a0\u202f]/g, " ")
 +        textFormat: Text.PlainText
 +        style: root.softwareRendering ? Text.Outline : Text.Normal
 +        styleColor: root.softwareRendering ? Kirigami.Theme.backgroundColor : "transparent" //no outline, doesn't matter
@@ -160,7 +204,7 @@ Subject: derive the KDOS greeter from the Breeze SDDM theme: KDOS mark, accent b
 +}
 --- a/theme.conf
 +++ b/theme.conf
-@@ -1,9 +1,9 @@
+@@ -1,9 +1,8 @@
  [General]
 -showlogo=hidden
 +showlogo=shown
@@ -168,7 +212,7 @@ Subject: derive the KDOS greeter from the Breeze SDDM theme: KDOS mark, accent b
 -logo=/usr/share/sddm/themes/breeze/default-logo.svg
 +logo=/usr/share/icons/hicolor/256x256/apps/distributor-logo-kdos.png
  type=image
- color=#1d99f3
+-color=#1d99f3
  fontSize=10
 -background=/usr/share/wallpapers/Next/contents/images/5120x2880.png
 +background=/var/lib/sddm/kdos-background.png

@@ -41,7 +41,7 @@ Item {
             y: index * 3
             width: ground.width
             height: 1
-            color: Kirigami.Theme.highlightColor
+            color: Kirigami.Theme.focusColor
             opacity: 0.06
         }
     }

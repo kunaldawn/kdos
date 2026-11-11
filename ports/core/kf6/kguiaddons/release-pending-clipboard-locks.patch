@@ -1,0 +1,57 @@
+Subject: Release mimeData()'s deferred clipboard locks before joining the clipboard thread
+
+--- a/src/systemclipboard/waylandclipboard.cpp	2026-10-02 18:49:35.000000000 +0530
++++ b/src/systemclipboard/waylandclipboard.cpp	2026-11-11 13:26:02.210313146 +0530
+@@ -82,6 +82,22 @@
+ // it should also be held if the main thread accesses the clipboard
+ static QRecursiveMutex s_clipboardLock;
+ 
++// Locks WaylandClipboard::mimeData() took for its caller and left to a zero-length timer to
++// release. Only the thread that owns the WaylandClipboard touches it.
++static int s_clipboardPendingUnlocks = 0;
++
++// Release every lock mimeData() still holds. The clipboard thread takes s_clipboardLock for each
++// dispatch, so waiting for it to finish while one is held blocks both threads for good; and a
++// timer that never runs, because the event loop has quit or the clipboard is being destroyed,
++// would hold it for the rest of the process.
++static void releasePendingClipboardLocks()
++{
++    while (s_clipboardPendingUnlocks > 0) {
++        --s_clipboardPendingUnlocks;
++        s_clipboardLock.unlock();
++    }
++}
++
+ class DataControlDeviceManager : public QWaylandClientExtensionTemplate<DataControlDeviceManager>, public QtWayland::ext_data_control_manager_v1
+ {
+     Q_OBJECT
+@@ -612,6 +628,7 @@
+             m_thread->start();
+ 
+         } else {
++            releasePendingClipboardLocks();
+             m_thread->requestInterruption();
+             m_thread->wait();
+             m_device.reset();
+@@ -626,6 +643,7 @@
+ WaylandClipboard::~WaylandClipboard()
+ {
+     if (m_thread && m_thread->isRunning()) {
++        releasePendingClipboardLocks();
+         m_thread->requestInterruption();
+         m_thread->syncQueue();
+         m_thread->wait();
+@@ -688,8 +706,12 @@
+     // WaylandClipboard owns the mimedata, but the caller can read it until the next event loop runs.
+     auto lockWithUnlockLater = [this]() {
+         s_clipboardLock.lock();
++        ++s_clipboardPendingUnlocks;
+         QTimer::singleShot(0, this, [] {
+-            s_clipboardLock.unlock();
++            if (s_clipboardPendingUnlocks > 0) {
++                --s_clipboardPendingUnlocks;
++                s_clipboardLock.unlock();
++            }
+         });
+     };
+ 

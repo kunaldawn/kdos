@@ -14,10 +14,11 @@ The package also carries data the `kdos` command reads: the reasons corpus that 
 `kdos cve` matches installed packages against, and `bundled.txt`, its list of libraries ports
 compile in from vendored crates; the *KDOS Help* menu entry, which runs `kdos help --pager` in a
 terminal; `/usr/share/kglobalaccel/org.kdos.tiling.desktop`, which binds Meta+Shift+T to
-`kdos tiling toggle`; and `/etc/xdg/autostart/kdos-mpris.desktop`, which starts
+`kdos tiling toggle`, and `org.kdos.nightlight.desktop` beside it, which binds Meta+Ctrl+Shift+N
+to `kdos toggle night-light`; and `/etc/xdg/autostart/kdos-mpris.desktop`, which starts
 `kdos-mpctl mpris` at a Plasma login where mpd is installed, so Plasma's media keys, Media Player
 applet and lock screen reach mpd over MPRIS; and `/usr/share/kio/servicemenus/kdos-share.desktop`,
-Dolphin's **Share** action, which runs `kdos-share` on the selection, and `kdos-verify.desktop`
+Dolphin's **Send with a Code Word** action, which runs `kdos-share` on the selection, and `kdos-verify.desktop`
 beside it, the **Verify** action on every file, which runs `kdos verify --notify` on the selection
 and links nothing new: SHA-512 is Monocypher's, already linked through `libksig` for signatures.
 `/usr/sbin/service` and `/usr/local/sbin/kdos-getty`

@@ -13,7 +13,7 @@
 # Materialize home directories for the human users declared in fs/etc/passwd.
 # The fs/ overlay is copied in 10_bootstrap, before shadow exists, and git cannot
 # carry ownership — so the homes are created here, in the chroot, from
-# /etc/skel. Rerunnable: skel overwrites every file it provides (see below).
+# /etc/skel. Rerunnable: each home is removed and made again (see below).
 
 set -e
 source script/phases/70_image/phase.env
@@ -59,17 +59,21 @@ while IFS=: read -r name _pw uid gid _gecos home shell; do
     [ "$uid" -lt 65534 ] || continue
     [ -n "$home" ] || continue
 
+    case "$home" in
+        /home/.*|/home/*/*|/home/) echo "FATAL: $name's home is '$home', not one directory under /home" >&2; exit 1 ;;
+        /home/?*) ;;
+        *) echo "FATAL: $name's home is '$home', not under /home" >&2; exit 1 ;;
+    esac
+
     echo "  $name ($uid:$gid) -> $home"
+    # THE HOME IS REBUILT FROM NOTHING. This only ever runs against the build
+    # tree, where the home is a build artifact made of skel and the directories
+    # below. cp -r overwrites but never deletes, so a home kept from an earlier
+    # build would ship every file and directory skel or this list has since
+    # dropped: a launcher whose file name changed would stay under its old name
+    # and the app library would list the app twice.
+    rm -rf "$home"
     mkdir -p "$home"
-    # Skel wins: this only ever runs against the build tree, where the home is
-    # a build artifact. With no-clobber, editing fs/etc/skel and rebuilding
-    # would silently ship the previous build's dotfiles instead.
-    #
-    # cp -r overwrites but never DELETES, so a file skel has since dropped
-    # lingers in the home forever. The alien launchers need clearing most: a
-    # launcher whose file name changes would stay under its old name as well,
-    # and the app library would show that app twice.
-    rm -rf "$home/.local/share/applications"
     if [ -d /etc/skel ]; then
         cp -r /etc/skel/. "$home"/ 2>/dev/null || true
     fi
@@ -85,22 +89,17 @@ while IFS=: read -r name _pw uid gid _gecos home shell; do
     # report an error on a directory that is not there rather than making one.
     # The calendar and contact stores are here for the same reason Mail is:
     # khal's shipped config globs `.local/share/calendars/*` and khard's names
-    # `.local/share/contacts/personal`, and a store that is a plain directory
-    # of files is a store `cp -r` backs up. khal's `discover` type does NOT
-    # create what it is pointed at — deliberately, so a login grows nothing —
-    # which is exactly why they are made here.
+    # `.local/share/addressbooks/personal`, and a store that is a plain
+    # directory of files is a store `cp -r` backs up. Each ships one empty
+    # collection, `personal`: khal's `discover` type creates nothing, and
+    # `khal import` with no calendar under the glob fails. khard's book stays
+    # out of `.local/share/contacts`, which Akonadi's default address book
+    # claims, subdirectories included.
     for _d in Desktop Downloads Documents Mail Music Pictures \
               Pictures/Screenshots Projects Videos Public Templates .local/bin \
-              .local/share/applications .local/share/calendars \
-              .local/share/contacts/personal; do
+              .local/share/applications .local/share/calendars/personal \
+              .local/share/addressbooks/personal; do
         mkdir -p "$home/$_d"
-    done
-
-    # The same two, in the home. `cp` gives a NEW file skel's mode but leaves
-    # an EXISTING one alone, so a home materialised by an earlier build still
-    # has them at 644 and the first password written into one would be refused.
-    for _s in .msmtprc .mbsyncrc; do
-        [ -f "$home/$_s" ] && chmod 600 "$home/$_s"
     done
 
     chown -R "$uid:$gid" "$home"

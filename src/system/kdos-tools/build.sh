@@ -25,6 +25,8 @@ gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 install -Dm755 kdos-tools "$PKG/usr/sbin/ksvc"
 install -Dm644 "$PORT_SRC/kglobalaccel/org.kdos.tiling.desktop" \
 	"$PKG/usr/share/kglobalaccel/org.kdos.tiling.desktop"
+install -Dm644 "$PORT_SRC/kglobalaccel/org.kdos.nightlight.desktop" \
+	"$PKG/usr/share/kglobalaccel/org.kdos.nightlight.desktop"
 install -Dm644 "$PORT_SRC/autostart/kdos-mpris.desktop" \
 	"$PKG/etc/xdg/autostart/kdos-mpris.desktop"
 install -Dm644 "$PORT_SRC/autostart/kdos-speech-sync.desktop" \

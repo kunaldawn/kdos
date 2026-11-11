@@ -9,14 +9,14 @@ to, and [The desktop](desktop.md) explains the desktop's keyboard routes.
 The desktop is Plasma, so it carries Plasma's accessibility: the whole desktop is published to
 screen readers, KWin magnifies and filters the keyboard and pointer, and System Settings →
 Accessibility holds every switch. KDOS adds a few things: the screen reader works from the first
-login and on the login screen, the Welcome tour opens on an accessibility page, the eight accents
+login and on the login screen, the Welcome tour asks about accessibility first, the eight accents
 are held to contrast floors, and the text consoles have BRLTTY for braille and speech.
 
 ## What is available
 
 | Need | What KDOS offers | Where |
 |---|---|---|
-| A screen reader | Orca reads the panel, menus, System Settings, KDOS's own pages and the applications, on `Meta+Alt+S`, also on the login screen | [The screen reader](#the-screen-reader) |
+| A screen reader | Orca reads the panel, menus, System Settings, KDOS's own pages and the applications, on `Meta+Alt+S`; on the login screen it starts and is silent | [The screen reader](#the-screen-reader) |
 | Braille on the desktop | Orca drives a braille display through BRLTTY | [The screen reader](#the-screen-reader) |
 | Braille or speech at a text console | BRLTTY, on `tty2`, the installer's text front end and any other console | [Braille and speech at a text console](#braille-and-speech-at-a-text-console) |
 | Magnification | KWin's zoom, on `Meta+=`, and its magnifier | [The magnifier](#the-magnifier) |
@@ -31,22 +31,31 @@ are held to contrast floors, and the text consoles have BRLTTY for braille and s
 | Less motion | One switch that stops every animation | [Reducing motion](#reducing-motion) |
 | A boxed application read aloud | The box reaches the accessibility bus while a reader is in use | [Boxed applications](#boxed-applications) |
 
-The first page of the Welcome tour, which opens on the first login, holds the switches a person
-needs before anything else: the screen reader, larger text, a high-contrast accent, zoom, reduced
-motion, the four keyboard and mouse aids, and a button to the rest. Every one takes effect at once
-and is changed later in System Settings → Accessibility.
+The Welcome tour, which opens on the first login, shows its Accessibility page straight after its
+welcome page (and after the live page on the live medium), before anything else is asked. It
+holds what a person needs first: switches for the screen reader, reduced motion, the four keyboard
+and mouse aids and dwell click, a button to larger text, the two high-contrast accents, the zoom
+chords, and a button to the rest. Every switch takes effect at once and is changed later in System
+Settings → Accessibility; the page reads them again whenever it is shown, so a change made
+elsewhere while the tour is open shows there too.
 
 ## The screen reader
 
 A screen reader works from a tree of *accessible objects* that an application's toolkit publishes,
 on Linux through the AT-SPI accessibility bus. Each object describes one control: what kind it is,
-what it is called and what it is set to. Plasma, KWin's window switcher and overview, System
-Settings, KDOS's own settings pages, plasmoids, Welcome pages and installer window, and every Qt,
-KDE and GTK application publish theirs, and Orca reads them.
+what it is called and what it is set to. Plasma, System Settings, KDOS's own settings pages,
+plasmoids, Welcome pages and installer window, and every Qt, KDE and GTK application publish
+theirs, and Orca reads them; `Alt+Tab` is announced by the window it switches to. Two parts of the
+desktop publish nothing Orca can use. KWin's overview (`Meta+W`) is silent: Orca echoes the keys
+and reads none of its windows, desktops or search results. The lock screen reads its password
+field and its Show Password, Virtual Keyboard and user buttons, has one Tab stop that says nothing,
+and never reaches its Sleep and Switch User buttons; see
+[Known gaps](../06-reference/known-gaps.md#the-overview-is-silent-under-the-screen-reader-and-the-lock-screen-only-partly-read).
 
 `Meta+Alt+S` starts and stops Orca, from the first login, as do the Screen Reader page of System
-Settings → Accessibility and the first Welcome page. The same chord works on the login screen, so
-the password can be typed with speech. Orca speaks through Speech Dispatcher and eSpeak NG, and
+Settings → Accessibility and the Welcome tour's Accessibility page. The same chord starts Orca on
+the login screen, but there it has no sound to speak through (see
+[Known gaps](../06-reference/known-gaps.md#the-screen-reader-at-the-login-screen-has-no-sound)). Orca speaks through Speech Dispatcher and eSpeak NG, and
 drives a braille display through BRLTTY's client interface, BrlAPI, when BRLTTY is running (see
 [Programs that talk to BRLTTY](#programs-that-talk-to-brltty)). Orca's own settings, voices, key
 echo and verbosity among them, are in its preferences dialog.
@@ -54,7 +63,9 @@ echo and verbosity among them, are in its preferences dialog.
 Plasma's screen-reader module starts Orca itself. It would switch for good to starting an `orca`
 service unit if it ever saw systemd on the session bus, and KDOS has no units, so the shipped
 `/usr/share/kdos/xdg/kaccessrc` makes that switch impossible and the chord keeps starting Orca.
-Whether Orca is on stays your setting.
+Whether Orca is on stays your setting: the chord, the System Settings page and the Welcome switch
+each write it to `[ScreenReader] Enabled` in your `~/.config/kaccessrc`, and the module starts Orca
+at login when it says so.
 
 ## Braille and speech at a text console
 
@@ -128,10 +139,12 @@ lost at power-off unless the session has a persistence store (see
 
 At boot no audio server is running, so the BRLTTY service sets `KDOS_ALSA_DEFAULT=kdos_card` and
 its voice plays straight to the sound card rather than through PipeWire. The card accepts one user
-at a time. While a desktop session's PipeWire holds the card, the console voice cannot open it;
-while the console voice is speaking, the desktop has no sound. Braille output does not use the
-sound card and is not affected. On a machine that runs the desktop, use Orca for speech and BRLTTY
-for braille.
+at a time. BRLTTY's voice opens the card for each utterance and closes it once the utterance has
+played, so a BRLTTY that is not speaking leaves the card free. While a desktop session's PipeWire
+holds the card, the console voice cannot open it; while the console voice is speaking, the desktop
+has no sound, and Speech Dispatcher, Orca's voice, waits and speaks once the console voice has
+finished. Braille output does not use the sound card and is not affected. On a machine that runs
+the desktop, use Orca for speech and BRLTTY for braille.
 
 In a terminal inside the desktop, speech plays through ALSA's default device, which in a session
 is PipeWire: `espeak-ng "text"` speaks a line, and `spd-say "text"` does the same through Speech
@@ -140,7 +153,9 @@ Its Python module, `speechd`, is installed with it, and so is `spd-conf`, which 
 configuration and runs Speech Dispatcher's own diagnostics.
 
 `piper`, a neural speech synthesiser, is on the image as well and speaks through PipeWire. It
-ships no voice: a voice is a model file passed with `-m`. Speech Dispatcher and BRLTTY do not use
+ships no voice: a voice is a model file passed with `-m`, and `kdos speech voice get` fetches one
+into `~/.local/share/piper/voices` (see
+[`kdos speech`](../04-programs/kdos-command.md#kdos-speech)). Speech Dispatcher and BRLTTY do not use
 it (see [Local AI, speech and translation](applications.md#local-ai-speech-and-translation)).
 
 ### Contracted braille
@@ -193,10 +208,12 @@ KWin magnifies the screen around the pointer:
 | `Meta+-` | Zoom out |
 | `Meta+0` | Back to actual size |
 
-The zoom follows the pointer, the text cursor and the keyboard focus, so what is being read stays in
-view. System Settings → Accessibility, and Window Management → Desktop Effects, choose between the
-full-screen zoom and a magnifying inset that follows the pointer, and set how the view tracks the
-pointer and the focus.
+The zoom follows the pointer and the text cursor, so what you type stays in view: KDOS turns on
+following the text cursor, which works in every Wayland program that takes text through the input
+method or the on-screen keyboard. It does not follow the keyboard focus, which KWin leaves off on
+Wayland. System Settings → Accessibility, and Window Management → Desktop Effects, choose between
+the full-screen zoom and a magnifying inset that follows the pointer, and set how the view tracks
+the pointer and the text cursor.
 
 While either is on, Phosphor mode's CRT pass stands aside, because scanlines and glow, once
 magnified, make text harder to read (see [Phosphor mode](theming.md#phosphor-mode)).
@@ -224,7 +241,7 @@ effect briefly enlarges the pointer when you shake it, to find it on a large scr
 ## Keyboard aids
 
 Three aids change how the keys of a physical keyboard are read, all off until you turn them on in
-System Settings → Accessibility or on the first Welcome page:
+System Settings → Accessibility or on the Welcome tour's Accessibility page:
 
 | Aid | What it does |
 |---|---|
@@ -239,14 +256,14 @@ reaches anything else.
 ## Dwell click
 
 Dwell click clicks wherever the pointer comes to rest, for anyone who can move a pointer but not
-press a button reliably. Turn it on in System Settings → Accessibility, or on the first Welcome
-page; the rest time is set on the Accessibility page.
+press a button reliably. Turn it on in System Settings → Accessibility, or on the Welcome tour's
+Accessibility page; the rest time is set on the Accessibility page.
 
 ## Pointing from the keyboard
 
 Mouse keys move the pointer with the number pad: the digits around `5` move it, `5` clicks, and the
 keys above the pad choose the button. Turn it on in System Settings → Accessibility (Mouse
-Navigation) or on the first Welcome page; the speed and acceleration are set there.
+Navigation) or on the Welcome tour's Accessibility page; the speed and acceleration are set there.
 
 ## Writing with Dasher
 
@@ -258,7 +275,9 @@ through X11, and its direct mode, which types into another application, reaches 
 windows; for a Wayland window, write in Dasher's own text box and paste.
 
 KMouth speaks what is typed into it, or a sentence picked from its phrase books, through Speech
-Dispatcher, for someone who cannot speak.
+Dispatcher, for someone who cannot speak. On its first start it offers a voice in the session's
+language, an English one under the default `en_US.UTF-8`; another is chosen in its first-run
+dialogue or later under Settings → Configure KMouth.
 
 ## The on-screen keyboard
 
@@ -266,14 +285,25 @@ Plasma's on-screen keyboard types into whichever window has the keyboard focus. 
 input method at a time, and KDOS starts fcitx5, the input method for Chinese, Japanese and Korean
 (see [Input methods](administration.md#input-methods)). To use the on-screen keyboard instead,
 choose Plasma Keyboard on System Settings → Keyboard → Virtual Keyboard. It then appears when a
-text field takes the focus. A program running under Xwayland does not say when a text field has
-the focus, so the keyboard does not appear by itself over one.
+text field is focused by touch or a tablet pen; to have a mouse click bring it up too, set **Show
+Virtual Keyboard** on the same page to **With Touch, Tablet, and Mouse**. A program running under
+Xwayland does not say when a text field has the focus, so the keyboard does not appear by itself
+over one.
+
+While fcitx5 is the input method, the **Virtual Keyboard** button on the lock screen does nothing:
+fcitx5 draws no keyboard, and the button is shown whenever KWin has an input method at all.
+Choose Plasma Keyboard first to type on the lock screen without a keyboard.
+
+The login screen has Plasma Keyboard whatever the session's input method is: its own KWin starts
+it. It appears when the password field is touched, and the **Virtual Keyboard** button at the
+bottom left shows and hides it for a mouse. With more than one keyboard layout set, the button
+beside it names the current layout and switches to the next.
 
 ## Colour and contrast
 
 KDOS has eight colour schemes, called accents: `phosphor`, `amber`, `ice`, `bone` (the default),
 `norton`, `borland`, `perfect` and `paper`. `paper` is the only light one, dark text on a pale
-ground. Switch on System Settings' KDOS Look page, on the first Welcome page (which offers the
+ground. Switch on System Settings' KDOS Look page, on the Welcome tour's Accessibility page (which offers the
 highest-contrast dark accent and the light one), or from a terminal:
 
 ```sh
@@ -282,14 +312,17 @@ kdos theme paper
 
 Every scheme is held to contrast floors when the image is built, and none can ship below them:
 every text role at 4.5:1 or better, the WCAG AA level for normal-sized text, on both backgrounds it
-is drawn on; focus and hover decorations at 3:1; and a selected row at 6:1 or better. See
+is drawn on; focus and hover decorations at 3:1; and a selected row at 4.5:1, for its own text
+and for the list's ordinary text over a translucent selection. See
 [How the accents are kept readable](theming.md#how-the-accents-are-kept-readable). Kontrast checks
 any pair of colours against the same guidelines.
 
 KWin also corrects for colour blindness (protanopia, deuteranopia and tritanopia), and inverts the
 colours of the whole screen or of one window; both are under System Settings → Accessibility and
-Desktop Effects. Night Light (`Meta+Ctrl+Shift+N`) warms the whole screen towards a lower colour
-temperature in the evening.
+Desktop Effects. Inversion is off until its effect is turned on there, and `Meta+Ctrl+I` (the
+screen) and `Meta+Ctrl+U` (the window) work from then on. Night Light warms the whole screen
+towards a lower colour temperature on the schedule set on its System Settings page;
+`Meta+Ctrl+Shift+N` turns it on, warm at once and all day, or off.
 
 ## Reducing motion
 
@@ -301,7 +334,7 @@ folding, degauss and power-down. Plasma, KWin and every KDE application follow i
 kdos toggle reduced-motion
 ```
 
-The same switch is on the first Welcome page, and on System Settings → General Behavior, where the
+The same switch is on the Welcome tour's Accessibility and Look pages, and on System Settings → General Behavior, where the
 animation speed slider's fastest end is instant; KDOS ships animations at half their usual length.
 `kdos toggle reduced-motion` writes `AnimationDurationFactor=0` into your own `~/.config/kdeglobals`,
 and turning it off removes that key again, so the shipped speed applies. Phosphor mode's still

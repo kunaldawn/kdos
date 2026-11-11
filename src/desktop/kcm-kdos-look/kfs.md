@@ -16,9 +16,13 @@ behind, Repaint Everything runs `kdos theme --from-plasma <Plasma's accent>`, th
 [kded-kdos](../kded-kdos/kfs.md) runs, so Plasma's choice is kept and not applied twice. The page
 follows that module over `io.kdos.Kded1` at `org.kde.kded6 /modules/kdos`: while it carries an
 accent down the page is busy and starts nothing, and when its last run failed while the
-accents still disagree, its reason is shown above Repaint Everything. The Phosphor section reads
-`kdos phosphor status --json` and runs `kdos phosphor on|off`, `preset subtle|retro` and
-`terminus on|off`. Every command is an argument vector given to QProcess, never a shell, and
+accents still disagree, its reason is shown above Repaint Everything. The line under the swatches
+reads the greeter set `/usr/share/kdos/greeter/<accent>/kdeglobals` for the login screen's scheme,
+so a light accent's dark partner is named, and names the boot menu only where `/boot/efi` exists.
+The Phosphor section reads `kdos phosphor status --json` and runs `kdos phosphor on|off`,
+`preset subtle|retro`, `fullscreen on|off` and `terminus on|off`; with the effect unsupported and
+the mode off, every option is disabled with the switch, and the record's `refusal` picks the
+page's own sentence for why. Every command is an argument vector given to QProcess, never a shell, and
 the port is KDOS's own code with no upstream source, built with CMake against KF6 KCMUtils,
 KColorScheme and KConfig.
 

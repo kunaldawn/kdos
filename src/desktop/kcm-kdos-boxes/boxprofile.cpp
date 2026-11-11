@@ -438,6 +438,48 @@ void BoxProfile::applyReport(const QString &report)
     Q_EMIT notesChanged();
 }
 
+QString BoxProfile::markup(const QString &text, bool sentence)
+{
+    /* A key=value is a setting spelled as a prompt takes it; the trailing
+     * stop of a sentence is not part of the value. */
+    static const QRegularExpression code(u"`([^`]+)`|(?<![\\w$/=-])([A-Za-z_][A-Za-z0-9_-]*=[^\\s,;)`]*[^\\s,;)`.])"_s);
+    static const QRegularExpression plainWord(u"^[a-z]+\\b(?![/.=_-])"_s);
+
+    QString out = u"<span>"_s;
+    qsizetype at = 0;
+    bool first = true;
+    auto plain = [&](QString seg) {
+        if (first && sentence && plainWord.match(seg).hasMatch()) {
+            seg[0] = seg.at(0).toUpper();
+        }
+        if (!seg.isEmpty()) {
+            first = false;
+        }
+        out += seg.toHtmlEscaped();
+    };
+    auto it = code.globalMatch(text);
+    while (it.hasNext()) {
+        const auto m = it.next();
+        plain(text.mid(at, m.capturedStart() - at));
+        const QString word = m.captured(1).isEmpty() ? m.captured(2) : m.captured(1);
+        out += u"<code>"_s + word.toHtmlEscaped() + u"</code>"_s;
+        first = false;
+        at = m.capturedEnd();
+    }
+    plain(text.mid(at));
+    return out + u"</span>"_s;
+}
+
+QString BoxProfile::noteMarkup(const QString &text) const
+{
+    return markup(text, true);
+}
+
+QString BoxProfile::mechanismMarkup(const QString &text) const
+{
+    return markup(text, false);
+}
+
 QString BoxProfile::name() const
 {
     return m_name;

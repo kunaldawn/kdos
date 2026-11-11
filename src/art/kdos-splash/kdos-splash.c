@@ -43,15 +43,18 @@
  * cannot finish puts its reason and a shell on tty1, so a machine that dies
  * behind the splash is still debuggable.
  *
- *   kdos-splash run                 draw, and read commands until told to quit
+ *   kdos-splash run                 draw, and read commands until told to quit;
+ *                                   on a command line without `quiet` it draws
+ *                                   nothing and exits (read_mode)
  *   kdos-splash step "PROBING..."   begin a stage (prints NAME ....... )
  *   kdos-splash ok | fail           close the current stage
  *   kdos-splash msg  "text"         a plain line
  *   kdos-splash detail "text"       a detail line; the newest few are kept
  *   kdos-splash total N             add N to the expected step count (the
  *                                   progress bar; senders add their share as
- *                                   soon as they know it — until the first
- *                                   total arrives the bar sweeps)
+ *                                   soon as they know it, and the bar never
+ *                                   moves back — until the first total
+ *                                   arrives it sweeps)
  *   kdos-splash accent NAME         switch the running splash's colour scheme
  *   kdos-splash quit                power-off animation, then exit; the console
  *                                   is left in text mode with its cursor shown
@@ -225,17 +228,51 @@ static int nlines;
 static char detail[MAX_DETAIL][DETAIL_COLS + 1];
 static int ndetail;
 static int failed;
+/* The newest FAIL stage, kept by value: the line table drops its oldest entry
+ * past MAX_LINES, and a boot has more stages than that, so an index into it
+ * could be shifted away while the stage is still the reason on screen. */
+static char fail_text[72];
+static long fail_seq = -1;	/* its add_line sequence number, -1 for none */
+static long lines_added;	/* every add_line ever, the table's sequence */
 static int total_steps, done_steps;
 /*
- * The total is additive and each boot phase reports its own share late, so
- * "all currently-known steps done" happens repeatedly at phase boundaries.
- * Until quit arrives the boot is by definition not finished — hold the bar
+ * THE BAR NEVER MOVES BACK. The total is additive and each sender adds its
+ * share late, so a bare done/total would fall every time a total arrives
+ * after a stage has closed. The fraction shown is instead rebased on each
+ * total: what was on screen becomes the floor (bar_base, at bar_done steps),
+ * and the steps still to come fill bar_take of the rest of the current span.
+ * The initramfs adds its stages a few at a time and never knows which batch
+ * is its last, so each of its batches fills half of what is left of its
+ * share and none of them can use it up; rcS counts its stages up front, so
+ * its total fills the rest of the bar.
+ *
+ * THE TWO HALVES OF A BOOT HAVE FIXED SHARES. The initramfs fills the bar to
+ * INITRD_SHARE and rcS fills the rest. Their stage counts are nothing like
+ * their durations — the initramfs's handful are short, rcS's one per service
+ * are most of the boot — so a shared count would spend most of the bar on the
+ * first seconds. The first total sent from the real root (in_initrd, below)
+ * moves the floor to INITRD_SHARE and the span's end to the whole bar.
+ *
+ * Until quit arrives the boot is by definition not finished — the bar holds
  * at 99% / one segment short so the user never watches a "100%" boot wait.
  */
+#define INITRD_SHARE 0.15
+static double bar_base, bar_end = 1.0, bar_take = 1.0;
+static int bar_done;
 static int finishing;
+/* Started in the initramfs, and switch_root has not happened yet: the
+ * initramfs's /init is still reachable from this process's root. switch_root
+ * deletes every file of the old root, so the first lookup that misses after
+ * it is the boundary between the two halves (see say() on the ghost root). */
+static int in_initrd;
+static const char *initrd_probe = "/init";
 
 /* Phosphor's CRT motion rather than Modern's flat one (the header). */
 static int crt;
+
+/* The two text lines under the wordmark are left out to make room for the
+ * failure panel (layout()). */
+static int compact;
 
 /* The last stop is a display manager, not a text console (`handoff`). */
 static int handing_off;
@@ -461,8 +498,9 @@ static void draw_penguin(int x, int y, int scale)
 /*
  * Everything is stacked from the top down and measured in glyph cells, so the
  * whole screen scales with the framebuffer instead of assuming 1280x800.
+ * `cw` is the wordmark's cell width; 0 is the width the screen gives it.
  */
-static void layout(void)
+static void layout_at(int cw)
 {
 	body_scale = fbw / 640;
 	if (body_scale < 1)
@@ -473,7 +511,7 @@ static void layout(void)
 	int cell = gh * body_scale;   /* one line of body text */
 
 	/* Wordmark cells: the mascot + wordmark group takes ~55% of the width. */
-	art_cw = fbw / 85;
+	art_cw = cw > 0 ? cw : fbw / 85;
 	if (art_cw < 4)
 		art_cw = 4;
 	if (art_cw > 60)
@@ -504,7 +542,7 @@ static void layout(void)
 	int group_end = peng_y + group_h;
 	sub_y  = group_end + cell;
 	tag_y  = sub_y + cell * 2;
-	rule_y = tag_y + cell * 2;
+	rule_y = compact ? group_end + cell : tag_y + cell * 2;
 
 	body_step = cell + body_scale * 4;
 
@@ -525,6 +563,78 @@ static void layout(void)
 		body_max = MAX_LINES;
 	if (body_max < 1)
 		body_max = 1;
+}
+
+/* The failure panel's text scale, line height and whole height: a gap of one
+ * stage row, `WHY:`, and one line per detail. */
+static int panel_ds(void) { return body_scale > 1 ? body_scale - 1 : 1; }
+static int panel_lh(void) { return gh * panel_ds() + panel_ds(); }
+static int panel_h(void)
+{
+	return failed && ndetail ? body_step + (1 + ndetail) * panel_lh() : 0;
+}
+
+/*
+ * THE FAILURE TAKES ITS ROOM FROM THE PICTURE. The mascot, the wordmark and
+ * the two lines of text under them fill the top of the screen, and on a wide
+ * screen they leave too little under the bar for two stage rows and a panel
+ * of reasons. With a panel up that does not fit, the two text lines go
+ * first (`compact`); if it still does not fit, the wordmark's cell narrows
+ * until the bar, two rows and the whole panel fit above the bottom margin,
+ * down to the smallest cell that still draws, and below that the panel's
+ * last lines are cut at the screen's edge. Without a panel the picture is the
+ * one the screen gives.
+ */
+static void layout(void)
+{
+	compact = 0;
+	layout_at(0);
+	int need = panel_h();
+	if (!need || fbh * 94 / 100 - body_y >= 2 * body_step + need)
+		return;
+	compact = 1;
+	layout_at(0);
+	for (int cw = art_cw - 1;
+	     cw >= 4 && fbh * 94 / 100 - body_y < 2 * body_step + need; cw--)
+		layout_at(cw);
+}
+
+/* The fraction the bar shows, 0..1, by the rule at bar_base. */
+static double bar_frac(void)
+{
+	if (total_steps <= 0)
+		return 0.0;
+	double f = bar_base + (bar_end - bar_base) * bar_take;
+	if (total_steps > bar_done)
+		f = bar_base + (bar_end - bar_base) * bar_take *
+		    (done_steps - bar_done) / (double)(total_steps - bar_done);
+	if (f > 1.0)
+		f = 1.0;
+	return f < bar_base ? bar_base : f;
+}
+
+/* `total N`: add N steps and rebase, so the fraction on screen stays put. */
+static void bar_total(int n)
+{
+	if (n <= 0)
+		return;
+	if (in_initrd && access(initrd_probe, F_OK) != 0) {
+		/* The first word from the real root: the initramfs's half is
+		 * over, whatever of it was left unclosed. */
+		in_initrd = 0;
+		double f = bar_frac();
+		bar_base = f > INITRD_SHARE ? f : INITRD_SHARE;
+		bar_end = 1.0;
+		bar_take = 1.0;
+		bar_done = done_steps;
+		total_steps = done_steps + n;
+		return;
+	}
+	if (total_steps > 0 && done_steps > 0) {
+		bar_base = bar_frac();
+		bar_done = done_steps;
+	}
+	total_steps += n;
 }
 
 /*
@@ -552,7 +662,7 @@ static void draw_bar(int tick)
 
 	int filled = -1, kitt = -1;
 	if (total_steps > 0) {
-		filled = done_steps * BAR_SEGS / total_steps;
+		filled = (int)(bar_frac() * BAR_SEGS);
 		if (filled > BAR_SEGS)
 			filled = BAR_SEGS;
 		if (!finishing && filled >= BAR_SEGS)
@@ -591,7 +701,7 @@ static void draw_bar(int tick)
 
 	char pct[16];
 	if (total_steps > 0) {
-		int p = done_steps * 100 / total_steps;
+		int p = (int)(bar_frac() * 100.0);
 		if (p > 100)
 			p = 100;
 		if (!finishing && p > 99)
@@ -604,11 +714,46 @@ static void draw_bar(int tick)
 		  total_steps > 0 ? C_PHOS : C_AMBER);
 }
 
-/* Compose the whole screen into the canvas. Effects come later, in present. */
-static void compose(int tick)
+/* One status line at y: a plain message, or a stage dotted out to its state. */
+static void draw_line(const struct line *l, int y, int tick)
 {
 	int cursor_on = (tick / 4) & 1;
 	static const char spin[4] = { '|', '/', '-', '\\' };
+
+	if (l->state == ST_PLAIN) {
+		draw_text(body_x, y, l->text, body_scale, 0, C_TEXT);
+		return;
+	}
+
+	char buf[LINE_COLS + 8];
+	int n = (int)strlen(l->text);
+	if (n > LINE_COLS)
+		n = LINE_COLS;
+	memcpy(buf, l->text, n);
+	buf[n] = ' ';
+	for (int k = n + 1; k < LINE_COLS; k++)
+		buf[k] = '.';
+	buf[LINE_COLS] = '\0';
+	draw_text(body_x, y, buf, body_scale, 0, C_TEXT);
+
+	int sx = body_x + text_width(buf, body_scale, 0) + gw * body_scale;
+	if (l->state == ST_OK) {
+		draw_text(sx, y, "OK", body_scale, 0, C_PHOS);
+	} else if (l->state == ST_FAIL) {
+		draw_text(sx, y, "FAIL", body_scale, 0, C_ALARM);
+	} else {
+		/* A live stage gets a little rotor, not a mute block. */
+		char s[2] = { spin[tick & 3], 0 };
+		draw_text(sx, y, s, body_scale, 0, C_AMBER);
+		if (cursor_on)
+			fill(sx + gw * body_scale * 2, y,
+			     gw * body_scale, gh * body_scale, C_PHOS);
+	}
+}
+
+/* Compose the whole screen into the canvas. Effects come later, in present. */
+static void compose(int tick)
+{
 	for (size_t i = 0; i < (size_t)fbw * fbh; i++)
 		canvas[i] = C_DEEP;
 
@@ -630,69 +775,67 @@ static void compose(int tick)
 
 	draw_penguin(peng_x, peng_y, peng_scale);
 
-	const char *sub = "KD's Homebrew Linux Distro";
-	draw_text((fbw - text_width(sub, body_scale, 0)) / 2, sub_y,
-		  sub, body_scale, 0, C_TEXT);
+	if (!compact) {
+		const char *sub = "KD's Homebrew Linux Distro";
+		draw_text((fbw - text_width(sub, body_scale, 0)) / 2, sub_y,
+			  sub, body_scale, 0, C_TEXT);
 
-	const char *tag = "musl . GNU . sysvinit . KDE Plasma";
-	draw_text((fbw - text_width(tag, body_scale, 0)) / 2, tag_y,
-		  tag, body_scale, 0, C_DIM);
+		const char *tag = "musl . GNU . sysvinit . KDE Plasma";
+		draw_text((fbw - text_width(tag, body_scale, 0)) / 2, tag_y,
+			  tag, body_scale, 0, C_DIM);
+	}
 
 	/* A rule between the identity and the machine talking. */
 	fill(body_x, rule_y, body_w, body_scale, C_DIM);
 
 	draw_bar(tick);
 
-	/* Status lines, oldest first, scrolled to keep the newest visible. */
-	int first = nlines > body_max ? nlines - body_max : 0;
-	for (int i = first; i < nlines; i++) {
-		int y = body_y + (i - first) * body_step;
-		struct line *l = &lines[i];
-
-		if (l->state == ST_PLAIN) {
-			draw_text(body_x, y, l->text, body_scale, 0, C_TEXT);
-			continue;
-		}
-
-		char buf[LINE_COLS + 8];
-		int n = (int)strlen(l->text);
-		if (n > LINE_COLS)
-			n = LINE_COLS;
-		memcpy(buf, l->text, n);
-		buf[n] = ' ';
-		for (int k = n + 1; k < LINE_COLS; k++)
-			buf[k] = '.';
-		buf[LINE_COLS] = '\0';
-		draw_text(body_x, y, buf, body_scale, 0, C_TEXT);
-
-		int sx = body_x + text_width(buf, body_scale, 0) + gw * body_scale;
-		if (l->state == ST_OK) {
-			draw_text(sx, y, "OK", body_scale, 0, C_PHOS);
-		} else if (l->state == ST_FAIL) {
-			draw_text(sx, y, "FAIL", body_scale, 0, C_ALARM);
-		} else {
-			/* A live stage gets a little rotor, not a mute block. */
-			char s[2] = { spin[tick & 3], 0 };
-			draw_text(sx, y, s, body_scale, 0, C_AMBER);
-			if (cursor_on)
-				fill(sx + gw * body_scale * 2, y,
-				     gw * body_scale, gh * body_scale, C_PHOS);
-		}
-	}
-
 	/*
-	 * The failure panel. Drawn under the stage list, in alarm on the
+	 * THE FAILURE PANEL'S ROOM IS TAKEN FIRST. Once a stage has failed with
+	 * a reason, the reason is drawn under the stage list, in alarm on the
 	 * dimmest surface, at HALF the body scale — the point is to fit real
 	 * log text on screen, and a boot log line is wider than a stage name.
+	 * Its height comes out of the list's rows before the list is laid out,
+	 * so every detail line lands above the bottom edge on any screen that
+	 * holds two stage rows and the panel; a list given its rows first would
+	 * leave the panel whatever was under the newest stage, which on a long
+	 * boot is one line.
 	 *
-	 * The stage list scrolls; this does not. Once something has failed the
-	 * reason stays up for the rest of the boot, because the user's next
-	 * move is to photograph it.
+	 * THE FAILED STAGE IS PINNED. The list scrolls to keep the newest
+	 * stage in view; the newest FAIL stage, once out of that window, takes
+	 * the first row and the newest stages fill the rest. Reason and stage
+	 * stay up together for the rest of the boot, because the user's next
+	 * move is to photograph them.
 	 */
-	if (failed && ndetail) {
-		int ds = body_scale > 1 ? body_scale - 1 : 1;
-		int dy = body_y + (nlines - first) * body_step + body_step;
-		int lh = gh * ds + ds;
+	int ds = panel_ds();
+	int lh = panel_lh();
+	int panel = panel_h();
+	int rows = body_max;
+	if (panel) {
+		rows = (fbh * 94 / 100 - body_y - panel) / body_step;
+		if (rows > body_max)
+			rows = body_max;
+		if (rows < 2)
+			rows = 2;
+	}
+
+	/* Status lines, oldest first, scrolled to keep the newest visible. */
+	int first = nlines > rows ? nlines - rows : 0;
+	int row = 0;
+	int pin = fail_seq >= 0 && fail_seq < lines_added - (nlines - first);
+	if (pin) {
+		struct line pinned;
+		snprintf(pinned.text, sizeof(pinned.text), "%s", fail_text);
+		pinned.state = ST_FAIL;
+		draw_line(&pinned, body_y, tick);
+		row = 1;
+		first++;
+	}
+	for (int i = first; i < nlines; i++, row++)
+		draw_line(&lines[i], body_y + row * body_step, tick);
+
+	if (panel) {
+		int dy = body_y + row * body_step + body_step;
 
 		draw_text(body_x, dy, "WHY:", ds, 0, C_ALARM);
 		dy += lh;
@@ -901,9 +1044,21 @@ static void outro(double p, double *vopen, double *hopen, double *flash,
  * any other value or none is Modern, and the last `kdos.splash=` wins, as it
  * does for the kernel's own parameters. A command line that cannot be read is
  * Modern too: the splash never stops a boot over a setting.
+ *
+ * THE SPLASH RUNS ONLY ON A QUIET BOOT. Every entry that boots to the desktop
+ * carries `quiet`; the verbose and single-user entries leave it out, and they
+ * exist to put the boot's text on the screen. A splash there would cover that
+ * text, and a kernel line printed to the VT under it would end fbcon's
+ * deferred take-over and be drawn over the picture. So `run` without `quiet`
+ * draws nothing and exits 0, and every later command finds no FIFO and is a
+ * no-op. A command line that cannot be read counts as quiet, the boot's
+ * normal case.
+ *
  * KDOS_SPLASH_CMDLINE names a file to read in place of /proc/cmdline, so the
  * choice can be exercised without a boot.
  */
+static int quiet_boot = 1;
+
 static void read_mode(void)
 {
 	const char *path = getenv("KDOS_SPLASH_CMDLINE");
@@ -913,6 +1068,7 @@ static void read_mode(void)
 	ssize_t n;
 
 	crt = 0;
+	quiet_boot = 1;
 	if (fd < 0)
 		return;
 	n = read(fd, buf, sizeof(buf) - 1);
@@ -921,9 +1077,13 @@ static void read_mode(void)
 		return;
 	buf[n] = '\0';
 
-	for (char *w = strtok(buf, " \t\n"); w; w = strtok(NULL, " \t\n"))
+	quiet_boot = 0;
+	for (char *w = strtok(buf, " \t\n"); w; w = strtok(NULL, " \t\n")) {
 		if (!strncmp(w, "kdos.splash=", 12))
 			crt = !strcmp(w + 12, "phosphor");
+		else if (!strcmp(w, "quiet"))
+			quiet_boot = 1;
+	}
 }
 
 /* ------------------------------------------------------------------ init */
@@ -1012,6 +1172,7 @@ static void add_line(const char *text, int state)
 	snprintf(lines[nlines].text, sizeof(lines[nlines].text), "%s", text);
 	lines[nlines].state = state;
 	nlines++;
+	lines_added++;
 }
 
 static void close_line(int state)
@@ -1020,6 +1181,11 @@ static void close_line(int state)
 		if (lines[i].state == ST_PENDING) {
 			lines[i].state = state;
 			done_steps++;
+			if (state == ST_FAIL) {
+				memcpy(fail_text, lines[i].text,
+				       sizeof(fail_text));
+				fail_seq = lines_added - nlines + i;
+			}
 			return;
 		}
 	}
@@ -1045,8 +1211,9 @@ static int handle(const char *cmd)
 		snprintf(detail[ndetail], sizeof(detail[0]), "%s", cmd + 1);
 		ndetail++;
 		failed = 1;
+		layout();
 		break;
-	case 'T': total_steps += atoi(cmd + 1); break;
+	case 'T': bar_total(atoi(cmd + 1)); break;
 	/*
 	 * THE ACCENT, ARRIVING MID-BOOT. The initramfs half of this runs in the
 	 * compiled-in default because no root filesystem is mounted yet; `rcS`
@@ -1074,6 +1241,12 @@ static int run(void)
 		return 0;
 
 	layout();
+
+	in_initrd = access(initrd_probe, F_OK) == 0;
+	if (in_initrd) {
+		bar_end = INITRD_SHARE;
+		bar_take = 0.5;
+	}
 
 	unlink(FIFO_PATH);
 	if (mkfifo(FIFO_PATH, 0600) < 0 && errno != EEXIST)
@@ -1214,38 +1387,59 @@ static int preview(const char *geom, const char *at, const char *out)
 	}
 	layout();
 
-	total_steps = 9;
-	add_line("PROBING BLOCK DEVICES", ST_OK);
-	add_line("MOUNTING SYSTEM IMAGE", ST_OK);
-	add_line("OVERLAY ROOT", ST_OK);
-	add_line("SWITCHING ROOT", ST_OK);
-	add_line("DEVICE MANAGER", ST_OK);
-	done_steps = 5;
-
 	/*
-	 * The fixture carries a FAILURE, because the failure panel is the part
-	 * of this screen nobody can see without one — and a panel that has
-	 * never been looked at is a panel with a geometry bug in it. Same
-	 * reason kdosbuild's preview fixture uses a nine-digit file count and
-	 * a port name longer than any pane.
+	 * The fixture is a boot, fed through the same commands the FIFO
+	 * carries: both halves' totals, so the bar is the one a boot draws, and
+	 * a FAILURE followed by more stages than any screen holds. The failure
+	 * panel is the part of this screen nobody can see without one, and a
+	 * panel that has never been looked at is a panel with a geometry bug in
+	 * it; the stages after it are what push the failed one out of the
+	 * scrolling window and onto its pinned row. Same reason kdosbuild's
+	 * preview fixture uses a nine-digit file count and a port name longer
+	 * than any pane.
 	 *
-	 * The detail lines are deliberately at and over DETAIL_COLS: real log
-	 * output does not respect a column budget.
+	 * The detail lines are rcS's six, deliberately at and over DETAIL_COLS:
+	 * real log output does not respect a column budget.
 	 */
-	add_line("NETWORK MANAGER", ST_FAIL);
-	done_steps++;
-	failed = 1;
-	static const char *FIX[] = {
-		"[KDOS] Starting NetworkManager...",
-		"<info>  NetworkManager (version 1.58.1) is starting...",
-		"<error> [1765.4] bus-manager: could not get the system bus: "
-		"Could not connect: No such file or directory",
-		"<error> [1765.4] Failed to initialize: no D-Bus connection",
+	static const char *INITRD[] = {
+		"T2", "SPROBING BLOCK DEVICES", "O", "SDEVICE MANAGER", "O",
+		"T4", "SBOOT MEDIA", "O", "SSYSTEM IMAGE", "O",
+		"SOVERLAY ROOT", "O", "SSWITCHING ROOT", "O",
 	};
-	for (size_t i = 0; i < sizeof(FIX) / sizeof(FIX[0]); i++)
-		snprintf(detail[ndetail++], sizeof(detail[0]), "%s", FIX[i]);
-
-	add_line("STARTING NETWORK", ST_PENDING);
+	static const char *ROOT[] = {
+		"T40", "SMOUNTING FILESYSTEMS", "O", "SNETWORK MANAGER", "F",
+		"D[KDOS] Starting NetworkManager...",
+		"D<info>  NetworkManager (version 1.58.1) is starting...",
+		"D<error> [1765.4] bus-manager: could not get the system bus: "
+		"Could not connect: No such file or directory",
+		"D<error> [1765.4] Failed to initialize: no D-Bus connection",
+		"D<warn>  [1765.4] exiting (error)",
+		"Dnetworkmanager: exit 1",
+	};
+	static const char *SVC[] = {
+		"SYSLOG", "UDEV TRIGGER", "HWCLOCK", "SYSCTL", "RANDOM SEED",
+		"LOOPBACK", "HOSTNAME", "KMOD", "XFS HEALER", "DBUS", "ELOGIND",
+		"POLKIT", "ACPID", "CRON", "CHRONY", "BLUETOOTH", "CUPS",
+		"AVAHI", "FIREWALL", "SSHD", "UPOWER", "UDISKS", "MODEMMANAGER",
+		"WPA SUPPLICANT", "ZRAM", "PLASMA SETUP", "FLATPAK", "PACKS",
+		"BOXES", "STEP-CA",
+	};
+	in_initrd = 1;
+	bar_end = INITRD_SHARE;
+	bar_take = 0.5;
+	initrd_probe = ".";	/* the initramfs's root, still there */
+	for (size_t i = 0; i < sizeof(INITRD) / sizeof(INITRD[0]); i++)
+		handle(INITRD[i]);
+	initrd_probe = "";	/* switch_root: the initramfs's root is gone */
+	for (size_t i = 0; i < sizeof(ROOT) / sizeof(ROOT[0]); i++)
+		handle(ROOT[i]);
+	for (size_t i = 0; i < sizeof(SVC) / sizeof(SVC[0]); i++) {
+		char c[sizeof(lines[0].text) + 1];
+		snprintf(c, sizeof(c), "S%s", SVC[i]);
+		handle(c);
+		handle("O");
+	}
+	handle("SSTARTING SESSION");
 
 	double vopen, flash, gain;
 	intro(t, &vopen, &flash, &gain);
@@ -1368,7 +1562,7 @@ int main(int argc, char **argv)
 
 	if (!strcmp(cmd, "run")) {
 		read_mode();
-		return run();
+		return quiet_boot ? run() : 0;
 	}
 	if (!strcmp(cmd, "preview") && argc > 4 && argc < 7) {
 		if (argc == 6 && strcmp(argv[5], "modern") &&

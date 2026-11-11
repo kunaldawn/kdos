@@ -311,15 +311,61 @@ typedef struct {
  *                              theme package, so the image lane asks the
  *                              image's labels and the pack lane asks the pack
  *                              stack's own `env =` lines.
- *   NO GTK_THEME               deliberately: that variable OVERRIDES the
- *                              theme setting for the life of the process, so
- *                              an accent switch could never reach a running
- *                              GTK application. The name reaches the box
- *                              through the settings portal instead
+ *   GTK_THEME                  the theme the session's GTK settings name,
+ *                              see session_gtk_theme(): it wins over the
+ *                              name the settings portal hands a box
  *   LIBGL_ALWAYS_SOFTWARE      only where the box's graphics are the CPU's,
  *                              see the `render` block below
  *   DISPLAY / XAUTHORITY       only for a box handed the X11 display
  */
+/*
+ * THE GTK THEME, NAMED OUTRIGHT. Plasma's GTK bridge writes the session's
+ * theme into ~/.config/gtk-3.0/settings.ini and into dconf. Under GTK_USE_PORTAL
+ * a boxed GTK program reads the name from the settings portal's GTK backend;
+ * without the portal GSettings is the keyfile backend below, which holds none,
+ * and GTK falls back to Adwaita with the session's colours in colors.css laid
+ * over a theme they were not written for. GTK_THEME wins over both sources,
+ * so the theme a boxed program draws does not depend on which of them it
+ * reads. The name the bridge wrote, with `:dark` when it prefers the dark
+ * variant, is therefore exported at every launch. A running program keeps
+ * the theme and the colours it started with; an accent switch reaches it at
+ * its next start. A name that is not a plain word is not exported.
+ */
+static int session_gtk_theme(char *out, size_t n)
+{
+	char path[MAX_LINE], text[4096], name[64] = "";
+	const char *xdg = getenv("XDG_CONFIG_HOME");
+	int dark = 0;
+
+	if (xdg && *xdg == '/')
+		snprintf(path, sizeof(path), "%s/gtk-3.0/settings.ini", xdg);
+	else
+		snprintf(path, sizeof(path), "%s/.config/gtk-3.0/settings.ini",
+			 kb_home_dir());
+	if (kb_read_file(path, text, sizeof(text)) <= 0)
+		return 0;
+	for (char *l = text, *nl; l && *l; l = nl) {
+		const char *v;
+
+		nl = strchr(l, '\n');
+		if (nl)
+			*nl++ = '\0';
+		v = strchr(l, '=');
+		if (!v)
+			continue;
+		v++;
+		if (!strncmp(l, "gtk-theme-name=", 15))
+			kb_strlcpy(name, v, sizeof(name));
+		else if (!strncmp(l, "gtk-application-prefer-dark-theme=", 34))
+			dark = !strcmp(v, "true") || !strcmp(v, "1");
+	}
+	if (!name[0] || strspn(name, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop"
+				     "qrstuvwxyz0123456789._-") != strlen(name))
+		return 0;
+	snprintf(out, n, "%s%s", name, dark ? ":dark" : "");
+	return 1;
+}
+
 static void box_env(KbArgv *a, const Profile *prof, const char *pack,
 		    const Launch *l)
 {
@@ -373,10 +419,7 @@ static void box_env(KbArgv *a, const Profile *prof, const char *pack,
 		kb_argv_addf(a, "USER=%s", who);
 		kb_argv_addf(a, "LOGNAME=%s", who);
 	}
-	if (!getenv("LANG") || !strstr(getenv("LANG"), "UTF-8"))
-		kb_argv_add(a, "LANG=C.UTF-8");
-	else
-		kb_argv_addf(a, "LANG=%s", getenv("LANG"));
+	kb_argv_add(a, "LANG=C.UTF-8");
 
 	/* The box's own /etc/xdg first, then KDOS's defaults, bound in at
 	 * create (pack_box_create): the order the host session has. A box
@@ -407,6 +450,12 @@ static void box_env(KbArgv *a, const Profile *prof, const char *pack,
 	 */
 	kb_argv_add(a, "GTK_USE_PORTAL=1");
 	kb_argv_add(a, "XDG_CURRENT_DESKTOP=KDE");
+	{
+		char theme[80];
+
+		if (session_gtk_theme(theme, sizeof(theme)))
+			kb_argv_addf(a, "GTK_THEME=%s", theme);
+	}
 
 	/*
 	 * Printing. pack_box_create() shares /run/cups into the box as a
@@ -627,7 +676,7 @@ static void launch_prepare(const Profile *p, const char *pack,
 	l->private_layout = b.private_rundir = layout == 1;
 	l->a11y = box_a11y_wanted();
 
-	if (rundir_prepare(p, pack, 0) != 0)
+	if (rundir_prepare(p, pack) != 0)
 		kb_die("%s: its private runtime directory could not be made", p->name);
 
 	/* The X11 display is in reach when it is handed over, when the box
@@ -722,12 +771,18 @@ static int run_pack(int argc, char **argv, int wait)
 							    : g_box,
 			   sizeof(id));
 
-	if (pack_box_ensure(g_box, id[0] ? id : g_box) != 0)
-		kb_die("could not create box '%s'", g_box);
+	/* A failure follows the "Starting app" notification with podman's
+	 * reason, so a click that opens nothing says why. */
+	if (pack_box_ensure(g_box, id[0] ? id : g_box) != 0) {
+		notify("App not started", pack_box_error());
+		kb_die("could not create box '%s': %s", g_box, pack_box_error());
+	}
 	tracef("ensured");
 
-	if (pack_box_start(g_box) != 0)
-		kb_die("could not start box '%s'", g_box);
+	if (pack_box_start(g_box) != 0) {
+		notify("App not started", pack_box_error());
+		kb_die("could not start box '%s': %s", g_box, pack_box_error());
+	}
 
 	/*
 	 * The same readiness contract as the image lane: kdos-boxinit prints
@@ -832,7 +887,7 @@ static int run_common(int argc, char **argv, int wait)
 	 * A hung app (D-state I/O on fuse-overlayfs) can wedge the box in
 	 * "stopping" forever, and every enter then dies instantly with
 	 * "container state improper" — no app ever opens again. box_unstick
-	 * waits it out and kills; a pack box that still will not settle is
+	 * runs the stop sequence; a pack box that still will not settle is
 	 * removed, and run_pack composes it again over the same stack, which
 	 * loses nothing. A store box (`base=image:`) keeps its writable layer
 	 * inside the container, so it is left stuck rather than deleted, and
@@ -1054,7 +1109,7 @@ static void usage(void)
 "       kdos-appbox session save | restore  the boxes a logout left running\n"
 "       kdos-appbox list                    boxes and their profiles\n"
 "       kdos-appbox apps                    known alien apps\n"
-"       kdos-appbox catalogue [--groups]    what this system can build\n"
+"       kdos-appbox catalogue [--groups | --chain]  what this system can build\n"
 "       kdos-appbox install <id|group>... [--dry-run]\n"
 "       kdos-appbox uninstall <id|group>...\n"
 "       kdos-appbox export <file.ktar> <id|group>...\n"

@@ -384,7 +384,7 @@ browser, an office suite, media and graphics tools, maps and an offline library 
 They are ordinary recipes in the ports tree, filed on shelves named for what they are for and built
 mostly in the `43_toolkits` and `44_apps` phases, with those that need no toolkit, such as mpv, in
 `42_graphics`; [The ports catalogue](../06-reference/ports-catalogue.md) lists them. Beside them,
-the catalogue of boxed applications lists 73 applications, each declared as a few Debian trixie
+the catalogue of boxed applications lists 70 applications, each declared as a few Debian trixie
 packages over a shared Debian base and, for most of them, one of seven shared runtimes (GTK, Qt,
 KDE, media, science, Electron and Wine). Installing one makes podman build a container image on the
 machine that asked, layer by layer over the shared runtime, pinned to a snapshot of the Debian

@@ -13,7 +13,8 @@
  * `operating-system` component, and is regenerated from the update document
  * every time that changes — the name, the summary and the description of the
  * update Discover shows, and one <release> whose version is the offer, which
- * is where Discover's changelog comes from.
+ * is where Discover's changelog comes from, with an artifact giving its
+ * download size when the update document has one.
  *
  * THE SIGNATURE IS STATED IN IT. "Signed by <key> (ed25519 ab12…cd34),
  * verified on this machine" is the first paragraph of the release text: the
@@ -22,6 +23,11 @@
  * release index that was verified the same way, and an offer is never made
  * from one that was not. The second paragraph says which of the two the
  * update is (the document's `lane`) and how much it downloads.
+ *
+ * THE LIVE MEDIUM IS NAMED AS SUCH. It has no slots, so CheckNew offers it
+ * nothing and Discover shows the system as up to date; the summary and the
+ * description are the one place Discover says why, and they say that the
+ * live session is not updated and that installing KDOS gives one that is.
  *
  * It lives on /run, root-owned and world-readable: Discover runs as the user
  * and fetches it with QNetworkAccessManager through a file:// URL, and a file
@@ -137,8 +143,8 @@ static void package_sentence(KbBuf *b, const char *slot_letter,
 			xml_text(b, line);
 		}
 	}
-	/* The size Discover would ask localhost:3129 for, which nothing
-	 * serves: what is still to download, from the update document. */
+	/* What is still to download, from the update document; the
+	 * release's artifact carries the same number for Discover's list. */
 	if (su.size > 0) {
 		snprintf(line, sizeof(line), "; %s to download",
 			 kb_human_size((unsigned long long)su.size));
@@ -182,7 +188,8 @@ int appstream_write(void)
 	char path[1024], dir[1024];
 	/* A document another state of this root wrote offers nothing here,
 	 * and its release text is not this system's to show (state.c). */
-	const char *offer = state_doc_current() ? su.offer : "";
+	const char *offer = state_doc_current() && !state_live() ? su.offer
+								  : "";
 	KbBuf b = {0};
 
 	kb_buf_str(&b,
@@ -194,14 +201,26 @@ int appstream_write(void)
 		   "  <id>io.kdos.system</id>\n"
 		   "  <metadata_license>CC0-1.0</metadata_license>\n"
 		   "  <name>KDOS</name>\n"
-		   "  <summary>The KDOS system, updated as a whole into the "
-		   "other root slot</summary>\n"
+		   "  <summary>");
+	kb_buf_str(&b, state_live()
+			       ? "The KDOS live session, which system updates do "
+				 "not reach"
+			       : "The KDOS system, updated as a whole into the "
+				 "other root slot");
+	kb_buf_str(&b, "</summary>\n"
 		   "  <developer id=\"io.kdos\">\n"
 		   "    <name>KDOS</name>\n"
 		   "  </developer>\n"
 		   "  <description>\n");
 	ind = "    ";
-	if (offer[0]) {
+	if (state_live()) {
+		kb_buf_str(&b, "    <p>This session runs from the installation "
+			   "medium and keeps nothing across a restart, so no "
+			   "system update is installed into it. Install KDOS to "
+			   "have a system that is updated into the root slot it "
+			   "is not running and keeps the previous version to go "
+			   "back to.</p>\n");
+	} else if (offer[0]) {
 		update_text(&b);
 	} else {
 		kb_buf_str(&b, "    <p>KDOS installs a system update into the "
@@ -224,8 +243,24 @@ int appstream_write(void)
 		kb_buf_str(&b, ">\n      <description>\n");
 		ind = "        ";
 		update_text(&b);
-		kb_buf_str(&b, "      </description>\n    </release>\n"
-			   "  </releases>\n");
+		kb_buf_str(&b, "      </description>\n");
+		/* Discover's update list reads the size from here, the download
+		 * size of an artifact of the offered release; with none it
+		 * asks localhost:3129, which nothing serves, and shows the
+		 * size as Unknown. */
+		if (su.size > 0) {
+			char n[32];
+
+			snprintf(n, sizeof(n), "%llu",
+				 (unsigned long long)su.size);
+			kb_buf_str(&b, "      <artifacts>\n"
+				   "        <artifact type=\"binary\">\n"
+				   "          <size type=\"download\">");
+			kb_buf_str(&b, n);
+			kb_buf_str(&b, "</size>\n        </artifact>\n"
+				   "      </artifacts>\n");
+		}
+		kb_buf_str(&b, "    </release>\n  </releases>\n");
 	}
 	kb_buf_str(&b, "</component>\n");
 

@@ -463,9 +463,15 @@ void kb_notify(const char *app, const char *summary, const char *body)
 			 */
 			av[n++] = "5000";
 			av[n] = NULL;
+			/*
+			 * Both streams go to /dev/null: a refusal (no daemon,
+			 * a rate limit) is not the caller's output, and gdbus
+			 * would otherwise print it on the caller's terminal.
+			 */
 			int null = open("/dev/null", O_WRONLY);
 			if (null >= 0) {
 				dup2(null, STDOUT_FILENO);
+				dup2(null, STDERR_FILENO);
 				if (null > STDERR_FILENO)
 					close(null);
 			}

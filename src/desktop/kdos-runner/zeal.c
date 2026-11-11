@@ -162,7 +162,7 @@ static void docs_load(void)
 	kb_strv_free(names);
 }
 
-void rn_zeal_match(const RnQuery *q, int only, RnList *out)
+void rn_zeal_match(const RnQuery *q, RnList *out)
 {
 	char like[600];
 	size_t o = 0;
@@ -206,7 +206,7 @@ void rn_zeal_match(const RnQuery *q, int only, RnList *out)
 				 g_docs[i].name, type ? " · " : "", type ? type : "");
 			kb_strlcpy(m->icon, "zeal", sizeof(m->icon));
 			kb_strlcpy(m->category, "Offline library", sizeof(m->category));
-			m->catrel = only ? RN_CAT_HIGHEST : RN_CAT_LOW;
+			m->catrel = RN_CAT_LOW;
 			m->rel = strcasecmp(name, q->raw) ? 0.4 : 0.6;
 			if (g_docs[i].family[0])
 				snprintf(key, sizeof(key), "%s:%s", g_docs[i].family, name);
@@ -232,10 +232,9 @@ int rn_zeal_built(void)
 
 #else
 
-void rn_zeal_match(const RnQuery *q, int only, RnList *out)
+void rn_zeal_match(const RnQuery *q, RnList *out)
 {
 	(void)q;
-	(void)only;
 	(void)out;
 }
 

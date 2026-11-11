@@ -10,7 +10,7 @@
 
 name        = polkit
 version     = 128
-release     = 2
+release     = 3
 source      = https://github.com/polkit-org/polkit/archive/refs/tags/$version.tar.gz
 sha256      = 6edb06bf1448e49e428f9597a97af6a05d62146dd0b58f86eeaebcee3f5ecfaa  polkit-128.tar.gz
 description = Authorization framework for unprivileged processes (NetworkManager, fwupd, bolt, fprintd)

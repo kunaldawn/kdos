@@ -85,3 +85,7 @@ package already claims
 `blkid`, `losetup` and `switch_root` live in `/usr/sbin`. A second copy of any of them under
 `/usr/bin`, which `$PATH` searches first, would shadow util-linux's everywhere except in the
 initramfs, which copies them by full path.
+
+`agetty` built against musl has no issue-directory support, since musl has no `scandirat()`, and
+that build reads no issue file unless `--issue-file` names one. The `agetty` command lines in
+`/etc/inittab` and `kdos-dm` pass `--issue-file /etc/issue`.

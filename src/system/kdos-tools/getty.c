@@ -11,15 +11,26 @@
  * in rcS: the kernel defers the take-over until something writes to a VT, and
  * the take-over re-initialises every VT with the kernel's built-in font —
  * wiping anything setfont loaded earlier. So the sequence lives here, wrapping
- * getty: one write ends the deferral, then the font (ter-kdos32n carries λ and
+ * getty: one glyph on the VT on screen ends the deferral, then the font (ter-kdos32n carries λ and
  * the double box glyphs the banner needs) and `/etc/vtrgb` are loaded onto
  * this VT. That file is the accent's sixteen, written by `kdos-bootctl theme`
  * from kcol_vtrgb() — the login prompt, `/etc/issue` and the banner draw in
  * SGR 30-37 and reach the scheme through it and through nothing else.
  *
+ * ONLY THE VT ON SCREEN CAN END THE DEFERRAL. The VT layer renders the
+ * foreground terminal alone, so a glyph written to tty2 while tty1 is shown
+ * never reaches fbcon: setfont then runs against the dummy console and fails,
+ * and when the user does switch, the take-over resets tty2 to the built-in
+ * font and wipes the prompt. So the sequence waits (VT_WAITACTIVE) until this
+ * VT is the one on screen — at once for tty1, on the first Ctrl+Alt+F2 for
+ * tty2 — and only then writes its glyph. The prompt follows the switch by the
+ * time the font load takes.
+ *
  * The take-over is scheduled work, so a fixed sleep is a race that first boot
  * reliably loses: wait for fbcon to report it in the kernel ring, then retry
  * setfont until showconsolefont confirms 16x32 is what the VT actually has.
+ * Every outcome — the wait, the take-over, the font, the palette, the keymap —
+ * goes to /run/kdos-getty.<tty>.log, so a VT that comes up wrong says why.
  *
  * setfont/showconsolefont/setvtrgb/loadkeys are exec'd rather than
  * reimplemented as KDFONTOP/PIO_CMAP/KDSKBENT calls: setfont's real job is
@@ -50,6 +61,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <linux/kd.h>
+#include <linux/vt.h>
 #include <sys/ioctl.h>
 #include <sys/klog.h>
 #include <sys/wait.h>
@@ -174,6 +186,31 @@ static void vt_text(int fd, const char *tty)
 		fprintf(stderr, "kdos-getty: %s back in text mode\n", tty);
 }
 
+/* Block until VT `tty` is the one on screen. A terminal that is not a VT
+ * (a serial line) has no screen to wait for and returns at once. */
+static void vt_wait_active(int fd, const char *tty)
+{
+	struct vt_stat st;
+	int n;
+
+	if (strncmp(tty, "tty", 3) || !isdigit((unsigned char)tty[3]))
+		return;
+	n = atoi(tty + 3);
+	if (n <= 0)
+		return;
+	if (ioctl(fd, VT_GETSTATE, &st) == 0 && st.v_active == n)
+		return;
+	fprintf(stderr, "kdos-getty: waiting for %s to be on screen\n", tty);
+	while (ioctl(fd, VT_WAITACTIVE, n) != 0) {
+		if (errno != EINTR) {
+			fprintf(stderr, "kdos-getty: VT_WAITACTIVE %s: %s\n",
+				tty, strerror(errno));
+			return;
+		}
+	}
+	fprintf(stderr, "kdos-getty: %s on screen\n", tty);
+}
+
 int getty_main(int argc, char **argv)
 {
 	if (argc < 3) {
@@ -200,34 +237,55 @@ int getty_main(int argc, char **argv)
 	/* The last write on this VT before the getty's own: a cleared screen,
 	 * and the cursor back on. */
 	static const char clear[] = "\033[2J\033[H\033[?25h";
-	int vt = open(dev, O_WRONLY | O_CLOEXEC);
+	int vt = open(dev, O_RDWR | O_CLOEXEC);
 	if (vt >= 0)
 		vt_text(vt, tty);
 	if (vt >= 0 && kb_have_prog("setfont")) {
+		vt_wait_active(vt, tty);
+
 		/* End fbcon's deferred take-over. Neither escape sequences NOR
 		 * SPACES do it — escapes are eaten by the VT state machine and
-		 * spaces are skipped by the render path; only a real glyph
-		 * reaches the putc that arms the take-over and logs "fbcon:
-		 * Taking over console". So: one K, cleared away before anyone
-		 * sees it. */
+		 * spaces are skipped by the render path; only a real glyph,
+		 * on the VT on screen, reaches the putc that arms the take-over
+		 * and logs "fbcon: Taking over console". So: one K, cleared
+		 * away before anyone sees it. */
 		if (write(vt, "K\033[2J\033[H", 8) < 0)
 			fprintf(stderr, "kdos-getty: cannot write %s\n", dev);
 
-		for (int i = 0; i < 50 && !kmsg_has(FBCON_MARK); i++)
+		int polls = 0;
+		while (polls < 50 && !kmsg_has(FBCON_MARK)) {
 			nap(100);
+			polls++;
+		}
+		if (polls < 50)
+			fprintf(stderr, "kdos-getty: fbcon take-over seen\n");
+		else
+			fprintf(stderr, "kdos-getty: no fbcon take-over after "
+				"5 s; the font may not hold\n");
 
-		for (int i = 0; i < 10; i++) {
+		char shown[256] = "";
+		int tries = 0, have = 0;
+		while (tries < 10 && !have) {
 			const char *set[] = { "setfont", "-C", dev, FONT, NULL };
 			run(set, NULL, 0);
+			tries++;
 
-			char shown[256];
 			const char *show[] = { "showconsolefont", "-i", "-C",
 					       dev, NULL };
-			run(show, shown, sizeof(shown));
-			if (!strncmp(shown, FONT_GEOM, strlen(FONT_GEOM)))
-				break;
-			nap(200);
+			if (run(show, shown, sizeof(shown)) < 0)
+				shown[0] = 0;
+			have = !strncmp(shown, FONT_GEOM, strlen(FONT_GEOM));
+			if (!have)
+				nap(200);
 		}
+		shown[strcspn(shown, "\n")] = 0;
+		if (have)
+			fprintf(stderr, "kdos-getty: %s font %s after %d "
+				"tries\n", tty, FONT_GEOM, tries);
+		else
+			fprintf(stderr, "kdos-getty: %s font stayed '%s' after "
+				"%d tries\n", tty, shown[0] ? shown : "unknown",
+				tries);
 
 		/* Palette BEFORE the final clear: cells painted before the
 		 * palette load keep the old colours, and a screen half-cleared
@@ -247,9 +305,14 @@ int getty_main(int argc, char **argv)
 				_exit(127);
 			}
 			if (pid > 0) {
-				int st;
+				int st = 0;
 				while (waitpid(pid, &st, 0) < 0 && errno == EINTR)
 					;
+				fprintf(stderr, "kdos-getty: setvtrgb exit %d\n",
+					WIFEXITED(st) ? WEXITSTATUS(st) : -1);
+			} else {
+				fprintf(stderr, "kdos-getty: setvtrgb: fork: "
+					"%s\n", strerror(errno));
 			}
 		}
 
@@ -262,7 +325,8 @@ int getty_main(int argc, char **argv)
 		if (kb_have_prog("loadkeys") &&
 		    kb_read_line_file("/etc/keymap", km, sizeof(km)) > 0 && km[0]) {
 			const char *lk[] = { "loadkeys", km, NULL };
-			run(lk, NULL, 0);
+			fprintf(stderr, "kdos-getty: loadkeys %s exit %d\n", km,
+				run(lk, NULL, 0));
 		}
 
 		if (write(vt, clear, sizeof(clear) - 1) < 0)
@@ -289,8 +353,8 @@ int getty_main(int argc, char **argv)
 	 */
 	fprintf(stderr, "kdos-getty: cannot exec %s: %s — falling back\n",
 		argv[2], strerror(errno));
-	execl("/sbin/agetty", "agetty", "--noclear", tty, "38400", "linux",
-	      (char *)NULL);
+	execl("/sbin/agetty", "agetty", "--noclear", "--issue-file",
+	      "/etc/issue", tty, "38400", "linux", (char *)NULL);
 	fprintf(stderr, "kdos-getty: no agetty either: %s\n", strerror(errno));
 	return 127;
 }

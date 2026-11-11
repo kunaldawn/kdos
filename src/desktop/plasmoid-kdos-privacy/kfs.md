@@ -9,9 +9,11 @@ and the tray keeps it out of sight.
 
 What is capturing comes from `kdos privacy --watch --json`, which kdos-tools provides: one line of
 JSON at once and another each time a capture starts, stops or is muted. The helper reads
-PipeWire's streams for the microphone and the screen, the holders of `/dev/video*` and PipeWire's
-camera nodes for the camera, the desktop portal's screencast sessions, and each process's box from
-its cgroup scope. The applet does not poll: it keeps the helper running and starts it again when
+PipeWire's streams for the microphone, the holders of `/dev/video*` and PipeWire's camera nodes
+for the camera, KWin's screencast streams for the screen (whether Spectacle or the desktop portal
+asked for them), and each process's box from an `app-kdos-<box>-<n>.scope` in its cgroup path
+or, where it has none, from the `KDOS_BOX=<box>` in its environment when it runs in a mount
+namespace other than the session's, which names a store box and a pack box alike. The applet does not poll: it keeps the helper running and starts it again when
 it exits, waiting longer each time it fails quickly. Muting and stopping run
 `kdos privacy mute|unmute|stop <id>` for a capture the helper listed, and only what the helper says
 can be done to it.
@@ -31,7 +33,7 @@ can be done to it.
 ## Notes
 The applet is `EnabledByDefault` with a notification-area category, which is what puts it in
 every tray without a layout naming it. Plasma's own microphone indicator, plasma-pa's status
-item `microphone`, and its camera indicator applet, `org.kde.plasma.cameraindicator`, name the
+item `plasmashell_microphone`, and its camera indicator applet, `org.kde.plasma.cameraindicator`, name the
 program but never its box, so the KDOS tray configuration hides both and only these lamps light.
 
 An id from the helper goes back to it as one argument of its own. One that starts with `-` would

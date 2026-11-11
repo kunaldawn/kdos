@@ -23,11 +23,13 @@ client the desktop entry's "Rescan all folders" action runs.
   experimental Qt Quick one; both are upstream's desktop defaults.
 - `-D NO_LIBSYNCTHING=ON` — do not build Syncthing itself into the program as a library; the tray
   talks to the separate `syncthing` the Syncthing port installs. Upstream's default on the desktop.
-- `-D NO_PLASMOID=ON` — and `-D NO_FILE_ITEM_ACTION_PLUGIN=ON`: no Plasma panel applet and no
-  Dolphin context-menu plugin, both on by default on Linux. The applet needs Plasma's applet
-  library, which is not a port. The context-menu plugin is a KIO file-item-action plugin, which
-  [Dolphin](#port-dolphin) would load; it links [kio](#port-kio), which is not in this port's
-  `depends`.
+- `-D NO_PLASMOID=OFF` — and `-D NO_FILE_ITEM_ACTION_PLUGIN=OFF`: build the Plasma panel widget
+  and the Dolphin context-menu plugin, both upstream's defaults on Linux, named so neither drops
+  out. The widget links [libplasma](#port-libplasma) and [kconfig](#port-kconfig) and shows the
+  same folders, devices and transfers as the tray icon; the first-run wizard recommends it on
+  Plasma, and it is added from the panel's widget list. The context-menu plugin is a KIO
+  file-item-action plugin over [kio](#port-kio), which [Dolphin](#port-dolphin) loads to offer
+  rescanning and opening a folder Syncthing shares.
 - `-D SETUP_TOOLS=OFF` — no setup tools: the updater that checks for a newer Syncthing Tray
   release, downloads and verifies it and restarts into it, with its settings page and tray
   notice. This is upstream's default, and its description of the option says it likely makes
@@ -41,6 +43,13 @@ client the desktop entry's "Rescan all folders" action runs.
 - `-D DBUS_BASED_POWER_MONITORING=ON` — battery and power-saver monitoring over D-Bus, in
   upstream's words. On by default upstream on Linux.
 - `-D NO_DOXYGEN=ON` — and `-D NO_SPHINX=ON`: no API documentation with Doxygen or Sphinx.
+
+## Patches
+
+`plasmoid-no-quick-gui.patch` guards the one use of the Qt Quick interface in the Plasmoid's
+`showIgnorePatterns()` with the same `SYNCTHINGWIDGETS_GUI_QTQUICK_MODE_DESKTOP` check as every
+other use in the applet, so the Plasmoid compiles with `-D QUICK_GUI=OFF` and opens the Widgets
+ignore-patterns dialog. It is to be offered upstream.
 
 ## Notes
 

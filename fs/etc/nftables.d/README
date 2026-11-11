@@ -18,8 +18,9 @@ its old rules alongside the new ones.
 
 50-kdos-services.nft is kdos-powerd's, for System Settings' Firewall page and
 `kdos-power firewall`, and is rewritten whole on every toggle: an open service
-is its accept rule, and a closed one counts its packets in the named counter
-kdos_knock_<name> and leaves them to the chain's drop. Anything you write by
+is its accept rule, and a closed one counts its packets from another machine
+in the named counter kdos_knock_<name> and leaves every packet to the chain's
+drop; this machine's own broadcasts, looped back, are not counted. Anything you write by
 hand belongs in a file of your own, which the daemon never touches; a port
 such a file opens is still counted in 50-kdos-services.nft, whose rules come
 first.

@@ -1954,8 +1954,10 @@ def units():
         doc = p.startswith("usr/share/doc/") or "/examples/" in "/" + p
         if re.match(r"(usr/)?lib/systemd/|etc/systemd/", p):
             print("%s\tis a systemd path; KDOS runs no systemd units" % p)
-        elif p.endswith((".service", ".socket")) and not doc and not p.startswith("usr/share/dbus-1/"):
-            print("%s\tis a systemd unit; only a D-Bus service file under usr/share/dbus-1 is a .service" % p)
+        elif p.endswith((".service", ".socket")) and not doc and not p.startswith(
+                ("usr/share/dbus-1/", "usr/share/accounts/services/")):
+            print("%s\tis a systemd unit; only a D-Bus service file under usr/share/dbus-1 "
+                  "or a libaccounts service under usr/share/accounts/services is a .service" % p)
         elif p.endswith(".timer") and not doc and not p.startswith(
                 ("etc/kdos/timers.d/", "etc/kdos/user-services/timers.d/",
                  "etc/skel/.config/kdos/timers.d/")):
@@ -2189,8 +2191,10 @@ echo "==> the shipped shortcuts and window rules parse, and every chord has one 
 # it fails Meta+Space bound to KRunner while fcitx5 keeps its default group
 # switch (from files, and from a recorded kglobalaccel session), Meta+Q
 # rebound while plasmashell keeps it, fcitx5's forward switch moved onto
-# its own backward one, and Meta+Q taken by a KDOS KWin effect's QML
-# ShortcutHandler — and passes the set KDOS ships. A [services][<id>]
+# its own backward one, Meta+Q taken by a KDOS KWin effect's QML
+# ShortcutHandler, and a disabled upstream script whose switch a KDOS kwinrc
+# names taking a chord an entry holds through an absolute link — and passes
+# that script once a shipped entry unbinds the chord, and the set KDOS ships. A [services][<id>]
 # group names a desktop entry, which some port must install. kwinrulesrc's
 # count and rules list must agree with its groups, or the Window Rules page
 # shows rules that apply to nothing.
@@ -2207,6 +2211,8 @@ fail --xdg $_ccf/meta-space
 fail --xdg $_ccf/rebind
 fail --xdg $_ccf/forward-only
 fail --root $_ccf/qml-root
+fail --root $_ccf/switch-root
+pass --root $_ccf/switch-unbound-root
 pass --xdg $_ccf/clean
 fail --live-dump $_ccf/live.gdbus --xdg $_ccf/meta-space
 pass --live-dump $_ccf/live.gdbus --xdg $_ccf/live-clean
@@ -2219,6 +2225,11 @@ else
     bad "chords" "$(head -3 "$SP/chords" | sed 's/^ *FAIL *//; s/^ *//' | tr '\n' ' ')"
 fi
 _svc=$(python3 "$SP/plasmacheck.py" services $(shipped_cfg kglobalshortcutsrc) | sort -u)
+# kglobalaccel also reads a service's entry from usr/share/kglobalaccel, which
+# is where KRunner installs org.kde.krunner.desktop; such an id is resolved.
+if [ -n "$_ccroot" ] && [ -n "$_svc" ]; then
+    _svc=$(for _i in $_svc; do [ -e "build/fs/usr/share/kglobalaccel/$_i" ] || echo "$_i"; done)
+fi
 if [ -n "$_svc" ]; then
     if [ -n "$_ccroot" ]; then _mc="--root build/fs"; else _mc=""; fi
     python3 testing/mimecheck.py --quiet $_mc --ids $_svc > "$SP/svcids" 2>&1 ||
@@ -2928,6 +2939,11 @@ echo "==> every program fs/etc/inittab names is on the image"
 # multi-call binary, which dangles in a staged rootfs and which `-e` alone
 # reports as missing.
 #
+# QUOTES ARE STRIPPED AND RUNTIME TREES SKIPPED. A `sh -c '…'` entry carries
+# its programs inside quotes, which would otherwise hide them, and the
+# mount points and devices it acts on (/mnt, /run, /tmp, /dev, /proc, /sys)
+# are arguments no package installs.
+#
 # Most of these are on the image and in no `fs/` overlay, so without a build
 # tree there is nothing to resolve them against and the check says so rather
 # than failing on every line.
@@ -2935,7 +2951,8 @@ _it_n=0
 _it_bad=0
 _it_named=$(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' fs/etc/inittab 2>/dev/null |
             awk -F: 'NF>=4 { sub(/^[^:]*:[^:]*:[^:]*:/, ""); print }' |
-            tr ' \t' '\n\n' | grep '^/' | sort -u)
+            tr -d "'\"" | tr ' \t' '\n\n' | grep '^/' |
+            grep -Ev '^/(mnt|run|tmp|dev|proc|sys)(/|$)' | sort -u)
 _it_execd=$(for _p in $_it_named; do
     [ -f "fs$_p" ] && [ "$(head -c2 "fs$_p")" = '#!' ] || continue
     awk '
@@ -3197,6 +3214,55 @@ if have:
 PYCAT
 else
     note "catalogue" "apps.plan.md is not here — nothing to lint"
+fi
+
+# AN `app` ROW FOR A PROGRAM A HOST PORT INSTALLS FAILS. The boxed copy and
+# the native one carry the same Name from the same upstream entry, so Kickoff
+# and Discover show two identical rows and nothing tells them apart. A package
+# on an app row that is a port's directory name is that program; the allowed
+# names are libraries and firmware a row pulls into its box, never a program a
+# person launches. The lint runs first on two fixtures, a clean row that must
+# pass and a kcalc row that must fail: an empty port-name walk would otherwise
+# pass every catalogue. KDOS_PREFLIGHT_CATALOGUE points the real run at
+# another file.
+catalogue_dups() {
+    KDOS_DUPCAT_FILE="$1" python3 - <<'PYDUP'
+import os
+
+allowed = {"ca-certificates", "curl", "sigrok-firmware-fx2lafw"}
+names = set()
+for top in ("ports/core", "src"):
+    if not os.path.isdir(top):
+        continue
+    for g in os.listdir(top):
+        d = os.path.join(top, g)
+        if os.path.isdir(d):
+            names |= {n for n in os.listdir(d)
+                      if os.path.isfile(os.path.join(d, n, "kpkgbuild"))}
+path = os.environ["KDOS_DUPCAT_FILE"]
+if os.path.isfile(path):
+    for line in open(path):
+        f = line.split()
+        if len(f) < 4 or f[0] != "app":
+            continue
+        for pkg in f[3:]:
+            if pkg in names and pkg not in allowed:
+                print("%s %s" % (f[1], pkg))
+PYDUP
+}
+printf 'meta base - 1\napp app.x rt-gtk nosuchport\n' > "$SP/dupcat-clean"
+printf 'meta base - 1\napp app.x rt-kde kcalc\n' > "$SP/dupcat-bad"
+if [ -n "$(catalogue_dups "$SP/dupcat-clean")" ] ||
+   [ "$(catalogue_dups "$SP/dupcat-bad")" != "app.x kcalc" ]; then
+    bad "catalogue" "the host-port lint does not pass its clean fixture and flag its kcalc one"
+fi
+_dupcat=$(catalogue_dups "${KDOS_PREFLIGHT_CATALOGUE:-src/system/kdos-appbox/catalogue}")
+if [ -n "$_dupcat" ]; then
+    while read -r _row _pkg; do
+        bad "catalogue: $_row" "carries $_pkg, which a host port installs — drop the row"
+    done <<<"$_dupcat"
+else
+    note "catalogue" "no app row repeats a host port"
 fi
 
 # ── every program the shipped mc rows name is on the image ──────────────
@@ -3644,9 +3710,11 @@ if [ ! -d build/fs/usr/share/applications ]; then
     note "desktop entries" "skipped — no build tree"
 else
     # Every icon name the image carries, read once: a find per entry would
-    # walk tens of thousands of files several hundred times.
-    find build/fs/usr/share/icons -type f \( -name '*.svg' -o -name '*.svgz' \
-        -o -name '*.png' \) 2>/dev/null |
+    # walk tens of thousands of files several hundred times. A symlink counts
+    # as a file: Breeze carries thousands of its names (speedometer, plasma,
+    # text-markdown) as links to another icon, and the loader follows them.
+    find build/fs/usr/share/icons \( -type f -o -type l \) \( -name '*.svg' \
+        -o -name '*.svgz' -o -name '*.png' \) 2>/dev/null |
         sed 's|.*/||; s/\.svgz\?$//; s/\.png$//' | sort -u > "$SP/icon-names"
     _icon_ok() {
         case "$1" in

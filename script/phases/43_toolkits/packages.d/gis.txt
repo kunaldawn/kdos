@@ -24,6 +24,7 @@
 # 150+ raster and vector formats behind one API. GDAL_USE_CURL=OFF for proj's
 # reason: /vsicurl/ turns a dataset path into an HTTP client.
 gdal
+osm-gps-map
 
 pdal
 

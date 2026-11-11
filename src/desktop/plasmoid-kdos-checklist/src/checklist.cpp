@@ -69,13 +69,13 @@ ChecklistText kdosChecklistText(const QString &id)
         t.title = i18ndc(Domain, "@title checklist item", "Create your first box");
         t.explanation = i18ndc(Domain, "@info", "A box runs an application apart from your files and the rest of the system, with only what you give it.");
         t.actionText = i18ndc(Domain, "@action:button", "Open Boxes…");
-        t.icon = QStringLiteral("package-x-generic-symbolic");
+        t.icon = QStringLiteral("preferences-security-symbolic");
         t.command = {QStringLiteral("systemsettings"), QStringLiteral("kcm_kdos_boxes")};
     } else if (id == QLatin1String("firmware")) {
         t.title = i18ndc(Domain, "@title checklist item", "Check firmware");
         t.explanation = i18ndc(Domain, "@info", "See whether this machine's devices have firmware updates waiting.");
         t.actionText = i18ndc(Domain, "@action:button", "Open Updates…");
-        t.icon = QStringLiteral("cpu-symbolic");
+        t.icon = QStringLiteral("computer-symbolic");
         t.command = {QStringLiteral("plasma-discover"), QStringLiteral("--mode"), QStringLiteral("update")};
     } else if (id == QLatin1String("encryption")) {
         t.title = i18ndc(Domain, "@title checklist item", "Confirm disk encryption");

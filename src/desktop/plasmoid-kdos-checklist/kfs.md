@@ -7,7 +7,8 @@ items from the same probe.
 The items are: set up a backup, pair your phone (optional), add a language, create your first
 box, check firmware and confirm disk encryption. Which of them this machine has, and whether each
 is done or dismissed, comes from `kdos checklist --json`, which kdos-tools provides and which omits
-an item whose part of the system is not installed. The probe runs every five seconds while an item
+an item whose part of the system is not installed or that cannot be done here, such as disk
+encryption on the live medium. The probe runs every five seconds while an item
 is still to do, so creating a box ticks its row within that, and not at all once every item is
 done or dismissed; then the tray entry hides itself completely. Not Now runs
 `kdos checklist dismiss <id>`, and Show Dismissed Items `kdos checklist restore`.

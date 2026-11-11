@@ -77,7 +77,7 @@ private Q_SLOTS:
         QCOMPARE(m->rowCount(), 5);
         QCOMPARE(m->data(m->index(0), FirewallServiceModel::NameRole).toString(), QStringLiteral("ssh"));
         QCOMPARE(m->data(m->index(4), FirewallServiceModel::NameRole).toString(), QStringLiteral("rdp"));
-        QCOMPARE(m->data(m->index(2), FirewallServiceModel::DescriptionRole).toString(), QStringLiteral("KDE Connect with a phone on the LAN"));
+        QCOMPARE(m->data(m->index(2), FirewallServiceModel::DescriptionRole).toString(), QStringLiteral("KDE Connect with a phone on the network"));
         QVERIFY(!c.isDirty());
         QVERIFY(c.representsDefaults());
     }

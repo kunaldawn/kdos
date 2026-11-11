@@ -151,7 +151,7 @@ failures by symptom.
 ## Try it in a virtual machine first
 
 ```sh
-make run        # boot the ISO; creates build/kdos.qcow2 as a blank sparse 96 GB disk if missing
+make run        # boot the ISO; creates build/kdos.qcow2 as a blank sparse 192 GB disk if missing
 make rundisk    # boot that disk instead, once you have installed to it
 ```
 
@@ -175,8 +175,9 @@ on the GPU and Phosphor mode works. It needs Docker with the NVIDIA Container To
 `/dev/udmabuf`. See [Phosphor mode](theming.md#phosphor-mode) and
 [Running the result](../05-developer/developing.md#running-the-result).
 
-In a virtual machine the screen never dims, blanks or locks by itself: KDOS puts a set of
-virtual-machine defaults in front of its usual ones when the session finds it is a guest (see
+In a virtual machine the screen never dims, blanks or locks by itself, and the guest never goes to
+sleep: KDOS puts a set of virtual-machine defaults in front of its usual ones when the session finds
+it is a guest (see
 [Locking, idle and power](desktop.md#locking-idle-and-power)).
 
 ## Write the medium
@@ -218,17 +219,18 @@ so the menu looks the same either way. Select the stick in your firmware's boot 
 menu appears.
 
 The menu counts down for ten seconds and then boots the first entry, so an ordinary boot needs no
-keystroke. Press any key during the countdown to stop it; the menu then waits for you to choose:
+keystroke. Press Up or Down during the countdown to stop it; the menu then waits for you to
+choose. Enter, Space and Right boot the highlighted entry at once, even during the countdown.
 
 | Entry | Boots |
 |---|---|
 | KDOS Live | The normal live session |
 | KDOS Live (clean session) | The same, ignoring the persistence store for one boot (the kernel argument `nopersist`) |
-| KDOS Live (verbose) | The same, with every kernel message on the console (`loglevel=7` in place of `quiet loglevel=3`) |
+| KDOS Live (verbose) | The same, with no splash: every kernel message and every line of the boot scrolls by on the screen (`loglevel=7` in place of `quiet loglevel=3`, and the screen named last of the consoles) |
 | Memory Test (memtest86+) | memtest86+ instead of the kernel. UEFI only: the entry is hidden on a BIOS boot, and absent from an image built without the memtest86+ port |
 
-Every KDOS Live entry passes `console=tty0 console=ttyS0`, so kernel messages also reach a serial
-line.
+Every KDOS Live entry names both `console=tty0` and `console=ttyS0`, so kernel messages also reach
+a serial line.
 
 ### Reading the splash
 
@@ -236,7 +238,8 @@ What you see during boot is the KDOS splash, drawn directly to the framebuffer: 
 fading in, with a progress bar and the name of each stage as it starts. With Phosphor mode on it
 plays a CRT power-on instead (see [Phosphor mode](theming.md#phosphor-mode)). The initramfs, the small
 early filesystem the kernel starts from, runs the first stages; the service scripts of the real
-system run the rest. If a boot stops, the last stage named tells you where:
+system run the rest. The bar never moves backwards: the first 15% is the initramfs's and the
+rest the service scripts'. If a boot stops, the last stage named tells you where:
 
 | Stage | If it stops here |
 |---|---|
@@ -251,7 +254,7 @@ system run the rest. If a boot stops, the last stage named tells you where:
 | `SYSTEM IMAGE` | The system image on the medium would not mount |
 | `MOUNTING ROOT`, `OVERLAY ROOT` | The installed root filesystem, or the live overlay, would not mount |
 | `SWITCHING ROOT` | The handover to the real root failed |
-| `MOUNTING FILESYSTEMS` onward | The boot is in the service scripts, and the failing service names itself |
+| `MOUNTING FILESYSTEMS` onward | The boot is in the service scripts, and the failing service names itself: its stage is marked `FAIL`, and the last lines of its output appear under `WHY:`. Both stay on the splash for the rest of the boot, so you can photograph them |
 
 ![The boot splash during the service scripts, with the progress bar and the current stage](../../screenshots/boot-splash.png)
 
@@ -339,20 +342,33 @@ sudo kdos persist create /dev/sdb   # on another device
 kdos persist                        # does a store exist, and is this session using it?
 ```
 
-The live Welcome tour's persistence page runs the same command. `kdos persist create` adds one
-partition in the free space after the last partition on the device, by default the stick you
-booted from. Nothing already on the device is moved or rewritten. It asks you to type `yes` before
-it writes; `--yes` skips the question. It refuses to make a second store when one already exists.
+The live Welcome tour's persistence page runs the same command, and lets you pick another USB stick
+when one is plugged in. `kdos persist create` adds one partition in the free space after the last
+partition on the device, by default the stick you booted from. Nothing already on the device is
+moved or rewritten; a blank stick is given a partition table first. It asks you to type `yes`
+before it writes; `--yes` skips the question. It refuses to make a second store when one already
+exists. A DVD cannot hold changes: started from a disc, `kdos persist create` and the Welcome page
+both need a USB stick or a disk to put the store on.
 
 The store is found by its label rather than by a device name, so it can equally live on a second
 stick or an internal disk, and it keeps working when USB devices come up in a different order.
 `kdos persist create` makes it ext4. A store made by hand may use another Linux filesystem, but not
-FAT, exFAT or NTFS: overlayfs cannot use them as its writable layer, and the initramfs refuses such
-a store by name.
+NTFS: overlayfs cannot use it as its writable layer, and the initramfs refuses such a store by
+name, which `kdos persist` reports as `refused`. FAT and exFAT cannot carry the 12-character label
+at all, so a store on either is never found.
 
 A new store is used from the *next* boot, not the one that created it; `kdos persist` reports
 whether the running session is writing to it. If a change ever stops the desktop coming up, the
-**KDOS Live (clean session)** menu entry ignores the store for one boot without deleting it.
+**KDOS Live (clean session)** menu entry ignores the store for one boot without deleting it. From
+that session, remove the bad change:
+
+```sh
+sudo kdos persist reset --home     # forget the changes to home directories
+sudo kdos persist reset --system   # forget everything else, keeping home directories
+sudo kdos persist reset            # forget everything the store holds
+```
+
+`reset` refuses while the running session is writing to the store.
 
 ## Install to disk
 
@@ -379,13 +395,8 @@ sudo kinstall
 ```
 
 The installer partitions a disk, copies the system, writes the bootloader, creates your account and
-offers groups of applications. The installer's import and network routes for applications install
-them into the live session rather than onto the new disk, so the installed machine never sees them;
-this is a known defect (see
-[Applications imported or built during an install stay in the live session](../06-reference/known-gaps.md#applications-imported-or-built-during-an-install-stay-in-the-live-session)).
-Only a recorded choice reaches the new disk. To get applications onto the installed machine,
-install with no network and no exported set attached, so that the installer records the choice, or
-install them from Discover after the first login (see
+offers groups of applications. It builds none of them: it records the groups you chose on the new
+disk, and your first login there offers to build them, or you install them from Discover (see
 [Installation, 8. Applications](installation.md#8-applications)). The installer is described in
 full in [Installation](installation.md), and the program itself in
 [kinstall](../04-programs/kinstall.md).
@@ -415,8 +426,7 @@ amber`, `desk tiling`, `doctor`, `previous version` or `keys tile` and press `En
 opens the key card, every global shortcut the session holds, read from the live bindings each
 time, so it matches what you have rebound. [The desktop](desktop.md) describes both.
 
-When the installer recorded your choice of applications, which it does when the machine has no
-network and no exported set during the install, or when an import or a build fails, your first
+When you chose applications in the installer, which records them on the new disk, your first
 session shows a notification saying they are ready to install rather than starting a long build
 unannounced. Run `kdos app install --pending` when you are ready, or open Discover (see
 [Applications](applications.md#discover)).

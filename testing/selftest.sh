@@ -39,6 +39,14 @@ XDG_STATE_HOME="$OUT/state"
 export XDG_STATE_HOME
 mkdir -p "$XDG_STATE_HOME"
 
+# THE MOUNT TABLE kdos-bootctl reads to tell the live medium from an install
+# with no boot state. A container's own `/` is an overlay, which would make
+# every slotless fixture the live medium; a block about the live medium
+# points KDOS_MOUNTS at a table of its own.
+printf '/dev/sda2 / ext4 rw 0 0\n' > "$OUT/mounts"
+KDOS_MOUNTS="$OUT/mounts"
+export KDOS_MOUNTS
+
 # A PORT IS FOUND BY ITS NAME, NEVER BY A PATH SPELLED WITH ITS SHELF.
 # ports/core files every port one shelf down, ports/core/<shelf>/<name>/, and
 # a port changes shelf with one `git mv`: a path written out here would then
@@ -187,7 +195,7 @@ if [ -n "$THEME_PNG" ]; then
     # shellcheck disable=SC2086
     $CC $STD $WARN $INC -Isrc/art/kdos-theme -o "$OUT/kdos-theme" \
         src/art/kdos-theme/*.c src/libs/libkbase/*.c src/libs/libkcolor/*.c \
-        $THEME_PNG
+        $THEME_PNG -lm
     echo "  kdos-theme"
 else
     echo "  kdos-theme (skipped — no libpng headers on this host)"
@@ -196,10 +204,16 @@ fi
 #
 # THE IDENTITY KIT HOLDS ITS FLOORS. Every KDE colour file KDOS ships comes
 # out of kdos-theme, and `contrast` is what says each clears 4.5:1 for text
-# and 3:1 for decorations against both backgrounds of every set. The check is
-# proved able to fail before it is trusted: pdark under text — 2.42:1 on
-# bone — is put back into a copy's selection and has to be refused, and so
-# does a file with a role missing, because a check that can be passed by
+# and 3:1 for decorations against both backgrounds of every set, the view's
+# text over a translucent selection, and the Window shades Qt derives no more
+# colourful than the ground. The check is proved able to fail before it is
+# trusted: pdark under text — 2.42:1 on bone — is put into a copy's
+# selection, bone's bright accent with deep on it into another (the view's
+# text then reads under 2:1 over it), norton's raw deep into a third's Window
+# ground (Mid then derives pure blue), the selection's text itself into a
+# fourth's Selection hover (GTK fills a hovered selected row with it under
+# that text), and each has to be refused, and so does a file with a role
+# missing, because a check that can be passed by
 # omission is not one. The palette numbers are read out of kcolor.h's own
 # table, so the test moves with the palette instead of copying it.
 #
@@ -234,12 +248,15 @@ if [ -n "$THEME_PNG" ]; then
     "$OUT/kdos-theme" contrast -q "$TK/colors"/*.colors || {
         echo "  a generated colour scheme is below a contrast floor"; exit 1; }
     _rows=$("$OUT/kdos-theme" contrast "$TK/colors"/*.colors | grep -c ' ok$')
-    [ "$_rows" = $(((_n + 1) * 82)) ] || {
-        echo "  contrast measured $_rows rows, not 82 for each of $((_n + 1)) schemes"; exit 1; }
-    _sel=$(ini_get "$TK/colors/KDOSBone.colors" Colors:Selection BackgroundNormal)
-    [ "$_sel" = "$(hex_rgb "$(kcol_field bone 1)")" ] || {
-        echo "  KDOSBone's selection is $_sel, not bone's primary"; exit 1; }
-    echo "  the generated schemes clear every floor; the selection is the accent"
+    [ "$_rows" = $(((_n + 1) * 88)) ] || {
+        echo "  contrast measured $_rows rows, not 88 for each of $((_n + 1)) schemes"; exit 1; }
+    _sel=$(ini_get "$TK/colors/KDOSPaper.colors" Colors:Selection BackgroundNormal)
+    [ "$_sel" = "$(hex_rgb "$(kcol_field paper 1)")" ] || {
+        echo "  KDOSPaper's selection is $_sel, not paper's primary"; exit 1; }
+    _sel=$(ini_get "$TK/colors/KDOSBone.colors" Colors:Selection ForegroundNormal)
+    [ "$_sel" = "$(hex_rgb "$(kcol_field bone 6)")" ] || {
+        echo "  KDOSBone's selected text is $_sel, not bone's text"; exit 1; }
+    echo "  the generated schemes clear every floor; a dark selection carries the text"
     awk -v bg="$(hex_rgb "$(kcol_field bone 8)")" -v fg="$(hex_rgb "$(kcol_field bone 6)")" '
         /^\[/ { sel = ($0 == "[Colors:Selection]") }
         sel && /^BackgroundNormal=/ { print "BackgroundNormal=" bg; next }
@@ -249,6 +266,31 @@ if [ -n "$THEME_PNG" ]; then
         echo "  contrast passed pdark under text on bone"; exit 1; }
     echo "$_out" | grep -q 'Colors:Selection *ForegroundNormal .*FAIL$' || {
         echo "  contrast failed the dark selection without naming the selection text"; exit 1; }
+    awk -v bg="$(hex_rgb "$(kcol_field bone 1)")" -v fg="$(hex_rgb "$(kcol_field bone 5)")" '
+        /^\[/ { sel = ($0 == "[Colors:Selection]") }
+        sel && /^BackgroundNormal=/ { print "BackgroundNormal=" bg; next }
+        sel && /^ForegroundNormal=/ { print "ForegroundNormal=" fg; next }
+        { print }' "$TK/colors/KDOSBone.colors" > "$TK/bright-selection.colors"
+    _out=$("$OUT/kdos-theme" contrast "$TK/bright-selection.colors" 2>/dev/null) && {
+        echo "  contrast passed bone's bright accent as the selection"; exit 1; }
+    echo "$_out" | grep -q 'Colors:View *SelectionBlend .*FAIL$' || {
+        echo "  contrast failed the bright selection without naming the blend"; exit 1; }
+    awk -v bg="$(hex_rgb "$(kcol_field norton 5)")" '
+        /^\[/ { win = ($0 == "[Colors:Window]") }
+        win && /^BackgroundNormal=/ { print "BackgroundNormal=" bg; next }
+        { print }' "$TK/colors/KDOSNorton.colors" > "$TK/vivid-ground.colors"
+    _out=$("$OUT/kdos-theme" contrast "$TK/vivid-ground.colors" 2>/dev/null) && {
+        echo "  contrast passed norton's raw deep as the Window ground"; exit 1; }
+    echo "$_out" | grep -q 'Colors:Window *ShadeMid .*FAIL$' || {
+        echo "  contrast failed the vivid ground without naming its Mid shade"; exit 1; }
+    awk -v fg="$(hex_rgb "$(kcol_field bone 6)")" '
+        /^\[/ { sel = ($0 == "[Colors:Selection]") }
+        sel && /^DecorationHover=/ { print "DecorationHover=" fg; next }
+        { print }' "$TK/colors/KDOSBone.colors" > "$TK/bright-hover.colors"
+    _out=$("$OUT/kdos-theme" contrast "$TK/bright-hover.colors" 2>/dev/null) && {
+        echo "  contrast passed the selection's text as its own hover fill"; exit 1; }
+    echo "$_out" | grep -q 'Colors:Selection *DecorationHover .*FAIL$' || {
+        echo "  contrast failed the bright hover without naming the Selection hover"; exit 1; }
     grep -v '^ForegroundInactive=' "$TK/colors/KDOSPaper.colors" > "$TK/missing.colors"
     _out=$("$OUT/kdos-theme" contrast "$TK/missing.colors" 2>/dev/null) && {
         echo "  contrast passed a scheme with a role missing"; exit 1; }
@@ -256,7 +298,20 @@ if [ -n "$THEME_PNG" ]; then
         echo "  contrast did not report the missing role as missing"; exit 1; }
     "$OUT/kdos-theme" kde-colors "$TK/none" nosuch 2>/dev/null && {
         echo "  kde-colors accepted an accent the palette does not have"; exit 1; }
-    echo "  and the check refuses selection text under its floor, and a missing role"
+    echo "  and the check refuses selection text under its floor, a bright selection,"
+    echo "  a vivid Window ground, a bright selection hover and a missing role"
+    # One editor theme per accent, matched by KSyntaxHighlighting on the exact
+    # View background and Selection background of its scheme.
+    "$OUT/kdos-theme" syntax-themes "$TK/syntax"
+    [ "$(find "$TK/syntax" -name 'KDOS-*.theme' | wc -l)" = "$_n" ] || {
+        echo "  syntax-themes did not write one theme per accent"; exit 1; }
+    _hex=$(grep -o '"BackgroundColor": "#[0-9a-f]*"' "$TK/syntax/KDOS-Amber.theme" | grep -o '[0-9a-f]\{6\}')
+    [ "$(hex_rgb "$_hex")" = "$(ini_get "$TK/colors/KDOSAmber.colors" Colors:View BackgroundNormal)" ] || {
+        echo "  KDOS Amber's editor background is not its scheme's View background"; exit 1; }
+    _hex=$(grep -o '"TextSelection": "#[0-9a-f]*"' "$TK/syntax/KDOS-Amber.theme" | grep -o '[0-9a-f]\{6\}')
+    [ "$(hex_rgb "$_hex")" = "$(ini_get "$TK/colors/KDOSAmber.colors" Colors:Selection BackgroundNormal)" ] || {
+        echo "  KDOS Amber's editor selection is not its scheme's Selection background"; exit 1; }
+    echo "  editor themes carry their scheme's View and Selection backgrounds"
     # The greeter's block is MERGED: what other programs wrote survives, a
     # group it owns is replaced whole, the light accent becomes its dark
     # partner, and a second run changes no byte.
@@ -273,6 +328,8 @@ if [ -n "$THEME_PNG" ]; then
         echo "  the greeter merge kept a key from a group it owns"; exit 1; }
     grep -qx 'ColorScheme=KDOSBone' "$TK/kdeglobals" || {
         echo "  the greeter did not take paper's dark partner"; exit 1; }
+    [ "$(ini_get "$TK/kdeglobals" KDE contrast)" = 4 ] || {
+        echo "  the greeter kdeglobals does not carry the scheme's contrast"; exit 1; }
     "$OUT/kdos-theme" contrast -q "$TK/kdeglobals" || {
         echo "  the merged greeter kdeglobals is below a floor"; exit 1; }
     "$OUT/kdos-theme" greeter-globals --sddm "$TK/sddm"
@@ -2906,10 +2963,10 @@ _kfail=""
 _now() { echo "${EPOCHREALTIME/./}"; }
 _ms() { echo $(( ($(_now) - $1) / 1000 )); }
 "$_kv/ksvc" supervise twice sleep 600 >/dev/null
-_p1=$(cat "$_kv/run/twice.pid")
+_p1=$(cat "$_kv/run/kdos-svc.twice.pid")
 "$_kv/ksvc" supervise twice sleep 600 > "$_kv/out"
 grep -q '^\[SKIP\] twice: already supervised' "$_kv/out" || _kfail="$_kfail no-skip"
-[ "$(cat "$_kv/run/twice.pid")" = "$_p1" ] || _kfail="$_kfail pid-file-taken"
+[ "$(cat "$_kv/run/kdos-svc.twice.pid")" = "$_p1" ] || _kfail="$_kfail pid-file-taken"
 sleep 0.3
 _t=$(_now)
 "$_kv/ksvc" stop-supervised twice >/dev/null
@@ -2948,6 +3005,94 @@ else
 fi
 
 #
+# A DAEMON'S OWN PID FILE IS NOT THE SUPERVISOR'S. elogind and cronie write
+# /run/<name>.pid themselves; were that the supervisor's file, `check` would
+# read the daemon's pid and say DOWN, `stop` would drop the file as stale and
+# stop nothing, and a second `supervise` would start a second daemon.
+#
+echo "==> a daemon writing <run dir>/<name>.pid leaves the supervisor's file alone"
+_kfail=""
+"$_kv/ksvc" supervise clash sh -c "echo \$\$ > '$_kv/run/clash.pid'; exec sleep 600" >/dev/null
+sleep 0.5
+"$_kv/ksvc" check clash > "$_kv/out" || _kfail="$_kfail check-not-0"
+grep -q '^\[ OK \] clash' "$_kv/out" || _kfail="$_kfail check-not-OK"
+"$_kv/ksvc" supervise clash sleep 600 > "$_kv/out"
+grep -q '^\[SKIP\] clash: already supervised' "$_kv/out" || _kfail="$_kfail second-not-SKIP"
+_d=$(cat "$_kv/run/clash.pid")
+"$_kv/ksvc" stop-supervised clash > "$_kv/out"
+sleep 0.2
+kill -0 "$_d" 2>/dev/null && { _kfail="$_kfail daemon-left"; kill "$_d"; }
+rm -f "$_kv/run/clash.pid"
+if [ -z "$_kfail" ]; then
+    echo "  check is [ OK ], a second supervise is [SKIP], stop ends the daemon"
+else
+    echo "  A DAEMON'S PID FILE TOOK THE SUPERVISOR'S:$_kfail"
+    cat "$_kv/out"
+    exit 1
+fi
+
+#
+# `service list` KEEPS EACH SERVICE TO ONE ROW, AND CUTS ITS STATUS, NOT THE
+# TAIL. On a terminal too narrow for a status line, the line is cut at a space
+# and ends in `…`, and a status of several lines carries ` (+N more)`. A usage
+# error under --user names --user, so it can be pasted back.
+#
+echo "==> service list cuts a long status at a word, and --user usage names --user"
+_kfail=""
+mkdir -p "$_kv/init" "$_kv/off"
+cat > "$_kv/init/10_wordy.sh" <<'EOS'
+#!/bin/sh
+echo "[ OK ] wordy: compressed swap of 2040946688 bytes in use on every core"
+echo "[ OK ] wordy: second line"
+EOS
+cat > "$_kv/init/11_short.sh" <<'EOS'
+#!/bin/sh
+echo "[ OK ] short"
+EOS
+chmod +x "$_kv/init/10_wordy.sh" "$_kv/init/11_short.sh"
+$CC $STD $WARN $INC -Isrc/system/kdos-tools -DRUN_DIR="\"$_kv/run\"" \
+    -DINIT_DIR="\"$_kv/init\"" -DDISABLED_DIR="\"$_kv/off\"" \
+    -o "$_kv/ksvc-wide" "$_kv/main.c" \
+    src/system/kdos-tools/ksvc.c src/libs/libkbase/*.c
+if command -v script >/dev/null 2>&1 && command -v stty >/dev/null 2>&1; then
+    script -qc "stty cols 80; '$_kv/ksvc-wide' list" /dev/null 2>/dev/null \
+        | tr -d '\r' > "$_kv/out"
+    _w=$(grep '^  wordy ' "$_kv/out")
+    case "$_w" in
+        *'…'' (+1 more)') ;;
+        *) _kfail="$_kfail no-word-cut" ;;
+    esac
+    _t=$(printf '%s' "$_w" | cut -c37-)
+    _full='[ OK ] wordy: compressed swap of 2040946688 bytes in use on every core'
+    case "$_full" in
+        "${_t%%…*}"' '*) ;;
+        *) _kfail="$_kfail cut-not-at-space" ;;
+    esac
+    _b=${_w/…/.}
+    [ "$(printf '%s' "$_b" | wc -c)" -le 80 ] || _kfail="$_kfail row-too-wide"
+    grep -q '^  short .*\[ OK \] short$' "$_kv/out" || _kfail="$_kfail short-changed"
+else
+    echo "  (no script(1) here: the terminal-width cut is not measured)"
+fi
+"$_kv/ksvc-wide" list > "$_kv/out"
+grep -q 'every core (+1 more)$' "$_kv/out" || _kfail="$_kfail pipe-cut"
+if [ "$(id -u)" != 0 ]; then
+    mkdir -p "$_kv/xdg"
+    XDG_RUNTIME_DIR="$_kv/xdg" "$_kv/ksvc" --user status > "$_kv/out" \
+        && _kfail="$_kfail usage-exit-0"
+    grep -qx 'Usage: service --user status <name>' "$_kv/out" || _kfail="$_kfail usage-no-user"
+fi
+"$_kv/ksvc" status > "$_kv/out" || :
+grep -qx 'Usage: service status <name>' "$_kv/out" || _kfail="$_kfail usage-system"
+if [ -z "$_kfail" ]; then
+    echo "  a long status is cut at a word with …, the tail kept; --user usage names --user"
+else
+    echo "  SERVICE LIST OR USAGE IS WRONG:$_kfail"
+    cat "$_kv/out"
+    exit 1
+fi
+
+#
 # A SUPERVISOR NEVER LEAVES ITS DAEMON BEHIND UNNOTICED. SIGTERM to the
 # supervisor alone is passed on to its group, so the daemon goes with it; a
 # SIGTERM `stop` sent the group reaches the daemon once, not twice (some
@@ -2960,7 +3105,7 @@ echo "==> a supervisor's daemon is never orphaned silently, and gets one SIGTERM
 _kfail=""
 "$_kv/ksvc" supervise direct sleep 600 >/dev/null
 sleep 0.3
-_s=$(cat "$_kv/run/direct.pid"); _d=$(awk '{print $2}' "$_kv/run/kdos-svc.direct.state")
+_s=$(cat "$_kv/run/kdos-svc.direct.pid"); _d=$(awk '{print $2}' "$_kv/run/kdos-svc.direct.state")
 kill -TERM "$_s"
 sleep 0.3
 kill -0 "$_d" 2>/dev/null && _kfail="$_kfail direct-term-orphaned"
@@ -2973,7 +3118,7 @@ _trap="n=0; trap 'n=\$((n+1)); echo t >> $_kv/terms' TERM; while [ \$n -lt 1 ]; 
 "$_kv/ksvc" supervise once bash -c "$_trap" >/dev/null
 sleep 0.3
 : > "$_kv/terms"
-_s=$(cat "$_kv/run/once.pid")
+_s=$(cat "$_kv/run/kdos-svc.once.pid")
 kill -STOP "$_s"
 "$_kv/ksvc" stop-supervised once >/dev/null &
 _sp=$!
@@ -2984,12 +3129,12 @@ wait "$_sp"
 "$_kv/ksvc" supervise once bash -c "$_trap" >/dev/null
 sleep 0.3
 : > "$_kv/terms"
-kill -TERM "$(cat "$_kv/run/once.pid")"
+kill -TERM "$(cat "$_kv/run/kdos-svc.once.pid")"
 sleep 1.4
 [ "$(wc -l < "$_kv/terms")" = 1 ] || _kfail="$_kfail kill-passed-$(wc -l < "$_kv/terms")-TERMs"
 "$_kv/ksvc" supervise --stop-grace 1 orphan sleep 600 >/dev/null
 sleep 0.3
-_s=$(cat "$_kv/run/orphan.pid"); _d=$(awk '{print $2}' "$_kv/run/kdos-svc.orphan.state")
+_s=$(cat "$_kv/run/kdos-svc.orphan.pid"); _d=$(awk '{print $2}' "$_kv/run/kdos-svc.orphan.state")
 kill -KILL "$_s"
 sleep 0.2
 "$_kv/ksvc" check orphan > "$_kv/out" && _kfail="$_kfail orphan-check-exits-0"
@@ -3081,7 +3226,7 @@ $CC $STD $WARN $INC -Isrc/system/kdos-tools -DRUN_DIR="\"$_kv/run\"" \
 _kfail=""
 grep -qx '  quiet                \[ENABLED\]    —' "$_kv/out" || _kfail="$_kfail silent-not-dash"
 grep -qx '  single               \[ENABLED\]    one: fine' "$_kv/out" || _kfail="$_kfail single"
-grep -qx '  many                 \[ENABLED\]    a (+2 more: service status many)' "$_kv/out" \
+grep -qx '  many                 \[ENABLED\]    a (+2 more)' "$_kv/out" \
     || _kfail="$_kfail many"
 [ "$(grep -c '^  [a-z]' "$_kv/out")" = 3 ] || _kfail="$_kfail row-count"
 if [ -z "$_kfail" ]; then
@@ -3120,8 +3265,8 @@ _uenv="HOME=$_kv/home XDG_CONFIG_HOME=$_kv/home/.config XDG_RUNTIME_DIR=$_kv/xdg
 if [ "$(id -u)" -ne 0 ]; then
     env $_uenv KSVC_RUN_DIR="$_kv/xdg/ksvc" "$_kv/ksvc" supervise u1 sleep 600 >/dev/null \
         || _kfail="$_kfail env-supervise"
-    [ -e "$_kv/xdg/ksvc/u1.pid" ] || _kfail="$_kfail no-user-pidfile"
-    [ -e "$_kv/run/u1.pid" ] && _kfail="$_kfail pidfile-in-system-table"
+    [ -e "$_kv/xdg/ksvc/kdos-svc.u1.pid" ] || _kfail="$_kfail no-user-pidfile"
+    [ -e "$_kv/run/kdos-svc.u1.pid" ] && _kfail="$_kfail pidfile-in-system-table"
     sleep 0.3
     _d=$(awk '{print $2}' "$_kv/xdg/ksvc/kdos-svc.u1.state")
     tr '\0' '\n' < "/proc/$_d/environ" | grep -q '^KSVC_RUN_DIR=' \
@@ -3139,7 +3284,7 @@ if [ "$(id -u)" -ne 0 ]; then
     env $_uenv PATH="$_kv:$PATH" "$_kv/ksvc" --user list \
         | grep -q '^  idle .*\[DISABLED\]' || _kfail="$_kfail disabled-not-listed"
     env $_uenv "$_kv/ksvc" --user stop-supervised u1 >/dev/null
-    [ -e "$_kv/xdg/ksvc/u1.pid" ] && _kfail="$_kfail user-stop-left-pidfile"
+    [ -e "$_kv/xdg/ksvc/kdos-svc.u1.pid" ] && _kfail="$_kfail user-stop-left-pidfile"
     kill -0 "$_d" 2>/dev/null && _kfail="$_kfail user-daemon-left"
     KSVC_RUN_DIR=relative "$_kv/ksvc" check u1 >/dev/null 2>&1 && _kfail="$_kfail relative-accepted"
     KSVC_RUN_DIR=/ "$_kv/ksvc" check u1 >/dev/null 2>&1 && _kfail="$_kfail foreign-dir-accepted"
@@ -3148,10 +3293,10 @@ if [ "$(id -u)" -ne 0 ]; then
     chmod 555 "$_kv/run"
     "$_kv/ksvc" supervise ro sleep 1 > /dev/null 2>&1 && _kfail="$_kfail unwritable-table-supervised"
     chmod 755 "$_kv/run"
-    [ -e "$_kv/run/ro.pid" ] && _kfail="$_kfail unwritable-left-pidfile"
+    [ -e "$_kv/run/kdos-svc.ro.pid" ] && _kfail="$_kfail unwritable-left-pidfile"
 else
     KSVC_RUN_DIR="$_kv/xdg/ksvc" "$_kv/ksvc" supervise r1 sleep 600 >/dev/null
-    [ -e "$_kv/run/r1.pid" ] || _kfail="$_kfail root-took-KSVC_RUN_DIR"
+    [ -e "$_kv/run/kdos-svc.r1.pid" ] || _kfail="$_kfail root-took-KSVC_RUN_DIR"
     "$_kv/ksvc" stop-supervised r1 >/dev/null
     env $_uenv "$_kv/ksvc" --user check r1 >/dev/null 2>&1 && _kfail="$_kfail root-ran---user"
 fi
@@ -3170,8 +3315,8 @@ fi
 # which releases the login, is written only after the last; a disabled
 # service is skipped; and `stop` stops the table backwards before it ends the
 # manager, because turnstile clears the runtime directory the moment the
-# manager is gone. A system account — the SDDM greeter — gets its FIFO at once
-# and nothing started.
+# manager is gone. A system account gets its FIFO at once and nothing started;
+# a bus-only account — the SDDM greeter — gets its named services alone.
 #
 echo "==> the turnstile backend starts the user services in order and ready, and stops them backwards"
 _bk="$OUT/backend"
@@ -3222,7 +3367,7 @@ if [ "$(id -u)" -ne 0 ]; then
     wait "$_bm" 2>/dev/null || :
     [ "$(grep '^stop' "$_bk/rt/order" | tr '\n' ' ')" = "stop two stop one " ] \
         || _bfail="$_bfail not-stopped-backwards"
-    [ -e "$_bk/rt/ksvc/one.pid" ] && _bfail="$_bfail one-left"
+    [ -e "$_bk/rt/ksvc/kdos-svc.one.pid" ] && _bfail="$_bfail one-left"
     kill -0 "$_bm" 2>/dev/null && _bfail="$_bfail manager-left"
 else
     env $_benv bash fs/usr/lib/turnstile/ksvc run "$_bk/ready" "$_bk/srv" /etc/turnstile/backend &
@@ -3242,8 +3387,23 @@ _bm=$!
 [ -e "$_bk/rt/order" ] && _bfail="$_bfail greeter-got-services"
 kill "$_bm" 2>/dev/null
 wait "$_bm" 2>/dev/null || :
+# A bus-only account (the greeter's): its named services and no others,
+# released once they are ready, and only those stopped.
+rm -f "$_bk/rt/order" "$_bk/rt/one.ready"
+mkfifo "$_bk/ready3"
+_bbus="KDOS_USER_UID_MIN=65535 KDOS_USER_BUS_ACCOUNTS=$(id -un) KDOS_USER_BUS_SERVICES=one"
+env $_benv $_bbus bash fs/usr/lib/turnstile/ksvc run "$_bk/ready3" "$_bk/srv" /etc/turnstile/backend &
+_bm=$!
+[ "$(_fifo "$_bk/ready3")" = ksvc ] || _bfail="$_bfail bus-account-not-ksvc"
+[ -e "$_bk/rt/one.ready" ] || _bfail="$_bfail bus-account-released-before-ready"
+grep -qx 'two after one' "$_bk/rt/order" 2>/dev/null && _bfail="$_bfail bus-account-got-two"
+env -i $_benv $_bbus bash fs/usr/lib/turnstile/ksvc stop "$_bm"
+wait "$_bm" 2>/dev/null || :
+[ "$(grep '^stop' "$_bk/rt/order" 2>/dev/null | tr '\n' ' ')" = "stop one " ] \
+    || _bfail="$_bfail bus-account-stop-$(grep '^stop' "$_bk/rt/order" 2>/dev/null | tr '\n' ,)"
+[ -e "$_bk/rt/ksvc/kdos-svc.one.pid" ] && _bfail="$_bfail bus-account-one-left"
 if [ -z "$_bfail" ]; then
-    echo "  started in order and ready, disabled skipped, stopped backwards; a system account gets nothing"
+    echo "  started in order and ready, disabled skipped, stopped backwards; a system account gets nothing, a bus account its bus alone"
 else
     echo "  THE TURNSTILE BACKEND IS WRONG:$_bfail"
     cat "$_bk/rt/order" "$_bk/rt/ksvc/kdos-user-services.log" 2>/dev/null
@@ -4658,6 +4818,24 @@ test "$rc" = 3 && grep -q '^refused this boot runs slot b on trial' "$UI/prog" \
     || { echo "  a trial boot was not refused (exit $rc)"; cat "$UI/prog"; exit 1; }
 sed -i 's/^try      = b$/try      = /' "$UI/esp/EFI/kdos/bootstate"
 printf 'kdos_slot=a root=UUID=AAAA-1111 rw\n' > "$UI/cmdline"
+# The live medium: no boot state and `/` an overlay. kdos-bootctl names it,
+# and apply refuses it unless --in-place says to fill the RAM overlay.
+mv "$UI/esp/EFI/kdos/bootstate" "$UI/bootstate.held"
+printf 'overlay / overlay rw,lowerdir=/mnt/system,upperdir=/mnt/overlay/upper 0 0\n' > "$UI/mounts"
+uim env KDOS_MOUNTS="$UI/mounts" "$UI/bin/kdos-bootctl" status --json 2>/dev/null \
+    | grep -qxF '{"configured": false, "live": true}' \
+    || { echo "  kdos-bootctl status --json did not say live"; exit 1; }
+uim env KDOS_MOUNTS="$UI/mounts" "$UI/bin/kdos-bootctl" status 2>/dev/null | grep -q '^this is the live medium' \
+    || { echo "  kdos-bootctl status did not name the live medium"; exit 1; }
+rc=0; uim env KDOS_MOUNTS="$UI/mounts" "$OUT/kdos" update apply --dry-run --progress 3 3>"$UI/prog" >/dev/null 2>&1 || rc=$?
+test "$rc" = 3 && grep -q '^refused this is the live medium' "$UI/prog" \
+    || { echo "  the live medium was not refused (exit $rc)"; cat "$UI/prog"; exit 1; }
+uim env KDOS_MOUNTS="$UI/mounts" "$OUT/kdos" update apply --dry-run --in-place 2>&1 | grep -q 'no A/B slots' \
+    || { echo "  --in-place on the live medium did not update in place"; exit 1; }
+printf '/dev/sda2 / ext4 rw 0 0\n' > "$UI/mounts"
+uim env KDOS_MOUNTS="$UI/mounts" "$UI/bin/kdos-bootctl" status --json 2>/dev/null | grep -qxF '{"configured": false}' \
+    || { echo "  a one-root install was called live"; exit 1; }
+mv "$UI/bootstate.held" "$UI/esp/EFI/kdos/bootstate"
 cp "$UI/cache/image/MANIFEST" "$UI/manifest.good"
 sed -i 's/^time .*/time 1761700002/' "$UI/cache/image/MANIFEST"
 uim "$OUT/kdos" update check --json 2>/dev/null | grep -qF '"lane":null' \
@@ -4742,6 +4920,15 @@ if [ "$(id -u)" = 0 ]; then
     cmp -s "$UI/packages.good" "$UI/cache/PACKAGES" && \
         cmp -s "$IM/r2/kdos-image.manifest" "$UI/cache/image/MANIFEST" \
         || { echo "  a refused fetch replaced the verified copy"; exit 1; }
+    # A host keyring with no key: neither lane reaches its place, which here
+    # does not exist, so any attempt would record `absent` or `fetch-failed`.
+    mkdir -p "$UI/nohostkeys"
+    uim env KPKG_KEYRING="$UI/nohostkeys" KDOS_TREE_KEYS="$UI/nokeys" \
+        KDOS_UPDATE_BINHOST="$UI/nowhere" KDOS_UPDATE_IMAGE="$UI/nowhere" \
+        "$OUT/kdos" update fetch > "$UI/out" 2>&1 || true
+    grep -q '^fetch no-key ' "$UI/state" && grep -q '^binhost no-key ' "$UI/state" && \
+        grep -q '^image no-key ' "$UI/state" && ! grep -q '==>' "$UI/out" \
+        || { echo "  a fetch with no key reached for the network:"; cat "$UI/state" "$UI/out"; exit 1; }
     echo "  offered by its delta's size; slot b, slot a, refused on trial; acquired, carried, armed; tampered index and image refused"
 else
     echo "  offered by its delta's size; slot b, slot a, refused on trial (acquire, arm and fetch need root)"
@@ -4985,6 +5172,45 @@ _t=$(( $(date +%s) - _t0 ))
 grep -qE '^[[:space:]]+find_persist ;;$' "$IR/init" \
     || { echo "  the overlay no longer looks for its store through find_persist"; exit 1; }
 echo "  persistence store: one lookup when USB is idle, one more per new disk, waits for a late stick, bounded at 10 s"
+
+# A STORE ON THE BOOT DISK IS MOUNTED THROUGH A LOOP, ANY OTHER DIRECTLY.
+# persist_dev reads /sys/class/block by absolute path; the extracted copy
+# alone is pointed at a fake one, where sda4 starts at sector 2048 and
+# spans 4096, and sdb1 sits on another disk. The losetup stub records its
+# arguments and answers /dev/loop9.
+PD="$OUT/persist-dev"
+mkdir -p "$PD/bin" "$PD/devices/sda/sda4" "$PD/devices/sdb/sdb1" "$PD/class"
+: > "$PD/devices/sda/sda4/partition"; : > "$PD/devices/sdb/sdb1/partition"
+echo 2048 > "$PD/devices/sda/sda4/start"; echo 4096 > "$PD/devices/sda/sda4/size"
+echo 2048 > "$PD/devices/sdb/sdb1/start"; echo 4096 > "$PD/devices/sdb/sdb1/size"
+ln -sfn ../devices/sda/sda4 "$PD/class/sda4"; ln -sfn ../devices/sdb/sdb1 "$PD/class/sdb1"
+cat > "$PD/bin/losetup" <<'EOF'
+#!/bin/sh
+echo "$*" > "$PD/losetup.args"
+echo /dev/loop9
+EOF
+chmod +x "$PD/bin/losetup"
+persist_dev_try() {   # <store> <medium> -> prints "<rc>|<PERSIST_DEV>|<PERSIST_LOOP>|<losetup argv>"
+    rm -f "$PD/losetup.args"
+    ( . /dev/stdin <<EOF
+$(sed -n '/^persist_dev() {/,/^}/p' "$IR/init" | sed "s#/sys/class/block/#$PD/class/#g")
+EOF
+      export PD
+      PATH="$PD/bin:$PATH"
+      persist_dev "$1" "$2"
+      echo "$?|$PERSIST_DEV|$PERSIST_LOOP|$(cat "$PD/losetup.args" 2>/dev/null)" )
+}
+grep -q '^persist_dev() {' "$IR/init" \
+    || { echo "  the init has no persist_dev"; exit 1; }
+[ "$(persist_dev_try /dev/sda4 /dev/sda)" = "0|/dev/loop9|/dev/loop9|--find --show --direct-io=on -o 1048576 --sizelimit 2097152 /dev/sda" ] \
+    || { echo "  a store on the boot disk was not mounted through a loop at its offset ($(persist_dev_try /dev/sda4 /dev/sda))"; exit 1; }
+[ "$(persist_dev_try /dev/sdb1 /dev/sda)" = "0|/dev/sdb1||" ] \
+    || { echo "  a store on another disk did not mount directly ($(persist_dev_try /dev/sdb1 /dev/sda))"; exit 1; }
+[ "$(persist_dev_try /dev/sda4 /dev/sr0)" = "0|/dev/sda4||" ] \
+    || { echo "  a store beside a disc medium did not mount directly ($(persist_dev_try /dev/sda4 /dev/sr0))"; exit 1; }
+grep -qE 'persist_dev "\$PERSIST" "\$MEDIUM"' "$IR/init" \
+    || { echo "  the overlay no longer mounts its store through persist_dev"; exit 1; }
+echo "  persistence store: a loop on the boot disk at the partition's offset and length, any other disk directly"
 
 # AND THE blkid THE INITRAMFS SHIPS IS UTIL-LINUX'S. Every lookup in the
 # generated init is `blkid -U` — the root filesystem, the ESP holding the A/B
@@ -6251,8 +6477,8 @@ fail() { echo "  $1"; exit 1; }
 [ "$(grep -c "	" "$W/l1")" -ge 21 ] || fail "the list lost rows past the first read"
 grep -q "^mosh	off	" "$W/l1" || fail "mosh is not listed off"
 # Desktop sharing is krfb's VNC and krdp's RDP, each a row of its own.
-grep -qx "vnc	off	this desktop over VNC (krfb)" "$W/l1" || fail "vnc does not name krfb"
-grep -qx "rdp	off	this desktop over RDP (krdp)" "$W/l1" || fail "rdp is not listed"
+grep -qx "vnc	off	Sharing this desktop over VNC (Krfb)" "$W/l1" || fail "vnc does not name krfb"
+grep -qx "rdp	off	Sharing this desktop over RDP (KRdp)" "$W/l1" || fail "rdp is not listed"
 "$B/kdos-power" firewall rdp on > /dev/null || fail "firewall rdp on failed"
 grep -q "tcp dport 3389 accept" "$W/etc/nftables.d/50-kdos-services.nft" \
     || fail "rdp on did not open 3389"
@@ -6331,10 +6557,11 @@ nk --firewall mosh on > /dev/null || nk_fail "firewall mosh on failed"
 # Checked, then applied, both through the conf that includes the file.
 [ "$(cat "$NKW/nft.args")" = "--check -f $NKW/etc/nftables.conf
 -f $NKW/etc/nftables.conf" ] || nk_fail "the ruleset was not checked and then applied" "$NKW/nft.args"
-# An open name is its rule; a closed one is its match counted, with no
-# accept, and a counter of its own; an open one has no counter.
+# An open name is its rule; a closed one is its match counted, from another
+# machine only, with no accept, and a counter of its own; an open one has no
+# counter.
 grep -qx "		udp dport 60000-61000 accept" "$NKF" || nk_fail "mosh on is not its rule" "$NKF"
-grep -qx '		tcp dport 22 counter name "kdos_knock_ssh"' "$NKF" \
+grep -qx '		fib saddr type != local tcp dport 22 counter name "kdos_knock_ssh"' "$NKF" \
     || nk_fail "a closed name is not counted" "$NKF"
 grep -qx '	counter kdos_knock_ssh {' "$NKF" || nk_fail "a closed name has no counter" "$NKF"
 grep -q 'kdos_knock_mosh' "$NKF" && nk_fail "an open name has a counter" "$NKF"
@@ -6542,12 +6769,12 @@ PBBUS
     _l=$(pbcall call io.kdos.Power1 /io/kdos/Power1 io.kdos.Power1 \
              ListFirewallServices)
     case "$_l" in
-        'a(sbs) 25 '*'"rdp" false "this desktop over RDP (krdp)"'*) ;;
+        'a(sbs) 25 '*'"rdp" false "Sharing this desktop over RDP (KRdp)"'*) ;;
         *) echo "$_l" > "$PB/list.txt"
            pb_fail "ListFirewallServices did not return the table with rdp off" "$PB/list.txt" ;;
     esac
     case "$_l" in
-        *'"vnc" false "this desktop over VNC (krfb)"'*) ;;
+        *'"vnc" false "Sharing this desktop over VNC (Krfb)"'*) ;;
         *) pb_fail "the vnc row does not name krfb" ;;
     esac
     grep -q CHECK "$PB/pk.log" 2>/dev/null \
@@ -6990,8 +7217,8 @@ echo "==> kdos clone takes an image's length from the image, not from the device
 # TWO RECORDS DESCRIBE THE IMAGE AND THE OBVIOUS ONE IS SHORT. ISO9660's
 # Primary Volume Descriptor is exact on an optical-only image — measured
 # against the shipped ISO, 4970509 blocks x 2048 is its byte-for-byte file
-# size. On a hybrid image the EFI System Partition is APPENDED after the
-# ISO9660 volume and the PVD does not count it, so the PVD alone truncates away
+# size. On a hybrid image made with an APPENDED EFI System Partition, after the
+# ISO9660 volume, the PVD does not count it, so the PVD alone truncates away
 # the partition that makes the copy boot. The GPT's backup header is the record
 # that spans it. Both are read and the larger wins.
 #
@@ -7660,6 +7887,15 @@ grep -qx 'close {u-2}' "$_ah/log" && grep -qx 'set_state {u-1} 2 2' "$_ah/log" \
 # shellcheck disable=SC2086
 [ -z "$(env $_wenv PATH=/nonexistent-kdos-path "$OUT/kdos" hey boxes)" ] \
     || { echo "  a host window was named as a box"; kill "$_wm"; exit 1; }
+# With no WAYLAND_DISPLAY (the timer service's `kdos-box gc`) the first
+# wayland-N in the runtime directory that answers is the session, past a
+# wayland-0 that is no socket: KWin's is wayland-1.
+: > "$_ah/run/wayland-0"
+ln -s wayland-kdos "$_ah/run/wayland-1"
+env -u WAYLAND_DISPLAY XDG_RUNTIME_DIR="$_ah/run" XDG_DATA_HOME="$_ah/none" XDG_DATA_DIRS="$_ah/share" \
+    "$OUT/kdos" hey list 2>&1 | grep -q kdos-selftest-front \
+    || { echo "  with no WAYLAND_DISPLAY the session's wayland-1 was not found"; kill "$_wm"; exit 1; }
+rm -f "$_ah/run/wayland-0" "$_ah/run/wayland-1"
 kill "$_wm"; wait "$_wm" 2>/dev/null || true
 _rc=0
 # shellcheck disable=SC2086
@@ -7669,8 +7905,17 @@ _rc=0
 # shellcheck disable=SC2086
 env $_wenv WAYLAND_DISPLAY=wayland-none "$OUT/kdos" appid >/dev/null 2>&1 || _rc=$?
 [ "$_rc" = 2 ] || { echo "  appid with no session exited $_rc, not 2"; exit 1; }
+_rc=0
+env -u WAYLAND_DISPLAY XDG_RUNTIME_DIR="$_ah/run" "$OUT/kdos" hey boxes >/dev/null 2>&1 || _rc=$?
+[ "$_rc" = 1 ] || { echo "  hey boxes with no wayland-N socket exited $_rc, not 1"; exit 1; }
+# kscreen-doctor colours its text into a pipe too; `outputs` takes it out.
+mkdir -p "$_ah/bin"
+printf '#!/bin/sh\nprintf "\\033[01;32mOutput: \\033[0;0m1 X \\033[01;32menabled\\033[0;0m\\n"\n' > "$_ah/bin/kscreen-doctor"
+chmod +x "$_ah/bin/kscreen-doctor"
+[ "$(PATH="$_ah/bin:$PATH" "$OUT/kdos" hey outputs | od -An -c | tr -s ' ')" = "$(printf 'Output: 1 X enabled\n' | od -An -c | tr -s ' ')" ] \
+    || { echo "  kdos hey outputs wrote colour into a pipe"; PATH="$_ah/bin:$PATH" "$OUT/kdos" hey outputs | od -c; exit 1; }
 rm -rf "$_ah"
-echo "  the list, its JSON, OK and MISMATCH by file ID, the requests, and no session said as one"
+echo "  the list, its JSON, OK and MISMATCH by file ID, the requests, the wayland-N search, plain outputs into a pipe, and no session said as one"
 
 echo "==> the four views draw and step the way their callers rely on"
 #
@@ -7833,6 +8078,7 @@ grep -q "^evaluateScript const want='file:///usr/share/wallpapers/KDOS-Amber/'" 
 grep -q 'kscreenlockerrc' "$KDOS_FAKE_LOG" && fail "the person's own lock-screen wallpaper was replaced"
 grep -qx 'DefaultProfile=Mine.profile' "$SH/.config/konsolerc" || fail "the person's own Konsole profile was replaced"
 grep -qx 'DarkThemeProfile=KDOS Amber' "$SH/.config/konsolerc" || fail "the KDOS dark profile did not follow"
+grep -qx 'colorScheme=KDOS-Amber' "$SH/.config/qmlkonsolerc" || fail "QMLKonsole's colour scheme did not follow"
 grep -q '^setProfile' "$KDOS_FAKE_LOG" && fail "a tab on the person's own profile was moved"
 : > "$KDOS_FAKE_LOG"
 cp "$SH/.config/kdeglobals" "$SH/kg.0"; cp "$SH/.config/kwinrc" "$SH/kw.0"; cp "$SH/.config/konsolerc" "$SH/kc.0"
@@ -7840,6 +8086,7 @@ kdos phosphor status --json | python3 -c '
 import json, sys
 d = json.load(sys.stdin)
 assert d["on"] is False and d["supported"] is True and d["reason"] is None, d
+assert d["refusal"] is None, d
 assert d["preset"] == "subtle" and d["accent"] == "amber", d' || fail "status --json before on"
 kdos phosphor on --terminus > "$SH/out" 2>&1 || fail "phosphor on failed: $(cat "$SH/out")"
 tail -1 "$SH/out" | grep -qx 'phosphor mode on (subtle)' || fail "on said: $(cat "$SH/out")"
@@ -7887,7 +8134,18 @@ _rc=0; kdos phosphor on 2> "$SH/err" || _rc=$?
     || fail "the refusal said: $(cat "$SH/err")"
 [ -e "$SH/.config/kdos/phosphor" ] && fail "a refused on wrote its state file"
 cmp -s "$SH/kw.1" "$SH/.config/kwinrc" || fail "a refused on wrote kwinrc"
+kdos phosphor status --json | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+assert d["supported"] is False and d["refusal"] == "gpu", d
+assert d["reason"] == "phosphor mode needs GPU rendering (this session renders in software)", d' \
+    || fail "status --json on software rendering did not name the gpu refusal"
 kill "$FP"; wait "$FP" 2>/dev/null
+kdos phosphor status --json | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+assert d["supported"] is False and d["refusal"] == "session", d' \
+    || fail "status --json with no KWin did not name the session refusal"
 exit 0
 SHEOF
     env -i PATH="$SH/bin:$OUT:/usr/bin:/bin" HOME="$SH" XDG_CONFIG_HOME="$SH/.config" \
@@ -7958,10 +8216,21 @@ kdos panel toggle && grep -q "p.hiding = " "$KDOS_FAKE_LOG" || fail "the panel w
 kdos toggle dnd on > /dev/null && grep -q '^Until=2100,' .config/plasmanotifyrc || fail "dnd on"
 kdos toggle | grep -q '^dnd  *on' || fail "dnd does not read back on"
 kdos toggle dnd off > /dev/null && ! grep -q '^Until=' .config/plasmanotifyrc || fail "dnd off"
-kdos toggle night-light on > /dev/null && grep -qx 'invokeShortcut Toggle Night Color' "$KDOS_FAKE_LOG" \
-    || fail "night light was not toggled through KWin's shortcut"
+kdos toggle | grep -q '^night-light  *off' || fail "night light does not start off"
+kdos toggle night-light on > /dev/null && grep -qx 'Active=true' .config/kwinrc &&
+    grep -qx 'Mode=Constant' .config/kwinrc || fail "night light on did not write Active and Mode"
+grep -q invokeShortcut "$KDOS_FAKE_LOG" && fail "night light on pressed KWin's suspend key"
+kdos toggle | grep -q '^night-light  *on' || fail "night light does not read back on"
+kdos toggle night-light on > /dev/null && grep -qx 'Active=true' .config/kwinrc || fail "a second on"
+python3 -c 'import dbus; dbus.SessionBus().get_object("org.kde.kglobalaccel", "/component/kwin").invokeShortcut("Toggle Night Color", dbus_interface="org.kde.kglobalaccel.Component")'
+kdos toggle | grep -q '^night-light  *off' || fail "a suspended night light reads as on"
 : > "$KDOS_FAKE_LOG"
-kdos toggle night-light on > /dev/null; grep -q invokeShortcut "$KDOS_FAKE_LOG" && fail "an on night light was flipped off"
+kdos toggle night-light on > /dev/null && grep -qx 'invokeShortcut Toggle Night Color' "$KDOS_FAKE_LOG" &&
+    kdos toggle | grep -q '^night-light  *on' || fail "night light on did not lift the suspension"
+kdos toggle night-light off > /dev/null && grep -qx 'Active=false' .config/kwinrc || fail "night light off"
+kdos toggle | grep -q '^night-light  *off' || fail "night light does not read back off"
+kdos toggle night-light > /dev/null && grep -qx 'Active=true' .config/kwinrc || fail "the night light flip"
+kdos toggle night-light off > /dev/null
 export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
 [ "$(kdos timezone)" = UTC ] || fail "timezone did not print the zone"
 kdos timezone Europe/Paris && [ "$(kdos timezone)" = Europe/Paris ] || fail "timezone was not set"
@@ -8049,7 +8318,9 @@ echo
 echo "==> kdos privacy names who holds the microphone, the camera and the screen"
 # testing/fixtures/kdos-command/pw-dump is PipeWire's dump, faked: a muted
 # microphone stream named by its client, a camera and a screen cast each read
-# by one stream, and an idle stream that is no capture at all.
+# by one stream, KWin's screencast output stream read by Spectacle, another
+# program's video output stream read by OBS, which is no screen cast, and an
+# idle stream that is no capture at all.
 PH="$OUT/privacy"
 rm -rf "$PH"; mkdir -p "$PH/bin"
 for _p in pw-cli wpctl; do
@@ -8063,8 +8334,21 @@ d = json.load(sys.stdin)
 assert d["version"] == 1, d
 assert [(e["id"], e["app"], e["muted"], e["mutable"]) for e in d["mic"]] == [("pw:40", "Firefox", True, True)], d["mic"]
 assert [(e["id"], e["app"], e["stoppable"]) for e in d["camera"]] == [("pw:50:52", "OBS Studio", True)], d["camera"]
-assert [(e["id"], e["app"]) for e in d["screen"]] == [("pw:60:61", "OBS Studio")], d["screen"]' \
+assert [(e["id"], e["app"]) for e in d["screen"]] == [("pw:60:61", "OBS Studio"), ("pw:70:72", "spectacle")], d["screen"]
+assert [e["stoppable"] for e in d["screen"]] == [True, True], d["screen"]' \
     || { echo "  the three lists are not what PipeWire holds"; exit 1; }
+# --watch says the state at once, then again at each change the monitor
+# sends: here the camera's link going away a second in.
+timeout 3 env KDOS_FAKE_LOG="$PH/log" PATH="$PH/bin:$PWD/testing/fixtures/kdos-command:$PATH" \
+    "$OUT/kdos" privacy --watch --json > "$PH/watch" || true
+python3 -c '
+import json, sys
+L = [json.loads(l) for l in open(sys.argv[1])]
+assert len(L) == 3, L
+assert L[0]["camera"] == [] and L[0]["screen"] == [], L[0]
+assert [e["id"] for e in L[1]["camera"]] == ["pw:50:52"] and len(L[1]["screen"]) == 2, L[1]
+assert L[2]["camera"] == [] and len(L[2]["screen"]) == 2, L[2]' "$PH/watch" \
+    || { echo "  --watch did not follow the monitor"; cat "$PH/watch"; exit 1; }
 pv unmute pw:40 && pv stop pw:50:52 || { echo "  an action failed"; exit 1; }
 grep -qx 'wpctl set-mute 40 0' "$PH/log" && grep -qx 'pw-cli destroy 52' "$PH/log" \
     || { echo "  the actions were not handed to wpctl and pw-cli"; cat "$PH/log"; exit 1; }
@@ -8073,7 +8357,7 @@ _rc=0; pv stop pw:40 2>/dev/null || _rc=$?
 _rc=0; pv stop -x 2>/dev/null || _rc=$?
 [ "$_rc" = 2 ] || { echo "  an id starting with - exited $_rc"; exit 1; }
 rm -rf "$PH"
-echo "  named by client, muted and stopped through PipeWire's own tools"
+echo "  named by client, KWin's casts as the screen, followed by --watch, muted and stopped through PipeWire's own tools"
 
 echo
 echo "==> kdos places adds to KDE's Places file, and never makes one"
@@ -8123,10 +8407,40 @@ printf 'External drive UUID=0a1b-2c3d\n' >> "$CH/.config/kuprc"
 ck checklist --json | grep -q '"id":"backup","done":true' \
     || { echo "  a Kup restic plan on a drive did not tick the backup item"; exit 1; }
 rm -f "$CH/.config/kuprc" "$CH/bin/restic"
+# The LANG Plasma copies into [Formats] at first login is the system's, and
+# no choice; another LANG, any other Formats key or a second layout is.
+mkdir -p "$CH/root/etc" "$CH/root/proc/self"
+printf 'LANG=en_US.UTF-8\n' > "$CH/root/etc/locale.conf"
+printf 'overlay / overlay rw,lowerdir=/mnt/system 0 0\nproc /proc proc rw 0 0\n' > "$CH/root/proc/self/mounts"
+printf '#!/bin/sh\necho crypto_LUKS\n' > "$CH/bin/lsblk"; chmod +x "$CH/bin/lsblk"
+ckr() { ck "$@" | python3 -c 'import json, sys; print(" ".join("%s=%s" % (i["id"], i["done"]) for i in json.load(sys.stdin)["items"] if i["id"] in ("language", "encryption")))'; }
+_lang() { printf '[Formats]\n%s\n' "$1" > "$CH/.config/plasma-localerc"; KDOS_CHECKLIST_ROOT="$CH/root" ckr checklist --json; }
+[ "$(_lang LANG=en_US.UTF-8)" = 'language=False' ] || { echo "  the first login's LANG ticked the language item: $(_lang LANG=en_US.UTF-8)"; exit 1; }
+[ "$(_lang LANG=en_GB.UTF-8)" = 'language=True' ] || { echo "  a chosen LANG did not tick the language item"; exit 1; }
+[ "$(_lang LC_TIME=de_DE.UTF-8)" = 'language=True' ] || { echo "  a chosen LC_TIME did not tick the language item"; exit 1; }
+rm "$CH/root/etc/locale.conf"
+[ "$(_lang LANG=C.UTF-8)" = 'language=False' ] || { echo "  C.UTF-8 with no locale.conf ticked the language item"; exit 1; }
+printf '[Layout]\nLayoutList=us,de\n' > "$CH/.config/kxkbrc"
+[ "$(_lang LANG=C.UTF-8)" = 'language=True' ] || { echo "  a second layout did not tick the language item"; exit 1; }
+rm -f "$CH/.config/kxkbrc" "$CH/.config/plasma-localerc"
+# Encryption is left out on a root that is no block device, the live
+# medium's overlay, and offered on one that is.
+printf '/dev/vda2 / ext4 rw 0 0\n' > "$CH/root/proc/self/mounts"
+rm -f "$CH/.cache/kdos/checklist-encryption"
+[ "$(KDOS_CHECKLIST_ROOT="$CH/root" ckr checklist --json)" = 'language=False encryption=True' ] \
+    || { echo "  a root on a block device did not offer encryption: $(KDOS_CHECKLIST_ROOT="$CH/root" ckr checklist --json)"; exit 1; }
+printf '/dev/vda2 / ext4 rw 0 0\noverlay / overlay rw 0 0\n' > "$CH/root/proc/self/mounts"
+[ "$(KDOS_CHECKLIST_ROOT="$CH/root" ckr checklist --json)" = 'language=False' ] \
+    || { echo "  the live overlay root offered encryption"; exit 1; }
+rm -rf "$CH/root" "$CH/bin/lsblk"
 ck persist --json | python3 -c '
 import json, sys
 d = json.load(sys.stdin)
-assert isinstance(d["live"], bool) and d["store"] in ("none", "present", "in-use"), d' \
+opt = lambda v: v is None or isinstance(v, str)
+assert isinstance(d["live"], bool) and d["store"] in ("none", "present", "in-use", "refused"), d
+assert opt(d["device"]) and opt(d["type"]) and opt(d["medium"]), d
+assert isinstance(d["writable"], bool), d
+assert isinstance(d["candidates"], list) and all(isinstance(c, str) for c in d["candidates"]), d' \
     || { echo "  persist --json is not the contract"; exit 1; }
 # Klipper's Read Aloud action exists exactly while a voice does, and the
 # person's own action is kept, byte for byte, through an add and a remove.
@@ -8150,7 +8464,10 @@ echo
 echo "==> kdos help --keys groups the shortcuts in force as the key card does"
 KH="$OUT/keys-home"
 rm -rf "$KH"; mkdir -p "$KH/.config" "$KH/share/kglobalaccel"
-printf '[kwin]\nWindow Close=Meta+Q\tAlt+F4,Alt+F4,Close Window\nOverview=none,Meta+W,Toggle Overview\n_k_friendly_name=KWin\n' \
+# The chords are separated as kglobalaccel writes them, by the two characters
+# `\t`; [kwin][$InverseAction] pairs an action with its opposite and holds no
+# chord at all.
+printf '[kwin]\nWindow Close=Meta+Q\\tAlt+F4,Alt+F4,Close Window\nOverview=none,Meta+W,Toggle Overview\nWindow Maximize=Meta+PgUp,Meta+PgUp,Maximize\\, Window\n_k_friendly_name=KWin\n\n[kwin][$InverseAction]\nCycle Overview=Cycle Overview Opposite\n' \
     > "$KH/.config/kglobalshortcutsrc"
 cp src/system/kdos-tools/kglobalaccel/org.kdos.tiling.desktop "$KH/share/kglobalaccel/"
 env HOME="$KH" XDG_CONFIG_HOME="$KH/.config" XDG_CONFIG_DIRS="$KH/xdg" \
@@ -8162,8 +8479,12 @@ grep -q '^windows$' "$KH/out" && grep -q 'Meta+Q / Alt+F4 .*Close Window' "$KH/o
 grep -q '^kdos$' "$KH/out" && grep -q 'Meta+Shift+T .*Toggle Auto-Tiling' "$KH/out" \
     || { echo "  the tiling key is not under kdos"; cat "$KH/out"; exit 1; }
 grep -q 'Toggle Overview' "$KH/out" && { echo "  an action bound to none was listed"; exit 1; }
+grep -q 'tAlt\|Meta+Qt' "$KH/out" && { echo "  the tab between two chords was read as a t"; cat "$KH/out"; exit 1; }
+grep -q 'Meta+PgUp .*Maximize, Window$' "$KH/out" \
+    || { echo "  an escaped comma in a friendly name was not kept"; cat "$KH/out"; exit 1; }
+grep -q 'Opposite' "$KH/out" && { echo "  [kwin][\$InverseAction] was read as shortcuts"; cat "$KH/out"; exit 1; }
 rm -rf "$KH"
-echo "  the person's rebinding, a KDOS service key, and no unbound action"
+echo "  the person's rebinding, a KDOS service key, no unbound action and no KConfig bookkeeping"
 
 echo
 echo "==> kdos-mpctl mpris answers for mpd on the session bus, and lets go when mpd does"
@@ -8262,7 +8583,7 @@ for SCSH in sh dash "busybox sh"; do
     sc_seed "$OUT/sc-etc:$SC_KDOS"
     grep -qxF 'Window Close=Alt+F4,Alt+F4,Close Window' "$SCU" ||
         { echo "  [$SCSH] a person's own chord was rewritten"; exit 1; }
-    [ "$(awk '/^\[/{g=$0} /^Toggle Night Color=/{print g}' "$SCU")" = "[kwin]" ] &&
+    [ "$(awk '/^\[/{g=$0} /^KrohnkiteIncrease=/{print g}' "$SCU")" = "[kwin]" ] &&
         [ "$(grep -cxF '[kwin]' "$SCU")" -eq 1 ] ||
         { echo "  [$SCSH] a missing chord was not added inside its group"; exit 1; }
     rm -rf "$SCH"
@@ -8295,8 +8616,8 @@ echo "  counters, process scan, answers and escaping hold"
 echo
 echo "==> kdos-runner answers KRunner from KDOS's files, and runs only vectors"
 # The palette and the library with no bus (kdos-runner/tests/run.sh): codes,
-# verbs and their slots, routes merged by name, chords, KDOS settings pages,
-# packs on the boot medium, book headings, manual pages, Zeal docsets where
+# verbs and their slots, `lib`, routes merged by name and titled, chords,
+# packs on the boot medium after `install`, book headings, manual pages, Zeal docsets where
 # this host has SQLite,
 # kiwix-serve and Kolibri faked on loopback with a deadline, `ask` against a
 # fake llama-server (the model it names, the question as typed, an error, a
@@ -8305,7 +8626,8 @@ echo "==> kdos-runner answers KRunner from KDOS's files, and runs only vectors"
 # programs as single arguments. The bus half (tests/bus.sh) is
 # org.kde.krunner1 on a private bus, started through the shipped .service
 # file, in KRunner's call order, a Run arriving after Teardown included, and
-# an ask's quiet, its reply limit and its Klipper and KRunner calls.
+# an ask's quiet, its reply limit and its Klipper and KRunner calls, and
+# `lib`'s querySingleRunner on the library alone.
 KRU=src/desktop/kdos-runner
 KRU_SRC="$KRU/query.c $KRU/sources.c $KRU/match.c $KRU/library.c $KRU/zeal.c $KRU/json.c $KRU/http.c $KRU/run.c $KRU/ask.c"
 KRU_SQL=$(pkg-config --cflags --libs sqlite3 2>/dev/null || true)
@@ -8336,7 +8658,7 @@ echo "==> kdos-notice says each change once, and blesses only a desktop that sta
 # looked at in sequence so the state file must turn repeats into silence and
 # endings into withdrawals. The bus half (tests/bus.sh) runs the daemon
 # against a fake notification server, restarts that server and expects the
-# waiting notice again under a new id, counts Notify on the wire with
+# waiting notices again under new ids, counts Notify on the wire with
 # dbus-monitor, and runs --bless against a fake Plasma shell and a fake
 # io.kdos.Slots1.
 KNO=src/desktop/kdos-notice

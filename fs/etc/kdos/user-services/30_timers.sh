@@ -15,6 +15,10 @@
 # SIGHUP to the pid in $XDG_RUNTIME_DIR/kdos/user-timers.pid; both stop a job
 # that is running at that moment. A SIGUSR1 to the same pid starts only the
 # files that have no loops yet, which is what `kdos remind` sends.
+#
+# THE FIRST FILE INDEX IS BUILT HERE, in the background and only when there
+# is none: the nightly updatedb row never runs for a slot the machine was off
+# across, so without it `locate` fails on a fresh account until 03:05.
 
 NAME="timers"
 DAEMON="/usr/local/lib/kdos/user-timers"
@@ -28,6 +32,10 @@ case "$1" in
         if [ ! -x "$DAEMON" ]; then
             echo "[SKIP] $NAME: $DAEMON not found"
             exit 0
+        fi
+        if [ -x /usr/local/bin/kdos-updatedb ]; then
+            setsid -f /usr/local/bin/kdos-updatedb --if-missing \
+                </dev/null >/dev/null 2>&1
         fi
         echo "[KDOS] Starting $NAME..."
         supervise "$NAME" "$DAEMON"

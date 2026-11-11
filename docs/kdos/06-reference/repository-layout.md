@@ -47,7 +47,7 @@ kdos/
 │   ├── core/<shelf>/<name>/   one directory per upstream port, on one of 102 shelves
 │   │   ├── kpkgbuild          declarative metadata — parsed, never sourced
 │   │   ├── build.sh           the build; bash, run in the unpacked source
-│   │   ├── postinstall.sh     optional install-time hook (28 ports have one)
+│   │   ├── postinstall.sh     optional install-time hook (27 ports have one)
 │   │   ├── *.patch            optional patches, tracked (671 files)
 │   │   ├── kfs.md             optional: the port's note in KDOS from Scratch; never hashed
 │   │   ├── other support files  configuration, data files, single-file sources — tracked

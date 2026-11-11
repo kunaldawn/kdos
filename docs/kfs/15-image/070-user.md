@@ -34,36 +34,38 @@ image ships none of them.
 
 ## Each home
 
-<!-- kfs:include script/phases/70_image/070_user.sh lines=54-63 pin=08765e3b2f18 -->
+<!-- kfs:include script/phases/70_image/070_user.sh lines=54-60 pin=48067c085e2e -->
 
 The loop reads `/etc/passwd` and makes a home for each ordinary account: a numeric UID from 1000 to
 65533, with a home directory named. The service accounts, below 1000, and any UID from 65534 up
 are skipped. On a KDOS root that is `kdos` alone.
 
-<!-- kfs:include script/phases/70_image/070_user.sh lines=64-75 pin=7ea86e8af715 -->
+<!-- kfs:include script/phases/70_image/070_user.sh lines=62-79 pin=31653ab661cc -->
 
-The template wins over what the home holds. `cp -r` overwrites, so an edit to `fs/etc/skel` reaches
-the home on the next image build; a copy that kept existing files would ship the previous build's
-dotfiles instead. `cp` never deletes, though, so before the copy the step removes
-`.local/share/applications`: the boxed-application launchers [030_launchers.sh](030-launchers.md)
-reconciled in `/etc/skel`, where a launcher whose file name changes would otherwise stay under
-its old name too, and the menu would list the application twice. Anything else edited by hand in
-`build/fs/home/kdos` survives only where the template has no file of the same name.
+The home is made again from nothing on every run. In the build tree it is an artifact, the
+template plus the directories below, and `cp -r` overwrites but never deletes: a home kept from
+an earlier build would ship every file and directory the template or the list has since dropped,
+such as a boxed-application launcher [030_launchers.sh](030-launchers.md) renamed in
+`/etc/skel`, which the menu would then list twice. Anything edited by hand in
+`build/fs/home/kdos` is gone at the next image build. A home that is not one directory directly under `/home` stops the
+build before anything is removed.
 
-<!-- kfs:include script/phases/70_image/070_user.sh lines=92-97 pin=340559f9943d -->
+<!-- kfs:include script/phases/70_image/070_user.sh lines=98-103 pin=fd6cfeb3e20e -->
 
 git cannot carry these directories either, so they are made here. Each is a directory a program
 expects and will not create before its first use: the folders `/etc/xdg/user-dirs.defaults` lists,
 which the first Plasma login's `xdg-user-dirs-update` records in `~/.config/user-dirs.dirs` and
 Dolphin's Places shows from the start; `Pictures/Screenshots`, where Spectacle saves; `~/Mail`,
-which notmuch and mbsync both name; `.local/share/calendars/*`, which khal's shipped configuration
-reads; and `.local/share/contacts/personal`, which khard's names.
+which notmuch and mbsync both name; `.local/share/calendars/personal`, the one empty calendar
+under the `.local/share/calendars/*` glob khal's shipped configuration reads, without which
+`khal import` has no calendar to write into; and `.local/share/addressbooks/personal`, which
+khard's names, kept out of `.local/share/contacts` because Akonadi's default address book claims
+that directory and everything in it.
 
-<!-- kfs:include script/phases/70_image/070_user.sh lines=102-108 pin=02825bae40ce -->
+<!-- kfs:include script/phases/70_image/070_user.sh lines=105-106 pin=f4b559a1f5cc -->
 
-`cp` gives a new file the template's mode but leaves the mode of an existing one alone, so the two
-mail files are set to 600 in the home as well. The whole home is then given to the account's UID
-and GID, and the home directory itself is mode 0700.
+The copy gives the two mail files the template's mode, 600. The whole home is then given to
+the account's UID and GID, and the home directory itself is mode 0700.
 
 ## Why it runs here
 

@@ -128,9 +128,9 @@ make run-hw       # accelerated graphics, where Phosphor mode can run; needs Doc
 ```
 
 `make run` needs QEMU, `/dev/kvm` and the OVMF firmware at `/usr/share/ovmf/OVMF.fd`. The first run
-creates a sparse 96 GB disk image, `build/kdos.qcow2`, for the installer to write to. The live
-image logs in to Plasma as `kdos` (password `kdos`) by itself, and its Welcome Center offers the
-installer.
+creates a sparse 192 GB disk image, `build/kdos.qcow2`, for the installer to write to, large
+enough for the two A/B system slots. The live image logs in to Plasma as `kdos` (password `kdos`)
+by itself, and its Welcome Center offers the installer.
 
 To try it on real hardware, write the image to a USB stick at least as large as the ISO
 (`ls -l build/iso-build/kdos.iso`); every package is on the medium, so it does not fit a DVD, and

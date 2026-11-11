@@ -620,6 +620,50 @@ int cmd_catalogue(int argc, char **argv)
 		cat_free();
 		return 0;
 	}
+	/*
+	 * `--chain`: the base and runtime rows, each with its measured size and
+	 * whether its image is built here. Discover adds the size of every row
+	 * still to build to an application's estimate, so the number the first
+	 * build on a base shows counts the base. podman lists an image this
+	 * machine built as `localhost/kdos/<id>`; a machine with no podman
+	 * reports every row `absent`.
+	 */
+	if (argc > 0 && !strcmp(argv[0], "--chain")) {
+		KbArgv a = {0};
+		char tag[2][sizeof("localhost/") + sizeof(STORE_IMG_PREFIX) +
+			    CAT_ID_MAX];
+
+		inst = kb_calloc(1, 1 << 16);
+		kb_argv_add(&a, "podman");
+		kb_argv_add(&a, "images");
+		kb_argv_add(&a, "--noheading");
+		kb_argv_add(&a, "--format");
+		kb_argv_add(&a, "{{.Repository}}");
+		kb_argv_end(&a);
+		if (kb_run_capture(&a, inst, 1 << 16) != 0)
+			inst[0] = 0;
+		for (int i = 0; i < g_npack; i++) {
+			const CatPack *p = &g_pack[i];
+
+			if (strcmp(p->kind, "base") && strcmp(p->kind, "runtime"))
+				continue;
+			/* kb_strlcpy and not snprintf: the id is a row of a
+			 * 2-D array, which a compiler takes to run to its end
+			 * (store.c's row_built says the same). */
+			kb_strlcpy(tag[0], "localhost/" STORE_IMG_PREFIX,
+				   sizeof(tag[0]));
+			kb_strlcpy(tag[1], STORE_IMG_PREFIX, sizeof(tag[1]));
+			kb_strlcpy(tag[0] + strlen(tag[0]), p->id, CAT_ID_MAX);
+			kb_strlcpy(tag[1] + strlen(tag[1]), p->id, CAT_ID_MAX);
+			printf("%s\t%llu\t%s\t%s\n", p->id, p->bytes,
+			       p->parent[0] ? p->parent : "-",
+			       in_set(inst, tag[0]) || in_set(inst, tag[1])
+			       ? "built" : "absent");
+		}
+		free(inst);
+		cat_free();
+		return 0;
+	}
 	inst = kb_calloc(1, 1 << 16);
 	installed_set(inst, 1 << 16);
 	for (int i = 0; i < g_npack; i++) {

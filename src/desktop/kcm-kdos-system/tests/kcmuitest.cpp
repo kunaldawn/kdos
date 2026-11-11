@@ -111,6 +111,41 @@ void unnamed(QQuickItem *item, QStringList *out, int *controls)
         unnamed(child, out, controls);
     }
 }
+
+/* The accessible names of every visible control under `item`. */
+void controlNames(QQuickItem *item, QStringList *out)
+{
+    if (!item->isVisible()) {
+        return;
+    }
+    if (QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(item)) {
+        if (isControl(iface->role()) && !iface->state().invisible) {
+            *out << iface->text(QAccessible::Name);
+        }
+    }
+    const auto children = item->childItems();
+    for (QQuickItem *child : children) {
+        controlNames(child, out);
+    }
+}
+
+/* Whether a visible item under `item` has `text` as its text property. */
+bool showsText(QQuickItem *item, const QString &text)
+{
+    if (!item->isVisible()) {
+        return false;
+    }
+    if (item->property("text").toString() == text) {
+        return true;
+    }
+    const auto children = item->childItems();
+    for (QQuickItem *child : children) {
+        if (showsText(child, text)) {
+            return true;
+        }
+    }
+    return false;
+}
 }
 
 class KcmUiTest : public QObject
@@ -211,6 +246,45 @@ private Q_SLOTS:
          * the armed trial replaces the prepared update's banner. */
         QVERIFY2(controls >= 4, qPrintable(u"only %1 controls found"_s.arg(controls)));
         QVERIFY2(missing.isEmpty(), qPrintable(u"controls without an accessible name: "_s + missing.join(u", "_s)));
+    }
+
+    /* The live medium: the page names the live session, offers the
+     * installer, and shows no update source, since nothing there is
+     * updated. Runs after the test above, on the same fixture directory. */
+    void liveMediumOffersTheInstaller()
+    {
+        QTest::failOnWarning(QRegularExpression(u"\\.qml:\\d+"_s));
+        QFile::remove(m_dir.path() + u"/bootstate"_s);
+        QFile live(m_dir.path() + u"/live"_s);
+        QVERIFY(live.open(QIODevice::WriteOnly));
+        live.close();
+
+        const KPluginMetaData md(QStringLiteral(KCM_PLUGIN_PATH));
+        auto engine = std::make_shared<QQmlEngine>();
+        const auto result = KQuickConfigModuleLoader::loadModule(md, nullptr, {}, engine);
+        QVERIFY2(result.plugin, qPrintable(result.errorText));
+        std::unique_ptr<KQuickConfigModule> kcm(result.plugin);
+        kcm->load();
+        QTRY_VERIFY(kcm->property("live").toBool());
+        QVERIFY(!kcm->property("configured").toBool());
+
+        QQuickItem *ui = kcm->mainUi();
+        QVERIFY2(ui, qPrintable(kcm->errorString()));
+        QQuickWindow window;
+        window.resize(1100, 1400);
+        ui->setParentItem(window.contentItem());
+        ui->setSize(window.size());
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QTest::qWait(200);
+
+        QTRY_VERIFY(showsText(ui, u"This is the live session"_s));
+        QVERIFY(!showsText(ui, u"This computer has one version of KDOS"_s));
+        QStringList names;
+        controlNames(window.contentItem(), &names);
+        QVERIFY2(names.contains(u"Install KDOS…"_s), qPrintable(names.join(u", "_s)));
+        QVERIFY2(!names.contains(u"Where updates come from"_s), qPrintable(names.join(u", "_s)));
+        QVERIFY2(!names.contains(u"Check for updates in Discover"_s), qPrintable(names.join(u", "_s)));
     }
 };
 

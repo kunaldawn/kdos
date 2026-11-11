@@ -93,7 +93,9 @@ void rn_list_print(const RnList *l, KbBuf *out)
 		kb_buf_printf(out, "%s\n  sub %s\n  icon %s\n  cat %s %d %.2f%s%s\n",
 			      m->text, m->subtext, m->icon, m->category,
 			      m->catrel, m->rel,
-			      m->how == RN_RUN_TERM ? " term" : "",
+			      m->how == RN_RUN_TERM	 ? " term"
+			      : m->how == RN_RUN_REQUERY ? " requery"
+							 : "",
 			      m->term_action ? " +term" : "");
 		if (m->url[0])
 			kb_buf_printf(out, "  url %s\n", m->url);

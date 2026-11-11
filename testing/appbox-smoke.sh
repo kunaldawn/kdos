@@ -32,7 +32,7 @@
 # printed its version and exited did not open.
 #
 # Run it INSIDE the session, as the desktop user:
-#   su - kdos -c 'WAYLAND_DISPLAY=wayland-0 testing/appbox-smoke.sh'
+#   su - kdos -c 'WAYLAND_DISPLAY=wayland-1 testing/appbox-smoke.sh'
 # ---------------------------------
 
 set -u

@@ -170,6 +170,7 @@ void FakeSlots::announce()
 {
     QVariantMap all;
     all.insert(u"Configured"_s, configured());
+    all.insert(u"Live"_s, live());
     all.insert(u"RunningSlot"_s, runningSlot());
     all.insert(u"ActiveSlot"_s, activeSlot());
     all.insert(u"TrySlot"_s, trySlot());
@@ -186,6 +187,11 @@ void FakeSlots::announce()
 bool FakeSlots::configured() const
 {
     return readBoot().have;
+}
+
+bool FakeSlots::live() const
+{
+    return !configured() && QFile::exists(m_dir + u"/live"_s);
 }
 
 QString FakeSlots::runningSlot() const

@@ -117,6 +117,11 @@ WizardPage {
             Accessible.name: i18nc("@info:whatsthis", "Login: %1", text)
         }
         QQC2.Label {
+            Kirigami.FormData.label: i18nc("@label", "Root:")
+            text: page.plan.root_locked ? i18n("Locked") : i18n("A password is set")
+            Accessible.name: i18nc("@info:whatsthis", "Root: %1", text)
+        }
+        QQC2.Label {
             Kirigami.FormData.label: i18nc("@label", "Computer's name:")
             text: page.plan.hostname || ""
             Accessible.name: i18nc("@info:whatsthis", "Computer's name: %1", text)
@@ -124,7 +129,8 @@ WizardPage {
         QQC2.Label {
             Kirigami.FormData.label: i18nc("@label", "Keyboard:")
             text: Backend.keyboards.description(page.plan.xkb_layout || "us")
-                  + (page.plan.xkb_variant ? " (" + page.plan.xkb_variant + ")" : "")
+                  + (page.plan.xkb_variant
+                     ? " — " + Backend.keyboards.variantDescription(page.plan.xkb_layout || "us", page.plan.xkb_variant) : "")
             Accessible.name: i18nc("@info:whatsthis", "Keyboard: %1", text)
         }
         QQC2.Label {
@@ -134,7 +140,8 @@ WizardPage {
         }
         QQC2.Label {
             Kirigami.FormData.label: i18nc("@label", "Look:")
-            text: i18nc("@info %1 accent %2 desk", "%1 accent, %2 desk", page.plan.theme || "", page.plan.desk || "")
+            text: i18nc("@info %1 accent %2 desk", "%1 accent, %2 desk",
+                        Backend.accentLabel(page.plan.theme || ""), Backend.deskTitle(page.plan.desk || ""))
             Accessible.name: i18nc("@info:whatsthis", "Look: %1", text)
         }
         QQC2.Label {
@@ -143,10 +150,13 @@ WizardPage {
             wrapMode: Text.Wrap
             text: !page.plan.apps || page.plan.apps.length === 0 ? i18n("None")
                 : i18np("%1 group, about %2", "%1 groups, about %2", page.plan.apps.length, Backend.formatSize(page.plan.apps_bytes))
-                  + " — " + (page.plan.apps_route === "network" ? i18n("built during the install")
-                           : page.plan.apps_route === "import" ? i18n("from the stick")
-                           : i18n("offered at the first login"))
+                  + " — " + i18n("recorded; the first login offers to build them")
             Accessible.name: i18nc("@info:whatsthis", "Applications: %1", text)
+        }
+        QQC2.Label {
+            Kirigami.FormData.label: i18nc("@label", "Box images:")
+            text: page.plan.appbox ? i18n("Kept from this live session") : i18n("Not copied")
+            Accessible.name: i18nc("@info:whatsthis", "Box images: %1", text)
         }
 
         Kirigami.Separator {

@@ -7,21 +7,24 @@ and `ntlm_auth`, which [libsoup3](#port-libsoup3) tries for NTLM sign-on. A Wind
 or a network printer often speaks SMB and nothing else. The Active Directory domain controller,
 domain membership and winbind are not built.
 
-The package carries a service script, `83_samba`, that runs `smbd` under the supervisor only when
-there is something to serve, so a machine that shares nothing listens on nothing. It skips itself
+The package carries a service script, `83_samba`, that runs `smbd` under the supervisor only once
+some account can share, so a machine where nobody shares listens on nothing. It skips itself
 while `/etc/samba/smb.conf` is missing or empty. Otherwise it first creates `/var/log/samba` and
 `/var/cache/samba`, because `smbd` never makes its log directory and writes nothing but the
 supervisor's log without it, and `testparm` calls a missing cache directory an error until `smbd`
 first writes there; and `/var/lib/samba/usershares`, root's with group `sambashare` and mode 1770,
 the `usershare path` that `smb.conf` names and that `net usershare` (Dolphin's Share tab) writes
 into: a package cannot carry that mode, and without the directory every share fails, so it is made
-at every boot whether or not `smbd` then starts. Then it starts `smbd` only if that directory holds
-a usershare, a regular file and not a symbolic link (`smbd` refuses one), whose name does not
-begin with `:` (`net usershare` writes each share through a
-`:tmp` file it renames), or `smb.conf` has a section other than `[global]`; otherwise it prints
-`[SKIP] samba: nothing is shared`. The first folder shared from Dolphin is served without a
-reboot: [kded-kdos](#port-kded-kdos) sees the new file and asks
-[kdos-powerd](#port-kdos-powerd) to run this script's `start`. It passes `supervise --stop-grace
+at every boot whether or not `smbd` then starts. Then it starts `smbd` only if the `sambashare`
+group has a member in `/etc/group`, that directory holds a usershare, a regular file and not a
+symbolic link (`smbd` refuses one), whose name does not begin with `:` (`net usershare` writes
+each share through a `:tmp` file it renames), or `smb.conf` has a section other than `[global]`;
+otherwise it prints `[SKIP] samba: no account shares folders`. A member is enough because no share
+can be made while `smbd` is down: `net usershare add` turns every name in a share's ACL,
+Dolphin's `Everyone` among them, into a SID with an LSA lookup to the local `smbd`
+(`source3/utils/net_usershare.c`), and fails without one. An account Dolphin's Share tab has just
+added to the group starts it without a reboot: at that account's next login
+[kded-kdos](#port-kded-kdos) asks [kdos-powerd](#port-kdos-powerd) to run this script's `start`. It passes `supervise --stop-grace
 15`, so `smbd` has time to end its per-client children and close their open files before the
 supervisor's `SIGKILL`; five seconds is the default. Other machines reach the server after the
 firewall's `smb` name is opened (see
@@ -40,6 +43,14 @@ firewall's `smb` name is opened (see
 - `--with-piddir=/run/samba`, `--with-privatedir=/var/lib/samba/private`,
   `--with-logfilebase=/var/log/samba` — Where Samba keeps its PID files, its private databases
   (the password database and secrets) and its logs.
+- `--with-lockdir=/var/lib/samba/lock` — Samba's lock directory, which the package carries,
+  root's and mode 0755. The FHS default, `/var/lock/samba`, is in the world-writable `/run/lock`,
+  so any Samba client run before `smbd`, `net usershare` from Dolphin's Share tab among them,
+  makes it and its `msg.lock` directory as its own user; `smbd` refuses a `msg.lock` that is not
+  root's (`messaging_init_internal` in `source3/lib/messages.c`) and exits at every start. In a
+  directory only root can write to, a client makes nothing and still works. `smbd` opens the
+  lock databases with `TDB_CLEAR_IF_FIRST`, so their contents do not outlive the server, and a
+  directory on the disk rather than a tmpfs is safe across a reboot.
 - `--bundled-libraries='!talloc,!tdb,!tevent,ALL'` — Take talloc, tdb and tevent from their ports
   ([talloc](#port-talloc), [tdb](#port-tdb), [tevent](#port-tevent)) and build every other library
   Samba carries (ldb among them, which is not a port) from its own copy. Named outright, a missing
@@ -103,8 +114,9 @@ After `configure`, `build.sh` greps `bin/default/include/config.h` for `HAVE_CUP
 `HAVE_LINUX_RTNETLINK_H`, and stops when either is missing. The second is the proof that the patch
 took effect.
 
-`rm -rf "$PKG/run" "$PKG/var/run" "$PKG/var/lock"` drops the runtime directories the install
-creates; `/run` is a fresh tmpfs at every boot. The `pkg-config --exists` line fails the build
+`rm -rf "$PKG/run" "$PKG/var/run"` drops the runtime directories the install creates; `/run` is a
+fresh tmpfs at every boot. The lock directory is installed with an explicit `install -d -m 755`, so
+its mode does not depend on the installer's umask. The `pkg-config --exists` line fails the build
 unless the `ndr_standard`, `samba-util` and `smbclient` pkg-config files were installed, the ones
 the client library's consumers build against.
 

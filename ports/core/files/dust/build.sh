@@ -25,6 +25,7 @@ Comment=A tree of what is filling the disk
 Exec=dust
 Icon=drive-harddisk
 Terminal=true
+NoDisplay=true
 Categories=System;Filesystem;
 Keywords=disk;usage;space;du;dust;
 EOF

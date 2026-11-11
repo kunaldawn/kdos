@@ -110,12 +110,18 @@ A font of your own goes in `~/.local/share/fonts/`; `fc-cache -f` makes it known
 
 ### GTK, Qt 5 and boxed applications
 
-- **GTK** programs take the colours, fonts, icons and cursor from kde-gtk-config, and their file
-  dialogs from the KDE portal (`GTK_USE_PORTAL=1`).
+- **GTK** programs take the colours, fonts, icons and cursor from kde-gtk-config; GTK 4 ones read
+  them through the portal's Settings interface, served by xdg-desktop-portal-gtk, and GTK 3 ones
+  do too under `GTK_USE_PORTAL=1`. A running GTK 3 program repaints on an accent switch, through
+  the `colorreload-gtk-module` kde-gtk-config's `org.gtk.Settings` names, which
+  [gtk3](#port-gtk3) is patched to read beside the portal; a GTK 4 one at its next start. File dialogs come from the
+  KDE portal for GTK 4 and for GTK 3's native chooser (`GTK_USE_PORTAL=1`).
 - **Qt 5** programs load the qt5ct platform theme under the name `kde` and read the KDOS palette
   `kdos theme` writes into `~/.config/qt5ct/`.
-- **Boxed** applications read the colour scheme and the light or dark preference through the
-  portal's Settings interface; see [Portals and screen sharing](portals-and-screen-sharing.md).
+- **Boxed** GTK applications are started with `GTK_THEME` set to the theme kde-gtk-config names,
+  `:dark` added for the dark variant, and read its `colors.css` from the shared home, so a running
+  one takes a new accent at its next start; Qt ones read `kdeglobals` or the GTK platform theme.
+  See [Theming applications inside boxes](../../kdos/02-user-guide/theming.md#theming-applications-inside-boxes).
 
 ## Tips
 

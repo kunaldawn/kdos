@@ -22,7 +22,8 @@
 # Subtracted, because something other than a package writes them on purpose:
 #   - the mount points and scratch a build uses: proc, sys, dev, run, tmp,
 #     var/tmp, the chroot's /kdos and /ports binds, kpkg's caches;
-#   - the homes and their template: home/, root/, etc/skel;
+#   - the homes and their template: home/, root/, etc/skel, and the
+#     greeter's var/lib/sddm, which 70_image's 050_theme.sh seeds;
 #   - kpkg's own state: var/lib/kpkg;
 #   - the merged-/usr links and the var/run and var/lock links the
 #     bootstrap makes;
@@ -62,7 +63,8 @@ import treescan  # noqa: E402
 
 PRUNE = ('proc', 'sys', 'dev', 'run', 'tmp', 'kdos', 'ports', 'home', 'root',
          'mnt', 'media', 'var/tmp', 'var/lib/kpkg', 'var/cache/kpkg',
-         'var/cache/fontconfig', 'var/cache/man', 'etc/skel', 'lost+found')
+         'var/cache/fontconfig', 'var/cache/man', 'etc/skel', 'var/lib/sddm',
+         'lost+found')
 
 # Written by kpkg's triggers (triggers.c) and by 70_image over every package,
 # and the initramfs 70_image builds.
@@ -89,6 +91,7 @@ GENERATED = (
     'usr/share/kdos/alien-apps',
     'usr/share/kdos/SOURCES',
     'usr/share/swcatalog/xml/kdos-ports.xml',
+    'usr/share/swcatalog/xml/kdos-debian-exclude.xml',
     'var/lib/kdos/fs-manifest',
     'boot/initramfs.cpio.gz',
     'boot/initramfs.modules',

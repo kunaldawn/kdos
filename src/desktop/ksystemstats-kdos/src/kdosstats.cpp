@@ -20,6 +20,7 @@
 #include <algorithm>
 
 #include <sys/stat.h>
+#include <unistd.h>
 
 namespace Kdos
 {
@@ -257,6 +258,96 @@ CgroupCounters kdosAddCounters(const CgroupCounters &a, const CgroupCounters &b)
     c.writeBytes = add(a.writeBytes, b.writeBytes);
     c.processes = add(a.processes, b.processes);
     return c;
+}
+
+QHash<QString, CgroupCounters> kdosBoxesByProcess(const QString &procRoot, const QString &selfPid, uid_t uid, const QStringList &skip)
+{
+    QHash<QString, CgroupCounters> out;
+    struct stat self;
+    if (::stat(QFile::encodeName(procRoot + QLatin1Char('/') + selfPid + QLatin1String("/ns/mnt")).constData(), &self) != 0) {
+        return out;
+    }
+    const qint64 tick = qMax(1L, ::sysconf(_SC_CLK_TCK));
+    const qint64 page = qMax(1L, ::sysconf(_SC_PAGESIZE));
+    const QDir r(procRoot);
+    const QStringList pids = r.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    for (const QString &pid : pids) {
+        if (pid.isEmpty() || !std::all_of(pid.cbegin(), pid.cend(), [](QChar c) {
+                return c.isDigit();
+            })) {
+            continue;
+        }
+        const QString dir = r.filePath(pid);
+        struct stat st;
+        if (::stat(QFile::encodeName(dir).constData(), &st) != 0 || st.st_uid != uid) {
+            continue;
+        }
+        if (::stat(QFile::encodeName(dir + QLatin1String("/ns/mnt")).constData(), &st) != 0 || (st.st_ino == self.st_ino && st.st_dev == self.st_dev)) {
+            continue;
+        }
+        QString box;
+        bool ok = false;
+        QFile envf(dir + QLatin1String("/environ"));
+        if (!envf.open(QIODevice::ReadOnly)) {
+            continue;
+        }
+        const QByteArray env = envf.read(MaxSysfsRead);
+        for (const QByteArray &kv : env.split('\0')) {
+            if (kv.startsWith("KDOS_BOX=")) {
+                box = QString::fromUtf8(kv.mid(9));
+                break;
+            }
+        }
+        if (box.isEmpty() || box.contains(QLatin1Char('/')) || skip.contains(box)) {
+            continue;
+        }
+
+        CgroupCounters c;
+        c.present = true;
+        c.memoryMaxBytes = 0;
+        c.processes = 1;
+        const QByteArray stat = readSmall(dir + QLatin1String("/stat"), &ok);
+        const qsizetype close = stat.lastIndexOf(')');
+        if (ok && close > 0) {
+            /* After the command's closing parenthesis: field 3, the state,
+             * so utime, stime, cutime and cstime (14-17) are 11-14. */
+            const QList<QByteArray> f = stat.mid(close + 2).split(' ');
+            if (f.size() > 14) {
+                qint64 ticks = 0;
+                for (int i = 11; i <= 14; ++i) {
+                    ticks += qMax(0LL, f[i].toLongLong());
+                }
+                c.cpuUsec = ticks * 1000000 / tick;
+            }
+        }
+        const QByteArray rollup = readSmall(dir + QLatin1String("/smaps_rollup"), &ok);
+        if (ok) {
+            for (const QByteArray &line : rollup.split('\n')) {
+                if (line.startsWith("Pss:")) {
+                    c.memoryBytes = line.mid(4).trimmed().split(' ').value(0).toLongLong() * 1024;
+                    break;
+                }
+            }
+        }
+        if (c.memoryBytes < 0) {
+            const QList<QByteArray> m = readSmall(dir + QLatin1String("/statm"), &ok).split(' ');
+            if (ok && m.size() > 1) {
+                c.memoryBytes = m[1].toLongLong() * page;
+            }
+        }
+        const QByteArray io = readSmall(dir + QLatin1String("/io"), &ok);
+        if (ok) {
+            for (const QByteArray &line : io.split('\n')) {
+                if (line.startsWith("read_bytes:")) {
+                    c.readBytes = line.mid(11).trimmed().toLongLong();
+                } else if (line.startsWith("write_bytes:")) {
+                    c.writeBytes = line.mid(12).trimmed().toLongLong();
+                }
+            }
+        }
+        out.insert(box, out.contains(box) ? kdosAddCounters(out.value(box), c) : c);
+    }
+    return out;
 }
 
 QHash<QString, BoxLauncher> kdosBoxLaunchers(const QStringList &dirs)

@@ -95,3 +95,4 @@ python3-colorama
 python3-zope-interface
 python3-constantly
 python3-automat
+python3-pyicu

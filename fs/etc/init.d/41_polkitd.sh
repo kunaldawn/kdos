@@ -17,10 +17,12 @@
 # polkit on their first privileged call and would be refused while the name
 # had no owner; `wait_bus_name` holds the boot here until polkitd has it.
 #
-# WHAT IT AUTHORISES IS /etc/polkit-1/rules.d/50-kdos.rules and nothing else of
-# ours. There is no authentication agent on this system and there is not meant
-# to be: see docs/kdos/03-architecture/security-model.md for why an agent
-# cannot work here at all.
+# WHAT IT AUTHORISES beyond each action's .policy answers is
+# /etc/polkit-1/rules.d/50-kdos.rules and nothing else of ours. A challenge
+# (auth_self, auth_admin) goes to the session's authentication agent,
+# polkit-kde-authentication-agent-1, which Plasma starts at login; a caller
+# with no session has no agent, and its challenge is a refusal. See
+# docs/kdos/03-architecture/security-model.md.
 
 NAME="polkitd"
 DAEMON="/usr/lib/polkit-1/polkitd"

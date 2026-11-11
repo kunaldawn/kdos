@@ -36,15 +36,21 @@ source.
 the same file with the values a release build fills in. The cloud and marketplace addresses in it are
 upstream's.
 
-Five plugins are left out: `SentryLogger` (crash reports), `SliceInfoPlugin` (anonymous slice
-statistics to `statistics.ultimaker.com`) and `FirmwareUpdateChecker`, which report to or poll
-UltiMaker's servers; `3DConnexion`, which imports `pynavlib`, not a port; and `MakerbotWriter`,
-which imports the `pyDulcificum` converter, not a port either.
+Four plugins are left out: `SliceInfoPlugin` (anonymous slice statistics to
+`statistics.ultimaker.com`) and `FirmwareUpdateChecker`, which report to or poll UltiMaker's
+servers; `3DConnexion`, which imports `pynavlib`, not a port; and `MakerbotWriter`, which imports
+the `pyDulcificum` converter, not a port either. Cura starts without each of them.
+
+`SentryLogger` (crash reports) is shipped: `CuraApplication` preloads it unconditionally, and
+Uranium's preload path does not catch a missing plugin, so Cura aborts before its first window
+without it. It registers nothing when `sentry_sdk` cannot be imported, and `sentry_sdk` is not a
+port, so it sends nothing.
 
 `build.sh` leaves out `resources/i18n`, so the interface shows its English source strings. Test
 directories and byte-code caches are removed, every file is made mode 644, and the modules are
-byte-compiled against their installed paths. The three `test` lines at the end stop the build if
-the base printer definition, the material profiles or the CuraEngine backend plugin are missing.
+byte-compiled against their installed paths. The four `test` lines at the end stop the build if
+the base printer definition, the material profiles, the CuraEngine backend plugin or `SentryLogger`
+are missing.
 
 `/usr/bin/cura` is a small launcher that calls `QGuiApplication.setDesktopFileName("cura")` and
 then runs `/usr/lib/cura/cura_app.py`. Without a desktop file name, Qt builds the Wayland app_id

@@ -325,6 +325,7 @@ is "a refused zone left the working one" "Europe/Berlin" "$(prop timedate1 Timez
 call timedate1 SetTimezone string:UTC boolean:false >/dev/null
 is "a zone with no country removes the old country" "<absent>" \
     "$(file modprobe.d/kdos-regdom.conf)"
+has "and returns the running radio to the world domain" "iw reg set 00" "$(ran)"
 
 z=$(dbus-send --bus="$ADDR" --print-reply --dest=org.freedesktop.timedate1 \
     /org/freedesktop/timedate1 org.freedesktop.timedate1.ListTimezones 2>&1)
@@ -376,15 +377,15 @@ echo "  -- org.freedesktop.locale1"
 l=$(dbus-send --bus="$ADDR" --print-reply --dest=org.freedesktop.locale1 \
     /org/freedesktop/locale1 org.freedesktop.DBus.Properties.Get \
     string:org.freedesktop.locale1 string:Locale 2>&1)
-has "the shipped locale.conf is LANG=C.UTF-8, its comment skipped" \
-    'string "LANG=C.UTF-8"' "$l"
+has "the shipped locale.conf is LANG=en_US.UTF-8, its comment skipped" \
+    'string "LANG=en_US.UTF-8"' "$l"
 lacks "and the comment is no variable" 'string "#' "$l"
 is "VConsoleKeymap is /etc/keymap" "us" "$(prop locale1 VConsoleKeymap)"
 is "the shipped xkb.conf follows it: X11Layout" "us" "$(prop locale1 X11Layout)"
 has "GetAll answers for the whole interface" "X11Options" "$(getall locale1)"
 
 n=$(asked)
-call locale1 SetLocale array:string:LANG=C.UTF-8 boolean:false >/dev/null
+call locale1 SetLocale array:string:LANG=en_US.UTF-8 boolean:false >/dev/null
 is "setting the locale already set asks polkit nothing" "$n" "$(asked)"
 answer locale1.set-locale no
 r=$(call locale1 SetLocale array:string:LANG=en_GB.UTF-8 boolean:false)

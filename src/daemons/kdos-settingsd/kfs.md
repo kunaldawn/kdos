@@ -34,8 +34,10 @@ a root daemon links is code running as root.
   actions are three `.policy` files under `/usr/share/polkit-1/actions/` with systemd's ids,
   because plasma-setup's rule and the Date & Time page name them; without
   [polkit](#port-polkit) every call from anyone but root is refused. `set-time` implies
-  `set-timezone` and `set-ntp`, so the page's one password covers its three calls, and those two
-  are allowed to the active local session without one; hostname1's `get-product-uuid` and
+  `set-timezone` and `set-ntp`, and those two are allowed to the active local session without a
+  password. The Date & Time page authorises `set-time` before it saves anything, so it asks for
+  the password on every Apply, a zone-only one included, and that one prompt covers its three
+  calls; hostname1's `get-product-uuid` and
   `get-hardware-serial` guard the two values that identify the machine, which the kernel makes
   root's alone. The daemon is started by `/etc/init.d/43_settingsd.sh` under `ksvc`, after
   polkitd and before the display manager; a supervised daemon ships no activation file, or an
@@ -43,7 +45,8 @@ a root daemon links is code running as root.
 - **What it runs, and what it reads.** `service start|stop chrony` from
   [kdos-tools](#port-kdos-tools) turns network time on and off now, `loadkeys` from
   [kbd](#port-kbd) loads a new console keymap, and `iw` from [iw](#port-iw) applies a new Wi-Fi
-  country; each is an argument vector found through `PATH` and skipped when it is missing, so
+  country, or the world domain `00` for a zone with none, so the running radio never keeps the
+  previous zone's country; each is an argument vector found through `PATH` and skipped when it is missing, so
   none is a dependency. `CanNTP` is true when chrony's init script and `chronyd` from
   [chrony](#port-chrony) are both there. A zone is checked against the zone tree of
   [tzdata](#port-tzdata), a console keymap against kbd's keymaps and an XKB layout against

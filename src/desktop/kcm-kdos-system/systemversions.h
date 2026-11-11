@@ -44,6 +44,7 @@ class SystemVersionsModule : public KQuickConfigModule
     Q_PROPERTY(bool available READ isAvailable NOTIFY availabilityChanged)
     Q_PROPERTY(bool loaded READ isLoaded NOTIFY availabilityChanged)
     Q_PROPERTY(bool configured READ isConfigured NOTIFY statusChanged)
+    Q_PROPERTY(bool live READ isLive NOTIFY statusChanged)
     Q_PROPERTY(bool busy READ isBusy NOTIFY busyChanged)
     Q_PROPERTY(QList<QObject *> slotList READ slotList CONSTANT)
     Q_PROPERTY(bool trialArmed READ isTrialArmed NOTIFY statusChanged)
@@ -82,6 +83,7 @@ public:
     bool isAvailable() const;
     bool isLoaded() const;
     bool isConfigured() const;
+    bool isLive() const;
     bool isBusy() const;
     QList<QObject *> slotList() const;
     bool isTrialArmed() const;
@@ -120,6 +122,7 @@ public:
     Q_INVOKABLE void cancelTrial();
     Q_INVOKABLE void restartNow();
     Q_INVOKABLE void openUpdates();
+    Q_INVOKABLE void openInstaller();
     Q_INVOKABLE void dismissMessage();
 
     SlotsClient *client() const;

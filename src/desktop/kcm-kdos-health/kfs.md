@@ -10,11 +10,13 @@ has no Apply.
 
 The rows of About this System are six POSIX shell scripts installed in `/usr/libexec/kdos`:
 `about-slot` (the A/B slot, its version and state, from `/run/kdos/slot.json`, or the slot alone
-from the boot entry's `kdos_slot=` when that file is absent), `about-update` (the key that
+from the boot entry's `kdos_slot=` when that file is absent, or `Live medium` when neither names a
+slot and the root is an overlay), `about-update` (the key that
 verified the last update offered and when, from `/var/lib/kdos/update.json`), `about-tree` (the
 commit and date of `/ports`, from its `TREE` stamp), `about-accent` (the KDOS accent, and the
 login screen's when it differs), `about-libc` (musl's version, from kpkg's record) and
-`about-boxes` (how many box profiles this user has). The list that names them is
+`about-boxes` (how many box profiles this user has). Each prints its label ending in a colon,
+since Info Center shows the label verbatim beside its own rows, which end in one. The list that names them is
 `/usr/share/kdos/xdg/kcm-about-distrorc`, shipped under `fs/`. The port is KDOS's own code
 with no upstream source, built with CMake against KF6 KCMUtils.
 

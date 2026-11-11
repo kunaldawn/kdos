@@ -42,9 +42,11 @@ AppStream file.
 - **The update is a slot image or binhost packages, whichever `kdos update check` offered.** The
   daemon passes no lane to `kdos update apply`; the update document's `lane` only changes the
   AppStream text, which names the signed system image or the packages.
-- **Nothing listens on localhost:3129.** Discover asks that address for an update's size and shows 0
-  when nothing answers; the size still to download is in the update document, and the AppStream
-  text Discover shows above the release notes states it.
+- **The size travels in the AppStream file.** The size still to download is in the update
+  document; the AppStream text Discover shows above the release notes states it, and the offered
+  release carries it as an artifact's download size, which [discover](#port-discover)'s
+  `sysupdate-size.patch` reads for the Updates list. Nothing listens on localhost:3129, the size
+  service Discover asks when no artifact names a size.
 - **A trial boot is offered nothing.** While this boot is the trial of the other slot, the slot an
   update would fill is the confirmed way back; `CheckNew` answers empty and `Acquire` is refused
   until the trial is confirmed or rolled back.

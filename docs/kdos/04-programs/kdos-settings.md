@@ -38,15 +38,18 @@ Discover's "Runs in a box" badge links to it. For one box it shows:
 | Section | What it holds |
 |---|---|
 | Lifecycle | Start, stop, restart, recreate, remove, and export as a `.ktar` set |
-| Colour | The title-bar colour KWin gives the box's windows: one swatch per installed KDOS colour scheme, and Neutral, the default |
+| Colour | The title-bar colour KWin gives the box's windows: one swatch per installed KDOS colour scheme, and Neutral, the default. Each swatch is a small title bar in its scheme's own colours: the background, a sample of the title text and a stripe of the scheme's accent |
 | Permissions | Network, the home folder and what the box writes, devices, the graphics card and sound, memory, processor and process limits, when it stops while idle, whether its windows show, when it may use the X11 display, and which desktop-wide Wayland and bus grants it holds |
 | Confinement | While the box runs, which boundary held for it, and why |
 
 The page reads the box's profile, `~/.config/kdos/boxes/<box>.conf`, and shows beside each control
 what `kdos-box profile <box>` says enforces that key, with every `!` line about a value the box
-cannot be given. A change runs `kdos-box profile <box> key=value` for each key that changed;
-lifecycle buttons run `kdos-box` and `kdos-appbox` the same way, as the user and without root. The
-page never calls podman. The profile's keys are in [kdos-appbox](kdos-appbox.md), and the
+cannot be given. The words are kdos-box's; the page sets them as prose, with a capital first word
+and each quoted word or `key=value` in code. A change runs `kdos-box profile <box> key=value` for
+each key that changed; lifecycle buttons run `kdos-box` and `kdos-appbox` the same way, as the user
+and without root. A command that fails says so with the last line it printed as the reason, and
+with no reason when it printed nothing; the busy line shows only the running command's output,
+never the listing that refreshes beside it. The page never calls podman. The profile's keys are in [kdos-appbox](kdos-appbox.md), and the
 desktop-wide grants, which KWin reads from the same file, in [KWin](kwin.md#what-a-box-may-bind).
 
 ### What takes effect when
@@ -67,7 +70,7 @@ apply to the next window the box opens.
 
 | State | Means |
 |---|---|
-| Confined | The box's Wayland socket is tagged, its private runtime folder has no `wayland-0` and no `bus`, its bus goes through `xdg-dbus-proxy`, and no X11 display is within its reach |
+| Confined | The box's Wayland socket is tagged, its private runtime folder has no session Wayland socket and no `bus`, its bus goes through `xdg-dbus-proxy`, and no X11 display is within its reach |
 | Tagged | KWin's restrictions apply to the tagged socket, but the box can reach past it: through a runtime folder shared with the session, an unfiltered bus or an X11 display. The reason is shown |
 | Not confined | Its last launch had no tagged socket, so nothing marks its windows as a box's |
 
@@ -97,7 +100,8 @@ owner of `io.kdos.Power1` only, and reloads when it holds no change of its own.
 
 `/usr/libexec/kdos/kdos-fwask`, started at login by an autostart entry in
 `/usr/share/kdos/xdg/autostart`, is the notification that offers to let a blocked program in. Every
-ten seconds it asks `kdos-powerd` for the knock counts. When a count rose for KDE Connect, krdp,
+ten seconds it asks `kdos-powerd` for the knock counts, which count only packets from another
+machine. When a count rose for KDE Connect, krdp,
 krfb or kiwix-serve, the program behind it is running as the session's user, and that user has not
 been asked about it on the current NetworkManager connection, it posts one notification with Allow
 and Not on This Network. It asks only about services a session program serves: a rising count on
@@ -128,7 +132,7 @@ The same port adds six KDOS rows to the About this System page, named by
 
 | Script | Shows | From |
 |---|---|---|
-| `about-slot` | The A/B slot, its version and state | `/run/kdos/slot.json`, or the boot entry's `kdos_slot=` |
+| `about-slot` | The A/B slot, its version and state, or `Live medium` | `/run/kdos/slot.json`, or the boot entry's `kdos_slot=`, or an overlay root in `/proc/mounts` |
 | `about-update` | The key that verified the last update offered, and when | `/var/lib/kdos/update.json` |
 | `about-tree` | The commit and date of the recipe tree | `/ports/TREE` |
 | `about-accent` | The KDOS accent, and the login screen's when it differs | the accent files |
@@ -136,7 +140,7 @@ The same port adds six KDOS rows to the About this System page, named by
 | `about-boxes` | How many box profiles this user has | `~/.config/kdos/boxes` |
 
 Info Center runs each script twice on its interface thread and ends System Settings when one prints
-fewer than two lines, so each prints a label and a value on every machine and every error (`Unknown`
+fewer than two lines, so each prints a label, ending in a colon like Info Center's own, and a value on every machine and every error (`Unknown`
 when it knows nothing), reads only small state files, never asks podman, the ESP or the network, and
 sets its own `PATH`. `testing/aboutcheck.sh` runs each on a booted image and asserts the two lines
 and a run under 100 ms.
@@ -160,7 +164,11 @@ setting an accent changes is in [The kdos command](kdos-command.md#kdos-theme).
 **Where the accent is held.** Below the swatches the page compares the three places an accent
 lives: Plasma's `kdeglobals [General] ColorScheme`, the KDOS accent the terminals and command-line
 tools wear (`~/.config/kdos/accent`), and `/etc/kdos/accent`, which the screens before login wear.
-When Plasma is ahead or the machine behind, Repaint Everything runs `kdos theme --from-plasma
+The line under the swatches names what each surface wears: the login screen wears the greeter set
+under `/usr/share/kdos/greeter/<accent>/`, which for `paper` is its dark partner `bone`, so the line
+names the partner; the boot menu is named only where `/boot/efi` exists, so a live medium, whose
+menu cannot be recoloured, is not told its menu changed. When Plasma is ahead or the machine behind,
+Repaint Everything runs `kdos theme --from-plasma
 <Plasma's accent>`, the command kded-kdos runs, so Plasma's choice is kept and not applied twice.
 The page follows kded-kdos over `io.kdos.Kded1`: while the module is carrying an accent down, the
 page is busy and starts nothing, and when its last run failed while the accents still disagree,
@@ -173,7 +181,10 @@ contrast), Draw over fullscreen windows, and Terminus in Konsole and for fixed-w
 `kdos phosphor on|off`, `preset subtle|retro`, `fullscreen on|off` or `terminus on|off`. Fine-tune…
 opens the CRT effect's own settings, where strength, scanlines and curvature are set by hand; the
 page then shows the preset as Custom, and picking a preset replaces the tuning.
-Under software rendering the switch is disabled with the reason `kdos phosphor` gives; a `kdos`
+Under software rendering the switch and every option are disabled together, because the mode can
+never come on and an option recorded for it would wait for an `on` that is refused; a mode already
+on keeps them, so it can still be changed and turned off. A sentence says why, from the record's
+`refusal`: GPU rendering, or a running Plasma session. A `kdos`
 without the verb leaves the section saying the mode is not available. What the mode does is in
 [KWin](kwin.md#phosphor-mode).
 
@@ -189,6 +200,12 @@ newer release from: the KDOS releases, a folder or removable medium, or another 
 the page shows what the update service reports (an update available, one already prepared in the
 other slot and waiting to be installed from Discover, and why the last one stopped) and opens
 Discover to act on it.
+
+A machine with no boot state shows no slot forms. One installed with a single root is told it has
+one version of KDOS and nothing to go back to. The live medium (`Live` on `io.kdos.Slots1`) is
+named as the live session: it runs from the installation medium, keeps no versions and is not
+updated, so the page shows neither the update source nor the Discover button, and its one button,
+Install KDOS, starts `kdos-installer-gui`.
 
 The page holds no privilege and touches no file of the boot state. Every change is a call to
 `io.kdos.Slots1` on the system bus, served by `kdos-sysupdated`, which asks polkit before it acts:
@@ -222,8 +239,12 @@ types. A restic plan:
   for a month, one a week for six months, one a month for two years and one a year after that,
   counted from the newest snapshot, and removes only `kup`-tagged snapshots, so snapshots
   `kdos backup` saved into the same repository are never removed by Kup;
-- is checked and repaired (the index repaired, then the repository checked) from the Backup Status
-  applet in the tray.
+- is checked before each backup when Verify integrity of backups is on, and a failed check's
+  notification offers Repair (the index repaired, then the repository checked again);
+- is saved, pruned by that policy, browsed and its log read from the Backup Status applet in the
+  tray (Save Backup, Prune Old Backups, Show Files, View Log); the applet has no check action;
+- starts with `~/.restic` as its destination when restic is chosen for a new plan, where Kup's own
+  default is bup's `~/.bup`; the repository is left out of its own snapshots wherever it is.
 
 Dolphin browses a restic repository through the `restic:` KIO worker, one folder per snapshot, read
 with `restic --no-lock` so it works on read-only media and while a backup runs. `kdos backup` is
@@ -253,8 +274,10 @@ set on a page, in the installer or with an editor is the same value everywhere.
 
 polkit decides who may change what, under systemd's own action ids. The active session may set the
 time zone and switch network time without a password; setting the clock, the hostname, the locale
-or the keyboard asks for an administrator's password, and the Date & Time page's one prompt covers
-its three calls. A value is checked (a zone against the zone tree, a keymap against kbd's, a layout
+or the keyboard asks for an administrator's password. The Date & Time page is KDE's, and it
+authorises setting the clock before it saves anything, so every Apply there asks for an
+administrator's password, a zone-only change included, and that one prompt covers its three calls;
+`kdos timezone` changes the zone with none. A value is checked (a zone against the zone tree, a keymap against kbd's, a layout
 against xkeyboard-config's) before polkit is asked, so a bad value is refused without a prompt.
 
 Every file, every polkit action, the hardware-clock rule, how the daemon is started and how it is

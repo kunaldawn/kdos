@@ -20,17 +20,21 @@
  * ---------------------------------
  */
 
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 
 #include "kdos-tools.h"
 
-/* Best effort — a screenshot must never fail on a notification. */
+/* Best effort — a screenshot must never fail on a notification, and a
+ * refused one (Plasma rate-limits a burst) is not this command's output;
+ * kb_notify sends the sender's errors to /dev/null. */
 static void toast(const char *summary, const char *body)
 {
 	kb_notify("kdos-shot", summary, body);
@@ -193,8 +197,8 @@ int shot_main(int argc, char **argv)
 	time_t now = time(NULL);
 	struct tm tm;
 	localtime_r(&now, &tm);
-	char leaf[64];
-	strftime(leaf, sizeof(leaf), "kdos-%Y%m%d-%H%M%S.png", &tm);
+	char stamp[32], leaf[64];
+	strftime(stamp, sizeof(stamp), "kdos-%Y%m%d-%H%M%S", &tm);
 	/* A QR goes to the runtime directory — 0700 and this person's own —
 	 * and never to ~/Pictures, because it is deleted the moment it has
 	 * been read. */
@@ -205,10 +209,41 @@ int shot_main(int argc, char **argv)
 		snprintf(qrpath, sizeof(qrpath), "%s/kdos-qr.png",
 			 kb_runtime_dir());
 		file = kb_strdup(qrpath);
+		unlink(file);
 	} else {
-		file = kb_path_join(dir, leaf);
+		/*
+		 * ONE NAME PER SHOT. The stamp has a resolution of a second,
+		 * so a second shot in the same second takes -2, -3…; the name
+		 * is reserved with O_EXCL before Spectacle runs, and Spectacle
+		 * writes over its own empty file.
+		 */
+		file = NULL;
+		for (int n = 1; n < 1000 && !file; n++) {
+			int fd;
+
+			if (n == 1)
+				snprintf(leaf, sizeof(leaf), "%s.png", stamp);
+			else
+				snprintf(leaf, sizeof(leaf), "%s-%d.png", stamp,
+					 n);
+			file = kb_path_join(dir, leaf);
+			fd = open(file, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC,
+				  0644);
+			if (fd >= 0) {
+				close(fd);
+			} else {
+				free(file);
+				file = NULL;
+				if (errno != EEXIST)
+					break;
+			}
+		}
+		if (!file) {
+			fprintf(stderr, "kdos-shot: no free name in %s\n", dir);
+			free(dir);
+			return 1;
+		}
 	}
-	unlink(file);
 
 	KbArgv g = {0};
 	kb_argv_add(&g, "spectacle");
@@ -218,9 +253,11 @@ int shot_main(int argc, char **argv)
 	kb_argv_add(&g, "-o");
 	kb_argv_add(&g, file);
 	kb_argv_end(&g);
-	/* A selection cancelled with Escape writes no file, and is a person's
-	 * decision rather than a failure: nothing is said. */
-	if (kb_run(&g) != 0 || !kb_path_exists(file)) {
+	/* A selection cancelled with Escape writes no picture — the reserved
+	 * name stays empty — and is a person's decision rather than a failure:
+	 * nothing is said. */
+	struct stat fst;
+	if (kb_run(&g) != 0 || stat(file, &fst) != 0 || fst.st_size == 0) {
 		if (strcmp(mode, "region") && strcmp(mode, "qr"))
 			toast("Screenshot failed", "Spectacle could not "
 				  "capture the screen");

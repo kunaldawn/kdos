@@ -11,7 +11,9 @@
  *
  * System Versions. The banners say what the next restart will do and what
  * the last one did; the two slot forms say what each slot holds; the
- * Updates form is the one setting on the page, and Apply writes it.
+ * Updates form is the one setting on the page, and Apply writes it. The
+ * live medium has none of them: it keeps no versions and is not updated,
+ * so the page says that and offers the installer instead.
  */
 
 pragma ComponentBehavior: Bound
@@ -130,13 +132,23 @@ KCM.SimpleKCM {
             Layout.fillWidth: true
             Layout.margins: Kirigami.Units.gridUnit * 2
             visible: !kcm.available || !kcm.configured
-            icon.name: !kcm.loaded ? "view-refresh" : !kcm.available ? "dialog-error" : "drive-harddisk-root"
+            icon.name: !kcm.loaded ? "view-refresh" : !kcm.available ? "dialog-error" : kcm.live ? "media-optical" : "drive-harddisk-root"
             text: !kcm.loaded ? i18nc("@info:placeholder", "Reading the installed versions…")
                 : !kcm.available ? i18nc("@info:placeholder", "The system versions service is not running")
+                : kcm.live ? i18nc("@info:placeholder", "This is the live session")
                 : i18nc("@info:placeholder", "This computer has one version of KDOS")
             explanation: !kcm.loaded ? ""
                 : !kcm.available ? i18nc("@info", "kdos-sysupdated answers for the installed versions. Start it with “service start sysupdated” and open this page again.")
+                : kcm.live ? i18nc("@info", "It runs from the installation medium, keeps no versions and is not updated. Installing KDOS gives a system that is updated into its second slot and can go back to the previous version.")
                 : i18nc("@info", "It was installed with one system slot, so there is no previous version to go back to. An installation with two slots keeps the previous version after every update.")
+            /* PlaceholderMessage shows its button while the action is
+             * enabled, so `enabled` is what hides it off the live medium. */
+            helpfulAction: Kirigami.Action {
+                enabled: kcm.available && kcm.live
+                text: i18nc("@action:button", "Install KDOS…")
+                icon.name: "system-software-install"
+                onTriggered: kcm.openInstaller()
+            }
         }
 
         Repeater {
@@ -160,7 +172,7 @@ KCM.SimpleKCM {
             id: updatesForm
 
             Layout.fillWidth: true
-            visible: kcm.available
+            visible: kcm.available && !kcm.live
 
             Kirigami.Separator {
                 Kirigami.FormData.isSection: true
@@ -271,8 +283,13 @@ KCM.SimpleKCM {
         }
     }
 
+    /* A dialog declared in a SimpleKCM is moved into its scrolled content
+     * and centred there, out of view behind its own modal dim: it is
+     * parented to the window's overlay. */
     Kirigami.PromptDialog {
         id: startDialog
+
+        parent: root.QQC2.Overlay.overlay
 
         property var slotInfo: null
 

@@ -24,6 +24,34 @@ from the environment and takes its options in its own form.
   file (`-fno-align-jumps`, `-fno-align-functions`, `-fno-tree-ch` and the rest), which the
   default leaves out whenever `CFLAGS` names a level.
 
+## Patches
+
+`tz-reload.patch` makes `tzset()` follow a replaced zone file. musl keys its loaded zone by the
+`TZ` string alone, and that string is the same before and after a zone change: `/etc/localtime`
+when `TZ` is unset, `:/etc/localtime` under the profile [kdos-settingsd](#port-kdos-settingsd)
+writes. Without the patch no running program ever re-reads the link, even when it calls `tzset()`
+itself, and the panel clock and every other program started before the change keep the old zone
+until they restart. With it,
+a `tzset()` whose zone came from a path (`TZ` unset, `:/path`, an absolute or `./` path) stats
+that path, following the link, and reloads the zone when the device, inode, size or modification
+time differs from the file loaded. A zone name or a POSIX rule is never re-read. `localtime_r`,
+`mktime` and `strftime` take no stat and keep the cached zone until something calls `tzset()`;
+Qt calls it before every local-time conversion, so Qt and KDE programs follow within one
+conversion, and a C program that never calls it keeps its zone as before. This is glibc's rule
+for `tzset()`.
+
+A zone re-read under an unchanged `TZ` leaves the previous zone file mapped: one mapping is kept
+per zone change, for the life of the program. `tm_zone` in every `struct tm` already filled points
+into that file's abbreviations, as `tzname[]` does for a zone file with no POSIX footer, and other
+threads read both without musl's lock; Qt reads `tm_zone` after releasing its own. Unmapping it
+would turn the next such read into a fault. Only a change of the `TZ` string itself unmaps the
+old file, as upstream musl does. A `struct tm` filled under the old zone afterwards gives `""`
+from `strftime`'s `%Z`, which checks `tm_zone` against the zone now loaded. The patch is to be
+offered upstream on the musl mailing list.
+
+The cross musl of [Part III](../../../../docs/kfs/03-bootstrap/020-musl-libc.md) is built without
+the patch: this port replaces it before any shipped program is linked.
+
 ## Notes
 
 `ldconfig`, which `build.sh` installs into `/usr/sbin` from the port directory, is a script that

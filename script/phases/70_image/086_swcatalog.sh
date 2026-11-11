@@ -11,7 +11,8 @@
 # ---------------------------------
 #
 # Write the AppStream catalogue of the installed ports,
-# /usr/share/swcatalog/xml/kdos-ports.xml, over the finished tree.
+# /usr/share/swcatalog/xml/kdos-ports.xml, over the finished tree, and
+# kdos-debian-exclude.xml beside it.
 #
 # Discover's KDOS backend lists host software from this file and kpkg's
 # database. The build skips the helper that rewrites it after every install,
@@ -22,6 +23,13 @@
 # installs, by its own metainfo or by its desktop entry. A tree with the
 # catalogue writer and no component in its output means the manifests or the
 # metainfo were not read, which no image should ship.
+#
+# kdos-debian-exclude.xml REMOVES FROM THE APPSTREAM POOL the Debian
+# applications /usr/share/kdos/discover/debian-exclude names, read out of
+# debian-dep11's catalogue. KRunner's software results read the pool and
+# nothing else, so without it they offer applications Discover's Debian lane
+# refuses to build. The writer fails when the list names nothing the
+# catalogue has, and so does this step.
 #
 # RUNS AFTER 040_orphans.sh, so a swept package is not offered as installed,
 # and before 087_gates.sh, 090_initramfs.sh and 110_iso.sh. The step number does
@@ -45,3 +53,6 @@ if [ "$n" -eq 0 ]; then
     exit 1
 fi
 echo "[swcatalog] $n components in $OUT"
+
+kdos-discover-catalog --root / --debian-exclude /usr/share/kdos/discover/debian-exclude \
+    --out /usr/share/swcatalog/xml/kdos-debian-exclude.xml

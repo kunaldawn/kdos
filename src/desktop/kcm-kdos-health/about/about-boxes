@@ -20,4 +20,4 @@ if [ -n "${HOME:-}" ]; then
 	for f in "$HOME"/.config/kdos/boxes/*.conf; do [ -f "$f" ] && n=$((n + 1)); done
 	case $n in 0) v=None ;; 1) v="1 box" ;; *) v="$n boxes" ;; esac
 fi
-printf 'Boxes\n%s\n' "$v"
+printf 'Boxes:\n%s\n' "$v"

@@ -1,0 +1,21 @@
+Subject: Keep the requested windowed size as the Wayland floating size
+
+The window opens at the splash size, and setting the video mode to its windowed
+size does not update floating_width and floating_height. The compositor's next
+configure carries 0x0, the configure handlers fall back to the floating size,
+and the window returns to 240x256 with the menu clipped.
+
+--- a/gfx/common/wayland_common.c
++++ b/gfx/common/wayland_common.c
+@@ -974,6 +974,11 @@
+ 
+    if (!fullscreen)
+    {
++      /* A configure event of 0x0 leaves the size to the client, which
++       * takes the floating size; keep it the requested size, or the window
++       * shrinks back to the splash size on the next configure. */
++      wl->floating_width       = wl->width;
++      wl->floating_height      = wl->height;
+       wl->buffer_scale         = wl->pending_buffer_scale;
+       wl->fractional_scale_num = wl->pending_fractional_scale_num;
+       wl->buffer_width         = wl->fractional_scale ?

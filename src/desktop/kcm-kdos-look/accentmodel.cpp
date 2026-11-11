@@ -63,12 +63,10 @@ AccentModel::Row AccentModel::load(const QString &id)
     }
     const KColorScheme window(QPalette::Active, KColorScheme::Window, config);
     const KColorScheme view(QPalette::Active, KColorScheme::View, config);
-    const KColorScheme selection(QPalette::Active, KColorScheme::Selection, config);
     r.window = window.background(KColorScheme::NormalBackground).color();
     r.text = window.foreground(KColorScheme::NormalText).color();
     r.view = view.background(KColorScheme::NormalBackground).color();
-    r.highlight = selection.background(KColorScheme::NormalBackground).color();
-    r.highlightText = selection.foreground(KColorScheme::NormalText).color();
+    r.accent = view.decoration(KColorScheme::FocusColor).color();
     r.available = true;
     return r;
 }
@@ -102,10 +100,8 @@ QVariant AccentModel::data(const QModelIndex &index, int role) const
         return r.view;
     case TextColorRole:
         return r.text;
-    case HighlightColorRole:
-        return r.highlight;
-    case HighlightTextColorRole:
-        return r.highlightText;
+    case AccentColorRole:
+        return r.accent;
     default:
         return {};
     }
@@ -122,8 +118,7 @@ QHash<int, QByteArray> AccentModel::roleNames() const
         {WindowColorRole, "windowColor"},
         {ViewColorRole, "viewColor"},
         {TextColorRole, "textColor"},
-        {HighlightColorRole, "highlightColor"},
-        {HighlightTextColorRole, "highlightTextColor"},
+        {AccentColorRole, "accentColor"},
     };
 }
 

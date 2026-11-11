@@ -11,6 +11,9 @@
   installer recorded it in /var/lib/kdos/apps-pending). The "Selected during
   install" menu takes the place of the kdos-pending marker only while that
   file names something; Discover's category option opens it by that name.
+  The "Boxes" menu, of every resource carrying kdos-box, takes the place of
+  the kdos-boxes marker only while at least one box exists, so a machine
+  with none has no empty page.
 -->
 <Menu>
 
@@ -49,13 +52,7 @@
     <!-- kdos-sets -->
   </Menu>
 
-  <Menu>
-    <Name>Boxes</Name>
-    <Icon>utilities-terminal</Icon>
-    <Include>
-      <Category>kdos-box</Category>
-    </Include>
-  </Menu>
+  <!-- kdos-boxes -->
 
   <Menu>
     <Name>Add-ons</Name>

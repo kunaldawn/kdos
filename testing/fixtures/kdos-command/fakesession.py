@@ -11,6 +11,10 @@
 #   FAKE_PROFILE     the tab's profile name (default "KDOS Bone")
 #   FAKE_NO_KWIN     set: org.kde.KWin is not claimed at all
 #
+# Night Light's `enabled` is [NightColor] Active in $XDG_CONFIG_HOME/kwinrc,
+# read at every Get as KWin's watcher would have; Toggle Night Color flips
+# the suspension, as KWin's does.
+#
 # The same process also serves timedate1, hostname1 and locale1, the names
 # kdos-settingsd serves on the system bus; a test points
 # DBUS_SYSTEM_BUS_ADDRESS at this bus to reach them. A zone that does not
@@ -84,13 +88,33 @@ class Desktops(dbus.service.Object):
         raise dbus.exceptions.DBusException('no such property',
                                             name='org.freedesktop.DBus.Error.InvalidArgs')
 
+def kwinrc_active():
+    path = os.path.join(os.environ.get('XDG_CONFIG_HOME', ''), 'kwinrc')
+    group, on = None, False
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith('['):
+                    group = line
+                elif group == '[NightColor]' and line.startswith('Active='):
+                    on = line[len('Active='):] == 'true'
+    except OSError:
+        pass
+    return on
+
 class Night(dbus.service.Object):
-    running = False
+    suspended = False
     def __init__(self):
         super().__init__(bus, '/org/kde/KWin/NightLight')
     @dbus.service.method(PROPS, in_signature='ss', out_signature='v')
     def Get(self, iface, prop):
-        return dbus.Boolean(Night.running)
+        inhibited = Night.suspended
+        if prop == 'enabled':
+            return dbus.Boolean(kwinrc_active())
+        if prop == 'inhibited':
+            return dbus.Boolean(inhibited)
+        return dbus.Boolean(kwinrc_active() and not inhibited)
 
 class Crt(dbus.service.Object):
     def __init__(self):
@@ -151,7 +175,7 @@ class Accel(dbus.service.Object):
     def invokeShortcut(self, name):
         log('invokeShortcut', name)
         if name == 'Toggle Night Color':
-            Night.running = not Night.running
+            Night.suspended = not Night.suspended
 
 class Machine(dbus.service.Object):
     def __init__(self, path):

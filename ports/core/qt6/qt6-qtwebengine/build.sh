@@ -18,6 +18,7 @@ done
 patch -p1 -i "$PORT_SRC/gn-cstdint.patch"
 patch -p1 -i "$PORT_SRC/gn-ldflags.patch"
 patch -p1 -i "$PORT_SRC/sandbox-path-max.patch"
+patch -p1 -i "$PORT_SRC/userns-probe-no-malloc.patch"
 export CFLAGS="$CFLAGS -D_LARGEFILE64_SOURCE -Wno-builtin-macro-redefined -Wno-deprecated-declarations"
 export CXXFLAGS="$CXXFLAGS -D_LARGEFILE64_SOURCE -Wno-builtin-macro-redefined -Wno-deprecated-declarations"
 export NINJAFLAGS="$MAKEFLAGS"

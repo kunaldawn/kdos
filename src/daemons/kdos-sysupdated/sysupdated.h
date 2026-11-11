@@ -130,6 +130,7 @@ typedef struct {
 
 	/* the boot state, from `kdos-bootctl status --json` */
 	int configured;
+	int live;			/* the live medium: no state, no slots */
 	char active[2], running[2], trying[2], failed[2];
 	unsigned attempts;
 	int bootnext;
@@ -173,6 +174,7 @@ void state_version(char *out, size_t cap);
 long long state_fetch_time(void);
 int state_acquired(char *slot, size_t scap, char *ver, size_t vcap);
 int state_slots_ok(void);
+int state_live(void);
 int state_doc_current(void);
 int state_on_trial(void);
 const char *state_current_offer(void);

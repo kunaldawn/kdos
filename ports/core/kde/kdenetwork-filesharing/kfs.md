@@ -31,14 +31,19 @@ from `smb.conf` through `testparm`, and adding a share fails until that director
 by the usershare group with the sticky bit set, and the user belongs to the group. The package
 installs none of that configuration; the image does. It ships `/etc/samba/smb.conf` with the
 usershare settings and the `sambashare` group, and [samba](#port-samba)'s service script makes
-`/var/lib/samba/usershares` at every boot. `net usershare add` writes a share there whether or not
-`smbd` runs, and `smbd` is not running until something is shared: [kded-kdos](#port-kded-kdos)
-sees the first share appear and has [kdos-powerd](#port-kdos-powerd) start Samba, which then
-serves it. The Share tab adds its user to `sambashare` through the KAuth helper below. Other machines reach a share only through TCP port 445, which the
+`/var/lib/samba/usershares` at every boot. `net usershare add` turns every name in the share's
+ACL, the plugin's `Everyone` and the user's own among them, into a SID by asking the local `smbd`,
+so a share can be made only while `smbd` runs. The service script starts it at boot once
+`sambashare` has a member, and the first login of an account the Share tab has just added to the
+group has [kded-kdos](#port-kded-kdos) ask [kdos-powerd](#port-kdos-powerd) to start it. Other machines reach a share only through TCP port 445, which the
 shipped firewall keeps closed until its `smb` service is opened (see
 [The firewall](../../../../docs/kdos/02-user-guide/administration.md#the-firewall)).
 
 Setting the Samba password and joining the group go through a KAuth helper that runs as root:
 `smbpasswd` from [samba](#port-samba) and `/usr/sbin/usermod` from [shadow](#port-shadow). Both
-actions are `auth_admin`. The page announces new shares over Avahi's D-Bus interface, so
+actions are `auth_admin`, so a first share asks for an administrator's password twice: **Make Me a
+Group Member** (`org.kde.filesharing.samba.addtogroup`), after which the user logs out and in,
+whatever the tab's "restart the system" says, and **Set Samba password**
+(`org.kde.filesharing.samba.createuser`). Homes are mode 0700, so the tab then offers **Fix
+Permissions**, which lets others pass through the home folder to reach the shared one. The page announces new shares over Avahi's D-Bus interface, so
 [avahi](#port-avahi) is in `depends` for run time.

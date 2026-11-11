@@ -133,17 +133,20 @@ kdos help --keys     # the global shortcuts alone
 The sheet has three blocks:
 
 - **WHERE THINGS LIVE** names the three places software lives: `kpkg` for the host system
-  (compiled from source against musl), `kdos app` for applications, and `kdos-box` for
-  environments. Most questions of the form "how do I install X" start with which of the three X
+  (compiled from source against musl), `kdos app` for applications (a box over a pack, offline,
+  or built on this machine over a network), and `kdos-box` for environments. Most questions of the form "how do I install X" start with which of the three X
   belongs to.
-- **COMMANDS** lists the everyday verbs, including those that belong to other programs
-  (`kdos-power`, `kdos-energy`, `kdos-doc`, `kinstall`).
+- **COMMANDS** lists the everyday verbs, each as it is typed, including those that belong to
+  other programs (`kdos-power`, `kdos-energy`, `kdos-doc`, `kinstall`). Every line fits 80
+  columns.
 - **KEYS** lists the global shortcuts, read from the files kglobalaccel reads:
   `kglobalshortcutsrc` along the configuration cascade, where every component that ever
   registered left its actions with the chord in force, and the desktop entries under
   `kglobalaccel/` along `$XDG_DATA_DIRS`, which declare a program's launch key before anything has
   run. A shortcut you rebound in System Settings is in your own file and wins, so the sheet says
-  what the keyboard does on this login. The keys are grouped by the key card's own table,
+  what the keyboard does on this login. An action's several keys print joined by ` / `, and a
+  `$`-named subgroup such as `[kwin][$InverseAction]`, which pairs an action with its opposite and
+  holds no keys, is skipped. The keys are grouped by the key card's own table,
   `/usr/share/kdos/keycard-groups.conf`, so `Meta+F1` and this sheet put each key under the same
   heading. On a machine where no Plasma session has run yet, the block says that kglobalaccel
   writes the shortcuts at the first login.
@@ -258,10 +261,10 @@ Each check reports one of three levels:
 | Hardware | The wireless regulatory database, its signature and the regulatory domain; SOF audio firmware and topologies; NVIDIA GSP firmware when `nouveau` is bound; whether the calling user can open each attached serial, camera and instrument device (`/dev/ttyUSB*`, `/dev/ttyACM*`, `/dev/video*`, `/dev/usbtmc*`), naming the owning group of any it cannot; and, on a live session, whether the boot medium is reachable at `/mnt/iso` |
 | Boxes | Whether erofs is available to the kernel, whether `kdos-packd` answers and by which mount route, whether the user is uid 1000 (packs are built for it), whether the home directory's filesystem can hold a container's writable layer, whether every mounted pack still has a file behind it; then the box plumbing (`kdos-boxsock`, `kdos-boxinit`, `xdg-dbus-proxy`) and each box's confinement as its last launch recorded it |
 | Boot | Whether `rcS` finished, whether this boot is confirmed or still a trial nobody blessed, and whether SDDM has been restarting (three restarts after the first start and `kdos-dm` gives tty1 to a console login instead) |
-| Session | Whether the Wayland socket exists (not only whether `WAYLAND_DISPLAY` is set), `XDG_RUNTIME_DIR`, turnstile and the supervised session bus, elogind and whether this session is the active one on its seat, and whether `kwin_wayland`, `plasmashell` and the polkit agent are running |
+| Session | Whether the Wayland socket exists (not only whether `WAYLAND_DISPLAY` is set), `XDG_RUNTIME_DIR`, turnstile and the supervised session bus, elogind and whether this session is the active one on its seat, and whether `kwin_wayland`, `plasmashell` and the polkit agent are running and the KDE portal, the session manager (`ksmserver`) and the secret service own their bus names; a wallet switched off (`kwalletrc` `[Wallet] Enabled=false`, as the live medium ships it) makes the secret-service line a skip |
 | Services | `kdos-powerd`'s socket and `io.kdos.Power1`, `kdos-settingsd`, udisks2, `tlp-pd` when it is installed, `kdos-sysupdated` and the last update check's problem, `kdos-energyd` (a `skip` on a machine with no RAPL energy counter, most virtual machines among them), `kdos-oomd` and the protected names it lists that are not running |
 | Containers | That the mount-namespace root is `/`, the `/etc/subuid` and `/etc/subgid` entries rootless containers need, and, when podman is installed, that `podman info` opens this account's store: `ok` with the store's path, or a warning with podman's own first line of complaint; run as root, a warning instead |
-| Desktop | The accent and its global theme `org.kdos.<accent>.desktop`, Xwayland, the lock screen's PAM stack and setuid `unix_chkpwd`, the setuid helpers (below), `fcitx5` when installed, and `~/.local/bin` on `PATH` |
+| Desktop | The accent and its global theme `org.kdos.<accent>.desktop`, Xwayland (its socket when `DISPLAY` is set; otherwise the binary, and `/tmp/.X11-unix` root-owned and mode 1777, without which KWin cannot start it), the lock screen's PAM stack and setuid `unix_chkpwd`, the setuid helpers (below), `fcitx5` when installed, and `~/.local/bin` on `PATH` |
 | Security | Whether the `kdos` password is still the shipped default, and, when it is, whether `sshd` is enabled (`/etc/init.d/70_sshd.sh` executable and no `/etc/service.disabled/sshd`), which turns the warning into one that anyone who can reach the machine can log in. The section appears only when `/etc/shadow` is readable, so an ordinary user gets no section rather than a check that pretends it looked |
 
 The session check looks for the socket because a session that died leaves `WAYLAND_DISPLAY` set in
@@ -336,7 +339,8 @@ this order:
    theme does not change a running desktop's picture. Only a desktop showing a KDOS wallpaper, or
    the theme's default, is moved.
 4. **Konsole**: the profile a new tab opens in, and every open tab whose profile is one of KDOS's.
-   A tab on a profile you made keeps it.
+   A tab on a profile you made keeps it. QMLKonsole's colour scheme (`colorScheme` in
+   `~/.config/qmlkonsolerc`) moves to the accent's `KDOS-<Title>` scheme while it names a KDOS one.
 5. **The terminal programs**: bat, micro, helix, neovim, delta, newsboat, aerc, fzf, tmux, btop, mc,
    yazi, starship and `LS_COLORS`; a running tmux server re-reads its configuration.
 6. **qt5ct**, for Qt 5 applications.
@@ -439,22 +443,25 @@ and the Konsole keys follow the accent in force.
 
 **Software rendering is refused before anything is written.** The effect is unsupported on a
 software renderer, where a full-screen pass per frame would be the desktop's whole budget, so KWin
-is asked first, and a refusal leaves no state file and no key behind.
+is asked first, and a refusal of `on` leaves no state file and no key behind. The option verbs
+(`preset`, `terminus`, `fullscreen`) refuse nothing: each records its option, which takes effect at
+once while the mode is on and at the next `on` while it is off.
 
 | Verb | Does |
 |---|---|
 | `on` | Turns the mode on with the preset (default `subtle`) and the Terminus option as asked; on a mode already on, only the options move. Prints `phosphor mode on (<preset>)` |
 | `off` | Puts every key back and prints `phosphor mode off`, or `phosphor mode is already off` |
 | `status` | `phosphor`, `supported` (with the reason when not), `preset` with its strength, scanlines and curve, `fullscreen`, `terminus`, `accent` (and the one before the mode), and the effect's phase |
-| `preset` | `subtle` (strength 55, no scanlines, no curve) or `retro` (strength 55, scanlines 60, curve 30); a preset whose values were edited by hand reports as `custom` |
-| `terminus` | The Terminus option alone, while the mode stays on |
-| `fullscreen` | Whether a fullscreen window is drawn through the pass (`drawn`) or exempt from it |
+| `preset` | `subtle` (strength 55, no scanlines, no curve) or `retro` (strength 55, scanlines 60, curve 30); a preset whose values were edited by hand reports as `custom`. Applied at once while the mode is on, recorded for the next `on` while it is off |
+| `terminus` | The Terminus option alone: the font changes at once while the mode is on, and is recorded for the next `on` while it is off |
+| `fullscreen` | Whether a fullscreen window is drawn through the pass (`drawn`) or exempt from it; recorded in `kwinrc` whether the mode is on or off |
 | `collapse`, `unfold`, `degauss` | Plays one of the effect's motions now, through `io.kdos.Crt1` at `/io/kdos/Crt1` on KWin |
 
 `status --json` prints one object: `state`, `on`, `supported`, `reason` (`null` when supported),
-`preset`, `strength`, `scanlines`, `curve`, `fullscreen`, `terminus`, `accent`,
+`refusal` (`"session"` or `"gpu"`, the refusals of exit statuses 2 and 3, or `null`), `preset`, `strength`, `scanlines`, `curve`, `fullscreen`, `terminus`, `accent`,
 `previous_accent`, `loaded` (whether each of `kdos_crt`, `kdos_unfold`, `kdos_login` and
-`kdos_quit` is loaded) and `phase`. The Look settings page and the welcome tour read it.
+`kdos_quit` is loaded) and `phase`. The Look settings page and the welcome tour read it; `reason`
+is the command's own sentence, and `refusal` is for a front end that says it in its own words.
 
 | Exit | Means |
 |---|---|
@@ -491,7 +498,9 @@ off. Outside a session the name is recorded and the command prints
 `nothing to undo`, and after a restore the undo set is emptied.
 
 `status --json` prints `{"desk", "panels_edited", "undo"}`: the desk in force, whether the panels
-were changed by hand since it was laid out, and the undo set's path or `null`. The welcome tour
+were changed by hand since it was laid out (a panel, its applets or their order differ from the
+digest in `[Desk] LaidOutPanels`; always `false` outside a session), and the undo set's path or
+`null`. `undo` puts back the digest of the desk it restores. The welcome tour
 asks it before offering a desk.
 
 ### kdos tiling
@@ -526,7 +535,7 @@ command set, and a click there undoes it here:
 | Name | Is |
 |---|---|
 | `stay-awake` | An inhibition of sleep and of the screen locker, held by a process of ours for as long as the switch is on; the battery applet lists it as blocking. PowerDevil drops an inhibition the moment its holder leaves the bus, so the holder is the state, and its pid file says where it is |
-| `night-light` | KWin's own **Toggle Night Color** shortcut, invoked through kglobalaccel: exactly what the key does |
+| `night-light` | `kwinrc [NightColor] Active`, the key System Settings' Night Light page writes and KWin watches. On also writes `Mode=Constant`, so the screen warms at once and stays warm all day, in place of the page's schedule; off writes `Active=false`. It reads as on while KWin reports Night Light enabled and not suspended; on lifts a suspension made with KWin's own *Suspend/Resume Night Light* action, and fails, putting the suspension back, when another program is holding Night Light off. `Meta+Ctrl+Shift+N` runs `kdos toggle night-light` |
 | `dnd` | `plasmanotifyrc [DoNotDisturb] Until`, the key the notification applet's own switch writes, set far ahead; deleted to switch it off |
 | `reduced-motion` | `kdeglobals [KDE] AnimationDurationFactor=0` in your own file, which stops every animation KWin, Plasma and Phosphor mode draw; off deletes the key, so the shipped factor applies again |
 
@@ -549,9 +558,11 @@ make && kdos notify "the build finished"
 ```
 
 It is a `Notify` call on the session bus, sent and answered, so a command typed at a prompt waits
-the moment it takes and says so when no notification server answered. A program that must never
-wait (a terminal's OSC 9 notification) uses the same call fire-and-forget through `kb_notify()` in
-`libkbase`, so the two look the same.
+the moment it takes and says so when no notification server answered. It carries the
+`sound-name` hint `message-new-instant`, so Plasma plays the sound theme's new-message voice with
+it, unless Do Not Disturb is on or the Notifications page has sounds off. A program that must
+never wait (a terminal's OSC 9 notification, a screenshot's) uses the same call fire-and-forget
+through `kb_notify()` in `libkbase`, with no sound.
 
 `--time` and `--battery` compute their text, which a shortcut cannot do: a shortcut runs a fixed
 command.
@@ -806,7 +817,8 @@ or a receive makes no request to `api.github.com` for the latest release, which 
 would not stop: a transfer makes no connection but its own. `croc update` answers, with no
 request, that the system package manager updates croc, and only `croc update --check` asks GitHub.
 
-Started without a terminal (from KRunner's `share.file` route, Dolphin's **Share** action or a
+Started without a terminal (from KRunner's `share.file` route, Dolphin's **Send with a Code
+Word** action or a
 menu), the command opens a
 Konsole window titled **Share** and runs itself inside it, so croc runs in the foreground where its
 own progress output is visible unchanged. At the end that window waits for `Enter`, so the result
@@ -841,23 +853,26 @@ Asks KWin about the desktop, so a script can find a window and act on it. The wi
 its title, application id, process id, state and resource name; `kdos-tools` speaks that protocol
 itself rather than through `libwayland-client`. KWin offers it to clients outside a sandbox and
 refuses it to a box, so `kdos hey` works on the host and never from inside a box. The Wayland socket
-is `$WAYLAND_DISPLAY`, else `$XDG_RUNTIME_DIR/wayland-0`, so it answers from a timer service with no
-`WAYLAND_DISPLAY` too.
+is `$WAYLAND_DISPLAY`, else the first of `$XDG_RUNTIME_DIR/wayland-0` to `wayland-32` that accepts a
+connection, so it answers from a timer service with no `WAYLAND_DISPLAY` too; KWin's socket is
+`wayland-1`. A box's own sockets are in subdirectories of the runtime directory and are never tried.
 
 | Verb | Prints or does |
 |---|---|
 | `list` | Every window: a row number (the id), `ws` (always `-`, kept as a column), state letters (`F` active, `m` minimised, `M` maximised, `X` fullscreen, `a` kept above, `-` none), app id, box and title (cut to 60 characters) |
 | `boxes` | The boxes that have a window on screen, one a line |
 | `run <action> <id>` | `close`, `activate`, `minimize`, `unminimize`, `maximize`, `unmaximize`, `fullscreen`, `unfullscreen`, `keep-above` or `no-keep-above` on the window with that row number or uuid |
-| `outputs` | The screens, from `kscreen-doctor -o` (or `-j` with `--json`) |
+| `outputs` | The screens, from `kscreen-doctor -o` (or `-j` with `--json`); into a pipe or a file, without the colour codes `kscreen-doctor` writes regardless |
 
 `list --json` prints every window with its `uuid`, `pid`, `app_id`, `resource`, `box` (`null` for
 a host window), `title` and the four state flags.
 
-A window's box comes from its process: the cgroup scope `kdos-appbox` starts every boxed process in
-(`app-kdos-<box>-<n>.scope`) names the box, and failing that a window whose app id is a running
-container's name, or begins with it and a dot, is that box's; the longest such name wins, so
-`app.x` does not claim `app.xyz`'s windows. The box column is never truncated, because a box is
+A window's box comes from its process: a box's cgroup scope (`app-kdos-<box>-<n>.scope`) names
+the box where it has one, and otherwise the `KDOS_BOX=<box>` in the process's environment does,
+when the process runs in a mount namespace other than the caller's; `kdos-appbox` sets the
+variable in every box's container and podman passes it to every launch. Failing both, a window
+whose app id is a running container's name, or begins with it and a dot, is that box's; the
+longest such name wins, so `app.x` does not claim `app.xyz`'s windows. The box column is never truncated, because a box is
 named after its pack and a cut name would read as a window with no box. `kdos-box gc` uses `boxes`
 to ask whether a box still has a window before stopping it.
 
@@ -899,7 +914,7 @@ guide is [Applications](../02-user-guide/applications.md), the program that does
 
 | Verb | Does |
 |---|---|
-| `list` | What is installed. `--all` lists the whole catalogue: 75 entries, the 73 applications and 2 datasets, which would bury the handful you have |
+| `list` | What is installed: the catalogue's installed rows, then each `deb.<package>` box Discover's Debian lane built (category `Debian`, from `kdos-box list --json`; a box described and not yet created is left out). `--all` lists the whole catalogue: 72 entries, the 70 applications and 2 datasets, which would bury the handful you have, and the Debian boxes after it |
 | `search` | Entries whose id, name, category or tagline contain the text, ignoring case; exit 1 when none do |
 | `info` | One entry: name, category, state, the row it is built on, and its size labelled an estimate |
 | `groups` | The catalogue's named groups, which `install`, `remove` and `export` accept in place of an id |
@@ -1122,13 +1137,22 @@ kernel's for a camera opened without it:
 |---|---|
 | Microphone | A running `Stream/Input/Audio` node exists, named by the process that owns it |
 | Camera | A camera source (`v4l2` or `libcamera`) has an active link, named by the stream at the other end; or a process holds a `/dev/video*` open itself, which PipeWire never sees |
-| Screen | Any other video source has an active link: KWin's screen casts, which the portal hands out, named by the stream that reads it |
+| Screen | A KWin screencast stream (a `Stream/Output/Video` node owned by `kwin_wayland`), whether Spectacle or the desktop portal asked for it, or any other non-camera video source, has an active link, named by the stream that reads it. Another program's video output stream is not listed |
 
 Each user is named with the box it runs in, from its cgroup, because "Firefox has the microphone"
 is a different sentence when Firefox is a box kept for one website. `--watch` follows
-`pw-dump --monitor` rather than polling it; the camera's file-descriptor scan is the one thing
-polled, every half second, because the kernel announces nothing. The tray's privacy lamps read it
+`pw-dump --monitor` rather than polling it, and runs the camera's file-descriptor scan on inotify:
+an open or close of a `/dev/video*` node, or one appearing in `/dev`, rescans, and the scan runs
+again a quarter second later for an opener whose descriptor was not yet listed. Where inotify
+cannot be set up the scan runs every half second instead. With no `/dev/video*` node the scan
+returns at once, so a machine with no camera never walks `/proc`. The tray's privacy lamps read it
 (see [Privacy lamps](plasma-shell.md#privacy-lamps)).
+
+`stop` ends a screen capture by destroying KWin's stream node for it: KWin closes the screencast,
+so the program that asked is told — Spectacle stops and reports that the stream closed, and a
+program sharing the screen through the portal sees its session end. A camera, or any other video
+source, is shared, so `stop` destroys only the link that feeds the one stream; its frames stop, and
+the program is not told. A camera opened without PipeWire cannot be stopped from here.
 
 Exit 0; 1 when PipeWire cannot be read or an action failed, with the reason on standard error; 2
 on bad usage, which the tray takes as "stop retrying".
@@ -1223,7 +1247,7 @@ counts.
 | Verb | Does |
 |---|---|
 | `check` (the default when no argument is given; name it to pass an option) | Lists each installed package whose version, then release, is older than its recipe's and whether the binary host covers it, counts packages with no recipe here, names the tree's commit, says what is offered and from which lane, and reports the recorded problem. A package newer than its recipe, such as a local rebuild with a higher release, is not listed. `--json` prints the same as one document; `--out PATH` writes that document atomically to `PATH` and implies `--json`; `--fetch` runs `fetch` first. Exit 0 up to date, 1 something behind or an image offered, 2 nothing could be surveyed |
-| `fetch` | Downloads the newest published tree, checks its signature, installs it as `/ports`, and fetches the release index and, through it, the binary-host index and the slot image manifest. With no key in `/etc/kdos/keys/tree` it downloads nothing and records `no-key`. Exit 0 installed or already current, 1 refused or failed, 2 not attempted (not root, another update running, or `/ports` inside a git checkout) |
+| `fetch` | Downloads the newest published tree, checks its signature, installs it as `/ports`, and fetches the release index and, through it, the binary-host index and the slot image manifest. Each part checks its key before the network: with no key in `/etc/kdos/keys/tree` the tree is not downloaded and `fetch` records `no-key`, and with none in `/etc/kdos/keys` neither the binary-host index nor the image manifest is, and each records `no-key` on its own line. Exit 0 installed or already current, 1 refused or failed, 2 not attempted (not root, another update running, or `/ports` inside a git checkout) |
 | `apply` | Fills the inactive slot (the acquire) and makes it the next boot's candidate (the arm). See below |
 | `install <port>` | One port and every package it lacks into the running root, from the release binary host `fetch` keeps. Nothing is ever built: a package the signed index does not cover is refused, and so is a dependency already installed and older than its recipe, because the new package was built against the newer one and the system update comes first. Each package is fetched and checked against the index before any is installed, under `KPKG_REQUIRE_SIG`. The port joins the world set only after everything installed. It prints one `==> installing <pkg>` line per package; `--dry-run` prints `<pkg> <file>` for each and touches nothing, and needs no root. Discover's ports helper runs it through `pkexec`. Exit 0 installed or already was, 1 refused or failed, 2 usage |
 | `notes` | The release notes of the slot this boot runs. `--json` prints `{"version", "previous", "notes"}`: the version running, the version the other slot holds (`""` when none is recorded), and the `RELEASE` file of the tree this slot carries, as Markdown. Exit 1 with no document when the slot carries no notes. The welcome tour's What's New page reads it |
@@ -1237,8 +1261,9 @@ read, and no redirect to plain HTTP is followed. `ports/publish --release` makes
 the tree with the release key; the image trusts that key because the build put its public half in
 `/etc/kdos/keys/tree`. An image built without a release key has none there, and on it `fetch` stops
 before the network with `no trusted tree key in /etc/kdos/keys/tree: this image can verify no
-published tree; `kdos update apply` builds from /ports`: the tree the image carries is the only one
-it can use. Nothing is unpacked before the signature verifies. A tree whose `TREE` stamp is older
+published tree; `kdos update apply --source` builds from /ports`: the tree the image carries is
+the only one it can use. An image with no key in `/etc/kdos/keys` fetches no release index either,
+so `fetch` there reaches no network at all. Nothing is unpacked before the signature verifies. A tree whose `TREE` stamp is older
 than the installed tree's is refused, and the same commit is reported as current. The signature is
 downloaded first, and one byte for byte the installed tree's (kept as
 `/var/lib/kdos/update.state.sig`) is reported as current without downloading the tree. The old tree
@@ -1271,7 +1296,8 @@ tests against the cached index, so what it offers is exactly what `apply` will t
 **What went wrong is recorded.** `fetch` and `apply` write their outcome to
 `/var/lib/kdos/update.state`, and `check` reports the first problem of: `no-tree`, then the last
 fetch's `no-key`, `no-network` or `fetch-failed`, a release index, binary-host index or image
-manifest that did not verify or a file other than the one the release index names, then the last apply's `no-network`, `fetch-failed` or `build-failed`; a machine with a tree
+manifest that no key in `/etc/kdos/keys` could verify (`no-key`), that did not verify, or a file
+other than the one the release index names, then the last apply's `no-network`, `fetch-failed` or `build-failed`; a machine with a tree
 and no package database reports `no-database` and exits 2. The nightly timer
 (`/etc/kdos/timers.d/10-update-check.timer`) runs `kdos update check --out
 /var/lib/kdos/update.json`, which reads only what is already on the machine and fetches nothing;
@@ -1295,7 +1321,11 @@ document when they finish.
 
 `apply` with neither runs both, which is what a person types. `--mount` mounts the inactive slot
 itself (`kdos-sysupdated` passes it); without it the slot must already be mounted. On a trial boot
-the inactive slot is the confirmed one, the way back, and nothing is written into it.
+the inactive slot is the confirmed one, the way back, and nothing is written into it. On the live
+medium, which `kdos-bootctl status --json` reports as `"live": true`, `apply` is refused with
+`this is the live medium: what an update installs here is gone at the next restart unless a
+persistence store keeps it`, because its root is an overlay in RAM; `--in-place` updates the
+session anyway.
 
 | Lane | What `apply` does |
 |---|---|
@@ -1310,7 +1340,7 @@ the inactive slot is the confirmed one, the way back, and nothing is written int
 | `--mount` | Mount the inactive slot itself |
 | `--dry-run` | List what would be fetched and installed; needs no root |
 | `--root DIR` | Install into `DIR` instead of choosing a slot. Nothing after the installs runs: no `kpkg check`, no copy of `/ports`, no `deploy` or `try` |
-| `--in-place` | Update the running root even on an A/B machine, giving up the rollback |
+| `--in-place` | Update the running root even on an A/B machine, giving up the rollback, or on the live medium, into the overlay |
 | `--progress FD` | Write one line per event to that descriptor, for a program |
 
 `--progress` writes these lines, each as it happens:
@@ -1325,8 +1355,8 @@ the inactive slot is the confirmed one, the way back, and nothing is written int
 | `armed <slot> <version>` | The slot is the next boot's candidate |
 
 `SIGTERM` stops an apply between packages, which is what `kdos-sysupdated`'s `Job.Cancel` sends.
-`fetch` and `apply` need root and take one lock, so a tree is never replaced under an install. On a
-machine without A/B slots `apply` updates the running root, and a package that fails leaves the
+`fetch` and `apply` need root and take one lock, so a tree is never replaced under an install. On an
+installed machine without A/B slots `apply` updates the running root, and a package that fails leaves the
 ones that installed in place. See
 [Updating a machine](../03-architecture/packaging.md#updating-a-machine) and
 [A/B slot selection](../03-architecture/boot-and-init.md#ab-slot-selection).
@@ -1447,13 +1477,14 @@ never when a box was ticked:
 |---|---|
 | `backup` | `~/.config/kdos/backup.conf` names a repository and something to put in it, or Kup is on with a restic plan that has a destination |
 | `phone` | KDE Connect has a paired device |
-| `language` | Formats were set, or a second keyboard layout added |
+| `language` | Formats were set, or a second keyboard layout added. A `[Formats]` `LANG` equal to `/etc/locale.conf`'s (a C locale when that names none) is not a choice, since Plasma writes the session's `LANG` there at every account's first login; any other Formats key, or a `LANG` that differs, is |
 | `box` | A box exists |
 | `firmware` | fwupd has no update waiting |
 | `encryption` | The root filesystem sits on LUKS |
 
 An item whose component is absent is left out rather than shown undone: a phone item on a machine
-with no KDE Connect is a task nobody can finish. The tray asks every five seconds while anything is
+with no KDE Connect is a task nobody can finish, and so is encryption on a root that is not a block
+device, such as the live medium's overlay. The tray asks every five seconds while anything is
 open, so fwupd's answer is remembered for six hours and the root device's for the boot. Exit 0; 1 a
 failure, with one line a person can read; 2 on bad usage.
 
@@ -1591,8 +1622,9 @@ medium has been run through every phase; see
 ### kdos persist
 
 ```sh
-kdos persist [--json]                          # report
-sudo kdos persist create [<device>] [--yes]    # -y also works
+kdos persist [--json]                                  # report
+sudo kdos persist create [<device>] [--yes]            # -y also works
+sudo kdos persist reset [--home | --system] [--yes]    # from the clean session
 ```
 
 ```
@@ -1605,48 +1637,82 @@ no persistence store
 
 $ sudo kdos persist create
   disk       /dev/sda  (32G)
-  partitions 3 now; the store becomes number 4
+  partitions 3 now; the store is added after the last
   filesystem ext4, labelled KDOS_PERSIST
 ```
 
 On the live medium, everything you write goes into the upper layer of an overlay held in RAM, and
 is lost at power-off. `create` gives that upper layer a real filesystem instead: one ext4
 partition with no reserved blocks, labelled `KDOS_PERSIST`, made in the free space after the last
-partition of the boot medium or of the disk you name. It asks you to type `yes` unless given
-`--yes`, and it must run as root with `sfdisk` and `mkfs.ext4` installed.
+partition of the boot medium or of the disk you name. A disk with no partition table is given a
+GPT holding only the store. It asks you to type `yes` unless given `--yes`, and it must run as root
+with `sfdisk`, `mkfs.ext4`, `blkid` and `losetup` installed.
 
-`--json` prints the report as one line for a settings page, `{"live", "store", "device"}`: whether
-this is a live session at all (a boot medium is mounted), the store's state as `none`, `present` or
-`in-use`, and its device or `null`. The welcome tour's live page reads it, and offers
-`pkexec kdos persist create --yes`, which the live medium's polkit rule grants the session without a
-password.
+`create` refuses, before it writes anything, when a store already exists, when no device is named
+and the system did not boot from a medium, when the device is a partition rather than a disk (it
+names the disk), when the device is read-only (an optical boot's `/dev/sr0`: name a USB stick
+instead), and when the whole disk is one filesystem with no partition table (it names the type,
+because there is no free space to take). When `sfdisk` will not add the partition, its own error
+is printed.
+
+`--json` prints the report as one line for a settings page:
+
+| Key | Holds |
+|---|---|
+| `live` | Whether a boot medium is mounted at `/mnt/iso` |
+| `store` | `none`, `present`, `refused` or `in-use` |
+| `device` | The store's partition, or `null` |
+| `type` | The store's filesystem type, or `null` |
+| `medium` | The boot medium's disk, or `null` |
+| `writable` | Whether the boot medium can hold a store; `false` for a disc |
+| `candidates` | The disks a store could be made on: the medium when it is writable, then each removable or USB disk that is writable and has nothing mounted |
+
+The welcome tour's live page reads it, offers the candidates, and runs
+`pkexec kdos persist create --yes` for the medium or `pkexec kdos persist create /dev/<name> --yes`
+for another disk, which the live medium's polkit rule grants the session without a password.
 
 The label is the whole interface. At boot the initramfs asks `blkid` for a filesystem with that
 label and uses whichever answers, so the store can live on the boot stick, on a second stick or on
 an internal disk. No path is written into any configuration file, because device names depend on
-enumeration order and USB does not keep it.
+enumeration order and USB does not keep it. When more than one filesystem carries the label, the
+report lists them all: the boot takes the one `blkid` answers first, which can change between
+boots.
 
 The store must be a filesystem with extended attributes, hard links and `d_type`, which is why
-`create` makes ext4. The initramfs refuses a store that is vfat, exfat, ntfs, iso9660 or squashfs
-by name and says so on the console, because overlayfs rejects an unsuitable upper layer with the
-same `EINVAL` it gives for every bad mount. A store that is refused or will not mount costs
-nothing but itself: the session comes up in RAM as it would with no store. The boot side is in
+`create` makes ext4. FAT and exFAT labels hold at most 11 characters, so neither can carry the
+12-character `KDOS_PERSIST` and such a store is never found. The initramfs refuses an ntfs,
+iso9660 or squashfs store by name and says so on the console, because overlayfs rejects an
+unsuitable upper layer with the same `EINVAL` it gives for every bad mount; `kdos persist` reports
+such a store as `refused` with its type, and `--json` gives `"store": "refused"`. A store that is
+refused or will not mount costs nothing but itself: the session comes up in RAM as it would with
+no store. The boot side is in
 [Boot and init](../03-architecture/boot-and-init.md#the-live-medium-and-persistence).
 
-Two behaviours of the store are easy to miss:
+Three behaviours of the store are easy to miss:
 
 - A store is used from the next boot, not the one that created it. `kdos persist` then
   reports `present, NOT in use by this session` rather than claiming your work is being saved.
-  Once it is in use, the report shows the free space.
+  Once it is in use, the report names the device mounted at `/mnt/persist` and shows the free
+  space.
 - A change that stops the desktop coming up is still there at the next boot. Choose **KDOS
   Live (clean session)** in the boot menu: it passes `nopersist` on the kernel command line, which
   ignores the store for one boot without deleting it.
+- From that clean session, `reset` deletes what the store holds: everything in its `upper/`
+  directory, only `upper/home` with `--home`, or everything but `upper/home` with `--system`. The
+  overlay's scratch directory, `work/`, is emptied each time. A deleted entry in `upper/` is a
+  change undone, and a deleted whiteout brings back the image's file it hid. `reset` refuses while
+  the store is in use, because the upper layer of a mounted overlay must not change beneath it. It
+  asks for `yes` unless given `--yes`.
 
 `create` appends a partition with `sfdisk --append` and never rewrites the partition table,
-because the existing entries describe the image the machine is running from. It refuses when a
-store already exists, and when no device is named and the system did not boot from a medium. The
-new partition is registered with `partx -a`, because the kernel refuses to re-read the table of a
-disk with a mounted partition, and the boot medium always has one.
+because the existing entries describe the image the machine is running from; `--wipe never` keeps
+`sfdisk` off the ISO 9660 signature at the start of the disk. The medium is mounted as the whole
+disk, because ISO 9660 starts at its first sector, and a mounted disk is held exclusively: the
+kernel refuses to re-read its table and refuses to open any partition on it for `mkfs` or `mount`.
+So `create` passes `--no-reread`, registers the new partition with `partx -a`, and makes the
+filesystem through a loop device over the disk at the partition's offset and length, which opens
+the disk without that claim. `reset` mounts a store on the boot disk the same way, and so does the
+initramfs; a store on any other disk is opened directly.
 
 ### kdos clone
 
@@ -1681,14 +1747,16 @@ A small image written to a large stick leaves the device reporting the large siz
 whole device would copy whatever was on it before. The length comes from two records inside the
 image, and the larger wins:
 
-| Record | Covers an appended partition? |
+| Record | Covers a partition appended after the ISO 9660 volume? |
 |---|---|
 | The ISO 9660 primary volume descriptor's volume size | **No** |
 | The GPT header's `alternate_lba`, the position of the backup header | Yes |
 
-On an image with an appended partition the first record stops short by exactly the size of the
-EFI system partition, and those bytes are what make the copy boot. An image with neither record
-is refused as not a KDOS medium.
+The KDOS image needs only the first. Its ISO 9660 volume spans the whole file: the EFI system
+partition is an El Torito boot image inside the volume, which the MBR also names as partition 2,
+and the image carries no GPT. The second record is for a hybrid image made with an appended EFI
+system partition, where the volume descriptor stops short by the size of that partition and those
+bytes are what make the copy boot. An image with neither record is refused as not a KDOS medium.
 
 Four refusals stand before a byte is written. A clone never writes to the medium this system
 booted from, to a disk with a filesystem mounted anywhere, to a disk named by device path in
@@ -1700,7 +1768,9 @@ this chooses something to destroy.
 A counterfeit stick reports a capacity it does not have and silently wraps writes around, so the
 copy appears to succeed and the verify fails in the middle, which looks like a broken image. When
 `f3probe` is installed it runs first in destructive mode (the device is about to be overwritten
-anyway), and a counterfeit or damaged verdict refuses the clone.
+anyway), and a counterfeit or damaged verdict refuses the clone. The probe writes and reads back
+across the whole device and takes minutes; its output is shown as it arrives, with an elapsed-time
+line between its lines on a terminal, and `--no-probe` skips it.
 
 Before the read-back, the block device's cache is dropped (`BLKFLSBUF`). Otherwise the read
 would return the bytes this process just wrote rather than the bytes the flash stored, which is
@@ -1717,6 +1787,9 @@ kdos speech list              # the transcription models, and which are here
 kdos speech get [NAME]        # fetch one; base.en when no name is given
 kdos speech where             # the directories searched, and the models in each
 kdos speech remove NAME
+kdos speech voice list        # the Piper voices, and which are here
+kdos speech voice get [NAME]  # fetch one; en_US-lessac-medium when no name is given
+kdos speech voice remove NAME
 ```
 
 Transcription and reading aloud, on this machine: whisper.cpp hears and Piper speaks, each from a
@@ -1734,7 +1807,23 @@ image's. `--notify` says when each is done.
 `~/.local/share/piper/voices` and then `/usr/share/piper/voices`; `--voice` names one. `sync`
 keeps Klipper's **Read Aloud** action in step with the voices: added while a voice is installed and
 removed, exactly that action, when the last one goes, through `kwriteconfig6` on `klipperrc`. The
-autostart entry `kdos-speech-sync.desktop` runs it at every login.
+autostart entry `kdos-speech-sync.desktop` runs it at every login, and `voice get` and
+`voice remove` run it when they finish.
+
+The image carries Piper and no voice: a voice is one language and one speaker, so it is fetched
+like a transcription model. `voice get` fetches the `.onnx` and its `.onnx.json` from Piper's
+voice repository at its `v1.0.0` tag into `~/.local/share/piper/voices`, checks each against a
+SHA-256 recorded in the source, and renames both into place only when both match. `say` and Read
+Aloud find a voice only while its `.onnx.json` is beside it, so a half-fetched voice is never
+used. `voice list` marks a voice in your directory `installed`.
+
+| Voice | Size |
+|---|---|
+| `en_US-lessac-medium` (the default) | 63 MB |
+| `en_GB-alan-medium` | 63 MB |
+| `de_DE-thorsten-medium` | 63 MB |
+| `es_ES-davefx-medium` | 63 MB |
+| `fr_FR-siwis-medium` | 63 MB |
 
 The image carries `whisper-cli` and one model, `base.en`, in `/usr/share/whisper.cpp/models` (the
 `whisper-model-base-en` port). The others range from 32 MB to 3.1 GB, and language and size are a
@@ -1765,7 +1854,8 @@ fails. A model already present is not fetched again. Upstream serves the files o
 nothing, so the checksum guarantees the bytes are the ones this release was written against; it
 does not make the upstream trustworthy (see [the security model](../03-architecture/security-model.md)).
 A name is looked up in the table and never pasted into a URL, so a name cannot point the download
-at another host. An unknown verb exits 1.
+at another host. An unknown verb exits 2, as every usage error does; a failed download, a
+checksum that does not match or a name not in the table exits 1.
 
 ---
 
@@ -1810,9 +1900,11 @@ service [--user] enable|disable <name>
 Services are the executable scripts `/etc/init.d/NN_<name>.sh`, and a service's name is the
 script's name without the number and the `.sh`. A name matches a script exactly first, then as a
 substring, so `service start ssh` finds `70_sshd.sh`. `list` prints one line per service: its
-name, whether it starts at boot, and the first line the script's `status` printed, cut to the
-terminal's width. A script that printed more lines gets ` (+N more: service status <name>)` after
-it, and one that printed nothing gets `—`. `restart` runs the script's `stop`, waits a second and
+name, whether it starts at boot, and the first line the script's `status` printed. A script that
+printed more lines gets ` (+N more)` after it, and `service status <name>` prints them all; one that
+printed nothing gets `—`. On a terminal a line too long for the width is cut at its last space that
+keeps at least half of it, or at a character when there is none, and ends in `…`, so that each
+service is one row. `restart` runs the script's `stop`, waits a second and
 runs its `start`.
 
 `disable` creates `/etc/service.disabled/<name>` and `enable` removes it; the boot scripts skip a
@@ -1838,8 +1930,11 @@ The init scripts start their daemons through `ksvc supervise`:
 ksvc supervise [--final-exit CODE]... [--facility NAME] [--stop-grace SECS] [--restart-with NAME] <name> <command> [args...]
 ```
 
-It forks a supervisor, writes the supervisor's process id to `/run/<name>.pid`, and runs the
-daemon under it. When `/run/<name>.pid` already names a live supervisor of that name, it starts
+It forks a supervisor, writes the supervisor's process id to `/run/kdos-svc.<name>.pid`, and runs
+the daemon under it. The `kdos-svc.` prefix is what keeps the file the supervisor's: `/run/<name>.pid`
+is where most daemons write their own pid, and one that overwrote the supervisor's id would make
+`status` say `[DOWN]`, `stop` drop the file as stale and stop nothing, and `start` run a second
+copy. When `/run/kdos-svc.<name>.pid` already names a live supervisor of that name, it starts
 nothing, prints `[SKIP] <name>: already supervised (pid N)` and exits 0, so `service start` on a
 running service changes nothing. A second supervisor would overwrite the pid file, and the first,
 with its daemon, could then never be stopped; a second system bus would also take the socket from
@@ -1938,12 +2033,18 @@ absent, never as partial.
 | `splash phosphor\|modern` | The boot splash's motion, as `kdos.splash=` on every KDOS entry |
 | `palette [<accent>]` | Print the console palette (the `/etc/vtrgb` format) for an accent, the default one when none is named |
 
-`status --json` prints one line. `configured`, `active`, `trying`, `slot_a`, `slot_b`, `crypt_a`,
+`status --json` prints one line. `configured`, `live`, `active`, `trying`, `slot_a`, `slot_b`, `crypt_a`,
 `crypt_b` and `running` are read by `kdos update` with exact string matches, each spelled
 `"key": value` with the space, so their spelling is an interface; `attempts`, `bootnext`, `next`,
 `failed`, `entry` and `slots` (each slot's state, title, version, build, date, tree and kernel)
 are for readers that parse JSON: the System Versions page, the logout screen, the notices and
 `kdos-sysupdated`.
+
+With no boot state `status` and `list` exit 1. On the live medium, where `/` is an overlay in
+`/proc/mounts`, they say `this is the live medium — it has no boot state and no slots; install KDOS
+for A/B updates and rollback`, and `status --json` prints `{"configured": false, "live": true}`;
+on an installed machine with one root they say it has one root and no rollback, and `status --json`
+prints `{"configured": false}`.
 
 The ESP is root's alone, so every run as root against this machine's own state also writes
 world-readable copies a session can read: `/run/kdos/bootstate.json` (`status --json`),
@@ -1978,7 +2079,10 @@ ScreenShot2 interface. What `kdos-shot` adds is the naming, the clipboard, one n
 
 A screenshot is saved as `~/Pictures/Screenshots/kdos-<date>-<time>.png`
 (`kdos-%Y%m%d-%H%M%S.png`), or under `$XDG_PICTURES_DIR/Screenshots` when that variable is set,
-copied to the clipboard with `wl-copy`, announced in a notification, and its path printed. `qr`
+copied to the clipboard with `wl-copy`, announced in a notification, and its path printed. A second
+shot in the same second is `kdos-<date>-<time>-2.png`, then `-3` and on: the name is reserved
+before Spectacle runs, so no shot replaces another. A notification the server refuses (Plasma
+limits a burst) is not reported. `qr`
 writes its picture only to the runtime directory and deletes it on every path out, so nothing
 appears under `~/Pictures`. A QR code is a secret more often than not, a Wi-Fi password or a
 pairing token, so its text goes to the clipboard and nowhere else, without the trailing newline,
@@ -1997,7 +2101,9 @@ Spectacle itself; `kdos-shot` is what KRunner's `capture.*` routes run.
 revealed line by line like a CRT beam, followed by the [`kdos oracle`](#kdos-oracle) line when
 the terminal is wide enough for it and has two rows to spare below the banner. `--plain` prints the
 banner with no animation and without the oracle line, so its output is the same every time and can
-be compared. The same plain banner is printed when standard output is not a terminal, when
+be compared. fastfetch takes its parent process for the shell, and that parent is `kdos-banner`, so
+the banner runs it with `FFTS_IGNORE_PARENT=1`: the **Shell** row names the login shell and the
+**Terminal** row the terminal fastfetch detects past it (`konsole` in Konsole). The same plain banner is printed when standard output is not a terminal, when
 `KDOS_NO_ANIM` is set, when `TERM` is unset or `dumb`, or when the terminal is too short for the
 banner. While it animates, any key skips the rest.
 
@@ -2087,6 +2193,27 @@ One player answers each key, never two, or a toggle would start one while it pau
 `toggle` sends a stopped mpd `play`, because mpd's bare `pause` does nothing while stopped. A player
 that does not answer within two seconds costs that key press and nothing else. With no mpd and no
 player on the bus it prints `no player on this login` and exits 1.
+
+The image ships no `mpd.conf`, and writing one is what starts mpd at the next login (or at once,
+with `service --user start mpd`). The user service makes `$XDG_RUNTIME_DIR/mpd` before it starts
+mpd, and `/etc/profile.d/45-mpd.sh` sets `MPD_HOST` to the socket in it, so `mpc`, `rmpc` and
+`ncmpcpp` find the same daemon. A configuration that serves that socket and plays through
+PipeWire, as `~/.config/mpd/mpd.conf`:
+
+```text
+music_directory    "~/Music"
+playlist_directory "~/.local/share/mpd/playlists"
+db_file            "~/.local/share/mpd/database"
+state_file         "~/.local/share/mpd/state"
+bind_to_address    "$XDG_RUNTIME_DIR/mpd/socket"
+audio_output {
+    type "pipewire"
+    name "PipeWire"
+}
+```
+
+mpd expands `~` and `$XDG_RUNTIME_DIR` itself. The directories under `~/.local/share/mpd` must
+exist before the first start.
 
 `libbasu`, the D-Bus library, is loaded at run time rather than linked, because this binary is
 also `ksvc`, `kdos-getty` and the `kdos-bootctl` the initramfs copies with a hand-kept library

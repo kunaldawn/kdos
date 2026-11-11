@@ -49,10 +49,13 @@ The port also builds `kdos_crt`, the effect behind Phosphor mode, into KWin.
   the desktop portal's RemoteDesktop and InputCapture portals, remote-desktop servers and KDE
   Connect use to send pointer and key events. Without the library the plugin is not built and
   those portals have no input.
-- `-D CMAKE_REQUIRE_FIND_PACKAGE_QAccessibilityClient6=ON` — Lets the zoom effect follow the
-  keyboard focus and the text cursor, which it learns over AT-SPI through
-  [libqaccessibilityclient](#port-libqaccessibilityclient). Without it zoom follows only the
-  pointer.
+- `-D CMAKE_REQUIRE_FIND_PACKAGE_QAccessibilityClient6=ON` — Builds the zoom effect's AT-SPI
+  trackers of the keyboard focus and of an X11 window's text cursor, through
+  [libqaccessibilityclient](#port-libqaccessibilityclient). On Wayland KWin runs them only when
+  `KWIN_WAYLAND_ZOOM_FORCE_LEGACY_FOCUS_TRACKING` or
+  `KWIN_WAYLAND_ZOOM_FORCE_LEGACY_TEXT_CARET_TRACKING` is set, because their blocking D-Bus calls
+  can stall the compositor; the text cursor of a Wayland window, which the shipped `kwinrc` has the
+  zoom follow, comes from the input method and needs no library.
 - `-D CMAKE_REQUIRE_FIND_PACKAGE_KF6DocTools=ON` — The handbook pages of the KWin settings pages,
   through [kdoctools](#port-kdoctools), which upstream looks for as an optional component.
 - `-D CMAKE_REQUIRE_FIND_PACKAGE_Python3=ON` — Makes [python3](#port-python3) a requirement of the

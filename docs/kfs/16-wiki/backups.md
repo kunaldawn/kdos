@@ -261,7 +261,7 @@ See [Timers](timers.md).
 
 ## Known gaps
 
-- [The native applications have not been run](../../kdos/06-reference/known-gaps.md#the-native-applications-have-not-been-run),
+- [The native applications have been opened, not used](../../kdos/06-reference/known-gaps.md#the-native-applications-have-been-opened-not-used),
   Déjà Dup among them
 - [Features whose library has no port](../../kdos/06-reference/known-gaps.md#features-whose-library-has-no-port):
   Déjà Dup cannot restore a Duplicity backup

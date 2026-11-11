@@ -24,6 +24,18 @@ using namespace Qt::StringLiterals;
 namespace Kdos
 {
 
+namespace
+{
+/* A failure names kdos-box's last line as its reason, or is the bare
+ * sentence when the command printed nothing: a colon with nothing after it
+ * reads as a message cut off. `withReason` takes the reason as its last
+ * argument. */
+QString failure(const KLocalizedString &bare, const KLocalizedString &withReason, const QString &reason)
+{
+    return reason.isEmpty() ? bare.toString() : withReason.subs(reason).toString();
+}
+}
+
 BoxesModule::BoxesModule(QObject *parent, const KPluginMetaData &metaData, const QVariantList &args)
     : KQuickConfigModule(parent, metaData)
     , m_tool(new BoxTool(this))
@@ -225,7 +237,10 @@ void BoxesModule::loadReport()
         if (r.exitCode == 0) {
             m_profile->applyReport(r.output);
         } else {
-            setMessage(i18nc("@info %1 box, %2 error", "kdos-box could not report on %1: %2", name, r.lastLine), Warning);
+            setMessage(failure(ki18nc("@info %1 box", "kdos-box could not report on %1.").subs(name),
+                               ki18nc("@info %1 box, %2 error", "kdos-box could not report on %1: %2").subs(name),
+                               r.lastLine),
+                       Warning);
         }
     });
 }
@@ -306,7 +321,10 @@ void BoxesModule::save()
              * the switch prompt); the result still belongs to `name`. */
             const bool shown = name == m_current;
             if (r.exitCode != 0) {
-                setMessage(i18nc("@info %1 box, %2 error", "The settings of %1 were not written: %2", name, r.lastLine), Error);
+                setMessage(failure(ki18nc("@info %1 box", "The settings of %1 were not written.").subs(name),
+                                   ki18nc("@info %1 box, %2 error", "The settings of %1 were not written: %2").subs(name),
+                                   r.lastLine),
+                           Error);
                 if (shown) {
                     setNeedsSave(m_profile->isDirty());
                 }
@@ -383,7 +401,7 @@ void BoxesModule::startBox()
         if (code == 0) {
             setMessage(i18nc("@info %1 box", "%1 is running.", name), Positive);
         } else {
-            setMessage(i18nc("@info %1 box, %2 error", "%1 did not start: %2", name, last), Error);
+            setMessage(failure(ki18nc("@info %1 box", "%1 did not start.").subs(name), ki18nc("@info %1 box, %2 error", "%1 did not start: %2").subs(name), last), Error);
         }
     });
 }
@@ -398,7 +416,7 @@ void BoxesModule::stopBox()
         if (code == 0) {
             setMessage(i18nc("@info %1 box", "%1 is stopped.", name), Positive);
         } else {
-            setMessage(i18nc("@info %1 box, %2 error", "%1 did not stop: %2", name, last), Error);
+            setMessage(failure(ki18nc("@info %1 box", "%1 did not stop.").subs(name), ki18nc("@info %1 box, %2 error", "%1 did not stop: %2").subs(name), last), Error);
         }
     });
 }
@@ -413,7 +431,7 @@ void BoxesModule::restartBox()
         if (code == 0) {
             setMessage(i18nc("@info %1 box", "%1 was restarted.", name), Positive);
         } else {
-            setMessage(i18nc("@info %1 box, %2 error", "%1 did not restart: %2", name, last), Error);
+            setMessage(failure(ki18nc("@info %1 box", "%1 did not restart.").subs(name), ki18nc("@info %1 box, %2 error", "%1 did not restart: %2").subs(name), last), Error);
         }
     });
 }
@@ -446,13 +464,18 @@ void BoxesModule::recreateBox()
             /* The container is gone and the profile is kept, so the box is
              * still described: its next launch creates it. */
             m_profile->clearPendingRecreate();
-            setMessage(i18nc("@info %1 box, %2 error",
-                             "%1 was removed, but creating it again failed: %2. Its settings are kept, and it is created the next time its application starts.",
-                             name,
-                             last),
+            setMessage(failure(ki18nc("@info %1 box",
+                                      "%1 was removed, but creating it again failed. Its settings are kept, and it is created the next time its application "
+                                      "starts.")
+                                   .subs(name),
+                               ki18nc("@info %1 box, %2 error",
+                                      "%1 was removed, but creating it again failed: %2. Its settings are kept, and it is created the next time its "
+                                      "application starts.")
+                                   .subs(name),
+                               last),
                        Warning);
         } else {
-            setMessage(i18nc("@info %1 box, %2 error", "%1 was not created again: %2", name, last), Error);
+            setMessage(failure(ki18nc("@info %1 box", "%1 was not created again.").subs(name), ki18nc("@info %1 box, %2 error", "%1 was not created again: %2").subs(name), last), Error);
         }
     });
 }
@@ -472,7 +495,7 @@ void BoxesModule::removeBox()
 
     runLifecycle(steps, i18nc("@info:progress", "Removing %1…", name), [this, name, created](int code, int, const QString &last) {
         if (code != 0) {
-            setMessage(i18nc("@info %1 box, %2 error", "%1 was not removed: %2", name, last), Error);
+            setMessage(failure(ki18nc("@info %1 box", "%1 was not removed.").subs(name), ki18nc("@info %1 box, %2 error", "%1 was not removed: %2").subs(name), last), Error);
             return;
         }
         m_profile->clearPendingRecreate();
@@ -511,7 +534,7 @@ void BoxesModule::exportBox(const QUrl &target)
         if (code == 0) {
             setMessage(i18nc("@info %1 box, %2 file", "%1 was exported to %2.", name, path), Positive);
         } else {
-            setMessage(i18nc("@info %1 box, %2 error", "%1 was not exported: %2", name, last), Error);
+            setMessage(failure(ki18nc("@info %1 box", "%1 was not exported.").subs(name), ki18nc("@info %1 box, %2 error", "%1 was not exported: %2").subs(name), last), Error);
         }
     });
 }

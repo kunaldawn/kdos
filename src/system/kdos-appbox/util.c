@@ -26,6 +26,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/statvfs.h>
+#include <sys/vfs.h>
 #include <time.h>
 
 /* A process's start time in clock ticks, field 22 of /proc/<pid>/stat: what
@@ -101,4 +103,114 @@ void notify(const char *summary, const char *body)
 	kb_argv_add(&a, "8000");
 	kb_argv_end(&a);
 	kb_run_detach(&a);
+}
+
+/*
+ * THE FILESYSTEM A PATH'S WRITES WOULD LAND ON, asked of the nearest directory
+ * that exists: a box's layer directory or podman's storage is often not made
+ * yet when the question is asked, and its parent is where it will be made.
+ */
+static int nearest_dir(const char *path, char *out, size_t n)
+{
+	kb_strlcpy(out, path, n);
+	while (out[0] && !kb_is_dir(out)) {
+		char *slash = strrchr(out, '/');
+
+		if (!slash)
+			return -1;
+		if (slash == out) {
+			out[1] = '\0';
+			break;
+		}
+		*slash = '\0';
+	}
+	return out[0] ? 0 : -1;
+}
+
+/*
+ * AN OVERLAY IS MEMORY UNLESS ITS UPPER IS THE PERSISTENCE STORE. A live
+ * session whose `kdos persist` store is in use mounts it at /mnt/persist and
+ * puts the overlay's upper there, so its writes outlast the session; any other
+ * overlay on a live medium has a tmpfs upper.
+ */
+int fs_in_memory(const char *path)
+{
+	char dir[MAX_LINE];
+	struct statfs st;
+
+	if (nearest_dir(path, dir, sizeof(dir)) != 0 || statfs(dir, &st) != 0)
+		return 0;
+	if ((unsigned long)st.f_type == FS_TMPFS_MAGIC)
+		return 1;
+	if ((unsigned long)st.f_type != FS_OVERLAY_MAGIC)
+		return 0;
+	{
+		size_t len = 0;
+		char *mounts = kb_read_all("/proc/mounts", &len);
+		int persist = mounts && strstr(mounts, " /mnt/persist ") != NULL;
+
+		free(mounts);
+		return !persist;
+	}
+}
+
+int fs_is_overlay(const char *path)
+{
+	char dir[MAX_LINE];
+	struct statfs st;
+
+	if (nearest_dir(path, dir, sizeof(dir)) != 0 || statfs(dir, &st) != 0)
+		return 0;
+	return (unsigned long)st.f_type == FS_OVERLAY_MAGIC;
+}
+
+unsigned long long fs_free_bytes(const char *path)
+{
+	char dir[MAX_LINE];
+	struct statvfs st;
+
+	if (nearest_dir(path, dir, sizeof(dir)) != 0 || statvfs(dir, &st) != 0)
+		return 0;
+	return (unsigned long long)st.f_bavail * st.f_frsize;
+}
+
+/* rootless podman's default graph root: $XDG_DATA_HOME/containers/storage,
+ * else ~/.local/share/containers/storage. */
+void podman_storage_dir(char *out, size_t n)
+{
+	const char *xdg = getenv("XDG_DATA_HOME");
+
+	if (xdg && *xdg == '/')
+		snprintf(out, n, "%s/containers/storage", xdg);
+	else
+		snprintf(out, n, "%s/.local/share/containers/storage",
+			 kb_home_dir());
+}
+
+int run_last_line(const KbArgv *a, char *why, size_t n)
+{
+	char err[4096];
+	int rc = kb_run_feed_env(a, NULL, 0, "", 0, err, sizeof(err));
+	char *end, *line;
+
+	if (rc == 0)
+		return 0;
+	end = err + strlen(err);
+	while (end > err && (end[-1] == '\n' || end[-1] == '\r' ||
+			     end[-1] == ' '))
+		*--end = '\0';
+	line = strrchr(err, '\n');
+	line = line ? line + 1 : err;
+	/* podman's own prefix, and a KDOS program's name before its colon. */
+	if (!strncmp(line, "Error: ", 7))
+		line += 7;
+	else if (!strncmp(line, "kdos-box: ", 10))
+		line += 10;
+	else if (!strncmp(line, "kdos-appbox: ", 13))
+		line += 13;
+	if (*line)
+		kb_strlcpy(why, line, n);
+	else
+		snprintf(why, n, "%s exited %d", a->v[0], rc);
+	return rc;
 }

@@ -38,7 +38,7 @@ Welcome.ScrollablePage {
     property string failure: ""
 
     function open(argv: list<string>): void {
-        run.run(argv, (code, text) => page.failure = code === 0 ? "" : text);
+        run.launch(argv, (code, text) => page.failure = text);
     }
 
     view: Kdos.Flick {
@@ -54,7 +54,7 @@ Welcome.ScrollablePage {
         Kdos.Point {
             icon: "help-contents"
             title: i18ndc("kdos-welcome", "@title", "The KDOS book")
-            text: i18ndc("kdos-welcome", "@info", "How KDOS works and why, from the first boot to every command. Pressing F1 in a KDOS settings page opens the right chapter.")
+            text: i18ndc("kdos-welcome", "@info", "How KDOS works and why, from the first boot to every command. The Help button on a KDOS settings page opens its chapter.")
             action: i18ndc("kdos-welcome", "@action:button", "Open the Book")
             actionIcon: "help-contents"
             onTriggered: page.open(["khelpcenter", "file:///usr/share/doc/kdos/index.html"])

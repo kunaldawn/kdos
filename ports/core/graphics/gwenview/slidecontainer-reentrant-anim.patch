@@ -1,0 +1,23 @@
+Subject: Retarget a running slide animation instead of deleting it from inside its own update
+
+SlideContainer::animTo() is called from the content's Resize event, which the
+running animation itself causes through setSlideHeight(). Deleting the animation
+there frees it while QVariantAnimation is still emitting valueChanged, and
+Gwenview crashes, for instance when the Crop bar is opened again after a crop.
+
+--- a/lib/slidecontainer.cpp
++++ b/lib/slidecontainer.cpp
+@@ -60,6 +60,13 @@
+ 
+ void SlideContainer::animTo(int newHeight)
+ {
++    // animTo() is reached from inside a running animation's update, through
++    // setSlideHeight() and the content's Resize event; deleting that
++    // animation would free it while it is still emitting valueChanged.
++    if (mAnim && mAnim->state() == QAbstractAnimation::Running) {
++        mAnim->setEndValue(newHeight);
++        return;
++    }
+     delete mAnim.data();
+     auto anim = new QPropertyAnimation(this, "slideHeight", this);
+     anim->setDuration(SLIDE_DURATION);

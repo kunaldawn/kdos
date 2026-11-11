@@ -1,0 +1,3 @@
+# chordcheck fixture: switch-root with the script's chord settled in advance.
+[kwin]
+FixtureGrab=none,Meta+Alt+Shift+F11,Fixture: Grab

@@ -59,6 +59,18 @@ with `nft`. A daemon without `ListFirewallKnocks` answers `UnknownMethod`; the p
 no counts and `kdos-fwask` looks again every five minutes; so does a daemon that could not read
 the counters, which answers `io.kdos.Power1.Error.Failed`.
 
+The prompt's `Notify` is sent without blocking and waits three minutes for its id, longer than
+the session bus's 120-second limit on starting a service. At login the notification server is
+still being started when the first knock is seen; a call given up before the bus gives up is still
+delivered when Plasma comes, and a second one posted meanwhile would be a notification whose
+buttons nobody hears. The service's slot is held from the call to its reply, so a count still
+rising posts nothing more; an error reply frees it and the next look asks again.
+
+The notifications carry no `desktop-entry` hint. Plasma asks KWin for a launch token for that
+entry on every action, so Not on This Network would show the Firewall page starting in the task
+manager while nothing opens. They are named Firewall and wear the `security-high` icon instead,
+and are not configured under Settings › Notifications as an application of their own.
+
 A signal names its sender's unique bus name only, and any connection on the system bus may emit
 one with the daemon's path and interface. The page's QtDBus connection follows the owner of
 `io.kdos.Power1`, and `kdos-fwask` asks the bus who owns the name before it acts on the signal,

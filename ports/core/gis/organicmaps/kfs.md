@@ -55,9 +55,18 @@ own protobuf fork, `just_gtfs` and `fast_obj`. `build.sh` copies each into its p
 A version bump has to take the new commit ids from the tag's submodule references into
 `_protobuf`, `_gtfs` and `_fastobj`.
 
-The install copies the whole `data/` directory, test data included; `data/test_data` is removed
-from the package. The `[ -f … ]` check after it fails the build if the 512-pixel hicolor icon
-the desktop entry names is not installed.
+The install copies the whole `data/` directory, test data included. The package drops
+`data/test_data` and `minsk-pass.mwm` with its source `minsk-pass.osm.bz2`, the small map the
+routing and map tests load: no `countries.txt` names it, and the offline library lists every
+`.mwm` in the data directory as a map. The `[ -f … ]` check after it fails the build if the
+512-pixel hicolor icon the desktop entry names is not installed.
+
+shared-mime-info has no type for a `.mwm` map, which would make one `application/octet-stream`
+and leave a file manager asking what opens it. `build.sh` installs `kdos-organicmaps.xml`, which
+defines `application/x-organicmaps-mwm` for `*.mwm`, and the desktop entry claims it, with
+`Exec=OMaps %f`. The program reads every map in its data directories and has no way to be handed
+one: outside the map-style designer build `main()` takes no file argument, and gflags leaves a
+path that is not a flag in `argv` unread, so opening a map starts Organic Maps on the world view.
 
 The program calls `setDesktopFileName("app.organicmaps.desktop")`, which makes that its Wayland
 app_id. Upstream's entry is replaced by one carrying the same name as `StartupWMClass`, so the

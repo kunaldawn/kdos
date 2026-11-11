@@ -20,6 +20,7 @@ cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_LIBDIR=lib \
 	-D CMAKE_BUILD_TYPE=Release \
 	-D CMAKE_DISABLE_FIND_PACKAGE_Doxygen=ON \
+	-D DISPLAY_VERSION_PIPELINE=$version \
 	-D WANT_QT6=ON \
 	-D WANT_SHARED=ON \
 	-D WANT_DEBUG=OFF \

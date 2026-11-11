@@ -27,9 +27,10 @@
  * deadline (main.c). A server that is not running is a refused connect,
  * which costs nothing.
  *
- * BELOW THE PALETTE. A plain query gets library rows in the Low category, so
- * a verb or an application is never pushed down by an encyclopedia; a query
- * beginning `?` asks for the library alone and its rows are the highest.
+ * BELOW THE PALETTE. Library rows are in the Low category, so a verb or an
+ * application is never pushed down by an encyclopedia, and krunnerrc does not
+ * name `kdos-library` among the favourites. The library alone is KRunner's
+ * single-runner mode, which the palette's `lib <words>` opens.
  * ---------------------------------
  */
 
@@ -49,25 +50,11 @@
 
 #define LIB_PER_SOURCE 5
 
-static int catrel(int only)
+const char *rn_library_query(const char *text)
 {
-	return only ? RN_CAT_HIGHEST : RN_CAT_LOW;
-}
-
-const char *rn_library_query(const char *text, int *only)
-{
-	*only = 0;
 	while (text && (*text == ' ' || *text == '\t'))
 		text++;
-	if (!text || !*text)
-		return NULL;
-	if (*text == '?') {
-		*only = 1;
-		text++;
-		while (*text == ' ')
-			text++;
-	}
-	return *text ? text : NULL;
+	return text && *text ? text : NULL;
 }
 
 static void stat_sig(const char *path, char *out, size_t n)
@@ -356,7 +343,7 @@ static void books_load(void)
 	g_books_read = 1;
 }
 
-static void match_books(const RnQuery *q, int only, RnList *out)
+static void match_books(const RnQuery *q, RnList *out)
 {
 	struct {
 		int i, s;
@@ -401,7 +388,7 @@ static void match_books(const RnQuery *q, int only, RnList *out)
 		kb_strlcpy(m->subtext, books[h->book].name, sizeof(m->subtext));
 		kb_strlcpy(m->icon, "help-contents", sizeof(m->icon));
 		kb_strlcpy(m->category, "Offline library", sizeof(m->category));
-		m->catrel = catrel(only);
+		m->catrel = RN_CAT_LOW;
 		m->rel = 0.3 + (best[k].s > 100 ? 100 : best[k].s) / 250.0;
 		snprintf(url, sizeof(url), "file://%s%s%s", h->file,
 			 *h->id ? "#" : "", h->id);
@@ -413,7 +400,7 @@ static void match_books(const RnQuery *q, int only, RnList *out)
 
 /* ── manual pages ──────────────────────────────────────────────────────── */
 
-static void match_man(const RnQuery *q, int only, RnList *out)
+static void match_man(const RnQuery *q, RnList *out)
 {
 	static const char *const secs[] = { "1", "5", "7", "8" };
 	int shown = 0;
@@ -448,7 +435,7 @@ static void match_man(const RnQuery *q, int only, RnList *out)
 			kb_strlcpy(m->subtext, "Manual page", sizeof(m->subtext));
 			kb_strlcpy(m->icon, "help-contents", sizeof(m->icon));
 			kb_strlcpy(m->category, "Offline library", sizeof(m->category));
-			m->catrel = catrel(only);
+			m->catrel = RN_CAT_LOW;
 			m->rel = 0.3 + (s > 100 ? 100 : s) / 250.0;
 			snprintf(url, sizeof(url), "man:/%s(%s)", name, secs[si]);
 			rn_arg(m, "khelpcenter");
@@ -487,7 +474,7 @@ static int parse_coords(const char *s, double *lat, double *lon)
 	       *lon <= 180 && strchr(s, '.') != NULL;
 }
 
-static void match_places(const RnQuery *q, int only, RnList *out)
+static void match_places(const RnQuery *q, RnList *out)
 {
 	double lat, lon;
 	RnMatch *m;
@@ -501,20 +488,20 @@ static void match_places(const RnQuery *q, int only, RnList *out)
 	kb_strlcpy(m->icon, "map-globe", sizeof(m->icon));
 	kb_strlcpy(m->category, "Offline library", sizeof(m->category));
 	kb_strlcpy(m->url, url, sizeof(m->url));
-	m->catrel = only ? RN_CAT_HIGHEST : RN_CAT_HIGH;
+	m->catrel = RN_CAT_HIGH;
 	m->rel = 1.0;
 	rn_arg(m, "xdg-open");
 	rn_arg(m, url);
 }
 
-void rn_library_match(const RnQuery *q, int only, RnList *out)
+void rn_library_match(const RnQuery *q, RnList *out)
 {
 	if (!q->nw)
 		return;
-	match_places(q, only, out);
-	match_books(q, only, out);
-	match_man(q, only, out);
-	rn_zeal_match(q, only, out);
+	match_places(q, out);
+	match_books(q, out);
+	match_man(q, out);
+	rn_zeal_match(q, out);
 }
 
 /* ── the servers ───────────────────────────────────────────────────────── */
@@ -675,7 +662,7 @@ int rn_library_asks(const RnQuery *q, RnAsk **out)
 	return n;
 }
 
-static void kiwix_rows(RnAsk *a, int only, RnList *out)
+static void kiwix_rows(RnAsk *a, RnList *out)
 {
 	const char *body = rn_http_body(a);
 	int shown = 0;
@@ -707,7 +694,7 @@ static void kiwix_rows(RnAsk *a, int only, RnList *out)
 		kb_strlcpy(m->icon, "kiwix-desktop", sizeof(m->icon));
 		kb_strlcpy(m->category, "Offline library", sizeof(m->category));
 		kb_strlcpy(m->url, url, sizeof(m->url));
-		m->catrel = catrel(only);
+		m->catrel = RN_CAT_LOW;
 		m->rel = 0.6 - shown * 0.05;
 		rn_arg(m, "xdg-open");
 		rn_arg(m, url);
@@ -715,7 +702,7 @@ static void kiwix_rows(RnAsk *a, int only, RnList *out)
 	}
 }
 
-static void kolibri_rows(RnAsk *a, int only, RnList *out)
+static void kolibri_rows(RnAsk *a, RnList *out)
 {
 	const char *body = rn_http_body(a);
 	int shown = 0;
@@ -746,7 +733,7 @@ static void kolibri_rows(RnAsk *a, int only, RnList *out)
 		kb_strlcpy(m->icon, "applications-education", sizeof(m->icon));
 		kb_strlcpy(m->category, "Offline library", sizeof(m->category));
 		kb_strlcpy(m->url, url, sizeof(m->url));
-		m->catrel = catrel(only);
+		m->catrel = RN_CAT_LOW;
 		m->rel = 0.55 - shown * 0.05;
 		rn_arg(m, "xdg-open");
 		rn_arg(m, url);
@@ -754,13 +741,13 @@ static void kolibri_rows(RnAsk *a, int only, RnList *out)
 	}
 }
 
-void rn_library_answer(RnAsk *a, const RnQuery *q, int only, RnList *out)
+void rn_library_answer(RnAsk *a, const RnQuery *q, RnList *out)
 {
 	(void)q;
 	if (a->kind == RN_ASK_KIWIX)
-		kiwix_rows(a, only, out);
+		kiwix_rows(a, out);
 	else
-		kolibri_rows(a, only, out);
+		kolibri_rows(a, out);
 }
 
 void rn_library_reset(void)
@@ -783,8 +770,7 @@ static long long mono_ms(void)
 
 void rn_library_collect(const char *text, int deadline, RnList *out)
 {
-	int only;
-	const char *t = rn_library_query(text, &only);
+	const char *t = rn_library_query(text);
 	long long end = mono_ms() + deadline;
 	RnAsk *asks = NULL;
 	RnQuery q;
@@ -792,7 +778,7 @@ void rn_library_collect(const char *text, int deadline, RnList *out)
 	if (!t)
 		return;
 	rn_query(&q, t);
-	rn_library_match(&q, only, out);
+	rn_library_match(&q, out);
 	rn_library_asks(&q, &asks);
 	for (RnAsk *a = asks; a; a = a->next)
 		rn_http_start(a);
@@ -821,7 +807,7 @@ void rn_library_collect(const char *text, int deadline, RnList *out)
 	}
 	for (RnAsk *a = asks; a; a = a->next)
 		if (a->done == 1)
-			rn_library_answer(a, &q, only, out);
+			rn_library_answer(a, &q, out);
 	rn_http_free(asks);
 	rn_list_sort(out);
 }

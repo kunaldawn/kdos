@@ -11,7 +11,7 @@
 name        = kded-kdos
 version     = 1.0.0
 release     = 1
-description = KDOS kded6 module — keeps the accent in step with Plasma, offers sets found on sticks, starts Samba for the first shared folder
+description = KDOS kded6 module — keeps the accent in step with Plasma, offers sets found on sticks, starts Samba for a login that can share folders, restarts a stopped plasmashell
 homepage    = https://github.com/kunaldawn/kdos
 license     = MIT
 depends     = cmake ninja extra-cmake-modules qt6-qtbase kconfig kcoreaddons kdbusaddons ki18n knotifications solid kded kdos-tools

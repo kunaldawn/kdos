@@ -56,7 +56,7 @@ setuid helper `unix_chkpwd`. See [Users and groups](users-and-groups.md).
 file in [`/etc/sudoers.d`]{.idx}. **`/etc/sudoers.d/00-sudo`** is the KDOS rule, mode 440, written by
 `ports/core/auth/sudo/build.sh`:
 
-<!-- kfs:include ports/core/auth/sudo/build.sh lines=56-61 pin=2c5a24852ff3 -->
+<!-- kfs:include ports/core/auth/sudo/build.sh lines=57-62 pin=2c5a24852ff3 -->
 
 `secure_path` is the `PATH` every command run through `sudo` gets. `env_keep` carries the three
 editor variables through, so `sudoedit` and `visudo` open the editor the shell names, with `nvim`
@@ -67,7 +67,7 @@ the password prompt `[sudo] password for <user>:`, are on the [sudo](#port-sudo)
 **[`/etc/pam.d/sudo`]{.idx}**, from the same `build.sh`. A fingerprint is tried first, when `fprintd` is
 installed and the account has one enrolled; the password follows:
 
-<!-- kfs:include ports/core/auth/sudo/build.sh lines=33-55 pin=3d042633c00e -->
+<!-- kfs:include ports/core/auth/sudo/build.sh lines=34-56 pin=3d042633c00e -->
 
 ### PAM
 
@@ -137,8 +137,9 @@ one is added to it. The rules of fwupd, bolt and gvfs grant `wheel` in an active
        (ALL) ALL
    ```
 
-The first `sudo` an account runs prints sudo's lecture ("We trust you have received the usual
-lecture…") before the prompt; later runs print only the prompt.
+`sudo` prints only the prompt, the first run included: it is built `--without-lecture`, because
+the lecture in front of the prompt is what [KDESu](#port-kdesu)'s password exchange cannot get
+past.
 
 ### Making an account an administrator
 

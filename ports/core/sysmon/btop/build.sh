@@ -17,7 +17,7 @@ install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/btop.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=System Monitor
+Name=System Monitor (btop)
 GenericName=Resource Monitor
 Comment=Processes, CPU, memory, disks and network
 Exec=btop

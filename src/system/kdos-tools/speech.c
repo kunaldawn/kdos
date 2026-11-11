@@ -14,6 +14,7 @@
  *   kdos speech get base.en     fetch one into the user's own data directory
  *   kdos speech where           the directories searched, and the models in each
  *   kdos speech remove NAME     delete one
+ *   kdos speech voice list|get|remove [NAME]   the Piper voices, the same way
  *
  * EVERYTHING RUNS HERE AND NOTHING IS SENT ANYWHERE: whisper.cpp hears and
  * Piper speaks, each from a model file on the disk. Dolphin's Transcribe
@@ -21,9 +22,10 @@
  *
  * ONE MODEL SHIPS: base.en, from the whisper-model-base-en port, in
  * /usr/share/whisper.cpp/models. Every other one is a personal choice —
- * language, size and the trade between the two, from 32 MB to 3 GB — so the
+ * language, size and the trade between the two, from 32 MB to 3.1 GB — so the
  * image carries the English default and this carries the way to get the
- * rest.
+ * rest. NO VOICE SHIPS: a voice is a language and a speaker, about 63 MB
+ * each, and `voice get` fetches one into ~/.local/share/piper/voices.
  *
  * IT WRITES TO THE USER'S DATA DIRECTORY AND NEVER TO /usr. A model is found
  * at $KDOS_WHISPER_MODEL, then in $XDG_DATA_HOME/whisper.cpp/models, then in
@@ -162,14 +164,15 @@ static int is_ggml(const char *path)
 	return n == 4 && !memcmp(m, GGML_MAGIC, 4);
 }
 
-/* Megabytes, because a model is never usefully described in bytes and a
- * column of nine-digit numbers is a column nobody reads. */
+/* Decimal megabytes, rounded, because a model is never usefully described
+ * in bytes and a column of nine-digit numbers is a column nobody reads; the
+ * book's tables use the same units. */
 static void human(long long b, char *out, size_t n)
 {
-	if (b >= 1024LL * 1024 * 1024)
-		snprintf(out, n, "%.1f GB", (double)b / (1024 * 1024 * 1024));
+	if (b >= 1000LL * 1000 * 1000)
+		snprintf(out, n, "%.1f GB", (double)b / 1e9);
 	else
-		snprintf(out, n, "%lld MB", b / (1024 * 1024));
+		snprintf(out, n, "%lld MB", (b + 500000) / 1000000);
 }
 
 static int cmd_list(void)
@@ -224,6 +227,56 @@ static int cmd_where(void)
 }
 
 /*
+ * One download into `part`, checked against `sha256`. 0 when the bytes are
+ * the recorded ones; otherwise `part` is gone and the reason is printed.
+ */
+static int fetch_verified(const char *url, const char *part,
+			  const char *sha256)
+{
+	char sum[256] = { 0 }, *sp;
+	KbArgv c = { 0 }, s = { 0 };
+
+	kb_proc_verbose = 1;
+	kb_argv_add(&c, "curl");
+	/* -f so an HTML error page is not written into the model file, -L
+	 * because the repository redirects to its object store, and no -C:
+	 * a resumed download of a file that changed upstream is a file that
+	 * fails the checksum with no way to say which half is wrong. */
+	kb_argv_add(&c, "-fL");
+	kb_argv_add(&c, "--progress-bar");
+	kb_argv_add(&c, "-o");
+	kb_argv_add(&c, part);
+	kb_argv_add(&c, "--");
+	kb_argv_add(&c, url);
+	kb_argv_end(&c);
+	if (kb_run_tty(&c) != 0) {
+		unlink(part);
+		fprintf(stderr, "kdos speech: the download failed\n");
+		return 1;
+	}
+
+	kb_argv_add(&s, "sha256sum");
+	kb_argv_add(&s, "--");
+	kb_argv_add(&s, part);
+	kb_argv_end(&s);
+	if (kb_run_capture(&s, sum, sizeof(sum)) != 0) {
+		unlink(part);
+		kb_die("sha256sum failed");
+	}
+	sp = strchr(sum, ' ');
+	if (sp)
+		*sp = '\0';
+	if (strcmp(sum, sha256)) {
+		unlink(part);
+		fprintf(stderr, "kdos speech: sha256 mismatch — the file was "
+				"NOT installed\n  expected: %s\n  actual:   "
+				"%s\n", sha256, sum);
+		return 1;
+	}
+	return 0;
+}
+
+/*
  * THE FETCH. curl writes to a `.part` beside the destination and the rename
  * happens only after both checks pass, so an interrupted download is never a
  * file the magic check has to reject — and a model directory never holds a
@@ -232,9 +285,7 @@ static int cmd_where(void)
 static int cmd_get(const char *name)
 {
 	const struct model *m = find_model(name);
-	char *dir, *dest, *part, url[512], sum[256] = { 0 }, sz[32];
-	KbArgv c = { 0 }, s = { 0 };
-	char *sp;
+	char *dir, *dest, *part, url[512], sz[32];
 
 	if (!m) {
 		fprintf(stderr, "kdos speech: no model named '%s' — "
@@ -259,45 +310,8 @@ static int cmd_get(const char *name)
 	snprintf(url, sizeof(url), "%s/ggml-%s.bin", HF_BASE, m->name);
 	human(m->bytes, sz, sizeof(sz));
 	printf("==> %s (%s)\n    %s\n", m->name, sz, url);
-
-	kb_proc_verbose = 1;
-	kb_argv_add(&c, "curl");
-	/* -f so an HTML error page is not written into the model file, -L
-	 * because the repository redirects to its object store, and no -C:
-	 * a resumed download of a file that changed upstream is a file that
-	 * fails the checksum with no way to say which half is wrong. */
-	kb_argv_add(&c, "-fL");
-	kb_argv_add(&c, "--progress-bar");
-	kb_argv_add(&c, "-o");
-	kb_argv_add(&c, part);
-	kb_argv_add(&c, "--");
-	kb_argv_add(&c, url);
-	kb_argv_end(&c);
-	if (kb_run_tty(&c) != 0) {
-		unlink(part);
-		fprintf(stderr, "kdos speech: the download failed\n");
+	if (fetch_verified(url, part, m->sha256) != 0)
 		return 1;
-	}
-
-	printf("==> Verifying\n");
-	kb_argv_add(&s, "sha256sum");
-	kb_argv_add(&s, "--");
-	kb_argv_add(&s, part);
-	kb_argv_end(&s);
-	if (kb_run_capture(&s, sum, sizeof(sum)) != 0) {
-		unlink(part);
-		kb_die("sha256sum failed");
-	}
-	sp = strchr(sum, ' ');
-	if (sp)
-		*sp = '\0';
-	if (strcmp(sum, m->sha256)) {
-		unlink(part);
-		fprintf(stderr, "kdos speech: sha256 mismatch — the file was "
-				"NOT installed\n  expected: %s\n  actual:   "
-				"%s\n", m->sha256, sum);
-		return 1;
-	}
 	if (!is_ggml(part)) {
 		unlink(part);
 		fprintf(stderr, "kdos speech: the file is not a ggml model\n");
@@ -556,6 +570,195 @@ static char *find_voice(const char *want)
 	return hit;
 }
 
+/*
+ * THE VOICES, Piper's own repository at its v1.0.0 tag, so a URL names the
+ * same bytes for as long as the tag stands. A voice is two files, the model
+ * and its configuration, and both are checked; `path` is where the voice sits
+ * in that repository.
+ */
+#define PIPER_BASE "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0"
+
+struct voice {
+	const char *name, *path;
+	long long bytes;
+	const char *onnx_sha256, *json_sha256;
+};
+
+static const struct voice VOICES[] = {
+	{ "en_US-lessac-medium", "en/en_US/lessac/medium", 63201294,
+	  "5efe09e69902187827af646e1a6e9d269dee769f9877d17b16b1b46eeaaf019f",
+	  "efe19c417bed055f2d69908248c6ba650fa135bc868b0e6abb3da181dab690a0" },
+	{ "en_GB-alan-medium", "en/en_GB/alan/medium", 63201294,
+	  "0a309668932205e762801f1efc2736cd4b0120329622adf62be09e56339d3330",
+	  "c0f0d124e5895c00e7c03b35dcc8287f319a6998a365b182deb5c8e752ee8c1e" },
+	{ "de_DE-thorsten-medium", "de/de_DE/thorsten/medium", 63201294,
+	  "7e64762d8e5118bb578f2eea6207e1a35a8e0c30595010b666f983fc87bb7819",
+	  "974adee790533adb273a1ac88f49027d2a1b8f0f2cf4905954a4791e79264e85" },
+	{ "es_ES-davefx-medium", "es/es_ES/davefx/medium", 63201294,
+	  "6658b03b1a6c316ee4c265a9896abc1393353c2d9e1bca7d66c2c442e222a917",
+	  "0e0dda87c732f6f38771ff274a6380d9252f327dca77aa2963d5fbdf9ec54842" },
+	{ "fr_FR-siwis-medium", "fr/fr_FR/siwis/medium", 63201294,
+	  "641d1ab097da2b81128c076810edb052b385decc8be3381814802a64a73baf99",
+	  "39479916c2db192b5ac9764daddd0c744d83e023ad890c6976c0633ae4df8959" },
+};
+#define NVOICES ((int)(sizeof(VOICES) / sizeof(VOICES[0])))
+#define DEFAULT_VOICE "en_US-lessac-medium"
+
+static const struct voice *find_voice_row(const char *name)
+{
+	for (int i = 0; i < NVOICES; i++)
+		if (!strcmp(VOICES[i].name, name))
+			return &VOICES[i];
+	return NULL;
+}
+
+/* <dir>/<name><ext> */
+static char *voice_file(const char *dir, const char *name, const char *ext)
+{
+	char leaf[160];
+
+	snprintf(leaf, sizeof(leaf), "%s%s", name, ext);
+	return kb_path_join(dir, leaf);
+}
+
+static int voice_here(const char *dir, const char *name)
+{
+	char *m = voice_file(dir, name, ".onnx");
+	char *j = voice_file(dir, name, ".onnx.json");
+	int here = kb_path_exists(m) && kb_path_exists(j);
+
+	free(m);
+	free(j);
+	return here;
+}
+
+static int cmd_sync(void);
+
+static int cmd_voice_list(void)
+{
+	char *dir = voice_dir();
+
+	printf("Voices for Piper, in %s\n\n", dir);
+	for (int i = 0; i < NVOICES; i++) {
+		char sz[32];
+
+		human(VOICES[i].bytes, sz, sizeof(sz));
+		printf("  %-22s %7s  %s\n", VOICES[i].name, sz,
+		       voice_here(dir, VOICES[i].name) ? "installed"
+		       : voice_here(SYSTEM_VOICE_DIR, VOICES[i].name)
+			       ? "shipped" : "");
+	}
+	printf("\n  kdos speech voice get %s\n", DEFAULT_VOICE);
+	free(dir);
+	return 0;
+}
+
+/*
+ * Both files go to `.part` names and are renamed only after both checksums
+ * pass, the configuration last: find_voice() takes a voice only when its
+ * .onnx.json is beside the .onnx, so no half-fetched voice is ever offered.
+ * Klipper's Read Aloud follows the voices, so a fetch ends with a sync.
+ */
+static int cmd_voice_get(const char *name)
+{
+	const struct voice *v = find_voice_row(name);
+	char *dir, *m, *j, *mp, *jp, url[512], sz[32];
+	int rc = 1;
+
+	if (!v) {
+		fprintf(stderr, "kdos speech: no voice named '%s' — "
+				"try: kdos speech voice list\n", name);
+		return 1;
+	}
+	if (!kb_have_prog("curl")) {
+		fprintf(stderr, "kdos speech: curl is not on $PATH\n");
+		return 1;
+	}
+	dir = voice_dir();
+	if (voice_here(dir, v->name)) {
+		printf("%s is already here: %s\n", v->name, dir);
+		free(dir);
+		return cmd_sync();
+	}
+	if (kb_mkdir_p(dir) != 0)
+		kb_die("cannot create %s: %s", dir, strerror(errno));
+	m = voice_file(dir, v->name, ".onnx");
+	j = voice_file(dir, v->name, ".onnx.json");
+	mp = voice_file(dir, "voice", ".onnx.part");
+	jp = voice_file(dir, "voice", ".json.part");
+	human(v->bytes, sz, sizeof(sz));
+	snprintf(url, sizeof(url), "%s/%s/%s.onnx", PIPER_BASE, v->path,
+		 v->name);
+	printf("==> %s (%s)\n    %s\n", v->name, sz, url);
+	if (fetch_verified(url, mp, v->onnx_sha256) != 0)
+		goto out;
+	snprintf(url, sizeof(url), "%s/%s/%s.onnx.json", PIPER_BASE, v->path,
+		 v->name);
+	if (fetch_verified(url, jp, v->json_sha256) != 0) {
+		unlink(mp);
+		goto out;
+	}
+	if (rename(mp, m) != 0 || rename(jp, j) != 0) {
+		fprintf(stderr, "kdos speech: cannot put it in %s: %s\n", dir,
+			strerror(errno));
+		unlink(mp);
+		unlink(jp);
+		unlink(m);
+		goto out;
+	}
+	printf("==> %s\n    `kdos speech say` speaks with it from now on.\n",
+	       m);
+	rc = cmd_sync();
+out:
+	free(dir);
+	free(m);
+	free(j);
+	free(mp);
+	free(jp);
+	return rc;
+}
+
+static int cmd_voice_remove(const char *name)
+{
+	char *dir, *m, *j;
+	int rc = 0;
+
+	if (!find_voice_row(name)) {
+		fprintf(stderr, "kdos speech: no voice named '%s'\n", name);
+		return 1;
+	}
+	dir = voice_dir();
+	m = voice_file(dir, name, ".onnx");
+	j = voice_file(dir, name, ".onnx.json");
+	if (unlink(m) != 0) {
+		fprintf(stderr, "kdos speech: %s: %s\n", m, strerror(errno));
+		rc = 1;
+	}
+	unlink(j);
+	if (!rc) {
+		printf("removed %s\n", m);
+		rc = cmd_sync();
+	}
+	free(dir);
+	free(m);
+	free(j);
+	return rc;
+}
+
+static int cmd_voice(int argc, char **argv)
+{
+	const char *cmd = argc > 0 ? argv[0] : "list";
+
+	if (!strcmp(cmd, "list") && argc <= 1)
+		return cmd_voice_list();
+	if (!strcmp(cmd, "get") && argc <= 2)
+		return cmd_voice_get(argc > 1 ? argv[1] : DEFAULT_VOICE);
+	if (!strcmp(cmd, "remove") && argc == 2)
+		return cmd_voice_remove(argv[1]);
+	fprintf(stderr, "kdos speech: unknown voice command '%s'\n", cmd);
+	return speech_usage(2);
+}
+
 static int cmd_say(int argc, char **argv)
 {
 	const char *want = NULL;
@@ -582,6 +785,9 @@ static int cmd_say(int argc, char **argv)
 				"its .onnx.json, in %s or %s\n",
 			want ? "no such voice" : "no voice is installed",
 			"~/.local/share/piper/voices", SYSTEM_VOICE_DIR);
+		if (!want)
+			fprintf(stderr, "  kdos speech voice get %s\n",
+				DEFAULT_VOICE);
 		return 1;
 	}
 	for (int k = i; k < argc; k++)
@@ -843,9 +1049,13 @@ static int speech_usage(int rc)
 	       "  get NAME         download one into your own data directory\n"
 	       "  where            the directories searched, and what is in each\n"
 	       "  remove NAME      delete one\n"
+	       "  voice list       every Piper voice, and which are here\n"
+	       "  voice get NAME   download one; %s with no NAME\n"
+	       "  voice remove NAME  delete one\n"
 	       "\n"
 	       "KDOS ships %s in " SYSTEM_MODEL_DIR ", which\n"
-	       "transcribe uses when none of yours is here.\n", DEFAULT_MODEL);
+	       "transcribe uses when none of yours is here, and no voice.\n",
+	       DEFAULT_VOICE, DEFAULT_MODEL);
 	return rc;
 }
 
@@ -867,6 +1077,8 @@ int kdt_speech(int argc, char **argv)
 		return cmd_get(argc > 1 ? argv[1] : DEFAULT_MODEL);
 	if (!strcmp(cmd, "remove") && argc > 1)
 		return cmd_remove(argv[1]);
+	if (!strcmp(cmd, "voice"))
+		return cmd_voice(argc - 1, argv + 1);
 	if (!strcmp(cmd, "help") || !strcmp(cmd, "-h") || !strcmp(cmd, "--help"))
 		return speech_usage(0);
 	fprintf(stderr, "kdos speech: unknown command '%s'\n", cmd);

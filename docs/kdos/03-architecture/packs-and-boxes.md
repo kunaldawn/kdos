@@ -77,7 +77,7 @@ counts every line kind in the shipped file:
 |---|---|---|
 | `base` | A whole root filesystem | 2 |
 | `runtime` | A layer over the base, shared by many applications | 7 |
-| `app` | One application, as a difference over a runtime or the base | 73 |
+| `app` | One application, as a difference over a runtime or the base | 70 |
 | `data` | A dataset, mounted but never composed into a container | 2 |
 | `image` | A base that names its own container image, `image <base> <ref>` | 1 |
 | `snapshot` | Which Debian archive date the packages come from | 1 |
@@ -87,7 +87,7 @@ counts every line kind in the shipped file:
 | `needs` | A data row an application is useless without, `needs <app> <data>` | 0 |
 | `graft`, `boxgraft` | Where a data row's contents should appear, `graft <data> <path-in-pack> <destination>` | 2 and 1 |
 | `group` | A curated bundle that Discover, the installer and `kdos app install` offer as one choice | 17 lines, 7 groups |
-| `meta` | Display name, category, size estimate and tagline | 75: one for each `app` and `data` row |
+| `meta` | Display name, category, size estimate and tagline | 72: one for each `app` and `data` row |
 
 **Rows may stand in any order, with one exception.** The whole file is read before any chain is
 resolved, and a parent is looked up by id wherever it stands. A chain that names a parent the file
@@ -115,7 +115,7 @@ with a missing parent) while the other members still install.
 
 **`meta` is optional.** Its form is `meta <id> <name>|<category>|<bytes>|<tagline>`, separated by
 pipes because a tagline contains spaces. In the shipped file every `app` and `data` row has one,
-which is why `kdos app list --all` prints 75 entries: the 73 applications and the 2 data rows. A
+which is why `kdos app list --all` prints 72 entries: the 70 applications and the 2 data rows. A
 row without one presents as its own id, category `Other`, no tagline and size 0, so adding software
 is a one-line change. The size is an estimate and every surface labels it as one: what apt resolves
 on the day depends on the snapshot.
@@ -710,12 +710,11 @@ directory**, `$XDG_RUNTIME_DIR/kdos/box/<box>` on the host, which holds only:
 | `dbus-proxy` | Its filtered session bus, an `xdg-dbus-proxy` the box's keeper runs |
 | `pipewire-0`, `pulse/native` | Hard links to the session's audio sockets: a socket's inode is what a `connect()` reaches, so the link is the same socket and the session's directory stays out of the box |
 | `at-spi/` | The accessibility bus, linked the same way, only while assistive technology is in use or the user created `~/.config/kdos/a11y` |
-| `doc/` | Where the document portal's mount is bound, so a file the portal hands the box is a path that exists in it |
 | `Xauthority` | The session's X11 cookie, only for a box whose `x11` key resolves to yes |
 
-The session's own `wayland-0` and `bus` are never in it. KWin's tag filters only what reaches the
-tagged socket, so a box that could open `wayland-0` would be one `connect()` from every interface
-the tag denies, which is why `kdos-appbox` has no fallback to the session's socket: a box whose
+The session's own Wayland socket (`wayland-1`) and `bus` are never in it. KWin's tag filters only
+what reaches the tagged socket, so a box that could open `wayland-1` would be one `connect()` from
+every interface the tag denies, which is why `kdos-appbox` has no fallback to the session's socket: a box whose
 `kdos-boxsock` fails does not start, and the reason is printed. The box profiles directory is bound
 read-only over the shared home, because KWin reads each box's `grant` key there and a box that
 could write its own profile would grant itself the desktop.
@@ -774,17 +773,18 @@ The engine carries one of two states, and `kdos-appbox` records which in
 
 | State | Means |
 |---|---|
-| `confined` (engine `io.kdos.appbox+private`) | The box's own runtime directory with no `wayland-0` and no `bus`, a filtered bus, and no X11 display |
+| `confined` (engine `io.kdos.appbox+private`) | The box's own runtime directory with no session Wayland socket and no `bus`, a filtered bus, and no X11 display |
 | `tagged` (engine `io.kdos.appbox+tagged`) | The tag holds for clients on the tagged socket, and the box has a way past it: the session's runtime directory (a distrobox box), or an X11 display, through which Xwayland, one client to KWin, draws untagged |
 
 Each box's title bars are drawn in the colour scheme of its accent, by a KWin window rule
 `kdos-appbox` writes per box; see
-[Window rules KDOS writes](window-model.md#window-rules-kdos-writes). A box's processes run in a
-cgroup scope named the way an application's scope is named elsewhere, `app-kdos-<box>-<n>.scope`
+[Window rules KDOS writes](window-model.md#window-rules-kdos-writes). A pack box is meant to run in
+a cgroup scope named the way an application's scope is named elsewhere, `app-kdos-<box>-<n>.scope`
 under the login session's delegated subtree, which is the shape System Monitor and the desktop
-portal read an application id out of. Where the session's cgroup does not let an unprivileged
-process move into that subtree, the box is created under podman's own default instead, where the
-profile's `memory`, `cpus` and `pids` are enforced by nothing, and `kdos-box profile` says so.
+portal read an application id out of. elogind leaves the session's own `cgroup.procs` root's, so no
+unprivileged process can move into that subtree, and the box is created under podman's own default
+instead, where the profile's `memory`, `cpus` and `pids` are enforced by nothing and
+`kdos-box profile` says so.
 
 ### Throwaway boxes
 

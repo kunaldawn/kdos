@@ -16,9 +16,11 @@
 # skipped as missing. Appended, so a name in both resolves to the base system.
 export PATH=/sbin:/usr/sbin:/bin:/usr/bin:/usr/local/sbin:/usr/local/bin
 
-# The boot splash is already running: the initramfs started it and it survived
-# switch_root, because its FIFO lives on devtmpfs. Keep talking to the same
-# process so the screen never blinks between the two halves of boot.
+# On a boot with `quiet` the boot splash is already running: the initramfs
+# started it and it survived switch_root, because its FIFO lives on devtmpfs.
+# Keep talking to the same process so the screen never blinks between the two
+# halves of boot. On a boot without `quiet` no splash runs, and every call is
+# a no-op because nothing is listening on the FIFO.
 splash() {
     command -v kdos-splash >/dev/null 2>&1 || return 0
     kdos-splash "$@" 2>/dev/null
@@ -42,11 +44,14 @@ unset _s _n
 # is readable, and the splash is still the only thing on the screen — so it
 # repaints into the right scheme before anybody sees a frame in the wrong one.
 #
-# `/etc/kdos/accent` is written by kdos-powerd when `kdos theme` runs. Absent
-# means nothing has ever changed it, which is the compiled-in default the
-# splash is already wearing: nothing to send, and not a failure.
+# `/etc/kdos/accent` is written by the image build, the installer and
+# kdos-powerd. Absent leaves the splash in the compiled-in default it is
+# already wearing: nothing to send, and not a failure.
 if [ -r /etc/kdos/accent ]; then
-    read -r _accent < /etc/kdos/accent || _accent=""
+    # Kept at EOF: the writers end the name with no newline, on which `read`
+    # fails after assigning it.
+    _accent=""
+    { read -r _accent || [ -n "$_accent" ]; } < /etc/kdos/accent
     [ -n "$_accent" ] && splash accent "$_accent"
     unset _accent
 fi
@@ -103,6 +108,14 @@ ip link set lo up 2>/dev/null
 # GTK/Wayland apps, GIMP, LibreOffice and fontconfig all fail in ways that look
 # like "the app just doesn't start". Cheap, idempotent, and it always sticks.
 chmod 1777 /tmp
+# The X11 and ICE socket directories, root-owned and sticky, as nothing else
+# on a tmpfs /tmp makes them. Without /tmp/.X11-unix KWin starts no Xwayland,
+# DISPLAY stays empty and no X11 program opens, boxed ones included. Without
+# /tmp/.ICE-unix the first session's ksmserver makes it as that user, and
+# libICE then refuses it to every other account.
+mkdir -p /tmp/.X11-unix /tmp/.ICE-unix
+chown root:root /tmp/.X11-unix /tmp/.ICE-unix
+chmod 1777 /tmp/.X11-unix /tmp/.ICE-unix
 # fstab may carry a swap entry (the installer writes one for a swap partition
 # or a /swapfile). `mount -a` ignores swap lines, and inittab already has the
 # matching swapoff on shutdown, so this is the only place it gets turned on.

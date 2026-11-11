@@ -35,7 +35,7 @@ cat > "$PKG/usr/share/applications/org.kde.cantor.desktop" <<'DESKTOP'
 Type=Application
 Name=Cantor
 GenericName=Mathematical Worksheet
-Comment=Worksheets for Python, R, Octave, Maxima, Qalculate and KAlgebra
+Comment=Worksheets for Python, R, Octave, Lua, Qalculate and KAlgebra
 TryExec=cantor
 Exec=cantor %U
 Icon=cantor
@@ -44,7 +44,7 @@ StartupWMClass=org.kde.cantor
 X-DocPath=cantor/index.html
 MimeType=application/x-cantor;
 Categories=Qt;KDE;Education;Math;Science;
-Keywords=math;worksheet;notebook;python;r;octave;maxima;calculator;cantor;
+Keywords=math;worksheet;notebook;python;r;octave;lua;calculator;cantor;
 DESKTOP
 chmod 644 "$PKG/usr/share/applications/org.kde.cantor.desktop"
 test -e "$PKG"/usr/share/icons/hicolor/48x48/apps/cantor.png

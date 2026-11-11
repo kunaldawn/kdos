@@ -34,6 +34,8 @@ extension and `xpinstall.signatures.required` stays on; nothing reaches the stor
 
 The task manager's tab list goes through LibTaskManager from
 [plasma-workspace](#port-plasma-workspace), and the KRunner tab and history search through the two
-D-Bus runners installed under `/usr/share/krunner/dbusplugins`. The two kded modules it installs
-are a reminder that offers the extension once a supported browser is used, and an integrator for
-browsers installed as Flatpaks, which on KDOS finds none.
+D-Bus runners installed under `/usr/share/krunner/dbusplugins`. The kded module it keeps is a
+reminder that offers the extension once a supported browser is used. `build.sh` deletes the second,
+`browserintegrationflatpakintegrator.so`, which writes a host wrapper under `~/.var/app/<id>` for
+eight Flatpak browsers at every login whether or not any of them is installed; KDOS has no Flatpak,
+so it would only leave eight empty application trees in every home. The build has no switch for it.

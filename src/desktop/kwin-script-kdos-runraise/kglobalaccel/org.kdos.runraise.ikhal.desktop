@@ -2,5 +2,5 @@
 Type=Application
 Name=ikhal in a New Window
 Comment=Open ikhal in a new terminal window. The KDOS Raise key brings back the one already open.
-Exec=konsole -p tabtitle=ikhal -e ikhal
+Exec=konsole --hold -p tabtitle=ikhal -e ikhal
 Icon=utilities-terminal

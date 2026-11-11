@@ -1,0 +1,74 @@
+Subject: Release no login on the readiness of a service manager that is stopping
+
+When the last session closes while the service manager is still coming
+up, the manager is told to stop, but its readiness pipe stays open. A new
+login that arrives meanwhile waits in srv_pending for the old manager to
+exit. If the stopping manager then reports ready, the pipe handler runs
+the "ready" job, and its exit sends MSG_OK_DONE to every session of the
+login, which releases the new login against services that are being
+stopped. The session starts on a bus that disappears a moment later.
+
+Drop the readiness of a manager once it is no longer the login's
+srv_pid; the next manager reports on its own pipe. Also, when a manager
+starts while the previous manager's pipe is still open (the previous
+manager ended without reporting), close that pipe and take it off the
+poll list. The pipe handler finds a login only by its current pipe, and
+an event on the old one would otherwise make turnstiled exit.
+---
+--- a/src/turnstiled.cc
++++ b/src/turnstiled.cc
+@@ -158,6 +158,37 @@
+         lgn.remove_sdir();
+         return false;
+     }
++    /* the readiness pipe of a manager that ended without reporting is
++     * still open; it is dropped from the poll list here, since the pipe
++     * handler knows a login only by its current pipe. The entry is moved
++     * to the end of the pipe area before it is cleared: a restart from the
++     * reaper runs before this iteration's pipe loop, which reads the area
++     * as the first npipes entries, and a hole inside it would hand the
++     * last pipe to the connection handler
++     */
++    if (lgn.userpipe >= 0) {
++        if (!lgn.pipe_queued) {
++            std::size_t last = npipes + 1;
++            for (std::size_t j = 2; j < fds.size(); ++j) {
++                if (fds[j].fd != lgn.userpipe) {
++                    continue;
++                }
++                if ((j < last) && (last < fds.size())) {
++                    pollfd tmp = fds[j];
++                    fds[j] = fds[last];
++                    fds[last] = tmp;
++                    j = last;
++                }
++                fds[j].fd = -1;
++                fds[j].revents = 0;
++                --npipes;
++                break;
++            }
++        }
++        close(lgn.userpipe);
++        lgn.userpipe = -1;
++        lgn.pipe_queued = false;
++    }
+     print_dbg("srv: create readiness pipe");
+     unlinkat(lgn.dirfd, "ready", 0);
+     if (mkfifoat(lgn.dirfd, "ready", 0700) < 0) {
+@@ -1226,8 +1257,14 @@
+         /* unlink the pipe */
+         unlinkat(lgn->dirfd, "ready", 0);
+         print_dbg("pipe: gone");
+-        /* wait for the boot service to come up */
+-        if (!srv_boot(*lgn, cdata->backend.data())) {
++        /* a service manager already told to stop (srv_pid is -1 once the
++         * last session has closed) reports nothing: its readiness would
++         * release a new login, held in srv_pending, against the services
++         * that are being stopped, and the next manager reports again
++         */
++        if (lgn->srv_pid == -1) {
++            print_dbg("pipe: manager stopping, readiness dropped");
++        } else if (!srv_boot(*lgn, cdata->backend.data())) {
+             /* this is an unrecoverable condition */
+             return false;
+         }

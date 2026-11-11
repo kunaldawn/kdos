@@ -22,6 +22,7 @@ Comment=Read and post to the Fediverse
 Exec=toot tui
 Icon=application-rss+xml
 Terminal=true
+NoDisplay=true
 Categories=Network;
 Keywords=mastodon;fediverse;activitypub;social;toot;
 EOF2

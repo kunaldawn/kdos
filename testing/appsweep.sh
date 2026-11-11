@@ -49,7 +49,7 @@ RTDIR=/run/user/1000
 LAUNCH_TIMEOUT=${LAUNCH_TIMEOUT:-45}
 SETTLE=6
 
-asuser() { su - "$U" -c "XDG_RUNTIME_DIR=$RTDIR WAYLAND_DISPLAY=wayland-0 $1" 2>&1; }
+asuser() { su - "$U" -c "XDG_RUNTIME_DIR=$RTDIR WAYLAND_DISPLAY=wayland-1 $1" 2>&1; }
 
 note() { printf '%s\n' "$*" >&2; }
 

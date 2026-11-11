@@ -12,7 +12,7 @@ diff --git a/processcore/application_data_model.cpp b/processcore/application_da
  
  #include "cgroup.h"
  #include "process_data_model.h"
-@@ -16,8 +18,45 @@
+@@ -16,8 +18,48 @@
  using namespace KSysGuard;
  using namespace Qt::StringLiterals;
  
@@ -34,9 +34,12 @@ diff --git a/processcore/application_data_model.cpp b/processcore/application_da
 +    if (!self.open(QIODevice::ReadOnly | QIODevice::Text)) {
 +        return systemdRoot;
 +    }
++    // procfs reports a size of 0, so atEnd() is true before the first read:
++    // a loop on it would never read the file.
 +    QString own;
-+    while (!self.atEnd()) {
-+        const QString line = QString::fromUtf8(self.readLine()).trimmed();
++    const QList<QByteArray> lines = self.readAll().split('\n');
++    for (const QByteArray &raw : lines) {
++        const QString line = QString::fromUtf8(raw).trimmed();
 +        if (line.startsWith(QLatin1String("0::"))) {
 +            own = line.mid(3);
 +            break;

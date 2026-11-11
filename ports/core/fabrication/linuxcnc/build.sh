@@ -61,7 +61,9 @@ find "$PKG/usr/share/doc/linuxcnc" -type l ! -exec test -e {} \; -delete
 
 install -Dm644 ../linuxcncicon.png "$PKG/usr/share/icons/hicolor/48x48/apps/linuxcncicon.png"
 
-rm -f "$PKG/usr/share/applications/linuxcnc-latency-histogram.desktop"
+rm -f "$PKG/usr/share/applications/linuxcnc-latency-histogram.desktop" \
+	"$PKG/usr/share/applications/linuxcnc-stepconf.desktop" \
+	"$PKG/usr/share/applications/linuxcnc-pncconf.desktop"
 cat > "$PKG/usr/share/applications/linuxcnc.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application
@@ -71,7 +73,7 @@ Comment=Run a mill, lathe, router or plasma cutter from G-code
 Exec=linuxcnc
 Icon=linuxcncicon
 Terminal=false
-StartupWMClass=Pickconfig
+StartupWMClass=Pickconfig.tcl
 Categories=Science;Engineering;
 Keywords=cnc;linuxcnc;gcode;g-code;mill;lathe;router;plasma;axis;hal;
 DESKTOP
@@ -88,7 +90,7 @@ StartupWMClass=Latency-test
 Categories=Science;Engineering;
 Keywords=cnc;linuxcnc;latency;jitter;benchmark;realtime;
 DESKTOP
-cat > "$PKG/usr/share/applications/linuxcnc-stepconf.desktop" <<'DESKTOP'
+cat > "$PKG/usr/share/applications/stepconf.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application
 Name=LinuxCNC StepConf Wizard
@@ -100,7 +102,7 @@ StartupWMClass=stepconf
 Categories=Science;Engineering;
 Keywords=cnc;linuxcnc;stepper;configuration;wizard;parallel;
 DESKTOP
-cat > "$PKG/usr/share/applications/linuxcnc-pncconf.desktop" <<'DESKTOP'
+cat > "$PKG/usr/share/applications/pncconf.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application
 Name=LinuxCNC PnCConf Wizard
@@ -112,4 +114,5 @@ StartupWMClass=pncconf
 Categories=Science;Engineering;
 Keywords=cnc;linuxcnc;mesa;configuration;wizard;servo;
 DESKTOP
-chmod 644 "$PKG"/usr/share/applications/linuxcnc*.desktop
+chmod 644 "$PKG"/usr/share/applications/linuxcnc*.desktop \
+	"$PKG"/usr/share/applications/stepconf.desktop "$PKG"/usr/share/applications/pncconf.desktop

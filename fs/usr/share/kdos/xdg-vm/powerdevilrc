@@ -5,23 +5,39 @@
 # ██║  ██╗██████╔╝╚██████╔╝███████║
 # ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
 # ---------------------------------
-#   No dimming and no blank screen in a virtual machine.
+#   No dimming, no blank screen and no suspend in a virtual machine.
 #
-# A dimmed or blanked guest saves nothing and reads, from outside it, as a
-# hung one. PowerDevil already never suspends a virtual machine on idle or on
-# a lid event; this turns off the two screen timers as well, in every
-# profile a guest can report. The directory goes first in XDG_CONFIG_DIRS,
-# and only in a virtual machine (kscreenlockerrc beside this file).
+# A dimmed, blanked or suspended guest saves nothing and reads, from outside
+# it, as a hung one; a guest woken from suspend can come back with its
+# display output off. PowerDevil's own virtual-machine check asks systemd's
+# manager on the system bus, which KDOS does not run, so it takes every guest
+# for bare metal and would sleep it after 15 idle minutes and on a lid event.
+# This turns off the two screen timers, idle suspend and the lid action, in
+# every profile a guest can report. The directory goes first in
+# XDG_CONFIG_DIRS, and only in a virtual machine (kscreenlockerrc beside this
+# file); the person's own choice in ~/.config still outranks it.
 # ---------------------------------
 
 [AC][Display]
 DimDisplayWhenIdle=false
 TurnOffDisplayWhenIdle=false
 
+[AC][SuspendAndShutdown]
+AutoSuspendAction=0
+LidAction=0
+
 [Battery][Display]
 DimDisplayWhenIdle=false
 TurnOffDisplayWhenIdle=false
 
+[Battery][SuspendAndShutdown]
+AutoSuspendAction=0
+LidAction=0
+
 [LowBattery][Display]
 DimDisplayWhenIdle=false
 TurnOffDisplayWhenIdle=false
+
+[LowBattery][SuspendAndShutdown]
+AutoSuspendAction=0
+LidAction=0

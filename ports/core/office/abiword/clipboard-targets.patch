@@ -1,0 +1,111 @@
+Subject: Offer only the clipboard formats a copy holds, without the exporter's NUL
+
+The RTF and text buffers lose the NUL IE_Exp::copyToBuffer ends them with,
+so a pasted text carries no U+0000. Each copy empties the internal copy of
+its selection first, and CLIPBOARD is offered in the formats that copy
+holds instead of every format AbiWord reads, so a text copy offers no image
+type with no data behind it.
+---
+--- a/src/af/xap/gtk/xap_UnixClipboard.h
++++ b/src/af/xap/gtk/xap_UnixClipboard.h
+@@ -51,6 +51,7 @@
+ 								UT_sint32 iNumBytes);
+ 
+ 	void				clearData(bool bClipboard, bool bPrimary);
++	void				beginAddingData(T_AllowGet tTo);
+ 	void			finishedAddingData(void);
+ 	bool				getData(T_AllowGet tFrom, const char** formatList,
+ 								void ** ppData, UT_uint32 * pLen,
+--- a/src/af/xap/gtk/xap_UnixClipboard.cpp
++++ b/src/af/xap/gtk/xap_UnixClipboard.cpp
+@@ -182,16 +182,42 @@
+     }
+ }
+ 
++/*!
++  Empty the internal copy of one selection before a copy adds its
++  formats, leaving the selection itself owned: a format left from an
++  earlier copy would otherwise be offered with that copy's data.
++*/
++void XAP_UnixClipboard::beginAddingData(T_AllowGet tTo)
++{
++	if (tTo == TAG_PrimaryOnly)
++		m_fakePrimaryClipboard.clearClipboard();
++	else
++		m_fakeClipboard.clearClipboard();
++}
++
++/*!
++  Offer CLIPBOARD in the formats the internal copy holds, not every
++  format AbiWord can read: a format offered with no data reaches a
++  clipboard manager as an empty entry.
++*/
+ void XAP_UnixClipboard::finishedAddingData(void)
+ {
++  GtkTargetEntry * targets = g_new0(GtkTargetEntry, m_nTargets ? m_nTargets : 1);
++  guint nTargets = 0;
++
++  for (UT_uint32 k = 0; k < m_nTargets; k++)
++    if (m_fakeClipboard.hasFormat(m_Targets[k].target))
++      targets[nTargets++] = m_Targets[k];
++
+   gtk_clipboard_set_with_data (gtkClipboardForTarget(TAG_ClipboardOnly),
+-			       m_Targets,
+-			       m_nTargets,
++			       targets,
++			       nTargets,
+ 			       s_clipboard_get_func,
+ 			       s_clipboard_clear_func,
+ 			       this);
+ 
+-  gtk_clipboard_set_can_store (gtkClipboardForTarget(TAG_ClipboardOnly), m_Targets, m_nTargets);
++  gtk_clipboard_set_can_store (gtkClipboardForTarget(TAG_ClipboardOnly), targets, nTargets);
++  g_free(targets);
+ }
+ 
+ void XAP_UnixClipboard::clearData(bool bClipboard, bool bPrimary)
+--- a/src/wp/ap/gtk/ap_UnixApp.cpp
++++ b/src/wp/ap/gtk/ap_UnixApp.cpp
+@@ -572,6 +572,19 @@
+ #define CLIPBOARD_IS_HTML4 true
+ 
+ /*!
++  The length of a buffer IE_Exp::copyToBuffer filled, without the NUL
++  it ends the buffer with: the NUL is not part of the format, and a
++  program that pastes the text receives it as a control character.
++*/
++static UT_uint32 s_lengthWithoutNul(const UT_ByteBuf & buf)
++{
++	UT_uint32 len = buf.getLength();
++	if (len > 0 && *buf.getPointer(len - 1) == 0)
++		len--;
++	return len;
++}
++
++/*!
+   copy the given subset of the given document to the
+   system clipboard in a variety of formats.
+ 
+@@ -671,16 +684,18 @@
+ 					    ? XAP_UnixClipboard::TAG_ClipboardOnly
+ 					    : XAP_UnixClipboard::TAG_PrimaryOnly);
+ 
+-	if (bufRTF.getLength () > 0)
+-		m_pClipboard->addRichTextData (target, bufRTF.getPointer (0), bufRTF.getLength ());
++	m_pClipboard->beginAddingData(target);
++
++	if (s_lengthWithoutNul (bufRTF) > 0)
++		m_pClipboard->addRichTextData (target, bufRTF.getPointer (0), s_lengthWithoutNul (bufRTF));
+ 	if (bufXHTML.getLength () > 0)
+ 		m_pClipboard->addHtmlData (target, bufXHTML.getPointer (0), bufXHTML.getLength (), true);
+ 	if (bufHTML4.getLength () > 0)
+ 		m_pClipboard->addHtmlData (target, bufHTML4.getPointer (0), bufHTML4.getLength (), false);
+ 	if (bExpODT && bufODT.getLength () > 0)
+ 		m_pClipboard->addODTData (target, bufODT.getPointer (0), bufODT.getLength ());
+-	if (bufTEXT.getLength () > 0)
+-		m_pClipboard->addTextData (target, bufTEXT.getPointer (0), bufTEXT.getLength ());
++	if (s_lengthWithoutNul (bufTEXT) > 0)
++		m_pClipboard->addTextData (target, bufTEXT.getPointer (0), s_lengthWithoutNul (bufTEXT));
+ 
+ 	{
+ 		// TODO: we have to make a good way to tell if the current selection is just an image

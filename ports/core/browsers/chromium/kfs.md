@@ -143,3 +143,14 @@ component updates, Safe Browsing, password leak detection, sign-in and sync, spe
 its network service, translation, search suggestions, the suggestions on error pages, network
 prediction, DNS over HTTPS, promotions, the default-browser check, background mode and the
 generative AI features.
+
+`/usr/lib/chromium/initial_preferences`, beside the program, is read once, when a profile is
+created, and gives that profile three defaults the user can change afterwards in Settings >
+Appearance. `distribution.require_eula` false skips the Linux terms-of-service dialog, which an
+unbranded build fills with the placeholder "This Space Intentionally Blank"; without the file the
+dialog opens on every new profile. `browser.custom_chrome_frame` false gives the window KWin's
+title bar instead of Chromium's own, which is the default on Wayland. `extensions.theme.system_theme`
+1 selects the GTK theme: under Plasma, Chromium's own choice is the Qt theme, which `use_qt6 =
+false` leaves out of the build, so without the key a new profile falls back to the grey Classic
+theme. GTK 3 reads the Breeze GTK theme and the colours `kde-gtk-config` writes from the Plasma
+colour scheme, so the toolbar follows the accent and light or dark mode.

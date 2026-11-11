@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   Which runners KRunner ranks first.
+#
+# KRunner sorts the categories of its favourite runners above every other
+# category, in the order this list names them, whatever relevance a row
+# carries. `kdos` leads, so `night light` + Enter runs the palette's verb
+# rather than an application whose name happens to start with the same
+# letters; the rest is KRunner's own default order. `kdos-library` is not a
+# favourite: the offline library answers below everything else. A runner id
+# here is an interface (kdos-runner's kdos.desktop); renaming it drops the
+# palette back below Applications and System Settings.
+# ---------------------------------
+
+[Plugins][Favorites]
+plugins=kdos,krunner_sessions,krunner_powerdevil,krunner_services,krunner_systemsettings

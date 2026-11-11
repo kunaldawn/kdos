@@ -133,7 +133,7 @@ smartmontools.
 `smartd` logs through syslog under its own name, and its supervisor keeps its output in `/run`:
 
 ```bash
-grep smartd /var/log/messages
+sudo grep smartd /var/log/messages
 sudo cat /run/kdos-svc.smartd.log
 ```
 
@@ -283,7 +283,7 @@ follows when nothing was left.
 
 - [`kdos doctor` cannot check hardware a machine does not have](../../kdos/06-reference/known-gaps.md#kdos-doctor-cannot-check-hardware-a-machine-does-not-have):
   neither can smartd, which in a virtual machine stops at boot
-- [The native applications have not been run](../../kdos/06-reference/known-gaps.md#the-native-applications-have-not-been-run),
+- [The native applications have been opened, not used](../../kdos/06-reference/known-gaps.md#the-native-applications-have-been-opened-not-used),
   among them GNOME Disks, the one that draws udisks2's SMART data
 
 ## See also

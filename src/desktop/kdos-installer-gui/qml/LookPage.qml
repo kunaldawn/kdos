@@ -51,11 +51,13 @@ WizardPage {
                 readonly property bool chosen: modelData.name === page.answers.theme
                 readonly property var colors: Backend.accentColors(modelData.name)
                 readonly property string preview: Backend.accentPreview(modelData.lookandfeel)
-                readonly property string label: colors.name
-                    ? colors.name.replace(/^KDOS /, "")
-                    : modelData.label.charAt(0) + modelData.label.slice(1).toLowerCase()
+                readonly property string label: Backend.accentLabel(modelData.name)
 
+                /* One preferred width for every card: the layout shares the
+                 * row out from it, so a longer label never widens its
+                 * column. */
                 Layout.fillWidth: true
+                Layout.preferredWidth: Kirigami.Units.gridUnit * 10
                 Layout.preferredHeight: Kirigami.Units.gridUnit * 7
                 highlighted: chosen
                 checkable: true
@@ -79,13 +81,15 @@ WizardPage {
                             asynchronous: true
                         }
                         /* The scheme's own colours, where its preview is not
-                         * installed: the window, a selection on it and its text. */
+                         * installed: the window framed in the accent, a
+                         * selection on it and its text. */
                         Rectangle {
                             anchors.fill: parent
                             visible: card.preview.length === 0
                             radius: Kirigami.Units.cornerRadius
                             color: card.colors.window || Kirigami.Theme.backgroundColor
-                            border.color: Kirigami.Theme.disabledTextColor
+                            border.width: 2
+                            border.color: card.colors.accent || Kirigami.Theme.focusColor
                             Rectangle {
                                 anchors.left: parent.left
                                 anchors.right: parent.right
@@ -102,11 +106,15 @@ WizardPage {
                             }
                         }
                     }
+                    /* On the chosen card the delegate's background is the
+                     * selection colour, so the caption takes the colour
+                     * drawn on it. */
                     QQC2.Label {
                         Layout.alignment: Qt.AlignHCenter
                         text: card.modelData.default
                             ? i18nc("@item %1 accent", "%1 (default)", card.label) : card.label
                         font.bold: card.chosen
+                        color: card.highlighted ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
                     }
                 }
             }
@@ -122,13 +130,13 @@ WizardPage {
     Repeater {
         model: [
             { name: "kdos",   icon: "preferences-desktop-theme-global",
-              title: i18nc("@option:radio desk", "KDOS"),
+              title: Backend.deskTitle("kdos"),
               text: i18n("One panel at the bottom: the menu, the tasks, the meters, the tray and the clock.") },
             { name: "dock",   icon: "preferences-desktop",
-              title: i18nc("@option:radio desk", "Dock"),
+              title: Backend.deskTitle("dock"),
               text: i18n("A bar along the top with the menu and the clock, and a floating dock below.") },
             { name: "tiling", icon: "view-grid",
-              title: i18nc("@option:radio desk", "Tiling"),
+              title: Backend.deskTitle("tiling"),
               text: i18n("A bar along the top, and windows tiled side by side as they open.") }
         ]
         delegate: QQC2.RadioDelegate {

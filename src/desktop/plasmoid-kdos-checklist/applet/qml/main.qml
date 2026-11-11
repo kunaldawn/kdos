@@ -43,6 +43,7 @@ PlasmoidItem {
         collapseMarginsHint: false
 
         header: PlasmaExtras.PlasmoidHeading {
+            visible: !(Plasmoid.containmentDisplayHints & PlasmaCore.Types.ContainmentDrawsPlasmoidHeading)
             contentItem: Kirigami.Heading {
                 level: 1
                 text: i18ndc("kdos-plasmoid-checklist", "@title", "Getting Started")

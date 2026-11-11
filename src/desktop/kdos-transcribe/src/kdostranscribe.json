@@ -1,7 +1,7 @@
 {
     "KPlugin": {
         "Description": "Writes what is said in an audio or video file into a text file beside it, on this machine",
-        "Icon": "text-x-generic-symbolic",
+        "Icon": "media-view-subtitles-symbolic",
         "License": "MIT",
         "MimeTypes": [
             "application/octet-stream"

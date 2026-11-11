@@ -92,10 +92,10 @@ and `/etc/kpkg.conf`, the host package manager's, under
 | `reasons/` | The explanations `kdos why` and `kdos explain` print |
 | `xdg/` | KDOS's defaults for Plasma and the KDE programs, the last directory on `XDG_CONFIG_DIRS`; see [Plasma's files KDOS ships](configuration.md#plasmas-files-kdos-ships) |
 | `xdg-vm/`, `xdg-live/` | The overlays put in front of `/etc/xdg` in a virtual machine and on the live medium |
-| `greeter/<accent>/` | The login screen's look in each accent: the files `kdos-powerd` copies into the `sddm` account's home when the accent is set |
+| `greeter/<accent>/` | The login screen's look in each accent: the files the image (for the default accent), the installer and `kdos-powerd` copy into the `sddm` account's home |
 | `keycard-groups.conf` | How the key card groups KWin's shortcuts |
 | `update/io.kdos.system.metainfo.xml` | The AppStream component Discover shows the system update as |
-| `discover/` | Discover's featured applications, `featured.json` |
+| `discover/` | Discover's featured applications, `featured.json`, and `debian-exclude`, the Debian packages the KDOS backend never offers to build in a box (one name a line, `#` comments) |
 | `installer/` | The graphical installer's data |
 | `logo.txt` | The login banner's picture, with its terminal colour codes |
 | `kdos.png` | The mascot artwork the marks and logo are cut from |
@@ -114,6 +114,7 @@ Where KDOS's Plasma components and artwork install, outside `/usr/share/kdos`:
 | `/usr/share/plasma/layout-templates/org.kdos.desk.{kdos,dock,tiling}/` | The three desks' panel layouts | `kdos-plasma-look` |
 | `/usr/share/plasma/desktoptheme/kdos/` | The Plasma style `kdos` | `kdos-plasma-look` |
 | `/usr/share/color-schemes/KDOS*.colors`, `/usr/share/konsole/`, `/usr/share/qt5ct/colors/` | The colour schemes, Konsole profiles and qt5ct palettes of every accent | `kdos-plasma-look` |
+| `/usr/share/org.kde.syntax-highlighting/themes/KDOS-*.theme` | The editor theme of every accent, which Kate and every KTextEditor program pick by the scheme's view background | `kdos-theme` |
 | `/usr/share/wallpapers/KDOS-*/` | The wallpapers, one Plasma wallpaper package per accent | `kdos-wallpapers` |
 | `/usr/share/icons/KDOS/`, `KDOS-Light/` | The icon themes, the KDOS marks over Breeze | `kdos-icons` |
 | `/usr/share/sounds/kdos/` | The sound theme | `kdos-sounds` |
@@ -125,8 +126,9 @@ Where KDOS's Plasma components and artwork install, outside `/usr/share/kdos`:
 | `/usr/share/krunner/dbusplugins/kdos.desktop`, `kdos-library.desktop` | The KDOS runner and the offline library in KRunner | `kdos-runner` |
 | `/usr/share/khelpcenter/plugins/kdos.desktop`, `kfs.desktop` | The two books in the Help Center | `kdos-doc` |
 | `/usr/share/plasma/plasma-welcome/extra-pages/` | The KDOS pages of the Welcome Center | `kdos-welcome` |
-| `/usr/share/plasma-systemmonitor/kdos.page`, `/usr/share/ksysguard/sensorfaces/org.kdos.meters/` | The KDOS page and face of System Monitor | `ksystemstats-kdos` |
+| `/usr/share/plasma-systemmonitor/kdos-overview.page`, `/usr/share/plasma-systemmonitor/kdos.page`, `/usr/share/ksysguard/sensorfaces/org.kdos.meters/` | System Monitor's Overview and KDOS pages, and the KDOS Meters face | `ksystemstats-kdos` |
 | `/usr/share/swcatalog/xml/kdos-ports.xml` | The AppStream catalogue of the ports this root has installed, which Discover lists | `70_image`'s `086_swcatalog.sh`, and `kdos-discover-catalog` after every install |
+| `/usr/share/swcatalog/xml/kdos-debian-exclude.xml` | `remove-component` merges that take the Debian applications `debian-exclude` names out of every AppStream pool, KRunner's software results included | `70_image`'s `086_swcatalog.sh` |
 | `/usr/share/fwupd/remotes.d/kdos-snapshot.conf`, `kdos-snapshot/` | The fwupd remote that reads the firmware metadata snapshot offline, and the snapshot, `firmware.xml.zst` with its signature | `fs/`, and `fwupd-snapshot` |
 | `/usr/share/doc/kdos/`, `/usr/share/doc/kfs/` | The two books as HTML | `kdos-doc`, `kdos-kfs` |
 | `/usr/share/doc/HTML/en/kdos` | A link to `/usr/share/doc/kdos`, through which `help:/kdos/<page>.html` reaches the book | `kdos-doc` |
@@ -197,7 +199,7 @@ Emptied at every boot.
 | Path | Is |
 |---|---|
 | `kdos-powerd.sock`, `kdos-energyd.sock`, `kdos-oomd.sock`, `kdos-packd.sock` | The root daemons' sockets; see [Sockets](#sockets) |
-| `<name>.pid` | The process ID of the `ksvc` supervisor running service `<name>`. The supervisor leads its own process group, so stopping the service kills the daemon under it too |
+| `kdos-svc.<name>.pid` | The process ID of the `ksvc` supervisor running service `<name>`. The supervisor leads its own process group, so stopping the service kills the daemon under it too. A daemon's own pid file, often `<name>.pid` here, is not read |
 | `kdos-svc.<name>.log` | A supervised service's output, capped at 64 KiB with one `.old`. Every line also goes to syslog |
 | `kdos-svc.<name>.state` | The supervisor's one line about its daemon: `up` or `wait`, the daemon's pid, since when (seconds since boot), its failing exits in a row, its last exit status and the stop grace the supervisor was started with. `service status` reads it to report a crash loop as `[FAIL]`; see [ksvc and service](../04-programs/kdos-command.md#ksvc-and-service) |
 | `kdos-svc.<name>.stopping` | Empty; exists while `service stop <name>` runs, so the supervisor does not pass the group a second `SIGTERM` |
@@ -217,7 +219,7 @@ Emptied at every boot.
 
 | Path | Holds |
 |---|---|
-| `/var/lib/sddm/` | The `sddm` account's home: the greeter's `kdeglobals`, `plasmarc` and `kcminputrc` in the accent, and `kdos-background.png`, which `kdos-powerd` writes as that account |
+| `/var/lib/sddm/` | The `sddm` account's home: the greeter's `kdeglobals`, `plasmarc` and `kcminputrc` in the accent, and `kdos-background.png`. The image ships the default accent's; the installer and `kdos-powerd` (as that account) replace them |
 | `/var/log/sddm.log`, `sddm.log.old` | SDDM's own log; a session's output is in its user's `~/.local/share/sddm/wayland-session.log` |
 | `/var/lib/elogind/linger/` | One file per user whose services keep running with nobody logged in (`loginctl enable-linger`) |
 | `/var/spool/cron/` | Each user's crontab, kept by `cronie` |
@@ -276,7 +278,7 @@ on a machine nobody logs in to. See
 | `~/.local/state/kdos/notice` | What `kdos-notice` last posted about each kind of notice, so the same news is not posted at every login |
 | `~/.local/state/kdos/kglobalshortcutsrc.seeded` | Present once the KDOS chords have been added to your shortcuts, so a chord you removed stays removed |
 | `~/.local/state/kdos/fwask` | The services the firewall's question has already asked about, per network |
-| `~/.cache/kdos/plocate.db` | This account's file index, rebuilt nightly from `$HOME` by `kdos-updatedb`; `LOCATE_PATH` names it |
+| `~/.cache/kdos/plocate.db` | This account's file index, built from `$HOME` by `kdos-updatedb` at the first login that finds none and rebuilt nightly; `LOCATE_PATH` names it |
 | `~/.cache/kdos/runner-books` | The KDOS runner's index of the two books, rebuilt when `kdos-doc` or `kdos-kfs` is reinstalled |
 | `~/.cache/kdos/library-owners` | Which pack or package owns each item of the offline library, trusted until kpkg's database changes |
 | `~/.local/share/Trash/` | The freedesktop trash |
@@ -300,16 +302,16 @@ session's own sockets are here; a box is given a private directory of its own in
 | Path | Is |
 |---|---|
 | `bus` | The session message bus (D-Bus), started by the `dbus` user service. Plasma, every box and every user service are on this one bus; `kdos-session-wrapper` refuses to start a session that cannot reach it |
-| `wayland-0` | KWin's Wayland socket |
-| `ksvc/` | The user services' supervisor files: `<name>.pid`, `<name>.state` and `<name>.log`, as `/run` holds the system's, and `kdos-user-services.log` |
+| `wayland-1` | KWin's Wayland socket: the first free `wayland-N` from 1, which is `wayland-1` in a session alone on the machine |
+| `ksvc/` | The user services' supervisor files: `kdos-svc.<name>.pid`, `kdos-svc.<name>.state` and `kdos-svc.<name>.log`, as `/run` holds the system's, and `kdos-user-services.log` |
 | `kdos/user-timers.pid` | The `timers` user service's process ID, written once both timer tables have been read |
 | `kdos/stay-awake.pid` | The process holding the `stay-awake` inhibition, while the switch is on |
-| `kdos/box/<box>/` | A box's private runtime directory, which the box sees as its own `/run/user/<uid>`: its tagged Wayland sockets `wl[.<stem>]@<display>` from `kdos-boxsock`, `dbus-proxy`, its filtered session bus, hard links to the session's `pipewire-0` and `pulse/native`, `at-spi/` only when the box is given the accessibility bus, and `doc/`, where the document portal is bound. The session's own `wayland-0` and `bus` are never in it |
+| `kdos/box/<box>/` | A box's private runtime directory, which the box sees as its own `/run/user/<uid>`: its tagged Wayland sockets `wl[.<stem>]@<display>` from `kdos-boxsock`, `dbus-proxy`, its filtered session bus, hard links to the session's `pipewire-0` and `pulse/native`, and `at-spi/` only when the box is given the accessibility bus. The session's own `wayland-1` and `bus` are never in it, nor the document portal's mount |
 | `kdos/boxes/<box>.state` | Which boundary held for the box at its last launch: `confined` or `tagged` |
 | `kdos/boxes/<box>.apps` | The box's launch ledger: one line per running launch, marked when it ended during a logout |
 | `kdos/boxes/<box>/root` | The merged root of a box composed from packs |
 | `kdos/boxes/<box>/upper`, `work` | A composed box's writable layer when `$HOME` cannot hold one (a live session, whose home is itself on an overlay); lost at logout. The launch prints nothing about it: `kdos-appbox status` marks such a box `ephemeral`, and `kdos-box freeze` warns before freezing one |
-| `ssh-agent.socket` | The account's `ssh-agent`, started by the first login shell that finds nothing answering there; `SSH_AUTH_SOCK` names it |
+| `ssh-agent.socket` | The account's `ssh-agent`, the `ssh-agent` user service (`/etc/kdos/user-services/15_ssh-agent.sh`); `SSH_AUTH_SOCK` names it |
 | `podman/podman.sock` | The rootless Podman API, while `podman system service` runs; `kdos-podman-api` starts it on demand |
 | `pipewire-0`, `pulse/native` | PipeWire's socket and the `pipewire-pulse` socket. See [Reaching the graph from inside a box](../03-architecture/session.md#reaching-the-graph-from-inside-a-box) |
 | `kdos-appbox.trace` | Stage timings for the most recent boxed launches |
@@ -454,34 +456,37 @@ about the caller's bus name; the action names are in [The security model](../03-
 
 | Name | Object | Served by | For |
 |---|---|---|---|
-| `io.kdos.Power1` | `/io/kdos/Power1` | `kdos-powerd` | `ListFirewallServices`, `ListFirewallKnocks`, `SetFirewallService` (`io.kdos.firewall.set`), `SetAccent` and `SetSplash` (`io.kdos.accent.set`), `StartFileSharing` (`io.kdos.filesharing.start`); the properties `Accent` and `Accents`; the signal `FirewallServicesChanged`. System Settings' Firewall and KDOS Look pages, and `kded-kdos` for the first shared folder |
+| `io.kdos.Power1` | `/io/kdos/Power1` | `kdos-powerd` | `ListFirewallServices`, `ListFirewallKnocks`, `SetFirewallService` (`io.kdos.firewall.set`), `SetAccent` and `SetSplash` (`io.kdos.accent.set`), `StartFileSharing` (`io.kdos.filesharing.start`); the properties `Accent` and `Accents`; the signal `FirewallServicesChanged`. System Settings' Firewall and KDOS Look pages, and `kded-kdos` at the login of a `sambashare` member |
 | `org.freedesktop.hostname1` | `/org/freedesktop/hostname1` | `kdos-settingsd` | The host name, pretty name, chassis and the machine's identity, over `/etc/hostname`, `/etc/hosts` and `/etc/machine-info` |
 | `org.freedesktop.timedate1` | `/org/freedesktop/timedate1` | `kdos-settingsd` | The time zone, the clock, and *Set time automatically*, over `/etc/localtime`, `/etc/profile.d/20-timezone.sh`, the Wi-Fi country and the `chrony` service |
 | `org.freedesktop.locale1` | `/org/freedesktop/locale1` | `kdos-settingsd` | The locale and the console and graphical keyboard layouts, over `/etc/locale.conf`, `/etc/keymap` and `/etc/kdos/xkb.conf` |
 | `org.freedesktop.sysupdate1` | `/org/freedesktop/sysupdate1`, one target `host` | `kdos-sysupdated` | System updates, as Discover's sysupdate backend asks for them: `ListTargets`, then on the target `GetVersion`, `GetAppStream`, `CheckNew`, `List`, `Describe`, `Acquire` (the download and the build, which shows progress), `Install` (arming the inactive slot) and `Vacuum`, with a job object per running operation |
-| `io.kdos.Slots1` | `/io/kdos/Slots1` | `kdos-sysupdated` | The A/B slots for the System Versions page and the update notifier: the properties `Configured`, `RunningSlot`, `ActiveSlot`, `TrySlot`, `TryAttempts`, `TryBootNext`, `Channel` and `State`; `ListSlots`, `Try`, `CancelTry`, `SetChannel`, and `Bless`, the session's half of a trial boot's confirmation; the signal `SlotsChanged` |
+| `io.kdos.Slots1` | `/io/kdos/Slots1` | `kdos-sysupdated` | The A/B slots for the System Versions page and the update notifier: the properties `Configured`, `Live`, `RunningSlot`, `ActiveSlot`, `TrySlot`, `TryAttempts`, `TryBootNext`, `Channel` and `State`; `ListSlots`, `Try`, `CancelTry`, `SetChannel`, and `Bless`, the session's half of a trial boot's confirmation; the signal `SlotsChanged` |
 | `org.freedesktop.login1` | `/org/freedesktop/login1` | `elogind` | Sessions, seats, power and lid; what Plasma, SDDM and `kdos-power` ask |
 | `org.freedesktop.Accounts` | `/org/freedesktop/Accounts` | `accountsservice` | The accounts System Settings' Users page and SDDM list |
 
 `kdos-settingsd` serves the three `org.freedesktop` names with systemd's own methods, properties
 and polkit action names, so the Date & Time, Region and Keyboard pages, `plasma-setup` and KWin's
 keyboard layout all work unchanged. `kdos-sysupdated` serves the sysupdate API exactly as Discover
-6.8.2 calls it, and nothing on `localhost:3129`, so Discover shows a system update's size as 0.
+6.8.2 calls it, and nothing on `localhost:3129`; the update's size reaches Discover as the download
+size of an artifact of the offered release in the AppStream file it names.
 
 ### On the session bus
 
 | Name | Object | Served by | For |
 |---|---|---|---|
-| `io.kdos.Runner` | `/runner`, `/library` | `kdos-runner`, started by the bus on the first query | KRunner's D-Bus runner interface, `org.kde.krunner1`: the KDOS rows (kdos verbs, favourites, routes, settings pages, `ask`) on `/runner`, the offline library on `/library` |
+| `io.kdos.Runner` | `/runner`, `/library` | `kdos-runner`, started by the bus on the first query | KRunner's D-Bus runner interface, `org.kde.krunner1`: the KDOS rows (kdos verbs, favourites, routes, packs on the boot medium, shortcuts, `lib`, `ask`) on `/runner`, the offline library on `/library` |
 | `io.kdos.Notice` | `/io/kdos/Notice` | `kdos-notice` | `io.kdos.Notice1.Rescan`: look at every source of notices now |
 | `org.kde.kded6` | `/modules/kdos`, interface `io.kdos.Kded1` | the `kded-kdos` module | Keeps the accent in step with the global theme chosen in System Settings, and offers a set of add-ons found on a stick |
 | `org.kde.KWin` | `/io/kdos/Crt1`, interface `io.kdos.Crt1` | KWin's `kdos_crt` effect | Phosphor mode's pass: its preset and the power-down and degauss motions `kdos phosphor` asks for |
 | `org.mpris.MediaPlayer2.mpd` | `/org/mpris/MediaPlayer2` | `kdos-mpctl mpris` | mpd as an MPRIS player, while mpd runs |
 
 The `kdos` command calls upstream names on the session bus as well: `org.kde.KWin` (`/KWin`,
-`/Effects`, `/Scripting`, `/VirtualDesktopManager`) for `kdos hey`, `kdos tiling` and Phosphor
-mode; `org.kde.plasmashell` for `kdos desk` and `kdos panel`; `org.kde.krunner` for `kdos menu`;
-`org.kde.kglobalaccel` for `kdos toggle night-light`; `org.freedesktop.Notifications` for
+`/Effects`, `/Scripting`, `/VirtualDesktopManager`, `/org/kde/KWin/NightLight`) for `kdos hey`,
+`kdos tiling`, Phosphor mode and the Night Light switch's state; `org.kde.plasmashell` for
+`kdos desk` and `kdos panel`; `org.kde.krunner` for `kdos menu`; `org.kde.kglobalaccel` for
+`kdos toggle night-light`, which presses KWin's *Suspend/Resume Night Light* action only to lift a
+suspension; `org.freedesktop.Notifications` for
 `kdos notify`; and each Konsole window's `org.kde.konsole-<pid>` for run-or-raise.
 
 ## Files used as an interface
@@ -491,7 +496,7 @@ Neither configuration nor storage: these files are how one program tells another
 | File | Written by | Read by |
 |---|---|---|
 | `~/.config/kdos/accent` | `kdos theme`, and `kded-kdos` through `kdos theme --from-plasma` | `kdos theme`, `kdos version` and the About page's accent row |
-| `/etc/kdos/accent` | `kdos-powerd`'s `accent` verb | The boot scripts, which tell the running splash to repaint in it |
+| `/etc/kdos/accent` | The image build, with the default accent; the installer; `kdos-powerd`'s `accent` verb | The boot scripts, which tell the running splash to repaint in it; the Look page and the About page's accent row |
 | `/usr/share/kdos/alien-apps` | The build (`kdos-appbox genlaunchers`) | Every shim, and the launcher dispatcher |
 | `/usr/local/bin/<name>`, `~/.local/bin/<name>` | The build, one symbolic link to `kdos-appbox` per application in a pack the medium carries (none on the default medium); `kdos app install` for an application you install | You, as an ordinary command; `kdos-appbox` dispatches on the name it was called by |
 | `$XDG_DATA_HOME/kdos/alien-apps` (`~/.local/share/kdos/alien-apps` when unset) | `kdos-appbox genlaunchers --packs --user`, and `kdos-appbox install`, `uninstall` and `import`; every one of them regenerates the whole table from the installed packs and the store's boxes together | The same, winning over the system table |
@@ -566,7 +571,7 @@ honoured only where noted.
 
 | Variable | Points at |
 |---|---|
-| `KDOS_PRIVACY_PROC` | A recorded process tree for `kdos privacy` |
+| `KDOS_CHECKLIST_ROOT` | A recorded root whose `etc/locale.conf` and `proc/self/mounts` `kdos checklist` reads in place of the system's |
 | `KDOS_ABOUT_ROOT` | A recorded root the About page's `about-*` scripts read in place of `/` |
 | `KDOS_ZONEINFO` | A time-zone database for the installer |
 | `KDOS_ENERGY_PROC`, `KDOS_ENERGY_POWERCAP`, `KDOS_ALIEN_APPS` | Recorded trees and a launcher table for the energy daemon |
@@ -583,6 +588,7 @@ honoured only where noted.
 | `KDOS_CMDLINE` | A file standing in for `/proc/cmdline`, whose `kdos_slot=` tells `kdos-bootctl mark-good` which slot's kernel is running |
 | `KDOS_EFIVARS`, `KDOS_ESP_DISK` | A directory standing in for `efivarfs`, and `<disk image>:<partition number>` standing in for the EFI system partition's disk, for testing the `BootNext` trial |
 | `KDOS_LIMINE_CONF`, `KDOS_VTRGB` | Alternative boot-menu configuration and console palette files for `kdos-bootctl` |
+| `KDOS_MOUNTS` | A file standing in for `/proc/mounts`, whose `/` of type `overlay` makes `kdos-bootctl` report the live medium |
 | `KDOS_POWERD_SOCKET`, `KDOS_ENERGYD_SOCKET`, `KDOS_OOMD_SOCKET`, `KDOS_PACKD_SOCKET` | Move a daemon's socket. This grants nothing, since authorisation never depends on the path |
 
 `kdos-sysupdated --session --root DIR` serves its names on the session bus over a fixture tree,

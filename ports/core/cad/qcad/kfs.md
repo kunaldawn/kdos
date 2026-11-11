@@ -43,3 +43,13 @@ Bitstream Vera TrueType faces, Type 1 faces (Utopia, Charter, Courier, Luxi) and
 QPF fonts, which QCAD's `--help` text names as a `QT_QPA_FONTDIR` for running it in a server
 environment. Nothing in the program loads it by itself, and on the desktop Qt finds fonts through
 fontconfig. QCAD's own CXF stroke fonts in `fonts/` stay.
+
+The desktop entry is `build.sh`'s own, named `org.QCAD.qcad-bin.desktop` after the window's Wayland
+app id. QCAD sets no desktop file name, so Qt makes the app id from its organisation domain,
+`QCAD.org`, reversed, and the executable's name, `qcad-bin`; KWin finds a Wayland window's icon
+only in the entry whose file name is that app id. The icon keeps upstream's name,
+`org.qcad.QCAD`.
+
+The first-start dialog, which asks for the language, units and paper size, has a fixed-height
+layout: at the system font's metrics its last line ("…later in the Preferences Dialog") is cut
+off. The settings it offers are all in Edit > Application Preferences.

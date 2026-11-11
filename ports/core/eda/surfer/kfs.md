@@ -23,6 +23,8 @@ Wayland and X11 backends.
   own copy. The `readelf` line after `cargo build` makes that a condition of the build: `surfer`
   must NEED `libzstd.so.1`.
 - **The menu entry is KDOS's own.** Surfer sets its window's app_id to
-  `org.surfer-project.surfer` in `main.rs`, which the entry names as `StartupWMClass`. Upstream's
+  `org.surfer-project.surfer` in `main.rs`, which the entry names as `StartupWMClass` and is
+  named after, `org.surfer-project.surfer.desktop`: KWin finds a Wayland window's icon only in the
+  entry whose file name is the window's app id. Upstream's
   entry claims `application/vnd.gtkwave-vcd`, `-fst` and `-ghw`, GTKWave's own MIME types, which
   no MIME database here defines, so KDOS's entry claims none. The icon is upstream's PNG.

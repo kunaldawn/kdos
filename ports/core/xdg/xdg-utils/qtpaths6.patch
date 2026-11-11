@@ -1,0 +1,21 @@
+Subject: Find the KDE configuration directory through qtpaths6, then qtpaths, then XDG_CONFIG_HOME
+
+make_default_kde asks the unsuffixed qtpaths for Qt's writable
+ConfigLocation, which a Qt 6 system may install only as qtpaths6 or not
+on PATH at all; the shell then prints "qtpaths: command not found". The
+lookup tries qtpaths6, then qtpaths, quietly, and falls back to
+$XDG_CONFIG_HOME (or ~/.config), the directory Qt returns on Linux.
+---
+--- a/scripts/xdg-mime.in
++++ b/scripts/xdg-mime.in
+@@ -167,7 +167,9 @@
+     vendor="$1"
+     mimetype="$2"
+     if [ "${KDE_SESSION_VERSION:-0}" -gt 4 ] ; then
+-        default_dir="$(qtpaths --writable-path ConfigLocation)"
++        default_dir="$(qtpaths6 --writable-path ConfigLocation 2> /dev/null ||
++                       qtpaths --writable-path ConfigLocation 2> /dev/null ||
++                       echo "${XDG_CONFIG_HOME:-$HOME/.config}")"
+         default_file="$default_dir/mimeapps.list"
+     elif [ x"$KDE_SESSION_VERSION" = x"4" ]; then
+         default_dir="$(kde4-config --path xdgdata-apps 2> /dev/null | cut -d ':' -f 1)"

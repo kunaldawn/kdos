@@ -33,14 +33,16 @@ unlocks with no password, and the machine always resumes locked. The screen itse
 minutes and turns off at 15 on mains power, which is PowerDevil's, from
 `fs/usr/share/kdos/xdg/powerdevilrc`:
 
-<!-- kfs:include fs/usr/share/kdos/xdg/powerdevilrc lines=18-20 pin=cfea8a5afb15 -->
+<!-- kfs:include fs/usr/share/kdos/xdg/powerdevilrc lines=17-19 pin=cfea8a5afb15 -->
 
 In a virtual machine and on the live medium an overlay directory goes first in
 `XDG_CONFIG_DIRS` and turns the timed lock off, because over a viewer a desktop that locked
 itself looks like one that stopped, and the live account has no password to type; `Meta+L` and
-the lock on resume still work. From `fs/usr/share/kdos/xdg-vm/kscreenlockerrc`:
+the lock on resume still work. The zero timeout is what makes System Settings → **Screen Locking**
+read "Never" there, rather than the 10 minutes the overlay would otherwise inherit. From
+`fs/usr/share/kdos/xdg-vm/kscreenlockerrc`:
 
-<!-- kfs:include fs/usr/share/kdos/xdg-vm/kscreenlockerrc lines=17-18 pin=1789c36e5038 -->
+<!-- kfs:include fs/usr/share/kdos/xdg-vm/kscreenlockerrc lines=20-22 pin=327a7209a464 -->
 
 A person's choices on System Settings → **Screen Locking** are saved in
 `~/.config/kscreenlockerrc` and outrank all of these.
@@ -104,7 +106,7 @@ means the password is not what you think. If `tty2` accepts it, check the helper
 
 ```bash
 ls -l /usr/sbin/unix_chkpwd     # -rwsr-xr-x root: setuid
-grep -E 'kscreenlocker|unix_chkpwd' /var/log/messages | tail
+sudo grep -E 'kscreenlocker|unix_chkpwd' /var/log/messages | tail
 ```
 
 Without the setuid bit no process but root can check a password, and every unlock fails.

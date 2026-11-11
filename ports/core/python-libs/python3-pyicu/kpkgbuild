@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = python3-pyicu
+version     = 2.17
+release     = 1
+source      = https://files.pythonhosted.org/packages/source/p/pyicu/pyicu-$version.tar.gz
+sha256      = 6138b95ac9592fa3983bf489e0c625e8fcfffd0c562a36a08269cecc4ffb48be  python3-pyicu-2.17.tar.gz
+description = ICU bindings for Python: collation, transliteration, locale-aware formatting
+homepage    = https://gitlab.pyicu.org/main/pyicu
+license     = MIT
+depends     = python3 python3-setuptools python3-pip python3-wheel icu pkgconf

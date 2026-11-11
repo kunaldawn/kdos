@@ -9,10 +9,15 @@
  *
  * WHAT IT SHOWS, BY ORIGIN:
  *
- *   kdos-packs   every catalogue row and set, and the packs in the pack store
- *   medium       packs and .ktar sets on the boot medium (/mnt/iso/packs)
- *   kdos-store   Debian desktop applications no catalogue row names, from the
- *                DEP-11 catalogue in /usr/share/swcatalog; built in a box
+ *   kdos-packs   every set, the packs in the pack store, and each catalogue
+ *                row whose pack is there
+ *   medium       packs and .ktar sets on the boot medium (/mnt/iso/packs),
+ *                and each catalogue row whose pack is only there
+ *   kdos-store   catalogue rows with no pack anywhere, and Debian desktop
+ *                applications no catalogue row names, from the DEP-11
+ *                catalogue in /usr/share/swcatalog less the packages
+ *                /usr/share/kdos/discover/debian-exclude names; each is
+ *                built in a box
  *   kdos-boxes   boxes that no application above accounts for
  *   kdos-ports   host software: the kdos-ports AppStream catalogue of what
  *                is installed, with kpkg's versions, and the kdos-binhost
@@ -115,7 +120,11 @@ private:
 
     KdosResource *upsert(const Entry &entry, QSet<QString> *seen);
     bool isOffered(const QString &id) const;
+    // A box exists: one in the last refresh, or before the first a profile
+    // under ~/.config/kdos/boxes.
+    bool hasBoxes() const;
     ResultsStream *resourceForUrl(const QUrl &url);
+    QVector<StreamResult> resourcesForUrl(const QUrl &url);
     ResultsStream *resourceForFile(const QUrl &url);
     QList<KdosResource *> debianFor(const Filters &filter);
     KdosResource *debianResource(const AppStream::Component &component);
@@ -138,12 +147,16 @@ private:
     bool m_refreshAgain = false;
     QList<std::function<void()>> m_afterRefresh;
     QList<std::function<void()>> m_afterNextRefresh;
+    QList<std::function<void()>> m_afterPool; // run by the first refresh to land with the pool loaded
     QList<QPointer<KdosTransaction>> m_queue;
     QPointer<KdosTransaction> m_running;
     QFileSystemWatcher m_watcher;
     QTimer m_settle;
     QSet<QString> m_files; // .ktar and .kpack paths opened this session
     QSet<QString> m_chosenAtInstall; // /var/lib/kdos/apps-pending
+    QSet<QString> m_debianExclude; // Debian packages the Debian lane never offers
+    mutable bool m_categoriesRead = false; // category() has answered once
+    mutable bool m_listedBoxes = false; // and its answer had the Boxes page
 };
 
 }

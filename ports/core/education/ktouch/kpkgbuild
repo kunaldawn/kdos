@@ -16,4 +16,4 @@ sha256      = d9a309aac3edfbba033b72c00981b28bd83d3371a5c293bb3fe81744cfafd407  
 description = KDE touch typing tutor — graded courses, keyboard layouts and progress statistics
 homepage    = https://apps.kde.org/ktouch/
 license     = GPL-2.0-or-later
-depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qt5compat kcompletion kconfig kconfigwidgets kcoreaddons ki18n kitemviews kcmutils ktextwidgets kwidgetsaddons kwindowsystem kxmlgui kdeclarative kirigami kdoctools kqtquickcharts libxml2
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative qt6-qt5compat kcompletion kconfig kconfigwidgets kcoreaddons ki18n kitemviews kcmutils ktextwidgets kwidgetsaddons kwindowsystem kxmlgui kdeclarative kirigami kdoctools kqtquickcharts libxml2 libX11 libxkbfile libxcb

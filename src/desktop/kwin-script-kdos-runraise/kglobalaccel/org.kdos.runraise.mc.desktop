@@ -2,5 +2,5 @@
 Type=Application
 Name=Midnight Commander in a New Window
 Comment=Open Midnight Commander in a new terminal window. The KDOS Raise key brings back the one already open.
-Exec=konsole -p tabtitle=mc -e mc
+Exec=konsole --hold -p tabtitle=mc -e mc
 Icon=utilities-terminal

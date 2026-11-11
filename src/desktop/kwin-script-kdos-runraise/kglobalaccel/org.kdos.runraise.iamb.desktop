@@ -2,5 +2,5 @@
 Type=Application
 Name=iamb in a New Window
 Comment=Open iamb in a new terminal window. The KDOS Raise key brings back the one already open.
-Exec=konsole -p tabtitle=iamb -e iamb
+Exec=konsole --hold -p tabtitle=iamb -e iamb
 Icon=utilities-terminal

@@ -24,9 +24,12 @@
  * added after it is never sent here and is skipped by its length when it
  * arrives.
  *
- * WHERE: $WAYLAND_DISPLAY, absolute or under $XDG_RUNTIME_DIR, else
- * $XDG_RUNTIME_DIR/wayland-0 — `kdos-box gc` runs from the timer service,
- * which has no WAYLAND_DISPLAY.
+ * WHERE: $WAYLAND_DISPLAY, absolute or under $XDG_RUNTIME_DIR, else the
+ * first of $XDG_RUNTIME_DIR/wayland-0 … wayland-32 that accepts a
+ * connection — `kdos-box gc` runs from the timer service, which has no
+ * WAYLAND_DISPLAY, and KWin numbers its socket from wayland-1, so no one
+ * name can be assumed. A box's own sockets are in subdirectories of the
+ * runtime directory and are never tried.
  * ---------------------------------
  */
 
@@ -348,29 +351,56 @@ static int roundtrip(void)
 
 /* ── the conversation ──────────────────────────────────────────────────── */
 
+/* A connected socket to path, or -1. */
+static int dial(const char *path)
+{
+	struct sockaddr_un a = { .sun_family = AF_UNIX };
+	int fd;
+
+	if (strlen(path) >= sizeof(a.sun_path))
+		return -1;
+	memcpy(a.sun_path, path, strlen(path) + 1);
+	fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+	if (fd >= 0 && connect(fd, (struct sockaddr *)&a, sizeof(a)) != 0) {
+		close(fd);
+		fd = -1;
+	}
+	return fd;
+}
+
+#define DISPLAY_MAX 32
+
 static int connect_display(void)
 {
 	const char *wd = getenv("WAYLAND_DISPLAY");
 	const char *rt = getenv("XDG_RUNTIME_DIR");
-	struct sockaddr_un a = { .sun_family = AF_UNIX };
+	char path[sizeof(((struct sockaddr_un *)0)->sun_path)];
 	int n;
 
-	if (wd && *wd == '/')
-		n = snprintf(a.sun_path, sizeof(a.sun_path), "%s", wd);
-	else if (rt && *rt)
-		n = snprintf(a.sun_path, sizeof(a.sun_path), "%s/%s", rt,
-			     wd && *wd ? wd : "wayland-0");
-	else {
+	if (wd && *wd == '/') {
+		snprintf(path, sizeof(path), "%s", wd);
+	} else if (!rt || !*rt) {
 		fprintf(stderr, "kdos: no XDG_RUNTIME_DIR, so no "
 				"session to ask\n");
 		return -1;
-	}
-	if (n < 0 || (size_t)n >= sizeof(a.sun_path))
+	} else if (wd && *wd) {
+		n = snprintf(path, sizeof(path), "%s/%s", rt, wd);
+		if (n < 0 || (size_t)n >= sizeof(path))
+			return -1;
+	} else {
+		for (int i = 0; i <= DISPLAY_MAX; i++) {
+			n = snprintf(path, sizeof(path), "%s/wayland-%d", rt,
+				     i);
+			if (n < 0 || (size_t)n >= sizeof(path))
+				return -1;
+			if ((sock = dial(path)) >= 0)
+				return 0;
+		}
+		fprintf(stderr, "kdos: no compositor in %s\n", rt);
 		return -1;
-	sock = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
-	if (sock < 0 || connect(sock, (struct sockaddr *)&a, sizeof(a)) != 0) {
-		fprintf(stderr, "kdos: no compositor at %s\n",
-			a.sun_path);
+	}
+	if ((sock = dial(path)) < 0) {
+		fprintf(stderr, "kdos: no compositor at %s\n", path);
 		return -1;
 	}
 	return 0;

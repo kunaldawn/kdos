@@ -19,6 +19,10 @@
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDBusPendingCall>
+#include <QDateTime>
+#include <QDesktopServices>
+#include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStandardPaths>
@@ -39,6 +43,8 @@ namespace
 /* The binary the pkexec policy names. pkexec matches the program's path
  * exactly, so this is never looked up on $PATH. */
 const QString KinstallPath = QStringLiteral(KDOS_KINSTALL);
+const QString KinstallLog = QStringLiteral("/var/log/kinstall.log");
+const QString Zone1970 = QStringLiteral("/usr/share/zoneinfo/zone1970.tab");
 
 QString capitalised(const QString &id)
 {
@@ -54,6 +60,18 @@ Backend::Backend(QObject *parent)
 {
     m_keyboards->load();
     m_answers->setProperty("timezone", systemTimeZone());
+
+    /* The probe's sizes follow the swap and the box-store answers, so a
+     * change to either asks again. The timer gathers a spin box's steps
+     * into one dump. */
+    m_probeTimer.setSingleShot(true);
+    m_probeTimer.setInterval(400);
+    connect(&m_probeTimer, &QTimer::timeout, this, &Backend::refreshProbe);
+    connect(m_answers, &Answers::changed, this, [this]() {
+        if (m_answers->probeKey() != m_probeKey) {
+            m_probeTimer.start();
+        }
+    });
 }
 
 Backend::~Backend()
@@ -135,9 +153,13 @@ void Backend::runDump(const QString &what, bool withAnswers, Done done)
     p->closeWriteChannel();
 }
 
+/* With the answers: whether a disk fits, and holds two slots, depends on
+ * the swap and on whether the box store is copied. */
 void Backend::refreshProbe()
 {
-    runDump(QStringLiteral("probe"), false, [this](const QVariantMap &m) {
+    m_probeTimer.stop();
+    m_probeKey = m_answers->probeKey();
+    runDump(QStringLiteral("probe"), true, [this](const QVariantMap &m) {
         m_probe = m;
         Q_EMIT probeChanged();
     });
@@ -147,6 +169,7 @@ void Backend::refreshLook()
 {
     runDump(QStringLiteral("look"), false, [this](const QVariantMap &m) {
         m_look = m;
+        m_answers->setReservedNames(m.value(QStringLiteral("reserved_names")).toStringList());
         Q_EMIT lookChanged();
     });
 }
@@ -177,27 +200,71 @@ void Backend::refreshPlan()
     });
 }
 
-QStringList Backend::timeZones() const
+/*
+ * THE ZONES ARE tzdata's, NOT ICU's. QTimeZone's list keeps every backward
+ * alias (Africa/Asmera beside Africa/Asmara, the whole US block), which reads as
+ * the same place twice; zone1970.tab names each region once, and every name
+ * in it is a file under /usr/share/zoneinfo, which is what the install links
+ * /etc/localtime to.
+ */
+QStringList Backend::readZones(const QString &tabPath)
 {
     QStringList out;
-    const QList<QByteArray> ids = QTimeZone::availableTimeZoneIds();
-    for (const QByteArray &id : ids) {
-        const QString s = QString::fromLatin1(id);
-        if (!s.contains(QLatin1Char('/')) || s.startsWith(QLatin1String("Etc/")) || s.startsWith(QLatin1String("posix/"))
-            || s.startsWith(QLatin1String("right/")) || s.startsWith(QLatin1String("SystemV/"))) {
-            continue;
+    QFile f(tabPath);
+    if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        while (!f.atEnd()) {
+            const QString l = QString::fromUtf8(f.readLine());
+            if (l.startsWith(QLatin1Char('#'))) {
+                continue;
+            }
+            const QStringList cols = l.split(QLatin1Char('\t'));
+            if (cols.size() >= 3 && !cols.at(2).trimmed().isEmpty()) {
+                out << cols.at(2).trimmed();
+            }
         }
-        out << s;
     }
     std::sort(out.begin(), out.end());
+    out.removeDuplicates();
     out.prepend(QStringLiteral("UTC"));
     return out;
 }
 
+QStringList Backend::timeZones() const
+{
+    static const QStringList zones = readZones(Zone1970);
+    return zones;
+}
+
+/* The running system's zone where the list offers it, else UTC: an alias
+ * the list does not hold would be an answer the page cannot show. */
 QString Backend::systemTimeZone() const
 {
     const QString id = QString::fromLatin1(QTimeZone::systemTimeZoneId());
-    return id.contains(QLatin1Char('/')) ? id : QStringLiteral("UTC");
+    return timeZones().contains(id) ? id : QStringLiteral("UTC");
+}
+
+QString Backend::localTime(const QString &zone) const
+{
+    const QTimeZone z(zone.toUtf8());
+    if (!z.isValid()) {
+        return QString();
+    }
+    return QDateTime::currentDateTimeUtc().toTimeZone(z).toString(QStringLiteral("HH:mm"));
+}
+
+QString Backend::logPath() const
+{
+    return KinstallLog;
+}
+
+bool Backend::logReadable() const
+{
+    return QFileInfo(KinstallLog).isReadable();
+}
+
+void Backend::openLog() const
+{
+    QDesktopServices::openUrl(QUrl::fromLocalFile(KinstallLog));
 }
 
 bool Backend::partitionManagerAvailable() const
@@ -250,8 +317,16 @@ void Backend::startInstall()
     }
     const QString pkexec = QStandardPaths::findExecutable(QStringLiteral("pkexec"));
     m_events->reset();
+    /* Both asked here, before pkexec runs: pkexec's own 127 also means
+     * "not authorised", so a missing program could not be told from a
+     * refusal afterwards. */
+    if (!QFileInfo(KinstallPath).isExecutable()) {
+        m_events->fail(i18n("The installer's backend, %1, is not installed.", KinstallPath));
+        Q_EMIT installFinished(false);
+        return;
+    }
     if (pkexec.isEmpty()) {
-        m_events->close(127);
+        m_events->fail(i18n("pkexec is not installed, so the install cannot ask for permission."));
         Q_EMIT installFinished(false);
         return;
     }
@@ -272,7 +347,7 @@ void Backend::startInstall()
         if (e != QProcess::FailedToStart || !m_install) {
             return;
         }
-        m_events->close(127);
+        m_events->fail(i18n("pkexec could not be started."));
         m_install->deleteLater();
         m_install = nullptr;
         Q_EMIT installingChanged();
@@ -314,6 +389,7 @@ QVariantMap Backend::accentColors(const QString &accent) const
     m.insert(QStringLiteral("text"), window.foreground(KColorScheme::NormalText).color());
     m.insert(QStringLiteral("highlight"), selection.background(KColorScheme::NormalBackground).color());
     m.insert(QStringLiteral("highlightedText"), selection.foreground(KColorScheme::NormalText).color());
+    m.insert(QStringLiteral("accent"), view.decoration(KColorScheme::FocusColor).color());
     return m;
 }
 
@@ -327,6 +403,29 @@ QString Backend::accentPreview(const QString &lookAndFeel) const
 QString Backend::formatSize(double bytes) const
 {
     return KFormat().formatByteSize(bytes);
+}
+
+QString Backend::accentLabel(const QString &accent) const
+{
+    QString name = accentColors(accent).value(QStringLiteral("name")).toString();
+    if (name.startsWith(QLatin1String("KDOS "))) {
+        name = name.mid(5);
+    }
+    return name.isEmpty() ? capitalised(accent) : name;
+}
+
+QString Backend::deskTitle(const QString &desk) const
+{
+    if (desk == QLatin1String("dock")) {
+        return i18nc("@option:radio desk", "Dock");
+    }
+    if (desk == QLatin1String("tiling")) {
+        return i18nc("@option:radio desk", "Tiling");
+    }
+    if (desk == QLatin1String("kdos")) {
+        return i18nc("@option:radio desk", "KDOS");
+    }
+    return desk;
 }
 
 }

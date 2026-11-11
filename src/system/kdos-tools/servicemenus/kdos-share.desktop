@@ -5,6 +5,6 @@ Actions=share;
 X-KDE-Priority=TopLevel
 
 [Desktop Action share]
-Name=Share
-Icon=document-share
+Name=Send with a Code Word
+Icon=document-send
 Exec=kdos-share %F

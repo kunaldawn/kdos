@@ -24,6 +24,7 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <grp.h>
+#include <poll.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -126,50 +127,50 @@ static void help_body(FILE *o)
 	fprintf(o, "  %-24s %s\n", "the host",
 		"kpkg — compiled here from source, against musl");
 	fprintf(o, "  %-24s %s\n", "applications",
-		"kdos app — each built here into a box; needs a network");
+		"kdos app — a box over a pack, or built here online");
 	fprintf(o, "  %-24s %s\n", "environments",
-		"kdos-box — a box you built is a file you can give away");
+		"kdos-box — a box you built is a file to give away");
 	fprintf(o, "\n");
 
 	fprintf(o, "%sCOMMANDS%s\n", C_A, C_0);
 	static const char *CMDS[][2] = {
-		{ "why <path|port>", "what provides this, and why it is that way" },
-		{ "explain [topic]", "the recorded debug cycles, browsable" },
-		{ "sandbox <prof> -- <cmd>", "run a native app under Landlock" },
+		{ "kdos why <path|port>", "what provides this, and why it is that way" },
+		{ "kdos explain [topic]", "the reasons behind the system's design, browsable" },
+		{ "kdos sandbox <p> -- <cmd>", "run a native app under Landlock" },
 		{ "kdos app search <t>", "the applications here and on the medium" },
 		{ "kdos app install <id>", "build one application here — also remove" },
 		{ "kdos-box list", "environments: create, enter, freeze, export" },
 		{ "kdos-fetch-app <name>", "install an alien app from a network" },
-		{ "kdos theme [name]", "phosphor | amber | ice | bone | norton | borland | perfect | paper | next | prev | list" },
-		{ "kdos theme style <f>", "apply a style file: accent + the CRT tuning, shareable" },
+		{ "kdos theme [name]", "an accent by name, next, prev or list" },
+		{ "kdos theme style <f>", "a style file: accent and CRT tuning, shareable" },
 		{ "kdos theme --audit", "is every generated colour still the palette's?" },
-		{ "kdos phosphor on|off", "Phosphor mode: the CRT pass, the motion, the retro accent" },
+		{ "kdos phosphor on|off", "Phosphor mode: the CRT pass, motion, retro accent" },
 		{ "kdos desk kdos|dock|tiling", "lay the panels out again — `undo` puts them back" },
-		{ "kdos tiling on|off", "auto-tiling (Krohnkite) — also toggle, --only <desk>" },
+		{ "kdos tiling on|off", "auto-tiling (Krohnkite) — also toggle, --only <d>" },
 		{ "kdos status", "packages, boxes, exported apps, the session" },
 		{ "kdos doctor", "check the session for common breakage" },
 		{ "kdos appid", "do launcher icons match the windows they open?" },
-		{ "kdos hey list", "every window, from a prompt — also boxes, outputs, run" },
+		{ "kdos hey list", "every window from a prompt — also boxes, outputs" },
 		{ "kdos restarts", "what is running code an upgrade replaced" },
-		{ "kdos update check", "what is behind the signed tree; --json for a surface" },
-		{ "kdos update fetch", "the newest signed ports tree, binhost index and slot image" },
+		{ "kdos update check", "what is behind the signed tree; --json for a UI" },
+		{ "kdos update fetch", "the newest signed ports tree, binhost, slot image" },
 		{ "kdos update install <port>", "one port and what it lacks, from the signed binhost" },
 		{ "kdos update notes", "the release notes of the version running" },
-		{ "kdos image unpack", "a signed slot image into a root — also make, verify, carry" },
+		{ "kdos image unpack", "a signed slot image into a root — also make, verify" },
 		{ "kdos backup run", "one restic snapshot from ~/.config/kdos/backup.conf" },
 		{ "kdos privacy", "who has the microphone, the camera, the screen" },
 		{ "kdos oracle", "one recorded lesson, picked for today" },
 		{ "kdos trash <file>", "the desktop's trash, from a prompt — also --restore" },
 		{ "kdos verify <file>", "against its .sha256, SHA256SUMS and KDOS signature" },
 		{ "kdos places", "Dolphin's Places — also `add DIR`" },
-		{ "kdos toggle [name]", "stay-awake, night-light, dnd — list, flip or set" },
+		{ "kdos toggle [name]", "stay-awake, night-light, dnd, reduced-motion" },
 		{ "kdos notify <text>", "raise a notification: `make && kdos notify done`" },
 		{ "kdos remind in 10m <t>", "a notification later — also at, tomorrow, ls" },
 		{ "kdos settings [page]", "System Settings, at a page — appearance, network…" },
 		{ "kdos timezone [Zone]", "the clock's zone — also hostname, locale, keymap" },
 		{ "kdos clone [<dev>]", "the stick writes the stick — verified by read-back" },
 		{ "kdos persist", "keep a live session's changes across a reboot" },
-		{ "kdos-shot [region]", "screenshot with Spectacle, to clipboard and ~/Pictures" },
+		{ "kdos-shot [region]", "a screenshot with Spectacle, to clipboard and file" },
 		{ "kdos-sfx notify", "the machine's noises: login/notify/error/degauss" },
 		{ "kdos-mpctl toggle", "mpd and the MPRIS players: toggle, stop, next, prev" },
 		{ "kdos-fetch-static", "fetch a single verified static binary" },
@@ -193,8 +194,8 @@ static void help_body(FILE *o)
  */
 static void help_keys(FILE *o)
 {
-	fprintf(o, "%sKEYS%s  %s(System Settings > Keyboard > Shortcuts "
-		   "changes them; Meta+F1 shows the card)%s\n\n",
+	fprintf(o, "%sKEYS%s  %s(System Settings > Keyboard > Shortcuts; "
+		   "Meta+F1 shows the card)%s\n\n",
 		C_A, C_0, C_D, C_0);
 	if (!kdt_keys_print(o, C_B, C_B, C_0))
 		fprintf(o, "  no global shortcut is recorded on this machine "
@@ -562,6 +563,20 @@ static const char *session_name(void)
 		kdt_bus_free(b, v);
 	}
 	kdt_bus_close(b);
+
+	/* A login whose PAM stack was handed no session desktop leaves the
+	 * record's Desktop empty; the session's own environment still names
+	 * it, and only a wayland session is asked. */
+	if (type && !strcmp(type, "wayland") && (!desk || !*desk)) {
+		const char *env = getenv("XDG_SESSION_DESKTOP");
+
+		if (!env || !*env)
+			env = getenv("XDG_CURRENT_DESKTOP");
+		if (env && *env) {
+			free(desk);
+			desk = kb_strdup(env);
+		}
+	}
 
 	if (type && !strcmp(type, "wayland") && desk &&
 	    (!strcmp(desk, "KDE") || !strncmp(desk, "plasma", 6))) {
@@ -979,6 +994,34 @@ static void check_dev_access(void)
  * line for something never tested is worse than an absent one; a `warn` for
  * every VM would make every VM look broken.
  */
+/*
+ * kdos-packd writes its status reply line by line and ends it with "ok", so
+ * one read() returns whatever had arrived — sometimes the reply without its
+ * route line. Read until the "ok" line, EOF, a full buffer or a second of
+ * silence.
+ */
+static void packd_reply(int fd, char *buf, size_t cap)
+{
+	size_t n = 0;
+
+	buf[0] = 0;
+	while (n + 1 < cap) {
+		struct pollfd p = { .fd = fd, .events = POLLIN };
+		ssize_t r;
+
+		if (poll(&p, 1, 1000) <= 0)
+			break;
+		r = read(fd, buf + n, cap - 1 - n);
+		if (r <= 0)
+			break;
+		n += (size_t)r;
+		buf[n] = 0;
+		if ((n == 3 && !strcmp(buf, "ok\n")) ||
+		    (n > 3 && !strcmp(buf + n - 4, "\nok\n")))
+			break;
+	}
+}
+
 static void check_packs(void)
 {
 	char buf[8192];
@@ -1012,20 +1055,19 @@ static void check_packs(void)
 				   sizeof(a.sun_path));
 			if (connect(fd, (struct sockaddr *)&a, sizeof(a)) == 0) {
 				up = 1;
-				if (write(fd, "status\n", 7) == 7) {
-					ssize_t n = read(fd, buf, sizeof(buf) - 1);
-					buf[n > 0 ? n : 0] = 0;
-				} else {
-					buf[0] = 0;
-				}
+				buf[0] = 0;
+				if (write(fd, "status\n", 7) == 7)
+					packd_reply(fd, buf, sizeof(buf));
 			}
 			close(fd);
 		}
 		if (up) {
 			char *route = strstr(buf, "route\t");
-			ok("kdos-packd is answering%s%.*s", route ? " — " : "",
-			   route ? (int)strcspn(route + 6, "\n") : 0,
-			   route ? route + 6 : "");
+			if (route)
+				ok("kdos-packd is answering (mount route: %.*s)",
+				   (int)strcspn(route + 6, "\n"), route + 6);
+			else
+				ok("kdos-packd is answering");
 		} else if (kb_path_exists("/var/lib/kdos/packs/base.kpack")) {
 			warn_("there are packs in /var/lib/kdos/packs and "
 			      "kdos-packd is not answering — `service status "
@@ -1309,8 +1351,25 @@ static void check_plasma(void)
 	bus_line(b, "org.freedesktop.impl.portal.desktop.kde",
 		 "the KDE portal", "file dialogs, screen sharing and "
 		 "screenshots from boxed applications fail");
-	bus_line(b, "org.freedesktop.secrets", "the secret service (ksecretd)",
-		 "passwords cannot be stored for any application");
+	bus_line(b, "org.kde.ksmserver", "the session manager (ksmserver)",
+		 "logout, shutdown and session restore do not work");
+	/* A wallet switched off (the live medium's kwalletrc, or the user's
+	 * own) leaves the secret service unowned on purpose; warning about it
+	 * would fail the doctor on every live session. */
+	{
+		char *wv = kdt_kcfg_cascade("kwalletrc", "Wallet", "Enabled");
+		int wallet = kdt_kcfg_bool(wv, 1);
+		free(wv);
+		if (wallet)
+			bus_line(b, "org.freedesktop.secrets",
+				 "the secret service (ksecretd)",
+				 "passwords cannot be stored for any "
+				 "application");
+		else
+			skip_("the secret service is switched off (kwalletrc "
+			      "[Wallet] Enabled=false) — programs keep secrets "
+			      "for this session only");
+	}
 	if (running("polkit-kde-auth", NULL))
 		ok("the polkit agent is running (polkit-kde-authentication-"
 		   "agent-1)");
@@ -1884,17 +1943,30 @@ static int cmd_doctor(int argc, char **argv)
 
 	/*
 	 * Xwayland is started by KWin on demand, the first time an X11 client
-	 * connects, so a missing socket in a session nothing X11 has used yet
-	 * is not a fault. What is checked is that KWin can start one at all.
+	 * connects, so a session nothing X11 has used yet has no X socket and
+	 * that is not a fault. What is checked is that KWin can start one at
+	 * all: the binary, and /tmp/.X11-unix root-owned with the sticky bit,
+	 * which KWin refuses to create — without it no X11 application opens.
 	 */
 	const char *disp = getenv("DISPLAY");
-	if (disp && *disp)
-		ok("Xwayland on %s", disp);
-	else if (kb_have_prog("Xwayland"))
-		ok("Xwayland installed — KWin starts it for the first X11 "
-		   "application");
-	else
+	struct stat xst;
+	int xdir = stat("/tmp/.X11-unix", &xst) == 0 && S_ISDIR(xst.st_mode) &&
+		   xst.st_uid == 0 && (xst.st_mode & 01777) == 01777;
+	char xsock[64] = "";
+
+	if (disp && disp[0] == ':')
+		snprintf(xsock, sizeof(xsock), "/tmp/.X11-unix/X%.*s",
+			 (int)strcspn(disp + 1, "."), disp + 1);
+	if (xsock[0] && kb_path_exists(xsock))
+		ok("Xwayland on %s (%s)", disp, xsock);
+	else if (!kb_have_prog("Xwayland"))
 		warn_("no Xwayland — X11-only applications will not start");
+	else if (!xdir)
+		warn_("/tmp/.X11-unix is missing or not root-owned 1777 — KWin "
+		      "cannot start Xwayland, so X11 applications will not open");
+	else
+		ok("Xwayland installed and /tmp/.X11-unix ready — KWin starts "
+		   "it for the first X11 application");
 
 	/*
 	 * The lock screen's other half. kscreenlocker checks a password through
@@ -2246,11 +2318,15 @@ static int notify_send(const char *summary, const char *body)
 				"reached\n");
 		return 1;
 	}
+	/* sound-name is the freedesktop sound theme's event: a raw Notify
+	 * names no notifyrc event, so without it Plasma plays nothing. Do Not
+	 * Disturb and the Notifications page's sound switch still apply. */
 	rc = kdt_bus_call(b, "org.freedesktop.Notifications",
 			  "/org/freedesktop/Notifications",
 			  "org.freedesktop.Notifications", "Notify", &r, err,
 			  sizeof(err), "susssasa{sv}i", "kdos", 0u,
-			  "dialog-information", summary, body, 0, 0, -1);
+			  "dialog-information", summary, body, 0, 1,
+			  "sound-name", "s", "message-new-instant", -1);
 	kdt_bus_free(b, r);
 	kdt_bus_close(b);
 	if (rc != 0) {
@@ -2438,8 +2514,9 @@ int kdos_main(int argc, char **argv)
 	    !strcmp(cmd, "in-vm"))
 		return kdt_machine_main(cmd, rest, restv);
 	/*
-	 * `kdos-share` IS THE NAME THE DESKTOP RUNS: Dolphin's Share action
-	 * (servicemenus/kdos-share.desktop) and KRunner's share.file route
+	 * `kdos-share` IS THE NAME THE DESKTOP RUNS: Dolphin's Send with a
+	 * Code Word action (servicemenus/kdos-share.desktop) and KRunner's
+	 * share.file route
 	 * both exec it, and this is the same program under the spelling a
 	 * person types.
 	 */

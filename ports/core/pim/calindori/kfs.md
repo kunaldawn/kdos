@@ -13,11 +13,13 @@ Calindori manages.
 
 ## Notes
 
-`calindac` installs an XDG autostart entry, `/etc/xdg/autostart/org.kde.calindac.desktop`, with
-`X-KDE-autostart-condition=calindacrc:General:Autostart:true`. The key's default is true, so
-Plasma starts the daemon in every session of every user once the package is installed; a user
-turns it off with `Autostart=false` under `[General]` in `~/.config/calindacrc`. Its D-Bus
-service file, `org.kde.calindac.service`, lets Calindori start it on demand as well.
+`build.sh` deletes the XDG autostart entry `calindac` installs,
+`/etc/xdg/autostart/org.kde.calindac.desktop`, whose condition key defaults to true and would
+start the daemon in every session of every user; [akonadi-calendar](#port-akonadi-calendar)'s
+`kalendarac` already fires the desktop's calendar reminders. The D-Bus service file,
+`org.kde.calindac.service`, stays, so Calindori starts `calindac` when it opens, and its reminders
+fire in a session where Calindori has run. A user who wants them at every login copies the entry
+from the source's `calindac/` directory into `~/.config/autostart`.
 
 To wake a suspended machine for a reminder, `calindac` asks `org.kde.Solid.PowerManagement` on
 the session bus, which PowerDevil serves. PowerDevil is part of the Plasma session, and a 44_apps

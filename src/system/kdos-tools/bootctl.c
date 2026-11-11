@@ -2525,6 +2525,34 @@ static int state_closed(void)
 	return access(state_path(), R_OK) != 0;
 }
 
+/*
+ * The live medium: `/` is an overlay of a RAM upper on the medium's image,
+ * the test 63_live-installer.sh and `kdos doctor` make. It has no boot state
+ * and no slots, and says so in those words rather than as a one-root
+ * install, whose remedy (updating in place) would fill a RAM overlay that
+ * the next restart discards. $KDOS_MOUNTS names another mount table, for a
+ * test.
+ */
+static int root_is_live(void)
+{
+	const char *e = getenv("KDOS_MOUNTS");
+	char *m = kb_read_all(e && *e ? e : "/proc/mounts", NULL);
+	int live = 0;
+
+	for (char *l = m; l && *l && !live;) {
+		char *nl = strchr(l, '\n');
+		char dev[256], mnt[256], type[64];
+		if (nl)
+			*nl = 0;
+		if (sscanf(l, "%255s %255s %63s", dev, mnt, type) == 3 &&
+		    !strcmp(mnt, "/") && !strcmp(type, "overlay"))
+			live = 1;
+		l = nl ? nl + 1 : NULL;
+	}
+	free(m);
+	return live;
+}
+
 /* A published copy, printed as it was written when it is the shape `want`
  * opens with; 0 when one was printed. */
 static int print_copy(const char *p, char want)
@@ -2545,12 +2573,18 @@ static int cmd_status(const BootState *st, int have, int json)
 		if (json && closed &&
 		    print_copy(pub_status_path(&forced), '{') == 0)
 			return 0;
+		int live = !closed && root_is_live();
 		if (json)
-			printf("{\"configured\": false}\n");
+			printf("{\"configured\": false%s}\n",
+			       live ? ", \"live\": true" : "");
 		else if (closed)
 			printf("the boot state at %s is readable by root alone; "
 			       "`kdos-bootctl status --json` prints the copy "
 			       "published in /run/kdos\n", state_path());
+		else if (live)
+			printf("this is the live medium — it has no boot state "
+			       "and no slots; install KDOS for A/B updates and "
+			       "rollback\n");
 		else
 			printf("no boot state at %s — this machine has one "
 			       "root and no rollback\n", state_path());
@@ -2707,6 +2741,10 @@ static int cmd_list(const BootState *st, int have, int argc, char **argv)
 			printf("the boot state at %s is readable by root alone; "
 			       "`kdos-bootctl list --json` prints the copy "
 			       "published in /run/kdos\n", state_path());
+		else if (root_is_live())
+			printf("this is the live medium — it has no boot state "
+			       "and no slots; install KDOS for A/B updates and "
+			       "rollback\n");
 		else
 			printf("no boot state at %s — this machine has one root "
 			       "and no other entry\n", state_path());

@@ -73,7 +73,7 @@ Welcome.ScrollablePage {
         QQC2.Button {
             text: i18ndc("kdos-welcome", "@action:button", "System Versions…")
             icon.name: "preferences-system"
-            onClicked: run.run(["kcmshell6", "kcm_kdos_system"], () => {})
+            onClicked: run.launch(["kcmshell6", "kcm_kdos_system"], (code, text) => {})
             Accessible.name: text
         }
     }

@@ -248,17 +248,78 @@ static int undo_present(void)
 	return n > 0;
 }
 
+static int plasmashell_up(KdtBus **out);
+
+/*
+ * WHAT "ARRANGED BY HAND" MEANS: the panels, where each sits, and the applets
+ * on each in their order — asked of plasmashell itself, read-only. Not the
+ * panels file's time: plasmashell rewrites that file for a popup's size and
+ * other applet state, so its mtime moves when nothing was arranged.
+ */
+static const char PANELS_JS[] =
+	"panels().forEach(p => {"
+	" p.currentConfigGroup = ['General'];"
+	" let o = String(p.readConfig('AppletOrder', '')).split(';')"
+	"  .filter(x => x).map(Number);"
+	" let w = p.widgets();"
+	" let ids = o.length ? o : w.map(x => x.id);"
+	" print(p.location + '|' + p.alignment + '|' + ids.map(i => {"
+	"  let x = p.widgetById(i); return x ? x.type : ''; }).join(',') + "
+	"'\\n'); });";
+
+/* The description's digest, or NULL when plasmashell is not answering. */
+static char *panels_digest(KdtBus *b)
+{
+	char err[256] = "", hex[65], *out;
+	KbSha256 h;
+
+	out = kdt_bus_call_s(b, "org.kde.plasmashell", "/PlasmaShell",
+			     "org.kde.PlasmaShell", "evaluateScript", err,
+			     sizeof(err), "s", PANELS_JS);
+	if (!out)
+		return NULL;
+	kb_sha256_init(&h);
+	kb_sha256_update(&h, out, strlen(out));
+	kb_sha256_final(&h, hex);
+	free(out);
+	return kb_strdup(hex);
+}
+
+/* [Desk] LaidOutPanels: the digest of the panels a desk laid out. */
+static void record_panels(KdtBus *b)
+{
+	char *d = panels_digest(b);
+
+	if (d)
+		kdt_kcfg_set("kdosrc", "Desk", "LaidOutPanels", d, 0);
+	free(d);
+}
+
 static int desk_status(int json)
 {
 	char *desk = desk_current();
-	char *applets = kdt_cfg_home(APPLETS);
 	char *laid = kdt_kcfg_user("kdosrc", "Desk", "LaidOut");
+	char *want = kdt_kcfg_user("kdosrc", "Desk", "LaidOutPanels");
 	char *undo = undo_dir();
-	struct stat st;
+	KdtBus *b = NULL;
 	int edited = 0;
 
-	if (laid && *laid && stat(applets, &st) == 0)
-		edited = (long long)st.st_mtime > atoll(laid) + 60;
+	/*
+	 * Outside a session nothing can be asked, and a desk laid out by its
+	 * template at the first login has a LaidOut and no digest yet: the
+	 * first status after it takes the panels as laid out and records
+	 * them, so Welcome's first look at an untouched desk records it.
+	 */
+	if (laid && *laid && plasmashell_up(&b)) {
+		char *now = panels_digest(b);
+
+		if (now && want && *want)
+			edited = strcmp(now, want) != 0;
+		else if (now)
+			kdt_kcfg_set("kdosrc", "Desk", "LaidOutPanels", now, 0);
+		free(now);
+	}
+	kdt_bus_close(b);
 	if (json) {
 		KbBuf o = { 0 };
 
@@ -277,8 +338,8 @@ static int desk_status(int json)
 		printf("%s\n", desk);
 	}
 	free(desk);
-	free(applets);
 	free(laid);
+	free(want);
 	free(undo);
 	return 0;
 }
@@ -299,14 +360,15 @@ static int keep(const char *file, const char *dir)
 
 /*
  * THE UNDO SET: the panels file, plasmashellrc and the one kwinrc key a desk
- * changes, plus the desk it replaced. Replaced whole, so `undo` always means
- * "before the last desk", never a mix of two.
+ * changes, plus the desk it replaced and that desk's panels digest. Replaced
+ * whole, so `undo` always means "before the last desk", never a mix of two.
  */
 static int save_undo(void)
 {
 	char *dir = undo_dir(), *conf, *kro;
 	char *kwin = kdt_cfg_home("kwinrc");
 	char *prev = kdt_kcfg_user("kdosrc", "Desk", "Layout");
+	char *dig = kdt_kcfg_user("kdosrc", "Desk", "LaidOutPanels");
 	KbBuf b = { 0 };
 	int rc = 0;
 
@@ -315,6 +377,7 @@ static int save_undo(void)
 		free(dir);
 		free(kwin);
 		free(prev);
+		free(dig);
 		return -1;
 	}
 	rc |= keep(APPLETS, dir);
@@ -325,6 +388,8 @@ static int save_undo(void)
 		kb_buf_printf(&b, "krohnkiteEnabled=%s\n", kro);
 	if (prev)
 		kb_buf_printf(&b, "Layout=%s\n", prev);
+	if (dig)
+		kb_buf_printf(&b, "LaidOutPanels=%s\n", dig);
 	conf = kb_path_join(dir, "desk-undo.conf");
 	rc |= kb_write_file_atomic(conf, b.p);
 	kb_buf_free(&b);
@@ -332,6 +397,7 @@ static int save_undo(void)
 	free(kro);
 	free(kwin);
 	free(prev);
+	free(dig);
 	free(dir);
 	return rc ? -1 : 0;
 }
@@ -416,14 +482,16 @@ static int desk_apply(const char *name)
 	out = kdt_bus_call_s(b, "org.kde.plasmashell", "/PlasmaShell",
 			     "org.kde.PlasmaShell", "evaluateScript", err,
 			     sizeof(err), "s", js);
-	kdt_bus_close(b);
 	if (!out) {
+		kdt_bus_close(b);
 		fprintf(stderr, "kdos desk: plasmashell refused the layout: "
 				"%s\n", *err ? err : "no answer");
 		free(dir);
 		return 1;
 	}
 	free(out);
+	record_panels(b);
+	kdt_bus_close(b);
 	if (tiling_set(!strcmp(name, "tiling"), NULL) != 0) {
 		free(dir);
 		return 1;
@@ -445,7 +513,7 @@ static int run_wait(const char *p0, const char *p1)
 
 static int desk_undo(void)
 {
-	char *dir = undo_dir(), *conf, *kro, *prev;
+	char *dir = undo_dir(), *conf, *kro, *prev, *dig;
 	int rc = 0;
 
 	if (!undo_present()) {
@@ -468,11 +536,14 @@ static int desk_undo(void)
 	conf = kb_path_join(dir, "desk-undo.conf");
 	kro = kdt_kcfg_get(conf, "Desk", "krohnkiteEnabled");
 	prev = kdt_kcfg_get(conf, "Desk", "Layout");
+	dig = kdt_kcfg_get(conf, "Desk", "LaidOutPanels");
 	if (kdt_kcfg_set("kwinrc", "Plugins", "krohnkiteEnabled", kro, 0) ||
-	    kdt_kcfg_set("kdosrc", "Desk", "Layout", prev, 0))
+	    kdt_kcfg_set("kdosrc", "Desk", "Layout", prev, 0) ||
+	    kdt_kcfg_set("kdosrc", "Desk", "LaidOutPanels", dig, 0))
 		rc = 1;
 	free(kro);
 	free(prev);
+	free(dig);
 	free(conf);
 
 	{

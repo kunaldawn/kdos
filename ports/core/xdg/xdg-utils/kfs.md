@@ -19,3 +19,12 @@ The build needs a text-mode web browser: each script's `--help` text is made wit
 which renders the DocBook to HTML and then runs a text browser over it, and the result is pasted
 into the script. [lynx](#port-lynx) is that browser, which is why it is in `depends`; at run time it
 is only one of the text browsers `xdg-open`'s generic fallback tries.
+
+`qtpaths6.patch` changes how `xdg-mime default` finds the KDE configuration directory in a Plasma
+session. Upstream runs the unsuffixed `qtpaths`, which this tree does not put on `PATH` (Qt 6's is
+`/usr/lib/qt6/bin/qtpaths`, Qt 5's `/usr/bin/qtpaths-qt5`), so the unpatched script prints
+`qtpaths: command not found` on every call. The patched lookup tries `qtpaths6`, then `qtpaths`, with their
+errors discarded, and falls back to `$XDG_CONFIG_HOME` or `~/.config`, the directory Qt names on
+Linux; `mimeapps.list` there is the file the generic path writes as well. The patch is to be
+offered upstream as a merge request to
+[xdg/xdg-utils](https://gitlab.freedesktop.org/xdg/xdg-utils).

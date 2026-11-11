@@ -43,7 +43,7 @@ unless the medium has a persistence store; see [Live persistence](live-persisten
 SDDM reads `/etc/sddm.conf.d/00-kdos.conf`. Its `[Wayland]` group names the greeter's compositor
 and the command a session is started with, and its `[X11]` group offers no X session at all:
 
-<!-- kfs:include fs/etc/sddm.conf.d/00-kdos.conf lines=35-49 pin=6d391837ffe9 -->
+<!-- kfs:include fs/etc/sddm.conf.d/00-kdos.conf lines=37-55 pin=4e0a28063e89 -->
 
 SDDM runs `kdos-session-wrapper` as the user, after PAM has opened the session, with the
 `Exec=` line of `plasma.desktop` as its one argument. The wrapper re-runs itself as a login shell
@@ -76,7 +76,7 @@ Every KDOS default for a KDE program is a file in [`/usr/share/kdos/xdg/`]{.idx 
 |---|---|---|
 | 1 | `~/.config` | The person's own: everything System Settings saves |
 | 2 | `~/.config/kdedefaults` | What the global theme last applied |
-| 3 | `/usr/share/kdos/xdg-vm`, `/usr/share/kdos/xdg-live` | Overlays, each only where it applies: in a virtual machine, no idle dimming or timed lock; on the live medium, no file index, no timed lock, no wallet and no update notice |
+| 3 | `/usr/share/kdos/xdg-vm`, `/usr/share/kdos/xdg-live` | Overlays, each only where it applies: in a virtual machine, no idle dimming, timed lock or idle and lid suspend; on the live medium, no file index, no timed lock, no wallet and no update notice |
 | 4 | `/etc/xdg` | The machine's administrator |
 | 5 | `/usr/share/kdos/xdg` | KDOS |
 
@@ -97,14 +97,14 @@ fills in `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS` for a shell no PAM ses
 `su` without `-l`), names the desktop for a shell outside the session so files opened from a
 console open in the desktop's applications, and chooses the toolkits' back ends:
 
-<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=78-101 pin=0ed63f6cc1a0 -->
+<!-- kfs:include fs/etc/profile.d/10-wayland.sh lines=78-106 pin=8c3778ce8934 -->
 
 `/usr/share/kdos/xdg/plasma-workspace/env/kdos.sh` is the environment script Plasma itself
 reads. `startplasma` sources every `plasma-workspace/env/*.sh` along `XDG_CONFIG_DIRS`, the
 person's own `~/.config/plasma-workspace/env/` last, and takes every variable they leave set into
 the session:
 
-<!-- kfs:include fs/usr/share/kdos/xdg/plasma-workspace/env/kdos.sh lines=31-49 pin=d4b375c5794b -->
+<!-- kfs:include fs/usr/share/kdos/xdg/plasma-workspace/env/kdos.sh lines=31-56 pin=8763d484354f -->
 
 `kdos-shortcuts.sh` beside it copies the KDOS global shortcuts into a person's
 `~/.config/kglobalshortcutsrc` once each; see
@@ -121,9 +121,12 @@ without PAM, so it starts nothing and holds nothing open. Its configuration, fro
 
 `backend = ksvc` runs the scripts in [`/etc/kdos/user-services/`]{.idx term="/etc/kdos/user-services"}
 under the user's own `ksvc`, each in name order: `10_dbus.sh` (the session bus at
-`$XDG_RUNTIME_DIR/bus`), `20_pipewire.sh`, `21_wireplumber.sh`, `22_pipewire-pulse.sh`,
+`$XDG_RUNTIME_DIR/bus`), `15_ssh-agent.sh` (the account's `ssh-agent`), `20_pipewire.sh`, `21_wireplumber.sh`, `22_pipewire-pulse.sh`,
 `25_mpd.sh`, `30_timers.sh` (the timers in `/etc/kdos/user-services/timers.d/` and the user's own)
-and `40_boxes.sh`. A user service's log is `$XDG_RUNTIME_DIR/ksvc/kdos-svc.<name>.log`.
+and `40_boxes.sh` (which stops the user's containers and podman's pause process). A user service's log is `$XDG_RUNTIME_DIR/ksvc/kdos-svc.<name>.log`.
+Every account from uid 1000 gets them, and `plasma-setup`; the greeter's `sddm` account gets
+`10_dbus.sh` alone, the bus its on-screen keyboard and layout buttons reach its KWin over; any
+other system account gets none.
 
 ### The keyboard layout
 
@@ -167,14 +170,19 @@ qdbus6 org.kde.Shutdown /Shutdown logout
 ### Restarting part of a running session
 
 ```bash
-plasmashell --replace &          # the panel and the desktop
-kquitapp6 kded6; kded6 &         # the background modules
-service --user restart pipewire  # one of your own services
-service --user status            # all of your services
+kquitapp6 plasmashell; kstart plasmashell   # the panel and the desktop
+kquitapp6 kded6; kstart kded6               # the background modules
+qdbus6 org.kde.KWin /KWin replace           # the compositor; every window reconnects
+service --user restart pipewire             # one of your own services
+service --user status                       # all of your services
 ```
 
-KWin cannot be replaced from inside the session it draws; a KWin that dies ends the session,
-and SDDM shows the greeter again.
+`kstart` detaches the program from the terminal, so it outlives the Konsole it was typed in; a
+`plasmashell &` is killed when that Konsole closes. A KWin that dies is started again by
+`kwin_wayland_wrapper` and the windows reconnect; plasmashell exits with it and the KDOS kded
+module starts it again a few seconds later, at most five times a minute (see
+[How plasmashell is kept running](../../kdos/04-programs/plasma-shell.md#how-plasmashell-is-kept-running)).
+Ten KWin crashes in a row end the session, and SDDM shows the greeter again.
 
 ### Setting a variable for every desktop program
 
@@ -200,7 +208,7 @@ loginctl list-sessions               # every session elogind knows, and which is
 ```
 
 A graphical program started from there needs the session's display:
-`WAYLAND_DISPLAY=wayland-0 kate`.
+`WAYLAND_DISPLAY=wayland-1 kate` (KWin's socket is the first free `wayland-N` from 1).
 
 ### Reopening applications at login
 
@@ -231,7 +239,7 @@ does, and which applications it leaves out.
 1. Log in on `tty2` (`Ctrl+Alt+F2`).
 2. `tail -30 ~/.local/share/sddm/wayland-session.log`. A line from `kdos-session-wrapper` names
    what it refused, for example that the session bus does not answer.
-3. `service --user status dbus` for the bus, and `grep kdos-session /var/log/messages` for
+3. `service --user status dbus` for the bus, and `sudo grep kdos-session /var/log/messages` for
    the refusal in syslog.
 
 **The desktop draws in Breeze's colours, with upstream's defaults.** The session has no

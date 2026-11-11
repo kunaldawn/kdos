@@ -183,14 +183,14 @@ any. What each phase contains, and how one runs, is in [The build system](build-
 | `release` | Create or update `TAG`'s system release as a draft: the ISO, `SHA256SUMS`, its signature and `sources.sha256` | Network, the archive token, a finished build |
 | `release-publish` | Make `TAG`'s release public and Latest | Network, the archive token |
 | `snapshots` | List the phase snapshots, compiling `build/.kdosbuild` with your machine's compiler when your compiler did not build it | A C compiler |
-| `run` | Boot the ISO in a virtual machine, with `build/kdos.qcow2` attached as a disk (created if missing as a sparse qcow2 of `KDOS_DISK`, 96 GB by default, above the roughly 53 GB install `kinstall` checks the disk against) | QEMU, OVMF |
+| `run` | Boot the ISO in a virtual machine, with `build/kdos.qcow2` attached as a disk (created if missing as a sparse qcow2 of `KDOS_DISK`, 192 GB by default: above the install `kinstall` checks the disk against, and above the roughly 149 GiB the two A/B slots need, so an install to it gets both) | QEMU, OVMF |
 | `rundisk` | Boot `build/kdos.qcow2` instead of the ISO | QEMU, OVMF, an existing disk image |
 | `run-hw` | Boot the ISO with hardware-accelerated graphics | Docker, the NVIDIA Container Toolkit |
 | `rundisk-hw` | The same, from the disk image | Docker, the NVIDIA Container Toolkit |
 | `debug-boot` | Boot the built kernel and initramfs directly, with the serial console on your terminal, for early-boot debugging | QEMU, a finished build |
 | `check-iso-free` | Refuse to rewrite an ISO a process has open | `fuser`; without it the check is skipped |
 | `check-hw` | Check the accelerated-graphics setup: an error without Docker, warnings without the `nvidia` runtime or `/dev/udmabuf` | |
-| `cleandisk` | Replace `build/kdos.qcow2` with a new, empty, sparse disk image of `KDOS_DISK` (96 GB by default) | QEMU |
+| `cleandisk` | Replace `build/kdos.qcow2` with a new, empty, sparse disk image of `KDOS_DISK` (192 GB by default) | QEMU |
 | `cleanbuild` | Delete everything in `build/` except `snapshots`, `ccache`, `pkgstore`, `keys` and `binhost-key`, and except what only root can remove (see below) | |
 | `clean` | Delete everything in `build/` except `keys` and `binhost-key`, and except what only root can remove | |
 | `help` | List every target that carries a one-line description; `check-iso-free` and `check-hw` carry none | |

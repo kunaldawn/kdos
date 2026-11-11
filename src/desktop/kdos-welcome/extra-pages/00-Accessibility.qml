@@ -27,6 +27,10 @@
  * Text size is the Fonts settings page, opened from here: a font is a
  * family and a size, and a page that can only pass words to a command
  * cannot write one.
+ *
+ * The switches are read again whenever the page is shown and whenever the
+ * Welcome Center window comes back to the front, so a setting changed in
+ * System Settings or by a chord while the tour is open is shown as it is.
  * ---------------------------------
  */
 
@@ -52,10 +56,6 @@ Welcome.ScrollablePage {
         id: run
     }
 
-    Kdos.Accents {
-        id: accents
-    }
-
     property bool screenReader: false
     property bool reducedMotion: false
     property bool stickyKeys: false
@@ -65,11 +65,21 @@ Welcome.ScrollablePage {
     property bool dwellClick: false
     property string failure: ""
 
-    readonly property string readerChord: Welcome.Utils.globalShortcutText("org.kde.screenreader.desktop", "toggleScreenReader")
-    readonly property string zoomIn: Welcome.Utils.globalShortcutText("kwin", "view_zoom_in")
-    readonly property string zoomOut: Welcome.Utils.globalShortcutText("kwin", "view_zoom_out")
-    // globalShortcutText's word for an action with no chord.
-    readonly property string unassigned: Welcome.Utils.globalShortcutText("", "")
+    // kglobalaccel returns an action's chords in no stable order, and zoom
+    // in carries two (Meta+= and Meta++): the page names the chord KDOS
+    // teaches while it is bound, else the first bound one with a modifier,
+    // else an empty string.
+    function chord(component: string, action: string, taught: string): string {
+        const bound = Welcome.Utils.globalShortcutTexts(component, action);
+        if (bound.indexOf(taught) >= 0) {
+            return taught;
+        }
+        return bound.find(t => t.indexOf("+") > 0) ?? (bound.length > 0 ? bound[0] : "");
+    }
+
+    readonly property string readerChord: chord("org.kde.screenreader.desktop", "toggleScreenReader", "Meta+Alt+S")
+    readonly property string zoomIn: chord("kwin", "view_zoom_in", "Meta+=")
+    readonly property string zoomOut: chord("kwin", "view_zoom_out", "Meta+-")
 
     function done(code: int, text: string): void {
         page.failure = code === 0 ? "" : text;
@@ -106,6 +116,9 @@ Welcome.ScrollablePage {
                          ["string:dwellclicker"], page.done);
         });
     }
+
+    readonly property bool shown: page.isCurrentPage && Window.active
+    onShownChanged: if (shown) refresh()
 
     Component.onCompleted: refresh()
 
@@ -148,7 +161,7 @@ Welcome.ScrollablePage {
                 Kirigami.FormData.label: i18ndc("kdos-welcome", "@label", "Text size:")
                 text: i18ndc("kdos-welcome", "@action:button", "Make Text Larger…")
                 icon.name: "preferences-desktop-font"
-                onClicked: run.run(["kcmshell6", "kcm_fonts"], (code, text) => page.failure = code === 0 ? "" : text)
+                onClicked: run.launch(["kcmshell6", "kcm_fonts"], (code, text) => page.failure = text)
                 Accessible.name: text
             }
 
@@ -156,16 +169,16 @@ Welcome.ScrollablePage {
                 Kirigami.FormData.label: i18ndc("kdos-welcome", "@label", "High contrast:")
 
                 QQC2.Button {
-                    readonly property string accent: accents.mostLegible(false)
-                    readonly property var info: accents.byName(accent)
+                    readonly property string accent: Kdos.Accents.mostLegible(false)
+                    readonly property var info: Kdos.Accents.byName(accent)
                     visible: accent.length > 0
                     text: i18ndc("kdos-welcome", "@action:button %1 is an accent name", "Dark: %1", info ? info.title : accent)
                     onClicked: run.run(["kdos", "theme", accent], page.done)
                     Accessible.name: i18ndc("kdos-welcome", "@action:button accessible %1 is an accent name", "Use %1, the highest-contrast dark accent", info ? info.title : accent)
                 }
                 QQC2.Button {
-                    readonly property string accent: accents.mostLegible(true)
-                    readonly property var info: accents.byName(accent)
+                    readonly property string accent: Kdos.Accents.mostLegible(true)
+                    readonly property var info: Kdos.Accents.byName(accent)
                     visible: accent.length > 0
                     text: i18ndc("kdos-welcome", "@action:button %1 is an accent name", "Light: %1", info ? info.title : accent)
                     onClicked: run.run(["kdos", "theme", accent], page.done)
@@ -174,7 +187,7 @@ Welcome.ScrollablePage {
             }
 
             QQC2.Label {
-                visible: page.zoomIn !== page.unassigned
+                visible: page.zoomIn.length > 0 && page.zoomOut.length > 0
                 Kirigami.FormData.label: i18ndc("kdos-welcome", "@label", "Zoom:")
                 text: i18ndc("kdos-welcome", "@info %1 and %2 are keyboard shortcuts", "%1 to zoom in, %2 to zoom out", page.zoomIn, page.zoomOut)
             }
@@ -239,7 +252,7 @@ Welcome.ScrollablePage {
                 Kirigami.FormData.label: i18ndc("kdos-welcome", "@label", "Everything else:")
                 text: i18ndc("kdos-welcome", "@action:button", "Accessibility Settings…")
                 icon.name: "preferences-desktop-accessibility"
-                onClicked: run.run(["kcmshell6", "kcm_access"], (code, text) => page.failure = code === 0 ? "" : text)
+                onClicked: run.launch(["kcmshell6", "kcm_access"], (code, text) => page.failure = text)
                 Accessible.name: text
             }
         }

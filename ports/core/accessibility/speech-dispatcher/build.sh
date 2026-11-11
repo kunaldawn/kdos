@@ -32,3 +32,7 @@
 	--enable-python
 make LDFLAGS="$LDFLAGS"
 make LDFLAGS="$LDFLAGS" DESTDIR=$PKG install
+
+rm -f "$PKG"/usr/libexec/speech-dispatcher-modules/sd_{cicero,dummy,espeak-ng-mbrola,festival,generic,openjtalk}
+find "$PKG/etc/speech-dispatcher/modules" "$PKG/usr/share/speech-dispatcher/conf/modules" \
+	-type f ! -name espeak-ng.conf -delete

@@ -1,0 +1,188 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   kdos-overview.page — System Monitor's Overview, the page it opens on
+#
+# The stock overview.page with every sensor one that exists on any machine.
+# A face names a sensor or a pattern that must match at least one; a missing
+# one puts a "missing some sensors" banner over the page. The stock page's
+# per-disk, per-interface and GPU sensors are absent on the live medium (its
+# root is a RAM overlay with no block device), in a virtual machine and on a
+# graphics card ksystemstats cannot read, so here Disks and Network read the
+# `all` totals, and the GPU row is a KDOS Meters face following
+# `gpu/gpu<n>/usage`, which shows each card that reports and none where
+# none does. systemmonitorrc hides the stock page. `version` is raised
+# whenever this file changes, which marks a user's edited copy outdated.
+# ---------------------------------
+
+[Face-420000000000001][Appearance]
+chartFace=org.kde.ksysguard.piechart
+showTitle=true
+Title=CPU
+
+[Face-420000000000001][Sensors]
+highPrioritySensorIds=["cpu/all/usage"]
+totalSensors=["cpu/all/usage"]
+
+[Face-420000000000001][org.kde.ksysguard.piechart][General]
+showLegend=false
+
+[Face-420000000000002][Appearance]
+chartFace=org.kdos.meters
+showTitle=true
+Title=GPU
+
+[Face-420000000000002][Sensors]
+highPrioritySensorIds=[]
+
+[Face-420000000000002][org.kdos.meters][General]
+sensorPattern=^gpu/gpu\\d+/usage$
+maximumRows=4
+
+[Face-420000000000003][Appearance]
+chartFace=org.kde.ksysguard.piechart
+showTitle=true
+Title=Memory
+
+[Face-420000000000003][Sensors]
+highPrioritySensorIds=["memory/physical/used"]
+totalSensors=["memory/physical/used","memory/physical/total"]
+
+[Face-420000000000003][org.kde.ksysguard.piechart][General]
+showLegend=false
+
+[Face-420000000000004][Appearance]
+chartFace=org.kde.ksysguard.piechart
+showTitle=true
+Title=Swap
+
+[Face-420000000000004][Sensors]
+highPrioritySensorIds=["memory/swap/used"]
+totalSensors=["memory/swap/used","memory/swap/total"]
+
+[Face-420000000000004][org.kde.ksysguard.piechart][General]
+showLegend=false
+
+[Face-420000000000005][Appearance]
+chartFace=org.kdos.meters
+showTitle=true
+Title=Disks
+
+[Face-420000000000005][Sensors]
+highPrioritySensorIds=["disk/all/usedPercent","disk/all/read","disk/all/write"]
+
+[Face-420000000000006][Appearance]
+chartFace=org.kdos.meters
+showTitle=true
+Title=Network
+
+[Face-420000000000006][Sensors]
+highPrioritySensorIds=["network/all/download","network/all/upload"]
+
+[Face-420000000000007][Appearance]
+chartFace=org.kde.ksysguard.applicationstable
+showTitle=true
+Title=Applications
+
+[Face-420000000000007][org.kde.ksysguard.applicationstable][General]
+showToolBar=true
+
+[page]
+actionsFace=
+icon=speedometer
+loadType=
+margin=2
+version=1
+Title=Overview
+
+[page][row-0]
+Title=
+heightMode=balanced
+isTitle=false
+name=row-0
+
+[page][row-0][column-0]
+name=column-0
+noMargins=
+showBackground=true
+
+[page][row-0][column-0][section-0]
+face=Face-420000000000001
+isSeparator=false
+name=section-0
+
+[page][row-0][column-0][section-1]
+face=
+isSeparator=true
+name=section-1
+
+[page][row-0][column-0][section-2]
+face=Face-420000000000002
+isSeparator=false
+name=section-2
+
+[page][row-0][column-1]
+name=column-1
+noMargins=
+showBackground=true
+
+[page][row-0][column-1][section-0]
+face=Face-420000000000003
+isSeparator=false
+name=section-0
+
+[page][row-0][column-1][section-1]
+face=
+isSeparator=true
+name=section-1
+
+[page][row-0][column-1][section-2]
+face=Face-420000000000004
+isSeparator=false
+name=section-2
+
+[page][row-1]
+Title=
+heightMode=minimum
+isTitle=false
+name=row-1
+
+[page][row-1][column-0]
+name=column-0
+noMargins=
+showBackground=true
+
+[page][row-1][column-0][section-0]
+face=Face-420000000000005
+isSeparator=false
+name=section-0
+
+[page][row-1][column-1]
+name=column-1
+noMargins=
+showBackground=true
+
+[page][row-1][column-1][section-0]
+face=Face-420000000000006
+isSeparator=false
+name=section-0
+
+[page][row-2]
+Title=
+heightMode=half
+isTitle=false
+name=row-2
+
+[page][row-2][column-0]
+name=column-0
+noMargins=true
+showBackground=true
+
+[page][row-2][column-0][section-0]
+face=Face-420000000000007
+isSeparator=false
+name=section-0

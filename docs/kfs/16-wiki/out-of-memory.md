@@ -91,7 +91,7 @@ Two settings outside the daemon change its choice:
 2. Read every kill since the system log started, each with the pressure that caused it:
 
    ```bash
-   grep kdos-oomd /var/log/messages
+   sudo grep kdos-oomd /var/log/messages
    ```
 
    A kill is logged as
@@ -172,8 +172,9 @@ The machine then has only the kernel's own killer. `sudo service enable oomd` an
 
 - A box's budget is checked against the resident memory of all its processes added up, so a
   browser with many processes is measured as one.
-- The daemon scans at most once per cool-down (`KO_COOLDOWN` above), counted from the moment the
-  trigger fires, whether or not that scan killed anything. A second program that keeps the machine
+- The daemon scans at most once per cool-down (`KO_COOLDOWN` above), counted from the moment a
+  firing finds memory short and scans, whether or not that scan killed anything. A firing with
+  memory not yet short starts no cool-down. A second program that keeps the machine
   stalled goes at the next scan, not at once.
 - The live medium keeps `/var/log` in RAM; a kill logged there is gone after power-off. Note it, or
   copy `/var/log/messages`, before shutting down.

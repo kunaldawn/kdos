@@ -1,7 +1,8 @@
 ## About
 
-Kup is Plasma's backup scheduler. `kup-daemon` runs each backup plan on a timer, after a set amount
-of active use, or when the plan's external drive is plugged in, and reports through notifications
+Kup is Plasma's backup scheduler. `kup-daemon` runs each backup plan by hand, on a timer or after a
+set amount of active use, a plan on an external drive once the drive is connected and a backup is
+due, and reports through notifications
 and a panel applet; the Backups page of System Settings edits the plans. A plan copies with
 `rsync`, keeping one mirror, with `bup`, keeping every version, or with
 [restic](#port-restic), keeping every version encrypted. The `restic:` KIO worker shows a
@@ -16,9 +17,9 @@ worker browse bup archives.
 
 ## Patches
 
-`restic-backend.patch` adds restic as a third backup type, written for upstream. A restic plan
-initialises an empty destination, optionally checks the repository, saves a snapshot tagged `kup`
-and, when asked, removes old ones with one fixed policy (every snapshot of two days, then daily for
+`restic-backend.patch` adds restic as a third backup type, written for upstream and to be offered
+as a merge request against `system/kup`. A restic plan initialises an empty destination,
+optionally checks the repository, saves a snapshot tagged `kup` and, when asked, removes old ones with one fixed policy (every snapshot of two days, then daily for
 a month, weekly for six months, monthly for two years, yearly after); only `kup`-tagged snapshots
 are ever removed, so those `kdos backup` saves into the same repository are left alone. The
 password is kept in KWallet and reaches restic through a pipe at file descriptor 3, never as an
@@ -26,6 +27,16 @@ argument or a variable; a plan may name a password file instead, which must be r
 owner alone, the same rule `kdos backup` applies to `~/.config/kdos/backup.pass`. The patch also
 adds `kio_restic`, which reads with `restic --no-lock`, so it browses read-only media and works
 while a backup runs.
+
+The patch gives a restic plan `~/.restic` as its destination where the plan's stored default is
+bup's `~/.bup`: a new plan created as restic starts there, and choosing restic by hand moves a
+destination still at `~/.bup`. The stored default is upstream's and stays, so every saved plan reads
+back unchanged. The password field says "Stored in KDE Wallet" only when the wallet is enabled and
+holds the plan's entry; KWallet reports a disabled wallet as holding every key, which on the live
+medium, where the wallet is off, would claim a password that is not there. A backup that has no
+password file and finds the wallet off fails with "the KDE Wallet is turned off … set a password
+file", not with "enter it in the plan's settings": that field cannot store a password until the
+wallet is on.
 
 ## Notes
 

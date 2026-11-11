@@ -24,6 +24,11 @@ wallpaper itself, and only on a desktop whose image is a `KDOS-*` package, so a 
 chose is never replaced; see
 [kdos theme](../../../docs/kdos/04-programs/kdos-command.md#kdos-theme).
 
+The mark is centred and 62% of the picture's height tall, so the top 19% of the screen is clear of
+it. The lock screen puts its clock in that band ([plasma-desktop](#port-plasma-desktop)'s
+`lockscreen-clock.patch`), so a mark drawn taller or higher runs the clock into it unless the
+patch's band changes with it.
+
 The package names are `theme_name` from libkcolor, so a renamed accent renames its wallpaper
 package, and the global theme, the lock screen default and the accent switch all name it the same
 way.

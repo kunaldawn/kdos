@@ -39,6 +39,8 @@ cmake -S . -B build -G Ninja \
 cmake --build build
 DESTDIR=$PKG cmake --install build
 rm -rf "$PKG/usr/share/organicmaps/data/test_data"
+rm -f "$PKG/usr/share/organicmaps/data/minsk-pass.mwm" \
+	"$PKG/usr/share/organicmaps/data/minsk-pass.osm.bz2"
 [ -f "$PKG/usr/share/icons/hicolor/512x512/apps/organicmaps.png" ] ||
 	{ echo "organicmaps: the hicolor PNG icon was not installed" >&2; exit 1; }
 
@@ -48,12 +50,25 @@ Type=Application
 Name=Organic Maps
 GenericName=Offline Maps
 Comment=Offline maps with search and routing, from OpenStreetMap
-Exec=OMaps
+Exec=OMaps %f
 TryExec=OMaps
 Icon=organicmaps
 Terminal=false
 StartupWMClass=app.organicmaps.desktop
 Categories=Qt;Education;Geography;Maps;
 Keywords=map;maps;offline;navigation;route;osm;openstreetmap;organic;
+MimeType=application/x-organicmaps-mwm;
 DESKTOP
 chmod 644 "$PKG/usr/share/applications/app.organicmaps.desktop.desktop"
+
+install -Dm644 /dev/stdin \
+	"$PKG/usr/share/mime/packages/kdos-organicmaps.xml" <<'MIMEXML'
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-organicmaps-mwm">
+    <comment>Organic Maps map</comment>
+    <generic-icon name="organicmaps"/>
+    <glob pattern="*.mwm"/>
+  </mime-type>
+</mime-info>
+MIMEXML

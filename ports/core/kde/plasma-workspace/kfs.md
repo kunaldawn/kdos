@@ -114,6 +114,18 @@ exists, and takes the classic path when the call fails; KDOS ships
 `/usr/share/kdos/xdg/startkderc` with `systemdBoot=false`, outside this package, so the question is
 never asked.
 
+`build.sh` deletes the kded module `oom_notifier` and its `oom_notifier.notifyrc`. The module tells
+the user about an application the kernel killed for memory by watching systemd's
+`org.freedesktop.systemd1` scopes, which do not exist on KDOS, so it would load in every session
+and never fire; the build has no switch for it. [kdos-oomd](#port-kdos-oomd) and
+[kdos-notice](#port-kdos-notice) do that job here.
+
+Without a service manager nothing restarts plasmashell after it exits, and it exits on purpose when
+its compositor goes away: `shell/main.cpp` unsets `QT_WAYLAND_RECONNECT` for itself, and upstream's
+user unit, which `build.sh` removes, carries the `Restart=on-failure` that would bring it back. The
+module of [kded-kdos](#port-kded-kdos) starts it again instead (see
+[How plasmashell is kept running](../../../../docs/kdos/04-programs/plasma-shell.md#how-plasmashell-is-kept-running)).
+
 `startplasma-wayland` sets `XDG_MENU_PREFIX=plasma-`, so inside a session KService builds the
 application tree from `/etc/xdg/menus/plasma-applications.menu`. A program whose environment lacks
 the prefix, such as one run by `sudo` with a reset environment or from a timer, reads

@@ -35,10 +35,11 @@ Everything else runs inside the desktop session.
 
 The [brltty](#port-brltty) port's `build.sh` writes the service script:
 
-<!-- kfs:include ports/core/accessibility/brltty/build.sh lines=55-88 pin=b28c20d781c2 -->
+<!-- kfs:include ports/core/accessibility/brltty/build.sh lines=55-89 pin=658b4098a535 -->
 
 `KDOS_ALSA_DEFAULT=kdos_card` sends the voice straight to the sound card, because no [PipeWire]{.idx} runs
-at boot; see [Speech and the sound card](../../kdos/02-user-guide/accessibility.md#speech-and-the-sound-card).
+at boot. [espeak-ng](#port-espeak-ng) opens the card for each utterance and closes it once the
+utterance has played, so BRLTTY holds the card only while it speaks; see [Speech and the sound card](../../kdos/02-user-guide/accessibility.md#speech-and-the-sound-card).
 
 ### /etc/brltty.conf
 
@@ -89,7 +90,9 @@ next start.
    preferences; `orca -s` does the same from a terminal.
 3. `Meta+Alt+S` again stops it.
 
-The SDDM greeter has its own Orca: press `Meta+Alt+S` at the login screen.
+The SDDM greeter has its own Orca, started by `Meta+Alt+S` at the login screen, but it is silent
+there: the `sddm` account runs no PipeWire, so speech-dispatcher opens no audio device (see
+[Known gaps](../../kdos/06-reference/known-gaps.md#the-screen-reader-at-the-login-screen-has-no-sound)).
 
 ### Braille or speech at a text console
 

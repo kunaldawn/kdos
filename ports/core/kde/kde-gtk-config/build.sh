@@ -10,6 +10,8 @@
 # ---------------------------------
 
 patch -p1 -i "$PORT_SRC/libadwaita-colors.patch"
+patch -p1 -i "$PORT_SRC/gsd-xsettings-with-portal.patch"
+patch -p1 -i "$PORT_SRC/first-login-config.patch"
 
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \

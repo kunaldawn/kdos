@@ -26,3 +26,10 @@ The phrase books for Catalan, Dutch, German and Swedish are data the program rea
 catalogues, and ship beside the English ones. The install also writes `/etc/xdg/kmouthrc`, the
 toolbar layout upstream ships as the system default, and translated manual pages that kpkg's
 language rule removes.
+
+The voice KMouth offers on its first start is Qt TextToSpeech's choice for the session's locale: a
+voice whose language matches the locale's. Under the system's `en_US.UTF-8` that is an English
+voice. Under `C.UTF-8` Qt's locale names no language, and the voices that match it are the
+eSpeak NG voices whose language Qt cannot parse, so the first of those, Bishnupriya Manipuri,
+would be picked. The choice is saved in `~/.config/kmouthrc` and is changed in KMouth's
+configuration.

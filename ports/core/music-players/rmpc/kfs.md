@@ -29,7 +29,9 @@ The desktop entry is KDOS's own. It is `NoDisplay=true`: rmpc exits at once when
 running, and the session starts mpd only once an `mpd.conf` exists, which the image does not ship,
 so Start does not list it. `Meta+Shift+U` does not use this entry: the KDOS run-or-raise
 shortcuts (`kwin-script-kdos-runraise`) raise a running rmpc or
-start one as `konsole -e rmpc`. The entry sets `Terminal=true`, so it opens in the session's
+start one as `konsole -e rmpc`. rmpc reaches mpd through `MPD_HOST`, which `/etc/profile.d/45-mpd.sh` sets to
+the socket the mpd user service serves, `$XDG_RUNTIME_DIR/mpd/socket`, so it needs no configuration
+file of its own. The entry sets `Terminal=true`, so it opens in the session's
 terminal, Konsole, which draws the album art with the kitty graphics protocol. rmpc's
 visualiser pane runs `cava`, which is not a port, so that pane draws nothing (see
 [Features whose library has no port](../../../../docs/kdos/06-reference/known-gaps.md#features-whose-library-has-no-port)).

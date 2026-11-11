@@ -15,7 +15,8 @@ for d in ports/core script/phases docs/kfs; do
 	[ -d "$root/$d" ] || { echo "kdos-kfs: $root/$d is missing: the book is rendered from a KDOS checkout" >&2; exit 1; }
 done
 
-python3 "$PORT_SRC/book/kfsgen.py" --root "$root" --out "$SRC/kfs-src"
+python3 "$PORT_SRC/book/kfsgen.py" --root "$root" --out "$SRC/kfs-src" \
+	--kdos-book file:///usr/share/doc/kdos/
 python3 "$PORT_SRC/book/kfsrender.py" --pandoc pandoc --typst typst \
 	--src "$SRC/kfs-src" --out "$SRC/kfs" --buildfs /
 

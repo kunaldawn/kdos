@@ -11,6 +11,7 @@
 
 patch -p1 -i "$PORT_SRC/config.patch"
 patch -p1 -i "$PORT_SRC/database-path.patch"
+patch -p1 -i "$PORT_SRC/wayland-windowed-size.patch"
 
 export CFLAGS="${CFLAGS/-std=gnu11/}"
 ./configure \

@@ -41,8 +41,9 @@ whether it is installed. On a booted live medium `service status` shows both `[ 
 The command-line procedures on this page have been run on the live medium, inside a KVM guest
 with nested virtualisation: the KVM checks, a UEFI guest started with `qemu-system-x86_64`, passt,
 `virsh` against `qemu:///system` as a member of `wheel`, the `default` network and its firewall
-fragment. The Virtual Machine Manager window, an emulated TPM and a virtio-fs share are written
-from the recipes and from upstream's documentation, and have not been opened on a KDOS image (see
+fragment. The Virtual Machine Manager window opens from its Start row on the live medium; using it
+to create or run a guest, an emulated TPM and a virtio-fs share are written from the recipes and
+from upstream's documentation, and have not been done on a KDOS image (see
 [Known gaps](#known-gaps)). The live medium and an installed system carry the same packages; a
 guest's disk image written on a live session is on the boot overlay and is gone at power-off
 unless it is written to a mounted disk.
@@ -54,10 +55,10 @@ unless it is written to a mounted disk.
 The libvirt recipe writes both scripts as heredocs. They run their daemon under `ksvc supervise`,
 in the foreground, so the supervisor restarts it after a crash:
 
-<!-- kfs:include ports/core/virt/libvirt/build.sh lines=143-161 pin=66465bf63e11 -->
+<!-- kfs:include ports/core/virt/libvirt/build.sh lines=145-163 pin=66465bf63e11 -->
 
-`62_virtlogd` has the same shape. Each gives its daemon a pid file under `/run/libvirt`, because
-run as root the daemon's default, `/run/<name>.pid`, is the supervisor's own pid file. `-Dremote_default_mode=legacy` makes clients connect to the
+`62_virtlogd` has the same shape. Each gives its daemon a pid file under `/run/libvirt`, libvirt's
+own run directory; the supervisor's is `/run/kdos-svc.<name>.pid`. `-Dremote_default_mode=legacy` makes clients connect to the
 single `libvirtd`, which serves `qemu:///system` and the other drivers; the recipe writes no
 service script for upstream's per-driver daemons.
 
@@ -83,7 +84,7 @@ Who polkit asks for a password, and which actions KDOS's rule grants without one
 The libvirt package adds a fragment to the firewall. It forwards the traffic of libvirt's NAT
 bridges (`virbr0` and the rest) and lets guests reach the network's [`dnsmasq`]{.idx} for DHCP and DNS:
 
-<!-- kfs:include ports/core/virt/libvirt/build.sh lines=107-118 pin=3abe04949ded -->
+<!-- kfs:include ports/core/virt/libvirt/build.sh lines=109-120 pin=3abe04949ded -->
 
 It is installed as [`/etc/nftables.d/40-libvirt.nft`]{.idx} and loaded with the rest of the ruleset; see
 [The firewall](../../kdos/02-user-guide/administration.md#the-firewall).
@@ -94,8 +95,9 @@ It is installed as [`/etc/nftables.d/40-libvirt.nft`]{.idx} and loaded with the 
 with every setting commented out at its default. The recipe sets the defaults that matter here at
 build time: guests run as the `qemu` account in the `kvm` group, the firewall back end is nftables,
 and there is no SELinux or AppArmor driver. Upstream also installs the `default` network,
-[`/etc/libvirt/qemu/networks/default.xml`]{.idx}, marked to start with the daemon: a NAT bridge `virbr0` on
-`192.168.122.1/24`, handing out addresses from `.2` to `.254`.
+[`/etc/libvirt/qemu/networks/default.xml`]{.idx}: a NAT bridge `virbr0` on `192.168.122.1/24`,
+handing out addresses from `.2` to `.254`. The recipe removes upstream's mark that starts it with
+the daemon, so no bridge or `dnsmasq` runs until a guest needs one.
 
 ### Guest firmware
 
@@ -243,16 +245,18 @@ the empty table and no prompt on a fresh machine.
    virsh -c qemu:///system net-list --all
    ```
 
-   As shipped it is already up, and `virbr0` holds `192.168.122.1/24`:
+   As shipped it is defined and not started, and there is no `virbr0`:
 
    ```text
-    Name      State    Autostart   Persistent
-   --------------------------------------------
-    default   active   yes         yes
+    Name      State      Autostart   Persistent
+   ----------------------------------------------
+    default   inactive   no          yes
    ```
 
-2. Start it, and mark it to start with the daemon if it is not. On an active network `net-start`
-   answers `Requested operation is not valid: network is already active`:
+2. Start it, and mark it to start with the daemon if guests should find it up at every boot.
+   virt-manager offers to start it when a new guest is set up on it. Once it is up, `virbr0` holds
+   `192.168.122.1/24`; on an active network `net-start` answers `Requested operation is not
+   valid: network is already active`:
 
    ```bash
    virsh -c qemu:///system net-start default
@@ -293,7 +297,7 @@ certificates.
 A KDOS image runs under QEMU on any host with [KVM]{.idx}. The build tree's `make run` target is the
 command line KDOS is developed against; it is in the repository's `Makefile`:
 
-<!-- kfs:include Makefile lines=203-208 pin=a0d042b20a1c lang=make -->
+<!-- kfs:include Makefile lines=206-211 pin=f6593b8c0706 lang=make -->
 
 That target runs on the build machine and expects its OVMF at `/usr/share/ovmf/OVMF.fd`; on a KDOS
 host, use the firmware paths from [Running a guest with QEMU directly](#running-a-guest-with-qemu-directly).
@@ -306,8 +310,10 @@ What the guest does differently from real hardware:
   CRT pass refuses to start. `qdbus6 org.kde.KWin /KWin supportInformation | grep -i renderer`
   says which is in use.
 - In a virtual machine (`kdos in-vm`) the session puts `/usr/share/kdos/xdg-vm` first in
-  `XDG_CONFIG_DIRS`, which turns off the idle dimming, the screen blanking and the timed lock,
-  because over a viewer a desktop that blanked itself looks like one that stopped; see
+  `XDG_CONFIG_DIRS`, which turns off the idle dimming, the screen blanking, the timed lock, idle
+  suspend and the lid's suspend, because over a viewer a desktop that blanked or slept looks like
+  one that stopped. PowerDevil's own guest check asks systemd's manager, which KDOS does not run,
+  so these keys are what keeps a guest awake; see
   [Session and environment](session-and-environment.md#where-the-kdos-defaults-live).
 - A viewer that resizes its window resizes the guest's screen when the guest has the virtio or
   QXL display and the SPICE or virtio agent; KWin follows the new size.
@@ -402,7 +408,7 @@ helper serves only root. That is a known gap; use user-mode networking, or a lib
 
 ## Known gaps
 
-- [The native applications have not been run](../../kdos/06-reference/known-gaps.md#the-native-applications-have-not-been-run)
+- [The native applications have been opened, not used](../../kdos/06-reference/known-gaps.md#the-native-applications-have-been-opened-not-used)
 - [qemu carries firmware only for its three targets' default machines](../../kdos/06-reference/known-gaps.md#qemu-carries-firmware-only-for-its-three-targets-default-machines)
 - [A qemu guest cannot join a host bridge as an ordinary user](../../kdos/06-reference/known-gaps.md#a-qemu-guest-cannot-join-a-host-bridge-as-an-ordinary-user)
 - [A SPICE viewer redirects only the USB devices you can already open](../../kdos/06-reference/known-gaps.md#a-spice-viewer-redirects-only-the-usb-devices-you-can-already-open)

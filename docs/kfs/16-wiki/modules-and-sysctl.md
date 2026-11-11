@@ -64,7 +64,7 @@ their own:
 
 The installer's file is written from the time zone's country:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=1947-1955 pin=5a0dbdc98892 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=1959-1967 pin=5a0dbdc98892 -->
 
 kdos-settingsd writes the same `options cfg80211` line when the zone changes, and removes
 the file for a zone with no country, such as `UTC`. What the country changes is on

@@ -65,7 +65,7 @@ end to end on a booted machine that holds packs, exercised by a harness that rep
 its reason rather than passing silently.
 
 The natively ported applications are unproved in the same way. The lists of the userland phases,
-`40_lang` to `44_apps`, name 2,172 recipes for the languages, the system, the graphical stacks,
+`40_lang` to `44_apps`, name 2,173 recipes for the languages, the system, the graphical stacks,
 the toolkits and the applications, every source fetched and hashed, and no application has been
 started on an image. A package in the build tree is current when its recipe's `kp_recipe_hash`
 equals the one recorded under `/var/lib/kpkg/db/.recipe/`, and the next build rebuilds every package
@@ -80,7 +80,7 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 
 | Subsystem | Status | Evidence |
 |---|---|---|
-| The ports tree | Stable | 2,431 recipes, 2,388 of them upstream ports on 102 shelves, listed by shelf in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses, sits where the layout says under a name no other port has, and that every dependency resolves |
+| The ports tree | Stable | 2,432 recipes, 2,389 of them upstream ports on 102 shelves, listed by shelf in the [Ports catalogue](ports-catalogue.md). Preflight checks that every recipe parses, sits where the layout says under a name no other port has, and that every dependency resolves |
 | kpkg, the package manager | Stable | It has built the whole tree. The self-test builds and installs synthetic ports through it: ownership under merged `/usr`, the shared indexes a package feeds, and skip-if-installed comparing the recipe hash are each asserted, and a staged tree that breaks a packaging rule is refused with that rule's message |
 | Reproducible packages | Stable | The self-test builds one synthetic port twice, the second time with umask `077`, `TZ=Asia/Kolkata`, `XZ_OPT='-e --check=sha256 -T1'` and a 300 MiB `XZ_DEFAULTS` memory limit, and requires the two packages to be byte-identical, owned by uid and gid 0 with epoch modification times, and equal to their tar recompressed on two threads with `xz -9 --block-size=32MiB`. It also installs the port through `kpkg install`, once with the deleted `xz -0` package and once with a kept cache that must match the `-9` bytes. Full-size ports are not rebuilt twice by any harness |
 | The build system | Stable | It builds the distribution. The self-test drives `kdosbuild` headless over a synthetic two-phase tree: a build, a snapshot, a restore that resumes after it, plan narrowing (which suppresses snapshots and sets `KDOS_REPLAY`), a deliberate failure that stops the build without a snapshot, and the `--json` event stream; a second fixture checks that a chroot package phase runs no step for a port installed and current, and does run one for a forced, an edited (before the phase or during it) or an unfindable port. `kdosbuild --selftest` separately asserts the view geometry, the log classifier, the retry of a failed phase, the jobserver and the merge of `build/snapshots/timings.json`, with the machine each figure is filed under. The KDE ports of `43_toolkits`, `44_apps` and `50_desktop` have not been through a full build |
@@ -89,18 +89,18 @@ orchestrator and the source archive. See [Packaging](../03-architecture/packagin
 | The pack format | Stable | Malformed footers, both footer formats, signature states and a flipped payload byte are each asserted by the library self-test |
 | The binary host | In progress | Signing, the index and deltas are asserted against a synthetic port, and `kdos update` installing only what a signed index covers is asserted against a fixture binhost. `make build KDOS_MAKE_BINHOST=1` writes a signed one to `build/binhost/` with its release index, and `ports/publish --release` publishes it sharded across releases of at most 1,000 assets, which has run only as `--dry-run`; no release carries one |
 | Updates | In progress | The self-test signs a slot image, rebuilds it from a seed root and its delta, refuses a tampered one, carries a machine's configuration into an armed slot, writes a newer image into the inactive slot, and arms only a slot an acquire filled. The release index is asserted to split 2,001 files 1,000, 1,000 and 1 in path order, to find a slot image through its sharded, signed form, and to be refused unsigned, signed by an untrusted key, edited, for another release, with no `releases` root, or naming a file of other bytes; a binhost index or manifest it does not name is never offered. `kdos-sysupdated` is driven over fixture slots the way Discover calls it, its API diffed against Discover's own. `kpkg fetch`'s archive-then-upstream order and its refusal of a copy with the wrong hash are asserted. No release carries a signed tree, binhost or slot image yet, and no update has been applied on an installed machine. See [Known gaps](known-gaps.md#the-update-path-has-not-been-run-against-a-published-tree) |
-| The application catalogue | Stable | 73 applications and 2 datasets over 7 runtimes and 2 base packs, offered in 7 groups (17 `group` lines). Preflight checks the catalogue's rows against the tree. Applications are built on demand on the machine; the image carries the catalogue and no applications |
+| The application catalogue | Stable | 70 applications and 2 datasets over 7 runtimes and 2 base packs, offered in 7 groups (17 `group` lines). Preflight checks the catalogue's rows against the tree. Applications are built on demand on the machine; the image carries the catalogue and no applications |
 
 What each of the shortened rows above rests on:
 
-- **The ports tree.** Of the 2,431 recipes, 2 are absent from the build tree's package
+- **The ports tree.** Of the 2,432 recipes, 2 are absent from the build tree's package
   database once a build has run every phase, and the database holds no name that no recipe gives.
   The two are `kdos-installer`, which `10_bootstrap` compiles by script and never records as a
   package, and `texlive-doc`, whose recipe `ports/unbuilt` lists as built by no phase. Every other
   port is installed by a package phase, as a name on its list or as a dependency of one that no
   earlier phase installed: 15 by `20_selfhost` (its list names 9), 127 by `30_foundation` (its
-  list names 138, 11 of them installed by `20_selfhost`), 22 by `31_compilers`, 184 by `40_lang`,
-  1,040 by `41_system`, 188 by `42_graphics`, 339 by `43_toolkits`, 423 by `44_apps`, 90 by
+  list names 138, 11 of them installed by `20_selfhost`), 22 by `31_compilers`, 185 by `40_lang`,
+  1,035 by `41_system`, 187 by `42_graphics`, 344 by `43_toolkits`, 422 by `44_apps`, 91 by
   `50_desktop` and 2 by `60_kernel`; `python3 testing/phaseclosure.py` prints these figures, and
   `testing/bookcounts.py` fails on a recipe that no phase installs unless `ports/unbuilt` names it.
   On a built tree, the absent names are what `comm -23` prints when it compares the names of the
@@ -166,7 +166,7 @@ See [The session](../03-architecture/session.md) and the chapters of
 | Discover and system updates | In progress | `kdos-discover`'s backend and notifier have QtTest suites over fixture catalogues and a fake `io.kdos.Slots1`. `kdos-sysupdated` answers a stock Discover's calls over fixture slots in the self-test. No update has reached Discover on a booted image |
 | Phosphor mode | Experimental | `kdos phosphor` is asserted to put back every key it changed. The KDOS motion effects have run in a headless KWin on software rendering with animations forced, which shows the motion and says nothing about its cost on a GPU; the CRT pass refuses software rendering and has not been seen. See [Known gaps](known-gaps.md#phosphor-mode-needs-hardware-opengl) |
 | The `kdos` command | In progress | The self-test compiles `kdos-tools` and runs most of the 42 subcommands against fixtures or a fake session bus: `app`, `appid`, `backup`, `checklist`, `clone`, `cve`, `desk`, `doctor`, `help`, `hey`, `hostname`, `keymap`, `locale`, `march`, `menu`, `notify`, `panel`, `persist`, `phosphor`, `places`, `privacy`, `rebuild`, `remind`, `share`, `speech`, `theme`, `thumb`, `tiling`, `timezone`, `toggle` and `update` among them. See [The kdos command](../04-programs/kdos-command.md) |
-| The theme system | Stable | `kdos-theme` generates every accent's colour scheme, Konsole profile, qt5ct palette, wallpaper and greeter look at build time and fails the build on a scheme below its contrast floor. `kdos theme --audit` re-runs the terminal programs' generators and compares, and the self-test requires an edited, a deleted and a stray file each to be caught and repaired, and an accent change in a session to move only what is KDOS's |
+| The theme system | Stable | `kdos-theme` generates every accent's colour scheme, editor theme, Konsole profile, qt5ct palette, wallpaper and greeter look at build time and fails the build on a scheme below its contrast floor. `kdos theme --audit` re-runs the terminal programs' generators and compares, and the self-test requires an edited, a deleted and a stray file each to be caught and repaired, and an accent change in a session to move only what is KDOS's |
 | Accessibility | Experimental | `testing/atspi/` dumps each KDOS surface's AT-SPI tree and compares it with a committed golden on a booted image; `make atspi-selftest` checks the dump format on fixtures, and no golden has been taken from an image yet. Orca has not been heard on one |
 
 ## Applications and boxes
@@ -179,7 +179,7 @@ See [Packs and boxes](../03-architecture/packs-and-boxes.md) and
 | kdos-packd | Beta | The self-test runs `kdos-packd --fixture`, which solves and composes without mounting: it asserts the lowerdir order (application, runtime, base), signature verification, the refusal to compose a data pack into a box root, and that a store holding `<id>.kpack` and a kept `<id>-<version>.kpack` lists the installed one alone. On a booted machine that already holds packs, `testing/packlane.sh` installs a pack, mounts it read-only, composes a box and reports each skip with its reason. The image carries no packs, so they must be imported before that harness can pass. Rollback is not exercised by any harness |
 | Boxes | Stable | One box per application. The self-test asserts that a box profile prints the podman flag behind every key, reports an unknown key by name, and says which keys it cannot enforce rather than reporting success; that a launch hands a box only its own sockets or does not start; and that a throwaway box gets one file, no network and nothing of the host |
 | kdos-appbox | Stable | Every boxed launcher goes through it. The self-test asserts launcher generation from an image's desktop entries, that a boxed launcher is named with the app id KWin gives its windows, that a second box's launcher cannot collide with the default's, and that `kdos-appbox open` resolves a path to the program that opens it |
-| Native applications | Experimental | 762 recipes in `43_toolkits` and `44_apps`, with their dependencies in `40_lang` to `42_graphics`, from the X11 client libraries, GTK, Qt 6 and 5, QtWebEngine, KDE Frameworks 6, WebKitGTK and wxWidgets up to the browsers, office suites, KDE Gear, creative, science, radio and CAD applications, games and emulators, each named in the list of the userland phase that builds it, `40_lang` to `44_apps`, in the file of its shelf. Every source is fetched and its hash recorded. Each is installed by the phase whose list names it, and no application has been started on an image. See [Known gaps](known-gaps.md#the-native-applications-have-not-been-run) |
+| Native applications | Experimental | 762 recipes in `43_toolkits` and `44_apps`, with their dependencies in `40_lang` to `42_graphics`, from the X11 client libraries, GTK, Qt 6 and 5, QtWebEngine, KDE Frameworks 6, WebKitGTK and wxWidgets up to the browsers, office suites, KDE Gear, creative, science, radio and CAD applications, games and emulators, each named in the list of the userland phase that builds it, `40_lang` to `44_apps`, in the file of its shelf. Every source is fetched and its hash recorded. Each is installed by the phase whose list names it, and each with a Start row has been opened from it on an image; using them has not been measured. See [Known gaps](known-gaps.md#the-native-applications-have-been-opened-not-used) |
 | kdos-boxsock | In progress | Every boxed client is tagged through it with the `security-context-v1` protocol (which marks a Wayland connection as coming from a sandbox), and KWin, through KDOS's `sandbox-policy.patch`, grants a box a global only when its profile names it. The self-test compiles it against the protocol; the patched KWin has not refused a box on a booted image |
 
 ## Daemons
@@ -217,15 +217,15 @@ a clean checkout and you should get the same number.
 
 | Measurement | Value | Command |
 |---|---|---|
-| Port recipes | 2,431 | `find ports/core src/system src/art src/desktop src/daemons -name kpkgbuild \| wc -l` |
-| — in `ports/core` | 2,388 | `find ports/core -name kpkgbuild \| wc -l` |
+| Port recipes | 2,432 | `find ports/core src/system src/art src/desktop src/daemons -name kpkgbuild \| wc -l` |
+| — in `ports/core` | 2,389 | `find ports/core -name kpkgbuild \| wc -l` |
 | — in `src/system` | 8 | `find src/system -name kpkgbuild \| wc -l` |
 | — in `src/art` | 8 | `find src/art -name kpkgbuild \| wc -l` |
 | — in `src/desktop` | 21 | `find src/desktop -name kpkgbuild \| wc -l` |
 | — in `src/daemons` | 6 | `find src/daemons -name kpkgbuild \| wc -l` |
 | Shelves | 102 | `grep -cvE '^(#\|$)' ports/shelves` |
 | Archived source files | 2,614 | `grep -cE '^[0-9a-f]{64} ' ports/sources.idx` |
-| Catalogue applications | 73 | `grep -c '^app ' src/system/kdos-appbox/catalogue` |
+| Catalogue applications | 70 | `grep -c '^app ' src/system/kdos-appbox/catalogue` |
 | Catalogue datasets | 2 | `grep -c '^data ' src/system/kdos-appbox/catalogue` |
 | Catalogue runtimes | 7 | `grep -c '^runtime ' src/system/kdos-appbox/catalogue` |
 | Catalogue base packs | 2 | `grep -c '^base ' src/system/kdos-appbox/catalogue` |

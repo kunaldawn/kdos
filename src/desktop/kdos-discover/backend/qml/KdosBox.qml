@@ -8,7 +8,8 @@
  *   kdos-discover — "Runs in a box", on every resource that has one
  *
  * What the box is made of and how it is kept, as `kdos-box list` reported
- * it; what it is allowed, as `kdos-box profile` reports it enforced, asked
+ * it and said for a person by the resource's box*Text properties, on an
+ * installed resource only; what it is allowed, as `kdos-box profile` reports it enforced, asked
  * for when the page shows; and the way to change that: the Boxes page in
  * System Settings (kcm_kdos_boxes), opened on this box. Discover itself
  * changes no grant.
@@ -27,7 +28,10 @@ ColumnLayout {
 
     required property Discover.AbstractResource resource
 
+    // A box profile can outlive its application's removal; an application
+    // that is not installed has no box to describe.
     Discover.Activatable.active: root.resource !== null && (root.resource.boxName ?? "").length > 0
+                                 && root.resource.state >= Discover.AbstractResource.Installed
     spacing: Kirigami.Units.smallSpacing
 
     Component.onCompleted: {
@@ -54,22 +58,22 @@ ColumnLayout {
         }
         QQC2.Label {
             Kirigami.FormData.label: i18ndc("kdos-discover", "@label what a box is built on", "Made from:")
-            text: root.resource?.boxBase ?? ""
+            text: root.resource?.boxBaseText ?? ""
             Accessible.name: i18ndc("kdos-discover", "@info:whatsthis", "Made from: %1", text)
         }
         QQC2.Label {
             Kirigami.FormData.label: i18ndc("kdos-discover", "@label whether a box is running", "State:")
-            text: root.resource?.boxState ?? ""
+            text: root.resource?.boxStateText ?? ""
             Accessible.name: i18ndc("kdos-discover", "@info:whatsthis", "State: %1", text)
         }
         QQC2.Label {
             Kirigami.FormData.label: i18ndc("kdos-discover", "@label the accent colour a box is shown in", "Colour:")
-            text: root.resource?.boxAccent ?? ""
+            text: root.resource?.boxAccentText ?? ""
             Accessible.name: i18ndc("kdos-discover", "@info:whatsthis", "Colour: %1", text)
         }
         QQC2.Label {
             Kirigami.FormData.label: i18ndc("kdos-discover", "@label whether a box keeps what it writes", "Keeps its files:")
-            text: root.resource?.boxPersistence ?? ""
+            text: root.resource?.boxPersistenceText ?? ""
             Accessible.name: i18ndc("kdos-discover", "@info:whatsthis", "Keeps its files: %1", text)
         }
     }

@@ -24,9 +24,9 @@ DAEMON="/usr/libexec/xfsprogs/xfs_healer"
 # may have changed since.
 
 instances() {
-    for _p in /run/"$NAME"-*.pid; do
+    for _p in /run/kdos-svc."$NAME"-*.pid; do
         [ -e "$_p" ] || continue
-        _i=${_p##*/}
+        _i=${_p##*/kdos-svc.}
         echo "${_i%.pid}"
     done
 }

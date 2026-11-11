@@ -27,6 +27,12 @@
          back to. Every other property is empty or zero while it is false. -->
     <property name="Configured" type="b" access="read"/>
 
+    <!-- True when this boot is the live medium ("/" an overlay in RAM),
+         which has no boot state either: Configured is false, nothing is
+         offered or acquired, and the page names it as the live session
+         rather than as an install with one root. -->
+    <property name="Live" type="b" access="read"/>
+
     <!-- The slot this boot runs from (kdos_slot= on the kernel command
          line), "" when the boot named none. -->
     <property name="RunningSlot" type="s" access="read"/>

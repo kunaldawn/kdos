@@ -7,10 +7,11 @@
  * ---------------------------------
  *   KDOS Installer — what the machine actually is
  *
- * Everything here is read straight from /sys, /proc and the block device.
- * lsblk and blkid exist on KDOS, but parsing their output means the
- * installer inherits their formatting and their exit codes; a superblock is
- * a stable ABI and a 200-line reader is cheaper than either.
+ * Everything here is read straight from /sys, /proc and the block device,
+ * and from udev's database for a device this process may not open. lsblk and
+ * blkid exist on KDOS, but parsing their output means the installer inherits
+ * their formatting and their exit codes; a superblock is a stable ABI and a
+ * 200-line reader is cheaper than either.
  * ---------------------------------
  */
 
@@ -23,6 +24,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
@@ -50,12 +52,27 @@ static const unsigned char GUID_BIOS_BOOT[16] = {
 	0x74, 0x4e, 0x65, 0x65, 0x64, 0x45, 0x46, 0x49
 };
 
+/* By its /dev node, or by any link to one: an answer file may name the disk
+ * as /dev/disk/by-id/…, and every size and layout decision reads the disk
+ * this returns. */
 Disk *disk_by_path(const char *path)
 {
+	char real[PATH_MAX];
+
 	for (int i = 0; i < ki_ndisk; i++)
 		if (!strcmp(ki_disk[i].path, path))
 			return &ki_disk[i];
+	if (!path[0] || !realpath(path, real))
+		return NULL;
+	for (int i = 0; i < ki_ndisk; i++)
+		if (!strcmp(ki_disk[i].path, real))
+			return &ki_disk[i];
 	return NULL;
+}
+
+unsigned long long ki_disk_bytes(const Disk *d)
+{
+	return d->sectors * 512ULL;
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -111,12 +128,68 @@ static void trim_label(char *s)
 			*p = ' ';
 }
 
+/*
+ * WHAT UDEV RECORDED ABOUT A DEVICE, for a probe that may not open it.
+ * /run/udev/data/b<major>:<minor> is world-readable and carries the
+ * properties udev's own blkid run found, one `E:KEY=value` line each; the
+ * graphical installer's dumps run as the session's user, who is not in
+ * `disk`, and without this every partition would read as empty. The device
+ * node is stat()ed, never opened, so its mode does not matter.
+ */
+static int udev_prop(const char *dev, const char *key, char *out, size_t cap)
+{
+	struct stat st;
+	char path[64], line[512];
+	size_t kl = strlen(key);
+	FILE *f;
+	int found = 0;
+
+	out[0] = 0;
+	if (stat(dev, &st) < 0 || !S_ISBLK(st.st_mode))
+		return 0;
+	snprintf(path, sizeof(path), "/run/udev/data/b%u:%u",
+		 major(st.st_rdev), minor(st.st_rdev));
+	f = fopen(path, "re");
+	if (!f)
+		return 0;
+	while (!found && fgets(line, sizeof(line), f)) {
+		if (strncmp(line, "E:", 2) || strncmp(line + 2, key, kl) ||
+		    line[2 + kl] != '=')
+			continue;
+		line[strcspn(line, "\n")] = 0;
+		kb_strlcpy(out, line + 3 + kl, cap);
+		found = 1;
+	}
+	fclose(f);
+	return found;
+}
+
+/* The superblock facts out of udev's database, for a device the probe
+ * cannot read: the type, label and uuid, and the GPT type that marks an ESP
+ * or a BIOS boot partition. */
+static void sniff_udev(const char *path, Part *p)
+{
+	char type[64];
+
+	udev_prop(path, "ID_FS_TYPE", p->fstype, sizeof(p->fstype));
+	udev_prop(path, "ID_FS_LABEL", p->label, sizeof(p->label));
+	udev_prop(path, "ID_FS_UUID", p->uuid, sizeof(p->uuid));
+	if (udev_prop(path, "ID_PART_ENTRY_TYPE", type, sizeof(type))) {
+		if (!strcasecmp(type, "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"))
+			p->is_esp = 1;
+		if (!strcasecmp(type, KI_GUID_BIOS_BOOT))
+			p->is_bios_boot = 1;
+	}
+}
+
 /* A small blkid: enough of every superblock KDOS can create or meet. */
 static void sniff_fs(const char *path, Part *p)
 {
 	int fd = open(path, O_RDONLY | O_CLOEXEC);
-	if (fd < 0)
+	if (fd < 0) {
+		sniff_udev(path, p);
 		return;
+	}
 
 	unsigned char sb[4096];
 	unsigned char boot[512];
@@ -236,8 +309,16 @@ static void read_gpt(Disk *d)
 	kb_strlcpy(d->table, "-", sizeof(d->table));
 
 	int fd = open(d->path, O_RDONLY | O_CLOEXEC);
-	if (fd < 0)
+	if (fd < 0) {
+		/* The partitions' types came from udev in sniff_udev(); the
+		 * table's own type is the disk's ID_PART_TABLE_TYPE. */
+		char t[16];
+
+		if (udev_prop(d->path, "ID_PART_TABLE_TYPE", t, sizeof(t)) &&
+		    (!strcmp(t, "gpt") || !strcmp(t, "dos")))
+			kb_strlcpy(d->table, t, sizeof(d->table));
 		return;
+	}
 
 	unsigned char hdr[512], mbr[512];
 
@@ -372,6 +453,32 @@ static void disk_transport(Disk *d)
 		else
 			kb_strlcpy(d->tran, "sata", sizeof(d->tran));
 	}
+}
+
+/* A name for a disk whose driver publishes no model — virtio-blk is one —
+ * from its transport, and its serial where the driver has one, so two such
+ * disks are told apart by more than their size. */
+static void disk_fallback_name(Disk *d)
+{
+	static const struct {
+		const char *tran, *name;
+	} names[] = {
+		{ "virtio", "Virtual disk" },
+		{ "nvme", "NVMe disk" },
+		{ "mmc", "Memory card" },
+		{ "usb", "USB disk" },
+	};
+	const char *name = "Disk";
+	char serial[32];
+
+	for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++)
+		if (!strcmp(d->tran, names[i].tran))
+			name = names[i].name;
+	sysfs_str(serial, sizeof(serial), "/sys/block/%s/serial", d->name);
+	if (serial[0])
+		snprintf(d->model, sizeof(d->model), "%s %s", name, serial);
+	else
+		kb_strlcpy(d->model, name, sizeof(d->model));
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -733,9 +840,9 @@ void probe_disks(void)
 		if (!d->model[0])
 			sysfs_str(d->model, sizeof(d->model),
 				  "/sys/block/%s/device/name", d->name);
-		if (!d->model[0])
-			kb_strlcpy(d->model, "Unknown device", sizeof(d->model));
 		disk_transport(d);
+		if (!d->model[0])
+			disk_fallback_name(d);
 
 		char sub[256];
 		snprintf(sub, sizeof(sub), "/sys/block/%s", d->name);
@@ -977,7 +1084,6 @@ void probe_system(void)
 KiGroup ki_group[MAX_APPGROUPS];
 int ki_ngroup;
 int ki_apps_present;
-char ki_apps_archive[512];
 
 /*
  * WHERE THE CATALOGUE IS, on a live medium. $KDOS_CATALOGUE first so a dump
@@ -1004,64 +1110,6 @@ static const char *catalogue_path(void)
 }
 
 /*
- * AN EXPORTED SET ON A MOUNTED DEVICE, which is the offline route and the only
- * one a machine with no network has. The first `.ktar` found under a mounted
- * removable filesystem wins, and it is the only one offered — a second medium
- * carrying a different set is not reachable from the page.
- *
- * It is looked for when the Applications page is entered (probe_apps), never
- * from the draw: walking every mount on every draw would put a filesystem
- * scan inside the paint path. A medium mounted while the page is open is seen
- * on the next visit.
- */
-static void find_archive(void)
-{
-	static const char *const roots[] = { "/mnt", "/media", "/run/media" };
-
-	ki_apps_archive[0] = '\0';
-	for (size_t r = 0; r < sizeof(roots) / sizeof(roots[0]); r++) {
-		char **ents = kb_listdir(roots[r], NULL);
-
-		for (char **e = ents; e && *e; e++) {
-			char dir[512];
-			char **f;
-
-			snprintf(dir, sizeof(dir), "%s/%s", roots[r], *e);
-			f = kb_listdir(dir, NULL);
-			for (char **g = f; g && *g; g++) {
-				size_t l = strlen(*g);
-
-				if (l < 6 || strcmp(*g + l - 5, ".ktar"))
-					continue;
-				/* A PATH THAT WOULD NOT FIT IS SKIPPED, never
-				 * truncated: a shortened path names a
-				 * different file, and the failure would be an
-				 * import of something nobody chose.
-				 *
-				 * Composed rather than formatted, so the bound
-				 * is the one checked here — a compiler cannot
-				 * see the guard through a format call and
-				 * rejects it whatever the check says. */
-				size_t dl = strlen(dir);
-
-				if (dl + 1 + l >= sizeof(ki_apps_archive))
-					continue;
-				memcpy(ki_apps_archive, dir, dl);
-				ki_apps_archive[dl] = '/';
-				memcpy(ki_apps_archive + dl + 1, *g, l + 1);
-				break;
-			}
-			kb_strv_free(f);
-			if (ki_apps_archive[0])
-				break;
-		}
-		kb_strv_free(ents);
-		if (ki_apps_archive[0])
-			break;
-	}
-}
-
-/*
  * THE GROUPS, out of the catalogue, with a size estimate per group.
  *
  * A group's estimate counts each member ONCE and counts no runtime at all: the
@@ -1075,7 +1123,6 @@ void probe_apps(void)
 
 	ki_ngroup = 0;
 	ki_apps_present = 0;
-	find_archive();
 
 	if (cat_load(catalogue_path(), err, sizeof(err)) != 0)
 		return;
@@ -1116,51 +1163,12 @@ unsigned long long ki_apps_bytes(void)
 	return n;
 }
 
-/*
- * WHICH ROUTE, AND THE PAGE SAYS SO. In order: an exported set on a stick is
- * offline and verified, so it wins; a network during the install is next; and
- * with neither, the selection is recorded and the first session offers it.
- *
- * THE NETWORK TEST IS A ROUTE, NOT A PING. `/proc/net/route` carries a default
- * gateway or it does not; opening a socket to somebody else's host to decide
- * what to draw would be an installer reaching the network to ask whether it
- * can reach the network.
- */
-static int have_default_route(void)
-{
-	char buf[8192];
-	char *line, *save;
-	int n = 0;
-
-	if (kb_read_file("/proc/net/route", buf, sizeof(buf)) <= 0)
-		return 0;
-	for (line = strtok_r(buf, "\n", &save); line;
-	     line = strtok_r(NULL, "\n", &save)) {
-		char iface[64], dest[64];
-
-		if (n++ == 0)
-			continue;	/* the header row */
-		if (sscanf(line, "%63s %63s", iface, dest) != 2)
-			continue;
-		if (!strcmp(dest, "00000000"))
-			return 1;
-	}
-	return 0;
-}
-
 int ki_apps_route(void)
 {
-	int any = 0;
-
 	for (int i = 0; i < ki_ngroup; i++)
-		any |= ki_group[i].chosen;
-	if (!any)
-		return APPS_NONE;
-	if (ki_apps_archive[0])
-		return APPS_IMPORT;
-	if (have_default_route())
-		return APPS_NETWORK;
-	return APPS_PENDING;
+		if (ki_group[i].chosen)
+			return APPS_PENDING;
+	return APPS_NONE;
 }
 
 void ki_apps_collect(void)

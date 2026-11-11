@@ -32,8 +32,8 @@
  * rules that never apply.
  *
  * THE STATE RIDES ON THE ENGINE NAME. kdos-appbox decides which boundary held
- * for the box — `confined` (a private runtime directory with no `wayland-0`
- * and no `bus`, the bus filtered, no X11 display) or `tagged` (the tag, and a
+ * for the box — `confined` (a private runtime directory without the
+ * session's Wayland socket or `bus`, the bus filtered, no X11 display) or `tagged` (the tag, and a
  * way past it) — and the engine carries it to the window decoration as
  * `+private` or `+tagged`. An engine is fixed when a context is committed, so
  * a holder serving one state is replaced by a run asking for the other, and

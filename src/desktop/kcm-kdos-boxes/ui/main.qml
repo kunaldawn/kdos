@@ -19,6 +19,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls as QQC2
 import org.kde.kcmutils as KCM
 import org.kde.kirigami as Kirigami
 import org.kde.kirigami.delegates as KD
@@ -145,9 +146,12 @@ KCM.ScrollViewKCM {
         }
     }
 
+    /* Parented to the window's overlay, as the box page's dialogs are, so
+     * it is centred on the window whatever page holds it. */
     Kirigami.PromptDialog {
         id: switchDialog
 
+        parent: root.QQC2.Overlay.overlay
         title: i18nc("@title:window", "Apply the Changes?")
         subtitle: i18nc("@info %1 box", "The settings of %1 have changes that are not applied.", kcm.currentBox)
         standardButtons: Kirigami.Dialog.NoButton

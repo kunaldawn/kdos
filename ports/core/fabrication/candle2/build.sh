@@ -21,7 +21,7 @@ Type=Application
 Name=Candle
 GenericName=CNC Controller
 Comment=Send G-code to a GRBL CNC machine or laser and watch the toolpath
-Exec=candle2
+Exec=env QT_QPA_PLATFORM=xcb candle2
 Icon=candle2
 Terminal=false
 StartupWMClass=candle2

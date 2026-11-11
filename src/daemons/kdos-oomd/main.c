@@ -844,19 +844,25 @@ static int serve(void)
 				double some, full;
 				long long avail, total;
 				KoVictim v = {0};
-				/* Armed on the TRIGGER, not on the kill: the
-				 * cooldown is how often this daemon may walk
-				 * every entry in /proc, and a trigger that
-				 * finds nothing killable — or a victim that
-				 * will not die — would otherwise rescan once a
-				 * second on a machine already stalling on
-				 * memory. */
-				last_kill = now;
 				read_pressure(&some, &full);
-				if (memory_short(&avail, &total) &&
-				    pick_victim(&v))
-					kill_victim(&v, some, full, avail,
-						    total);
+				/* Armed on the SCAN, not on the trigger nor
+				 * on the kill: the cooldown is how often this
+				 * daemon may walk every entry in /proc, and a
+				 * scan that finds nothing killable — or a
+				 * victim that will not die — would otherwise
+				 * rescan once a second on a machine already
+				 * stalling on memory. A firing with memory not
+				 * yet short reads only /proc/meminfo and arms
+				 * nothing; arming it would drop the next
+				 * firing of the same incident, the one that
+				 * finds memory short, and leave the kill to
+				 * the kernel's OOM killer. */
+				if (memory_short(&avail, &total)) {
+					last_kill = now;
+					if (pick_victim(&v))
+						kill_victim(&v, some, full,
+							    avail, total);
+				}
 			}
 		}
 		if (fds[1].revents & POLLIN) {

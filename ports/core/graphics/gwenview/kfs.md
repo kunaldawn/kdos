@@ -47,3 +47,8 @@ KAboutData gives Gwenview the desktop file name `org.kde.gwenview`, which is als
 app_id. Upstream's entry is replaced by one with `StartupWMClass=org.kde.gwenview` and without
 `inode/directory` in `MimeType=`: claimed by Gwenview, a folder could open in it instead of the
 file manager. The hicolor PNG icons it names are upstream's.
+
+`slidecontainer-reentrant-anim.patch` keeps the sliding bars, Crop, Red Eye Reduction and the
+others, from deleting their slide animation while it is updating: a bar whose content changes
+height mid-slide, as the Crop bar does when it is opened again after a crop, otherwise crashes
+Gwenview. The patch is to be offered upstream.

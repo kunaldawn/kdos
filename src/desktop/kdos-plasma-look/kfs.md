@@ -9,8 +9,8 @@ generated at build time from the one palette in libkcolor. It installs
   `breeze_cursors`, the square Breeze decoration, the `kdos` Plasma style, the fonts, its own
   KSplash and the `KDOS-<Title>` wallpaper;
 - the Plasma style `kdos`, `/usr/share/plasma/desktoptheme/kdos`: square, opaque panel, popup,
-  tooltip, button and task-manager frames with a one-pixel accent rule, falling back to Breeze for
-  everything it does not draw;
+  tooltip, button, task-manager and pager frames with a one-pixel accent rule, falling back to
+  Breeze for everything it does not draw;
 - the three desks, `/usr/share/plasma/layout-templates/org.kdos.desk.{kdos,dock,tiling}`;
 - the Konsole schemes and profiles `KDOS-<Title>` and the qt5ct palettes `KDOS-<Title>.conf`;
 - the login screen's files for each accent, `/usr/share/kdos/greeter/<accent>/`, which
@@ -88,17 +88,21 @@ is next rebuilt.
 finds templates only through it, and must carry `"NoDisplay": true`, because Add Panel lists every
 panel template without it. `genlook.py` refuses a desk that is missing either. Each global theme's
 `layouts/org.kde.plasma.desktop-layout.js` lays out the desk named by `kdosrc [Desk] Layout`, so
-the Global Theme page and `kdos desk` always agree, and records when it did in `[Desk] LaidOut`,
-which `kdos desk` compares with the applets file to tell whether the panels were changed since.
+the Global Theme page and `kdos desk` always agree, and records when it did in `[Desk] LaidOut`;
+`kdos desk` records a digest of the panels it laid out in `[Desk] LaidOutPanels` and compares it
+with the panels now to tell whether they were changed since.
 The pinned apps in the desks are the first words of `~/.config/kdos/favorites`, the list of boxes
 warmed at login; `testing/lnfcheck.py` compares the two.
 
-**The Plasma style.** It draws only the panel, popups, tooltips, buttons and the task manager,
-with `FallbackTheme=default` for the rest, and ships no `colors` file, so it follows whichever
+**The Plasma style.** It draws only the panel, popups, tooltips, buttons, the task manager and
+the pager, with `FallbackTheme=default` for the rest, and ships no `colors` file, so it follows whichever
 scheme is in force. Each of the panel, dialog and tooltip frames is installed twice, at its path
 and under `solid/`: an opaque panel, a solid dialog and every PlasmaComponents tooltip and menu
 ask for the `solid/` path by name, and without the copy they would get Breeze's. No `translucent/`
 set is shipped: with KWin's blur active Plasma looks there first and, finding nothing in this
 style, takes the opaque frame from the same style before any fallback. Blur, background contrast
 and adaptive transparency are off in `plasmarc`. No `icons/` are shipped: Plasma 6.8 draws every
-icon from the icon theme, and nothing reads a style's icon SVGs.
+icon from the icon theme, and nothing reads a style's icon SVGs. The pager's cells carry no fill:
+its desktop labels are always drawn in the text colour, which Breeze's filled current cell puts on
+the light accent of a dark scheme, so the current desktop is an accent outline and bottom rule
+over the panel's own ground.

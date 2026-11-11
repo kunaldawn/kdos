@@ -1,7 +1,7 @@
 {
     "KPlugin": {
         "Description": "Choose which installed version of KDOS this computer starts, and where updates come from",
-        "Icon": "system-software-update",
+        "Icon": "drive-multipartition",
         "Name": "System Versions"
     },
     "X-DocPath": "kdos/04-programs/kdos-settings.html#system-versions",

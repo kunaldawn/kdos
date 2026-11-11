@@ -122,9 +122,65 @@ static void cat_row_print(char *f[CAT_FIELDS])
 }
 
 /*
+ * THE DEBIAN LANE'S BOXES. Discover's kdos-store installs a Debian package
+ * the catalogue does not name into a box of its own, `deb.<package>`, which
+ * no catalogue row describes; `kdos-box list --json` is where they are, the
+ * same answer Discover's Installed page reads. A box described but not yet
+ * created is not installed. Returns the rows printed.
+ */
+static int debian_rows(void)
+{
+	KbArgv a = {0};
+	KbBuf out = {0};
+	const char *p;
+	int n = 0;
+
+	kb_argv_add(&a, "kdos-box");
+	kb_argv_add(&a, "list");
+	kb_argv_add(&a, "--json");
+	kb_argv_end(&a);
+	if (kb_run_capture_buf(&a, &out) != 0 || !out.p) {
+		kb_buf_free(&out);
+		return 0;
+	}
+	/* Box names are safe ids — no quote, no backslash — so a name field
+	 * ends at the next quote, and each object's fields stay in order. */
+	for (p = out.p; (p = strstr(p, "{\"name\":\"deb.")); ) {
+		const char *nm = p + 9, *end = strchr(nm, '"');
+		const char *next = strstr(nm, "{\"name\":");
+		const char *st = strstr(nm, "\"state\":\"");
+		const char *dk = strstr(nm, "\"disk\":");
+		char *f[CAT_FIELDS], id[96], bytes[32], what[160];
+
+		if (!end)
+			break;
+		p = end;
+		if ((size_t)(end - nm) >= sizeof(id) || !st ||
+		    (next && st > next) || !strncmp(st + 9, "not created", 11))
+			continue;
+		snprintf(id, sizeof(id), "%.*s", (int)(end - nm), nm);
+		snprintf(bytes, sizeof(bytes), "%llu",
+			 dk && (!next || dk < next)
+				 ? strtoull(dk + 7, NULL, 10) : 0ULL);
+		snprintf(what, sizeof(what), "the Debian package %s, from "
+			 "Discover", id + 4);
+		f[0] = id;
+		f[2] = "Debian";
+		f[3] = bytes;
+		f[5] = "installed";
+		f[6] = what;
+		cat_row_print(f);
+		n++;
+	}
+	kb_buf_free(&out);
+	return n;
+}
+
+/*
  * `--all` is every row; the default is what is INSTALLED. The whole catalogue
  * printed whenever somebody types `kdos app list` buries the handful they
- * actually have.
+ * actually have. Both end with the Debian lane's boxes, which are installed
+ * or absent.
  */
 static int cmd_list(int all)
 {
@@ -149,6 +205,7 @@ static int cmd_list(int all)
 		cat_row_print(f);
 		n++;
 	}
+	n += debian_rows();
 	if (!n)
 		printf("  nothing%s\n",
 		       all ? "" : " installed — `kdos app list --all`");

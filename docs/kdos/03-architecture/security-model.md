@@ -254,11 +254,11 @@ in: each has `/sbin/nologin` as its shell and `!` as its password. The image shi
 | `nobody` | 99:99 | `kiwix-serve` and `llama-server`, which only read, and anything that asks for an unprivileged account by that name |
 
 The group `sambashare` (gid 65) has no member until somebody is put in it: it is the group Samba
-lets publish a share of their own from Dolphin.
+lets publish a share of their own from Dolphin, and its first member is what makes `smbd` start at
+boot.
 
 More are created when their port is installed, by the port's `postinstall.sh` with `groupadd -r` and
-`useradd -r`, which pick a free id: `polkitd`, `avahi`, `avahi-autoipd`, `clamav`, `colord` (which
-is given `/var/lib/colord`), `geoclue`, `gnuhealth`, `kolibri`, `libstoragemgmt`, `maddy`,
+`useradd -r`, which pick a free id: `polkitd`, `avahi`, `avahi-autoipd`, `clamav`, `geoclue`, `gnuhealth`, `kolibri`, `libstoragemgmt`, `maddy`,
 `minidlna`, `mosquitto`, `mumble-server`, `ngircd`, `nm-openvpn`, `nut`, `pcscd`, `postgres`,
 `prosody`, `radicale`, `tcpdump` and `usbmux`. `lsmd`, the storage-management daemon, starts as
 root and runs every plugin that does not need root as `libstoragemgmt`. `nut` is also put in
@@ -326,7 +326,7 @@ session's agent.
 | `kdos-oomd` | Root, `wheel`, and any account elogind reports as `active` (in the foreground of a seat); its only verbs are `ping` and `status` |
 | `kdos-energyd` | Root and `wheel` |
 | `kdos-packd` | Root and `wheel` |
-| `kdos-settingsd` | polkit, under systemd's own action ids: setting the time zone and switching network time are yes at the machine; the hostname, the locale, the keyboard and setting the clock are an administrator's password, kept for a few minutes, everywhere |
+| `kdos-settingsd` | polkit, under systemd's own action ids: setting the time zone and switching network time are yes at the machine (System Settings' Date & Time page authorises setting the clock before any change, so it asks for the password even for those); the hostname, the locale, the keyboard and setting the clock are an administrator's password, kept for a few minutes, everywhere |
 | `kdos-sysupdated` | polkit: checking for an update is yes at the machine; installing one, trying the other slot and changing the update channel are an administrator's password, kept for a few minutes; installing a version picked by hand asks every time; the boot confirmation (`io.kdos.slots.bless`) is yes for the active local session and no for anything else |
 
 The socket test lives in one function, `kb_uid_allowed()` in `libkbase`, and no daemon keeps a
@@ -437,11 +437,11 @@ and when the count rises for a service whose program runs in this session (KDE C
 nobody has answered for this network, it asks once whether to open it. "Allow" opens the name for
 every network, through the same polkit check; it can open nothing the settings page could not.
 
-Samba's `smbd` runs only while something is shared: shares a user publishes from Dolphin
-(usershares, in `/var/lib/samba/usershares`, mode 1770, writable by the `sambashare` group) or a
-share written into `smb.conf`. Its service script starts it at boot only when one exists, and the
-first share made in a session starts it through `kdos-powerd`'s `StartFileSharing`, which takes no
-argument and runs that script; see
+Samba's `smbd` runs only once some account can share: the `sambashare` group has a member, whose
+shares from Dolphin are usershares in `/var/lib/samba/usershares` (mode 1770, writable by the
+group), or a share is already there or written into `smb.conf`. Its service script starts it at
+boot only then, and the first login of an account just added to the group starts it through
+`kdos-powerd`'s `StartFileSharing`, which takes no argument and runs that script; see
 [Starting Samba for a shared folder](../04-programs/daemons.md#starting-samba-for-a-shared-folder).
 The `smb` name in the firewall is separate and stays the administrator's choice: TCP 445 is closed
 until `smb` is opened, whether `smbd` runs or not, and opened with `smbd` down it reaches nothing.
@@ -468,18 +468,23 @@ a challenge there is a refusal; in a terminal, `pkttyagent` asks instead.
 
 polkit is built `-Dsession_tracking=elogind` and carries `turnstile-session.patch`. turnstile
 registers each user's services as a session of their own with no seat, and the user's session bus
-is one of those services, so every program the bus starts (Plasma's `plasma-shutdown` among them)
-would be judged as a seatless caller and get `allow_any`. The patch skips such a session and judges
-the process by the user's graphical session instead, which is the answer a systemd user unit gets by
-being in no session at all. Without it, Plasma's Shut Down and Restart would ask for an
-administrator's password.
+is one of those services, so every program the bus starts (Plasma's `plasma-shutdown`, KRunner and
+everything launched from it, `ksystemstats`) would be judged as a seatless caller, get `allow_any`
+and find no agent. For a process in a turnstile session the patch takes the user from that session
+(`sd_session_get_uid`) and answers for the user's display session (`sd_uid_get_display`), so the
+decision and the agent are those of the person at the machine; a user with no display session
+leaves the process with no session. It cannot fall back on polkit's own owner-uid lookup instead:
+elogind keeps each session's processes in a `/cN/session` cgroup leaf, for which
+`sd_pid_get_owner_uid` fails. Without the patch, Plasma's Shut Down and Restart would ask for an
+administrator's password and be refused, a program launched from KRunner would get no password
+dialog, and the panel's network meter would be refused NetworkManager's statistics.
 
 ### Who asks polkit
 
 polkit is installed and `polkitd` is started by the init system. elogind (suspend, power-off,
 reboot), NetworkManager, ModemManager, `udisksd`, `accounts-daemon`, `kdos-settingsd`,
 `kdos-sysupdated`, `kdos-powerd`'s bus face, `bolt`, `fwupd`, `upower`, `fprintd`, `pcscd`,
-`libvirtd`, `colord` and brltty's braille server ask it, and GeoClue asks it on ModemManager's
+`libvirtd` and brltty's braille server ask it, and GeoClue asks it on ModemManager's
 behalf. `pkexec` runs GParted, the installer and Discover's ports helper as root through it, and
 the KAuth helpers of Plasma and KDE applications (Kate's save as root, K3b, kio-admin, KDE
 Partition Manager, the process list's kill of another user's process, PowerDevil's charge limits
@@ -523,9 +528,11 @@ else, take the actions the first-boot wizard needs with no password: making the 
 setting the hostname, locale, keyboard and time zone, and joining a network. On the live medium,
 `63_live-installer` installs `/etc/polkit-1/rules.d/49-kdos-installer-live.rules`, which lets the
 live session at the machine run the installer (`io.kdos.installer.run`), KDE Partition Manager's
-helper, and exactly one `pkexec` command line, `/usr/local/bin/kdos persist create --yes`, matched
-by the program's real path (`/usr/sbin/ksvc`) and the whole command line, so no other `kdos` verb
-and no other program is covered. The live account's password is published, so asking for it would
+helper, and one `pkexec` command line, `/usr/local/bin/kdos persist create [/dev/<name>] --yes`,
+matched by the program's real path (`/usr/sbin/ksvc`) and the whole command line against a pattern
+whose device is one word of lower-case letters and digits under `/dev`, so no other `kdos` verb, no
+other argument and no other program is covered. `create` only adds a partition in free space, or a
+partition table to a blank disk. The live account's password is published, so asking for it would
 protect nothing; `kinstall` leaves the file out of every install. libvirt's own rule grants
 `org.libvirt.unix.manage` to the `libvirt` group, which has no member, and brltty's grants the
 braille display to `brlapi`.
@@ -570,7 +577,7 @@ a name nobody owns fails with `ServiceUnknown` and starts nothing. `40_dbus.sh`,
 most ten seconds, so the order the scripts sort in is the order the names appear.
 
 Left to D-Bus activation, and so dependent on the helper: `wpa_supplicant`, `fprintd`, `fwupd`,
-`boltd`, `upower`, `udisksd`, `geoclue`, `colord`, kio-admin's worker, the KAuth helpers, and
+`boltd`, `upower`, `udisksd`, `geoclue`, kio-admin's worker, the KAuth helpers, and
 NetworkManager's dispatcher and privileged helper. None of these is also supervised.
 
 ### What polkit logs
@@ -624,11 +631,11 @@ enforces nothing for this box.
 **The runtime directory is the boundary.** A pack box or a store box sees
 `$XDG_RUNTIME_DIR/kdos/box/<box>` as its `/run/user/<uid>`, and what a launch puts there is all of
 the session it can reach: its own tagged Wayland sockets, its bus proxy, links to the audio sockets
-when `audio` allows them, the accessibility bus only while assistive technology is in use, the
-document portal's mount, and the X11 cookie only for a box handed X11. The session's own
-`wayland-0` and `bus` are never in it, and nothing in `kdos-appbox` falls back to them. A box
-`distrobox` made from somebody else's image shares the session's runtime directory instead, and
-every socket in it is reachable whatever `wayland`, `audio` and `x11` say.
+when `audio` allows them, the accessibility bus only while assistive technology is in use, and
+the X11 cookie only for a box handed X11. The session's own
+Wayland socket (`wayland-1`) and `bus` are never in it, and nothing in `kdos-appbox` falls back to
+them. A box `distrobox` made from somebody else's image shares the session's runtime directory
+instead, and every socket in it is reachable whatever `wayland`, `audio` and `x11` say.
 
 **The session bus is filtered.** A box's `DBUS_SESSION_BUS_ADDRESS` is its keeper's
 `xdg-dbus-proxy`, which passes the portals (`org.freedesktop.portal.*`), notifications, the tray's
@@ -664,9 +671,11 @@ and `15_cgroups.sh` has enabled the `cpu`, `memory` and `pids` controllers at th
 pass on. `kdos-appbox` creates a pack box under `<session>/delegated/app-kdos-<box>-<n>.scope`, the
 name the portal and System Monitor read an application id from, but only when the user may write
 the `cgroup.procs` of `/sys/fs/cgroup/<session>` itself: cgroup2 refuses an unprivileged move
-between two cgroups unless the mover can write their common ancestor's. Where that file is root's,
-the box is created under podman's own default instead, `memory`, `cpus` and `pids` are accepted and
-enforced by nothing, and `kdos-box profile` says so. A store box and a distrobox box are never
+between two cgroups unless the mover can write their common ancestor's. elogind leaves that file
+root's, so on KDOS the box is created under podman's own default instead, `memory`, `cpus` and
+`pids` are accepted and enforced by nothing, `kdos-box profile` says so, and the portal names the
+box no application (see
+[Known gaps](../06-reference/known-gaps.md#host-applications-and-boxes-reach-the-portals-unidentified)). A store box and a distrobox box are never
 placed in a scope. In every case `kdos-oomd` reads the profiles and prefers a box that is over its
 declared `memory` budget as a victim.
 
@@ -712,7 +721,7 @@ global, the capture and fake-input interfaces included. KWin's own check is the 
 without libsystemd, so it does not also judge a client by its cgroup.
 
 The tag holds only for a client that uses the socket it was given. In a confined box that is the
-only Wayland socket there is. A box that can reach the session's `wayland-0` (a distrobox box, or
+only Wayland socket there is. A box that can reach the session's `wayland-1` (a distrobox box, or
 one handed the X11 display, whose Xwayland is a host client) can connect untagged and is offered
 everything, which is why such a box is at most `tagged` and its badge says so.
 
@@ -781,7 +790,8 @@ SELinux, AppArmor, Smack, TOMOYO, LoadPin, SafeSetID and IPE are compiled in but
 list, so none of them runs.
 `CONFIG_SECURITY_DMESG_RESTRICT` is on as well: the kernel log is readable only by root (or a
 process with `CAP_SYSLOG`), so `dmesg` as an ordinary user prints `Operation not permitted` and
-`sudo dmesg` is the way to read it.
+`sudo dmesg` is the way to read it. The copies `syslogd` writes, `/var/log/kern.log` and
+`/var/log/messages`, are mode `0600` for the same reason, set by `22_syslog.sh` before it starts.
 
 ### Module signing
 
@@ -1099,7 +1109,7 @@ not there is worse off than one who knows it is missing.
   private runtime directory and the filtered bus keep it away from the desktop's interfaces; they
   do not keep it away from your data. `home = private` is the key that does.
 - **A box from somebody else's image, or one handed X11, reaches past its tag.** A distrobox box
-  shares the session's runtime directory, with `wayland-0` and the unfiltered bus in it, and any box
+  shares the session's runtime directory, with `wayland-1` and the unfiltered bus in it, and any box
   handed the X11 display can talk to Xwayland, which is one host client to KWin. Such a box is
   `tagged`, not `confined`, and its badge is dashed.
 - **A native application is not sandboxed at all.** An application built from a port, a browser

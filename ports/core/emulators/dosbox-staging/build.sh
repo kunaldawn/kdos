@@ -29,6 +29,8 @@ ninja -C build
 DESTDIR=$PKG ninja -C build install
 
 rm -rf "$PKG/usr/share/dosbox-staging/resources/translations"
+mv "$PKG"/usr/share/dosbox-staging/resources/* "$PKG/usr/share/dosbox-staging/"
+rmdir "$PKG/usr/share/dosbox-staging/resources"
 
 cat > "$PKG/usr/share/applications/org.dosbox_staging.dosbox_staging.desktop" <<'DESKTOP'
 [Desktop Entry]

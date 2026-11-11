@@ -21,3 +21,5 @@ cmake -S . -B build -G Ninja \
 	-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build
+rm "$PKG"/usr/lib/qt6/plugins/plasma/kcms/kinfocenter/kcm_glx.so \
+	"$PKG"/usr/lib/qt6/plugins/plasma/kcms/kinfocenter/kcm_xserver.so

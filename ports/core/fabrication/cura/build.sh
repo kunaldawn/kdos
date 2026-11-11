@@ -45,7 +45,7 @@ PY
 for p in plugins/*/; do
 	p=${p%/}
 	case ${p##*/} in
-	SentryLogger|SliceInfoPlugin|FirmwareUpdateChecker|3DConnexion|MakerbotWriter) continue ;;
+	SliceInfoPlugin|FirmwareUpdateChecker|3DConnexion|MakerbotWriter) continue ;;
 	esac
 	cp -r "$p" "$PKG/usr/lib/cura/plugins/"
 done
@@ -97,3 +97,4 @@ chmod 644 "$PKG/usr/share/applications/cura.desktop"
 test -f "$PKG/usr/share/cura/resources/definitions/fdmprinter.def.json"
 test -n "$(ls "$PKG/usr/share/cura/resources/materials")"
 test -f "$PKG/usr/lib/cura/plugins/CuraEngineBackend/plugin.json"
+test -f "$PKG/usr/lib/cura/plugins/SentryLogger/plugin.json"

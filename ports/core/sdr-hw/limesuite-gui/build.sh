@@ -32,7 +32,7 @@ cmake -B build -G Ninja \
 ninja -C build LimeSuiteGUI
 
 install -Dm755 build/bin/LimeSuiteGUI "$PKG/usr/bin/LimeSuiteGUI"
-install -Dm644 Desktop/lime-suite.desktop "$PKG/usr/share/applications/lime-suite.desktop"
+install -Dm644 Desktop/lime-suite.desktop "$PKG/usr/share/applications/LimeSuiteGUI.desktop"
 for s in 16 22 32 48 64 128; do
 	install -Dm644 "Desktop/lime-suite-$s.png" "$PKG/usr/share/icons/hicolor/${s}x${s}/apps/lime-suite.png"
 done

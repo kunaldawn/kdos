@@ -64,7 +64,7 @@ struct Entry {
     QStringList packages; // the Debian packages behind a Catalogue or Debian entry
     QStringList members; // what a Set or an Archive installs
     QString kind; // a pack's kind: app, runtime, base or data
-    QString packOrigin; // store or medium, for a Pack
+    QString packOrigin; // store or medium, for a Pack or a Catalogue row; empty for none
     QString signature; // what kdos-pack verify answered, for a PackFile
     QString path; // the file behind an Archive or a PackFile
     QString box; // the box the resource runs in; empty for none
@@ -74,10 +74,12 @@ struct Entry {
     QString boxPersistence;
 };
 
-// The origin Discover filters and groups by. The names are the plan's: a
-// catalogue row and a pack in the store are kdos-packs, the Debian archive
-// outside the catalogue is kdos-store, a pack seen only on the boot medium is
-// medium.
+// The origin Discover filters and groups by, and names on the Install
+// button. The names are the plan's: a set, a pack in the store and a
+// catalogue row whose pack is there are kdos-packs; a pack, or a catalogue
+// row whose pack, is seen only on the boot medium is medium; a catalogue
+// row with no pack anywhere, which the store lane builds, and the Debian
+// archive outside the catalogue are kdos-store.
 QString originOf(Lane lane, const QString &packOrigin = {});
 
 }

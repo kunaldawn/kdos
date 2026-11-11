@@ -79,11 +79,20 @@ public:
     /* conf.c's ki_fullname_ok: passwd's GECOS field holds no ':' and no
      * control character. */
     Q_INVOKABLE static bool fullnameOk(const QString &name);
+    /* One of the accounts the image carries, which the answers check
+     * refuses. The list is kinstall's own (`--dump look`'s
+     * `reserved_names`), handed over by Backend, so the page and the
+     * backend cannot disagree. */
+    Q_INVOKABLE bool usernameReserved(const QString &name) const;
+    void setReservedNames(const QStringList &names);
 
     Q_INVOKABLE void setAppChosen(const QString &group, bool chosen);
 
     QString disk() const { return m_disk; }
     bool oem() const { return m_oem; }
+    /* The answers kinstall's probe sizes a disk by: the swap and whether
+     * the box store is copied. */
+    QString probeKey() const;
 
 Q_SIGNALS:
     void changed();
@@ -117,6 +126,7 @@ private:
     QString m_desk = QStringLiteral("kdos");
     bool m_alienApps = true;
     QStringList m_apps;
+    QStringList m_reserved;
 };
 
 }

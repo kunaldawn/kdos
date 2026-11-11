@@ -1,0 +1,9 @@
+# The pages' shared parts. A folder with a qmldir exposes only the types it
+# names, so every file here is listed. Accents is a singleton: one object
+# for every page, so the swatches are read once however many pages show them.
+singleton Accents 1.0 Accents.qml
+AccentSwatch 1.0 AccentSwatch.qml
+DeskPreview 1.0 DeskPreview.qml
+Flick 1.0 Flick.qml
+Point 1.0 Point.qml
+Run 1.0 Run.qml

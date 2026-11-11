@@ -49,5 +49,14 @@ compiler flags.
 only. LibreOffice is the word processor that claims the shared office types (Word, OpenDocument,
 RTF, WordPerfect); a second claim would open them in whichever entry sorted first.
 
+`clipboard-targets.patch` fixes what a copy puts on the clipboard. The RTF and text buffers that
+`IE_Exp::copyToBuffer` fills end in a NUL, which the unpatched copy hands to the clipboard as part
+of the data, so a terminal pastes a U+0000 and warns about hidden control characters; the patch
+drops it from those two. The ODT buffer is a zip whose last bytes are legitimately zero, so it is
+passed whole. The unpatched copy also offers every format AbiWord can read, seventeen image types
+among them, whatever was copied, and Klipper stores an empty image entry for a text copy; the
+patched one empties its internal copy first and offers the formats that copy holds. The patch is to be offered upstream as a merge request to
+[World/AbiWord](https://gitlab.gnome.org/World/AbiWord).
+
 Every interface translation is a `.strings` file that is installed whatever configure is told, so
 all but the English ones are deleted from the package.

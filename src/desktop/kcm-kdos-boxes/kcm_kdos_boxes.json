@@ -5,7 +5,7 @@
         "Name": "Boxes"
     },
     "X-DocPath": "kdos/04-programs/kdos-settings.html#boxes",
-    "X-KDE-Keywords": "KDOS,box,boxes,sandbox,container,podman,permission,permissions,network,files,home,devices,GPU,graphics,sound,memory,CPU,grant,grants,clipboard,screen,colour,color,accent,recreate,export,ktar",
+    "X-KDE-Keywords": "KDOS,box,boxes,box permissions,sandbox,container,containers,podman,permission,permissions,network,files,home,devices,GPU,graphics,sound,memory,CPU,grant,grants,clipboard,screen,colour,color,accent,recreate,export,ktar",
     "X-KDE-System-Settings-Parent-Category": "applications-permissions",
     "X-KDE-Weight": 20
 }

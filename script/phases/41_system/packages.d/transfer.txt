@@ -22,6 +22,7 @@
 # them, or when a shelf file names a port an earlier phase installs.
 
 rsync
+aria2
 
 # A backup tool is one static binary or it is not a backup tool: the repository
 # has to restore from a machine that is NOT this one. `rclone check` is the

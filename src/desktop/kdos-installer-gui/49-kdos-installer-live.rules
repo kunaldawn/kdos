@@ -1,6 +1,6 @@
 /*
  * KDOS live medium: the installer, Partition Manager and the welcome tour's
- * "Keep my changes on this stick", with no password.
+ * "Keep my changes", with no password.
  *
  * Copied into /etc/polkit-1/rules.d by the live boot step
  * (/etc/init.d/63_live-installer.sh) on the live medium only, where the
@@ -20,15 +20,18 @@ polkit.addRule(function (action, subject) {
     if (action.id === "io.kdos.installer.run" ||
         action.id === "org.kde.kpmcore.externalcommand.init")
         return polkit.Result.YES;
-    /* pkexec's own action, for exactly one command line: the Persist page
-     * runs `pkexec /usr/local/bin/kdos persist create --yes`. pkexec names
-     * the program by its real path (kdos is a link to ksvc) and the command
-     * line as given, so neither another kdos verb nor another program is
-     * covered. */
+    /* pkexec's own action, for one command line: the Persist page runs
+     * `pkexec /usr/local/bin/kdos persist create [/dev/<name>] --yes`.
+     * pkexec names the program by its real path (kdos is a link to ksvc)
+     * and the command line as given, and the device is one word of
+     * lower-case letters and digits under /dev, so neither another kdos
+     * verb, another argument nor another program is covered. `create`
+     * only ever adds a partition in free space, or a table to a blank
+     * disk. */
     if (action.id === "org.freedesktop.policykit.exec" &&
         action.lookup("program") === "/usr/sbin/ksvc" &&
-        action.lookup("command_line") ===
-            "/usr/local/bin/kdos persist create --yes")
+        /^\/usr\/local\/bin\/kdos persist create (\/dev\/[a-z0-9]+ )?--yes$/
+            .test(action.lookup("command_line")))
         return polkit.Result.YES;
     return polkit.Result.NOT_HANDLED;
 });

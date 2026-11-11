@@ -41,7 +41,7 @@ Welcome.ScrollablePage {
     property string failure: ""
 
     function open(argv: list<string>): void {
-        run.run(argv, (code, text) => page.failure = code === 0 ? "" : text);
+        run.launch(argv, (code, text) => page.failure = text);
     }
 
     view: Kdos.Flick {

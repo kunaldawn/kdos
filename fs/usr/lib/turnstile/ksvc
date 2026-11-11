@@ -47,17 +47,28 @@
 # supervisor, in a session of its own, so there is nothing for a manager to
 # do but exist: turnstile restarts it if it dies (run again, and every
 # `supervise` of a running name is a [SKIP]) and signals it at the last logout.
-# `stop` stops the services, the table backwards, and only then ends the
-# manager, because turnstile clears the runtime directory the moment the
-# manager is gone and a service still holding a socket in it would be left
-# with none.
+# `stop` ends the manager first and waits for it, so a manager stopped while
+# it is still starting the table starts nothing more, and then stops every
+# service, the table backwards; a service started after the stop had passed
+# it would otherwise outlive the login. The runtime directory is safe
+# meanwhile: turnstile clears it once the process that ran `stop` has
+# reaped the manager, which it does only after `stop` returns.
 #
-# A SYSTEM ACCOUNT GETS A RUNTIME DIRECTORY AND NO SERVICES. The SDDM greeter
-# logs in as `sddm` through pam_turnstile, which is the only thing that makes
-# its /run/user/<uid> — its KWin will not start without one — and turnstiled
-# has one backend for every user. So below UID_MIN nothing is started and the
+# A SYSTEM ACCOUNT GETS A RUNTIME DIRECTORY AND NO SERVICES. turnstiled has
+# one backend for every user, so below UID_MIN nothing is started and the
 # login is released at once; nobody at UID_MAX or above (nobody, 65534) runs
 # any either.
+#
+# EXCEPT THE GREETER'S SESSION BUS. The SDDM greeter logs in as `sddm`
+# through pam_turnstile, which is the only thing that makes its
+# /run/user/<uid> — its KWin will not start without one. The accounts named
+# in BUS_ACCOUNTS get the services in BUS_SERVICES and nothing else: the
+# session bus, so turnstile exports its address into the greeter's PAM
+# environment and SDDM hands it to the greeter's KWin and the greeter. The
+# footer's on-screen keyboard and keyboard-layout buttons are D-Bus calls to
+# that KWin (org.kde.KWin /VirtualKeyboard, org.kde.keyboard), and without
+# the bus they reach nothing. No PipeWire, WirePlumber, timers or boxes: the
+# greeter plays no sound and runs nothing on a schedule.
 #
 # EXCEPT THE FIRST-BOOT WIZARD'S ACCOUNT. plasma-setup is a system account,
 # made by /etc/init.d/62_plasma-setup.sh as upstream's sysusers.d makes it,
@@ -66,26 +77,45 @@
 # kdos-session-wrapper refuses to start Plasma without it — so the accounts
 # named in SERVICE_ACCOUNTS get the user services whatever their uid.
 
-# KDOS_USER_SERVICES, KDOS_USER_UID_MIN and KDOS_USER_PROFILE move the table,
-# the account floor and the profile for the selftest fixture; turnstiled
-# starts this with none of them set.
+# KDOS_USER_SERVICES, KDOS_USER_UID_MIN, KDOS_USER_BUS_ACCOUNTS,
+# KDOS_USER_BUS_SERVICES and KDOS_USER_PROFILE move the table, the account
+# floor, the bus-only accounts and their services, and the profile for the
+# selftest fixture; turnstiled starts this with none of them set.
 SERVICES=${KDOS_USER_SERVICES:-/etc/kdos/user-services}
 UID_MIN=${KDOS_USER_UID_MIN:-1000}
 SERVICE_ACCOUNTS="plasma-setup"
+BUS_ACCOUNTS=${KDOS_USER_BUS_ACCOUNTS:-sddm}
+BUS_SERVICES=${KDOS_USER_BUS_SERVICES:-dbus}
 PROFILE=${KDOS_USER_PROFILE:-/etc/profile}
 UID_MAX=65534
 READY_EACH=3
 READY_ALL=10
 
-# 0 when the account this runs as gets the user services.
+# What the account this runs as gets, in _share: `all` the user services,
+# `bus` the services in BUS_SERVICES alone, `none` nothing. 0 unless none.
 wants_services() {
     _uid=$(id -u)
+    _share=all
     if [ "$_uid" -ge "$UID_MIN" ] && [ "$_uid" -lt "$UID_MAX" ]; then
         return 0
     fi
+    _share=none
     _name=$(id -un 2>/dev/null) || return 1
     for _a in $SERVICE_ACCOUNTS; do
-        [ "$_name" = "$_a" ] && return 0
+        [ "$_name" = "$_a" ] && { _share=all; return 0; }
+    done
+    for _a in $BUS_ACCOUNTS; do
+        [ "$_name" = "$_a" ] && { _share=bus; return 0; }
+    done
+    return 1
+}
+
+# 0 when the script $1 is one this account's share runs.
+in_share() {
+    [ "$_share" = all ] && return 0
+    _n=$(script_name "$1")
+    for _b in $BUS_SERVICES; do
+        [ "$_n" = "$_b" ] && return 0
     done
     return 1
 }
@@ -109,6 +139,7 @@ script_name() {
 enabled_scripts() {
     for _s in "$SERVICES"/[0-9][0-9]_*.sh; do
         [ -x "$_s" ] || continue
+        in_share "$_s" || continue
         [ -e "$_off/$(script_name "$_s")" ] && continue
         printf '%s\n' "$_s"
     done
@@ -140,14 +171,24 @@ case "$1" in
             user_env
             _log="$KSVC_RUN_DIR/kdos-user-services.log"
             [ -d "$KSVC_RUN_DIR" ] || _log=/dev/null
-            # Every script, disabled or not: a service started before it was
-            # disabled is still running, and stopping one that is not is a
-            # no-op that says so.
+            # The manager is this process's sibling and nobody reaps it
+            # until this returns, so it is gone once it is a zombie.
+            kill -TERM "$2" 2>/dev/null
+            for _ in $(seq 50); do
+                _st=Z
+                read -r _ _ _st _ 2>/dev/null < "/proc/$2/stat"
+                [ "$_st" = Z ] && break
+                sleep 0.1
+            done
+            # Every script of the account's share, disabled or not: a service
+            # started before it was disabled is still running, and stopping
+            # one that is not is a no-op that says so.
             for _s in $(printf '%s\n' "$SERVICES"/[0-9][0-9]_*.sh | sort -r); do
-                [ -x "$_s" ] && "$_s" stop
+                [ -x "$_s" ] && in_share "$_s" && "$_s" stop
             done >>"$_log" 2>&1
+        else
+            kill -TERM "$2"
         fi
-        kill -TERM "$2"
         exit 0
         ;;
     *)
@@ -180,6 +221,11 @@ user_env
 [ -d "$KSVC_RUN_DIR" ] || mkdir -m 0700 "$KSVC_RUN_DIR"
 _log="$KSVC_RUN_DIR/kdos-user-services.log"
 
+# A stop that arrives mid-table ends the manager between two scripts, never
+# inside one: bash runs the trap once the foreground child has returned, so
+# the script being started finishes before the manager is gone, and `stop`,
+# which waits for the manager first, then finds every service that started.
+trap 'exit 0' TERM
 _all=$((EPOCHSECONDS + READY_ALL))
 for _s in $(enabled_scripts); do
     "$_s" start >>"$_log" 2>&1

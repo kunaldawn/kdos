@@ -55,7 +55,11 @@ Cantor and NetCDF are checked after the configure, by looking for `-DHAVE_CANTOR
 config-package search as a bare argument; a requirement sets it to `1`, which that search reads as
 a version (and netCDF 4 is then incompatible) or rejects (Cantor).
 
-The desktop entry is KDOS's own, written over upstream's. It sets
-`StartupWMClass=org.kde.labplot`, the Wayland app id, and `Icon=labplot`, the name of the PNG
-icons the port installs, and claims only `application/x-labplot`, the one of upstream's types that
-the port's `labplot.xml` defines.
+LabPlot's start-up code sets `QT_QPA_PLATFORM=xcb` on Linux, over the session's `wayland;xcb`,
+because the Qt Advanced Docking System it docks its panels with misbehaves under Wayland
+(upstream issue 1067). It always runs as an X11 client on Xwayland.
+
+The desktop entry is KDOS's own, written over upstream's. It sets `StartupWMClass=org.kde.labplot`,
+which KWin matches against the X11 window's class, and `Icon=labplot`, the name of the PNG icons the
+port installs, and claims only `application/x-labplot`, the one of upstream's types that the port's
+`labplot.xml` defines.

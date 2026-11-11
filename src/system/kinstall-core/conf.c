@@ -133,7 +133,7 @@ static unsigned long long wipe_rest_bytes(void)
 
 	if (!d)
 		return 0;
-	total = d->sectors * (unsigned long long)d->sector_size;
+	total = ki_disk_bytes(d);
 	return total > used ? total - used : 0;
 }
 
@@ -183,21 +183,20 @@ unsigned long long ki_swap_lv_mb(void)
  * metadata come out of the partition first, and 32 MiB covers both. The home
  * must hold the box store the copy carries into it as well as the floor.
  */
-int ki_ab(void)
+unsigned long long ki_ab_need_mb(void)
 {
-	unsigned long long rest, need, home;
+	unsigned long long home = KI_HOME_MIN_MB;
 
-	if (cfg.plan != PLAN_WIPE || !cfg.lvm)
-		return 0;
-	rest = wipe_rest_bytes() >> 20;
-	if (rest < 32)
-		return 0;
-	rest -= 32;
-	home = KI_HOME_MIN_MB;
 	if (cfg.with_appbox)
 		home += ki_sys.appbox_kb / 1024;
-	need = 2 * ki_slot_mb() + ki_swap_lv_mb() + home;
-	return rest >= need;
+	return 32 + 2 * ki_slot_mb() + ki_swap_lv_mb() + home;
+}
+
+int ki_ab(void)
+{
+	if (cfg.plan != PLAN_WIPE || !cfg.lvm)
+		return 0;
+	return (wipe_rest_bytes() >> 20) >= ki_ab_need_mb();
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
@@ -649,18 +648,15 @@ static int tz_ok(const char *tz, const char *label)
 	return 1;
 }
 
-/* The names a person may not take: accounts the image already carries, which
- * renaming the live account onto would leave two lines of one name in
- * /etc/passwd. */
-static int name_reserved(const char *s)
-{
-	static const char *const taken[] = {
-		"root", "bin", "daemon", "sys", "adm", "nobody", "messagebus",
-		"sddm", "polkitd", "sshd", "plasma-setup", NULL,
-	};
+const char *const ki_reserved_names[] = {
+	"root", "bin", "daemon", "sys", "adm", "nobody", "messagebus",
+	"sddm", "polkitd", "sshd", "plasma-setup", NULL,
+};
 
-	for (int i = 0; taken[i]; i++)
-		if (!strcmp(s, taken[i]))
+int ki_name_reserved(const char *s)
+{
+	for (int i = 0; ki_reserved_names[i]; i++)
+		if (!strcmp(s, ki_reserved_names[i]))
 			return 1;
 	return 0;
 }
@@ -735,7 +731,7 @@ int ki_answers_check(char *err, size_t n)
 		}
 		return 0;
 	}
-	if (!ki_name_ok(cfg.username) || name_reserved(cfg.username)) {
+	if (!ki_name_ok(cfg.username) || ki_name_reserved(cfg.username)) {
 		snprintf(err, n, "'%s' cannot be a user name", cfg.username);
 		return 1;
 	}
@@ -766,6 +762,172 @@ int ki_answers_check(char *err, size_t n)
 		snprintf(err, n, "automatic login is offered only on an "
 				 "encrypted root");
 		return 1;
+	}
+	return 0;
+}
+
+/* ──────────────────────────────────────────────────────────────────────── */
+
+int ki_disk_check(const Disk *d, char *err, size_t n)
+{
+	unsigned long long need = ki_need_bytes() + KI_DISK_MARGIN;
+
+	if (d->is_boot_media) {
+		snprintf(err, n, "%s is the medium this runs from", d->path);
+		return 1;
+	}
+	if (d->readonly) {
+		snprintf(err, n, "%s is read-only", d->path);
+		return 1;
+	}
+	if (ki_disk_bytes(d) < need) {
+		snprintf(err, n, "%s holds %s; the install needs at least %s",
+			 d->path, kb_human_size(ki_disk_bytes(d)),
+			 kb_human_size(need));
+		return 1;
+	}
+	return 0;
+}
+
+/* A partition of any disk the probe saw, by its node. */
+static const Part *part_by_path(const char *path)
+{
+	for (int i = 0; i < ki_ndisk; i++)
+		for (int k = 0; k < ki_disk[i].nparts; k++)
+			if (!strcmp(ki_disk[i].part[k].path, path))
+				return &ki_disk[i].part[k];
+	return NULL;
+}
+
+/*
+ * THE REUSE PLAN'S TWO CHOICES. Each rule is one the install would otherwise
+ * break after the point of no return: mkfs on the BIOS boot partition leaves
+ * a disk that no longer starts on legacy BIOS, mkfs on a physical volume or
+ * on a held device fails (or, on a PV it did not fail on, destroys a volume
+ * group), and a root smaller than the install fails part way through the
+ * copy.
+ */
+static int reuse_check(char *err, size_t n)
+{
+	const Part *esp, *rp;
+	const Lv *l;
+	unsigned long long sectors;
+	const char *fstype;
+	int held;
+
+	if (!strcmp(cfg.part_esp, cfg.part_root)) {
+		snprintf(err, n, "the ESP and root cannot be the same partition");
+		return 1;
+	}
+	esp = part_by_path(cfg.part_esp);
+	if (!esp) {
+		snprintf(err, n, "%s is not a partition on this machine",
+			 cfg.part_esp);
+		return 1;
+	}
+	if (esp->is_bios_boot) {
+		snprintf(err, n, "%s is the BIOS boot partition — pick the EFI "
+				 "system partition", esp->path);
+		return 1;
+	}
+	if (esp->held) {
+		snprintf(err, n, "%s is in use by an open container or volume "
+				 "group — it cannot be the ESP", esp->path);
+		return 1;
+	}
+	if (!cfg.format_esp && strcmp(esp->fstype, "vfat")) {
+		snprintf(err, n, "%s holds no FAT filesystem — format it, or "
+				 "pick the EFI system partition", esp->path);
+		return 1;
+	}
+
+	l = lv_by_path(cfg.part_root);
+	rp = l ? NULL : part_by_path(cfg.part_root);
+	if (l) {
+		sectors = l->sectors;
+		fstype = l->fstype;
+		held = l->held;
+	} else if (rp) {
+		if (rp->is_bios_boot) {
+			snprintf(err, n, "%s is the BIOS boot partition — pick "
+					 "another root", rp->path);
+			return 1;
+		}
+		if (rp->is_esp) {
+			snprintf(err, n, "%s is an EFI system partition — pick "
+					 "another root", rp->path);
+			return 1;
+		}
+		sectors = rp->sectors;
+		fstype = rp->fstype;
+		held = rp->held;
+	} else {
+		snprintf(err, n, "%s is not a partition or logical volume on "
+				 "this machine", cfg.part_root);
+		return 1;
+	}
+	if (!strcmp(fstype, "LVM2_member")) {
+		snprintf(err, n, "%s is an LVM physical volume — pick one of its "
+				 "logical volumes as the root", cfg.part_root);
+		return 1;
+	}
+	if (held) {
+		snprintf(err, n, "%s is in use by an open container or volume "
+				 "group — close it first", cfg.part_root);
+		return 1;
+	}
+	/* Partition and volume sizes are in /sys's 512-byte units. */
+	if (sectors * 512ULL < ki_need_bytes()) {
+		snprintf(err, n, "%s holds %s, smaller than the %s this install "
+				 "needs",
+			 cfg.part_root, kb_human_size(sectors * 512ULL),
+			 kb_human_size(ki_need_bytes()));
+		return 1;
+	}
+	/* A disk that could not start on this machine is refused before the
+	 * root is formatted. On UEFI it is a note: the disk still starts. */
+	if (!ki_sys.uefi && ki_bios_boot_part() < 0) {
+		snprintf(err, n, "this machine starts in legacy BIOS mode and %s "
+				 "has no BIOS boot partition — add a 1 MiB one, or "
+				 "erase the disk",
+			 cfg.disk);
+		return 1;
+	}
+	return 0;
+}
+
+int ki_target_check(char *err, size_t n)
+{
+	Disk *d = disk_by_path(cfg.disk);
+
+	if (!d) {
+		snprintf(err, n, "%s is not a disk on this machine", cfg.disk);
+		return 1;
+	}
+	if (ki_disk_check(d, err, n))
+		return 1;
+	if (cfg.luks && !kb_have_prog("cryptsetup")) {
+		snprintf(err, n, "this image has no cryptsetup — it cannot "
+				 "create an encrypted root");
+		return 1;
+	}
+	if (cfg.plan == PLAN_REUSE)
+		return reuse_check(err, n);
+	if (cfg.plan == PLAN_WIPE && cfg.lvm) {
+		if (!kb_have_prog("lvm")) {
+			snprintf(err, n, "this image has no lvm — it cannot put "
+					 "the root on LVM");
+			return 1;
+		}
+		/* THE GROUP NAME IS FIXED, so one of that name with a physical
+		 * volume off the target disk stops vgcreate after this disk
+		 * was erased. One wholly on the target is erased with it. */
+		if (ki_vg_off_disk(KI_VG, d->name)) {
+			snprintf(err, n, "a volume group named " KI_VG " is "
+					 "already on another disk — rename it "
+					 "with vgrename, or leave LVM off");
+			return 1;
+		}
 	}
 	return 0;
 }

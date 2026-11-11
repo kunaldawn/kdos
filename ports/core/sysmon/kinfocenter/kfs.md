@@ -20,9 +20,10 @@ with only these pages; the pages themselves are QML KCMs in
 
 ## Notes
 
-Most pages show the output of a command-line tool, and each page's metadata names its tool in
-`TryExec`, so a page whose tool is missing is hidden rather than broken. The tools are run-time
-dependencies only, all in `depends`: `aha` from [aha](#port-aha), which turns `fwupdmgr` and `ip`
+Most pages show the output of a command-line tool. Each page's metadata names its tool in
+`TryExec`, but System Settings does not read that key in a KCM's metadata, so a page whose tool is
+missing is still listed and opens on an error; every tool a shipped page runs is therefore a
+run-time dependency in `depends`: `aha` from [aha](#port-aha), which turns `fwupdmgr` and `ip`
 output into HTML; `clinfo` from [clinfo](#port-clinfo); `dmidecode` from
 [dmidecode](#port-dmidecode), which only the KAuth helper runs; `lspci` from
 [pciutils](#port-pciutils); `sensors` from
@@ -37,7 +38,9 @@ for its report.
 
 The X Server and GLX pages need `xdpyinfo` and `glxinfo`, neither of which the image ships:
 [mesa-demos](#port-mesa-demos) is built without X11, and there is no X server outside Xwayland.
-Their `TryExec` keeps both pages out of the list.
+Upstream builds both pages with no option to leave them out, so `build.sh` deletes
+`kcm_xserver.so` and `kcm_glx.so` after the install; kept, they would be listed under Graphics
+and each would open on a message asking for the missing program.
 
 The memory page and About this System read the firmware tables through a KAuth helper,
 `kinfocenter-dmidecode-helper`, which runs `dmidecode` as root, found in `/usr/sbin` on the path

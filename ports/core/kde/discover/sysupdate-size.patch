@@ -1,0 +1,46 @@
+Subject: SystemdSysupdateBackend: take the update size from the release artifact
+
+sysupdate1 has no size query, so the backend asks a size service at
+http://localhost:3129. A sysupdate1 service can instead put the size in
+the AppStream it already serves for the target: the download size of an
+artifact of the release whose version is the one offered. size() now
+reads that first and asks the size service only when no such artifact
+names a size.
+
+--- a/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateResource.cpp
++++ b/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateResource.cpp
+@@ -8,7 +8,9 @@
+ #include "SystemdSysupdateBackend.h"
+ #include "SystemdSysupdateTransaction.h"
+ 
++#include <AppStreamQt/artifact.h>
+ #include <AppStreamQt/developer.h>
++#include <AppStreamQt/release.h>
+ #include <libdiscover_systemdsysupdate_debug.h>
+ #include <sysupdate1.h>
+ 
+@@ -94,6 +96,24 @@
+         return m_size;
+     }
+ 
++    // The target's AppStream can carry the size itself: the download size
++    // of an artifact of the release this resource offers. Only without one
++    // is the size service asked.
++    const auto releases = m_component.releasesPlain();
++    for (const AppStream::Release &release : releases.entries()) {
++        if (release.version() != availableVersion()) {
++            continue;
++        }
++        for (const AppStream::Artifact &artifact : release.artifacts()) {
++            const quint64 bytes = artifact.size(AppStream::Artifact::SizeKindDownload);
++            if (bytes > 0) {
++                m_size = bytes;
++                m_fetchedSize = true;
++                return m_size;
++            }
++        }
++    }
++
+     const auto networkAccess = static_cast<SystemdSysupdateBackend *>(backend())->networkAccess();
+     auto updateSizeReply = networkAccess->get(QNetworkRequest{QUrl(QStringLiteral("http://localhost:3129/v1/updatesize?version=%1").arg(availableVersion()))});
+     connect(updateSizeReply, &QNetworkReply::finished, this, [this, updateSizeReply]() {

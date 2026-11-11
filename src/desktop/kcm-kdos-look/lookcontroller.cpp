@@ -11,6 +11,7 @@
 #include "lookcontroller.h"
 
 #include <KCMultiDialog>
+#include <KConfig>
 #include <KConfigGroup>
 #include <KLocalizedString>
 #include <KPluginMetaData>
@@ -185,22 +186,62 @@ LookController::SyncState LookController::syncState() const
     return SyncState::InStep;
 }
 
+QString LookController::loginAccent() const
+{
+    const QString greeter = m_accents->accentOfScheme(m_loginScheme);
+    return greeter.isEmpty() ? m_machineAccent : greeter;
+}
+
 QString LookController::syncText() const
 {
     const QString label = m_accents->labelOf(m_accent);
+    const QString machine = m_accents->labelOf(m_machineAccent);
+    const bool partner = loginAccent() != m_machineAccent;
+    const QString login = m_accents->labelOf(loginAccent());
+    const bool menu = bootMenu();
     switch (syncState()) {
     case SyncState::InStep:
         if (m_machineAccent.isEmpty()) {
             return i18nc("@info %1 is an accent", "Plasma and the terminals wear %1.", label);
         }
-        return i18nc("@info %1 is an accent", "Plasma, the terminals, the boot menu, the splash and the login screen all wear %1.", label);
+        if (menu && partner) {
+            return i18nc("@info %1 is a light accent, %2 its dark partner",
+                         "Plasma, the terminals, the boot menu and the splash wear %1, and the login screen its dark partner %2.",
+                         label,
+                         login);
+        }
+        if (menu) {
+            return i18nc("@info %1 is an accent", "Plasma, the terminals, the boot menu, the splash and the login screen all wear %1.", label);
+        }
+        if (partner) {
+            return i18nc("@info %1 is a light accent, %2 its dark partner",
+                         "Plasma, the terminals and the splash wear %1, and the login screen its dark partner %2.",
+                         label,
+                         login);
+        }
+        return i18nc("@info %1 is an accent", "Plasma, the terminals, the splash and the login screen all wear %1.", label);
     case SyncState::PlasmaAhead:
         return i18nc("@info %1 and %2 are accents",
                      "Plasma wears %1, but the terminals and the screens before login still wear %2.",
                      m_accents->labelOf(m_accents->accentOfScheme(m_plasmaScheme)),
                      label);
     case SyncState::MachineBehind:
-        return i18nc("@info %1 is an accent", "The boot menu, the splash and the login screen still wear %1.", m_accents->labelOf(m_machineAccent));
+        if (menu && partner) {
+            return i18nc("@info %1 is a light accent, %2 its dark partner",
+                         "The boot menu and the splash still wear %1, and the login screen its dark partner %2.",
+                         machine,
+                         login);
+        }
+        if (menu) {
+            return i18nc("@info %1 is an accent", "The boot menu, the splash and the login screen still wear %1.", machine);
+        }
+        if (partner) {
+            return i18nc("@info %1 is a light accent, %2 its dark partner",
+                         "The splash still wears %1, and the login screen its dark partner %2.",
+                         machine,
+                         login);
+        }
+        return i18nc("@info %1 is an accent", "The splash and the login screen still wear %1.", machine);
     case SyncState::NotKdos:
         return i18nc("@info %1 is a color scheme's name, %2 an accent",
                      "Plasma uses the color scheme “%1”, which is not a KDOS accent, so the terminals and the screens before login keep %2.",
@@ -252,8 +293,22 @@ bool LookController::phosphorSupported() const
     return m_phosphorSupported;
 }
 
+bool LookController::phosphorUsable() const
+{
+    return m_phosphorKnown && (m_phosphorSupported || m_phosphorOn);
+}
+
 QString LookController::phosphorReason() const
 {
+    if (!m_phosphorKnown || m_phosphorSupported) {
+        return {};
+    }
+    if (m_phosphorRefusal == QLatin1String("session")) {
+        return i18nc("@info", "Phosphor mode needs a running Plasma session.");
+    }
+    if (m_phosphorRefusal == QLatin1String("gpu") || m_phosphorReason.isEmpty()) {
+        return i18nc("@info", "Phosphor mode needs GPU rendering, and this session renders in software.");
+    }
     return m_phosphorReason;
 }
 
@@ -280,6 +335,11 @@ bool LookController::fineTuneAvailable() const
 bool LookController::reducedMotion() const
 {
     return m_reducedMotion;
+}
+
+bool LookController::bootMenu() const
+{
+    return QFileInfo(m_paths.esp).isDir();
 }
 
 void LookController::refresh()
@@ -337,7 +397,7 @@ bool LookController::setPhosphor(bool on)
 
 bool LookController::setPreset(const QString &preset)
 {
-    if (!canAct() || (preset != QLatin1String("subtle") && preset != QLatin1String("retro"))) {
+    if (!canAct() || !phosphorUsable() || (preset != QLatin1String("subtle") && preset != QLatin1String("retro"))) {
         return false;
     }
     act({QStringLiteral("phosphor"), QStringLiteral("preset"), preset}, i18nc("@info:status", "Changing the preset…"));
@@ -346,7 +406,7 @@ bool LookController::setPreset(const QString &preset)
 
 bool LookController::setTerminus(bool on)
 {
-    if (!canAct()) {
+    if (!canAct() || !phosphorUsable()) {
         return false;
     }
     act({QStringLiteral("phosphor"), QStringLiteral("terminus"), on ? QStringLiteral("on") : QStringLiteral("off")},
@@ -356,7 +416,7 @@ bool LookController::setTerminus(bool on)
 
 bool LookController::setFullscreen(bool on)
 {
-    if (!canAct()) {
+    if (!canAct() || !phosphorUsable()) {
         return false;
     }
     act({QStringLiteral("phosphor"), QStringLiteral("fullscreen"), on ? QStringLiteral("on") : QStringLiteral("off")},
@@ -443,12 +503,21 @@ void LookController::readMachine()
         accent = QString::fromUtf8(f.readLine(64)).trimmed();
     }
     m_machineAccent = name.match(accent).hasMatch() ? accent : QString();
+    m_loginScheme.clear();
+    if (!m_machineAccent.isEmpty()) {
+        const QString set = m_paths.greeterDir + QLatin1Char('/') + m_machineAccent + QStringLiteral("/kdeglobals");
+        if (QFileInfo::exists(set)) {
+            KConfig greeter(set, KConfig::SimpleConfig);
+            m_loginScheme = KConfigGroup(&greeter, QStringLiteral("General")).readEntry("ColorScheme", QString());
+        }
+    }
 }
 
 void LookController::parsePhosphor(const QString &json)
 {
-    /* {"on", "supported", "reason", "preset", "terminus", "fullscreen",
-     * "previous_accent"}, the record the welcome tour's Look page reads too.
+    /* {"on", "supported", "reason", "refusal", "preset", "terminus",
+     * "fullscreen", "previous_accent"}, the record the welcome tour's Look
+     * page reads too. "refusal" is "session", "gpu" or null.
      * A reply whose "on" is not a boolean is not one this page understands,
      * and offers nothing. "preset" is subtle, retro or custom. */
     const QJsonObject o = QJsonDocument::fromJson(json.toUtf8()).object();
@@ -457,6 +526,7 @@ void LookController::parsePhosphor(const QString &json)
     m_phosphorOn = on.toBool();
     m_phosphorSupported = o.value(QStringLiteral("supported")).toBool();
     m_phosphorReason = o.value(QStringLiteral("reason")).toString();
+    m_phosphorRefusal = o.value(QStringLiteral("refusal")).toString();
     const QString preset = o.value(QStringLiteral("preset")).toString();
     m_preset = preset == QLatin1String("retro") || preset == QLatin1String("custom") ? preset : QStringLiteral("subtle");
     m_terminus = o.value(QStringLiteral("terminus")).toBool();

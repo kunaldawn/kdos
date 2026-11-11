@@ -39,4 +39,4 @@ EOF
 	fi
 	;;
 esac
-printf 'Update key\n%s\n' "$v"
+printf 'Update key:\n%s\n' "$v"

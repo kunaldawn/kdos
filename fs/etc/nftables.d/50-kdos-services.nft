@@ -3,8 +3,9 @@
 # rule it does not recognise is dropped — anything hand-made
 # belongs in a file beside this one, which this never touches.
 #
-# An open name is its rule. A closed name's packets are counted
-# in kdos_knock_<name> and then meet the chain's policy.
+# An open name is its rule. A closed name's packets from another
+# machine are counted in kdos_knock_<name>; every closed name's
+# packets then meet the chain's policy.
 #
 # No `type`/`hook` line: that is what re-opens the existing
 # input chain rather than declaring a second one.
@@ -61,30 +62,30 @@ table inet filter {
 	counter kdos_knock_xonotic {
 	}
 	chain input {
-		tcp dport 22 counter name "kdos_knock_ssh"
-		tcp dport 80 counter name "kdos_knock_http"
-		tcp dport 443 counter name "kdos_knock_https"
-		tcp dport 631 counter name "kdos_knock_ipp"
-		tcp dport 445 counter name "kdos_knock_smb"
-		tcp dport 8080 counter name "kdos_knock_kiwix"
-		tcp dport { 1883, 8883 } counter name "kdos_knock_mqtt"
-		tcp dport 5222 counter name "kdos_knock_xmpp"
-		tcp dport 2049 counter name "kdos_knock_nfs"
-		udp dport 6696 counter name "kdos_knock_babel"
-		tcp dport 3493 counter name "kdos_knock_nut"
-		udp dport 161 counter name "kdos_knock_snmp"
-		meta l4proto . th dport { tcp . 64738, udp . 64738 } counter name "kdos_knock_mumble"
-		tcp dport 5232 counter name "kdos_knock_caldav"
-		tcp dport { 25, 143, 465, 587, 993 } counter name "kdos_knock_mail"
-		tcp dport { 6667, 6697 } counter name "kdos_knock_irc"
-		meta l4proto . th dport { tcp . 8200, udp . 1900 } counter name "kdos_knock_dlna"
-		tcp dport 8000 counter name "kdos_knock_tryton"
-		tcp dport 8443 counter name "kdos_knock_caddy"
-		udp dport 60000-61000 counter name "kdos_knock_mosh"
-		meta l4proto . th dport { tcp . 22000, udp . 22000, udp . 21027 } counter name "kdos_knock_syncthing"
-		meta l4proto { tcp, udp } th dport 1714-1764 counter name "kdos_knock_kdeconnect"
-		tcp dport 5900 counter name "kdos_knock_vnc"
-		tcp dport 3389 counter name "kdos_knock_rdp"
-		udp dport 26000 counter name "kdos_knock_xonotic"
+		fib saddr type != local tcp dport 22 counter name "kdos_knock_ssh"
+		fib saddr type != local tcp dport 80 counter name "kdos_knock_http"
+		fib saddr type != local tcp dport 443 counter name "kdos_knock_https"
+		fib saddr type != local tcp dport 631 counter name "kdos_knock_ipp"
+		fib saddr type != local tcp dport 445 counter name "kdos_knock_smb"
+		fib saddr type != local tcp dport 8080 counter name "kdos_knock_kiwix"
+		fib saddr type != local tcp dport { 1883, 8883 } counter name "kdos_knock_mqtt"
+		fib saddr type != local tcp dport 5222 counter name "kdos_knock_xmpp"
+		fib saddr type != local tcp dport 2049 counter name "kdos_knock_nfs"
+		fib saddr type != local udp dport 6696 counter name "kdos_knock_babel"
+		fib saddr type != local tcp dport 3493 counter name "kdos_knock_nut"
+		fib saddr type != local udp dport 161 counter name "kdos_knock_snmp"
+		fib saddr type != local meta l4proto . th dport { tcp . 64738, udp . 64738 } counter name "kdos_knock_mumble"
+		fib saddr type != local tcp dport 5232 counter name "kdos_knock_caldav"
+		fib saddr type != local tcp dport { 25, 143, 465, 587, 993 } counter name "kdos_knock_mail"
+		fib saddr type != local tcp dport { 6667, 6697 } counter name "kdos_knock_irc"
+		fib saddr type != local meta l4proto . th dport { tcp . 8200, udp . 1900 } counter name "kdos_knock_dlna"
+		fib saddr type != local tcp dport 8000 counter name "kdos_knock_tryton"
+		fib saddr type != local tcp dport 8443 counter name "kdos_knock_caddy"
+		fib saddr type != local udp dport 60000-61000 counter name "kdos_knock_mosh"
+		fib saddr type != local meta l4proto . th dport { tcp . 22000, udp . 22000, udp . 21027 } counter name "kdos_knock_syncthing"
+		fib saddr type != local meta l4proto { tcp, udp } th dport 1714-1764 counter name "kdos_knock_kdeconnect"
+		fib saddr type != local tcp dport 5900 counter name "kdos_knock_vnc"
+		fib saddr type != local tcp dport 3389 counter name "kdos_knock_rdp"
+		fib saddr type != local udp dport 26000 counter name "kdos_knock_xonotic"
 	}
 }

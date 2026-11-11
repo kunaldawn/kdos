@@ -10,7 +10,7 @@
 
 name        = chromium
 version     = 155.0.8059.84
-release     = 1
+release     = 2
 _copium     = 155.2
 source      = https://github.com/chromium-linux-tarballs/chromium-tarballs/releases/download/$version/$name-$version-linux.tar.xz
 source      = copium-$_copium.tar.gz::https://codeberg.org/selfisekai/copium/archive/$_copium.tar.gz

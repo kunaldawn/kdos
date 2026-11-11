@@ -1,6 +1,6 @@
 {
     "KPlugin": {
-        "Description": "Keeps the KDOS accent in step with the Plasma colour scheme, offers to import an application set found on a USB stick, and starts Samba for the first shared folder",
+        "Description": "Keeps the KDOS accent in step with the Plasma colour scheme, offers to import an application set found on a USB stick, starts Samba for a login that can share folders, and starts plasmashell again when it stops",
         "Name": "KDOS"
     },
     "X-KDE-Kded-autoload": true,

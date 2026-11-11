@@ -19,19 +19,20 @@
  * THE IMAGE'S LENGTH COMES FROM THE IMAGE, NEVER FROM THE DEVICE. A 3 GB image
  * written to a 64 GB stick leaves the device reporting 64 GB, and copying that
  * copies 61 GB of whatever was on the stick before. Same principle as the pack
- * format reading EROFS's own superblock extent — except that here there are
- * TWO self-descriptions and the obvious one is a trap. See img_extent().
+ * format reading EROFS's own superblock extent. See img_extent().
  * ---------------------------------
  */
 
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/fs.h>
+#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "kdos-tools.h"
@@ -75,19 +76,20 @@ static unsigned int le16(const unsigned char *p)
 /*
  * How long is the image on this device or in this file?
  *
- * TWO RECORDS DESCRIBE IT AND THE ISO9660 ONE IS THE SHORTER. The Primary
- * Volume Descriptor at sector 16 carries the volume space size, which spans
- * the ISO9660 volume and nothing else. The shipped image appends its EFI
- * System Partition AFTER that volume, so the PVD stops short by the whole
- * length of the ESP — and a copy made to the PVD's length would truncate away
- * exactly the partition that makes the copy boot.
+ * THE ISO9660 VOLUME IS THE KDOS IMAGE. The Primary Volume Descriptor at
+ * sector 16 carries the volume space size, and on the shipped image that
+ * volume spans the whole file: the EFI system partition is an El Torito boot
+ * image inside it, which the MBR also names as partition 2, so the PVD's
+ * length is the image's to the byte.
  *
- * The GPT's backup header is the other record and it is the one that spans an
- * appended partition: the header at LBA 1 names `alternate_lba`, and the image
- * ends one sector past it.
- *
- * So both are read and the LARGER wins. An image with only one gets that one;
- * an image with neither is not something to copy blindly, and is refused.
+ * AN IMAGE WITH A GPT MAY HOLD A PARTITION PAST THE VOLUME. A hybrid image
+ * made with an appended ESP puts it after the ISO9660 volume, where the PVD
+ * does not count it and a copy to the PVD's length would truncate away the
+ * partition that makes the copy boot. Its GPT's backup header spans it: the
+ * header at LBA 1 names `alternate_lba`, and the image ends one sector past
+ * it. So both are read and the LARGER wins. An image with only one gets that
+ * one; an image with neither is not something to copy blindly, and is
+ * refused.
  */
 static unsigned long long img_extent(int fd)
 {
@@ -230,7 +232,7 @@ static char *sys_str(const char *fmt, const char *a, const char *b)
 	char path[512], buf[256];
 
 	snprintf(path, sizeof(path), fmt, a, b);
-	if (kb_read_line_file(path, buf, sizeof(buf)) != 0)
+	if (kb_read_line_file(path, buf, sizeof(buf)) < 0)
 		return NULL;
 	for (int i = (int)strlen(buf) - 1; i >= 0 && (buf[i] == ' ' ||
 	     buf[i] == '\n'); i--)
@@ -238,10 +240,11 @@ static char *sys_str(const char *fmt, const char *a, const char *b)
 	return kb_strdup(buf);
 }
 
-static int sys_int(const char *fmt, const char *a, const char *b)
+static unsigned long long sys_num(const char *fmt, const char *a,
+				  const char *b)
 {
 	char *s = sys_str(fmt, a, b);
-	int v = s ? atoi(s) : 0;
+	unsigned long long v = s ? strtoull(s, NULL, 10) : 0;
 	free(s);
 	return v;
 }
@@ -253,7 +256,7 @@ static int is_removable(const char *disk)
 	char path[512], real[1024];
 	ssize_t n;
 
-	if (sys_int("/sys/block/%s/removable%s", disk, "") == 1)
+	if (sys_num("/sys/block/%s/removable%s", disk, "") == 1)
 		return 1;
 	snprintf(path, sizeof(path), "/sys/block/%s", disk);
 	n = readlink(path, real, sizeof(real) - 1);
@@ -274,12 +277,14 @@ static int list_targets(struct cl_target *t, int max, char used[][64], int nused
 		const char *d = disks[i];
 		char *model;
 
-		/* None of these is a thing somebody plugged in, and `sr` is
-		 * read-only: offering to write a disc nothing can write is a
-		 * row that fails when it is chosen. */
+		/* None of these is a thing somebody plugged in, `sr` is
+		 * read-only, and `fd` holds kilobytes: offering a device no
+		 * image fits on, or a disc nothing can write, is a row that
+		 * fails when it is chosen. */
 		if (!strncmp(d, "loop", 4) || !strncmp(d, "ram", 3) ||
 		    !strncmp(d, "dm-", 3) || !strncmp(d, "zram", 4) ||
-		    !strncmp(d, "sr", 2) || !strncmp(d, "md", 2))
+		    !strncmp(d, "sr", 2) || !strncmp(d, "md", 2) ||
+		    !strncmp(d, "fd", 2))
 			continue;
 		if (!is_removable(d))
 			continue;
@@ -295,8 +300,7 @@ static int list_targets(struct cl_target *t, int max, char used[][64], int nused
 		if (in_fstab(t[n].node))
 			continue;
 		snprintf(t[n].kname, sizeof(t[n].kname), "%s", d);
-		t[n].bytes = (unsigned long long)
-			sys_int("/sys/block/%s/size%s", d, "") * 512ULL;
+		t[n].bytes = sys_num("/sys/block/%s/size%s", d, "") * 512ULL;
 		model = sys_str("/sys/block/%s/device/model%s", d, "");
 		snprintf(t[n].model, sizeof(t[n].model), "%s",
 			 model ? model : "");
@@ -412,22 +416,83 @@ static int copy_stream(int in, int out, unsigned long long len, char hash[65])
  * person is left thinking the image is broken. f3probe answers it directly.
  * `--destructive` because this is about to overwrite the device anyway, and
  * the non-destructive mode's save-and-restore is slower for nothing.
+ *
+ * ITS OUTPUT IS PASSED THROUGH AS IT ARRIVES, because a probe takes minutes
+ * and prints almost nothing until its verdict: held back until it exits, the
+ * clone looks hung. On a terminal an elapsed-time line ticks between its
+ * lines. The same bytes are kept to find the verdict in.
  */
 static int counterfeit(const char *node)
 {
-	KbArgv a = {0};
+	int fd[2], bad = 0, ticking = 0, tty = isatty(1);
+	double t0 = kb_now_s();
 	KbBuf out = {0};
-	int rc, bad = 0;
+	pid_t pid;
+	int st = 0;
 
 	if (!kb_have_prog("f3probe"))
 		return 0;		/* nothing to ask */
-	kb_argv_add(&a, "f3probe");
-	kb_argv_add(&a, "--destructive");
-	kb_argv_add(&a, "--time-ops");
-	kb_argv_add(&a, node);
-	kb_argv_end(&a);
-	rc = kb_run_capture_buf(&a, &out);
-	if (rc == 0 && out.p) {
+	if (pipe(fd) < 0)
+		return 0;
+	pid = fork();
+	if (pid < 0) {
+		close(fd[0]);
+		close(fd[1]);
+		return 0;
+	}
+	if (pid == 0) {
+		int null = open("/dev/null", O_RDONLY);
+
+		if (null >= 0)
+			dup2(null, STDIN_FILENO);
+		dup2(fd[1], STDOUT_FILENO);
+		dup2(fd[1], STDERR_FILENO);
+		close(fd[0]);
+		close(fd[1]);
+		kb_child_reset_signals();
+		execlp("f3probe", "f3probe", "--destructive", "--time-ops",
+		       node, (char *)NULL);
+		_exit(127);
+	}
+	close(fd[1]);
+
+	for (;;) {
+		struct pollfd p = { .fd = fd[0], .events = POLLIN };
+		char buf[512];
+		int r = poll(&p, 1, 1000);
+		ssize_t n;
+
+		if (r < 0 && errno == EINTR)
+			continue;
+		if (r == 0) {
+			if (tty) {
+				int el = (int)(kb_now_s() - t0);
+				printf("\r    probing, %dm%02ds so far   ",
+				       el / 60, el % 60);
+				fflush(stdout);
+				ticking = 1;
+			}
+			continue;
+		}
+		n = read(fd[0], buf, sizeof(buf));
+		if (n < 0 && errno == EINTR)
+			continue;
+		if (n <= 0)
+			break;
+		if (ticking) {
+			printf("\r%40s\r", "");
+			ticking = 0;
+		}
+		fwrite(buf, 1, (size_t)n, stdout);
+		fflush(stdout);
+		kb_buf_add(&out, buf, (size_t)n);
+	}
+	close(fd[0]);
+	if (ticking)
+		printf("\n");
+	while (waitpid(pid, &st, 0) < 0 && errno == EINTR)
+		;
+	if (WIFEXITED(st) && WEXITSTATUS(st) == 0 && out.p) {
 		/* f3probe names the verdict in a line of its own. "Good" is the
 		 * only one that is not a refusal. */
 		if (strstr(out.p, "counterfeit") ||
@@ -664,7 +729,9 @@ int clone_main(int argc, char **argv)
 			       "this device claims is untested\n");
 		else {
 			printf("\n  probing for a counterfeit capacity "
-			       "(f3probe)...\n");
+			       "(f3probe): it writes and reads back across\n"
+			       "  the whole device, which takes minutes; "
+			       "--no-probe skips it\n\n");
 			if (counterfeit(target)) {
 				fprintf(stderr, "kdos clone: f3probe says %s "
 					"is counterfeit or damaged — it does "

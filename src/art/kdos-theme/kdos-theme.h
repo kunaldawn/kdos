@@ -9,8 +9,8 @@
  *
  * Every colour KDOS hands to KDE is written by this program at BUILD TIME,
  * from libkcolor's KCOL_SCHEMES and from nothing else: the KColorScheme files,
- * the Konsole schemes and profiles, the qt5ct palettes, the wallpapers and the
- * greeter's palette. A colour literal in any of those files is a second copy
+ * the editor themes, the Konsole schemes and profiles, the qt5ct palettes, the
+ * wallpapers and the greeter's palette. A colour literal in any of those files is a second copy
  * of the palette, and the copy is the one that goes stale when an accent
  * moves.
  *
@@ -122,14 +122,64 @@ int kth_role_floor(int role);
 /* A colour a file did not carry. Above 24 bits, so no colour collides. */
 #define KTH_MISSING 0x01000000u
 
+/* [KDE] contrast as a scheme and every merged kdeglobals carry it, and as
+ * KColorScheme reads it from a kdeglobals that carries none: the shades a
+ * process derives depend on which of the two it read. */
+#define KTH_CONTRAST		4
+#define KTH_CONTRAST_KDE	7
+
+/* How far the title bar of an accent sits from `deep` towards `text`, and
+ * where KDOSBox's active and inactive title bars sit instead. */
+#define KTH_HEADER_MIX		7
+#define KTH_BOX_HEADER_MIX	36
+#define KTH_BOX_INACTIVE_MIX	28
+
 typedef struct {
 	uint32_t set[KTH_NSET][KTH_NROLE];
 	uint32_t wm[KTH_NWM];
 	uint32_t disabled;	/* [ColorEffects:Disabled] Color */
 	uint32_t inactive;	/* [ColorEffects:Inactive] Color */
+	int contrast;		/* [KDE] contrast, 0-10            */
 } KthPalette;
 
 void kth_palette(const KcolScheme *sc, KthPalette *p);
+
+/* kth_palette with the title bars at `header_pct` (active) and
+ * `inactive_pct` (inactive) of the way from `deep` to `text`. */
+void kth_palette_titled(const KcolScheme *sc, int header_pct, int inactive_pct,
+			KthPalette *p);
+
+/* `c` as it is when it holds `floor` on both `bg` and `alt`, else walked
+ * towards `ink` one percent at a time until it does. */
+uint32_t kth_legible(uint32_t c, uint32_t ink, uint32_t bg, uint32_t alt,
+		     int floor);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * The shades (shade.c)
+ * ──────────────────────────────────────────────────────────────────────── */
+
+enum {
+	KTH_SHADE_LIGHT,
+	KTH_SHADE_MIDLIGHT,
+	KTH_SHADE_MID,
+	KTH_SHADE_DARK,
+	KTH_SHADE_SHADOW,
+	KTH_NSHADE
+};
+
+/* The names the contrast table prints the shades under. */
+extern const char *const kth_shade_key[KTH_NSHADE];
+
+/* The QPalette shade KColorScheme derives from the Window background `c`
+ * under [KDE] contrast `contrast` (0-10), to the 8-bit colour Qt paints. */
+uint32_t kth_shade(uint32_t c, int role, int contrast);
+
+/* CIELAB chroma of `c`, x100. */
+int kth_chroma(uint32_t c);
+
+/* How much more colourful than the Window background a shade may be, x100
+ * as kth_chroma measures. */
+#define KTH_SHADE_SLACK	1000
 
 /* ────────────────────────────────────────────────────────────────────────
  * The contrast assertion
@@ -142,8 +192,12 @@ void kth_palette(const KcolScheme *sc, KthPalette *p);
  * that can be passed by omission is not a check.
  * ──────────────────────────────────────────────────────────────────────── */
 
+/* A row is a contrast held to at least `floor`, or, for a shade, a chroma
+ * held to at most it. */
+enum { KTH_ROW_CONTRAST, KTH_ROW_CHROMA };
+
 typedef void (*KthRow)(void *ctx, const char *group, const char *role,
-		       int vs_bg, int vs_alt, int floor, int ok);
+		       int kind, int vs_bg, int vs_alt, int floor, int ok);
 
 int kth_check(const KthPalette *p, KthRow row, void *ctx);
 
@@ -205,6 +259,7 @@ void kth_emit(const char *dir, const char *name, const KbBuf *b);
  * ──────────────────────────────────────────────────────────────────────── */
 
 int kth_kde_colors(const char *outdir, const char *accent);
+int kth_syntax(const char *outdir, const char *accent);
 int kth_konsole(const char *outdir, const char *accent);
 int kth_qt5ct(const char *outdir, const char *accent);
 int kth_greeter_merge(const char *file, const char *accent);

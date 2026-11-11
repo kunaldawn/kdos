@@ -78,6 +78,10 @@ an administrator's `wheel` after `useradd` for the same reason (see
 
 <!-- kfs:include fs/etc/default/useradd -->
 
+**`/etc/login.defs`**, from [shadow](#port-shadow), sets `HOME_MODE 0700`, so the home `useradd -m`
+creates is readable by its owner alone, as the installer makes the first account's. `UMASK` stays
+`022`.
+
 **`/etc/skel`**, from `fs/etc/skel`, is copied into each new home by `useradd -m`: the shell
 profiles, the pinned applications and the terminal programs' starting configuration. Plasma's own
 settings are not there: a new account reads the KDOS defaults in `/usr/share/kdos/xdg` until it
@@ -135,7 +139,7 @@ still has it.
 
    ```bash
    sudo -u alice mkdir -p /home/alice/{Desktop,Downloads,Documents,Music,Videos,Public,Templates} \
-       /home/alice/{Mail,Pictures/Screenshots,.local/bin,.local/share/calendars,.local/share/contacts/personal}
+       /home/alice/{Mail,Pictures/Screenshots,.local/bin,.local/share/calendars/personal,.local/share/addressbooks/personal}
    ```
 
 5. Log in as the account at the greeter, which lists it at once. Its runtime directory and
@@ -174,10 +178,9 @@ account and **Plasma (Wayland)**; see
 
 2. Remove it with its home directory. If the automatic login names it, turn that off first.
    System Settings → **Users** → **Delete User** does the same, and asks whether to keep the
-   files. End its processes before `userdel`: the account's first login starts an
-   `ssh-agent`, from openssh's `/etc/profile.d/50-ssh-agent.sh`, that outlives the login, and
-   `userdel` refuses an account with a running process (`user alice is currently used by process
-   <pid>`, exit 8):
+   files. End its processes before `userdel`: its user services, `ssh-agent` among them, run
+   until its last logout, and `userdel` refuses an account with a running process (`user alice is
+   currently used by process <pid>`, exit 8):
 
    ```bash
    sudo pkill -u alice
@@ -246,8 +249,8 @@ as that account, lists the nodes it cannot open with their groups in its Hardwar
 group as [above](#adding-an-account-to-a-group).
 
 **`userdel` prints `user alice is currently used by process <pid>` and exits 8.** A process of the
-account is still running, such as the `ssh-agent` its first login started, a shell or a
-container's pause process, and `userdel` removes nothing. End them and try again:
+account is still running, such as a user service of a login that has not ended, a shell or a
+lingering account's container, and `userdel` removes nothing. End them and try again:
 
 ```bash
 sudo pkill -u alice

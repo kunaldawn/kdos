@@ -28,7 +28,10 @@ configure. [gstreamer](#port-gstreamer), [gst-plugins-base](#port-gst-plugins-ba
 `depends` for the decoders and demuxers the streams need at run time.
 
 The configure imports `yt_dlp` and `ytmusicapi` with the build's Python and fails if either
-import fails, or if ytmusicapi is older than 1.10.2. Both modules talk to an unofficial interface
+import fails, or if ytmusicapi is older than 1.10.2. At run time the program compares ytmusicapi's
+version with `TESTED_YTMUSICAPI_VERSION` in `src/ytmusic.h` and shows an "untested version" error
+at every start for any other, so [python3-ytmusicapi](#port-python3-ytmusicapi) is held at exactly
+that version. Both modules talk to an unofficial interface
 of a commercial service, and a change on YouTube's side breaks them until they are bumped; the
 program itself does not change.
 

@@ -41,6 +41,13 @@ if [ -z "${SSH_ASKPASS:-}" ] && [ -x /usr/bin/ksshaskpass ]; then
 	export SSH_ASKPASS
 fi
 
+# Qt Quick draws its distance-field text, which Plasma's labels use, with
+# subpixel antialiasing unless this says otherwise: fontconfig's rgba=none and
+# kdeglobals' XftSubPixel never reach it, and every panel label, notification
+# and the KSplash footer would carry coloured fringes that no widget does.
+QSG_DISTANCEFIELD_ANTIALIASING=gray
+export QSG_DISTANCEFIELD_ANTIALIASING
+
 # The desktop every program asks about, for the mimeapps list
 # (kde-mimeapps.list), the portal (kde-portals.conf) and OnlyShowIn=KDE.
 # startplasma sets the same name after the scripts; set here, the scripts

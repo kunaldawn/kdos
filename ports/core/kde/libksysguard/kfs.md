@@ -49,8 +49,10 @@ box as one application, with its processor, memory and process count, under its 
 and icon where the box has one launcher and under the box's name where it has several (see
 [System Monitor](../../../../docs/kdos/04-programs/plasma-shell.md#system-monitor)). A system with
 `user@<uid>.service` keeps upstream's root, and any other layout keeps it too, which the model
-reports as unavailable. Nothing in it is KDOS's either: any elogind system that delegates
-session cgroups has the same layout.
+reports as unavailable. `/proc/self/cgroup` is read whole, not line by line until `atEnd()`:
+procfs gives the file a size of 0, so `atEnd()` holds before the first read. Nothing in it is
+KDOS's either: any elogind system that delegates session cgroups has the same layout. Both patches
+are to be offered upstream.
 
 ## Notes
 

@@ -1,0 +1,25 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   Upgrade steps a new account must not take.
+#
+# kconf_update runs every step no ~/.config/kconf_updaterc records as done,
+# so a fresh account runs each one at its first login, while KWin is already
+# up. KWin's kwin-6.1-remove-gridview-expose-shortcuts removes the Present
+# Windows actions (Expose, ExposeAll, ExposeClass,
+# ExposeClassCurrentDesktop) from kglobalaccel to drop Plasma 5's keys, and
+# run then it removes the ones the Window View effect has just registered:
+# Meta+F9, Meta+F10 and Meta+F7 do nothing for that whole session.
+#
+# kconf_update reads its record along XDG_CONFIG_DIRS, so a step named done
+# here is skipped by every account that has not run it, and the list it
+# writes to the person's own file keeps the name. Only a step that would undo
+# something the session itself sets up belongs here.
+# ---------------------------------
+
+[kwin.upd]
+done=kwin-6.1-remove-gridview-expose-shortcuts

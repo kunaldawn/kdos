@@ -69,6 +69,11 @@
  * much later rather than every ten seconds for the whole session. */
 #define FA_IDLE_MS (5 * 60 * 1000)
 #define FA_CALL_US (2ULL * 1000 * 1000)
+/* A prompt's Notify waits as long as the session bus may take to start the
+ * notification server (session.conf's service_start_timeout, 120 s), and
+ * longer. A call given up before the bus gives up is still delivered when the
+ * server comes, and is a notification whose answers nothing hears. */
+#define FA_NOTIFY_US (180ULL * 1000 * 1000)
 /* SetFirewallService waits on a person typing a password. */
 #define FA_SET_US (5ULL * 60 * 1000 * 1000)
 #define FA_MAX_PROMPTS 8
@@ -80,9 +85,21 @@
 #define NM_DEST "org.freedesktop.NetworkManager"
 #define NM_PATH "/org/freedesktop/NetworkManager"
 
+/* What happens to a prompt whose Notify is still unanswered when it stops
+ * being a question: on another network it goes unanswered, opened elsewhere
+ * it is answered "elsewhere". */
+enum { FA_KEEP, FA_WITHDRAW, FA_ELSEWHERE };
+
 typedef struct {
 	int used;
-	/* 0 while the Allow it answered is waiting on polkit and the daemon. */
+	/* 1 from Notify's sending to its reply: the slot is held, so a count
+	 * still rising meanwhile posts no second prompt. */
+	int posting;
+	int withdraw;
+	/* An info-only prompt, with no Allow: being shown is its answer. */
+	int informed;
+	/* 0 while posting, and while the Allow it answered is waiting on
+	 * polkit and the daemon. */
 	uint32_t id;
 	/* The notification server's unique name: an ActionInvoked from any
 	 * other connection is not an answer to this prompt. */
@@ -282,19 +299,17 @@ static int polkit_may(void)
 /* ── notifications ─────────────────────────────────────────────────────── */
 
 /*
- * One notification. `persistent` is a decision and stays until answered;
- * anything else is the server's default lifetime. The desktop entry names the
- * Firewall settings page, so the notification wears its name and icon and is
- * configured with it. Returns the id, 0 when there is no server, and the
- * server's unique name in `server`.
+ * One notification, as a Notify call to send. `persistent` is a decision and
+ * stays until answered; anything else is the server's default lifetime. It
+ * names no desktop entry: Plasma asks for a launch token for a notification's
+ * desktop entry on every action, and the task manager shows the Firewall page
+ * starting for an answer that opens nothing.
  */
-static uint32_t notify(const char *summary, const char *body,
-		       const char *const *actions, int nactions, int persistent,
-		       char *server, size_t nserver)
+static int notify_message(sd_bus_message **out, const char *summary,
+			  const char *body, const char *const *actions,
+			  int nactions, int persistent)
 {
-	sd_bus_message *m = NULL, *reply = NULL;
-	sd_bus_error err = SD_BUS_ERROR_NULL;
-	uint32_t id = 0;
+	sd_bus_message *m = NULL;
 	int r;
 
 	r = sd_bus_message_new_method_call(sesbus, &m, NOTIFY_DEST, NOTIFY_PATH,
@@ -309,26 +324,27 @@ static uint32_t notify(const char *summary, const char *body,
 	if (r >= 0)
 		r = sd_bus_message_close_container(m);
 	if (r >= 0)
-		r = sd_bus_message_append(m, "a{sv}", 2, "desktop-entry", "s",
-					  "kcm_kdos_firewall", "urgency", "y",
+		r = sd_bus_message_append(m, "a{sv}", 1, "urgency", "y",
 					  (uint8_t)(persistent ? 1 : 0));
 	if (r >= 0)
 		r = sd_bus_message_append(m, "i", persistent ? 0 : -1);
-	if (r >= 0)
-		r = sd_bus_call(sesbus, m, FA_CALL_US, &err, &reply);
-	sd_bus_message_unref(m);
-	sd_bus_error_free(&err);
-	if (r < 0)
-		return 0;
-	if (sd_bus_message_read(reply, "u", &id) < 0)
-		id = 0;
-	if (server) {
-		const char *s = sd_bus_message_get_sender(reply);
-
-		kb_strlcpy(server, s ? s : "", nserver);
+	if (r < 0) {
+		sd_bus_message_unref(m);
+		return r;
 	}
-	sd_bus_message_unref(reply);
-	return id;
+	*out = m;
+	return 0;
+}
+
+/* A notice nobody answers: sent, and its reply not waited for. */
+static void notice(const char *summary, const char *body)
+{
+	sd_bus_message *m = NULL;
+
+	if (notify_message(&m, summary, body, NULL, 0, 0) < 0)
+		return;
+	(void)sd_bus_call_async(sesbus, NULL, m, NULL, NULL, FA_NOTIFY_US);
+	sd_bus_message_unref(m);
 }
 
 static void close_notification(uint32_t id)
@@ -374,7 +390,50 @@ static void remember(const char *net_, const char *name, const char *answer)
 		kb_warn("cannot write %s: %s", memory_path, strerror(errno));
 }
 
-/* 0 when the prompt is up, -1 when there was no slot or no server. */
+/* The knocks counted as unseen, so the next look asks about `name` again. */
+static void ask_again(const char *name)
+{
+	for (int j = 0; j < prev.n; j++)
+		if (!strcmp(prev.k[j].name, name))
+			prev.k[j].packets = 0;
+}
+
+/*
+ * Notify's answer. The id and the server's name are what every later signal
+ * is matched against. An error — no notification server, or none started in
+ * time — frees the slot, and the next look asks again.
+ */
+static int on_notify_reply(sd_bus_message *m, void *userdata, sd_bus_error *ret)
+{
+	FaPrompt *p = userdata;
+	const char *s = sd_bus_message_get_sender(m);
+	uint32_t id = 0;
+	(void)ret;
+
+	if (sd_bus_message_is_method_error(m, NULL) ||
+	    sd_bus_message_read(m, "u", &id) < 0 || !id) {
+		if (p->withdraw == FA_KEEP)
+			ask_again(p->name);
+		memset(p, 0, sizeof(*p));
+		return 0;
+	}
+	if (p->withdraw != FA_KEEP) {
+		close_notification(id);
+		if (p->withdraw == FA_ELSEWHERE)
+			remember(p->net, p->name, "elsewhere");
+		memset(p, 0, sizeof(*p));
+		return 0;
+	}
+	p->posting = 0;
+	p->id = id;
+	kb_strlcpy(p->server, s ? s : "", sizeof(p->server));
+	/* A person who cannot open it has been told, and that is the answer. */
+	if (p->informed)
+		remember(p->net, p->name, "informed");
+	return 0;
+}
+
+/* 0 when the prompt is posted, -1 when there was no slot or no call. */
 static int ask(const FaAsk *a)
 {
 	static const char *const allow_actions[] = {
@@ -386,25 +445,29 @@ static int ask(const FaAsk *a)
 		"default", "Firewall Settings",
 	};
 	FaPrompt *p = prompt_slot();
+	sd_bus_message *m = NULL;
 	char body[768];
-	int may;
+	int may, r;
 
 	if (!p)
 		return -1;
 	may = polkit_may();
 	fa_body(body, sizeof(body), a, netname, may);
+	r = notify_message(&m, a->summary, body,
+			   may ? allow_actions : info_actions, may ? 6 : 2, 1);
+	if (r < 0)
+		return -1;
 	memset(p, 0, sizeof(*p));
-	p->id = notify(a->summary, body, may ? allow_actions : info_actions,
-		       may ? 6 : 2, 1, p->server, sizeof(p->server));
-	if (!p->id)
+	r = sd_bus_call_async(sesbus, NULL, m, on_notify_reply, p, FA_NOTIFY_US);
+	sd_bus_message_unref(m);
+	if (r < 0)
 		return -1;
 	p->used = 1;
+	p->posting = 1;
+	p->informed = !may;
 	p->ask = a;
 	kb_strlcpy(p->name, a->service, sizeof(p->name));
 	kb_strlcpy(p->net, net, sizeof(p->net));
-	/* A person who cannot open it has been told, and that is the answer. */
-	if (!may)
-		remember(net, a->service, "informed");
 	return 0;
 }
 
@@ -434,7 +497,7 @@ static int on_set_reply(sd_bus_message *m, void *userdata, sd_bus_error *ret)
 			 "The firewall lets it in on every network. Close it "
 			 "again in Firewall settings.");
 	}
-	notify(summary, body, NULL, 0, 0, NULL, 0);
+	notice(summary, body);
 	memset(p, 0, sizeof(*p));
 	return 0;
 }
@@ -554,8 +617,9 @@ static int from_daemon(sd_bus_message *m)
  * page, `kdos-power firewall` or another login's prompt opened it while this
  * prompt was up, so the prompt is withdrawn and the answer is the one given
  * there. FirewallServicesChanged names no service, so the table is asked
- * again and every prompt whose service it now lists open goes. A prompt
- * whose own Allow is waiting on polkit (no id) is left to on_set_reply,
+ * again and every prompt whose service it now lists open goes; one whose
+ * Notify is still unanswered goes when the answer comes. A prompt whose own
+ * Allow is waiting on polkit (no id, not posting) is left to on_set_reply,
  * which reports how that call ended.
  */
 static int on_fw_changed(sd_bus_message *m, void *userdata, sd_bus_error *ret)
@@ -566,7 +630,7 @@ static int on_fw_changed(sd_bus_message *m, void *userdata, sd_bus_error *ret)
 	(void)ret;
 
 	for (int i = 0; i < FA_MAX_PROMPTS; i++)
-		up |= prompts[i].used && prompts[i].id;
+		up |= prompts[i].used && (prompts[i].id || prompts[i].posting);
 	if (!up || !from_daemon(m))
 		return 0;
 	if (call(sysbus, POWER_DEST, POWER_PATH, POWER_DEST,
@@ -582,7 +646,13 @@ static int on_fw_changed(sd_bus_message *m, void *userdata, sd_bus_error *ret)
 		r = sd_bus_message_read(reply, "sbs", &name, &open, &what);
 		if (r >= 0)
 			r = sd_bus_message_exit_container(reply);
-		if (r < 0 || !open || !name || !(p = prompt_for(name)) || !p->id)
+		if (r < 0 || !open || !name || !(p = prompt_for(name)))
+			continue;
+		if (p->posting) {
+			p->withdraw = FA_ELSEWHERE;
+			continue;
+		}
+		if (!p->id)
 			continue;
 		close_notification(p->id);
 		remember(p->net, p->name, "elsewhere");
@@ -616,12 +686,18 @@ static void step(void)
 	read_network();
 	/* A prompt names the network it was asked on; on another network it
 	 * is a question about somewhere else, and is withdrawn unanswered. */
-	for (int i = 0; i < FA_MAX_PROMPTS; i++)
-		if (prompts[i].used && prompts[i].id &&
-		    strcmp(prompts[i].net, net)) {
-			close_notification(prompts[i].id);
-			memset(&prompts[i], 0, sizeof(prompts[i]));
+	for (int i = 0; i < FA_MAX_PROMPTS; i++) {
+		FaPrompt *p = &prompts[i];
+
+		if (!p->used || !strcmp(p->net, net))
+			continue;
+		if (p->posting) {
+			p->withdraw = FA_WITHDRAW;
+		} else if (p->id) {
+			close_notification(p->id);
+			memset(p, 0, sizeof(*p));
 		}
+	}
 
 	nrose = fa_knocks_rose(&prev, &now, rose, FA_MAX_KNOCKS);
 	if (nrose == 0)
@@ -636,12 +712,11 @@ static void step(void)
 		    fa_memory_asked(&memory, net, a->service) ||
 		    !fa_running(proc_root, a->program, getuid()))
 			continue;
-		/* No notification server yet — a session still starting —
-		 * leaves the knocks counted as unseen, so the next look asks. */
+		/* A prompt that could not be posted leaves the knocks counted
+		 * as unseen, so the next look asks; one that the server
+		 * refused does the same from on_notify_reply. */
 		if (ask(a) != 0)
-			for (int j = 0; j < prev.n; j++)
-				if (!strcmp(prev.k[j].name, a->service))
-					prev.k[j].packets = 0;
+			ask_again(a->service);
 	}
 }
 

@@ -47,7 +47,7 @@ install(TARGETS ksystemstats_plugin_kdos DESTINATION ${KDE_INSTALL_PLUGINDIR}/ks
 
 kpackage_install_package(face org.kdos.meters sensorfaces ksysguard)
 
-install(FILES page/kdos.page DESTINATION ${KDE_INSTALL_DATADIR}/plasma-systemmonitor)
+install(FILES page/kdos-overview.page page/kdos.page DESTINATION ${KDE_INSTALL_DATADIR}/plasma-systemmonitor)
 
 if(BUILD_TESTING)
     find_package(Qt6 ${QT_MIN_VERSION} REQUIRED COMPONENTS Test)
@@ -55,6 +55,11 @@ if(BUILD_TESTING)
     ecm_add_test(tests/kdosstatstest.cpp
         TEST_NAME kdosstatstest
         LINK_LIBRARIES kdosstats Qt6::Test)
+    # The plugin's sources built into the test: a MODULE cannot be linked.
+    ecm_add_test(tests/kdosplugintest.cpp src/plugin.cpp
+        TEST_NAME kdosplugintest
+        LINK_LIBRARIES kdosstats Qt6::Network Qt6::Test KF6::ConfigCore KF6::CoreAddons KF6::I18n KSysGuard::SystemStats KSysGuard::Formatter)
+    target_include_directories(kdosplugintest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 endif()
 
 feature_summary(WHAT ALL FATAL_ON_MISSING_REQUIRED_PACKAGES)

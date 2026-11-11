@@ -3,7 +3,8 @@
 Frotz is an interpreter for the Z-machine, the virtual machine Infocom's interactive fiction runs
 on, and for the stories written for it since. KDOS builds its curses interface, so a story plays in
 a terminal; the package carries no story of its own, and its desktop entry, `Exec=frotz %f` with
-`Terminal=true`, opens one from the file manager.
+`Terminal=true`, opens one from the file manager. The entry is `NoDisplay=true`: with no story
+frotz prints its usage and exits, so it has no Start row and is reached through the story's type.
 
 frotz is the
 [worked example of Writing ports](../../../../docs/kdos/05-developer/writing-ports.md#worked-example-frotz),

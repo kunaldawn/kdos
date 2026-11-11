@@ -1476,6 +1476,8 @@ int kdt_konsole_retarget(KdtBus *b, const char *prefix, const char *name)
  * DefaultProfile is a FILE name and the light/dark pair are profile NAMES,
  * which is Konsole's own split; LightThemeProfile stays on Paper, the one
  * light accent, so the Quick Settings flip still lands somewhere light.
+ * QMLKonsole's colour scheme, in the person's qmlkonsolerc, follows by the
+ * same rule.
  *
  * WITH PHOSPHOR MODE'S TERMINUS FACE ON, the KDOS profile in force is
  * KDOS-Terminus, regenerated from the new accent's own profile, so the face
@@ -1502,6 +1504,20 @@ static int theme_konsole(KdtBus *b, const KcolScheme *sc, int in_session)
 	    (!cur || strcmp(cur, file)) &&
 	    kdt_kcfg_set("konsolerc", "Desktop Entry", "DefaultProfile", file,
 			 0) != 0) {
+		free(cur);
+		return -1;
+	}
+	free(cur);
+
+	/* QMLKonsole names a colour SCHEME, not a profile, by its file name in
+	 * /usr/share/konsole; the Terminus face is Konsole's alone, so the
+	 * scheme is always the accent's own. Moved only while the value in
+	 * force names a KDOS scheme. */
+	cur = kdt_kcfg_cascade("qmlkonsolerc", "General", "colorScheme");
+	if ((!cur || !*cur || !strncmp(cur, "KDOS-", 5)) &&
+	    (!cur || strcmp(cur, sc->theme_name)) &&
+	    kdt_kcfg_set("qmlkonsolerc", "General", "colorScheme",
+			 sc->theme_name, 0) != 0) {
 		free(cur);
 		return -1;
 	}
@@ -1761,7 +1777,7 @@ int kdt_theme_set(const KcolScheme *sc, int flags)
 	/* 4. Konsole. */
 	if (theme_konsole(b, sc, in_session && b) != 0 && !*fail)
 		snprintf(fail, sizeof(fail), "kwriteconfig6 could not write "
-					     "konsolerc");
+					     "konsolerc or qmlkonsolerc");
 
 	/* 5. The terminal programs, and a running tmux. */
 	theme_apply_cli(sc);
@@ -1970,10 +1986,8 @@ int kdt_theme_main(int argc, char **argv)
 			return theme_usage();
 		sc = kcol_find(argv[1]);
 		if (!sc) {
-			printf("unknown accent '%s'\n", argv[1]);
-			fflush(stdout);
-			fprintf(stderr, "kdos theme: unknown accent '%s'\n",
-				argv[1]);
+			fprintf(stderr, "kdos theme: unknown accent '%s' "
+				"(try: kdos theme list)\n", argv[1]);
 			return 1;
 		}
 		return kdt_theme_set(sc, KDT_THEME_FROM_PLASMA);
@@ -2007,9 +2021,8 @@ int kdt_theme_main(int argc, char **argv)
 	}
 	sc = kcol_find(want);
 	if (!sc) {
-		printf("unknown accent '%s' (try: kdos theme list)\n", want);
-		fflush(stdout);
-		fprintf(stderr, "kdos theme: unknown accent '%s'\n", want);
+		fprintf(stderr, "kdos theme: unknown accent '%s' (try: kdos "
+				"theme list)\n", want);
 		return 1;
 	}
 	return kdt_theme_set(sc, 0);

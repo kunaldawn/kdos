@@ -20,6 +20,8 @@
  * the same file a person would `cat`:
  *
  *   bootstate             kdos-bootctl's state file (absent: Configured=false)
+ *   live                  present: the live medium (Live=true while there is
+ *                         no bootstate)
  *   cmdline               the kernel command line, for kdos_slot=
  *   slot-<x>/etc/os-release, slot-<x>/ports/TREE
  *                         what is inside each slot's root
@@ -52,6 +54,7 @@ class FakeSlots : public QObject, protected QDBusContext
 {
     Q_OBJECT
     Q_PROPERTY(bool Configured READ configured)
+    Q_PROPERTY(bool Live READ live)
     Q_PROPERTY(QString RunningSlot READ runningSlot)
     Q_PROPERTY(QString ActiveSlot READ activeSlot)
     Q_PROPERTY(QString TrySlot READ trySlot)
@@ -64,6 +67,7 @@ public:
     explicit FakeSlots(const QString &dir, QObject *parent = nullptr);
 
     bool configured() const;
+    bool live() const;
     QString runningSlot() const;
     QString activeSlot() const;
     QString trySlot() const;

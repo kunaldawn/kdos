@@ -9,10 +9,10 @@
 # ---------------------------------
 
 name        = python3-ytmusicapi
-version     = 1.12.3
+version     = 1.12.2
 release     = 1
 source      = https://files.pythonhosted.org/packages/source/y/ytmusicapi/ytmusicapi-$version.tar.gz
-sha256      = be81511af7494eec8e5970c56a10e51aada6253246649e4ea6714fd6aeb654ee  python3-ytmusicapi-1.12.3.tar.gz
+sha256      = 8674ab9a02d2c1bdf137166c78dcf4c4568360e46ede1b31549edf6750db530a  python3-ytmusicapi-1.12.2.tar.gz
 description = Unofficial YouTube Music API for Python: search, library, playlists and uploads
 homepage    = https://ytmusicapi.readthedocs.io/
 license     = MIT

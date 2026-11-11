@@ -17,13 +17,20 @@
  * answers over its window-list protocol (windows.c); the screens are
  * kscreen's.
  *
- * WHICH BOX A WINDOW IS IN, by its process: the cgroup scope kdos-appbox
- * starts every boxed process in names the box (app-kdos-<box>-<n>.scope,
- * with each `-` of the box written `\x2d`), and failing that the window's app
- * id is a running container's name or begins with it and a dot — the launcher
- * ids a box's windows carry. The longest such name wins, so `app.x` does not
- * claim `app.xyz`'s windows. A throwaway box is found by the first rule
- * alone, because its windows carry its application's launcher id.
+ * WHICH BOX A WINDOW IS IN, by its process: a box's cgroup scope names it
+ * (app-kdos-<box>-<n>.scope, with each `-` of the box written `\x2d`), where
+ * the box has one; a process in a mount namespace other than this program's
+ * whose environment carries KDOS_BOX=<box>, which kdos-appbox puts in every
+ * box's container and which podman passes to every exec, is that box's; and
+ * failing both the window's app id is a running container's name or begins
+ * with it and a dot — the launcher ids a box's windows carry. The longest
+ * such name wins, so `app.x` does not claim `app.xyz`'s windows. A throwaway
+ * box is found by its scope or its KDOS_BOX (the first two rules) alone,
+ * because its windows carry its application's launcher id, not the box's.
+ *
+ * `outputs` is kscreen-doctor's, which colours its text whether or not it
+ * writes to a terminal; into anything else it is captured and written with
+ * every CSI escape taken out, so a pipe gets plain text.
  *
  * `boxes` is what `kdos-box gc` reads to leave a box with a window running:
  * exit 0 with an answer, an empty one included, and 1 when there is no session
@@ -36,6 +43,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "kdos-tools.h"
@@ -43,12 +51,47 @@
 
 /* ── which box ─────────────────────────────────────────────────────────── */
 
+/* KDOS_BOX=<box> from the process's environment, for a process in a mount
+ * namespace other than this program's. The namespace test keeps a host
+ * process that merely inherited the variable — a shell `kdos-box enter`
+ * left, a program started from one — from being taken for the box's. */
+static int box_of_environ(long pid, char *out, size_t n)
+{
+	static const char key[] = "KDOS_BOX=";
+	char path[64];
+	struct stat self, st;
+	size_t len = 0;
+	char *env;
+	int rc = -1;
+
+	snprintf(path, sizeof(path), "/proc/%ld/ns/mnt", pid);
+	if (stat("/proc/self/ns/mnt", &self) != 0 || stat(path, &st) != 0 ||
+	    (st.st_ino == self.st_ino && st.st_dev == self.st_dev))
+		return -1;
+	snprintf(path, sizeof(path), "/proc/%ld/environ", pid);
+	env = kb_read_all(path, &len);
+	for (size_t o = 0; env && o < len; o += strlen(env + o) + 1) {
+		const char *v = env + o;
+
+		if (strncmp(v, key, sizeof(key) - 1))
+			continue;
+		v += sizeof(key) - 1;
+		if (*v && strlen(v) < n && !strchr(v, '/')) {
+			strcpy(out, v);
+			rc = 0;
+		}
+		break;
+	}
+	free(env);
+	return rc;
+}
+
 int kdt_box_of_pid(long pid, char *out, size_t n)
 {
 	char path[64], *cg;
 	static const char pfx[] = "app-kdos-";
 
-	if (pid <= 0)
+	if (pid <= 0 || !n)
 		return -1;
 	snprintf(path, sizeof(path), "/proc/%ld/cgroup", pid);
 	cg = kb_read_all(path, NULL);
@@ -78,10 +121,12 @@ int kdt_box_of_pid(long pid, char *out, size_t n)
 		}
 		out[o] = '\0';
 		free(cg);
-		return o ? 0 : -1;
+		if (o)
+			return 0;
+		break;
 	}
 	free(cg);
-	return -1;
+	return box_of_environ(pid, out, n);
 }
 
 /* The running containers, one name a line, for the app-id rule. NULL when
@@ -301,9 +346,34 @@ static int cmd_run(const char *action, const char *id)
 	return rc;
 }
 
+/* buf without its CSI escapes: ESC [, parameter and intermediate bytes,
+ * one final byte. */
+static void write_plain(const char *p, size_t n)
+{
+	size_t i = 0, from = 0;
+
+	while (i < n) {
+		if (p[i] != '\033' || i + 1 >= n || p[i + 1] != '[') {
+			i++;
+			continue;
+		}
+		fwrite(p + from, 1, i - from, stdout);
+		i += 2;
+		while (i < n && (unsigned char)p[i] >= 0x20 &&
+		       (unsigned char)p[i] <= 0x3f)
+			i++;
+		if (i < n)
+			i++;
+		from = i;
+	}
+	fwrite(p + from, 1, n - from, stdout);
+}
+
 static int cmd_outputs(int json)
 {
 	KbArgv a = { 0 };
+	KbBuf out = { 0 };
+	int rc;
 
 	if (!kb_have_prog("kscreen-doctor")) {
 		fprintf(stderr, "kdos hey: kscreen-doctor is not installed\n");
@@ -312,7 +382,13 @@ static int cmd_outputs(int json)
 	kb_argv_add(&a, "kscreen-doctor");
 	kb_argv_add(&a, json ? "-j" : "-o");
 	kb_argv_end(&a);
-	return kb_run_tty(&a) == 0 ? 0 : 1;
+	if (json || isatty(STDOUT_FILENO))
+		return kb_run_tty(&a) == 0 ? 0 : 1;
+	rc = kb_run_capture_buf(&a, &out);
+	if (out.p)
+		write_plain(out.p, out.n);
+	kb_buf_free(&out);
+	return rc == 0 ? 0 : 1;
 }
 
 static int usage(void)

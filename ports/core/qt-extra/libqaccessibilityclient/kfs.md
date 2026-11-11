@@ -2,8 +2,11 @@
 
 libqaccessibilityclient is a Qt client for the AT-SPI accessibility bus: it lists the
 applications on the bus, walks their accessible objects, and reports focus, caret and selection
-changes. KWin links it to make its zoom effect follow keyboard focus and the text cursor
-(`KWIN_BUILD_QACCESSIBILITYCLIENT`), and Accessibility Inspector is built on it. The library is
+changes. KWin links it for its zoom effect's AT-SPI trackers of the keyboard focus and of an X11
+window's text cursor (`KWIN_BUILD_QACCESSIBILITYCLIENT`), which on Wayland it runs only when
+`KWIN_WAYLAND_ZOOM_FORCE_LEGACY_FOCUS_TRACKING` or
+`KWIN_WAYLAND_ZOOM_FORCE_LEGACY_TEXT_CARET_TRACKING` is set; Accessibility Inspector is built on
+it. The library is
 `libqaccessibilityclient-qt6`, found with `find_package(QAccessibilityClient6)`.
 
 ## Flags

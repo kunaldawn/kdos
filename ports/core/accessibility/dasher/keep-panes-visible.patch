@@ -1,0 +1,35 @@
+Subject: Keep the text pane and the canvas from shrinking to nothing
+
+Both children of the main window's divider were packed shrinkable, so the
+window's minimum size left them out and a window given that size showed
+only its menu bar, toolbar and speed bar. Pack both unshrinkable and give
+the text pane a 75-pixel minimum, the default height of its pane.
+
+--- a/Data/GUI/dasher.traditional.ui
++++ b/Data/GUI/dasher.traditional.ui
+@@ -244,6 +244,7 @@
+             <signal handler="test_focus_handler" name="focus-in-event"/>
+             <child>
+               <object class="DasherEditor" id="DasherEditor">
++                <property name="height_request">75</property>
+                 <property name="visible">True</property>
+                 <property name="can_focus">True</property>
+                 <signal handler="dasher_main_cb_filename_changed" name="filename_changed"/>
+@@ -251,7 +252,7 @@
+                 <signal handler="dasher_main_cb_context_changed" name="context_changed"/>
+               </object>
+               <packing>
+-                <property name="shrink">True</property>
++                <property name="shrink">False</property>
+                 <property name="resize">False</property>
+               </packing>
+             </child>
+@@ -272,7 +273,7 @@
+                 <signal handler="test_focus_handler" name="focus-in-event"/>
+               </object>
+               <packing>
+-                <property name="shrink">True</property>
++                <property name="shrink">False</property>
+                 <property name="resize">True</property>
+               </packing>
+             </child>

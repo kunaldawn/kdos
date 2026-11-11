@@ -97,6 +97,11 @@ QColor selectionOf(int i)
 {
     return QColor(200 - i, 100 + i, 50 + i);
 }
+
+QColor accentOf(int i)
+{
+    return QColor(250 - i, 200 + i, 20 + i);
+}
 }
 
 class LookTest : public QObject
@@ -151,6 +156,7 @@ private:
             KConfigGroup(&c, QStringLiteral("Colors:Window")).writeEntry("BackgroundNormal", windowOf(i));
             KConfigGroup(&c, QStringLiteral("Colors:Window")).writeEntry("ForegroundNormal", QColor(240, 240, 240));
             KConfigGroup(&c, QStringLiteral("Colors:View")).writeEntry("BackgroundNormal", windowOf(i).darker());
+            KConfigGroup(&c, QStringLiteral("Colors:View")).writeEntry("DecorationFocus", accentOf(i));
             KConfigGroup(&c, QStringLiteral("Colors:Selection")).writeEntry("BackgroundNormal", selectionOf(i));
             KConfigGroup(&c, QStringLiteral("Colors:Selection")).writeEntry("ForegroundNormal", QColor(0, 0, 0));
             QVERIFY(c.sync());
@@ -201,11 +207,21 @@ private:
         return QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
     }
 
+    /* A greeter set as kdos-powerd copies it: a light accent's names its
+     * dark partner's scheme. */
+    void writeGreeter(const QString &accent, const QString &scheme)
+    {
+        QVERIFY(QDir().mkpath(state->filePath(QStringLiteral("greeter/") + accent)));
+        writeState(QStringLiteral("greeter/") + accent + QStringLiteral("/kdeglobals"), QStringLiteral("[General]\nColorScheme=") + scheme + QLatin1Char('\n'));
+    }
+
     LookController::Paths paths() const
     {
         LookController::Paths p;
         p.program = QStringLiteral(KDOS_FAKE_KDOS);
         p.machineAccent = state->filePath(QStringLiteral("etc/accent"));
+        p.greeterDir = state->filePath(QStringLiteral("greeter"));
+        p.esp = state->filePath(QStringLiteral("esp"));
         return p;
     }
 
@@ -249,6 +265,10 @@ private Q_SLOTS:
         writePlasma(QStringLiteral("KDOSBone"));
         QVERIFY(QDir().mkpath(state->filePath(QStringLiteral("etc"))));
         writeState(QStringLiteral("etc/accent"), QStringLiteral("bone"));
+        QVERIFY(QDir().mkpath(state->filePath(QStringLiteral("esp"))));
+        writeGreeter(QStringLiteral("bone"), QStringLiteral("KDOSBone"));
+        writeGreeter(QStringLiteral("amber"), QStringLiteral("KDOSAmber"));
+        writeGreeter(QStringLiteral("paper"), QStringLiteral("KDOSBone"));
     }
 
     void cleanup()
@@ -362,7 +382,7 @@ private Q_SLOTS:
             QCOMPARE(m->data(idx, AccentModel::SchemeRole).toString(), QStringLiteral("KDOS") + label(Accents.at(i)));
             QVERIFY(m->data(idx, AccentModel::AvailableRole).toBool());
             QCOMPARE(m->data(idx, AccentModel::WindowColorRole).value<QColor>(), windowOf(i));
-            QCOMPARE(m->data(idx, AccentModel::HighlightColorRole).value<QColor>(), selectionOf(i));
+            QCOMPARE(m->data(idx, AccentModel::AccentColorRole).value<QColor>(), accentOf(i));
             QCOMPARE(m->data(idx, AccentModel::CurrentRole).toBool(), Accents.at(i) == QLatin1String("bone"));
         }
         QCOMPARE(c.accent(), QStringLiteral("bone"));
@@ -517,9 +537,81 @@ private Q_SLOTS:
         refreshed(c);
         QVERIFY(c.phosphorKnown());
         QVERIFY(!c.phosphorSupported());
-        QVERIFY(c.phosphorReason().contains(QStringLiteral("software")));
+        QVERIFY(!c.phosphorUsable());
+        QCOMPARE(c.phosphorReason(), QStringLiteral("Phosphor mode needs GPU rendering, and this session renders in software."));
         QVERIFY(!c.setPhosphor(true));
         QVERIFY(!argv().contains(QStringLiteral("phosphor on")));
+    }
+
+    void noOptionIsRecordedForAModeThatCannotComeOn()
+    {
+        writeState(QStringLiteral("unsupported"), QStringLiteral("1"));
+        LookController c(paths());
+        refreshed(c);
+        QVERIFY(!c.setPreset(QStringLiteral("retro")));
+        QVERIFY(!c.setTerminus(true));
+        QVERIFY(!c.setFullscreen(true));
+        for (const QString &line : argv()) {
+            QVERIFY2(line == QLatin1String("theme list") || line == QLatin1String("phosphor status --json"), qPrintable(line));
+        }
+    }
+
+    void aModeAlreadyOnKeepsItsOptions()
+    {
+        writeState(QStringLiteral("unsupported"), QStringLiteral("1"));
+        writeState(QStringLiteral("phosphor"), QStringLiteral("on"));
+        LookController c(paths());
+        refreshed(c);
+        QVERIFY(c.phosphorUsable());
+        QVERIFY(act(c, [&] {
+            return c.setTerminus(true);
+        }));
+        QCOMPARE(lastAction(), QStringLiteral("phosphor terminus on"));
+    }
+
+    void aMissingSessionIsSaidInThePagesWords()
+    {
+        writeState(QStringLiteral("nosession"), QStringLiteral("1"));
+        LookController c(paths());
+        refreshed(c);
+        QVERIFY(!c.phosphorSupported());
+        QCOMPARE(c.phosphorReason(), QStringLiteral("Phosphor mode needs a running Plasma session."));
+    }
+
+    void theLoginScreenWearsALightAccentsDarkPartner()
+    {
+        writePlasma(QStringLiteral("KDOSPaper"));
+        writeState(QStringLiteral("accent"), QStringLiteral("paper"));
+        writeState(QStringLiteral("etc/accent"), QStringLiteral("paper"));
+        LookController c(paths());
+        refreshed(c);
+        QCOMPARE(c.syncState(), LookController::SyncState::InStep);
+        QCOMPARE(c.loginAccent(), QStringLiteral("bone"));
+        QCOMPARE(c.syncText(), QStringLiteral("Plasma, the terminals, the boot menu and the splash wear Paper, and the login screen its dark partner Bone."));
+    }
+
+    void aDarkAccentNamesNoPartner()
+    {
+        writePlasma(QStringLiteral("KDOSAmber"));
+        writeState(QStringLiteral("accent"), QStringLiteral("amber"));
+        writeState(QStringLiteral("etc/accent"), QStringLiteral("amber"));
+        LookController c(paths());
+        refreshed(c);
+        QCOMPARE(c.syncText(), QStringLiteral("Plasma, the terminals, the boot menu, the splash and the login screen all wear Amber."));
+    }
+
+    void aMachineWithNoBootMenuDoesNotNameOne()
+    {
+        QVERIFY(QDir(state->filePath(QStringLiteral("esp"))).removeRecursively());
+        LookController c(paths());
+        refreshed(c);
+        QVERIFY(!c.bootMenu());
+        QCOMPARE(c.syncText(), QStringLiteral("Plasma, the terminals, the splash and the login screen all wear Bone."));
+        writePlasma(QStringLiteral("KDOSPaper"));
+        writeState(QStringLiteral("accent"), QStringLiteral("paper"));
+        writeState(QStringLiteral("etc/accent"), QStringLiteral("paper"));
+        refreshed(c);
+        QCOMPARE(c.syncText(), QStringLiteral("Plasma, the terminals and the splash wear Paper, and the login screen its dark partner Bone."));
     }
 
     void aRefusalIsShownInTheCommandsWords()

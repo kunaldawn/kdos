@@ -83,6 +83,7 @@ void EventStream::reset()
     m_log.clear();
     m_failure.clear();
     m_status = -1;
+    m_started = false;
     Q_EMIT progressChanged();
     Q_EMIT warningsChanged();
     Q_EMIT logChanged();
@@ -160,6 +161,7 @@ bool EventStream::line(const QByteArray &l)
     }
     const QString t = o.value(QStringLiteral("t")).toString();
     const int step = o.value(QStringLiteral("step")).toInt(-1);
+    m_started = true;
 
     if (t == QLatin1String("plan")) {
         beginResetModel();
@@ -236,9 +238,12 @@ bool EventStream::line(const QByteArray &l)
 
 /*
  * THE PIPE CLOSED. With an exit line already read this is the expected end.
- * Without one the backend never finished: pkexec refused (126: not
- * authorised, 127: kinstall missing) or the process was killed, and the page
- * must say so rather than wait for ever.
+ * Without one the backend never finished, and the page must say so rather
+ * than wait for ever. Before any event, the end is pkexec's: 126 when the
+ * authentication dialog was dismissed and 127 when polkit did not authorise
+ * (the KDE agent's Cancel is that), both a refusal of permission; Backend
+ * checks that kinstall exists before pkexec is started, so 127 never means
+ * a missing binary. After an event, kinstall itself died.
  */
 void EventStream::close(int exitCode)
 {
@@ -251,10 +256,8 @@ void EventStream::close(int exitCode)
     }
     m_status = exitCode ? exitCode : 1;
     if (m_failure.isEmpty()) {
-        if (exitCode == 126) {
+        if (!m_started && (exitCode == 126 || exitCode == 127)) {
             m_failure = i18n("Permission to install was not given.");
-        } else if (exitCode == 127) {
-            m_failure = i18n("The installer's backend, kinstall, could not be started.");
         } else {
             m_failure = i18n("The installer's backend stopped unexpectedly (status %1).", exitCode);
         }
@@ -262,6 +265,17 @@ void EventStream::close(int exitCode)
     if (m_current >= 0) {
         setState(m_current, QStringLiteral("failed"));
     }
+    Q_EMIT progressChanged();
+    Q_EMIT finished();
+}
+
+void EventStream::fail(const QString &text)
+{
+    if (m_status >= 0) {
+        return;
+    }
+    m_status = 1;
+    m_failure = text;
     Q_EMIT progressChanged();
     Q_EMIT finished();
 }

@@ -54,7 +54,7 @@ build one package) that can be read and replaced on its own.
 | DNS | `dnsmasq`, which NetworkManager starts as a local caching resolver on `127.0.0.1` and `::1` | `systemd-resolved` |
 | Time synchronisation | `chrony` | `systemd-timesyncd` |
 | System log | `sysklogd` | `journald` |
-| Crash records | a core dump; KCrash runs with no crash handler | `systemd-coredump` and DrKonqi |
+| Crash records | the kernel's `fatal signal` line in the system log, and no core unless the shell raised `ulimit -c`; KCrash runs with no crash handler | `systemd-coredump` and DrKonqi |
 | Scheduled jobs | one `snooze` per job, supervised by `ksvc`: the system's started by `rcS`, a user's by their own services; `cronie` for the crontabs users write, which System Settings' Task Scheduler edits | timer units |
 
 `ksvc` is part of `kdos-tools`. It makes each supervisor the leader of its own process group, with
@@ -92,8 +92,10 @@ not running systemd: no unit, generator or service manager stands behind it.
 Rootless podman applies a `--memory` or `--cpus` limit through a cgroup2 subtree that the user
 owns, and without one it accepts the flag and silently does nothing. elogind hands that subtree out:
 with `DelegateSessionCgroups=yes` each session's cgroup is `/sys/fs/cgroup/<session>`, and the user
-owns the `session` and `delegated` cgroups inside it, so a box started from the session gets a
-limit it can enforce. At boot, `/etc/init.d/15_cgroups.sh` enables the `cpu`, `memory` and `pids`
+owns the `session` and `delegated` cgroups inside it. A box cannot be moved into that subtree
+while `/sys/fs/cgroup/<session>/cgroup.procs` is root's, which elogind leaves it, so a box's
+profile limits are unenforced on KDOS: `kdos-oomd`'s budget check is the only line that holds its
+`memory`, and nothing holds its `cpus` or `pids` (see [Containers](../03-architecture/security-model.md#containers)). At boot, `/etc/init.d/15_cgroups.sh` enables the `cpu`, `memory` and `pids`
 controllers at the root, so the delegated subtree has them to hand on.
 [`kdos-oomd`](../04-programs/daemons.md#kdos-oomd) stays as the second line: it watches memory
 pressure through `/proc/pressure/memory` and, when the machine stalls while `MemAvailable` is at
@@ -107,7 +109,7 @@ The price is elogind's systemd-derived code on the host, and what Plasma does wi
 manager. There is no socket activation. The systemd user units KDE's packages install are deleted,
 and KIO starts applications without systemd scopes, so System Monitor cannot group processes by
 application. DrKonqi, KDE's crash reporter, needs `systemd-coredump` and is not ported, so a crashed
-program leaves a core dump and no dialog. A service that expects socket activation or a unit of its
+program leaves a line in the system log and no dialog. A service that expects socket activation or a unit of its
 own has to be run without them.
 
 ## No Xorg server, and one carve-out
@@ -208,8 +210,8 @@ default; Tk has only an X11 backend, so a Tk application always runs through Xwa
 only when its Wayland plugin cannot start, and leaves `GDK_BACKEND` unset, because GTK already
 tries Wayland first and a value there would override the `GDK_BACKEND=x11` that an X11-only
 application sets for itself. A KDE application is at home. A GTK application takes the Breeze GTK
-theme, which kde-gtk-config keeps in step with the Plasma colour scheme, and `GTK_USE_PORTAL=1`
-sends its file chooser to xdg-desktop-portal-kde. A Qt 5 application has no KDE platform theme to
+theme, which kde-gtk-config keeps in step with the Plasma colour scheme, and its native file
+chooser opens xdg-desktop-portal-kde's: GTK 4's always, GTK 3's through `GTK_USE_PORTAL=1`. A Qt 5 application has no KDE platform theme to
 load, because no KDE Frameworks 5 are built, so it loads `qt5ct`, patched to answer to the `kde`
 platform-theme name, with the colours [`kdos theme`](../04-programs/kdos-command.md#kdos-theme)
 writes for the accent.

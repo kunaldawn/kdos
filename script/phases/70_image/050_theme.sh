@@ -67,6 +67,42 @@ esac
 compgen -G '/usr/share/color-schemes/KDOS*.colors' >/dev/null
 kdos-theme contrast -q /usr/share/color-schemes/KDOS*.colors
 
+# THE LOGIN SCREEN WEARS THE ACCENT FROM THE FIRST BOOT. The greeter reads
+# its look from the sddm account's home: ~/.config/kdeglobals, plasmarc and
+# kcminputrc, and ~/kdos-background.png, the picture the KDOS greeter theme
+# shows. kdos-powerd and the installer lay that set down when the accent is
+# chosen; nothing chooses one on the live medium, so the image carries the
+# default accent's set. All or nothing, as kdos-powerd's copy is: a missing
+# file stops the image rather than shipping a greeter half in one accent. The
+# home is handed to the account, which owns ~/.config because the greeter's
+# KWin writes kwinoutputconfig.json there; a recursive chown is safe in the
+# build root, where no account has run to leave a link.
+echo "Seeding the $KDOS_ACCENT login screen into the sddm account's home..."
+_gset=/usr/share/kdos/greeter/$KDOS_ACCENT
+_ghome=$(awk -F: '$1 == "sddm" { print $6; exit }' /etc/passwd)
+case "$_ghome" in
+/var/lib/?*) ;;
+*) echo "FATAL: the sddm account's home is '$_ghome', not under /var/lib" >&2; exit 1 ;;
+esac
+for _f in kdeglobals plasmarc kcminputrc background.png; do
+    test -s "$_gset/$_f" || { echo "FATAL: the $KDOS_ACCENT greeter set has no $_f" >&2; exit 1; }
+done
+install -d -m 0750 "$_ghome"
+install -d -m 0755 "$_ghome/.config"
+for _f in kdeglobals plasmarc kcminputrc; do
+    install -m 0644 "$_gset/$_f" "$_ghome/.config/$_f"
+done
+install -m 0644 "$_gset/background.png" "$_ghome/kdos-background.png"
+chown -R sddm:sddm "$_ghome"
+
+# The machine's accent record names the accent the splash and the login screen
+# now wear. Without it the Look page and the About page cannot say what the
+# screens before login wear, and they report Plasma and the terminals alone.
+# No newline, as kdos-powerd and the installer write it.
+install -d -m 0755 /etc/kdos
+printf '%s' "$KDOS_ACCENT" > /etc/kdos/accent
+chmod 0644 /etc/kdos/accent
+
 # The GSettings defaults (fs/usr/share/glib-2.0/schemas/90_kdos.gschema.override)
 # reach GTK only through gschemas.compiled. kpkg's schemas trigger writes it
 # when a package touches the directory, which an fs/-only rebuild never does,

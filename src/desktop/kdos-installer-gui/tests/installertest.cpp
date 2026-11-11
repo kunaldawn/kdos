@@ -9,10 +9,12 @@
  *
  * The fixtures under fixtures/ are kinstall's own output: two streams a real
  * `kinstall --events json` wrote (refused answers; a dry run stopped for not
- * being root) and one success in the same shape.
+ * being root) and one success in the same shape. Beside them, a rules list,
+ * an XKB symbols directory holding `us` and `de` only, and a zone1970.tab.
  */
 
 #include "answers.h"
+#include "backend.h"
 #include "eventstream.h"
 #include "keyboardmodel.h"
 
@@ -114,6 +116,12 @@ private Q_SLOTS:
         QVERIFY(!Answers::fitsAnswerFile(QStringLiteral(" leading")));
         QVERIFY(!Answers::fitsAnswerFile(QStringLiteral("trailing ")));
         QVERIFY(!Answers::fitsAnswerFile(QStringLiteral("two\nlines")));
+
+        Answers a;
+        a.setReservedNames({QStringLiteral("root"), QStringLiteral("sddm")});
+        QVERIFY(a.usernameReserved(QStringLiteral("root")));
+        QVERIFY(a.usernameReserved(QStringLiteral("sddm")));
+        QVERIFY(!a.usernameReserved(QStringLiteral("ann")));
     }
 
     void streamSuccess()
@@ -154,14 +162,36 @@ private Q_SLOTS:
         QCOMPARE(r.data(r.index(0), EventStream::StateRole).toString(), QStringLiteral("failed"));
     }
 
+    void streamRefusedPermission()
+    {
+        /* pkexec's 127 is "not authorised" as well as its 126 "dismissed";
+         * before any event both are a refusal, never a missing kinstall. */
+        for (int code : {126, 127}) {
+            EventStream s;
+            QSignalSpy done(&s, &EventStream::finished);
+            s.close(code);
+            QCOMPARE(done.count(), 1);
+            QVERIFY(!s.started());
+            QCOMPARE(s.failure(), QStringLiteral("Permission to install was not given."));
+        }
+        EventStream f;
+        f.fail(QStringLiteral("kinstall is not installed"));
+        QCOMPARE(f.status(), 1);
+        QVERIFY(!f.started());
+        QCOMPARE(f.failure(), QStringLiteral("kinstall is not installed"));
+    }
+
     void streamDied()
     {
         EventStream s;
-        QVERIFY(s.feed(fixture("success.jsonl").left(400)));
+        const QByteArray bytes = fixture("success.jsonl");
+        /* The plan line and part of the next: kinstall had started. */
+        QVERIFY(s.feed(bytes.left(bytes.indexOf('\n') + 20)));
         QCOMPARE(s.status(), -1);
+        QVERIFY(s.started());
         s.close(126);
         QCOMPARE(s.status(), 126);
-        QVERIFY(!s.failure().isEmpty());
+        QVERIFY(s.failure().contains(QLatin1String("stopped unexpectedly")));
         QVERIFY(!s.feed(QByteArrayLiteral("not json\n")));
     }
 
@@ -178,6 +208,27 @@ private Q_SLOTS:
         QCOMPARE(v.at(2), QStringLiteral("nodeadkeys"));
         QCOMPARE(k.variants(QStringLiteral("gb")).size(), 2);
         QCOMPARE(k.indexOf(QStringLiteral("pc105")), -1);
+        QCOMPARE(k.variantDescription(QStringLiteral("de"), QStringLiteral("nodeadkeys")), QStringLiteral("German (no dead keys)"));
+        QCOMPARE(k.variantDescription(QStringLiteral("de"), QString()), QString());
+        QCOMPARE(k.variantDescription(QStringLiteral("de"), QStringLiteral("odd")), QStringLiteral("odd"));
+
+        /* A layout with no symbols file is not offered. */
+        QByteArray lst = fixture("evdev.lst");
+        lst.replace("! layout\n", "! layout\n  custom          A user-defined custom Layout\n");
+        KeyboardModel s;
+        s.parse(lst, QStringLiteral(FIXTURES_DIR "/xkb/symbols"));
+        QCOMPARE(s.rowCount(), 2);
+        QCOMPARE(s.indexOf(QStringLiteral("custom")), -1);
+        QCOMPARE(s.indexOf(QStringLiteral("gb")), -1);
+        QVERIFY(s.indexOf(QStringLiteral("us")) >= 0);
+    }
+
+    void zones()
+    {
+        const QStringList z = Backend::readZones(QStringLiteral(FIXTURES_DIR "/zone1970.tab"));
+        QCOMPARE(z, (QStringList{QStringLiteral("UTC"), QStringLiteral("Africa/Nairobi"), QStringLiteral("America/New_York"),
+                                 QStringLiteral("Asia/Kolkata"), QStringLiteral("Europe/Berlin")}));
+        QCOMPARE(Backend::readZones(QStringLiteral(FIXTURES_DIR "/absent.tab")), QStringList{QStringLiteral("UTC")});
     }
 };
 

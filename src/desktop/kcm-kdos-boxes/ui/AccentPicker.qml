@@ -10,9 +10,11 @@
  * ---------------------------------
  *
  * The box's colour, as swatches of the title bars KWin will paint. Each
- * swatch is the installed scheme's own colour (AccentModel), so what is
- * picked here is what the window wears. A scheme that is not installed
- * cannot be picked: its swatch is drawn empty and says why.
+ * swatch is a miniature title bar in the installed scheme's own colours
+ * (AccentModel): its background, a sample of its title text, and a stripe
+ * of its accent, so what is picked here is what the window wears and two
+ * near-black title bars are still told apart at a glance. A scheme that is
+ * not installed cannot be picked: its swatch is drawn empty and says why.
  */
 
 pragma ComponentBehavior: Bound
@@ -29,8 +31,11 @@ Flow {
 
     signal picked(string accentId)
 
+    readonly property real swatchSize: Kirigami.Units.gridUnit * 2.5
+
     Layout.fillWidth: true
-    Layout.maximumWidth: Kirigami.Units.gridUnit * 24
+    /* Wide enough for every swatch on one row; a narrower page wraps. */
+    Layout.maximumWidth: swatchRepeater.count * (swatchSize + spacing)
     spacing: Kirigami.Units.smallSpacing
 
     QQC2.ButtonGroup {
@@ -38,6 +43,8 @@ Flow {
     }
 
     Repeater {
+        id: swatchRepeater
+
         model: kcm.accents
 
         delegate: QQC2.AbstractButton {
@@ -49,10 +56,11 @@ Flow {
             required property string label
             required property color swatchColor
             required property color swatchTextColor
+            required property color swatchAccentColor
             required property bool available
 
-            implicitWidth: Kirigami.Units.gridUnit * 2.5
-            implicitHeight: Kirigami.Units.gridUnit * 2.5
+            implicitWidth: picker.swatchSize
+            implicitHeight: picker.swatchSize
             /* Checkable and exclusive, so a click and a screen reader's
              * Toggle both land in onCheckedChanged; Press alone does not
              * reach a button whose role is a radio button. */
@@ -79,16 +87,44 @@ Flow {
             }
 
             contentItem: Rectangle {
+                id: bar
+
+                readonly property int frame: swatch.checked || swatch.visualFocus ? 3 : 1
+
                 color: swatch.available ? swatch.swatchColor : Kirigami.Theme.backgroundColor
-                border.width: swatch.checked || swatch.visualFocus ? 3 : 1
+                border.width: frame
                 border.color: swatch.checked || swatch.visualFocus ? Kirigami.Theme.highlightColor : Kirigami.Theme.disabledTextColor
+
+                /* The accent, where a title bar's focus line is. */
+                Rectangle {
+                    anchors {
+                        left: parent.left
+                        right: parent.right
+                        top: parent.top
+                        margins: bar.frame
+                    }
+                    height: Math.max(2, Math.round(Kirigami.Units.smallSpacing))
+                    visible: swatch.available
+                    color: swatch.swatchAccentColor
+                }
+
+                /* A sample of the title, in the title's colour; the chosen
+                 * swatch shows a checkmark in its place. */
+                QQC2.Label {
+                    anchors.centerIn: parent
+                    visible: swatch.available && !swatch.checked
+                    text: i18nc("@label a sample of title-bar text; keep it two letters", "Aa")
+                    color: swatch.swatchTextColor
+                    font.bold: true
+                    Accessible.ignored: true
+                }
 
                 Kirigami.Icon {
                     anchors.centerIn: parent
                     width: Kirigami.Units.iconSizes.small
                     height: width
                     visible: swatch.checked
-                    source: "checkmark"
+                    source: "dialog-ok-apply-symbolic"
                     color: swatch.available ? swatch.swatchTextColor : Kirigami.Theme.textColor
                     isMask: true
                 }

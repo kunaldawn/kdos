@@ -26,3 +26,8 @@ passes on the environment the program needs. The `kdesu` command of
 The configure looks for libX11 as optional and, finding it, lets `kdesu_stub` pass the X
 authority on to the program it starts, for a program that runs under Xwayland;
 [libX11](#port-libX11) is in `depends` so that this is always built.
+
+The password exchange needs `sudo` to print nothing before its prompt: KDESu takes the first line
+that ends in a colon with nothing after it for the prompt. [sudo](#port-sudo) is built
+`--without-lecture` for this; a lecture in front of the prompt fails every attempt as a wrong
+password.

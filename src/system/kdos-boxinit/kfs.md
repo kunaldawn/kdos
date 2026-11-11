@@ -8,8 +8,9 @@ launcher waits for, and then stays alive reaping orphaned processes. What each s
 The package installs one file, `/usr/libexec/kdos/kdos-boxinit`. It is not run on the host:
 [kdos-appbox](#port-kdos-appbox) bind-mounts it read-only into every pack box at
 `/usr/libexec/kdos-boxinit` and names it as the container's entrypoint
-([What a pack box is created with](../../../docs/kdos/04-programs/kdos-appbox.md#what-a-pack-box-is-created-with)).
-A store box runs distrobox's own init instead.
+([What a pack box is created with](../../../docs/kdos/04-programs/kdos-appbox.md#what-a-pack-box-is-created-with)),
+and every store box, which is created the same way over its image. Only a development box that
+distrobox makes from somebody else's image runs distrobox's own init.
 
 ## Flags
 - `-static-pie` — Link a static, position-independent executable. The binary comes from the

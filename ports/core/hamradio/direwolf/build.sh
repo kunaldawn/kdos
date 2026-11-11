@@ -28,6 +28,7 @@ Comment=APRS soundcard TNC — AX.25 off the sound card
 Exec=direwolf
 Icon=network-wireless
 Terminal=true
+NoDisplay=true
 Categories=Network;HamRadio
 Keywords=Ham Radio;APRS;Soundcard TNC;KISS;AGWPE;AX.25
 ENTRY

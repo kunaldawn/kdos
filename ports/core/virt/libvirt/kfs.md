@@ -51,8 +51,9 @@ guests (see [Services](../../../../docs/kdos/02-user-guide/administration.md#ser
 - `-Dssh_proxy=disabled` — no ssh-proxy for SSH over vsock, which writes a client configuration
   under `/etc/ssh`.
 - `-Dsysctl_config=disabled` — no `/usr/lib/sysctl.d/60-libvirtd.conf`, which raises
-  `fs.aio-max-nr` for hosts with many guest disks. `10_sysctl` applies `/etc/sysctl.conf` alone,
-  so the file would install and never take effect.
+  `fs.aio-max-nr` for hosts with many guest disks. The kernel's default is enough for the handful
+  of guests a desktop runs, and `10_sysctl` runs `sysctl --system`, so the file would take effect
+  at every boot on every machine with libvirt installed, guests or none.
 - `-Dhost_validate=enabled` — build `virt-host-validate`, which checks the host for what each
   driver needs.
 - `-Dlogin_shell=disabled` — with `-Dpm_utils=disabled`: no `virt-login-shell`, and no pm-utils
@@ -68,6 +69,14 @@ whatever `-Dinit_script` says; `postinstall.sh` makes the `libvirt` group and th
 instead. It also deletes the empty `/run` tree meson installs: `/run` is a tmpfs mounted over
 whatever the image holds there.
 
+`build.sh` deletes `/etc/libvirt/qemu/networks/autostart/default.xml`, the link meson's install
+script makes to the `default` network, and keeps the network itself in
+`/etc/libvirt/qemu/networks/default.xml`. With the link, every boot that starts `libvirtd`, the
+live medium's included, brings up `virbr0` at 192.168.122.1/24 with its dnsmasq whether or not
+any guest is ever run. Without it the network is defined and inactive: virt-manager offers to start
+it when a new guest is set up on it, and `virsh net-start default` starts it by hand, or `virsh
+net-autostart default` at every boot. No meson option leaves the link out.
+
 `/etc/nftables.d/40-libvirt.nft` lets the NAT bridges (`virbr0` for the `default` network) forward
 and reach their dnsmasq. libvirt's own table accepts the guests' traffic, but an accept ends only
 the chain that issued it, and the forward and input chains of `/etc/nftables.conf` drop what they
@@ -80,7 +89,7 @@ the QEMU driver refuses to start a system-mode guest when it cannot reach virtlo
 `62_virtlogd` comes before `63_libvirtd`. Both run without `--daemon`, so the supervisor watches
 the daemon itself (see
 [Supervision and logging](../../../../docs/kdos/04-programs/daemons.md#supervision-and-logging)).
-Both are also given `--pid-file /run/libvirt/<name>.pid`: run as root, each would otherwise write
-its pid to `/run/<name>.pid`, the supervisor's own pid file, and `service stop` would then signal
-the daemon instead of its supervisor, which restarts it. `libvirtd` opens its pid file before it
-creates `/run/libvirt`, so each script creates the directory first.
+Both are also given `--pid-file /run/libvirt/<name>.pid`, which keeps each daemon's own pid file in
+libvirt's run directory rather than loose in `/run`; the supervisor keeps the service's process id
+in `/run/kdos-svc.<name>.pid`. `libvirtd` opens its pid file before it creates `/run/libvirt`, so
+each script creates the directory first.

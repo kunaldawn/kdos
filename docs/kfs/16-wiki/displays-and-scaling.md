@@ -39,8 +39,11 @@ Fonts** → **Fonts**, makes text alone larger and leaves the rest of each windo
 
 System Settings → **Night Light** sets when the screen warms and how much: always on, from sunset
 to sunrise at the machine's location or at fixed times. KNightTime works the schedule out and KWin
-follows it. `Meta+Ctrl+Shift+N` suspends and resumes it, a chord KDOS adds (see
-[Shortcuts and window rules](shortcuts-and-window-rules.md)).
+follows it. `Meta+Ctrl+Shift+N`, a chord KDOS adds (see
+[Shortcuts and window rules](shortcuts-and-window-rules.md)), runs `kdos toggle night-light`,
+which writes `[NightColor]` `Active` in `~/.config/kwinrc`, and on the way on `Mode=Constant`:
+the screen warms at once and all day, in place of the schedule, until it is turned off or a
+schedule is chosen on the page again.
 
 ### The DDC/CI line of an external monitor
 
@@ -86,7 +89,8 @@ text at fixed sizes is not affected.
 
 ### Night light
 
-Turn it on and choose the schedule on System Settings → **Night Light**. From a prompt:
+Turn it on and choose the schedule on System Settings → **Night Light**. From a prompt, or with
+`Meta+Ctrl+Shift+N`, it is on, warm all day, or off:
 
 ```bash
 kdos toggle night-light

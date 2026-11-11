@@ -189,6 +189,15 @@ static const char *keyring_dir(void)
 	return e && *e ? e : "/etc/kdos/keys";
 }
 
+/* THE KEY BEFORE THE NETWORK, for the release index as for the tree: a
+ * ring with no key can verify no index, so a download would end only in
+ * `unverified` where the truth is that this machine trusts no release. */
+static int host_keyed(void)
+{
+	KsigRing ring;
+	return ksig_ring_load(&ring, keyring_dir()) > 0;
+}
+
 /* The running root, for the files that say what it is: kdos-release,
  * os-release, the build environment record and the world set.
  * $KDOS_UPDATE_SYSROOT moves all four for a test. */
@@ -400,12 +409,14 @@ static int same_commit(const char *a, const char *b)
  * `fetch` codes: `ok`, `no-key` (refused before any download because
  * /etc/kdos/keys/tree holds no key), `no-network`, `fetch-failed`.
  * `binhost` codes: `ok`, `absent` (no binhost is published for this tree —
- * not a problem: `apply --source` is the way), `no-network`, `fetch-failed`,
- * `unverified` (a release index or binhost index whose signature no key in
- * /etc/kdos/keys verifies, a release index for another release, or a file
- * other than the one the release index names).
+ * not a problem: `apply --source` is the way), `no-key` (refused before any
+ * download because /etc/kdos/keys holds no key that could verify a release
+ * index), `no-network`, `fetch-failed`, `unverified` (a release index or
+ * binhost index whose signature no key in /etc/kdos/keys verifies, a release
+ * index for another release, or a file other than the one the release index
+ * names).
  * `image` codes: `ok`, `absent` (no slot image is published there),
- * `no-network`, `fetch-failed`, `unverified`.
+ * `no-key` (as for `binhost`), `no-network`, `fetch-failed`, `unverified`.
  * `apply` codes: `ok`, `acquired` (a slot filled and checked, detail
  * `slot <x> <version>`, waiting for `--arm`), `cancelled`, `needs-source`,
  * `unverified`, `no-network`, `fetch-failed`, `build-failed`.
@@ -1978,6 +1989,12 @@ static int binhost_fetch(const KpConf *c, int quiet)
 			  "tree");
 		return 0;
 	}
+	if (!host_keyed()) {
+		snprintf(msg, sizeof(msg), "no trusted key in %s can verify a "
+			 "release index", keyring_dir());
+		state_set("binhost", "no-key", msg);
+		return 1;
+	}
 	if (kb_mkdir_p(cache_dir()) != 0) {
 		state_set("binhost", "fetch-failed", "cannot create the binhost "
 			  "cache");
@@ -2112,6 +2129,12 @@ static int image_fetch(const char *from, int quiet)
 	char dir[1024], base[1024], why[512], msg[640];
 	int how;
 
+	if (!host_keyed()) {
+		snprintf(msg, sizeof(msg), "no trusted key in %s can verify a "
+			 "release index", keyring_dir());
+		state_set("image", "no-key", msg);
+		return 1;
+	}
 	image_base(from, base, sizeof(base));
 	image_dir(dir, sizeof(dir));
 	if (!quiet)
@@ -2262,12 +2285,14 @@ typedef struct {
 	char crypt[96];		/* its LUKS container, "" for none */
 	char running[8];	/* the slot this boot runs, "" when unknown */
 	char trying[8];		/* the slot armed or on trial, "" for none */
+	int live;		/* no slots because this is the live medium */
 } Layout;
 
 /* `kdos-bootctl status --json`, read for the inactive slot. Exec'd rather
  * than linked to the state parser directly so there is one reader of that
  * file and it is the one that owns its fsync discipline. 1 when the machine
- * has slots and the inactive one has a root, 0 when it does not.
+ * has slots and the inactive one has a root, 0 when it does not; on 0,
+ * `live` says whether the reason is that this boot is the live medium.
  *
  * THE INACTIVE SLOT IS THE ONE THAT IS NOT CONFIRMED, which on a trial boot
  * is the root this boot runs; `running` and `trying` are read beside it so
@@ -2286,8 +2311,9 @@ static int bootctl_layout(Layout *L)
 	kb_argv_end(&a);
 
 	KbBuf out = {0};
-	if (kb_run_capture_buf(&a, &out) != 0 || !out.p ||
-	    !strstr(out.p, "\"configured\": true")) {
+	int rc = kb_run_capture_buf(&a, &out);
+	L->live = out.p && strstr(out.p, "\"live\": true") != NULL;
+	if (rc != 0 || !out.p || !strstr(out.p, "\"configured\": true")) {
 		kb_buf_free(&out);
 		return 0;
 	}
@@ -2694,7 +2720,9 @@ static int nothing_behind(Apply *ap)
  * WITHOUT touching the system you are running, so installing in place on a
  * machine that has one throws away the rollback it was set up for; it is
  * refused rather than silently done, and --in-place is the way to say you
- * meant it.
+ * meant it. The live medium is refused the same way: its root is an overlay
+ * in RAM, and what an update installs there is gone at the next restart
+ * unless a persistence store holds it.
  */
 static int apply_target(Apply *ap, const KpConf *c)
 {
@@ -2729,6 +2757,13 @@ static int apply_target(Apply *ap, const KpConf *c)
 		printf("%sA/B:%s installing into slot %s at %s\n", A, O,
 		       ap->L.slot, ap->mnt);
 	} else if (!ap->root && !layout) {
+		if (!ap->in_place && ap->L.live)
+			return refuse(ap, NULL, "this is the live medium: what "
+				      "an update installs here is gone at the "
+				      "next restart unless a persistence store "
+				      "keeps it. Install KDOS to update it, or "
+				      "pass --in-place to update this session "
+				      "anyway");
 		printf("%sno A/B slots — updating the running root in "
 		       "place%s\n", D, O);
 	}

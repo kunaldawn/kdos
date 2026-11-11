@@ -1142,14 +1142,15 @@ has one windowing system on Linux, X11, so every Tk window is an Xwayland client
 code, only the Plasma pieces under `src/desktop` may link a toolkit, and only Qt 6 and KF6 (see
 [Writing desktop software](writing-desktop-software.md#the-toolkit-rule)).
 
-The recipe does not choose the backend at run time; the session does, from
-`fs/etc/profile.d/10-wayland.sh`:
+The session chooses the backend, from `fs/etc/profile.d/10-wayland.sh`. A recipe overrides it
+only in its own desktop entry's `Exec=` (`env QT_QPA_PLATFORM=xcb`, `env GDK_BACKEND=x11`) when the
+program's Wayland path is broken, as Candle2's and Brasero's are, and says why in its `kfs.md`:
 
 | Variable | Value | Effect |
 |---|---|---|
 | `QT_QPA_PLATFORM` | `wayland;xcb` | Qt uses Wayland, and falls back to Xwayland only when its Wayland plugin cannot start |
 | `GDK_BACKEND` | unset | GDK tries Wayland first by itself, and an X11-only program's own `GDK_BACKEND=x11` is not overridden |
-| `GTK_USE_PORTAL` | `1` | GTK's file chooser, print dialog and settings go through the portals, so a GTK application opens the desktop's file chooser |
+| `GTK_USE_PORTAL` | `1` | GTK 3's native file chooser and print dialog go through the portals, so a GTK 3 application that uses them opens the desktop's file chooser; GTK 4 uses the portals without it |
 | `QT_QPA_PLATFORMTHEME` | `kde` | A Qt 6 application reads the `~/.config/kdeglobals` that `kdos theme` writes, and a Qt 5 application the qt5ct files it writes, and both follow the desktop's colours |
 | `SDL_VIDEODRIVER`, `CLUTTER_BACKEND` | `wayland` | The same preference for SDL and Clutter programs |
 
@@ -1352,10 +1353,11 @@ out of the linked program. The flags are exported
 through `CFLAGS` and `LDFLAGS` and the make variables are upstream's own configuration knobs, as the
 [make-only shape](#make-only) describes.
 
-The package carries no story. The desktop entry is `Exec=frotz %f` with `Terminal=true`, the shape
-every terminal program here that opens a file uses, so a story is opened from the file manager or
-any other program that opens a file by its type. That entry claims two MIME types,
-`application/x-zmachine` and `application/x-blorb`, so the port has to define them first;
+The package carries no story. The desktop entry is `Exec=frotz %f` with `Terminal=true` and
+`NoDisplay=true`, the shape every terminal program here that opens a file and exits without one
+uses (`timg`, `fx`), so a story is opened from the file manager or any other program that opens a
+file by its type, and the launcher lists no row that would print a usage line and close. That
+entry claims two MIME types, `application/x-zmachine` and `application/x-blorb`, so the port has to define them first;
 `shared-mime-info` 2.5.1 has neither:
 
 ```bash
@@ -1707,8 +1709,9 @@ the note. A section other than these four is refused, so is a section written tw
 heading of any level but `##`; a `## ` line inside a fenced block is code and starts no section.
 A link is written relative to `kfs.md` itself, so it works on GitHub: the
 renderer turns a link to a page of `docs/kfs` into that page's anchor in the book and any other
-into the file's GitHub URL, and leaves a `#port-<name>` link, or a link to a page's own anchor in
-the rendered book, as it is. Links are mapped a paragraph at a time, in a note and in a
+into the file's GitHub URL, except that `kfsgen.py --kdos-book PREFIX`, which the installed book's
+port passes, sends a link to a page of `docs/kdos` to PREFIX plus its installed `.html`. It
+leaves a `#port-<name>` link, or a link to a page's own anchor in the rendered book, as it is. Links are mapped a paragraph at a time, in a note and in a
 hand-written page of `docs/kfs` alike, so a link whose text wraps onto the next line is mapped like
 any other; a link inside a fenced block is code and stays as written.
 
@@ -1832,12 +1835,22 @@ path must exist. An SVG is drawn as it is, so a port installs upstream's icons a
 nothing. When a build tree exists, `testing/preflight.sh` resolves every visible entry's `Icon=`
 and `Exec=` by these rules against `build/fs` and names the ones that miss.
 
-**A file name, or a `StartupWMClass=`, equal to the window's app id.** Plasma's task manager finds
-a window's icon, its name and its pinned launcher by matching the window's Wayland app id to an
-entry: the entry's file name without `.desktop`, or its `StartupWMClass=`. A window whose app id
-matches neither shows a generic icon and opens a second task beside a pinned launcher. Where
-upstream's entry names a class the program never uses, a patch corrects it (see
-[KDE Frameworks, Plasma and Gear](#kde-frameworks-plasma-and-gear)).
+**A file name equal to the window's Wayland app id, and a `StartupWMClass=` equal to its X11
+instance name.** KWin draws a Wayland window's title-bar icon from the one entry whose file name,
+without `.desktop`, is the window's app id, and consults no `StartupWMClass=` for it; an X11
+window under Xwayland it matches by comparing `StartupWMClass=` with the window's instance name,
+ignoring case. Plasma's task manager finds a window's icon, name and pinned launcher through the
+same names. A window that matches no entry shows the generic Wayland icon and opens a second task
+beside a pinned launcher. So an entry is named after the app id the program actually sets, which
+is not always its executable's name: Qt builds one from the organisation domain when the program
+names no desktop file (`org.QCAD.qcad-bin`), and a program can set a name of its own
+(`org.surfer-project.surfer`). Measure it from the running window (`kdos appid`). Where the
+program's app id differs from the name upstream's entry and metainfo launchable use
+(`org.kicad.kicad`, `space.celestiaproject.celestia_qt6`, `org.horizon_eda.HorizonEDA`), or
+comes from a window shown before the program sets its name (Octave's welcome wizard), a patch
+makes the program set the entry's name, so the launchable keeps working; one that sets none at
+all (`vkcube`) gets the same patch. Where upstream's entry names a class the program never uses, a
+patch corrects it (see [KDE Frameworks, Plasma and Gear](#kde-frameworks-plasma-and-gear)).
 
 **A `Name=` no other visible entry uses.** The application launcher and KRunner list entries by
 name, so two rows both reading `Calendar` are two rows nobody can choose between. The program
@@ -1855,8 +1868,11 @@ entry already offers as an action), a launch pad that only lists the program's o
 (PDF4QT's), a diagnostic (LinuxCNC's latency test), a tray helper that something else starts, and a
 terminal program that exits at once when started from the launcher, with no argument, in the home
 directory (`tig` needs a repository, `ledger` a journal, `presenterm` a file, `taskwarrior-tui` a
-`~/.taskrc`). A terminal program that has a way to stay open on its own is given it instead and
-stays visible: `w3m -v` opens w3m's welcome page. The entry stays installed, for its `MimeType=`
+`~/.taskrc`, `newsboat` a feed list, `iamb` and `toot` an account, `zbarcam` a camera, and `timg`,
+`fx`, `frotz` and Inlyne a file; `dust` prints its report and closes). The sound-card modems
+`direwolf` and `ardopcf` are servers, which their clients reach over a port. A game engine whose
+data is not shipped and that exits without saying so, Yamagi Quake II, is hidden the same way. A
+terminal program that has a way to stay open on its own is given it instead and stays visible: `w3m -v` opens w3m's welcome page. The entry stays installed, for its `MimeType=`
 and its actions. Write the key into an entry the recipe writes; on one upstream installs, run
 `desktop-file-edit --set-key=NoDisplay --set-value=true` on the file under `$PKG`, with
 `desktop-file-utils` in `depends`. A server or tray program that is itself what a person opens,
@@ -2027,15 +2043,15 @@ expand while the recipe runs rather than while the script does.
 `postinstall.sh` is an optional hook that runs on the target machine each time the package is
 installed. It travels inside the package as `.POSTINSTALL`, a bash script that begins with the
 recipe's keys and helpers as variable assignments and then carries the hook verbatim, so a hook can
-read `$name` and `$version`. Twenty-eight ports have one:
+read `$name` and `$version`. Twenty-seven ports have one:
 
-- `avahi`, `clamav`, `colord`, `geoclue`, `gnuhealth`, `kolibri`, `libstoragemgmt`, `maddy`,
+- `avahi`, `clamav`, `geoclue`, `gnuhealth`, `kolibri`, `libstoragemgmt`, `maddy`,
   `minidlna`, `mosquitto`, `mumble`, `networkmanager-openvpn`, `ngircd`, `nut`, `pcsc-lite`,
   `polkit`, `postgresql`, `prosody`, `radicale`, `tcpdump` and `usbmuxd` create their system
   accounts.
   `avahi` makes two, `avahi` and `avahi-autoipd`; `mumble`'s is `mumble-server`, `usbmuxd`'s is
   `usbmux`, the account its udev rule starts `usbmuxd` as, and `nut`'s is also in `dialout`.
-  `clamav`, `colord`, `kolibri`, `maddy`, `prosody`, `postgresql` and `radicale` also give their
+  `clamav`, `kolibri`, `maddy`, `prosody`, `postgresql` and `radicale` also give their
   `/var/lib` directories to their accounts; `gnuhealth` gives `/var/lib/gnuhealth` and its `attach/`
   directory to its account; `minidlna` gives `/var/lib/minidlna` and `/var/log/minidlna`;
   `mumble` gives `/var/lib/mumble-server` to its account and `mumble-server.ini` to its group; and

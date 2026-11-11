@@ -13,7 +13,10 @@
 # /run/kdos/slot.json, which kdos-bootctl writes at boot and at every change
 # of the boot state, and never the ESP or a disk that could wait. Without that
 # file the slot is the boot entry's kdos_slot= on /proc/cmdline and its state
-# is not shown. A value is kept only if it is letters, digits and . _ + -.
+# is not shown; with neither, a root that is an overlay is the live medium,
+# the test the live session's own init script makes. A value is kept only if
+# it is letters, digits and . _ + -. The label ends in a colon, as every row
+# of kinfocenter's own does: it is shown verbatim.
 
 PATH=/usr/bin:/bin
 R=${KDOS_ABOUT_ROOT:-}
@@ -40,6 +43,11 @@ if [ -z "$version" ] && [ -r "$R/etc/os-release" ]; then
 	while IFS='=' read -r k v; do [ "$k" = VERSION_ID ] && version=${v#\"} && version=${version%\"}; done <"$R/etc/os-release"
 	case $version in *[!A-Za-z0-9._+-]*) version= ;; esac
 fi
+if [ -z "$state" ] && [ -r "$R/proc/mounts" ]; then
+	while read -r _ m t _; do
+		[ "$m" = / ] && [ "$t" = overlay ] && state=live && break
+	done <"$R/proc/mounts"
+fi
 case $slot in a) slot=A ;; b) slot=B ;; *) slot= ;; esac
 case $prev in a) prev=A ;; b) prev=B ;; *) prev= ;; esac
 v=Unknown
@@ -48,5 +56,6 @@ confirmed) [ -n "$slot" ] && v="$slot · ${version:-?} · confirmed${prev:+ (pre
 trial) [ -n "$slot" ] && v="$slot · ${version:-?} · on trial${prev:+ (previous: $prev${pver:+ · $pver})}" ;;
 booted) [ -n "$slot" ] && v="$slot · ${version:-?}" ;;
 single) v="One root${version:+ · $version}" ;;
+live) v="Live medium${version:+ · $version}" ;;
 esac
-printf 'System slot\n%s\n' "$v"
+printf 'System slot:\n%s\n' "$v"

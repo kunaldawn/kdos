@@ -7,5 +7,12 @@
   { "id": 52, "type": "PipeWire:Interface:Link", "info": { "output-node-id": 50, "input-node-id": 51, "state": "active" } },
   { "id": 60, "type": "PipeWire:Interface:Node", "info": { "state": "running", "props": { "media.class": "Video/Source", "node.name": "kwin_screencast" } } },
   { "id": 61, "type": "PipeWire:Interface:Link", "info": { "output-node-id": 60, "input-node-id": 51, "state": "active" } },
-  { "id": 62, "type": "PipeWire:Interface:Link", "info": { "output-node-id": 60, "input-node-id": 40, "state": "paused" } }
+  { "id": 62, "type": "PipeWire:Interface:Link", "info": { "output-node-id": 60, "input-node-id": 40, "state": "paused" } },
+  { "id": 69, "type": "PipeWire:Interface:Client", "info": { "props": { "application.process.id": 4545, "application.name": "spectacle" } } },
+  { "id": 70, "type": "PipeWire:Interface:Node", "info": { "state": "running", "props": { "media.class": "Stream/Output/Video", "node.name": "kwin-screencast-300,300", "application.name": "kwin_wayland", "application.process.id": 900 } } },
+  { "id": 71, "type": "PipeWire:Interface:Node", "info": { "state": "running", "props": { "media.class": "Stream/Input/Video", "node.name": "spectacle", "client.id": 69 } } },
+  { "id": 72, "type": "PipeWire:Interface:Link", "info": { "output-node-id": 70, "input-node-id": 71, "state": "active" } },
+  { "id": 73, "type": "PipeWire:Interface:Node", "info": { "state": "idle", "props": { "media.class": "Stream/Output/Video", "node.name": "kwin-screencast-idle", "application.process.id": 900 } } },
+  { "id": 80, "type": "PipeWire:Interface:Node", "info": { "state": "running", "props": { "media.class": "Stream/Output/Video", "node.name": "pipewiresink", "application.name": "gst-launch-1.0", "application.process.id": 950 } } },
+  { "id": 81, "type": "PipeWire:Interface:Link", "info": { "output-node-id": 80, "input-node-id": 51, "state": "active" } }
 ]

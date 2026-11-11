@@ -17,7 +17,7 @@ application are wired together is in
 | [fcitx5-anthy](#port-fcitx5-anthy), over [anthy-unicode](#port-anthy-unicode) | `anthy`, for Japanese |
 | [fcitx5-hangul](#port-fcitx5-hangul), over [libhangul](#port-libhangul) | `hangul`, for Korean |
 | [fcitx5-qt](#port-fcitx5-qt) | fcitx5's Qt 6 module, for Qt 6 programs that do not use the Wayland text-input route |
-| [fcitx5-gtk](#port-fcitx5-gtk) | fcitx5's GTK 3 and GTK 4 modules, which reach fcitx5 over D-Bus: the route of every GTK 3 program and of a GTK program under Xwayland |
+| [fcitx5-gtk](#port-fcitx5-gtk) | fcitx5's GTK 3 and GTK 4 modules, which reach fcitx5 over D-Bus: the route of a GTK program under Xwayland |
 | [fcitx5-configtool](#port-fcitx5-configtool) | System Settings → **Input Method**, and `fcitx5-config-qt` |
 | [kwin](#port-kwin) | Starts fcitx5 for the session and relays it to applications over `text-input` |
 | [plasma-keyboard](#port-plasma-keyboard) | The on-screen keyboard, the other input method KWin can start |
@@ -26,11 +26,11 @@ All of them are installed by `50_desktop`, so every image has them, live and ins
 no service script and no autostart entry: KWin starts fcitx5 as the session's input method and
 restarts it if it dies, from `fs/usr/share/kdos/xdg/kwinrc`:
 
-<!-- kfs:include fs/usr/share/kdos/xdg/kwinrc lines=45-49 pin=86dcb86db396 -->
+<!-- kfs:include fs/usr/share/kdos/xdg/kwinrc lines=54-58 pin=86dcb86db396 -->
 
 The session wrapper clears `QT_IM_MODULE` and `GTK_IM_MODULE`, so each toolkit picks its route
-itself: Qt 6 and GTK 4 reach fcitx5 through KWin's `text-input`, a GTK 3 program and a GTK
-program under Xwayland through fcitx5-gtk's module over the session bus. Why each toolkit picks
+itself: Qt 6, GTK 3 and GTK 4 reach fcitx5 through KWin's `text-input`, and a GTK program under
+Xwayland through fcitx5-gtk's module over the session bus. Why each toolkit picks
 what it does is in [Input methods](../../kdos/03-architecture/session.md#input-methods).
 
 ## Configuration
@@ -83,7 +83,7 @@ service:
 A boxed application reaches fcitx5 through KWin, never directly. `kdos-appbox` sets one variable
 for it (`src/system/kdos-appbox/main.c`):
 
-<!-- kfs:include src/system/kdos-appbox/main.c lines=423-435 pin=afbe7df0b3c1 -->
+<!-- kfs:include src/system/kdos-appbox/main.c lines=472-484 pin=afbe7df0b3c1 -->
 
 ## Usage
 
@@ -96,8 +96,8 @@ for it (`src/system/kdos-appbox/main.c`):
    fcitx5's candidate window beside it; choose a candidate with its number key.
 4. Press `Ctrl+Space` again to go back to plain typing.
 
-To reach another engine, press `Ctrl+Space` and keep `Ctrl` held: each further `Space` steps to
-the next engine in the group. While an engine is on, the left `Shift` on its own switches to plain
+To reach another engine, press `Ctrl+Space` and keep `Ctrl` held: the second `Space` turns the
+input method off again, and each `Space` after it steps to the next engine in the group. While an engine is on, the left `Shift` on its own switches to plain
 typing and back. The input method's tray icon shows which engine is in use.
 
 ### Adding an engine
@@ -156,9 +156,13 @@ memory, so a changed profile lasts until power-off unless a persistence store ex
    this one, the toolkit is the cause.
 
 **A GTK application takes no input method although others do.** Something in its environment
-sets `GTK_IM_MODULE`, a wrapper script or a profile of your own. Unset it there. For a GTK 3
-program, `grep fcitx5 /usr/lib/gtk-3.0/3.0.0/immodules.cache` must print the module's lines: without
-them GTK 3 never loads fcitx5-gtk's module and falls back to plain typing.
+sets `GTK_IM_MODULE`, a wrapper script or a profile of your own. Unset it there. On Wayland,
+`gtk-query-settings | grep im-module` must print `wayland` for GTK 3 and `gtk4-query-settings |
+grep im-module` an empty string for GTK 4; GTK 4 prints `simple`, plain typing, when no portal
+backend answers `org.gnome.desktop.interface`, which [xdg-desktop-portal-gtk](#port-xdg-desktop-portal-gtk)
+serves. GTK 3 reads the same portal under `GTK_USE_PORTAL=1` and still prints `wayland`: it sets
+that value itself whenever KWin offers `text-input-v3`, above the portal's empty one. Under Xwayland, `grep fcitx5 /usr/lib/gtk-3.0/3.0.0/immodules.cache` must print the
+module's lines: without them GTK 3 never loads fcitx5-gtk's module and falls back to plain typing.
 
 **Running fcitx5 in the foreground for its messages.** `fcitx5-diagnose` prints upstream's report
 of the environment. KWin restarts fcitx5 when it exits; its messages go to the session log,

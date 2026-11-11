@@ -509,6 +509,7 @@ static void fit(char *out, size_t cap, const char *s)
 static void again(RnMatch *m)
 {
 	m->how = RN_RUN_REQUERY;
+	rn_arg(m, "kdos");
 	rn_argf(m, "ask %s", A.q);
 }
 

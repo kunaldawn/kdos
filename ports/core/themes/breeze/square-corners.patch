@@ -1,0 +1,61 @@
+Subject: Add SquareCorners and OutlineHighlight to the decoration
+
+Two [Common] keys of breezerc, both off by default, so a stock Breeze
+is drawn as before. SquareCorners sets the corner radius to zero, which
+squares the title bar, the window frame, the outline and the shadow
+together; RoundedCorners alone only ever rounds or squares the bottom of
+a borderless window. OutlineHighlight draws the active window's outline
+in the window palette's link colour, so a colour scheme's accent marks
+the focused window; an inactive window keeps the frame and text mix. The
+link colour is the one QPalette role a scheme can hold at its accent
+while the selection is darkened for text drawn over it.
+
+diff -ruN a/kdecoration/breezedecoration.cpp b/kdecoration/breezedecoration.cpp
+--- a/kdecoration/breezedecoration.cpp
++++ b/kdecoration/breezedecoration.cpp
+@@ -475,9 +475,11 @@
+     if (isMaximized() || !outlinesEnabled()) {
+         setBorderOutline(KDecoration3::BorderOutline());
+     } else {
+-        const auto color = KColorUtils::mix(window()->color(window()->isActive() ? ColorGroup::Active : ColorGroup::Inactive, ColorRole::Frame),
+-                                            window()->palette().text().color(),
+-                                            KColorScheme::frameContrast());
++        const auto color = window()->isActive() && m_internalSettings->outlineHighlight()
++            ? window()->palette().link().color()
++            : KColorUtils::mix(window()->color(window()->isActive() ? ColorGroup::Active : ColorGroup::Inactive, ColorRole::Frame),
++                               window()->palette().text().color(),
++                               KColorScheme::frameContrast());
+         const qreal thickness = std::max(KDecoration3::pixelSize(window()->nextScale()), KDecoration3::snapToPixelGrid(1, window()->nextScale()));
+ 
+         qreal topLeftRightRadius = 0;
+@@ -955,6 +957,10 @@
+     // On X11, the smallSpacing value is used for scaling.
+     // On Wayland, this value has constant factor of 2.
+     // Removing it will break radius scaling on X11.
++    if (m_internalSettings && m_internalSettings->squareCorners()) {
++        m_scaledCornerRadius = 0;
++        return;
++    }
+     m_scaledCornerRadius = KDecoration3::snapToPixelGrid(Metrics::Frame_FrameRadius * settings()->smallSpacing(), window()->nextScale());
+ }
+ 
+diff -ruN a/kdecoration/breezesettingsdata.kcfg b/kdecoration/breezesettingsdata.kcfg
+--- a/kdecoration/breezesettingsdata.kcfg
++++ b/kdecoration/breezesettingsdata.kcfg
+@@ -42,6 +42,16 @@
+     <entry name="RoundedCorners" type = "Bool">
+       <default>true</default>
+     </entry>
++
++    <!-- every corner of the frame, its outline and its shadow square -->
++    <entry name="SquareCorners" type = "Bool">
++      <default>false</default>
++    </entry>
++
++    <!-- the active window's outline in the link colour -->
++    <entry name="OutlineHighlight" type = "Bool">
++      <default>false</default>
++    </entry>
+   </group>
+ 
+   <group name="Windeco">

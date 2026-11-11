@@ -23,6 +23,19 @@ editor. The viewer is built on [openbabel](#port-openbabel) and
   [eigen](#port-eigen) are all found, and the equation solver only when OCaml and facile are, and
   either is otherwise left out with only a status line.
 
+## Patches
+
+`avogadro2-layers.patch` makes the Molecular Editor draw. avogadrolibs 2 keeps whether a scene
+plugin (Ball and Stick, Licorice, Van der Waals, Wireframe) is enabled per molecule in its layer
+manager, and a molecule the manager was never given enables none, so the view stays empty.
+`KalziumGLWidget` now hands every molecule it shows to an `Avogadro::QtGui::LayerModel`, enables
+the plugin whose name the Style box shows, and reapplies it on each new molecule. The patch also
+gives the view the palette's opaque Base colour as its background, read again on a palette
+change; the scene's default is transparent, which a Wayland surface shows as a hole through to
+the window behind. It is to be offered upstream at `education/kalzium`.
+
+`kiosk-get-new.patch` is described under Notes.
+
 ## Notes
 
 The equation solver and facile are compiled by `ocamlopt -output-obj` into one object,

@@ -99,6 +99,7 @@ WizardPage {
                 }
                 return 0;
             }
+            popup.width: width
             Accessible.name: i18nc("@label:listbox", "Keyboard variant")
             onActivated: index => Backend.answers.xkbVariant = pairs[index * 2]
         }

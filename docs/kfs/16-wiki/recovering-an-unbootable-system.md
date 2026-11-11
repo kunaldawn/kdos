@@ -29,7 +29,7 @@ The live medium carries every tool the procedures below use: `cryptsetup`, `lvm`
 
 The consoles and single-user mode are entries of `/etc/inittab`, shipped from `fs/etc/inittab`:
 
-<!-- kfs:include fs/etc/inittab lines=11-45 pin=9f2b3ac98115 -->
+<!-- kfs:include fs/etc/inittab lines=11-51 pin=e55835f339dc -->
 
 `sulogin` asks for **root's** password. The installer locks root unless it was asked to set a root
 password (`root_locked` in an answer file, see
@@ -45,7 +45,7 @@ sudo passwd root
 The service scripts are run by this loop in `rcS`, which writes each script's output to a log and
 skips any script with a marker under `/etc/service.disabled/`:
 
-<!-- kfs:include fs/etc/init.d/rcS lines=134-173 pin=403936cc08ac -->
+<!-- kfs:include fs/etc/init.d/rcS lines=147-186 pin=403936cc08ac -->
 
 ## Usage
 
@@ -72,7 +72,7 @@ The full table of stages and their logs is in
 2. Run `kdos doctor`, and read its Session and Desktop sections.
 3. Read the service logs of this boot: `ls /run/kdos-init.*.log`, and
    `/run/kdos-svc.<name>.log` for a supervised daemon, elogind's among them.
-4. Read the display manager's log, `/var/log/sddm.log`, and `grep kdos-dm /var/log/messages`:
+4. Read the display manager's log, `/var/log/sddm.log`, and `sudo grep kdos-dm /var/log/messages`:
    SDDM that cannot run leaves a text password prompt on `tty1` instead of a black screen.
 5. The procedures for each stage from the greeter to the desktop are on
    [Desktop troubleshooting](desktop-troubleshooting.md).
@@ -107,7 +107,8 @@ after `rcS` finishes.
    the ESP included, is made.
 3. `sulogin` asks for root's password on the console:
    `Enter root password for system maintenance` and `(or press Control-D to continue):`. A root
-   shell opens, with no getty on any console and no desktop; `runlevel` prints `N S`.
+   login shell opens, with `/usr/local/bin` and so `kdos` on its `PATH`, no getty on any console
+   and no desktop; `runlevel` prints `N S`.
 4. Leaving the shell continues to the running system: init prints `INIT: Entering runlevel: 3`
    and the consoles start.
 
@@ -122,6 +123,9 @@ session.
 3. `sulogin` runs before `rcS`, with the same prompt as single-user mode: only the initramfs's
    mounts exist, which are the root, `/proc`, `/sys`, `/dev` with `/dev/pts` and `/dev/shm`, and
    no service has run (`/run/kdos-init.*.log` does not exist yet; `runlevel` prints `unknown`).
+   The initramfs has stopped the splash, so the prompt is on the screen as well as on the serial
+   line. The shell keeps init's `PATH`, which does not reach `/usr/local/bin`: run `kdos` as
+   `/usr/local/bin/kdos`, or `exec bash -l` first.
 4. Leaving the shell continues the boot with `rcS`, and from there as on any boot.
 
 ### The rescue shell

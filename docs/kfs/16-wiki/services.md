@@ -14,7 +14,7 @@ Services are part of every image. Three things provide them:
 - [kdos-tools](#port-kdos-tools) installs the supervisor, `/usr/sbin/ksvc`, and the command that
   manages services, `/usr/sbin/service`, which is a link to it:
 
-<!-- kfs:include src/system/kdos-tools/build.sh lines=25-33 pin=8df9beee79e9 -->
+<!-- kfs:include src/system/kdos-tools/build.sh lines=25-35 pin=aac91cf4ed51 -->
 
 - The base filesystem, `fs/etc/init.d/` in the tree, supplies the scripts every image has, and
   `/etc/init.d/service_helper`, the shell functions those scripts call.
@@ -264,19 +264,6 @@ smartd` then answers `[DOWN] smartd`. `thermald` ends the same way on an Intel m
 for it to drive, and on any other processor its script skips it with
 `[SKIP] thermald: not an Intel processor`. Nothing needs fixing; disable the service to skip it at
 boot.
-
-**`service stop` reports `Stopped`, and the daemon is back five seconds later.** The pid file the
-supervisor wrote, `/run/<name>.pid`, holds another process's id: a daemon that writes a pid
-file of its own at the same path overwrites the supervisor's, and `stop` then signals the daemon
-alone, which the supervisor restarts. Compare the file with the process tree:
-
-```bash
-cat /run/<name>.pid
-ps -o pid,pgid,args -p "$(cat /run/<name>.pid)"
-```
-
-The supervisor's command line starts `ksvc supervise`. The cure belongs in the script; see
-[Writing a service](writing-a-service.md#tips).
 
 **`[FAIL] <name>  (supervisor gone; daemon pid N still running)`.** The supervisor was killed and
 its daemon was left running. `service start` will not start a second copy beside it: it waits

@@ -20,7 +20,10 @@
  * THE SWATCH IS THE SCHEME'S OWN TITLE-BAR COLOUR, read from the installed
  * .colors file through KColorScheme, never a literal here: a swatch that
  * disagreed with what KWin paints would be a promise the window breaks. A
- * scheme that is not installed has no swatch, and the page says so.
+ * scheme that is not installed has no swatch, and the page says so. Most
+ * KDOS title bars are near-black, so the swatch also carries the title's
+ * colour and the scheme's accent (its focus decoration), which is what
+ * tells one scheme from another.
  *
  * The eight names are libkcolor's KCOL_SCHEMES, in its order.
  */
@@ -45,6 +48,7 @@ public:
         LabelRole,
         ColorRole,
         TextColorRole,
+        AccentColorRole,
         AvailableRole,
         SchemeRole,
     };
@@ -61,9 +65,10 @@ public:
 
     /* KDOS<Accent>, or KDOSBox for `session`. */
     static QString schemeName(const QString &id);
-    /* The title-bar colours of an installed scheme file; invalid when the
-     * scheme is not installed. Public for the tests. */
-    static QColor titleBarColor(const QString &schemePath, QColor *text = nullptr);
+    /* The title-bar colours of an installed scheme file: its background,
+     * and through `text` and `accent` its title and its focus decoration;
+     * invalid when the scheme is not installed. Public for the tests. */
+    static QColor titleBarColor(const QString &schemePath, QColor *text = nullptr, QColor *accent = nullptr);
 
 private:
     struct Accent {
@@ -71,6 +76,7 @@ private:
         QString label;
         QColor color;
         QColor text;
+        QColor accent;
     };
     QList<Accent> m_accents;
 };

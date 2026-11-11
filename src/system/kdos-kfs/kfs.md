@@ -30,6 +30,21 @@ with a message when `ports/core`, `script/phases` or `docs/kfs` is missing there
 two books and the renderer but has no `ports/core` or `script/phases` beside them, so on an
 installed machine the port does not build.
 
+`--kdos-book file:///usr/share/doc/kdos/` makes every link into the KDOS book open the page
+[kdos-doc](#port-kdos-doc) installs there, at the heading the link names, instead of the page on
+GitHub, so the installed book reads offline. The prefix is an absolute `file:` URL rather than
+`../kdos/` because the same Markdown becomes `kfs.pdf`, whose viewer resolves a relative link
+against the PDF's own directory. The headings match because `kdos-doc` gives every installed
+heading GitHub's id. A link to a recipe, a patch, a phase list or anything else of the tree stays
+on GitHub: the image carries no copy of them.
+
+KHelpCenter shows the installed book too, and adds KDE's handbook stylesheet to every page it
+shows, as a `<style id="default">` appended to the page's head after `kfs.css`, so its element
+rules would put white paper, black text and blue links under the dark palette's code blocks.
+`kfs.css` ends with rules under `html:has(> head > style#default)`, which match only a page
+carrying that element and outrank the handbook's, so in the Help Center the book keeps its own
+palette in either colour scheme. Outside the Help Center they match nothing.
+
 `--buildfs /` points the renderer at the build root's own package database, from which the HTML
 gives every package's full file list. The database holds only what was installed before this
 port was built, so a package of a later phase gets the summary from

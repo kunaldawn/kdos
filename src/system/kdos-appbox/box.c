@@ -51,13 +51,16 @@
  */
 
 #include "kdos-appbox.h"
+#include "kcolor.h"
 
 #include <ctype.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 void profile_defaults(Profile *p, const char *box)
@@ -408,6 +411,17 @@ int profile_set(Profile *p, const char *kv)
 	return 0;
 }
 
+const char *accent_shown(const char *accent)
+{
+	return !accent[0] || !strcmp(accent, "session") ? "none" : accent;
+}
+
+int accent_known(const char *accent)
+{
+	return !accent[0] || !strcmp(accent, "session") ||
+	       kcol_find(accent) != NULL;
+}
+
 int profile_load(Profile *p, const char *box)
 {
 	char *path = profile_path(box);
@@ -433,48 +447,196 @@ int profile_load(Profile *p, const char *box)
 }
 
 /*
+ * EVERY PROCESS OF A BOX, SIGNALLED BY THIS PROGRAM AND NOT BY `podman stop`.
+ *
+ * A box created with `--pid host` and no cgroup of its own — every store box,
+ * and a pack box in a login with no delegated subtree — sits in the login's
+ * own cgroup. podman stops a container that has no PID namespace of its own
+ * by signalling every process in the container's cgroup, which holds none of
+ * the box's, so `podman stop` sends its SIGTERM and SIGKILL to nothing and
+ * leaves the box `stopping` until something kills its init directly. `podman
+ * kill` signals the init alone and does reach it.
+ *
+ * THE APPLICATIONS ARE NOT THE INIT'S CHILDREN. Each launch is a `podman
+ * exec`, which joins the box's mount namespace and outlives the init when the
+ * PID namespace is the host's, and a stopped box whose applications still run
+ * holds exec sessions that `podman rm` refuses over. A process is the box's
+ * when it is in the init's mount namespace, or — once the init is gone — when
+ * it is in a mount namespace other than this program's and its environment
+ * carries the box's KDOS_BOX, which podman puts in every exec. Only processes
+ * this user may signal are reached: under keep-id the applications run as the
+ * user.
+ */
+static long box_init_pid(const char *box)
+{
+	KbArgv a = {0};
+	char out[32] = "";
+
+	kb_argv_add(&a, "podman");
+	kb_argv_add(&a, "inspect");
+	kb_argv_add(&a, "--type");
+	kb_argv_add(&a, "container");
+	kb_argv_add(&a, "--format");
+	kb_argv_add(&a, "{{.State.Pid}}");
+	kb_argv_add(&a, box);
+	kb_argv_end(&a);
+	if (kb_run_capture(&a, out, sizeof(out)) != 0)
+		return 0;
+	return strtol(out, NULL, 10);
+}
+
+static int ns_of(long pid, struct stat *st)
+{
+	char path[64];
+
+	if (pid > 0)
+		snprintf(path, sizeof(path), "/proc/%ld/ns/mnt", pid);
+	else
+		snprintf(path, sizeof(path), "/proc/self/ns/mnt");
+	return stat(path, st);
+}
+
+static int environ_names_box(long pid, const char *box)
+{
+	char path[64], want[96];
+	size_t len = 0;
+	char *env;
+	int hit = 0;
+
+	snprintf(path, sizeof(path), "/proc/%ld/environ", pid);
+	snprintf(want, sizeof(want), "KDOS_BOX=%s", box);
+	env = kb_read_all(path, &len);
+	for (size_t o = 0; env && o < len && !hit; o += strlen(env + o) + 1)
+		hit = !strcmp(env + o, want);
+	free(env);
+	return hit;
+}
+
+int box_signal_all(const char *box, int sig)
+{
+	struct stat self, init, st;
+	long ipid = box_init_pid(box);
+	int have_init = ipid > 0 && ns_of(ipid, &init) == 0;
+	char **names;
+	int n = 0;
+
+	if (ns_of(0, &self) != 0)
+		return 0;
+	if (have_init && init.st_ino == self.st_ino && init.st_dev == self.st_dev)
+		have_init = 0;
+	names = kb_listdir("/proc", NULL);
+	for (char **f = names; f && *f; f++) {
+		long pid;
+		char *end;
+		int mine;
+
+		pid = strtol(*f, &end, 10);
+		if (*end || pid <= 1 || pid == ipid || pid == (long)getpid())
+			continue;
+		if (ns_of(pid, &st) != 0 ||
+		    (st.st_ino == self.st_ino && st.st_dev == self.st_dev))
+			continue;
+		mine = have_init ? st.st_ino == init.st_ino &&
+				   st.st_dev == init.st_dev
+				 : environ_names_box(pid, box);
+		if (mine && kill((pid_t)pid, sig) == 0)
+			n++;
+	}
+	kb_strv_free(names);
+	return n;
+}
+
+static int podman_kill(const char *box, const char *sig)
+{
+	KbArgv k = {0};
+	char err[512];
+
+	kb_argv_add(&k, "podman");
+	kb_argv_add(&k, "kill");
+	kb_argv_add(&k, "--signal");
+	kb_argv_add(&k, sig);
+	kb_argv_add(&k, box);
+	kb_argv_end(&k);
+	return kb_run_feed_env(&k, NULL, 0, "", 0, err, sizeof(err));
+}
+
+static int box_down(const char *state)
+{
+	return strcmp(state, "running") && strcmp(state, "stopping") &&
+	       strcmp(state, "paused");
+}
+
+/*
+ * SIGTERM TO THE APPLICATIONS AND THE INIT, `grace` seconds for every box to
+ * leave `running` and `stopping`, then SIGKILL to whatever is left and three
+ * seconds more. The applications are signalled whatever the init does, so a
+ * box that is down holds no exec session that a later remove would refuse
+ * over. Returns how many of the boxes are still up.
+ */
+int box_stop_many(const char *const *boxes, int n, int grace)
+{
+	char state[64];
+	int up = 0;
+
+	for (int i = 0; i < n; i++) {
+		box_signal_all(boxes[i], SIGTERM);
+		box_state(boxes[i], state, sizeof(state));
+		if (!box_down(state))
+			podman_kill(boxes[i], "TERM");
+	}
+	for (int pass = 0; pass < 2; pass++) {
+		int ticks = (pass ? 3 : grace) * 5;
+
+		for (int t = 0; t <= ticks; t++) {
+			up = 0;
+			for (int i = 0; i < n; i++) {
+				box_state(boxes[i], state, sizeof(state));
+				up += !box_down(state) ||
+				      box_signal_all(boxes[i], 0) > 0;
+			}
+			if (!up || t == ticks)
+				break;
+			usleep(200000);
+		}
+		if (!up || pass)
+			break;
+		for (int i = 0; i < n; i++) {
+			box_signal_all(boxes[i], SIGKILL);
+			box_state(boxes[i], state, sizeof(state));
+			if (!box_down(state))
+				podman_kill(boxes[i], "KILL");
+		}
+	}
+	return up;
+}
+
+/*
  * A CONTAINER IN `stopping` IS NOT STARTABLE, AND PODMAN SAYS SO IN A WAY
  * THAT NAMES NOTHING USEFUL: "must be in Created or Stopped state to be
- * started: container state improper". `podman stop` sends SIGTERM and waits
- * out its timeout, and kdos-boxinit stays alive reaping, so a stop followed
- * promptly by a start lands exactly here — as does a hung app holding D-state
- * I/O, which can wedge a box in `stopping` for good.
+ * started: container state improper". A `podman stop` that signalled nothing
+ * (box_signal_all says why) leaves a box there, and a hung app holding
+ * D-state I/O can wedge one there for good.
  *
- * Wait it out, then kill. Only a PACK box is ever removed past that: it keeps
- * nothing in its container — its packs are mounted read-only and its
- * writable upper lives outside it, on disk or on tmpfs in a live session — so
- * recreating the container over the same stack loses nothing, and a return of
- * 3 tells the caller to create it again. Every other box (a store box over a
- * local image, or one with no recorded base) keeps its writes inside the
- * container, and removing it would delete them: it is left stuck, a return of
- * 4, with a warning naming `kdos-box remove <box> --force`, which is the one
- * place that data is given up and only when somebody asks.
+ * The stop sequence above runs, with a short grace. Only a PACK box is ever
+ * removed past that: it keeps nothing in its container — its packs are
+ * mounted read-only and its writable upper lives outside it, on disk or on
+ * tmpfs in a live session — so recreating the container over the same stack
+ * loses nothing, and a return of 3 tells the caller to create it again. Every
+ * other box (a store box over a local image, or one with no recorded base)
+ * keeps its writes inside the container, and removing it would delete them:
+ * it is left stuck, a return of 4, with a warning naming `kdos-box remove
+ * <box> --force`, which is the one place that data is given up and only when
+ * somebody asks.
  */
 int box_unstick(const char *box, char *state, size_t n)
 {
 	Profile p;
-	int i;
 
 	box_state(box, state, n);
 	if (strcmp(state, "stopping"))
 		return 0;
 
-	for (i = 0; i < 15 && !strcmp(state, "stopping"); i++) {
-		sleep(1);
-		box_state(box, state, n);
-	}
-	if (strcmp(state, "stopping"))
-		return 1;
-
-	{
-		KbArgv k = {0};
-		kb_argv_add(&k, "podman");
-		kb_argv_add(&k, "kill");
-		kb_argv_add(&k, box);
-		kb_argv_end(&k);
-		kb_run(&k);
-	}
-	sleep(2);
+	box_stop_many(&box, 1, 3);
 	box_state(box, state, n);
 	if (strcmp(state, "stopping"))
 		return 2;
@@ -578,14 +740,21 @@ void profile_print(const Profile *p)
 		printf("base        = (none yet — the first launch records the pack)\n");
 	/*
 	 * THE TITLE BAR'S COLOUR IS A KWin RULE, written by rules.c for every
-	 * box the user has, and it is named here by the scheme it forces.
+	 * box the user has, and it is named here by the scheme it forces. No
+	 * accent is printed `none`: the file's token for it is `session`, which
+	 * reads as "the session's accent" and is the neutral KDOSBox scheme. A
+	 * name that is no libkcolor accent is said to be one, because the
+	 * rule falls back to the neutral scheme without a word.
 	 */
 	{
 		char scheme[64];
 
 		rules_scheme(p->accent, scheme, sizeof(scheme));
 		printf("accent      = %-11s title bars in %s (KWin rule kdos-box-%s)\n",
-		       p->accent[0] ? p->accent : "session", scheme, p->name);
+		       accent_shown(p->accent), scheme, p->name);
+		if (!accent_known(p->accent))
+			printf("            ! accent '%s' is no KDOS accent — title"
+			       " bars stay neutral (KDOSBox)\n", p->accent);
 	}
 	/*
 	 * EVERY GRANT IS NAMED WITH WHAT IT OPENS, and a name that opens nothing
@@ -640,6 +809,30 @@ void profile_print(const Profile *p)
 			       " writes inside its container, and nothing discards"
 			       " them short of `kdos-box remove`\n",
 			       persist_name(p->persist));
+		/*
+		 * KEPT IS ONLY AS LONG AS THE FILESYSTEM UNDER THEM. On a live
+		 * session $HOME — podman's storage and the boxes' layer
+		 * directories with it — is an overlay whose upper is RAM, and
+		 * whatever a box keeps there ends with the session.
+		 */
+		if (!(lane == BOX_LANE_PACK && p->persist != PERSIST_PERSISTENT) &&
+		    !(lane == BOX_LANE_STORE && p->persist == PERSIST_EPHEMERAL)) {
+			char where[MAX_LINE];
+
+			if (lane == BOX_LANE_PACK) {
+				char *h = profile_home(p->name);
+
+				kb_strlcpy(where, h, sizeof(where));
+				free(h);
+			} else {
+				podman_storage_dir(where, sizeof(where));
+			}
+			if (fs_in_memory(where))
+				printf("            ! the writes are on this live"
+				       " session's memory overlay and end with it"
+				       " — a `kdos persist` store keeps them from"
+				       " its next boot\n");
+		}
 	}
 	printf("network     = %-11s %s\n",
 	       p->netnone ? "none" : p->netns ? "private" : "host",
@@ -670,7 +863,7 @@ void profile_print(const Profile *p)
 	 * $XDG_RUNTIME_DIR/kdos/box/<box> as its /run/user/<uid>, and what a
 	 * launch puts in it is all there is: the tagged Wayland socket KWin
 	 * filters on, the audio sockets, the X11 cookie. A distrobox box sees the
-	 * session's own directory, `wayland-0`, PipeWire and the cookie
+	 * session's own directory, KWin's `wayland-1`, PipeWire and the cookie
 	 * included, whatever these keys say — which is why a box made that way
 	 * is at most `tagged`.
 	 */
@@ -748,17 +941,30 @@ void profile_print(const Profile *p)
 	 * session's cgroup, because its writes are in its container and a
 	 * container whose cgroup parent went with an old session can never
 	 * start again; it has the flags accepted and enforced by nothing but
-	 * kdos-oomd's budget check. Nor does a pack box created in a login
-	 * whose cgroup cannot take it (box_cgroup_parent says why).
+	 * kdos-oomd's budget check, which reads `memory` alone: `cpus` and
+	 * `pids` are held by nothing, and the note names only the limits the
+	 * profile sets. Nor does a pack box created in a login whose cgroup
+	 * cannot take it (box_cgroup_parent says why).
 	 */
 	if (p->memory[0] || p->cpus[0] || p->pids > 0) {
 		char scope[1024];
 
 		if (box_lane(p) != BOX_LANE_PACK ||
-		    !box_cgroup_parent(p->name, scope, sizeof(scope)))
+		    !box_cgroup_parent(p->name, scope, sizeof(scope))) {
+			const char *loose = p->cpus[0] && p->pids > 0
+					    ? "`cpus` or `pids`"
+					    : p->cpus[0] ? "`cpus`"
+					    : p->pids > 0 ? "`pids`" : NULL;
+
 			printf("            ! the limits are podman flags this box"
-			       " gets no cgroup of its own for — kdos-oomd's budget"
-			       " check is what holds it to `memory`\n");
+			       " gets no cgroup of its own for —");
+			if (p->memory[0])
+				printf(" kdos-oomd's budget check is what holds"
+				       " it to `memory`%s", loose ? "," : "");
+			if (loose)
+				printf(" nothing holds it to %s", loose);
+			printf("\n");
+		}
 	}
 	if (p->autostop_s)
 		printf("autostop    = %-11d seconds after start with no window,"

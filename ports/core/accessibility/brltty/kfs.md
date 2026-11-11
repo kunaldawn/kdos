@@ -99,6 +99,8 @@ The service script, `/etc/init.d/65_brltty.sh`, starts nothing until `/etc/brltt
 and is not empty, and nothing installs that file: an attached serial or USB device is no sign of a
 braille display. It runs the daemon as root, because `/dev/vcsa` belongs to root and the `tty`
 group, and sets `KDOS_ALSA_DEFAULT=kdos_card`, so speech goes straight to the sound card when no
-session's PipeWire is running (see
+session's PipeWire is running. The eSpeak NG driver links [espeak-ng](#port-espeak-ng), which opens
+the card for each utterance and closes it once the utterance has played, so BRLTTY holds the card
+only while it speaks (see
 [Turning BRLTTY on](../../../../docs/kdos/02-user-guide/accessibility.md#turning-brltty-on) and
 [Speech and the sound card](../../../../docs/kdos/02-user-guide/accessibility.md#speech-and-the-sound-card)).

@@ -47,6 +47,20 @@ build root.
 
 ## Notes
 
+On Linux the clipboard is the first provider that loads of `xclip`, `xsel`, `dbusklipper` and
+`gtk3`, then SDL's. On a Plasma session that is `dbusklipper`, which copies and pastes through
+Klipper's `org.kde.klipper` D-Bus interface, so a Kivy program shares the desktop's clipboard.
+There is no cut buffer: middle-click pasting of a selection inside a Kivy program is X11-only.
+
+`dbusklipper-copy-bytes.patch` decodes the UTF-8 bytes `ClipboardBase._copy` passes to the Klipper
+provider's `put()` before handing them to Klipper's `setClipboardContents`, which takes a string.
+Without it every copy on a Plasma session raises `TypeError: a bytes-like object is required, not
+'str'`. `cutbuffer-needs-program.patch` keeps only the cut-buffer providers whose program, `xclip`
+or `xsel`, is on `PATH`, and probes none when neither is: Kivy reaches X11's primary selection only
+by running one of them, neither is a port, and without the patch every Kivy program logs a
+`[CRITICAL] [Cutbuffer]` line and two `FileNotFoundError` tracebacks at start. Both are to be
+offered upstream.
+
 The one module Kivy needs that is not a port, `filetype`, comes from the vendor bundle that
 `ports/fetch` makes from `pypackages = filetype`; `pip3 install --no-index` installs it and Kivy
 from `vendor/` alone. See

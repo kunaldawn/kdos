@@ -14,6 +14,7 @@ import QtQuick
 import QtQuick.Layouts
 
 import org.kde.kirigami as Kirigami
+import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.components as PlasmaComponents
 import org.kde.plasma.extras as PlasmaExtras
 import org.kde.plasma.plasmoid
@@ -36,6 +37,7 @@ PlasmaExtras.Representation {
     }
 
     header: PlasmaExtras.PlasmoidHeading {
+        visible: !(Plasmoid.containmentDisplayHints & PlasmaCore.Types.ContainmentDrawsPlasmoidHeading)
         contentItem: Kirigami.Heading {
             level: 1
             text: i18ndc("kdos-plasmoid-privacy", "@title", "Privacy Lamps")

@@ -108,6 +108,47 @@ private Q_SLOTS:
         QVERIFY(kdosFindBoxScopes(QStringLiteral("/nonexistent/kdos/cgroup"), ::getuid()).isEmpty());
     }
 
+    void findsBoxesByProcess()
+    {
+        QTemporaryDir t;
+        QVERIFY(t.isValid());
+        const QString r = t.path();
+        put(r + QStringLiteral("/nshost"), "");
+        put(r + QStringLiteral("/nsbox"), "");
+        QDir().mkpath(r + QStringLiteral("/self/ns"));
+        QFile::link(r + QStringLiteral("/nshost"), r + QStringLiteral("/self/ns/mnt"));
+        auto proc = [&](const QString &pid, const char *ns, const QByteArray &env, const QByteArray &ticks, const QByteArray &pssKb) {
+            const QString d = r + QLatin1Char('/') + pid;
+            QDir().mkpath(d + QStringLiteral("/ns"));
+            QFile::link(r + QLatin1Char('/') + QLatin1String(ns), d + QStringLiteral("/ns/mnt"));
+            put(d + QStringLiteral("/environ"), env);
+            put(d + QStringLiteral("/stat"), pid.toUtf8() + " (a) b) S 1 1 1 0 -1 0 0 0 0 0 " + ticks + " " + ticks + " 0 0 20 0 1 0\n");
+            put(d + QStringLiteral("/smaps_rollup"), "Rss: 900 kB\nPss: " + pssKb + " kB\n");
+            put(d + QStringLiteral("/io"), "rchar: 1\nread_bytes: 4096\nwrite_bytes: 512\n");
+        };
+        const QByteArray mouse("HOME=/home/k\0KDOS_BOX=app.mousepad\0PATH=/bin\0", 45);
+        proc(QStringLiteral("100"), "nsbox", mouse, "100", "1000");
+        proc(QStringLiteral("101"), "nsbox", mouse, "50", "24");
+        /* The host shell `kdos-box enter` left: the variable, not the box. */
+        proc(QStringLiteral("200"), "nshost", mouse, "7", "7");
+        proc(QStringLiteral("300"), "nsbox", QByteArray("KDOS_BOX=www\0", 13), "1", "1");
+        proc(QStringLiteral("400"), "nsbox", QByteArray("PATH=/bin\0", 10), "1", "1");
+
+        const long hz = ::sysconf(_SC_CLK_TCK);
+        const auto boxes = kdosBoxesByProcess(r, QStringLiteral("self"), ::getuid(), {QStringLiteral("www")});
+        QCOMPARE(boxes.size(), 1);
+        const CgroupCounters c = boxes.value(QStringLiteral("app.mousepad"));
+        QVERIFY(c.present);
+        QCOMPARE(c.processes, 2);
+        QCOMPARE(c.cpuUsec, 300LL * 1000000 / hz);
+        QCOMPARE(c.memoryBytes, 1024LL * 1024);
+        QCOMPARE(c.memoryMaxBytes, 0);
+        QCOMPARE(c.readBytes, 8192);
+        QCOMPARE(c.writeBytes, 1024);
+        QCOMPARE(kdosBoxesByProcess(r, QStringLiteral("self"), ::getuid()).size(), 2);
+        QVERIFY(kdosBoxesByProcess(r, QStringLiteral("self"), ::getuid() + 1).isEmpty());
+    }
+
     void readsCounters()
     {
         QTemporaryDir t;

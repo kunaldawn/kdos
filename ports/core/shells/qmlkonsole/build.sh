@@ -21,3 +21,10 @@ cmake --build build
 DESTDIR=$PKG cmake --install build
 
 desktop-file-edit --set-name="Terminal (QMLKonsole)" "$PKG/usr/share/applications/org.kde.qmlkonsole.desktop"
+
+install -d "$PKG/usr/share/kdos/xdg"
+cat > "$PKG/usr/share/kdos/xdg/qmlkonsolerc" <<'EOF'
+[General]
+colorScheme=KDOS-Bone
+EOF
+chmod 644 "$PKG/usr/share/kdos/xdg/qmlkonsolerc"

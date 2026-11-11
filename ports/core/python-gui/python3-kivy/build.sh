@@ -13,6 +13,8 @@ patch -p1 -i "$PORT_SRC/python314-ast-str.patch"
 
 patch -p1 -i "$PORT_SRC/cython-long.patch"
 patch -p1 -i "$PORT_SRC/cython-dict-keys.patch"
+patch -p1 -i "$PORT_SRC/cutbuffer-needs-program.patch"
+patch -p1 -i "$PORT_SRC/dbusklipper-copy-bytes.patch"
 
 export USE_SDL2=1 USE_X11=0 USE_WAYLAND=0 USE_EGL=0 USE_GSTREAMER=0 \
 	USE_PANGOFT2=0 USE_MESAGL=0 USE_OPENGL_ES2=0

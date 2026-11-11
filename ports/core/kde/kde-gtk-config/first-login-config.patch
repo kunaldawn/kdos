@@ -1,0 +1,92 @@
+Subject: Write the GTK 4 colours and Breeze decorations from the first login
+
+At the first login of a new user ~/.config/gtk-4.0 does not exist when the
+module writes gtk.css and colors.css, and QFile does not create a missing
+directory, so a GTK 4 or libadwaita program wears stock Adwaita until the
+next colour change. Create each GTK config directory before writing into
+it.
+
+At the same login kconf_update writes gtk-theme-name=Breeze into
+settings.ini while kded is already running, after the module has read the
+file, so the module takes the theme for unset, removes Breeze's
+window_decorations.css and writes no decoration assets. When settings.ini
+names no theme, take the name from GSettings, which holds the same one.
+
+diff --git a/kded/config_editor/custom_css.cpp b/kded/config_editor/custom_css.cpp
+index aa9c2d7..42c5dd3 100644
+--- a/kded/config_editor/custom_css.cpp
++++ b/kded/config_editor/custom_css.cpp
+@@ -41,6 +41,7 @@ void saveWindowDecorationsToAssets(const QStringList &windowDecorationsButtonsIm
+ void addWindowDecorationsCssFile()
+ {
+     for (auto gtkVersion : Utils::s_gtkVersions) {
++        QDir().mkpath(Utils::configDirPath(gtkVersion));
+         QFile windowDecorationsCss{QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("/themes/Breeze/window_decorations.css"))};
+ 
+         auto windowDecorationsDestination = Utils::configDirPath(gtkVersion) + QStringLiteral("/window_decorations.css");
+@@ -53,6 +54,8 @@ void addWindowDecorationsCssFile()
+ void addImportStatementsToGtkCssUserFile()
+ {
+     for (auto gtkVersion : Utils::s_gtkVersions) {
++        // At the first login nothing has made gtk-4.0 yet, and QFile does not create a directory
++        QDir().mkpath(Utils::configDirPath(gtkVersion));
+         auto gtkCssPath = Utils::configDirPath(gtkVersion) + QStringLiteral("/gtk.css");
+         QFile gtkCss(gtkCssPath);
+ 
+@@ -87,6 +90,7 @@ void removeWindowDecorationsCSS()
+ void modifyColorsCssFile(const QMap<QString, QColor> &colorsDefinitions, const QMap<QString, QColor> &libadwaitaColors)
+ {
+     for (auto gtkVersion : Utils::s_gtkVersions) {
++        QDir().mkpath(Utils::configDirPath(gtkVersion));
+         QString colorsCssPath = Utils::configDirPath(gtkVersion) + QStringLiteral("/colors.css");
+         QFile colorsCss(colorsCssPath);
+ 
+diff --git a/kded/config_editor/gsettings.cpp b/kded/config_editor/gsettings.cpp
+index 7da187d..f89e381 100644
+--- a/kded/config_editor/gsettings.cpp
++++ b/kded/config_editor/gsettings.cpp
+@@ -61,6 +61,17 @@ void setValue(const char *paramName, const QVariant &paramValue, const char *cat
+     }
+ }
+ 
++QString value(const char *paramName, const char *category)
++{
++    if (!checkParamExists(paramName, category)) {
++        return QString();
++    }
++
++    g_autoptr(GSettings) gsettings = g_settings_new(category);
++    g_autofree gchar *paramValue = g_settings_get_string(gsettings, paramName);
++    return QString::fromUtf8(paramValue);
++}
++
+ void setValueAsEnum(const char *paramName, int paramValue, const char *category)
+ {
+     if (!checkParamExists(paramName, category)) {
+diff --git a/kded/config_editor/gsettings.h b/kded/config_editor/gsettings.h
+index 46caf3b..e2c1bc9 100644
+--- a/kded/config_editor/gsettings.h
++++ b/kded/config_editor/gsettings.h
+@@ -8,5 +8,6 @@
+ namespace GSettingsEditor
+ {
+ void setValue(const char *paramName, const QVariant &paramValue, const char *category = "org.gnome.desktop.interface");
++QString value(const char *paramName, const char *category = "org.gnome.desktop.interface");
+ void setValueAsEnum(const char *paramName, int paramValue, const char *category = "org.gnome.desktop.interface");
+ }
+diff --git a/kded/gtkconfig.cpp b/kded/gtkconfig.cpp
+index 38a1f39..fb9f9a9 100644
+--- a/kded/gtkconfig.cpp
++++ b/kded/gtkconfig.cpp
+@@ -147,7 +147,10 @@ void GtkConfig::setGtkTheme(const QString &themeName) const
+ 
+ QString GtkConfig::gtkTheme() const
+ {
+-    return SettingsIniEditor::value(QStringLiteral("gtk-theme-name"));
++    // kconf_update writes the first theme name into settings.ini while kded is already
++    // running, and the module's copy of the file predates it; GSettings holds the same name
++    const QString theme = SettingsIniEditor::value(QStringLiteral("gtk-theme-name"));
++    return theme.isEmpty() ? GSettingsEditor::value("gtk-theme") : theme;
+ }
+ 
+ void GtkConfig::showGtkThemePreview(const QString &themeName) const

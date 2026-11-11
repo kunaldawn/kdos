@@ -417,6 +417,18 @@ private Q_SLOTS:
         QTRY_VERIFY(!m_kcm->isConfigured());
         QVERIFY(m_kcm->isAvailable());
         QTRY_VERIFY(!slot(0)->isPresent());
+        QVERIFY(!m_kcm->isLive());
+    }
+
+    void liveMediumIsNotAnInstall()
+    {
+        begin();
+        QFile::remove(path(u"bootstate"_s));
+        write(u"live"_s, QString());
+        m_kcm->load();
+        QTRY_VERIFY(m_kcm->isLive());
+        QVERIFY(!m_kcm->isConfigured());
+        QVERIFY(m_kcm->isAvailable());
     }
 
     void serverComingAndGoing()

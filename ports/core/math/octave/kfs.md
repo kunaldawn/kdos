@@ -52,5 +52,9 @@ The tarball carries the manual already built, as Info, HTML, PDF and a Qt help c
 is installed as it is; `build.sh` checks that `octave.info` and the `octave-gui` program were
 installed. It removes the test files under `/usr/share/octave/<version>/etc/tests`.
 
-The desktop entry is KDOS's own, written over upstream's for `StartupWMClass=org.octave.Octave`:
-the GUI sets that as its desktop file name, and so as its Wayland app id.
+The desktop entry is KDOS's own, written over upstream's for `StartupWMClass=org.octave.Octave`,
+and the file is named after it, which is the only name KWin looks a window's icon up by. Octave
+sets that desktop file name, and so every window's Wayland app id, in its main window's
+constructor, after the first-run welcome wizard has been shown under the executable's name,
+`octave-gui`; `app-id.patch` sets it when the application object is made, before any window. The
+patch is to be offered upstream.

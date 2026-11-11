@@ -42,9 +42,9 @@ come from:
 
 An application row and its description, as an example:
 
-<!-- kfs:include src/system/kdos-appbox/catalogue lines=320-320 pin=db241a9ade70 -->
+<!-- kfs:include src/system/kdos-appbox/catalogue lines=327-327 pin=db241a9ade70 -->
 
-<!-- kfs:include src/system/kdos-appbox/catalogue lines=508-508 pin=6a389e27c186 -->
+<!-- kfs:include src/system/kdos-appbox/catalogue lines=530-530 pin=6a389e27c186 -->
 
 The format of every line kind is in
 [The catalogue file](../../kdos/04-programs/kdos-appbox.md#the-catalogue-file).
@@ -170,15 +170,18 @@ A launch starts the box if it is stopped, and composes a pack box's root first.
 kdos-box list                          # every box: base, state, persistence, disk use, accent
 kdos-box enter app.hugin               # a shell inside it, in a new terminal window
 kdos-box enter app.hugin ls /usr/bin   # one command, in place
-kdos-box stop app.hugin                # podman stop -t 10: waits 10 seconds, then kills
+kdos-box stop app.hugin                # SIGTERM to it and its apps, 10 seconds, then SIGKILL
 kdos-box start app.hugin
 kdos-box remove app.hugin              # the profile and ~/.local/share/kdos/boxes/<name> stay
 ```
 
 `kdos-box list` prints one row per box under `BOX BASE STATE PERSIST DISK ACCENT`; a box whose
-profile exists and whose container does not is `not created`. A box made from an image, a distrobox
-container, does not exit on podman's stop signal, so its `stop` takes the whole ten seconds and
-the kill (15 seconds on the live medium), and `list` may still show it `stopping` for a moment.
+profile exists and whose container does not is `not created`, and a box with no accent shows
+`none`. `kdos-box stop` does not use `podman stop`, which signals nothing in a box that shares the
+host's process table and has no cgroup of its own, as every store box does: it signals the
+applications the box's launches started and the box's init itself, and an application that ignores
+SIGTERM is killed after ten seconds. See
+[kdos-box](../../kdos/04-programs/kdos-appbox.md#kdos-box).
 
 `remove` runs `podman rm` without `-f`, which refuses a running box. On success it prints
 `<name> removed — its profile is kept in ~/.config/kdos/boxes/<name>.conf`, followed by
@@ -188,10 +191,8 @@ container and go with it. When podman refuses, podman's own error is printed, th
 `<name> was not removed (podman rm exited N)`, which without `--force` goes on to say that a
 running box needs `kdos-box stop` first, and `kdos-box remove` exits with podman's status;
 the box and its stack are left as they were. Stop the box first with `kdos-box stop`, then remove
-it. `--force` (`kdos-box remove app.hugin --force`) adds `-f` to `podman rm`, which does not
-remove a running box made from an image on the live medium: podman gives up with `given PID did
-not die within timeout`, the box is left `stopping`, and `kdos-box remove` reports the failure
-the same way. A box with no container, such as one whose `create` failed, has its profile deleted
+it. `--force` (`kdos-box remove app.hugin --force`) runs `kdos-box stop`'s sequence first and adds
+`-f` to `podman rm`, so a running box goes with it. A box with no container, such as one whose `create` failed, has its profile deleted
 and any composed stack released, answers `<name> had no container — its profile is removed` and
 exits 0; a name with neither a container nor a profile answers `<name> has no container to remove`
 and exits 1, after releasing any composed stack the same way.
@@ -233,9 +234,11 @@ Both kinds of box take the same keys. A store box is created by `distrobox creat
 `memory`, `cpus` and `pids` to podman as `--memory`, `--cpus` and `--pids-limit`, and
 `network=none` as `--network none`, a namespace with no interface; a `memory` or `cpus` value
 made of anything but letters, digits and dots is refused with a warning and not applied. On
-either kind, `memory` and `cpus` become
-[cgroup]{.idx} limits under the delegated cgroup elogind gives each login's session; the engine
-applies them through it. See [Box profiles](../../kdos/04-programs/kdos-appbox.md#box-profiles) and
+either kind the limits are passed to podman, and on KDOS the kernel enforces none of them: a
+[cgroup]{.idx} limit needs the box in the delegated subtree elogind gives each login, and no box
+can be placed there (see [Host applications and boxes reach the portals
+unidentified](../../kdos/06-reference/known-gaps.md#host-applications-and-boxes-reach-the-portals-unidentified)).
+See [Box profiles](../../kdos/04-programs/kdos-appbox.md#box-profiles) and
 [memory and grants](../../kdos/04-programs/kdos-appbox.md#memory-and-grants).
 
 ### Granting a box more of the desktop
@@ -439,9 +442,7 @@ A profile change has no effect
 - [A catalogue change reaches an installed application only when it is rebuilt](../../kdos/06-reference/known-gaps.md#a-catalogue-change-reaches-an-installed-application-only-when-it-is-rebuilt)
 - [A live session cannot create a persistent box](../../kdos/06-reference/known-gaps.md#a-live-session-cannot-create-a-persistent-box)
 - [A box is not a security boundary against you](../../kdos/06-reference/known-gaps.md#a-box-is-not-a-security-boundary-against-you)
-- [An accent change has not been watched in running GTK and libadwaita programs](../../kdos/06-reference/known-gaps.md#an-accent-change-has-not-been-watched-in-running-gtk-and-libadwaita-programs)
-- [Applications imported or built during an install stay in the live session](../../kdos/06-reference/known-gaps.md#applications-imported-or-built-during-an-install-stay-in-the-live-session)
-
+- [A running GTK 4 or libadwaita program takes a new accent only at its next start](../../kdos/06-reference/known-gaps.md#a-running-gtk-4-or-libadwaita-program-takes-a-new-accent-only-at-its-next-start)
 ## See also
 
 - [Applications](../../kdos/02-user-guide/applications.md): the user guide's chapter, the store and the everyday commands

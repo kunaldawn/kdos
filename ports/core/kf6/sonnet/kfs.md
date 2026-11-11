@@ -28,3 +28,12 @@ of Qt Widgets text fields, and a QML module, `org.kde.sonnet`, for Qt Quick ones
 
 The Hebrew engine, Hspell, and the Finnish one, Voikko, are looked for as well and are not ports,
 so neither plugin is built.
+
+Sonnet's default language is the locale's name unless `defaultLanguage` is set, and the C locale
+names no dictionary: every program would then check against whichever dictionary sorts first, and
+the Spell Check page of System Settings would open with unsaved changes. KDOS ships
+`/usr/share/kdos/xdg/KDE/Sonnet.conf` with `defaultLanguage=en_US`, which Sonnet reads through
+`XDG_CONFIG_DIRS` (see
+[Configuration](../../../../docs/kdos/06-reference/configuration.md)). The aspell English
+dictionary's spelling variants (`american-variant_0`, `-w_accents` and the like) are listed among
+the languages on that page; they are aspell-en's own aliases and are kept.

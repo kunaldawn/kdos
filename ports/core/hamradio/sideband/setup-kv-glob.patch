@@ -1,0 +1,17 @@
+Subject: setup.py: collect the KivyMD .kv files from sbapp/kivymd
+
+The bundled KivyMD lives at sbapp/kivymd; glob_paths() walked a top-level
+kivymd directory that does not exist, so package_data carried no .kv file
+and the installed app could not load a single widget rule.
+
+--- a/setup.py	2026-11-09 12:53:22.972064075 +0530
++++ b/setup.py	2026-11-09 12:53:23.174895735 +0530
+@@ -37,7 +37,7 @@
+ 
+ def glob_paths(pattern):
+     out_files = []
+-    src_path = os.path.join(os.path.dirname(__file__), "kivymd")
++    src_path = os.path.join(os.path.dirname(__file__), "sbapp", "kivymd")
+ 
+     for root, dirs, files in os.walk(src_path):
+         for file in files:

@@ -32,6 +32,7 @@ Comment=Read RSS and Atom feeds
 Exec=newsboat
 Icon=mail-message
 Terminal=true
+NoDisplay=true
 Categories=Network;News;
 Keywords=rss;atom;feed;news;reader;newsboat;
 ENTRY

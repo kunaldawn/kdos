@@ -35,8 +35,12 @@ data the player supplies, the Roland ROMs and a SoundFont.
 
 [libslirp](#port-libslirp), for the emulated network card, is loaded at run time.
 
-`build.sh` removes `/usr/share/dosbox-staging/resources/translations`; the interface falls back to
-its built-in English messages. Upstream's menu entry is replaced by an English one with a
+Upstream installs its resources, the shaders, mapper files, FreeDOS code pages and the rest, into
+`/usr/share/dosbox-staging/resources/`, one level below the `/usr/share/dosbox-staging` its
+resource search looks in, and the search finds no shaders there and aborts the emulator at start.
+No configure variable moves one without the other, so `build.sh` moves the tree up a level after
+the install. Before that it removes the `translations` directory; the interface falls back to its
+built-in English messages. Upstream's menu entry is replaced by an English one with a
 `TryExec` and a `StartupWMClass`. The Wayland app_id is `org.dosbox_staging.dosbox_staging`, set
 through SDL's app-id hint, and the icon of that name is upstream's hicolor set, a scalable SVG and
 PNGs from 16 to 1024 pixels.

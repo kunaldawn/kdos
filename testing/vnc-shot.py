@@ -63,9 +63,11 @@ rig section:
 
 import argparse
 import base64
+import json
 import os
 import re
 import shlex
+import shutil
 import socket
 import struct
 import subprocess
@@ -855,7 +857,12 @@ def main():
                          "backend when it does not")
     ap.add_argument("--disk", default=None,
                     help="attach this qcow2 as a virtio disk — the target an "
-                         "unattended kinstall writes to")
+                         "unattended kinstall writes to. With the ISO attached "
+                         "the run refuses when the qcow2 could grow past the "
+                         "host's free space")
+    ap.add_argument("--allow-disk-growth", action="store_true",
+                    help="run an install onto --disk even when its qcow2 "
+                         "could outgrow the host's free space")
     ap.add_argument("--no-cdrom", action="store_true",
                     help="leave the ISO off entirely, so the DISK is what "
                          "boots. The second half of an install test")
@@ -867,19 +874,21 @@ def main():
     ap.add_argument("--boot-disk", action="store_true",
                     help="boot the DISK with the ISO still attached — an "
                          "installed system that can still reach the medium. "
-                         "The app sweep needs both: boxes run on the disk and "
-                         "packs are installed off /mnt/iso/packs")
+                         "The app sweep reads packs from /mnt/iso/packs, "
+                         "which only a medium you have put packs into "
+                         "carries; the shipped ISO has none")
     ap.add_argument("--scratch", default=None,
                     help="attach a raw file as a virtio disk the GUEST writes "
                          "a tar onto, which is how files come back out. "
                          "--data-disk is input only")
     ap.add_argument("--usb", default=None,
-                    help="attach a raw disk image as a USB stick")
+                    help="attach a raw disk image as a removable USB 3 "
+                         "stick on its own xHCI controller")
     ap.add_argument("--data-disk", default=None,
                     help="attach a raw file as a plain virtio disk — how a "
                          "large artefact, or a tar of files the guest "
                          "unpacks itself, reaches a guest with no network. "
-                         "Far faster than --usb, and not removable. "
+                         "Not removable, unlike --usb. "
                          "testing/quick.sh carries its patch this way")
     ap.add_argument("--keep", action="store_true")
     ap.add_argument("--serial-log", default="/tmp/kdos-serial.log")
@@ -958,6 +967,29 @@ def main():
     if not args.no_cdrom:
         qemu += ["-cdrom", ISO]
     if args.disk:
+        # AN INSTALL RUN FILLS THE QCOW2 ON THE HOST. The copy writes about
+        # the payload `kinstall --dump probe` reports, and a host disk that
+        # fills mid-copy pauses the emulator with the guest half-written, so
+        # the room the image may still grow into is checked against what the
+        # host has free before anything boots.
+        if not args.no_cdrom and not args.boot_disk and \
+                not args.allow_disk_growth:
+            try:
+                info = json.loads(subprocess.run(
+                    ["qemu-img", "info", "-U", "--output=json", args.disk],
+                    capture_output=True, text=True, check=True).stdout)
+            except (OSError, subprocess.CalledProcessError, ValueError) as e:
+                raise SystemExit("--disk %s: qemu-img info failed: %s"
+                                 % (args.disk, e))
+            grow = info["virtual-size"] - info.get("actual-size", 0)
+            free = shutil.disk_usage(
+                os.path.dirname(os.path.abspath(args.disk))).free
+            if grow > free:
+                raise SystemExit(
+                    "--disk %s can grow by %d MB and the host has %d MB "
+                    "free: make a smaller qcow2, free space, or pass "
+                    "--allow-disk-growth" % (args.disk, grow >> 20,
+                                             free >> 20))
         # virtio-blk, so it lands as /dev/vda and kinstall's probe sees a plain
         # whole disk rather than something behind a USB bridge.
         #
@@ -1012,12 +1044,11 @@ def main():
                  "-device", "virtio-blk-pci,drive=scr0"]
     if args.data_disk:
         # A PLAIN VIRTIO DISK CARRYING ONE FILE'S BYTES, for getting a large
-        # artefact INTO a guest that has no network. `--usb` is the wrong
-        # transport for it: usb-storage is emulated at USB 2.0 and measured
-        # 1.8 MB/s here, so a 9.2 GB pack took 85 minutes and outran any
-        # timeout worth setting. This is the same virtio-blk the target disk
-        # uses. It lands as the next /dev/vdX, has no partition table and no
-        # filesystem — the guest reads the device itself, with `dd bs=1M` and
+        # artefact INTO a guest that has no network. It is the same
+        # virtio-blk the target disk uses and is not removable, so the
+        # session's removable-media handling has no stick to act on. It lands
+        # as the next /dev/vdX, has no partition table and no filesystem —
+        # the guest reads the device itself, with `dd bs=1M` and
         # a `truncate` to the artefact's exact length, because a raw drive is
         # rounded up to a sector boundary.
         qemu += ["-drive", "if=none,id=dd0,format=raw,file=%s" % args.data_disk,
@@ -1025,9 +1056,15 @@ def main():
     if args.usb:
         # A real removable device, for udisks2, Solid and the Device Notifier:
         # usb-storage lands as /dev/sdX with `removable = 1`, which is what
-        # they treat as a stick rather than as a fixed disk.
-        qemu += ["-drive", "if=none,id=stick,format=raw,file=%s" % args.usb,
-                 "-device", "usb-storage,drive=stick,removable=on"]
+        # they treat as a stick rather than as a fixed disk. It goes on its
+        # own xHCI controller: `-usb` on this machine type is UHCI, USB 1.1,
+        # and a session booted off a stick on it reads its image so slowly
+        # that the login outruns turnstile's login_timeout and Plasma never
+        # starts.
+        qemu += ["-device", "qemu-xhci,id=xhci",
+                 "-drive", "if=none,id=stick,format=raw,file=%s" % args.usb,
+                 "-device",
+                 "usb-storage,bus=xhci.0,drive=stick,removable=on"]
     print("+", " ".join(qemu), flush=True)
     vm = subprocess.Popen(qemu, stdout=subprocess.DEVNULL,
                           stderr=subprocess.STDOUT)

@@ -35,12 +35,15 @@ KDOS_XRES = $(word 1,$(subst x, ,$(KDOS_RES)))
 KDOS_YRES = $(word 2,$(subst x, ,$(KDOS_RES)))
 
 # The virtual machine's disk. kinstall refuses a disk smaller than the install
-# size plus 768 MiB, and every package is on the medium, so the install is
-# about 53 GB; a qcow2 is sparse and takes on the host only what the guest
+# size plus 768 MiB, and lays out the two A/B system slots only on a disk that
+# holds two slots of 1.5 times the install each, the swap and a 4 GiB home:
+# about 149 GiB for an install of 46.5 GiB. Below that the installed system gets
+# one slot and an update cannot be rolled back, so a smaller disk never
+# exercises A/B. A qcow2 is sparse and takes on the host only what the guest
 # writes.
 #
-#   make cleandisk KDOS_DISK=128G
-KDOS_DISK ?= 96G
+#   make cleandisk KDOS_DISK=256G
+KDOS_DISK ?= 192G
 
 # Every port's sources from the archive, the cache or upstream, verified
 # against the recipe. `make build` downloads no source, only the builder
@@ -200,7 +203,7 @@ build: check-iso-free ## build everything in the container (BUILD_ARGS narrows i
 snapshots: ## list the phase snapshots
 	script/kdosbuild.sh --list
 
-run: ## boot the ISO in QEMU (software graphics); creates a sparse 96G build/kdos.qcow2 if missing
+run: ## boot the ISO in QEMU (software graphics); creates a sparse 192G build/kdos.qcow2 if missing
 	test -f build/iso-build/kdos.iso || { echo "ERROR: ISO not found at build/iso-build/kdos.iso — run 'make build' first"; exit 1; }
 	test -r /usr/share/ovmf/OVMF.fd || { echo "ERROR: OVMF firmware not found at /usr/share/ovmf/OVMF.fd — install ovmf (debian: ovmf, arch: edk2-ovmf)"; exit 1; }
 	test -c /dev/kvm 2>/dev/null || { echo "WARNING: /dev/kvm not found — QEMU will run without KVM (very slow)"; }
@@ -238,7 +241,7 @@ check-hw:
 	docker info 2>/dev/null | grep -q ' nvidia' || { echo "WARNING: docker has no 'nvidia' runtime — virgl will fall back to software or fail"; }
 	test -c /dev/udmabuf || { echo "WARNING: /dev/udmabuf not found — blob resources unavailable, KWin will blank"; }
 
-cleandisk: ## recreate an empty build/kdos.qcow2, sparse, 96G unless KDOS_DISK says otherwise
+cleandisk: ## recreate an empty build/kdos.qcow2, sparse, 192G unless KDOS_DISK says otherwise
 	qemu-img create -f qcow2 build/kdos.qcow2 $(KDOS_DISK)
 
 # Wipe the build tree but keep build/snapshots, so a phase can still be

@@ -44,7 +44,7 @@ and [Which one to run](#which-one-to-run), then read the section for the harness
 | `testing/defaultscheck.py`, `testing/xdgcheck.sh` | That every default KDOS gives a KDE program reads back as intended through the configuration cascade, and that those defaults stay out of `/etc/xdg` | That the program honours the key | Seconds |
 | `testing/vnc-shot.py` | That a real session does a thing, photographed | Anything the renderer in use cannot show | Minutes per boot |
 | `testing/plasma-probe.sh` | That the booted session is whole: its processes, its bus names, logind's view of it, its desk and its windows | That anything in it is usable | One boot |
-| `testing/flows/` | That the login paths work end to end: autologin, the greeter, logout, the lock screen, suspend and resume, VT switching, and that no key typed into Plasma reaches a tty. Written, not yet run on a rig | How the greeter and the lock screen look | One boot per flow |
+| `testing/flows/` | That the login paths work end to end: autologin, the greeter, logout, the lock screen, suspend and resume, VT switching, and that no key typed into Plasma reaches a tty; flow 05 also that the screen is lit after resume | How the greeter and the lock screen look | One boot per flow |
 | `testing/session-cost.sh` | How long the boot takes to reach the panel, and what the session costs in memory at idle | Anything about hardware other than the rig's | One boot |
 | AT-SPI goldens | That a KDOS surface's accessibility tree has not changed, and that every visible control in it has a name a screen reader can say | That it is laid out well | One boot for the gate; a minute per surface headless |
 | `testing/quick.sh` | That a changed component behaves in a booted session, without repacking the ISO | Anything about the shipped image | A few minutes |
@@ -54,7 +54,7 @@ and [Which one to run](#which-one-to-run), then read the section for the harness
 | `testing/kfscheck.py` | That *KDOS from Scratch*'s notes, includes, kernel option table and recipe stamp match the tree, that every port renders, and that a new or changed patch carries a `Subject:` line | That a note is still true | A few seconds |
 | `make fetch-check` | That every source a recipe names is on disk and matches its hash | That the sources build | About a minute, offline |
 | `testing/packlane.sh` | The pack lane (installing boxed applications from packs; see [Packs and boxes](../03-architecture/packs-and-boxes.md#two-lanes-one-box)) end to end on a booted machine | Anything without application packs to install | Minutes |
-| `testing/install-to-disk.sh` | That the installer installs, and what it wrote | That the installed system boots, which is the second half of the run | Minutes |
+| `testing/install-to-disk.sh` | That the installer installs, and what it wrote | That the installed system boots, which is the second half of the run | Minutes, and host space for the whole payload |
 | `testing/bios-boot.sh` | That the image boots on a machine with no UEFI firmware at all | Anything about the UEFI path | About two minutes |
 
 None of them proves the build works. A package manager and a build orchestrator are only fully
@@ -119,13 +119,13 @@ directory there reports what is missing from it.
 | Build options | Every meson option a recipe passes is one that port defines, checked against the tarball's own option file, with the two closed-value option types validated; every recipe that runs `meson setup` names its buildtype; every `go build` and `go install` passes `-s` and `-w` in its `-ldflags`, read with its backslash continuations joined; every `pip install` into a package root (`--root`) passes `--ignore-installed`, or pip removes the build root's own copy of what it installs; `script/bin/ninja`, run against a stand-in ninja, adds `-j$KDOS_JOBS` only to a call that gives no job count, passes `-t`, `--version` and a given `-j` through unchanged, and runs `/usr/bin/ninja` by absolute path; `script/bin/meson` adds `--wrap-mode=nodownload` to an explicit or implicit `setup` that names no wrap mode and hands `compile`, `install`, `configure`, `subprojects` and `--version` on unchanged; every recipe that runs cargo builds against a shared C library |
 | Sources | Every source file in a port of KDOS's own is compiled by its recipe, unless that recipe globs its own `$PORT_SRC` directory (a glob of the shared `libk*` trees does not exempt it) or runs CMake on it, in which case the files its `CMakeLists.txt` names count as compiled; a first source whose members are `./`-prefixed is accounted for; a flat first source is unpacked by its own recipe |
 | The sources archive | No archive a recipe hashes is tracked by git; `.gitignore` ignores every archive suffix under `ports/core` and the source cache, and none of the archive fixtures under `testing/fixtures`; `ports/srclib.sh`, `ports/fetch`, `ports/publish` and `script/hooks/pre-push` exist, are executable where they must be, and pass `bash -n`; `ports/sources.idx` holds every format-2 rule: `# kdos-sources-index 2` on line 1, each line `<sha256> <tag> <asset> <port>/<file>` with an optional `parts=<N>:…` of 2 to 99 hashes, each tag `sources-<N>` with `N` a positive integer, or a `src-<name>` of the older layout, which passes and is counted in a `WARNING` note saying `make publish-rehome` moves those lines, one line per hash, no part hash equal to a line's hash, no two asset names in one tag equal ignoring case (a split file's parts and its bare name counted), and hash order. An unset `core.hooksPath` is printed as a note, not a failure |
-| The session | No systemd unit ships: a `.service` is a D-Bus service file under `usr/share/dbus-1` and nowhere else, no `.socket` ships, and a `.timer` lives only in the tables KDOS hands to `snooze` (`etc/kdos/timers.d`, `etc/kdos/user-services/timers.d` and skel's `.config/kdos/timers.d`); `startkderc` tells `startplasma-wayland` there is no systemd; SDDM's greeter runs on Wayland and nothing configures an X server, with `fs/etc/X11` absent; every program the About page's `kcm-about-distrorc` runs prints a label and a value (see `aboutcheck.sh` below); no `profile.d` script exports `XCURSOR_THEME`, which KWin would prefer over the Cursors page; "Get New…" is off for every application through `[KDE Action Restrictions] ghns=false`; every program `fs/etc/inittab` names is on the image; every filesystem the installer offers, the initramfs can mount; the ISO step builds every boot path (BIOS and UEFI, disc and written stick); the built `kinstall` is the installer in this tree |
+| The session | No systemd unit ships: a `.service` is a D-Bus service file under `usr/share/dbus-1` or a libaccounts service description under `usr/share/accounts/services` and nowhere else, no `.socket` ships, and a `.timer` lives only in the tables KDOS hands to `snooze` (`etc/kdos/timers.d`, `etc/kdos/user-services/timers.d` and skel's `.config/kdos/timers.d`); `startkderc` tells `startplasma-wayland` there is no systemd; SDDM's greeter runs on Wayland and nothing configures an X server, with `fs/etc/X11` absent; every program the About page's `kcm-about-distrorc` runs prints a label and a value (see `aboutcheck.sh` below); no `profile.d` script exports `XCURSOR_THEME`, which KWin would prefer over the Cursors page; "Get New…" is off for every application through `[KDE Action Restrictions] ghns=false`; every program `fs/etc/inittab` names is on the image; every filesystem the installer offers, the initramfs can mount; the ISO step builds every boot path (BIOS and UEFI, disc and written stick); the built `kinstall` is the installer in this tree |
 | Plasma packages | Every KDOS plasmoid, KCM and look-and-feel carries a `metadata.json` that parses and has what Plasma keys on (an `org.kdos.*` id, `X-Plasma-API-Minimum-Version` 6 for a plasmoid); the shipped `kglobalshortcutsrc` and `kwinrulesrc` parse, every chord has one owner and every `[services]` group names a desktop entry some port installs (by `testing/chordcheck.py`), and `kwinrulesrc`'s count and rule list agree with its groups; every desk's `layout.js` parses (with `node`; skipped without it); every desktop id `/usr/share/kdos/xdg/kde-mimeapps.list` names is installed (by `testing/mimecheck.py`); every command a KRunner route in `menu.conf` names exists |
 | Permissions and accounts | `/etc/shadow` on the built tree is mode 600 or 640 and the file-system step narrows it; the polkit and udev rule directories and files are owned by root; no udev rule sets `GROUP=`, `MODE=` or `OWNER=` on a device class that has no node, and every group a rule grants is one the desktop user is in; every account a shipped daemon drops to exists in `fs/etc/passwd`; the desktop user is in the groups its pages need (`lpadmin` for the Printers page) |
 | Shell | All shipped and build shell is syntactically valid; every file a build script, a `phase.env` or a shared environment file sources exists, and a step sources its own phase's `phase.env`; a script a recipe ships inside a `KDOS_SH` heredoc parses too, and every program it names as the first word of a line is one the image carries; no build script names a command inside double quotes and runs it; every helper the Makefile runs is on disk |
-| Consistency | The build tree's root carries nothing but a root filesystem; KDOS's code links only the toolkit its area allows (see below); KDOS's desktop code takes every colour from a role, never a literal; every daemon an init script starts is installed by a port; every script under `fs/etc/init.d` but `service_helper` is executable in the work tree and recorded as `100755` in git; the root filesystem carries no script whose interpreter is gone; nothing points at a removed file or invokes a retired tool; every `port:`, `path:`, `see:` and `cite:` a recorded reason names still resolves; no chroot step reads the ports tree through `/kdos/ports`; the compiler cache sets no `base_dir`, checks the compiler by a string rather than a modification time, has its `KDOS_CCACHE` switch both passed by the `Makefile` and named by `script/chroot/exec.sh`, and puts no masquerade directory on a `PATH`; the package store's `KDOS_PKG_STORE` and `KDOS_PKG_STORE_MAX` are passed by the `Makefile`, `exec.sh` names those two and `KPKG_STORE`, `KPKG_STORE_CHECK` and `KPKG_STORE_SALT`, and `make cleanbuild` keeps `build/pkgstore`; the catalogue's rows match the tree; the application catalogue is installed by a port; a frame a terminal tool draws that opens the synchronized-output bracket closes it on every path; in the terminal tools, a literal colour is set at the render boundary and nowhere else |
+| Consistency | The build tree's root carries nothing but a root filesystem; KDOS's code links only the toolkit its area allows (see below); KDOS's desktop code takes every colour from a role, never a literal; every daemon an init script starts is installed by a port; every script under `fs/etc/init.d` but `service_helper` is executable in the work tree and recorded as `100755` in git; the root filesystem carries no script whose interpreter is gone; nothing points at a removed file or invokes a retired tool; every `port:`, `path:`, `see:` and `cite:` a recorded reason names still resolves; no chroot step reads the ports tree through `/kdos/ports`; the compiler cache sets no `base_dir`, checks the compiler by a string rather than a modification time, has its `KDOS_CCACHE` switch both passed by the `Makefile` and named by `script/chroot/exec.sh`, and puts no masquerade directory on a `PATH`; the package store's `KDOS_PKG_STORE` and `KDOS_PKG_STORE_MAX` are passed by the `Makefile`, `exec.sh` names those two and `KPKG_STORE`, `KPKG_STORE_CHECK` and `KPKG_STORE_SALT`, and `make cleanbuild` keeps `build/pkgstore`; the catalogue's rows match the tree, and no `app` row carries a package that is a host port's name (bar the libraries and firmware the lint allows), a check that first proves itself on a clean fixture row and a `kcalc` row it must flag; the application catalogue is installed by a port; a frame a terminal tool draws that opens the synchronized-output bracket closes it on every path; in the terminal tools, a literal colour is set at the render boundary and nowhere else |
 | Shipped data | `mc`'s shipped rows name programs that exist; every `kdos-*` handler in the shipped `mimeapps` lists is on the image; the generated `aerc` styleset is one `aerc` will load; every `kdos-*` command on the built tree has a manual page |
-| Terminal chrome | Every glyph in `libktui`'s UTF-8 table is one the shipped console font can draw; no text draw under `src/` takes `KT_DIM` as its foreground, except a rule, shade or block glyph, a blank cell, or a call marked `/* not text */`; no text draw takes `KT_SURFACE` or `KT_BG` ink on a selection fill; every visible desktop entry's icon and command exist on the image, and no two visible entries share a `Name=`; no visible entry reads as a server, session picker, launch pad, tray helper or diagnostic unless `testing/visible-entries.allow` names it, and that file names only entries that are visible and read that way |
+| Terminal chrome | Every glyph in `libktui`'s UTF-8 table is one the shipped console font can draw; no text draw under `src/` takes `KT_DIM` as its foreground, except a rule, shade or block glyph, a blank cell, or a call marked `/* not text */`; no text draw takes `KT_SURFACE` or `KT_BG` ink on a selection fill; every visible desktop entry's icon and command exist on the image (an icon that is a symlink in its theme counts), and no two visible entries share a `Name=`; no visible entry reads as a server, session picker, launch pad, tray helper or diagnostic unless `testing/visible-entries.allow` names it, and that file names only entries that are visible and read that way |
 
 Preflight cannot prove the build works. It proves the build will not fail for a mechanical reason
 such as a missing port, a misspelt option or a script that does not parse. Run it after touching a
@@ -231,8 +231,12 @@ blocks fall into these groups, in roughly this order:
    `--selftest` against fixtures. `kinstall`'s plan resolves over the shipped catalogue and its
    answer file reads back what `--save` writes. `kdos-theme`'s identity kit is held to its floors:
    one KDE colour scheme per accent and the grey `KDOSBox` scheme, every scheme above its contrast
-   floors with the accent as its selection, the login screen's merged `kdeglobals` byte-stable and
-   keeping the keys it does not own, every Konsole profile naming its scheme with ligatures off,
+   floors (the view's text over a translucent selection and the quiet Window shades among them),
+   with `paper`'s accent as its selection and a dark accent's selection carrying the text, the
+   check proved to refuse a dark selection, a bright one, a vivid Window ground and a bright
+   selection hover, one editor theme per accent carrying its scheme's view and selection
+   backgrounds, the login screen's merged `kdeglobals` byte-stable, keeping the keys it does not own and carrying the scheme's
+   contrast, every Konsole profile naming its scheme with ligatures off,
    every Konsole scheme carrying its 24 colours and every qt5ct palette its 21 roles per group, and
    every wallpaper package carrying a dark and a light picture at the sizes asked for.
 3. **Boxes and packs.** Box profiles, and the pack store, its solve, its grafts and its signature
@@ -726,13 +730,14 @@ What the loop cannot carry:
 | `--gl` | `virtio-vga-gl` on a headless EGL display, so KWin composites with OpenGL on the host GPU through virgl and Phosphor mode can load. Needs `/dev/dri` passed into the container. No Vulkan |
 | `--venus` | With `--gl`, also publish a Vulkan capability set. Does not work on an NVIDIA host; see below |
 | `--audio` | Give the guest an HDA controller, so audio paths reach a real device: backed by the host's sound server when `testing/qemu-audio.sh` finds one, by a silent backend otherwise |
-| `--disk <qcow2>` | Attach a virtio disk, the target an unattended `kinstall` writes to |
+| `--disk <qcow2>` | Attach a virtio disk, the target an unattended `kinstall` writes to. With the ISO attached (an install run) the run refuses, before it boots, a qcow2 whose virtual size less what it already holds is more than the host has free |
+| `--allow-disk-growth` | Run that install even when the qcow2 could outgrow the host's free space |
 | `--no-cdrom` | Leave the ISO off, so the disk is what boots |
 | `--root-password <pw>` | What to answer when the serial console's login asks root for a password, as an installed system does; the live image asks none (default `kdos`, the one `install-to-disk.sh` sets) |
-| `--boot-disk` | Boot the disk with the ISO still attached, so an installed system can still reach the medium |
+| `--boot-disk` | Boot the disk with the ISO still attached, so an installed system can still reach the medium. `appsweep.sh` reads packs from `/mnt/iso/packs`, which only a medium you have put packs into carries; the shipped ISO has none |
 | `--data-disk <file>` | Attach a raw file as a plain virtio disk, to carry a large file into a guest with no network. Input only |
 | `--scratch <file>` | Attach a raw file the guest writes a tar onto, which is how files come back out |
-| `--usb <file>` | Attach a raw disk image as a USB stick |
+| `--usb <file>` | Attach a raw disk image as a removable USB 3 stick, on its own xHCI controller |
 | `--keep` | Leave the emulator running after the steps |
 | `--serial-log <file>` | Where the serial console is logged (default `/tmp/kdos-serial.log`) |
 | `--vnc-port <n>` | The VNC port (default 5909) |
@@ -800,10 +805,12 @@ the window properties KDOS's KWin patch adds.
 ### The login flows
 
 `testing/flows/` holds seven scripts, each one boot of the rig driving one login path and
-asserting every state it reaches. **None has been run on a rig yet**: they are syntax-checked
-(`bash -n` in preflight, and ShellCheck) and their probe's logic has been exercised against stubbed
-`loginctl` and `dbus-send`, and until a rig run passes, a flow's verdict is the first measurement of
-its path, not a regression signal.
+asserting every state it reaches. Flows 01 and 04 to 07 have run on the rig against the live
+ISO: 01, 04, 06 and 07 pass, and 05 fails its lit-screen check because the screen does not come
+back after resume (see
+[Known gaps](../06-reference/known-gaps.md#the-suspend-flow-finds-no-screen-after-resume)). Flows
+02 and 03 need an installed disk and have not run. Every flow is syntax-checked (`bash -n` in
+preflight, and ShellCheck).
 
 ```sh
 testing/flows/run.sh                 # all seven, one boot after another
@@ -817,7 +824,7 @@ testing/flows/04-lock-unlock.sh      # one flow
 | `02-greeter-password.sh` | the installed disk | the password typed at the greeter | the greeter is the active session with no session of the account; then a session opened by the `sddm` PAM service, and `plasma-probe.sh` passes |
 | `03-logout-greeter.sh` | the installed disk | a password login, then `org.kde.Shutdown logout` | plasmashell exits and the greeter is the active session again |
 | `04-lock-unlock.sh` | the ISO | Meta+L, then Shift and the password | `org.freedesktop.ScreenSaver` `GetActive`, logind's `LockedHint` and `kscreenlocker_greet` agree the screen is locked, then that it is not |
-| `05-suspend-resume.sh` | the ISO | `loginctl suspend` with the RTC armed to wake the machine | the kernel's `suspend_stats/success` moved, the session came back locked, the password unlocks it, and `plasma-probe.sh` passes |
+| `05-suspend-resume.sh` | the ISO | `loginctl suspend` with the RTC armed to wake the machine, then a pointer move | the kernel's `suspend_stats/success` moved, the session came back locked, the password unlocks it, `plasma-probe.sh` passes, and `flow_lit` finds both shots lit |
 | `06-vt-switch.sh` | the ISO | Ctrl+Alt+F2, then Ctrl+Alt+F1 | tty2 is in front with its getty and the session inactive; then the session's VT is in front and the session Active |
 | `07-no-tty-leak.sh` | the ISO | `touch /root/kdos-flow-leak` and Return, typed with no window focused | the file does not exist, the session VT's keyboard is in `K_OFF` mode and its tty holds no unread input |
 
@@ -825,8 +832,14 @@ Each flow is one `vnc-shot.py` run whose steps alternate input with `--root-scri
 testing/flows/probe.sh CHECK`, so a check sees the state the step before it left. The probe asks
 logind (which session is active, its class, the PAM service that opened it, its VT, its lock hint),
 the account's session bus (the shell's name, the screen saver) and the kernel (the foreground VT,
-the VT keyboard mode through `KDGKBMODE`, the unread bytes through `FIONREAD`, the suspend counter);
-it never reads a pixel. The shots, in `build/shots/flows/<flow>/` with the serial log, are for the
+the VT keyboard mode through `KDGKBMODE`, the unread bytes through `FIONREAD`, the suspend counter).
+All three report a healthy session while QEMU's scanout is inactive, so a flow that sets `FLOW_LIT`
+also has those shots read by `flow_lit` in `testing/flows/lib.sh` once every probe has passed: a
+frame whose 64 by 36 sample grid holds fewer than 16 colours, or one colour on more than 98% of
+its points, is unlit, and the flow fails with status 4 naming it. QEMU's *Display output is not
+active* frame and a black screen are unlit; the lock screen and the desktop hold about a hundred
+colours. Only flow 05 sets it, after moving the pointer to wake the output; a text console is unlit
+by this measure. The other shots, in `build/shots/flows/<flow>/` with the serial log, are for the
 person reading a failure.
 
 The two greeter flows boot a throwaway qcow2 overlay of an installed disk, `build/kdos-target.qcow2`
@@ -926,10 +939,12 @@ Run it as a `--root-script`, with nothing else holding the loopback's capture si
 
 ### Moving a large file into the guest
 
-Use a plain virtual disk (`--data-disk`), not a USB device. Emulated USB storage runs at under two
-megabytes a second against a virtual disk's several hundred: a large pack takes over an hour one
-way and seconds the other. Use `--usb` only when the test needs a removable device, which is the
-removable-media daemon's subject.
+Use a plain virtual disk (`--data-disk`), not a USB device: it is not removable, so the session's
+removable-media handling has nothing to act on. Use `--usb` only when the test needs a removable
+device, which is the removable-media daemon's subject, or a stick to boot from. It attaches the
+image as a USB 3 stick on its own xHCI controller, because the machine's default USB controller is
+USB 1.1: a session booted off a stick on it reads its image so slowly that the login outruns
+turnstile's `login_timeout` and Plasma never starts.
 
 A file is read back by block copy and truncated to its exact length, because a raw drive is rounded
 up to a sector boundary.
@@ -1326,7 +1341,7 @@ never a ceiling written into KDOS.
 "In the guest" means the script runs as root inside a booted KDOS, sent there with
 `vnc-shot.py --root-script`.
 
-Three of these need application packs that the shipped ISO does not carry. The medium holds the
+Two of these need application packs that the shipped ISO does not carry. The medium holds the
 catalogue but no application packs (see
 [Where a pack comes from](../03-architecture/packs-and-boxes.md#where-a-pack-comes-from)), so on a
 stock ISO:
@@ -1336,22 +1351,22 @@ stock ISO:
 - `packlane.sh` looks for packs on the medium at `/mnt/iso/packs`, or in the store at
   `/var/lib/kdos/packs` when there is no medium, and reports every check that needs one (a base,
   `rt-gtk`, the index, `app.vorta` (`PACKLANE_APP`) and `app.meld` (`PACKLANE_GTKAPP`)) as
-  failed;
-- `install-to-disk.sh` asks the installer for the `essential` group unless `INSTALL_APPS` names
-  other catalogue group ids.
+  failed.
 
-Run them against a medium or a store you have put those packs into.
+Run them against a medium or a store you have put those packs into. `install-to-disk.sh` chooses
+no applications unless `INSTALL_APPS` names catalogue group ids, and a group it names is recorded
+in the target's `/var/lib/kdos/apps-pending` for the first login, not built.
 
 | Harness | Runs | Does |
 |---|---|---|
 | `packlane.sh` | In the guest, session up | The pack lane end to end: the daemon, the keyring, an install from the medium or the store, the launchers, a box on a pack base, the energy attribution and a timed launch, reporting pass, fail or skip with a reason and carrying on past a failure. It exercises no rollback, and its checks for a base and `rt-gtk` in the store fail until packs have been imported |
-| `install-to-disk.sh` | In the guest, with `--disk` | Runs the installer unattended into the attached disk, with its interface on `/dev/tty3`. Every 15 seconds it prints a heartbeat: the seconds elapsed, the space used on the target mounted at `/mnt/kinstall`, and the last line of `/var/log/kinstall.log`, so that a slow copy can be told from a wedged one. It gives up after `INSTALL_CAP` seconds (default 5400) and prints the log's last 40 lines at the end. The answer file sets root's password to `kdos`. `INSTALL_DISK` names the target (default `/dev/vda`); `INSTALL_LUKS=1` makes the same run with an encrypted root, with the passphrase in `INSTALL_LUKS_PASS` (default `kdosdisk`). It then opens what it wrote: the ESP with its `limine.conf` and the A/B boot state, the volumes of the LVM group `kdos`, the fstab with the pack store's bind line, the `kdos` account, SDDM's autologin file, and the shared pack store under `/home/.kdos/packs`. The second half boots the disk with `--no-cdrom`, and the rig logs root in on the serial console with `--root-password` |
-| `bios-boot.sh` | On the host | Boots the ISO as a USB stick on an xHCI controller under SeaBIOS, with no OVMF anywhere. `vnc-shot.py` always boots UEFI, so it cannot answer this. It waits `KDOS_BIOS_SECS` seconds (default 90), saves the screen as `build/shots/bios-screen.ppm` and the serial console as `build/shots/bios-serial.log`, then reads the log for `Found KDOS media` and `Switching to new root`: it prints `bios-boot: ok` and exits 0 when both are there, and `bios-boot: FAILED` with exit status 1 when either is missing. QEMU itself is killed rather than shut down, so its own exit status means nothing |
+| `install-to-disk.sh` | In the guest, with `--disk` | Runs the installer unattended into the attached disk, with its interface on `/dev/tty3`. Every 15 seconds it prints a heartbeat: the seconds elapsed, the space used on the target mounted at `/mnt/kinstall`, and the last line of `/var/log/kinstall.log`, so that a slow copy can be told from a wedged one. Before it starts it reads the payload from `kinstall --dump probe` and the disk's size with `blockdev`, and refuses with exit status 2, printing both in MB, when the disk is smaller than the payload, the 512 MB ESP and 2 GiB; `kinstall`'s Prepare step then refuses, before anything is written, a disk smaller than the payload plus 768 MiB. The copy writes about the whole payload (47661 MB on the current tree), so a qcow2 target grows on the host by that much, and `vnc-shot.py` refuses an install run whose qcow2 could outgrow the host's free space. It gives up after `INSTALL_CAP` seconds (default 5400) and prints the log's last 40 lines at the end. The answer file sets root's password to `kdos`. `INSTALL_DISK` names the target (default `/dev/vda`); `INSTALL_LUKS=1` makes the same run with an encrypted root, with the passphrase in `INSTALL_LUKS_PASS` (default `kdosdisk`). It then opens what it wrote: the ESP with its `limine.conf` and the A/B boot state, the volumes of the LVM group `kdos`, the fstab with the pack store's bind line, the `kdos` account, SDDM's autologin file, and the shared pack store under `/home/.kdos/packs`. The second half boots the disk with `--no-cdrom`, and the rig logs root in on the serial console with `--root-password` |
+| `bios-boot.sh` | On the host | Boots the ISO as a USB stick on an xHCI controller under SeaBIOS, with no OVMF anywhere. `vnc-shot.py` always boots UEFI, so it cannot answer this. It waits `KDOS_BIOS_SECS` seconds (default 90), saves the screen as `build/shots/bios-screen.ppm` and the serial console as `build/shots/bios-serial.log`, then reads the log for `Found KDOS media` and `Switching to new root`. The stick is read-only, so the run never writes the image and can run while rig VMs have it attached: it prints `bios-boot: ok` and exits 0 when both are there, and `bios-boot: FAILED` with exit status 1 when either is missing. QEMU itself is killed rather than shut down, so its own exit status means nothing |
 | `appsweep.sh` | In the guest, `--boot-disk` | For each catalogue application: install it off the medium, launch it through its shim (a terminal program in Konsole, as Kickoff launches it), wait for KWin's window list (`kdos hey list`) to name its window and its box, photograph it, and remove the box. An X11 window has no box, since its Wayland client is Xwayland, so it is matched by its class against the shim's name and the row says so. Usage `appsweep.sh <outdev> <runtime\|all> [max]` |
 | `appreport.sh` | On the host, needs ImageMagick | Reads what the sweep wrote to the scratch disk and renders it as a table and a contact sheet, flagging windows that mapped but painted nothing. Usage `appreport.sh <scratch.img> [outdir]` |
-| `appbox-smoke.sh` | In the session, as the desktop user (`su - kdos -c 'WAYLAND_DISPLAY=wayland-0 testing/appbox-smoke.sh'`) | Does every boxed application's launcher start something: a cheap `command -v` pass (`--probe`), then real launches; names on the command line limit it to those |
+| `appbox-smoke.sh` | In the session, as the desktop user (`su - kdos -c 'WAYLAND_DISPLAY=wayland-1 testing/appbox-smoke.sh'`) | Does every boxed application's launcher start something: a cheap `command -v` pass (`--probe`), then real launches; names on the command line limit it to those |
 | `hostcheck.sh` | In the guest | Whether the shipped binary a caller resolves by name is the one that can do the job, for example which `blkid` answers first on the search path, asked against a real LUKS container |
-| `oomd-fire.sh` | In the guest | Puts the machine under real memory pressure and reads `kdos-oomd`'s own status for the kill count and victim. Victim *selection* is tested offline by `kdos-oomd --fixture`; this proves the daemon wakes |
+| `oomd-fire.sh` | In the guest | Puts the machine under real memory pressure and reads `kdos-oomd`'s own status for the kill count and victim, then repeats it after a stall with memory still plentiful and checks the kernel's own OOM count did not rise. Victim *selection* is tested offline by `kdos-oomd --fixture`; this proves the daemon wakes |
 | `aboutcheck.sh` | In the guest, as any user; or `--root DIR` in a chroot | Every program the About page runs prints two lines, fast, in every condition a real machine meets; see [The desktop's defaults](#the-desktops-defaults) |
 | `usability.sh` | On the host | Drives the desktop with the pointer and chords only and leaves a numbered contact sheet under `build/shots/usability` (`KDOS_USABILITY_OUT`), to be read against `testing/usability.md`. It waits for the readiness gate, closes Welcome Center, and aims at the KDOS desk's bottom panel, whose centre line it takes as twenty pixels above the screen's bottom edge; a run at another font size, scale or desk has to take the positions again from its own desktop shot |
 | `bootcheck/` | On the host | Plumbing for scripted boots with no display: `boot.sh [soft\|gl]` starts QEMU detached, `guest.py` runs a command on the serial console, `type.py` types into the focused window, `sock.py` owns one QEMU socket. `bootcheck/README.md` describes them |
@@ -1578,8 +1593,9 @@ application packs into it. Nothing tests the lane until someone provides packs, 
 pack rollback on a booted machine; see [The other harnesses](#the-other-harnesses).
 
 The login screen, the lock screen, logout, suspend and resume and VT switching are driven by the
-[login flows](#the-login-flows), which have not yet been run on a rig, so no run has shown any of
-them working. User switching is driven by no script; the rig can reach it and a person reads the
+[login flows](#the-login-flows). Autologin, the lock screen, suspend and resume, VT switching and
+the tty-leak check have run on the rig against the live ISO, and all but the screen after resume
+pass; the greeter and logout flows need an installed disk and have not run. User switching is driven by no script; the rig can reach it and a person reads the
 photographs.
 
 KWin's effects and scripts, the KDOS ones included, are seen working only on the rig. In the

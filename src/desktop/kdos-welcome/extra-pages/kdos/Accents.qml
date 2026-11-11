@@ -13,20 +13,27 @@
  * refuses. A line is the accent's name, its theme name (KDOS-<Title>) and a
  * `*` on the one in force.
  *
- * A SWATCH IS ITS COLOUR SCHEME. Each accent's ground, ink and selection are
+ * A SWATCH IS ITS COLOUR SCHEME. Each accent's ground, ink and accent are
  * read out of /usr/share/color-schemes/KDOS<Title>.colors, the file applying
  * it installs, and nothing here spells a colour. Light and dark is KDE's own
  * rule on that ground (KLookAndFeel::colorSchemeVariant: gray from 192 is
  * light), so this page and the Global Theme page agree about every accent.
+ *
+ * ONE OBJECT FOR EVERY PAGE. It is a singleton (kdos/qmldir), so the list
+ * and the three colour reads an accent are made once however many pages show swatches;
+ * an instance per page would multiply them. refreshCurrent() re-reads only
+ * which accent is in force.
  * ---------------------------------
  */
+
+pragma Singleton
 
 import QtQuick
 
 QtObject {
     id: accents
 
-    // One row an accent: name, title, scheme, ground, ink, selection (each
+    // One row an accent: name, title, scheme, ground, ink, accent (each
     // "#rrggbb", read from the scheme), light, contrast, known.
     readonly property ListModel model: ListModel {}
     property bool ready: false
@@ -68,7 +75,7 @@ QtObject {
             for (const r of rows) {
                 accents.model.append({
                     name: r.name, title: r.title, scheme: r.scheme,
-                    ground: "", ink: "", selection: "",
+                    ground: "", ink: "", accent: "",
                     light: false, contrast: 0, known: false
                 });
             }
@@ -120,20 +127,20 @@ QtObject {
         const got = {};
         const keys = [["ground", "Colors:Window", "BackgroundNormal"],
                       ["ink", "Colors:Window", "ForegroundNormal"],
-                      ["selection", "Colors:Selection", "BackgroundNormal"]];
+                      ["accent", "Colors:View", "DecorationFocus"]];
         for (const [role, group, key] of keys) {
             runner.config(file, group, key, "", value => {
                 got[role] = rgb(value);
                 if (Object.keys(got).length < keys.length) {
                     return;
                 }
-                if (!got.ground || !got.ink || !got.selection) {
+                if (!got.ground || !got.ink || !got.accent) {
                     return;
                 }
                 const g = got.ground;
                 accents.model.setProperty(i, "ground", hex(g));
                 accents.model.setProperty(i, "ink", hex(got.ink));
-                accents.model.setProperty(i, "selection", hex(got.selection));
+                accents.model.setProperty(i, "accent", hex(got.accent));
                 accents.model.setProperty(i, "light", Math.floor((g[0] * 11 + g[1] * 16 + g[2] * 5) / 32) >= 192);
                 accents.model.setProperty(i, "contrast", contrastOf(got.ink, g));
                 accents.model.setProperty(i, "known", true);

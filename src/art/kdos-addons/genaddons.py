@@ -28,7 +28,9 @@
 # text in 1% steps until it passes, so the scheme a person picks is always
 # readable and never further from the palette than it has to be. --report
 # prints each moved role with its ratio before and after; a role that cannot
-# be brought to the floor stops the build.
+# be brought to the floor stops the build. The view's text holds the same
+# 4.5:1 on the selection, solid and laid over the view as Dolphin lays it, and
+# the selection is walked toward the view's background until it does.
 #
 # The wallpapers take their colours from kcolor.h's KCOL_SCHEMES, the one
 # table every KDOS colour is generated from, so an accent retuned there is
@@ -46,6 +48,9 @@ import sys
 
 W, H = 3840, 2160
 AA, DECO = 4.5, 3.0
+# Dolphin's and Breeze's translucent item selection: the Selection laid this
+# far over the view, under the view's own text.
+SEL_BLEND = 0.64
 
 
 # ── colour arithmetic ────────────────────────────────────────────────────
@@ -258,6 +263,38 @@ def colorset(r, bg, alt, text, moved, label):
     ]
 
 
+def blend_grounds(selection, view):
+    """The view's two backgrounds with the selection laid SEL_BLEND over them."""
+    d = dict(view)
+    return [mix(d["BackgroundNormal"], selection, SEL_BLEND),
+            mix(d["BackgroundAlternate"], selection, SEL_BLEND)]
+
+
+def solve_selection(r, view, moved):
+    """The selection and its ink. KDE draws the view's text over the selection
+    as often as the selection's own text: Dolphin's and Breeze's translucent
+    item selection keeps the view's label, and so does GTK through Plasma's
+    bridge. The palette's selection is kept, under its own ink, while the
+    view's text holds 4.5:1 on it solid and laid SEL_BLEND over both view
+    backgrounds; otherwise it is walked toward the view's background until it
+    does, and the view's text becomes its ink. DecorationFocus keeps the
+    palette's selection, the colour a person picked the palette for."""
+    text, bg = dict(view)["ForegroundNormal"], dict(view)["BackgroundNormal"]
+    published = r["selection"]
+
+    def holds(c):
+        return worst(text, [c] + blend_grounds(c, view)) >= AA
+
+    if holds(published) and contrast(r["selection_text"], published) >= AA:
+        return published, r["selection_text"]
+    for step in range(0, 101):
+        cand = mix(published, bg, step / 100.0)
+        if holds(cand):
+            moved.append(("Selection", "BackgroundNormal", worst(text, [published]), worst(text, [cand])))
+            return cand, text
+    raise ValueError("the view's text cannot reach %.1f on any selection" % AA)
+
+
 def kdecolors(p):
     r = derive(p)
     moved = []
@@ -274,12 +311,12 @@ def kdecolors(p):
     }
     # The selection's alternate row moves away from its text, so the pair
     # that is legible on the selection stays legible on the alternate.
-    away = (0, 0, 0) if luminance(r["selection_text"]) > luminance(r["selection"]) else (255, 255, 255)
-    sel_alt = mix(r["selection"], away, 0.08)
-    sel = colorset(dict(r, selection=r["selection_text"], link=r["selection_text"],
-                        visited=r["selection_text"], negative=r["selection_text"],
-                        neutral=r["selection_text"], positive=r["selection_text"]),
-                   r["selection"], sel_alt, r["selection_text"], moved, "Selection")
+    selection, ink = solve_selection(r, sets["View"], moved)
+    away = (0, 0, 0) if luminance(ink) > luminance(selection) else (255, 255, 255)
+    sel_alt = mix(selection, away, 0.08)
+    sel = colorset(dict(r, selection=ink, link=ink, visited=ink, negative=ink,
+                        neutral=ink, positive=ink),
+                   selection, sel_alt, ink, moved, "Selection")
     sets["Selection"] = sel
 
     sid = file_id(p)
@@ -301,8 +338,14 @@ def kdecolors(p):
 
 
 def audit_sets(label, sets):
-    """Every text role at 4.5 on both backgrounds, every decoration at 3."""
+    """Every text role at 4.5 on both backgrounds, every decoration at 3, and
+    the view's text at 4.5 on the selection, solid and blended."""
     bad = []
+    view, sel = dict(sets["View"]), dict(sets["Selection"])["BackgroundNormal"]
+    for g in [sel] + blend_grounds(sel, sets["View"]):
+        if contrast(view["ForegroundNormal"], g) < AA - 1e-9:
+            bad.append("%s [Colors:View] ForegroundNormal on the selection %s is %.2f:1"
+                       % (label, csv(g), contrast(view["ForegroundNormal"], g)))
     for name, roles in sets.items():
         d = dict(roles)
         grounds = [d["BackgroundNormal"], d["BackgroundAlternate"]]

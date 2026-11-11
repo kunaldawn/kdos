@@ -107,7 +107,7 @@ PlasmoidItem {
         text: ":"
         font.family: Kirigami.Theme.fixedWidthFont.family
         font.pixelSize: size
-        color: Kirigami.Theme.highlightColor
+        color: Kirigami.Theme.linkColor
         opacity: root.separatorLit ? 1 : 0.25
         Accessible.ignored: true
     }

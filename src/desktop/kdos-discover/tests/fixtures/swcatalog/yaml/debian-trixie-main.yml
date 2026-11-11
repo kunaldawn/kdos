@@ -64,3 +64,16 @@ Categories:
   - TextEditor
 Icon:
   stock: kate
+---
+Type: desktop-application
+ID: org.kde.kmag
+Package: kmag
+Name:
+  C: KMag
+Summary:
+  C: Screen magnifier
+Categories:
+  - Utility
+  - Accessibility
+Icon:
+  stock: kmag

@@ -21,7 +21,12 @@
 #
 # BEFORE SDDM, so the session's menu cache is built with the entry in it.
 # polkitd (41) watches its rules directory, so a rule added after it started
-# is read.
+# is read. The rule is written under a name polkitd does not load (it reads
+# *.rules only) and renamed into place whole: polkitd reloads at the first
+# change in the directory, and `install` creates its file readable by root
+# alone before it sets the mode, so a rule installed in place is first read
+# unreadable ("Error loading script") or half-written ("Error compiling
+# script").
 
 NAME="live-installer"
 SRC=/usr/share/kdos/installer
@@ -49,7 +54,10 @@ case "$1" in
         fi
         echo "[KDOS] Offering the installer..."
         install -D -m 0644 "$SRC/$ENTRY" "/usr/share/applications/$ENTRY"
-        [ -f "$SRC/$RULE" ] && install -D -m 0644 "$SRC/$RULE" "/etc/polkit-1/rules.d/$RULE"
+        if [ -f "$SRC/$RULE" ]; then
+            install -D -m 0644 "$SRC/$RULE" "/etc/polkit-1/rules.d/.$RULE.new"
+            mv -f "/etc/polkit-1/rules.d/.$RULE.new" "/etc/polkit-1/rules.d/$RULE"
+        fi
         _pw=$(grep "^$LIVE_USER:" /etc/passwd)
         if [ -n "$_pw" ]; then
             IFS=: read -r _n _x _uid _gid _gecos _home _shell <<< "$_pw"

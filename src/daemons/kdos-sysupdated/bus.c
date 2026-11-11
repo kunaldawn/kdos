@@ -432,6 +432,8 @@ static void cont_checknew(sd_bus_message *m, void *ud, int allowed,
 		return;
 	}
 	state_reload_boot();
+	/* No second slot, the live medium among them: nothing is fetched and
+	 * nothing offered, since Acquire would refuse whatever was. */
 	if (!state_slots_ok()) {
 		sd_bus_reply_method_return(m, "s", "");
 		return;
@@ -611,6 +613,10 @@ static int t_start(sd_bus_message *m, int kind)
 		return reply_error(m, ERR_BUSY, "the update check is still "
 				   "running; try again when it has finished");
 	state_reload_boot();
+	if (!state_slots_ok() && state_live())
+		return reply_error(m, ERR_NO_SLOTS, "this is the live medium: "
+				   "nothing installed here survives a restart; "
+				   "install KDOS to update it");
 	if (!state_slots_ok())
 		return reply_error(m, ERR_NO_SLOTS, "this machine has no second "
 				   "root slot to install an update into; "
@@ -701,6 +707,8 @@ static int sl_get(sd_bus *bus, const char *path, const char *iface,
 	(void)err;
 	if (!strcmp(prop, "Configured"))
 		return sd_bus_message_append(reply, "b", su.configured);
+	if (!strcmp(prop, "Live"))
+		return sd_bus_message_append(reply, "b", su.live);
 	if (!strcmp(prop, "RunningSlot"))
 		return sd_bus_message_append(reply, "s", su.running);
 	if (!strcmp(prop, "ActiveSlot"))
@@ -954,6 +962,7 @@ static int sl_bless(sd_bus_message *m, void *ud, sd_bus_error *err)
 static const sd_bus_vtable slots_vtable[] = {
 	SD_BUS_VTABLE_START(0),
 	SL_PROP("Configured", "b"),
+	SL_PROP("Live", "b"),
 	SL_PROP("RunningSlot", "s"),
 	SL_PROP("ActiveSlot", "s"),
 	SL_PROP("TrySlot", "s"),

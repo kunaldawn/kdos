@@ -52,7 +52,7 @@ install -Dm644 scripts/org.qcad.QCAD.png \
 	"$PKG/usr/share/icons/hicolor/256x256/apps/org.qcad.QCAD.png"
 
 install -d "$PKG/usr/share/applications"
-cat > "$PKG/usr/share/applications/org.qcad.QCAD.desktop" <<'DESKTOP'
+cat > "$PKG/usr/share/applications/org.QCAD.qcad-bin.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application
 Name=QCAD
@@ -65,4 +65,4 @@ StartupWMClass=org.QCAD.qcad-bin
 Categories=Graphics;VectorGraphics;Engineering;Qt;
 Keywords=cad;2d;drafting;drawing;dxf;dwg;plan;qcad;
 DESKTOP
-chmod 644 "$PKG/usr/share/applications/org.qcad.QCAD.desktop"
+chmod 644 "$PKG/usr/share/applications/org.QCAD.qcad-bin.desktop"

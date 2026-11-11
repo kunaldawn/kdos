@@ -176,12 +176,17 @@ quint64 KdosResource::size()
     return m_entry.size;
 }
 
+// An empty description hides the page's size row: Discover spins a busy
+// indicator for ever beside a size of 0 that has a description, and prints
+// the description under every row of a list. The page's notice says when a
+// size is an estimate, so the estimate itself stays short enough for the
+// size column.
 QString KdosResource::sizeDescription()
 {
     if (m_entry.size == 0)
-        return i18nc("@info the size of an item", "Unknown");
+        return {};
     const QString bytes = KFormat().formatByteSize(double(m_entry.size));
-    return m_entry.sizeIsEstimate ? i18nc("@info an estimated size", "About %1 (an estimate)", bytes) : bytes;
+    return m_entry.sizeIsEstimate ? i18nc("@info an estimated size", "About %1", bytes) : bytes;
 }
 
 QJsonArray KdosResource::licenses()
@@ -243,9 +248,17 @@ QList<PackageState> KdosResource::addonsInformation()
     return {};
 }
 
+// Discover's lists drop every resource whose appstreamId another one in the
+// same list already has, so a resource with no AppStream id of its own gets
+// one made from its key. The io.kdos. prefix is KDOS's own reverse-DNS name,
+// which no Debian or host component carries; url() and the appstream://
+// lookup read the entry's real id, never this one.
 QString KdosResource::appstreamId() const
 {
-    return m_entry.appstreamId;
+    if (!m_entry.appstreamId.isEmpty())
+        return m_entry.appstreamId;
+    const bool isFile = m_entry.lane == Lane::Archive || m_entry.lane == Lane::PackFile;
+    return u"io.kdos."_s + laneName(m_entry.lane) + u'.' + (isFile ? m_entry.path : m_entry.id);
 }
 
 QUrl KdosResource::url() const
@@ -406,7 +419,7 @@ QString KdosResource::kdosNotice() const
             return i18n("Installs from the pack already in the pack store; no network connection is needed.");
         if (e.packOrigin == "medium"_L1)
             return i18n("Installs from the pack on the KDOS medium; no network connection is needed.");
-        return i18n("Built on this computer from Debian packages, in a box of its own. This needs a network connection, and the size is an estimate.");
+        return i18n("Built on this computer from Debian packages, in a box of its own. This needs a network connection. The size is an estimate, and counts the shared base and runtime when this computer has not built them yet.");
     case Lane::Debian:
         if (e.state != EntryState::None)
             return {};
@@ -426,6 +439,8 @@ QString KdosResource::kdosNotice() const
             return i18n("Downloads the prebuilt package from the signed KDOS binary host into this version of the system, and the next system update keeps it. This needs a network connection; nothing is built.");
         return i18n("Part of the KDOS system: it is updated with the system and is not removed on its own.");
     case Lane::Archive:
+        if (e.signature == "refused"_L1)
+            return i18n("This file holds no list of applications to import: it is not a set made by “kdos-appbox export”, and there is nothing in it to install.");
         if (e.signature == "signed-index"_L1)
             return i18n("The set's index is signed; kdos-packd checks every pack against it before installing.");
         return i18n("The set's index is not signed. Its packs install as unsigned, and a computer set to require signatures refuses them.");
@@ -433,7 +448,7 @@ QString KdosResource::kdosNotice() const
         if (e.signature == "unsigned"_L1)
             return i18n("This pack is not signed. It installs as unsigned, and a computer set to require signatures refuses it.");
         if (e.signature == "refused"_L1)
-            return i18n("kdos-pack refused this pack: its payload or its signature does not verify.");
+            return i18n("kdos-pack refused this file: it is not a KDOS pack, or its payload or its signature does not verify.");
         return {};
     }
     return {};
@@ -442,7 +457,7 @@ QString KdosResource::kdosNotice() const
 int KdosResource::kdosNoticeType() const
 {
     const Entry &e = m_entry;
-    if (e.lane == Lane::PackFile && e.signature == "refused"_L1)
+    if ((e.lane == Lane::PackFile || e.lane == Lane::Archive) && e.signature == "refused"_L1)
         return InlineMessage::Error;
     if ((e.lane == Lane::PackFile && e.signature == "unsigned"_L1) || (e.lane == Lane::Archive && e.signature != "signed-index"_L1))
         return InlineMessage::Warning;
@@ -460,6 +475,64 @@ QStringList KdosResource::memberNames() const
         names << (shown.isEmpty() ? id : shown);
     }
     return names;
+}
+
+// What `kdos-box list` reports, said for a person: base is pack:<id>,
+// image:<ref> or "-"; state is podman's, or "not created" for a profile
+// whose container the first start makes; accent is a KDOS accent's name or
+// "session"; persistence is persistent, ephemeral or frozen.
+QString KdosResource::boxBaseText() const
+{
+    const QString &base = m_entry.boxBase;
+    if (base.isEmpty() || base == "-"_L1)
+        return i18nc("@info what a box is made from", "Not recorded");
+    if (base.startsWith("pack:"_L1)) {
+        const QString id = base.mid(5);
+        const PlanContext ctx = kdosBackend()->planContext();
+        const QString shown = ctx.catalogue ? ctx.catalogue->rows.value(id).name : QString();
+        return i18nc("@info what a box is made from", "The pack %1", shown.isEmpty() ? id : shown);
+    }
+    if (base.startsWith("image:kdos/"_L1))
+        return i18nc("@info what a box is made from", "Debian packages, built on this computer");
+    if (base.startsWith("image:"_L1))
+        return i18nc("@info what a box is made from; %1 is a container image", "The image %1", base.mid(6));
+    return base;
+}
+
+QString KdosResource::boxStateText() const
+{
+    const QString &st = m_entry.boxState;
+    if (st == "running"_L1)
+        return i18nc("@info a box's state", "Running");
+    if (st == "paused"_L1)
+        return i18nc("@info a box's state", "Paused");
+    if (st == "not created"_L1)
+        return i18nc("@info a box's state", "Made at its first start");
+    if (st == "exited"_L1 || st == "stopped"_L1 || st == "created"_L1 || st == "configured"_L1)
+        return i18nc("@info a box's state", "Stopped");
+    return st;
+}
+
+QString KdosResource::boxAccentText() const
+{
+    const QString &accent = m_entry.boxAccent;
+    // `session` is kdos-box's token for no accent: the title bar takes the
+    // neutral KDOSBox scheme, not the session's accent.
+    if (accent.isEmpty() || accent == "session"_L1)
+        return i18nc("@info a box's accent colour", "Neutral");
+    return accent.left(1).toUpper() + accent.mid(1);
+}
+
+QString KdosResource::boxPersistenceText() const
+{
+    const QString &p = m_entry.boxPersistence;
+    if (p == "ephemeral"_L1)
+        return i18nc("@info whether a box keeps its files", "No: it starts afresh every time");
+    if (p == "frozen"_L1)
+        return i18nc("@info whether a box keeps its files", "No: what it writes is dropped when it stops");
+    if (p.isEmpty() || p == "persistent"_L1)
+        return i18nc("@info whether a box keeps its files", "Yes");
+    return p;
 }
 
 void KdosResource::fetchBoxGrants()
