@@ -13,7 +13,7 @@
 # joined by spaces), accent, etc/accent (the /etc/kdos/accent stand-in),
 # phosphor (on|off), preset (subtle|retro|custom), terminus (on|off),
 # fullscreen (on|off), previous, unsupported
-# (present: no GPU). Plasma's side is $XDG_CONFIG_HOME/kdeglobals, written
+# (present: no GPU), nosession (present: no KWin answers). Plasma's side is $XDG_CONFIG_HOME/kdeglobals, written
 # the way plasma-apply-lookandfeel leaves it. FAKE_KDOS_NO_MACHINE set means
 # kdos-powerd did not answer, so the machine's accent is left alone.
 
@@ -73,7 +73,7 @@ case "${1:-} ${2:-}" in
 	echo "$3 (KDOS-$(label "$3"))"
 	;;
 "phosphor status")
-	on=false pre=subtle term=false full=false sup=true reason=null prev=null
+	on=false pre=subtle term=false full=false sup=true reason=null refusal=null prev=null
 	[ "$(cat "$d/phosphor" 2>/dev/null)" = on ] && on=true
 	[ -f "$d/preset" ] && pre=$(cat "$d/preset")
 	[ "$(cat "$d/terminus" 2>/dev/null)" = on ] && term=true
@@ -81,10 +81,16 @@ case "${1:-} ${2:-}" in
 	if [ -f "$d/unsupported" ]; then
 		sup=false
 		reason='"phosphor mode needs GPU rendering (this session renders in software)"'
+		refusal='"gpu"'
+	fi
+	if [ -f "$d/nosession" ]; then
+		sup=false
+		reason='"phosphor mode needs a running Plasma session"'
+		refusal='"session"'
 	fi
 	[ -s "$d/previous" ] && prev="\"$(cat "$d/previous")\""
-	printf '{"on": %s, "supported": %s, "reason": %s, "preset": "%s", "fullscreen": %s, "terminus": %s, "accent": "%s", "previous_accent": %s}\n' \
-		"$on" "$sup" "$reason" "$pre" "$full" "$term" "$(current)" "$prev"
+	printf '{"on": %s, "supported": %s, "reason": %s, "refusal": %s, "preset": "%s", "fullscreen": %s, "terminus": %s, "accent": "%s", "previous_accent": %s}\n' \
+		"$on" "$sup" "$reason" "$refusal" "$pre" "$full" "$term" "$(current)" "$prev"
 	;;
 "phosphor on")
 	if [ -f "$d/unsupported" ]; then

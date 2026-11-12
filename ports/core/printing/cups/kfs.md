@@ -20,13 +20,16 @@ it discovers through [avahi](#port-avahi), and Plasma's print-manager manages it
   allowlist.
 - `--with-cups-user=lp` — Run filters and backends as `lp`, in group `lp`
   (`--with-cups-group=lp`); both are in `fs/etc/passwd` and `fs/etc/group`.
-- `--with-system-groups=lpadmin` — Members of `lpadmin` may manage printers. Without the switch
-  configure picks the groups it finds in the build root's `/etc/group`, so the result would follow
-  the build machine. The `kdos` account is in `lpadmin`, which is the authority print-manager acts
-  with.
-- `--enable-acl` — Link [acl](#port-acl), so that `cupsd` can give every system group after the
-  first read access to its local root certificate with a POSIX ACL. With `lpadmin` the only
-  system group, the certificate's group ownership covers it and no ACL is written.
+- `--with-system-groups="lpadmin root"` — Members of `lpadmin`, and root, may manage printers:
+  `/etc/cups/cups-files.conf` says `SystemGroup lpadmin root`. Without the switch configure picks
+  the groups it finds in the build root's `/etc/group`, so the result would follow the build
+  machine. The `kdos` account is in `lpadmin`, which is the authority print-manager acts with.
+  `root` is there because `cupsd` grants an administrative request only to a member of a system
+  group, and root's own group is `root`: with `lpadmin` alone, `sudo lpinfo -v` and `sudo lpadmin`
+  are answered `Forbidden`. `lpadmin` stays first, the group that owns the local root
+  certificate.
+- `--enable-acl` — Link [acl](#port-acl), so that `cupsd` gives every system group after the
+  first, `root` here, read access to its local root certificate with a POSIX ACL.
 - `--enable-dbus` — Send job and printer events on the system D-Bus, with
   `--with-dbusdir=/usr/share/dbus-1` naming where the bus configuration goes.
 - `--enable-pam` — Authenticate web interface and `lpadmin` requests through PAM; `build.sh`
@@ -49,6 +52,13 @@ it discovers through [avahi](#port-avahi), and Plasma's print-manager manages it
   so `cupsd` runs all the time once enabled.
 
 ## Notes
+`no-idle-exit.patch` removes the `IdleExitTimeout` line from the `cupsd.conf` that `make install`
+writes. The scheduler knows that directive only when it is built for on-demand starts, which
+`--with-ondemand=no` turns off, so with the line in place every start of `cupsd` logs `Unknown
+directive IdleExitTimeout` in `/var/log/cups/error_log`. No configure switch leaves it out:
+`--with-idle-exit-timeout=no` still writes it, as `IdleExitTimeout 0`. It is a fault upstream
+could take.
+
 `build.sh` stages the install with `make BUILDROOT=$PKG install`. `BUILDROOT` is the prefix every
 install path in CUPS's `Makedefs` is built on; it defaults to `$(DSTROOT)$(DESTDIR)`, so setting it
 directly stages the same tree.

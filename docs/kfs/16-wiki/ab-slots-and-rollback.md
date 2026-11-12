@@ -50,7 +50,7 @@ The state is one file on the ESP, `EFI/kdos/bootstate`, which is
 `/boot/efi/EFI/kdos/bootstate` on the running system. No file in the tree ships it; the installer
 writes the first version:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=2674-2686 pin=d5c38affc180 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=2693-2705 pin=d5c38affc180 -->
 
 `slot_b` is empty unless the installer made the A/B layout. `kdos-bootctl` writes every later
 version, under a header of its own
@@ -99,12 +99,12 @@ In the initramfs, the `BOOT SLOT` stage mounts the ESP, asks `select` for the ro
 that root's container, and unmounts it again. The `\$` in this excerpt is the generator's escaping:
 the init is written by a heredoc, and the generated script has a plain `$`.
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=760-815 pin=75069784095f -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=789-844 pin=75069784095f -->
 
 A boot is confirmed by two marks, both root's files under `/run/kdos/bless/`. The end of `rcS`,
 after every service script has run, writes the first:
 
-<!-- kfs:include fs/etc/init.d/rcS lines=177-201 pin=de5053d13197 -->
+<!-- kfs:include fs/etc/init.d/rcS lines=190-214 pin=de5053d13197 -->
 
 The second, `graphical`, is written by kdos-sysupdated when a Plasma session has answered for a
 minute: `/etc/xdg/autostart/kdos-session-good.desktop` runs `kdos-notice --bless` in the last
@@ -151,7 +151,9 @@ version, build date, tree commit and kernel each holds. The JSON form carries th
 `{"configured": true, "active": "a", "trying": null, "attempts": 0, "bootnext": false, …}`. With
 no boot state, the text form prints
 `no boot state at /boot/efi/EFI/kdos/bootstate — this machine has one root and no rollback`, the
-JSON form prints `{"configured": false}`, and both exit 1.
+JSON form prints `{"configured": false}`, and both exit 1. On the live medium, where `/` is an
+overlay, the text form prints `this is the live medium — it has no boot state and no slots; install
+KDOS for A/B updates and rollback` and the JSON form `{"configured": false, "live": true}`.
 
 ### Adding slot B to a machine installed with one root
 

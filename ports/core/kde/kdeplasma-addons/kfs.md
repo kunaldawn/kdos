@@ -1,6 +1,6 @@
 ## About
 
-kdeplasma-addons is the second half of Plasma's widget set: the comic, dictionary, weather, timer,
+kdeplasma-addons is the second half of Plasma's widget set: the dictionary, weather, timer,
 notes, colour picker, quick launch, Konsole and Kate profile, web browser, user switcher and
 fifteen-puzzle widgets among others, the unit converter, character, colour, date, dictionary and
 spell-check runners for KRunner, the picture-of-the-day and other wallpapers, the cover, flip and
@@ -26,7 +26,7 @@ accent colour.
 - `-D CMAKE_REQUIRE_FIND_PACKAGE_KF6KirigamiAddons=ON` — Make
   [kirigami-addons](#port-kirigami-addons) a requirement; the user switcher imports it at run time.
 - `-D CMAKE_REQUIRE_FIND_PACKAGE_KF6ItemModels=ON` — Make [kitemmodels](#port-kitemmodels) a
-  requirement; the dictionary, comic, Kate sessions and Konsole profiles widgets import it at run
+  requirement; the dictionary, Kate sessions and Konsole profiles widgets import it at run
   time.
 - `CARGO_HOME="$SRC_ROOT/.cargo"` — Keep cargo's own registry and cache in the work directory,
   so the build writes nothing to the builder's home and starts from the same empty state on every
@@ -37,7 +37,26 @@ accent colour.
 - `CARGO_NET_OFFLINE=true` — Keep cargo off the network, so a crate missing from the bundle fails
   the build by name instead of being fetched.
 
+## Patches
+
+`potd-default-provider.patch` makes the Picture of the Day wallpaper start on Bing's picture instead
+of NASA's Astronomy Picture of the Day. The APOD provider reads `https://apod.nasa.gov/apod/`, which
+redirects to a page with none of the `image/` links it parses, so it can only report an error, and
+`build.sh` deletes it (below); a wallpaper left at the `apod` default would then name a provider
+that does not exist and show nothing. The default is a value in the package's `main.xml`, which no
+build switch or configuration file of the system's sets. KDOS's own; to be offered upstream with the
+provider's removal or repair.
+
 ## Notes
+
+`build.sh` deletes two things the build has no switch for. The Comic Strip widget
+(`org.kde.plasma.comic.so`, its `plasma_comic` package structure and `comic.knsrc`) installs no
+comic source of its own and gets every one through KNewStuff, which the system-wide `ghns=false`
+restriction turns off (see
+[Offline by construction](../../../../docs/kdos/01-philosophy/principles.md#offline-by-construction)),
+so on KDOS it could only ever say that no comics are installed. The APOD provider,
+`plasma_potd_apodprovider.so`, can only fail, as the patch above says; the wallpaper lists the
+providers it finds, so Astronomy Picture of the Day is not among them.
 
 `kameleon` drives two kinds of keyboard. Keyboards whose LEDs the kernel exposes under
 `/sys/class/leds` are written through a KAuth helper, `kameleonhelper`. QMK keyboards that speak
@@ -71,9 +90,11 @@ configure does not look for; without it those three fail to load.
 The configure looks for Purpose quietly, but nothing this package builds links or imports it, so
 it is not in `depends`.
 
-Four of the widgets reach the network, and only once somebody adds one: the weather widget asks
-its forecast providers, the comic widget downloads strips, the picture-of-the-day wallpaper
-downloads an image a day, and the dictionary widget looks words up on `dict.org`. The comic
-widget's "Get New Comics" list comes from KNewStuff, which the system-wide `ghns=false`
-restriction greys out (see
-[Offline by construction](../../../../docs/kdos/01-philosophy/principles.md#offline-by-construction)).
+Three of the widgets reach the network, and only once somebody adds one: the weather widget asks
+its forecast providers, the picture-of-the-day wallpaper downloads an image a day, and the
+dictionary widget looks words up on `dict.org`.
+
+The dictionary and web browser widgets are Qt WebEngine pages, so a plasmashell holding either hosts
+Chromium's browser half and runs its user-namespace probe; see
+[qt6-qtwebengine](#port-qt6-qtwebengine)'s `userns-probe-no-malloc.patch`, without which that probe
+can hang plasmashell at start on musl.

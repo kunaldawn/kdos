@@ -1,0 +1,8 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "EnabledByDefault": false,
+        "Id": "fixturetiler",
+        "Name": "chordcheck fixture"
+    }
+}

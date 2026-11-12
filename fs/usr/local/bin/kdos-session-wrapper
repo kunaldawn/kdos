@@ -43,9 +43,9 @@
 #    XDG_CURRENT_DESKTOP=KDE, XDG_CONFIG_DIRS with /etc/xdg and then the
 #    distribution's defaults in /usr/share/kdos/xdg (and the virtual-machine
 #    and live-medium overlays in front where they apply), and no QT_IM_MODULE
-#    or GTK_IM_MODULE, so each toolkit picks its own input-method route (Qt 6
-#    and GTK 4 KWin's text-input, GTK 3 fcitx5-gtk's module over D-Bus) and
-#    a profile's leftover cannot pick it. A
+#    or GTK_IM_MODULE, so each toolkit picks its own input-method route (Qt 6,
+#    GTK 3 and GTK 4 KWin's text-input, GTK under Xwayland fcitx5-gtk's
+#    module over D-Bus) and a profile's leftover cannot pick it. A
 #    person who wants either variable sets it in
 #    ~/.config/plasma-workspace/env/, which Plasma reads after this.
 #

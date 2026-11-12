@@ -40,7 +40,10 @@ Merkuro Mail's message view does not load when mimetreeparser is built without i
 
 The widget is a Plasma applet, `org.kde.merkuro.contact.applet`, and imports `org.kde.plasma.*`
 and `org.kde.ksvg` ([ksvg](#port-ksvg)); it runs in the Plasma shell, which loads it, and not in
-any of the three applications.
+any of the three applications. Its metadata turns it on by default in the system tray, and
+loading it starts Akonadi, so every KDOS desk's layout script leaves it out of the tray (see
+[Plasma shell](../../../../docs/kdos/04-programs/plasma-shell.md)); it is built and installed, and
+a user who adds it in the tray's settings gets it as upstream ships it, Akonadi with it.
 
 [kdepim-runtime](#port-kdepim-runtime) is in `depends` for run time only: without its resources
 Akonadi has no calendar, address book or mail folder to show.

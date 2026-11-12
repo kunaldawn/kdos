@@ -25,6 +25,8 @@ process is in: the deepest component of its cgroup2 path named the way systemd n
 application's unit (`app-<launcher>-<id>-<n>.scope`), parsed by upstream's own unit-name parser,
 which `cgroup-app-id.patch` builds whatever the `systemd` option says, so `-Dsystemd=disabled`
 stays. Upstream reads the unit with `sd_pid_get_user_unit()` only, so without the patch every host
-application has an empty id and the permission store keeps nothing per application. A KDOS box is
-created in `app-kdos-<box>-<n>.scope`, and its bus proxy is moved into that scope, so the portal
-sees each box's calls as its launcher's id.
+application has an empty id. With it, a caller still has an empty id unless something placed it
+in such a scope, and on KDOS nothing does: Plasma starts an application in the login's own cgroup,
+and a box's `app-kdos-<box>-<n>.scope` is never made because elogind leaves the session's
+`cgroup.procs` root's. Every caller then shares the empty id and one stored answer; see
+[Host applications and boxes reach the portals unidentified](../../../../docs/kdos/06-reference/known-gaps.md#host-applications-and-boxes-reach-the-portals-unidentified).

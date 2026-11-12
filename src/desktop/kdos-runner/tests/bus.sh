@@ -143,7 +143,7 @@ sleep 0.3
 ok "a Run that arrives just after Teardown runs; a row past the grace does not"
 
 call /runner Match string:route:fail.theme
-FT=$(idof "fail.theme"); [ -n "$FT" ] || fail "no fail.theme row"
+FT=$(idof "Fail theme"); [ -n "$FT" ] || fail "no fail.theme row"
 call /runner Run string:"$FT" string:
 i=0; while ! grep -q 'kdos theme: broken is not an accent' "$D/monitor" && [ $i -lt 100 ]; do sleep 0.05; i=$((i + 1)); done
 grep -q 'string "kdos theme: broken is not an accent"' "$D/monitor" || { OUTF=$D/monitor; fail "a failing verb's error was not posted"; }
@@ -164,13 +164,13 @@ ok "a library Match held on a slow server does not hold the palette"
 
 # The first library Match started the book index in a child.
 waitfile "$D/home/.cache/kdos/runner-books" || fail "the book index was never built"
-call /library Match string:?photosynthesis
+call /library Match string:photosynthesis
 has 'string "Photosynthesis & light"' "a kiwix row on the bus"
 has 'string "urls"' "a URL property"
 has 'string "Photosynthesis basics"' "a Kolibri row"
 has 'string "3.1 Photosynthesis of slots & trees"' "a book heading"
-call /runner Match string:?photosynthesis
-hasnt 'string "Photosynthesis' "the palette leaves ? to the library"
+call /runner Match string:photosynthesis
+hasnt 'string "Photosynthesis' "the palette leaves the library's rows to it"
 call /library Match string:ff
 hasnt 'Firefox' "the library has no favourites"
 ok "library rows from every source on the bus; each path keeps to its side"
@@ -212,3 +212,11 @@ has 'string "The answer to “slowly” is 42."' "the answer that came after its
 [ $((t1 - t0)) -lt 250 ] || fail "a kept answer took $((t1 - t0)) ms"
 [ "$(grep -c "q=slowly$" "$D/ports.log")" = 1 ] || { OUTF=$D/ports.log; fail "the question was sent twice"; }
 ok "ask: still answering by the reply limit, KRunner asked again, the late answer kept"
+
+call /runner Match string:"lib desk"
+LB=$(idof "Search the offline library alone for “desk”"); [ -n "$LB" ] || fail "no lib row"
+call /runner Run string:"$LB" string:
+i=0; while [ "$(grep -c 'querySingleRunner' "$D/plasma")" -lt 2 ] && [ $i -lt 100 ]; do sleep 0.05; i=$((i + 1)); done
+grep -A3 'querySingleRunner' "$D/plasma" | tail -4 | tr '\n' ' ' | grep -q 'string "kdos-library" *string "desk"' ||
+	{ OUTF=$D/plasma; fail "lib did not open KRunner on the library alone"; }
+ok "lib WORDS opens KRunner with the library's runner alone"

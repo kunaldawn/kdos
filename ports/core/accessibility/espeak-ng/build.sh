@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/close-audio-when-idle.patch"
+
 ./autogen.sh
 
 ./configure \

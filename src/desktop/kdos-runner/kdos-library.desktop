@@ -10,5 +10,5 @@ X-Plasma-DBusRunner-Service=io.kdos.Runner
 X-Plasma-DBusRunner-Path=/library
 X-Plasma-Request-Actions-Once=true
 X-Plasma-Runner-Min-Letter-Count=3
-X-Plasma-Runner-Syntaxes=?:q:,:q:
-X-Plasma-Runner-Syntax-Descriptions=Searches the offline library alone,Also searches the offline library\, below everything else
+X-Plasma-Runner-Syntaxes=:q:
+X-Plasma-Runner-Syntax-Descriptions=Also searches the offline library\, below everything else; lib :q: searches it alone

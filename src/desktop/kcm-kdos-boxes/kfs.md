@@ -38,8 +38,14 @@ The list is read from `kdos-box list --json` alone. The table `kdos-box list` pr
 person, and its widths and its two-word STATE make it no format to parse.
 
 The swatches are read from `/usr/share/color-schemes/KDOS<Accent>.colors` and `KDOSBox.colors`
-through KColorScheme. An accent whose scheme is not installed cannot be chosen, and Neutral, the
-default, can always be.
+through KColorScheme: the Header set's background, text and focus decoration, or the `[WM]`
+background, foreground and blend of a scheme with no Header set. Most KDOS title bars are
+near-black, so the text sample and the accent stripe are what tell the swatches apart. An accent
+whose scheme is not installed cannot be chosen, and Neutral, the default, can always be.
+
+The confirmation dialogs are parented to the window's overlay. Declared in a `SimpleKCM`, a
+Kirigami dialog finds no `applicationWindow()` in a KCM's QML context, stays in the scrolled
+content and is centred there, out of view behind its own modal dim.
 
 The QML and the C++ share the translation domain `kcm_kdos_boxes`, the plugin id, because
 `KQuickConfigModule::mainUi()` sets the QML engine's domain to the plugin id. `X-DocPath` is

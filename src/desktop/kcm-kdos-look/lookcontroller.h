@@ -22,6 +22,13 @@
  * scheme that is not KDOS's is a choice to leave KDOS out, and nothing is
  * offered.
  *
+ * WHAT THE LINE NAMES IS WHAT EACH SURFACE WEARS. The login screen wears the
+ * greeter set kdos-powerd copies, /usr/share/kdos/greeter/<accent>/, whose
+ * kdeglobals names a light accent's dark partner, so that file, not the
+ * machine's accent, is the login screen's colour. The boot menu is named only
+ * where /boot/efi exists: a live medium has none, and kdos-bootctl cannot
+ * recolour a menu it cannot write.
+ *
  * kded-kdos IS THE OTHER RUNNER OF THAT COMMAND, and the page follows it over
  * io.kdos.Kded1 (kdedclient.h). While it runs, the page is busy and starts
  * nothing: two `kdos theme` runs at once would write the same files in an
@@ -34,6 +41,11 @@
  * what is restored; this page shows what it reports and never writes kwinrc
  * itself. A tuning made on the effect's own settings page (Fine-tune…) is
  * neither preset, and is shown as "custom" with neither radio checked.
+ * Its options are offered only where the switch is: on software rendering
+ * the mode can never come on, and an option recorded for it would wait for
+ * an `on` that is refused. A refusal is said in the page's own words, from
+ * the record's "refusal" ("session" or "gpu"); "reason", the command's own
+ * sentence, is shown only for a refusal the page does not know.
  */
 
 #pragma once
@@ -77,12 +89,16 @@ class LookController : public QObject
     Q_PROPERTY(bool phosphorKnown READ phosphorKnown NOTIFY phosphorChanged)
     Q_PROPERTY(bool phosphorOn READ phosphorOn NOTIFY phosphorChanged)
     Q_PROPERTY(bool phosphorSupported READ phosphorSupported NOTIFY phosphorChanged)
+    /* The switch and every option can be used: the status was read, and the
+     * mode is supported or already on (so it can be turned off). */
+    Q_PROPERTY(bool phosphorUsable READ phosphorUsable NOTIFY phosphorChanged)
     Q_PROPERTY(QString phosphorReason READ phosphorReason NOTIFY phosphorChanged)
     Q_PROPERTY(QString preset READ preset NOTIFY phosphorChanged)
     Q_PROPERTY(bool terminus READ terminus NOTIFY phosphorChanged)
     Q_PROPERTY(bool fullscreen READ fullscreen NOTIFY phosphorChanged)
     Q_PROPERTY(bool fineTuneAvailable READ fineTuneAvailable CONSTANT)
     Q_PROPERTY(bool reducedMotion READ reducedMotion NOTIFY stateChanged)
+    Q_PROPERTY(bool bootMenu READ bootMenu CONSTANT)
 
 public:
     enum class SyncState {
@@ -97,6 +113,8 @@ public:
     struct Paths {
         QString program;
         QString machineAccent = QStringLiteral("/etc/kdos/accent");
+        QString greeterDir = QStringLiteral("/usr/share/kdos/greeter");
+        QString esp = QStringLiteral("/boot/efi");
     };
 
     /* kded-kdos is asked on the session bus. */
@@ -126,6 +144,8 @@ public:
     bool phosphorKnown() const;
     bool phosphorOn() const;
     bool phosphorSupported() const;
+    bool phosphorUsable() const;
+    /* Why the mode cannot come on, translated; empty while it can. */
     QString phosphorReason() const;
     QString preset() const;
     bool terminus() const;
@@ -135,6 +155,12 @@ public:
     /* KWin's own settings page for the effect is installed. */
     bool fineTuneAvailable() const;
     bool reducedMotion() const;
+    /* The machine has a boot menu an accent can recolour: Paths::esp is a
+     * directory. */
+    bool bootMenu() const;
+    /* The accent the login screen wears for the machine's accent: its
+     * greeter set's colour scheme, else the machine's accent itself. */
+    QString loginAccent() const;
 
     Q_INVOKABLE void refresh();
     Q_INVOKABLE bool applyAccent(const QString &accent);
@@ -187,12 +213,16 @@ private:
     QString m_accent;
     QString m_plasmaScheme;
     QString m_machineAccent;
+    /* The colour scheme the machine accent's greeter set names; empty when
+     * the set or its key is missing. */
+    QString m_loginScheme;
     bool m_reducedMotion = false;
 
     bool m_phosphorKnown = false;
     bool m_phosphorOn = false;
     bool m_phosphorSupported = false;
     QString m_phosphorReason;
+    QString m_phosphorRefusal;
     QString m_preset = QStringLiteral("subtle");
     bool m_terminus = false;
     bool m_fullscreen = false;

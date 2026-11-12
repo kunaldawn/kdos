@@ -34,8 +34,9 @@ if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
     echo "[*] building $IMAGE image (first run)..."
     docker build -t "$IMAGE" "$(dirname "${BASH_SOURCE[0]}")"
 fi
-# Sparse, and above the install size kinstall checks against (about 53 GB).
-DISK_SIZE=${KDOS_DISK:-96G}
+# Sparse. Two system slots need about 149 GiB for an install of 46.5 GiB; a
+# smaller disk gets one slot and never exercises A/B.
+DISK_SIZE=${KDOS_DISK:-192G}
 [ -f "$QCOW" ] || qemu-img create -f qcow2 "$QCOW" "$DISK_SIZE" 2>/dev/null || \
     docker run --rm -v "$REPO_ROOT/build:/build" "$IMAGE" -c "qemu-img create -f qcow2 /build/kdos.qcow2 $DISK_SIZE"
 

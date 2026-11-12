@@ -10,9 +10,10 @@ session.
 
 On KDOS the backend is `ksvc`, the script `/usr/lib/turnstile/ksvc`, which runs the scripts in
 `/etc/kdos/user-services/` under `ksvc`: the session bus at `$XDG_RUNTIME_DIR/bus`, PipeWire,
-WirePlumber, `pipewire-pulse` and the user's timers. Both it and `/etc/turnstile/turnstiled.conf`
-come from the tree's `fs/` overlay, not from this port. `turnstiled` itself runs as root under
-`ksvc` from an init script. See
+WirePlumber, `pipewire-pulse` and the user's timers, for every account from uid 1000; the greeter's
+`sddm` account gets the session bus alone, and other system accounts nothing. Both it and
+`/etc/turnstile/turnstiled.conf` come from the tree's `fs/` overlay, not from this port.
+`turnstiled` itself runs as root under `ksvc` from an init script. See
 [No systemd init, units or service manager](../../../../docs/kdos/01-philosophy/principles.md#no-systemd-init-units-or-service-manager).
 
 ## Flags
@@ -60,3 +61,12 @@ The last logout's clear of the runtime directory leaves every mount point in it 
 `/run/user/<uid>/kdos/boxes/<box>/root`, whose upper directory is the box's persistent state in
 the user's home, so a clear that descended into it would write a whiteout for every file of the
 box.
+
+A login that arrives while the previous manager is stopping waits for that manager to exit and
+for the next one to report ready (`stopping-manager-readiness.patch`). Upstream releases it on
+the stopping manager's readiness when that manager was still coming up as the last session
+closed, and SDDM's automatic login after `loginctl terminate-user` lands there: Plasma starts on
+the session bus that is being stopped, `kded6` and `plasmashell` lose it, and the screen stays
+black. The same patch closes a stopped manager's unreported readiness pipe when the next one
+starts, since an event on it would otherwise make `turnstiled` exit. The patch is to be offered
+upstream.

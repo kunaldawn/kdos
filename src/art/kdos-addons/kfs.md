@@ -18,7 +18,7 @@ entry as installed host software; it is a kpkg port, which Discover cannot remov
 | `plasma/plasmoids/org.kdos.plasma.phosphorclock/` | the time in the fixed-width face, its separator in the accent |
 | `plasma/plasmoids/org.kdos.plasma.focustimer/` | focus periods and breaks, with a notification at each change |
 | `knotifications6/kdos-addons.notifyrc` | the Focus Timer's notification, listed on the Notifications page |
-| `metainfo/io.kdos.addons.metainfo.xml` | the AppStream entry Discover shows, an add-on of `org.kde.plasmashell` |
+| `metainfo/io.kdos.addons.metainfo.xml` | the AppStream entry Discover shows, an add-on of `org.kde.plasmashell`, with Breeze's `preferences-desktop-theme-global` as its stock icon |
 
 Everything is MIT: KDOS's own work, and the five palettes the colour schemes are made from, whose
 copyright lines `LICENSE.notice` carries and the package installs to
@@ -47,6 +47,16 @@ fails the build; `python3 genaddons.py --kcolor … --palettes … --report` pri
 with its ratio before and after. Low-contrast palettes move the most: Nord's red on its own grey
 starts at 2.1:1, and Catppuccin Latte's orange and green on its light ground at 2.3:1 and
 2.5:1.
+
+The view's text holds the same 4.5:1 on the selection, both solid and with the selection laid 64%
+over either view background, which is how Dolphin's and Breeze's translucent item selection draws
+it under the view's own label. Every palette publishes its selection as an accent for its own
+ink, not for the view's text, which measures under 3:1 on it, so the generator walks the selection
+toward the view's background until the view's text holds on it and makes that text the
+selection's ink, as the KDOS dark accents do (see
+[the colour roles](../../../docs/kdos/03-architecture/design-language.md#the-role-mapping)).
+`DecorationFocus` keeps the published colour, so focus rings and the other accent marks stay the
+palette's own. A palette whose selection already holds keeps it and its ink.
 
 No add-on is named with a `KDOS` prefix. A colour scheme called `KDOS*` would be taken for one of
 the eight accents by `kdos theme` and by the accent watcher in kded, and a wallpaper package

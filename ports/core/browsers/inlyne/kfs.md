@@ -3,7 +3,9 @@
 wgpu, with no browser engine underneath, and reloads it when the file changes on disk. It is a Rust
 program built with cargo from its vendor bundle, the second `sha256 =` line (see
 [Vendoring](../../../../docs/kdos/05-developer/writing-ports.md#vendoring)). The desktop entry
-`build.sh` writes opens a file with `inlyne view`.
+`build.sh` writes opens a file with `inlyne view`. It claims `text/markdown` and is
+`NoDisplay=true`: with no file `inlyne view` prints its usage and exits, so it is offered under Open
+With and has no Start row. Kate stays the type's default in `kde-mimeapps.list`.
 
 ## Flags
 - `-p inlyne` — build the `inlyne` package alone. The source is a cargo workspace whose other

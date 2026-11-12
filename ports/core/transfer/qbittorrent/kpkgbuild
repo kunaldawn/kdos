@@ -10,7 +10,7 @@
 
 name        = qbittorrent
 version     = 5.2.3
-release     = 1
+release     = 2
 source      = $name-$version.tar.gz::https://github.com/qbittorrent/qBittorrent/archive/refs/tags/release-$version.tar.gz
 sha256      = a5f540cdfb0053f0ce1a1c62ccd92d08214f16bcb2c512569ec54d81531e541f  qbittorrent-5.2.3.tar.gz
 description = BitTorrent client (Qt 6) with a web UI, plus qbittorrent-nox for a machine with no display

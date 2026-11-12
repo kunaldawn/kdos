@@ -72,3 +72,9 @@ meson setup build \
 	-Dmanpage-build=enabled
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
+
+install -d "$PKG/etc/mpv"
+cat > "$PKG/etc/mpv/mpv.conf" <<'CONF'
+gpu-sw=yes
+CONF
+chmod 644 "$PKG/etc/mpv/mpv.conf"

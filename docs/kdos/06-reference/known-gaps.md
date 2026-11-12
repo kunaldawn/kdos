@@ -40,12 +40,24 @@ A greeter that crashes is restarted by SDDM itself, which stays up, so a greeter
 leaves a black `tty1` and nothing for `kdos-dm` to see. `tty2` is the recovery console for that:
 `Ctrl+Alt+F2`, log in, and read `/var/log/sddm.log`.
 
-### The screen reader at the login screen hears nothing
+### The screen reader at the login screen has no sound
 
-`Meta+Alt+S` at the greeter starts Orca, as it does in a session. Orca needs a session bus and the
-accessibility bus, and the greeter runs with neither, so it starts and hears nothing. Inside a
-Plasma session Orca reads the desktop and the applications over AT-SPI; that has not been heard on
-an image. See [Accessibility](../02-user-guide/accessibility.md).
+`Meta+Alt+S` at the greeter starts Orca, as it does in a session. The greeter's session bus brings
+up the accessibility bus, the AT-SPI registry and speech-dispatcher with it, but the `sddm`
+account runs no PipeWire, and ALSA's default device is PipeWire's, so speech-dispatcher cannot
+open an audio device and Orca says nothing. Inside a Plasma session Orca speaks: it reads System
+Settings, Dolphin and the window `Alt+Tab` switches to. See
+[Accessibility](../02-user-guide/accessibility.md).
+
+### The overview is silent under the screen reader, and the lock screen only partly read
+
+KWin's overview (`Meta+W`) draws its windows, desktops and search field in a scene inside KWin that
+publishes nothing on the accessibility bus, so Orca echoes the keys pressed there and says nothing
+else. The lock screen publishes its password field and its Show Password, Virtual Keyboard and user
+buttons, which Orca reads, but `Tab` also stops on one control that Orca announces with nothing,
+and never reaches the Sleep and Switch User buttons. Both are upstream behaviour of KWin and of the
+screen locker; nothing in KDOS changes them. See
+[The screen reader](../02-user-guide/accessibility.md#the-screen-reader).
 
 ### Phosphor mode needs hardware OpenGL
 
@@ -64,16 +76,30 @@ The session's Secret Service, `ksecretd`, keeps saved passwords for KDE programs
 using libsecret or QtKeychain. `pam_kwallet5` unlocks it with the password typed at the login
 screen. An automatic login types none, so the first program to ask for a saved secret makes the
 wallet ask for its password once. The live medium turns the wallet off
-(`/usr/share/kdos/xdg-live/kwalletrc`), so a live session keeps no secrets at all. See
+(`/usr/share/kdos/xdg-live/kwalletrc`), so a live session keeps no secrets at all: nothing
+provides `org.freedesktop.secrets` there, so `secret-tool`, KeepSecret and any other libsecret or
+QtKeychain program, and the secret portal, report that the service is missing, and KWallet Manager
+offers only to turn the wallet on. See
 [The security model](../03-architecture/security-model.md).
 
-### System Monitor lists only boxes as applications
+### Some programs open their first window at their minimum size
+
+A KXmlGui program with no saved window size sizes its first window from its widgets' minimum size
+hints, and on Wayland nothing makes it larger: Kapman opens at 200x178, Bomber at 453x228 and
+KNetWalk at 396x141, and KDiskFree, Shotcut and digiKam are small too. The window memory keeps
+whatever size the window closes at, so a person who enlarges the window once has it enlarged from
+then on; until then, it opens at the program's size. See
+[Placement](../03-architecture/window-model.md#placement).
+
+### System Monitor's Applications page lists nothing
 
 Plasma's System Monitor groups processes into applications by the cgroup scope each launch runs
-in. A boxed application has one, `kdos-appbox`'s `app-kdos-<box>-<n>.scope`, and the Applications
-page lists it. A program started on the host has none: without a systemd user manager nothing
-gives a launch a scope of its own, so every host program shares the login's `session` cgroup and
-appears only on the Processes page. See
+in, and no process on KDOS is in one. A program started on the host has none: without a systemd
+user manager nothing gives a launch a scope of its own. A box has none either (see
+[Host applications and boxes reach the portals
+unidentified](#host-applications-and-boxes-reach-the-portals-unidentified)). Every host program
+and every box shares the login's `session` cgroup, so the Applications page, and the Applications
+table on the Overview page, stay empty, and every process is on the Processes page only. See
 [Boxes on the Applications page](../04-programs/plasma-shell.md#boxes-on-the-applications-page).
 
 ### The energy sensors are empty for an account outside `wheel`
@@ -85,7 +111,22 @@ about how much of the processor's energy counter, a side channel, other accounts
 ### A crashed program shows no crash dialog
 
 KDE's crash handler hands a crash to DrKonqi, which is not a port. A KDE program that crashes is
-restarted where its handler restarts it, and nothing offers a backtrace or a report.
+restarted where its handler restarts it, and nothing offers a backtrace or a report. Nothing
+collects a core either: the core-file limit is the kernel's default of zero, so a crash leaves only
+the kernel's `potentially unexpected fatal signal` line in `/var/log/messages` and whatever the
+program printed to the session log. To collect one, run `ulimit -c unlimited` in a shell and start
+the program from it; the core is written to its working directory.
+
+### Session restore reopens applications, not their documents
+
+With the session set to restore the previous one, the default, the next login starts each
+application that had a window open, from its desktop entry and with no arguments: no documents,
+tabs or window positions come back, and an application with several windows gets one. A window
+whose program Plasma cannot match to a desktop entry is not restored at all. Wayland applications
+do not speak the X11 session protocol, so ksmserver saves none of them, and Plasma's fallback
+restore records only the desktop entries; see
+[Ending a session](../03-architecture/session.md#ending-a-session). Boxes and boxed applications
+come back through KDOS's own record.
 
 ### Non-KDE programs draw Breeze's icons in Breeze's blue
 
@@ -109,10 +150,22 @@ KeePassXC, LMMS, Mumble and the rest) loads qt5ct under the same platform theme 
 draws in the Fusion style with the accent's palette, the KDOS icons and the desktop's fonts, which
 `kdos theme` keeps in step; its widgets are Fusion's shapes, not Breeze's.
 
+### Tk, FLTK and Java programs keep their own colours
+
+The accent reaches Qt 6 and KDE programs through the platform theme, GTK programs through
+Plasma's GTK bridge and Qt 5 programs through qt5ct. Nothing writes colours for any other
+toolkit: Tk programs (`wish` and the Tk front ends), FLTK programs (flrig, fldigi) and Java
+programs drawn with Swing or AWT (Digital among them) show their toolkit's own light-grey
+defaults in every accent, `paper` included. Tk and FLTK read X resources at start under Xwayland,
+and KDOS writes none; Swing would need a look and feel that follows a colour file, which no
+shipped package provides.
+
 ### *Get New…* downloads nothing
 
 KDE's add-on downloads are switched off for the whole system: `ghns=false` is locked in
-`kdeglobals`, so every *Get New…* button is greyed. Wallpapers, colour schemes, KWin scripts and
+`kdeglobals`. Each surface shows it its own way: the settings pages have no *Get New…* button, the
+wallpaper dialog's *Get New Plugins…* is greyed, and the *Get New…* menu of Add Widgets holds only
+*Install Widget From Local File…*. Wallpapers, colour schemes, KWin scripts and
 widgets come from the KDOS add-ons on the image instead; see
 [Add-ons](../04-programs/plasma-shell.md#add-ons) and
 [Decisions](../01-philosophy/decisions.md#nothing-downloads-at-run-time).
@@ -125,8 +178,10 @@ KDOS's colours.
 ### Read Aloud appears in the clipboard's actions only after `kdos speech sync`
 
 Klipper's actions have no condition, so the Read Aloud action is added to your `klipperrc` while a
-voice is installed and removed when the last one goes, by `kdos speech sync`. Its autostart entry
-runs it at each login; a voice installed in the middle of a session reaches Klipper at the next one.
+voice is installed and removed when the last one goes, by `kdos speech sync`, which
+`kdos speech voice get` and `voice remove` run and its autostart entry runs at each login. Klipper
+reads the file when the clipboard applet starts, so a voice fetched in the middle of a session
+reaches Klipper at the next login.
 
 ### Emoji draw everywhere except the text console on `tty1`
 
@@ -150,11 +205,25 @@ reader has been used on this system.
 fcitx5 is built without the XIM front end X clients use, and `fcitx5-qt` without its X11 part, so
 an application under Xwayland gets no input method unless it is a GTK 3 or GTK 4 program on the
 host, which loads `fcitx5-gtk`'s module and reaches fcitx5 over D-Bus. In a box no X client has
-one. A Qt 6 or GTK 4 application on Wayland reaches fcitx5 through KWin's text-input protocol and a
-GTK 3 one through `fcitx5-gtk`'s module; neither GTK route has been typed into on the rig. A Qt 5
-application on Wayland speaks only text-input-unstable-v2, which KWin also serves; that has not
-been tried. See
+one. A Qt 6, GTK 3 or GTK 4 application on Wayland reaches fcitx5 through KWin's
+`text-input-v3`; pinyin has been typed into a GTK 4 entry (`zenity --entry`) and into AbiWord, a
+GTK 3 program, on the rig. A Qt 5 application on Wayland speaks only text-input-unstable-v2, which
+KWin also serves; that has not been tried. See
 [the session](../03-architecture/session.md#input-methods).
+
+### AbiWord's candidate window opens at the window's corner
+
+AbiWord's document view gives the input method no cursor position, so fcitx5 draws the candidate
+list at the top-left of AbiWord's window, over the menu bar, while the text being composed shows
+in the page. The text is typed correctly. Fixing it is AbiWord's; `GTK_IM_MODULE` stays unset
+host-wide (see [the session](../03-architecture/session.md#input-methods)).
+
+### A GTK program that builds its own file dialog keeps GTK's
+
+A GTK 4 program asks the file-chooser portal for its Open and Save dialogs, and so does a GTK 3
+program that uses GTK's native chooser, which `GTK_USE_PORTAL=1` sends to the portal; both get
+KDE's dialog. A GTK 3 program that builds GTK's own dialog widget never asks the portal: AbiWord's
+Open dialog is GTK's. Nothing short of changing the program moves it.
 
 ### A corporate VPN is a terminal program
 
@@ -190,10 +259,26 @@ application takes `kdos app tui add` run in a terminal. See the route table unde
 `plasma-keyboard` gives haptic feedback through feedbackd's session service, which is not a port, so
 a key press is silent to the touch.
 
+### The lock screen's Virtual Keyboard button does nothing while fcitx5 is the input method
+
+Plasma's lock screen shows a **Virtual Keyboard** button whenever KWin has an input method, and
+KDOS's default input method is fcitx5, which draws no keyboard, so the button opens nothing.
+Choosing Plasma Keyboard on System Settings → Keyboard → Virtual Keyboard makes it work; see
+[The on-screen keyboard](../02-user-guide/accessibility.md#the-on-screen-keyboard).
+
 ### Info Center has no X Server and no GLX page
 
 They show what `xdpyinfo` and `glxinfo` print, and neither ships: there is no X server outside
 Xwayland, and `mesa-demos` is built without X11.
+
+### KSystemLog shows only the cron log
+
+`/var/log/messages`, `/var/log/kern.log` and `/var/log/auth.log` are root's, and `dmesg` is
+restricted to root, while KSystemLog runs as you: a root graphical program reaches no display on
+the Wayland session, where `kdesu` loses the session's runtime directory. Its system and
+authentication tabs say the file cannot be read and its kernel tab is empty, so it opens on the cron
+log. Read the others with `sudo less /var/log/messages`, `sudo less /var/log/auth.log` or
+`sudo dmesg`.
 
 ### The Help Center cannot search manual pages
 
@@ -206,15 +291,67 @@ Kup's `bup` backup type needs `bup`, which is not a port; `par2`, the other prog
 comes from `par2cmdline-turbo`. Its `rsync` type and the
 `restic` type KDOS adds are built; `kdos backup run` can share a restic repository with it.
 
+### There is no Colour Management page and no colour-management daemon
+
+colord and KDE Gear's colord-kde are not ports, so System Settings has no Colour Management page,
+no ICC profile importer, and no device is assigned a profile through colord: `cupsd` registers no
+printer queue with one, and a scanner or printer has no colour profile beyond the driver's own.
+Under Wayland colord would list no display either, since colord-kde's output mapper is X11-only. A
+display's ICC profile is chosen in System Settings → Display Configuration, and KWin applies it
+without colord.
+
 ## Applications and boxes
 
-### An accent change has not been watched in running GTK and libadwaita programs
+### A running GTK 4 or libadwaita program takes a new accent only at its next start
 
 `kdos theme` applies a KDOS global theme, and Plasma tells every running KDE program, which repaints.
 GTK programs follow through kde-gtk-config's kded module, which rewrites the GTK settings, the
-GSettings keys and the `colors.css` libadwaita reads; whether a running GTK 3, GTK 4 or libadwaita
-program repaints at once or at its next start has not been watched on an image. A Qt 5 program
-reads its qt5ct palette when it starts.
+GSettings keys and the `colors.css` files GTK and libadwaita read. A running GTK 3 program repaints
+at once: the module serves `org.gtk.Settings`, which loads `colorreload-gtk-module` into it. GTK 4
+has no such module and re-reads `~/.config/gtk-4.0/gtk.css` only when the dark or light preference
+changes. An accent switch that keeps the preference therefore leaves a running GTK 4 or libadwaita
+program in the accent it started with. A switch between dark and light does reload it, but the
+portal announces the preference before the module writes the new `colors.css`, so the program
+reloads the colours of the switch before: gnome-mines started in `amber` stays amber through
+`perfect`, turns `perfect`'s blue on the switch to `paper`, and `paper`'s light colours on the
+switch back to `bone`. Each takes the right accent when it next starts. A Qt 5 program reads its
+qt5ct palette when it starts.
+
+### Boxes are measured by their processes, and their limits are unenforced
+
+No box runs in a cgroup scope of its own. A store box, the box every catalogue and Debian install
+makes, is created with none: its writes are inside its container, and a container whose cgroup
+parent went with an ended login could never start again. A pack box's scope is never made (see
+[Host applications and boxes reach the portals
+unidentified](#host-applications-and-boxes-reach-the-portals-unidentified)). Every box's processes
+sit in the login's own `session` cgroup, so the privacy lamps, `kdos hey` and System Monitor's KDOS
+page find a box's processes by the `KDOS_BOX` in their environment instead, in a mount namespace
+other than the host's. What that cannot give is a cgroup's accounting: a box's System Monitor
+figures are the sums of its running processes, so its memory is their proportional set size with
+no page cache, the CPU time of a process that has exited leaves the sum (that sample shows no
+rate), its `memoryLimit` sensor reads 0, and its `kdos-boxinit`, which runs as a user-namespace
+root the session's user does not own, is not counted. A box's `memory` is held by nothing but
+`kdos-oomd`'s budget check, and its `cpus` and `pids` by nothing at all.
+
+### GTK 4 and libadwaita programs in a box crash at start on a virtual machine's software renderer
+
+Debian 13's GTK 4.18, which the `rt-gtk` runtime installs, exits on SIGSEGV while it opens the
+Wayland display under KWin on llvmpipe: the crash is in its linux-dmabuf feedback handler, on the
+scanout tranche KWin sends there, and no `GDK_DISABLE` or `GSK_RENDERER` value avoids it. Sound
+Recorder and every other GTK 4 or libadwaita application of the catalogue or Discover's Debian
+lane therefore opens no window on such a machine; GTK 3 applications are unaffected, and so is the
+host's own GTK 4.24. Whether KWin's feedback on a real graphics card triggers it has not been
+measured.
+
+### A running boxed GTK program takes a new accent only at its next start
+
+A boxed GTK program is given its theme as `GTK_THEME` when it starts, and with the variable set GTK
+follows no later change of theme or of the dark preference, whatever theme name the settings portal
+announces. Its colours are the `colors.css` it read
+at start: `colorreload-gtk-module`, which repaints a running GTK 3 program on the host, is loaded by
+the modules `org.gtk.Settings` names on the session bus, which a box's filtered bus does not reach.
+An accent switch, or a switch between dark and light, therefore reaches a boxed GTK program when it
+next starts.
 
 ### A box can be granted only the nine named groups of Wayland globals
 
@@ -235,11 +372,25 @@ costs.
 The portal front end asks before sharing location only with an application in a sandbox it
 recognises (Flatpak, Snap or Linyaps), and a KDOS box is none of them, so it counts as an
 unsandboxed host program. GeoClue runs with no consent agent and an empty whitelist, and answers any
-client on the system bus. For the same reason, the Camera and Screenshot questions are asked once
-for all boxes together, since the front end sees no application id on any of them. Nothing on the
-desktop shows or changes a stored answer: each portal's answers are a file under `~/.local/share/flatpak/db/`,
-and deleting that file makes it ask again. See
+client on the system bus. See
 [The session](../03-architecture/session.md#access-and-what-it-unlocks).
+
+### Host applications and boxes reach the portals unidentified
+
+The portal front end names a caller from an `app-<launcher>-<id>-<n>.scope` cgroup, and no caller
+is in one. An application Plasma starts runs in the login's own cgroup, because KIO places a child
+in a scope only through a systemd user manager, and a box's scope is never made, because elogind
+leaves `/sys/fs/cgroup/<session>/cgroup.procs` root's and cgroup2 then refuses the move into the
+login's delegated subtree. Every caller therefore has the empty application id: KDE's ScreenCast,
+RemoteDesktop, Camera and Screenshot dialogs ask on behalf of "an unidentifiable application", with
+"without asking next time" ticked, and an answer remembered there applies to every host
+application and every box. Nothing on the desktop shows or changes a stored answer: each portal's
+answers are a file under `~/.local/share/flatpak/db/`, and deleting that file makes it ask again.
+The same root-owned file keeps a pack box's `memory`, `cpus` and `pids` unenforced, and leaves
+System Monitor only a box's processes to measure (see [Boxes are measured by their processes, and
+their limits are unenforced](#boxes-are-measured-by-their-processes-and-their-limits-are-unenforced)). See
+[The session](../03-architecture/session.md#portals) and
+[Containers](../03-architecture/security-model.md#containers).
 
 ### A catalogue change reaches an installed application only when it is rebuilt
 
@@ -272,11 +423,12 @@ statically and run a command, not to start a pod.
 ### A box is not a security boundary against you
 
 By default it shares your home directory in full, along with your network, process table, `/dev`,
-`/sys` and `/tmp`. A pack box sees a private runtime directory holding only its tagged Wayland
-socket, a filtered session bus and the audio sockets; a store box, which distrobox creates over the
-session's own runtime directory, can reach the session bus and connect to KWin untagged through
-`wayland-0`, and `kdos-appbox status` marks it `tagged` rather than `confined`. A box limits what an
-application is offered by the *desktop*, not what it can do to your data. A profile's
+`/sys` and `/tmp`. A pack box and a store box each see a private runtime directory holding only
+their tagged Wayland socket, a filtered session bus and the audio sockets. Only a development box
+that distrobox creates over somebody else's image (`kdos-box create <name> base=image:<ref>`)
+shares the session's own runtime directory: it can reach the session bus and connect to KWin
+untagged through `wayland-1`, and `kdos-appbox status` marks it `tagged` rather than `confined`. A
+box limits what an application is offered by the *desktop*, not what it can do to your data. A profile's
 `home = private` gives one box a home of its own. See
 [The security model](../03-architecture/security-model.md#what-is-not-protected).
 
@@ -306,6 +458,16 @@ Text you copy in either should appear in Klipper's history, and this has not bee
 built image. It is expected to work: both programs copy through the Wayland data-control protocol,
 compiled into the binary itself, and KWin provides that protocol to programs that are not boxed. If a copy from either goes
 missing, that is a bug worth reporting.
+
+### KOrganizer opened after another PIM program shows its calendars unticked
+
+Akonadi makes the default calendar and the birthdays calendar the first time any KDE PIM program
+starts it. KOrganizer ticks a calendar that appears while it runs, but saves no choice for one that
+was already there at its own first start, and shows it unticked. So when Merkuro, KAddressBook or
+KMail is opened before KOrganizer, its first window lists Personal Calendar and Birthdays
+unticked, and a new event is reported as created in a calendar that is filtered out. Tick them in
+the calendar list once; KOrganizer keeps the choice. No setting changes this, and the collection ids
+it would have to name are assigned only when Akonadi runs.
 
 ### A video call has never been placed
 
@@ -387,13 +549,20 @@ its output.
 Dolphin's *Transcribe* runs `whisper-cli` over a file you already have. Both need the same model,
 and `base.en` ships.
 
-### The native applications have not been run
+### The native applications have been opened, not used
 
 The browsers, office suites, editors, games and the rest of the graphical applications are recipes
 under `ports/core`, named in the lists of the userland phases, `40_lang` to `44_apps`, each with
-its sources pinned by hash. No application has been started on a
-KDOS image, so what is written here and in [the ports catalogue](ports-catalogue.md) about how any
-of them behaves describes its recipe. How much of a build of them has been measured is under
+its sources pinned by hash. Every application with a row in Kickoff has been started from its
+desktop entry on the ISO, the way Kickoff starts it, and nearly every one maps a window, on KWin's
+Wayland or, for one with no Wayland path, through Xwayland. The few that map none are terminal
+programs that exit without a terminal, tray or background programs with no window of their own,
+and a handful that opened no window in that launch for a reason of their own. Using them is not
+measured:
+opening a document, playing media, saving or printing in any of them has not been done on an
+image, so what is written here and in [the ports catalogue](ports-catalogue.md) about how any of
+them behaves beyond starting describes its recipe. No harness in the tree repeats that launch, so
+it is not part of a check. How much of a build of them has been measured is under
 [Build times and snapshot sizes are measured for part of the build
 only](#build-times-and-snapshot-sizes-are-measured-for-part-of-the-build-only).
 
@@ -415,6 +584,14 @@ only](#build-times-and-snapshot-sizes-are-measured-for-part-of-the-build-only).
 Chromium reads only its own `.bdic` dictionaries, which it downloads, so it cannot use the
 Hunspell dictionaries on the host, and its spelling service is off by policy. It is configured with
 no Google API keys, so sync, sign-in, Safe Browsing, translation and location services do nothing.
+
+### GoldenDict-ng ships with no dictionary
+
+No port installs dictionary data, and the `goldendict-ng` port starts a new profile with its online
+sources (dict.org, Wikipedia and Wiktionary) turned off, so a fresh install finds nothing for any
+word. StarDict, DSL, MDict, Babylon or ZIM files put in `/usr/share/stardict/dic`, which a new
+profile already lists as a source, are found at the next rescan; a folder anywhere else is added
+under *Edit > Dictionaries > Sources > Files*. An online source is ticked in the same dialog.
 
 ### Quassel shows no link previews
 
@@ -452,11 +629,40 @@ the disk.
 The Atari ST emulator needs a TOS or EmuTOS image, and building EmuTOS needs an m68k cross
 toolchain that is not a port, so the user supplies the image.
 
+### Cantor has no Maxima, Sage or Scilab backend
+
+Cantor's Maxima, Sage and Scilab backends are built and drive the program of that name, and none
+of the three is a port: Maxima needs a Common Lisp (SBCL or ECL), which is not a port either. A
+worksheet offers them and cannot start one. Python, R, Octave, Lua, Qalculate and KAlgebra work.
+
+### Qt Creator and KDevelop show no Qt documentation
+
+No port installs Qt's or KDE's API documentation as `.qch` files: QDoc, which generates them, is
+not built in `qt6-qttools`, and there is no `qt6-qtdoc` port. The Help mode of Qt Creator and the
+Qt documentation of KDevelop are empty, and the examples Qt Creator's Welcome page lists come from
+that documentation, so none is listed. A `.qch` file downloaded elsewhere is added in Qt Creator's
+*Preferences > Help > Documentation*.
+
+### Warzone 2100's campaign has no videos
+
+The campaign briefing videos are upstream's separate `sequences.wz`, several hundred megabytes,
+which the port does not ship; the game says on its Campaign screen that they are missing, and the
+campaigns play without them. See the port's notes in *KDOS from Scratch*.
+
 ### SolveSpace takes no 3D mouse
 
 `spacenavd` serves a 3D mouse to every `libspnav` client, FreeCAD and OpenSCAD among them, but
 `solvespace-qt` has no 3D-mouse support at all; upstream has it only in its GTK and Windows
 interfaces.
+
+### Audacity reports a recording error on a machine with no microphone
+
+Audacity 4 starts monitoring the input when a project opens. On a machine with no capture device,
+a desktop with no microphone or a virtual machine, PortAudio cannot open one and Audacity shows
+"Error opening recording device. Error code: -9997 Invalid sample rate" as a modal dialog each
+time a project or an audio file opens. Dismissing it is harmless: playback, editing and export
+work, and recording works once a capture device is present. No build switch or system default
+turns the monitoring off.
 
 ### Every program speaks English
 
@@ -614,31 +820,6 @@ K3b burns discs through `cdrdao`, `cdrskin` and `growisofs`, and ISO Image Write
 to a stick. The rig has no optical drive and no stick, so neither has burnt or written anything,
 and no disc has been read back.
 
-## Installation
-
-### Applications imported or built during an install stay in the live session
-
-Of the three routes the Applications step can take, only *pending* reaches the installed machine:
-it records the selection in the target's `/var/lib/kdos/apps-pending`, and the first session
-offers to build it. The *import* route runs `kdos-appbox import <archive>` and the *network* route
-runs `kdos-appbox install <group>…`, both in the live session with no target root, so what they
-install lands in the live system's store and ends with it. The target gets the empty store
-directories and nothing in them. See
-[The applications step](../04-programs/kinstall.md#the-applications-step) and
-[Applications](../02-user-guide/installation.md#8-applications).
-
-### An unattended install skips every check the pages make
-
-`kinstall --config <file> --unattended` goes straight to the install, and the checks each page
-makes before it lets you continue are never run: that the target is not the running boot medium
-and not read-only, that it is large enough, and that no other disk already holds a volume group
-named `kdos`. The Prepare step still applies the answers check every front end shares, so a
-malformed hostname or user name, a missing passphrase or password, an unknown accent or desk and a
-locked root beside a non-administrator are refused before anything is written, and on a machine
-booted in legacy BIOS mode it refuses a reused GPT disk with no BIOS boot partition. Loading the same file into the wizard
-(`kinstall --config <file>`) and stepping through the pages runs the checks. See
-[Installing unattended](../02-user-guide/installation.md#installing-unattended).
-
 ## Boot and updates
 
 ### On an installed machine the boot messages are drawn over the splash
@@ -663,8 +844,10 @@ when a firmware update changes the measurements, none of which is decided.
 
 The installer lays a disk out for A/B updates when it erases the disk onto LVM and the disk holds
 two slots, the swap and a home of their own: it makes `root_a` and `root_b`, copies the finished
-system into slot B, and records both. A disk too small for two slots, and every manual layout, get
-slot A only, and a second slot there is made, filled and recorded with
+system into slot B, and records both. Two slots need each slot's 1.5 times the install, the swap
+and a 4 GiB home, about 149 GiB for an install of 46.5 GiB, so a 128 GB disk gets one. A disk too
+small for two slots, and every manual layout, get slot A only, and a second slot there is made,
+filled and recorded with
 `kdos-bootctl set-slot b <uuid> [<luks-uuid>]` by hand; the steps are in
 [Installation](../02-user-guide/installation.md#ab-root-slots). A second *encrypted* slot has never
 been booted. What is measured is on the build host: rolling back from slot B to A hands back A's
@@ -687,16 +870,15 @@ release, and the binhost index and slot image manifest through that index. `port
 [Publishing a release](../03-architecture/packaging.md#publishing-a-release)), but its uploads have
 run only as `--dry-run`, and no release carries them yet; until one does `fetch` reports
 `fetch-failed`, and Discover offers no system update. An image built without a release key has an empty
-`/etc/kdos/keys/tree`, and on it `fetch` stops before the network and reports `no-key`. The
+`/etc/kdos/keys/tree`, and on it `fetch` stops before the network and reports `no-key`; with no key
+in `/etc/kdos/keys` the binhost and image lanes stop the same way. The
 signature checks, the refusal of an older tree or image, the exchange with `/ports`, a slot image
 unpacked from a local directory, and `kpkg fetch`'s archive and upstream order have been exercised
 in a container with no network, but none of it against a real release over the internet. No update
 has been applied on an installed machine, so how long one takes, and how much space it needs, is
 not measured.
 
-Two things are known short of that. Discover asks `localhost:3129` for an update's size, where
-nothing listens, so it shows 0. A Discover started again while an update is downloading does not
-pick the running job back up; the System Versions page shows it. See
+One thing is known short of that. A Discover started again while an update is downloading does not pick the running job back up; the System Versions page shows it. See
 [Discover](../04-programs/discover.md#system-updates).
 
 ### Per-slot kernels have been booted on virtual firmware only
@@ -895,10 +1077,9 @@ see [Testing](../05-developer/testing.md).
 | `clamav` | The mail milter | libmilter | service: no mail transfer agent runs here |
 | `codec2` | The FreeDV 2020 mode | LPCNet | one feature |
 | `coin` | VRML JavaScript and image textures through simage | SpiderMonkey, simage | one feature; no consumer here uses them |
-| `colord` | Profiling a display or a printer with a sensor | ArgyllCMS | hardware |
 | `crun` | Container checkpoint and restore | CRIU | one feature |
 | `cura` | The MakerBot writer | pyDulcificum | one feature |
-| `darktable` | The map view, G'MIC and Unity launcher progress | osm-gps-map, G'MIC, libunity | service (online tiles), one feature each |
+| `darktable` | G'MIC and Unity launcher progress | G'MIC, libunity | one feature each |
 | `dasher`, `gparted` | The GNOME help | yelp-tools | one feature |
 | `deja-dup` | Restoring a Duplicity backup | duplicity | superseded: new backups use restic |
 | `discover`, `dolphin`, `plasma-desktop`, `kdenetwork-filesharing` | Installing software through PackageKit | PackageKit | superseded: `kpkg` and Discover's KDOS backend install software |
@@ -923,7 +1104,7 @@ see [Testing](../05-developer/testing.md).
 | `gnucash` | The SQL back ends, online banking and online price quotes | libdbi, AqBanking, Finance::Quote and its Perl modules (JSON, LWP, HTML::TreeBuilder, DateTime) | one feature each; XML books are built |
 | `gnumeric` | Psion and Paradox import, the database plug-in | psiconv, pxlib, libgda | one feature each |
 | `goldendict-ng` | EPWING dictionaries | libeb | one feature |
-| `gramps` | The Geography view | osm-gps-map | service (online tiles); its only release links libsoup 2, which is not a port |
+| `gthumb`, `darktable`, `gtk3`, `gtk4` | The display profile in the image viewers; printer colour profiles in GTK's print dialog | colord | one feature: KWin applies a display's ICC profile itself |
 | `gvfs` | Approving a WebDAV server's untrusted certificate; Windows network discovery | gcr, wsdd | one feature each; `network://` lists what Avahi finds |
 | `ifcopenshell` | COLLADA and USD output, the RocksDB cache | OpenCOLLADA, USD, RocksDB | large |
 | `imagemagick` | Liquid rescale, Ultra HDR, MagickCache; the PostScript base-35 font names (`Helvetica`, `Times-Roman`, …) | liblqr, libultrahdr, MagickCache, URW base-35 fonts | one feature each; the Liberation fonts are metric-compatible under their own names |
@@ -1212,6 +1393,15 @@ root script, gives it a loopback capture device to record from. See
 
 The rig's virtual display puts KWin on software rendering, where the CRT effect refuses to load.
 A photograph of it needs the rig's GL option or `make run-hw`.
+
+### The suspend flow finds no screen after resume
+
+`testing/flows/05-suspend-resume.sh` fails on the rig. The kernel completes the suspend, the
+session comes back locked and the password unlocks it, but both photographs after resume are QEMU's
+*Display output is not active* frame, a pointer move and Shift do not bring the picture back, and
+the guest's DRM connector reports the output on throughout. Whether a resumed KDOS loses its
+display or the rig's `virtio-vga` loses its scanout over S3 has not been measured on real
+hardware. See [The login flows](../05-developer/testing.md#the-login-flows).
 
 ## Documentation
 

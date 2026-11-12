@@ -14,4 +14,4 @@ release     = 1
 description = Install KDOS — the graphical installer, a Kirigami front end over kinstall
 homepage    = https://github.com/kunaldawn/kdos
 license     = MIT
-depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kcolorscheme kconfig kcoreaddons ki18n kirigami kitemmodels qqc2-desktop-style polkit
+depends     = cmake ninja extra-cmake-modules qt6-qtbase qt6-qtdeclarative kcolorscheme kconfig kcoreaddons kdbusaddons ki18n kirigami kitemmodels qqc2-desktop-style polkit

@@ -1,0 +1,15 @@
+Subject: Decode the bytes the Klipper clipboard provider is given to copy
+
+--- a/kivy/core/clipboard/clipboard_dbusklipper.py
++++ b/kivy/core/clipboard/clipboard_dbusklipper.py
+@@ -34,6 +34,10 @@
+ 
+     def put(self, data, mimetype='text/plain'):
+         self.init()
++        # ClipboardBase._copy hands over UTF-8 bytes; Klipper's D-Bus
++        # method takes a string.
++        if isinstance(data, bytes):
++            data = data.decode('utf-8', 'ignore')
+         self.iface.setClipboardContents(data.replace('\x00', ''))
+ 
+     def get_types(self):

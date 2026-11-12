@@ -45,6 +45,11 @@ Answers::Answers(QObject *parent)
  * from the XKB layout. `reboot = 0`: the Done page offers the restart, and an
  * install that rebooted by itself would take the page with it.
  */
+QString Answers::probeKey() const
+{
+    return m_swap + QLatin1Char(' ') + QString::number(m_swapMb) + QLatin1Char(' ') + QString::number(m_alienApps);
+}
+
 QString Answers::toText() const
 {
     QString t;
@@ -110,6 +115,19 @@ bool Answers::hostnameOk(const QString &name)
 {
     static const QRegularExpression re(QStringLiteral("^[A-Za-z0-9][A-Za-z0-9-]{0,62}$"));
     return re.match(name).hasMatch();
+}
+
+bool Answers::usernameReserved(const QString &name) const
+{
+    return m_reserved.contains(name);
+}
+
+void Answers::setReservedNames(const QStringList &names)
+{
+    if (m_reserved != names) {
+        m_reserved = names;
+        Q_EMIT changed();
+    }
 }
 
 bool Answers::fullnameOk(const QString &name)

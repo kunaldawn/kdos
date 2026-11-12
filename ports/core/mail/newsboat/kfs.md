@@ -2,7 +2,9 @@
 
 [newsboat]{.idx} is an RSS and Atom feed reader for the terminal, with `podboat`, its podcast
 downloader. It is C++ over a Rust library, `libnewsboat`, which its makefile builds with cargo and
-links in statically. The recipe writes a terminal desktop entry for it, named Feeds.
+links in statically. The recipe writes a terminal desktop entry for it, named Feeds, with `NoDisplay=true`: until
+`~/.config/newsboat/urls` lists a feed newsboat exits with "no URLs configured", so it is started
+from a prompt.
 
 ## Flags
 

@@ -80,10 +80,12 @@ Theme=KDOS
 [Sounds]
 Theme=kdos
 
-# KNewStuff is off on every machine: no "Get New…" button, no store
-# download. [$i] makes the group immutable, so no higher file — ~/.config
-# included — can turn it back on, and every KNewStuff button and action reads
-# this through KAuthorized and hides itself. The curated offline set ships as
-# the kdos-addons package instead.
+# KNewStuff is off on every machine: no store download. [$i] makes the group
+# immutable, so no higher file — ~/.config included — can turn it back on.
+# Each surface reads it through KAuthorized in its own way: the settings
+# pages hide their "Get New…" button, the wallpaper dialog greys its "Get New
+# Plugins…", and Add Widgets keeps its "Get New…" menu holding only "Install
+# Widget From Local File…". The curated offline set ships as the kdos-addons
+# package instead.
 [KDE Action Restrictions][$i]
 ghns=false

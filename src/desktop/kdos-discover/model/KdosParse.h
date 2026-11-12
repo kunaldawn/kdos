@@ -80,6 +80,24 @@ struct CatalogueListing {
 QList<CatalogueListing> parseCatalogueListing(const QByteArray &out);
 QList<CatalogueGroup> parseGroupListing(const QByteArray &out);
 
+// ── kdos-appbox catalogue --chain ───────────────────────────────────────
+
+// A base or runtime row: its measured size and whether its image is built.
+struct ChainRow {
+    QString id;
+    QString parent; // empty for a base
+    quint64 bytes = 0;
+    bool built = false;
+};
+
+QHash<QString, ChainRow> parseChainListing(const QByteArray &out);
+
+// What a store-lane build of an application on `parent` adds to its own
+// size: the bytes of every row up its chain whose image is not built yet.
+// A row the listing does not name adds nothing, and the walk stops after 16
+// rows, where kdos-appbox refuses a chain.
+quint64 unbuiltChainBytes(const QHash<QString, ChainRow> &chain, const QString &parent);
+
 // ── kdos-packd ──────────────────────────────────────────────────────────
 
 struct PackRow {

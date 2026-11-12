@@ -1,0 +1,32 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   Which file each KSystemLog tab reads, and which tab it opens on.
+#
+# KSystemLog lists a tab only when one of its files exists, and upstream's
+# paths are Debian's (/var/log/syslog for the system and cron tabs) with the
+# journal as the first tab: here the system tab would be missing and the
+# window would open on an empty log. These are the files sysklogd writes
+# (the syslog.conf of the sysklogd port). messages, kern.log and auth.log are
+# root's (22_syslog.sh), so an ordinary account can read only the cron log,
+# and the window opens on it rather than on a permission error.
+# The cron tab keeps only lines whose process names upstream's filter,
+# /usr/sbin/cron, and cronie logs as crond; the file holds cron's lines alone,
+# so the filter is empty. Level 6 is Information. Changed in KSystemLog's settings, the paths land in
+# ~/.config/ksystemlogrc.
+# ---------------------------------
+
+[KSystemLogGeneral]
+StartupLogMode=cronLogMode
+
+[systemLogMode]
+LogFilesPaths=/var/log/messages
+LogFilesLevels=6
+
+[CronLogMode]
+LogFilesPaths=/var/log/cron
+ProcessFilter=

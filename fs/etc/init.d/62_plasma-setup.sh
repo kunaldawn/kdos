@@ -111,10 +111,17 @@ case "$1" in
         # One-shot — nothing to stop
         ;;
     status)
+        # The autologin file is what arms the wizard, so it, not the absent
+        # marker, is what "armed" is read from.
         if [ -e "$DONE" ]; then
             echo "[ OK ] $NAME: set up"
-        else
+        elif live; then
+            echo "[SKIP] $NAME: the live medium sets nobody up"
+        elif [ -e "$AUTOLOGIN" ]; then
             echo "[ OK ] $NAME: armed for the next login"
+        else
+            echo "[DOWN] $NAME: not armed; the login screen is shown"
+            exit 1
         fi
         ;;
     *)

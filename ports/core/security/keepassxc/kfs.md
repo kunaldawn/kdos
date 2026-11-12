@@ -64,3 +64,11 @@ It also writes `/usr/lib/mozilla/native-messaging-hosts/org.keepassxc.keepassxc_
 the system-wide native-messaging manifest Firefox reads, which names `/usr/bin/keepassxc-proxy`
 and allows only the keepassxc-browser extension. KeePassXC can write a per-user manifest from its
 own browser-integration settings; the system one means Firefox finds the proxy without that step.
+
+KeePassXC draws its own light or dark style, with its own palette, unless its setting
+`GUI/ApplicationTheme` is `classic`; its default, `auto`, replaces the palette qt5ct gives every Qt
+5 program, so the window would show KeePassXC's grey in every accent. The account skeleton
+therefore ships `~/.config/keepassxc/keepassxc.ini` with `ApplicationTheme=classic` (see
+[Theming native applications](../../../../docs/kdos/02-user-guide/theming.md#theming-native-applications)).
+KeePassXC reads that file at start and writes it back with every setting changed in its own
+window.

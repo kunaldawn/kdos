@@ -124,11 +124,61 @@ private Q_SLOTS:
         QVERIFY(n.actions.contains(QStringLiteral("allow")));
         QVERIFY(n.actions.contains(QStringLiteral("deny")));
         QCOMPARE(n.timeout, 0);
-        QCOMPARE(n.hints.value(QStringLiteral("desktop-entry")).toString(), QStringLiteral("kcm_kdos_firewall"));
+        /* A desktop entry makes Plasma show that entry launching on every
+         * answer. */
+        QVERIFY(!n.hints.contains(QStringLiteral("desktop-entry")));
 
         fakes->power.knocks.insert(QStringLiteral("kdeconnect"), 30);
         settle();
         QCOMPARE(fakes->notifications.shown.size(), 1);
+    }
+
+    void aServerStillStartingIsAskedOnce()
+    {
+        /* Longer than any one look, while the count keeps rising: the
+         * prompt is posted once, and its answer is heard. */
+        fakes->notifications.holdMs = 5000;
+        runProgram(QStringLiteral("kdeconnectd"), 4242);
+        fakes->power.knocks.insert(QStringLiteral("kdeconnect"), 3);
+        start();
+        QTRY_COMPARE(fakes->notifications.calls, 1);
+        for (int i = 0; i < 6; i++) {
+            fakes->power.knocks.insert(QStringLiteral("kdeconnect"), 10 + i);
+            settle();
+        }
+        QTest::qWait(1000);
+        QCOMPARE(fakes->notifications.calls, 1);
+        QCOMPARE(fakes->notifications.shown.size(), 1);
+        fakes->notifications.invoke(fakes->connection, fakes->notifications.shown.first().id, QStringLiteral("deny"));
+        QTRY_VERIFY(memory().contains(fakes->nm.uuid + QStringLiteral(" kdeconnect declined\n")));
+    }
+
+    void aPromptStillPostingIsWithdrawnOnAnotherNetwork()
+    {
+        fakes->notifications.holdMs = 1500;
+        runProgram(QStringLiteral("kdeconnectd"), 4242);
+        fakes->power.knocks.insert(QStringLiteral("kdeconnect"), 3);
+        start();
+        QTRY_COMPARE(fakes->notifications.calls, 1);
+        fakes->nm.uuid = QStringLiteral("0a0b0c0d-1111-2222-3333-444455556666");
+        QTRY_COMPARE(fakes->notifications.closed.size(), 1);
+        QCOMPARE(fakes->notifications.closed.first(), fakes->notifications.shown.first().id);
+        QVERIFY(memory().isEmpty());
+    }
+
+    void aRefusedNotifyIsAskedAgain()
+    {
+        fakes->notifications.failNext = 1;
+        runProgram(QStringLiteral("kdeconnectd"), 4242);
+        fakes->power.knocks.insert(QStringLiteral("kdeconnect"), 3);
+        start();
+        QTRY_COMPARE(fakes->notifications.calls, 1);
+        QCOMPARE(fakes->notifications.shown.size(), 0);
+        QTRY_COMPARE(fakes->notifications.shown.size(), 1);
+        QCOMPARE(fakes->notifications.calls, 2);
+        settle();
+        QCOMPARE(fakes->notifications.calls, 2);
+        QVERIFY(memory().isEmpty());
     }
 
     void allowOpensItByNameAndRemembers()

@@ -18,8 +18,9 @@
  *
  *   network = none         no interface but loopback
  *   home = private         an empty home inside the box, not the user's
- *   persistence = ephemeral  `--rootfs …:O --rm`: whatever the application
- *                          writes is destroyed with the container
+ *   persistence = ephemeral  `--rootfs …:O --rm` over a pack box's stack,
+ *                          `--rm` over a store box's image: whatever the
+ *                          application writes is destroyed with the container
  *   devices, processes, ipc = private, and a /tmp of its own: no camera, no
  *                          view of the session's processes or of what the
  *                          host keeps in /tmp
@@ -248,6 +249,34 @@ static void throwaway_clear(const char *box)
 	free(layer);
 }
 
+/* The container, the stack kdos-packd composed for a pack box's throwaway
+ * (a store box's has none), and everything throwaway_clear takes. */
+static void throwaway_rm(const char *tw, int store)
+{
+	KbArgv a = {0};
+
+	kb_argv_add(&a, "podman");
+	kb_argv_add(&a, "rm");
+	kb_argv_add(&a, "-f");
+	kb_argv_add(&a, "-t");
+	kb_argv_add(&a, "2");
+	kb_argv_add(&a, tw);
+	kb_argv_end(&a);
+	kb_run(&a);
+	if (!store)
+		pack_decompose(tw);
+	throwaway_clear(tw);
+}
+
+/* A throwaway that fails says so on the desktop as well: it is started from
+ * Dolphin, where nothing reads this program's stderr. */
+static void __attribute__((noreturn)) tw_fail(const char *why)
+{
+	notify("Not opened in a throwaway box", why);
+	kb_die("not opened in a throwaway box: %s", why);
+	exit(1);
+}
+
 static int usage(void)
 {
 	fprintf(stderr, "usage: kdos-appbox throwaway [--pack <id>] <file>\n");
@@ -264,7 +293,7 @@ int cmd_throwaway(int argc, char **argv)
 	BoxLauncher bl;
 	Profile src, p;
 	struct stat st;
-	int n, rc;
+	int n, rc, image;
 
 	for (int i = 0; i < argc; i++) {
 		if (!strcmp(argv[i], "--pack") && i + 1 < argc)
@@ -282,7 +311,7 @@ int cmd_throwaway(int argc, char **argv)
 	 * at the path it really has: a symlink's target is what the box gets. */
 	if (!realpath(kxdg_mime_for_arg(arg, mime, sizeof(mime)), real) ||
 	    stat(real, &st) != 0 || !S_ISREG(st.st_mode))
-		kb_die("%s is not a file this can open in a box", arg);
+		tw_fail("it is not a file a box can open");
 	kxdg_mime_for_path(real, mime, sizeof(mime));
 
 	if (!pick_launcher(mime, pack, &bl, box, sizeof(box))) {
@@ -313,12 +342,23 @@ int cmd_throwaway(int argc, char **argv)
 	 * the persistence, the grants and the X11 display are this command's
 	 * and not the source's to widen.
 	 */
+	/*
+	 * A STORE BOX'S THROWAWAY IS MADE FROM ITS IMAGE. `base=image:kdos/<id>`
+	 * names an image this machine built, and a container created over it
+	 * with `--rm` keeps nothing past its stop, which is what a pack box's
+	 * `--rootfs …:O --rm` gives; kdos-packd has never heard of the box and
+	 * composes nothing for it. A box with no recorded base is a pack box
+	 * named after its pack.
+	 */
 	profile_load(&src, box);
 	profile_defaults(&p, tw);
-	if (!strncmp(src.base, "pack:", 5))
+	if (!strncmp(src.base, "pack:", 5) || box_lane(&src) == BOX_LANE_STORE)
 		kb_strlcpy(p.base, src.base, sizeof(p.base));
 	else
 		snprintf(p.base, sizeof(p.base), "pack:%s", box);
+	image = box_lane(&p) == BOX_LANE_STORE;
+	if (image)
+		kb_strlcpy(p.image, p.base + 6, sizeof(p.image));
 	kb_strlcpy(p.accent, src.accent, sizeof(p.accent));
 	kb_strlcpy(p.render, src.render, sizeof(p.render));
 	kb_strlcpy(p.x11, src.x11, sizeof(p.x11));
@@ -333,7 +373,7 @@ int cmd_throwaway(int argc, char **argv)
 	p.gpu = src.gpu;
 	p.grant[0] = '\0';
 	if (profile_save(&p) != 0)
-		kb_die("cannot write the throwaway box's profile");
+		tw_fail("its profile could not be written");
 
 	/*
 	 * THE ONE FILE, READ-ONLY, at its own path. podman's --mount syntax
@@ -347,8 +387,10 @@ int cmd_throwaway(int argc, char **argv)
 		const char *extra[2];
 		int nextra = 0, created;
 
-		if (rundir_prepare(&p, box, 1) != 0)
-			kb_die("cannot make the throwaway box's runtime directory");
+		if (rundir_prepare(&p, image ? "" : box) != 0) {
+			throwaway_clear(tw);
+			tw_fail("its runtime directory could not be made");
+		}
 		if (strpbrk(real, ":,")) {
 			char clean[NAME_MAX + 1], pdir[MAX_LINE];
 			char staged[MAX_LINE + NAME_MAX + 2];
@@ -359,15 +401,15 @@ int cmd_throwaway(int argc, char **argv)
 				clean[k++] = (*b == ':' || *b == ',') ? '_' : *b;
 			clean[k] = '\0';
 			if (box_private_dir(tw, pdir, sizeof(pdir)) != 0)
-				kb_die("cannot make the throwaway box's runtime directory");
+				tw_fail("its runtime directory could not be made");
 			snprintf(staged, sizeof(staged), "%s/%s", pdir, clean);
 			if (kb_copy_file(real, staged) != 0 || chmod(staged, 0400) != 0) {
 				throwaway_clear(tw);
-				kb_die("cannot stage %s", real);
+				tw_fail("the file could not be copied into it");
 			}
 			if (rundir_inbox_path(tw, 1, clean, real, sizeof(real)) != 0) {
 				throwaway_clear(tw);
-				kb_die("%s: the staged path does not fit", clean);
+				tw_fail("the file's name is too long for it");
 			}
 		} else {
 			snprintf(spec, sizeof(spec),
@@ -376,16 +418,20 @@ int cmd_throwaway(int argc, char **argv)
 			extra[nextra++] = spec;
 		}
 
-		rc = pack_compose(tw, p.base + 5, merged, sizeof(merged));
-		if (rc != 0) {
-			throwaway_clear(tw);
-			kb_die("%s", rc < 0 ? "kdos-packd is not running" : merged);
+		if (!image) {
+			rc = pack_compose(tw, p.base + 5, merged, sizeof(merged));
+			if (rc != 0) {
+				throwaway_clear(tw);
+				tw_fail(rc < 0 ? "kdos-packd is not running" : merged);
+			}
 		}
-		created = pack_box_create(&p, merged, extra, nextra, 1) == 0;
+		created = pack_box_create(&p, image ? NULL : merged, extra,
+					  nextra, 1) == 0;
 		if (!created) {
-			pack_decompose(tw);
+			if (!image)
+				pack_decompose(tw);
 			throwaway_clear(tw);
-			kb_die("podman could not create the throwaway box");
+			tw_fail(pack_box_error());
 		}
 	}
 
@@ -394,8 +440,8 @@ int cmd_throwaway(int argc, char **argv)
 	n = kxdg_exec_split(bl.exec, (const char *const *)files, 1, store,
 			    sizeof(store), words, KB_MAX_ARGV - 2);
 	if (n <= 0) {
-		throwaway_clear(tw);
-		kb_die("%s has no command to open a file with", bl.id);
+		throwaway_rm(tw, image);
+		tw_fail("the application has no command to open a file with");
 	}
 	{
 		int has_code = 0;
@@ -417,19 +463,6 @@ int cmd_throwaway(int argc, char **argv)
 	rc = cmd_run_wait(n, vec);
 
 	/* The application has exited. The box goes, and every trace of it. */
-	{
-		KbArgv a = {0};
-
-		kb_argv_add(&a, "podman");
-		kb_argv_add(&a, "rm");
-		kb_argv_add(&a, "-f");
-		kb_argv_add(&a, "-t");
-		kb_argv_add(&a, "2");
-		kb_argv_add(&a, tw);
-		kb_argv_end(&a);
-		kb_run(&a);
-	}
-	pack_decompose(tw);
-	throwaway_clear(tw);
+	throwaway_rm(tw, image);
 	return rc;
 }

@@ -1,0 +1,136 @@
+Subject: SystemdSysupdateBackend: report error replies instead of taking them for versions
+
+GetVersion and CheckNew were read straight into a QString, and an error
+reply converts to its own message, so a refused check ("Interactive
+authentication required") became an update to a version of that name.
+Each reply is now checked: an error is shown as a passive message and the
+target gets no resource. A failed ListTargets ends the fetch it began, so
+the backend does not stay busy.
+
+installApplication set needsReboot before the transaction ran, so a refused
+or failed Acquire still left "A pending update will be installed when
+restarting". The flag is now set when the Install job ends with status 0.
+
+The update size is asked of http://localhost:3129 once per resource; when
+nothing answers, the size stays 0 and sizeDescription() is empty, which
+hides the page's size row instead of spinning a busy indicator for ever.
+
+diff --git a/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateBackend.cpp b/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateBackend.cpp
+index 77325f7..00120f1 100644
+--- a/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateBackend.cpp
++++ b/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateBackend.cpp
+@@ -94,7 +94,6 @@ Transaction *SystemdSysupdateBackend::installApplication(AbstractResource *app)
+         return nullptr;
+     }
+ 
+-    m_updater->setNeedsReboot(true);
+     return resource->update();
+ }
+ 
+@@ -133,6 +132,8 @@ QCoro::Task<> SystemdSysupdateBackend::checkForUpdatesAsync()
+     const auto targetsReply = co_await m_manager->ListTargets();
+     if (targetsReply.isError()) {
+         qCWarning(SYSTEMDSYSUPDATE_LOG) << "Failed to list targets:" << targetsReply.error().message();
++        Q_EMIT passiveMessage(xi18nc("@info:status", "Failed to list the system's update targets.<nl/><nl/>Error message: %1", targetsReply.error().message()));
++        endFetch();
+         co_return;
+     }
+ 
+@@ -195,8 +196,22 @@ QCoro::Task<> SystemdSysupdateBackend::checkForUpdatesAsync()
+         auto component = metadata.component();
+         qCDebug(SYSTEMDSYSUPDATE_LOG) << "Component:" << component.name() << component.summary() << component.description();
+ 
+-        QString installedVersion = co_await target->GetVersion();
+-        QString availableVersion = co_await target->CheckNew();
++        // An error reply converts to its message as a QString, which would
++        // be taken for a version; an error is reported and skips the target.
++        const QDBusPendingReply<QString> installedReply = co_await target->GetVersion();
++        if (installedReply.isError()) {
++            Q_EMIT passiveMessage(
++                xi18nc("@info:status", "Failed to read the installed version of “%1”.<nl/><nl/>Error message: %2", name, installedReply.error().message()));
++            continue;
++        }
++        const QDBusPendingReply<QString> availableReply = co_await target->CheckNew();
++        if (availableReply.isError()) {
++            Q_EMIT passiveMessage(
++                xi18nc("@info:status", "Failed to check for a new version of “%1”.<nl/><nl/>Error message: %2", name, availableReply.error().message()));
++            continue;
++        }
++        const QString installedVersion = installedReply.value();
++        const QString availableVersion = availableReply.value();
+         qCDebug(SYSTEMDSYSUPDATE_LOG) << "Installed version:" << installedVersion << "Available version:" << availableVersion;
+ 
+         if (installedVersion.isEmpty()) {
+diff --git a/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateResource.cpp b/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateResource.cpp
+index b4de406..bb87597 100644
+--- a/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateResource.cpp
++++ b/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateResource.cpp
+@@ -97,24 +97,38 @@ quint64 SystemdSysupdateResource::size()
+     const auto networkAccess = static_cast<SystemdSysupdateBackend *>(backend())->networkAccess();
+     auto updateSizeReply = networkAccess->get(QNetworkRequest{QUrl(QStringLiteral("http://localhost:3129/v1/updatesize?version=%1").arg(availableVersion()))});
+     connect(updateSizeReply, &QNetworkReply::finished, this, [this, updateSizeReply]() {
++        updateSizeReply->deleteLater();
+         if (updateSizeReply->error() != QNetworkReply::NoError) {
+             qWarning() << "Update size retrieval error!" << updateSizeReply->error();
+             return;
+         }
+         auto sizeString = updateSizeReply->readAll().trimmed();
+         bool ok = false;
+-        m_size = sizeString.toULongLong(&ok);
++        const quint64 size = sizeString.toULongLong(&ok);
+         if (!ok) {
+             qCWarning(LIBDISCOVER_BACKEND_SYSTEMDSYSUPDATE_LOG) << "Failed to parse reply into uint" << sizeString;
+         } else {
+-            m_fetchedSize = true;
++            m_size = size;
+             Q_EMIT sizeChanged();
+         }
+     });
++    // One request per resource, whatever it answers: a size nobody serves
++    // stays 0, which sizeDescription() shows as no size at all.
++    m_fetchedSize = true;
+ 
+     return m_size;
+ }
+ 
++QString SystemdSysupdateResource::sizeDescription()
++{
++    // An empty description hides the page's size row and its busy
++    // indicator, which would otherwise spin for a size nobody serves.
++    if (size() == 0) {
++        return {};
++    }
++    return AbstractResource::sizeDescription();
++}
++
+ QJsonArray SystemdSysupdateResource::licenses()
+ {
+     return QJsonArray({m_component.projectLicense(), m_component.metadataLicense()});
+diff --git a/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateResource.h b/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateResource.h
+index ce5966d..be666f0 100644
+--- a/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateResource.h
++++ b/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateResource.h
+@@ -36,6 +36,7 @@ public:
+     bool hasCategory(const QString &category) const override;
+     Type type() const override;
+     quint64 size() override;
++    QString sizeDescription() override;
+     QJsonArray licenses() override;
+     QString installedVersion() const override;
+     QString availableVersion() const override;
+diff --git a/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateTransaction.cpp b/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateTransaction.cpp
+index a5b0838..44fae31 100644
+--- a/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateTransaction.cpp
++++ b/libdiscover/backends/SystemdSysupdateBackend/SystemdSysupdateTransaction.cpp
+@@ -124,6 +124,11 @@ void SystemdSysupdateTransaction::installDone(qulonglong jobId, const QDBusObjec
+     auto backend = qobject_cast<SystemdSysupdateBackend *>(m_resource->backend());
+     Q_ASSERT(backend);
+     disconnect(backend, &SystemdSysupdateBackend::transactionRemoved, this, &SystemdSysupdateTransaction::installDone);
++    // Only an installed update waits for a restart: a refused or failed
++    // job leaves nothing pending.
++    if (status == 0) {
++        backend->backendUpdater()->setNeedsReboot(true);
++    }
+     setStatus(status == 0 ? DoneStatus : DoneWithErrorStatus);
+     deleteLater();
+ }

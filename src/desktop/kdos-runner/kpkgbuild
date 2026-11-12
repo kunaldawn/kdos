@@ -11,7 +11,7 @@
 name        = kdos-runner
 version     = 0.1.0
 release     = 1
-description = KDOS in KRunner: kdos verbs, favourites, routes, settings pages, shortcuts, the offline library and the local model
+description = KDOS in KRunner: kdos verbs, favourites, routes, packs on the boot medium, shortcuts, the offline library and the local model
 homepage    = https://github.com/kunaldawn/kdos
 license     = MIT
 depends     = basu sqlite krunner

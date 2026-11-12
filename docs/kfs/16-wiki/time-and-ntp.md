@@ -48,13 +48,13 @@ The file belongs to the package: an upgrade of chrony installs it again over an 
 nothing is there at boot, as on every boot of the live medium, `rcS` links UTC, from
 `fs/etc/init.d/rcS`:
 
-<!-- kfs:include fs/etc/init.d/rcS lines=110-116 pin=c9969d56d2ea -->
+<!-- kfs:include fs/etc/init.d/rcS lines=123-129 pin=c9969d56d2ea -->
 
 **[`/etc/profile.d/20-timezone.sh`]{.idx}** sets `TZ` for every login shell. It is not in the tree: the
 installer writes it, and kdos-settingsd writes it on every zone change, so the live medium has
 none until the first one. The text, from `src/daemons/kdos-settingsd/store.c`:
 
-<!-- kfs:include src/daemons/kdos-settingsd/store.c lines=986-992 pin=11bcddfa8bb9 -->
+<!-- kfs:include src/daemons/kdos-settingsd/store.c lines=992-998 pin=1d4f357ad56c -->
 
 **`/etc/modprobe.d/kdos-regdom.conf`** is the wireless regulatory country, written from the zone
 by the same call; see
@@ -109,8 +109,10 @@ password.
 
    `/etc/localtime`, `TZ` and the Wi-Fi country change together.
 
-3. Open a new terminal, or log in again, and check with `date`. A shell started before the change
-   keeps the `TZ` it read at login.
+3. Check with `date`. Programs already running follow the link too: KDOS's musl re-reads it on
+   the next `tzset()`, which Qt calls before every local time, so the panel clock moves at its next
+   update. A C program that never calls `tzset()` keeps the zone it started with until it
+   restarts, and a shell whose `TZ` names a zone, such as `TZ=Asia/Tokyo`, keeps that zone.
 
 On the live medium, the zone lasts until power-off: `/etc` starts again as the image's at every
 boot, and `rcS` links UTC. A persistence store keeps it
@@ -167,7 +169,7 @@ Keep a copy of the edited file, because an upgrade of the chrony package puts th
   hardware clock in local time starts with the clock off by the zone's offset, and chronyd steps it
   at the first update.
 - A zone with no country, such as `UTC`, removes the Wi-Fi country file, and the radio returns to
-  the world domain at the next boot.
+  the world domain at once.
 - `chronyc` with no arguments is an interactive prompt; `help` there lists every command.
 
 ## Troubleshooting

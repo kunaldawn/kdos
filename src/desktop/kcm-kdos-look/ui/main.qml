@@ -68,10 +68,15 @@ KCM.SimpleKCM {
                     required property bool available
                     required property color windowColor
                     required property color textColor
-                    required property color highlightColor
+                    required property color accentColor
 
                     implicitWidth: Kirigami.Units.gridUnit * 6
                     implicitHeight: Kirigami.Units.gridUnit * 3
+                    /* Inside the 2 px frame, and above the band along the
+                     * bottom, so the label and the check never run under
+                     * either. */
+                    padding: Kirigami.Units.smallSpacing
+                    bottomPadding: Kirigami.Units.smallSpacing * 2 + 2
                     enabled: available && !root.controller.busy
                     focusPolicy: Qt.StrongFocus
                     hoverEnabled: true
@@ -104,7 +109,7 @@ KCM.SimpleKCM {
                                 margins: parent.border.width
                             }
                             height: Kirigami.Units.smallSpacing * 2
-                            color: swatch.highlightColor
+                            color: swatch.accentColor
                         }
                     }
 
@@ -125,7 +130,7 @@ KCM.SimpleKCM {
                             visible: swatch.current
                             implicitWidth: Kirigami.Units.iconSizes.small
                             implicitHeight: Kirigami.Units.iconSizes.small
-                            source: "checkmark"
+                            source: "dialog-ok-apply-symbolic"
                             isMask: true
                             color: swatch.textColor
                             Accessible.ignored: true
@@ -168,7 +173,9 @@ KCM.SimpleKCM {
             enabled: !root.controller.busy
             icon.name: "view-refresh"
             text: i18ndc("kdos-kcm-look", "@action:button", "Repaint Everything")
-            Accessible.description: i18ndc("kdos-kcm-look", "@info:tooltip", "Carry Plasma's accent to the terminals, the boot menu, the splash and the login screen")
+            Accessible.description: root.controller.bootMenu
+                ? i18ndc("kdos-kcm-look", "@info:tooltip", "Carry Plasma's accent to the terminals, the boot menu, the splash and the login screen")
+                : i18ndc("kdos-kcm-look", "@info:tooltip", "Carry Plasma's accent to the terminals, the splash and the login screen")
             onClicked: root.controller.syncNow()
         }
 
@@ -193,7 +200,9 @@ KCM.SimpleKCM {
             wrapMode: Text.Wrap
             font: Kirigami.Theme.smallFont
             color: Kirigami.Theme.disabledTextColor
-            text: i18ndc("kdos-kcm-look", "@info", "A click repaints Plasma, open terminals, the lock and login screens, the splash and the boot menu at once. Each accent is also a Global Theme and a color scheme on their own pages.")
+            text: root.controller.bootMenu
+                ? i18ndc("kdos-kcm-look", "@info", "A click repaints Plasma, open terminals, the lock and login screens, the splash and the boot menu at once. Each accent is also a Global Theme and a color scheme on their own pages.")
+                : i18ndc("kdos-kcm-look", "@info", "A click repaints Plasma, open terminals, the lock and login screens and the splash at once. Each accent is also a Global Theme and a color scheme on their own pages.")
         }
 
         Kirigami.Separator {
@@ -207,7 +216,7 @@ KCM.SimpleKCM {
             Kirigami.FormData.label: i18ndc("kdos-kcm-look", "@label", "Phosphor mode:")
             text: i18ndc("kdos-kcm-look", "@option:check", "CRT glow, scanlines and power-on motion")
             checked: root.controller.phosphorOn
-            enabled: root.controller.phosphorKnown && (root.controller.phosphorSupported || root.controller.phosphorOn) && !root.controller.busy
+            enabled: root.controller.phosphorUsable && !root.controller.busy
             Accessible.name: i18ndc("kdos-kcm-look", "@option:check accessible name", "Phosphor mode")
             onToggled: {
                 root.controller.setPhosphor(checked);
@@ -219,9 +228,7 @@ KCM.SimpleKCM {
             Layout.preferredWidth: swatches.Layout.preferredWidth
             visible: root.controller.phosphorKnown && !root.controller.phosphorSupported
             wrapMode: Text.Wrap
-            text: root.controller.phosphorReason.length > 0
-                ? root.controller.phosphorReason
-                : i18ndc("kdos-kcm-look", "@info", "Phosphor mode needs GPU rendering, and this session renders in software.")
+            text: root.controller.phosphorReason
         }
 
         QQC2.Label {
@@ -240,7 +247,7 @@ KCM.SimpleKCM {
             QQC2.ButtonGroup.group: presets
             text: i18ndc("kdos-kcm-look", "@option:radio a Phosphor mode preset", "Subtle: a soft glow and vignette")
             checked: root.controller.preset === "subtle"
-            enabled: root.controller.phosphorKnown && !root.controller.busy
+            enabled: root.controller.phosphorUsable && !root.controller.busy
             onToggled: {
                 if (checked) {
                     root.controller.setPreset("subtle");
@@ -252,7 +259,7 @@ KCM.SimpleKCM {
             QQC2.ButtonGroup.group: presets
             text: i18ndc("kdos-kcm-look", "@option:radio a Phosphor mode preset", "Retro: scanlines and a curved screen (lowers contrast)")
             checked: root.controller.preset === "retro"
-            enabled: root.controller.phosphorKnown && !root.controller.busy
+            enabled: root.controller.phosphorUsable && !root.controller.busy
             onToggled: {
                 if (checked) {
                     root.controller.setPreset("retro");
@@ -271,7 +278,7 @@ KCM.SimpleKCM {
             visible: root.controller.fineTuneAvailable
             text: i18ndc("kdos-kcm-look", "@action:button", "Fine-tune…")
             icon.name: "configure"
-            enabled: root.controller.phosphorKnown && !root.controller.busy
+            enabled: root.controller.phosphorUsable && !root.controller.busy
             Accessible.description: i18ndc("kdos-kcm-look", "@info:tooltip", "Strength, scanlines and curvature, on the effect's own settings page")
             onClicked: root.controller.openFineTune()
         }
@@ -281,7 +288,7 @@ KCM.SimpleKCM {
             text: i18ndc("kdos-kcm-look", "@option:check", "Draw over fullscreen windows")
             Accessible.name: i18ndc("kdos-kcm-look", "@option:check accessible name", "Draw over fullscreen windows")
             checked: root.controller.fullscreen
-            enabled: root.controller.phosphorKnown && !root.controller.busy
+            enabled: root.controller.phosphorUsable && !root.controller.busy
             onToggled: {
                 root.controller.setFullscreen(checked);
                 checked = Qt.binding(() => root.controller.fullscreen);
@@ -300,7 +307,7 @@ KCM.SimpleKCM {
             Kirigami.FormData.label: i18ndc("kdos-kcm-look", "@label", "Terminal font:")
             text: i18ndc("kdos-kcm-look", "@option:check", "Terminus in Konsole and for fixed-width text")
             checked: root.controller.terminus
-            enabled: root.controller.phosphorKnown && !root.controller.busy
+            enabled: root.controller.phosphorUsable && !root.controller.busy
             onToggled: {
                 root.controller.setTerminus(checked);
                 checked = Qt.binding(() => root.controller.terminus);
@@ -319,7 +326,7 @@ KCM.SimpleKCM {
             wrapMode: Text.Wrap
             font: Kirigami.Theme.smallFont
             color: Kirigami.Theme.disabledTextColor
-            text: i18ndc("kdos-kcm-look", "@info", "Turning it on with the Bone or Paper accent switches to Phosphor, and turning it off puts the accent back. Window titles and the rest of the desktop keep their font. Screenshots and screen recordings show the picture without the tube.")
+            text: i18ndc("kdos-kcm-look", "@info", "Turning Phosphor mode on with the Bone or Paper accent switches to Phosphor, and turning it off puts the accent back. Window titles and the rest of the desktop keep their font. Screenshots and screen recordings show the picture without the tube.")
         }
     }
 }

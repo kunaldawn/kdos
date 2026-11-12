@@ -2,7 +2,7 @@ Subject: Add a restic backend: backup and maintenance jobs, a settings page opti
 
 diff -ruN a/CMakeLists.txt b/CMakeLists.txt
 --- a/CMakeLists.txt	2026-10-27 16:57:05.000000000 +0530
-+++ b/CMakeLists.txt	2026-11-01 18:02:44.636222637 +0530
++++ b/CMakeLists.txt	2026-11-09 13:42:31.293301696 +0530
 @@ -50,6 +50,7 @@
    KCMUtils
    Crash
@@ -13,7 +13,7 @@ diff -ruN a/CMakeLists.txt b/CMakeLists.txt
  
 diff -ruN a/daemon/backupjob.h b/daemon/backupjob.h
 --- a/daemon/backupjob.h	2026-10-27 16:57:05.000000000 +0530
-+++ b/daemon/backupjob.h	2026-11-01 18:02:44.636527436 +0530
++++ b/daemon/backupjob.h	2026-11-09 13:42:31.293696998 +0530
 @@ -19,7 +19,7 @@
  {
      Q_OBJECT
@@ -25,7 +25,7 @@ diff -ruN a/daemon/backupjob.h b/daemon/backupjob.h
  
 diff -ruN a/daemon/CMakeLists.txt b/daemon/CMakeLists.txt
 --- a/daemon/CMakeLists.txt	2026-10-27 16:57:05.000000000 +0530
-+++ b/daemon/CMakeLists.txt	2026-11-01 18:02:44.636718590 +0530
++++ b/daemon/CMakeLists.txt	2026-11-09 13:42:31.293884504 +0530
 @@ -15,10 +15,13 @@
  bupverificationjob.cpp
  buprepairjob.cpp
@@ -50,7 +50,7 @@ diff -ruN a/daemon/CMakeLists.txt b/daemon/CMakeLists.txt
  ########### install files ###############
 diff -ruN a/daemon/kupdaemon.cpp b/daemon/kupdaemon.cpp
 --- a/daemon/kupdaemon.cpp	2026-10-27 16:57:05.000000000 +0530
-+++ b/daemon/kupdaemon.cpp	2026-11-01 18:02:44.636916266 +0530
++++ b/daemon/kupdaemon.cpp	2026-11-09 13:42:31.294090576 +0530
 @@ -170,7 +170,7 @@
              return pPath.startsWith(lIncludedPath) && !lIsExcluded;
          });
@@ -62,7 +62,7 @@ diff -ruN a/daemon/kupdaemon.cpp b/daemon/kupdaemon.cpp
      }
 diff -ruN a/daemon/planexecutor.cpp b/daemon/planexecutor.cpp
 --- a/daemon/planexecutor.cpp	2026-10-27 16:57:05.000000000 +0530
-+++ b/daemon/planexecutor.cpp	2026-11-01 18:02:44.637168445 +0530
++++ b/daemon/planexecutor.cpp	2026-11-09 13:42:31.294321014 +0530
 @@ -8,6 +8,8 @@
  #include "bupverificationjob.h"
  #include "kupdaemon.h"
@@ -263,7 +263,7 @@ diff -ruN a/daemon/planexecutor.cpp b/daemon/planexecutor.cpp
  }
 diff -ruN a/daemon/planexecutor.h b/daemon/planexecutor.h
 --- a/daemon/planexecutor.h	2026-10-27 16:57:05.000000000 +0530
-+++ b/daemon/planexecutor.h	2026-11-01 18:02:44.637505446 +0530
++++ b/daemon/planexecutor.h	2026-11-09 13:42:31.294617547 +0530
 @@ -39,7 +39,8 @@
  
      bool busy()
@@ -305,7 +305,7 @@ diff -ruN a/daemon/planexecutor.h b/daemon/planexecutor.h
      uint mSleepCookie;
 diff -ruN a/daemon/resticjob.cpp b/daemon/resticjob.cpp
 --- a/daemon/resticjob.cpp	1970-01-01 05:30:00.000000000 +0530
-+++ b/daemon/resticjob.cpp	2026-11-01 18:15:05.931202372 +0530
++++ b/daemon/resticjob.cpp	2026-11-09 13:42:31.294763585 +0530
 @@ -0,0 +1,446 @@
 +// SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
 +//
@@ -755,7 +755,7 @@ diff -ruN a/daemon/resticjob.cpp b/daemon/resticjob.cpp
 +}
 diff -ruN a/daemon/resticjob.h b/daemon/resticjob.h
 --- a/daemon/resticjob.h	1970-01-01 05:30:00.000000000 +0530
-+++ b/daemon/resticjob.h	2026-11-01 18:15:05.931419384 +0530
++++ b/daemon/resticjob.h	2026-11-09 13:42:31.295043307 +0530
 @@ -0,0 +1,79 @@
 +// SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
 +//
@@ -838,7 +838,7 @@ diff -ruN a/daemon/resticjob.h b/daemon/resticjob.h
 +#endif // RESTICJOB_H
 diff -ruN a/daemon/resticmaintenancejob.cpp b/daemon/resticmaintenancejob.cpp
 --- a/daemon/resticmaintenancejob.cpp	1970-01-01 05:30:00.000000000 +0530
-+++ b/daemon/resticmaintenancejob.cpp	2026-11-01 18:02:44.638051634 +0530
++++ b/daemon/resticmaintenancejob.cpp	2026-11-09 13:42:31.295160710 +0530
 @@ -0,0 +1,151 @@
 +// SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
 +//
@@ -993,7 +993,7 @@ diff -ruN a/daemon/resticmaintenancejob.cpp b/daemon/resticmaintenancejob.cpp
 +}
 diff -ruN a/daemon/resticmaintenancejob.h b/daemon/resticmaintenancejob.h
 --- a/daemon/resticmaintenancejob.h	1970-01-01 05:30:00.000000000 +0530
-+++ b/daemon/resticmaintenancejob.h	2026-11-01 18:02:44.638214053 +0530
++++ b/daemon/resticmaintenancejob.h	2026-11-09 13:42:31.295321926 +0530
 @@ -0,0 +1,35 @@
 +// SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
 +//
@@ -1032,7 +1032,7 @@ diff -ruN a/daemon/resticmaintenancejob.h b/daemon/resticmaintenancejob.h
 +#endif // RESTICMAINTENANCEJOB_H
 diff -ruN a/fileitemaction/fileitemaction.cpp b/fileitemaction/fileitemaction.cpp
 --- a/fileitemaction/fileitemaction.cpp	2026-10-27 16:57:05.000000000 +0530
-+++ b/fileitemaction/fileitemaction.cpp	2026-11-01 18:02:44.638394156 +0530
++++ b/fileitemaction/fileitemaction.cpp	2026-11-09 13:42:31.295467894 +0530
 @@ -6,6 +6,7 @@
  #include <KAbstractFileItemActionPlugin>
  #include <KFileItem>
@@ -1073,7 +1073,7 @@ diff -ruN a/fileitemaction/fileitemaction.cpp b/fileitemaction/fileitemaction.cp
          });
 diff -ruN a/kcm/backupplanwidget.cpp b/kcm/backupplanwidget.cpp
 --- a/kcm/backupplanwidget.cpp	2026-10-27 16:57:05.000000000 +0530
-+++ b/kcm/backupplanwidget.cpp	2026-11-01 18:02:44.638677384 +0530
++++ b/kcm/backupplanwidget.cpp	2026-11-09 13:42:31.295733158 +0530
 @@ -8,6 +8,7 @@
  #include "driveselection.h"
  #include "folderselectionmodel.h"
@@ -1134,9 +1134,9 @@ diff -ruN a/kcm/backupplanwidget.cpp b/kcm/backupplanwidget.cpp
 +void BackupPlanWidget::updateResticPasswordPlaceholder()
 +{
 +    if (Restic::walletHasPassword(mBackupPlan->resticWalletKey())) {
-+        mResticPasswordEdit->lineEdit()->setPlaceholderText(xi18nc("@info:placeholder", "Stored in KDE Wallet; type to replace it"));
++        mResticPasswordEdit->lineEdit()->setPlaceholderText(i18nc("@info:placeholder", "Stored in KDE Wallet; type to replace it"));
 +    } else {
-+        mResticPasswordEdit->lineEdit()->setPlaceholderText(xi18nc("@info:placeholder", "Not set"));
++        mResticPasswordEdit->lineEdit()->setPlaceholderText(i18nc("@info:placeholder", "Not set"));
 +    }
 +}
 +
@@ -1306,7 +1306,23 @@ diff -ruN a/kcm/backupplanwidget.cpp b/kcm/backupplanwidget.cpp
      lVLayout->addStretch();
      lButtonGroup->setLayout(lVLayout);
      auto lPage = new KPageWidgetItem(lButtonGroup);
-@@ -920,7 +1090,22 @@
+@@ -652,6 +822,15 @@
+     lFileSystemUrlEdit->setObjectName(QStringLiteral("kcfg_Filesystem destination path"));
+     lFileSystemUrlEdit->setStartDir(QUrl::fromLocalFile(QDir::homePath()));
+     QObject::connect(lFileSystemUrlEdit, &KUrlRequester::textChanged, this, &BackupPlanWidget::checkFilesystemDestination);
++    // The plan's default destination is bup's repository, ~/.bup. Choosing
++    // restic by hand while the destination is still that default moves it to
++    // ~/.restic, so the two kinds of repository never share a folder; clicked
++    // fires only for the user's choice, never when a saved plan is loaded.
++    QObject::connect(mResticRadio, &QRadioButton::clicked, lFileSystemUrlEdit, [lFileSystemUrlEdit](bool pChecked) {
++        if (pChecked && lFileSystemUrlEdit->url() == QUrl::fromLocalFile(QDir::homePath() + QStringLiteral("/.bup"))) {
++            lFileSystemUrlEdit->setUrl(QUrl::fromLocalFile(QDir::homePath() + QStringLiteral("/.restic")));
++        }
++    });
+ 
+     mLocalMessage = new KMessageWidget(this);
+     mLocalMessage->setCloseButtonVisible(false);
+@@ -920,7 +1099,22 @@
                                                                                        QStringLiteral("kcfg_Check backups"));
      lVerificationWidget->setVisible(false);
  
@@ -1330,7 +1346,7 @@ diff -ruN a/kcm/backupplanwidget.cpp b/kcm/backupplanwidget.cpp
  
      auto lExcludesWidget = new QWidget;
      auto lExcludesCheckBox = new QCheckBox(xi18nc("@option:check", "Exclude files and folders based on patterns"));
-@@ -938,8 +1123,17 @@
+@@ -938,8 +1132,17 @@
          job->setSuggestedFileName("manpage.html");
          job->start();
      });
@@ -1350,7 +1366,7 @@ diff -ruN a/kcm/backupplanwidget.cpp b/kcm/backupplanwidget.cpp
          lExcludesLabel->setText(xi18nc("@info",
                                         "Patterns need to be listed in a text file with one pattern per line. "
                                         "Files and folders with names that match any of the patterns will be "
-@@ -947,8 +1141,9 @@
+@@ -947,8 +1150,9 @@
                                         "<link url='%1'>bup-index manual page</link>.",
                                         lHelpUrl));
      };
@@ -1361,7 +1377,7 @@ diff -ruN a/kcm/backupplanwidget.cpp b/kcm/backupplanwidget.cpp
      auto lExcludesEdit = new KLineEdit;
      lExcludesEdit->setObjectName(QStringLiteral("kcfg_Exclude patterns file path"));
      lExcludesEdit->setEnabled(false);
-@@ -1049,6 +1244,7 @@
+@@ -1049,6 +1253,7 @@
  
      lAdvancedLayout->addWidget(lShowHiddenWidget);
      lAdvancedLayout->addWidget(lVerificationWidget);
@@ -1371,7 +1387,7 @@ diff -ruN a/kcm/backupplanwidget.cpp b/kcm/backupplanwidget.cpp
      lAdvancedLayout->addWidget(lExcludeCachesWidget);
 diff -ruN a/kcm/backupplanwidget.h b/kcm/backupplanwidget.h
 --- a/kcm/backupplanwidget.h	2026-10-27 16:57:05.000000000 +0530
-+++ b/kcm/backupplanwidget.h	2026-11-01 18:02:44.639133221 +0530
++++ b/kcm/backupplanwidget.h	2026-11-09 13:42:31.296240612 +0530
 @@ -16,9 +16,11 @@
  
  class KLineEdit;
@@ -1431,7 +1447,7 @@ diff -ruN a/kcm/backupplanwidget.h b/kcm/backupplanwidget.h
  #endif // BACKUPPLANWIDGET_H
 diff -ruN a/kcm/CMakeLists.txt b/kcm/CMakeLists.txt
 --- a/kcm/CMakeLists.txt	2026-10-27 16:57:05.000000000 +0530
-+++ b/kcm/CMakeLists.txt	2026-11-01 18:02:44.639423102 +0530
++++ b/kcm/CMakeLists.txt	2026-11-09 13:42:31.296407199 +0530
 @@ -18,6 +18,7 @@
  ../settings/kupsettings.cpp
  ../settings/kuputils.cpp
@@ -1450,8 +1466,8 @@ diff -ruN a/kcm/CMakeLists.txt b/kcm/CMakeLists.txt
  if(QT_MAJOR_VERSION STREQUAL "6")
 diff -ruN a/kcm/kupkcm.cpp b/kcm/kupkcm.cpp
 --- a/kcm/kupkcm.cpp	2026-10-27 16:57:05.000000000 +0530
-+++ b/kcm/kupkcm.cpp	2026-11-01 18:02:44.639621319 +0530
-@@ -8,6 +8,7 @@
++++ b/kcm/kupkcm.cpp	2026-11-09 13:42:31.296572283 +0530
+@@ -8,9 +8,11 @@
  #include "kupdaemon.h"
  #include "kupsettings.h"
  #include "planstatuswidget.h"
@@ -1459,7 +1475,11 @@ diff -ruN a/kcm/kupkcm.cpp b/kcm/kupkcm.cpp
  
  #include <QCheckBox>
  #include <QDBusInterface>
-@@ -29,6 +30,7 @@
++#include <QDir>
+ #include <QLabel>
+ #include <QPushButton>
+ #include <QScrollArea>
+@@ -29,6 +31,7 @@
  KupKcm::KupKcm(QObject *pParent, const KPluginMetaData &pPluginMetaData, const QVariantList &pArgs)
      : KCModule(pParent, pPluginMetaData)
      , mSourcePageToShow(0)
@@ -1467,7 +1487,7 @@ diff -ruN a/kcm/kupkcm.cpp b/kcm/kupkcm.cpp
  {
      setObjectName(QStringLiteral("kcm_kup")); // needed for the kconfigdialogmanager magic
      setButtons((Apply | buttons()) & ~Default);
-@@ -55,14 +57,17 @@
+@@ -55,14 +58,17 @@
          mRsyncVersion = lOutput.split(QLatin1Char(' '), Qt::SkipEmptyParts).at(2);
      }
  
@@ -1487,7 +1507,7 @@ diff -ruN a/kcm/kupkcm.cpp b/kcm/kupkcm.cpp
              "<li>rsync, for synchronized backups</li></ul>");
          auto lSorryText = new QLabel(lInstallMessage);
          lSorryText->setWordWrap(true);
-@@ -93,6 +98,8 @@
+@@ -93,6 +99,8 @@
                  QString lArgument = lVariant.toString();
                  if (lArgument == QStringLiteral("show_sources") && lIter.hasNext()) {
                      mSourcePageToShow = lIter.next().toString().toInt();
@@ -1496,7 +1516,7 @@ diff -ruN a/kcm/kupkcm.cpp b/kcm/kupkcm.cpp
                  }
              }
          }
-@@ -101,7 +108,7 @@
+@@ -101,7 +109,7 @@
  
  void KupKcm::load()
  {
@@ -1505,7 +1525,7 @@ diff -ruN a/kcm/kupkcm.cpp b/kcm/kupkcm.cpp
          return;
      }
      // status will be set correctly after construction, set to checked here to
-@@ -125,6 +132,11 @@
+@@ -125,6 +133,11 @@
          mPlanWidgets[mSourcePageToShow - 1]->showSourcePage();
          mSourcePageToShow = 0; // only trigger on first load after startup.
      }
@@ -1517,7 +1537,7 @@ diff -ruN a/kcm/kupkcm.cpp b/kcm/kupkcm.cpp
  }
  
  void KupKcm::save()
-@@ -163,6 +175,10 @@
+@@ -163,6 +176,10 @@
  
          QWidget *wid = widget();
  
@@ -1528,7 +1548,7 @@ diff -ruN a/kcm/kupkcm.cpp b/kcm/kupkcm.cpp
          if (lPlan->mDestinationType == 1 && lPlan->mExternalUUID.isEmpty()) {
              KMessageBox::information(wid,
                                       xi18nc("@info %1 is the name of the backup plan",
-@@ -207,6 +223,12 @@
+@@ -207,6 +224,12 @@
              break;
          }
      }
@@ -1541,16 +1561,22 @@ diff -ruN a/kcm/kupkcm.cpp b/kcm/kupkcm.cpp
      if (mPlanWidgets.count() != mSettings->mNumberOfPlans)
          lHasUnmanagedChanged = true;
      unmanagedWidgetChangeState(lHasUnmanagedChanged);
-@@ -233,7 +255,7 @@
+@@ -232,8 +255,12 @@
+     auto lAddPlanButton = new QPushButton(QIcon::fromTheme(QStringLiteral("list-add")), xi18nc("@action:button", "Add New Plan…"));
      connect(lAddPlanButton, &QPushButton::clicked, this, [this] {
          mPlans.append(new BackupPlan(mPlans.count() + 1, mConfig, this));
-         if (mBupVersion.isEmpty())
+-        if (mBupVersion.isEmpty())
 -            mPlans.last()->mBackupType = 1;
++        if (mBupVersion.isEmpty()) {
 +            mPlans.last()->mBackupType = mResticVersion.isEmpty() ? BackupType::RsyncType : BackupType::ResticType;
++            if (mPlans.last()->mBackupType == BackupType::ResticType) {
++                mPlans.last()->mFilesystemDestinationPath = QUrl::fromLocalFile(QDir::homePath() + QStringLiteral("/.restic"));
++            }
++        }
          mConfigManagers.append(nullptr);
          mPlanWidgets.append(nullptr);
          mStatusWidgets.append(nullptr);
-@@ -253,10 +275,13 @@
+@@ -253,10 +280,13 @@
      lVLayout->addWidget(lScrollArea);
      mFrontPage->setLayout(lVLayout);
  
@@ -1564,7 +1590,7 @@ diff -ruN a/kcm/kupkcm.cpp b/kcm/kupkcm.cpp
      mVerticalLayout->addWidget(lFilediggerButton);
      mVerticalLayout->addStretch(1);
      lCentralWidget->setLayout(mVerticalLayout);
-@@ -264,8 +289,9 @@
+@@ -264,8 +294,9 @@
  
  void KupKcm::createPlanWidgets(int pIndex)
  {
@@ -1577,7 +1603,7 @@ diff -ruN a/kcm/kupkcm.cpp b/kcm/kupkcm.cpp
      connect(lConfigManager, SIGNAL(widgetModified()), this, SLOT(updateChangedStatus()));
 diff -ruN a/kcm/kupkcm.h b/kcm/kupkcm.h
 --- a/kcm/kupkcm.h	2026-10-27 16:57:05.000000000 +0530
-+++ b/kcm/kupkcm.h	2026-11-01 18:02:44.639869281 +0530
++++ b/kcm/kupkcm.h	2026-11-09 13:42:31.296789726 +0530
 @@ -53,8 +53,10 @@
      QCheckBox *mEnableCheckBox{};
      QString mBupVersion;
@@ -1591,7 +1617,7 @@ diff -ruN a/kcm/kupkcm.h b/kcm/kupkcm.h
  #endif // KUPKCM_H
 diff -ruN a/kioworker/CMakeLists.txt b/kioworker/CMakeLists.txt
 --- a/kioworker/CMakeLists.txt	2026-10-27 16:57:05.000000000 +0530
-+++ b/kioworker/CMakeLists.txt	2026-11-01 18:02:44.640047540 +0530
++++ b/kioworker/CMakeLists.txt	2026-11-09 13:42:31.296961693 +0530
 @@ -26,4 +26,27 @@
  
  install(TARGETS kio_bup DESTINATION ${KDE_INSTALL_PLUGINDIR}/kf${QT_MAJOR_VERSION}/kio)
@@ -1622,7 +1648,7 @@ diff -ruN a/kioworker/CMakeLists.txt b/kioworker/CMakeLists.txt
  add_definitions(-fexceptions)
 diff -ruN a/kioworker/restic.json b/kioworker/restic.json
 --- a/kioworker/restic.json	1970-01-01 05:30:00.000000000 +0530
-+++ b/kioworker/restic.json	2026-11-01 18:02:44.640190000 +0530
++++ b/kioworker/restic.json	2026-11-09 13:42:31.297077723 +0530
 @@ -0,0 +1,30 @@
 +{
 +    "KDE-KIO-Protocols": {
@@ -1656,7 +1682,7 @@ diff -ruN a/kioworker/restic.json b/kioworker/restic.json
 +}
 diff -ruN a/kioworker/resticworker.cpp b/kioworker/resticworker.cpp
 --- a/kioworker/resticworker.cpp	1970-01-01 05:30:00.000000000 +0530
-+++ b/kioworker/resticworker.cpp	2026-11-01 18:03:48.165201736 +0530
++++ b/kioworker/resticworker.cpp	2026-11-09 13:42:31.297165540 +0530
 @@ -0,0 +1,845 @@
 +// SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
 +//
@@ -2505,7 +2531,7 @@ diff -ruN a/kioworker/resticworker.cpp b/kioworker/resticworker.cpp
 +#include "resticworker.moc"
 diff -ruN a/kupenums.h b/kupenums.h
 --- a/kupenums.h	2026-10-27 16:57:05.000000000 +0530
-+++ b/kupenums.h	2026-11-01 18:02:44.640719858 +0530
++++ b/kupenums.h	2026-11-09 13:42:31.297542768 +0530
 @@ -12,6 +12,7 @@
  enum BackupType {
      BupType = 0,
@@ -2524,7 +2550,7 @@ diff -ruN a/kupenums.h b/kupenums.h
  }
 diff -ruN a/plasmoid/qml/main.qml b/plasmoid/qml/main.qml
 --- a/plasmoid/qml/main.qml	2026-10-27 16:57:05.000000000 +0530
-+++ b/plasmoid/qml/main.qml	2026-11-01 18:02:44.640908868 +0530
++++ b/plasmoid/qml/main.qml	2026-11-09 13:42:31.297715887 +0530
 @@ -33,6 +33,7 @@
  			[Kup.Enums.ExecutorState.BACKUP_RUNNING]: i18ndc("kup", "status in tooltip", "Saving backup"),
  			[Kup.Enums.ExecutorState.INTEGRITY_TESTING]: i18ndc("kup", "status in tooltip", "Checking backup integrity"),
@@ -2535,7 +2561,7 @@ diff -ruN a/plasmoid/qml/main.qml b/plasmoid/qml/main.qml
  
 diff -ruN a/plasmoid/qml/PlanItem.qml b/plasmoid/qml/PlanItem.qml
 --- a/plasmoid/qml/PlanItem.qml	2026-10-27 16:57:05.000000000 +0530
-+++ b/plasmoid/qml/PlanItem.qml	2026-11-01 18:02:44.641081105 +0530
++++ b/plasmoid/qml/PlanItem.qml	2026-11-09 13:42:31.297870120 +0530
 @@ -60,7 +60,7 @@
  
      QQC2.Action {
@@ -2547,7 +2573,7 @@ diff -ruN a/plasmoid/qml/PlanItem.qml b/plasmoid/qml/PlanItem.qml
          onTriggered: planModel.purgeBackups(index)
 diff -ruN a/README.md b/README.md
 --- a/README.md	2026-10-27 16:57:05.000000000 +0530
-+++ b/README.md	2026-11-01 18:02:44.641271858 +0530
++++ b/README.md	2026-11-09 13:42:31.298044802 +0530
 @@ -11,12 +11,14 @@
  - Configuration module, available in your system settings. Here you can configure backup plans, what to include, where to store the backup and how often. You can also see the status for the backup plans here.
  - A small program running in the background. It will monitor to see when your backup destination is available, schedule and run your backup plans.
@@ -2576,7 +2602,7 @@ diff -ruN a/README.md b/README.md
  To compile you need:
 diff -ruN a/settings/backupplan.cpp b/settings/backupplan.cpp
 --- a/settings/backupplan.cpp	2026-10-27 16:57:05.000000000 +0530
-+++ b/settings/backupplan.cpp	2026-11-01 18:02:44.641455968 +0530
++++ b/settings/backupplan.cpp	2026-11-09 13:42:31.298202101 +0530
 @@ -75,6 +75,9 @@
      addItemBool(QStringLiteral("Check backups"), mCheckBackups);
      addItemBool(QStringLiteral("Exclude patterns"), mExcludePatterns);
@@ -2626,7 +2652,7 @@ diff -ruN a/settings/backupplan.cpp b/settings/backupplan.cpp
      // correct the time spec after default read routines.
 diff -ruN a/settings/backupplan.h b/settings/backupplan.h
 --- a/settings/backupplan.h	2026-10-27 16:57:05.000000000 +0530
-+++ b/settings/backupplan.h	2026-11-01 18:02:44.641672019 +0530
++++ b/settings/backupplan.h	2026-11-09 13:42:31.298398825 +0530
 @@ -62,6 +62,14 @@
      bool mExcludePatterns{};
      QString mExcludePatternsPath;
@@ -2653,8 +2679,8 @@ diff -ruN a/settings/backupplan.h b/settings/backupplan.h
      void usrRead() override;
 diff -ruN a/settings/restic.cpp b/settings/restic.cpp
 --- a/settings/restic.cpp	1970-01-01 05:30:00.000000000 +0530
-+++ b/settings/restic.cpp	2026-11-01 18:02:44.641810422 +0530
-@@ -0,0 +1,312 @@
++++ b/settings/restic.cpp	2026-11-09 13:42:45.145358830 +0530
+@@ -0,0 +1,321 @@
 +// SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
 +//
 +// SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
@@ -2802,7 +2828,9 @@ diff -ruN a/settings/restic.cpp b/settings/restic.cpp
 +
 +bool walletHasPassword(const QString &pKey)
 +{
-+    return !KWallet::Wallet::keyDoesNotExist(KWallet::Wallet::NetworkWallet(), walletFolder(), pKey);
++    // keyDoesNotExist() answers false for a disabled wallet, which would
++    // claim a password is stored where none can be.
++    return KWallet::Wallet::isEnabled() && !KWallet::Wallet::keyDoesNotExist(KWallet::Wallet::NetworkWallet(), walletFolder(), pKey);
 +}
 +
 +static KWallet::Wallet *openWallet(WId pWindow, QString &pError)
@@ -2822,6 +2850,13 @@ diff -ruN a/settings/restic.cpp b/settings/restic.cpp
 +
 +bool readWalletPassword(const QString &pKey, QString &pPassword, WId pWindow, QString &pError)
 +{
++    // A disabled wallet takes openWallet()'s error: the "enter it in the
++    // plan's settings" advice below names a field that cannot store a
++    // password while the wallet is off.
++    if (!KWallet::Wallet::isEnabled()) {
++        openWallet(pWindow, pError);
++        return false;
++    }
 +    if (!walletHasPassword(pKey)) {
 +        pError = xi18nc("@info notification",
 +                        "No password is stored for this restic repository. "
@@ -2969,7 +3004,7 @@ diff -ruN a/settings/restic.cpp b/settings/restic.cpp
 +}
 diff -ruN a/settings/restic.h b/settings/restic.h
 --- a/settings/restic.h	1970-01-01 05:30:00.000000000 +0530
-+++ b/settings/restic.h	2026-11-01 18:02:44.642017225 +0530
++++ b/settings/restic.h	2026-11-09 13:42:31.298712120 +0530
 @@ -0,0 +1,118 @@
 +// SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
 +//

@@ -10,6 +10,10 @@
 # ---------------------------------
 
 patch -p1 -i "$PORT_SRC/odrs-offline.patch"
+patch -p1 -i "$PORT_SRC/sysupdate-errors.patch"
+patch -p1 -i "$PORT_SRC/ratings-need-reviews.patch"
+patch -p1 -i "$PORT_SRC/sysupdate-size.patch"
+patch -p1 -i "$PORT_SRC/update-failed-stays-listed.patch"
 
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \

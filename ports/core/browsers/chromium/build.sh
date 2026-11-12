@@ -199,6 +199,15 @@ cat > "$PKG/etc/chromium/policies/managed/kdos.json" <<'EOF'
 EOF
 chmod 644 "$PKG/etc/chromium/policies/managed/kdos.json"
 
+cat > "$PKG$_app/initial_preferences" <<'EOF'
+{
+  "distribution": { "require_eula": false },
+  "browser": { "custom_chrome_frame": false },
+  "extensions": { "theme": { "system_theme": 1 } }
+}
+EOF
+chmod 644 "$PKG$_app/initial_preferences"
+
 for _s in 24 48 64 128 256; do
 	install -Dm644 "chrome/app/theme/chromium/product_logo_$_s.png" \
 		"$PKG/usr/share/icons/hicolor/${_s}x${_s}/apps/chromium.png"

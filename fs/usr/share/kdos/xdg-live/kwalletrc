@@ -9,9 +9,12 @@
 #
 # The live account logs in with no password, so a wallet would ask, the first
 # time a program stores a secret, for a new password to guard secrets that
-# are gone at the next boot. Programs keep what they would have stored for
-# this session only. The directory goes first in XDG_CONFIG_DIRS, and only on
-# the live medium; an installed system's wallet opens with the login.
+# are gone at the next boot. With the wallet off nothing owns or activates
+# org.freedesktop.secrets: a program that stores a secret through libsecret,
+# QtKeychain or the secret portal gets an error and keeps nothing, and
+# KWallet Manager offers only to turn the wallet on. The directory goes first
+# in XDG_CONFIG_DIRS, and only on the live medium; an installed system's
+# wallet opens with the login.
 # ---------------------------------
 
 [Wallet]

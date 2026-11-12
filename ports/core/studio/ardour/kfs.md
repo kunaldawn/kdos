@@ -43,6 +43,9 @@ whose only Linux back end is X11, so Ardour runs as an Xwayland window. It is bu
 ## Notes
 
 `build.sh` installs upstream's `ardour.1` as `ardour9.1`, matching the program's installed name,
-and writes its own `ardour9.desktop` with `StartupWMClass=Ardour`: Ardour's windows set their
-X11 window class to its program name, `Ardour`, each with an instance name of its own
-(`ardour_mixer`, `ardour_plugin_editor` and so on).
+and writes its own `ardour9.desktop` with `StartupWMClass=Ardour-<version>`. Ardour's main window
+sets no X11 window class of its own, so it takes the program's, from the executable
+`ardour-<version>`: `ardour-<version>` as instance and `Ardour-<version>` as class. KWin matches an X11 window to an
+entry by comparing `StartupWMClass` with the instance name, ignoring case. Its other windows set
+the class `Ardour` with an instance name of their own (`ardour_mixer`, `ardour_plugin_editor` and
+so on), which no entry names.

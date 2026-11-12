@@ -66,3 +66,10 @@ Upstream installs its icon loose in `/usr/share/icons`, which no icon lookup rea
 removes it, installs `icons/warzone2100.large.png` into hicolor instead, and writes its own desktop
 entry over upstream's with `StartupWMClass=warzone2100`, the window's Wayland app id, which is the
 program's name.
+
+The campaign videos are not shipped. They are upstream's separate `sequences.wz`, hundreds of
+megabytes in its standard-quality set, which `-DWZ_INCLUDE_VIDEOS` would download at build time and
+the build leaves at its default `OFF`; the campaigns play without the briefing videos, and the game
+says on the Campaign screen that they are missing. Upstream's `sequences.wz` (the `wz-sequences`
+releases), copied into `/usr/share/warzone2100/` beside the other data packages, where
+`WZ_INCLUDE_VIDEOS` would install it, adds them.

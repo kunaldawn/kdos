@@ -3,7 +3,9 @@ iamb is a Matrix chat client for the terminal, with vim's keys: rooms, spaces an
 end-to-end encryption, reactions and edits, and image previews (as pictures in a terminal that
 can show them, as coloured blocks in one that cannot), all through the Rust Matrix SDK. The port
 installs the program, its two manual pages, `iamb(1)` and the configuration page `iamb(5)`, and a desktop entry
-that opens it in a terminal as *Matrix*.
+that opens it in a terminal as *Matrix*. The entry is `NoDisplay=true`: until
+`~/.config/iamb/config.toml` names an account iamb exits asking for one, so it is started from a
+prompt.
 
 ## Notes
 iamb is a Rust program built from a vendor bundle, `iamb-vendor-<version>.tar.xz`, which

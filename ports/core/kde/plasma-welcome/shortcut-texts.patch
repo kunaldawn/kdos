@@ -1,0 +1,38 @@
+Subject: Utils: add globalShortcutTexts(), every chord bound to a global action
+
+globalShortcutText() returns the first multi-key sequence of an action, in
+the order kglobalaccel hands them back, which is not stable between
+sessions; a page that wants to name one particular chord of several cannot
+choose it. globalShortcutTexts() returns all of them, as native text.
+
+--- a/src/public/utils.cpp
++++ b/src/public/utils.cpp
+@@ -115,6 +115,20 @@
+     return shortcuts.first().toString(QKeySequence::NativeText);
+ }
+ 
++QStringList Utils::globalShortcutTexts(const QString &componentName, const QString &actionId) const
++{
++    // Every sequence bound to the action, in kglobalaccel's order, so a page
++    // can pick the one it wants to teach instead of whichever comes first.
++    QStringList texts;
++    const auto shortcuts = KGlobalAccel::self()->globalShortcut(componentName, actionId);
++    for (const QKeySequence &shortcut : shortcuts) {
++        if (!shortcut.isEmpty()) {
++            texts.append(shortcut.toString(QKeySequence::NativeText));
++        }
++    }
++    return texts;
++}
++
+ bool Utils::isMac() const
+ {
+     bool isMac = false;
+--- a/src/public/utils.h
++++ b/src/public/utils.h
+@@ -28,4 +28,5 @@
+     Q_INVOKABLE void copyToClipboard(const QString &content) const;
+     Q_INVOKABLE bool isMac() const;
+     Q_INVOKABLE QString globalShortcutText(const QString &componentName, const QString &actionId) const;
++    Q_INVOKABLE QStringList globalShortcutTexts(const QString &componentName, const QString &actionId) const;
+ };

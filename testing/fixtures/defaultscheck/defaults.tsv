@@ -93,6 +93,10 @@ powerdevilrc	AC][Display	TurnOffDisplayIdleTimeoutSec	900	kdos	off at 15 minutes
 kscreenlockerrc	Daemon	Autolock	false	vm	no timed lock in a guest
 powerdevilrc	AC][Display	DimDisplayWhenIdle	false	vm	no dimming in a guest
 powerdevilrc	AC][Display	TurnOffDisplayWhenIdle	false	vm	no blank screen in a guest
+powerdevilrc	AC][SuspendAndShutdown	AutoSuspendAction	0	vm	no idle suspend in a guest
+powerdevilrc	AC][SuspendAndShutdown	LidAction	0	vm	no lid suspend in a guest
+kscreenlockerrc	Daemon	Timeout	0	vm	the lock page reads Never in a guest
+kscreenlockerrc	Daemon	Timeout	0	live	the lock page reads Never on the live medium
 
 # Session, search, sounds, monitor, accessibility
 startkderc	General	systemdBoot	false	kdos	no systemd user instance
@@ -101,10 +105,16 @@ baloofilerc	Basic Settings	Indexing-Enabled	true	kdos	the indexer runs
 baloofilerc	Basic Settings	Indexing-Enabled	false	live	no index of a home that lasts one boot
 plasma_workspace.notifyrc	Event/startkde	Action	Sound	kdos	login sound on
 plasma_workspace.notifyrc	Event/startkde	Sound	desktop-login	kdos	from the sound theme
-systemmonitorrc	General	pageOrder	overview.page,kdos.page,applications.page,history.page,processes.page	kdos	boxes as applications
+systemmonitorrc	General	pageOrder	kdos-overview.page,kdos.page,applications.page,history.page,processes.page,overview.page	kdos	boxes as applications
+systemmonitorrc	General	hiddenPages	overview.page	kdos	no missing-sensors banner on the live medium
+systemmonitorrc	General	startPage	kdos-overview.page	kdos	opens on the overview whose sensors exist everywhere
 kaccessrc	ScreenReader	SystemdManaged	false	immutable	Meta+Alt+S keeps starting Orca
 klipperrc	General	KeepClipboardContents	true	kde	history across sessions
 spectaclerc	General	launchAction	TakeFullscreenScreenshot	kdos	Print is the whole screen
+ksystemlogrc	KSystemLogGeneral	StartupLogMode	cronLogMode	kdos	opens on the one log a user can read
+ksystemlogrc	systemLogMode	LogFilesPaths	/var/log/messages	kdos	sysklogd's system log
+ksystemlogrc	CronLogMode	LogFilesPaths	/var/log/cron	kdos	sysklogd's cron log
+ksystemlogrc	CronLogMode	ProcessFilter		kdos	cronie logs as crond, not /usr/sbin/cron
 
 # About this System
 kcm-about-distrorc	General	LogoPath	distributor-logo-kdos	kdos	the KDOS mark

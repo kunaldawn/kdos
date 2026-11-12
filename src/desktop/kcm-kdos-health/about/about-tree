@@ -27,4 +27,4 @@ case $commit in
 	case $time in '' | 0 | *[!0-9]*) ;; *) d=$(date -u -d "@$time" +%Y-%m-%d 2>/dev/null) && v="$v · $d" ;; esac
 	;;
 esac
-printf 'Ports tree\n%s\n' "$v"
+printf 'Ports tree:\n%s\n' "$v"

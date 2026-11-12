@@ -201,7 +201,7 @@ installed; `sudo modprobe ntfs3` (or the type named) says which.
 and NTFS none is kept. Run a script through its interpreter instead,
 `sh /run/media/$USER/<label>/script.sh`.
 
-**More detail is needed.** udisks2 logs to the system log: `grep udisksd /var/log/messages`.
+**More detail is needed.** udisks2 logs to the system log: `sudo grep udisksd /var/log/messages`.
 
 ## Known gaps
 

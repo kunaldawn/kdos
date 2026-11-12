@@ -18,6 +18,7 @@
       <li>Two widgets: the Phosphor Clock and a Focus Timer</li>
     </ul>
   </description>
+  <icon type="stock">preferences-desktop-theme-global</icon>
   <url type="homepage">https://github.com/kunaldawn/kdos</url>
   <metadata_license>MIT</metadata_license>
   <project_license>MIT</project_license>

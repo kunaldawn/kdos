@@ -86,3 +86,10 @@ build and turns a missing library into a failed configure.
 
 [yt-dlp](#port-yt-dlp) is in `depends` but not used by the build: mpv's built-in `ytdl_hook`
 script runs it at play time when given a web address.
+
+`build.sh` installs `/etc/mpv/mpv.conf`, the system configuration that the program reads before
+`~/.config/mpv/mpv.conf`, with one line, `gpu-sw=yes`. Without it mpv refuses every rendering
+context it suspects is software, the Wayland one on llvmpipe among them, and falls through to its
+X11 EGL context, which on a session with no X display stops on the assertion `!vo->x11`; in a
+virtual machine or on a machine with no GPU driver the player never opens. The option does
+nothing on a hardware context, and `libmpv` front ends read no configuration file unless they ask.

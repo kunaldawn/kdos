@@ -71,3 +71,11 @@ links under `/usr/share/doc/linuxcnc` that point at nothing in the package.
 The launcher and the latency test are Tk, so they open X11 windows under Xwayland; the wizards are
 GTK 3. Upstream's entry for the latency histogram is removed: it draws with BLT, which is not a
 port. The latency test's entry is `NoDisplay`, as a diagnostic.
+
+The entries are KDOS's own, written over upstream's so that each finds its window. The launcher's
+first window is Tk's `pickconfig.tcl`, whose X11 instance name is `pickconfig.tcl`, and KWin
+compares an X11 window's instance name with `StartupWMClass`, ignoring case, so the entry gives
+`Pickconfig.tcl`. The wizards' Wayland app ids are their program names, `stepconf` and `pncconf`,
+and KWin finds a Wayland window's icon only in the entry of that file name, so their entries are
+`stepconf.desktop` and `pncconf.desktop`, in place of upstream's `linuxcnc-stepconf.desktop` and
+`linuxcnc-pncconf.desktop`, which `build.sh` removes.

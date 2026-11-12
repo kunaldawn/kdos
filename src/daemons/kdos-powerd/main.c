@@ -22,7 +22,7 @@
  * This daemon is the one thing between them. It runs as root under ksvc and
  * offers the same verbs twice: a unix socket in /run for the `kdos` command,
  * and io.kdos.Power1 on the system bus for System Settings (bus.c). The bus
- * face alone also starts Samba once a user has shared a folder, for
+ * face alone also starts Samba once an account can share folders, for
  * kded-kdos. One binary answers to both names, dispatched on its basename,
  * the same shape as kpkg and kdos-tools.
  *
@@ -212,6 +212,10 @@ static int explain(const char *user)
  * closed row's line in the file is that match counting into the row's knock
  * counter instead (fw_write).
  *
+ * `what` IS READ BY A PERSON: the Firewall page shows it under the name, and
+ * `firewall list` prints it. One plain sentence each, naming a program only
+ * where the person would know it; the service scripts are in daemons.md.
+ *
  * THE FILE IS REWRITTEN WHOLE from the names that are on. Merging into an
  * existing file would mean parsing nftables syntax to find what to remove, and
  * a parser that got it wrong would leave a port open that the KCM showed as
@@ -223,79 +227,84 @@ static const struct {
 	const char *rule;
 	const char *what;
 } FW[] = {
-	{ "ssh",   "tcp dport 22 accept",   "incoming SSH (70_sshd.sh)" },
-	{ "http",  "tcp dport 80 accept",   "a web server on this machine" },
-	{ "https", "tcp dport 443 accept",  "a TLS web server on this machine" },
-	{ "ipp",   "tcp dport 631 accept",  "sharing a printer with CUPS" },
-	{ "smb",   "tcp dport 445 accept",  "sharing files over SMB" },
+	{ "ssh",   "tcp dport 22 accept",   "Logging in to this computer over SSH" },
+	{ "http",  "tcp dport 80 accept",   "A web server on this computer" },
+	{ "https", "tcp dport 443 accept",  "A web server on this computer, over HTTPS" },
+	{ "ipp",   "tcp dport 631 accept",  "Sharing a printer with other computers" },
+	{ "smb",   "tcp dport 445 accept",  "Sharing files with Windows and other computers (SMB)" },
 	/* kiwix-serve's default, and the one offline-content port this desktop
 	 * ships a reason for. */
-	{ "kiwix", "tcp dport 8080 accept", "kiwix-serve" },
+	{ "kiwix", "tcp dport 8080 accept", "Offline content served by Kiwix" },
 	/* The LAN servers whose ports ship a service script: each is
 	 * unreachable from another machine until its name is on, whatever its
 	 * own configuration says it listens on. */
 	{ "mqtt",  "tcp dport { 1883, 8883 } accept",
-	  "an MQTT broker for LAN devices (73_mosquitto)" },
-	{ "xmpp",  "tcp dport 5222 accept", "XMPP clients (74_prosody)" },
-	{ "nfs",   "tcp dport 2049 accept", "sharing files over NFSv4 (72_nfsd)" },
-	{ "babel", "udp dport 6696 accept", "Babel mesh routing (31_babeld)" },
+	  "An MQTT broker for devices on the network (Mosquitto)" },
+	{ "xmpp",  "tcp dport 5222 accept", "A chat server for XMPP clients (Prosody)" },
+	{ "nfs",   "tcp dport 2049 accept", "Sharing files with other computers over NFS" },
+	{ "babel", "udp dport 6696 accept", "Mesh routing with Babel" },
 	{ "nut",   "tcp dport 3493 accept",
-	  "UPS status for other machines (56_nut)" },
+	  "Telling other computers how the UPS is doing (NUT)" },
 	{ "snmp",  "udp dport 161 accept",
-	  "SNMP queries of this machine (71_snmpd)" },
+	  "Answering SNMP queries about this computer" },
 	/* Voice runs over UDP and falls back to the TCP control channel, so
 	 * both halves are one rule, in the concatenated form `syncthing` uses. */
 	{ "mumble",
 	  "meta l4proto . th dport { tcp . 64738, udp . 64738 } accept",
-	  "a Mumble voice server (75_mumble-server)" },
+	  "A Mumble voice chat server" },
 	{ "caldav", "tcp dport 5232 accept",
-	  "shared calendars and contacts (77_radicale)" },
+	  "Shared calendars and contacts (Radicale)" },
 	{ "mail",  "tcp dport { 25, 143, 465, 587, 993 } accept",
-	  "a LAN mail server (78_maddy)" },
+	  "A mail server for the network (Maddy)" },
 	{ "irc",   "tcp dport { 6667, 6697 } accept",
-	  "an IRC server (79_ngircd)" },
+	  "An IRC chat server" },
 	/* SSDP discovery on 1900 is how a player finds the server; 8200 is
 	 * where it then fetches the media. */
 	{ "dlna",  "meta l4proto . th dport { tcp . 8200, udp . 1900 } accept",
-	  "a DLNA media server (84_minidlna)" },
+	  "Sharing media with TVs and players (DLNA)" },
 	{ "tryton", "tcp dport 8000 accept",
-	  "Tryton clients of GNU Health (85_gnuhealth)" },
+	  "GNU Health for Tryton clients" },
 	/* The shipped /etc/caddy/Caddyfile's listener, in front of kiwix. */
-	{ "caddy", "tcp dport 8443 accept", "caddy's shipped site (HTTPS)" },
+	{ "caddy", "tcp dport 8443 accept", "The Caddy web server's HTTPS site" },
 	/* mosh-server binds the first free port of this range, one per session,
 	 * after an SSH login that `ssh` has to be on for. */
 	{ "mosh",  "udp dport 60000-61000 accept",
-	  "incoming mosh sessions (needs ssh too)" },
+	  "Mosh sessions to this computer (needs SSH too)" },
 	/* ONE RULE FOR THREE PORTS, because the state is read back by matching
 	 * the rule text: sync on 22000 over TCP and QUIC, and the local
 	 * discovery broadcast on 21027 that is how two machines find each
 	 * other with no server. */
 	{ "syncthing",
 	  "meta l4proto . th dport { tcp . 22000, udp . 22000, udp . 21027 } accept",
-	  "syncthing discovery and sync" },
+	  "Syncing folders with Syncthing" },
 	/* KDE Connect listens, and a phone announces itself, on the first free
 	 * port of this range over both TCP and UDP (1716 in practice); file
 	 * transfers take further ports from the same range. */
 	{ "kdeconnect",
 	  "meta l4proto { tcp, udp } th dport 1714-1764 accept",
-	  "KDE Connect with a phone on the LAN" },
+	  "KDE Connect with a phone on the network" },
 	/* Desktop sharing. krfb serves VNC on its default 5900 and krdp serves
 	 * RDP on its default 3389 (krdpserversettings.kcfg ListenPort), each
 	 * only while sharing is switched on in a session; these open the port
 	 * to the LAN, and a port moved in either program's settings stays shut
 	 * until a hand-written rule beside this file opens it. */
 	{ "vnc",   "tcp dport 5900 accept",
-	  "this desktop over VNC (krfb)" },
+	  "Sharing this desktop over VNC (Krfb)" },
 	{ "rdp",   "tcp dport 3389 accept",
-	  "this desktop over RDP (krdp)" },
+	  "Sharing this desktop over RDP (KRdp)" },
 	{ "xonotic", "udp dport 26000 accept",
-	  "hosting a Xonotic game for the LAN" },
+	  "Hosting a Xonotic game for the network" },
 };
 #define FW_N ((int)(sizeof(FW) / sizeof(FW[0])))
 
 #define FW_FILE   "nftables.d/50-kdos-services.nft"
 #define FW_ACCEPT " accept"
 #define FW_KNOCK  "kdos_knock_"
+/* Before every knock match: this machine's own broadcasts loop back in on
+ * the LAN interface (kdeconnectd's identity packet to 1716, syncthing's on
+ * 21027, SSDP on 1900), and counted they would be a knock with nobody
+ * knocking — a prompt at every boot. */
+#define FW_FOREIGN "fib saddr type != local "
 
 int kp_fw_count(void) { return FW_N; }
 const char *kp_fw_name(int i) { return FW[i].name; }
@@ -373,9 +382,9 @@ static int fw_nft_load(const char *nft, bool check)
  * THE FILE, and the knock counters in it.
  *
  * AN OPEN NAME IS ITS RULE. A CLOSED NAME IS ITS MATCH COUNTED: the same
- * packets the rule would have accepted are counted into the named counter
- * `kdos_knock_<name>` and fall through to the chain's policy, which drops
- * them. The Firewall page and kdos-fwask read the counters to say that
+ * packets the rule would have accepted, from another machine (FW_FOREIGN),
+ * are counted into the named counter `kdos_knock_<name>`; they and this
+ * machine's own fall through to the chain's policy, which drops them. The Firewall page and kdos-fwask read the counters to say that
  * something was turned away — KDE Connect's phone, a krdp client — and ask
  * whether to let it in, by name. A reload deletes and rebuilds the table, so
  * every change starts every counter from zero again. A port a hand-written
@@ -402,8 +411,9 @@ static int fw_write(const int *on, char *out, size_t nout)
 		"# rule it does not recognise is dropped — anything hand-made\n"
 		"# belongs in a file beside this one, which this never touches.\n"
 		"#\n"
-		"# An open name is its rule. A closed name's packets are counted\n"
-		"# in kdos_knock_<name> and then meet the chain's policy.\n"
+		"# An open name is its rule. A closed name's packets from another\n"
+		"# machine are counted in kdos_knock_<name>; every closed name's\n"
+		"# packets then meet the chain's policy.\n"
 		"#\n"
 		"# No `type`/`hook` line: that is what re-opens the existing\n"
 		"# input chain rather than declaring a second one.\n"
@@ -419,8 +429,8 @@ static int fw_write(const int *on, char *out, size_t nout)
 		if (on[i])
 			fprintf(f, "\t\t%s\n", FW[i].rule);
 		else if (m > 0)
-			fprintf(f, "\t\t%.*s counter name \"" FW_KNOCK "%s\"\n",
-				m, FW[i].rule, FW[i].name);
+			fprintf(f, "\t\t" FW_FOREIGN "%.*s counter name \""
+				FW_KNOCK "%s\"\n", m, FW[i].rule, FW[i].name);
 	}
 	fprintf(f, "\t}\n}\n");
 	fflush(f);
@@ -655,13 +665,14 @@ static int fw_verb(const char *arg, char *out, size_t nout)
 /* ── file sharing ──────────────────────────────────────────────────────── */
 
 /*
- * SAMBA RUNS ONCE SOMETHING IS SHARED. 83_samba.sh starts smbd at boot only
- * when /var/lib/samba/usershares holds a share or smb.conf defines one of its
- * own, so a machine that shares nothing listens on nothing. The first folder
- * shared from Dolphin is a file `net usershare` writes into that directory as
- * the user, while smbd is still down; kded-kdos sees it and asks the bus face
- * for this, and the script's own test decides again whether anything is there
- * to serve.
+ * SAMBA RUNS ONCE AN ACCOUNT CAN SHARE. 83_samba.sh starts smbd at boot only
+ * when the sambashare group has a member, /var/lib/samba/usershares holds a
+ * share or smb.conf defines one of its own, so a machine where nobody shares
+ * listens on nothing. smbd must be up before the first folder can be shared:
+ * `net usershare add` asks it to turn the ACL's names into SIDs. An account
+ * the Share tab has just added to the group is a member from its next login,
+ * so that login's kded-kdos asks the bus face for this, and the script's own
+ * test decides again.
  *
  * NO ARGUMENT AND ONE FIXED COMMAND. The caller names nothing, so all it can
  * cause is what the next boot would do anyway. A service an administrator
@@ -746,9 +757,9 @@ static bool run_bootctl(const char *verb, const char *word)
  * greeter's KWin needs in order to write kwinoutputconfig.json beside them.
  * The home itself is prepared by root the way kdos-dm prepares it at every
  * start: made when missing, and the directory alone handed to the account,
- * 0750, only when it is under /var/lib, is no link and climbs nowhere. An
- * image's /var/lib/sddm is root's until kdos-dm first runs, and `kdos theme`
- * in the installer's chroot comes before that.
+ * 0750, only when it is under /var/lib, is no link and climbs nowhere: the
+ * image seeds the home with its default accent's set, and a machine whose
+ * home is missing or root's is one where `kdos theme` runs before kdos-dm.
  *
  * ALL OR NOTHING ON THE SOURCE: a set missing a file leaves the greeter as it
  * was rather than half in another accent. Each file is replaced by a rename,

@@ -37,7 +37,7 @@ target_include_directories(kdedkdoslogic PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(kdedkdoslogic PUBLIC Qt6::Core)
 
 kcoreaddons_add_plugin(kdos
-    SOURCES src/module.cpp src/accentsync.cpp src/sharewatch.cpp src/stickoffer.cpp
+    SOURCES src/module.cpp src/accentsync.cpp src/sharestart.cpp src/shellwatch.cpp src/stickoffer.cpp
     INSTALL_NAMESPACE "kf6/kded")
 ecm_qt_declare_logging_category(kdos
     HEADER debug.h

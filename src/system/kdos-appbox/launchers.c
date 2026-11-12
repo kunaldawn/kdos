@@ -232,8 +232,9 @@ static const char *EXEC_EXTRA[][2] = {
  *
  * wine is the case that forced this: what a person wants from it is
  * `wine setup.exe` at a prompt, and Debian's own entries for it are
- * NoDisplay=true, which parse_dir correctly drops — so without this table the
- * box would contain wine and the host would have no way to reach it. These get
+ * NoDisplay=true, which parse_dir writes no launcher for — so without this
+ * table the box would contain wine and the host would have no way to reach
+ * it. These get
  * an alien-apps row and a /usr/local/bin shim, and deliberately NOT a .desktop:
  * a launcher for `wine` with no arguments opens nothing.
  *
@@ -484,10 +485,54 @@ static int has_category(const char *cats, const char *want)
 	return 0;
 }
 
+/*
+ * A HIDDEN ENTRY'S FILE TYPES GO TO THE VISIBLE LAUNCHER RUNNING ITS PROGRAM.
+ * Debian splits an application's entries by package: zathura's own entry is
+ * the launcher and claims no type, and each plugin package (zathura-pdf-poppler,
+ * -djvu, -cb) ships a NoDisplay entry with the same `Exec=zathura %U` and the
+ * MimeType. Dropping a hidden entry whole leaves the application claiming
+ * nothing, never offered for a PDF and never a default handler. A hidden entry
+ * still gets no launcher and no shim of its own, and one whose program no
+ * visible launcher of the same directory runs lends its types to nothing.
+ */
+typedef struct {
+	char key[128];
+	char mime[1024];
+} HiddenMime;
+
+static void mime_append(char *dst, size_t cap, const char *add)
+{
+	char copy[1024], *save = NULL;
+
+	kb_strlcpy(copy, add, sizeof(copy));
+	for (char *t = strtok_r(copy, ";", &save); t;
+	     t = strtok_r(NULL, ";", &save)) {
+		size_t tl = strlen(t), have = strlen(dst);
+		int dup = 0;
+
+		for (const char *p = dst; *p && !dup; ) {
+			const char *e = strchr(p, ';');
+			size_t l = e ? (size_t)(e - p) : strlen(p);
+
+			dup = l == tl && !strncmp(p, t, tl);
+			p = e ? e + 1 : p + l;
+		}
+		if (dup || !tl || have + tl + 2 > cap)
+			continue;
+		if (have && dst[have - 1] != ';')
+			dst[have++] = ';';
+		memcpy(dst + have, t, tl);
+		dst[have + tl] = ';';
+		dst[have + tl + 1] = '\0';
+	}
+}
+
 static void parse_dir(const char *srcdir)
 {
 	char **files = kb_listdir(srcdir, NULL);
 	char root[1024];
+	HiddenMime hidden[32];
+	int nhidden = 0, first = napps;
 
 	if (!files)
 		kb_die("cannot read %s", srcdir);
@@ -522,6 +567,16 @@ static void parse_dir(const char *srcdir)
 		const char *ex = kxdg_get(&e, "Exec", "");
 		const char *cats = kxdg_get(&e, "Categories", "");
 
+		if (kxdg_bool(&e, "NoDisplay", 0) && !strcmp(type, "Application") &&
+		    *ex && *kxdg_get(&e, "MimeType", "") && nhidden < 32) {
+			app_exec_key(ex, hidden[nhidden].key,
+				     sizeof(hidden[0].key));
+			kb_strlcpy(hidden[nhidden].mime,
+				   kxdg_get(&e, "MimeType", ""),
+				   sizeof(hidden[0].mime));
+			if (hidden[nhidden].key[0])
+				nhidden++;
+		}
 		if (kxdg_bool(&e, "NoDisplay", 0) || strcmp(type, "Application") ||
 		    !name || !*ex ||
 		    /* A Settings-only entry belongs to the box's own desktop,
@@ -598,6 +653,16 @@ static void parse_dir(const char *srcdir)
 		kxdg_free(&e);
 	}
 	kb_strv_free(files);
+
+	for (int h = 0; h < nhidden; h++)
+		for (int i = first; i < napps; i++) {
+			char key[128];
+
+			app_exec_key(apps[i].exec, key, sizeof(key));
+			if (!strcmp(key, hidden[h].key))
+				mime_append(apps[i].mime, sizeof(apps[i].mime),
+					    hidden[h].mime);
+		}
 }
 
 static void add_commands(const char *srcdir)

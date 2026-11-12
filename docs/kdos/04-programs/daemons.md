@@ -78,7 +78,7 @@ machine is the active local session, as elogind reports it.
 
 | Daemon | root | `wheel` | The active local session | Anyone else |
 |---|---|---|---|---|
-| `kdos-settingsd` | Every method, without asking polkit | polkit's answer | Time zone and network time without a password; the clock, locale, keyboard and names after an administrator's password | Refused |
+| `kdos-settingsd` | Every method, without asking polkit | polkit's answer | Time zone and network time without a password (the Date & Time page asks for one anyway, see [Checking, then asking, then writing](#checking-then-asking-then-writing)); the clock, locale, keyboard and names after an administrator's password | Refused |
 | `kdos-sysupdated` | Every method, without asking polkit | polkit's answer | Checking and `Bless` without a password; installing, trying a slot and changing the channel after an administrator's password | Refused |
 | `kdos-powerd`, socket | Every verb | Every verb | `ping`, `firewall list`, `firewall knocks`, and `accent` and `splash` when polkit grants them without a prompt | `ping`, `firewall list` and `firewall knocks` |
 | `kdos-powerd`, bus | Every method | polkit's answer | The accent and the splash without a password; the firewall after an administrator's password | The reads only |
@@ -100,7 +100,7 @@ diagnose and review all six.
 
 A daemon runs in the foreground and never forks into the background. The init script calls
 `supervise <name> <binary>` from `/etc/init.d/service_helper`; the supervisor leads its own process
-group, writes `/run/<full name>.pid`, and restarts the daemon five seconds after it exits.
+group, writes `/run/kdos-svc.<full name>.pid`, and restarts the daemon five seconds after it exits.
 `service stop <name>` sends SIGTERM to the whole group, waits for it to empty, checking every 50
 ms, and sends SIGKILL to whatever is left when the stop grace runs out. The grace is five seconds
 unless the init script passed `supervise --stop-grace <seconds>`; none of these six daemons does.
@@ -222,7 +222,7 @@ The few root-owned settings a desktop that is not root still changes: which name
 firewall lets in, the accent that everything drawn before a login wears (the boot menu, the
 splash, the text console and the login screen), and the splash's motion. It offers the same verbs
 twice: a socket for the `kdos` command, and `io.kdos.Power1` on the system bus for System Settings.
-The bus face alone also starts Samba once a folder has been shared; see
+The bus face alone also starts Samba once an account can share folders; see
 [Starting Samba for a shared folder](#starting-samba-for-a-shared-folder).
 
 Suspend, power-off and reboot are not this daemon's. They belong to elogind, which Plasma's Leave
@@ -311,24 +311,33 @@ reaches the firewall on a machine whose bus is down.
 
 ### Starting Samba for a shared folder
 
-`smbd` does not run until something is shared. At boot, Samba's service script
+`smbd` does not run until some account can share. At boot, Samba's service script
 `/etc/init.d/83_samba.sh` makes `/var/lib/samba/usershares` (root's, group `sambashare`, mode
-1770) and starts `smbd` only when that directory holds a usershare or `/etc/samba/smb.conf` defines
-a share below `[global]`; otherwise it prints `[SKIP] samba: nothing is shared`. A folder shared
-from Dolphin's Share tab is a file `net usershare add` writes into the directory as the user, with
-`smbd` still down.
+1770) and starts `smbd` only when the `sambashare` group has a member in `/etc/group`, that
+directory holds a usershare, or `/etc/samba/smb.conf` defines a share below `[global]`; otherwise
+it prints `[SKIP] samba: no account shares folders`. `smbd` has to be running before the first
+share can be made: a folder shared from Dolphin's Share tab is a file `net usershare add` writes
+into the directory as the user, and `net` first turns every name in the share's ACL, Dolphin's
+`Everyone` among them, into a SID by asking the local `smbd`. With `smbd` down it fails with
+"cannot convert name … to a SID" and writes nothing.
 
-The session's `kded-kdos` module watches the directory and, when it goes from holding no share to
-holding one, calls `StartFileSharing()`; a share already there when the session starts is not
-asked about, because the boot decided on it. The method takes no argument, so a caller names nothing:
-after polkit's `io.kdos.filesharing.start`, which the person at the machine is granted, the daemon
-runs `/etc/init.d/83_samba.sh start` as an argument vector, and the script decides again whether
-anything is there to serve. That is all the next boot would do, which is why the action needs no
-password. The call is refused with `io.kdos.Power1.Error.Failed` while
-`/etc/service.disabled/samba` exists, the boot's own marker for a service an administrator turned
-off, or when Samba is not installed. A service already supervised is not started twice, so a
-repeated call costs one script run. Nothing stops `smbd` again: removing the last share leaves it
-serving nothing until the next boot, which does not start it.
+The Share tab adds its user to `sambashare`, which counts from that user's next login, and that
+login can come before the next boot. So the session's `kded-kdos` module calls
+`StartFileSharing()` once when it loads in a session whose credentials can write into the
+usershare directory, which only a member's can. The method takes no argument, so a caller names
+nothing: after polkit's `io.kdos.filesharing.start`, which the person at the machine is granted,
+the daemon runs `/etc/init.d/83_samba.sh start` as an argument vector, and the script decides again.
+That is all the next boot would do, which is why the action needs no password. The call is refused
+with `io.kdos.Power1.Error.Failed` while `/etc/service.disabled/samba` exists, the boot's own marker
+for a service an administrator turned off, or when Samba is not installed. A service already
+supervised is not started twice, so the call at every later login costs one script run. Nothing
+stops `smbd` again: leaving the group or removing the last share leaves it serving nothing until
+the next boot, which then does not start it.
+
+Samba's lock directory is `/var/lib/samba/lock`, which the package carries, root's and mode 0755.
+`smbd` refuses to start when the `msg.lock` directory inside it belongs to anybody but root, and
+any Samba client run first, `net usershare` among them, makes the lock directory as the user when
+it can; in a directory only root can write to, a client makes nothing and still works.
 
 ### What happens around a suspend
 
@@ -400,40 +409,47 @@ daemon. A client that could name a port could open any port; a client that can o
 opens exactly what the daemon's table says `ssh` is. The Firewall settings page asks for the list
 rather than carrying its own copy.
 
-| Service | Opens | For |
-|---|---|---|
-| `ssh` | TCP 22 | Incoming SSH (`70_sshd.sh`). Turning it on also removes `/etc/service.disabled/sshd` and starts `sshd`; turning it off puts the marker back and stops `sshd` |
-| `http` | TCP 80 | A web server on this machine |
-| `https` | TCP 443 | A TLS web server on this machine |
-| `ipp` | TCP 631 | Sharing a printer with CUPS |
-| `smb` | TCP 445 | Sharing files over SMB |
-| `kiwix` | TCP 8080 | `kiwix-serve` |
-| `mqtt` | TCP 1883, 8883 | An MQTT broker for LAN devices (`73_mosquitto`) |
-| `xmpp` | TCP 5222 | XMPP clients (`74_prosody`) |
-| `nfs` | TCP 2049 | Sharing files over NFSv4 (`72_nfsd`) |
-| `babel` | UDP 6696 | Babel mesh routing (`31_babeld`) |
-| `nut` | TCP 3493 | UPS status for other machines (`56_nut`) |
-| `snmp` | UDP 161 | SNMP queries of this machine (`71_snmpd`) |
-| `mumble` | TCP 64738, UDP 64738 | A Mumble voice server (`75_mumble-server`) |
-| `caldav` | TCP 5232 | Shared calendars and contacts (`77_radicale`) |
-| `mail` | TCP 25, 143, 465, 587, 993 | A LAN mail server (`78_maddy`) |
-| `irc` | TCP 6667, 6697 | An IRC server (`79_ngircd`) |
-| `dlna` | TCP 8200, UDP 1900 | A DLNA media server (`84_minidlna`) |
-| `tryton` | TCP 8000 | Tryton clients of GNU Health (`85_gnuhealth`) |
-| `caddy` | TCP 8443 | Caddy's shipped site (HTTPS) |
-| `mosh` | UDP 60000–61000 | Incoming mosh sessions (needs `ssh` on as well) |
-| `syncthing` | TCP 22000, UDP 22000, UDP 21027 | Syncthing sync and local discovery |
-| `kdeconnect` | TCP 1714–1764, UDP 1714–1764 | KDE Connect with a phone on the LAN |
-| `vnc` | TCP 5900 | This desktop over VNC (krfb, on its default port, while sharing is on in a session) |
-| `rdp` | TCP 3389 | This desktop over RDP (krdp, on its default port, while sharing is on in a session) |
-| `xonotic` | UDP 26000 | Hosting a Xonotic game for the LAN |
+The For column is the sentence the Firewall page shows under each name and `firewall list`
+prints; the Served by column names the service script or program behind it, which the page does
+not show.
+
+| Service | Opens | For | Served by |
+|---|---|---|---|
+| `ssh` | TCP 22 | Logging in to this computer over SSH | `70_sshd.sh`. Turning it on also removes `/etc/service.disabled/sshd` and starts `sshd`; turning it off puts the marker back and stops `sshd` |
+| `http` | TCP 80 | A web server on this computer | Any |
+| `https` | TCP 443 | A web server on this computer, over HTTPS | Any |
+| `ipp` | TCP 631 | Sharing a printer with other computers | CUPS |
+| `smb` | TCP 445 | Sharing files with Windows and other computers (SMB) | `83_samba.sh` |
+| `kiwix` | TCP 8080 | Offline content served by Kiwix | `kiwix-serve`, on its default port |
+| `mqtt` | TCP 1883, 8883 | An MQTT broker for devices on the network (Mosquitto) | `73_mosquitto` |
+| `xmpp` | TCP 5222 | A chat server for XMPP clients (Prosody) | `74_prosody` |
+| `nfs` | TCP 2049 | Sharing files with other computers over NFS | `72_nfsd` (NFSv4) |
+| `babel` | UDP 6696 | Mesh routing with Babel | `31_babeld` |
+| `nut` | TCP 3493 | Telling other computers how the UPS is doing (NUT) | `56_nut` |
+| `snmp` | UDP 161 | Answering SNMP queries about this computer | `71_snmpd` |
+| `mumble` | TCP 64738, UDP 64738 | A Mumble voice chat server | `75_mumble-server` |
+| `caldav` | TCP 5232 | Shared calendars and contacts (Radicale) | `77_radicale` |
+| `mail` | TCP 25, 143, 465, 587, 993 | A mail server for the network (Maddy) | `78_maddy` |
+| `irc` | TCP 6667, 6697 | An IRC chat server | `79_ngircd` |
+| `dlna` | TCP 8200, UDP 1900 | Sharing media with TVs and players (DLNA) | `84_minidlna` |
+| `tryton` | TCP 8000 | GNU Health for Tryton clients | `85_gnuhealth` |
+| `caddy` | TCP 8443 | The Caddy web server's HTTPS site | Caddy, the listener of the shipped `/etc/caddy/Caddyfile` |
+| `mosh` | UDP 60000–61000 | Mosh sessions to this computer (needs SSH too) | `mosh-server`, after an SSH login, so `ssh` must be on as well |
+| `syncthing` | TCP 22000, UDP 22000, UDP 21027 | Syncing folders with Syncthing | Syncthing: sync, and local discovery |
+| `kdeconnect` | TCP 1714–1764, UDP 1714–1764 | KDE Connect with a phone on the network | `kdeconnectd` in a session |
+| `vnc` | TCP 5900 | Sharing this desktop over VNC (Krfb) | krfb, on its default port, while sharing is on in a session |
+| `rdp` | TCP 3389 | Sharing this desktop over RDP (KRdp) | krdp, on its default port, while sharing is on in a session |
+| `xonotic` | UDP 26000 | Hosting a Xonotic game for the network | A Xonotic server |
 
 A port moved in krfb's or krdp's own settings stays shut until a hand-written rule beside the
 daemon's file opens it.
 
 **A closed service is counted.** In the daemon's file an open service is its rule; a closed one is
-the same match counting into a named counter, `kdos_knock_<service>`, after which the packets meet
-the chain's policy and are dropped. `firewall knocks` and `ListFirewallKnocks` read those counters
+the same match, for a packet from another machine (`fib saddr type != local`), counting into a
+named counter, `kdos_knock_<service>`, after which the packets meet the chain's policy and are
+dropped. A packet this machine sent itself is not counted: its own broadcasts — KDE Connect's
+identity packet, Syncthing's discovery, SSDP — loop back in on the network interface, and counted
+they would be a knock with nobody knocking. `firewall knocks` and `ListFirewallKnocks` read those counters
 with `nft list counters`, which is how the Firewall page and `kdos-fwask` can say that a phone or an
 RDP client was turned away and offer to let it in by name. A reload rebuilds the table, so every
 change starts every counter from zero; a counter the kernel does not hold reads `-1`, which is not
@@ -682,9 +698,11 @@ modest machine.
   so the next step cannot land on a recycled process id), sends SIGKILL, then calls
   `process_mrelease` to free the victim's memory at once rather than whenever it is reaped. On a
   kernel without that call the release is skipped and the kill stands.
-- At most one scan every ten seconds. The cool-down starts when the trigger fires, not when a
-  kill succeeds, so a trigger that finds nothing killable does not rescan every entry in `/proc`
-  once a second on a machine that is already stalling.
+- At most one scan every ten seconds. The cool-down starts when a firing finds memory short and
+  scans `/proc`, not when a kill succeeds, so a scan that finds nothing killable does not rescan
+  every entry in `/proc` once a second on a machine that is already stalling. A firing that finds
+  memory not yet short reads only `/proc/meminfo` and starts no cool-down, so the next firing of the
+  same incident, once memory is short, can still kill before the kernel's own killer does.
 
 The daemon shields itself from the emergency it watches: at start-up it sets its own
 `oom_score_adj` to -1000 and locks its memory with `mlockall`. Each kill is logged with the victim,
@@ -729,7 +747,10 @@ user may read the socket and why, and exits 0 when permitted.
 touches memory until the trigger fires, then asks the socket what happened rather than watching
 the allocating process die (the kernel's own killer would also have got it, later). A passing run
 shows `status` going from `kills 0` to `kills 1, last: <name> (pid <pid>, <size> MB)` while the
-script that started the allocation keeps running. That run has one large process to choose; which
+script that started the allocation keeps running. A second round then holds a process under a
+cgroup's `memory.high` so the trigger fires while `MemAvailable` is still high, and exhausts memory
+with another inside the ten-second cool-down: it passes when the daemon still kills and the kernel's
+`Out of memory` count in `dmesg` does not rise. That run has one large process to choose; which
 process the daemon picks on a busy desktop is what `--fixture` tests.
 
 ## kdos-packd
@@ -922,9 +943,15 @@ next caller sees.
 | Graphical keyboard | `/etc/kdos/xkb.conf` (`XKBMODEL`, `XKBLAYOUT`, `XKBVARIANT`, `XKBOPTIONS`), never under `/etc/X11` |
 
 Both halves of a time zone are written or the call fails. musl reads `TZ` where it is set, and
-every KDOS login sets it, so writing only the link would leave every new login reporting the old
-zone. The colon form points musl at the link itself, the one value that cannot drift from it, and
-it is the form Qt reads as "follow `/etc/localtime`".
+every login sets it once the installer or the daemon has chosen a zone, so writing only the link
+would leave every new login reporting the old zone. The colon form points musl at the link itself,
+the one value that cannot drift from it, and it is the form Qt reads as "follow `/etc/localtime`".
+It is also what moves the programs already running: KDOS's musl re-reads the file a path-form `TZ`
+names on the next `tzset()` once it has been replaced (see
+[musl's port note](../../../ports/core/toolchain/musl/kfs.md#patches)), and Qt calls `tzset()`
+before every local time, so the panel clock and every Qt or KDE program take the new zone at their
+next update. The link is replaced by `rename()`, so a program never finds it missing. A C program
+that never calls `tzset()` keeps the zone it started with.
 
 **The Wi-Fi country follows the zone.** The kernel's wireless layer starts in the "world"
 regulatory domain, which keeps every 5 GHz DFS channel (one shared with radar) closed and caps
@@ -932,7 +959,8 @@ transmit power until something names a country, and some drivers never take one 
 point. The daemon looks the zone up in `zone.tab`, which maps each zone to exactly one country
 code, writes `options cfg80211 ieee80211_regdom=<CC>` to `/etc/modprobe.d/kdos-regdom.conf` for the
 next boot, and runs `iw reg set <CC>` for this one. A zone with no country, such as `UTC`, removes
-the file. Neither step failing fails the zone: a machine with no radio still has a time zone. The
+the file and runs `iw reg set 00`, so the running radio returns to the world domain at once rather
+than keeping the previous country's channels and power until the next boot. Neither step failing fails the zone: a machine with no radio still has a time zone. The
 installer writes the same file from the zone chosen during installation.
 
 **An empty layout follows the console.** The installer writes the console keymap alone and the
@@ -976,8 +1004,10 @@ action ids, because plasma-setup's rule and the Date & Time page name them:
 | `org.freedesktop.hostname1.set-hostname`, `set-static-hostname`, `set-machine-info` | `auth_admin_keep` |
 | `org.freedesktop.hostname1.get-product-uuid`, `get-hardware-serial` | `auth_admin_keep` |
 
-`set-time` implies `set-timezone` and `set-ntp`, so the Date & Time page's one password covers its
-three calls. The last two guard the values that identify the machine, which the kernel makes
+`set-time` implies `set-timezone` and `set-ntp`. The Date & Time page authorises `set-time` before
+it saves anything, whatever changed, so every Apply there asks for an administrator's password,
+which then covers its three calls; the zone and network time pass with no password only from a
+caller that asks for them alone, such as `kdos timezone` or plasma-setup. The last two guard the values that identify the machine, which the kernel makes
 root's alone. An interactive question may stay open for five minutes, after which the call is
 refused; no answer from polkit is a refusal.
 
@@ -1029,7 +1059,9 @@ drives it is in [Discover](discover.md#system-updates).
 | `Manager.JobRemoved` | Sent once, when a job this daemon replied with ends |
 
 **Acquire answers only after `kdos update` has said `verified` or `refused`.** Discover shows a
-failed call's message in a banner and a failed job as nothing but "failed", so everything that can
+failed call's message under the details of its "Update Issue" sheet, leaving nothing pending
+(the `discover` port's `sysupdate-errors.patch` offers a restart only after `Install` succeeds),
+and a failed job as nothing but "failed", so everything that can
 refuse an update (a release index, binhost index or image manifest no trusted key signed, a file
 the release index does not name, a package the binhost does not cover, a slot that cannot be
 mounted) is learned before the reply, and only an update that can go
@@ -1045,8 +1077,11 @@ acquired at that moment is refused, and nothing other than the version that was 
 
 **A trial boot is offered nothing.** While this boot is the trial of the other slot, the slot an
 update would fill is the confirmed way back, so `CheckNew` answers empty and `Acquire` is refused
-until the trial is confirmed or rolled back. A machine with no second root slot is refused too,
-with a reply that names `kdos update apply`, which updates it in place.
+until the trial is confirmed or rolled back. A machine with no second root slot is never checked:
+`CheckNew` answers empty without fetching, so Discover reports the system up to date, and `Acquire`
+is refused with a reply that names `kdos update apply`, which updates it in place at a shell. The
+live medium has no slot either, and its refusal says instead that nothing installed there survives
+a restart and that KDOS is to be installed; the AppStream file names it as the live session.
 
 **The update document belongs to the root that wrote it.** `CheckNew` reads
 `/var/lib/kdos/update.json` and, at most once an hour (`--refresh-after`), runs
@@ -1062,14 +1097,14 @@ document changes, so a check typed at a shell reaches Discover too.
 **The AppStream file lives on `/run`.** `/run/kdos/sysupdate/io.kdos.system.metainfo.xml` carries
 the release notes and, in its text, whether the update is the signed system image or the release's
 packages (the document's `lane`), the signer's fingerprint, the packages it changes and the size
-still to download; the copy in `/usr/share/kdos/update/` is the fallback that names the system and offers
-nothing. Discover asks `127.0.0.1:3129` for an update's size and shows 0 when nothing answers;
-nothing listens there.
+still to download, and gives the offered release an artifact whose download size is that size,
+which the `discover` port's `sysupdate-size.patch` reads for the Updates list; the copy in
+`/usr/share/kdos/update/` is the fallback that names the system and offers nothing.
 
 ### io.kdos.Slots1
 
 The System Versions page and `kdos-notice` read the slots through `io.kdos.Slots1`: the properties
-`Configured`, `RunningSlot`, `ActiveSlot`, `TrySlot`, `TryAttempts`, `TryBootNext`, `Channel` and
+`Configured`, `Live` (the live medium, from `kdos-bootctl status --json`), `RunningSlot`, `ActiveSlot`, `TrySlot`, `TryAttempts`, `TryBootNext`, `Channel` and
 `State`, the methods `ListSlots`, `Try`, `CancelTry`, `SetChannel` and `Bless`, and the signal
 `SlotsChanged`. Its contract is the page's own `io.kdos.Slots1.xml`.
 

@@ -33,7 +33,7 @@ is enabled by hand.
 KDE's defaults keep the window-management chords. KDOS rebinds two and adds the chords KDE leaves
 free, from `fs/usr/share/kdos/xdg/kglobalshortcutsrc`:
 
-<!-- kfs:include fs/usr/share/kdos/xdg/kglobalshortcutsrc lines=30-81 pin=0cfdc7b53560 -->
+<!-- kfs:include fs/usr/share/kdos/xdg/kglobalshortcutsrc lines=30-81 pin=39167e823377 -->
 
 `kglobalaccel` reads `~/.config/kglobalshortcutsrc` alone, never a file in a configuration
 directory. So `plasma-workspace/env/kdos-shortcuts.sh` copies each entry above into a person's
@@ -43,7 +43,22 @@ has not copied before. The copies are recorded in
 stays reset. A `kglobalshortcutsrc` in `/etc/xdg` is a layer above KDOS's, read the same way.
 
 Every chord passes `testing/chordcheck.py`, which holds it against KDE's compiled-in defaults,
-every installed `X-KDE-Shortcuts` and fcitx5's hotkeys.
+every installed `X-KDE-Shortcuts` and fcitx5's hotkeys, and fails a chord the auto-tiler would
+take from a binding in force once it is switched on.
+
+`Meta+Shift+T` and `Meta+Ctrl+Shift+N` are not in that file: they are the desktop entries
+`org.kdos.tiling.desktop` and `org.kdos.nightlight.desktop` in `/usr/share/kglobalaccel/`, from
+[kdos-tools](#port-kdos-tools), running `kdos tiling toggle` and `kdos toggle night-light`.
+
+A new account runs every `kconf_update` step at its first login, with KWin already up, and KWin's
+`kwin-6.1-remove-gridview-expose-shortcuts` would then delete the Present Windows keys (`Meta+F9`,
+`Meta+F10`, `Meta+F7`) the Window View effect has just registered.
+`fs/usr/share/kdos/xdg/kconf_updaterc` records that step as done, and `kconf_update` reads its
+record along the configuration directories:
+
+<!-- kfs:include fs/usr/share/kdos/xdg/kconf_updaterc lines=24-25 pin=bc3cd6a55ee8 -->
+
+
 
 ### Virtual desktops
 
@@ -131,7 +146,7 @@ kdos tiling on      # or off, or toggle
 ```
 
 or turn **Krohnkite** on on the KWin Scripts page. While it is on, windows tile by themselves;
-the seven chords it would ask for that the session already holds stay unbound until you bind
+the eight chords it would ask for that the session already holds stay unbound until you bind
 them.
 
 ### Setting the touchpad and the mouse

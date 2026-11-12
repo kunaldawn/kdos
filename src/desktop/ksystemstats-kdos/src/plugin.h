@@ -17,7 +17,8 @@
  * One container, `kdos`, whose object ids carry a `/` of their own:
  * ksystemstats splits a sensor path at its first and last `/`, so the object
  * of `kdos/box/www/cpu` is `box/www`, and System Monitor's sensor tree shows
- * KDOS ▸ box ▸ www ▸ CPU.
+ * KDOS ▸ Boxes ▸ Box www ▸ CPU. The middle node takes its title from the
+ * sensorless object `box`; `energy` titles the energy rows' node the same way.
  *
  * It is built against libksysguard's SensorPlugin, which is not a stable API:
  * the plugin is rebuilt and its tests rerun on every Plasma minor release.
@@ -116,6 +117,7 @@ private:
 
     /* boxes */
     QString m_cgroupRoot;
+    QString m_procRoot;
     QHash<QString, BoxObject *> m_boxes;
     QHash<QString, BoxLauncher> m_launchers;
     QElapsedTimer m_launcherAge;

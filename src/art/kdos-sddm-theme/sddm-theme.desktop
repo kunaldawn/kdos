@@ -9,6 +9,7 @@ Version=1.0
 Website=https://github.com/kunaldawn/kdos
 MainScript=Main.qml
 ConfigFile=theme.conf
+Screenshot=preview.png
 TranslationsDirectory=translations
 Theme-Id=kdos
 Theme-API=2.0

@@ -16,11 +16,14 @@ cmake -S . -B build -G Ninja \
 	-D KDE_INSTALL_USE_QT_SYS_PATHS=ON \
 	-D BUILD_TESTING=OFF \
 	-D KF_SKIP_PO_PROCESSING=ON \
-	-D WITHOUT_X11=ON \
+	-D WITHOUT_X11=OFF \
+	-D CMAKE_REQUIRE_FIND_PACKAGE_X11=ON \
+	-D CMAKE_REQUIRE_FIND_PACKAGE_XCB=ON \
 	-D CMAKE_REQUIRE_FIND_PACKAGE_KF6DocTools=ON \
 	-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build
+readelf -d "$PKG/usr/bin/ktouch" | grep -q 'NEEDED.*\[libxcb-xkb\.so\.1\]'
 
 cat > "$PKG/usr/share/applications/org.kde.ktouch.desktop" <<'DESKTOP'
 [Desktop Entry]

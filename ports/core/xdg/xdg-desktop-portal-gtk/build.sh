@@ -14,7 +14,7 @@ meson setup build \
 	--buildtype=release \
 	-Ddbus-service-dir=/usr/share/dbus-1/services \
 	-Dwallpaper=disabled \
-	-Dsettings=disabled \
+	-Dsettings=enabled \
 	-Dappchooser=disabled \
 	-Dlockdown=disabled
 meson compile -C build

@@ -37,20 +37,20 @@ Switch to Desktop 1=Ctrl+F1,Meta+F1\tCtrl+F1,Switch to Desktop 1
 # The key card, the kdos_keys effect, registers Meta+F1 itself; Meta+/ is
 # the same action's second key, so the Shortcuts page shows one row.
 KDOS Key Card=Meta+F1\tMeta+/,Meta+F1,Show Key Card
-# Night Light has no default chord in KDE.
-Toggle Night Color=Meta+Ctrl+Shift+N,none,Suspend/Resume Night Light
-# The bundled auto-tiler, Krohnkite, asks for seven chords the session
+# The bundled auto-tiler, Krohnkite, asks for eight chords the session
 # already holds: Meta+L (lock), Meta+D (show desktop), Meta+T (tile editor),
-# Meta+. (emoji), Meta+R and Meta+Shift+R (Spectacle's recordings) and
-# Meta+Return (Konsole). kglobalaccel gives a chord to whichever component
-# registers it first, and a script turned on by `kdos tiling on` can come
-# first, so these entries settle it in advance: the seven stay unbound until
-# a person binds them. They are not moved to other chords: each would be one
-# more chord held back from everything else for a script that is off by
-# default, and testing/chordcheck.py holds every chord here against the rest.
+# Meta+. (emoji), Meta+I (System Settings), Meta+R and Meta+Shift+R
+# (Spectacle's recordings) and Meta+Return (Konsole). kglobalaccel gives a
+# chord to whichever component registers it first, and a script turned on by
+# `kdos tiling on` can come first, so these entries settle it in advance: the
+# eight stay unbound until a person binds them. They are not moved to other
+# chords: each would be one more chord held back from everything else for a
+# script that is off by default, and testing/chordcheck.py holds every chord
+# here against the rest.
 KrohnkiteFocusNext=none,Meta+.,Krohnkite: Focus Next
 KrohnkiteFocusRight=none,Meta+L,Krohnkite: Focus Right
 KrohnkiteDecrease=none,Meta+D,Krohnkite: Decrease
+KrohnkiteIncrease=none,Meta+I,Krohnkite: Increase
 KrohnkiteRotate=none,Meta+R,Krohnkite: Rotate
 KrohnkiteRotatePart=none,Meta+Shift+R,Krohnkite: Rotate Part
 KrohnkiteSetMaster=none,Meta+Return,Krohnkite: Set master

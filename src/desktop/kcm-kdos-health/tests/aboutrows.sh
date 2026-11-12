@@ -116,6 +116,15 @@ value about-slot "Unknown" KDOS_ABOUT_ROOT="$S/r"
 printf 'root=/dev/vda1 quiet\n' >"$S/r/proc/cmdline"
 value about-slot "Unknown" KDOS_ABOUT_ROOT="$S/r"
 shape about-slot "boot entry only" KDOS_ABOUT_ROOT="$S/r"
+# With neither, an overlay root is the live medium; any other root is not.
+printf 'none /dev/root rootfs rw 0 0\n/dev/sda1 / ext4 rw 0 0\n' >"$S/r/proc/mounts"
+value about-slot "Unknown" KDOS_ABOUT_ROOT="$S/r"
+printf 'tmpfs /run tmpfs rw 0 0\noverlay / overlay rw,lowerdir=/x 0 0\n' >"$S/r/proc/mounts"
+value about-slot "Live medium · 0.3" KDOS_ABOUT_ROOT="$S/r"
+shape about-slot "live medium" KDOS_ABOUT_ROOT="$S/r"
+printf 'BOOT_IMAGE=/EFI/kdos/a/vmlinuz kdos_slot=a\n' >"$S/r/proc/cmdline"
+value about-slot "A · 0.3" KDOS_ABOUT_ROOT="$S/r"
+rm "$S/r/proc/mounts"
 
 # ── the tree ─────────────────────────────────────────────────────────────
 printf 'kdos-tree 1\ncommit 0123456789abcdef0123456789abcdef01234567\ntime 1735689600\n' >"$S/r/ports/TREE"
@@ -183,6 +192,15 @@ chmod a-r "$U"
 shape about-update "unreadable update.json" KDOS_ABOUT_ROOT="$S/r"
 chmod u+r "$U"
 value about-update "Unknown" KDOS_ABOUT_ROOT="$S/empty"
+
+# ── the labels ───────────────────────────────────────────────────────────
+# kinfocenter shows the first line verbatim beside its own rows, which end
+# in a colon.
+for s in about-slot:"System slot:" about-update:"Update key:" about-tree:"Ports tree:" \
+	about-accent:"Accent:" about-libc:"C library:" about-boxes:"Boxes:"; do
+	got=$(env -i "$A/${s%%:*}" 2>/dev/null | sed -n 1p)
+	[ "$got" = "${s#*:}" ] || { echo "  FAIL ${s%%:*}: label \"$got\", want \"${s#*:}\""; fail=1; }
+done
 
 # ── the list ─────────────────────────────────────────────────────────────
 # The shipped rc names what this port installs, by the path it installs to,

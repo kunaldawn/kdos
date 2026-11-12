@@ -54,7 +54,7 @@ a boot are explained in
 `rcS` is the `sysinit` entry. After mounting the filesystems it runs every numbered service script,
 and this is the loop that does it:
 
-<!-- kfs:include fs/etc/init.d/rcS lines=134-173 pin=403936cc08ac -->
+<!-- kfs:include fs/etc/init.d/rcS lines=147-186 pin=403936cc08ac -->
 
 ### /etc/init.d/rcK
 
@@ -122,8 +122,9 @@ sudo telinit u
 
 ### Single-user mode
 
-Single-user mode runs `sulogin` on the console, which asks for root's password and opens a root
-shell, and starts no consoles and no desktop. Leaving that shell continues to runlevel 3.
+Single-user mode runs `sulogin -p` on the console, which asks for root's password and opens a root
+login shell, with `/usr/local/bin` and so `kdos` on its `PATH`, and starts no consoles and no
+desktop. Leaving that shell continues to runlevel 3.
 
 `sulogin` refuses to open a shell while root's password is locked, which is how the installer
 leaves root unless it was asked to set a root password. Set one first:
@@ -151,8 +152,10 @@ Then choose one of three ways in:
    password gets `Login incorrect` and the same question again.
 
 3. **Emergency mode.** In the boot menu, press `E` on an entry, add the word `emergency` to the
-   kernel command line and boot it. `sulogin` then runs before `rcS`, so only the mounts the
-   initramfs handed over exist, and nothing from `/etc/fstab` is mounted.
+   kernel command line and boot it. The initramfs stops the splash, and `sulogin` then runs
+   before `rcS`, on the screen and on the serial line, so only the mounts the initramfs handed
+   over exist, and nothing from `/etc/fstab` is mounted. This shell keeps init's `PATH`, so call
+   `kdos` as `/usr/local/bin/kdos`.
 
 Every way in is described in
 [Single-user and emergency mode](../../kdos/03-architecture/boot-and-init.md#single-user-and-emergency-mode).
@@ -204,8 +207,11 @@ the desktop does not come up, press `Ctrl+Alt+F2` (`Alt+F2` at a text console) a
   as `kdos-getty: tty1 winsize -> <columns>x<rows>` is written when it sets the terminal's size
   to the grid the console font produced, and is not an error. A line saying
   `cannot exec … — falling back` means the program the entry names could not be run and a plain
-  `agetty` took its place. The font, palette and keymap tools' own errors are discarded, so a
-  console with the wrong font can still have a clean log.
+  `agetty` took its place. The log also says how the console setup went:
+  `waiting for tty2 to be on screen` until the terminal is first shown (`tty2` waits for
+  `Ctrl+Alt+F2`; its prompt is drawn only then), whether the console takeover was seen,
+  `font 16x32 after <n> tries` or the size the font stayed at, and the exit status of `setvtrgb`
+  and `loadkeys`. The tools' own error messages are discarded; their outcome is what the log keeps.
 - A script in `/etc/init.d` without the `NN_` prefix, such as `serial-getty`, is never run by `rcS`
   or `rcK`. That is the place for a helper an `inittab` entry calls.
 

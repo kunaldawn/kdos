@@ -3,12 +3,12 @@
 `kdos-powerd` is the root daemon that lets a desktop which does not run as root change the
 machine's settings that live in root's files: which named services the firewall lets in, the
 accent colour of everything drawn before a login (the boot menu, the boot splash, the text console
-and the login screen), and the splash's motion; and it starts Samba once a folder has been shared.
+and the login screen), and the splash's motion; and it starts Samba once an account can share folders.
 It offers the same verbs on two faces. The `kdos`
 command and the `kdos-power` client write one-line requests to `/run/kdos-powerd.sock`, where the
 caller's credentials are read from the socket with `SO_PEERCRED`; System Settings calls
 `io.kdos.Power1` on the system bus, where polkit decides each change. Starting Samba is on the bus
-face alone, for [kded-kdos](#port-kded-kdos), which calls it when the first share appears. Suspend, power-off and
+face alone, for [kded-kdos](#port-kded-kdos), which calls it at the login of a `sambashare` member. Suspend, power-off and
 reboot are elogind's, and `kdos-power suspend`, `poweroff` and `reboot` run `loginctl` as the
 caller without reaching the daemon. Every verb, the rules for each caller and the bus interface
 are in [kdos-powerd](../../../docs/kdos/04-programs/daemons.md#kdos-powerd), and the pattern every
@@ -45,8 +45,11 @@ schemes compiled into the palette, which is the whole check on a verb a session 
 can reach, so the list has to be the palette's own rather than a copy in this program.
 
 The firewall file it writes, `/etc/nftables.d/50-kdos-services.nft`, carries a named counter,
-`kdos_knock_<name>`, for every closed service, which counts the packets that service would have
-accepted before the input chain's policy drops them. `ListFirewallKnocks` and `kdos-power firewall
+`kdos_knock_<name>`, for every closed service, which counts the packets from another machine that
+service would have accepted before the input chain's policy drops them. Each counting line starts
+with `fib saddr type != local`: this machine's own broadcasts, kdeconnectd's identity packet to
+port 1716 among them, loop back in on the network interface rather than on `lo`, and counted they
+would offer to let a phone in at every boot with no phone there. `ListFirewallKnocks` and `kdos-power firewall
 knocks` read them with `nft list counters`; the Firewall page and `kdos-fwask` from
 [kcm-kdos-firewall](#port-kcm-kdos-firewall) use them to offer to let a blocked program in. The
 file shipped in the image is the daemon's own output with every service closed, so the counters
@@ -60,8 +63,8 @@ account owns is ever written as root.
 
 The `firewall` verb runs `/usr/sbin/nft` from [nftables](#port-nftables) and answers an error
 without it, and `firewall ssh on|off` runs `/etc/init.d/70_sshd.sh`. `StartFileSharing` runs
-`/etc/init.d/83_samba.sh start` from [samba](#port-samba), which starts `smbd` only when a share
-exists, and refuses while `/etc/service.disabled/samba` exists or the script is missing. The accent runs `kdos-bootctl
+`/etc/init.d/83_samba.sh start` from [samba](#port-samba), which starts `smbd` only when the
+`sambashare` group has a member or a share exists, and refuses while `/etc/service.disabled/samba` exists or the script is missing. The accent runs `kdos-bootctl
 theme` and the splash motion `kdos-bootctl splash`, from [kdos-tools](#port-kdos-tools), found
 through the daemon's inherited `PATH` and skipped when absent; the reply then says the boot menu is
 unchanged. The client's `suspend`, `poweroff` and `reboot` exec `loginctl` from

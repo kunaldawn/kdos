@@ -21,19 +21,26 @@
  *               with an active link, named by the stream at the other end;
  *               and every process holding a /dev/video* open itself, which
  *               PipeWire never sees;
- *   screen      every other Video/Source with an active link — KWin's screen
- *               casts, which the portal hands out — named by the stream that
- *               reads it.
+ *   screen      every Stream/Output/Video whose application is kwin_wayland
+ *               with an active link — KWin's screen casts, whether Spectacle or the portal
+ *               asked for them — and every other Video/Source with one,
+ *               named by the stream that reads it. Another program's video
+ *               output stream is not listed.
  *
- * Each is named with the box it runs in, from its cgroup, because "Firefox
+ * Each is named with the box it runs in, from its cgroup scope or the
+ * KDOS_BOX its box's container sets (kdt_box_of_pid), because "Firefox
  * has the microphone" is a different sentence when Firefox is the box a
  * person keeps for one website.
  *
  * --watch FOLLOWS `pw-dump --monitor` RATHER THAN POLLING IT: a poll that
  * noticed a stop within the second the tray promises would run pw-dump twice
  * a second for as long as the session lasts. The camera's file-descriptor
- * scan is the one thing that is polled, every half second, because the
- * kernel announces nothing.
+ * scan runs on inotify instead: an open or close of a /dev/video* node, or
+ * one appearing in /dev, rescans, and the scan is run again a quarter second
+ * after each such event, for an opener whose descriptor was not yet in
+ * /proc. Where inotify cannot be set up the scan falls back to every half
+ * second. With no /dev/video* node at all the scan returns at once, so a
+ * machine with no camera never walks /proc.
  *
  * Exit 0; 1 when PipeWire cannot be read or an action failed, with the reason
  * on stderr; 2 usage, which the tray takes as "stop retrying".
@@ -51,6 +58,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/inotify.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <sys/wait.h>
@@ -77,6 +85,7 @@ typedef struct {
 	char box[64];
 	long pid;
 	int muted, mutable_, stoppable;
+	long target; /* the PipeWire object `stop` destroys */
 } Entry;
 
 typedef struct {
@@ -305,14 +314,36 @@ static void scan_pw(const PwMap *m, List *mic, List *cam, List *scr)
 			e->stoppable = 0;
 			continue;
 		}
-		if (strcmp(cls, "Video/Source"))
+		if (strcmp(cls, "Video/Source") &&
+		    strcmp(cls, "Stream/Output/Video"))
 			continue;
+		/* Only KWin's video output streams are screen casts. Any other
+		 * program's (a pipewiresink, a box's own video output) is
+		 * neither a capture nor ours to end for every reader. */
+		if (!strcmp(cls, "Stream/Output/Video")) {
+			const char *bin = app_prop(m, o,
+						   "application.process.binary");
+			const char *an = app_prop(m, o, "application.name");
+
+			if (!(bin && !strcmp(bin, "kwin_wayland")) &&
+			    !(an && !strcmp(an, "kwin_wayland")))
+				continue;
+		}
 		/* A source with readers: each active link out of it is one
-		 * capture, named by the stream it feeds. */
+		 * capture, named by the stream it feeds.
+		 *
+		 * Stopping a Stream/Output/Video destroys the node itself: it is
+		 * the stream KWin made for this one screencast, and its end is
+		 * what KWin turns into the screencast's closed event, so the
+		 * recorder or the portal client learns the capture is over.
+		 * Destroying only the link stops the frames and tells nobody:
+		 * the recorder goes on saying it records. Any other source, a
+		 * camera above all, is shared, so only its link is destroyed. */
 		{
 			const char *api = prop(o, "device.api");
 			int camera = api && (!strcmp(api, "v4l2") ||
 					     !strcmp(api, "libcamera"));
+			int own = !strcmp(cls, "Stream/Output/Video");
 
 			for (int j = 0; j < m->n; j++) {
 				const KjNode *l = m->o[j].obj;
@@ -335,9 +366,25 @@ static void scan_pw(const PwMap *m, List *mic, List *cam, List *scr)
 				name_entry(e, m, peer ? peer : o,
 					   peer ? node_pid(m, peer) : -1);
 				e->stoppable = 1;
+				e->target = own ? m->o[i].id : m->o[j].id;
 			}
 		}
 	}
+}
+
+/* Whether /dev holds any video* node. */
+static int video_present(void)
+{
+	DIR *d = opendir("/dev");
+	struct dirent *de;
+	int any = 0;
+
+	if (!d)
+		return 1;
+	while (!any && (de = readdir(d)))
+		any = !strncmp(de->d_name, "video", 5);
+	closedir(d);
+	return any;
 }
 
 /* Video4Linux devices are character major 81. A process with one open is a
@@ -345,10 +392,10 @@ static void scan_pw(const PwMap *m, List *mic, List *cam, List *scr)
  * named is not named twice. */
 static void scan_fds(List *cam)
 {
-	DIR *d = opendir("/proc");
+	DIR *d;
 	struct dirent *pe;
 
-	if (!d)
+	if (!video_present() || !(d = opendir("/proc")))
 		return;
 	while ((pe = readdir(d))) {
 		char fdp[64];
@@ -550,6 +597,70 @@ static KjNode *cut_next(Cutter *c)
 	return NULL;
 }
 
+/* ── the camera's inotify ──────────────────────────────────────────────── */
+
+#define CAM_EVENTS (IN_OPEN | IN_CLOSE_WRITE | IN_CLOSE_NOWRITE)
+
+/* An open/close watch on every /dev/video* node. A node the caller may not
+ * read takes no watch, and none of the caller's processes can hold it. */
+static void cam_watch_nodes(int in)
+{
+	DIR *d = opendir("/dev");
+	struct dirent *de;
+
+	if (!d)
+		return;
+	while ((de = readdir(d))) {
+		char p[300];
+
+		if (strncmp(de->d_name, "video", 5))
+			continue;
+		snprintf(p, sizeof(p), "/dev/%s", de->d_name);
+		inotify_add_watch(in, p, CAM_EVENTS);
+	}
+	closedir(d);
+}
+
+/* An inotify descriptor watching /dev for video* nodes coming and going and
+ * each one for opens and closes; -1 when there is none to be had. */
+static int cam_watch_start(void)
+{
+	int in = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+
+	if (in < 0)
+		return -1;
+	if (inotify_add_watch(in, "/dev", IN_CREATE | IN_DELETE) < 0) {
+		close(in);
+		return -1;
+	}
+	cam_watch_nodes(in);
+	return in;
+}
+
+/* Read every queued event; 1 when any concerned a camera. A new video* node
+ * gets its own watch. */
+static int cam_watch_drain(int in)
+{
+	char buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
+	ssize_t got;
+	int any = 0, added = 0;
+
+	while ((got = read(in, buf, sizeof(buf))) > 0) {
+		for (char *p = buf; p < buf + got;) {
+			const struct inotify_event *ev = (const void *)p;
+
+			if (!ev->len || !strncmp(ev->name, "video", 5)) {
+				any = 1;
+				added |= (ev->mask & IN_CREATE) != 0;
+			}
+			p += sizeof(*ev) + ev->len;
+		}
+	}
+	if (added)
+		cam_watch_nodes(in);
+	return any;
+}
+
 static volatile sig_atomic_t stop_watch;
 
 static void on_term(int sig)
@@ -572,7 +683,7 @@ static int watch(void)
 	Cutter c = { 0 };
 	char *last = NULL, chunk[8192];
 	pid_t pid;
-	int fd = monitor_start(&pid), rc = 0;
+	int fd = monitor_start(&pid), rc = 0, cam = -1, again = 0;
 
 	if (fd < 0) {
 		fprintf(stderr, "kdos privacy: pw-dump could not be started\n");
@@ -581,6 +692,7 @@ static int watch(void)
 	signal(SIGPIPE, SIG_IGN);
 	signal(SIGTERM, on_term);
 	signal(SIGINT, on_term);
+	cam = cam_watch_start();
 	{
 		/* The state before the monitor's first document arrives is
 		 * an empty one, said at once so the tray has a line. */
@@ -593,14 +705,26 @@ static int watch(void)
 		last = now;
 	}
 	while (!stop_watch) {
-		struct pollfd p = { .fd = fd, .events = POLLIN };
-		int r = poll(&p, 1, 500);
+		struct pollfd p[2] = { { .fd = fd, .events = POLLIN },
+				       { .fd = cam, .events = POLLIN } };
+		int r = poll(p, cam >= 0 ? 2 : 1,
+			     cam < 0 ? 500 : again ? 250 : -1);
 		KjNode *doc;
 		char *now;
 
 		if (r < 0 && errno != EINTR)
 			break;
-		if (r > 0) {
+		if (r < 0)
+			continue;
+		if (r == 0)
+			again = 0;
+		if (cam >= 0 && (p[1].revents & POLLIN)) {
+			if (cam_watch_drain(cam))
+				again = 1;
+			else if (!(p[0].revents & (POLLIN | POLLHUP)))
+				continue;
+		}
+		if (p[0].revents & (POLLIN | POLLHUP)) {
 			ssize_t got = read(fd, chunk, sizeof(chunk));
 
 			if (got <= 0) {
@@ -631,6 +755,8 @@ out:
 	kill(pid, SIGTERM);
 	waitpid(pid, NULL, 0);
 	close(fd);
+	if (cam >= 0)
+		close(cam);
 	free(last);
 	kb_buf_free(&c.buf);
 	map_free(&m);
@@ -666,16 +792,14 @@ static int act(const char *verb, const char *id)
 		goto out;
 	}
 	if (!strcmp(verb, "stop")) {
-		long src, link;
 		KbArgv a = { 0 };
 
-		if (!hit->stoppable ||
-		    sscanf(hit->id, "pw:%ld:%ld", &src, &link) != 2) {
+		if (!hit->stoppable) {
 			fprintf(stderr, "kdos privacy: %s cannot be stopped "
 					"from here — close %s\n", id, hit->app);
 			goto out;
 		}
-		snprintf(num, sizeof(num), "%ld", link);
+		snprintf(num, sizeof(num), "%ld", hit->target);
 		kb_argv_add(&a, "pw-cli");
 		kb_argv_add(&a, "destroy");
 		kb_argv_add(&a, num);

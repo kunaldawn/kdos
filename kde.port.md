@@ -1102,9 +1102,9 @@ Tasks:
 
 - [ ] Gate: open Konsole and Kate, log out, log in. Both windows return (rig shot). Record any app that does not in `known-gaps.md`.
 
-**Crash handling** (1.3 A5). DrKonqi 6.8.2 needs systemd-coredump (`CMakeLists.txt:99-100`) [measured]. The first release ships KCrash with no handler. A crashed app exits, and plasmashell and KWin restart themselves: kwin_wayland_wrapper relaunches KWin, and plasmashell uses KCrash auto-restart [inferred; measure both]. There is no crash dialog: DrKonqi needs systemd-coredump and no downstream snapshot is carried. `known-gaps.md` states it.
+**Crash handling** (1.3 A5). DrKonqi 6.8.2 needs systemd-coredump (`CMakeLists.txt:99-100`) [measured]. The first release ships KCrash with no handler. A crashed app exits. kwin_wayland_wrapper relaunches KWin [measured]. plasmashell restarts itself through KCrash auto-restart only after a crash signal [measured]; it unsets `QT_WAYLAND_RECONNECT` (`shell/main.cpp:87`) and exits normally when KWin dies, and upstream's `Restart=on-failure` unit is removed, so kded-kdos's ShellWatch starts it again when `org.kde.plasmashell` has been gone 3 s and ksmserver's `isShuttingDown()` is false, at most 5 times a minute [measured: SIGSEGV of KWin and SIGKILL of plasmashell both bring the panel back within 6 s; a logout starts nothing]. There is no crash dialog: DrKonqi needs systemd-coredump and no downstream snapshot is carried. `known-gaps.md` states it.
 
-- [ ] Gate (first release): `kill -SEGV $(pidof kwin_wayland)` keeps the session's clients alive and KWin back within 5 s. `kill -SEGV $(pidof plasmashell)` brings the panel back.
+- [ ] Gate (first release): `kill -SEGV $(pidof kwin_wayland)` keeps the session's clients alive and KWin back within 5 s. `kill -SEGV $(pidof plasmashell)`, `kill -9 $(pidof plasmashell)` and the KWin crash each bring the panel back; Log Out ends with no plasmashell started.
 
 **KWallet and ksecretd** (1.3 A7):
 
@@ -2891,8 +2891,9 @@ Matches run within 50 ms from cached indexes (KRunner aborts slow runners).
 
 - **KHelpCenter:** `share/khelpcenter/plugins/kdos.desktop` (`X-DocPath=file:///usr/share/doc/kdos/index.html`,
   `X-DOC-Weight=-100`) and `kfs.desktop` [measured: khelpcenter docentry.cpp:213-237,
-  mainwindow.cpp:296-322; book at /usr/share/doc/kdos via `src/system/kdos-doc/mkbook.py:51`]. F1 in
-  KDOS KCMs opens the section. P1.
+  mainwindow.cpp:296-322; book at /usr/share/doc/kdos via `src/system/kdos-doc/mkbook.py:51`]. The Help
+  button of a KDOS KCM opens its section (the KCM's `X-DocPath`); F1 in System Settings and
+  kcmshell6 is the application's own handbook. P1.
 - **plasma-welcome extra pages** `/usr/share/plasma/plasma-welcome/extra-pages/NN-*.qml` (~1,500
   QML, port `src/desktop/kdos-welcome`), in order: 00 Accessibility (Orca chord, larger text,
   high-contrast accent, reduced motion, keyboard aids); 10 Look (8 accents, Phosphor mode off by
@@ -3168,7 +3169,7 @@ This section covers what KDOS adds on top of a correctly integrated Plasma. It d
 | 7.3.8 | "Allow on this network?" for the name-based firewall | trust | P2 | ~300 C | no | §3.7, §6.4 |
 | 7.4.1 | KDOS Library in KRunner (Kiwix, books, man, Zeal, Kolibri, maps) | offline | P1 | ~700 C | no | §6.5 |
 | 7.4.2 | `library:/` in Dolphin and a Library category in Kickoff | offline | P2 | ~800 C++ | no | 7.4.1 |
-| 7.4.3 | The KDOS and KFS books in KHelpCenter, with F1 to the right page | offline | P1 | 2 .desktop + 50 CSS | no | §4 (khelpcenter), §6.5 |
+| 7.4.3 | The KDOS and KFS books in KHelpCenter, with each KDOS KCM's Help button to the right page | offline | P1 | 2 .desktop + 50 CSS | no | §4 (khelpcenter), §6.5 |
 | 7.4.4 | Curated offline add-on pack in place of "Get New…" | offline | P1 | pack + Kiosk keys | no | §4, §5.2 |
 | 7.4.5 | Local AI, OCR and speech: opt-in, dark until a model pack exists | offline | P2 | ~400 C + 2 menus | no | 7.4.1 |
 | 7.5.1 | KRunner as the KDOS command palette | productivity | P1 | ~900 C | no | §5.8, §6.5, §6.7 |

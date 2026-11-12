@@ -29,5 +29,10 @@ are used together with glmark2 and mesa-demos is in
 
 ## Notes
 
-`build.sh` writes a desktop entry for `vkcube`, so the driver check is one click from the launcher.
+`app-id.patch` sets the Wayland app id of the `vkcube` and `vkcubepp` windows to the program's
+name. Upstream sets only a title, so KWin matches the window to no entry and draws the generic
+icon on it. The patch is to be offered upstream.
+
+`build.sh` writes a desktop entry for `vkcube`, so the driver check is one click from the launcher;
+its file name is the window's app id, `vkcube`, which is where KWin looks for the window's icon.
 `vulkaninfo` has none: it is a terminal program.

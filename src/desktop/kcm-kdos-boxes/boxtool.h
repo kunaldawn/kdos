@@ -80,7 +80,8 @@ public:
 
 Q_SIGNALS:
     void busyChanged();
-    /* A line of output from the running command, for a progress line. */
+    /* A line of output from a running act, for a progress line. A query's
+     * output is never reported. */
     void progress(const QString &line);
 
 private:

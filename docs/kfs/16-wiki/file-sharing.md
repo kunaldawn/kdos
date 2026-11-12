@@ -17,7 +17,7 @@ needs installing.
 | Opening an SMB share as a user | [kio-extras](#port-kio-extras), its `smb:/` worker, in Dolphin and every KDE program | the program, on use |
 | Mounting an SMB share as root | [cifs-utils](#port-cifs-utils) | `mount -t cifs`, by hand |
 | Mounting with a Kerberos ticket | [krb5](#port-krb5), [cifs-utils](#port-cifs-utils) | the kernel, through `request-key`, on the mount |
-| Serving SMB | [samba](#port-samba), with [kdenetwork-filesharing](#port-kdenetwork-filesharing) for Dolphin's **Share** tab | `83_samba`, at boot once something is shared; the first share made in a session starts it through [kded-kdos](#port-kded-kdos) and [kdos-powerd](#port-kdos-powerd) |
+| Serving SMB | [samba](#port-samba), with [kdenetwork-filesharing](#port-kdenetwork-filesharing) for Dolphin's **Share** tab | `83_samba`, at boot once `sambashare` has a member or something is shared; the first login of an account just added to `sambashare` starts it through [kded-kdos](#port-kded-kdos) and [kdos-powerd](#port-kdos-powerd) |
 | Mounting and serving NFSv4 | [nfs-utils](#port-nfs-utils) | `72_nfsd`, once [`/etc/exports`]{.idx} names a share; `63_gssd`, once [`/etc/krb5.keytab`]{.idx} exists |
 | Syncing folders | [syncthing](#port-syncthing) | **File Sync** in the application menu, by hand |
 | Sending one file | [croc](#port-croc), [kdos-tools](#port-kdos-tools) (`kdos share`) | by hand |
@@ -26,7 +26,7 @@ needs installing.
 `72_nfsd`, `63_gssd` and `83_samba` are written by their ports' `build.sh` and exist only while
 the port is installed. None of the three servers is in the installer's list of service choices,
 so they behave the same on the live medium and on an installed system. Each skips itself at boot,
-with a `[SKIP]` line, while it has nothing to serve: `83_samba` until a folder is shared, the
+with a `[SKIP]` line, while it has nothing to serve: `83_samba` until some account can share, the
 other two until their configuration file exists. The lines are in `/run/kdos-init.nfsd.log`
 and `/run/kdos-init.gssd.log`: `[SKIP] nfsd: no share in /etc/exports` and
 `[SKIP] gssd: no /etc/krb5.keytab`. `service status nfsd` names the daemon it
@@ -53,27 +53,38 @@ Dolphin's **Share** tab, from `fs/etc/samba/smb.conf`:
 
 The samba port's service script starts [`smbd`]{.idx} alone: no `nmbd` and no `winbindd`. With a
 non-empty `smb.conf` it makes the usershare directory at every boot, root's, group `sambashare`,
-mode 1770, which a package cannot carry, and then starts `smbd` only if something is there to
-serve: a regular file in that directory, not a symbolic link, which `smbd` would refuse, whose
-name does not begin with `:` (`net usershare` writes each share through a `:tmp` file it
-renames), or a section of `smb.conf` other than `[global]`.
-Otherwise it prints `[SKIP] samba: nothing is shared`, and nothing listens on the SMB ports:
+mode 1770, which a package cannot carry, and then starts `smbd` only if some account can share:
+the `sambashare` group has a member in `/etc/group`, or something is already there to serve, a
+regular file in that directory, not a symbolic link, which `smbd` would refuse, whose name does
+not begin with `:` (`net usershare` writes each share through a `:tmp` file it renames), or a
+section of `smb.conf` other than `[global]`. Otherwise it prints
+`[SKIP] samba: no account shares folders`, and nothing listens on the SMB ports:
 
-<!-- kfs:include ports/core/servers/samba/build.sh lines=62-101 pin=575fa9e91193 -->
+<!-- kfs:include ports/core/servers/samba/build.sh lines=64-107 pin=175ae4664f83 -->
 
-The first folder shared in a session is served without a reboot. [kded-kdos](#port-kded-kdos), in
-the session of a `sambashare` member, watches the usershare directory and, when it goes from
-holding no share to holding one, calls `StartFileSharing` on
-[kdos-powerd](#port-kdos-powerd)'s `io.kdos.Power1`. The daemon asks polkit
-(`io.kdos.filesharing.start`, granted to the person at the machine with no prompt) and runs
-`/etc/init.d/83_samba.sh start`, which makes the same test again; it refuses while
-`/etc/service.disabled/samba` exists. Removing the last share leaves `smbd` running, serving
-nothing, until the next boot, which does not start it.
+`smbd` has to be running before the first share can be made. `net usershare add` turns every
+name in a share's ACL, Dolphin's `Everyone` among them, into a SID by asking the local `smbd`, and
+with `smbd` down it fails with "cannot convert name … to a SID" and writes no share. An account
+the Share tab has just added to `sambashare` is a member from its next login, which can come
+before the next boot, so [kded-kdos](#port-kded-kdos), loading in a session that can write into
+the usershare directory, calls `StartFileSharing` on [kdos-powerd](#port-kdos-powerd)'s
+`io.kdos.Power1` once. The daemon asks polkit (`io.kdos.filesharing.start`, granted to the person
+at the machine with no prompt) and runs `/etc/init.d/83_samba.sh start`, which makes the same test
+again and starts nothing when `smbd` already runs; it refuses while
+`/etc/service.disabled/samba` exists. Leaving the group or removing the last share leaves `smbd`
+running, serving nothing, until the next boot, which then does not start it.
 
 The configure options set where Samba keeps its files: the configuration under [`/etc/samba`]{.idx}, the
-password database under `/var/lib/samba/private` and the logs under [`/var/log/samba`]{.idx}:
+lock files under `/var/lib/samba/lock`, the password database under `/var/lib/samba/private` and
+the logs under [`/var/log/samba`]{.idx}:
 
-<!-- kfs:include ports/core/servers/samba/build.sh lines=16-24 pin=087bd4fbb30a -->
+<!-- kfs:include ports/core/servers/samba/build.sh lines=16-25 pin=0e692c40a402 -->
+
+The lock directory is not Samba's default `/var/lock/samba`, which is in the world-writable
+`/run/lock`: any Samba client run before `smbd`, `net usershare` among them, makes it there as its
+user, and `smbd` then refuses the `msg.lock` directory inside, which is not root's, and exits at
+every start. `/var/lib/samba/lock` is the package's, root's and mode 0755, so a client makes
+nothing in it and still works.
 
 `smbd` creates neither `/var/log/samba` nor `/var/cache/samba`. Both exist on the live medium and
 on an installed system, because the package claims them and the image carries every directory a
@@ -182,13 +193,19 @@ both until it is undone.
 ### Serving a folder over SMB
 
 1. In Dolphin, right-click the folder → **Properties** → **Share**.
-2. Tick **Share with SMB**. The first time, the tab offers to add you to `sambashare` and to set
-   your Samba password, which Samba keeps apart from the login password; both ask for an
-   administrator's password. Log out and in again after joining the group.
-3. Choose who may read or write it, and **OK**. The share is a usershare under
-   `/var/lib/samba/usershares`. If it is the machine's first, the session starts `smbd` for it
-   then, with no prompt; otherwise the running `smbd` picks it up at once.
-4. Open the firewall to other machines:
+2. Tick **Share with SMB**. The first time, the tab says you are not in `sambashare`: **Make Me a
+   Group Member** asks for an administrator's password. Log out and in again; the tab says to
+   restart the system, but a new login is enough, and that login starts `smbd` with no prompt.
+3. Back on the tab, **Set Samba password** asks for an administrator's password a second time and
+   creates your entry in Samba's password database, with a password Samba keeps apart from the
+   login password: the one other machines sign in with.
+4. Home folders are mode 0700, so the tab says the folder needs extra permissions: **Fix
+   Permissions** lets others pass through your home folder (`o+x`), not list it, so `smbd` can
+   reach the shared folder.
+5. Choose who may read or write it, and **OK**. The share is a usershare under
+   `/var/lib/samba/usershares`, and the running `smbd` picks it up at once. With `smbd` down the
+   tab reports that `Everyone` cannot be converted to a SID, and no share is made.
+6. Open the firewall to other machines:
 
    ```bash
    kdos-power firewall smb on
@@ -197,9 +214,9 @@ both until it is undone.
    or turn on **smb** on System Settings → **Firewall**. `smb` opens TCP 445 only.
 
 From a terminal, a member of `sambashare` makes the same share with
-`net usershare add <name> <path> "<comment>" <acl> guest_ok=n`, which a running desktop session
-of that member notices as well, and a share defined in `smb.conf` below `[global]` is served too;
-`sudo service start samba` starts `smbd` after either when nothing else has. `testparm -s` checks
+`net usershare add <name> <path> "<comment>" <acl> guest_ok=n` while `smbd` runs, and a share
+defined in `smb.conf` below `[global]` is served too; `sudo service start samba` starts `smbd`
+when nothing else has. `testparm -s` checks
 the file, and `smbclient -L localhost -U <you>` lists what is served.
 
 On the live medium, the shares, the group membership and the Samba password under
@@ -276,7 +293,7 @@ An export below `/` on an installed system, whose root is a real filesystem, has
    croc <code>
    ```
 
-**Share** in a file's context menu in Dolphin runs the same command, which then opens a terminal
+**Send with a Code Word** in a file's context menu in Dolphin runs the same command, which then opens a terminal
 of its own. Every
 option is in [kdos share](../../kdos/04-programs/kdos-command.md#kdos-share).
 
@@ -306,13 +323,13 @@ its name or address instead. Check that Avahi runs (`service status avahi`).
 cat /run/kdos-init.samba.log
 ```
 
-`[SKIP] samba: nothing is shared` is the normal line on a machine with no share: `smbd` starts
-with the first one. `[SKIP] samba: no /etc/samba/smb.conf` means the file was removed or emptied.
+`[SKIP] samba: no account shares folders` is the normal line on a machine where nobody is in
+`sambashare` and nothing is shared: `smbd` starts at the next login of the first member. `[SKIP] samba: no /etc/samba/smb.conf` means the file was removed or emptied.
 The file holds the boot's output only; a later `sudo service start samba` prints on the terminal.
-A first share made in a session that did not start `smbd` is in that session's log:
-`grep io.kdos.kded ~/.local/share/sddm/wayland-session.log` shows whether the module watched the
-directory (it does not in a session that is not yet in `sambashare`) and what `kdos-powerd`
-answered, and a refusal raises a *Shared folder not served* notification. Otherwise run
+A member's login that did not start `smbd` is in that session's log:
+`grep io.kdos.kded ~/.local/share/sddm/wayland-session.log` shows whether the module asked (it
+does not in a session that is not yet in `sambashare`) and what `kdos-powerd` answered, and a
+refusal raises a *Folder sharing unavailable* notification. Otherwise run
 `testparm -s`, and read the supervisor's log, `/run/kdos-svc.samba.log`, and
 `/var/log/samba/log.smbd`.
 

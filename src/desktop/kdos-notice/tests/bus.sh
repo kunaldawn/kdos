@@ -70,7 +70,8 @@ export PATH="$D/bin:$PATH" XDG_STATE_HOME=$D/state XDG_DATA_HOME=$D/data \
 	KDOS_NOTICE_SETTLE_MS=0 KDOS_NOTICE_QUIET_MS=300 KDOS_NOTICE_OOM_MS=200 \
 	KDOS_OOMD_SOCK=$D/oomd.sock KDOS_NOTICE_PKGDB=$D/db \
 	KDOS_NOTICE_UPDATE_JSON=$D/var/update.json \
-	KDOS_NOTICE_BOOTSTATE=$D/run/bootstate.json
+	KDOS_NOTICE_BOOTSTATE=$D/run/bootstate.json \
+	KDOS_APPS_PENDING=$D/var/apps-pending
 
 now restarts restarts-apps.json
 now cve cve-3.json
@@ -139,15 +140,25 @@ printf -- '--hold\n-e\nkdos\ncve\ntoken-from-server\n' | diff - "$D/ran/konsole"
 	fail "Details ran $(tr '\n' ' ' < "$D/ran/konsole")"
 ok "an action from the server runs its vector with the token; a forged one does not"
 
+printf 'org.kde.kate\norg.gimp.GIMP\n' > "$D/var/apps-pending"
+dbus-send --session --print-reply --dest=io.kdos.Notice /io/kdos/Notice \
+	io.kdos.Notice1.Rescan > /dev/null || fail "Rescan"
+waitfor nis notify 6 || fail "the pending applications were not announced"
+grep -q "^notify [0-9]* 0 0 2 applications chosen during install are not installed yet$" "$D/log" ||
+	fail "the pending notice, persistent"
+ok "the applications still to install are announced, persistent"
+
 kill $FBP; wait $FBP 2>/dev/null
 "$FB" notify "$D/log2" & FBP=$!; PIDS="$PIDS $FBP"
 waitfor grep -qs "^notify" "$D/log2" || fail "a new notification server was not given the notices"
 sleep 2.5
-grep -q "^notify 1 0 0 2 known vulnerabilities in installed packages$" "$D/log2" ||
+grep -q "^notify [0-9]* 0 0 2 known vulnerabilities in installed packages$" "$D/log2" ||
 	fail "the CVE notice was not posted afresh to the new server"
-[ "$(grep -c '^notify' "$D/log2")" = 1 ] || fail "the new server was given more than the notice still waiting"
+grep -q "^notify [0-9]* 0 0 2 applications chosen during install are not installed yet$" "$D/log2" ||
+	fail "the pending notice was not posted afresh to the new server"
+[ "$(grep -c '^notify' "$D/log2")" = 2 ] || fail "the new server was given more than the notices still waiting"
 grep -q "^close" "$D/log2" && fail "an id of the old server was closed on the new one"
-ok "a restarted notification server is given the waiting notice again, under its own id"
+ok "a restarted notification server is given the waiting notices again, under its own ids"
 
 n_log=$(( $(count notify) + $(grep -c '^notify' "$D/log2") ))
 n_mon=$(grep -c 'member=Notify' "$D/monitor")

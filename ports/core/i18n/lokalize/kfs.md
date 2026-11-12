@@ -23,3 +23,7 @@ Translating an OpenDocument file runs `odf2xliff` and `xliff2odf` from translate
 for on `PATH` when the action is used; translate-toolkit is not a port, so that action reports the
 missing package and everything else works. The unit tests in `autotests` are compiled whatever
 `BUILD_TESTING` says and are not installed.
+
+Lokalize's `main()` sets `QT_QPA_PLATFORM=xcb` on Linux, over the session's `wayland;xcb`,
+because its several `QMainWindow`s misbehave under Wayland (KDE bugs 424024 and 477704). It
+always runs as an X11 client on Xwayland.

@@ -151,9 +151,9 @@ static char **split_lines(char *text, int *count)
 }
 
 /*
- * fastfetch identifies the terminal by walking up the process tree, which from
- * here finds THIS program and reports "kdos-banner" as the terminal.
- * TERM_PROGRAM is checked first, so seed it from $TERM. --pipe false keeps the
+ * fastfetch takes its parent process for the shell and walks on from there to
+ * the terminal, and this program is that parent: without FFTS_IGNORE_PARENT=1
+ * the banner reports "kdos-banner" as the shell. --pipe false keeps the
  * colours when stdout is a pipe, which it is.
  */
 static char *info_text(void)
@@ -162,11 +162,7 @@ static char *info_text(void)
 	buf[0] = 0;
 
 	if (kb_have_prog("fastfetch")) {
-		const char *tp = getenv("TERM_PROGRAM");
-		if (!tp || !*tp) {
-			const char *t = getenv("TERM");
-			setenv("TERM_PROGRAM", t && *t ? t : "linux", 1);
-		}
+		setenv("FFTS_IGNORE_PARENT", "1", 1);
 		KbArgv a = {0};
 		kb_argv_add(&a, "fastfetch");
 		kb_argv_add(&a, "--logo");

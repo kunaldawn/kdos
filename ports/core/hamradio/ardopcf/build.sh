@@ -25,6 +25,7 @@ Comment=ARDOP HF modem for Pat and Winlink, with a web status page
 Exec=ardopcf
 Icon=network-wireless
 Terminal=true
+NoDisplay=true
 Categories=Network;HamRadio;
 Keywords=ham;radio;ardop;winlink;pat;hf;modem;tnc;
 ENTRY

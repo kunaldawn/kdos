@@ -14,6 +14,12 @@
 # opened before the daemon answers is closed until the next play. It opens
 # them when it plays, not when it starts, so it needs no --restart-with.
 #
+# $XDG_RUNTIME_DIR/mpd IS MADE HERE. kdos-mpctl and every client MPD_HOST
+# points at (/etc/profile.d/45-mpd.sh) reach mpd through
+# $XDG_RUNTIME_DIR/mpd/socket alone, and mpd creates that directory only when
+# its configuration names no bind_to_address: a configuration that binds the
+# socket there fails "No such file or directory" without it.
+#
 # --final-exit 1 is a configuration mpd refuses, which restarting every five
 # seconds cannot change; --stop-grace 3 keeps the backend's whole stop inside
 # turnstile's sixty seconds (40_boxes.sh counts it).
@@ -40,6 +46,7 @@ case "$1" in
             echo "[SKIP] $NAME: no mpd.conf"
             exit 0
         fi
+        install -d -m 0700 "$XDG_RUNTIME_DIR/mpd"
         echo "[KDOS] Starting $NAME..."
         supervise --final-exit 1 --stop-grace 3 "$NAME" "$DAEMON" --no-daemon "$_conf"
         ;;

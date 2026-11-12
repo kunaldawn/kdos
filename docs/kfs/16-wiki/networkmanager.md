@@ -170,7 +170,7 @@ terminal.
 
    A device listed as `unmanaged` is one NetworkManager has been told to leave alone, such as the
    card of an [access point](access-point.md) run by `hostapd`; the kernel's `dummy0` is listed
-   so on every machine. `virbr0`, the bridge of libvirt's default network, and `lo` are
+   so on every machine. `virbr0`, the bridge of libvirt's default network while it is started, and `lo` are
    `connected (externally)`: NetworkManager reports them and leaves their configuration to
    whoever made them. The service's own output is in `/run/kdos-init.networkmanager.log`, and
    the daemon's in the system log.

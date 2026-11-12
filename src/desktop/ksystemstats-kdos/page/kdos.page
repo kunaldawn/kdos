@@ -10,7 +10,10 @@
 # Overview, Boxes, Energy and Slots, from the `kdos` sensors of
 # ksystemstats-kdos. The per-box and per-application rows follow the KDOS
 # Meters face's sensorPattern, so a box started after the page opened gets
-# its row. A page the user edits is saved under their own name in
+# its row. Every card is a KDOS Meters face, the text ones without
+# sparklines, and every row is as tall as its tallest face asks: a stock
+# face or a balanced row would cut rows off at the card's edge, and the page
+# scrolls instead. A page the user edits is saved under their own name in
 # ~/.local/share/plasma-systemmonitor and shadows this one; `version` is
 # raised whenever this file changes, which marks such a copy outdated.
 # ---------------------------------
@@ -35,12 +38,15 @@ highPrioritySensorIds=["kdos/box/all/boxes","kdos/box/all/cpu","kdos/box/all/mem
 showSparklines=true
 
 [Face-410000000000003][Appearance]
-chartFace=org.kde.ksysguard.textonly
+chartFace=org.kdos.meters
 showTitle=true
 Title=System
 
 [Face-410000000000003][Sensors]
 highPrioritySensorIds=["kdos/slot/status","kdos/slot/runningVersion","kdos/slot/otherVersion","kdos/look/phosphor"]
+
+[Face-410000000000003][org.kdos.meters][General]
+showSparklines=false
 
 [Face-410000000000004][Appearance]
 chartFace=org.kdos.meters
@@ -92,35 +98,44 @@ maximumRows=16
 historyAmount=600
 
 [Face-410000000000008][Appearance]
-chartFace=org.kde.ksysguard.textonly
+chartFace=org.kdos.meters
 showTitle=true
 Title=Ledger
 
 [Face-410000000000008][Sensors]
 highPrioritySensorIds=["kdos/energy/all/status","kdos/energy/all/window","kdos/energy/all/attributable","kdos/energy/all/idleFloor","kdos/energy/all/shortLived","kdos/energy/all/domains"]
 
+[Face-410000000000008][org.kdos.meters][General]
+showSparklines=false
+
 [Face-410000000000009][Appearance]
-chartFace=org.kde.ksysguard.textonly
+chartFace=org.kdos.meters
 showTitle=true
 Title=Running Slot
 
 [Face-410000000000009][Sensors]
 highPrioritySensorIds=["kdos/slot/running","kdos/slot/runningVersion","kdos/slot/runningState","kdos/slot/attempts","kdos/slot/next"]
 
+[Face-410000000000009][org.kdos.meters][General]
+showSparklines=false
+
 [Face-410000000000010][Appearance]
-chartFace=org.kde.ksysguard.textonly
+chartFace=org.kdos.meters
 showTitle=true
 Title=Other Slot
 
 [Face-410000000000010][Sensors]
 highPrioritySensorIds=["kdos/slot/other","kdos/slot/otherVersion","kdos/slot/otherState"]
 
+[Face-410000000000010][org.kdos.meters][General]
+showSparklines=false
+
 [page]
 actionsFace=
 icon=distributor-logo-kdos
 loadType=onstart
 margin=2
-version=1
+version=2
 Title=KDOS
 
 [page][row-0]
@@ -131,7 +146,7 @@ Title=Overview
 
 [page][row-1]
 Title=
-heightMode=balanced
+heightMode=minimum
 isTitle=false
 name=row-1
 
@@ -173,7 +188,7 @@ Title=Boxes
 
 [page][row-3]
 Title=
-heightMode=balanced
+heightMode=minimum
 isTitle=false
 name=row-3
 
@@ -215,7 +230,7 @@ Title=Energy
 
 [page][row-5]
 Title=
-heightMode=balanced
+heightMode=minimum
 isTitle=false
 name=row-5
 

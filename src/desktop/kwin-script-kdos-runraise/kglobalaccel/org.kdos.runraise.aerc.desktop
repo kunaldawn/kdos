@@ -2,5 +2,5 @@
 Type=Application
 Name=aerc in a New Window
 Comment=Open aerc in a new terminal window. The KDOS Raise key brings back the one already open.
-Exec=konsole -p tabtitle=aerc -e aerc
+Exec=konsole --hold -p tabtitle=aerc -e aerc
 Icon=utilities-terminal

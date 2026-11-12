@@ -529,9 +529,12 @@ mkdir -p /dev/shm
 mount -t tmpfs -o nosuid,nodev tmpfs /dev/shm
 
 # fbcon defers taking the framebuffer until a glyph is printed on a virtual
-# terminal. /dev/console is the last console=: ttyS0 on the live entries, so
-# none of these messages reach the screen; tty0 on an installed machine, where
-# the echo above has ended the deferral and fbcon draws them over the splash.
+# terminal. /dev/console is the last console=: ttyS0 on the quiet live entries,
+# so none of these messages reach the screen; tty0 on the live verbose entry and
+# on an installed machine, where the echo above has ended the deferral and
+# fbcon draws them. \`kdos-splash run\` draws only on a command line with
+# \`quiet\`: without it it exits at once, every call below is a no-op, and the
+# messages are the whole of what the screen shows.
 if [ -x /bin/kdos-splash ]; then
     /bin/kdos-splash run </dev/null >/dev/null 2>&1 &
 fi
@@ -539,10 +542,21 @@ sp_step() { [ -x /bin/kdos-splash ] && /bin/kdos-splash step "\$1" 2>/dev/null; 
 sp_ok()   { [ -x /bin/kdos-splash ] && /bin/kdos-splash ok 2>/dev/null; return 0; }
 sp_fail() { [ -x /bin/kdos-splash ] && /bin/kdos-splash fail 2>/dev/null; return 0; }
 sp_total() { [ -x /bin/kdos-splash ] && /bin/kdos-splash total "\$1" 2>/dev/null; return 0; }
+# Called before /dev moves into the new root: the splash's FIFO is
+# /dev/.kdos-splash, and once /dev has moved no command sent from here reaches
+# it. \`emergency\` makes init run sulogin before rcS, the one thing that stops
+# the splash on a normal boot, so a splash still drawing then covers the prompt
+# on the screen and leaves the keyboard's console showing a frozen bar; the
+# prompt would be reachable only over the serial line. \`quit\` leaves the
+# console in text mode with its cursor shown.
+sp_release() {
+    [ "\$INIT_ARG" = emergency ] && [ -x /bin/kdos-splash ] && /bin/kdos-splash quit 2>/dev/null
+    return 0
+}
 
 # EVERY FAILURE ENDS HERE, AND SAYS WHY WHERE SOMEBODY IS LOOKING. /dev/console
-# is the last console= on the command line, which on the live entries is the
-# serial port: a shell there alone leaves a laptop showing the splash's fail
+# is the last console= on the command line, which on the quiet live entries is
+# the serial port: a shell there alone leaves a laptop showing the splash's fail
 # state and nothing else. The reason goes to the splash as a detail line,
 # which is the last thing it draws before it hands the screen back, and then
 # to tty1, where fbcon takes the framebuffer over at the first write and the
@@ -631,6 +645,7 @@ echo "Welcome to KDOS"
 # Parse Boot Parameters. INIT_ARG starts empty: the kernel hands init every
 # unrecognised name=value on its command line as an environment variable.
 INIT_ARG=""
+SPLASH_QUIET=""
 for i in \$(cat /proc/cmdline); do
     case "\$i" in
         root=UUID=*)
@@ -650,6 +665,11 @@ for i in \$(cat /proc/cmdline); do
         single|emergency)
             INIT_ARG="\$i"
             ;;
+        # The splash draws only on a boot with \`quiet\`; without it nothing
+        # is on the screen to carry the passphrase prompt.
+        quiet)
+            SPLASH_QUIET=1
+            ;;
     esac
 done
 
@@ -663,11 +683,15 @@ done
 # first is the LUKS container's, the second belongs to the filesystem that only
 # exists once the container is open. kinstall writes both.
 #
-# The prompt goes through the SPLASH, not to /dev/console, which is the last
-# console=: tty0 under the splash on an installed machine, ttyS0 on the live
-# entries, where a plain \`read -p\` prompts a serial port nobody is looking at
-# while the screen shows a splash that appears to have frozen. The keystrokes
-# are read from /dev/tty1, which is where the keyboard actually is.
+# On a boot with \`quiet\` the prompt goes through the SPLASH, not to
+# /dev/console, which is the last console=: tty0 under the splash on an
+# installed machine, ttyS0 on the quiet live entries, where a plain \`read -p\`
+# prompts a serial port nobody is looking at while the screen shows a splash
+# that appears to have frozen. On a boot without \`quiet\` (the verbose and
+# single-user entries) no splash draws, and the prompt and its outcome are
+# printed on PASS_TTY instead. Never both: text written to tty1 under a
+# drawing splash ends fbcon's deferral and is drawn over the picture. The
+# keystrokes are read from /dev/tty1, which is where the keyboard actually is.
 #
 # There is no per-keystroke feedback: the splash owns the framebuffer and bash
 # owns the terminal, and a passphrase field that echoed dots would mean moving
@@ -682,7 +706,8 @@ done
 : "\${CRYPT_MAPPER_DIR:=/dev/mapper}"
 
 unlock_root() {
-    local spec="\$1" luks_uuid name dev tries
+    local spec="\$1" luks_uuid name dev tries tty_say=1
+    [ -n "\$SPLASH_QUIET" ] && [ -x /bin/kdos-splash ] && tty_say=
 
     case "\$spec" in
         UUID=*:*)  luks_uuid="\${spec#UUID=}"; luks_uuid="\${luks_uuid%%:*}"
@@ -715,6 +740,8 @@ unlock_root() {
         tries=\$((tries + 1))
         [ -x /bin/kdos-splash ] && /bin/kdos-splash msg \
             "PASSPHRASE FOR \$name (attempt \$tries of 3)" 2>/dev/null
+        [ -n "\$tty_say" ] && printf 'Passphrase for %s (attempt %d of 3): ' \
+            "\$name" "\$tries" >>"\$PASS_TTY" 2>/dev/null
         # -s: never echo the passphrase. Read from tty1 because the keyboard
         # is there, whatever /dev/console is.
         PASS=""
@@ -726,10 +753,12 @@ unlock_root() {
         PASS=""
         if [ \$rc -eq 0 ] && [ -e "\$CRYPT_MAPPER_DIR/\$name" ]; then
             [ -x /bin/kdos-splash ] && /bin/kdos-splash msg "UNLOCKED" 2>/dev/null
+            [ -n "\$tty_say" ] && printf '\nUnlocked.\n' >>"\$PASS_TTY" 2>/dev/null
             return 0
         fi
         [ -x /bin/kdos-splash ] && /bin/kdos-splash msg \
             "WRONG PASSPHRASE" 2>/dev/null
+        [ -n "\$tty_say" ] && printf '\nWrong passphrase.\n' >>"\$PASS_TTY" 2>/dev/null
     done
     return 1
 }
@@ -926,6 +955,11 @@ if [ -n "\$ROOT_UUID" ]; then
 
         if [ -x /newroot/sbin/init ]; then
             sp_ok
+            # The last step is drawn before /dev moves, as everything sent to
+            # the splash must be (see sp_release).
+            sp_step "SWITCHING ROOT"
+            sp_ok
+            sp_release
             # Move Mountpoints
             mount --move /dev /newroot/dev
             mount --move /proc /newroot/proc
@@ -933,8 +967,6 @@ if [ -n "\$ROOT_UUID" ]; then
 
             # Switch Root
             echo "Switching root..."
-            sp_step "SWITCHING ROOT"
-            sp_ok
             exec switch_root /newroot /sbin/init \$INIT_ARG
         else
             echo "Error: /sbin/init not found on root device!"
@@ -1053,6 +1085,30 @@ find_persist() {
     done
 }
 
+# THE STORE ON THE BOOT DISK IS MOUNTED THROUGH A LOOP. The medium is mounted
+# as the whole disk (ISO9660 starts at its first sector, so no partition
+# carries it), and a mounted disk is claimed exclusively: the kernel then
+# refuses to open any partition on it for a mount ("Can't open blockdev"). A
+# loop over the disk at the partition's offset and length opens the disk with
+# no such claim. Direct I/O keeps the store's writes out of a second page
+# cache, so the shutdown's sync and read-only remount reach the stick. A store
+# on any other disk is mounted as it is. Sets PERSIST_DEV to the device to
+# mount and PERSIST_LOOP to the loop when it made one; sysfs counts start and
+# size in 512-byte sectors whatever the disk's block size.
+persist_dev() {   # <store partition> <medium device>
+    local part=\${1##*/} disk off len
+    PERSIST_DEV="\$1"
+    PERSIST_LOOP=""
+    disk=\$(cd -P "/sys/class/block/\$part/.." 2>/dev/null && pwd -P)
+    disk=\${disk##*/}
+    [ -e "/sys/class/block/\$part/partition" ] || return 0
+    [ "/dev/\$disk" == "\$2" ] || return 0
+    off=\$(( \$(cat "/sys/class/block/\$part/start") * 512 ))
+    len=\$(( \$(cat "/sys/class/block/\$part/size") * 512 ))
+    PERSIST_LOOP=\$(losetup --find --show --direct-io=on -o "\$off" --sizelimit "\$len" "\$2") || return 1
+    PERSIST_DEV="\$PERSIST_LOOP"
+}
+
 # Live ISO Boot Mode (Fallback)
 mkdir -p /mnt/iso
 echo "Searching for KDOS boot media..."
@@ -1102,6 +1158,7 @@ while :; do
         CHECKED="\$CHECKED\$dev "
         if [ -f /mnt/iso/system.sfs ]; then
             echo "Found KDOS media on \$dev"
+            MEDIUM="\$dev"
             FOUND=1
             break
         fi
@@ -1161,13 +1218,18 @@ if [ "\$FOUND" == "1" ]; then
              # \`nopersist\` ON THE COMMAND LINE FORCES A CLEAN SESSION, and the
              # boot menu carries an entry that passes it. A store holding a
              # change that stops the desktop coming up would otherwise be
-             # reachable only by taking the stick to another machine.
+             # reachable only by taking the stick to another machine. From
+             # that session \`kdos persist reset\` deletes what the store holds.
              #
-             # THE STORE MUST CARRY XATTRS, HARDLINKS AND A d_type, so vfat,
-             # exfat and ntfs cannot hold one: overlayfs refuses such an upper
-             # with EINVAL, which is the same answer it gives for every other
-             # bad mount. Refusing them BY NAME here is what makes a
-             # hand-made store say what is wrong with it.
+             # THE STORE MUST CARRY XATTRS, HARDLINKS AND A d_type, so ntfs,
+             # iso9660 and squashfs cannot hold one: overlayfs refuses such an
+             # upper with EINVAL, which is the same answer it gives for every
+             # other bad mount. Refusing them BY NAME here is what makes a
+             # hand-made store say what is wrong with it. vfat and exfat stay
+             # in the list though neither can carry the 12-character label.
+             # \`kdos persist\` reports a store of these types as refused, from
+             # its own copy of this list (refused_type in persist.c), which
+             # must match this one.
              PERSIST=""
              case " \$(cat /proc/cmdline) " in
              *" nopersist "*)
@@ -1185,12 +1247,15 @@ if [ "\$FOUND" == "1" ]; then
                      ;;
                  *)
                      mkdir -p /mnt/persist
-                     if mount "\$PERSIST" /mnt/persist; then
+                     if ! persist_dev "\$PERSIST" "\$MEDIUM"; then
+                         echo "persistence store \$PERSIST: no loop device over \$MEDIUM"
+                     elif mount "\$PERSIST_DEV" /mnt/persist; then
                          mkdir -p /mnt/persist/upper /mnt/persist/work
                          UPPER="upperdir=/mnt/persist/upper,workdir=/mnt/persist/work"
-                         echo "Persistent session on \$PERSIST (\$PTYPE)"
+                         echo "Persistent session on \$PERSIST (\$PTYPE\${PERSIST_LOOP:+, through \$PERSIST_LOOP})"
                      else
                          echo "persistence store \$PERSIST would not mount"
+                         [ -n "\$PERSIST_LOOP" ] && losetup -d "\$PERSIST_LOOP"
                      fi
                      ;;
                  esac
@@ -1204,7 +1269,10 @@ if [ "\$FOUND" == "1" ]; then
              if [ -n "\$UPPER" ]; then
                  echo "Mounting OverlayFS (persistent)..."
                  mount -t overlay overlay -o lowerdir=/mnt/system,\$UPPER /newroot || UPPER=""
-                 [ -n "\$UPPER" ] || umount /mnt/persist 2>/dev/null
+                 if [ -z "\$UPPER" ]; then
+                     umount /mnt/persist 2>/dev/null
+                     [ -n "\$PERSIST_LOOP" ] && losetup -d "\$PERSIST_LOOP"
+                 fi
              fi
              if [ -z "\$UPPER" ]; then
                  echo "Mounting OverlayFS..."
@@ -1237,12 +1305,22 @@ if [ "\$FOUND" == "1" ]; then
             # file or directory" and detaches nothing. It runs only once
             # /sbin/init is known to be there, so a rescue shell for a missing
             # init still finds both mounts.
-            if [ -x /newroot/sbin/init ]; then
-                umount -l /mnt/system
-                [ -z "\$UPPER" ] && umount -l /mnt/overlay
-                rmdir /mnt/system /mnt/overlay 2>/dev/null
+            #
+            # THE LAST STEP IS SETTLED BEFORE /dev MOVES, as everything sent
+            # to the splash must be (see sp_release). A missing init fails it
+            # and opens the rescue shell here, where /dev and /proc are still
+            # the initramfs's and the shell can reach tty1.
+            sp_step "SWITCHING ROOT"
+            if [ ! -x /newroot/sbin/init ]; then
+                ls -l /newroot/sbin/init
+                sp_fail
+                rescue "Error: /sbin/init not found in new root!"
             fi
-
+            umount -l /mnt/system
+            [ -z "\$UPPER" ] && umount -l /mnt/overlay
+            rmdir /mnt/system /mnt/overlay 2>/dev/null
+            sp_ok
+            sp_release
             # Move pseudo-filesystems under the new root (standard; Alpine mkinitfs does this)
             mount --move /dev /newroot/dev
             mount --move /proc /newroot/proc
@@ -1271,8 +1349,8 @@ if [ "\$FOUND" == "1" ]; then
             # Left in the initramfs namespace it is unreachable by name, so
             # \`kdos persist\` could not report how full the store is that the
             # session is writing to. It also has to be a mount the SHUTDOWN can
-            # see: /etc/inittab unmounts what is mounted, and a store that is
-            # not in the new root's table is never flushed by it.
+            # name: /etc/inittab remounts /mnt/persist read-only, and a store
+            # not in the new root's table would stay writable at reboot.
             if [ -n "\$UPPER" ]; then
                 mkdir -p /newroot/mnt/persist
                 mount --move /mnt/persist /newroot/mnt/persist
@@ -1280,20 +1358,12 @@ if [ "\$FOUND" == "1" ]; then
 
             # Switch Root
             echo "Switching to new root..."
-            sp_step "SWITCHING ROOT"
-            if [ -x /newroot/sbin/init ]; then
-                # Stop udevd
-                udevadm control --exit
-                # The splash keeps running through this: switch_root deletes the
-                # old rootfs but not the processes living in it, and its FIFO is
-                # on devtmpfs, which has just been moved into the new root.
-                sp_ok
-                exec switch_root /newroot /sbin/init \$INIT_ARG
-            else
-                ls -l /newroot/sbin/init
-                sp_fail
-                rescue "Error: /sbin/init not found in new root!"
-            fi
+            # Stop udevd
+            udevadm control --exit
+            # Unless sp_release stopped it, the splash runs on: switch_root
+            # deletes the old rootfs but not its processes, and the FIFO is
+            # on devtmpfs, which has just been moved into the new root.
+            exec switch_root /newroot /sbin/init \$INIT_ARG
         else
             sp_fail
             rescue "Failed to mount system.sfs"

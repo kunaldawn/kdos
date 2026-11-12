@@ -1,7 +1,7 @@
 [Icon Theme]
 Name=KDOS Light
 Comment=Breeze with the KDOS marks, in the accent of the colour scheme
-Inherits=breeze,hicolor
+Inherits=breeze,Adwaita,hicolor
 FollowsColorScheme=true
 Example=folder
 DisplayDepth=32
@@ -19,7 +19,7 @@ PanelSizes=16,22,32,48,64,128,256
 DialogDefault=32
 DialogSizes=16,22,32,48,64,128,256
 
-Directories=16x16/places,22x22/places,24x24/places,32x32/places,48x48/places,64x64/places,128x128/places,256x256/places
+Directories=16x16/places,22x22/places,24x24/places,32x32/places,48x48/places,64x64/places,128x128/places,256x256/places,scalable/apps
 
 [16x16/places]
 Size=16
@@ -60,3 +60,10 @@ Type=Fixed
 Size=256
 Context=Places
 Type=Fixed
+
+[scalable/apps]
+Size=48
+Context=Applications
+Type=Scalable
+MinSize=16
+MaxSize=512

@@ -10,6 +10,7 @@
 # ---------------------------------
 
 patch -p1 -i "$PORT_SRC/goxel-app-id.patch"
+patch -p1 -i "$PORT_SRC/goxel-maximized.patch"
 
 scons -j"$KDOS_JOBS" mode=release werror=false nfd_backend=portal sound=false
 make PREFIX=/usr DESTDIR=$PKG install

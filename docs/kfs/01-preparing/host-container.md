@@ -88,7 +88,7 @@ packages.
 
 This is the whole of the `make build` target:
 
-<!-- kfs:include Makefile lines=170-198 pin=55a5d1802c0e -->
+<!-- kfs:include Makefile lines=173-201 pin=55a5d1802c0e -->
 
 ### The meaning of the switches
 

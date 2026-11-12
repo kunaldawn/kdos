@@ -3,6 +3,8 @@
 `kwin-effect-kdos-keys` is the key card: a full-screen, searchable card of every global keyboard
 shortcut the session holds, grouped into Windows, Desktops, Launch, KDOS, Accessibility and System.
 Meta+F1 and Meta+/ open it, the same keys close it, and Esc clears the search and then closes it.
+Tab, Down and Up walk from the search field through the rows, each spoken to a screen reader as its
+action and keys, and a search announces how many shortcuts it leaves.
 Plasma has no overview of its shortcuts; this is one.
 
 It is a KWin effect written in QML, a KWin/Effect package installed to

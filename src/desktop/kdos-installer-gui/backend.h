@@ -25,6 +25,7 @@
 #include <QObject>
 #include <QProcess>
 #include <QStringList>
+#include <QTimer>
 #include <QVariantMap>
 #include <QtQml/qqmlregistration.h>
 
@@ -56,6 +57,8 @@ class Backend : public QObject
     /* The last dump's failure, or "". */
     Q_PROPERTY(QString error READ error NOTIFY errorChanged)
 
+    /* tzdata's zone1970.tab, one zone per region and no backward alias,
+     * sorted, with UTC first: the list the terminal wizard offers. */
     Q_PROPERTY(QStringList timeZones READ timeZones CONSTANT)
     Q_PROPERTY(QString systemTimeZone READ systemTimeZone CONSTANT)
 
@@ -63,6 +66,8 @@ class Backend : public QObject
     Q_PROPERTY(bool partitionManagerRunning READ partitionManagerRunning NOTIFY partitionManagerRunningChanged)
 
     Q_PROPERTY(bool installing READ installing NOTIFY installingChanged)
+    /* kinstall's log, which the Done page offers to open. */
+    Q_PROPERTY(QString logPath READ logPath CONSTANT)
 
 public:
     explicit Backend(QObject *parent = nullptr);
@@ -83,6 +88,11 @@ public:
     bool partitionManagerAvailable() const;
     bool partitionManagerRunning() const { return m_partitionManager != nullptr; }
     bool installing() const { return m_install != nullptr; }
+    QString logPath() const;
+
+    /* The zones of a zone1970.tab, as timeZones lists them: column three,
+     * sorted, UTC first; UTC alone when the file cannot be read. */
+    static QStringList readZones(const QString &tabPath);
 
     /* What the machine is: its disks and partitions, its firmware, whether
      * this is the live medium. */
@@ -104,13 +114,25 @@ public:
     Q_INVOKABLE void reboot();
 
     /* An accent's colours out of its KDOS<Label> colour scheme, for a
-     * swatch: window, view, text, highlight, highlightedText. Empty when
-     * the scheme is not installed. */
+     * swatch: window, view, text, highlight, highlightedText, and accent,
+     * the view's focus decoration. The accent is the colour itself; a dark
+     * accent's highlight is that colour darkened until text reads on it.
+     * Empty when the scheme is not installed. */
     Q_INVOKABLE QVariantMap accentColors(const QString &accent) const;
     /* The global theme's preview picture, as a file URL, or "". */
     Q_INVOKABLE QString accentPreview(const QString &lookAndFeel) const;
     /* A size in bytes, as a person reads it. */
     Q_INVOKABLE QString formatSize(double bytes) const;
+    /* An accent's name as the Look page shows it: its colour scheme's name
+     * without "KDOS ", or the id capitalised where no scheme is installed. */
+    Q_INVOKABLE QString accentLabel(const QString &accent) const;
+    /* A desk's title, as the Look page and the Summary name it. */
+    Q_INVOKABLE QString deskTitle(const QString &desk) const;
+    /* The time now in a zone, as hours and minutes. */
+    Q_INVOKABLE QString localTime(const QString &zone) const;
+    /* Whether this session may read the log; it is root's and `wheel`'s. */
+    Q_INVOKABLE bool logReadable() const;
+    Q_INVOKABLE void openLog() const;
 
 Q_SIGNALS:
     void probeChanged();
@@ -135,6 +157,8 @@ private:
     QVariantMap m_probe, m_look, m_apps, m_plan;
     QString m_error;
     QHash<QString, QProcess *> m_dumps;
+    QTimer m_probeTimer;
+    QString m_probeKey;
     QProcess *m_partitionManager = nullptr;
     QProcess *m_install = nullptr;
 };

@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Service
 Name=KDOS
-Comment=KDOS commands, favourites by their two letters, routes, settings pages, packs on the boot medium, shortcuts and questions for the local model
+Comment=KDOS commands, favourites by their two letters, routes, packs on the boot medium, shortcuts, the offline library alone and questions for the local model
 Icon=start-here-kdos
 X-KDE-PluginInfo-Name=kdos
 X-KDE-PluginInfo-EnabledByDefault=true
@@ -10,5 +10,5 @@ X-Plasma-DBusRunner-Service=io.kdos.Runner
 X-Plasma-DBusRunner-Path=/runner
 X-Plasma-Request-Actions-Once=true
 X-Plasma-Runner-Min-Letter-Count=2
-X-Plasma-Runner-Syntaxes=accent :q:,phosphor on,tiling on,desk :q:,night light,update check,doctor,box stop :q:,box enter :q:,install :q:,keys :q:,why :q:,ask :q:,route:setup.network,FF
-X-Plasma-Runner-Syntax-Descriptions=Switches the accent: phosphor\, amber\, ice\, bone\, norton\, borland\, perfect or paper,Turns Phosphor mode on or off,Turns automatic tiling on or off,Lays the desktop out as the kdos\, dock or tiling desk,Turns Night Light on or off,Checks for a system update and shows the answer in Konsole,Checks this system for problems,Stops a box,Opens a shell in a box,Finds :q: in Discover and among the packs on the boot medium,Lists the shortcuts whose action matches :q:,Explains a path with kdos why,Asks the language model on this machine\, whose answer Enter copies,Opens a route of /etc/kdos/menu.conf by its exact name,Two letters open the favourite whose code they are in ~/.config/kdos/favorites
+X-Plasma-Runner-Syntaxes=accent :q:,phosphor on,tiling on,desk :q:,night light,reduced motion,update check,doctor,box stop :q:,box enter :q:,install :q:,keys :q:,why :q:,lib :q:,ask :q:,route:setup.network,FF
+X-Plasma-Runner-Syntax-Descriptions=Switches the accent: phosphor\, amber\, ice\, bone\, norton\, borland\, perfect\, paper\, next or prev,Turns Phosphor mode on or off,Turns automatic tiling on or off,Lays the desktop out as the kdos\, dock or tiling desk,Turns Night Light on or off,Turns reduced motion on or off,Checks for a system update and shows the answer in Konsole,Checks this system for problems,Stops a box,Opens a shell in a box,Finds :q: in Discover and among the packs on the boot medium,Lists the shortcuts whose action matches :q:,Explains a path with kdos why,Opens KRunner again with the offline library alone on :q:,Asks the language model on this machine\, whose answer Enter copies,Opens a route of /etc/kdos/menu.conf by its exact name,Two letters open the favourite whose code they are in ~/.config/kdos/favorites

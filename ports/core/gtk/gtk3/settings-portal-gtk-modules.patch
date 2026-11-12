@@ -1,0 +1,48 @@
+Subject: gdk/wayland: open org.gtk.Settings when the Settings portal is used
+
+With GTK_USE_PORTAL=1, or inside a sandbox, init_settings() returned
+after reading the Settings portal and never opened the org.gtk.Settings
+proxy, so gtk-modules and gtk-fontconfig-timestamp stayed unset.
+Open the proxy before choosing the source of the other settings.
+
+--- a/gdk/wayland/gdkscreen-wayland.c
++++ b/gdk/wayland/gdkscreen-wayland.c
+@@ -719,6 +719,20 @@
+   GSettings *settings;
+   gint i;
+ 
++  /* gtk-modules and gtk-fontconfig-timestamp come only from
++   * org.gtk.Settings, which the Settings portal does not carry, so the
++   * proxy is opened whichever source serves the other settings. */
++  screen_wayland->dbus_cancellable = g_cancellable_new ();
++  g_dbus_proxy_new_for_bus (G_BUS_TYPE_SESSION,
++                            G_DBUS_PROXY_FLAGS_NONE,
++                            NULL,
++                            GTK_SETTINGS_DBUS_NAME,
++                            GTK_SETTINGS_DBUS_PATH,
++                            GTK_SETTINGS_DBUS_NAME,
++                            screen_wayland->dbus_cancellable,
++                            fontconfig_dbus_proxy_open_cb,
++                            screen_wayland);
++
+   if (gdk_should_use_portal ())
+     {
+       GVariant *ret;
+@@ -809,17 +823,6 @@
+       g_debug ("Failed to use Settings portal; falling back to gsettings");
+     }
+ 
+-  screen_wayland->dbus_cancellable = g_cancellable_new ();
+-  g_dbus_proxy_new_for_bus (G_BUS_TYPE_SESSION,
+-                            G_DBUS_PROXY_FLAGS_NONE,
+-                            NULL,
+-                            GTK_SETTINGS_DBUS_NAME,
+-                            GTK_SETTINGS_DBUS_PATH,
+-                            GTK_SETTINGS_DBUS_NAME,
+-                            screen_wayland->dbus_cancellable,
+-                            fontconfig_dbus_proxy_open_cb,
+-                            screen_wayland);
+-
+   screen_wayland->settings = g_hash_table_new_full (g_str_hash, g_str_equal, NULL, g_object_unref);
+ 
+   source = g_settings_schema_source_get_default ();

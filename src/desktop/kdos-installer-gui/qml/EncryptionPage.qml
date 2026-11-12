@@ -69,23 +69,20 @@ WizardPage {
         Kirigami.PasswordField {
             id: pass
             Kirigami.FormData.label: i18nc("@label:textbox", "Passphrase:")
-            Layout.fillWidth: true
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 18
+            placeholderText: i18nc("@info:placeholder", "Passphrase")
             Accessible.name: i18nc("@label:textbox", "Disk passphrase")
             onTextChanged: page.answers.luksPassphrase = text
         }
         Kirigami.PasswordField {
             id: again
             Kirigami.FormData.label: i18nc("@label:textbox", "Again:")
-            Layout.fillWidth: true
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 18
+            placeholderText: i18nc("@info:placeholder", "Passphrase, again")
             Accessible.name: i18nc("@label:textbox", "Disk passphrase, again")
         }
-        QQC2.Label {
-            text: pass.text.length === 0 ? ""
-                : pass.text.length < 8 ? i18nc("@info passphrase strength", "Short: a passphrase of several words is far harder to guess")
-                : pass.text.length < 16 ? i18nc("@info passphrase strength", "Fair")
-                : i18nc("@info passphrase strength", "Long, good")
-            color: pass.text.length < 8 ? Kirigami.Theme.neutralTextColor : Kirigami.Theme.positiveTextColor
-            Accessible.name: i18nc("@info:whatsthis", "Passphrase strength: %1", text)
+        StrengthLabel {
+            secret: pass.text
         }
     }
 }

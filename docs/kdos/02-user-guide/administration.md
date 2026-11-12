@@ -103,13 +103,14 @@ on `tty1` once `rcS` has run every script (see [The login screen](#the-login-scr
 | `01_udev` | Device management, and the coldplug that loads drivers for the hardware already present. It also creates device nodes such as `/dev/uinput`, `/dev/uhid`, `/dev/snd/seq` and `/dev/vhost-net`, whose driver loads only when a program first opens the node, so they exist before anything asks for them |
 | `02_modules` | Modules listed in `/etc/modules-load.d` |
 | `03_lvm` | LVM volume groups, activated once at boot, then any `fstab` entry on a logical volume checked and mounted, and any swap entry on one turned on. On a disk boot the initramfs has already activated the groups it saw; this pass catches the rest — every group on a live boot, and any on a disk that appeared after the initramfs ran. A group plugged in later is not activated automatically; run `sudo vgchange -aay`. See [Activating volume groups](../03-architecture/boot-and-init.md#activating-volume-groups) |
+| `04_live-root` | On the live medium only, records `x-gvfs-hide` for the overlay root in `/run/mount/utab`, so Dolphin, the file dialogs and the Device Notifier do not list the RAM root as a device. See [The live medium and persistence](../03-architecture/boot-and-init.md#the-live-medium-and-persistence) |
 | `05_hostname` | The hostname |
 | `06_utmps` | Login records: `utmpd` and `wtmpd`, the two daemons through which `login`, `who`, `last` and init read and write the records of who is logged in and since when, because musl's own utmp calls do nothing. It waits up to two seconds for their sockets, so init's boot record is not lost — see [Login records](../03-architecture/boot-and-init.md#login-records) |
 | `10_sysctl` | Kernel parameters from `/etc/sysctl.conf`: unprivileged `ping`; the name of the fatal signal in the kernel log when a program crashes; the `fs.protected_*` link protections, which stop a user redirecting a root job's write in `/tmp` onto another file; per-task delay accounting, which `iotop`'s IO% and `htop`'s delay columns read, at a small cost on every wait the kernel accounts; no ICMP redirect accepted or sent; the loose reverse-path filter; and kernel addresses hidden from every account but root |
 | `12_zram` | Compressed swap in RAM — see [Storage](#storage) |
 | `15_cgroups` | Enables the `cpu`, `memory` and `pids` controllers at the root of the cgroup tree, so each login's delegated cgroup can offer them, which is what lets rootless podman apply a *box*'s memory, CPU and process limits (a box is the rootless container one application runs in; see [the glossary](../06-reference/glossary.md)) |
 | `18_timers` | Periodic jobs: one supervised `snooze` per line of `/etc/kdos/timers.d` — see [Periodic jobs](#periodic-jobs) |
-| `20_dmesg`, `22_syslog` | Kernel and system logging. `20_dmesg` lowers the console log level to 3, so only critical, alert and emergency kernel messages reach the screen; once `syslogd` is running it turns the kernel's console logging down further, to emergencies only, and restores it when it exits. `22_syslog` runs `syslogd`, whose `/etc/syslog.conf` sets `secure_mode 2`, so it opens no network socket: it neither accepts messages from other hosts nor forwards to one. `secure_mode 1` allows forwarding to an `@host` action without listening. See [Logs](#logs) |
+| `20_dmesg`, `22_syslog` | Kernel and system logging. On a boot with `quiet`, `20_dmesg` lowers the console log level to 3, so only critical, alert and emergency kernel messages reach the screen; once `syslogd` is running it turns the kernel's console logging down further, to emergencies only, and restores it when it exits. On a boot without `quiet` (the verbose and single-user entries) the level stays the one `loglevel=` set: `20_dmesg` leaves it, and `22_syslog` runs `syslogd -l`, which keeps the kernel's console logging on. `22_syslog` runs `syslogd`, whose `/etc/syslog.conf` sets `secure_mode 2`, so it opens no network socket: it neither accepts messages from other hosts nor forwards to one. `secure_mode 1` allows forwarding to an `@host` action without listening. See [Logs](#logs) |
 | `25_nftables` | The firewall, loaded before the network comes up — see [The firewall](#the-firewall) |
 | `30_network` | `dhcpcd`, the fallback DHCP client. It stays down when NetworkManager is installed and not disabled, because NetworkManager's own DHCP client does not defer to it: two clients on one link means two leases, two default routes and two writers of `/etc/resolv.conf` |
 | `31_babeld` *(babeld)* | Babel mesh routing, skipped until a non-empty `/etc/babeld.conf` exists. Open the `babel` firewall name for the neighbours |
@@ -146,7 +147,7 @@ on `tty1` once `rcS` has run every script (see [The login screen](#the-login-scr
 | `62_plasma-setup` | On a machine installed for someone else, arms Plasma's first-start wizard, which makes the first account; does nothing once `/etc/plasma-setup-done` exists. See [Preparing a machine for someone else](installation.md#preparing-a-machine-for-someone-else) |
 | `62_virtlogd` *(libvirt)* | libvirt's log daemon, which keeps each guest's console log |
 | `63_gssd` *(nfs-utils)* | `rpc.gssd`, the Kerberos half of an NFS client, which a `sec=krb5` mount needs. It mounts `rpc_pipefs` at `/var/lib/nfs/rpc_pipefs` first. Skipped until `/etc/krb5.keytab` exists |
-| `63_libvirtd` *(libvirt)* | libvirt's management daemon for `qemu:///system`. Its polkit rule lets members of the `libvirt` group manage guests |
+| `63_libvirtd` *(libvirt)* | libvirt's management daemon for `qemu:///system`. Its polkit rule lets members of the `libvirt` group manage guests. Its `default` NAT network is defined and not started: `virbr0` and its `dnsmasq` come up when virt-manager or `virsh net-start default` starts it |
 | `63_live-installer` | On the live medium only, puts the **Install KDOS** entry and icon in place, and the polkit rule that lets the live session start the installer without a password |
 | `64_lircd` *(lirc)* | The infrared remote daemon, skipped until a receiver is present (a `/dev/lirc*` node or an rc-core device). Its socket `/run/lirc/lircd` is what Kodi, VLC and other LIRC clients read |
 | `65_turnstiled` | turnstile: each user's runtime directory, `/run/user/<uid>`, and their own services, from their first login to their last. The login screen cannot start without it |
@@ -164,7 +165,7 @@ on `tty1` once `rcS` has run every script (see [The login screen](#the-login-scr
 | `80_cups` | Printing |
 | `81_cups-browsed` | Printers shared on the network, added to CUPS as they appear |
 | `82_ipp-usb` | Driverless printing and scanning over USB: each IPP-over-USB device is served on localhost as it is plugged in |
-| `83_samba` *(samba)* | `smbd`, skipped until a folder is shared: a usershare in `/var/lib/samba/usershares`, which it makes at every boot, or a share written into `/etc/samba/smb.conf`. The first folder shared from Dolphin starts it. Open the `smb` firewall name for other machines |
+| `83_samba` *(samba)* | `smbd`, skipped until some account can share: the `sambashare` group has a member, `/var/lib/samba/usershares` (which it makes at every boot) holds a usershare, or `/etc/samba/smb.conf` defines a share. An account just added to `sambashare` starts it at its next login. Open the `smb` firewall name for other machines |
 | `84_minidlna` *(minidlna)* | MiniDLNA, the media server for televisions and players on the LAN, skipped until a non-empty `/etc/minidlna.conf` exists; the template is in `/usr/share/doc/minidlna`. Open the `dlna` firewall name for other machines |
 | `85_crond` | cronie, for each user's own crontab (`crontab -e`, or System Settings' Task Scheduler). The jobs the system ships are not cron's; see [Periodic jobs](#periodic-jobs) |
 | `85_gnuhealth` *(gnuhealth)* | The GNU Health server (`trytond`), as the `gnuhealth` account, skipped until `/etc/gnuhealth/trytond.conf` names a database `uri`. Open the `tryton` firewall name for other machines |
@@ -219,7 +220,7 @@ supervisor tells that exit from a crash is in
 ### Services with no daemon
 
 Several scripts leave nothing for the supervisor to watch: `01_udev`, `02_modules`, `03_lvm`,
-`05_hostname`, `10_sysctl`, `12_zram`, `15_cgroups`, `20_dmesg`, `25_nftables`, `43_boltd`,
+`04_live-root`, `05_hostname`, `10_sysctl`, `12_zram`, `15_cgroups`, `20_dmesg`, `25_nftables`, `43_boltd`,
 `50_alsa`, `55_tlp`, `62_plasma-setup` and `63_live-installer`. Most apply a setting and exit;
 `25_nftables` and `12_zram` hand their result to the kernel, which keeps it. For these,
 `service status` reports what the script applied rather than a running process: `sysctl: applied`,
@@ -373,8 +374,10 @@ daemons check `wheel` too, before accepting a configuration change.
 What a desktop needs, every account has without a group: suspend, power-off and restart, network
 and Bluetooth connections, removable media, the brightness, the power profile and the time zone are
 granted to whoever is at the machine, in the active local session, and to nobody logged in from
-elsewhere. An account outside `wheel` can therefore run a desktop and power it down, but cannot
-administer the machine. The rules are in
+elsewhere. The time zone is granted through `kdos timezone`; the Date & Time page asks for an
+administrator whatever it changes (see [Media, colour and time](#media-colour-and-time)). An
+account outside `wheel` can therefore run a desktop and power it down, but cannot administer the
+machine. The rules are in
 [The security model](../03-architecture/security-model.md#polkit-and-the-authentication-agent).
 
 The hardware groups of the `kdos` account, and what removing each would silently stop:
@@ -405,7 +408,7 @@ sudo passwd alice
 ```
 
 Add `wheel` for an administrator, and `dialout`, `cdrom`, `kvm`, `lpadmin` and `tty` from the table
-as needed. Three things to check afterwards:
+as needed. Four things to check afterwards:
 
 - **Boxed applications** run rootless podman, which needs a range in `/etc/subuid` and
   `/etc/subgid` for the account; `grep alice /etc/subuid` shows whether `useradd` added one. The
@@ -413,10 +416,13 @@ as needed. Three things to check afterwards:
   65536 IDs each, so a range added by hand for another account must not overlap those.
 - **`/run/user/<uid>`** needs nothing: turnstile makes it at the account's first login and removes
   it at the last.
+- **The home is private** with nothing to do: `HOME_MODE 0700` in `/etc/login.defs` makes every
+  home `useradd -m` creates mode `0700`, the mode the installer gives its own account, whether
+  System Settings, Plasma Setup or a prompt made it. `ls -ld /home/alice` shows `drwx------`.
 - **Empty directories** are not in the home `useradd -m` makes: it copies `/etc/skel`, which
   carries no empty directory, and the image build creates the empty directories in the `kdos` home
   alone. Mail, the calendar and address book each expect theirs to exist, so create them as the
-  new account: `mkdir -p ~/Mail ~/.local/share/calendars ~/.local/share/contacts/personal`.
+  new account: `mkdir -p ~/Mail ~/.local/share/calendars/personal ~/.local/share/addressbooks/personal`.
 
 No account keeps a mailbox: nothing on KDOS delivers local mail, so `/etc/login.defs` names no mail
 spool, `/etc/default/useradd` sets `CREATE_MAIL_SPOOL=no`, and `useradd` and `userdel` neither
@@ -430,8 +436,9 @@ sudo pkill -u alice
 sudo userdel -r alice
 ```
 
-The account's own services, and every `ssh-agent` its logins started (`/etc/profile.d/50-ssh-agent.sh`,
-from the `openssh` package), keep running until they are ended. `userdel` refuses an account with a
+The account's own services, its `ssh-agent` among them, stop at its last logout, which `loginctl
+terminate-user` brings about; anything else it left running, such as a program started with
+`nohup`, keeps running until it is ended. `userdel` refuses an account with a
 running process, printing `user alice is currently used by process <pid>` and exiting 8 with
 nothing removed. `userdel -r` also takes the account's own group and its `/etc/subuid` and
 `/etc/subgid` ranges. If `/etc/sddm.conf.d/kde_settings.conf` logs the account in automatically,
@@ -497,15 +504,27 @@ A Windows or Samba share is reached as `smb://server/share` in Dolphin or a file
 network place lists the servers that answer on the local network.
 
 **Sharing a folder.** Dolphin's **Properties → Share** shares a folder over SMB as a Samba
-*usershare*: you choose who may read or write it, and the first share asks for an administrator's
-password once to add you to the `sambashare` group, whose members alone may add shares.
-Log out and in again after joining. `/etc/samba/smb.conf` ships with the settings this needs. The
-Samba server runs only while something is shared: it does not start at boot on a machine that
-shares nothing, and the first folder you share starts it at once, with no prompt, through the
-session's `kded-kdos` module and `kdos-powerd` (see
-[Starting Samba for a shared folder](../04-programs/daemons.md#starting-samba-for-a-shared-folder)).
-`sudo touch /etc/service.disabled/samba` keeps it from starting either way. Other machines reach a
-share only once the `smb` name is open in [the firewall](#opening-a-service).
+*usershare*, and you choose who may read or write it. `/etc/samba/smb.conf` ships with the
+settings this needs. The first time, the tab takes you through three steps before the share:
+
+1. **Make Me a Group Member.** An administrator's password adds you to the `sambashare` group,
+   whose members alone may add shares. Log out and in again afterwards; the tab says to restart
+   the system, but a new login is enough. That login starts the Samba server, with no prompt,
+   through the session's `kded-kdos` module and `kdos-powerd`, and from then on every boot starts
+   it (see
+   [Starting Samba for a shared folder](../04-programs/daemons.md#starting-samba-for-a-shared-folder)).
+2. **Set Samba password.** A second administrator's password creates your entry in Samba's own
+   password database, with the password other machines sign in to your shares with.
+3. **Fix Permissions.** Home folders are private, so the server cannot reach a folder inside
+   yours; the tab offers to let others pass through your home folder (not list or read it) on the
+   way to the shared one.
+
+Then **OK** makes the share. The Samba server does not run on a machine where nobody is in
+`sambashare` and nothing is shared, and the share cannot be made while the server is down: the
+tab then reports that a name cannot be converted to a SID. The prompts are polkit's for the person
+at the machine, so they fail from a session that is not the active one on its seat.
+`sudo touch /etc/service.disabled/samba` keeps the server from starting either way. Other machines
+reach a share only once the `smb` name is open in [the firewall](#opening-a-service).
 
 **Kernel limits a program raises.** A setting a KDE program changes for you, such as Dolphin's or
 the file indexer's offer to raise the limit on watched files, is written as a drop-in under
@@ -788,8 +807,9 @@ against the database it produced and fails on a mismatch, so an edited `db.txt` 
 
 The country comes from your time zone. The installer, the Date & Time page and `kdos timezone` all
 write the zone's country code to `/etc/modprobe.d/kdos-regdom.conf` as cfg80211's
-`ieee80211_regdom`. `kdos doctor` warns when the radio is still on the world domain `00`, and
-`sudo iw reg set <CC>` changes it until the next boot.
+`ieee80211_regdom` and set the running radio to it; a zone with no country, such as `UTC`, removes
+the file and returns the radio to the world domain `00` at once. `kdos doctor` warns when the radio
+is still on the world domain, and `sudo iw reg set <CC>` changes it until the next boot.
 
 ### Microcode
 
@@ -825,9 +845,12 @@ gives that group the device. Neither works alone. The KDOS rules live in `/etc/u
 | `70-kdos-gamepad.rules` | Game controllers' raw HID, for SDL's HIDAPI drivers | `input` |
 | `70-kdos-i2c.rules` | The DDC/CI line of a display controller, for `ddcutil` | `video` |
 
-One more file there grants no group: `99-qemu-tablet.rules` marks QEMU's emulated USB tablet as a
-plain pointer, so in a virtual machine the pointer is handled as a mouse rather than as a graphics
-tablet or a joystick.
+Two more files there grant no group. `70-kdos-live-medium.rules` hides the medium a live session
+is running from, the device mounted at `/mnt/iso` and the partitions of its disk, from udisks
+(`UDISKS_IGNORE`), so it is not offered for opening or ejecting; another KDOS stick plugged in is
+listed like any stick. `99-qemu-tablet.rules` marks QEMU's emulated USB tablet as a plain pointer,
+so in a virtual machine the pointer is handled as a mouse rather than as a graphics tablet or a
+joystick.
 
 Packages add two more: `libmtp`'s rules give phones to `dialout`, and `gpsd`'s
 `/usr/lib/udev/rules.d/70-kdos-gpsd.rules` handles GPS receivers (below).
@@ -987,8 +1010,9 @@ sudo service start cups
 
 System Settings → Printers adds, configures and removes printers, makes one the default and shows
 each queue's jobs; the print queue item in the tray shows what is printing. It talks to CUPS as you:
-CUPS is built with `lpadmin` as its system group, so membership of `lpadmin` is the authority to
-manage printers, and the `kdos` account has it. A printer that advertises IPP Everywhere, the
+CUPS is built with `lpadmin` and `root` as its system groups, so membership of `lpadmin` is the
+authority to manage printers, the `kdos` account has it, and `sudo lpinfo` or `sudo lpadmin` works
+as well. A printer that advertises IPP Everywhere, the
 driverless protocol, is set up with no driver at all; for one that needs a vendor driver, the
 drivers ported with the system (HPLIP, Gutenprint, `brlaser`, SpliX and the Foomatic database) are
 offered. `system-config-printer` does the same in another window. From a terminal:
@@ -1072,13 +1096,17 @@ misread would make the host and its containers disagree about local time. The tr
 libstdc++ falls back to the older copy compiled into it.
 
 The zone, the date and network time are set on System Settings → Date & Time, or with
-`kdos timezone <Area/City>`; the person at the machine may change the zone and network time with no
-password, and setting the clock by hand asks for an administrator. Both go through
-`kdos-settingsd`, which serves the clock interface KDE calls (`org.freedesktop.timedate1`) and
-rewrites two files together: `/etc/localtime`, the link programs follow into the zoneinfo tree, and
-`/etc/profile.d/20-timezone.sh`, which sets `TZ` for every login shell. A shell opened before the
-change keeps the old `TZ` until it is restarted. The same change writes the wireless regulatory
-country (see [Firmware](#firmware)). On a machine where nothing has chosen a zone, `rcS` links
+`kdos timezone <Area/City>`. The Date & Time page asks for an administrator's password on every
+Apply, even one that changes only the zone, because KDE's page authorises setting the clock before
+it saves anything; `kdos timezone` changes the zone with no password for the person at the machine,
+and is how an account outside `wheel` changes it. Both go through `kdos-settingsd`, which serves
+the clock interface KDE calls (`org.freedesktop.timedate1`) and rewrites two files together:
+`/etc/localtime`, the link programs follow into the zoneinfo tree, and
+`/etc/profile.d/20-timezone.sh`, which sets `TZ=:/etc/localtime` for every login shell. Programs
+already running follow the new zone: KDOS's C library re-reads the link when a program calls
+`tzset()`, which Qt does before every local time, so the panel clock moves at its next update. A
+program that never calls it, such as a long-running C daemon, keeps the old zone until it restarts.
+The same change writes the wireless regulatory country (see [Firmware](#firmware)). On a machine where nothing has chosen a zone, `rcS` links
 `/etc/localtime` to UTC at boot. The clock itself is kept by `chrony` (`35_chrony`); turning network
 time off on the Date & Time page disables that service. `kdos timezone`, `kdos hostname`,
 `kdos locale` and `kdos keymap` read and set the same settings from a prompt.
@@ -1239,16 +1267,17 @@ no separate `klogd`. `/etc/syslog.conf` routes them:
 
 | File | Holds |
 |---|---|
-| `/var/log/messages` | Everything except authentication |
+| `/var/log/messages` | Everything except authentication, the kernel's messages included; readable by root only |
 | `/var/log/auth.log` | Logins, `sudo`, polkit and other authentication; readable by root only |
-| `/var/log/kern.log` | Kernel messages |
+| `/var/log/kern.log` | Kernel messages; readable by root only |
 | `/var/log/cron` | The `cron` facility: cronie's record of each user's crontab jobs, and their output |
 
 `syslogd` rotates each file itself at 1 MB and keeps six old copies — `messages.0`, then
 `messages.1.gz` to `messages.5.gz`, compressed — so no `logrotate` job exists.
-`/var/log/auth.log` is mode `0600`: `22_syslog` creates it and sets that mode before `syslogd`
-starts, and rotation keeps it, so `auth.log.0` and the compressed copies are root-only too. Read it
-with `sudo`.
+`/var/log/auth.log`, `/var/log/kern.log` and `/var/log/messages` are mode `0600`: `22_syslog`
+creates each and sets that mode before `syslogd` starts, and rotation keeps it, so the `.0` copies
+and the compressed ones are root-only too. Read them with `sudo`. `syslogd` would otherwise make
+them `0644`, and every account could read the kernel's lines that `dmesg` refuses it.
 The limit matters on the live medium, where `/var/log` is in RAM and an unbounded log would take
 memory rather than disk. Emergency messages are also written to every logged-in terminal.
 `syslogd` runs with `-8`, so a message in UTF-8 is written as it was sent and the files stay text
@@ -1300,7 +1329,8 @@ anything it refuses the medium the system booted from, any disk with a filesyste
 named in `/etc/fstab`, and any device smaller than the image.
 
 Before writing, `f3probe` tests whether the stick really has the capacity it reports — a counterfeit
-stick silently wraps around and loses data. The verify drops the page cache before reading back:
+stick silently wraps around and loses data. The test writes and reads the whole stick and takes
+minutes; its lines are shown as they come, with the elapsed time between them. The verify drops the page cache before reading back:
 otherwise the kernel would return the bytes it just wrote from memory, not what the flash stored,
 and a counterfeit stick would pass.
 
@@ -1367,14 +1397,16 @@ Backups are [restic](https://restic.net/) snapshots: encrypted, deduplicated, an
 
 **Kup**, System Settings → Backups, is the one set up with the mouse. A *plan* names what to back
 up, where to (a folder, an external drive, or a restic repository at any address restic reaches)
-and when: on a timer, after an amount of active use, or when the plan's external drive is plugged
-in. Kup on KDOS has restic as a backup type beside its own rsync synchronisation; its bup type
+and when: by hand, on a timer, or after an amount of active use; a plan on an external drive runs
+when the drive is connected and a backup is due. Kup on KDOS has restic as a backup type beside its own rsync synchronisation; its bup type
 cannot be chosen, because `bup` is not on the image. A restic plan creates the
 repository when it is empty, saves a snapshot tagged `kup`, can check the repository, and can remove
 old snapshots by one fixed policy (every snapshot of two days, then daily for a month, weekly for six
 months, monthly for two years, yearly after), touching only snapshots tagged `kup`. Its password is
-kept in KWallet and reaches restic through a pipe, never as an argument. The Backups applet in the
-tray shows when each plan last ran.
+kept in KWallet and reaches restic through a pipe, never as an argument; with the wallet turned
+off, as on the live medium, the password field says Not set and the plan needs a password file.
+The Backups applet in the tray shows when each plan last ran; the settings page shows the status it
+read when it opened, so reopen it to see a run that finished meanwhile.
 
 **`kdos backup run`** is the one written in a file, for the nightly timer and for a prompt.
 
@@ -1521,6 +1553,9 @@ pass otp site/example               # the code for right now
 pass otp -c site/example            # and copy it to the clipboard
 ```
 
+A copy with `-c` is marked as a password, so Klipper keeps it out of the clipboard history, and
+after 45 seconds the clipboard goes back to what it held before.
+
 Nothing needs enabling: `pass` loads its installed extensions automatically. The code comes from
 `oathtool`, which also works on its own: `oathtool --totp -b <secret>`.
 
@@ -1531,7 +1566,7 @@ codes are for other people's websites.
 ## Calendar and contacts
 
 Calendars and contacts are plain files, like the mail. `~/.local/share/calendars` holds calendars
-and `~/.local/share/contacts` holds address books, each as a *vdir*: one directory per collection,
+and `~/.local/share/addressbooks` holds address books, each as a *vdir*: one directory per collection,
 one `.ics` or `.vcf` file per item. That can be searched with `grep`, compared with `diff` and backed
 up by copying. A file holding two events is not a valid vdir entry; use `khal import` to bring one
 in.
@@ -1544,11 +1579,14 @@ in.
 | `vdirsyncer` | Keeps a server's collection and the local vdir the same, as `mbsync` does for mail. Unconfigured, `vdirsyncer sync` does nothing and exits 0 |
 
 `khal` and `khard` refuse to start with no store configured, so the shipped configuration names
-empty ones, and the image build creates both directories in the `kdos` home (an account added
-later makes its own; see [Users and groups](#users-and-groups)): `khal` reads every directory
-under `~/.local/share/calendars/`, and `khard` reads the one address book
-`~/.local/share/contacts/personal`. To add a calendar, make a directory under
+one empty collection for each, and the image build creates both in the `kdos` home (an account
+added later makes its own; see [Users and groups](#users-and-groups)): `khal` reads every directory
+under `~/.local/share/calendars/`, of which the image ships one, `personal`, the calendar
+`khal import` and `khal new` write into; `khard` reads the one address book
+`~/.local/share/addressbooks/personal`. To add a calendar, make a directory under
 `~/.local/share/calendars` and put `.ics` files in it; `khal` discovers it with no registration.
+`~/.local/share/contacts` is Akonadi's default address book, which KAddressBook and Merkuro
+use, and Akonadi treats every directory in it as its own; nothing else writes there.
 
 These are the terminal's calendar and address book. On the desktop, Thunderbird is the default
 calendar and address book, and KOrganizer, Merkuro and KAddressBook keep theirs through Akonadi;
@@ -1572,7 +1610,10 @@ one index file instead of walking the tree, as `fd` does.
 The index is per user. A timer in `~/.config/kdos/timers.d/` rebuilds it nightly at 03:05, covering
 only `$HOME`, and writes it to `~/.cache/kdos/plocate.db`, so it can only contain paths you could
 already list. `LOCATE_PATH`, set in `/etc/profile.d/40-plocate.sh`, points `plocate` at it, and
-`locate` is the same program under its usual name. Run `kdos-updatedb` to rebuild it now.
+`locate` is the same program under its usual name. An account with no index yet, a new one or a
+live session, gets its first at login: the timers service builds it in the background with
+`kdos-updatedb --if-missing`, which does nothing when the index exists. Run `kdos-updatedb` to
+rebuild it now.
 
 `updatedb` is plocate's, in `/usr/sbin`. findutils' own `locate` and `updatedb` are not installed,
 because they read and write a different index format.
@@ -1587,8 +1628,10 @@ KDOS is in English, and only English. Every package is made without its translat
 message catalogs, the Qt translations, the translated KDE handbooks and the translated manual pages
 are removed as it is built (see
 [the size and language policy](../05-developer/writing-ports.md#size-and-language-policy)), so
-there is no other language for a program to switch to. `/etc/profile` sets `LANG=C.UTF-8`; setting
-`LANG` or `LC_MESSAGES` to another language changes no program's menus or messages.
+there is no other language for a program to switch to. `/etc/locale.conf` ships
+`LANG=en_US.UTF-8`, which SDDM gives every session and `/etc/profile` gives a login shell that has
+no `LANG`: American English, with dates such as `11/9/26` and the dollar sign. Setting `LANG` or
+`LC_MESSAGES` to another language changes no program's menus or messages.
 
 Writing in another language is unaffected. The fonts cover every script, the keyboard layout is
 yours to choose on System Settings → Keyboard, and the input methods below type Chinese, Japanese
@@ -1602,14 +1645,20 @@ listed in [Known gaps](../06-reference/known-gaps.md#every-program-speaks-englis
 Chinese (pinyin, shuangpin and the table methods), Japanese (Anthy) and Korean (Hangul). KWin starts
 it as the session's input method and restarts it if it dies, as `[Wayland] InputMethod` in
 `kwinrc` names; System Settings → Keyboard → Virtual Keyboard chooses another, such as the
-on-screen keyboard. Qt 6 and GTK 4 programs reach it through KWin's text input and GTK 3 programs
-through fcitx5's own GTK module, each toolkit choosing by itself, so no `QT_IM_MODULE` or
-`GTK_IM_MODULE` is set ([Input methods](../03-architecture/session.md#input-methods)). System Settings → Input Method adds and orders the input methods.
+on-screen keyboard. Qt 6, GTK 3 and GTK 4 programs reach it through KWin's text input, each
+toolkit choosing by itself, so no `QT_IM_MODULE` or `GTK_IM_MODULE` is set; fcitx5's own GTK
+module serves a GTK program under Xwayland ([Input methods](../03-architecture/session.md#input-methods)). System Settings → Input Method adds and orders the input methods.
 
-`Ctrl+Space` switches input methods; that is fcitx5's own binding. Switching keyboard groups is on
-`Meta+Alt+Space` and `Meta+Alt+Shift+Space`, set in `/etc/xdg/fcitx5/config`, because `Meta+Space`
-opens KRunner and KWin's shortcuts are matched before a key reaches the input method. fcitx5 draws
-its candidate window beside the text being typed.
+`Ctrl+Space` turns the input method on and off, between the keyboard layout and the method used
+last; that is fcitx5's own binding. Pressed again with `Ctrl` still held, the second `Space` turns
+it off and each one after steps through the methods of the group. The method can also be chosen
+from the input method's tray menu. `Meta+Alt+Space` and `Meta+Alt+Shift+Space` cycle fcitx5's
+input-method groups, which the Input Method page adds; the image ships one group, so they change
+nothing until a second exists. They are set in `/etc/xdg/fcitx5/config`, off fcitx5's default
+`Meta+Space`, because `Meta+Space` opens KRunner and KWin's shortcuts are matched before a key
+reaches the input method. Keyboard layouts added on System Settings → Keyboard are KWin's, not
+fcitx5's, and switch with KWin's `Meta+Alt+K`. fcitx5 draws its candidate window beside the text
+being typed, in a program that tells it where the cursor is.
 
 Cloud pinyin is compiled out: it would send what you type to a remote service.
 

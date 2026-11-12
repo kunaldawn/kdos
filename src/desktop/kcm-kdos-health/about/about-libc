@@ -16,4 +16,4 @@ R=${KDOS_ABOUT_ROOT:-}
 v=
 [ -r "$R/var/lib/kpkg/db/musl" ] && read -r v _ <"$R/var/lib/kpkg/db/musl"
 case $v in '' | *[!0-9a-z.]*) v=musl ;; *) v="musl $v" ;; esac
-printf 'C library\n%s\n' "$v"
+printf 'C library:\n%s\n' "$v"

@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/app-id.patch"
+
 mkdir -p build && cd build
 qmake6 .. \
 	PREFIX=/usr \

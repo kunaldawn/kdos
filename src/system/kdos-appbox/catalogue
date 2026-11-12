@@ -171,7 +171,16 @@ base    base      -        bash bc bzip2 ca-certificates curl diffutils findutil
 # (grace) needs core fonts and `xhost`, and a
 # box has neither unless its runtime carries them. Measured on the sweep:
 # `Couldn't get font -adobe-helvetica…`, `xhost: command not found`.
-runtime rt-gtk    base     libgtk-3-0t64 libgtk-4-1 libadwaita-1-0 gtk-update-icon-cache xfonts-base x11-xserver-utils
+#
+# THE GTK THEME THE SESSION NAMES HAS TO BE IN THE BOX. Plasma's GTK bridge
+# names Breeze and writes the session's colours into ~/.config/gtk-3.0 for it,
+# and every launch exports that name as GTK_THEME; a box with no Breeze GTK
+# theme draws GTK's built-in Adwaita under every accent. breeze-gtk-theme is
+# that theme, GTK 2, 3 and 4, light and dark. NOT kde-config-gtk-style for its
+# colorreload-gtk-module: GTK 3 on Wayland loads the modules org.gtk.Settings
+# names on the session bus, which a box's filtered bus does not reach, so in a
+# box the module is KDE Frameworks pulled in for a library that never loads.
+runtime rt-gtk    base     libgtk-3-0t64 libgtk-4-1 libadwaita-1-0 gtk-update-icon-cache xfonts-base x11-xserver-utils breeze-gtk-theme
 
 # Qt, and NOTHING KDE. qt6-wayland/qtwayland5 are the platform PLUGIN and are
 # not optional: without them every Qt app falls back to xcb under an Xwayland
@@ -263,7 +272,6 @@ app app.vscodium     rt-electron  ca-certificates curl
 # It is NOT the smaller browser: webkit2gtk and its GStreamer set are 275 MB
 # against Firefox ESR's 144. What it is smaller than is its own interface.
 app app.surf         rt-gtk       surf suckless-tools
-app app.kcalc        rt-kde       kcalc
 
 # ── the catalogue's boxed ring ────────────────────────────────────────────
 # One row per application, as above. Every row must resolve against the pinned
@@ -303,7 +311,6 @@ app app.imagej           rt-gtk       imagej
 app app.gwyddion         rt-gtk       gwyddion
 app app.seaview          rt-gtk       seaview
 app app.igv              rt-gtk       igv
-app app.kig              rt-kde       kig kmplot
 app app.scilab           rt-sci       scilab
 app app.scipy-stack      rt-sci       python3-pandas python3-sympy python3-sklearn jupyter-notebook
 app app.heaptrack        rt-kde       heaptrack heaptrack-gui qt5-gtk-platformtheme
@@ -366,14 +373,11 @@ app app.xournalpp       rt-gtk       xournalpp
 # Qt applications
 app app.sioyek          rt-qt        sioyek
 
-# KDE applications — the one that rt-kde does not imply. Spectacle is NOT in
-# the catalogue: on Wayland it needs KWin's own screenshot interface and opens
-# an error dialog on any other compositor (measured here), and screenshots
-# are the host's `kdos-shot`, where the capture globals are. Every name in
-# this block was checked against a real trixie index before it was written,
-# which is cheap and is the difference between a bake that takes an hour and
-# one that dies in the middle of it.
-app app.kwalletmanager  rt-kde       kwalletmanager
+# KDE APPLICATIONS THE HOST BUILDS ARE NOT ROWS. KDE Gear is ported natively,
+# and a boxed second copy of a native application is a second Start-menu
+# entry with the same name and nothing to tell the two apart. Spectacle is not
+# a row either: on Wayland it needs KWin's own screenshot interface, and
+# screenshots are the host's `kdos-shot`, where the capture globals are.
 
 # Games and emulators. SDL rather than a toolkit, so they sit on `base`.
 app app.desmume         base         desmume
@@ -475,7 +479,25 @@ group games       app.gnome-chess
 # That is what an application looks like until somebody writes one, and it
 # must never be an error — otherwise adding software is a two-file change
 # for no benefit.
-meta app.aegisub              Aegisub|AudioVideo|73260353|A free, cross-platform open source tool for creating and modifying subtitles
+#
+# A ROW'S <bytes> IS WHAT ITS IMAGE ADDS ON DISK over its parent's, the
+# unpacked files of the packages its build installs; a base's is its whole
+# image, the image it starts FROM included. The base and runtime sizes were
+# measured by building each row's generated Containerfile on trixie and
+# taking `du -sxb /` of the image against its parent's. They are what makes
+# a first install's estimate honest: Discover adds every row up the chain
+# whose image is not built yet (`kdos-appbox catalogue --chain`), and the
+# install's room check counts them.
+meta alpine                   Alpine base|System|8411047|A minimal musl and busybox userland
+meta base                     Debian base|System|548939987|The Debian userland every catalogue box is built on
+meta rt-gtk                   GTK runtime|System|98357767|GTK 3, GTK 4 and libadwaita, with the Breeze GTK theme
+meta rt-qt                    Qt runtime|System|178508316|Qt 5 and Qt 6 widgets on Wayland, with the GTK platform theme
+meta rt-kde                   KDE runtime|System|457474005|KDE Frameworks, KIO and Breeze, on the Qt runtime
+meta rt-media                 Media runtime|System|323452835|FFmpeg, GStreamer and PipeWire's JACK and Pulse clients
+meta rt-sci                   Scientific Python runtime|System|411788044|Python 3 with NumPy, SciPy and Matplotlib
+meta rt-electron              Electron runtime|System|7204171|The libraries an Electron application loads
+meta rt-wine                  Wine runtime|System|1612276954|Wine, 64-bit and 32-bit
+meta app.aegisub             Aegisub|AudioVideo|73260353|A free, cross-platform open source tool for creating and modifying subtitles
 meta app.apertium             Apertium|Office|24838994|Rule-based machine translation between related languages
 meta app.arduino              Arduino IDE|Development|336719721|Open-source electronics prototyping platform
 meta app.astrometry           Astrometry.net|Science|48128859|Plate-solve a sky photograph: find where in the sky it points
@@ -510,10 +532,7 @@ meta app.hexchat              HexChat|Network|5537523|IRC Client
 meta app.igv                  Integrative Genomics Viewer|Science|191418197|desktop genome vizualisation tool
 meta app.imagej               ImageJ|Graphics|102488017|Image processing and analysis
 meta app.jmol                 Jmol|Java|217396121|Java molecular viewer for three-dimensional chemical structures
-meta app.kcalc                KCalc|Utility|2090004|Scientific calculator
-meta app.kig                  Kig|Education|195297545|Interactive Geometry
 meta app.kstars               KStars|Education|51489441|Desktop Planetarium
-meta app.kwalletmanager       KWalletManager|System|1536389|Wallet Management Tool
 meta app.maxima               wxMaxima|Education|176230490|A graphical user interface for Maxima, a powerful computer algebra system
 meta app.mesa-utils          mesa-utils|Development|12000000|glxgears, glxinfo and es2gears — what a GL problem is diagnosed with
 meta app.meld                 Meld|Development|27420076|Compare and merge your files

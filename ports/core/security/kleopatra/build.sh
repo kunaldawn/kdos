@@ -55,5 +55,18 @@ SingleMainWindow=true
 Categories=Qt;KDE;System;Security;
 Keywords=gpg;gnupg;log;watch;kwatchgnupg;
 EOF2
+cat > "$PKG/usr/share/applications/org.kde.kleopatra.decryptverify.desktop" <<'EOF2'
+[Desktop Entry]
+Type=Application
+Name=Kleopatra (Decrypt/Verify)
+Comment=Decrypt and verify OpenPGP files
+Exec=kleopatra --decrypt-verify -- %F
+Icon=kleopatra
+Terminal=false
+NoDisplay=true
+MimeType=application/pgp-encrypted;application/pgp-signature;
+Categories=Qt;KDE;Utility;Security;
+EOF2
 chmod 644 "$PKG"/usr/share/applications/org.kde.kleopatra.desktop \
-	"$PKG"/usr/share/applications/org.kde.kwatchgnupg.desktop
+	"$PKG"/usr/share/applications/org.kde.kwatchgnupg.desktop \
+	"$PKG"/usr/share/applications/org.kde.kleopatra.decryptverify.desktop

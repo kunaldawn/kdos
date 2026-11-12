@@ -26,7 +26,6 @@ kdesdk-kio
 kio-admin
 kio-gdrive
 kio-zeroconf
-colord-kde
 kde-inotify-survey
 kdenetwork-filesharing
 markdownpart

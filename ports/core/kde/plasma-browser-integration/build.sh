@@ -20,6 +20,7 @@ cmake -S . -B build -G Ninja \
 	-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build
+rm "$PKG/usr/lib/qt6/plugins/kf6/kded/browserintegrationflatpakintegrator.so"
 for _b in firefox-esr librewolf; do
 	install -Dm644 "$name-extension-$_xpi.xpi" \
 		"$PKG/usr/lib/$_b/distribution/extensions/plasma-browser-integration@kde.org.xpi"

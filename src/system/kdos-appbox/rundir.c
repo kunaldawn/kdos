@@ -23,12 +23,12 @@
  *                           the session's directory stays out of the box
  *   at-spi/                 the accessibility bus, linked the same way, only
  *                           for somebody who opted in (box_a11y_wanted)
- *   doc/                    the mount point the document portal is bound on
  *   Xauthority              the session's X11 cookie, only for a box whose
  *                           `x11` resolves to yes
  *
- * The session's own `wayland-0` and `bus` are never in it. KWin's tag filters
- * only what reaches the tagged socket, so a box that could open `wayland-0`
+ * The session's own Wayland socket (the one $WAYLAND_DISPLAY names, KWin's
+ * `wayland-1`) and `bus` are never in it. KWin's tag filters only what
+ * reaches the tagged socket, so a box that could open the session's socket
  * would be one connect() away from every global the tag denies; that is why
  * there is no fallback to the session's socket anywhere in this program.
  *
@@ -37,11 +37,10 @@
  * the session's directory and links again; a launch links again too.
  *
  * THE DIRECTORY IS NOT THE ONLY WAY OUT, and the state file says so. A box
- * created over the session's runtime directory (a store box, which distrobox
- * makes, or a pack box made before it had one) still shares every socket in
- * it, and an X11 display the box can reach bypasses the tag altogether —
- * Xwayland is one client to KWin. Either makes the box `tagged`, never
- * `confined`.
+ * created over the session's runtime directory (one distrobox made from
+ * somebody else's image) still shares every socket in it, and an X11 display
+ * the box can reach bypasses the tag altogether — Xwayland is one client to
+ * KWin. Either makes the box `tagged`, never `confined`.
  */
 
 #include "kdos-appbox.h"
@@ -306,46 +305,6 @@ void rundir_link_sockets(const char *box, int audio, int a11y)
 }
 
 /*
- * THE DOCUMENT PORTAL'S MOUNT POINT HAS TO EXIST BEFORE A START. A box is
- * created with the session's `doc` directory bound in, and a bind whose
- * source is missing is a container that does not start — which after a reboot
- * is every box, because /run/user is new and the portal mounts on demand. So
- * the portal is asked for its mount point first, which starts it, and an
- * empty directory stands in when it does not answer: a box then has no
- * documents until it is restarted, rather than no box.
- */
-static void doc_portal_ready(void)
-{
-	char doc[MAX_LINE];
-	struct stat st, parent;
-
-	snprintf(doc, sizeof(doc), "%s/doc", box_rundir());
-	if (stat(doc, &st) == 0 && stat(box_rundir(), &parent) == 0 &&
-	    st.st_dev != parent.st_dev)
-		return;
-	if (kb_have_prog("gdbus")) {
-		KbArgv a = {0};
-		char out[512];
-
-		kb_argv_add(&a, "gdbus");
-		kb_argv_add(&a, "call");
-		kb_argv_add(&a, "--session");
-		kb_argv_add(&a, "--timeout");
-		kb_argv_add(&a, "3");
-		kb_argv_add(&a, "--dest");
-		kb_argv_add(&a, "org.freedesktop.portal.Documents");
-		kb_argv_add(&a, "--object-path");
-		kb_argv_add(&a, "/org/freedesktop/portal/documents");
-		kb_argv_add(&a, "--method");
-		kb_argv_add(&a, "org.freedesktop.portal.Documents.GetMountPoint");
-		kb_argv_end(&a);
-		kb_run_capture(&a, out, sizeof(out));
-	}
-	if (!kb_path_exists(doc))
-		mkdir_private(doc);
-}
-
-/*
  * THE COOKIE, copied in only when the box is meant to have the display. The
  * file is the session's, and Xwayland accepts any client that presents it, so
  * a box that is handed it is a box that reaches X11 untagged.
@@ -364,7 +323,7 @@ static void x11_cookie(const char *pdir, int want)
 		tracef("rundir: cannot copy the X11 cookie: %s", strerror(errno));
 }
 
-int rundir_prepare(const Profile *p, const char *pack, int start)
+int rundir_prepare(const Profile *p, const char *pack)
 {
 	char pdir[MAX_LINE], sd[MAX_LINE], kd[MAX_LINE];
 
@@ -383,13 +342,6 @@ int rundir_prepare(const Profile *p, const char *pack, int start)
 	}
 	rundir_link_sockets(p->name, p->audio, box_a11y_wanted());
 	x11_cookie(pdir, profile_x11(p, pack));
-	if (start) {
-		char d[MAX_LINE + 8];
-
-		doc_portal_ready();
-		snprintf(d, sizeof(d), "%s/doc", pdir);
-		mkdir_private(d);
-	}
 	return 0;
 }
 

@@ -31,7 +31,7 @@ unless the install asked for autologin.
 
 The two console lines:
 
-<!-- kfs:include fs/etc/inittab lines=22-45 pin=0ea4cfa2ae5f -->
+<!-- kfs:include fs/etc/inittab lines=24-51 pin=a25c6ec1fbcf -->
 
 `kdos-dm` is started only once `rcS` has returned, and `rcS` lets go of the framebuffer
 synchronously at its end, so the greeter's compositor never races the boot splash for the
@@ -46,7 +46,7 @@ KDOS session wrapper and no X sessions (see
 [Session and environment](session-and-environment.md#how-sddm-starts-the-session)), the accounts
 from uid 1000 up, and the theme, from `fs/etc/sddm.conf.d/00-kdos.conf`:
 
-<!-- kfs:include fs/etc/sddm.conf.d/00-kdos.conf lines=50-63 pin=8cac08410de7 -->
+<!-- kfs:include fs/etc/sddm.conf.d/00-kdos.conf lines=56-69 pin=8cac08410de7 -->
 
 [`kde_settings.conf`]{.idx term="/etc/sddm.conf.d/kde_settings.conf"} is the one home of
 `[Autologin]`. The installer writes it, the Login Screen page of System Settings writes it, and it
@@ -55,7 +55,9 @@ overrides `00-kdos.conf`. The image ships the live medium's, from
 
 <!-- kfs:include fs/etc/sddm.conf.d/kde_settings.conf -->
 
-`Relogin=true` logs the account in again when its session ends. An install replaces the file:
+`Relogin=true` logs the account in again when its session ends; Switch User still shows a greeter,
+on a free VT, through [sddm](#port-sddm)'s `sddm-switch-user-greeter.patch`. An install replaces
+the file:
 with the new account's `[Autologin]` and `Relogin=false` on a single-account machine with an
 encrypted root that asked for it, and with no `[Autologin]` anywhere else, which shows the greeter.
 
@@ -63,7 +65,7 @@ encrypted root that asked for it, and with no `[Autologin]` anywhere else, which
 
 `sddm` installs three stacks of its own, from `ports/core/auth/sddm/build.sh`:
 
-<!-- kfs:include ports/core/auth/sddm/build.sh lines=36-70 pin=048145511062 -->
+<!-- kfs:include ports/core/auth/sddm/build.sh lines=39-73 pin=048145511062 -->
 
 `sddm` is a password login and `sddm-autologin` one with no password, refused for any uid under
 1000 except the OEM wizard's `plasma-setup`. `sddm-greeter` is the greeter's own session;
@@ -84,7 +86,7 @@ after the disk passphrase" leaves the directory out.
 
 | File | Holds |
 |---|---|
-| `/var/lib/sddm/` | The greeter account's home: the last user and session, and the greeter's output settings. `kdos-dm` makes it at every start |
+| `/var/lib/sddm/` | The greeter account's home: the last user and session, the greeter's output settings, and its look in the machine's accent (`.config/kdeglobals`, `plasmarc`, `kcminputrc` and `kdos-background.png`). The image ships it with the default accent's look; `kdos-dm` makes it at every start when it is missing |
 | `/etc/locale.conf` | The language the greeter speaks; see [Locale and console](locale-and-console.md) |
 | `/etc/kdos/xkb.conf` | The greeter's keyboard layout, read by its KWin through locale1 |
 | `/var/lib/AccountsService/icons/<user>` | An account's picture on the greeter, set on the Users page |
@@ -173,7 +175,7 @@ executable, there is no `sddm` account, or SDDM exited three times within a minu
 or on `tty2` and read why:
 
 ```bash
-grep kdos-dm /var/log/messages
+sudo grep kdos-dm /var/log/messages
 sudo tail -40 /var/log/sddm.log
 ```
 

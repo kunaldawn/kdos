@@ -51,6 +51,7 @@ Comment=Read QR codes and barcodes held up to the camera
 Exec=zbarcam
 Icon=camera-web
 Terminal=true
+NoDisplay=true
 Categories=AudioVideo;Video;
 Keywords=qr;barcode;scan;camera;zbar;
 DESKTOP

@@ -8,9 +8,9 @@
  *   AppsPage — which application groups the machine builds, and how
  *
  * The groups are the medium's catalogue, as kinstall reads it. The page says
- * how the ticked ones will arrive — from a stick, built over the network
- * during the install, or offered at the first login — because a person must
- * not find out at the first login that nothing was installed.
+ * how the ticked ones arrive — recorded, and offered by the first login,
+ * which builds them; nothing is built during the install — because a person
+ * must not find out at the first login that nothing was installed.
  */
 
 import QtQuick
@@ -32,7 +32,7 @@ WizardPage {
         Layout.fillWidth: true
         wrapMode: Text.Wrap
         text: page.groups.length > 0
-            ? i18n("KDOS's own applications are on the disk already. These groups are built from the store, each in a box of its own.")
+            ? i18n("KDOS's own applications are on the disk already. These groups are built from the store, each in a box of its own, after the install.")
             : i18n("This medium carries no application catalogue. Applications are installed later from Discover.")
     }
 
@@ -72,11 +72,10 @@ WizardPage {
     Kirigami.InlineMessage {
         Layout.fillWidth: true
         visible: page.groups.length > 0
-        type: Backend.apps.route === "pending" ? Kirigami.MessageType.Warning : Kirigami.MessageType.Information
-        text: Backend.apps.route === "import" ? i18n("They come from the set on %1 — no network needed.", Backend.apps.archive)
-            : Backend.apps.route === "network" ? i18n("They are built during the install, over the network; this adds minutes to it.")
-            : Backend.apps.route === "pending" ? i18n("There is no network and no exported set, so the choice is kept and the first login offers to build them.")
-            : i18n("No group is chosen; the store installs them later.")
+        type: Kirigami.MessageType.Information
+        text: Backend.apps.route === "pending"
+            ? i18n("The choice is recorded on the new disk, and the first login offers to build them; that needs a network and takes minutes per application. Nothing is built during the install.")
+            : i18n("No group is chosen; Discover installs applications later.")
     }
 
     QQC2.CheckBox {

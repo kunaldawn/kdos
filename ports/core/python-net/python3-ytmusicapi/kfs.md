@@ -14,6 +14,11 @@ writes the browser or OAuth credentials file a script then hands to the library.
 YouTube Music changes its web API without notice, and ytmusicapi follows with frequent releases;
 a version a few months old may fail on pages audiotube opens.
 
+The version is the one audiotube names as tested, `TESTED_YTMUSICAPI_VERSION` in its
+`src/ytmusic.h`. audiotube compares the installed version with that string at every start and
+shows an "untested version of ytmusicapi" error for any other, newer ones included, so a bump of
+this port moves with an audiotube release that names the new version.
+
 The package carries the translated result-parsing tables under `ytmusicapi/locales/` as `.mo`
 files inside its Python package. They are data the parser matches YouTube Music's localised
 responses against, not interface translations, and they are not under `/usr/share/locale`.

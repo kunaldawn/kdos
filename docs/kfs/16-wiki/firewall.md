@@ -48,7 +48,7 @@ Every `*.nft` file here is included at the end of `nftables.conf`, and must add 
 |:--|:--|:--|
 | `40-podman.nft` | The base filesystem, `fs/etc/nftables.d/` | Forwarding and DNS for rootful podman's `podman*` bridges |
 | `40-libvirt.nft` | The [libvirt](#port-libvirt) package | Forwarding, DHCP and DNS for libvirt's `virbr*` bridges |
-| `50-kdos-services.nft` | The base filesystem, empty; rewritten whole by [`kdos-powerd`]{.idx} | The named services that are on |
+| `50-kdos-services.nft` | The base filesystem, as the daemon writes it with every service closed; rewritten whole by [`kdos-powerd`]{.idx} | The named services that are on; each closed one counts the packets from another machine that knock on it |
 
 The shipped `50-kdos-services.nft`:
 

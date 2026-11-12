@@ -37,8 +37,23 @@ The pinned applications are Konsole, Dolphin, Firefox ESR and Kate, the first wo
 holds the two lists together. The clock of each desk is drawn in the fixed-width face the global
 theme set, read from `kdeglobals` when the desk is laid out. The tray hides plasma-pa's microphone
 item and Plasma's camera indicator, because the [privacy lamps](#privacy-lamps) show both and name
-the box. The KDOS desk also adds the input-method panel when the session's language is one of
+the box, and leaves out Merkuro's contacts widget, a default-on tray applet whose loading starts
+Akonadi and its agents in every session. The tray enables a default-on applet it has not seen, so
+the layout script takes each of these out of the tray's `extraItems` and writes it into
+`knownItems`, where the tray never enables it later. The KDOS desk also adds the input-method panel when the session's language is one of
 those KDE adds it for.
+
+A Plasma panel neither wraps nor scrolls. Short of room, it narrows every applet that can give
+width toward its least: the task manager's launchers shrink, and the meters narrow their
+sparklines, down to none, while every figure stays whole. What still does not fit is cut off at
+the screen's edge, clock and Show Desktop first. Everything on the KDOS desk but the pinned
+applications is about 69 grid units wide, roughly 1,240 logical pixels without the pinned
+applications, which bring it to the 78-grid-unit threshold, so its script reads the screen's
+logical width when it lays the panel out: under 78 grid units (1,400 logical pixels at the default
+font) Start has no label and the network meter is left out, under 64 (1,150) the pager is left out
+as well, and under 50 (900) nothing more gives way and the Dock or Tiling desk is the one that
+fits. A change of scale, resolution or font size later does not lay the panel out again, and
+the shrinking above is what then keeps it whole; `kdos desk kdos` lays it out for the new width.
 
 ### How a desk is laid out
 
@@ -54,9 +69,13 @@ default panel, so a screen is never left without one.
 scripting. Laying a desk out removes every panel, so the command first copies the applets file,
 `~/.config/plasma-org.kde.plasma.desktop-appletsrc`, to the undo set, which `kdos desk undo` puts
 back, and to a dated backup under `~/.local/share/kdos/desk-backup/` that nothing removes, and
-prints the backup's path last. `kdos desk status --json` compares `LaidOut` with the applets
-file's time to tell whether the panels were changed by hand since, which is how the welcome tour
-knows to warn before it lays a desk over them. The installer writes the machine's choice into
+prints the backup's path last. After laying a desk out it asks plasmashell, read-only, for each
+panel's location and alignment and the plugins of its applets in order, and records a digest of
+that in `[Desk] LaidOutPanels`. `kdos desk status --json` asks again and compares, so a panel
+added, moved or removed, or an applet added, removed or reordered, counts as changed by hand, and
+the state Plasma saves into the applets file for itself (a popup's size) does not; that is how the
+welcome tour knows to warn before it lays a desk over them. A desk the first login laid out has
+no digest yet, and the first `status` in a session records the panels as they are. The installer writes the machine's choice into
 `/etc/xdg/kdosrc`; `kdos desk` writes the person's into `~/.config/kdosrc`. The command is in
 [The kdos command](kdos-command.md).
 
@@ -99,11 +118,18 @@ screen), each only while something is capturing it, and names what is: "Firefox 
 
 What is capturing comes from `kdos privacy --watch --json`, which prints one line of JSON at once
 and another each time a capture starts, stops or is muted. It reads PipeWire's streams for the
-microphone and the screen, the holders of `/dev/video*` and PipeWire's camera nodes for the
-camera, the desktop portal's screencast sessions, and each process's box from its cgroup scope.
+microphone, the holders of `/dev/video*` and PipeWire's camera nodes for the camera, KWin's
+screencast streams in PipeWire for the screen (whether Spectacle or the desktop portal asked for
+them), and each process's box from an `app-kdos-<box>-<n>.scope` in its cgroup path or, where it
+has none, from the `KDOS_BOX=<box>` in its environment when it runs in a mount namespace other than
+the session's. `kdos-appbox` sets that variable in every box's container and podman passes it to
+every launch, so a store box and a pack box are named alike; the namespace test keeps a host
+program that merely inherited the variable from a `kdos-box enter` shell from being named a box's.
 The applet does not poll: it keeps the watcher running and starts it again when it exits. Mute and
 Stop run `kdos privacy mute|unmute|stop <id>` for a capture the watcher listed, and only what the
-watcher says can be done. While nothing captures the applet is passive and the tray hides it.
+watcher says can be done. While nothing captures the applet is passive and the tray hides it. In
+the tray the popup's own header carries the title, and the list draws its own only on a panel or
+the desktop.
 
 The applet is enabled by default in its notification-area category, which puts it in every tray
 without a layout naming it. A line of a version the applet does not know is ignored, so a newer
@@ -116,10 +142,15 @@ without opening a `/dev/video*` node is not seen.
 `org.kdos.checklist` that the welcome tour's last page also shows. Its items are: set up a backup,
 pair your phone (optional), add a language, create your first box, check firmware, and confirm
 disk encryption. Which of them apply to this machine, and whether each is done or dismissed, comes
-from `kdos checklist --json`, which leaves out an item whose part of the system is not installed.
+from `kdos checklist --json`, which leaves out an item whose part of the system is not installed or
+that cannot be done here: disk encryption on the live medium, whose root is no disk.
 The probe runs every five seconds while an item is still to do, so creating a box ticks its row
 within that, and not at all once every item is done or dismissed; the tray entry then hides
 itself. Not Now runs `kdos checklist dismiss <id>`, Show Dismissed Items `kdos checklist restore`.
+Each row's mark is a read-only check box named by the item and takes the keyboard first in its row,
+so a screen reader says the item and whether it is done before its buttons, and a done row, which
+has no buttons, can still be reached. In the tray the popup's own header carries the applet's
+title; the applet draws its own heading only on a panel or the desktop.
 
 Each item's words and the program its button opens are in the module, keyed by the item's id, and
 never in the probe's output, so nothing the probe prints is ever run. The buttons open System
@@ -147,16 +178,25 @@ The runner `kdos` (object `/runner`) is the KDOS command palette. It offers:
 
 | Type | Example | Runs |
 |---|---|---|
-| A `kdos` verb, with its arguments filled in | `accent amber`, `phosphor on`, `tiling off`, `desk dock`, `night light`, `update check`, `doctor`, `box stop www`, `install gimp`, `why /etc/fstab` | `kdos …` or `kdos-box …` |
+| A `kdos` verb, with its arguments filled in | `accent amber`, `accent next`, `accent prev`, `phosphor on`, `tiling off`, `desk dock`, `night light`, `reduced motion`, `update check`, `doctor`, `box stop www`, `install gimp`, `why /etc/fstab` | `kdos …` (`night light` is `kdos toggle night-light`) or `kdos-box …` |
 | A favourite, by its two letters | `FF` | the line of `~/.config/kdos/favorites` that carries `code=FF` |
-| A route of `/etc/kdos/menu.conf` | the words of its name, or `route:<name>` exactly | the route's program |
-| A KDOS settings page, by what it is for | `previous version` | System Settings at [System Versions](kdos-settings.md#system-versions) |
-| A pack or `.ktar` set on the boot medium | `gimp` offers `app.gimp (on medium)` | Discover with `--local-filename`, under the `medium` origin |
+| A route of `/etc/kdos/menu.conf` | the words of its name, or `route:<name>` exactly; the row reads *Set up network* over `route:setup.network` | the route's program |
+| A pack or `.ktar` set on the boot medium | `install gimp` offers `app.gimp (on medium)` | Discover with `--local-filename`, under the `medium` origin |
+| The library alone | `lib photosynthesis` | nothing; KRunner opens again on the words with `kdos-library` alone (see [The library](#the-library)) |
 | The current shortcuts | `keys <words>` | nothing; the rows show the chords as KGlobalAccel holds them now |
 | A question for the local model | `ask what does a box grant?` | nothing; Enter copies the answer (see [Ask](#ask)) |
 
+**The palette ranks first.** KRunner sorts its favourite runners' categories above every other
+category, whatever a row's relevance, and `/usr/share/kdos/xdg/krunnerrc` names `kdos` first in
+`[Plugins][Favorites] plugins`, ahead of KRunner's own sessions, power, applications and System
+Settings runners. A pack on the boot medium therefore answers only after `install`: a bare `gimp`
+would otherwise put the medium's pack above the installed GIMP. KDOS's own settings pages are not
+palette rows; System Settings' runner finds them by the `X-KDE-Keywords` of their metadata
+(`previous version` finds [System Versions](kdos-settings.md#system-versions)).
+
 A verb that prints its answer (`update check`, `doctor`, `why`) opens in Konsole with `--hold`, and
-`box enter` runs `konsole -e kdos-box enter <box> --shell`. A verb run in the background is watched
+`box enter` runs `kdos-box enter <box> --window`, the box's own Konsole window in its accent
+profile. A verb run in the background is watched
 by a detached process, which posts the verb's error output as a notification when it fails, so a
 refused `kdos theme` is never silent. The programs a row may start are `kdos`, `kdos-box`,
 `kstart`, `systemsettings`, `plasma-discover`, `konsole`, `khelpcenter`, `zeal` and `xdg-open`;
@@ -167,8 +207,10 @@ none is a dependency, and a missing one fails only its row.
 The runner `kdos-library` (object `/library`) searches the offline library: headings of this book
 and *KDOS from Scratch* under `/usr/share/doc`, the `kdos*` manual pages, the entries of every Zeal
 docset, a typed coordinate as a `geo:` link, title suggestions from every ZIM file `kiwix-serve`
-serves on `127.0.0.1:8080`, and resources from Kolibri on `127.0.0.1:8081`. A plain query ranks
-these below everything else; a query beginning with `?` asks the library alone. The book index is
+serves on `127.0.0.1:8080`, and resources from Kolibri on `127.0.0.1:8081`. Its rows rank below
+everything else, and `kdos-library` is not among krunnerrc's favourites. The palette's
+`lib <words>` asks the library alone: its row calls KRunner's `querySingleRunner` with
+`kdos-library` and the words, so KRunner opens again showing only the library. The book index is
 built in a child process once per install of `kdos-doc` or `kdos-kfs` and kept in
 `~/.cache/kdos/runner-books`; until it is written the library answers without the books. Place
 names are not searched, because neither Organic Maps nor Marble has an offline index another
@@ -236,19 +278,22 @@ set of processes running replaced code, the set of findings, the boot and its sl
 slot, the pending applications) and posts only when the key differs from the last one posted, which
 `$XDG_STATE_HOME/kdos/notice` keeps across logins: the same vulnerability list is not announced at
 every login, and a changed one replaces the old notification. A notice whose state ends is
-withdrawn. A command that does not answer changes nothing. Deleting the state file announces
-everything once more.
+withdrawn. A command that does not answer changes nothing. The file is read when kdos-notice
+starts, so deleting it announces everything once more at the next login.
 
-Nothing polls a command. An inotify watch on `/var/lib/kpkg/db` and on `/var/lib/kdos/update.json`
-asks `kdos restarts` and `kdos cve` ten seconds after the last change, and one on
+Nothing polls a command. An inotify watch on `/var/lib/kpkg/db`, which sees a package entry
+written, created, moved in or deleted, and on `/var/lib/kdos/update.json` asks `kdos restarts` and `kdos cve` ten seconds after the last change, and one on
 `/run/kdos/bootstate.json` asks `kdos-bootctl`. Only kdos-oomd's kill count is read on a timer,
 one line every ten seconds. Everything, the installer's pending list included, is looked at
 twenty seconds after login, every six hours,
 and two seconds after a new owner takes `org.freedesktop.Notifications`, when the notices still
 waiting for a person are posted again, because a restarted plasmashell lost them.
 
-The actions are fixed argument vectors: Details opens Konsole on `kdos cve` or `kdos restarts`,
-System Settings at System Versions, or Discover at "Selected during install", and Log Out asks Plasma's logout prompt over D-Bus. A signal
+The actions are fixed argument vectors. Details on the vulnerability notice opens Konsole on
+`kdos cve`, and on the trial and rollback notices opens System Settings at System Versions. Show
+Programs on an updated-programs notice opens Konsole on `kdos restarts`. Open Discover on the
+pending-applications notice opens Discover at "Selected during install". Log Out asks Plasma's
+logout prompt over D-Bus. A signal
 that claims to come from the notification server is acted on only when its sender owns
 `org.freedesktop.Notifications` at that moment.
 
@@ -267,7 +312,7 @@ then the freedesktop theme. The Notifications page writes a person's choice to
 
 ## kded-kdos
 
-`kded-kdos` is a kded6 module, `kf6/kded/kdos.so`, with three jobs.
+`kded-kdos` is a kded6 module, `kf6/kded/kdos.so`, with four jobs.
 
 **It keeps the accent in step with Plasma.** An accent chosen inside Plasma (a KDOS global theme on
 the Global Theme page, a KDOS colour scheme on the Colours page, Quick Settings' light and dark
@@ -287,23 +332,45 @@ verifies every pack. The module imports nothing itself. Only a regular, non-hidd
 ending in `.ktar` in lower case is offered, every name is escaped before it reaches the
 notification's text, and the listing stops after 4096 entries.
 
-**It starts Samba for the first shared folder.** `smbd` does not run until something is shared,
-and a folder shared from Dolphin's Share tab is a file `net usershare` writes into
-`/var/lib/samba/usershares`. The module watches that directory and, when it goes from holding no
-share to holding one, calls `StartFileSharing()` on `kdos-powerd`'s `io.kdos.Power1`, which starts
-Samba to serve it; see
-[Starting Samba for a shared folder](daemons.md#starting-samba-for-a-shared-folder). Only a session
-of a `sambashare` member can watch the directory, and only a member can share a folder.
+**It starts Samba for a login that can share folders.** `smbd` must run before Dolphin's Share
+tab can make the first share, because `net usershare add` asks it to turn the share's user names
+into SIDs. The boot starts it once the `sambashare` group has a member; an account just added to
+the group is a member from its next login. So in a session that can write into
+`/var/lib/samba/usershares`, which only a member's can, the module calls `StartFileSharing()` on
+`kdos-powerd`'s `io.kdos.Power1` once when it loads, which starts Samba if it is not running; see
+[Starting Samba for a shared folder](daemons.md#starting-samba-for-a-shared-folder).
+
+**It starts plasmashell again when it stops**, as
+[How plasmashell is kept running](#how-plasmashell-is-kept-running) describes.
 
 Its state is on the session bus at `org.kde.kded6`, object `/modules/kdos`, interface
 `io.kdos.Kded1`: `accent()`, `syncState()` (`idle`, `running` or `failed`), `lastError()` and
-`resync()`, with the signals `accentSynced` and `accentSyncFailed`. Its three notifications are the
+`resync()`, with the signals `accentSynced` and `accentSyncFailed`. Its four notifications are the
 events `importOffer` ("Application set on a removable drive"), `syncFailed` ("Accent not applied
-everywhere") and `shareStartFailed` ("Shared folder not served") in `kded_kdos.notifyrc`, so the
+everywhere"), `shareStartFailed` ("Folder sharing unavailable") and `shellRespawnLimit` ("Desktop
+shell keeps stopping") in `kded_kdos.notifyrc`, so the
 Notifications page lists them under KDOS and each can be silenced there. The
 [KDOS Look](kdos-settings.md#kdos-look) page reads it. The module id is the bare word `kdos`, not a
 dotted id, because kded registers each module at `/modules/<id>` and a dot is not allowed in an
 object path. `kdos theme` is described in [The kdos command](kdos-command.md#kdos-theme).
+
+### How plasmashell is kept running
+
+plasma_session starts plasmashell once, from its autostart entry, and the session has no service
+manager to start it again. KCrash restarts it after a crash signal, but plasmashell turns Qt's
+Wayland reconnection off for itself, so when KWin crashes or is replaced it exits normally, and a
+`kill -9` or `kquitapp6 plasmashell` leaves nothing to restart it either. kded6 reconnects to the new compositor and
+outlives it.
+
+So the module watches `org.kde.plasmashell` on the session bus. When the name has been gone for
+three seconds, long enough for `plasmashell --replace` or KCrash's own restart to take it back, it
+asks ksmserver's `isShuttingDown()`. If the session is not ending it starts `plasmashell`, and looks
+again twenty seconds later in case the new one exited before taking the name. A logout, and a
+ksmserver that does not answer, start nothing. It starts plasmashell at most five times in a
+minute; past that it raises one notification, `shellRespawnLimit` ("Desktop shell keeps stopping"),
+and leaves the desktop to the person, whose way back is `kstart plasmashell` or logging out and in.
+A second copy started while one is coming up is harmless: plasmashell is a unique D-Bus service and
+the later one exits.
 
 ## The welcome tour
 
@@ -313,14 +380,14 @@ which puts the KDOS mark and the "Plasma by KDE" credit on its first page.
 
 | Page | Offers |
 |---|---|
-| Accessibility | The screen reader, text size, high contrast, zoom, reduced motion, sticky, slow and bounce keys, mouse keys and dwell click; shown first, before anything else is asked |
+| Accessibility | Switches for the screen reader, reduced motion, sticky, slow and bounce keys, mouse keys and dwell click; the Fonts page for text size, the two high-contrast accents and the zoom chords; shown straight after the welcome page (and the live page on the live medium), before anything else is asked |
 | Look | The accents, light and dark, Phosphor mode, Night Light, reduced motion |
 | Desk | The three [desks](#the-desks), with undo and the backup's path |
-| Your System | The two system slots and the version each holds |
-| Keep Your Changes | Only on the live medium: keeping the session's changes in the free space on the stick |
+| Your System | The two system slots and the version each holds; on a one-slot install, that an update is applied over the running system with `kdos update apply --in-place` and there is no previous version; on the live medium, that it has no slots |
+| Keep Your Changes | Only on the live medium: keeping the session's changes in the free space on the stick, or on another USB stick |
 | Software and Boxes | Discover, boxes and packs |
 | Offline Library | What the library holds, and searching it |
-| Keys | The KDOS chords and the key card |
+| Keys | The KDOS chords and the key card: for each action the chord KDOS teaches while it is bound, otherwise the first bound chord with a modifier |
 | Privacy and Network | The privacy lamps, the firewall and what reaches the network |
 | Help | This book and *KDOS from Scratch* in the Help Center |
 | Getting Started | The [checklist](#getting-started) |
@@ -331,10 +398,14 @@ to `09-` straight after the welcome page, before Plasma's own. Every switch on a
 command that owns the setting (`kdos theme`, `kdos phosphor`, `kdos desk`, `kdos tiling`, `kdos
 persist`, `kwriteconfig6 --notify` for KDE keys Plasma watches, `dbus-send` for the screen reader
 and KWin's effects) through one shared runner, `kdos/Run.qml`, which refuses an empty argument or
-one holding a space, because Welcome Center splits a command on spaces. A command that fails shows
-Welcome Center's failure sentence, which ends with the command's last line of output. Phosphor mode
-is offered only while neither a screen reader nor a magnifier is on, and is disabled with the
-reason under software rendering.
+one holding a space, because Welcome Center splits a command on spaces. A command that changes a
+setting greys the page's controls until it exits; a program that stays open, such as a settings
+page, Discover or the Help Center, is started without that, so the page stays usable while it is
+open. A command that fails shows Welcome Center's failure sentence, cut to the sentence and the
+command's last line of output. The Accessibility, Look and Keys pages read their settings again
+whenever they are shown and whenever the window comes back to the front. Phosphor mode is offered
+only while neither a screen reader nor a magnifier is on, and is disabled with the page's own
+sentence for the reason under software rendering.
 
 On the live medium `/usr/share/kdos/xdg-live/plasma-welcomerc` sets `LiveEnvironment=true` and
 `LiveInstaller=kdos-installer`, so the tour opens at every login on its live page, whose big icon
@@ -344,8 +415,14 @@ starts the installer ([kinstall](kinstall.md)).
 
 System Monitor and the meters on the KDOS desk read sensors from ksystemstats. `ksystemstats-kdos`
 adds a sensor plugin, `ksystemstats/ksystemstats_plugin_kdos.so`, a sensor face called KDOS Meters,
-and a System Monitor page. `/usr/share/kdos/xdg/systemmonitorrc` puts the KDOS page second, after
-Overview, and the stock Applications page third, where each running box is one application.
+and two System Monitor pages, Overview and KDOS. `/usr/share/kdos/xdg/systemmonitorrc` opens System
+Monitor on that Overview, puts the KDOS page second and the stock Applications page third, and
+hides the stock Overview. The stock page asks for
+per-disk, per-interface and GPU sensors, which the live medium (its root is a RAM overlay with no
+block device), a virtual machine and a graphics card ksystemstats cannot read do not have, and a
+page that names a missing sensor opens under a "missing some sensors" banner. KDOS's Overview
+reads the disk and network totals instead and follows `gpu/gpu<n>/usage`, so it shows each card
+that reports its use and nothing where none does.
 
 ### The sensors
 
@@ -353,7 +430,7 @@ The plugin publishes one container, `kdos`:
 
 | Sensors | What they read |
 |---|---|
-| `kdos/box/<box>/{name,icon,cpu,memory,memoryLimit,ioRead,ioWrite,processes,energy}` | Each running box's cgroup scope, `app-kdos-<box>-<n>.scope`; the name and icon of the launcher whose `X-KDOS-Box` names the box |
+| `kdos/box/<box>/{name,icon,cpu,memory,memoryLimit,ioRead,ioWrite,processes,energy}` | Each running box's cgroup scope, `app-kdos-<box>-<n>.scope`, or, for a box with none, its processes: those of the session's user, in a mount namespace other than the plugin's, whose environment carries `KDOS_BOX=<box>`; the name and icon of the launcher whose `X-KDOS-Box` names the box |
 | `kdos/box/all/{boxes,cpu,memory,ioRead,ioWrite,processes}` | The same, summed over every box |
 | `kdos/energy/<app>[@<box>]/{name,app,box,impact,cpuTime,gpu}` and `kdos/energy/all/…` | `report-json` on `/run/kdos-energyd.sock`, from [kdos-energyd](daemons.md#kdos-energyd) |
 | `kdos/slot/{status,running,runningVersion,runningState,other,otherVersion,otherState,next,trial,attempts}` | `/run/kdos/bootstate.json`, the copy of `kdos-bootctl status --json` every user may read |
@@ -361,9 +438,15 @@ The plugin publishes one container, `kdos`:
 
 A box's figures are its scope's own `cpu.stat`, `memory.current`, `memory.max`, `io.stat` and
 `pids.current`, which cgroup v2 sums over every descendant, so podman's container and conmon are
-inside the totals. Only scopes the session's own user owns are read. A box started where no
-delegated scope could be made has no scope and so no row; its limits are unenforced as well, which
-`kdos-box profile` says. kdos-energyd is asked every ten seconds while an energy sensor is watched
+inside the totals. Only scopes the session's own user owns are read. No box gets a scope on KDOS:
+elogind leaves `/sys/fs/cgroup/<session>/cgroup.procs` root's, cgroup2 then refuses the move into
+the delegated subtree, and every box runs in the login's `session` cgroup. Such a box's figures are
+its processes' sums instead: CPU from each one's `utime`, `stime` and reaped children's time in
+`/proc/<pid>/stat`, memory from its proportional set size (`Pss` in `smaps_rollup`), disk from
+`read_bytes` and `write_bytes` in `/proc/<pid>/io`, and `memoryLimit` 0, because nothing enforces
+its profile's limits, which `kdos-box profile` says. A process that exits takes its CPU time out
+of the sum, and that sample shows no CPU or disk rate. See
+[Boxes are measured by their processes, and their limits are unenforced](../06-reference/known-gaps.md#boxes-are-measured-by-their-processes-and-their-limits-are-unenforced). kdos-energyd is asked every ten seconds while an energy sensor is watched
 and every minute while none is. The energy ledger is root's and `wheel`'s alone; for anyone else the
 status sensor says so and no application sensors exist.
 
@@ -373,13 +456,34 @@ and tested again at every Plasma minor release.
 ### KDOS Meters and the KDOS page
 
 KDOS Meters draws one row per sensor: its name, a sparkline in the accent and its figure in the
-fixed-width face, over a faint scanline ground while `kdos/look/phosphor` reads 1. Its
+fixed-width face, over a faint scanline ground while `kdos/look/phosphor` reads 1. A figure is as
+wide as the widest value its unit formats to, so it neither clips nor shifts as it changes; a text
+sensor has no sparkline and its text wraps after the name. The name is at most eight grid units
+wide, the same in every row, so the sparklines of a stacked list start and end together, and the
+sparkline takes the rest of the row's width. A narrow row, such as a third-width card on the KDOS
+page, narrows the sparkline to two grid units first and then the name, which elides; the figure
+stays whole. The face asks for the height of its rows, so a page row or a desktop widget holding
+it is tall enough for every row, and the KDOS
+page's rows take their faces' height and the page scrolls. Opened from a panel, the face is a
+popup chart: 24 grid units wide, each sparkline four grid units high, name and figure at the top of
+its row, and the sparklines share whatever height the popup has, so a popup resized larger, whose
+size Plasma remembers, draws larger lines. In a horizontal panel the face drops the
+names and puts a meter's sensors side by side, one sparkline and figure each, with ↓ and ↑ before
+a download and upload (or read and write) figure, and the applet is as wide as they are. Its least
+width is the same without the sparklines: a panel short of room narrows them, and one narrower
+than a grid unit is not drawn, so the figures stay whole and the task manager is not left to
+give up all the width alone. Its
 `sensorPattern` setting follows every sensor whose id matches a regular expression as sensors come
 and go, so a box started after the face loaded gets a row; a stock face resolves its list once,
 when it loads. The KDOS page has four sections: Overview (this machine, all boxes, the system),
 Boxes (processor, memory and disk per box), Energy (impact per application, and the ledger) and
-Slots (the running slot and the other one). The three meters on the KDOS desk are KDE's processor,
-memory and network applets drawn with the KDOS Meters face.
+Slots (the running slot and the other one), every card a KDOS Meters face. The three meters on the
+KDOS desk are KDE's processor, memory and network applets drawn with the KDOS Meters face; the
+network meter is its download and upload side by side. The desk names each meter's total sensor
+(processor usage, used memory, download rate; the Tiling desk's two meters the same), which is
+what the applet's tooltip shows and a screen reader speaks on the panel button: "Open" followed by
+the sensor's name and value. An applet with no total sensor, as the stock network one is, speaks
+"Open" alone.
 
 Acting on a process (ending it, changing its priority) is System Monitor's own Processes page, whose
 helper asks polkit for an administrator's password before it touches another user's process.
@@ -390,14 +494,17 @@ The stock Applications page, and the Applications table on the Overview page, gr
 the cgroup scope each application runs in. Upstream they read only
 `/user.slice/user-<uid>.slice/user@<uid>.service`, the cgroup of a systemd user manager, which a
 KDOS login does not have: elogind runs the login in `/<session>/session` and gives the user
-`/<session>/delegated`, where each box's `app-kdos-<box>-<n>.scope` is made. libksysguard carries
-two patches. One roots the page at `/<session>`, the parent of the cgroup System Monitor itself
-runs in, whenever a `delegated` directory sits beside it; the other counts the processes of a
-scope's descendant cgroups with the scope's own, which is where podman puts a box's container and
-conmon. So each running box is one row with its processor, memory and process count, under its
-launcher's name and icon for a box with one launcher and under the box's name for a box with
-several, and every launch of one box shares that row. Programs started on the host share the
-login's `session` cgroup and are not rows; they are on the Processes page.
+`/<session>/delegated`. libksysguard carries two patches. One roots the page at `/<session>`, the
+parent of the cgroup System Monitor itself runs in, whenever a `delegated` directory sits beside
+it; the other counts the processes of a scope's descendant cgroups with the scope's own, which is
+where podman puts a box's container and conmon. With them, a box in an
+`app-kdos-<box>-<n>.scope` under `delegated` would be one row under its launcher's name and icon.
+No row results on KDOS: elogind leaves `/<session>/cgroup.procs` root's, so `kdos-appbox` cannot
+move a box into a scope, and every box, like every program started on the host, runs in the
+login's `session` cgroup, which is no application. The page is empty and every process is on the
+Processes page. See
+[Host applications and boxes reach the portals unidentified](../06-reference/known-gaps.md#host-applications-and-boxes-reach-the-portals-unidentified)
+and [System Monitor's Applications page lists nothing](../06-reference/known-gaps.md#system-monitors-applications-page-lists-nothing).
 
 ## The library as a folder
 
@@ -411,8 +518,10 @@ login's `session` cgroup and are not rows; they are on the Processes page.
 | Docsets | Zeal's `.docset` directories | `~/.local/share/Zeal/Zeal/docsets`, `/usr/share/zeal/docsets` |
 | Courses | Kolibri's channels | `/var/lib/kolibri/content/databases` |
 
-Each item shows its size and, in the Pack column, the data pack or package it came from; opening
-it opens the file with the program the menu would choose. The worker writes nothing. A data pack
+Each item shows its size; opening it opens the file with the program the menu would choose. The
+data pack or package an item came from is the worker's one extra field, `Pack` (`ExtraNames` in
+its metadata); Dolphin shows a worker's extra fields only for `trash:/`, so no Dolphin column
+carries it. The worker writes nothing. A data pack
 names its own items with a launcher carrying `Categories=X-KDOS-Library;`,
 `X-KDOS-Library-Kind=`, `X-KDOS-Library-Path=` and `X-KDOS-Pack=`; that launcher is also the item's
 entry in the menu's Library category, which `/etc/xdg/menus/applications-merged/kdos-library.menu`
@@ -435,8 +544,9 @@ item is a local audio or video file, and a speech model is where `kdos speech` l
 ## Add-ons
 
 KDE's online "Get New…" store is switched off on every machine by
-`[KDE Action Restrictions][$i] ghns=false` in the distribution's `kdeglobals`, so its buttons are
-greyed out. In its place `kdos-addons` installs a curated set where Plasma already looks: four
+`[KDE Action Restrictions][$i] ghns=false` in the distribution's `kdeglobals`: the settings pages
+show no Get New button, the wallpaper dialog's Get New Plugins is greyed, and Add Widgets' Get New
+menu holds only Install Widget From Local File. In its place `kdos-addons` installs a curated set where Plasma already looks: four
 wallpapers, eight colour schemes with matching Konsole schemes, two KWin scripts (one that keeps a
 picture-in-picture video above every window, one that opens each new window on the screen under the
 pointer) and two widgets (a clock in the fixed-width face, and a focus timer). Nothing in it is

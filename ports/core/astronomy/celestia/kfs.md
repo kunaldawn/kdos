@@ -33,6 +33,13 @@ textures and models it draws come from [celestia-content](#port-celestia-content
 
 ## Notes
 
+`app-id.patch` gives every window the Wayland app id of the entry it is started from,
+`space.celestiaproject.celestia_qt6` for the Qt interface, set before the splash screen, and
+`space.celestiaproject.celestia_sdl` for the SDL one, through the `SDL_APP_ID` hint. KWin finds a
+Wayland window's icon only in the entry whose file name is its app id, and these are the file
+names upstream's entries and metainfo launchables use; upstream sets `celestia-qt6` after the
+splash, and SDL otherwise takes the executable's name. The patch is to be offered upstream.
+
 GitHub's archive of a commit carries no git submodules, and `thirdparty/imgui` and
 `thirdparty/miniaudio` are submodules. The recipe fetches each at the commit in `_imgui` and
 `_miniaudio`, and `build.sh` copies them into place before the configure. Those two must be the
@@ -56,4 +63,7 @@ After the install, `build.sh`:
 - writes both desktop entries in place of upstream's, under upstream's file names, with
   `TryExec`, `StartupWMClass` and search keywords. The Qt one is named plain `Celestia` and
   keeps the script type with `Exec=celestia-qt6 %f`. The SDL one, `Celestia (SDL)`, claims no
-  type and passes no file, because `celestia-sdl` reads no command-line argument.
+  type and passes no file, because `celestia-sdl` reads no command-line argument. It sets
+  `Path=/usr/share/celestia`: `celestia-sdl` reads `celestia.cfg` from the working directory
+  before it changes into its data directory, so started anywhere else it stops on "Error reading
+  configuration file".

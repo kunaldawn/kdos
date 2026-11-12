@@ -111,6 +111,11 @@ bool SlotsClient::isConfigured() const
     return m_available && m_props.value(u"Configured"_s).toBool();
 }
 
+bool SlotsClient::isLive() const
+{
+    return m_available && m_props.value(u"Live"_s).toBool();
+}
+
 QString SlotsClient::runningSlot() const
 {
     return m_props.value(u"RunningSlot"_s).toString();

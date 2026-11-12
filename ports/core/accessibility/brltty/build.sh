@@ -75,8 +75,9 @@ case "$1" in
         # Speech plays through ALSA `default`, which is the session's
         # PipeWire, and init starts no PipeWire: without this the voice is
         # "Host is down" and silence. kdos_card is the card itself and is
-        # exclusive — while a desktop session's PipeWire holds the card this
-        # cannot open it, and while this speaks PipeWire cannot.
+        # exclusive, and eSpeak NG holds it only while an utterance plays:
+        # while a desktop session's PipeWire holds the card this cannot
+        # speak, and while this speaks PipeWire cannot play.
         export KDOS_ALSA_DEFAULT=kdos_card
         supervise "$NAME" "$DAEMON" -n
         ;;

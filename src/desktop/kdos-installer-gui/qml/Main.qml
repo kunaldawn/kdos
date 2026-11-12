@@ -10,6 +10,11 @@
  * Every page answers into Backend.answers and says whether Next may leave it
  * (`complete`) and, when not, why (`problem`). The pages after Summary take
  * the navigation away: an install that has started has no Back.
+ *
+ * Alt+Left and Alt+Right (and the Back and Forward keys) are Back and Next,
+ * taken by main.cpp's key filter and handed to stepBack() and stepNext();
+ * Alt+Right never starts the install, which only the button's dialog does.
+ * Return is left to the page, where it belongs to the field being typed in.
  */
 
 import QtQuick
@@ -50,6 +55,20 @@ Kirigami.ApplicationWindow {
         current = index;
         steps[index].page.entered();
     }
+    /* Next, as the button and Alt+Right both take it: not off the Summary,
+     * whose next step is the install and is the button's alone. */
+    readonly property bool canGoNext: !locked && currentPage.complete && !Backend.busy
+                                      && steps[current].id !== "summary"
+    function stepBack() {
+        if (!locked && current > 0) {
+            go(current - 1);
+        }
+    }
+    function stepNext() {
+        if (canGoNext) {
+            go(current + 1);
+        }
+    }
     function indexOf(id) {
         for (let i = 0; i < steps.length; i++) {
             if (steps[i].id === id) {
@@ -69,14 +88,18 @@ Kirigami.ApplicationWindow {
     Connections {
         target: Backend
         function onInstallFinished(ok) {
+            quitDialog.close();
             root.go(root.indexOf("done"));
         }
     }
 
     /* Closing the window during an install would orphan nothing — kinstall
-     * runs to its end as root — but would hide how it ended, so it asks. */
+     * runs to its end as root — but would hide how it ended, so it asks.
+     * While pkexec still waits for permission nothing has been written, and
+     * the window may go: closing it ends pkexec, and the request with it. */
+    property bool closeAnyway: false
     onClosing: close => {
-        if (Backend.installing) {
+        if (Backend.installing && !closeAnyway) {
             close.accepted = false;
             quitDialog.open();
         }
@@ -84,17 +107,32 @@ Kirigami.ApplicationWindow {
 
     Kirigami.PromptDialog {
         id: quitDialog
-        title: i18nc("@title:dialog", "The install is still running")
-        subtitle: i18n("Closing this window does not stop it: the disk is still being written, and its log is /var/log/kinstall.log. Keep the window open to see how it ends.")
+        readonly property bool started: Backend.events.started
+        title: started ? i18nc("@title:dialog", "The install is still running")
+                       : i18nc("@title:dialog", "The install is waiting for permission")
+        subtitle: started
+            ? i18n("Closing this window does not stop it: the disk is still being written, and its log is %1. Keep the window open to see how it ends.", Backend.logPath)
+            : i18n("The install has not started and nothing has been written. Closing the window now cancels it.")
         standardButtons: Kirigami.Dialog.NoButton
         customFooterActions: [
             Kirigami.Action {
                 text: i18nc("@action:button", "Keep Watching")
                 icon.name: "dialog-ok"
                 onTriggered: quitDialog.close()
+            },
+            Kirigami.Action {
+                visible: !quitDialog.started
+                text: i18nc("@action:button", "Close Anyway")
+                icon.name: "window-close"
+                onTriggered: {
+                    quitDialog.close();
+                    root.closeAnyway = true;
+                    root.close();
+                }
             }
         ]
     }
+
 
     Kirigami.PromptDialog {
         id: eraseDialog
@@ -125,7 +163,11 @@ Kirigami.ApplicationWindow {
             spacing: 0
 
             /* The steps: the done ones can be returned to, the ones ahead
-             * cannot, because they have not been answered yet. */
+             * cannot, because they have not been answered yet. Every row
+             * stays enabled, because a disabled row is drawn greyed: the
+             * current step would read as unavailable and the ones ahead
+             * would be all but invisible. A click on a row that cannot be
+             * returned to does nothing. */
             QQC2.ScrollView {
                 Layout.fillHeight: true
                 Layout.preferredWidth: Kirigami.Units.gridUnit * 11
@@ -164,14 +206,21 @@ Kirigami.ApplicationWindow {
                         text: modelData.title
                         icon.name: index < root.current ? "checkmark"
                                  : index === root.current ? "go-next" : ""
+                        readonly property bool reachable: index < root.current && !root.locked
                         highlighted: index === root.current
-                        enabled: index < root.current && !root.locked
+                        hoverEnabled: reachable
+                        down: reachable && pressed
+                        opacity: index > root.current ? 0.7 : 1
                         Accessible.name: index < root.current
                             ? i18nc("@info:whatsthis %1 is a step", "%1, done", modelData.title)
                             : index === root.current
                                 ? i18nc("@info:whatsthis %1 is a step", "%1, current step", modelData.title)
                                 : i18nc("@info:whatsthis %1 is a step", "%1, not yet", modelData.title)
-                        onClicked: root.go(index)
+                        onClicked: {
+                            if (reachable) {
+                                root.go(index);
+                            }
+                        }
                     }
                 }
             }
@@ -238,6 +287,11 @@ Kirigami.ApplicationWindow {
                     visible: !root.locked
                     spacing: Kirigami.Units.largeSpacing
 
+                    QQC2.Button {
+                        text: i18nc("@action:button", "Quit")
+                        icon.name: "application-exit"
+                        onClicked: root.close()
+                    }
                     QQC2.Label {
                         Layout.fillWidth: true
                         text: root.currentPage.complete ? "" : (root.currentPage.problem || "")

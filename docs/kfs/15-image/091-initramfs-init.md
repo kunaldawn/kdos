@@ -21,9 +21,10 @@ Read `\$ROOT_UUID` as `$ROOT_UUID`. After a build, `build/initramfs/init` holds 
 kernel runs it.
 
 `testing/selftest.sh` extracts the here-document the same way, undoing the escapes, checks it with
-`bash -n`, and runs three of its functions, `unlock_root`, `activate_lvm` and `find_persist`,
-against stub programs. The variables `PASS_TTY`, `CRYPT_MAPPER_DIR`, `LVM_BIN` and `USB_DEVICES`
-below exist so that it can.
+`bash -n`, and runs four of its functions, `unlock_root`, `activate_lvm`, `find_persist` and
+`persist_dev`, against stub programs. The variables `PASS_TTY`, `CRYPT_MAPPER_DIR`, `LVM_BIN` and
+`USB_DEVICES` below exist so that it can; `persist_dev` has none, and the test points its copy at a
+fake `/sys/class/block`.
 
 ## The stages at a glance
 
@@ -63,11 +64,16 @@ are the opener's group, 600 and 000.
 
 ## The splash
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=531-541 pin=f2e0a7926697 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=531-555 pin=325e37f72ffe -->
 
-The splash is started in the background, with its own input and output thrown away, and the four
+The splash is started in the background, with its own input and output thrown away, and the
 helpers send it commands. Each helper does nothing when the splash is not carried, and returns 0
-whatever happens, so a splash that fails can never stop the boot. The commands are listed in
+whatever happens, so a splash that fails can never stop the boot. `sp_release` is called on
+both paths before `/dev` moves into the new root: the commands travel through the FIFO
+`/dev/.kdos-splash`, and once `/dev` has moved no helper can reach it. On an `emergency` boot it runs `kdos-splash quit`: init then runs
+`sulogin` before `rcS`, the one thing that stops the splash on a normal boot, so a splash still
+drawing would hide the prompt and keep the keyboard's console showing a frozen bar. On every other
+boot it does nothing and the splash survives the switch. The commands are listed in
 [The splash](../../kdos/03-architecture/boot-and-init.md#the-splash).
 
 On an installed machine `/dev/console` is the screen, so the script's first line,
@@ -78,7 +84,7 @@ on the serial line and leave the splash alone. See
 
 ## The rescue shell
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=543-577 pin=1f2cc107f7c6 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=557-591 pin=8b32deb85080 -->
 
 `rescue MESSAGE` is the end of every path that cannot boot. It prints the message, shows it on the
 splash as a detail line and quits the splash, which hands the screen back. It then reads the active
@@ -97,7 +103,7 @@ from it, and [The initramfs](090-initramfs.md#the-gnu-programs) for the programs
 
 ## Device manager
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=579-590 pin=dfaa5668d723 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=593-604 pin=dfaa5668d723 -->
 
 `sp_total 2` counts this stage and `FILESYSTEM MODULES`, the two every boot runs. `udevd --daemon`
 starts the device manager; the two `udevadm trigger` calls ask the kernel to replay the `add` event
@@ -107,7 +113,7 @@ disk the kernel has found, and the modules udev loads for the hardware are in.
 
 ## RAID
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=592-614 pin=50958f709bd4 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=606-628 pin=50958f709bd4 -->
 
 `mdadm --assemble --scan` reads the RAID superblock on each device and assembles every array it
 finds, with no configuration file. Its exit status is thrown away, because a machine with no array
@@ -116,7 +122,7 @@ looks for a root, so a root on an array is visible to every lookup that follows.
 
 ## Filesystem modules
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=616-629 pin=4afab6607b04 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=630-643 pin=4afab6607b04 -->
 
 `loop`, `isofs`, `squashfs` and `overlay` are what the live path needs. A module that will not load
 prints a line and the boot goes on; one that is built into the kernel loads as a no-op. When there
@@ -124,7 +130,7 @@ is no `/dev/loop0`, it is made by hand, block device major 7, minor 0.
 
 ## The kernel command line
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=631-654 pin=ab65e27c8608 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=645-674 pin=77729ffd3989 -->
 
 The script reads `/proc/cmdline` word by word and keeps five things: `root=UUID=`, `cryptdevice=`,
 `bootstate=UUID=`, `kdos_slot=`, and `single` or `emergency`, which are handed to the real init at
@@ -136,13 +142,13 @@ set.
 
 ## The unlock function
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=656-682 pin=f3949433a167 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=676-706 pin=cea91bdd4e23 -->
 
 The comment sets out the `cryptdevice=` syntax and the two different UUIDs it involves. The two
 `: "${VAR:=default}"` lines give `PASS_TTY` and `CRYPT_MAPPER_DIR` their real values unless the
 environment already set them, which only the self-test does.
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=684-735 pin=caa21598c504 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=708-764 pin=2dbc190a0e4f -->
 
 `unlock_root` accepts `UUID=<luks-uuid>:<name>` or `/dev/<node>:<name>`, and anything else is an
 error. An empty name becomes `kdosroot`. Given a UUID, it asks `blkid -U` once a second, for up to
@@ -161,9 +167,9 @@ which may change the container it is given.
 
 ## Boot slot
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=737-759 pin=780e010816fe -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=766-788 pin=780e010816fe -->
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=760-815 pin=75069784095f -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=789-844 pin=75069784095f -->
 
 On a machine with A/B slots, the command line names the ESP that holds the state file. The script
 loads `vfat`, waits up to ten seconds for that ESP, and mounts it at `/esp`. Two questions are put
@@ -184,7 +190,7 @@ verbs and the state file are in
 
 ## Volume groups
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=817-863 pin=bda25eb0d9fd -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=846-892 pin=bda25eb0d9fd -->
 
 `activate_lvm` is called from three places: here, after the unlock, and on each pass of the wait for
 the root. Each call asks `blkid -t TYPE=LVM2_member -o device` for the physical volumes and returns
@@ -202,7 +208,7 @@ the live medium never runs `lvm` here. See
 
 ## Unlocking
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=865-880 pin=093a88f36da4 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=894-909 pin=093a88f36da4 -->
 
 When `CRYPTDEV` is set, by the command line or by the slot, `unlock_root` runs in a stage of its
 own. Once it succeeds, udev is given time to settle, because the filesystem inside the container has
@@ -213,7 +219,7 @@ unlock is the first stage that opens the rescue shell.
 
 ### Root device
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=882-902 pin=93a2f192a555 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=911-931 pin=93a2f192a555 -->
 
 With `ROOT_UUID` set, this is a disk boot. The path adds its three stages and asks `blkid -U` for
 the root once a second for up to ten seconds, running `activate_lvm` before each try so that a
@@ -222,7 +228,7 @@ has settled already, and on most machines it succeeds.
 
 ### Mounting and switching root
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=903-949 pin=33b3fa389272 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=932-980 pin=bd2f54145f67 -->
 
 The filesystem type is read with `blkid -o value -s TYPE`. When the initramfs carries `e2fsck`, an
 ext2, ext3 or ext4 root is checked with `e2fsck -p`, which repairs what is safe to repair without asking. An exit status of 4 or more
@@ -232,9 +238,13 @@ in [Checking the root](../../kdos/03-architecture/boot-and-init.md#checking-the-
 
 The root is mounted at `/newroot` with no type and no options, so `mount` probes the type and mounts
 it read-write. The mount's own status is not tested; the test that follows is whether
-`/newroot/sbin/init` is executable, which also fails when nothing was mounted. When it is, `/dev`,
+`/newroot/sbin/init` is executable, which also fails when nothing was mounted. When it is, the
+splash draws `SWITCHING ROOT` and marks it done while `/dev` is still the initramfs's: its FIFO is
+in `/dev`, and nothing this script sends after the move reaches it. Then `/dev`,
 `/proc` and `/sys` are moved into the new root, and [`switch_root`]{.idx} makes `/newroot` the root and runs
-`/sbin/init` there as process 1, with `single` or `emergency` if the command line had one. `exec`
+`/sbin/init` there as process 1, with `single` or `emergency` if the command line had one. Before
+`/dev` moves, on an `emergency` boot, `sp_release` stops the splash and leaves the console in text
+mode; on every other boot the splash survives the switch. `exec`
 means no line of this script runs after it. When the root or its `/sbin/init` is not found, the
 stage is marked failed and the next line opens the rescue shell.
 
@@ -242,7 +252,7 @@ stage is marked failed and the next line opens the rescue shell.
 
 ### Waiting for USB storage
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=951-1054 pin=4d82dbf65d60 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=983-1086 pin=4d82dbf65d60 -->
 
 These three functions are defined before the live path and called once, from the overlay stage,
 to find the persistence store. `uptime_cs` sets `NOW` to the uptime in hundredths of a second.
@@ -271,11 +281,12 @@ is reached `USB storage still settling after 10s; no persistence store found`.
 
 ### Boot media
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1056-1124 pin=30b351fd293a -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1094-1163 pin=2ce5a9d1e31f -->
 
 With no `root=UUID=`, the script looks for the medium the image was booted from. It tries every node
 of `/dev/sr*`, `/dev/sd*`, `/dev/vd*`, `/dev/nvme*` and `/dev/mmcblk*` in turn, mounting each as
-ISO9660 on `/mnt/iso` and looking for `system.sfs` at its top. It stops at the first that has one.
+ISO9660 on `/mnt/iso` and looking for `system.sfs` at its top. It stops at the first that has one,
+and keeps its name in `MEDIUM` for the persistence store.
 
 The scan repeats every tenth of a second until ten seconds of uptime have passed since it started,
 with these rules:
@@ -301,7 +312,7 @@ there.
 
 ### System image
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1126-1147 pin=342c388bc0e9 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1183-1204 pin=342c388bc0e9 -->
 
 `losetup -f` prints the first unused loop device, with `/dev/loop0` as the fallback. `losetup -r`
 attaches `system.sfs` to it read-only, since it sits on a read-only filesystem, and the device is
@@ -310,7 +321,7 @@ mounted at `/mnt/system` as [squashfs]{.idx term="SquashFS"}. A failure of eithe
 
 ### Overlay root
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1149-1222 pin=397af640c193 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1188-1272 pin=bf40a4c2fa62 -->
 
 The root of a live session is an [overlay]{.idx}: `system.sfs` as the read-only lower layer, and a writable
 upper layer where every change lands. The upper layer comes from one of two places.
@@ -319,8 +330,11 @@ upper layer where every change lands. The upper layer comes from one of two plac
    `KDOS_PERSIST`, waiting for USB storage as
    [Waiting for USB storage](#waiting-for-usb-storage) describes. When one exists and is not of a type that cannot hold an upper layer (vfat, exfat, ntfs,
    iso9660, squashfs), it is mounted at `/mnt/persist`, and its `upper` and `work` directories are
-   used. If the overlay mount over it fails, the store is unmounted and the script goes on to the
-   second choice.
+   used. A store on the disk in `MEDIUM` is mounted through a loop device that `persist_dev` sets
+   up at the partition's offset and length, with direct I/O, because the medium's whole-disk mount
+   makes the kernel refuse to open any partition on that disk; a store on another disk is
+   mounted directly. If the mount or the overlay over it fails, the store is unmounted, the loop
+   is detached, and the script goes on to the second choice.
 2. Otherwise a tmpfs is mounted at `/mnt/overlay` and its `upper` and `work` directories are used,
    and the session lasts until the machine is switched off.
 
@@ -330,14 +344,17 @@ overlay mount is not checked. What the store is and how `kdos persist` makes one
 
 ### Moving the mounts
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1224-1279 pin=e6969a9e190d -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1292-1357 pin=7014573f7ff8 -->
 
-The mount points the real init expects are made in the new root. Then, once `/sbin/init` has been
-found in it, `umount -l` detaches the squashfs at `/mnt/system` and, on a boot in RAM, the tmpfs at
+The mount points the real init expects are made in the new root. The splash draws
+`SWITCHING ROOT`, and the stage is settled here, before `/dev` moves, since the FIFO that carries
+the splash's commands is in `/dev`. A missing `/sbin/init` fails the stage, prints what `ls -l`
+can see of it and opens the rescue shell while `/dev`, `/proc` and both of the image's mounts are
+still where the initramfs left them. Once `/sbin/init` has been found, `umount -l` detaches the squashfs at `/mnt/system` and, on a boot in RAM, the tmpfs at
 `/mnt/overlay`, and `rmdir` removes both mount points. The overlay took private copies of its
 layers when it was mounted, so the root keeps reading them. The detach comes before `/proc` moves,
 because util-linux `umount` finds its target in `/proc/self/mountinfo` and without it detaches
-nothing. A missing `/sbin/init` skips it, so the rescue shell still sees both mounts.
+nothing. The stage is then marked done.
 
 `/dev`, `/proc` and `/sys` are then moved into the new root. Two more mounts are moved: `/mnt/iso`,
 the medium itself, guarded by a test for `system.sfs` on it, and `/mnt/persist` when a store is in
@@ -345,15 +362,15 @@ use. Both have to be reachable by name from the booted system.
 
 ### Switching root
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1281-1310 pin=eee243888baa -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1359-1380 pin=fd2a1cf21db8 -->
 
 `udevadm control --exit` stops this `udevd`, and `switch_root` starts the real `/sbin/init` from
 the overlay, as on the installed path. Before it does, it deletes the initramfs's own files to give
 back their memory, and it never crosses into another mount: one mount still under `/mnt` would keep
 `/mnt` from going, with `switch_root: failed to unlink mnt: Directory not empty` on the console,
-which is why the squashfs and the tmpfs were detached above. The splash survives the switch, as
-the comment says. A missing `/sbin/init` prints what `ls -l` can see of it and opens the rescue
-shell. The last line of the script is a `rescue` too, so that `init` never runs off its end.
+which is why the squashfs and the tmpfs were detached above. On an `emergency` boot `sp_release`
+has already stopped the splash, before `/dev` moved, leaving the console in text mode; on every other boot the
+splash survives it, as the comment says. The last line of the script is a `rescue` too, so that `init` never runs off its end.
 
 ## See also
 

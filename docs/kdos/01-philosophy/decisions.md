@@ -268,7 +268,7 @@ or a family of libraries that many applications sit on), and one flattened
 an application disturbs nothing else, and in the store a shared runtime's image is stored once
 however many applications sit on it.
 
-The question was how the catalogue's 73 applications (the `app` rows in
+The question was how the catalogue's 70 applications (the `app` rows in
 `src/system/kdos-appbox/catalogue`) reach a machine: as one container image, or as separate
 artefacts.
 

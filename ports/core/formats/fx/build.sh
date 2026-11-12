@@ -25,6 +25,8 @@ Comment=Browse, fold and query JSON and YAML
 Exec=fx %f
 Icon=text-x-generic
 Terminal=true
+NoDisplay=true
+MimeType=application/json;
 Categories=Development;Utility;
 Keywords=json;yaml;viewer;jq;query;fx;
 ENTRY

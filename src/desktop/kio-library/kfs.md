@@ -3,8 +3,9 @@
 `library:/`, whose five shelves list what is on this machine: Books (ZIM archives, the KDOS book
 and KDOS from Scratch), Maps (Organic Maps' `.mwm` files), Models (llama.cpp's `.gguf` models,
 whisper.cpp's `ggml-*.bin` and Piper's voices), Docsets (Zeal's `.docset` directories) and
-Courses (Kolibri's channels). Each item shows its size and, in the Pack column, the data pack or
-package it came from; opening it opens the file itself, with the program the menu would choose.
+Courses (Kolibri's channels). Each item shows its size; opening it opens the file itself, with the
+program the menu would choose. The data pack or package an item came from is the worker's extra
+field `Pack`, which Dolphin does not display.
 
 The worker writes nothing. It finds each item where its program keeps it: kiwix-manage's
 `/var/lib/kiwix/library.xml` and Kiwix Desktop's own library, `/usr/share/kiwix` and

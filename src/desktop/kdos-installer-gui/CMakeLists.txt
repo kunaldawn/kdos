@@ -28,7 +28,7 @@ include(FeatureSummary)
 include(ECMDeprecationSettings)
 
 find_package(Qt6 ${QT_MIN_VERSION} CONFIG REQUIRED COMPONENTS Core DBus Gui Qml Quick QuickControls2 Widgets)
-find_package(KF6 ${KF6_MIN_VERSION} REQUIRED COMPONENTS ColorScheme Config CoreAddons I18n Kirigami)
+find_package(KF6 ${KF6_MIN_VERSION} REQUIRED COMPONENTS ColorScheme Config CoreAddons DBusAddons I18n Kirigami)
 find_package(KF6ItemModels ${KF6_MIN_VERSION} REQUIRED)
 
 ecm_set_disabled_deprecation_versions(QT 6.11.0 KF 6.31.0)
@@ -71,6 +71,7 @@ qt_add_qml_module(kdos-installer-gui
     QML_FILES
         qml/Main.qml
         qml/WizardPage.qml
+        qml/StrengthLabel.qml
         qml/WelcomePage.qml
         qml/KeyboardPage.qml
         qml/DiskPage.qml
@@ -88,6 +89,7 @@ target_link_libraries(kdos-installer-gui PRIVATE
     Qt6::Quick
     Qt6::QuickControls2
     Qt6::Widgets
+    KF6::DBusAddons
     KF6::I18nQml
 )
 

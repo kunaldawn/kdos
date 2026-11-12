@@ -1,7 +1,8 @@
 # Encrypted root
 
 An installed KDOS machine can keep its root filesystem inside a [LUKS]{.idx} [container]{.idx term="LUKS container"}, opened at
-every boot with a passphrase typed at the boot splash. This page shows which pieces do that, the
+every boot with a passphrase typed at the boot splash (or, on the verbose and single-user entries,
+which run no splash, at a prompt on the screen). This page shows which pieces do that, the
 files that carry the container's identity from the [installer]{.idx} to the boot, and the tasks that come
 after an install: unlocking, adding and changing passphrases, keeping a copy of the header, and
 opening the root by hand from the live medium. How the [initramfs]{.idx} finds, unlocks and mounts the
@@ -48,7 +49,7 @@ the EFI system [partition]{.idx}, and the initramfs reads both.
 `cryptdevice=` option naming the container beside the `root=` option naming the filesystem inside
 it, from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=2398-2416 pin=e0a09f9a5198 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=2417-2435 pin=e0a09f9a5198 -->
 
 The two UUIDs are different. `cryptdevice=UUID=<container>:kdosroot` is the LUKS container on the
 partition, and `root=UUID=<filesystem>` is the filesystem that appears only once the container is
@@ -60,7 +61,7 @@ and how to change a kernel option is on
 **The boot state**, `/boot/efi/EFI/kdos/bootstate`, records the container again as `crypt_a`, beside
 slot A's filesystem, from the same file:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=2674-2686 pin=d5c38affc180 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=2693-2705 pin=d5c38affc180 -->
 
 On the A/B layout both root slots are volumes of one LVM group inside the one container, so
 `crypt_b` names the same container as `crypt_a`, and one passphrase opens either slot. The
@@ -73,7 +74,7 @@ named, by the chosen slot's `crypt_` entry or by `cryptdevice=`, from
 `script/phases/70_image/090_initramfs.sh` (the `\$` is the escape of the heredoc the init is
 written from):
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=865-880 pin=093a88f36da4 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=894-909 pin=093a88f36da4 -->
 
 `unlock_root`, the function it calls, is walked through on
 [The initramfs init](../15-image/091-initramfs-init.md#the-unlock-function).
@@ -108,9 +109,12 @@ erase plan before switching; see [Encryption](../../kdos/02-user-guide/installat
 How far this path has been tested is recorded in
 [Status](../../kdos/06-reference/status.md#boot-and-system).
 
-1. Choose the boot entry. The splash shows `PASSPHRASE FOR kdosroot (attempt 1 of 3)`.
+1. Choose the boot entry. The splash shows `PASSPHRASE FOR kdosroot (attempt 1 of 3)`. On
+   `KDOS (verbose)` and `KDOS (single user)`, which carry no `quiet` and run no splash, the screen
+   shows `Passphrase for kdosroot (attempt 1 of 3): ` instead.
 2. Type the passphrase and press Enter. Nothing is drawn as you type, not even asterisks.
-3. The splash shows `UNLOCKED` and the boot goes on, or `WRONG PASSPHRASE` and asks again.
+3. The splash shows `UNLOCKED` and the boot goes on, or `WRONG PASSPHRASE` and asks again; without
+   the splash the screen shows `Unlocked.` or `Wrong passphrase.`
 4. After three wrong attempts the boot stops in a shell; see [Troubleshooting](#troubleshooting).
 
 ### Finding the container
@@ -303,8 +307,6 @@ running `e2fsck -f` before you mount.
 - [Only an LVM erase install gets a second root slot](../../kdos/06-reference/known-gaps.md#only-an-lvm-erase-install-gets-a-second-root-slot),
   and what it means for an encrypted second slot
 - [Secure Boot is not supported](../../kdos/06-reference/known-gaps.md#secure-boot-is-not-supported)
-- [An unattended install skips every check the pages make](../../kdos/06-reference/known-gaps.md#an-unattended-install-skips-every-check-the-pages-make),
-  among them that the two passphrases match
 - [Security](../../kdos/06-reference/known-gaps.md#security): disk encryption protects data at rest
   only
 - [Status](../../kdos/06-reference/status.md#boot-and-system): how far the unlock path has been

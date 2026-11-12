@@ -12,6 +12,7 @@
 patch -p1 -i "$PORT_SRC/enchant-2-pkgconfig.patch"
 patch -p1 -i "$PORT_SRC/enchant.patch"
 patch -p1 -i "$PORT_SRC/musl-1.2.3.patch"
+patch -p1 -i "$PORT_SRC/clipboard-targets.patch"
 ./autogen-common.sh
 autoreconf -fi
 

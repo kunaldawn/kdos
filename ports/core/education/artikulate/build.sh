@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/system-courses.patch"
+
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D KDE_INSTALL_LIBDIR=lib \
@@ -20,3 +22,11 @@ cmake -S . -B build -G Ninja \
 	-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build
+
+install -d "$PKG/usr/share/artikulate/courses/basic"
+for l in fr gr ba pl; do
+	cp -r "$SRC_ROOT/$l" "$PKG/usr/share/artikulate/courses/basic/"
+	test -f "$PKG/usr/share/artikulate/courses/basic/$l/$l.xml"
+done
+find "$PKG/usr/share/artikulate/courses" -type d -exec chmod 755 {} +
+find "$PKG/usr/share/artikulate/courses" -type f -exec chmod 644 {} +

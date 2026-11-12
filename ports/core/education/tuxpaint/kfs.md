@@ -43,7 +43,9 @@ The makefile is not safe in parallel, so both `make` runs pass `-j1`.
 `/usr/share/man` other than the `man<section>` ones, is removed. It also removes
 `maketuxfont.py`, a Python helper that upstream installs with the zh_TW font documents.
 
-The entries are replaced. Tux Paint asks for the window class `TuxPaint.TuxPaint` by setting SDL
-2's `SDL_VIDEO_X11_WMCLASS` with `putenv()` in `setup()`, which `main()` calls, but sdl2-compat
-renames that variable to `SDL_APP_ID` only in its load-time constructor, before `main()` runs, so
-SDL 3 falls back to the executable's name and the app_id is `tuxpaint`.
+The entries are replaced. Tux Paint names its window by setting SDL's `SDL_VIDEO_X11_WMCLASS`
+with `putenv()` in `setup()`, and SDL takes the Wayland app id from it as well. Upstream's
+`TuxPaint.TuxPaint` names no desktop entry, and KWin finds a window's icon only by a file named
+after its app id, so `app-id.patch` sets `tuxpaint`, the name of the entry and of the AppStream
+launchable; without it the window shows the generic icon. Both entries carry
+`StartupWMClass=tuxpaint`. The patch is to be offered upstream.

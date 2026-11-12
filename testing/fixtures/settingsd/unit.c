@@ -341,8 +341,8 @@ static void locales(void)
 	bool empty;
 	char *s;
 
-	CHECK(ks_locale_get(got) == 1 && !strcmp(got[0], "LANG=C.UTF-8"),
-	      "the shipped locale.conf is LANG=C.UTF-8, and its comment no "
+	CHECK(ks_locale_get(got) == 1 && !strcmp(got[0], "LANG=en_US.UTF-8"),
+	      "the shipped locale.conf is LANG=en_US.UTF-8, and its comment no "
 	      "assignment");
 	/* SDDM takes every line holding an `=` for a variable, comments too. */
 	s = slurp("etc/locale.conf");

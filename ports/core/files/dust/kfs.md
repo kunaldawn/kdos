@@ -2,7 +2,8 @@
 dust shows what is filling a disk as a tree: the largest directories under a path, each with a bar
 for its share of the whole, sorted so the biggest entries sit next to the prompt. It answers the
 question `du -sh * | sort -h` asks, in one command. The interactive shell aliases it as `dud`
-(`/etc/bash.bashrc`), and the recipe writes a terminal desktop entry for it.
+(`/etc/bash.bashrc`). The recipe writes a terminal desktop entry for it with `NoDisplay=true`:
+dust prints its report and exits, so a Start row would open a terminal that closes at once.
 
 ## Notes
 The Rust crates it builds against come from the vendor bundle, `dust-vendor-<version>.tar.xz`,

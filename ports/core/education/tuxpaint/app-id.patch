@@ -1,0 +1,18 @@
+Subject: Ask for the window class and app id tuxpaint
+
+The desktop entry and the AppStream launchable are tuxpaint.desktop, and a
+Wayland compositor finds a window's entry only by a file named after its app
+id. SDL takes the app id from SDL_VIDEO_X11_WMCLASS, so name the class
+tuxpaint, not TuxPaint.TuxPaint.
+
+--- a/src/tuxpaint.c	2025-04-20 01:21:49.000000000 +0530
++++ b/src/tuxpaint.c	2026-11-09 14:27:37.918852592 +0530
+@@ -29764,7 +29764,7 @@
+   SDLPango_Init();
+ 
+ #ifndef WIN32
+-  putenv((char *)"SDL_VIDEO_X11_WMCLASS=TuxPaint.TuxPaint");
++  putenv((char *)"SDL_VIDEO_X11_WMCLASS=tuxpaint");
+ #endif
+ 
+   if (disable_screensaver == 0)

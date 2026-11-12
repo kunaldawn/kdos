@@ -98,26 +98,16 @@ QStringList ktarSets(const QString &dir, int max, int scanLimit)
     return found;
 }
 
-bool hasUsershare(const QString &dir, int scanLimit)
+bool startAllowed(QList<qint64> &starts, qint64 now, int max, qint64 windowMs)
 {
-    QDirIterator it(dir, QDir::Files | QDir::NoDotAndDotDot | QDir::System);
-    int seen = 0;
-
-    while (it.hasNext() && seen < scanLimit) {
-        it.next();
-        ++seen;
-        const QFileInfo info = it.fileInfo();
-
-        if (info.isSymLink() || !info.isFile()) {
-            continue;
-        }
-        if (info.fileName().startsWith(QLatin1Char(':'))
-            || info.fileName().startsWith(QLatin1Char('.'))) {
-            continue;
-        }
-        return true;
+    starts.removeIf([now, windowMs](qint64 t) {
+        return now - t >= windowMs;
+    });
+    if (starts.size() >= max) {
+        return false;
     }
-    return false;
+    starts.append(now);
+    return true;
 }
 
 }

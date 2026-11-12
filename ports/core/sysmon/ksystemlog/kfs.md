@@ -3,8 +3,13 @@
 KSystemLog reads the machine's log files and shows each kind in a tab of its own: the system log,
 the kernel log, authentication, cron, daemons, ACPI, CUPS, Apache, Postfix and Samba. Lines are
 parsed into date, host, process and message columns, can be filtered and searched, and new lines
-appear as syslogd writes them. On KDOS the system tab reads `/var/log/messages`, which sysklogd
-writes.
+appear as syslogd writes them. On KDOS the tabs read the files sysklogd writes: the system tab
+`/var/log/messages`, the kernel tab what `dmesg` prints, authentication `/var/log/auth.log` and
+cron `/var/log/cron`. The paths, and the tab the window opens on, come from
+`/usr/share/kdos/xdg/ksystemlogrc`: upstream's defaults are Debian's `/var/log/syslog` for the
+system and cron tabs and the journal as the first tab, and KSystemLog hides a tab whose files are
+missing, so without that file the system and cron tabs would be gone and the window would open on
+an empty log.
 
 ## Flags
 
@@ -20,10 +25,18 @@ writes.
   package-wide English-only rule would remove anyway (see
   [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
 
+## Patches
+
+`no-substitute-uid.patch` takes `X-KDE-SubstituteUID=true` out of the desktop entry, so the menu
+starts KSystemLog as the user; it is to be offered upstream as a merge request against
+`system/ksystemlog`. With the key, KIO starts it through `kdesu` as root, and `kdesu_stub` clears
+`XDG_RUNTIME_DIR` and passes the Wayland socket's name as `DISPLAY`, so on the Wayland session the
+root process reaches no display and aborts. There is no build option for the key.
+
 ## Notes
 
-`/var/log/auth.log` is made readable by root alone at boot, so the authentication tab is empty for
-an ordinary account. The desktop entry carries `X-KDE-SubstituteUID=true`, which makes KIO start
-KSystemLog as root through `kdesu` when it is opened from the menu; `kdesu` is the Plasma session's
-(kde-cli-tools). Started from a shell, it runs as the calling user. The X.org and X session tabs
-look for an X server's logs, which this machine never writes.
+`/var/log/messages`, `/var/log/kern.log` and `/var/log/auth.log` are made readable by root alone
+at boot, and `dmesg` is restricted to root, so an ordinary account reads only the cron tab: the
+system and authentication tabs report that the file cannot be read, and the kernel tab is empty.
+The window therefore opens on the cron tab. The X.org and X session tabs look for an X server's
+logs, which this machine never writes.

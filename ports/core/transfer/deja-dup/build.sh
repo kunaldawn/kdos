@@ -14,6 +14,7 @@ meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
 	-Dpackagekit=disabled
 meson compile -C build
 DESTDIR=$PKG meson install --no-rebuild -C build
+rm "$PKG/etc/xdg/autostart/org.gnome.DejaDup.Monitor.desktop"
 
 find "$PKG/usr/share/help" -mindepth 1 -maxdepth 1 ! -name C -exec rm -rf {} +
 

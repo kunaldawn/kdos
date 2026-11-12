@@ -22,6 +22,14 @@ the rest of its dependencies are ports of their own, found in `site-packages` th
   requirements, materialyoucolor and beautifulsoup4 are imported by no module it ships, and are not
   installed.
 
+## Patches
+
+`setup-kv-glob.patch` points `setup.py`'s `glob_paths()` at `sbapp/kivymd`, where the bundled
+KivyMD lives. Upstream walks a top-level `kivymd` directory that does not exist, so its
+`package_data` names no `.kv` file, pip installs none, and Sideband exits at start-up when KivyMD
+cannot load its first widget rule. It is to be offered upstream. The `test` line after the install
+stops the build if `kivymd/uix/label/label.kv` is missing from the prefix.
+
 ## Notes
 
 The vendor bundle, `sideband-vendor-<version>.tar.xz`, is a Python bundle that `ports/fetch` makes

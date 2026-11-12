@@ -45,3 +45,18 @@ toolkit in the tree it is for applications only, and no part of the KDOS desktop
 - `-Dinstalled_tests=false`, `-Ddemos=false`, `-Dexamples=false` — Install no test programs and
   build neither `gtk3-demo`, `gtk3-widget-factory` nor the examples; the demos and examples are on
   by default upstream.
+
+## Patches
+
+The patch is offered upstream; the merge request is to be opened against `GNOME/gtk`'s
+`gtk-3-24` branch, and this entry names it once it exists.
+
+`settings-portal-gtk-modules.patch` — On Wayland GDK reads `gtk-modules` and
+`gtk-fontconfig-timestamp` only from the `org.gtk.Settings` service that
+[kde-gtk-config](#port-kde-gtk-config)'s kded module serves, and the Settings portal carries
+neither. Unpatched, `init_settings()` opens that service only when it does not use the Settings
+portal, and it uses the portal whenever `GTK_USE_PORTAL` is `1`, which every KDOS login exports,
+or the program runs in a sandbox, and the portal returns any `org.gnome.*` key, which
+[xdg-desktop-portal-gtk](#port-xdg-desktop-portal-gtk) does. A GTK 3 program would then load no
+`colorreload-gtk-module` and keep its colours through every colour-scheme change. The patch opens
+the service first, whichever source then serves the other settings.

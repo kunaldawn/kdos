@@ -12,7 +12,10 @@
  * them all. The keyboard goes to the screen the pointer is on.
  *
  * Esc clears the search, and closes the card once the search is empty; a
- * click outside the plate closes it at once.
+ * click outside the plate closes it at once. Tab, Down and Up walk from the
+ * search field through the rows, each spoken as "<action>: <keys>", and the
+ * list scrolls to keep the row with the focus in sight. A changed search
+ * announces how many shortcuts it leaves.
  * ---------------------------------
  */
 
@@ -36,6 +39,34 @@ FocusScope {
     readonly property var sections: CardModel.sections(keycard.allRows, Groups.groups, keycard.query)
     // As many columns as fit at a readable width.
     readonly property int columnCount: Math.max(1, Math.floor((plate.width + Kirigami.Units.gridUnit) / (Kirigami.Units.gridUnit * 23)))
+    readonly property int shownCount: sections.reduce((n, section) => n + section.rows.length, 0)
+
+    // Moves the focus to the next or previous row along the focus chain,
+    // past the search field's clear button; reaching the search field again
+    // gives the focus to it, so Up from the first row and Down from the last
+    // end there.
+    function stepRow(from, forward) {
+        for (let it = from.nextItemInFocusChain(forward), n = 0; it && n < 5000; it = it.nextItemInFocusChain(forward), n++) {
+            if (it === search) {
+                search.forceActiveFocus(Qt.OtherFocusReason);
+                return;
+            }
+            if (it.objectName === "kdosKeyRow") {
+                it.forceActiveFocus(forward ? Qt.TabFocusReason : Qt.BacktabFocusReason);
+                return;
+            }
+        }
+    }
+
+    // Scrolls the list just far enough to show `item` whole.
+    function reveal(item) {
+        const top = item.mapToItem(scroller.contentItem, 0, 0).y;
+        if (top < scroller.contentY) {
+            scroller.contentY = top;
+        } else if (top + item.height > scroller.contentY + scroller.height) {
+            scroller.contentY = Math.min(top + item.height - scroller.height, Math.max(0, scroller.contentHeight - scroller.height));
+        }
+    }
 
     function groupTitle(group) {
         switch (group) {
@@ -93,7 +124,7 @@ FocusScope {
         width: Math.min(parent.width - Kirigami.Units.gridUnit * 4, Kirigami.Units.gridUnit * 84)
         height: parent.height - Kirigami.Units.gridUnit * 4
         color: Kirigami.Theme.backgroundColor
-        border.color: Kirigami.Theme.highlightColor
+        border.color: Kirigami.Theme.focusColor
         border.width: 1
 
         Accessible.role: Accessible.Dialog
@@ -131,10 +162,24 @@ FocusScope {
                     text: root.keycard.query
                     placeholderText: i18ndc("kdos-kwin-effect-keys", "@info:placeholder", "Search shortcuts, programs or keys…")
                     Accessible.name: i18ndc("kdos-kwin-effect-keys", "@label accessible name of the search field", "Search shortcuts")
-                    onTextEdited: root.keycard.query = text
+                    onTextEdited: {
+                        root.keycard.query = text;
+                        announcer.restart();
+                    }
                     Keys.onEscapePressed: event => {
                         event.accepted = false;
                     }
+                    Keys.onDownPressed: root.stepRow(search, true)
+                }
+
+                // Spoken once typing pauses, not at every letter.
+                Timer {
+                    id: announcer
+
+                    interval: 600
+                    onTriggered: search.Accessible.announce(root.shownCount === 0
+                        ? i18ndc("kdos-kwin-effect-keys", "@info announced after a search", "No shortcut matches")
+                        : i18ndcp("kdos-kwin-effect-keys", "@info announced after a search", "%1 shortcut", "%1 shortcuts", root.shownCount))
                 }
             }
 
@@ -147,21 +192,27 @@ FocusScope {
                 Layout.fillHeight: true
 
                 PC3.ScrollView {
+                    id: scrollView
+
                     anchors.fill: parent
                     visible: root.sections.length > 0
+                    // The columns are laid out to the width left beside the
+                    // vertical bar, so there is never anything to the side.
+                    PC3.ScrollBar.horizontal.policy: PC3.ScrollBar.AlwaysOff
 
                     Flickable {
                         id: scroller
 
-                        contentWidth: width
+                        contentWidth: scrollView.availableWidth
                         contentHeight: columns.implicitHeight
+                        flickableDirection: Flickable.VerticalFlick
                         clip: true
                         boundsBehavior: Flickable.StopAtBounds
 
                         RowLayout {
                             id: columns
 
-                            width: scroller.width
+                            width: scrollView.availableWidth
                             spacing: Kirigami.Units.gridUnit
 
                             Repeater {
@@ -196,65 +247,98 @@ FocusScope {
 
                                                 Layout.fillWidth: true
                                                 level: 3
-                                                color: Kirigami.Theme.highlightColor
+                                                color: Kirigami.Theme.linkColor
                                                 text: root.groupTitle(section.modelData.group)
                                             }
 
                                             Repeater {
                                                 model: section.modelData.rows
 
-                                                delegate: RowLayout {
+                                                delegate: FocusScope {
                                                     id: shortcutRow
 
                                                     required property var modelData
 
+                                                    objectName: "kdosKeyRow"
                                                     Layout.fillWidth: true
-                                                    spacing: Kirigami.Units.largeSpacing
+                                                    implicitHeight: rowLayout.implicitHeight + Kirigami.Units.smallSpacing * 2
+                                                    activeFocusOnTab: true
 
                                                     Accessible.role: Accessible.ListItem
+                                                    Accessible.focusable: true
                                                     Accessible.name: i18ndc("kdos-kwin-effect-keys", "@info accessible name of a shortcut: action, then its keys", "%1: %2", shortcutRow.modelData.text, shortcutRow.modelData.keys.join(i18ndc("kdos-kwin-effect-keys", "@info between two keys of one action", " or ")))
 
-                                                    Flow {
-                                                        Layout.preferredWidth: Kirigami.Units.gridUnit * 10
-                                                        Layout.alignment: Qt.AlignTop
-                                                        spacing: Kirigami.Units.smallSpacing
-
-                                                        Repeater {
-                                                            model: shortcutRow.modelData.keys
-
-                                                            delegate: Rectangle {
-                                                                id: chip
-
-                                                                required property string modelData
-
-                                                                implicitWidth: chipLabel.implicitWidth + Kirigami.Units.smallSpacing * 2
-                                                                implicitHeight: chipLabel.implicitHeight + Kirigami.Units.smallSpacing
-                                                                width: Math.min(implicitWidth, Kirigami.Units.gridUnit * 10)
-                                                                height: implicitHeight
-                                                                color: Kirigami.Theme.alternateBackgroundColor
-                                                                border.color: Kirigami.Theme.disabledTextColor
-                                                                border.width: 1
-
-                                                                PC3.Label {
-                                                                    id: chipLabel
-
-                                                                    anchors.centerIn: parent
-                                                                    width: Math.min(implicitWidth, chip.width - Kirigami.Units.smallSpacing * 2)
-                                                                    text: chip.modelData
-                                                                    font: Kirigami.Theme.fixedWidthFont
-                                                                    elide: Text.ElideRight
-                                                                    Accessible.ignored: true
-                                                                }
-                                                            }
+                                                    Keys.onDownPressed: root.stepRow(shortcutRow, true)
+                                                    Keys.onUpPressed: root.stepRow(shortcutRow, false)
+                                                    onActiveFocusChanged: {
+                                                        if (activeFocus) {
+                                                            root.reveal(shortcutRow);
                                                         }
                                                     }
 
-                                                    PC3.Label {
-                                                        Layout.fillWidth: true
-                                                        Layout.alignment: Qt.AlignTop
-                                                        text: shortcutRow.modelData.text
-                                                        wrapMode: Text.Wrap
-                                                        Accessible.ignored: true
+                                                    Rectangle {
+                                                        anchors.fill: parent
+                                                        visible: shortcutRow.activeFocus
+                                                        color: "transparent"
+                                                        border.color: Kirigami.Theme.focusColor
+                                                        border.width: 1
+                                                        radius: Kirigami.Units.cornerRadius
+                                                    }
+
+                                                    RowLayout {
+                                                        id: rowLayout
+
+                                                        anchors.fill: parent
+                                                        anchors.margins: Kirigami.Units.smallSpacing
+                                                        spacing: Kirigami.Units.largeSpacing
+
+                                                        // The keys take 45% of the row and never less than
+                                                        // ten grid units; a second key wraps onto a line of
+                                                        // its own, and one key wider than the column wraps
+                                                        // inside its chip, so no key is ever cut short.
+                                                        Flow {
+                                                            id: chordFlow
+
+                                                            Layout.preferredWidth: Math.max(Kirigami.Units.gridUnit * 10, rowLayout.width * 0.45)
+                                                            Layout.alignment: Qt.AlignTop
+                                                            spacing: Kirigami.Units.smallSpacing
+
+                                                            Repeater {
+                                                                model: shortcutRow.modelData.keys
+
+                                                                delegate: Rectangle {
+                                                                    id: chip
+
+                                                                    required property string modelData
+
+                                                                    implicitWidth: chipLabel.implicitWidth + Kirigami.Units.smallSpacing * 2
+                                                                    width: Math.min(implicitWidth, chordFlow.width)
+                                                                    height: chipLabel.implicitHeight + Kirigami.Units.smallSpacing
+                                                                    color: Kirigami.Theme.alternateBackgroundColor
+                                                                    border.color: Kirigami.Theme.disabledTextColor
+                                                                    border.width: 1
+
+                                                                    PC3.Label {
+                                                                        id: chipLabel
+
+                                                                        anchors.centerIn: parent
+                                                                        width: chip.width - Kirigami.Units.smallSpacing * 2
+                                                                        text: chip.modelData
+                                                                        font: Kirigami.Theme.fixedWidthFont
+                                                                        wrapMode: Text.Wrap
+                                                                        Accessible.ignored: true
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+
+                                                        PC3.Label {
+                                                            Layout.fillWidth: true
+                                                            Layout.alignment: Qt.AlignTop
+                                                            text: shortcutRow.modelData.text
+                                                            wrapMode: Text.Wrap
+                                                            Accessible.ignored: true
+                                                        }
                                                     }
                                                 }
                                             }

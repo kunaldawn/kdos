@@ -29,12 +29,21 @@
 # --prune-bind-mounts keeps a bind-mounted tree from being indexed twice under
 # two names; a box's graft into $HOME is exactly that shape.
 #
+# --if-missing builds the index only when there is none, and is what the
+# timers service runs at login: the nightly row's missed-run rule never
+# catches up a slot a machine was off for, so a fresh account would otherwise
+# have no index and plocate would fail until the next 03:05.
+#
 # /usr/sbin/updatedb BY PATH: plocate's is the only one on the image, and its
 # options are the ones below; a `updatedb` earlier on a caller's $PATH would
 # be asked for options it does not have.
 set -eu
 
 cache="${XDG_CACHE_HOME:-$HOME/.cache}/kdos"
+if [ "${1:-}" = "--if-missing" ]; then
+	shift
+	[ -e "$cache/plocate.db" ] && exit 0
+fi
 mkdir -p "$cache"
 
 exec /usr/sbin/updatedb \

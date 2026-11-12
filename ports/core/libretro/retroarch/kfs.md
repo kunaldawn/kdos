@@ -68,3 +68,8 @@ The panel reads no SVG, so the menu icon is a PNG rasterised from upstream's. Up
 entry is replaced: it claims every ROM type, among them the Game Boy, Game Boy Color and Game Boy
 Advance types the [mgba](#port-mgba) entry claims, which would open those files in whichever entry
 sorted first. RetroArch opens games from its own menu. The Wayland app id is `com.libretro.RetroArch`.
+
+`wayland-windowed-size.patch` makes the windowed size RetroArch asks for, 960x720 by default,
+the size it falls back to when KWin's configure leaves the size to the client. Without it the
+window returns to the 240x256 splash size and the Ozone menu is clipped. The patch is to be
+offered upstream.

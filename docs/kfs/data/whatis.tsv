@@ -26,6 +26,7 @@ aclients	1	Test program for side-by-side TNC performance comparison.	direwolf
 aclocal-1.19	1	Generate aclocal.m4 by scanning configure.ac	automake
 aconnect	1	ALSA sequencer connection manager	alsa-utils
 acyclic	1	make directed graph acyclic	graphviz
+adddebug	1	Modifies Makefile(s) to add debug info	kde-dev-scripts
 addftinfo	1	add font metrics to troff fonts for use with groff	groff
 addgnupghome	8	Create .gnupg home directories	gnupg
 addpart	8	tell the kernel about the existence of a partition	util-linux
@@ -63,6 +64,7 @@ age-keygen	1	generate age(1) key pairs	age
 age-plugin-batchpass	1	non-interactive passphrase encryption plugin for age(1)	age
 agentxtrap	1	send an AgentX NotifyPDU to an AgentX master agent	net-snmp
 agetty	8	alternative Linux getty	util-linux
+aha	1	Convert ANSI escape sequences to HTML	aha
 ahost	1	print the A or AAAA record associated with a hostname or IP address	c-ares
 airbase-ng	8	multi-purpose tool aimed at attacking clients as opposed to the Access Point (AP) itself	aircrack-ng
 aircrack-ng	1	a 802.11 WEP / WPA-PSK key cracker	aircrack-ng
@@ -111,6 +113,8 @@ aplaymidi	1	play Standard MIDI Files	alsa-utils
 aplaymidi2	1	play MIDI Clip Files	alsa-utils
 applygeo	1	apply georeferencing to an existing file	libgeotiff
 applygnupgdefaults	8	Run gpgconf --apply-defaults for all users.	gnupg
+appstreamcli	1	Handle AppStream metadata formats and query AppStream data	appstream
+appstreamcli-compose	1	Compose AppStream metadata catalog from directory trees	appstream
 apropos	1	search manual page databases	mandoc
 ar	1	create, modify, and extract from archives	binutils
 arara	1	a TeX automation tool based on rules and directives.	texlive
@@ -120,6 +124,7 @@ ardour9	1	digital audio workstation	ardour
 arecordmidi	1	record Standard MIDI Files	alsa-utils
 arecordmidi2	1	record a MIDI Clip file	alsa-utils
 argon2	1	generate argon2 hashes	argon2
+aria2c	1	The ultra fast download utility	aria2
 ark	1	KDE archiving tool	ark
 arlatex	1	archive a number of ancillary LaTeX files into a master .tex file	texlive
 arm-none-eabi-addr2line	1	convert addresses or symbol+offset into file names and line numbers	binutils-arm-none-eabi
@@ -502,6 +507,7 @@ bundle-show	1	Shows all the gems in your bundle, or the path to a gem	ruby
 bundle-update	1	Update your gems to the latest available versions	ruby
 bundle-version	1	Prints Bundler version information	ruby
 bundledoc	1	bundle all the files needed by a LaTeX document	texlive
+busctl	1	Introspect the bus	elogind
 bwrap	1	container setup utility	bubblewrap
 byobu	1	wrapper script for seeding a user's byobu configuration and launching a text based window manager (either screen or tmux)	byobu
 byobu-config	1	Configuration utility for byobu	byobu
@@ -640,6 +646,7 @@ cd-info	1	shows Information about a CD or CD-image	libcdio
 cd-paranoia	1	an audio CD reading utility which includes extra data verification features	libcdio-paranoia
 cd-read	1	reads Information from a CD or CD-image	libcdio
 cda2dcm	1	Encapsulate CDA file into DICOM file format	dcmtk
+cdparanoia	1	an audio CD reading utility which includes extra data verification features	cdparanoia
 cdrdao	1	reads and writes CDs in disc-at-once mode	cdrdao
 cdrskin	1	burns preformatted data to CD, DVD, and BD via libburn.	libburn
 cdrwtool	1	perform various actions on a CD-R, CD-RW, and DVD-R	udftools
@@ -668,6 +675,7 @@ chattr	1	change file attributes on a Linux file system	e2fsprogs
 chcp	8	change mode of NILFS2 checkpoints	nilfs-utils
 chcpu	8	configure CPUs	util-linux
 chdosattr	1	change DOS file attributes	exfatprogs
+cheatmake	1	fool make into not rebuilding certain files	kde-dev-scripts
 checkXML6	1	An XML lint tool for KDE DocBook XML documents	kdoctools
 chem	1	embed chemical structure diagrams in groff documents	groff
 chezdav	1	simple WebDAV server	phodav
@@ -718,6 +726,7 @@ clang	1	the Clang C, C++, and Objective-C compiler	clang
 clang-tblgen	1	Description to C++ Code for Clang	llvm
 cleanup_digikamdb	1	Cleanup the digiKam databases to reduce their sizes and increase access speed	digikam
 clear	1	clear the terminal screen	ncurses
+clinfo	1	show OpenCL platforms and devices	clinfo
 clockdiff	8	measure clock difference between hosts	iputils
 clone	8	Clone an UPS, treating its outlet as if it were an UPS (with shutdown INSTCMD support)	nut
 clone-outlet	8	Clone an UPS, treating its outlet as if it were an UPS (monitoring only)	nut
@@ -752,6 +761,9 @@ cracklib-check	8	Check passwords using libcrack2	cracklib
 cracklib-format	8	cracklib dictionary utilities	cracklib
 cracklib-update	8	Regenerate cracklib dictionary	cracklib
 create-cracklib-dict	8	Check passwords using libcrack2	cracklib
+create_cvsignore	1	Create preliminary .cvsignore in the current directory	kde-dev-scripts
+create_makefile	1	Creates Makefile.in and Makefile from a Makefile.am	kde-dev-scripts
+create_makefiles	1	Recreates all Makefiles beneath a directory	kde-dev-scripts
 createdb	1	create a new PostgreSQL database	postgresql
 createuser	1	define a new PostgreSQL user account	postgresql
 crispy-doom	6	historically compatible Doom engine	crispy-doom
@@ -764,6 +776,9 @@ crispy-server	6	dedicated server for crispy-doom	crispy-doom
 crispy-strife	6	historically compatible Strife engine	crispy-doom
 crispy-strife-setup	6	configuration tool for crispy-strife	crispy-doom
 croc	1	transfer files, directories, and text using a short code	croc
+cron	8	daemon to execute scheduled commands	cronie
+cronnext	1	time of next job cron will execute	cronie
+crontab	1	maintains crontab files for individual users	cronie
 crun	1	a fast and lightweight OCI runtime	crun
 cryptoflex-tool	1	utility for manipulating Schlumberger Cryptoflex data structures	opensc
 cryptsetup	8	utility for configuring and managing encrypted storage devices	cryptsetup
@@ -826,6 +841,10 @@ cupstestppd	1	test conformance of ppd files (deprecated)	cups
 curl	1	transfer a URL	curl
 curl-config	1	Get information about a libcurl installation	curl
 cut	1	remove sections from each line of files	coreutils
+cvscheck	1	Offline status report for files in a checked-out CVS module.	kde-dev-scripts
+cvslastchange	1	Display the last change committed to CVS for a file	kde-dev-scripts
+cvslastlog	1	Prints the log entry for the last commit for a file.	kde-dev-scripts
+cvsrevertlast	1	Revert files in CVS by one version	kde-dev-scripts
 cvt	1	calculate VESA CVT mode lines	libxcvt
 cvtsudoers	1	convert between sudoers file formats	sudo
 cweb	1	translate CWEB to C/C++ and/or TeX	texlive
@@ -855,6 +874,7 @@ cxl-wait-sanitize	1	wait for a sanitize operation to complete	ndctl
 cxl-write-labels	1	write data to the label area on a memdev	ndctl
 cxl-zero-labels	1	zero out the label area on a set of memdevs	ndctl
 cxpm	1	Check an XPM (X PixMap) file, versions XPM 1, 2, or 3.	libXpm
+cxxmetric	1	Simple source metrics for C and C++	kde-dev-scripts
 darktable	1	a digital photography workflow application	darktable
 darktable-cli	1	a command line darktable variant	darktable
 darktable-cltest	1	check if there is a usable OpenCL environment for darktable to use	darktable
@@ -1063,6 +1083,7 @@ dump.erofs	1	retrieve directory and file entries, show specific file or overall 
 dump.exfat	8	Show on-disk information of exfat filesystem	exfatprogs
 dump.f2fs	8	retrieve directory and file entries from an F2FS-formated image	f2fs-tools
 dump2dcm	1	Convert ASCII dump to DICOM file	dcmtk
+dump_xsettings	1	prints X11 application settings from an XSETTINGS provider	xsettingsd
 dumpcap	1	Dump network traffic	wireshark
 dumpe2fs	8	dump ext2/ext3/ext4 file system information	e2fsprogs
 dumpkeys	1	dump keyboard translation tables	kbd
@@ -1131,6 +1152,8 @@ eject	1	eject removable media	util-linux
 elbpcom	1	Communicate with Mesa ethernet cards	linuxcnc
 elf2tag	1	output a tagfile for the avrdude disasm command	avrdude
 elfedit	1	update ELF header and program property of ELF files	binutils
+elogind	8	Login manager	elogind
+elogind-inhibit	1	Execute a program with an inhibition lock taken	elogind
 emccalib	1	Adjust ini tuning variables on the fly with save option	linuxcnc
 enc2xs	1	Perl Encode Module Generator	perl
 encguess	1	guess character encodings of files	perl
@@ -1207,7 +1230,6 @@ exportd	8	NFSv4 Server Mount Daemon	nfs-utils
 exportfs	8	maintain table of exported NFS file systems	nfs-utils
 expr	1	evaluate expressions	coreutils
 exr2aces	1	convert exr images to ACES format	openexr
-exrcheck	1	validate exr files	openexr
 exrenvmap	1	convert exr image environment maps	openexr
 exrheader	1	print exr image header metadata	openexr
 exrinfo	1	print exr image header metadata	openexr
@@ -1219,10 +1241,12 @@ exrmultipart	1	combine or split multipart exr images	openexr
 exrmultiview	1	convert between single/multi-view exr images	openexr
 exrstdattr	1	set exr image metadata	openexr
 extconv	1	convert a TeX document in either Big 5+ or GBK encoding into `preprocessed' form.	texlive
+extend_dmalloc	1	Analyze return-addresses from dmalloc logfiles.	kde-dev-scripts
 extraclangtools	1	Extra Clang Tools Documentation Welcome to the clang-tools-extra project which contains extra tools built using Clang's tooling APIs.	clang
 extract_a52	1	extract ATSC A/52 audio from a MPEG stream.	a52dec
 extract_mpeg2	1	extract MPEG video streams from a multiplexed stream.	libmpeg2
 extractbb	1	extract bounding box information from graphics files	texlive
+extractrc	1	Extract message strings from UI and GUI-RC files	kde-dev-scripts
 extractres	1	filter to extract resources from a PostScript document	texlive
 eyuvtoppm	1	convert a Berkeley YUV file to a PPM file	netpbm
 eza	1	a modern replacement for ls	eza
@@ -1273,7 +1297,6 @@ ffmpeg-protocols	1	FFmpeg protocols	ffmpeg
 ffmpeg-resampler	1	FFmpeg Resampler	ffmpeg
 ffmpeg-scaler	1	FFmpeg video scaling and pixel format converter	ffmpeg
 ffmpeg-utils	1	FFmpeg utilities	ffmpeg
-ffmpegthumbnailer	1	fast and lightweight video thumbnailer	ffmpegthumbnailer
 ffprobe	1	ffprobe media prober	ffmpeg
 ffprobe-all	1	ffprobe media prober	ffmpeg
 fftw-wisdom	1	create wisdom (pre-optimized FFTs)	fftw
@@ -1303,6 +1326,7 @@ findscu	1	DICOM query (C-FIND) SCU	dcmtk
 fitshdr	1	List headers from a FITS file	wcslib
 fitstopnm	1	convert a FITS file into a PNM image	netpbm
 fix-qdf	1	repair PDF files in QDF form after editing	qpdf
+fixincludes	1	Reduce the number of #includes in KDE source files	kde-dev-scripts
 fixparts	8	MBR partition table repair utility	gptfdisk
 fixproc	1	Fixes a process by performing the specified action.	net-snmp
 flac	1	Free Lossless Audio Codec	flac
@@ -1340,8 +1364,6 @@ foomatic-ppdfile	1	Generate a PPD file for a given printer/driver combo	foomatic
 foomatic-preferred-driver	8	<put a short description here>	foomatic-db-engine
 foomatic-printjob	1	manage printer jobs in a spooler-independent fashion	foomatic-db-engine
 foomatic-rip	1	Universal print filter/RIP wrapper	cups-filters
-foot	1	Wayland terminal emulator	foot
-footclient	1	start new terminals in a foot server	foot
 fprintd	1	Fingerprint management daemon, and test applications	fprintd
 free	1	Display amount of free and used memory in the system	procps-ng
 freecell-solver-range-parallel-solve	6	The Freecell Solver utility for solving a range of Microsoft Freecell/Freecell Pro Boards	freecell-solver
@@ -1382,7 +1404,6 @@ fuse-overlayfs	1	combine directory trees in userspace	fuse-overlayfs
 fuse2fs	1	FUSE file system client for ext2/ext3/ext4 file systems	e2fsprogs
 fuser	1	identify processes using files or sockets	psmisc
 fusermount3	1	mount and unmount FUSE filesystems	fuse
-fuzzel	1	Wayland app launcher and picker	fuzzel
 fwupdmgr	1	firmware update manager client utility	fwupd
 fwupdtool	1	standalone firmware update utility	fwupd
 fy-tool	1	fy-tool documentation	libfyaml
@@ -1823,6 +1844,7 @@ gh-workflow-list	1	List workflows	gh
 gh-workflow-run	1	Run a workflow by creating a workflow_dispatch event	gh
 gh-workflow-view	1	View the summary of a workflow	gh
 ghc	1	the Glasgow Haskell Compiler	ghc
+ghostwriter	1	distraction-free text editor for Markdown	ghostwriter
 gi-compile-repository	1	Typelib compiler	glib
 gi-decompile-typelib	1	Typelib decompiler	glib
 gi-inspect-typelib	1	Typelib inspection tool	glib
@@ -2080,6 +2102,7 @@ gnome-mines	6	The popular logic puzzle minesweeper	gnome-mines
 gnome-sudoku	6	puzzle game for the popular Japanese sudoku logic puzzle	gnome-sudoku
 gnucash	1	personal finance manager	gnucash
 gnucash-cli	1	command line tool to go with GnuCash	gnucash
+gnugo	6	The GNU program to play the game of Go	gnugo
 gnumeric	1	a GNOME spreadsheet application.	gnumeric
 gnuplot	1	an interactive plotting program	gnuplot
 gnuradio-companion	1	GNU Radio Companion (GRC) is a graphical tool for creating GNU Radio signal flowgraphs.	gnuradio
@@ -2171,7 +2194,6 @@ grcc	1	Gnu Radio Companion Compiler	gnuradio
 gremlin_view	1	G-code graphical preview	linuxcnc
 grep	1	print lines that match patterns	grep
 gresource	1	GResource tool	glib
-grim	1	grab images from a Wayland compositor	grim
 grn	1	embed Gremlin images in groff documents	groff
 grodvi	1	groff output driver for TeX DVI format	groff
 groff	1	front end to the GNU roff document formatting system	groff
@@ -2724,124 +2746,75 @@ k5srvutil	1	host key table (keytab) manipulation utility	krb5
 kadmin	1	Kerberos V5 database administration program	krb5
 kalzium	1	A KDE based chemistry teaching tool	kalzium
 kate	1	Advanced text editor by KDE	kate
+kbackup	1	Backup program with an easy-to-use interface	kbackup
 kbd_mode	1	report or set the keyboard mode	kbd
 kbdinfo	1	read information about keyboard state	kbd
 kbdrate	8	reset the keyboard repeat rate and delay time	kbd
+kbookmarkmerger	1	A program for merging a given set of bookmarks into the users list of bookmarks.	keditbookmarks
+kbruch	1	Learn calculating with fractions and percentages	kbruch
 kbuildsycoca6	8	Rebuilds the KService desktop file system configuration cache	kservice
 kded6	8	KDE daemon - triggers Sycoca database updates when needed.	kded
 kdenlive	1	An open source non-linear video editor.	kdenlive
 kdenlive_render	1	Render program for Kdenlive.	kdenlive
 kdestroy	1	destroy Kerberos tickets	krb5
+kdesu	1	Runs a program with elevated privileges	kde-cli-tools
 kdiff3	1	Tool for Comparison and Merge of Files and Folders	kdiff3
-kdos-about	1	What this machine is	kdos-doc
-kdos-appbox	1	Launch, install and export boxed applications; generate launchers	kdos-doc
-kdos-ascii	1	Render a picture as characters	kdos-doc
-kdos-audio	1	Audio devices	kdos-doc
-kdos-backup	1	What is in the restic repository, one key to add to it, and a restore view	kdos-doc
+kdos-appbox	1	Launch, install and export boxed applications; open a file in a throwaway box; generate launchers	kdos-doc
 kdos-banner	1	The login banner	kdos-doc
 kdos-bb	1	the AAlib demo	kdos-bb
-kdos-bootctl	1	A/B root slot selection and confirmation, each slots kernel on the ESP, and the colours of the boot menu and text consoles	kdos-doc
+kdos-bootctl	1	A/B root slot selection, trial and confirmation, each slots kernel on the ESP, the boot entries, the splashs motion, and the colours of the boot menu and text consoles	kdos-doc
 kdos-box	1	Manage boxes: create, enter, freeze, export, snapshot, profile	kdos-doc
 kdos-boxinit	1	Process 1 inside a pack box	kdos-doc
-kdos-boxsock	1	One tagged compositor socket per box, so the compositor knows which box a window came from; kdos-boxsock BOX [INSTANCE]	kdos-doc
-kdos-bt	1	Bluetooth	kdos-doc
-kdos-burn	1	A folder or an image onto a CD, DVD or Blu-ray, and the disc checked	kdos-doc
-kdos-cal	1	The calendar	kdos-doc
-kdos-calc	1	The calculator, through qalc	kdos-doc
-kdos-chars	1	The character map	kdos-doc
-kdos-checkpass	1	Check the callers own password against /etc/shadow, for kdos-lock	kdos-doc
-kdos-clip	1	Clipboard history: with no argument the daemon, with –pick the picker	kdos-doc
-kdos-comp	1	The compositor, a fork of labwc	kdos-doc
-kdos-connect	1	A folder on another machine, over SMB	kdos-doc
-kdos-contacts	1	The address book, through khard	kdos-doc
-kdos-desk	1	The desktop and its icons	kdos-doc
-kdos-desktop	1	Start a session from a tty	kdos-doc
-kdos-desktop-start	1	Bring up PipeWire, WirePlumber and the PulseAudio shim, run the compositor in the foreground, and start the portals once its socket exists	kdos-doc
-kdos-devices	1	Cameras, microphones, removable media	kdos-doc
-kdos-disks	1	Disks: mount, unlock, SMART, partition, write an image, erase	kdos-doc
-kdos-display	1	Screen configuration	kdos-doc
-kdos-doc	1	The documentation viewer	kdos-doc
+kdos-boxsock	1	Open a launchers tagged Wayland socket in a boxs private runtime directory, so KWin knows which box a window came from; kdos-boxsock [-s confined|tagged] BOX [LAUNCHER-ID]	kdos-doc
+kdos-discover-catalog	1	Write the AppStream catalogue of the ports a root has installed, or a binary host can add, for Discover; –root DIR, –out FILE, –origin NAME, –package NAME	kdos-doc
+kdos-dm	1	Run SDDM on tty1 from /etc/inittab, and give a password prompt on that console when SDDM is missing or exits three times in a minute	kdos-doc
+kdos-doc	1	Open the KDOS book in the Help Center, at a page: kdos-doc [CHAPTER/PAGE[#ANCHOR]]	kdos-doc
 kdos-energy	1	The per-application energy report; –json, ping	kdos-doc
 kdos-energyd	8	Per-application energy attribution: which application is using the processors power	kdos-doc
 kdos-fetch-app	1	Install an application from another distribution into a distrobox; –box, –image, –remove	kdos-doc
 kdos-fetch-static	1	Fetch one static binary and verify it: kdos-fetch-static NAME URL SHA256	kdos-doc
-kdos-find	1	Files by name or contents, applications and recent files	kdos-doc
-kdos-firewall	1	Which services answer the network	kdos-doc
-kdos-getty	1	Load the console font and palette onto a VT, then run a getty: kdos-getty TTY GETTY [ARGS…]	kdos-doc
-kdos-ime	1	The input-method candidate window, as cells	kdos-doc
-kdos-keys	1	The keybinding card	kdos-doc
-kdos-launcher	1	The palette showing applications only	kdos-doc
-kdos-lock	1	The lock screen, through ext-session-lock-v1	kdos-doc
-kdos-login	1	Hand tty1 to agetty, logging in automatically when /etc/kdos/login.conf names an account	kdos-doc
-kdos-mediad	1	Removable-media toasts, with Open and Eject	kdos-doc
-kdos-menu	1	The applications, places, system and window menus	kdos-doc
-kdos-mount	1	Mount and unmount removable media, as kdos-mountds client	kdos-doc
-kdos-mountd	8	The removable-media daemon: disks, LUKS, SMB shares, SMART	kdos-doc
-kdos-mpctl	1	Music control: toggle, stop, next, prev to mpd or an MPRIS player; now and watch from mpd	kdos-doc
-kdos-net	1	Networking	kdos-doc
-kdos-netagent	1	The NetworkManager secret agent	kdos-doc
-kdos-note	1	The scratch pad	kdos-doc
-kdos-notify	1	The notification centre	kdos-doc
-kdos-notifyd	1	The notification daemon	kdos-doc
+kdos-fwask	1	Ask once, per network, whether to let in a service a session program serves when the firewall turns its connections away	kdos-doc
+kdos-getty	1	Load the console font, palette and keymap onto a VT, then run a getty: kdos-getty TTY GETTY [ARGS…]	kdos-doc
+kdos-installer-gui	1	Install KDOS: the graphical installer, which runs kinstall through pkexec	kdos-doc
+kdos-library-place	1	Add the library:/ entry to Dolphins Places once per account	kdos-doc
+kdos-mpctl	1	Music control: toggle, stop, next, prev to mpd or an MPRIS player; mpris serves mpd on the session bus as org.mpris.MediaPlayer2.mpd	kdos-doc
+kdos-notice	1	The systems notices as Plasma notifications: restarts after an update, CVEs, the trial slot, a rollback, memory kills; –scan looks once, –bless confirms this boot once Plasma has stayed up	kdos-doc
 kdos-oomd	8	The memory-pressure daemon, which spares the desktop	kdos-doc
-kdos-openarchive	1	Extract, with ouch, an archive mc cannot browse as a directory, beside the archive	kdos-doc
-kdos-openwith	1	Choose a handler for a file	kdos-doc
-kdos-osd	1	The volume, microphone and brightness bezel	kdos-doc
+kdos-openarchive	1	Extract, with ouch, an archive beside itself; the default handler for comic books packed as 7z or rar	kdos-doc
 kdos-pack	1	Build, sign, re-stamp, index and diff packs	kdos-doc
 kdos-packd	8	The pack daemon, the only program that mounts a pack	kdos-doc
-kdos-palette	1	One search over windows, applications, routes, settings pages, files and key chords (keyboard shortcuts)	kdos-doc
-kdos-peek	1	What is in a file, without starting its application	kdos-doc
-kdos-pick	1	The file chooser and browser	kdos-doc
-kdos-pix	1	One picture, and the folder it is in	kdos-doc
 kdos-podman-api	1	Run a container client against this accounts Podman API socket, starting podman system service when nothing answers on it	kdos-doc
-kdos-power	1	Suspend, power off or reboot, as kdos-powerds client	kdos-doc
-kdos-powerd	8	Suspend, power-off, reboot, and the system settings a desktop user may change	kdos-doc
-kdos-print	1	Printers: what is set up, what is on the network	kdos-doc
-kdos-prompt	1	Yes or no, answered by exit status; –input asks for a line instead	kdos-doc
-kdos-rec	1	Record a microphone, watch the level, transcribe it	kdos-doc
-kdos-record	1	Record the desktop through the ScreenCast portal; run it again to stop	kdos-doc
-kdos-res	1	The resource monitor	kdos-doc
-kdos-resctl	1	For kdos-res: signal PID TERM|KILL|STOP|CONT, renice PID N, and dmi to read the hardware table; the caller must be in wheel	kdos-doc
-kdos-run	1	The run box	kdos-doc
-kdos-saver	1	The screen saver, started by Super+Shift+L or by hand; the idle sequence does not start it	kdos-doc
-kdos-session-save	1	Write what is running to $XDGSTATEHOME/kdos/session, so the next login can restore it	kdos-doc
-kdos-settings	1	The control centre	kdos-doc
-kdos-sfx	1	Sound effects: login, notify, error, degauss; –route prints the output it would use	kdos-doc
-kdos-share	1	Send files to another machine over croc; with no file, kdos-pick asks for one	kdos-doc
-kdos-shell	1	The panel	kdos-doc
-kdos-shot	1	Screenshots through grim and slurp: region (the default), screen (also full), qr	kdos-doc
-kdos-slit	1	The slit: a narrow column of small status gadgets (dockapps) at the right edge of each screen, off unless comp.conf sets slit = yes	kdos-doc
-kdos-splash	1	The boot splash	kdos-doc
-kdos-start	1	The Start menu	kdos-doc
-kdos-status	1	The popup behind the panels overflow chevron	kdos-doc
-kdos-store	1	What this machine can build, and one tick to build it	kdos-doc
-kdos-style	1	The accent on one page, the font on the other	kdos-doc
+kdos-ports-helper	1	Install one port and what it lacks from the signed binary host, as root through polkit, for Discover: kdos-ports-helper install PORT	kdos-doc
+kdos-power	1	kdos-powerds client; suspend, poweroff and reboot go to loginctl and never reach the daemon	kdos-doc
+kdos-powerd	8	The firewalls named services and the look of the machine before a login, for a desktop that is not root: on a socket for kdos and as io.kdos.Power1 on the system bus	kdos-doc
+kdos-runner	1	The KDOS rows of KRunner and the offline library, on the session bus as io.kdos.Runner; –query TEXT and –library TEXT answer once on standard output	kdos-doc
+kdos-session-wrapper	1	SDDMs session command: start Plasma from a login shell, on the one session bus at $XDGRUNTIMEDIR/bus, with the desktops environment set	kdos-doc
+kdos-settingsd	8	org.freedesktop.hostname1, timedate1 and locale1 on the system bus, over the files KDOS keeps	kdos-doc
+kdos-sfx	1	The machines sounds: login, notify, error, degauss, logout, warning, complete, added, removed; –route prints the output it would use; render DIR [–format oga|wav] writes the sound theme	kdos-doc
+kdos-share	1	Send files to another machine over croc; –clipboard sends the clipboard	kdos-doc
+kdos-shot	1	Screenshots through Spectacle, to the clipboard and /Pictures/Screenshots: region (the default), screen (also full), window, qr	kdos-doc
+kdos-splash	1	The boot splash: a fade from black, or Phosphor modes CRT power-on; handoff leaves the screen to SDDM, preview WxH T OUT [modern|phosphor] writes one frame to a file	kdos-doc
 kdos-syncthing	1	Syncthing, given a LAN-only configuration the first time it runs	kdos-doc
-kdos-teams	1	The window list	kdos-doc
-kdos-term	1	The terminal	kdos-doc
-kdos-theme	1	Generate the GTK, icon and cursor themes for an accent: gtk, icons, cursors, accents	kdos-doc
-kdos-time	1	The time zone, the clock, and whether the clock is right	kdos-doc
-kdos-tip	1	Tooltips	kdos-doc
-kdos-trash	1	What was deleted, and the way back	kdos-doc
-kdos-traymenu	1	A tray items own com.canonical.dbusmenu menu, as cells	kdos-doc
-kdos-update	1	What is behind, what is vulnerable, which root slot is live	kdos-doc
+kdos-sysupdated	8	org.freedesktop.sysupdate1 and io.kdos.Slots1 on the system bus: system updates into the inactive A/B slot, for Discover and System Settings	kdos-doc
+kdos-theme	1	Generate the identity kit for an accent at build time: kde-colors, syntax-themes, konsole, qt5ct-colors, wallpaper, greeter-globals, contrast, accents	kdos-doc
 kdos-updatedb	1	Rebuild this users own plocate index, scoped to $HOME	kdos-doc
-kdos-users	1	The accounts, and which one tty1 logs in automatically	kdos-doc
-kdos-verify	1	Files against a checksum list or a par2 set, and par2s repair	kdos-doc
 keepassxc	1	a modern open-source password manager	keepassxc
 keepassxc-cli	1	command line interface for the KeePassXC password manager	keepassxc
 key.dns_resolver	8	upcall for request-key to handle dns_resolver keys	keyutils
 keyctl	1	key management facility control	keyutils
 keytool	1	a key and certificate management utility	openjdk
+kfind	1	file find utility by KDE	kfind
 khal	1	khal Documentation Khal is a calendar program for the terminal for viewing, adding and editing events and calendars. Khal is build on the iCalendar and vdir (allowing the use of vdirsyncer(1) for CalDAV compatibility) standards.	khal
+khangman	6	The classical hangman game by KDE	khangman
 khard	1	Console address book manager	khard
 khard-subcommands	1	Subcommands of khard These are all the subcommands and accepted arguments of khard(1). usage: khard [-h] [-c CONFIG] [--debug] [--skip-unparsable] [-v] SUBCOMMAND ...	khard
+kig	1	An interactive geometry program by KDE	kig
 kill	1	terminate a process	util-linux
 killall	1	kill processes by name	psmisc
 killall5	8	send a signal to all processes	sysvinit
 killsnoop.bt	8	Trace signals issued by the kill(),tkill(),tgkill() syscall. Uses bpftrace/eBPF.	bpftrace
 kinit	1	obtain and cache Kerberos ticket-granting ticket	krb5
-kinstall	1	The installer	kdos-doc
+kinstall	1	The installer: the terminal wizard, and the backend the graphical installer drives through –events	kdos-doc
 kissutil	1	KISS TNC troubleshooting and Application Interface.	direwolf
 kiwix-compile-i18n	1	helper to compile Kiwix i18n (internationalization) data	libkiwix
 kiwix-compile-resources	1	helper to compile and generate some Kiwix resources	libkiwix
@@ -2851,6 +2824,8 @@ kiwix-serve	1	Kiwix HTTP Server	kiwix-tools
 klist	1	list cached Kerberos tickets	krb5
 klog	1	The Ham Radio Logging program	klog
 kmod	8	Program to manage Linux Kernel modules	kmod
+kmouth	1	A type-and-say front end for speech synthesizers	kmouth
+kmplot	1	Mathematical function plotter	kmplot
 koreader	1	document viewer	koreader
 korg2gig	1	Convert sound files from KORG to GigaStudio format.	libgig
 korgdump	1	List information about sound files in KORG synthesizer format.	libgig
@@ -2868,9 +2843,11 @@ kpsestat	1	compute octal mode from mode of existing file	texlive
 kpsetool	1	script to make teTeX-style kpsetool, kpsexpand, and kpsepath available	texlive
 kpsewhere	1	Expanding kpsewhich to separately iterate over each texmf tree listed in $TEXMF.	texlive
 kpsewhich	1	standalone path lookup and and expansion for kpathsea	texlive
+kqml	1	QML Runtime with KLocalizedContext	plasma-sdk
 krb5-config	1	tool for linking against MIT Kerberos libraries	krb5
+ksshaskpass	1	prompts a user for a passphrase using KDE	ksshaskpass
 kstats	1	show statistical FMS algorithm votes for an ivs dump and a specified WEP key	aircrack-ng
-ksvc	8	The service supervisor	kdos-doc
+ksvc	8	The service supervisor, for the systems services and, with –user, each users own	kdos-doc
 kswitch	1	switch primary ticket cache	krb5
 ktouch	1	A typing tutor by KDE	ktouch
 ktutil	1	Kerberos keytab file maintenance utility	krb5
@@ -3097,6 +3074,8 @@ locktest	1	Find differences in locking between two SMB servers	samba
 log2gpx	1	Convert Dire Wolf log files to GPX format.	direwolf
 log2pcap	1	Extract network traces from Samba log files	samba
 logger	1	enter messages into the system log	util-linux
+login	1	begin session on the system	util-linux-login
+loginctl	1	Control the elogind login manager	elogind
 logname	1	print users login name	coreutils
 logsave	8	save the output of a command in a logfile	e2fsprogs
 look	1	display lines beginning with a given string	util-linux
@@ -3642,6 +3621,7 @@ ndisasm	1	the Netwide Disassembler, an 80x86 binary file disassembler	nasm
 ndptool	8	Neighbor Discovery Protocol tool	libndp
 ndrdump	1	DCE/RPC Packet Parser and Dumper	samba
 nearblack	1	Convert nearly black/white borders to black.	gdal
+neochat	1	Client for interacting with the matrix messaging protocol .SH "SYNOPSIS" .HP 'neochat 'u neochat [URI]	neochat
 neon-config	1	script providing information about installed copy of neon library	neon
 neotoppm	1	convert an Atari Neochrome .neo into a PPM image	netpbm
 neqn	1	format equations for character-cell terminal output	groff
@@ -4412,7 +4392,9 @@ pahole	1	show or manipulate data structure layout and pretty print raw data	dwar
 pal2rgb	1	convert a palette color TIFF image to a full color image	libtiff
 palmtopnm	1	convert a Palm Bitmap to a PNM image	netpbm
 pam_cap	8	Capabilities PAM module	libcap
+pam_elogind	8	Register user sessions in the elogind login manager	elogind
 pam_fprintd	8	PAM module to authenticate against fprintd, the fingerprint daemon	fprintd
+pam_turnstile	8	register user sessions in turnstiled(8)	turnstile
 pamaddnoise	1	add noise to a Netpbm image	netpbm
 pamaltsat	1	increase or decrease the saturation of an image using one of several alternative methods.	netpbm
 pamarith	1	perform arithmetic on two Netpbm images	netpbm
@@ -5001,6 +4983,8 @@ pktsetup	8	set up and tear down packet device associations	udftools
 pkttyagent	1	Textual authentication helper	polkit
 pktype	1	verify and translate a packed font (pk) bitmap file to plain text	texlive
 pl2pm	1	Rough tool to translate Perl4 .pl files to Perl5 .pm modules	perl
+plasmaengineexplorer	1	Provides direct access to plasma data engines	plasma-sdk
+plasmoidviewer	1	Run Plasma widgets in their own window	plasma-sdk
 pldd	1	display dynamic shared objects linked into a process	man-pages
 plistutil	1	Convert a plist FILE between binary, XML, and JSON format	libplist
 plmpower	8	control Insteon/X10 devices via SmartLabs PLM 2412S	powerman
@@ -5077,6 +5061,7 @@ pnmtotiff	1	replaced by pamtotiff	netpbm
 pnmtotiffcmyk	1	convert a Netpbm image into a CMYK encoded TIFF file	netpbm
 pnmtoxwd	1	convert a PNM into an X11 window dump	netpbm
 po-fetch	1	fetches a set of PO files from a translation project's site	gettext
+po2xml	1	Translates an DocBook XML file using a PO file	poxml
 pod2html	1	convert .pod files to .html files	perl
 pod2man	1	Convert POD data to formatted *roff input	perl
 pod2texi	1	convert Pod to Texinfo	texinfo
@@ -5392,8 +5377,10 @@ projinfo	1	Geodetic object and coordinate operation queries	proj
 pronto2lirc	1	convert pronto-encoded data to lircd.conf format	lirc
 prosodyctl	1	Manage a Prosody XMPP server	prosody
 prove	1	Run tests through a TAP harness.	perl
+proxy	8	Libproxy test tool	libproxy
 prtstat	1	print statistics of a process	psmisc
 prune	1	Prune directed graphs	graphviz
+pruneemptydirs	1	Detects stale source directories in a CVS tree	kde-dev-scripts
 ps	1	report a snapshot of the current processes.	procps-ng
 ps2ascii	1	Ghostscript translator from PostScript or PDF to text	ghostscript
 ps2eps	1	convert PostScript to EPS (Encapsulated PostScript) files	texlive
@@ -5770,6 +5757,7 @@ samtools-view	1	views and converts SAM/BAM/CRAM files	samtools
 sane-config	1	get information about the installed version of libsane	sane-backends
 sane-find-scanner	1	find SCSI and USB scanners and their device files	sane-backends
 saned	8	SANE network daemon	sane-backends
+sassc	1	compile Sass stylesheets to CSS	sassc
 sbigtopgm	1	convert an SBIG CCDOPS file to PGM	netpbm
 sc-hsm-tool	1	smart card utility for SmartCard-HSM	opensc
 sc-im	1	A curses based, vim-like spreadsheet calculator	sc-im
@@ -5794,11 +5782,11 @@ scriptlive	1	re-run session typescripts, using timing information	util-linux
 scriptreplay	1	play back typescripts, using timing information	util-linux
 scummvm	6	adventure and role-playing game interpreter	scummvm
 sdcv	1	console version of StarDict program	sdcv
+sddm	1	the simple desktop display manager	sddm
+sddm-greeter	1	sddm display manager greeter	sddm
 sdiff	1	side-by-side merge of file differences	diffutils
 sdl-freerdp	1	FreeRDP SDL client	freerdp
 sdptool	1	control and interrogate SDP servers	bluez
-seatd	1	A seat management daemon	seatd
-seatd-launch	1	Start a process with its own seatd instance	seatd
 secret-tool	1	Store and retrieve passwords	libsecret
 sed	1	stream editor for filtering and transforming text	sed
 sem	1	semaphore for executing shell command lines in parallel	parallel
@@ -5885,6 +5873,7 @@ sirtopnm	1	convert a Solitaire file to PNM	netpbm
 sixel2png	1	convert DEC SIXEL images into PNG format images	libsixel
 size	1	list section sizes and total size of binary files	binutils
 sjisconv	1	convert a TeX document in SJIS encoding into `preprocessed' form.	texlive
+skladnik	6	Sokoban game	skladnik
 skopeo	1	Command line utility used to interact with local and remote container images and container image registries	skopeo
 skopeo-copy	1	Copy an image (manifest, filesystem layers, signatures) from one location to another.	skopeo
 skopeo-delete	1	Mark the image-name for later deletion by the registry's garbage collector.	skopeo
@@ -5904,7 +5893,6 @@ slirp4netns	1	User-mode networking for unprivileged network namespaces	slirp4net
 sln	8	create symbolic links	man-pages
 sload.f2fs	8	load directories and files into the device directly	f2fs-tools
 slsh	1	Interpreter for S-Lang scripts	slang
-slurp	1	select a region in a Wayland compositor	slurp
 sm-notify	8	send reboot notifications to NFS peers	nfs-utils
 smartctl	8	Control and Monitor Utility for SMART Disks	smartmontools
 smartd	8	SMART Disk Monitoring Daemon	smartmontools
@@ -5989,6 +5977,7 @@ spd-conf	1	configure Speech Dispatcher and diagnose problems	speech-dispatcher
 spd-say	1	send text-to-speech output request to speech-dispatcher	speech-dispatcher
 spdxtool	1	a tool for generating SPDX Lite 3.0.1 profile software bills of material document	pkgconf
 speaker-test	1	command-line speaker test tone generator for ALSA	alsa-utils
+spectacle	1	screenshot capture Utility	spectacle
 speech-dispatcher	1	speech synthesis daemon	speech-dispatcher
 speexdec	1	The reference implementation speex decoder.	speex
 speexenc	1	The reference implementation speex encoder.	speex
@@ -6002,6 +5991,7 @@ spit	1	translate some text through a Large Language Model	gettext
 spix	1	Compile a .tex file, executing commands that are set inside the file itself.	texlive
 splain	1	produce verbose warning diagnostics	perl
 split	1	split a file into pieces	coreutils
+split2po	1	Creates a po file from two DocBook XML files	poxml
 splitindex	1	manual page for splitindex 0.2a	texlive
 spottopgm	1	convert SPOT satellite images to a PGM image	netpbm
 sprof	1	read and display shared object profiling data	man-pages
@@ -6072,6 +6062,7 @@ svgtopam	1	convert an SVG (Scalable Vector Graphics) image to Netpbm format	netp
 swapin.bt	8	Count swapins by process. Uses bpftrace/eBPF.	bpftrace
 swaplabel	8	print or change the label or UUID of a swap area	util-linux
 swapon	8	enable/disable devices and files for paging and swapping	util-linux
+swappo	1	swap msgid and msgstr fields in a PO file	poxml
 swayimg	1	image viewer for Wayland/DRM with Lua scripting support	swayimg
 switch_root	8	switch to another filesystem as the root of the mount tree	util-linux
 swtpm	8	TPM Emulator for TPM 1.2 and 2.0	swtpm
@@ -6305,9 +6296,11 @@ tlf	1	amateur radio contest keyer/logging program for Radiosport	tlf
 tlmgr	1	the native TeX Live Manager	texlive
 tload	1	graphic representation of system load average	procps-ng
 tlp	8	apply laptop power saving settings	tlp
+tlp-pd	8	TLP Profiles Daemon	tlp-pd
 tlp-rdw	8	disable Radio Device Wizard temporarily (until reboot).	tlp
 tlp-stat	8	view power saving status	tlp
 tlp.service	8	Initialize power saving at boot and cleanup upon shutdown	tlp
+tlpctl	1	control TLP profiles	tlp-pd
 tmux	1	terminal multiplexer	tmux
 toast	1	GSM 06.10 lossy sound compression	gsm
 toc2cddb	1	translates a TOC file of cdrdao(1) into a cddb file and prints it to stdout	cdrdao
@@ -6474,6 +6467,7 @@ ttx	1	tool for manipulating TrueType and OpenType fonts	fonttools
 tty	1	print the file name of the terminal connected to standard input	coreutils
 tune.exfat	8	adjust tunable filesystem parameters on an exFAT filesystem	exfatprogs
 tune2fs	8	adjust tunable file system parameters on ext2/ext3/ext4 file systems	e2fsprogs
+turnstiled	8	the main session management daemon	turnstile
 tuxpaint	1	"Tux Paint", a drawing program for young children.	tuxpaint
 tuxpaint-import	1	Import image files into Tux Paint(1)	tuxpaint
 twill	1	translate a literate programming WEB to TeX with mini-indexes	texlive
@@ -6728,8 +6722,6 @@ wav2gig	1	Create GigaStudio (.gig) file from a set of WAV files.	libgig
 wavpack	1	encode audio files to wavpack	wavpack
 wayland-info	1	display information utility for Wayland	wayland-utils
 waypipe	1	A transparent proxy for Wayland applications	waypipe
-wayvnc	1	A VNC server for wlroots-based Wayland compositors.	wayvnc
-wayvncctl	1	A command line control client for wayvnc(1)	wayvnc
 wbinfo	1	Query information from winbind daemon	samba
 wbmptopbm	1	convert a wireless bitmap (wbmp) file to a PBM	netpbm
 wc	1	word, line, and byte or character count	coreutils
@@ -6748,7 +6740,6 @@ wesnothd	6	Battle for Wesnoth multiplayer network daemon	wesnoth
 wesside-ng	8	crack a WEP key of an open network without user intervention	aircrack-ng
 westcos-tool	1	utility for manipulating data structures on westcos smart cards	opensc
 wev	1	show wayland events	wev
-wf-recorder	1	simple screen recording program for wlroots-based compositors	wf-recorder
 wg	8	set and retrieve configuration of WireGuard interfaces	wireguard-tools
 wg-quick	8	set up a WireGuard interface simply	wireguard-tools
 wgsim	1	Whole-genome sequencing read simulator	samtools
@@ -6801,7 +6792,6 @@ wireshark	1	Interactively dump and analyze network traffic	wireshark
 wish	1	Simple windowing shell	tk
 wj200_vfd	1	Hitachi wj200 modbus driver	linuxcnc
 wl-clipboard	1	Wayland copy and paste command line utilities	wl-clipboard
-wl-mirror	1	a simple Wayland output mirror client	wl-mirror
 wlmscpfs	1	DICOM Basic Worklist Management SCP (based on data files)	dcmtk
 wmc	1	Wine Message Compiler	wine
 word-list-compress	1	word list compressor/decompressor for GNU Aspell	aspell
@@ -6818,7 +6808,6 @@ wrudf	1	Maintain a UDF filesystem.	udftools
 wsjtx	1	Weak signal communications program.	wsjtx
 wsprd	1	is a decoder for K1JTs Weak Signal Propagation Reporter (WSPR) mode.	wsjtx
 wspsearch	1	Run Windows Search Protocol searches against a SMB server	samba
-wtype	1	xdotool type for Wayland	wtype
 wvAbw	1	convert msword documents to Abiword's format	wv
 wvCleanLatex	1	convert msword documents to LaTeX	wv
 wvDVI	1	convert msword documents to DVI	wv
@@ -6834,7 +6823,6 @@ wvVersion	1	view word document's version #	wv
 wvWare	1	convert msword documents	wv
 wvWml	1	convert msword documents to WML	wv
 wvgain	1	add ReplayGain information to wavpack files	wavpack
-wvkbd	1	on-screen virtual keyboard for wayland compositors using wlroots	wvkbd
 wvtag	1	manipulate wavpack metadata	wavpack
 wvunpack	1	decode wavpack encoded files	wavpack
 wwan	1	enable/disable internal WWAN (3G/4G/5G) device	tlp
@@ -6866,7 +6854,9 @@ xdg-mime	1	command line tool for querying information about file type handling a
 xdg-open	1	opens a file or URL in the users preferred application	xdg-utils
 xdg-screensaver	1	command line tool for controlling the screensaver	xdg-utils
 xdg-settings	1	get various settings from the desktop environment	xdg-utils
-xdg-terminal-exec	1	Run a command in a foot window, for Terminal=true handlers launched through GLib	kdos-doc
+xdg-terminal-exec	1	Run a command in a Konsole window, for Terminal=true handlers launched through GLib	kdos-doc
+xdg-user-dir	1	Find an XDG user dir	xdg-user-dirs
+xdg-user-dirs-update	1	Update XDG user dir configuration	xdg-user-dirs
 xdvi	1	DVI Previewer for the X Window System	texlive
 xdvipsk	1	convert a TeX DVI file to PostScript (dvips extexsion)	texlive
 xetex	1	extended TeX with native support for Unicode, OpenType, system fonts	texlive
@@ -6925,6 +6915,7 @@ xml-rpc-api2txt	1	Print out a description of an XML-RPC API as text	xmlrpc-c
 xml2-config	1	script to get information about the installed version of libxml2	libxml2
 xml2dcm	1	Convert XML document to DICOM file or data set	dcmtk
 xml2dsr	1	Convert XML document to DICOM SR file	dcmtk
+xml2pot	1	Creates a PO template file from a DocBook XML file.	poxml
 xmlcatalog	1	Command line tool to parse and manipulate XML or SGML catalog files.	libxml2
 xmlif	1	conditional processing instructions for XML	xmlto
 xmllint	1	command line XML tool	libxml2
@@ -6939,6 +6930,7 @@ xorriso-dd-target	1	Device evaluator and disk image copier for GNU/Linux	libisob
 xorriso-tcltk	1	Educational GUI frontend for xorriso	libisoburn
 xorrisofs	1	Emulation of ISO 9660 program mkisofs by program xorriso	libisoburn
 xpmtoppm	1	convert an X11 pixmap to a PPM image	netpbm
+xsettingsd	1	provides settings to X11 applications	xsettingsd
 xsltproc	1	command line XSLT processor	libxslt
 xsubpp	1	compiler to convert Perl XS code into C code	perl
 xtables-legacy	8	iptables using old getsockopt/setsockopt-based kernel api	iptables
@@ -6996,10 +6988,10 @@ zipmerge	1	merge zip archives	libzip
 zipnote	1	write the comments in zipfile to stdout, edit comments and rename files in zipfile	zip
 zipsplit	1	split a zipfile into smaller zipfiles	zip
 ziptool	1	modify zip archives	libzip
-zless	1	file perusal filter for crt viewing of compressed text	gzip
 zlib-flate	1	raw zlib compression program	qpdf
 zmore	1	file perusal filter for crt viewing of compressed text	gzip
 znew	1	recompress .Z files to .gz files	gzip
+zonetab2pot.py	1	Converts a timezone list to a PO file template.	kde-dev-scripts
 zoxide	1	a smarter cd command	zoxide
 zoxide-add	1	add a new directory or increment its rank	zoxide
 zoxide-import	1	import data from other tools	zoxide

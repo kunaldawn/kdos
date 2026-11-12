@@ -60,7 +60,7 @@ line of the table names. Every key and line is described in
 **The installer's lines.** On an installed system the installer puts its own lines in front of the
 image's, keeping every shipped one, from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=1813-1846 pin=b7e79086c91c -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=1825-1858 pin=b7e79086c91c -->
 
 So an installed `fstab` begins with the root by its filesystem UUID and the EFI system partition
 at `/boot/efi` with `umask=0077` and pass 2. On the A/B layout, which an erased disk under LVM gets
@@ -79,7 +79,7 @@ Only ext4 has pass 1; btrfs, xfs and f2fs have 0. See
 **The boot's check and mount**, from `fs/etc/init.d/rcS`. `fsck -A -R -T -a` checks every entry with
 a non-zero pass except the root, and `mount -a` mounts every entry:
 
-<!-- kfs:include fs/etc/init.d/rcS lines=55-80 pin=992729eea9fd -->
+<!-- kfs:include fs/etc/init.d/rcS lines=60-85 pin=992729eea9fd -->
 
 **The daily trim**, [`/etc/kdos/timers.d/20-fstrim.timer`]{.idx}, from `fs/etc/kdos/timers.d/20-fstrim.timer`:
 

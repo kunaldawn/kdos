@@ -37,7 +37,15 @@ running splash, because the splash was started in the initramfs and every path i
 The motion comes from the kernel command line because the power-on runs in the initramfs, before
 any root filesystem with a setting in it is mounted. `KDOS_SPLASH_CMDLINE` names a file read in
 its place, and `kdos-splash preview` takes the motion as an optional last argument, so both
-motions can be rendered and compared on a development host.
+motions can be rendered and compared on a development host. The same command line decides whether
+the splash runs at all: `run` without `quiet` exits at once, so the verbose and single-user entries
+show the boot's text instead.
+
+The progress bar gives the initramfs a fixed first share and `rcS` the rest. The splash finds the
+boundary from its own root: `/init` is there while the initramfs runs and gone once
+`switch_root` has emptied it, so the first `total` that arrives with `/init` missing is `rcS`'s.
+`preview` replays a whole boot through the same commands, its failed stage and the stages after it
+included, so one render shows the bar, the pinned failure and the reason panel together.
 
 `splash.psf` is decompressed at build time because `font_load()` reads a bare PSF1 or PSF2 file:
 the static binary carries no decompressor. It falls back to

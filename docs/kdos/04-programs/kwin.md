@@ -29,18 +29,26 @@ Two copies run on a machine with somebody logged in:
 | The session's | `startplasma-wayland`, through `kwin_wayland_wrapper` | `kwin_wayland --xwayland` with the session's options |
 
 The login screen's copy has no global shortcuts, no lock screen and no Xwayland. It starts
-plasma-keyboard as its input method, so the greeter has an on-screen keyboard on a touch screen
-with no physical one. `--locale1`
-takes its keyboard layout from `org.freedesktop.locale1`, which
+plasma-keyboard as its input method, so the greeter has an on-screen keyboard: KWin shows it when
+the password field is touched, and the footer's Virtual Keyboard button shows and hides it for a
+mouse. `--locale1` takes its keyboard layouts from `org.freedesktop.locale1`, which
 [kdos-settingsd](daemons.md#kdos-settingsd) serves, so the greeter types in the layout the
-machine was installed with.
+machine was installed with; with more than one, the footer's layout button switches between them.
+Both buttons are D-Bus calls to this KWin (`org.kde.KWin` `/VirtualKeyboard`, `org.kde.keyboard`)
+on the greeter's session bus, the one user service the `sddm` account gets (see
+[Session](../03-architecture/session.md#the-users-services)).
 
 The session's copy runs under `kwin_wayland_wrapper`, which holds the Wayland socket. When KWin
 exits with anything but a clean shutdown, the wrapper starts it again, up to ten crashes in a row,
-and the session's clients reconnect to the new compositor instead of dying with it. Past ten,
+and the session's clients reconnect to the new compositor instead of dying with it. plasmashell is
+the exception: it exits when its compositor goes away, and the KDOS kded module starts it again a
+few seconds later (see
+[how plasmashell is kept running](plasma-shell.md#how-plasmashell-is-kept-running)). Past ten,
 the session ends and SDDM's login screen comes back. There is no crash dialog: KDOS builds no
-crash handler, and a KWin crash leaves a line in the session log and a core dump where the kernel
-puts one.
+crash handler, and the core-file limit is the kernel's default of zero, so a KWin crash leaves a
+line in the session log and the kernel's `potentially unexpected fatal signal` line in
+`/var/log/messages`, and no core. A core is collected by starting the program from a shell that
+has run `ulimit -c unlimited`.
 
 KWin asks for `SCHED_RR` at the lowest real-time priority for the threads that read input and
 commit frames, so a busy machine does not stall the pointer. It gets it from the `rtprio 1` limit
@@ -54,7 +62,7 @@ composites at normal priority.
 The `kwin` port builds KWin 6.8.2 with its X11 window management on, for Xwayland, and makes each
 optional feature KDOS relies on a requirement of the configure rather than something CMake drops
 in silence: activities, emulated input through libei (the RemoteDesktop and InputCapture portals,
-KDE Connect's remote input), zoom that follows the keyboard focus over AT-SPI, the handbooks of
+KDE Connect's remote input), the zoom's AT-SPI focus and caret trackers, the handbooks of
 the settings pages, screencasting through PipeWire and game controllers through libevdev. Every
 flag, and the reason for it, is in the port's own note,
 [`ports/core/kde/kwin/kfs.md`](../../../ports/core/kde/kwin/kfs.md), which *KDOS from Scratch*
@@ -99,11 +107,13 @@ global shortcuts, which KWin reads only from the person's own file, and the box 
 
 ### `kwinrc`
 
-`/usr/share/kdos/xdg/kwinrc` sets three things:
+`/usr/share/kdos/xdg/kwinrc` sets five things:
 
 | Group | Keys | What they do |
 |---|---|---|
 | `[Desktops]` | `Number=4`, `Rows=1`, `Name_1`…`Name_4` = `main`, `www`, `hack`, `misc`, and a fixed `Id_<n>` for each | Four virtual desktops in one row. The ids are fixed because KWin restores a window to its desktop by id, and an id generated at each login would scatter a restored session onto desktop 1 |
+| `[TabBox]` | `ApplicationsMode=1` | Alt+Tab lists applications, not windows: one entry per application, its most recent window (KWin's `OneWindowPerApplication`) |
+| `[Effect-zoom]` | `EnableTextCaretTracking=true` | The zoom follows the text cursor as well as the pointer ([Accessibility](#accessibility)) |
 | `[Plugins]` | `krohnkiteEnabled=false` | The bundled auto-tiler is installed and off ([Tiling](#tiling)) |
 | `[Wayland]` | `InputMethod=/usr/share/applications/org.fcitx.Fcitx5.desktop` | KWin starts fcitx5 as the session's input method and restarts it if it dies; nothing else starts it |
 
@@ -112,21 +122,27 @@ Every global theme KDOS ships, one per accent, adds the rest of KWin's look thro
 
 | Group | Keys |
 |---|---|
-| `[org.kde.kdecoration2]` | `library=org.kde.breeze`, `theme=Breeze`, `BorderSize=Normal` |
+| `[org.kde.kdecoration2]` | `library=org.kde.breeze`, `theme=Breeze`, and no border size, so KWin takes the size Breeze recommends: none. A window has no side or bottom border, and its edges resize through the margins Breeze keeps for the pointer outside the frame |
 | `[WindowSwitcher]` | `LayoutName=thumbnail_grid` |
 | `[Windows]` | `Placement=Centered` |
 
 So a window opens centred on the screen and Alt+Tab shows a grid of thumbnails. The title-bar
 buttons are KWin's own defaults, which no KDOS file sets: the window menu on the left and
-minimise, maximise and close on the right. The global themes are
+minimise, maximise and close on the right. Applying a global theme writes those defaults,
+`ButtonsOnLeft=M` and `ButtonsOnRight=IAX`, into `~/.config/kdedefaults/kwinrc` beside the keys above. The global themes are
 described in [Theming](../02-user-guide/theming.md).
 
 ### The title bar
 
-The decoration is Breeze's, configured by `/usr/share/kdos/xdg/breezerc`: square corners, a
-one-pixel outline in the colour scheme's own colour, no gradient, and the title on the left. It
-takes every colour from the `[WM]` group of the colour scheme in force, so it follows all eight
-accents with nothing regenerated, and a window rule that forces a colour scheme on a window (a
+The decoration is Breeze's, configured by `/usr/share/kdos/xdg/breezerc`: every corner square, the
+active window's one-pixel outline in the accent, no gradient, and the title on the left. Square
+corners and the accent outline are `SquareCorners` and `OutlineHighlight`, two keys the
+`breeze` port's `square-corners.patch` adds; an inactive window's outline is Breeze's
+mix of the frame and text colours. The title bar takes its colours from the `[Colors:Header]` set
+of the colour scheme in force, which KWin uses over `[WM]` whenever a scheme has one, and the
+outline from the window palette's link colour, which every KDOS scheme holds at the accent itself
+(the selection is darker on a dark accent), so both follow all eight accents with nothing
+regenerated, and a window rule that forces a colour scheme on a window (a
 box's colour, [below](#the-box-colour)) tints its title bar the same way. When Breeze cannot be
 loaded KWin falls back to Aurorae, so a window keeps a frame.
 
@@ -148,16 +164,18 @@ leaves free:
 | Meta+Space | KRunner, beside Alt+Space, Alt+F2 and the Search key | — |
 | Meta+Return | Konsole, beside Ctrl+Alt+T | — |
 | Meta+Shift+T | Turn auto-tiling on or off | — |
-| Meta+Ctrl+Shift+N | Pause or resume Night Light | — |
+| Meta+Ctrl+Shift+N | Night Light on, warm at once and all day, or off: `kdos toggle night-light` | — |
 | Print | Spectacle on the whole screen | — |
 | Shift+Print | Spectacle on a rectangle, beside Meta+Shift+Print and Meta+Shift+S | Spectacle's whole desktop |
 | Alt+Print | Record a rectangle, beside Meta+Shift+R and Meta+R | — |
 | Meta+Shift+M, E, B, U, C, G, W | Run or raise a terminal program ([below](#run-or-raise)) | — |
 
-Phosphor mode has no chord. The seven chords the bundled auto-tiler would claim (Meta+L, Meta+D,
-Meta+T, Meta+., Meta+R, Meta+Shift+R and Meta+Return) are bound to nothing for it, so turning
-tiling on can never take the lock key or the terminal key from the session; a person binds any
-of them on the Shortcuts page.
+Meta+Shift+T and Meta+Ctrl+Shift+N are desktop entries in `/usr/share/kglobalaccel/`, installed by
+`kdos-tools`, so each is a `kdos` verb with a key; KWin's own *Suspend/Resume Night Light* action
+stays without one. Phosphor mode has no chord. The eight chords the bundled auto-tiler would claim
+(Meta+L, Meta+D, Meta+T, Meta+., Meta+I, Meta+R, Meta+Shift+R and Meta+Return) are bound to
+nothing for it, so turning tiling on can never take the lock key, the terminal key or System
+Settings' key from the session; a person binds any of them on the Shortcuts page.
 
 ### How the KDOS chords reach a person
 
@@ -176,7 +194,17 @@ KWin starts, copies each entry into the person's file once:
   it. A failure costs the KDOS chords for one login and nothing else.
 
 Every chord KDOS ships passes `testing/chordcheck.py`, which holds it against KDE's compiled-in
-defaults, every installed desktop entry's `X-KDE-Shortcuts` and fcitx5's hotkeys. fcitx5's own
+defaults, every installed desktop entry's `X-KDE-Shortcuts` and fcitx5's hotkeys. A script that is
+off but named under `[Plugins]` in a KDOS `kwinrc`, as the auto-tiler is, counts as KDOS's: a chord
+it would take from a binding already in force fails the check until the shipped
+`kglobalshortcutsrc` unbinds it.
+
+A new account's first login runs every upgrade step KDE ships for `kconf_update`, while KWin is
+already up. One of them, KWin's `kwin-6.1-remove-gridview-expose-shortcuts`, deletes the Present
+Windows actions to drop Plasma 5's keys, and run then it deletes the ones the Window View effect
+has just registered, so Meta+F9, Meta+F10 and Meta+F7 would do nothing until the next login.
+`/usr/share/kdos/xdg/kconf_updaterc` records that step as done; `kconf_update` reads its record
+along `XDG_CONFIG_DIRS`, so no account runs it. fcitx5's own
 group-switch key is moved off Meta+Space by `/etc/xdg/fcitx5/config` for the same reason: KWin
 sees a chord first, so fcitx5's switch would otherwise stop working without a word.
 
@@ -184,7 +212,11 @@ sees a chord first, so fcitx5's switch would otherwise stop working without a wo
 
 The key card is a full-screen, searchable list of every global shortcut the session holds,
 grouped into Windows, Desktops, Launch, KDOS, Accessibility and System. Meta+F1 or Meta+/ opens
-it, the same keys close it, and Esc clears the search and then closes it. It is
+it, the same keys close it, and Esc clears the search and then closes it. Tab, Down and Up walk
+from the search field through the rows with a visible focus frame, scrolling the list to keep the
+row in sight, and a screen reader speaks each row as "<action>: <keys>"; after a search it
+announces how many shortcuts are left. A chord too long for its column wraps inside its chip
+rather than being cut short. It is
 `kwin-effect-kdos-keys`, a KWin effect written in QML and installed to
 `/usr/share/kwin/effects/kdos_keys/`.
 
@@ -219,12 +251,17 @@ windows, it moves to the next.
 | Meta+Shift+W | `micro`, the editor |
 
 Konsole gives every window the one application id `org.kde.konsole`, so a program's window is
-found by its caption: the script opens one with `konsole -p tabtitle=<program> -e <program>`, and
-also matches Konsole's own `<dir> : <program>` title for a window opened any other way. A KWin
+found by its caption: the script opens one with
+`konsole --hold -p tabtitle=<program> -e <program>`, and also matches Konsole's own
+`<dir> : <program>` title for a window opened any other way. `--hold` keeps the window open after
+the program exits, so a program that cannot start (`rmpc` with no MPD running, `iamb` with no
+configuration) leaves its error on screen; a window held after a normal quit keeps its caption, and
+the key raises it until it is closed. A KWin
 script cannot start a program, so each program has a key-less desktop entry in
 `/usr/share/kglobalaccel/`, and the script opens a window by invoking that entry's `_launch`
 action. The entries are listed on the Shortcuts page as "<program> in a New Window". A program
-that is not installed keeps its key; Konsole then says it was not found.
+that is not installed keeps its key; Konsole then says it was not found and starts a shell in its
+place.
 
 ## Window memory
 
@@ -233,11 +270,23 @@ makes a program's window open where its last one closed, at the same size, and m
 closed maximised. It keeps one place per application id, at most 200, in
 `$XDG_STATE_HOME/kdos/window-memory`, written through a temporary file and a rename.
 
-It leaves alone a window that opens maximised, full screen or tiled; a dialog, a panel or any
-window that is not a program's ordinary top-level window; a window that would land exactly on an
-open window of the same program; and the programs in its exclusion list. A window rule that forces
-a position wins. A remembered place is moved and shrunk into the screen nearest it, so a window
-remembered on a screen that is gone opens whole on one that is there.
+It reads a window's maximised and full-screen state after the commit that carries it, since KWin
+reports the new frame first; what it records is the rectangle the window floats at. It leaves alone
+a window that opens maximised, full screen or tiled, whose first restore then goes to the remembered
+rectangle; a dialog, a panel, a window that cannot be resized, or any window that is not a
+program's ordinary top-level window; a splash or first-run notice, a window its process closes within
+three seconds before or after opening the next, whose rectangle is not recorded and which, on the
+program's next launch, is left where KWin places it while the window after it is restored; a window
+that would land exactly on an open window of the same program; and the programs in its exclusion
+list. A window rule that forces a position wins.
+
+A remembered place is moved and shrunk into the screen nearest it, so a window remembered on a
+screen that is gone opens whole on one that is there; the shrink is not recorded until the window
+is resized. A place remembered at another device pixel ratio is restored without its size, which
+the program picks for the ratio it is on. A window with no record that KWin centred while its size
+was a placeholder is centred again, inside the usable area, when it takes its real size within two
+seconds of opening, and one that opens larger than the usable area is moved and shrunk into it in
+the same two seconds.
 
 | `kwinrc [Script-kdos_window_memory]` | Default | Effect |
 |---|---|---|
@@ -270,8 +319,8 @@ runtime directory, `$XDG_RUNTIME_DIR/kdos/box/<box>/`, and registers it with KWi
 `wp_security_context_v1` protocol: the launcher's id as the application id, the box as the
 instance id, and the engine `io.kdos.appbox+private` or `io.kdos.appbox+tagged`. Every client that
 connects on that socket is tagged by KWin itself and never sees the tag, so it cannot drop or
-forge it. The box's own runtime directory holds no `wayland-0`, so the tagged socket is the only
-one a boxed program can reach. `kdos-boxsock` is described in
+forge it. The box's own runtime directory holds no session socket (`wayland-1`), so the tagged
+socket is the only one a boxed program can reach. `kdos-boxsock` is described in
 [The daemons](daemons.md#kdos-boxsock) and the launch path in
 [kdos-appbox](kdos-appbox.md).
 
@@ -328,7 +377,11 @@ A box's colour is its security domain. For each box, `kdos-appbox` writes one wi
 rule into `~/.config/kwinrulesrc`, a group named `kdos-box-<box>`, which matches every window whose
 application id is `<box>` or `<box>.<stem>` and forces `decocolor` to the colour scheme
 `KDOS<Accent>` of the box's colour, or `KDOSBox` for a box with none. The title bar of a
-server-side-decorated window then wears that colour. A program that draws its own title bar takes
+server-side-decorated window then wears that colour. `KDOSBox` is grey, and its title bars are
+lighter than any accent's (36% of the way from its ground to its text when active, 28% when
+inactive, where an accent's sits at 7% and on its ground): the default accent is itself nearly
+grey, so a neutral box at an accent's own mix would match a host window. `kdos-theme` refuses a
+`KDOSBox` whose title bars measure under 1.5:1 against any accent's. A program that draws its own title bar takes
 no decoration colour, and KWin 6.8 has no rule that outlines such a window instead.
 
 Only the `kdos-box-*` groups are `kdos-appbox`'s: every other rule in the file, including the
@@ -457,10 +510,13 @@ turns off, and elogind owns suspend and the lid.
 | After a resume | The screen is locked | `kscreenlockerrc`, `LockOnResume=true` |
 | Meta+L | Locks now | KDE's default |
 
-In a virtual machine `/usr/share/kdos/xdg-vm` turns off the timed lock and both screen timers,
-because a guest that locks or blanks itself reads from outside as one that has stopped; Meta+L and
-lock-on-resume still lock. PowerDevil never suspends a virtual machine on idle or on a lid event.
-On the live medium `/usr/share/kdos/xdg-live` turns the timed lock off.
+In a virtual machine `/usr/share/kdos/xdg-vm` turns off the timed lock, both screen timers, idle
+suspend and the lid's suspend, because a guest that locks, blanks or sleeps reads from outside as
+one that has stopped; Meta+L and lock-on-resume still lock. PowerDevil's own virtual-machine check
+asks systemd's manager on the system bus, which KDOS does not run, so without these keys it would
+sleep a guest after 15 idle minutes like bare metal. On the live medium `/usr/share/kdos/xdg-live`
+turns the timed lock off. Both set the lock timeout to zero as well as turning auto-lock off, so
+System Settings → Screen Locking reads "Never" there.
 
 The lock screen's layout is the Plasma shell's own. Its clock and media controls are shown, and its
 wallpaper is the accent's, which `kdos theme` moves while it still names a `KDOS-*` wallpaper. A
@@ -473,8 +529,13 @@ takes are elogind's and PowerDevil's, configured as
 
 The accessibility aids are KWin's own plugins and System Settings' Accessibility page: zoom and the
 magnifier, sticky, slow and bounce keys, mouse keys, dwell click, colour-blindness correction and
-colour inversion. KWin's zoom follows the keyboard focus and the text cursor over AT-SPI as well as
-the pointer, because the port requires libqaccessibilityclient. The on-screen keyboard is chosen on
+colour inversion. KWin's zoom follows the pointer and, through `[Effect-zoom]
+EnableTextCaretTracking=true` in the shipped [`kwinrc`](#kwinrc), the text cursor, which it learns
+from the input method's text-input protocol. It does not follow the keyboard focus: on Wayland KWin
+leaves its AT-SPI focus and caret trackers off unless `KWIN_WAYLAND_ZOOM_FORCE_LEGACY_FOCUS_TRACKING`
+or `KWIN_WAYLAND_ZOOM_FORCE_LEGACY_TEXT_CARET_TRACKING` is set in its environment, because their
+blocking D-Bus calls can stall the compositor. Colour inversion's Meta+Ctrl+I and Meta+Ctrl+U work
+once the Invert effect is turned on under Desktop Effects; it is off by default. The on-screen keyboard is chosen on
 the Virtual Keyboard page; KDOS's default input method is fcitx5, which KWin starts (see
 [`kwinrc`](#kwinrc)).
 
@@ -485,7 +546,10 @@ application's assistive stack sees is in [Accessibility](../02-user-guide/access
 ## Xwayland
 
 KWin starts Xwayland the first time an X11 client connects, and gives it `DISPLAY`. No X server runs
-before that, and the login screen's copy of KWin starts none. Before it takes the X11
+before that, and the login screen's copy of KWin starts none. KWin listens on the display's sockets
+in `/tmp/.X11-unix`, which it does not create: `rcS` makes it at boot, root-owned with mode `1777`
+(see [Mount points that must be right](../03-architecture/boot-and-init.md#mount-points-that-must-be-right)),
+and without it KWin starts no Xwayland and the session has no `DISPLAY`. Before it takes the X11
 window-manager selections, KWin runs every file in `/etc/xdg/Xwayland-session.d` with `DISPLAY` set,
 in name order, and then plasma-workspace's `plasma-setup-xwayland`. An X11 window is managed like
 any other, but its surface is Xwayland's, so it carries no box tag and no sandbox badge; how an X11
@@ -500,12 +564,12 @@ server is in [Principles](../01-philosophy/principles.md#no-xorg-server-and-one-
 | Everything KWin knows about itself | `qdbus6 org.kde.KWin /KWin supportInformation`: version, compositing backend and renderer, every option, loaded effects and scripts, outputs |
 | Windows, surfaces and input as KWin sees them | `qdbus6 org.kde.KWin /KWin showDebugConsole` |
 | One effect's state | `qdbus6 org.kde.KWin /Effects debug <effect>`, for example `kdos_crt` |
-| Frame rate | The Show FPS effect, on System Settings' Desktop Effects page |
+| Frame rate | `qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.loadEffect showfps`, and `unloadEffect showfps` to take it away; KWin marks the effect internal, so Desktop Effects does not list it |
 | A loaded KWin script | `qdbus6 org.kde.KWin /Scripting isScriptLoaded <id>` |
 | Restart the compositor without logging out | `kwin_wayland --replace` from a terminal in the session, or `qdbus6 org.kde.KWin /KWin replace`; the wrapper keeps the socket and every window reconnects |
 
-A KWin that keeps crashing ends the session after ten restarts; its core dumps and the session log
-are the record. Whether the session renders on the GPU is in `supportInformation`'s compositing
+A KWin that keeps crashing ends the session after ten restarts; the session log and the kernel's
+`fatal signal` lines in `/var/log/messages` are the record. Whether the session renders on the GPU is in `supportInformation`'s compositing
 section, and it decides whether Phosphor mode can run.
 
 ## Working on KWin and its plugins

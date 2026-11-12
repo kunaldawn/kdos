@@ -21,7 +21,7 @@ install -d "$PKG/usr/share/applications"
 cat > "$PKG/usr/share/applications/chess-tui.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application
-Name=Chess
+Name=Chess (chess-tui)
 GenericName=Chess Game
 Comment=Play chess against Stockfish or a second player
 Exec=chess-tui -e /usr/bin/stockfish

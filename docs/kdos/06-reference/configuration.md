@@ -130,7 +130,8 @@ KDOS's own KConfig file, for the settings that belong to the desktop rather than
 | Group | Key | Means |
 |---|---|---|
 | `[Desk]` | `Layout` | The desk in force: `kdos`, `dock` or `tiling`. `kdos desk <name>` and the Welcome Center's desk page write it |
-| `[Desk]` | `LaidOut` | When a desk was last laid out, in seconds since 1970, written by the desk's layout script. `kdos desk` compares it with the panels file to tell whether you have arranged the panels since |
+| `[Desk]` | `LaidOut` | When a desk was last laid out, in seconds since 1970, written by the desk's layout script |
+| `[Desk]` | `LaidOutPanels` | The SHA-256 of the panels a desk laid out (each panel's location and alignment and its applets' plugins in order), as plasmashell describes them; written by `kdos desk` after a layout, or by the first `kdos desk status` after the first login's. `status` compares it with the panels now to tell whether you have arranged them since |
 
 `/usr/share/kdos/xdg/kdosrc` does not exist; a system default would go in `/etc/xdg/kdosrc`. Before
 `kdos desk` replaces the panels it copies them to `~/.config/kdos/desk-undo/` (which `kdos desk
@@ -241,7 +242,7 @@ writes, so the applet shows what `kdos toggle` set, and a click there undoes it.
 | Toggle | Where the state is |
 |---|---|
 | `stay-awake` | An inhibition of sleep and of the screen locker, held by a `kdos` process for as long as the switch is on; its pid is in `$XDG_RUNTIME_DIR/kdos/stay-awake.pid`, and the battery applet lists it as blocking |
-| `night-light` | KWin's Night Light, flipped through its own *Toggle Night Color* shortcut |
+| `night-light` | `~/.config/kwinrc`, `[NightColor]` `Active`, which KWin watches, with `Mode=Constant` written on the way on so it warms at once and all day; `Active=false` to switch it off |
 | `dnd` | `~/.config/plasmanotifyrc`, `[DoNotDisturb]` `Until`, set far ahead; deleted to switch it off |
 | `reduced-motion` | `~/.config/kdeglobals`, `[KDE]` `AnimationDurationFactor=0`; deleted to switch it off, so the shipped factor applies again |
 
@@ -334,7 +335,7 @@ at once:
 | `/etc/kdos/timers.d/10-update-check.timer` | System | 04:17, slack 8 h | `kdos update check --out /var/lib/kdos/update.json`, which reads what the last fetch left and reaches no network |
 | `/etc/kdos/timers.d/20-fstrim.timer` | System | 12:47, slack 20 h | `fstrim -a` |
 | `/etc/kdos/user-services/timers.d/40-box-gc.timer` | Every user | every ten minutes | `nice -n 10 kdos-box gc` |
-| `~/.config/kdos/timers.d/20-updatedb.timer` | Yours | 03:05, slack 8 h | `kdos-updatedb` |
+| `~/.config/kdos/timers.d/20-updatedb.timer` | Yours | 03:05, slack 8 h | `kdos-updatedb`; the first index is built at login when there is none |
 | `~/.config/kdos/timers.d/10-backup.timer` | Yours, commented out | 03:40, slack 8 h | `kdos backup run` |
 
 No shipped timer downloads anything: `kdos update fetch` and `fwupdmgr refresh` run when you ask.
@@ -380,22 +381,27 @@ upstream's default. A file of the same name in `/etc/xdg` is read before it, and
 | File | Read by | Sets |
 |---|---|---|
 | `kdeglobals` | Every KDE and Qt 6 program | The look-and-feel `org.kdos.bone.desktop` (dark) and `org.kdos.paper.desktop` (light), not switched automatically; the fonts, Noto Sans 10 for text and JetBrains Mono 10 fixed-width; Konsole as the terminal; the icon theme `KDOS` and the sound theme `kdos`; animations at half length (`AnimationDurationFactor=0.5`); double-click to open; and `ghns=false` under `[KDE Action Restrictions]`, locked, so no *Get New…* button downloads anything. Installed by `kdos-plasma-look`, with the greeter's colours generated into it |
-| `kwinrc` | KWin | Four virtual desktops in one row, named `main`, `www`, `hack` and `misc`; one window switcher entry per application; auto-tiling (Krohnkite) off; and fcitx5 as the input method KWin starts |
+| `kwinrc` | KWin | Four virtual desktops in one row, named `main`, `www`, `hack` and `misc`; one window switcher entry per application; the zoom following the text cursor; auto-tiling (Krohnkite) off; and fcitx5 as the input method KWin starts |
 | `kglobalshortcutsrc` | `kglobalacceld` | The KDOS chords beside KDE's defaults: `Meta+Q` closes a window, `Meta+F1` and `Meta+/` show the key card, `Meta+Return` and `Ctrl+Alt+T` open Konsole, `Alt+Space`, `Alt+F2` and `Meta+Space` open KRunner, `Print`, `Shift+Print` and `Meta+Shift+S` take screenshots, `Meta+R` and `Alt+Print` record. A shortcut you set in System Settings is yours and is kept |
+| `kconf_updaterc` | `kconf_update` | KWin's upgrade step `kwin-6.1-remove-gridview-expose-shortcuts` marked done, so a new account's first login does not delete the Present Windows keys (`Meta+F9`, `Meta+F10`, `Meta+F7`) the Window View effect has just registered |
 | `kscreenlockerrc` | The screen locker | Lock after 10 minutes idle and on resume, with 5 seconds' grace; the clock and the media controls on the lock screen; the bone wallpaper behind it |
 | `powerdevilrc` | PowerDevil | On mains power, dim after 5 minutes and switch the screen off after 15 |
 | `plasmarc` | `plasmashell` | The Plasma style `kdos` |
+| `krunnerrc` | KRunner | `kdos` first among the favourite runners, whose categories KRunner sorts above every other, so the KDOS palette's rows lead; then KRunner's own default favourites |
 | `breezerc` | The Breeze window decoration | Square corners with an outline, no title-bar gradient, the title on the left |
 | `startkderc` | `startplasma` | `systemdBoot=false`: the session is started by `startplasma` itself, with no systemd user manager |
 | `kaccessrc` | `kaccess` | `[ScreenReader] SystemdManaged=false`, locked, so turning the screen reader on starts Orca directly |
 | `kcm-about-distrorc` | About this System | The KDOS logo, the project's address, the release from `/etc/os-release`, and the KDOS rows (slot, update, tree, accent, C library, boxes) from the `about-*` scripts in `/usr/libexec/kdos` |
 | `baloofilerc` | The file indexer | Basic indexing only, file names and metadata, never contents; package caches, containers and KDOS's own data left out |
-| `discoverrc` | Discover | The KDOS backend first; no ratings fetched from KDE's review server; no offline updates |
+| `discoverrc` | Discover | The KDOS backend first; no ratings fetched from KDE's review server; no offline updates; lists sorted by name |
 | `PlasmaDiscoverUpdates` | Discover's update notifier | No unattended updates; at most one notice a day |
 | `freespacenotifierrc` | Plasma's free-space notifier | Warn when a volume has 10% of its size free, or 100000 MiB on a volume of more than about a terabyte: the notifier warns below the smaller of its two thresholds, so the fixed one is raised to its maximum |
-| `systemmonitorrc` | System Monitor | The pages Overview, KDOS, Applications, History and Processes, in that order |
+| `systemmonitorrc` | System Monitor | Opens on KDOS's Overview; the pages Overview, KDOS, Applications, History and Processes, in that order; the stock Overview hidden |
 | `spectaclerc` | Spectacle | Starting it from the menu takes a full-screen shot |
 | `knightsrc` | Knights | Stockfish as both engines |
+| `qmlkonsolerc` | QMLKonsole | The terminal colour scheme `KDOS-Bone`, from `/usr/share/konsole`; upstream's default, `Breeze`, is a scheme no package installs, so the widget would fall back to black on white. Installed by `qmlkonsole`; `kdos theme` writes the accent's scheme into `~/.config/qmlkonsolerc` while the value in force names a `KDOS-` scheme |
+| `ksystemlogrc` | KSystemLog | The system tab reads `/var/log/messages` and the cron tab `/var/log/cron`, the files sysklogd writes, at the Information level, with no process filter, since upstream's keeps only `/usr/sbin/cron` and cronie logs as `crond`; the window opens on the cron tab, the one an ordinary account can read |
+| `KDE/Sonnet.conf` | Sonnet, the spell checker of every KDE program, and the Spell Check page | `en_US` as the default language, which both English dictionaries carry; without it the C locale names no dictionary and the page opens with unsaved changes. A QSettings file, so its comments start with `;` |
 | `plasma_workspace.notifyrc` | Plasma's notifications | The KDOS sounds for login and logout |
 | `kde-mimeapps.list` | Every program that opens files, inside Plasma and out | The default application for each file type; see [Default handlers](#default-handlers) |
 | `qt5ct/qt5ct.conf` | Qt 5 programs, through qt5ct | The bone palette, the KDOS icons, the Fusion style and the desktop's fonts, copied into `~/.config/qt5ct` by the first Qt 5 program you start; `kdos theme` keeps that copy in the accent |
@@ -408,7 +414,7 @@ upstream's default. A file of the same name in `/etc/xdg` is read before it, and
 
 | Directory | Applies | Sets |
 |---|---|---|
-| `/usr/share/kdos/xdg-vm` | In a virtual machine (`kdos in-vm`) | No idle dimming, no screen blanking and no timed lock, which from outside the guest look like a hung machine |
+| `/usr/share/kdos/xdg-vm` | In a virtual machine (`kdos in-vm`) | No idle dimming, no screen blanking, no timed lock and no idle or lid suspend, which from outside the guest look like a hung machine |
 | `/usr/share/kdos/xdg-live` | On the live medium | No file index, no timed lock and no wallet for an account with no password; no update notices; and the Welcome Center on its live page, offering the installer |
 
 **What `/etc/xdg` carries.** The image's own `/etc/xdg` holds the files every desktop must read, not
@@ -418,7 +424,7 @@ only Plasma:
 |---|---|
 | `/etc/xdg/kdeglobals` | `LookAndFeelPackage=org.kdos.bone.desktop`, so a program run outside the session, under `sudo` or `pkexec`, still wears the KDOS look. The installer rewrites it with the accent you choose |
 | `/etc/xdg/konsolerc` | Konsole's default profile, `KDOS Bone` when Plasma is dark and `KDOS Paper` when it is light |
-| `/etc/xdg/mimeapps.list` | The handlers for the archive types no KDE program opens: `kdos-openarchive` |
+| `/etc/xdg/mimeapps.list` | The handlers for the types no desktop application opens: `kdos-openarchive` for comic books packed as 7z or rar |
 | `/etc/xdg/fcitx5/config` | The keys that move between input-method groups, `Super+Alt+Space` and `Super+Alt+Shift+Space` |
 | `/etc/xdg/autostart/kdos-boxes-restore.desktop` | `kdos-appbox session restore` at login: the boxes that were running when the last session ended |
 | `/etc/xdg/autostart/kdos-session-good.desktop` | `kdos-notice --bless` at login: confirms the booted system version once Plasma has stayed up |
@@ -641,7 +647,8 @@ winning.
 | `kde_settings.conf` | Autologin: `[Autologin]` `User`, `Session=plasma` and `Relogin=true`. Ships naming `kdos`, the live medium's account |
 
 `kde_settings.conf` is the file System Settings' Login Screen page writes, and the installer
-rewrites it. On the live medium `Relogin=true` logs the live account in again after it logs out.
+rewrites it. On the live medium `Relogin=true` logs the live account in again after it logs out;
+Switch User still shows a greeter.
 An installed machine has an `[Autologin]` group only when it logs in by itself, which the installer
 offers on a single-account machine with an encrypted root, with `Relogin=false`, so a person who
 logs out meant to; everywhere else it shows the login screen. Applies at the next start of SDDM, which is the next boot or the next return to the greeter.
@@ -729,7 +736,9 @@ with `nsdelegate`, and two temporary filesystems, both `nosuid,nodev`: `/tmp` at
 `/tmp` must be mode 1777, or no ordinary user can write there, and every graphical application
 depends on it. A tmpfs that is already mounted ignores a mode change on remount, so
 `/etc/init.d/rcS` also runs `chmod 1777 /tmp` itself. It creates `/run/lock` at mode 1777 for the
-same reason: the serial-port tools take their locks there as the user.
+same reason: the serial-port tools take their locks there as the user. It also creates
+`/tmp/.X11-unix` and `/tmp/.ICE-unix`, root-owned at mode 1777: KWin starts no Xwayland without
+the first, and libICE refuses a second account an ICE directory the first session's user made.
 
 `mount -a` ignores swap lines, so `rcS` turns on any swap entry with `swapon -a`; the installer
 writes one for a swap partition or a swap file. The installer keeps every shipped
@@ -744,18 +753,19 @@ sysvinit's `init` reads it at boot, and again on `telinit q`. What each entry st
 |---|---|
 | `id`, `initdefault` | Runlevel 3, the running system. `S` is single-user, `0` powers off, `6` reboots |
 | `si`, `sysinit` | `/etc/init.d/rcS`, which starts every enabled service script in order |
-| `~~`, runlevel `S` | `/sbin/sulogin`: root's password, then a root shell on the console; leaving it continues to runlevel 3 |
+| `~~`, runlevel `S` | `/sbin/sulogin -p`: root's password, then a root login shell on the console, which reads `/etc/profile` and so finds the KDOS commands in `/usr/local/bin`; leaving it continues to runlevel 3 |
 | `1`, tty1 | `kdos-dm`, which runs SDDM, the graphical login; when SDDM is missing or exits three times in a minute it puts a password prompt on tty1 instead, never an autologin |
 | `2`, tty2 | An ordinary `agetty` login through `kdos-getty`, never automatic: the recovery console |
 | `S0`, serial line `ttyS0` | `/etc/init.d/serial-getty`, which runs `agetty --autologin root`: root with no password on the live medium. The installer removes `--autologin root` from an installed system's copy, which then asks for a login. With no UART at `ttyS0` (its sysfs `type` is `0`) the script sleeps instead of running `agetty`, which would fail at every respawn |
 | `ca`, `ctrlaltdel` | `/sbin/shutdown -r now` |
-| `k0` to `k4`, runlevels 0 and 6 | In order, each to completion: `rcK`, `killprocs`, `swapoff -a`, `umount -a -r`, `killpower` |
+| `k0` to `k5`, runlevels 0 and 6 | In order, each to completion: `rcK`, `killprocs`, `swapoff -a`, a read-only remount of the persistence store at `/mnt/persist` when one is mounted there, `umount -a -r`, `killpower` |
 | `h0`, `h6` | `halt -d -f -p` in runlevel 0, `reboot -d -f` in runlevel 6 |
 
 Both consoles and the serial line respawn when their program ends, and all three belong to
 runlevels 2 to 5. On shutdown, init ends them, `/etc/init.d/rcK` runs every enabled service
 script's `stop` in reverse order — except the firewall, which stays loaded to the end —
-`/etc/init.d/killprocs` ends every process still running, then `swapoff -a` turns swap off,
+`/etc/init.d/killprocs` ends every process still running, then `swapoff -a` turns swap off, a
+persistence store at `/mnt/persist` is remounted read-only,
 `umount -a -r` unmounts every filesystem or remounts a busy one read-only, and
 `/etc/init.d/killpower` tells a UPS to cut the power when NUT's `upsmon` began the shutdown on a low
 battery (its flag file `/etc/killpower` is present); otherwise it does nothing.
@@ -791,7 +801,7 @@ and Keyboard pages, `kdos locale`, `kdos keymap`) and by the installer.
 
 | File | Holds | Read by |
 |---|---|---|
-| `/etc/locale.conf` | `NAME=value` lines with no quotes; ships `LANG=C.UTF-8` | `kdos-dm` and SDDM, for the login screen and every session |
+| `/etc/locale.conf` | `NAME=value` lines with no quotes; ships `LANG=en_US.UTF-8` | `kdos-dm` and SDDM, for the login screen and every session |
 | `/etc/keymap` | The console keymap name; not shipped | `kdos-getty`, on every console it starts |
 | `/etc/kdos/xkb.conf` | `XKBMODEL`, `XKBLAYOUT`, `XKBVARIANT` and `XKBOPTIONS`, the graphical layout; ships with all four empty | `kdos-settingsd`, which answers `locale1`'s X11 properties from it; the login screen's KWin reads those. An empty layout follows `/etc/keymap` |
 
@@ -865,7 +875,7 @@ of the program that reads it.
 | `/etc/hosts` | The resolver | `localhost` for both address families, and `127.0.1.1 kdos`, which `kdos-settingsd` and the installer rewrite with the host name, so the machine's own name resolves without a network |
 | `/etc/nsswitch.conf` | glibc programs | musl ignores this file. It is there for glibc tools inside boxes and anything else that consults it, and names `files`, then `dns` for hosts |
 | `/etc/shells` | `chsh`, and programs that check a login shell | `sh`, `bash` and `zsh`, each under both `/bin` and `/usr/bin` |
-| `/etc/issue` | `agetty`, before each console login | The pre-login banner: the system name, kernel release, architecture, host name and terminal line |
+| `/etc/issue` | `agetty`, before each console login, because every `agetty` line in `/etc/inittab` and `kdos-dm` names it with `--issue-file`: agetty built against musl reads no issue file unless one is named | The pre-login banner: the system name, kernel release, architecture, host name and terminal line |
 | `/etc/vtrgb` | `kdos-getty`, on every console it starts | The sixteen console colours, in `setvtrgb`'s format. `kdos theme` rewrites it in the new accent, through `kdos-powerd` and `kdos-bootctl theme`, and each console takes it at its next login prompt |
 | `/etc/modules-load.d/*.conf` | `/etc/init.d/02_modules.sh`, at boot | Modules loaded unconditionally: `tun` and `overlay` for containers, the virtual-machine display drivers, the `nct6775`, `it87` and `drivetemp` sensor drivers, and `i2c-dev` |
 | `/etc/modprobe.d/kdos-sdr.conf` | `modprobe` | Blacklists `dvb_usb_rtl28xxu`, so an RTL-SDR stick is free for the SDR tools rather than claimed as a TV tuner |
@@ -874,7 +884,7 @@ of the program that reads it.
 | `/etc/default/useradd` | `useradd`, at each new account | `GROUPS=audio`: every ordinary account joins `audio`, whose members get PipeWire's real-time limits, whether System Settings, AccountsService, Plasma Setup or a hand-run `useradd` makes it; `-G` replaces this list rather than adding to it, and `useradd -r` ignores it. `CREATE_MAIL_SPOOL=no`: no mailbox for a new account, as `/etc/login.defs` names no `MAIL_DIR` and the image has no mail spool. Every key it does not set keeps `useradd`'s compiled default, which `useradd -D` prints beside it; `useradd -D` with a flag (`-s` for the shell, `-b` for the home base) writes every key into the file |
 | `/etc/pipewire/pipewire.conf.d/99-kdos-vm.conf` | PipeWire | In a virtual machine only, raises the audio quantum (the block of frames PipeWire processes in one cycle) and its floor to 4096, and its ceiling to 8192 |
 | `/etc/security/limits.d/30-kdos.conf` | `pam_limits`, at every login | Real-time priority 1 for every account, so KWin may run the threads that read input and commit frames at the lowest real-time priority; a file capability on `kwin_wayland` does not survive kpkg's archive. PipeWire's `25-pw-rlimits.conf` gives the `audio` group priority 95 for the sound graph, and a group entry outranks this one |
-| `/etc/samba/smb.conf` | Samba, for Dolphin's *Share* tab | A standalone server with user shares under `/var/lib/samba/usershares`, at most 100, guests allowed on a share that asks for them, and no printers. `/etc/init.d/83_samba.sh` starts `smbd` at boot only when a usershare exists or this file defines a share below `[global]`; the first folder shared from Dolphin starts it at once, through `kded-kdos` and `kdos-powerd`. Other machines reach a share only once the firewall's `smb` service is opened |
+| `/etc/samba/smb.conf` | Samba, for Dolphin's *Share* tab | A standalone server with user shares under `/var/lib/samba/usershares`, at most 100, guests allowed on a share that asks for them, and no printers. `/etc/init.d/83_samba.sh` starts `smbd` at boot only when the `sambashare` group has a member, a usershare exists or this file defines a share below `[global]`; an account just added to `sambashare` starts it at its next login, through `kded-kdos` and `kdos-powerd`, because `net usershare add` needs a running `smbd`. Other machines reach a share only once the firewall's `smb` service is opened |
 | `/etc/polkit-1/rules.d/50-kdos.rules` | `polkitd` | Grants members of `wheel` at the machine the named polkit actions the desktop calls, without a prompt; see the [security model](../03-architecture/security-model.md) |
 | `/etc/udev/rules.d/70-kdos-*.rules` | `udevd` | Device access by group: serial, SDR, logic-analyser, debug-probe, instrument, scanner, camera, security-key and GPIO devices to `dialout`, gamepads to `input`, I²C buses and backlight brightness to `video`, and Brother P-touch label printers to `lpadmin` |
 
@@ -911,6 +921,7 @@ except the ones marked *Generated*, which `kdos theme` rewrites.
 | `~/.config/fastfetch/config.jsonc` | The system-information tool `fastfetch` | The login banner runs it with its own logo turned off |
 | `~/.config/lf/lfrc`, `~/.config/lf/preview` | The terminal file manager `lf` | |
 | `~/.config/GIMP/3.0/gimprc` | GIMP | Selects the system theme; without it GIMP keeps its own |
+| `~/.config/keepassxc/keepassxc.ini` | KeePassXC | Selects the `classic` theme, so qt5ct's KDOS palette applies; without it KeePassXC draws its own grey or light style in every accent |
 | `~/.config/fcitx5/profile` | The input method `fcitx5` | One group, `Default`, with the four input methods the image carries: `keyboard-us`, `pinyin`, `anthy` and `hangul` |
 | `~/.config/mimeapps.list` | Your own choices of which application opens which file type | Ships with an empty `[Default Applications]` section. This file outranks the system tables, and the *Open With* dialog's *Remember* writes to it |
 | `~/.config/tealdeer/config.toml` | The `tldr` client `tealdeer` | Installed into `/etc/skel` by the `tealdeer` package. `cache_dir` is `/usr/share/tldr`, where the pages ship, so nothing is downloaded. `tldr --update` needs a `cache_dir` you can write |
@@ -968,15 +979,16 @@ a login shell, so every desktop program inherits them. `/etc/profile` runs first
 
 | Path | Sets |
 |---|---|
-| `/etc/profile` | `PATH=/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin`, replacing any inherited value; `PKG_CONFIG_PATH` to the `pkgconfig` directories under `/usr` and `/usr/local`, followed by any value already set; `LANG=C.UTF-8`; `TERM` only when it is empty or `dumb` (`linux` on a `/dev/ttyN` console, `vt100` elsewhere); `LINES` and `COLUMNS` when unset, to 24 and 80; and `USER`, `LOGNAME` and `HOME` from the account when the login did not set them. In bash it then reads `/etc/bash.bashrc` (below), *before* the `profile.d` files. In any other shell on a terminal it clears the screen and prints `/etc/motd` after them |
+| `/etc/profile` | `PATH=/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin`, replacing any inherited value; `PKG_CONFIG_PATH` to the `pkgconfig` directories under `/usr` and `/usr/local`, followed by any value already set; `LANG=en_US.UTF-8` when `LANG` is unset; `TERM` only when it is empty or `dumb` (`linux` on a `/dev/ttyN` console, `vt100` elsewhere); `LINES` and `COLUMNS` when unset, to 24 and 80; and `USER`, `LOGNAME` and `HOME` from the account when the login did not set them. In bash it then reads `/etc/bash.bashrc` (below), *before* the `profile.d` files. In any other shell on a terminal it clears the screen and prints `/etc/motd` after them |
 | `/etc/profile.d/00locale.sh` | `MUSL_LOCPATH` to `/usr/share/i18n/locales/musl`, where musl finds translated messages for a non-English `LANG`. From `musl-locales` |
-| `/etc/profile.d/10-wayland.sh` | The session basics: `HOME` from `/etc/passwd` when it is empty; `XDG_RUNTIME_DIR` to `/run/user/<uid>` when unset and that directory exists; `XDG_CURRENT_DESKTOP=KDE` and `XDG_MENU_PREFIX=plasma-` unless already set, so a console or SSH shell opens files in the applications the desktop does; `DBUS_SESSION_BUS_ADDRESS` to `$XDG_RUNTIME_DIR/bus` when that bus exists; the `XDG_*_HOME` and `XDG_DATA_DIRS` defaults; `/usr/share/kdos/xdg` appended to `XDG_CONFIG_DIRS`; `~/.local/bin` and `/usr/games` on `PATH`; the toolkit back ends (`QT_QPA_PLATFORM=wayland;xcb`, `MOZ_ENABLE_WAYLAND=1`, `SDL_VIDEODRIVER=wayland`, `CLUTTER_BACKEND=wayland`, and no `GDK_BACKEND`, so GDK tries Wayland first and an application that asks for X11 gets Xwayland); `GTK_USE_PORTAL=1`, so GTK applications use the KDE file dialog and print portal; and `QT_QPA_PLATFORMTHEME=kde`, so Qt 6 applications read `kdeglobals` and Qt 5 applications read the qt5ct files `kdos theme` writes |
+| `/etc/profile.d/10-wayland.sh` | The session basics: `HOME` from `/etc/passwd` when it is empty; `XDG_RUNTIME_DIR` to `/run/user/<uid>` when unset and that directory exists; `XDG_CURRENT_DESKTOP=KDE` and `XDG_MENU_PREFIX=plasma-` unless already set, so a console or SSH shell opens files in the applications the desktop does; `DBUS_SESSION_BUS_ADDRESS` to `$XDG_RUNTIME_DIR/bus` when that bus exists; the `XDG_*_HOME` and `XDG_DATA_DIRS` defaults; `/usr/share/kdos/xdg` appended to `XDG_CONFIG_DIRS`; `~/.local/bin` and `/usr/games` on `PATH`; the toolkit back ends (`QT_QPA_PLATFORM=wayland;xcb`, `MOZ_ENABLE_WAYLAND=1`, `SDL_VIDEODRIVER=wayland`, `CLUTTER_BACKEND=wayland`, and no `GDK_BACKEND`, so GDK tries Wayland first and an application that asks for X11 gets Xwayland); `GTK_USE_PORTAL=1`, so GTK 3's native file chooser and print dialog use the KDE portal; and `QT_QPA_PLATFORMTHEME=kde`, so Qt 6 applications read `kdeglobals` and Qt 5 applications read the qt5ct files `kdos theme` writes |
 | `/etc/profile.d/20-lesspipe.sh` | `LESSOPEN` to `lesspipe.sh`, and `LESS=-R` |
 | `/etc/profile.d/20-timezone.sh` | `TZ=:/etc/localtime`. Written by `kdos-settingsd` and by the installer; not shipped with the image |
 | `/etc/profile.d/30-kdos-colors.sh` | Sources the generated `~/.config/kdos/fzf-colors` and appends its colours to `FZF_DEFAULT_OPTS` |
 | `/etc/profile.d/30-open.sh` | `BROWSER` to `xdg-open`, which on this image is `kdos-appbox open`, so the variable and the handler tables above agree |
 | `/etc/profile.d/40-plocate.sh` | `LOCATE_PATH` to this account's own file index |
-| `/etc/profile.d/50-ssh-agent.sh` | `SSH_AUTH_SOCK` to `$XDG_RUNTIME_DIR/ssh-agent.socket`, starting `ssh-agent` there when nothing answers. One agent per account, shared by every login and everything the desktop starts, so `ssh-add` asks for a passphrase once. From `openssh` |
+| `/etc/profile.d/45-mpd.sh` | `MPD_HOST` to `$XDG_RUNTIME_DIR/mpd/socket`, the socket the mpd user service serves, so `mpc`, `rmpc` and `ncmpcpp` reach the same daemon `kdos-mpctl` does |
+| `/etc/profile.d/50-ssh-agent.sh` | `SSH_AUTH_SOCK` to `$XDG_RUNTIME_DIR/ssh-agent.socket`, once that socket exists; it starts nothing. The `ssh-agent` user service serves the socket from the account's first login to its last logout: one agent per account, shared by every login and everything the desktop starts, so `ssh-add` asks for a passphrase once. From `openssh` |
 | `/etc/profile.d/50-sfeed.sh` | `SFEED_YANKER` to `wl-copy -n`, so `sfeed_curses`'s yank reaches the clipboard. From `sfeed` |
 | `/etc/profile.d/50-opencl.sh` | `RUSTICL_ENABLE` to `iris,radeonsi`, the Intel and AMD drivers of Mesa's OpenCL implementation. Without it Rusticl offers no device and every OpenCL program finds none. `llvmpipe` is left out, so a machine with no supported GPU has no OpenCL device |
 | `/etc/profile.d/bash_completion.sh` | No variables: in an interactive bash where bash-completion is not yet loaded, loads `~/.config/bash_completion` and then bash-completion. In a login bash `/etc/bash.bashrc` has already loaded it, so this file does nothing there. From `bash-completion` |
@@ -985,7 +997,7 @@ a login shell, so every desktop program inherits them. `/etc/profile` runs first
 | `/etc/profile.d/vte.sh` | No variables: in a VTE-based terminal (GNOME Terminal and the like, which set `VTE_VERSION`), a prompt hook that reports the current directory, so a new tab opens where you are. Nothing in Konsole. From `vte3`, which also installs `vte.csh` for csh, a shell this image does not ship |
 | `/etc/profile.d/Z97-byobu.sh` | Starts `byobu` at login, but only when asked: `LC_BYOBU=1`, an `LC_TERMTYPE` naming byobu, or the file `/etc/byobu/autolaunch`. Otherwise nothing. From `byobu` |
 
-Some of these set their values unconditionally: `/etc/profile` (`PATH` and `LANG`), `00locale.sh`,
+Some of these set their values unconditionally: `/etc/profile` (`PATH`), `00locale.sh`,
 `10-wayland.sh` (the toolkit back ends and the platform theme) and `40-plocate.sh`
 (`LOCATE_PATH`). `30-kdos-colors.sh` appends to whatever `FZF_DEFAULT_OPTS` holds. None of the
 others overwrites a value you already exported. The
@@ -1066,9 +1078,9 @@ Typed at a prompt, `lazydocker` reaches the socket only while a service is runni
 | `~/.msmtprc` | Sending mail with `msmtp` | Mode 600: msmtp refuses a file with a `password` line that others can read (`passwordeval` avoids the question). `/usr/sbin/sendmail` and `/usr/bin/sendmail` are links to msmtp. Ships with no accounts |
 | `~/.config/notmuch/default/config` | The mail index `notmuch` | `mail_root` is relative and expands against `$HOME`, so one shipped file suits every account. It names `~/Mail`, as do the other two files |
 | `~/.config/notmuch/default/hooks/` | What `notmuch new` does around the scan | `pre-new` fetches with `mbsync -a`, `post-new` tags. A failing `pre-new` stops `notmuch new`, so a failed fetch is not reported as an empty inbox |
-| `~/.config/khal/config` | The calendar `khal` | Active, not commented out: khal with no `[calendars]` section refuses to start, so it points at an empty store. It uses `type = discover` over a glob, because `type = calendar` *creates* the path it is given. The `[locale]` dates are ISO, which scripts that parse khal's output depend on |
+| `~/.config/khal/config` | The calendar `khal` | Active, not commented out: khal with no `[calendars]` section refuses to start, so it points at a store holding one empty calendar. It uses `type = discover` over `~/.local/share/calendars/*`, so each directory there is a calendar; the image ships one, `personal`, which `khal import` writes into, and with none khal has no calendar to import into. The `[locale]` dates are ISO, which scripts that parse khal's output depend on |
 | `~/.config/vdirsyncer/config` | Syncing a calendar or address book | Active but with no pair configured: `vdirsyncer sync` then exits 0 silently and creates nothing. `[general]` and `status_path` are the minimum that parses. `conflict_resolution` has no safe default, and the commented example says so |
-| `~/.config/khard/khard.conf` | The address book `khard` | Active for the same reason: khard with no entry exits 3. `khard list` on an empty book prints `Found no contacts` and exits 1, which means "nothing matched", not a fault |
+| `~/.config/khard/khard.conf` | The address book `khard` | Active for the same reason: khard with no entry exits 3. Its one book is `~/.local/share/addressbooks/personal`, outside `~/.local/share/contacts`, which Akonadi's default address book claims. `khard list` on an empty book prints `Found no contacts` and exits 1, which means "nothing matched", not a fault |
 | `~/.config/aerc/aerc.conf` | The mail client `aerc`: what it shows and how it renders a message part | Only the keys that differ from aerc's built-in defaults, plus `[filters]`, which has no defaults behind it and so replaces the whole set |
 | `~/.config/aerc/accounts.conf` | Your mail accounts | Not shipped. aerc refuses to start with one that group or others can read, and every shipped file is mode 644; with no file, aerc's setup wizard writes it at mode 600 |
 | `~/.config/aerc/binds.conf` | aerc's keys | Not shipped. aerc's built-in bindings are empty and this file is the only source, so a partial file would unbind every key it did not name |

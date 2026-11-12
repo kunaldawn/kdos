@@ -100,7 +100,8 @@ model](../03-architecture/security-model.md).
 The colour a box's windows wear in their title bars, chosen with `accent =` in its *box profile* or
 on System Settings' Boxes page. `kdos-appbox` writes one KWin window rule per box that forces the
 title bar to the colour scheme of that accent, so a box's colour marks its security domain; a box
-with none wears the neutral `KDOSBox` scheme. See [KWin](../04-programs/kwin.md#the-box-colour).
+with none wears the neutral `KDOSBox` scheme, a grey title bar lighter than any accent's. See
+[KWin](../04-programs/kwin.md#the-box-colour).
 
 ### box profile
 
@@ -382,7 +383,7 @@ the build orchestrator reads its output. See [Packaging](../03-architecture/pack
 
 Plasma's search and command line, on `Alt+Space`: it asks each of its runners about what you type
 and lists their answers. The KDOS runner adds the `kdos` verbs, the *routes*, the two-letter codes of
-`~/.config/kdos/favorites`, settings pages and the offline library. See [The Plasma
+`~/.config/kdos/favorites`, packs on the boot medium, shortcuts and the offline library. See [The Plasma
 shell](../04-programs/plasma-shell.md#krunner-and-the-kdos-runner).
 
 ### ksvc

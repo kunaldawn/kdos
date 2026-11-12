@@ -78,7 +78,7 @@ check() {
 
 skipped() { skip=$((skip + 1)); printf 'SKIP  %s — %s\n' "$1" "$2"; }
 
-asuser() { su - "$USER_NAME" -c "export XDG_RUNTIME_DIR=/run/user/1000; export WAYLAND_DISPLAY=wayland-0; $*"; }
+asuser() { su - "$USER_NAME" -c "export XDG_RUNTIME_DIR=/run/user/1000; export WAYLAND_DISPLAY=wayland-1; $*"; }
 
 # ── 1. the lane exists at all ──────────────────────────────────────────────
 #

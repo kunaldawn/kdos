@@ -35,4 +35,4 @@ machine=$a
 v=${user:-$machine}
 if [ -z "$v" ]; then v=Unknown; else label "$v"; v=$L; fi
 if [ -n "$user" ] && [ -n "$machine" ] && [ "$user" != "$machine" ]; then label "$machine"; v="$v (login screen: $L)"; fi
-printf 'Accent\n%s\n' "$v"
+printf 'Accent:\n%s\n' "$v"

@@ -11,6 +11,8 @@
 
 patch -p1 -i "$PORT_SRC/atspi-no-extern-c.patch"
 patch -p1 -i "$PORT_SRC/x11-backend.patch"
+patch -p1 -i "$PORT_SRC/keep-panes-visible.patch"
+patch -p1 -i "$PORT_SRC/alphabet-combo-before-interface.patch"
 
 printf '%s' "$version" > .tarball-version
 autoreconf -fi

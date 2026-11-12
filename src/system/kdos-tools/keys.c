@@ -195,7 +195,10 @@ static void add(Keys *k, const char *component, const char *action,
 	x->group = -1;
 }
 
-/* KConfig's list form: elements split at an unescaped comma, `\,` a comma. */
+/* KConfig's list form: elements split at an unescaped comma and `\,` is a
+ * comma. Every other escape is left in place for kdt_kcfg_unescape, so the
+ * `\t` between two chords reaches readable() as a tab rather than a `t`, and
+ * an escaped backslash before a comma does not hide the comma. */
 static int split_list(char *v, char **out, int max)
 {
 	int n = 0;
@@ -203,8 +206,13 @@ static int split_list(char *v, char **out, int max)
 
 	out[n++] = w;
 	for (char *p = v; *p; p++) {
-		if (*p == '\\' && p[1]) {
+		if (*p == '\\' && p[1] == ',') {
 			*w++ = *++p;
+			continue;
+		}
+		if (*p == '\\' && p[1]) {
+			*w++ = *p++;
+			*w++ = *p;
 			continue;
 		}
 		if (*p == ',' && n < max) {
@@ -226,7 +234,7 @@ static void readable(const char *in, char *out, size_t n)
 	for (const char *p = in; *p;) {
 		size_t len = strcspn(p, "\t");
 
-		if (len && strncmp(p, "none", len)) {
+		if (len && !(len == 4 && !strncmp(p, "none", 4))) {
 			size_t used = strlen(out);
 
 			snprintf(out + used, n - used, "%s%.*s",
@@ -241,6 +249,7 @@ static void readable(const char *in, char *out, size_t n)
 static void read_rc(Keys *k, const char *path)
 {
 	char *data = kb_read_all(path, NULL), group[512] = "";
+	int skip = 0;
 
 	for (char *line = data, *next; line && *line; line = next) {
 		char *nl = strchr(line, '\n'), *eq, *el[3] = { 0 };
@@ -257,9 +266,14 @@ static void read_rc(Keys *k, const char *path)
 				*end = '\0';
 				kb_strlcpy(group, line + 1, sizeof(group));
 			}
+			/* A subgroup named `$…` is KConfig's own bookkeeping,
+			 * such as [kwin][$InverseAction] pairing an action with
+			 * its opposite: its lines name actions, never chords. */
+			skip = strstr(group, "][$") != NULL;
 			continue;
 		}
-		if (!*group || line[0] == '#' || !(eq = strchr(line, '=')))
+		if (!*group || skip || line[0] == '#' ||
+		    !(eq = strchr(line, '=')))
 			continue;
 		*eq = '\0';
 		if (line[0] == '_' && strcmp(line, "_launch"))
@@ -273,8 +287,15 @@ static void read_rc(Keys *k, const char *path)
 			continue;
 		}
 		n = split_list(eq + 1, el, 3);
-		readable(el[0], chords, sizeof(chords));
-		add(k, group, line, chords, n > 2 ? el[2] : NULL);
+		{
+			char *cur = kdt_kcfg_unescape(el[0]);
+			char *name = n > 2 ? kdt_kcfg_unescape(el[2]) : NULL;
+
+			readable(cur, chords, sizeof(chords));
+			add(k, group, line, chords, name);
+			free(cur);
+			free(name);
+		}
 	}
 	free(data);
 }

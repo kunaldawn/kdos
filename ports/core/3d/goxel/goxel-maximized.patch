@@ -1,0 +1,16 @@
+Subject: Open the main window maximized
+
+The window is created at the primary monitor's full mode size, which with the
+compositor's title bar is taller than the work area and puts the bottom of the
+interface under the panel. Maximized, the compositor sizes it to the work area.
+
+--- a/src/main.c
++++ b/src/main.c
+@@ -390,6 +390,7 @@
+     glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
+     glfwWindowHintString(GLFW_WAYLAND_APP_ID, "goxel");
+     glfwWindowHintString(GLFW_X11_CLASS_NAME, "goxel");
++    glfwWindowHint(GLFW_MAXIMIZED, GLFW_TRUE);
+     monitor = glfwGetPrimaryMonitor();
+     mode = glfwGetVideoMode(monitor);
+     if (mode) {

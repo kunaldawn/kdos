@@ -1,0 +1,20 @@
+Subject: Open the start page when started with no URL
+
+Application::newInstance() opens a page only for a URL on the command
+line, so a launch from the menu, whose Exec is `khelpcenter %u` with no
+URL, shows an empty content pane until a page is picked. With no URL,
+call MainWindow::openUrl() with an empty URL, which shows the start page,
+as the Table of Contents entry and the Home action do. A URL given on the
+command line is opened as before.
+
+--- a/application.cpp
++++ b/application.cpp
+@@ -64,6 +64,8 @@
+     if (!urls.isEmpty()) {
+         const QUrl url = QUrl::fromUserInput(urls.at(0), QDir::currentPath());
+         mMainWindow->openUrl(url);
++    } else {
++        mMainWindow->openUrl(QUrl());
+     }
+ }
+ 

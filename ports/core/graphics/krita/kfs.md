@@ -10,7 +10,8 @@ Krita can host as a filter plugin, is a separate program and is not part of this
 
 - `-D BUILD_WITH_QT6=ON` — Builds against Qt 6 and KF6. Without it the project looks for Qt 5.
 - `-D ALLOW_UNSTABLE=QT6` — Upstream marks the Qt 6 build unstable, and configure stops unless
-  this list names `QT6`.
+  this list names `QT6`. Upstream also counts every Qt 6 build as a development build, so the
+  splash carries the beta mark and the welcome page shows "DEV BUILD"; no switch removes them.
 - `-D KDE_INSTALL_USE_QT_SYS_PATHS=ON`, `-D KDE_INSTALL_LIBDIR=lib` — The install layout every
   KDE application here shares (see
   [A graphical application](../../../../docs/kdos/05-developer/writing-ports.md#a-graphical-application)).
@@ -93,3 +94,11 @@ claims only Krita's own document type, `application/x-krita`; the brush-preset t
 entry names is not in the MIME database. `QGuiApplication::setDesktopFileName` makes the Wayland
 app_id `org.kde.krita`, which the entry names as `StartupWMClass`; under Xwayland the window
 class is `krita`.
+
+`build.sh` installs `/etc/xdg/kritarc`, the system layer under each user's `~/.config/kritarc`,
+with one key in its unnamed top group, the one Krita's own settings are read from:
+`defaultExportMimeType=image/png`, the File Handling page's default export type. Unset, File >
+Export opens the KDE file dialog on "All supported formats" with Krita's own `.kra` as the
+extension to add, and a name typed as `picture.png` is written as `picture.png.kra`. With PNG
+preselected, the name keeps its extension and the PNG options follow. A user who picks another
+default in Settings overrides it in their own file.

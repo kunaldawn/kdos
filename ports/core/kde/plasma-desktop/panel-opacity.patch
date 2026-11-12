@@ -1,0 +1,22 @@
+Subject: Hide the panel Opacity group when the Plasma style has no adaptive transparency
+
+PanelView reports a Translucent panel whenever the style turns adaptive
+transparency off, and the configuration dialog shows that as a disabled
+combo box whatever the style really draws, so an opaque style's panel
+reads "Translucent". Without the option there is nothing to choose, so the
+group is not shown.
+
+diff -ruN a/desktoppackage/contents/configuration/PanelConfiguration.qml b/desktoppackage/contents/configuration/PanelConfiguration.qml
+--- a/desktoppackage/contents/configuration/PanelConfiguration.qml
++++ b/desktoppackage/contents/configuration/PanelConfiguration.qml
+@@ -450,6 +450,10 @@
+         ColumnLayout {
+             Layout.alignment: Qt.AlignHCenter
+             spacing: Kirigami.Units.mediumSpacing
++            // A style without adaptive transparency draws its panel one way,
++            // and the panel reports Translucent whatever that way is: the
++            // group would only show a disabled choice that may be wrong.
++            visible: panel.adaptiveOpacityEnabled
+             RowLayout {
+                 Layout.alignment: Qt.AlignTop | Qt.AlignHCenter
+                 spacing: 0

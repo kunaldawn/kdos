@@ -191,7 +191,7 @@ the installer has already done this if Bluetooth was turned off there.
 
 **The daemon keeps restarting.** `service status bluetooth` then reports a
 `[FAIL] bluetoothd` line with the daemon's last exit code. The daemon's own messages are in the
-supervisor's log, which only root can read, and in syslog's `/var/log/messages`:
+supervisor's log and in syslog's `/var/log/messages`, both of which only root can read:
 
 ```bash
 sudo tail -n 40 /run/kdos-svc.bluetoothd.log

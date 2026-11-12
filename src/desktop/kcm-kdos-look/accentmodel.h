@@ -13,8 +13,12 @@
  *
  * A SWATCH IS PAINTED FROM ITS COLOUR SCHEME, never from a literal: each row
  * reads /usr/share/color-schemes/KDOS<Label>.colors through KColorScheme and
- * exposes that scheme's own roles (window, view, text, selection), so the
- * swatch is the scheme a click applies. An accent whose scheme file is not
+ * exposes that scheme's own roles (window, view, text, and the accent itself
+ * as the view's focus decoration), so the swatch is the scheme a click
+ * applies. The accent is read from DecorationFocus, not the selection: a
+ * dark accent's selection is the accent darkened until the view's text reads
+ * on it, and a band painted from it would show a muddier colour than the
+ * accent a click applies. An accent whose scheme file is not
  * installed is listed and cannot be picked: applying it would leave Plasma
  * on the previous colours while every other surface moved.
  */
@@ -44,8 +48,7 @@ public:
         WindowColorRole,
         ViewColorRole,
         TextColorRole,
-        HighlightColorRole,
-        HighlightTextColorRole,
+        AccentColorRole,
     };
     Q_ENUM(Roles)
 
@@ -84,8 +87,7 @@ private:
         QColor window;
         QColor view;
         QColor text;
-        QColor highlight;
-        QColor highlightText;
+        QColor accent;
     };
     static Row load(const QString &id);
     QList<Row> m_rows;

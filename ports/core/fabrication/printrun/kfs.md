@@ -30,8 +30,10 @@ USB serial device, which the `dialout` group opens; the `kdos` user is in it thr
   `PATH`, and entries in Start, that fail on an import.
 - **`pronsole` and `printcore` without the suffix.** Upstream installs its programs as the scripts
   `setup.py` lists, `pronsole.py` and `printcore.py`; the recipe adds `pronsole` and `printcore` as
-  links to them, so both run by their bare names. `pronsole.desktop` stays installed, and runs
-  `/usr/bin/pronsole.py` in a terminal.
+  links to them, so both run by their bare names. `pronsole.desktop` is the recipe's own, written
+  in place of upstream's, and runs `pronsole` in a terminal. Upstream's is named "Printer
+  console", which the launcher's fuzzy search ranks first for "Printers", ahead of the Printers
+  settings page; KDOS's says "3D Printing Console" and keeps "printer" out of every searched field.
 - **The sleep inhibit is optional.** During a print `pronsole` asks `org.freedesktop.ScreenSaver`
   over D-Bus to hold off the idle lock, inside a `try` that goes on without it. dbus-python is not
   in this port's `depends`, and without it `pronsole` prints with no inhibit. psutil is used to

@@ -10,6 +10,8 @@
 # ---------------------------------
 
 patch -p1 -i "$PORT_SRC/fix-swig-iterator-next.patch"
+patch -p1 -i "$PORT_SRC/app-id.patch"
+patch -p1 -i "$PORT_SRC/startwizard-no-update-check.patch"
 
 cmake -S . -B build -G Ninja -Wno-dev \
 	-DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

@@ -157,7 +157,8 @@ KCM.SimpleKCM {
                 position: Kirigami.InlineMessage.Position.Header
                 visible: true
                 type: Kirigami.MessageType.Warning
-                text: modelData
+                /* `kcm` is gone before a delegate is when the page closes. */
+                text: kcm?.profile.noteMarkup(modelData) ?? ""
             }
         }
     }
@@ -616,9 +617,13 @@ KCM.SimpleKCM {
         }
     }
 
+    /* A dialog declared in a SimpleKCM is moved into its scrolled content
+     * and centred there, out of view behind its own modal dim: each one is
+     * parented to the window's overlay. */
     Kirigami.PromptDialog {
         id: recreateDialog
 
+        parent: page.QQC2.Overlay.overlay
         title: i18nc("@title:window %1 box", "Create %1 Again?", page.title)
         subtitle: page.box.writesInside
             ? i18nc("@info", "The box is removed and created again with its current settings. It keeps what it writes inside its container, so all of that is deleted. Your home folder is not touched.")
@@ -644,6 +649,7 @@ KCM.SimpleKCM {
     Kirigami.PromptDialog {
         id: removeDialog
 
+        parent: page.QQC2.Overlay.overlay
         title: page.created ? i18nc("@title:window %1 box", "Remove %1?", page.title) : i18nc("@title:window %1 box", "Delete the Settings of %1?", page.title)
         subtitle: !page.created
             ? i18nc("@info", "The box has never been created, so these settings are all there is of it.")

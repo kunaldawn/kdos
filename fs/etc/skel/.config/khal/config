@@ -12,7 +12,8 @@
 # and the mail templates beside it. khal with no `[calendars]` section refuses
 # to start — `critical: Found no calendar section in the config file`, exit 1 —
 # so a file of comments would be a calendar that cannot open. It points instead
-# at an EMPTY store: nothing is configured, and everything runs.
+# at a store holding one EMPTY calendar: nothing is configured, and everything
+# runs.
 
 [calendars]
 
@@ -20,11 +21,11 @@
 # Greppable, diffable, and backed up by copying it — the same reason this image
 # keeps mail in a Maildir rather than in a database.
 #
-# `discover` AND NOT `calendar`, because `calendar` CREATES the path it is
-# given the first time anything reads it, and a fresh login would grow a
-# directory nobody asked for. `discover` over a glob that matches nothing is a
-# calendar with no calendars in it, which is what a machine that has not been
-# set up should look like.
+# `discover`, so every directory under the glob is a calendar: the image ships
+# one, `personal`, empty, which `khal import` and `khal new` write into, and a
+# directory added beside it (a vdirsyncer collection, say) is found with no
+# edit here. Discover creates nothing; with no directory under the glob khal
+# has no calendar and `khal import` fails.
 [[local]]
 path = ~/.local/share/calendars/*
 type = discover

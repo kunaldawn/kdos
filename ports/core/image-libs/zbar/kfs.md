@@ -54,4 +54,6 @@ configure detects X rather than requiring it, so `build.sh` fails the build when
 `include/config.h` defines `X_DISPLAY_MISSING`: without libX11 `zbarcam` would have no window.
 
 The desktop entry that `build.sh` writes runs `zbarcam` in a terminal (`Terminal=true`): the camera
-picture is its own window, and each code it reads is printed where it can be copied.
+picture is its own window, and each code it reads is printed where it can be copied. The entry is
+`NoDisplay=true`: on a machine with no `/dev/video0` zbarcam exits at once, so it is started from a
+prompt.

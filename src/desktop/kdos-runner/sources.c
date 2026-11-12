@@ -685,31 +685,3 @@ int rn_chords(const RnChord **out)
 	return g_nchords;
 }
 
-/* ── System Settings modules ───────────────────────────────────────────── */
-
-int rn_kcm_installed(const char *id)
-{
-	static const char *const sub[] = {
-		"/plasma/kcms/systemsettings",
-		"/plasma/kcms/systemsettings_qwidgets",
-		"/plasma/kcms",
-	};
-	char dirs[9][512], path[1024];
-	int nd = 0;
-	const char *qp = getenv("QT_PLUGIN_PATH");
-
-	if (!plain_name(id, 0))
-		return 0;
-	if (qp && *qp)
-		nd = dir_list("QT_PLUGIN_PATH", "", dirs, 8);
-	rn_sys("/usr/lib/qt6/plugins", dirs[nd], sizeof(dirs[nd]));
-	nd++;
-	for (int i = 0; i < nd; i++)
-		for (size_t j = 0; j < sizeof(sub) / sizeof(sub[0]); j++) {
-			if (snprintf(path, sizeof(path), "%s%s/%s.so", dirs[i],
-				     sub[j], id) < (int)sizeof(path) &&
-			    kb_path_exists(path))
-				return 1;
-		}
-	return 0;
-}

@@ -101,6 +101,8 @@ DESTDIR=$PKG meson install --no-rebuild -C build
 
 rm -rf "$PKG/usr/lib/sysusers.d"
 
+rm "$PKG/etc/libvirt/qemu/networks/autostart/default.xml"
+
 rm -rf "$PKG/run"
 
 install -d "$PKG/etc/nftables.d"

@@ -36,6 +36,10 @@ export KDOS_BOOTSTATE=$E/EFI/kdos/bootstate
 export KDOS_CMDLINE=$F/cmdline KDOS_SYSROOT=$R KDOS_BOOT_ID=fixture-boot-1
 export KDOS_REBOOT_ENTRY=$R/run/systemd/reboot-to-boot-loader-entry
 unset KDOS_EFIVARS
+# The mount table kdos-bootctl reads for the live medium: an installed root
+# here, since a container's own `/` is an overlay too.
+printf '/dev/vda2 / ext4 rw 0 0\n' > "$F/mounts"
+export KDOS_MOUNTS=$F/mounts
 
 printf 'kdos_slot=a root=UUID=AAAA-1111 rw\n' > "$F/cmdline"
 printf 'NAME="KDOS"\nVERSION_ID="0.2"\nBUILD_ID="a81bec1c"\n' > "$R/etc/os-release"
@@ -482,8 +486,35 @@ want "$F/noslots.txt" 's "0.2.13"'
 bc call org.freedesktop.sysupdate1 /org/freedesktop/sysupdate1/target/host \
     org.freedesktop.sysupdate1.Target Acquire st "" 0 > "$F/noslots.txt" 2>&1
 want_re "$F/noslots.txt" "no second root slot"
+prop Live > "$F/noslots.txt"
+want "$F/noslots.txt" "b false"
 stop_daemon
-mv "$F/bootstate.saved" "$KDOS_BOOTSTATE"
 [ "$fail" = 0 ] || exit 1
 echo "  a console machine is confirmed by rcS's mark; a single-root machine is offered nothing"
+
+# ── the live medium ────────────────────────────────────────────────────────
+# No boot state and `/` an overlay, as kdos-bootctl reads /proc/mounts: Live
+# is true, nothing is offered, Acquire says to install KDOS rather than to
+# update in place, and the AppStream file names the live session.
+printf 'overlay / overlay rw,lowerdir=/mnt/system,upperdir=/mnt/overlay/upper 0 0\n' > "$F/mounts"
+start_daemon
+prop Live > "$F/live.txt"
+want "$F/live.txt" "b true"
+prop Configured > "$F/live.txt"
+want "$F/live.txt" "b false"
+bc call org.freedesktop.sysupdate1 /org/freedesktop/sysupdate1/target/host \
+    org.freedesktop.sysupdate1.Target CheckNew > "$F/live.txt"
+want "$F/live.txt" 's ""'
+bc call org.freedesktop.sysupdate1 /org/freedesktop/sysupdate1/target/host \
+    org.freedesktop.sysupdate1.Target Acquire st "" 0 > "$F/live.txt" 2>&1
+want_re "$F/live.txt" "this is the live medium.*install KDOS to update it"
+want_re "$R/run/kdos/sysupdate/io.kdos.system.metainfo.xml" \
+    '<summary>The KDOS live session, which system updates do not reach</summary>'
+grep -q '<release ' "$R/run/kdos/sysupdate/io.kdos.system.metainfo.xml" &&
+    { echo "  FAIL  the live medium's AppStream file offers a release"; fail=1; }
+stop_daemon
+printf '/dev/vda2 / ext4 rw 0 0\n' > "$F/mounts"
+mv "$F/bootstate.saved" "$KDOS_BOOTSTATE"
+[ "$fail" = 0 ] || exit 1
+echo "  the live medium is named as such, offered nothing and told to install KDOS"
 exit 0

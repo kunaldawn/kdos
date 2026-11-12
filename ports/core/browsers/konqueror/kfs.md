@@ -39,6 +39,11 @@ The window's app_id is `konqbrowser`, set by the program, and its menu entry is
 decides which one opens a folder or a link. `konqy_preload.desktop` is an autostart entry that
 preloads a Konqueror at a Plasma login only when its setting is turned on; the default is off.
 
+`build.sh` deletes `webenginepart.upd`, the one `kconf_update` script the port installs. It
+moves the sites a KDE 4 or 5 Konqueror kept in `khtml/formcompletions` into `konquerorrc`, a file
+no KDOS account has, and it declares `Version=5`, which KDE Frameworks 6's `kconf_update` refuses
+with an error at every login.
+
 The configure probes `mallinfo`, which musl does not have; the probe fails, and nothing in the
 sources reads its result. libkonq, the library the plugins link, is installed with a CMake package
 (`KF6Konq`) and uses [zlib](#port-zlib)'s `crc32` for the history, which upstream requires.

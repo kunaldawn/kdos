@@ -1,0 +1,14 @@
+Subject: cupsd.conf: write no IdleExitTimeout, which only an on-demand cupsd knows
+
+--- a/conf/cupsd.conf.in
++++ b/conf/cupsd.conf.in
+@@ -28,9 +28,6 @@
+ # Web interface setting...
+ WebInterface @CUPS_WEBIF@
+ 
+-# Timeout after cupsd exits if idle (applied only if cupsd runs on-demand - with -l)
+-IdleExitTimeout @EXIT_TIMEOUT@
+-
+ # Restrict access to the server...
+ <Location />
+   Order allow,deny

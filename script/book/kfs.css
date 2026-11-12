@@ -12,7 +12,8 @@
  * Every colour is a token on :root and nothing below names a literal, so a
  * palette change is the two token blocks. Body text is a proportional face
  * for reading at length; headings, code and the chrome are monospace, as
- * the desktop is.
+ * the desktop is. A last block of rules applies only inside the Help
+ * Center, where KHelpCenter's handbook stylesheet would otherwise win.
  * --------------------------------- */
 
 :root {
@@ -114,3 +115,28 @@ div.kfs-index li { break-inside: avoid; }
 	body { font-size: 16px; }
 	h1, main > h2:first-child, main > h3:first-child, main > div > h3:first-child { font-size: 1.45rem; }
 }
+
+/* In the Help Center. KHelpCenter appends KDE's handbook stylesheet to every
+ * page it shows, as a <style id="default"> after this file, and at equal
+ * specificity its element rules win: white paper and black text over the
+ * dark tokens, grey sans headings, blue links, justified paragraphs, padded
+ * tables. A page that carries that style element is in the Help Center, so
+ * these rules match only there, and their id outranks the handbook's
+ * element rules. Every property the handbook sets on an element this book
+ * styles is set again here, and the class rules it would override are
+ * restated after the element ones. */
+html:has(> head > style#default) body {
+	background: var(--bg); color: var(--fg); margin: 0 auto; max-width: 54rem;
+	padding: 0 16px 4rem; font-family: var(--sans);
+}
+html:has(> head > style#default) :is(p, td, th) { font-family: inherit; text-align: inherit; }
+html:has(> head > style#default) :is(h1, h2, h3, h4, h5, h6) {
+	font-family: var(--mono); color: var(--accent); font-weight: bold; line-height: 1.25;
+}
+html:has(> head > style#default) a { color: var(--accent); text-decoration: underline; }
+html:has(> head > style#default) a:visited { color: var(--dim); }
+html:has(> head > style#default) a:hover { color: var(--accent); }
+html:has(> head > style#default) :is(.kfs-crumbs a, .kfs-crumbs a:visited) { color: var(--dim); }
+html:has(> head > style#default) :is(.kfs-brand, .kfs-toplink, .kfs-nav a) { text-decoration: none; }
+html:has(> head > style#default) table { padding: 0; }
+html:has(> head > style#default) dt { margin-top: 0; }

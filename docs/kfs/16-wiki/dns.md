@@ -207,8 +207,8 @@ reboot unless the medium has a persistence store; see [Live persistence](live-pe
 `cat /etc/resolv.conf`. If it holds only the shipped `nameserver 127.0.0.1` line and nothing
 answers there, the resolver is not running: check `service status networkmanager` and
 `pgrep -a dnsmasq`. NetworkManager's `dnsmasq` is the one with `--listen-address=127.0.0.1`; the
-two started with `--conf-file=/var/lib/libvirt/dnsmasq/default.conf` serve libvirt's `virbr0`
-network. With NetworkManager disabled on purpose, `service status network` should show
+two started with `--conf-file=/var/lib/libvirt/dnsmasq/default.conf`, while libvirt's `default`
+network is started, serve its `virbr0`. With NetworkManager disabled on purpose, `service status network` should show
 `dhcpcd`, and `resolvconf -l` should list the servers it was given.
 
 **Names fail just after boot and work a moment later.**

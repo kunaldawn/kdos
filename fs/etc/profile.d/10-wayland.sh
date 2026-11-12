@@ -88,11 +88,16 @@ export MOZ_ENABLE_WAYLAND=1
 export SDL_VIDEODRIVER=wayland
 export CLUTTER_BACKEND=wayland
 
-# Native GTK and Qt applications on the host. GTK_USE_PORTAL=1 routes GTK's
-# file chooser, print dialog and settings through the portals, so a GTK
-# application opens the KDE file dialog instead of drawing its own. Qt takes
-# one platform theme name here, not a list, and each Qt major version searches
-# only its own plugin directory: a Qt 6 application finds plasma-integration's
+# Native GTK and Qt applications on the host. GTK_USE_PORTAL=1 sends GTK 3's
+# native file chooser and print dialog to the portals, so a GTK 3 application
+# that uses them opens the KDE file dialog, and Firefox's file picker reads it
+# too; GTK 4 uses the portals without it, and a program that builds GTK's own
+# file dialog widget keeps GTK's. GTK 3 then reads its theme, fonts and the
+# rest from the Settings portal, but loads colorreload-gtk-module, its only
+# way to repaint on a colour change, from org.gtk.Settings: gtk3 is patched to
+# open that service beside the portal, and kde-gtk-config to serve it although
+# kded inherits the variable. Qt takes one platform theme name here, not a
+# list, and each Qt major version searches only its own plugin directory: a Qt 6 application finds plasma-integration's
 # `kde` theme and the colours of kdeglobals; a Qt 5 application finds the qt5ct
 # plugin under `kde` (the qt5ct port adds the key) and reads the ~/.config/qt5ct
 # files `kdos theme` writes from the KDE colour scheme. Without it, a Qt 5

@@ -26,8 +26,13 @@ enrolled reader is accepted before the password is asked.
   of those variables names one; both are ports.
 - `--with-rundir=/run/sudo` — Where the time stamps that let a second `sudo` skip the password
   are kept; a tmpfs, so they do not survive a reboot.
-- `--with-vardir=/var/lib/sudo` — Where the files that should survive a reboot go, such as the
-  record that a user has seen the lecture.
+- `--with-vardir=/var/lib/sudo` — Where the files that should survive a reboot go.
+- `--without-lecture` — Print no first-use lecture before the password prompt. KDE's
+  [kdesu](#port-kdesu) drives `sudo` on a pseudo-terminal and takes the first line ending in a
+  colon with nothing after it for the prompt; the lecture's lines in front of it break that
+  exchange, so every graphical root action, KSystemLog from the launcher among them, is refused
+  as a wrong password. sudo records a lecture as seen only after a password is accepted, so an
+  account that never ran `sudo` in a terminal would be refused for ever.
 - `--with-passprompt="[sudo] password for %p: "` — The prompt, naming the user whose password is
   wanted.
 - `--with-pam` — Authenticate through PAM, using `/etc/pam.d/sudo`.

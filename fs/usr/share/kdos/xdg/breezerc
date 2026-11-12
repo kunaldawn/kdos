@@ -7,17 +7,24 @@
 # ---------------------------------
 #   The window decoration: Breeze, squared.
 #
-# The KDOS title bar is Breeze's decoration with its corners squared, a 1 px
-# outline in the scheme's own colour and the title on the left. It takes
-# every colour from the active scheme's [WM] group, so it follows all eight
-# accents with nothing regenerated, and a window rule's forced colour scheme
-# (a box's colour) tints it the same way. The Window Decorations page writes
-# the person's choices to ~/.config/breezerc, above this file.
+# The KDOS title bar is Breeze's decoration with every corner square, the
+# active window's 1 px outline in the accent and the title on the left.
+# SquareCorners and OutlineHighlight are the two keys the breeze port's
+# square-corners.patch adds; without the patch Breeze ignores both and keeps
+# its rounded top corners and grey outline. RoundedCorners=false squares the
+# bottom of a borderless window, as SquareCorners does too. The title bar's
+# colours are the active scheme's Header set and the outline the window
+# palette's selection colour, so both follow all eight accents with nothing
+# regenerated, and a window rule's forced colour scheme (a box's colour)
+# tints them the same way. The Window Decorations page writes the person's
+# choices to ~/.config/breezerc, above this file.
 # ---------------------------------
 
 [Common]
 RoundedCorners=false
+SquareCorners=true
 OutlineEnabled=true
+OutlineHighlight=true
 
 [Windeco]
 DrawBackgroundGradient=false

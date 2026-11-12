@@ -6,7 +6,7 @@ the kernel reports a stall, and then, when `MemAvailable` is also at most a tent
 kills one process: the largest in a box over its declared memory budget first, otherwise
 preferably a boxed one, and never KWin, plasmashell, the login, the audio session or the other
 programs the session is made of. It frees the victim's memory at once
-with `process_mrelease()`. It acts at most once every ten seconds. The kernel's own out-of-memory
+with `process_mrelease()`. It scans for a victim at most once every ten seconds, counted from a firing that finds memory short. The kernel's own out-of-memory
 killer fires only when an allocation fails, which on a machine with swap can be long after the
 session stopped responding. How it chooses, and its socket, are in
 [kdos-oomd](../../../docs/kdos/04-programs/daemons.md#kdos-oomd).

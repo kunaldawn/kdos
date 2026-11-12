@@ -53,6 +53,32 @@ The configuration under `/etc/sddm.conf.d/`, the `sddm` account and `kdos-dm` ar
   [utmps](#port-utmps), as [shadow](#port-shadow) does. The library goes at the end of every link
   line, and `--as-needed` keeps it only in `sddm-helper`, the one program that calls it.
 
+## Patches
+
+`sddm-elogind-session-desktop.patch` puts `XDG_SESSION_DESKTOP` (the session's `DesktopNames`,
+`KDE` for Plasma) into the login's PAM environment on an elogind build as well as a systemd one.
+`pam_elogind` records it as the session's `Desktop` property, and with the variable missing every
+login's `loginctl show-session -p Desktop` is empty and `kdos status` cannot tell a Plasma session
+from any other Wayland one. Upstream guards the line with `HAVE_SYSTEMD` alone; the patch is to be
+offered upstream.
+
+`sddm-switch-user-greeter.patch` makes Switch User show a greeter on a VT of its own, and a password
+typed there return to the account's running session. Three defects stand in the way. SDDM autologins
+every new display while `[Autologin] Relogin=true`, including the one `SeatManager::switchToGreeter`
+makes for Switch User, so that display logs the account whose session already holds the seat in
+again; the patch gives `Display` a greeter-only flag that only `switchToGreeter` sets (an X11-user
+fallback of such a display keeps it), and a greeter-only display skips the autologin. And
+`fetchAvailableVt()` asks elogind whether `ttySDDM_INITIAL_VT` is in use: `SDDM_INITIAL_VT` is a
+`static const int` in `config.h`, which `STRINGIFY` turns into its own name, so the initial VT
+always looks free and the second display takes VT 1 from the running session, where `sddm-helper`
+cannot take control of `/dev/tty1`, exits 5 and the display is removed. The patch builds the name at
+run time, and the second display gets a free VT. Last, with `ReuseSession` (on by default) a login
+at that greeter goes back to the account's session only when the session's PAM service is `sddm`; a
+session that began as an autologin is `sddm-autologin`, so it is not found and the login starts a
+second Plasma session for the same account. The patch matches both services. The live medium ships
+`Relogin=true`, and so does an installed machine whose Login Screen page has "log in again after
+logging off" ticked. The patch is to be offered upstream.
+
 ## Notes
 
 Alpine's 0.21.0-r10 carries three patches, and none is applied here.
@@ -102,15 +128,16 @@ line matches that name alone and, on a match, skips the uid check. Without it th
 autologin is refused and an OEM install never leaves the login screen. `root` and `sddm` stay
 refused.
 
-`sddm-greeter` is the `sddm` account's session for the greeter. `pam_turnstile` is `required`
-there, not optional: turnstile is the only creator of `/run/user/<sddm uid>`, and the greeter's
-KWin refuses to start without `XDG_RUNTIME_DIR`, so a session without it is a black screen that
-looks like a working one. That is why turnstile is in `depends`. turnstile's KDOS backend starts
-no user services for a uid below 1000, so the greeter gets a runtime directory and no bus,
-PipeWire or timers. `pam_limits` with `/etc/security/limits.d/30-sddm.conf` grants the account
-real-time priority 1, which is what KWin's `SCHED_RR` request needs; the capability the kwin
-binary carries upstream does not survive kpkg's tar. The limit is a hard one `pam_limits` can
-raise only as root, which `sddm-helper` is.
+`sddm-greeter` is the `sddm` account's session for the greeter. `pam_turnstile` is `required` there,
+not optional: turnstile is the only creator of `/run/user/<sddm uid>`, and the greeter's KWin
+refuses to start without `XDG_RUNTIME_DIR`, so a session without it is a black screen that looks
+like a working one. That is why turnstile is in `depends`. turnstile's KDOS backend starts no user
+services for a uid below 1000 except the session bus for `sddm`, so the greeter gets a runtime
+directory and a session bus, which its on-screen keyboard and keyboard-layout buttons reach its KWin
+over, and no PipeWire, timers or boxes. `pam_limits` with `/etc/security/limits.d/30-sddm.conf`
+grants the account real-time priority 1, which is what KWin's `SCHED_RR` request needs; the
+capability the kwin binary carries upstream does not survive kpkg's tar. The limit is a hard one
+`pam_limits` can raise only as root, which `sddm-helper` is.
 
 **An autologin can start locked, and only an autologin.** `sddm-autologin` runs `pam_env` with
 `/etc/security/sddm-autologin.conf`, which puts `/etc/kdos/autologin-xdg` first in

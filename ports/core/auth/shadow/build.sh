@@ -10,6 +10,7 @@
 # ---------------------------------
 
 patch -p1 -i "$PORT_SRC/no-mail-spool.patch"
+patch -p1 -i "$PORT_SRC/private-homes.patch"
 
 ./configure \
 	--prefix=/usr \

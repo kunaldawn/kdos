@@ -18,11 +18,9 @@ case "$1" in
         # that insists on it cannot connect with.
         ssh-keygen -A
         # -D = don't detach (foreground for supervision). PidFile=none:
-        # sshd's own default, /var/run/sshd.pid, is the supervisor's
-        # /run/sshd.pid. Written there, it replaces the supervisor's id, so
-        # `service stop` finds no supervisor at that pid, drops the file as
-        # stale and signals nothing, leaving the daemon running; and sshd
-        # removes it on exit, so `status` reports the service down.
+        # the supervisor already knows the daemon's pid and keeps its own
+        # in /run/kdos-svc.sshd.pid, so a pid file of sshd's is one more
+        # file to go stale and nothing reads it.
         supervise "$NAME" "$DAEMON" -D -o PidFile=none
         ;;
     stop)

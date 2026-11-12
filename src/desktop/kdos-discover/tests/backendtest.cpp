@@ -25,9 +25,12 @@
 
 #include <KTar>
 
+#include <algorithm>
+
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QPointer>
@@ -57,6 +60,8 @@ private Q_SLOTS:
     void installFails();
     void removeRuns();
     void refusals();
+    void urlBeforeFirstRefresh();
+    void boxesCategoryNeedsABox();
 
 private:
     QList<KdosResource *> find(const Filters &filter);
@@ -161,7 +166,11 @@ void BackendTest::initTestCase()
 
     writeTool(u"kdos-appbox"_s, R"(case "$1" in
 catalogue)
-	if [ "$2" = --groups ]; then cat "$KDOS_TEST_FIXTURES/groups.tsv"; else cat "$KDOS_TEST_FIXTURES/catalogue.tsv"; fi ;;
+	case "$2" in
+	--groups) cat "$KDOS_TEST_FIXTURES/groups.tsv" ;;
+	--chain) cat "$KDOS_TEST_FIXTURES/chain.tsv" ;;
+	*) cat "$KDOS_TEST_FIXTURES/catalogue.tsv" ;;
+	esac ;;
 install)
 	echo "==> building kdos/base"
 	if [ -n "$KDOS_TEST_FAIL" ]; then echo "  $2: the image did not build" >&2; exit 1; fi
@@ -176,12 +185,13 @@ import)
 	echo "==> 2 imported, 0 failed" ;;
 esac)");
     writeTool(u"kdos-box"_s, R"(case "$1" in
-list) [ "$2" = --json ] && cat "$KDOS_TEST_FIXTURES/box-list-machine.json" ;;
+list) [ "$2" = --json ] && [ -z "$KDOS_TEST_NOBOXES" ] && cat "$KDOS_TEST_FIXTURES/box-list-machine.json" ;;
 profile) cat "$KDOS_TEST_FIXTURES/box-profile.txt" ;;
 esac)");
     writeTool(u"kpkg"_s, R"([ "$1 $2" = "list --json" ] && cat "$KDOS_TEST_FIXTURES/kpkg-list.json")");
     writeTool(u"kdos-pack"_s, R"(case "$1" in
 extract-meta)
+	case "$2" in *broken.kpack) echo "kdos-pack: not a pack" >&2; exit 1 ;; esac
 	[ "$3" = --icon ] && exit 1
 	cat "$KDOS_TEST_FIXTURES/kdos-pack-meta" ;;
 verify)
@@ -225,6 +235,7 @@ esac)");
     qputenv("KDOS_APPS_PENDING", m_dir.filePath(u"apps-pending"_s).toUtf8());
     qputenv("KDOS_SWCATALOG", (m_fixtures + u"/swcatalog"_s).toUtf8());
     qputenv("KDOS_BINHOST_CACHE", (m_fixtures + u"/binhost"_s).toUtf8());
+    qputenv("KDOS_DEBIAN_EXCLUDE", (m_fixtures + u"/debian-exclude"_s).toUtf8());
     qputenv("HOME", m_dir.filePath(u"home"_s).toUtf8());
     qputenv("XDG_CACHE_HOME", m_dir.filePath(u"home/.cache"_s).toUtf8());
     qputenv("XDG_DATA_HOME", m_dir.filePath(u"home/.local/share"_s).toUtf8());
@@ -244,7 +255,7 @@ void BackendTest::catalogueRows()
     QVERIFY(kcalc);
     QCOMPARE(kcalc->name(), u"KCalc"_s);
     QCOMPARE(kcalc->state(), AbstractResource::Installed);
-    QCOMPARE(kcalc->origin(), u"kdos-packs"_s);
+    QCOMPARE(kcalc->origin(), u"kdos-store"_s); // built by the store lane: no pack
     QCOMPARE(kcalc->boxName(), u"app.kcalc"_s);
     QVERIFY(kcalc->hasCategory(u"kdos-box"_s));
     QVERIFY(kcalc->canExecute());
@@ -266,7 +277,31 @@ void BackendTest::catalogueRows()
     QVERIFY(tess);
     QCOMPARE(tess->type(), AbstractResource::ApplicationSupport);
     QVERIFY(tess->kdosNotice().contains(u"network"_s));
-    QVERIFY(tess->sizeDescription().contains(u"estimate"_s));
+    QVERIFY(tess->kdosNotice().contains(u"estimate"_s));
+    QCOMPARE(tess->origin(), u"kdos-store"_s); // built by the store lane
+    QVERIFY(tess->sizeDescription().startsWith(u"About "_s));
+    // Built here, on a base this machine has not built: the base counts.
+    QCOMPARE(tess->size(), quint64(30000000 + 200000000));
+    QCOMPARE(scribus->origin(), u"kdos-packs"_s); // its pack is in the store
+
+    // A size nobody knows is no size at all: Discover spins beside a 0 that
+    // has a description.
+    KdosResource *kate = resource(u"port"_s, u"kate"_s);
+    QVERIFY(kate);
+    QCOMPARE(kate->size(), quint64(0));
+    QVERIFY(kate->sizeDescription().isEmpty());
+
+    // Discover's lists keep one resource per appstreamId: every resource has
+    // its own, and a host port keeps its component's.
+    QSet<QString> ids;
+    Filters every;
+    const QList<KdosResource *> listed = find(every);
+    for (KdosResource *r : listed)
+        ids.insert(r->appstreamId());
+    QCOMPARE(ids.size(), listed.size());
+    QCOMPARE(kate->appstreamId(), u"org.kde.kate"_s);
+    QVERIFY(scribus->appstreamId().startsWith(u"io.kdos."_s));
+    QCOMPARE(scribus->url(), QUrl(u"kdos-backend://catalogue/app.scribus"_s));
 
     // The listing's row that is no id is no resource.
     Filters all;
@@ -283,6 +318,9 @@ void BackendTest::sets()
     QCOMPARE(office->memberNames(), (QStringList{u"Scribus"_s, u"KCalc"_s, u"Tesseract languages"_s}));
     QCOMPARE(office->state(), AbstractResource::None); // scribus is not installed
     QVERIFY(office->hasCategory(u"kdos-set:office"_s));
+    // The members' estimates, plus the one base data.tess is built on;
+    // scribus has a pack and kcalc is installed, so neither adds a chain.
+    QCOMPARE(office->size(), quint64(99000000 + 4200000 + 30000000 + 200000000));
 }
 
 void BackendTest::packsAndBoxes()
@@ -294,6 +332,16 @@ void BackendTest::packsAndBoxes()
     QCOMPARE(work->state(), AbstractResource::Installed);
     QCOMPARE(work->boxName(), u"work"_s);
     QCOMPARE(work->boxAccent(), u"amber"_s);
+    // What the page shows is said for a person, not as kdos-box printed it.
+    QCOMPARE(work->boxAccentText(), u"Amber"_s);
+    QCOMPARE(work->boxStateText(), u"Stopped"_s);
+    QCOMPARE(work->boxPersistenceText(), u"Yes"_s);
+    QVERIFY(!work->boxBaseText().startsWith(u"pack:"_s));
+    KdosResource *kcalc = resource(u"catalogue"_s, u"app.kcalc"_s);
+    QVERIFY(kcalc);
+    QCOMPARE(kcalc->boxStateText(), u"Running"_s);
+    QCOMPARE(kcalc->boxAccentText(), u"Neutral"_s);
+    QVERIFY(!kcalc->boxBaseText().startsWith(u"image:"_s));
     QCOMPARE(work->section(), u"Development"_s);
     QVERIFY(m_packdRequests.contains(u"info box.work"_s));
     QVERIFY(!m_packdRequests.contains(u"info app.scribus"_s)); // the catalogue describes it
@@ -342,8 +390,21 @@ void BackendTest::debianLane()
     const QList<KdosResource *> ink = find(f);
     QCOMPARE(ink.size(), 1);
     QCOMPARE(ink.first()->entry().lane, Lane::Debian);
+    // The profile an uninstall keeps (deb.inkscape, "not created" over its
+    // own image) is not a box: the application is not installed.
     QCOMPARE(ink.first()->state(), AbstractResource::None);
+    QVERIFY(!ink.first()->hasCategory(u"kdos-box"_s));
+    QVERIFY(!resource(u"box"_s, u"deb.inkscape"_s));
     QVERIFY(ink.first()->kdosNotice().contains(u"inkscape"_s));
+    // Debian's stock icons are not installed: an icon the theme lacks gives
+    // way to the icon of the application's category.
+    if (!QIcon::hasThemeIcon(u"inkscape"_s))
+        QCOMPARE(ink.first()->entry().icon, u"applications-graphics"_s);
+
+    // A package the exclusion list names is never offered, by search, by
+    // category or by link.
+    f.search = u"kmag"_s;
+    QVERIFY(find(f).isEmpty());
 
     // A package a catalogue row claims is that row, never a Debian twin.
     f.search = u"scribus"_s;
@@ -375,6 +436,7 @@ void BackendTest::debianLane()
     KdosResource *inkLink = byUrl(u"appstream://org.inkscape.Inkscape"_s);
     QVERIFY(inkLink);
     QCOMPARE(inkLink->entry().lane, Lane::Debian);
+    QVERIFY(!byUrl(u"appstream://org.kde.kmag"_s));
 }
 
 void BackendTest::hostPorts()
@@ -477,6 +539,24 @@ void BackendTest::archiveFile()
     QCOMPARE(runToEnd(m_backend->installApplication(set), &progress), Transaction::DoneStatus);
     QVERIFY(toolLog().contains(u"kdos-appbox import "_s + path));
     QCOMPARE(progress.last(), 100);
+
+    // A tar that is not a KDOS set says so on its page and installs nothing.
+    const QString other = m_dir.filePath(u"test.ktar"_s);
+    {
+        KTar tar(other);
+        QVERIFY(tar.open(QIODevice::WriteOnly));
+        QVERIFY(tar.writeFile(u"hostname"_s, "kdos\n"));
+        QVERIFY(tar.close());
+    }
+    f.resourceUrl = QUrl::fromLocalFile(other);
+    const QList<KdosResource *> notSet = find(f);
+    QCOMPARE(notSet.size(), 1);
+    QVERIFY(notSet.first()->comment().contains(u"not a KDOS set"_s));
+    QCOMPARE(notSet.first()->kdosNoticeType(), int(InlineMessage::Error));
+    QSignalSpy said(m_backend, &AbstractResourcesBackend::passiveMessage);
+    QVERIFY(!m_backend->installApplication(notSet.first()));
+    QCOMPARE(said.count(), 1);
+    QVERIFY(said.first().first().toString().contains(u"not a KDOS set"_s));
 }
 
 void BackendTest::packFile()
@@ -505,6 +585,23 @@ void BackendTest::packFile()
     const QStringList log = toolLog();
     QVERIFY(log.contains(u"kdos-box import "_s + path + u" as app.notes"_s));
     QVERIFY(log.contains(u"kdos-appbox genlaunchers --packs --user"_s));
+
+    // A file kdos-pack cannot read is a page that says so, not an empty
+    // answer that drops Discover back on Home.
+    const QString broken = m_dir.filePath(u"broken.kpack"_s);
+    QFile b(broken);
+    QVERIFY(b.open(QIODevice::WriteOnly));
+    b.write("garbage");
+    b.close();
+    filter.resourceUrl = QUrl::fromLocalFile(broken);
+    const QList<KdosResource *> bad = find(filter);
+    QCOMPARE(bad.size(), 1);
+    QCOMPARE(bad.first()->entry().lane, Lane::PackFile);
+    QVERIFY(bad.first()->comment().contains(u"not a KDOS pack"_s));
+    QCOMPARE(bad.first()->kdosNoticeType(), int(InlineMessage::Error));
+    QSignalSpy said(m_backend, &AbstractResourcesBackend::passiveMessage);
+    QVERIFY(!m_backend->installApplication(bad.first()));
+    QCOMPARE(said.count(), 1);
 }
 
 void BackendTest::installMetered()
@@ -581,6 +678,62 @@ void BackendTest::refusals()
     QVERIFY(said.first().first().toString().contains(u"system version"_s));
     QVERIFY(!m_backend->installApplication(scratch));
     QCOMPARE(said.count(), 2);
+}
+
+void BackendTest::urlBeforeFirstRefresh()
+{
+    // Discover opened on a link, from KRunner or with the featured list
+    // cached, asks before the backend has read anything: the answer waits.
+    auto *fresh = new KdosBackend(this);
+    fresh->setName(u"kdos-backend"_s);
+    const QStringList urls{u"kdos-backend://set/office"_s,
+                           u"kdos-backend://catalogue/app.scribus"_s,
+                           u"kdos-backend://catalogue/app.kcalc"_s,
+                           u"appstream://net.scribus.Scribus"_s,
+                           u"appstream://org.inkscape.Inkscape"_s};
+    QList<QPointer<ResultsStream>> streams;
+    QHash<QString, QStringList> keys;
+    for (const QString &url : urls) {
+        QPointer<ResultsStream> st = fresh->search([&url] {
+            Filters f;
+            f.resourceUrl = QUrl(url);
+            return f;
+        }());
+        connect(st, &ResultsStream::resourcesFound, this, [&keys, url](const QVector<StreamResult> &found) {
+            for (const StreamResult &r : found)
+                keys[url] << qobject_cast<KdosResource *>(r.resource)->key();
+        });
+        streams << st;
+    }
+    QTRY_VERIFY_WITH_TIMEOUT(std::none_of(streams.cbegin(), streams.cend(), [](const QPointer<ResultsStream> &s) {
+                                 return !s.isNull();
+                             }),
+                             30000);
+    QCOMPARE(keys.value(urls[0]), QStringList{u"set/office"_s});
+    QCOMPARE(keys.value(urls[1]), QStringList{u"catalogue/app.scribus"_s});
+    QCOMPARE(keys.value(urls[2]), QStringList{u"catalogue/app.kcalc"_s});
+    QCOMPARE(keys.value(urls[3]), QStringList{u"catalogue/app.scribus"_s});
+    QCOMPARE(keys.value(urls[4]), QStringList{u"debian/inkscape"_s});
+    delete fresh;
+}
+
+void BackendTest::boxesCategoryNeedsABox()
+{
+    auto hasBoxesPage = [](const QList<std::shared_ptr<Category>> &cats) {
+        return std::any_of(cats.cbegin(), cats.cend(), [](const std::shared_ptr<Category> &c) {
+            return c->name() == u"Boxes"_s;
+        });
+    };
+    QVERIFY(hasBoxesPage(m_backend->category()));
+
+    qputenv("KDOS_TEST_NOBOXES", "1");
+    auto *bare = new KdosBackend(this);
+    bare->setName(u"kdos-backend"_s);
+    QVERIFY(!hasBoxesPage(bare->category()));
+    QTRY_VERIFY_WITH_TIMEOUT(bare->planContext().catalogue && bare->fetchingUpdatesProgress() == 100, 10000);
+    QVERIFY(!hasBoxesPage(bare->category()));
+    delete bare;
+    qunsetenv("KDOS_TEST_NOBOXES");
 }
 
 int main(int argc, char **argv)

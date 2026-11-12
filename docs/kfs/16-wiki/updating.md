@@ -147,8 +147,8 @@ finds them, but no published release yet carries them, so no update has been tak
 ### From the desktop
 
 Discover's tray icon shows when an update is offered. Open Discover's **Updates** page: the KDOS
-system update is listed with its version, its download size and the lane it comes by, beside any
-application updates. **Update All** writes the inactive slot, and **Restart to update** reboots
+system update is listed with its version beside any application updates, and its text names the
+lane it comes by and the size still to download. **Update All** writes the inactive slot, and **Restart to update** reboots
 into it. The update is confirmed a minute into the next session, or rolled back by itself when
 that boot does not get there (see [A/B slots and rollback](ab-slots-and-rollback.md)). System
 Settings → **System Versions** shows what each slot holds and why the last update stopped, if it
@@ -408,8 +408,9 @@ Discover offers no system update, or `kdos update check` reports a problem
 
 `no-key` on every fetch
 : The image's ring, `/etc/kdos/keys/tree/`, holds no key: the image was built without the
-  release key, so it can verify no published tree, and `fetch` stops before downloading anything,
-  exit 1. `ls /etc/kdos/keys/tree/` shows whether a `kdos-release.pub` is there; on such an image
+  release key, so it can verify no published tree, and `fetch` stops before downloading it,
+  exit 1. With no key in `/etc/kdos/keys/` either, the `binhost` and `image` lines say `no-key`
+  too, and nothing at all is downloaded. `ls /etc/kdos/keys/tree/` shows whether a `kdos-release.pub` is there; on such an image
   the directory holds only its `README`. `kdos update apply` still builds whatever the recipes in
   `/ports` are ahead of. See [Known gaps](#known-gaps).
 

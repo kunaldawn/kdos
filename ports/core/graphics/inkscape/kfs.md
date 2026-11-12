@@ -26,7 +26,13 @@ it.
   lcms2, the CorelDRAW, Visio and WordPerfect importers, spell checking, syntax colouring in the
   XML and CSS editors, readline in `inkscape --shell`, OpenMP threads for filters, the SVG 2
   features, and GTK 3's X11 half for running under Xwayland.
-- `-D WITH_NLS=OFF` — Builds no translations; the image is English only (see
+- `-D WITH_NLS=ON` — Builds the gettext set-up, which binds the `inkscape` text domain to its
+  catalog directory at start. Every extension Inkscape loads, at every start and every export,
+  asks for that binding with `bindtextdomain("inkscape", NULL)`; on musl an unbound domain
+  answers `NULL`, which Inkscape stores in a `std::string` and crashes on. The option needs
+  `msgfmt` from [gettext](#port-gettext), and without it upstream turns itself back off with only
+  a status message. The translations it compiles are removed by `kpkg`, so the package is still
+  English only (see
   [Size and language policy](../../../../docs/kdos/05-developer/writing-ports.md#size-and-language-policy)).
 - `-D WITH_JEMALLOC=OFF` — The C library's allocator rather than jemalloc; upstream's default,
   named.

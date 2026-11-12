@@ -107,7 +107,8 @@ the local network, to root and the members of `wheel`, the group the avahi port'
 
    It prints the name and one address, separated by a tab. For a machine with several
    interfaces the address may be one the asker cannot reach: asked for its own name, a KDOS
-   machine answers with `192.168.122.1`, the address of libvirt's `virbr0` bridge.
+   machine with libvirt's `default` network started answers with `192.168.122.1`, the address of
+   its `virbr0` bridge.
 
 2. Use the address, or give the name to a program that resolves through Avahi itself, such as
    Dolphin's `smb://` or `sftp://`. `ping printer.local` and `ssh printer.local` fail, because they resolve through
@@ -158,8 +159,8 @@ accepted by the base firewall rules until you edit `/etc/nftables.conf`.
 - The name other machines find this one by is the hostname set at boot from `/etc/hostname`,
   followed by `.local`. `hostname` prints it, and `pgrep -a avahi` shows the name the daemon holds
   in its process title, as in `avahi-daemon: running [kdos.local]`.
-- The daemon announces on every interface with an address, `lo` and libvirt's `virbr0` among
-  them, so `avahi-browse -rt` lists a service of this machine once per interface.
+- The daemon announces on every interface with an address, `lo` and libvirt's `virbr0`, while
+  its network is started, among them, so `avahi-browse -rt` lists a service of this machine once per interface.
 - `avahi-browse -p` prints one record per line, separated by semicolons, for scripts; `-k` shows
   service types by their DNS names rather than translated ones.
 - Dolphin's `smb:/` lists file servers from `avahi-browse`'s `_smb._tcp` records, a NetBIOS

@@ -4,8 +4,8 @@ Breeze is the default look of KDE software, and the base of KDOS's own. The port
 Breeze widget style for Qt 6 applications and its settings page, the Breeze window decoration
 KWin draws title bars with, the Breeze Classic, Breeze Light and Breeze Dark colour schemes, the
 two cursor themes, `breeze_cursors` and `Breeze_Light`, with `kcursorgen`, and the `Next`
-wallpaper. KDOS's window decoration is this one, set square in its configuration rather than
-replaced; its cursor is `breeze_cursors` for every accent.
+wallpaper. KDOS's window decoration is this one, squared and outlined in the accent through two
+options its patch adds and KDOS's configuration turns on, rather than replaced; its cursor is `breeze_cursors` for every accent.
 
 ## Flags
 
@@ -42,6 +42,20 @@ box (`+private`) or any other sandbox, a dashed one for a box that could reach p
 (`+unconfined`). It reads `isSandboxed()` and `sandboxEngine()` from the
 [kdecoration](#port-kdecoration) patch of the same name, without which it does not compile, and is
 proposed upstream with it.
+
+`square-corners.patch` adds two `[Common]` keys to `breezerc`, both off unless set, so Breeze
+without them draws as upstream does. `SquareCorners=true` sets the decoration's corner radius to
+zero, which squares the title bar, the frame, the outline and the shadow together: upstream's
+`RoundedCorners` only rounds or squares the bottom corners of a borderless window, and the title
+bar's top corners keep their radius whatever it says. `OutlineHighlight=true` draws the active
+window's one-pixel outline in the link colour of the window's palette, which is the accent of
+every KDOS scheme and of a box's forced scheme. It is not the selection colour: a dark accent's
+selection is the accent darkened until text reads on it, and QPalette carries no focus colour, so
+the link is the one palette role a scheme holds at its accent. Upstream's outline is a mix of the frame and text
+colours, which no colour-scheme key can make the accent, and an inactive window keeps that mix.
+KDOS's `/usr/share/kdos/xdg/breezerc` turns both on. It is applied after `sandbox-badge.patch`,
+whose hunks it is cut against, and is to be offered upstream to
+[Breeze](https://invent.kde.org/plasma/breeze) as two options of the decoration.
 
 ## Notes
 

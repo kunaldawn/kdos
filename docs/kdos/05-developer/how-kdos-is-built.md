@@ -505,16 +505,16 @@ depending on which ports happened to be installed.
 
 ## The userland: `40_lang` to `44_apps`
 
-The bulk of the system is five phases, 2,174 ports between them, split by what each port's
+The bulk of the system is five phases, 2,172 ports between them, split by what each port's
 dependencies reach. Every port's dependencies are in its own phase or an earlier one:
 
 | Phase | Installs | Holds | Largest shelves |
 |---|---|---|---|
 | `40_lang` | 184 | Language modules and developer tools whose dependencies need nothing past the compilers: the `python3-*` and `perl-*` modules, build, documentation and debugging tools, version control | `python-libs`, `python-net`, `devtools`, `python` |
-| `41_system` | 1,040 | Everything with no graphics and no toolkit among its dependencies: services, networking, storage, the command line, codecs, firmware, fonts, science and hardware libraries, and data-only KDE ports such as the sound themes | `image-libs`, `devlibs`, `formats`, `net-libs`, `embedded` |
-| `42_graphics` | 188 | What reaches Wayland, the X11 libraries, Mesa, cairo, pango, GStreamer, FFmpeg or PipeWire but no toolkit: the graphics and media stacks, Xwayland | `x11`, `gpu`, `game-libs`, `graphics-libs`, `3d` |
-| `43_toolkits` | 339 | GTK, Qt 5 and 6, KDE Frameworks, wxWidgets, FLTK and WebKitGTK, the Plasma libraries KDE Gear applications link, the Gear libraries, and the services built on them | `kf6`, `qt6`, `qt-extra`, `pim`, `kde` |
-| `44_apps` | 423 | The natively ported graphical applications, KDE Gear's among them on their subject shelves | `games-board`, `graphics`, `education`, `pim`, `emulators` |
+| `41_system` | 1,035 | Everything with no graphics and no toolkit among its dependencies: services, networking, storage, the command line, codecs, firmware, fonts, science and hardware libraries, and data-only KDE ports such as the sound themes | `image-libs`, `devlibs`, `formats`, `net-libs`, `embedded` |
+| `42_graphics` | 187 | What reaches Wayland, the X11 libraries, Mesa, cairo, pango, GStreamer, FFmpeg or PipeWire but no toolkit: the graphics and media stacks, Xwayland | `x11`, `gpu`, `game-libs`, `graphics-libs`, `3d` |
+| `43_toolkits` | 344 | GTK, Qt 5 and 6, KDE Frameworks, wxWidgets, FLTK and WebKitGTK, the Plasma libraries KDE Gear applications link, the Gear libraries, and the services built on them | `kf6`, `qt6`, `qt-extra`, `pim`, `kde` |
+| `44_apps` | 422 | The natively ported graphical applications, KDE Gear's among them on their subject shelves | `games-board`, `graphics`, `education`, `pim`, `emulators` |
 
 Their environment adds `src/system` and `src/art` to the repositories `kpkg` searches, so KDOS's
 own tools, identity generators, icon marks, wallpapers, sounds, splash, pack tools, box launcher
@@ -686,12 +686,12 @@ Its sixteen scripts run inside the chroot in the order their numbers give:
 | `030_launchers.sh` | Reconciles the generated application launchers in `/etc/skel` with the packs the image carries; with none, it removes every one |
 | `040_orphans.sh` | Removes every installed package that has no recipe in the tree, or whose port `ports/unbuilt` lists |
 | `045_identity.sh` | Stamps `/etc/os-release` with the commit the image was built from (`BUILD_ID`) and that commit's date (`KDOS_BUILD_DATE`), which About this System shows |
-| `050_theme.sh` | Seeds the default accent into `/etc/skel` (the global theme the first login applies, and the palettes of the programs that read only a home), after checking that the accent the phase names is the one compiled into `libkcolor`, and stops the image when a KDOS colour scheme falls below a contrast floor |
+| `050_theme.sh` | Seeds the default accent into `/etc/skel` (the global theme the first login applies, and the palettes of the programs that read only a home) and the login screen's look into `/var/lib/sddm`, after checking that the accent the phase names is the one compiled into `libkcolor`, and stops the image when a KDOS colour scheme falls below a contrast floor |
 | `060_udev_hwdb.sh` | Compiles the udev hardware database, `/etc/udev/hwdb.bin` |
-| `070_user.sh` | Creates each ordinary user's home directory from `/etc/skel`, and removes the account files' backups (`/etc/passwd-` and its kin), which carry the live accounts' password hashes |
+| `070_user.sh` | Removes each ordinary user's home directory and makes it again from `/etc/skel`, so a home carries nothing an earlier build left, and removes the account files' backups (`/etc/passwd-` and its kin), which carry the live accounts' password hashes |
 | `080_whatis.sh` | Builds the manual-page index `apropos` and `whatis` search |
 | `085_fontcache.sh` | Writes the fontconfig cache into `/usr/lib/fontconfig/cache` and checks that fontconfig accepts it |
-| `086_swcatalog.sh` | Writes `/usr/share/swcatalog/xml/kdos-ports.xml`, the AppStream catalogue of the installed ports that Discover lists, with `kdos-discover-catalog`, and stops the image when it lists no application |
+| `086_swcatalog.sh` | Writes `/usr/share/swcatalog/xml/kdos-ports.xml`, the AppStream catalogue of the installed ports that Discover lists, with `kdos-discover-catalog`, and stops the image when it lists no application; then `kdos-debian-exclude.xml`, which takes the Debian applications `debian-exclude` names out of the AppStream pool |
 | `087_gates.sh` | Checks the finished tree: reports the files no package owns (`testing/unowned.py`) and stops the build on one under `/usr/share/locale`, `man`, `doc` or `info`, and on an undeclared library owner, an interpreter that does not resolve or OpenSSL 3 and 4 in one process (`testing/linkcheck.py`), or on a dangling link, a dead `Exec=`, a missing icon or udev program (`testing/entrycheck.py`) |
 | `090_initramfs.sh` | Builds the initramfs, `build/initramfs.cpio.gz` |
 | `100_packs.sh` | Creates the pack store's directories; with `KDOS_PACK_KDOS=1`, also packs the system as the base pack `kdos` |
@@ -786,7 +786,7 @@ release notes `ports/publish --release` writes): a USB stick of 32 GB or more; a
 optical boot, since the image does not fit a DVD; a disk larger than the install, because
 `kinstall` refuses one smaller than the install size plus 768 MiB; and a release published in
 several parts, because GitHub holds no asset of 2 GiB or more. `make run` gives its virtual machine
-a sparse 96 GB disk for the same reason.
+a sparse 192 GB disk, large enough for the install's two A/B slots.
 
 ### The security pass before an image
 

@@ -1,0 +1,25 @@
+Subject: plasmoid: build showIgnorePatterns without the Qt Quick GUI
+
+m_quickUI exists only when the Qt Quick GUI's desktop mode is built
+(SYNCTHINGWIDGETS_GUI_QTQUICK_MODE_DESKTOP), and every other use of it in
+the applet is guarded by that macro. SyncthingApplet::showIgnorePatterns()
+used it unguarded, so the Plasmoid failed to compile with QUICK_GUI=OFF.
+
+--- a/plasmoid/lib/syncthingapplet.cpp
++++ b/plasmoid/lib/syncthingapplet.cpp
+@@ -595,11 +595,13 @@
+ void SyncthingApplet::showIgnorePatterns(const QString &dirId)
+ {
+     if (auto row = 0; auto *const dir = m_data.connection()->findDirInfo(dirId, row)) {
++#if defined(SYNCTHINGWIDGETS_GUI_QTQUICK_MODE_DESKTOP)
+         if (m_quickUI.has_value()) {
+             m_quickUI->ui.editIgnorePatterns(dir->id, dir->displayName());
+-        } else {
+-            showCenteredDialog(QtGui::ignorePatternsDialog(*m_data.connection(), *dir));
++            return;
+         }
++#endif
++        showCenteredDialog(QtGui::ignorePatternsDialog(*m_data.connection(), *dir));
+     }
+ }
+ 

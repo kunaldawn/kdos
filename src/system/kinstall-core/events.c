@@ -158,11 +158,11 @@ int ki_events_run(void)
 
 	signal(SIGPIPE, SIG_IGN);
 
-	/* The payload walk is the one slow probe, and only the erase plan's
-	 * A/B decision reads it; the rest of the plan does not depend on it. */
+	/* The payload walk is the one slow probe, and the Prepare step's
+	 * target check, the A/B decision and the copy's progress all read it. */
 	probe_system();
 	probe_disks();
-	if (cfg.plan == PLAN_WIPE && cfg.lvm && disk_by_path(cfg.disk))
+	if (disk_by_path(cfg.disk))
 		probe_payload();
 	ki_apps_enter();
 	install_plan();

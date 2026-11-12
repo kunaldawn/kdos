@@ -8,9 +8,9 @@ for journald (see
 
 `/etc/init.d/22_syslog.sh` starts it at boot under the supervisor, before the network comes up,
 with `-F` so that it stays in the foreground where the supervisor can watch it, and with
-`-P /run/syslogd/syslogd.pid`, because its default pid file, `/run/syslogd.pid`, is the path the
-supervisor keeps its own process id in, and with `-8`, which writes the bytes 0x80 to 0x9F as they
-arrive. Without it `syslogd` writes each as `M-` followed by the byte with its top bit cleared, in
+`-P /run/syslogd/syslogd.pid`, which keeps its own pid file beside its cache rather than loose in
+`/run` (the supervisor keeps the service's process id in `/run/kdos-svc.syslogd.pid`), and with
+`-8`, which writes the bytes 0x80 to 0x9F as they arrive. Without it `syslogd` writes each as `M-` followed by the byte with its top bit cleared, in
 caret notation (0x94 becomes `M-^T`), and those are the bytes that follow the first byte of most
 UTF-8 punctuation: an em dash then leaves its first byte alone in the file, which is no longer
 valid UTF-8, and `grep` reports `binary file matches` for the whole of `/var/log/messages`. The

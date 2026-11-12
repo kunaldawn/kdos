@@ -66,10 +66,7 @@
     { "type": "custom", "format": "\u001b[1;32m█\u001b[0;32m DESKTOP\u001b[0m" },
     { "type": "wm", "key": "Desktop   " },
     { "type": "shell", "key": "Shell     " },
-    // fastfetch identifies the terminal by walking the process tree, which from
-    // inside kdos-banner finds the wrapper script and reports "kdos-banner".
-    // $TERM is the honest answer on both the TTY and in Konsole.
-    { "type": "command", "key": "Terminal  ", "text": "printf %s \"${TERM:-unknown}\"" },
+    { "type": "terminal", "key": "Terminal  " },
     { "type": "display", "key": "Display   ", "compactType": "original" },
     { "type": "command", "key": "Accent    ", "text": "kdos theme 2>/dev/null" },
 

@@ -28,6 +28,9 @@ QString originOf(Lane lane, const QString &packOrigin)
 {
     switch (lane) {
     case Lane::Catalogue:
+        if (packOrigin == "medium"_L1)
+            return u"medium"_s;
+        return packOrigin == "store"_L1 ? u"kdos-packs"_s : u"kdos-store"_s;
     case Lane::Set:
         return u"kdos-packs"_s;
     case Lane::Pack:
@@ -171,6 +174,38 @@ QList<CatalogueListing> parseCatalogueListing(const QByteArray &out)
         list << l;
     }
     return list;
+}
+
+QHash<QString, ChainRow> parseChainListing(const QByteArray &out)
+{
+    QHash<QString, ChainRow> chain;
+    for (const QByteArray &raw : lines(out)) {
+        const QStringList f = QString::fromUtf8(raw).split(u'\t');
+        if (f.size() < 4 || !isSafeId(f[0]))
+            continue;
+        ChainRow r;
+        r.id = f[0];
+        r.bytes = f[1].toULongLong();
+        r.parent = f[2] == "-"_L1 ? QString() : f[2];
+        r.built = f[3] == "built"_L1;
+        chain.insert(r.id, r);
+    }
+    return chain;
+}
+
+quint64 unbuiltChainBytes(const QHash<QString, ChainRow> &chain, const QString &parent)
+{
+    quint64 sum = 0;
+    QString at = parent;
+    for (int depth = 0; !at.isEmpty() && depth < 16; depth++) {
+        const auto it = chain.constFind(at);
+        if (it == chain.constEnd())
+            break;
+        if (!it->built)
+            sum += it->bytes;
+        at = it->parent;
+    }
+    return sum;
 }
 
 QList<CatalogueGroup> parseGroupListing(const QByteArray &out)

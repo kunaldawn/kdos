@@ -184,15 +184,14 @@ and [postinstall.sh](../../kdos/05-developer/writing-ports.md#postinstallsh).
 - **Keep the daemon in the foreground.** Every shipped script passes the daemon's own switch for
   it: `-D` for `sshd`, `-F` for [`syslogd`]{.idx}, `-n` for `smartd`, `-d` for `chronyd`, `--no-daemon`
   for `thermald`.
-- **Do not let the daemon's pid file and the supervisor's share a path.** The supervisor writes its
-  own process id to `/run/<name>.pid`, where `<name>` is the first argument of `supervise`, and
-  `stop` and `status` look for a supervisor at the id that file names. A daemon that writes its own
-  pid file to the same path replaces the supervisor's id with its own: `status` then reports
-  `[DOWN]` while the daemon runs, and `stop` prints `Process <pid> not found, removing stale PID
-  file`, signals nothing and leaves the service running with no file left that names it. Give
-  `supervise` a name the daemon does not use for its pid file, or point the daemon's pid file
-  elsewhere with its own option: `22_syslog.sh` passes `syslogd` `-P /run/syslogd/syslogd.pid`,
-  and `70_sshd.sh` passes `sshd` `-o PidFile=none`.
+- **The daemon needs no pid file.** The supervisor writes its own process id to
+  `/run/kdos-svc.<name>.pid`, where `<name>` is the first argument of `supervise`, and `stop` and
+  `status` look for a supervisor at the id that file names; no daemon writes a file of that name,
+  so a daemon's own `/run/<name>.pid` cannot replace it. Nothing reads the daemon's file either.
+  Turn it off when the daemon can (`70_sshd.sh` passes `sshd` `-o PidFile=none`), or move it beside
+  the daemon's other run files (`22_syslog.sh` passes `syslogd` `-P /run/syslogd/syslogd.pid`). A
+  daemon that refuses to start while its pid file exists, as babeld does, must have it turned off,
+  or one killed outright leaves a file that stops every restart.
 - **Skip in the script, before supervising.** A daemon that cannot run on this machine and exits is
   restarted every five seconds for as long as the machine is up. Test for what it needs (a device,
   a kernel feature, a configuration file) first, and print `[SKIP]` with the reason.
@@ -253,18 +252,12 @@ the group and the daemon's own pid, never such a child. While the service runs, 
 process groups:
 
 ```bash
-cat /run/<name>.pid
+cat /run/kdos-svc.<name>.pid
 ps -eo pid,pgid,args | grep <daemon>
 ```
 
 The first number is the supervisor's, and every process of the service should show it in the
 `PGID` column.
-
-**`service stop` prints `Process <pid> not found, removing stale PID file`, and the daemon keeps
-running.** The daemon wrote its own pid file to `/run/<name>.pid` over the supervisor's; see the
-pid-file tip above. Find the supervisor with `ps -eo pid,args | grep 'ksvc supervise'` and end
-the service with `sudo kill <supervisor pid>`, which the supervisor passes on to the daemon; then
-change the name or the daemon's pid-file option.
 
 **After the system bus restarts, the daemon runs on but answers nothing on the bus.** It does not
 exit when its bus connection closes, so its supervisor never restarts it, and `service status`

@@ -539,7 +539,8 @@ static void disk_row(int idx, int x, int y, int w, int selected, int focus,
 	(void)u;
 	Disk *d = &ki_disk[idx];
 	int cur = !strcmp(d->path, cfg.disk);
-	int warn = d->is_boot_media || d->readonly;
+	char why[256];
+	int warn = ki_disk_check(d, why, sizeof(why));
 	int fg, bg;
 
 	ktui_sel_slots(selected, focus, KT_BG, &fg, &bg);
@@ -554,7 +555,7 @@ static void disk_row(int idx, int x, int y, int w, int selected, int focus,
 		       KT_ACCENT, bg, 0);
 	ktui_draw_textf(x + 3, y, w - 3, fg, bg, 0, "%-10s %8s  %-6s %s",
 		   d->name,
-		   kb_human_size(d->sectors * (unsigned long long)d->sector_size),
+		   kb_human_size(ki_disk_bytes(d)),
 		   d->tran, d->is_boot_media ? "[boot medium]" : d->model);
 }
 
@@ -621,11 +622,6 @@ static void draw_parttable(KRect r, Disk *d)
 	}
 }
 
-/* The headroom a disk must have beyond the payload. The page's colour and
- * disk_validate both read it: two margins would draw a disk as fitting that
- * Next then refuses. */
-#define DISK_MARGIN (768ULL << 20)
-
 static void disk_draw(KRect b)
 {
 	int y = b.y;
@@ -649,12 +645,8 @@ static void disk_draw(KRect b)
 	draw_parttable(krect(b.x, y, b.w, 1), d);
 	y += 2;
 
-	unsigned long long need =
-		(unsigned long long)(cfg.with_appbox ? ki_sys.payload_kb
-						     : ki_sys.payload_kb -
-							       ki_sys.appbox_kb) *
-		1024;
-	unsigned long long have = d->sectors * (unsigned long long)d->sector_size;
+	unsigned long long need = ki_need_bytes();
+	unsigned long long have = ki_disk_bytes(d);
 
 	if (d->nparts) {
 		ktui_draw_textf(b.x, y++, b.w, KT_MID, KT_BG, 0,
@@ -682,7 +674,7 @@ static void disk_draw(KRect b)
 		char v[64];
 		snprintf(v, sizeof(v), "%s", kb_human_size(need));
 		ktui_kv(b.x, y++, b.w, "install needs", v,
-		      have >= need + DISK_MARGIN ? KT_TEXT : KT_ERR);
+		      have >= need + KI_DISK_MARGIN ? KT_TEXT : KT_ERR);
 	}
 
 	if (d->is_boot_media)
@@ -694,6 +686,8 @@ static void disk_draw(KRect b)
 		ktui_note(b.x, y, b.w, "removable device");
 }
 
+/* kinstall-core's rule, so this page, the window and an unattended run
+ * refuse the same disks. */
 static int disk_validate(char *err, size_t n)
 {
 	Disk *d = cfg.disk[0] ? disk_by_path(cfg.disk) : NULL;
@@ -701,28 +695,7 @@ static int disk_validate(char *err, size_t n)
 		snprintf(err, n, "select a disk to install onto");
 		return 1;
 	}
-	if (d->is_boot_media) {
-		snprintf(err, n, "%s is the running boot medium — pick another",
-			 d->name);
-		return 1;
-	}
-	if (d->readonly) {
-		snprintf(err, n, "%s is read-only", d->name);
-		return 1;
-	}
-	unsigned long long need =
-		(unsigned long long)(cfg.with_appbox
-					     ? ki_sys.payload_kb
-					     : ki_sys.payload_kb - ki_sys.appbox_kb) *
-		1024;
-	unsigned long long have = d->sectors * (unsigned long long)d->sector_size;
-	if (have < need + DISK_MARGIN) {
-		snprintf(err, n, "%s holds %s; the install needs at least %s",
-			 d->name, kb_human_size(have),
-			 kb_human_size(need + DISK_MARGIN));
-		return 1;
-	}
-	return 0;
+	return ki_disk_check(d, err, n);
 }
 
 static Page page_disk = {
@@ -1070,7 +1043,7 @@ static void layout_draw(KRect b)
 	ktui_section(b.x, y, b.w, "WHAT WILL BE WRITTEN");
 	y++;
 
-	unsigned long long total = d->sectors * (unsigned long long)d->sector_size;
+	unsigned long long total = ki_disk_bytes(d);
 	unsigned long long esp = (unsigned long long)KI_ESP_MB << 20;
 	unsigned long long swp = ki_wipe_part_swap()
 					 ? (unsigned long long)cfg.swap_mb << 20
@@ -1175,15 +1148,6 @@ static int layout_validate(char *err, size_t n)
 			snprintf(err, n, "the two passphrases do not match");
 			return 1;
 		}
-		if (!kb_have_prog("cryptsetup")) {
-			/* Refused HERE rather than at the install step: a
-			 * questionnaire that accepts an answer the installer
-			 * cannot honour is a questionnaire that fails after the
-			 * point of no return. */
-			snprintf(err, n, "this image has no cryptsetup — it "
-					 "cannot create an encrypted root");
-			return 1;
-		}
 	}
 	if (cfg.plan == PLAN_MANUAL) {
 		snprintf(err, n,
@@ -1199,107 +1163,18 @@ static int layout_validate(char *err, size_t n)
 			snprintf(err, n, "pick the EFI system partition");
 			return 1;
 		}
-		if (!strcmp(cfg.part_esp, cfg.part_root)) {
-			snprintf(err, n, "the ESP and root cannot be the same "
-					 "partition");
-			return 1;
-		}
-		/* Limine's BIOS stage lives raw in that partition; a
-		 * filesystem made on it is a disk that no longer starts on
-		 * legacy BIOS. */
-		Disk *bd = disk_by_path(cfg.disk);
-		for (int i = 0; bd && i < bd->nparts; i++)
-			if (bd->part[i].is_bios_boot &&
-			    (!strcmp(bd->part[i].path, cfg.part_esp) ||
-			     !strcmp(bd->part[i].path, cfg.part_root))) {
-				snprintf(err, n, "%s is the BIOS boot partition "
-						 "— pick another",
-					 bd->part[i].path);
-				return 1;
-			}
-		/*
-		 * The root as the prober saw it, partition or volume. A PHYSICAL
-		 * VOLUME AND A HELD DEVICE ARE REFUSED HERE: mkfs on either
-		 * fails after the point of no return, and a PV that it did not
-		 * fail on would be a volume group destroyed with it.
-		 */
-		Disk *d = disk_by_path(cfg.disk);
-		Lv *l = lv_by_path(cfg.part_root);
-		unsigned long long sectors = 0;
-		const char *fstype = "";
-		int held = 0;
-
-		if (l) {
-			sectors = l->sectors;
-			fstype = l->fstype;
-			held = l->held;
-		} else if (d) {
-			for (int i = 0; i < d->nparts; i++)
-				if (!strcmp(d->part[i].path, cfg.part_root)) {
-					sectors = d->part[i].sectors;
-					fstype = d->part[i].fstype;
-					held = d->part[i].held;
-				}
-		}
-		if (!strcmp(fstype, "LVM2_member")) {
-			snprintf(err, n, "%s is an LVM physical volume — pick "
-					 "one of its logical volumes as the root",
-				 cfg.part_root);
-			return 1;
-		}
-		if (held) {
-			snprintf(err, n, "%s is in use by an open container or "
-					 "volume group — close it first",
-				 cfg.part_root);
-			return 1;
-		}
-		if (sectors && sectors * 512ULL <
-				       (unsigned long long)ki_sys.payload_kb * 1024) {
-			snprintf(err, n, "%s is smaller than the %s this install "
-					 "needs",
-				 cfg.part_root,
-				 kb_human_size((unsigned long long)
-						       ki_sys.payload_kb * 1024));
-			return 1;
-		}
-		/* A DISK THAT COULD NOT START ON THIS MACHINE is refused here,
-		 * before the root is formatted. On UEFI it is a note on the
-		 * page: the disk still starts here. */
-		if (!ki_sys.uefi && ki_bios_boot_part() < 0) {
-			snprintf(err, n, "this machine starts in legacy BIOS "
-					 "mode and %s has no BIOS boot partition "
-					 "— add a 1 MiB one with cfdisk, or erase "
-					 "the disk",
-				 cfg.disk);
-			return 1;
-		}
-	}
-	if (cfg.plan == PLAN_WIPE && cfg.lvm) {
-		Disk *d = disk_by_path(cfg.disk);
-
-		if (!kb_have_prog("lvm")) {
-			snprintf(err, n, "this image has no lvm — it cannot put "
-					 "the root on LVM");
-			return 1;
-		}
-		/* THE GROUP NAME IS FIXED, so one of that name with any
-		 * physical volume off the target disk is refused now: vgcreate
-		 * would stop the install after the disk was already erased.
-		 * One wholly on the target disk is erased with it and is no
-		 * conflict. */
-		if (d && ki_vg_off_disk(KI_VG, d->name)) {
-			snprintf(err, n, "a volume group named " KI_VG
-					 " is already on another disk — "
-					 "rename it with vgrename, or "
-					 "leave LVM off");
-			return 1;
-		}
 	}
 	if (cfg.swap != SWAP_NONE && cfg.swap_mb <= 0) {
 		snprintf(err, n, "swap size must be greater than zero");
 		return 1;
 	}
-	return 0;
+	/* THE TARGET RULES ARE kinstall-core's, asked by `--dump plan`, the
+	 * window, an unattended run and the Prepare step as well: the reuse
+	 * plan's ESP and root, the disk starting on this firmware, the tools
+	 * the plan needs, and a volume group of the fixed name on another
+	 * disk. Refused here, before the point of no return, they cannot fail
+	 * an install after it. */
+	return ki_target_check(err, n);
 }
 
 static Page page_layout = {
@@ -1356,6 +1231,10 @@ static void accounts_draw(KRect b)
 		if (!ki_name_ok(cfg.username))
 			ktui_draw_text(f.x + fw + 1, f.y, b.w,
 				       "lowercase, no leading digit", KT_ERR,
+				       KT_BG, 0);
+		else if (ki_name_reserved(cfg.username))
+			ktui_draw_text(f.x + fw + 1, f.y, b.w,
+				       "a system account's name", KT_ERR,
 				       KT_BG, 0);
 		f = ktui_lay_field(&l, "password", 0);
 		f.w = fw;
@@ -1479,6 +1358,11 @@ static int accounts_validate(char *err, size_t n)
 	if (!ki_name_ok(cfg.username)) {
 		snprintf(err, n,
 			 "username must be lowercase letters, digits, - or _");
+		return 1;
+	}
+	if (ki_name_reserved(cfg.username)) {
+		snprintf(err, n, "%s belongs to the system — choose another "
+				 "user name", cfg.username);
 		return 1;
 	}
 	if (!ki_fullname_ok(cfg.fullname)) {
@@ -1625,10 +1509,9 @@ static Page page_system = {
  * groups too: ki_apps_enter() matches group ids only, and a line naming none
  * falls back to `essential`.
  *
- * AND THE PAGE SAYS HOW THEY WILL ARRIVE. An exported set on a stick is
- * offline and verified and wins; a network during the install is next; with
- * neither, the selection is recorded and the first session offers it. A person
- * must not discover at first boot that nothing was installed.
+ * AND THE PAGE SAYS HOW THEY WILL ARRIVE: recorded, and offered by the first
+ * login. Nothing is built during the install (kinstall-core.h says why). A
+ * person must not discover at first boot that nothing was installed.
  * ════════════════════════════════════════════════════════════════════════ */
 
 static KtuiList applist;
@@ -1665,9 +1548,7 @@ static void apps_draw(KRect b)
 	char v[256];
 	static const char *const ROUTE[] = {
 		"nothing ticked",
-		"from the set on the stick — offline, and verified where it mounts",
-		"built during the install, over the network",
-		"recorded; the first session offers them",
+		"recorded; the first login offers to build them",
 	};
 
 	ktui_section(b.x, y, b.w, "APPLICATIONS");
@@ -1714,9 +1595,9 @@ static void apps_draw(KRect b)
 	/*
 	 * WHAT IT COSTS AND HOW IT ARRIVES, on the page where it is chosen.
 	 * The route matters more than the number: a person who ticks four
-	 * groups on a machine with no network and no stick has chosen a first
-	 * boot that offers them, and finding that out here rather than then is
-	 * the whole point of putting it on the screen.
+	 * groups has chosen a first login that offers to build them, and
+	 * finding that out here rather than then is the whole point of putting
+	 * it on the screen.
 	 */
 	int nchosen = 0;
 	for (int i = 0; i < ki_ngroup; i++)
@@ -1776,8 +1657,6 @@ static void summary_draw(KRect b)
 	      cfg.with_appbox ? KT_TEXT : KT_WARN);
 	if (ki_apps_present) {
 		static const char *const HOW[] = { "nothing chosen",
-						   "from the stick",
-						   "over the network",
 						   "at first login" };
 		int ngrp = 0, napp = 0;
 
@@ -1809,7 +1688,7 @@ static void summary_draw(KRect b)
 	y++;
 	if (d) {
 		snprintf(v, sizeof(v), "%s  %s  %s", d->path,
-			 kb_human_size(d->sectors * (unsigned long long)d->sector_size),
+			 kb_human_size(ki_disk_bytes(d)),
 			 d->model);
 		ktui_kv(b.x, y++, b.w, "target", v, KT_TEXT);
 	}

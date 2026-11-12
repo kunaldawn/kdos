@@ -62,7 +62,7 @@ first field is `app`):
 | `ports/core` | about 2,400 recipes, on 102 shelves |
 | `src/system`, `src/art`, `src/desktop`, `src/daemons` | about forty recipes |
 | All port repositories | about 2,400 recipes; the exact counts are in [Status](../06-reference/status.md#scale) |
-| Catalogue `app` rows (outer ring) | 73 |
+| Catalogue `app` rows (outer ring) | 70 |
 
 `ports/core` files each port one level down, on a **shelf** named for its subject:
 `ports/core/<shelf>/<name>/`, such as `ports/core/kde/kwin/` or `ports/core/fonts/noto-fonts/`.

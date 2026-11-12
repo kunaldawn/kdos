@@ -28,6 +28,7 @@ Comment=Matrix chat with vim's keys
 Exec=iamb
 Icon=mail-message
 Terminal=true
+NoDisplay=true
 Categories=Network;InstantMessaging;
 Keywords=chat;matrix;im;message;iamb;
 EOF

@@ -110,6 +110,12 @@ public:
 
     QList<Notification> shown;
     QList<quint32> closed;
+    /* Every Notify received, answered or not. */
+    int calls = 0;
+    /* How long a Notify's reply is held back, as a server still starting
+     * holds it; and how many of the next calls are answered with an error. */
+    int holdMs = 0;
+    int failNext = 0;
 
 private:
     quint32 m_next = 1;

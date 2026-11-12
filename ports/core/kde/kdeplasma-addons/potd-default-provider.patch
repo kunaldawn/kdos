@@ -1,0 +1,18 @@
+Subject: potd: default the Picture of the Day wallpaper to the Bing provider
+
+The Astronomy Picture of the Day provider reads https://apod.nasa.gov/apod/,
+which redirects to a page with none of the image links the provider looks
+for, so a wallpaper left at an apod default shows no picture. Bing's
+provider loads.
+
+--- a/wallpapers/potd/package/contents/config/main.xml
++++ b/wallpapers/potd/package/contents/config/main.xml
+@@ -8,7 +8,7 @@
+   <group name="General">
+     <entry name="Provider" type="String">
+       <label>Provider of Picture of the Day</label>
+-      <default>apod</default>
++      <default>bing</default>
+     </entry>
+     <entry name="FillMode" type="int">
+       <label>Sizing, cropping and positioning of the wallpaper image</label>

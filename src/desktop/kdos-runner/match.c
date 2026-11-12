@@ -13,22 +13,30 @@
  *   route:setup.wifi  that route, exactly; `kdos menu` asks for one this way
  *   accent amber      a kdos verb with its arguments filled in from the
  *   box stop www      words typed; a verb typed in part offers each way of
- *                     finishing it (`accent` lists the eight accents)
- *   firewall          a KDOS System Settings page, by name or by what it is
- *                     for (`previous version` finds System Versions)
- *   setup network     a route of menu.conf, by the words of its name
- *   gimp              a pack or set on the boot medium, opened in Discover
+ *                     finishing it (`accent` lists the eight accents and
+ *                     `next` and `prev`)
+ *   lib photosynth    KRunner opened again with the offline library alone
+ *   setup network     a route of menu.conf, by the words of its name, shown
+ *                     as `Set up network`
+ *   install gimp      a pack or set on the boot medium, opened in Discover
  *                     to install from there
  *   keys tile         the chords whose action matches, as KGlobalAccel has
  *                     them now
+ *
+ * KDOS's own System Settings pages are not here: System Settings' runner
+ * finds them by the X-KDE-Keywords of their metadata, and a row from each
+ * would be the same page twice.
+ *
+ * THE PALETTE RANKS ABOVE APPLICATIONS only because krunnerrc names `kdos`
+ * first among KRunner's favourite runners (/usr/share/kdos/xdg/krunnerrc);
+ * a category's relevance never lifts it over a favourite's. That is also
+ * why a medium pack answers only after `install`: its row would otherwise
+ * sit above the installed application of the same name.
  *
  * EVERY ROW IS AN ARGUMENT VECTOR built here, word by word. A word the user
  * typed — a box name, a path for `why`, a search for Discover — is one
  * element of it and nothing else: a `;` or a `$()` in it reaches the program
  * as those characters (run.c execs without a shell).
- *
- * A QUERY BEGINNING `?` IS THE LIBRARY'S (library.c) and this side returns
- * nothing for it.
  * ---------------------------------
  */
 
@@ -45,7 +53,7 @@
 /* What a slot in a verb accepts. */
 enum {
 	SL_NONE,
-	SL_ACCENT,		/* the libkcolor schemes                    */
+	SL_ACCENT,		/* the libkcolor schemes, then next, prev   */
 	SL_ONOFF,		/* on, off                                  */
 	SL_DESK,		/* kdos, dock, tiling                       */
 	SL_BOX,			/* a box with a profile                     */
@@ -59,7 +67,7 @@ typedef struct {
 	const char *icon;
 	int how;		/* RN_RUN_*                                 */
 	/* The vector; "%s" is replaced by the slot's value, whole, as one
-	 * element. */
+	 * element. A RN_RUN_REQUERY verb's is the runner id and the query. */
 	const char *argv[8];
 } Verb;
 
@@ -82,6 +90,9 @@ static const Verb verbs[] = {
 	{ "stay awake", SL_NONE, "Keep the screen awake, or let it sleep again",
 	  "system-suspend-inhibited", RN_RUN_DETACH,
 	  { "kdos", "toggle", "stay-awake" } },
+	{ "reduced motion", SL_NONE, "Reduced motion on or off",
+	  "preferences-desktop-accessibility", RN_RUN_DETACH,
+	  { "kdos", "toggle", "reduced-motion" } },
 	{ "do not disturb", SL_NONE, "Do Not Disturb on or off",
 	  "notifications-disabled", RN_RUN_DETACH, { "kdos", "toggle", "dnd" } },
 	{ "dnd", SL_NONE, "Do Not Disturb on or off", "notifications-disabled",
@@ -115,6 +126,8 @@ static const Verb verbs[] = {
 	  RN_RUN_DETACH, { "plasma-discover", "--search", "%s" } },
 	{ "why", SL_REST, "Why is %s the way it is?", "help-about",
 	  RN_RUN_TERM, { "kdos", "why", "%s" } },
+	{ "lib", SL_REST, "Search the offline library alone for “%s”",
+	  "accessories-dictionary", RN_RUN_REQUERY, { "kdos-library", "%s" } },
 };
 
 #define NVERBS ((int)(sizeof(verbs) / sizeof(verbs[0])))
@@ -142,6 +155,11 @@ static void add_verb(RnList *out, const Verb *v, const char *value,
 	m->how = v->how;
 	m->term_action = v->how == RN_RUN_DETACH && !strcmp(v->argv[0], "kdos");
 	fill_vector(m, v, value);
+	if (v->how == RN_RUN_REQUERY) {
+		kb_strlcpy(m->subtext, "KRunner, with no other runner",
+			   sizeof(m->subtext));
+		return;
+	}
 	/* The subtext is the command the row runs, so the palette teaches the
 	 * command line it stands in front of. */
 	{
@@ -162,17 +180,23 @@ static void add_verb(RnList *out, const Verb *v, const char *value,
 /* The candidates of a slot, by kind; `n` is how many. */
 static const char *const *slot_values(int slot, int *n)
 {
-	static const char *accents[KCOL_IDX_COUNT + 1];
+	static const char *accents[KCOL_IDX_COUNT + 3];
 	const char *const *v = NULL;
 
 	switch (slot) {
-	case SL_ACCENT:
+	case SL_ACCENT: {
+		int k = 0;
+
 		for (int i = 0; i < kcol_nscheme && i < KCOL_IDX_COUNT; i++)
-			accents[i] = kcol_schemes[i].name;
-		accents[kcol_nscheme < KCOL_IDX_COUNT ? kcol_nscheme :
-							 KCOL_IDX_COUNT] = NULL;
+			accents[k++] = kcol_schemes[i].name;
+		/* `kdos theme next|prev` step through the schemes in the
+		 * order the boot menu shows them. */
+		accents[k++] = "next";
+		accents[k++] = "prev";
+		accents[k] = NULL;
 		v = accents;
 		break;
+	}
 	case SL_ONOFF:
 		v = onoff;
 		break;
@@ -196,6 +220,15 @@ static void slot_shown(int slot, const char *value, char *out, size_t n)
 {
 	if (slot == SL_ACCENT) {
 		const KcolScheme *s = kcol_find(value);
+
+		if (!s && !strcmp(value, "next")) {
+			kb_strlcpy(out, "the next one", n);
+			return;
+		}
+		if (!s && !strcmp(value, "prev")) {
+			kb_strlcpy(out, "the previous one", n);
+			return;
+		}
 
 		/* "Amber", not "AMBER": the label is for the boot menu's
 		 * capitals, the sentence wants a word. */
@@ -275,59 +308,6 @@ static void match_verb(const Verb *v, const RnQuery *q, RnList *out)
 	}
 }
 
-/* ── KDOS System Settings pages ────────────────────────────────────────── */
-
-typedef struct {
-	const char *kcm;
-	const char *name;
-	const char *icon;
-	const char *words;	/* what a person might call it, `|`-separated */
-} Page;
-
-static const Page pages[] = {
-	{ "kcm_kdos_system", "System Versions", "system-software-update",
-	  "system versions|previous version|rollback|roll back|slots|"
-	  "update channel|boot previous" },
-	{ "kcm_kdos_boxes", "Boxes", "preferences-system-privacy",
-	  "boxes|box permissions|sandbox|containers" },
-	{ "kcm_kdos_firewall", "Firewall", "security-high",
-	  "firewall|open a port|incoming connections" },
-	{ "kcm_kdos_look", "KDOS Look", "preferences-desktop-theme-global",
-	  "kdos look|phosphor mode|accent colour|accent color|crt" },
-	{ "kcm_kdos_health", "Health", "tools-report-bug",
-	  "health|system health|problems" },
-};
-
-static void match_pages(const RnQuery *q, RnList *out)
-{
-	for (size_t i = 0; i < sizeof(pages) / sizeof(pages[0]); i++) {
-		char alts[256], *save = NULL;
-		int best = 0;
-		RnMatch *m;
-
-		kb_strlcpy(alts, pages[i].words, sizeof(alts));
-		for (char *a = strtok_r(alts, "|", &save); a;
-		     a = strtok_r(NULL, "|", &save)) {
-			int s = rn_words_match(a, q);
-
-			if (s > best)
-				best = s;
-		}
-		if (!best || !rn_kcm_installed(pages[i].kcm))
-			continue;
-		if (!(m = rn_add(out)))
-			return;
-		snprintf(m->text, sizeof(m->text), "%s", pages[i].name);
-		kb_strlcpy(m->subtext, "System Settings", sizeof(m->subtext));
-		kb_strlcpy(m->icon, pages[i].icon, sizeof(m->icon));
-		kb_strlcpy(m->category, "System Settings", sizeof(m->category));
-		m->catrel = RN_CAT_HIGH;
-		m->rel = best >= 60 ? 0.9 : 0.5 + best / 200.0;
-		rn_arg(m, "systemsettings");
-		rn_arg(m, pages[i].kcm);
-	}
-}
-
 /* ── favourites ────────────────────────────────────────────────────────── */
 
 static void launch_vector(RnMatch *m, const char *id)
@@ -365,6 +345,48 @@ static void match_codes(const RnQuery *q, RnList *out)
 
 /* ── routes ────────────────────────────────────────────────────────────── */
 
+/* How the verb of a route's name reads at the head of a sentence. A verb not
+ * listed reads as itself, capitalised; a user's menu.conf may name any. */
+static const struct {
+	const char *verb;
+	const char *says;
+} route_verbs[] = {
+	{ "setup", "Set up" },	   { "style", "Style:" },
+	{ "system", "System:" },   { "learn", "Learn" },
+	{ "capture", "Capture" },  { "share", "Share" },
+	{ "toggle", "Toggle" },	   { "about", "About" },
+};
+
+/*
+ * The row's title, from the name alone: `setup.network` is "Set up
+ * network", the noun's dots and underscores read as spaces. The subtext is
+ * `route:<name>`, the form a script or `kdos menu summon` uses, so the row
+ * teaches the name and not the command it happens to run today.
+ */
+static void route_title(const char *name, char *out, size_t n)
+{
+	const char *dot = strchr(name, '.');
+	size_t vl = dot ? (size_t)(dot - name) : strlen(name);
+	const char *noun = dot ? dot + 1 : "";
+	const char *says = NULL;
+	size_t o;
+
+	for (size_t i = 0; i < sizeof(route_verbs) / sizeof(route_verbs[0]); i++)
+		if (strlen(route_verbs[i].verb) == vl &&
+		    !strncmp(route_verbs[i].verb, name, vl))
+			says = route_verbs[i].says;
+	if (says)
+		snprintf(out, n, "%s%s", says, *noun ? " " : "");
+	else
+		snprintf(out, n, "%.*s%s", (int)vl, name, *noun ? " " : "");
+	o = strlen(out);
+	for (const char *c = noun; *c && o + 1 < n; c++)
+		out[o++] = *c == '.' || *c == '_' ? ' ' : *c;
+	out[o] = '\0';
+	if (*out >= 'a' && *out <= 'z')
+		*out = (char)(*out - 'a' + 'A');
+}
+
 static void route_row(RnList *out, const RnRoute *r, double rel, int catrel)
 {
 	char val[512], *save = NULL;
@@ -372,8 +394,8 @@ static void route_row(RnList *out, const RnRoute *r, double rel, int catrel)
 
 	if (!m)
 		return;
-	kb_strlcpy(m->text, r->name, sizeof(m->text));
-	kb_strlcpy(m->subtext, r->value, sizeof(m->subtext));
+	route_title(r->name, m->text, sizeof(m->text));
+	snprintf(m->subtext, sizeof(m->subtext), "route:%s", r->name);
 	kb_strlcpy(m->icon, "go-jump", sizeof(m->icon));
 	kb_strlcpy(m->category, "Routes", sizeof(m->category));
 	m->catrel = catrel;
@@ -414,26 +436,23 @@ static void match_routes(const RnQuery *q, RnList *out)
 /* ── install from the boot medium ──────────────────────────────────────── */
 
 /*
- * A pack the boot medium carries, by the words of its id: Discover opens
- * the file itself (--local-filename), which its KDOS backend lists under the
- * `medium` origin, and installing it there copies nothing from a network.
- * `install gimp` asks for it as plainly as `gimp` does.
+ * A pack the boot medium carries, by the words of its id after `install`:
+ * Discover opens the file itself (--local-filename), which its KDOS backend
+ * lists under the `medium` origin, and installing it there copies nothing
+ * from a network. A bare `gimp` does not ask: the palette ranks above
+ * Applications, and the pack would sit above the installed GIMP.
  */
 static void match_medium(const RnQuery *q, RnList *out)
 {
 	const RnMediumPack *p;
 	int n = rn_medium(&p), shown = 0;
 	RnQuery rest;
-	const RnQuery *use = q;
 
-	if (!n)
+	if (!n || q->nw < 2 || strcmp(q->w[0], "install"))
 		return;
-	if (q->nw > 1 && !strcmp(q->w[0], "install")) {
-		rn_query(&rest, rn_query_rest(q, 1));
-		use = &rest;
-	}
+	rn_query(&rest, rn_query_rest(q, 1));
 	for (int i = 0; i < n && shown < 8; i++) {
-		int s = rn_words_match(p[i].id, use);
+		int s = rn_words_match(p[i].id, &rest);
 		RnMatch *m;
 
 		if (!s || !(m = rn_add(out)))
@@ -508,7 +527,7 @@ void rn_palette_match(const char *text, RnList *out)
 	RnQuery q;
 
 	rn_query(&q, text);
-	if (!q.nw || q.raw[0] == '?')
+	if (!q.nw)
 		return;
 	match_codes(&q, out);
 	match_routes(&q, out);
@@ -516,7 +535,6 @@ void rn_palette_match(const char *text, RnList *out)
 		return;
 	for (int i = 0; i < NVERBS; i++)
 		match_verb(&verbs[i], &q, out);
-	match_pages(&q, out);
 	match_medium(&q, out);
 	match_chords(&q, out);
 	rn_list_sort(out);

@@ -96,6 +96,11 @@ this port follows Qt WebEngine's own release schedule and is built against which
 - `no-simd-fallback-fix.patch` — corrects the signature of WebAudio's scalar `Delay::ProcessARateVector()` fallback to match its declaration. The fallback is compiled only where neither x86 SIMD nor NEON is available, so this tree's x86-64 build never compiles it.
 - `sandbox-path-max.patch` — adds `<limits.h>` to the sandbox's `proc_util.cc`, which sizes a buffer with `PATH_MAX`; on musl no header it includes declares it.
 
+`userns-probe-no-malloc.patch` is KDOS's own and is to be offered to Chromium, and to Alpine,
+whose musl build carries the same probe. The probe runs in the process that hosts Qt WebEngine,
+such as plasmashell holding a Dictionary or Web Browser widget from
+[kdeplasma-addons](#port-kdeplasma-addons), so without the patch that process can hang at start.
+
 ## Notes
 After the Chromium build, `build.sh` checks that no object was compiled under
 `third_party/zlib/bundled_zlib` or `third_party/zlib/bundled_minizip`: Chromium compiles its own

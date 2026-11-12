@@ -9,6 +9,7 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/tz-reload.patch"
 ./configure \
 	--prefix=/usr \
 	--enable-optimize

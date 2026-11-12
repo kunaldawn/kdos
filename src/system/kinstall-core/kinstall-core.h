@@ -159,7 +159,7 @@ int ki_vg_off_disk(const char *vg, const char *disk);
  * THE CATALOGUE IS READ, NOT A PACK INDEX. Nothing is baked onto the medium;
  * what ships is `/usr/share/kdos/appstore/catalogue`, and an application is
  * built by podman on the installed machine. The installer's job is to record
- * WHICH, and to install them itself only when it can.
+ * WHICH.
  *
  * IT LINKS catalogue.c DIRECTLY rather than running `kdos-appbox`. catalogue.c
  * uses `kb_*` alone, so it costs no library — which is what lets kinstall live
@@ -172,13 +172,18 @@ int ki_vg_off_disk(const char *vg, const char *disk);
  * application id there selects nothing.
  * ──────────────────────────────────────────────────────────────────────── */
 
-/* How the ticked set will actually be installed, decided at plan time and
- * SHOWN ON THE PAGE. A person must not discover at first boot that nothing
- * was installed. */
+/*
+ * How the ticked set will reach the installed machine, SHOWN ON THE PAGE. A
+ * person must not discover at first boot that nothing was installed.
+ *
+ * RECORDED, NEVER BUILT DURING THE INSTALL. `kdos-appbox` has no target root:
+ * an import or a build run from the installer would land in the live
+ * session's pack store and container storage and end with the live medium.
+ * The selection is written to the target's /var/lib/kdos/apps-pending, and
+ * the first login offers to build it.
+ */
 enum {
 	APPS_NONE = 0,	/* nothing ticked                                  */
-	APPS_IMPORT,	/* an exported set on a mounted device — offline   */
-	APPS_NETWORK,	/* built during the install                        */
 	APPS_PENDING,	/* recorded, and the first session offers them     */
 };
 
@@ -195,17 +200,12 @@ typedef struct {
 extern KiGroup ki_group[MAX_APPGROUPS];
 extern int ki_ngroup;
 extern int ki_apps_present;	/* a catalogue was found and parsed         */
-/* The archive the Applications page found, or "" — what makes APPS_IMPORT
- * possible. One archive is found at probe time and no front end offers a way
- * to choose another: a picker would need a filesystem walk. */
-extern char ki_apps_archive[512];
 
 void probe_apps(void);
 /* Bytes the chosen groups cost, as an estimate. What every summary and
  * `--dump plan` report. */
 unsigned long long ki_apps_bytes(void);
-/* Which of the four routes this install will take, given what is ticked, what
- * is on the mounted devices and whether a network answers. */
+/* APPS_PENDING when any group is ticked, else APPS_NONE. */
 int  ki_apps_route(void);
 /* Read the catalogue and apply an answer file's `apps =`: `essential` where
  * it named nothing, `essential` where none of its names is a group, and no
@@ -219,6 +219,10 @@ void ki_apps_collect(void);
 
 void probe_part(const char *path, Part *p);
 Disk *disk_by_path(const char *path);
+/* A disk's size in bytes. /sys/block reports `size` in 512-byte units
+ * whatever the drive's logical sector is, so multiplying by sector_size
+ * would make a 4Kn disk eight times larger than it is. */
+unsigned long long ki_disk_bytes(const Disk *d);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Configuration — everything a front end collects, nothing written until
@@ -424,6 +428,11 @@ int ki_bios_boot_part(void);
 
 /* Bytes this install copies onto the root, as the Disk page states it. */
 unsigned long long ki_need_bytes(void);
+/* The headroom a whole disk must have beyond ki_need_bytes(): the ESP, the
+ * BIOS boot partition and room for the copy's own metadata. Every front end
+ * and the install itself read this one figure, so a disk is never drawn as
+ * fitting that the install then refuses. */
+#define KI_DISK_MARGIN (768ULL << 20)
 /* The erase plan's root partition, in bytes, for the disk and swap chosen. */
 unsigned long long ki_wipe_root_bytes(void);
 /* 1 when these answers lay the disk out for A/B updates: the erase plan, on
@@ -435,6 +444,10 @@ int ki_ab(void);
 /* The least a shared home is made at. Below it two slots do not fit. */
 #define KI_HOME_MIN_MB 4096
 unsigned long long ki_slot_mb(void);
+/* What the erase plan's partition must hold for two slots, the swap volume
+ * and the least home, in MiB, for these answers: what ki_ab() compares the
+ * disk against. */
+unsigned long long ki_ab_need_mb(void);
 /* The swap volume on the A/B layout, in MiB; 0 when no swap was asked. */
 unsigned long long ki_swap_lv_mb(void);
 
@@ -458,6 +471,11 @@ int ki_host_ok(const char *s);
 /* A full name passwd's GECOS field can hold: no ':' and no control
  * character. */
 int ki_fullname_ok(const char *s);
+/* The accounts the image already carries, which a person may not take:
+ * renaming the live account onto one would leave two lines of one name in
+ * /etc/passwd. NULL-terminated; `--dump look` lists it for the window. */
+extern const char *const ki_reserved_names[];
+int ki_name_reserved(const char *s);
 
 /*
  * EVERYTHING AN UNATTENDED INSTALL WOULD FAIL ON, asked before it starts. A
@@ -466,6 +484,26 @@ int ki_fullname_ok(const char *s);
  * first problem's text. 0 when the answers can be installed.
  */
 int ki_answers_check(char *err, size_t n);
+
+/*
+ * WHETHER A DISK CAN TAKE THE INSTALL AT ALL: not the medium this runs from,
+ * not read-only, and at least ki_need_bytes() + KI_DISK_MARGIN. 0 when it
+ * can; otherwise the reason, which the Disk pages show beside the disk.
+ */
+int ki_disk_check(const Disk *d, char *err, size_t n);
+
+/*
+ * THE TARGET AS THE PROBE SAW IT, checked against the answers: the disk by
+ * ki_disk_check(), and on the reuse plan the ESP and the root. Neither may be
+ * the BIOS boot partition or the other; an ESP kept unformatted must already
+ * be FAT; the root may not be an LVM physical volume, a device something
+ * holds open, or smaller than the install; and a machine started in legacy
+ * BIOS mode needs a disk it can start from. Needs probe_disks() and, for the
+ * sizes, probe_payload(). Asked after ki_answers_check() by the wizard's
+ * pages, `--dump plan`'s `refused`, `--events` and the Prepare step, so
+ * every route into an install refuses the same targets.
+ */
+int ki_target_check(char *err, size_t n);
 
 /* ────────────────────────────────────────────────────────────────────────
  * Install engine

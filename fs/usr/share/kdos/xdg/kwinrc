@@ -37,6 +37,15 @@ Name_4=misc
 [TabBox]
 ApplicationsMode=1
 
+# The zoom (Meta+=) follows the text cursor as well as the pointer. KWin
+# learns where the cursor is from the input method's text-input protocol, so
+# it follows typing in every Wayland program that takes text through fcitx5
+# or the on-screen keyboard. Following the keyboard focus is not set: on
+# Wayland KWin's zoom ignores EnableFocusTracking, because the AT-SPI calls it
+# makes block the compositor.
+[Effect-zoom]
+EnableTextCaretTracking=true
+
 # The bundled auto-tiler is installed but off; `kdos tiling on`, the Desk
 # page of the Welcome tour and the KWin Scripts page turn it on.
 [Plugins]

@@ -40,6 +40,10 @@ class EventStream : public QAbstractListModel
     Q_PROPERTY(QString failure READ failure NOTIFY finished)
     /* -1 while running, else the exit line's status. */
     Q_PROPERTY(int status READ status NOTIFY finished)
+    /* kinstall has spoken: at least one event was read. Before that the
+     * install is waiting for permission, and nothing has been written or
+     * logged. */
+    Q_PROPERTY(bool started READ started NOTIFY progressChanged)
 
 public:
     enum Roles {
@@ -63,6 +67,8 @@ public:
     /* The pipe closed. A stream that ended without its exit line is a
      * backend that died, and is reported as a failure. */
     void close(int exitCode);
+    /* The install ended before kinstall ran, for the reason given. */
+    void fail(const QString &text);
     void reset();
 
     int currentStep() const { return m_current; }
@@ -73,6 +79,7 @@ public:
     QStringList log() const { return m_log; }
     QString failure() const { return m_failure; }
     int status() const { return m_status; }
+    bool started() const { return m_started; }
 
 Q_SIGNALS:
     void progressChanged();
@@ -98,6 +105,7 @@ private:
     QStringList m_log;
     QString m_failure;
     int m_status = -1;
+    bool m_started = false;
 };
 
 }

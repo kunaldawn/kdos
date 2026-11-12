@@ -5,7 +5,7 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   kdos-theme — one binary, six generators
+ *   kdos-theme — one binary, seven generators
  *
  * Run by the identity ports' build.sh, at build time, never by a session:
  * every file it writes is installed by a package, so what a machine shows is
@@ -26,6 +26,7 @@ static void usage(FILE *to)
 		"kdos-theme — generate the KDOS identity kit from the palette\n"
 		"\n"
 		"usage: kdos-theme kde-colors      <outdir> [accent]\n"
+		"       kdos-theme syntax-themes   <outdir> [accent]\n"
 		"       kdos-theme konsole         <outdir> [accent]\n"
 		"       kdos-theme qt5ct-colors    <outdir> [accent]\n"
 		"       kdos-theme wallpaper       <outdir> [accent] --src MARK.png"
@@ -141,6 +142,8 @@ int main(int argc, char **argv)
 
 	if (!strcmp(cmd, "kde-colors"))
 		return kth_kde_colors(pos[0], pos[1]);
+	if (!strcmp(cmd, "syntax-themes"))
+		return kth_syntax(pos[0], pos[1]);
 	if (!strcmp(cmd, "konsole"))
 		return kth_konsole(pos[0], pos[1]);
 	if (!strcmp(cmd, "qt5ct-colors"))

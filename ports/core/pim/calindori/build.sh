@@ -19,3 +19,4 @@ cmake -S . -B build -G Ninja \
 	-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build
+rm "$PKG/etc/xdg/autostart/org.kde.calindac.desktop"

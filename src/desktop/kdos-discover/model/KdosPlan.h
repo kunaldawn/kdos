@@ -74,6 +74,9 @@ struct Plan {
 };
 
 Plan installPlan(const Entry &entry, const PlanContext &ctx);
+// Every removal of a box stops it first: a box stays up after its
+// application's last window closes until it stops itself, and `kdos-box
+// remove` refuses a running container.
 Plan removePlan(const Entry &entry, const PlanContext &ctx);
 
 // The packd request that a kdos-box or kdos-appbox step would otherwise need

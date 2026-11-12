@@ -9,4 +9,5 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/klipper-sensitive.patch"
 make PREFIX=/usr WITH_ALLCOMP=yes DESTDIR=$PKG install

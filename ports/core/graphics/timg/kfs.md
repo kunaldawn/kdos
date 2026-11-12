@@ -40,5 +40,6 @@ that cannot open that format; STB and QOI need none.
 
 The desktop entry is written in `build.sh` (see
 [Desktop entries belong to the port](../../../../docs/kdos/05-developer/writing-ports.md#desktop-entries-belong-to-the-port)).
-It is `Terminal=true`, so the launcher opens it in Konsole, which draws pictures, and its menu
-name is `Image Viewer (timg)`.
+It is `Terminal=true`, so the launcher opens it in Konsole, which draws pictures, and its name is
+`Image Viewer (timg)`. It is `NoDisplay=true`: with no file timg prints its usage and exits, so it
+is offered under Open With for its six types and has no Start row.

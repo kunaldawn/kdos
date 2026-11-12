@@ -259,9 +259,8 @@ int why_main(int argc, char **argv)
 	kb_strv_free(files);
 
 	if (!hits)
-		printf("\n  %sno recorded reason — if you just spent a debug "
-		       "cycle on this,\n  that is exactly what reasons/ is "
-		       "for.%s\n", C_DIM, C_OFF);
+		printf("\n  %sno recorded reason names it.%s\n", C_DIM,
+		       C_OFF);
 	return 0;
 }
 

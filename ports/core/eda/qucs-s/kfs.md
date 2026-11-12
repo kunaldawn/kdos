@@ -33,3 +33,7 @@ described in
 
 Qt takes the Wayland app_id from the executable's name, so the S-parameter viewer's entry, which
 upstream does not install, gives `StartupWMClass=qucs-sspar-viewer`.
+
+The S-parameter viewer sets the Fusion style and loads its own light style sheet at start-up,
+whatever the Plasma colour scheme, so it opens light on a dark desktop; its theme menu switches it
+to its dark sheet, which it remembers. The main Qucs-S window follows its own saved style.

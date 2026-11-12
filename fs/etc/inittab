@@ -16,8 +16,10 @@ si::sysinit:/etc/init.d/rcS
 
 # sulogin asks for root's password on the console. Leaving its shell
 # continues to runlevel 3. The initramfs passes `single` from the kernel
-# command line, and `telinit S` reaches it from a running system.
-~~:S:wait:/sbin/sulogin
+# command line, and `telinit S` reaches it from a running system. -p makes
+# the shell a login shell, which reads /etc/profile: init's own PATH does not
+# reach /usr/local, where `kdos` and the other KDOS commands live.
+~~:S:wait:/sbin/sulogin -p
 
 # Local Console (QEMU Window / Physical) — the display manager.
 #
@@ -42,14 +44,18 @@ si::sysinit:/etc/init.d/rcS
 # every VT's font. agetty hands the name to /bin/login, util-linux's PAM login
 # (/etc/pam.d/login, through system-login), so a console login is a session
 # elogind knows and starts the user's services like any other.
-2:2345:respawn:/usr/local/sbin/kdos-getty tty2 /sbin/agetty --noclear tty2 38400 linux
+#
+# EVERY AGETTY HERE NAMES /etc/issue. agetty built against musl, which has no
+# scandirat(), reads no issue file of its own accord, and without
+# --issue-file the banner /etc/issue holds is never printed.
+2:2345:respawn:/usr/local/sbin/kdos-getty tty2 /sbin/agetty --noclear --issue-file /etc/issue tty2 38400 linux
 
 # Serial console. The live image logs root in with no password; the
 # installer removes `--autologin root` from the installed copy, which then
 # asks for a login. --keep-baud stays at the rate the kernel console set.
 # serial-getty passes its arguments to agetty, and sleeps instead when no
 # UART answers at ttyS0, where agetty would fail at every respawn.
-S0:2345:respawn:/etc/init.d/serial-getty --autologin root --keep-baud --noclear -L ttyS0 115200,38400,9600 vt102
+S0:2345:respawn:/etc/init.d/serial-getty --autologin root --keep-baud --noclear --issue-file /etc/issue -L ttyS0 115200,38400,9600 vt102
 
 ca::ctrlaltdel:/sbin/shutdown -r now
 
@@ -59,10 +65,18 @@ ca::ctrlaltdel:/sbin/shutdown -r now
 # completion. rcK stops the services while the filesystems they save to are
 # writable; killprocs signals every process still alive; killpower may tell a
 # UPS to cut the power, so every filesystem is read-only before it runs.
+#
+# k3 makes the live medium's persistence store read-only by name, before
+# umount reaches it. The store is the root overlay's upper layer, and the
+# overlay holds its superblock: umount -a -r detaches /mnt/persist without
+# making it read-only, the overlay root refuses a read-only remount, and the
+# store would be left writable at reboot with its journal to replay. With no
+# store mounted there it does nothing.
 k0:06:wait:/etc/init.d/rcK
 k1:06:wait:/etc/init.d/killprocs
 k2:06:wait:/sbin/swapoff -a
-k3:06:wait:/bin/umount -a -r
-k4:06:wait:/etc/init.d/killpower
+k3:06:wait:/bin/sh -c '/bin/mountpoint -q /mnt/persist && exec /bin/mount -o remount,ro /mnt/persist'
+k4:06:wait:/bin/umount -a -r
+k5:06:wait:/etc/init.d/killpower
 h0:0:wait:/sbin/halt -d -f -p
 h6:6:wait:/sbin/reboot -d -f

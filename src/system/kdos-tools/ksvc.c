@@ -203,10 +203,16 @@ static void table_writable(void)
 		       "`ksvc --user`", g_run_dir);
 }
 
+/*
+ * kdos-svc.<name>.pid, never <name>.pid: /run/<name>.pid is where most
+ * daemons write their own pid (elogind and cronie hard-code it), and a daemon
+ * that overwrites the supervisor's file makes `check` say DOWN, `stop` drop
+ * the file as stale and stop nothing, and `start` run a second copy.
+ */
 static char *pidfile(const char *name)
 {
 	char leaf[128];
-	snprintf(leaf, sizeof(leaf), "%s.pid", name);
+	snprintf(leaf, sizeof(leaf), "kdos-svc.%s.pid", name);
 	return kb_path_join(g_run_dir, leaf);
 }
 
@@ -1131,14 +1137,25 @@ static int list_width(void)
 
 /*
  * One row's STATUS column from what the script's `status` printed: the first
- * line that is not blank, then ` (+N more: service status <name>)` when more
- * lines follow, or `—` when there is none. A script's status is free-form —
- * nothing, or the several lines of `tlp-stat -s` or of two supervised daemons
- * — and written straight to the terminal it either joins the next row or
- * spills into it. On a terminal the line is cut to the width left after the
- * prefix, at a character boundary, so that a row is always one line.
+ * line that is not blank, then ` (+N more)` when more lines follow, or `—`
+ * when there is none; `service status <name>` prints them all. A script's
+ * status is free-form — nothing, or the several lines of `tlp-stat -s` or of
+ * two supervised daemons — and written straight to the terminal it either
+ * joins the next row or spills into it. On a terminal a line too long for the
+ * width left after the prefix is cut at the last space that keeps at least
+ * half of it, else at a character, and ends in `…`, so that a row is always
+ * one line and the tail is never what pushes the status out.
  */
-static void list_status(const char *name, const char *out, int width)
+static size_t utf8_cps(const char *s, size_t n)
+{
+	size_t cps = 0;
+	for (size_t i = 0; i < n; i++)
+		if (((unsigned char)s[i] & 0xC0) != 0x80)
+			cps++;
+	return cps;
+}
+
+static void list_status(const char *out, int width)
 {
 	const char *first = NULL;
 	size_t flen = 0;
@@ -1167,28 +1184,40 @@ static void list_status(const char *name, const char *out, int width)
 		printf("—\n");
 		return;
 	}
-	char tail[192] = "";
+	char tail[32] = "";
 	if (more)
-		snprintf(tail, sizeof(tail), " (+%d more: service status %s)",
-			 more, name);
+		snprintf(tail, sizeof(tail), " (+%d more)", more);
+	const char *cut = "";
 	if (width > LIST_PREFIX) {
 		size_t room = (size_t)(width - LIST_PREFIX - 1);
 		size_t tl = strlen(tail);
-		if (tl > room) {
+		if (tl * 2 > room) {
 			tail[0] = 0;
 			tl = 0;
 		}
-		size_t cps = 0, i = 0;
-		while (i < flen && cps < room - tl) {
-			i++;
-			while (i < flen && ((unsigned char)first[i] & 0xC0) ==
-						   0x80)
+		room -= tl;
+		if (room && utf8_cps(first, flen) > room) {
+			size_t keep = room - 1, cps = 0, i = 0;
+			while (i < flen && cps < keep) {
 				i++;
-			cps++;
+				while (i < flen &&
+				       ((unsigned char)first[i] & 0xC0) == 0x80)
+					i++;
+				cps++;
+			}
+			size_t sp = i;
+			if (i < flen && first[i] != ' ')
+				while (sp > 0 && first[sp - 1] != ' ')
+					sp--;
+			if (sp > 0 && utf8_cps(first, sp) * 2 >= keep)
+				i = sp;
+			while (i > 0 && first[i - 1] == ' ')
+				i--;
+			flen = i;
+			cut = "…";
 		}
-		flen = i;
 	}
-	printf("%.*s%s\n", (int)flen, first, tail);
+	printf("%.*s%s%s\n", (int)flen, first, cut, tail);
 }
 
 static int cmd_list(void)
@@ -1228,7 +1257,7 @@ static int cmd_list(void)
 		KbBuf out = {0};
 		kb_run_capture_buf(&a, &out);
 		printf("  %-20s %-12s ", name, tag);
-		list_status(name, out.p ? out.p : "", width);
+		list_status(out.p ? out.p : "", width);
 		kb_buf_free(&out);
 		free(path);
 	}
@@ -1301,7 +1330,8 @@ int ksvc_main(int argc, char **argv)
 	}
 
 	if (argc < 3) {
-		printf("Usage: service %s <name>\n", cmd);
+		printf("Usage: service %s%s <name>\n", g_user ? "--user " : "",
+		       cmd);
 		return 1;
 	}
 	const char *name = argv[2];

@@ -1,7 +1,7 @@
 # The ports catalogue
 
-This chapter lists every port KDOS can build: each of the 2,388 recipes under `ports/core` and the
-43 recipes KDOS writes itself under `src/`, 2,431 in all, each exactly once. It is a reference for
+This chapter lists every port KDOS can build: each of the 2,389 recipes under `ports/core` and the
+43 recipes KDOS writes itself under `src/`, 2,432 in all, each exactly once. It is a reference for
 anyone who needs to know whether a piece of software is in the tree, which version it is at, where
 its recipe lives, and which phase of the build installs it. Read
 [Packaging](../03-architecture/packaging.md) first for what a port and a package are, and
@@ -108,18 +108,18 @@ leaving out any an earlier phase installed.
 | `20_selfhost` | Self-Hosting Bootstrap | `packages.txt` | 9 | 15 |
 | `30_foundation` | Build Foundation | `packages.txt` | 138 | 127 |
 | `31_compilers` | Compilers | `packages.txt` | 22 | 22 |
-| `40_lang` | Languages | `packages.d/`, 13 files | 184 | 184 |
+| `40_lang` | Languages | `packages.d/`, 13 files | 185 | 185 |
 | `41_system` | System | `packages.d/`, 98 files | 1,035 | 1,035 |
 | `42_graphics` | Graphics Stack | `packages.d/`, 53 files | 187 | 187 |
-| `43_toolkits` | Toolkits | `packages.d/`, 56 files | 343 | 343 |
-| `44_apps` | Applications | `packages.d/`, 61 files | 423 | 423 |
+| `43_toolkits` | Toolkits | `packages.d/`, 56 files | 344 | 344 |
+| `44_apps` | Applications | `packages.d/`, 61 files | 422 | 422 |
 | `50_desktop` | Desktop | `packages.txt` | 91 | 91 |
 | `60_kernel` | Kernel | `packages.txt` | 2 | 2 |
 | `70_image` | Image | none: steps | — | — |
-| Total | | | 2,434 | 2,429 |
+| Total | | | 2,435 | 2,430 |
 
-The lists hold 2,434 lines naming 2,425 distinct ports; 9 of those ports are named by more than one
-phase. Following `depends =` from the lists reaches 2,429 ports. With `kdos-installer`, which
+The lists hold 2,435 lines naming 2,426 distinct ports; 9 of those ports are named by more than one
+phase. Following `depends =` from the lists reaches 2,430 ports. With `kdos-installer`, which
 `10_bootstrap` builds by script, that is every recipe but 1, listed in `ports/unbuilt`: `texlive-doc`,
 a recipe kept for `kpkg install` that no phase builds, marked `not built` in its table.
 `testing/bookcounts.py` fails on any other recipe no phase builds.
@@ -200,7 +200,7 @@ Every recipe, counted by where it lives.
 | [`network`](#network) | 28 |
 | [`net-diag`](#net-diag) | 16 |
 | [`servers`](#servers) | 10 |
-| [`transfer`](#transfer) | 19 |
+| [`transfer`](#transfer) | 20 |
 | [`mail`](#mail) | 32 |
 | [`chat`](#chat) | 19 |
 | [`browsers`](#browsers) | 12 |
@@ -208,7 +208,7 @@ Every recipe, counted by where it lives.
 | [`x11`](#x11) | 45 |
 | [`wl`](#wl) | 9 |
 | [`gpu`](#gpu) | 27 |
-| [`graphics-libs`](#graphics-libs) | 28 |
+| [`graphics-libs`](#graphics-libs) | 27 |
 | [`image-libs`](#image-libs) | 48 |
 | [`graphics`](#graphics) | 29 |
 | [`3d`](#3d) | 17 |
@@ -225,7 +225,7 @@ Every recipe, counted by where it lives.
 | [`qt5`](#qt5) | 11 |
 | [`qt-extra`](#qt-extra) | 30 |
 | [`kf6`](#kf6) | 71 |
-| [`kde`](#kde) | 72 |
+| [`kde`](#kde) | 71 |
 | [`toolkits`](#toolkits) | 4 |
 | [`audio-io`](#audio-io) | 16 |
 | [`audio-codecs`](#audio-codecs) | 28 |
@@ -254,7 +254,7 @@ Every recipe, counted by where it lives.
 | [`sci-libs`](#sci-libs) | 21 |
 | [`astronomy`](#astronomy) | 14 |
 | [`bioscience`](#bioscience) | 12 |
-| [`gis`](#gis) | 26 |
+| [`gis`](#gis) | 27 |
 | [`eda`](#eda) | 29 |
 | [`embedded`](#embedded) | 30 |
 | [`sdr-hw`](#sdr-hw) | 19 |
@@ -262,7 +262,7 @@ Every recipe, counted by where it lives.
 | [`hamradio`](#hamradio) | 26 |
 | [`ai`](#ai) | 7 |
 | [`python`](#python) | 37 |
-| [`python-libs`](#python-libs) | 70 |
+| [`python-libs`](#python-libs) | 71 |
 | [`python-net`](#python-net) | 25 |
 | [`python-sci`](#python-sci) | 13 |
 | [`python-gui`](#python-gui) | 17 |
@@ -273,7 +273,7 @@ Every recipe, counted by where it lives.
 | [`src/art`](#srcart) | 8 |
 | [`src/desktop`](#srcdesktop) | 21 |
 | [`src/daemons`](#srcdaemons) | 6 |
-| Total | 2,431 |
+| Total | 2,432 |
 
 ## The shelves
 
@@ -2086,10 +2086,11 @@ Notes:
 
 ### transfer
 
-File transfer, synchronisation, backup and BitTorrent. 19 ports, under `ports/core/transfer/`.
+File transfer, synchronisation, backup and BitTorrent. 20 ports, under `ports/core/transfer/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
+| `aria2` | 1.37.0 | Download utility for HTTP(S), FTP, SFTP, BitTorrent and Metalink, with a JSON-RPC interface | `41_system` |
 | `croc` | 11.5.3 | One-off file transfer by code phrase, kept on this network | `41_system` |
 | `deja-dup` | 50.2 | Scheduled, encrypted backups to a disk or folder over restic | `44_apps` |
 | `deluge` | 2.2.0 | BitTorrent client with a daemon, a GTK 3 interface, a web UI and a console UI | `44_apps` |
@@ -2098,10 +2099,10 @@ File transfer, synchronisation, backup and BitTorrent. 19 ports, under `ports/co
 | `kbackup` | 26.08.2 | Backup program — profiles of folders archived to a local or remote tar, full or incremental | `44_apps` |
 | `kget` | 26.08.2 | Download manager — queued, resumable, segmented HTTP and FTP downloads, Metalink and BitTorrent | `44_apps` |
 | `ktorrent` | 26.08.2 | BitTorrent client — downloads with search, RSS feeds, IP filtering, bandwidth scheduling, UPnP and a media player | `44_apps` |
-| `kup` | 6.8.2 | Backup scheduler for Plasma — rsync, bup and encrypted restic plans run on a timer or when a drive is plugged in | `50_desktop` |
+| `kup` | 6.8.2 | Backup scheduler for Plasma — rsync, bup and encrypted restic plans run by hand, on a timer or after active use | `50_desktop` |
 | `libfilezilla` | 0.57.0 | FileZilla's C++ platform library: events, sockets, TLS over GnuTLS, hashing and time | `41_system` |
 | `libktorrent` | 26.08.2 | BitTorrent protocol library behind KTorrent: DHT, uTP, encryption, magnet links and UPnP | `43_toolkits` |
-| `libtorrent-rasterbar` | 2.1.2 | Arvid Norberg's BitTorrent library, with its Python binding — the engine of qBittorrent and Deluge | `41_system` |
+| `libtorrent-rasterbar` | 2.0.15 | Arvid Norberg's BitTorrent library, with its Python binding — the engine of qBittorrent and Deluge | `41_system` |
 | `qbittorrent` | 5.2.3 | BitTorrent client (Qt 6) with a web UI, plus qbittorrent-nox for a machine with no display | `44_apps` |
 | `rclone` | 1.75.1 | Syncs files between local disks and remote storage, and verifies copies with rclone check | `41_system` |
 | `restic` | 0.19.1 | Deduplicating backup program, a single static binary | `41_system` |
@@ -2122,7 +2123,8 @@ Notes:
   found.
 - `fzssh`: `with_server` stays off. The server half is under a proprietary licence.
 - `libtorrent-rasterbar`: `-Dgnutls=OFF` keeps OpenSSL, because the GnuTLS build compiles DHT out.
-  The Python binding needs boost built with its Python component.
+  The Python binding needs boost built with its Python component. It stays on the 2.0 series,
+  whose binding keeps the settings and names Deluge 2.2.0 uses.
 - `restic`: `CGO_ENABLED=0` keeps it one static binary, so a repository restores from any machine.
 - `rsync`: `rrsync` is a python3 script, which is why python3 is in `depends`.
 - `syncthing`: `kdos-syncthing` seeds `/usr/share/kdos/syncthing-offline.xml`, with local discovery
@@ -2456,7 +2458,7 @@ Notes:
 
 ### graphics-libs
 
-2D rendering, vector and SVG, text layout, colour management and graph drawing libraries. 28 ports,
+2D rendering, vector and SVG, text layout, colour management and graph drawing libraries. 27 ports,
 under `ports/core/graphics-libs/`.
 
 | Port | Version | Description | Phase |
@@ -2466,7 +2468,6 @@ under `ports/core/graphics-libs/`.
 | `cairo` | 1.18.6 | 2D graphics library, with its Xlib and XCB surfaces | `42_graphics` |
 | `cairomm` | 1.18.1 | C++ bindings for cairo, the 1.16 API (cairomm-1.16) that gtkmm 4 builds on | `42_graphics` |
 | `cairomm1.14` | 1.14.6 | C++ bindings for cairo, the 1.0 API (cairomm-1.0) that gtkmm 3 builds on | `42_graphics` |
-| `colord` | 1.4.8 | System daemon that manages colour devices and their ICC profiles, with libcolord | `41_system` |
 | `gdk-pixbuf` | 2.44.8 | Image-loading library used by GTK and many notification daemons | `41_system` |
 | `gegl` | 0.4.72 | Graph-based image processing framework, the engine under GIMP | `43_toolkits` |
 | `goocanvas` | 3.0.0 | Cairo canvas widget for GTK 3, with introspection data | `44_apps` |
@@ -2788,6 +2789,8 @@ Notes:
 
 Notes:
 
+- `candle2`: runs under Xwayland (`QT_QPA_PLATFORM=xcb` in its desktop entry), because its 3D
+  view is a `QGLWidget`, which Qt 5's Wayland platform composites as transparent.
 - `cncjs`: the desktop entry binds the server to loopback. It otherwise listens on every
   interface, and it drives the machine without a login.
 - `linuxcnc`: the package ships no setuid file, so `rtapi_app` runs its threads without realtime
@@ -2919,7 +2922,7 @@ notifications, event sounds, script dialogs. 20 ports, under `ports/core/xdg/`.
 | `libportal` | 0.11.0 | Client library for the XDG desktop portals, with GTK 3 and GTK 4 parent windows | `43_toolkits` |
 | `shared-mime-info` | 2.5.1 | The freedesktop.org shared MIME database and update-mime-database | `41_system` |
 | `xdg-desktop-portal` | 1.22.1 | Desktop portal D-Bus framework (Wayland screencast / file-picker integration) | `42_graphics` |
-| `xdg-desktop-portal-gtk` | 1.15.3 | GTK backend for xdg-desktop-portal — the Print and Email portals | `43_toolkits` |
+| `xdg-desktop-portal-gtk` | 1.15.3 | GTK backend for xdg-desktop-portal — the GNOME and GTK settings, Print and Email portals | `43_toolkits` |
 | `xdg-desktop-portal-kde` | 6.8.2 | KDE backend for xdg-desktop-portal — file chooser, screen cast, screenshots, settings and the rest under Plasma | `50_desktop` |
 | `xdg-user-dirs` | 0.20 | Well-known user directories (Desktop, Documents, Music…) and their names in user-dirs.dirs | `41_system` |
 | `xdg-utils` | 1.2.1 | Command line tools that assist applications with a variety of desktop integration tasks | `41_system` |
@@ -2936,8 +2939,10 @@ Notes:
   ahead of `CFLAGS`, so `-Wno-error` is required.
 - `xdg-desktop-portal`: the image and sound validators re-execute under bubblewrap, whose path is
   found at configure and compiled in, so `bubblewrap` stays in `depends`.
-- `xdg-desktop-portal-gtk`: Settings, AppChooser, Lockdown and Wallpaper are off; which backend
-  serves an interface is decided by `kdos-portals.conf`, not by the portal file's `UseIn=` line.
+- `xdg-desktop-portal-gtk`: Settings is on, since GTK 4 on Wayland reads every
+  `org.gnome.desktop.*` setting from it; AppChooser, Lockdown and Wallpaper are off. Which backend
+  serves an interface is decided by plasma-workspace's `kde-portals.conf`, not by the portal
+  file's `UseIn=` line.
 
 ### accessibility
 
@@ -3359,14 +3364,13 @@ Notes:
 ### kde
 
 KDE Plasma and Gear platform pieces outside Frameworks that have no other domain: KIO workers,
-thumbnailers, Plasma integration, KDE Wayland glue. 72 ports, under `ports/core/kde/`.
+thumbnailers, Plasma integration, KDE Wayland glue. 71 ports, under `ports/core/kde/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
 | `aurorae` | 6.8.2 | Themeable SVG window decoration engine for KWin, with the Plastik theme | `50_desktop` |
 | `baloo-widgets` | 26.08.2 | File metadata panel, tag and rating editors used by Dolphin | `43_toolkits` |
 | `bluedevil` | 6.8.2 | Plasma Bluetooth — the tray applet, the settings page, pairing wizard, file sending and OBEX browsing | `50_desktop` |
-| `colord-kde` | 26.08.2 | Colour management settings for colord devices and ICC profiles, with an ICC profile importer | `44_apps` |
 | `cxx-rust-cssparser` | 1.1.0 | C++ library over Mozilla's Rust cssparser crate, for Union's style sheets | `41_system` |
 | `discover` | 6.8.2 | Software centre — system updates over the A/B slots and firmware updates through fwupd | `50_desktop` |
 | `ffmpegthumbs` | 26.08.2 | KIO thumbnailer for video files, through FFmpeg | `43_toolkits` |
@@ -4579,7 +4583,7 @@ statistics and plotting apps. 31 ports, under `ports/core/math/`.
 | Port | Version | Description | Phase |
 |---|---|---|---|
 | `analitza` | 26.08.2 | KDE mathematical expression library — the parser, evaluator and 2D/3D plotter behind KAlgebra | `43_toolkits` |
-| `cantor` | 26.08.2 | Worksheet front end for Python, R, Octave, Maxima, Qalculate, KAlgebra and Lua | `43_toolkits` |
+| `cantor` | 26.08.2 | Worksheet front end for Python, R, Octave, Lua, Qalculate and KAlgebra | `43_toolkits` |
 | `ceres-solver` | 2.2.0.git20251109 | Ceres Solver: non-linear least squares — Blender's camera and motion tracker | `41_system` |
 | `coolprop` | 8.0.0 | Thermophysical properties for 122 fluids, IAPWS-95 water/steam and humid air | `41_system` |
 | `cudd` | 3.0.0 | CUDD, the Colorado decision-diagram package — BDDs, ADDs and ZDDs for yices2's bit-vector reasoning | `41_system` |
@@ -4757,7 +4761,7 @@ Notes:
 
 ### gis
 
-GIS, maps, projections, GPS, navigation and location. 26 ports, under `ports/core/gis/`.
+GIS, maps, projections, GPS, navigation and location. 27 ports, under `ports/core/gis/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -4779,6 +4783,7 @@ GIS, maps, projections, GPS, navigation and location. 26 ports, under `ports/cor
 | `libspatialindex` | 2.1.0 | R-tree spatial indexing, under QGIS | `41_system` |
 | `marble` | 26.08.2 | Marble: virtual globe and world atlas, with offline Atlas, satellite and OpenStreetMap vector views | `44_apps` |
 | `opencpn` | 5.14.0 | Chart plotter and navigation for S-57/S-63 ENC and raster charts, AIS and GPS (wxWidgets) | `44_apps` |
+| `osm-gps-map` | 1.2.2 | GTK 3 widget that shows and caches OpenStreetMap tiles, with tracks, images and markers | `43_toolkits` |
 | `organicmaps` | 2025.09.05.1 | Organic Maps: offline maps with search and turn-by-turn routing for walking, cycling and driving, from OpenStreetMap data | `44_apps` |
 | `pdal` | 2.10.2 | Point cloud translation and processing: LAS/LAZ, E57, Draco, HDF and the pdal tool | `43_toolkits` |
 | `proj` | 9.9.0 | Cartographic projection and coordinate transformation library | `41_system` |
@@ -5125,7 +5130,8 @@ Notes:
   files it writes.
 - `chirp`: the desktop entry runs `chirp --no-install-desktop-app`; without it the first run offers
   to write a per-user entry that shadows the packaged one.
-- `direwolf`: the package replaces upstream's desktop entry, which runs `xterm -e direwolf`.
+- `direwolf`: the package replaces upstream's desktop entry, which runs `xterm -e direwolf`, with
+  a `NoDisplay=true` one: direwolf is a TNC server that exits without `direwolf.conf`.
 - `fldigi`: `--without-libmbedtls` keeps the bundled mbedtls 2.x copy the network code is written
   against; the mbedtls port's 3.x API has no `net.h` or `certs.h`. flarq's window class is `fldigi`,
   so its entry's `StartupWMClass` is `fldigi` too.
@@ -5244,7 +5250,7 @@ Notes:
 ### python-libs
 
 General-purpose python3-* runtime libraries: text, templating, markup, parsing, config, CLI, system,
-files, crypto, imaging. 70 ports, under `ports/core/python-libs/`.
+files, crypto, imaging. 71 ports, under `ports/core/python-libs/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -5297,6 +5303,7 @@ files, crypto, imaging. 70 ports, under `ports/core/python-libs/`.
 | `python3-pydantic-core` | 2.46.5 | pydantic's validation core, in Rust — pinned to the version pydantic names | `40_lang` |
 | `python3-pyemf3` | 3.3 | Pure-Python Enhanced Metafile writer, for Veusz's EMF export | `40_lang` |
 | `python3-pygments` | 2.21.0 | Python syntax highlighter | `30_foundation` |
+| `python3-pyicu` | 2.17 | ICU bindings for Python: collation, transliteration, locale-aware formatting | `40_lang` |
 | `python3-pyparsing` | 3.3.3 | Grammar-based text parsing — matplotlib's mathtext and fontconfig patterns | `40_lang` |
 | `python3-pypdfium2` | 5.13.0 | Python bindings to PDFium — render, read and edit a PDF from Python | `42_graphics` |
 | `python3-pytz` | 2026.4 | The Olson time zone database for python datetime | `40_lang` |
@@ -5383,7 +5390,7 @@ python3-* HTTP, web-framework, TLS-trust and network-stack modules. 25 ports, un
 | `python3-waitress` | 3.0.2 | Waitress, a pure-Python production WSGI server | `40_lang` |
 | `python3-webencodings` | 0.6.1 | The WHATWG Encoding standard's labels and legacy decoders, for Python | `40_lang` |
 | `python3-werkzeug` | 3.1.9 | Werkzeug, the WSGI toolkit under Flask: request, response, routing and a development server | `40_lang` |
-| `python3-ytmusicapi` | 1.12.3 | Unofficial YouTube Music API for Python: search, library, playlists and uploads | `40_lang` |
+| `python3-ytmusicapi` | 1.12.2 | Unofficial YouTube Music API for Python: search, library, playlists and uploads | `40_lang` |
 
 Notes:
 
@@ -5633,14 +5640,15 @@ to `60_kernel`. 8 ports.
 | `kdos-sddm-theme` | 1.0.0 | KDOS login screen for SDDM — the Breeze greeter in the accent, with the KDOS mark | `50_desktop` |
 | `kdos-sounds` | 1.0.0 | KDOS sound theme — the machine's synthesised voices under their freedesktop names | `43_toolkits` |
 | `kdos-splash` | 1.2 | Boot splash drawn on the framebuffer — a fade from black, or Phosphor mode's CRT power-on | `41_system` |
-| `kdos-theme` | 2.0.0 | KDOS identity generators — KDE colour schemes, Konsole, qt5ct, wallpapers, greeter palette | `41_system` |
+| `kdos-theme` | 2.0.0 | KDOS identity generators — KDE colour schemes, editor themes, Konsole, qt5ct, wallpapers, greeter palette | `41_system` |
 | `kdos-wallpapers` | 1.0.0 | KDOS wallpapers — the mark in each accent, dark and light, as Plasma wallpaper packages | `41_system` |
 
 Notes:
 
 - `kdos-bb`: built without configure; `src/aconfig.h` holds the platform answers.
 - `kdos-theme`: builds the `kdos-theme` generator, which `kdos-plasma-look`, `kdos-wallpapers` and
-  `kdos-addons` run at build time and `kdos theme <accent>` runs on the running system.
+  `kdos-addons` run at build time and `kdos theme <accent>` runs on the running system, and runs
+  it once itself to install the editor themes into `/usr/share/org.kde.syntax-highlighting/themes`.
 - `kdos-sddm-theme`: copies the Breeze SDDM theme that `plasma-desktop` installs and applies
   `kdos-sddm.patch` to it, so it is built in `50_desktop`, after that theme exists.
 - `kdos-sounds`: renders its sounds with `kdos-sfx render` at build time; no recorded audio is in
@@ -5663,13 +5671,13 @@ installs. 21 ports.
 | `kcm-kdos-health` | 1.0.0 | Health page of Info Center and System Settings, and the KDOS rows of About this System | `50_desktop` |
 | `kcm-kdos-look` | 1.0.0 | System Settings KDOS Look page — one accent everywhere, and Phosphor mode | `50_desktop` |
 | `kcm-kdos-system` | 1.0.0 | System Settings page for the A/B system slots — which version starts, its trial, and where updates come from | `50_desktop` |
-| `kded-kdos` | 1.0.0 | KDOS kded6 module — keeps the accent in step with Plasma, offers sets found on sticks, starts Samba for the first shared folder | `50_desktop` |
+| `kded-kdos` | 1.0.0 | KDOS kded6 module — keeps the accent in step with Plasma, offers sets found on sticks, starts Samba for a login that can share folders, restarts a stopped plasmashell | `50_desktop` |
 | `kdos-discover` | 0.1.0 | Discover backend for packs, boxes and ports, and the A/B update tray notifier | `50_desktop` |
 | `kdos-installer-gui` | 1.0.0 | Install KDOS — the graphical installer, a Kirigami front end over kinstall | `50_desktop` |
 | `kdos-kwin-motion` | 1.0.0 | KDOS CRT motion for KWin — windows unfold and fold, the splash powers on, logout powers down | `50_desktop` |
 | `kdos-notice` | 0.1.0 | The system's notices in Plasma: restarts after an update, CVEs, the trial slot, a rollback, memory kills; confirms a booted slot | `50_desktop` |
 | `kdos-plasma-look` | 1.0.0 | KDOS Modern for Plasma — eight global themes, the kdos Plasma style, the desks, KSplash | `50_desktop` |
-| `kdos-runner` | 0.1.0 | KDOS in KRunner: kdos verbs, favourites, routes, settings pages, shortcuts, the offline library and the local model | `50_desktop` |
+| `kdos-runner` | 0.1.0 | KDOS in KRunner: kdos verbs, favourites, routes, packs on the boot medium, shortcuts, the offline library and the local model | `50_desktop` |
 | `kdos-transcribe` | 1.0.0 | Transcribe in the file manager's menu for audio and video, offline, while a speech model is installed | `50_desktop` |
 | `kdos-welcome` | 1.0.0 | The KDOS tour in Welcome Center — accessibility, accent, Phosphor mode, desk, system and help pages | `50_desktop` |
 | `kio-library` | 1.0.0 | library:/, the offline library as a folder, its Places entry and the menu's Library category | `50_desktop` |

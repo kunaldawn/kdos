@@ -25,11 +25,13 @@
  * like a key that did nothing. Applications, pages and links are started
  * fully detached: their exit says nothing about the click.
  *
- * TWO ROWS RUN NO PROGRAM. The local model's answer goes onto the clipboard
- * through Klipper's setClipboardContents, and a question still being
- * answered opens KRunner again on it through querySingleRunner, each a D-Bus
- * call from a detached child on a connection of its own, so the runner's loop
- * never waits on Plasma.
+ * THREE ROWS RUN NO PROGRAM. The local model's answer goes onto the clipboard
+ * through Klipper's setClipboardContents; a question still being answered,
+ * and `lib <words>`, open KRunner again through querySingleRunner on one
+ * runner alone (`kdos` for the question, `kdos-library` for the words), once
+ * KRunner has closed the window the Run came from. Each is a D-Bus call from
+ * a detached child on a connection of its own, so the runner's loop never
+ * waits on Plasma.
  *
  * THE ACTIVATION TOKEN KRunner hands over just before Run goes to the child
  * as XDG_ACTIVATION_TOKEN, which is how the window that opens takes focus on
@@ -44,6 +46,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 /* basu on the target; libsystemd's sd-bus is the same API. A host with
@@ -57,6 +60,9 @@
 #endif
 
 #include "runner.h"
+
+/* How long a re-query waits after Run for KRunner's window to close. */
+#define RN_REQUERY_DELAY_MS 500
 
 static char g_token[512];
 
@@ -148,10 +154,11 @@ static void report(const RnMatch *m, int status, const char *err)
 }
 
 /* A call that carries strings and wants no answer but success, from a
- * detached child; a failure becomes a notification. */
-static void bus_call(const char *what, const char *dest, const char *path,
-		     const char *iface, const char *member, const char *a1,
-		     const char *a2)
+ * detached child, made `delay_ms` after Run; a failure becomes a
+ * notification. */
+static void bus_call(int delay_ms, const char *what, const char *dest,
+		     const char *path, const char *iface, const char *member,
+		     const char *a1, const char *a2)
 {
 #ifdef RN_HAVE_BUS
 	pid_t pid = fork();
@@ -166,6 +173,14 @@ static void bus_call(const char *what, const char *dest, const char *path,
 
 			setsid();
 			kb_child_reset_signals();
+			if (delay_ms > 0) {
+				struct timespec ts = { delay_ms / 1000,
+						       (long)(delay_ms % 1000) *
+							       1000000L };
+
+				while (nanosleep(&ts, &ts) < 0 && errno == EINTR)
+					;
+			}
 			if (sd_bus_open_user(&bus) < 0)
 				_exit(1);
 			r = a2 ? sd_bus_call_method(bus, dest, path, iface, member,
@@ -188,6 +203,7 @@ static void bus_call(const char *what, const char *dest, const char *path,
 	while (waitpid(pid, NULL, 0) < 0 && errno == EINTR)
 		;
 #else
+	(void)delay_ms;
 	(void)what;
 	(void)dest;
 	(void)path;
@@ -216,15 +232,21 @@ int rn_run(const RnMatch *m, int in_terminal)
 		return -1;
 	if (m->how == RN_RUN_COPY) {
 		g_token[0] = '\0';
-		bus_call("Copy the answer", "org.kde.klipper", "/klipper",
+		bus_call(0, "Copy the answer", "org.kde.klipper", "/klipper",
 			 "org.kde.klipper.klipper", "setClipboardContents",
 			 m->argv[0], NULL);
 		return 0;
 	}
 	if (m->how == RN_RUN_REQUERY) {
+		if (m->argc < 2)
+			return -1;
 		g_token[0] = '\0';
-		bus_call("Ask again", "org.kde.krunner", "/App", "org.kde.krunner.App",
-			 "querySingleRunner", "kdos", m->argv[0]);
+		/* KRunner closes its window once Run is sent, and a
+		 * querySingleRunner that arrives before the close is shown
+		 * and then hidden by it: the call waits the close out. */
+		bus_call(RN_REQUERY_DELAY_MS, "Open KRunner again",
+			 "org.kde.krunner", "/App", "org.kde.krunner.App",
+			 "querySingleRunner", m->argv[0], m->argv[1]);
 		return 0;
 	}
 	if (m->how == RN_RUN_TERM)

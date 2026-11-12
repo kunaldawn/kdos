@@ -37,4 +37,6 @@ the game data, which includes that directory. So the whole `release/` tree is ke
 `/usr/lib/yamagi-quake2`, and `/usr/bin` holds symbolic links to `quake2` and `q2ded`. Upstream's `yq2.cfg` goes into the system-wide `baseq2`.
 
 The window's Wayland app id is the executable's name, `quake2`, which is what the entry's
-`StartupWMClass` names.
+`StartupWMClass` names. The entry is `NoDisplay=true`: without the data the engine exits on
+`Couldn't load pics/colormap.pcx` and opens no window and no dialog, so the game is started as
+`quake2` once the data is in place.

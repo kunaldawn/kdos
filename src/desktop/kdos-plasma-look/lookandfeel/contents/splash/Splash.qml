@@ -130,7 +130,8 @@ Rectangle {
 
     readonly property color ground: Kirigami.Theme.backgroundColor
     readonly property color ink: Kirigami.Theme.textColor
-    readonly property color accent: Kirigami.Theme.highlightColor
+    readonly property color accent: Kirigami.Theme.focusColor
+    readonly property color accentText: Kirigami.Theme.linkColor
     readonly property color accentDark: Kirigami.Theme.hoverColor
     readonly property color secondary: Kirigami.Theme.neutralTextColor
     readonly property color quiet: Kirigami.Theme.disabledTextColor
@@ -365,7 +366,7 @@ Rectangle {
                 x: root.px(root.bodyX + root.bodyW - bar.pctW + bar.glyph)
                 y: root.px(root.barY)
                 text: i18ndc("kdos-plasma-look", "progress readout, a number and a percent sign, four columns wide", "%1%", String(root.percent).padStart(3, " "))
-                color: root.accent
+                color: root.accentText
                 font.family: Kirigami.Theme.fixedWidthFont.family
                 font.pixelSize: root.textPx
                 textFormat: Text.PlainText

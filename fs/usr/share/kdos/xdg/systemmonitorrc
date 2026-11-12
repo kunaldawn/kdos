@@ -7,13 +7,20 @@
 # ---------------------------------
 #   System Monitor's pages.
 #
-# The KDOS page (ksystemstats-kdos) comes second, after Overview: it shows
-# each box's use, energy and the two slots. The Applications page comes
-# third: libksysguard's login-cgroup-root.patch roots it at the login's
-# cgroup, so it lists each running box's scope in the delegated subtree as
-# one application. pageOrder only sorts; a page it leaves out is placed after
-# the listed ones, and hiddenPages is what takes a page off the sidebar.
+# System Monitor opens on KDOS's Overview (kdos-overview.page, from
+# ksystemstats-kdos), whose sensors exist on every machine; the stock
+# overview.page asks for per-disk and GPU sensors that the live medium, a
+# virtual machine or an unreadable graphics card lack, and opens under a
+# "missing some sensors" banner there, so hiddenPages takes it off the
+# sidebar. The KDOS page comes second: each box's use, energy and the two
+# slots. The Applications page comes third: libksysguard's
+# login-cgroup-root.patch roots it at the login's cgroup, so it lists each
+# running box's scope in the delegated subtree as one application. startPage
+# names the page System Monitor opens on; pageOrder only sorts, and a page it
+# leaves out is placed after the listed ones.
 # ---------------------------------
 
 [General]
-pageOrder=overview.page,kdos.page,applications.page,history.page,processes.page
+pageOrder=kdos-overview.page,kdos.page,applications.page,history.page,processes.page,overview.page
+hiddenPages=overview.page
+startPage=kdos-overview.page

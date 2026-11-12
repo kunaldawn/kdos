@@ -1,9 +1,13 @@
 # The KDOS defaults for GSettings, which is where a GTK application on the host
-# reads its theme when it is not reading the settings portal: GTK 3 on Wayland
-# reads org.gnome.desktop.interface from GSettings unless GTK_USE_PORTAL is
-# set, and once gsettings-desktop-schemas is installed an unset key there is
-# the schema's default — Adwaita, Cantarell — applied over
-# ~/.config/gtk-3.0/settings.ini.
+# reads its theme: directly, or through the Settings portal, whose
+# org.gnome.desktop.* keys xdg-desktop-portal-gtk serves from these same
+# GSettings. GTK on Wayland takes org.gnome.desktop.interface from one of the
+# two over ~/.config/gtk-3.0/settings.ini, and once gsettings-desktop-schemas
+# is installed an unset key there is the schema's default — Adwaita,
+# Cantarell. GTK 4 always reads the portal; GTK 3 reads it under
+# GTK_USE_PORTAL=1, which every login exports, and directly otherwise. Neither
+# route carries gtk-modules: GTK 3 takes those from kde-gtk-config's
+# org.gtk.Settings, and the gtk3 port is patched to open it beside the portal.
 #
 # These are DEFAULTS, not settings: a value a person sets with `gsettings set`
 # lives in their dconf database and wins over this file. In a Plasma session

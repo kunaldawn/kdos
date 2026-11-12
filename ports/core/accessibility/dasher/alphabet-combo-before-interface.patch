@@ -1,0 +1,16 @@
+Subject: Skip filling the alphabet combo until the interface has created it
+
+--- a/Src/Gtk2/dasher_main.cpp
++++ b/Src/Gtk2/dasher_main.cpp
+@@ -1104,6 +1104,11 @@
+ #ifndef WITH_MAEMO
+   DasherMainPrivate *pPrivate = DASHER_MAIN_GET_PRIVATE(pSelf);
+ 
++  // Building the interface sets the alphabet before the combo and its
++  // list exist; dasher_main_populate_controls fills them once they do.
++  if(!pPrivate->pAlphabetList)
++    return;
++
+   // Disconnect the event handler temporarily, otherwise this will
+   // trigger alphabet changes
+ 

@@ -1,5 +1,5 @@
 ## About
-`kded-kdos` is a kded6 module, `kf6/kded/kdos.so`, with three jobs a session has to do while
+`kded-kdos` is a kded6 module, `kf6/kded/kdos.so`, with four jobs a session has to do while
 nobody is looking at a KDOS window.
 
 **It keeps the accent in step with Plasma.** An accent chosen inside Plasma — a KDOS global theme
@@ -19,13 +19,25 @@ three are offered in one notification whose buttons open each in Discover
 (`plasma-discover --local-filename <file>`), where KDOS's backend imports it offline and verifies
 every pack. Nothing is imported by the module itself.
 
-**It starts Samba for the first shared folder.** [samba](#port-samba)'s service script starts
-`smbd` at boot only when something is shared, and a folder shared from Dolphin's Share tab is a
-file `net usershare` writes into `/var/lib/samba/usershares` while `smbd` is down. The module
-watches that directory and, when it goes from holding no share to holding one, calls
-`StartFileSharing` on [kdos-powerd](#port-kdos-powerd)'s `io.kdos.Power1`, which asks polkit
+**It starts Samba for a login that can share folders.** A folder shared from Dolphin's Share tab
+is a file `net usershare add` writes into `/var/lib/samba/usershares`, and `net` turns every name
+in the share's ACL, Dolphin's `Everyone` among them, into a SID by asking the local `smbd`: with
+`smbd` down the share fails and nothing is written. [samba](#port-samba)'s service script starts
+`smbd` at boot once the `sambashare` group has a member, and an account the Share tab has just
+added to the group is a member from its next login, which can come before the next boot. So when a
+session of a member loads the module, it calls `StartFileSharing` on
+[kdos-powerd](#port-kdos-powerd)'s `io.kdos.Power1`, which asks polkit
 (`io.kdos.filesharing.start`, granted to the person at the machine) and runs the service script's
-`start`. A failure raises one notification per reason in a session.
+`start`; with `smbd` already running that starts nothing. A failure raises one notification per
+reason in a session.
+
+**It starts plasmashell again when it stops.** plasma_session starts plasmashell once and
+supervises nothing, and plasmashell exits normally when KWin crashes or is replaced; KCrash restarts
+it only after a crash signal. The module watches `org.kde.plasmashell` on the session bus and, once
+the name has been gone for three seconds and ksmserver's `isShuttingDown()` answers false, starts
+`plasmashell`, at most five times in any minute; past that it raises one `shellRespawnLimit`
+notification. See
+[How plasmashell is kept running](../../../docs/kdos/04-programs/plasma-shell.md#how-plasmashell-is-kept-running).
 
 Its state is on the session bus at `org.kde.kded6` `/modules/kdos`, interface `io.kdos.Kded1`:
 `accent()`, `syncState()` (`idle`, `running` or `failed`), `lastError()` and `resync()`, with the
@@ -72,9 +84,15 @@ file, an empty file and anything below the top directory are never offered, and 
 after 4096 entries. A volume already mounted when the session starts is offered the next time it
 is mounted, not at every login.
 
-The usershare directory is root's, group `sambashare`, mode 1770, so only a session of a member can
-watch it; in any other session the module logs once that it is not watching, and that session
-cannot share a folder either. An account the Share tab has just added to `sambashare` is watched
-from its next login. A share already there at login was there at boot, when the service script
-decided about it, so only a change after login makes the call. A file whose name begins with `:`
-is a share `net usershare` is still writing, and is not counted.
+Membership is what the session's credentials can do: the usershare directory is root's, group
+`sambashare`, mode 1770, so only a member can write into it. In any other session the module makes
+no call and logs once why, and that session cannot share a folder either. The call is made once per
+login and never again in it; a group joined during the session counts from the next login, as it
+does for `net usershare` itself.
+
+The three seconds the module waits before it starts plasmashell cover `plasmashell --replace` and
+KCrash's own restart, both of which leave the name free for a moment. A start inside that gap is
+still harmless, because plasmashell is a unique KDBusService and a second copy exits. A logout is
+told apart by asking ksmserver, which answers true while it is closing the session and is gone, or
+silent, once it has; either starts nothing. A plasmashell that exits before it takes its name drops
+nothing the watcher sees, so every start is followed by one look twenty seconds later.

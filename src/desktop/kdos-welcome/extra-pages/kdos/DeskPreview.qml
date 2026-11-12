@@ -54,7 +54,7 @@ Rectangle {
 
     readonly property real u: width / 100
     readonly property color panel: Kirigami.Theme.alternateBackgroundColor
-    readonly property color rule: Kirigami.Theme.highlightColor
+    readonly property color rule: Kirigami.Theme.focusColor
     readonly property color ink: Kirigami.Theme.textColor
     readonly property color dim: Kirigami.Theme.disabledTextColor
 

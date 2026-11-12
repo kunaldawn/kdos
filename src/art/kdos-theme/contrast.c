@@ -12,9 +12,13 @@
  * Reads each KColorScheme file (or a kdeglobals carrying the same groups) and
  * holds every role to the floor roles.c solved it against: text 4.5:1 and a
  * decoration 3:1, each against the set's BackgroundNormal AND its
- * BackgroundAlternate, and the window titles 4.5:1 on their own backgrounds.
- * One row per scheme, group and role; the exit status is 0 only when every
- * row holds.
+ * BackgroundAlternate, the view's text 4.5:1 over the Selection laid over
+ * both view backgrounds, the window titles 4.5:1 on their own backgrounds,
+ * and the five shades Qt derives from the Window background no more
+ * colourful than that background by KTH_SHADE_SLACK. The shades are derived
+ * at the file's own [KDE] contrast, or KDE's default when it carries none,
+ * which is what KColorScheme reads. One row per scheme, group and role; the
+ * exit status is 0 only when every row holds.
  *
  * It reads the files rather than recomputing the palette on purpose: what is
  * measured is what Plasma will read, so a file edited after it was generated,
@@ -71,6 +75,13 @@ static void load(KthIni *ini, KthPalette *p)
 
 	for (int k = 0; k < KTH_NWM; k++)
 		p->wm[k] = parse_rgb(kth_ini_get(wm, kth_wm_key[k]));
+
+	const char *c = kth_ini_get(kth_ini_group(ini, "KDE", 0), "contrast");
+	char *end;
+	long v = c ? strtol(c, &end, 10) : 0;
+
+	p->contrast = c && end != c && !*end && v >= 0 && v <= 10 ?
+		(int)v : KTH_CONTRAST_KDE;
 }
 
 typedef struct {
@@ -86,8 +97,8 @@ static void ratio(int v)
 		printf("  %3d.%02d", v / 100, v % 100);
 }
 
-static void row(void *ctx, const char *group, const char *role, int a, int b,
-		int floor, int ok)
+static void row(void *ctx, const char *group, const char *role, int kind,
+		int a, int b, int floor, int ok)
 {
 	const Report *r = ctx;
 
@@ -96,8 +107,8 @@ static void row(void *ctx, const char *group, const char *role, int a, int b,
 	printf("%-14s %-24s %-20s", r->scheme, group, role);
 	ratio(a);
 	ratio(b);
-	printf("  >=%d.%02d  %s\n", floor / 100, floor % 100,
-	       ok ? "ok" : a < 0 ? "MISSING" : "FAIL");
+	printf("  %s%d.%02d  %s\n", kind == KTH_ROW_CHROMA ? "<=" : ">=",
+	       floor / 100, floor % 100, ok ? "ok" : a < 0 ? "MISSING" : "FAIL");
 }
 
 int kth_contrast(int nfile, char **files, int quiet)

@@ -104,8 +104,9 @@ void kdt_windows_free(KdtWindow *w, int n);
  * unmaximize, fullscreen, unfullscreen, keep-above or no-keep-above. 0 done,
  * 1 no such window, 2 no such action, -1 no session. */
 int kdt_window_act(const char *uuid, const char *action);
-/* The box a process belongs to, by its cgroup (app-kdos-<box>-<n>.scope):
- * 0 and the name in `out`, or -1 for a process in no box's scope. */
+/* The box a process belongs to, by its cgroup (app-kdos-<box>-<n>.scope) or,
+ * for a process in another mount namespace, by the KDOS_BOX in its
+ * environment: 0 and the name in `out`, or -1 for a process in no box. */
 int kdt_box_of_pid(long pid, char *out, size_t n);
 
 /* kdos-sfx (sfx.c): the machine's noises, and `render`, which writes the

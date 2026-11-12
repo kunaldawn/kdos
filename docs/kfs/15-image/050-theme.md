@@ -9,7 +9,8 @@ that read only a home; the global theme the first login applies comes from `/etc
 `script/phases/70_image/050_theme.sh` writes those into `/etc/skel`, from which
 [070_user.sh](070-user.md) makes every home. It first checks that the accent it seeds is the one
 compiled into libkcolor, checks what it wrote and the contrast of every installed scheme, and
-afterwards rebuilds two shared indexes that `fs/` feeds.
+seeds the login screen's look into the `sddm` account's home, and afterwards rebuilds two shared
+indexes that `fs/` feeds.
 
 ## The accent check
 
@@ -52,9 +53,26 @@ order:
 | `.config/qt5ct/qt5ct.conf` names a KDOS palette the image carries | Qt 5 applications, which have no Plasma platform theme and reach the accent only through qt5ct |
 | `kdos-theme contrast` over every `KDOS*.colors` | Every installed colour scheme clears the contrast floors; a palette edit that drops a role under 4.5:1 stops the image here |
 
+## The login screen's look
+
+<!-- kfs:include script/phases/70_image/050_theme.sh lines=70-96 pin=1bd98d0d94a8 -->
+
+The SDDM greeter runs as the `sddm` account, and the KDOS greeter theme takes its look from that
+account's home: the colour scheme, Plasma style and cursor from `~/.config/kdeglobals`, `plasmarc`
+and `kcminputrc`, and its background from `~/kdos-background.png`. One set per accent is built into
+`/usr/share/kdos/greeter/<accent>/` by [kdos-plasma-look](#port-kdos-plasma-look). On an
+installed machine the installer copies the installed accent's set, and `kdos theme` replaces it
+through `kdos-powerd`; on the live medium nothing chooses an accent, so the step copies the default
+accent's set into `/var/lib/sddm` here. A set missing a file stops the phase, as `kdos-powerd`
+refuses a half set. The home and everything in it are handed to the account, whose greeter KWin
+writes its output configuration into `~/.config`. The step then writes the default accent's name to
+`/etc/kdos/accent`, the machine's record of the accent the splash and the login screen wear, which
+`kdos-powerd` and the installer rewrite later; the Look and About pages read it to say what the
+screens before login wear.
+
 ## The two shared indexes
 
-<!-- kfs:include script/phases/70_image/050_theme.sh lines=70-91 pin=fbcf29e8da8b -->
+<!-- kfs:include script/phases/70_image/050_theme.sh lines=106-127 pin=fbcf29e8da8b -->
 
 `fs/` ships two kinds of file that reach their readers only through an index. KDOS's GSettings
 defaults, `fs/usr/share/glib-2.0/schemas/90_kdos.gschema.override`, take effect only once
@@ -72,7 +90,8 @@ compile: `glib-compile-schemas` then writes no index at all, and the
 ## What it leaves
 
 On the image, the seeded files under `/etc/skel`, which `070_user.sh` copies into
-`/home/kdos` and which `useradd -m` copies into an account made later; and
+`/home/kdos` and which `useradd -m` copies into an account made later; the greeter's set in
+`/var/lib/sddm`, owned by `sddm`; and
 `/usr/share/glib-2.0/schemas/gschemas.compiled` and `/usr/share/applications/mimeinfo.cache`,
 rewritten.
 

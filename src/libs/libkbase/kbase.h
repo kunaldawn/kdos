@@ -312,7 +312,8 @@ int kb_run_capture(const KbArgv *a, char *buf, size_t n);
  * stopped drawing to say something had stopped. Nothing here links a bus
  * library — `gdbus` is on every image for the portal — and a machine without
  * it silently raises nothing, which is what a machine with no notification
- * daemon should do.
+ * daemon should do. gdbus's output and its errors both go to /dev/null, so a
+ * refused toast prints nothing on the caller's terminal.
  */
 void kb_notify(const char *app, const char *summary, const char *body);
 /* Same, unbounded: stdout is appended to a growing buffer, NUL terminated,

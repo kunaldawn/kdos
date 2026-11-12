@@ -1,0 +1,144 @@
+Subject: Show the greeter on a Switch User display, on a VT of its own, and return to an autologin session
+
+With Autologin.Relogin=true every new display logs the autologin account
+in, the one SeatManager::switchToGreeter makes for Switch User included, and
+that login fails on a seat the account's session already holds. The Switch
+User display skips the autologin and shows the greeter.
+
+fetchAvailableVt() asks whether "ttySDDM_INITIAL_VT" is in use:
+SDDM_INITIAL_VT is a static const int, which the preprocessor cannot
+stringify, so the initial VT always looks free and a second display takes
+the VT of the running session. The name is built at run time instead.
+
+A password typed at that greeter returns to the account's own session only
+when that session's PAM service is "sddm"; a session that began as an
+autologin ("sddm-autologin") is not found, and the login starts a second
+session for the same account. Both services are matched.
+
+--- a/src/daemon/Display.cpp
++++ b/src/daemon/Display.cpp
+@@ -54,7 +54,6 @@
+ #include "config.h"
+ 
+ static int s_ttyFailures = 0;
+-#define STRINGIFY(x) #x
+ 
+ namespace SDDM {
+     bool isTtyInUse(const QString &desiredTty) {
+@@ -77,7 +76,7 @@
+     }
+ 
+     int fetchAvailableVt() {
+-        if (!isTtyInUse(QStringLiteral("tty" STRINGIFY(SDDM_INITIAL_VT)))) {
++        if (!isTtyInUse(QStringLiteral("tty%1").arg(SDDM_INITIAL_VT))) {
+             return SDDM_INITIAL_VT;
+         }
+         const auto vt = VirtualTerminal::currentVt();
+@@ -105,9 +104,10 @@
+         return ret;
+     }
+ 
+-    Display::Display(Seat *parent, DisplayServerType serverType)
++    Display::Display(Seat *parent, DisplayServerType serverType, bool greeterOnly)
+         : QObject(parent),
+         m_displayServerType(serverType),
++        m_greeterOnly(greeterOnly),
+         m_auth(new Auth(this)),
+         m_seat(parent),
+         m_socketServer(new SocketServer(this)),
+@@ -272,7 +272,10 @@
+         // log message
+         qDebug() << "Display server started.";
+ 
+-        if ((daemonApp->first || mainConfig.Autologin.Relogin.get()) &&
++        // A display made for Switch User shows the greeter: an autologin
++        // there would log in an account whose session already holds the seat.
++        if (!m_greeterOnly &&
++            (daemonApp->first || mainConfig.Autologin.Relogin.get()) &&
+             !mainConfig.Autologin.User.get().isEmpty()) {
+             // reset first flag
+             daemonApp->first = false;
+@@ -406,7 +409,9 @@
+             for(const SessionInfo &s : reply.value()) {
+                 if (s.userName == user) {
+                     OrgFreedesktopLogin1SessionInterface session(Logind::serviceName(), s.sessionPath.path(), QDBusConnection::systemBus());
+-                    if (session.service() == QLatin1String("sddm") && session.state() == QLatin1String("online")) {
++                    const QString service = session.service();
++                    if ((service == QLatin1String("sddm") || service == QLatin1String("sddm-autologin")) &&
++                        session.state() == QLatin1String("online")) {
+                         m_reuseSessionId = s.sessionId;
+                         break;
+                     }
+--- a/src/daemon/Display.h
++++ b/src/daemon/Display.h
+@@ -50,7 +50,7 @@
+         Q_ENUM(DisplayServerType)
+ 
+         static DisplayServerType defaultDisplayServerType();
+-        explicit Display(Seat *parent, DisplayServerType serverType);
++        explicit Display(Seat *parent, DisplayServerType serverType, bool greeterOnly = false);
+         ~Display();
+ 
+         DisplayServerType displayServerType() const;
+@@ -95,6 +95,7 @@
+         DisplayServerType m_displayServerType = X11DisplayServerType;
+ 
+         bool m_relogin { true };
++        bool m_greeterOnly { false };
+         bool m_started { false };
+ 
+         int m_terminalId = 0;
+--- a/src/daemon/Seat.cpp
++++ b/src/daemon/Seat.cpp
+@@ -44,17 +44,17 @@
+         return m_name;
+     }
+ 
+-    void Seat::createDisplay(Display::DisplayServerType serverType) {
++    void Seat::createDisplay(Display::DisplayServerType serverType, bool greeterOnly) {
+         //reload config if needed
+         mainConfig.load();
+ 
+         // create a new display
+         qDebug() << "Adding new display...";
+-        Display *display = new Display(this, serverType);
++        Display *display = new Display(this, serverType, greeterOnly);
+ 
+         // restart display on stop
+         connect(display, &Display::stopped, this, &Seat::displayStopped);
+-        connect(display, &Display::displayServerFailed, this, [this, display] {
++        connect(display, &Display::displayServerFailed, this, [this, display, greeterOnly] {
+             removeDisplay(display);
+ 
+             // If we failed to create a display with wayland or rootful x11, try with
+@@ -62,7 +62,7 @@
+             // since the alternative is a black screen
+             if (display->displayServerType() != Display::X11UserDisplayServerType) {
+                 qWarning() << "Failed to launch the display server, falling back to DisplayServer=x11-user";
+-                createDisplay(Display::X11UserDisplayServerType);
++                createDisplay(Display::X11UserDisplayServerType, greeterOnly);
+             } else if (m_displays.isEmpty()) {
+                 qWarning() << "Failed to launch a DisplayServer=x11-user session, aborting";
+                 QCoreApplication::instance()->exit(12);
+--- a/src/daemon/Seat.h
++++ b/src/daemon/Seat.h
+@@ -34,7 +34,7 @@
+         explicit Seat(const QString &name, QObject *parent = 0);
+ 
+         const QString &name() const;
+-        void createDisplay(Display::DisplayServerType serverType);
++        void createDisplay(Display::DisplayServerType serverType, bool greeterOnly = false);
+ 
+     public slots:
+         void removeDisplay(SDDM::Display* display);
+--- a/src/daemon/SeatManager.cpp
++++ b/src/daemon/SeatManager.cpp
+@@ -149,7 +149,7 @@
+             return;
+ 
+         // switch to greeter
+-        m_seats.value(name)->createDisplay(Display::defaultDisplayServerType());
++        m_seats.value(name)->createDisplay(Display::defaultDisplayServerType(), true);
+     }
+ 
+     void SDDM::SeatManager::logindSeatAdded(const QString& name, const QDBusObjectPath& objectPath)

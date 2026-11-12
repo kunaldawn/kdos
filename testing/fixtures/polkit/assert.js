@@ -39,9 +39,11 @@ var EXPECT = [
     ["org.freedesktop.NetworkManager.checkpoint-rollback",      "KKKKKK"],
     ["org.freedesktop.NetworkManager.sleep-wake",               "nnnnnn"],
     ["org.freedesktop.NetworkManager.reload",                   "KKKKKK"],
-    /* Modems and smart cards: allow_active upstream, no rule. */
-    ["org.freedesktop.ModemManager1.Device.Control",            "ynnynn"],
-    ["org.freedesktop.ModemManager1.Messaging",                 "ynnynn"],
+    /* Modems: ModemManager is built -Dpolkit=strict, so the person at the
+     * machine confirms with their own password; no rule. */
+    ["org.freedesktop.ModemManager1.Device.Control",            "SnnSnn"],
+    ["org.freedesktop.ModemManager1.Messaging",                 "SnnSnn"],
+    /* Smart cards: allow_active upstream, no rule. */
     ["org.debian.pcsc-lite.access_pcsc",                        "ynnynn"],
     ["org.debian.pcsc-lite.access_card",                        "ynnynn"],
     /* udisks2: removable drives are anybody's at the machine; internal

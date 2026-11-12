@@ -16,6 +16,7 @@
 #include "libdiscover_kdos_debug.h"
 
 #include <Category/Category.h>
+#include <Category/CategoryModel.h>
 #include <appstream/AppStreamUtils.h>
 #include <resources/StandardBackendUpdater.h>
 
@@ -29,6 +30,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QIcon>
 #include <QProcess>
 #include <QSaveFile>
 #include <QStandardPaths>
@@ -80,6 +82,30 @@ static QString binhostCatalogue()
     return (env.isEmpty() ? u"/var/lib/kdos/binhost"_s : env) + u"/swcatalog/xml/kdos-binhost.xml"_s;
 }
 
+// Debian applications the Debian lane never offers: one package name a
+// line, # for a comment. Each is one that cannot do its job from a box on
+// KWin's Wayland session, such as a magnifier or a pointer tool that works
+// only on an X server's own screen.
+static QString debianExcludePath()
+{
+    const QString env = qEnvironmentVariable("KDOS_DEBIAN_EXCLUDE");
+    return env.isEmpty() ? u"/usr/share/kdos/discover/debian-exclude"_s : env;
+}
+
+static QSet<QString> readDebianExclude()
+{
+    QSet<QString> out;
+    QFile f(debianExcludePath());
+    if (!f.open(QIODevice::ReadOnly))
+        return out;
+    for (const QByteArray &raw : f.readAll().split('\n')) {
+        const QString line = QString::fromUtf8(raw.left(raw.indexOf('#') < 0 ? raw.size() : raw.indexOf('#'))).trimmed();
+        if (!line.isEmpty())
+            out.insert(line);
+    }
+    return out;
+}
+
 // The catalogue roots: /usr/share/swcatalog, which holds Debian's DEP-11
 // catalogue and the image's kdos-ports one, or KDOS_SWCATALOG's
 // colon-separated list in its place for a test.
@@ -104,6 +130,7 @@ struct KdosBackend::Snapshot {
     QList<CatalogueListing> listing;
     bool listingOk = false;
     QList<CatalogueGroup> groups;
+    QHash<QString, ChainRow> chain; // base and runtime rows, from --chain
     QList<BoxRow> boxes;
     QList<PackRow> packs;
     QString packdError;
@@ -211,6 +238,8 @@ KdosBackend::KdosBackend(QObject *parent)
         m_catalogue = parseCatalogue(cat.readAll());
     m_context.catalogue = &m_catalogue;
     m_context.mediumPacks = mediumPacksDir();
+
+    m_debianExclude = readDebianExclude();
 
     QFile pending(pendingPath());
     if (pending.open(QIODevice::ReadOnly)) {
@@ -388,7 +417,39 @@ void KdosBackend::readHostCatalogues()
     m_binhostByPackage = readCatalogueFile(binhostCatalogue());
 }
 
-// The first stored icon file the component names, else its stock name.
+// A desktop-entry category to the Breeze icon Discover's own categories use.
+static QString categoryIcon(const QString &category)
+{
+    static const QHash<QString, QString> icons{
+        {u"AudioVideo"_s, u"applications-multimedia"_s},
+        {u"Development"_s, u"applications-development"_s},
+        {u"Education"_s, u"applications-education"_s},
+        {u"Game"_s, u"applications-games"_s},
+        {u"Graphics"_s, u"applications-graphics"_s},
+        {u"Network"_s, u"applications-internet"_s},
+        {u"Office"_s, u"applications-office"_s},
+        {u"Science"_s, u"applications-science"_s},
+        {u"Settings"_s, u"preferences-system"_s},
+        {u"System"_s, u"applications-system"_s},
+        {u"Utility"_s, u"applications-utilities"_s},
+    };
+    return icons.value(category, u"applications-other"_s);
+}
+
+// The icon of the first of the categories that has one of its own.
+static QString categoryIcon(const QStringList &categories)
+{
+    for (const QString &c : categories) {
+        const QString icon = categoryIcon(c);
+        if (icon != "applications-other"_L1)
+            return icon;
+    }
+    return u"applications-other"_s;
+}
+
+// The first stored icon file the component names, else its stock name when
+// the icon theme has it: Debian's icons are not installed on the host, and
+// a name the theme lacks is drawn as Discover's missing-icon fallback.
 static QString iconOf(const AppStream::Component &c)
 {
     QString stock;
@@ -398,7 +459,7 @@ static QString iconOf(const AppStream::Component &c)
             const QString path = icon.url().toLocalFile();
             if (!path.isEmpty() && QFileInfo::exists(path))
                 return path;
-        } else if (icon.kind() == AppStream::Icon::KindStock && stock.isEmpty()) {
+        } else if (icon.kind() == AppStream::Icon::KindStock && stock.isEmpty() && QIcon::hasThemeIcon(icon.name())) {
             stock = icon.name();
         }
     }
@@ -451,7 +512,7 @@ Entry KdosBackend::describeDebian(const AppStream::Component &c) const
     e.appstreamId = QString(); // kept off appstream://, which names host software
     enrichFromComponent(&e, c);
     if (e.icon.isEmpty())
-        e.icon = u"application-x-executable"_s;
+        e.icon = categoryIcon(e.categories);
     const QString box = boxNameForDebian(e.id);
     const auto b = m_context.boxes.constFind(box);
     if (b != m_context.boxes.constEnd()) {
@@ -504,7 +565,7 @@ QList<KdosResource *> KdosBackend::debianFor(const Filters &filter)
             continue;
         // A program the host has natively is never offered again in a box.
         const QString pkg = c.packageNames().value(0);
-        if (!isDebianPackage(pkg) || claimed.contains(pkg) || m_hostIds.contains(c.id()))
+        if (!isDebianPackage(pkg) || claimed.contains(pkg) || m_hostIds.contains(c.id()) || m_debianExclude.contains(pkg))
             continue;
         out << debianResource(c);
     }
@@ -538,7 +599,9 @@ void KdosBackend::refresh(std::function<void()> then)
         m_initialized = true;
         m_pending = 0;
         Q_EMIT fetchingUpdatesProgressChanged();
-        const auto callbacks = std::exchange(m_afterRefresh, {});
+        auto callbacks = std::exchange(m_afterRefresh, {});
+        if (m_poolReady)
+            callbacks << std::exchange(m_afterPool, {});
         if (m_refreshAgain) {
             m_refreshAgain = false;
             refresh();
@@ -547,7 +610,7 @@ void KdosBackend::refresh(std::function<void()> then)
             cb();
     };
 
-    snap->outstanding = 5;
+    snap->outstanding = 6;
     runTool(this, u"kdos-appbox"_s, {u"catalogue"_s}, [snap, landed](const QByteArray &out, bool ok) {
         snap->listing = parseCatalogueListing(out);
         snap->listingOk = ok;
@@ -555,6 +618,10 @@ void KdosBackend::refresh(std::function<void()> then)
     });
     runTool(this, u"kdos-appbox"_s, {u"catalogue"_s, u"--groups"_s}, [snap, landed](const QByteArray &out, bool) {
         snap->groups = parseGroupListing(out);
+        landed();
+    });
+    runTool(this, u"kdos-appbox"_s, {u"catalogue"_s, u"--chain"_s}, [snap, landed](const QByteArray &out, bool) {
+        snap->chain = parseChainListing(out);
         landed();
     });
     runTool(this, u"kdos-box"_s, {u"list"_s, u"--json"_s}, [snap, landed](const QByteArray &out, bool) {
@@ -650,25 +717,6 @@ static QString titleCase(const QString &id)
     return id.isEmpty() ? id : id.left(1).toUpper() + id.mid(1);
 }
 
-// A desktop-entry category to the Breeze icon Discover's own categories use.
-static QString categoryIcon(const QString &category)
-{
-    static const QHash<QString, QString> icons{
-        {u"AudioVideo"_s, u"applications-multimedia"_s},
-        {u"Development"_s, u"applications-development"_s},
-        {u"Education"_s, u"applications-education"_s},
-        {u"Game"_s, u"applications-games"_s},
-        {u"Graphics"_s, u"applications-graphics"_s},
-        {u"Network"_s, u"applications-internet"_s},
-        {u"Office"_s, u"applications-office"_s},
-        {u"Science"_s, u"applications-science"_s},
-        {u"Settings"_s, u"preferences-system"_s},
-        {u"System"_s, u"applications-system"_s},
-        {u"Utility"_s, u"applications-utilities"_s},
-    };
-    return icons.value(category, u"applications-other"_s);
-}
-
 static void applyBox(Entry *e, const BoxRow &b)
 {
     e->box = b.name;
@@ -693,9 +741,19 @@ void KdosBackend::apply(const Snapshot &snap)
     m_context.packs = medium;
     for (auto it = stored.cbegin(); it != stored.cend(); ++it)
         m_context.packs.insert(it.key(), it.value());
+    // A store box over its own image, `image:kdos/<name>`, has a container
+    // from its install on (kdos-appbox create runs podman create), so one
+    // listed "not created" is the profile an uninstall keeps. It is no box
+    // here: counted, it would mark its uninstalled application Installed
+    // (the Debian lane) or keep it on the Boxes page (the catalogue lane).
     m_context.boxes.clear();
-    for (const BoxRow &b : snap.boxes)
+    QList<BoxRow> boxes;
+    for (const BoxRow &b : snap.boxes) {
+        if (b.state == "not created"_L1 && b.base == u"image:kdos/"_s + b.name)
+            continue;
+        boxes << b;
         m_context.boxes.insert(b.name, b);
+    }
 
     QSet<QString> seen;
     QSet<QString> claimedBoxes;
@@ -747,6 +805,10 @@ void KdosBackend::apply(const Snapshot &snap)
             }
         }
         e.packOrigin = inStore ? u"store"_s : (m != medium.constEnd() ? u"medium"_s : QString());
+        // A row with no pack anywhere is built here, and the first build on a
+        // base or runtime builds that image too: its measured size counts.
+        if (e.packOrigin.isEmpty() && !l.installed)
+            e.size += unbuiltChainBytes(snap.chain, l.parent);
 
         const auto b = m_context.boxes.constFind(l.id);
         if (b != m_context.boxes.constEnd()) {
@@ -788,11 +850,20 @@ void KdosBackend::apply(const Snapshot &snap)
             e.categories << u"kdos-pending"_s;
         e.sizeIsEstimate = true;
         bool all = !g.members.isEmpty();
+        // Each base or runtime still to build counts once, however many of
+        // the set's applications sit on it.
+        QHash<QString, ChainRow> chain = snap.chain;
         for (const QString &mid : g.members) {
             all &= installed.value(mid);
             for (const CatalogueListing &l : snap.listing) {
-                if (l.id == mid)
-                    e.size += l.bytes;
+                if (l.id != mid)
+                    continue;
+                e.size += l.bytes;
+                if (l.installed || stored.contains(l.id) || medium.contains(l.id))
+                    continue;
+                e.size += unbuiltChainBytes(chain, l.parent);
+                for (QString at = l.parent; chain.contains(at) && !chain[at].built; at = chain[at].parent)
+                    chain[at].built = true;
             }
         }
         e.state = all ? EntryState::Installed : EntryState::None;
@@ -852,7 +923,7 @@ void KdosBackend::apply(const Snapshot &snap)
     }
 
     // ── Debian boxes, eagerly: their resource is what the Installed page lists ──
-    for (const BoxRow &b : snap.boxes) {
+    for (const BoxRow &b : std::as_const(boxes)) {
         if (!b.name.startsWith("deb."_L1))
             continue;
         QString pkg = b.name.mid(4);
@@ -868,14 +939,14 @@ void KdosBackend::apply(const Snapshot &snap)
         e.id = pkg;
         e.packages = {pkg};
         e.name = pkg;
-        e.icon = u"application-x-executable"_s;
+        e.icon = categoryIcon(QString());
         e.state = EntryState::Installed;
         applyBox(&e, b);
         upsert(e, &seen);
     }
 
     // ── boxes nothing above accounts for ──
-    for (const BoxRow &b : snap.boxes) {
+    for (const BoxRow &b : std::as_const(boxes)) {
         if (claimedBoxes.contains(b.name))
             continue;
         Entry e;
@@ -975,6 +1046,12 @@ void KdosBackend::apply(const Snapshot &snap)
 
     if (!snap.packdError.isEmpty())
         qCDebug(LIBDISCOVER_BACKEND_KDOS_LOG) << "kdos-packd:" << snap.packdError;
+    // The first box made, or the last one removed, adds or drops the Boxes
+    // page: Discover asks for the categories again.
+    if (m_categoriesRead && !m_context.boxes.isEmpty() != m_listedBoxes) {
+        m_listedBoxes = !m_context.boxes.isEmpty();
+        QTimer::singleShot(0, CategoryModel::global(), &CategoryModel::populateCategories);
+    }
     m_context.mediumPacks = mediumPacksDir();
     Q_EMIT contentsChanged();
     Q_EMIT updatesCountChanged();
@@ -1047,11 +1124,39 @@ ResultsStream *KdosBackend::resourceForUrl(const QUrl &url)
     if (url.isLocalFile())
         return resourceForFile(url);
 
+    // A link is answered from what the machine holds, so it waits for the
+    // first refresh, and an appstream:// link for the AppStream pool too:
+    // Discover opened on a link starts the backend with nothing read, and an
+    // answer then would be "no entry" for an application that is there.
+    auto *stream = new ResultsStream(u"KdosStream-url"_s);
+    QPointer<ResultsStream> guard(stream);
+    auto answer = [this, guard, url] {
+        if (!guard)
+            return;
+        const QVector<StreamResult> found = resourcesForUrl(url);
+        if (!found.isEmpty())
+            Q_EMIT guard->resourcesFound(found);
+        guard->finish();
+    };
+    const bool needsPool = url.scheme() == "appstream"_L1;
+    if (m_initialized && (m_poolReady || !needsPool))
+        QTimer::singleShot(0, stream, answer);
+    else if (needsPool)
+        m_afterPool << answer;
+    else
+        m_afterRefresh << answer;
+    return stream;
+}
+
+QVector<StreamResult> KdosBackend::resourcesForUrl(const QUrl &url)
+{
     QVector<StreamResult> found;
     if (url.scheme() == "appstream"_L1) {
         const QStringList ids = AppStreamUtils::appstreamIds(url);
+        // The entry's own id: appstreamId() makes one up for a resource
+        // without, which no link names.
         for (KdosResource *res : std::as_const(m_resources)) {
-            const QString asid = res->appstreamId();
+            const QString asid = res->entry().appstreamId;
             if (!asid.isEmpty() && ids.contains(asid, Qt::CaseInsensitive))
                 found << StreamResult{res, 0};
         }
@@ -1074,7 +1179,7 @@ ResultsStream *KdosBackend::resourceForUrl(const QUrl &url)
                             break;
                         }
                     }
-                    if (!res && c.kind() == AppStream::Component::KindDesktopApp)
+                    if (!res && c.kind() == AppStream::Component::KindDesktopApp && !m_debianExclude.contains(pkg))
                         res = debianResource(c);
                     if (res && !found.contains(StreamResult{res, 0}))
                         found << StreamResult{res, 0};
@@ -1086,7 +1191,7 @@ ResultsStream *KdosBackend::resourceForUrl(const QUrl &url)
         if (auto *res = m_resources.value(key))
             found << StreamResult{res, 0};
     }
-    return new ResultsStream(u"KdosStream-url"_s, found);
+    return found;
 }
 
 ResultsStream *KdosBackend::resourceForFile(const QUrl &url)
@@ -1116,6 +1221,16 @@ ResultsStream *KdosBackend::resourceForFile(const QUrl &url)
             const Selection sel = parseSelection(read(u"SELECTION"_s));
             const QList<IndexRow> index = parsePackIndex(read(u"PACKAGES"_s));
             const bool signedIndex = root->entry(u"PACKAGES.sig"_s) != nullptr;
+            if (sel.ids.isEmpty()) {
+                // A tar with no SELECTION naming an application is no set:
+                // its page says so, and installPlan refuses it.
+                e.name = fi.fileName();
+                e.summary = i18n("This file is not a KDOS set.");
+                e.signature = u"refused"_s;
+                QSet<QString> seen;
+                auto *res = upsert(e, &seen);
+                return new ResultsStream(u"KdosStream-ktar"_s, {StreamResult{res, 0}});
+            }
             e.members = sel.ids;
             QStringList names;
             for (const QString &id : sel.ids) {
@@ -1141,6 +1256,7 @@ ResultsStream *KdosBackend::resourceForFile(const QUrl &url)
         } else {
             e.name = fi.fileName();
             e.summary = i18n("This file is not a readable .ktar archive.");
+            e.signature = u"refused"_s;
         }
         QSet<QString> seen;
         auto *res = upsert(e, &seen);
@@ -1152,7 +1268,20 @@ ResultsStream *KdosBackend::resourceForFile(const QUrl &url)
     auto *stream = new ResultsStream(u"KdosStream-kpack"_s);
     const QString abs = fi.absoluteFilePath();
     runTool(this, u"kdos-pack"_s, {u"extract-meta"_s, abs}, [this, stream, abs](const QByteArray &metaOut, bool ok) {
+        // A file kdos-pack cannot read is still a page, one that says what
+        // it is not; an empty answer would drop Discover back on Home.
         if (!ok || metaOut.isEmpty()) {
+            Entry e;
+            e.lane = Lane::PackFile;
+            e.path = abs;
+            e.name = QFileInfo(abs).fileName();
+            e.summary = i18n("This file is not a KDOS pack, or it is damaged.");
+            e.icon = u"package-x-generic"_s;
+            e.signature = u"refused"_s;
+            e.size = quint64(QFileInfo(abs).size());
+            QSet<QString> seen;
+            auto *res = upsert(e, &seen);
+            Q_EMIT stream->resourcesFound({StreamResult{res, 0}});
             stream->finish();
             return;
         }
@@ -1230,6 +1359,17 @@ QList<std::shared_ptr<Category>> KdosBackend::category() const
             + "</Category></Include></Menu>\n";
     }
     xml.replace("<!-- kdos-sets -->", sets);
+    // The Boxes page exists only while a box does. Discover reads the
+    // categories once, when the backend loads and before the first refresh
+    // lands, so a box profile on disk counts as well; apply() has Discover
+    // read them again when the answer changes.
+    m_listedBoxes = hasBoxes();
+    m_categoriesRead = true;
+    if (m_listedBoxes) {
+        xml.replace("<!-- kdos-boxes -->",
+                    "<Menu><Name>Boxes</Name><Icon>utilities-terminal</Icon>"
+                    "<Include><Category>kdos-box</Category></Include></Menu>");
+    }
     // The page exists only while the installer's record does.
     if (!m_chosenAtInstall.isEmpty()) {
         xml.replace("<!-- kdos-pending -->",
@@ -1251,6 +1391,16 @@ QList<std::shared_ptr<Category>> KdosBackend::category() const
         qCWarning(LIBDISCOVER_BACKEND_KDOS_LOG) << "categories:" << reader.errorString() << reader.lineNumber();
     Category::sortCategories(ret);
     return ret;
+}
+
+bool KdosBackend::hasBoxes() const
+{
+    if (!m_context.boxes.isEmpty())
+        return true;
+    if (m_initialized)
+        return false;
+    const QDir profiles(QDir::home().filePath(u".config/kdos/boxes"_s));
+    return !profiles.entryList({u"*.conf"_s}, QDir::Files).isEmpty();
 }
 
 InlineMessage *KdosBackend::explainDysfunction() const

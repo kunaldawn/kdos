@@ -248,7 +248,7 @@ and to the system log, tagged `kdos-timer-NAME`:
 
 ```bash
 sudo cat /run/kdos-svc.kdos-timer-NAME.log
-grep kdos-timer-NAME /var/log/messages
+sudo grep kdos-timer-NAME /var/log/messages
 ```
 
 **A user job never fires.** `service --user status timers` must say the service runs; its log is

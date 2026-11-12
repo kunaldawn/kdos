@@ -18,11 +18,10 @@
 # ---------------------------------
 
 [Default Applications]
-# THE ARCHIVES NOTHING ELSE ON THIS IMAGE OPENS. Ark has no reader for rar,
-# and there is no unrar here, so `kdos-openarchive` extracts rar and the comic
-# books packed as 7z or rar. Only these families are listed: they are what
-# `ouch` reads AND what shared-mime-info can name, and a row for a type the
-# image cannot produce is one nobody can tell is dead.
-application/vnd.rar=kdos-openarchive.desktop
+# THE ARCHIVES NOTHING ELSE ON THIS IMAGE OPENS. Okular's comic book
+# generator needs an unrar this image does not have, so `kdos-openarchive`
+# extracts the comic books packed as 7z or rar. Only these types are
+# listed: they are what `ouch` reads AND what shared-mime-info can name, and
+# a row for a type the image cannot produce is one nobody can tell is dead.
 application/x-cb7=kdos-openarchive.desktop
 application/vnd.comicbook-rar=kdos-openarchive.desktop

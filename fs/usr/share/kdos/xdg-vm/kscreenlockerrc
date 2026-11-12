@@ -12,7 +12,11 @@
 # FIRST in XDG_CONFIG_DIRS, and only in a session that runs in a virtual
 # machine, so it outranks /etc/xdg there; the person's own choice in
 # ~/.config still outranks it. Meta+L and lock-on-resume still lock.
+#
+# Timeout=0 is what the Screen Locking page reads as "Never"; with only
+# Autolock off it would show the 10 minutes inherited from /etc/xdg.
 # ---------------------------------
 
 [Daemon]
 Autolock=false
+Timeout=0

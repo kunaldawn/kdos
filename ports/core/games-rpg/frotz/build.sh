@@ -48,6 +48,7 @@ Comment=Play a Z-machine text adventure
 Exec=frotz %f
 Icon=input-gaming
 Terminal=true
+NoDisplay=true
 Categories=Game;AdventureGame;
 MimeType=application/x-zmachine;application/x-blorb;
 Keywords=text;adventure;interactive;fiction;zmachine;infocom;story;frotz;

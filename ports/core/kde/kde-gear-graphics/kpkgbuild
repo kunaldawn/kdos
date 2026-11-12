@@ -14,4 +14,4 @@ release     = 1
 description = KDE Gear graphics: painting, scanning, image browsing, colour tools and camera access
 homepage    = https://github.com/kunaldawn/kdos
 license     = MIT
-depends     = kolourpaint skanlite skanpage koko kruler kcolorchooser kontrast kimagemapeditor kgraphviewer kamera qrca arianna colord-kde
+depends     = kolourpaint skanlite skanpage koko kruler kcolorchooser kontrast kimagemapeditor kgraphviewer kamera qrca arianna

@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/no-idle-exit.patch"
+
 ./configure \
 	--prefix=/usr \
 	--libdir=/usr/lib \
@@ -22,7 +24,7 @@
 	--with-cupsd-file-perm=0755 \
 	--with-cups-user=lp \
 	--with-cups-group=lp \
-	--with-system-groups=lpadmin \
+	--with-system-groups="lpadmin root" \
 	--with-domainsocket=/run/cups/cups.sock \
 	--enable-acl \
 	--enable-dbus \

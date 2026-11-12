@@ -124,27 +124,22 @@ private Q_SLOTS:
         QVERIFY(Kdos::ktarSets(d + QStringLiteral("/missing"), 10, 4096).isEmpty());
     }
 
-    void hasUsershare()
+    void startAllowed()
     {
-        QTemporaryDir root;
-        QVERIFY(root.isValid());
-        const QString d = root.path();
+        QList<qint64> starts;
 
-        QVERIFY(!Kdos::hasUsershare(d, 4096));
-        QVERIFY(!Kdos::hasUsershare(d + QStringLiteral("/missing"), 4096));
+        for (int i = 0; i < 5; ++i) {
+            QVERIFY(Kdos::startAllowed(starts, 1000 + i * 1000, 5, 60000));
+        }
+        QVERIFY(!Kdos::startAllowed(starts, 10000, 5, 60000));
+        QCOMPARE(starts.size(), 5);
 
-        /* What `net usershare add` leaves while it writes, and what is not a
-         * share at all. */
-        write(d + QStringLiteral("/:tmpAbC123"), "path=/home/a/Music\n");
-        write(d + QStringLiteral("/.hidden"), "x");
-        QVERIFY(QDir(d).mkdir(QStringLiteral("subdir")));
-        QVERIFY(QFile::link(d + QStringLiteral("/:tmpAbC123"), d + QStringLiteral("/linked")));
-        QVERIFY(!Kdos::hasUsershare(d, 4096));
-
-        /* The rename that makes it a share. */
-        QVERIFY(QFile::rename(d + QStringLiteral("/:tmpAbC123"), d + QStringLiteral("/music")));
-        QVERIFY(Kdos::hasUsershare(d, 4096));
-        QVERIFY(!Kdos::hasUsershare(d, 0));
+        /* The first start leaves the window at 61000, and makes room for one. */
+        QVERIFY(!Kdos::startAllowed(starts, 60999, 5, 60000));
+        QVERIFY(Kdos::startAllowed(starts, 61000, 5, 60000));
+        QVERIFY(!Kdos::startAllowed(starts, 61001, 5, 60000));
+        QVERIFY(Kdos::startAllowed(starts, 200000, 5, 60000));
+        QCOMPARE(starts.size(), 1);
     }
 };
 

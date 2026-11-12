@@ -1,0 +1,18 @@
+Subject: Start KSystemLog as the calling user, not through kdesu as root
+
+X-KDE-SubstituteUID makes KIO start the program through kdesu as root.
+kdesu_stub clears XDG_RUNTIME_DIR and passes the Wayland socket name as
+DISPLAY, so on a Wayland session the root process reaches no display
+and Qt aborts. Without the key the viewer runs as the user and reads the
+logs that user may read.
+
+--- a/src/org.kde.ksystemlog.desktop
++++ b/src/org.kde.ksystemlog.desktop
+@@ -4,7 +4,6 @@
+ Icon=utilities-log-viewer
+ Categories=Qt;KDE;System;Monitor;
+ X-DocPath=ksystemlog/index.html
+-X-KDE-SubstituteUID=true
+ Keywords=log;logfile;system messages;system log;kernel log;authentication log;X.org log;journald log;services logs;Event Viewer;eventvwr;eventlog;
+ Keywords[ar]=سجل;رسائل النظام;رسائل;سجل النواة;سجل خادم العرض;عارض الأحداث;سجل الخدمات;
+ Keywords[az]=jurnal;jurnal faylı;sistem ismarıcı;sistem jurnalı;nüvə jurnalı;kimlik doğrulaması jurnalı;X.org jurnalı;journald jurnalı;xidmətlər jurnalı;Hadisələrə Baxış;eventvwr;hadisələr jurnalı;

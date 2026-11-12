@@ -10,6 +10,7 @@
 # ---------------------------------
 
 patch -p1 -i "$PORT_SRC/podofo-1.patch"
+patch -p1 -i "$PORT_SRC/app-id.patch"
 
 meson setup build --prefix=/usr --sysconfdir=/etc --libdir=lib \
 	--buildtype=release
@@ -27,7 +28,7 @@ Icon=org.horizon_eda.HorizonEDA
 Terminal=false
 Categories=GTK;Development;Engineering;Electronics;
 Keywords=pcb;schematic;eda;electronics;layout;gerber;
-StartupWMClass=org.horizon_eda.HorizonEDA.pool_prj_mgr
+StartupWMClass=org.horizon_eda.HorizonEDA
 DESKTOP
 chmod 644 "$PKG/usr/share/applications/org.horizon_eda.HorizonEDA.desktop"
 

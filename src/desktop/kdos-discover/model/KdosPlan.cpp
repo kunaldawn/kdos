@@ -180,12 +180,16 @@ Plan installPlan(const Entry &e, const PlanContext &ctx)
     case Lane::Archive:
         if (!fileArgumentOk(e.path))
             return refuse(i18n("%1 is not a readable file.", e.path));
+        if (e.members.isEmpty())
+            return refuse(i18n("%1 is not a KDOS set: it names no application to import.", e.path));
         plan.steps << run(u"kdos-appbox"_s, {u"import"_s, e.path}, Meter::AppboxImport, qMax(1, int(e.members.size())));
         return plan;
 
     case Lane::PackFile:
         if (!fileArgumentOk(e.path))
             return refuse(i18n("%1 is not a readable file.", e.path));
+        if (e.signature == "refused"_L1)
+            return refuse(i18n("kdos-pack refused %1: it is not a KDOS pack, or its payload or its signature does not verify.", e.path));
         if (!isSafeId(e.id))
             return refuse(i18n("%1 does not name a valid pack id.", e.path));
         importPackFile(plan, e.path, e.id, e.kind);
@@ -206,14 +210,14 @@ Plan removePlan(const Entry &e, const PlanContext &ctx)
         const auto pack = ctx.packs.constFind(e.id);
         const bool stored = pack != ctx.packs.constEnd() && pack->origin == "store"_L1;
         if (box != ctx.boxes.constEnd() && box->base.startsWith("pack:"_L1)) {
-            plan.steps << run(u"kdos-box"_s, {u"remove"_s, box->name});
+            plan.steps << run(u"kdos-box"_s, {u"stop"_s, box->name}) << run(u"kdos-box"_s, {u"remove"_s, box->name});
             if (stored)
                 plan.steps << packd(u"remove"_s, e.id);
             plan.steps << launchers();
             return plan;
         }
         if (box != ctx.boxes.constEnd()) {
-            plan.steps << run(u"kdos-appbox"_s, {u"uninstall"_s, e.id});
+            plan.steps << run(u"kdos-box"_s, {u"stop"_s, box->name}) << run(u"kdos-appbox"_s, {u"uninstall"_s, e.id});
             return plan;
         }
         if (stored && pack->kind == "data"_L1) {
@@ -237,6 +241,9 @@ Plan removePlan(const Entry &e, const PlanContext &ctx)
         const QString pkg = e.packages.value(0);
         if (!isDebianPackage(pkg))
             return refuse(i18n("“%1” is not a Debian package name.", pkg));
+        const QString box = boxNameForDebian(pkg);
+        if (ctx.boxes.contains(box))
+            plan.steps << run(u"kdos-box"_s, {u"stop"_s, box});
         plan.steps << run(u"kdos-appbox"_s, {u"uninstall"_s, u"deb:"_s + pkg});
         return plan;
     }
@@ -247,7 +254,7 @@ Plan removePlan(const Entry &e, const PlanContext &ctx)
         if (e.packOrigin != "store"_L1)
             return refuse(i18n("%1 is on the medium; nothing of it is installed.", e.name));
         if (e.kind == "app"_L1 && ctx.boxes.contains(boxNameForPack(e.id)))
-            plan.steps << run(u"kdos-box"_s, {u"remove"_s, boxNameForPack(e.id)});
+            plan.steps << run(u"kdos-box"_s, {u"stop"_s, boxNameForPack(e.id)}) << run(u"kdos-box"_s, {u"remove"_s, boxNameForPack(e.id)});
         if (e.kind == "data"_L1)
             plan.steps << packd(u"ungraft"_s, e.id);
         plan.steps << packd(u"remove"_s, e.id);

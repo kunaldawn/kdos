@@ -2,8 +2,7 @@
 
 libgusb wraps [libusb](#port-libusb) in GObject: a `GUsbContext` that enumerates devices and
 signals hot-plug, and `GUsbDevice` objects with synchronous and asynchronous transfers. Its
-consumers are [colord](#port-colord), which talks to colorimeters through it, and
-[libfprint](#port-libfprint), whose fingerprint reader drivers are written on it. The package carries
+consumer is [libfprint](#port-libfprint), whose fingerprint reader drivers are written on it. The package carries
 the GObject Introspection typelib, the Vala API and the `gusbcmd` tool.
 
 ## Flags

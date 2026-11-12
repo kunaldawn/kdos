@@ -95,7 +95,11 @@ running text links to its package page, as in [pv](#port-pv) or [zlib](#port-zli
 
 A link into [the KDOS book](../../kdos/README.md) leads to the chapter that explains a mechanism.
 This book follows such a link with no more than a sentence of its own about the same subject. In
-the rendered book, such a link, and a link to a file of the tree, opens the file on GitHub.
+the book `make book` renders, such a link, and a link to a file of the tree, opens the file on
+GitHub. In the copy installed under `/usr/share/doc/kfs`, a link into the KDOS book opens that
+book's installed page under `/usr/share/doc/kdos`, at the same heading, so it works offline; a link
+to any other file of the tree still opens on GitHub, because the image carries no copy of the
+recipes, the phase lists or the sources.
 
 ## Notes
 

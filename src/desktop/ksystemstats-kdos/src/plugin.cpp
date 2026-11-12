@@ -58,9 +58,12 @@ KSysGuard::SensorProperty *makeProperty(KSysGuard::SensorObject *o, const QStrin
     return p;
 }
 
+/* A string sensor's unit is UnitInvalid: libksysguard's formatter shows only
+ * that unit's value as text, and formats UnitNone as a number, so a string
+ * under it reads "0". */
 KSysGuard::SensorProperty *makeText(KSysGuard::SensorObject *o, const QString &id, const QString &name)
 {
-    return makeProperty(o, id, name, KSysGuard::UnitNone, QMetaType::QString);
+    return makeProperty(o, id, name, KSysGuard::UnitInvalid, QMetaType::QString);
 }
 
 KSysGuard::AggregateSensor *makeTotal(KSysGuard::SensorObject *all, const QString &id, const QString &name, KSysGuard::Unit unit)
@@ -121,7 +124,7 @@ BoxObject::BoxObject(const QString &boxName, KSysGuard::SensorContainer *parent)
     m_cpu->setMax(100);
 
     m_memory = makeProperty(this, QStringLiteral("memory"), i18nc("@title", "Memory"), KSysGuard::UnitByte, QMetaType::LongLong);
-    m_memory->setDescription(i18nc("@info", "Memory charged to the box's cgroup, page cache included"));
+    m_memory->setDescription(i18nc("@info", "Memory charged to the box's cgroup, page cache included, or its processes' proportional share when it has no cgroup"));
     m_memoryLimit = makeProperty(this, QStringLiteral("memoryLimit"), i18nc("@title", "Memory Limit"), KSysGuard::UnitByte, QMetaType::LongLong);
     m_memoryLimit->setDescription(i18nc("@info", "The box's memory limit from its profile; 0 when it has none"));
     m_memory->setMax(m_memoryLimit);
@@ -168,7 +171,8 @@ void BoxObject::sample(const CgroupCounters &now, qint64 nowMs, int cpus)
     if (m_lastMs >= 0 && nowMs > m_lastMs) {
         const double secs = double(nowMs - m_lastMs) / 1000.0;
         /* A counter that went backwards is a box restarted under the same
-         * name between two samples: a fresh scope, not negative use. */
+         * name between two samples, or a box counted by its processes that
+         * lost one: a fresh start, not negative use, and no rate this time. */
         if (now.cpuUsec >= 0 && m_last.cpuUsec >= 0 && now.cpuUsec >= m_last.cpuUsec) {
             const double busy = double(now.cpuUsec - m_last.cpuUsec) / 1e6;
             m_cpu->setValue(qBound(0.0, busy / (secs * qMax(1, cpus)) * 100.0, 100.0));
@@ -219,9 +223,17 @@ KdosPlugin::KdosPlugin(QObject *parent, const QVariantList &args)
     : KSysGuard::SensorPlugin(parent, args)
     , m_container(new KSysGuard::SensorContainer(QStringLiteral("kdos"), i18nc("@title", "KDOS"), this))
     , m_cgroupRoot(envOr("KDOS_CGROUP_ROOT", QStringLiteral("/sys/fs/cgroup")))
+    , m_procRoot(envOr("KDOS_PROC_ROOT", QStringLiteral("/proc")))
     , m_energySocket(envOr("KDOS_ENERGYD_SOCKET", QStringLiteral("/run/kdos-energyd.sock")))
     , m_slotFile(envOr("KDOS_BOOTSTATE_PUB", QStringLiteral("/run/kdos/bootstate.json")))
 {
+    /* A node of the sensor tree takes its title only from an object at its
+     * exact path, and `box/<box>` and `energy/<app>` make `kdos/box` and
+     * `kdos/energy` nodes: without these two, sensorless objects, the picker
+     * shows those paths as the groups' names. */
+    new KSysGuard::SensorObject(QStringLiteral("box"), i18nc("@title", "Boxes"), m_container);
+    new KSysGuard::SensorObject(QStringLiteral("energy"), i18nc("@title", "Energy Impact"), m_container);
+
     m_allBoxes = new KSysGuard::SensorObject(QStringLiteral("box/all"), i18nc("@title", "All Boxes"), m_container);
     m_boxCount = makeProperty(m_allBoxes, QStringLiteral("boxes"), i18nc("@title", "Running Boxes"), KSysGuard::UnitNone, QMetaType::Int);
     m_boxCount->setValue(0);
@@ -325,6 +337,12 @@ void KdosPlugin::updateBoxes(qint64 nowMs)
             continue;
         }
         byBox.insert(s.box, byBox.contains(s.box) ? kdosAddCounters(byBox.value(s.box), c) : c);
+    }
+    /* A box with no scope — every box where elogind keeps the session's
+     * cgroup.procs root's — is found by its processes instead. */
+    const QHash<QString, CgroupCounters> byProcess = kdosBoxesByProcess(m_procRoot, QStringLiteral("self"), ::getuid(), byBox.keys());
+    for (auto it = byProcess.cbegin(); it != byProcess.cend(); ++it) {
+        byBox.insert(it.key(), it.value());
     }
 
     bool added = false;

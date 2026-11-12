@@ -26,7 +26,7 @@ install -Dm644 surfer/assets/com.gitlab.surferproject.surfer.png \
 	"$PKG/usr/share/icons/hicolor/256x256/apps/surfer.png"
 
 install -d "$PKG/usr/share/applications"
-cat > "$PKG/usr/share/applications/surfer.desktop" <<'DESKTOP'
+cat > "$PKG/usr/share/applications/org.surfer-project.surfer.desktop" <<'DESKTOP'
 [Desktop Entry]
 Type=Application
 Name=Surfer
@@ -40,4 +40,4 @@ StartupWMClass=org.surfer-project.surfer
 Categories=Development;Electronics;Engineering;
 Keywords=waveform;vcd;fst;ghw;simulation;verilog;vhdl;fpga;gtkwave;
 DESKTOP
-chmod 644 "$PKG/usr/share/applications/surfer.desktop"
+chmod 644 "$PKG/usr/share/applications/org.surfer-project.surfer.desktop"

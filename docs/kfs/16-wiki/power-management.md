@@ -179,7 +179,7 @@ the next `tlp start` or boot. `sudo tlp-stat -s` shows which profile is in force
    it stopped, saying so once in the system log:
 
    ```bash
-   grep thermald /var/log/messages
+   sudo grep thermald /var/log/messages
    ```
 
 ### Seeing which application uses the processor's power
@@ -221,7 +221,7 @@ members of `wheel` may read it.
 session: an SSH login, or a session switched away from. Use `sudo`, or suspend from the desktop.
 
 **Suspend does nothing.** Something holds a sleep inhibitor; list them as in [Tips](#tips). Read
-elogind's log: `grep elogind /var/log/messages`.
+elogind's log: `sudo grep elogind /var/log/messages`.
 
 **The machine suspends but the network is gone after waking.** NetworkManager follows elogind's
 `PrepareForSleep`; check that both run (`service status networkmanager`, `service status

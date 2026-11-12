@@ -45,6 +45,32 @@ libtaskmanager's `SandboxEngine` and `SandboxName` roles from
 [plasma-workspace](#port-plasma-workspace)'s patch of the same name; a libtaskmanager without them
 reads as empty and the tooltip draws no line. It is proposed upstream with it.
 
+`screenreader-save.patch` makes the screen reader's kded module write the setting to `kaccessrc`
+when it is switched over D-Bus with `setEnabled`, as its `toggle` (the Meta+Alt+S chord) already
+does. KDOS has no systemd user manager, so the module keeps Orca's on-or-off in `kaccessrc` and
+starts Orca at login only when the file says it is on; without the save, a switch that calls
+`setEnabled`, such as the one on the Welcome tour's Accessibility page, is forgotten at the next
+login.
+It is to be offered upstream.
+
+`lockscreen-clock.patch` gives the lock screen a clock of its own, `MonoClock.qml`: Breeze's clock
+in the fixed-width face with tabular figures, as the KDOS login screen draws it, so the login
+screen, the splash and the lock screen are one look. It is placed in the top 19% of the screen,
+the band above the centred mark of the KDOS wallpapers (62% of the height tall, see
+[kdos-wallpapers](#port-kdos-wallpapers)); stock Breeze centres the clock between the top and the
+user list, which puts the date across the penguin's head. The date is left out when the time and
+the date together do not fit the band, as on a screen 768 pixels tall. The time is drawn with
+plain spaces: `en_US` and other locales put U+202F before AM or PM, JetBrains Mono has no glyph
+for it, and the fallback face's line makes the time 203 pixels tall instead of 127 at 1080, which
+leaves no room for the date. A wallpaper whose mark
+changes size or place has to change this band with it. It is to be offered upstream.
+
+`panel-opacity.patch` hides the Opacity group of Panel Settings when the Plasma style turns
+adaptive transparency off, as the `kdos` style does. Plasma reports such a panel as Translucent
+whatever the style draws, so the group would show a disabled "Translucent" over the opaque KDOS
+panel.
+It is to be offered upstream.
+
 ## Notes
 
 Two of the settings modules talk to system services that this package does not provide. Date & Time

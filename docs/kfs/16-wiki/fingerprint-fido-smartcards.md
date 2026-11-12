@@ -33,7 +33,7 @@ gone at power-off unless a persistence store exists; see
 Written by the `sudo` port's `build.sh`. The first line tries an enrolled finger, and the leading
 `-` skips the line when `pam_fprintd.so` is missing:
 
-<!-- kfs:include ports/core/auth/sudo/build.sh lines=35-53 pin=8ee863bc4592 -->
+<!-- kfs:include ports/core/auth/sudo/build.sh lines=36-54 pin=8ee863bc4592 -->
 
 `system-auth`, which it includes, is written by the `pam` port's `build.sh`:
 

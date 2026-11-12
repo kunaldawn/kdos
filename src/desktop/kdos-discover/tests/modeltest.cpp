@@ -42,6 +42,7 @@ private Q_SLOTS:
     void catalogueChains();
     void catalogueListing();
     void groupListing();
+    void chainListing();
     void packd();
     void meta();
     void boxesJson();
@@ -120,6 +121,24 @@ void ModelTest::groupListing()
     QCOMPARE(g.size(), 2);
     QCOMPARE(g[0].members, (QStringList{u"app.scribus"_s, u"app.kcalc"_s, u"data.tess"_s}));
     QVERIFY(g[1].members.isEmpty());
+}
+
+void ModelTest::chainListing()
+{
+    const QHash<QString, ChainRow> c = parseChainListing(
+        "base\t200000000\t-\tbuilt\n"
+        "rt-qt\t60000000\tbase\tabsent\n"
+        "rt-kde\t150000000\trt-qt\tabsent\n"
+        "bad id\t1\t-\tabsent\n"
+        "short\t1\n");
+    QCOMPARE(c.size(), 3);
+    QVERIFY(c.value(u"base"_s).built);
+    QCOMPARE(c.value(u"rt-kde"_s).parent, u"rt-qt"_s);
+    // An application on rt-kde with the base built pays for both runtimes.
+    QCOMPARE(unbuiltChainBytes(c, u"rt-kde"_s), quint64(210000000));
+    QCOMPARE(unbuiltChainBytes(c, u"base"_s), quint64(0));
+    QCOMPARE(unbuiltChainBytes(c, u"rt-unknown"_s), quint64(0));
+    QCOMPARE(unbuiltChainBytes(c, QString()), quint64(0));
 }
 
 void ModelTest::packd()
@@ -332,6 +351,12 @@ void ModelTest::smallRules()
     QCOMPARE(firstCategory(QString()), u"Other"_s);
     QCOMPARE(originOf(Lane::Pack, u"medium"_s), u"medium"_s);
     QCOMPARE(originOf(Lane::Debian), u"kdos-store"_s);
+    // A catalogue row is named by where its pack is, and with none by the
+    // store lane that builds it.
+    QCOMPARE(originOf(Lane::Catalogue, u"store"_s), u"kdos-packs"_s);
+    QCOMPARE(originOf(Lane::Catalogue, u"medium"_s), u"medium"_s);
+    QCOMPARE(originOf(Lane::Catalogue), u"kdos-store"_s);
+    QCOMPARE(originOf(Lane::Set), u"kdos-packs"_s);
 }
 
 static PlanContext context(const Catalogue *cat)
@@ -446,6 +471,11 @@ void ModelTest::plansInstall()
     p = installPlan(archive, ctx);
     QCOMPARE(argvOf(p.steps[0]), (QStringList{u"kdos-appbox"_s, u"import"_s, ktar}));
     QCOMPARE(p.steps[0].meter, Meter::AppboxImport);
+    archive.members.clear();
+    p = installPlan(archive, ctx);
+    QVERIFY(!p.isValid()); // no SELECTION: not a set
+    QVERIFY(p.refusal.contains(u"not a KDOS set"_s));
+    archive.members = {u"app.scribus"_s};
     archive.path = u"relative.ktar"_s;
     QVERIFY(!installPlan(archive, ctx).isValid());
     archive.path = dir.filePath(u"absent.ktar"_s);
@@ -459,6 +489,10 @@ void ModelTest::plansInstall()
     p = installPlan(file, ctx);
     QCOMPARE(argvOf(p.steps[0]), (QStringList{u"kdos-box"_s, u"import"_s, ktar}));
     QCOMPARE(argvOf(p.steps[1]), (QStringList{u"packd"_s, u"graft data.tess"_s}));
+    file.signature = u"refused"_s;
+    p = installPlan(file, ctx);
+    QVERIFY(!p.isValid());
+    QVERIFY(p.refusal.contains(u"not a KDOS pack"_s));
 }
 
 void ModelTest::plansRemove()
@@ -469,15 +503,18 @@ void ModelTest::plansRemove()
     Entry e;
     e.lane = Lane::Catalogue;
     e.id = u"app.scribus"_s;
+    // Every box is stopped before it goes: kdos-box remove refuses a running one.
     Plan p = removePlan(e, ctx);
-    QCOMPARE(p.steps.size(), 3);
-    QCOMPARE(argvOf(p.steps[0]), (QStringList{u"kdos-box"_s, u"remove"_s, u"app.scribus"_s}));
-    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"packd"_s, u"remove app.scribus"_s}));
-    QCOMPARE(argvOf(p.steps[2]), (QStringList{u"kdos-appbox"_s, u"genlaunchers"_s, u"--packs"_s, u"--user"_s}));
+    QCOMPARE(p.steps.size(), 4);
+    QCOMPARE(argvOf(p.steps[0]), (QStringList{u"kdos-box"_s, u"stop"_s, u"app.scribus"_s}));
+    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"kdos-box"_s, u"remove"_s, u"app.scribus"_s}));
+    QCOMPARE(argvOf(p.steps[2]), (QStringList{u"packd"_s, u"remove app.scribus"_s}));
+    QCOMPARE(argvOf(p.steps[3]), (QStringList{u"kdos-appbox"_s, u"genlaunchers"_s, u"--packs"_s, u"--user"_s}));
 
-    e.id = u"app.kcalc"_s;
+    e.id = u"app.kcalc"_s; // running
     p = removePlan(e, ctx);
-    QCOMPARE(argvOf(p.steps[0]), (QStringList{u"kdos-appbox"_s, u"uninstall"_s, u"app.kcalc"_s}));
+    QCOMPARE(argvOf(p.steps[0]), (QStringList{u"kdos-box"_s, u"stop"_s, u"app.kcalc"_s}));
+    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"kdos-appbox"_s, u"uninstall"_s, u"app.kcalc"_s}));
 
     e.id = u"data.tess"_s;
     QVERIFY(!removePlan(e, ctx).isValid()); // on the medium only: nothing installed
@@ -495,8 +532,9 @@ void ModelTest::plansRemove()
     pack.kind = u"app"_s;
     pack.packOrigin = u"store"_s;
     p = removePlan(pack, ctx);
-    QCOMPARE(argvOf(p.steps[0]), (QStringList{u"kdos-box"_s, u"remove"_s, u"work"_s}));
-    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"packd"_s, u"remove box.work"_s}));
+    QCOMPARE(argvOf(p.steps[0]), (QStringList{u"kdos-box"_s, u"stop"_s, u"work"_s}));
+    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"kdos-box"_s, u"remove"_s, u"work"_s}));
+    QCOMPARE(argvOf(p.steps[2]), (QStringList{u"packd"_s, u"remove box.work"_s}));
 
     Entry port;
     port.lane = Lane::Port;
@@ -507,6 +545,11 @@ void ModelTest::plansRemove()
     deb.lane = Lane::Debian;
     deb.packages = {u"gimp"_s};
     QCOMPARE(argvOf(removePlan(deb, ctx).steps[0]), (QStringList{u"kdos-appbox"_s, u"uninstall"_s, u"deb:gimp"_s}));
+    PlanContext withBox = ctx;
+    withBox.boxes.insert(u"deb.gimp"_s, BoxRow{u"deb.gimp"_s, u"image:kdos/deb.gimp"_s, u"running"_s, u"persistent"_s, u"session"_s, 0});
+    p = removePlan(deb, withBox);
+    QCOMPARE(argvOf(p.steps[0]), (QStringList{u"kdos-box"_s, u"stop"_s, u"deb.gimp"_s}));
+    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"kdos-appbox"_s, u"uninstall"_s, u"deb:gimp"_s}));
 }
 
 void ModelTest::plansRefuseUnsafeNames()

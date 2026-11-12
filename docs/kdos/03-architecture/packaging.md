@@ -70,13 +70,13 @@ There are five port repositories, all in the same format, searched in this order
 
 | Repository (inside the build chroot) | In the tree | Recipes | What it holds |
 |---|---|---|---|
-| `/ports/core` | `ports/core/` | 2,388 | Upstream software, filed on 102 shelves |
+| `/ports/core` | `ports/core/` | 2,389 | Upstream software, filed on 102 shelves |
 | `/kdos/src/system` | `src/system/` | 8 | KDOS's own `kdos` command and tools, the packer, the box runtime, its init and its Wayland socket holder, the installer, and the two books on the image |
 | `/kdos/src/art` | `src/art/` | 8 | KDOS's own theme generator, icon themes, wallpapers, sounds, login screen, boot splash, offline add-ons and demo |
 | `/kdos/src/desktop` | `src/desktop/` | 21 | KDOS's own Plasma code and data: the global themes and Plasma style, the settings pages, widgets, KWin effects and scripts, the KRunner runner, the Discover backend, the welcome pages, the kded module and the graphical installer |
 | `/kdos/src/daemons` | `src/daemons/` | 6 | KDOS's own root daemons |
 
-That is 2,431 recipes in all (counted as directories holding a `kpkgbuild`).
+That is 2,432 recipes in all (counted as directories holding a `kpkgbuild`).
 
 A repository holds a port either directly, as `<repo>/<name>/`, or one level down, as
 `<repo>/<shelf>/<name>/`. The `src/` areas hold theirs directly. `ports/core` holds none directly:
@@ -179,17 +179,17 @@ as one list. A phase has one or the other, never both.
 | `20_selfhost` | `packages.txt` | 9 | 15 |
 | `30_foundation` | `packages.txt` | 138 | 127 |
 | `31_compilers` | `packages.txt` | 22 | 22 |
-| `40_lang` | `packages.d/`, 13 files | 184 | 184 |
+| `40_lang` | `packages.d/`, 13 files | 185 | 185 |
 | `41_system` | `packages.d/`, 98 files | 1,035 | 1,035 |
 | `42_graphics` | `packages.d/`, 53 files | 187 | 187 |
-| `43_toolkits` | `packages.d/`, 56 files | 343 | 343 |
-| `44_apps` | `packages.d/`, 61 files | 423 | 423 |
+| `43_toolkits` | `packages.d/`, 56 files | 344 | 344 |
+| `44_apps` | `packages.d/`, 61 files | 422 | 422 |
 | `50_desktop` | `packages.txt` | 91 | 91 |
 | `60_kernel` | `packages.txt` | 2 | 2 |
 
 "Names" counts the port names a list writes; "Installs" counts the packages the phase installs
-that no earlier phase did. Between them the lists name 2,425 distinct ports and install 2,429:
-2,387 of the 2,388 in `ports/core`, and every recipe under `src/` except `kdos-installer`, which
+that no earlier phase did. Between them the lists name 2,426 distinct ports and install 2,430:
+2,388 of the 2,389 in `ports/core`, and every recipe under `src/` except `kdos-installer`, which
 the bootstrap builds by name. The one recipe in `ports/core` no list reaches is `texlive-doc`,
 which `ports/unbuilt` names: a recipe kept for `kpkg install` and built by no phase, and removed
 from the image by the orphan sweep if an earlier build left it installed. Any other recipe no list
@@ -1606,7 +1606,8 @@ grafts whatever it names into the slot it starts in (see
 ### What a surface reads
 
 What went wrong is recorded in `/var/lib/kdos/update.state` (no tree, no network, a fetch that
-failed, a release index, binhost index or image manifest that does not verify, a build, an install
+failed, a release index, binhost index or image manifest that does not verify or that no key on
+the machine could verify, a build, an install
 or an image write that failed), and `kdos update check` reports it. `check --json` is the update document:
 what is behind, the version on offer and its `lane` (`image`, `binhost` or none), the size to
 download, the date of the release, the key that signed it, and the last problem. The `update-check`

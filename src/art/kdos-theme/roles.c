@@ -16,30 +16,52 @@
  *
  * The mapping, per set:
  *
- *   backgrounds   View variant / variant+5% text, Window deep / variant,
- *                 Button 9% / 11% text over deep, Tooltip 13%, Header and
- *                 Complementary 7%, the inactive header on deep.
- *   ForegroundNormal   text; deep on a Selection.
+ *   backgrounds   View variant / variant+5% text, Window the ground (below)
+ *                 / variant, Button 9% / 11% text over deep, Tooltip 13%,
+ *                 Header and Complementary 7%, the inactive header on deep.
+ *   ForegroundNormal   text; the selection's ink on a Selection.
  *   ForegroundInactive the set's background walked towards its ink from
  *                      56% until it clears 4.5:1 on both backgrounds: the
  *                      kcol_muted() walk, re-solved per set because View and
  *                      Window are different grounds.
- *   Active, Link, Positive   the accent; deep on a Selection.
- *   Visited       pdark; deep 30% into the accent on a Selection.
+ *   Active, Link, Positive   the accent; the ink on a Selection.
+ *   Visited       pdark; the ink 30% into the selection on a Selection.
  *   Negative, Neutral   urgent and secondary.
  *   DecorationFocus     the accent, held to 3:1.
- *   DecorationHover     35% of the way from the focus colour to deep (to
- *                       the accent on a Selection), backed off towards the
- *                       focus colour until it holds 3:1.
+ *   DecorationHover     35% of the way from the focus colour to deep,
+ *                       backed off towards the focus colour until it holds
+ *                       3:1. On a Selection it is a fill instead: the
+ *                       selection 35% further from its ink (below).
  *
  * Every accent-coloured role that misses its floor is walked towards the
  * set's ink one percent at a time, so it keeps as much of its hue as the
  * floor allows and never more.
  *
- * THE SELECTION IS THE ACCENT UNDER DEEP, never pdark under text. pdark under
- * text measures 2.42:1 on bone and 2.43:1 on paper; primary under deep
- * measures 6.02:1 at its worst, on paper. A selected row is the one row a
- * person is reading, so it is the last place a scheme may fall below AA.
+ * THE SELECTION CARRIES THE VIEW'S OWN TEXT on a dark scheme: the accent
+ * walked towards deep until `text` holds 4.5:1 on it, with `text` as its
+ * ink. KDE draws ForegroundNormal over Highlight as often as it draws
+ * HighlightedText — Dolphin's and Breeze's translucent item selection lays
+ * the Selection over the view and keeps the view's text, and so do Haruna,
+ * KSudoku, the keyboard page's layout list and GTK through Plasma's bridge —
+ * so a selection only `deep` reads on leaves that text at under 2:1. The
+ * light scheme keeps the accent under `deep`, where both cases hold. Both
+ * are measured: the solid set, and the view's text over the Selection laid
+ * over both view backgrounds at SEL_BLEND, Dolphin's measured fill.
+ *
+ * A SELECTION'S HOVER IS A FILL UNDER THE SELECTION'S INK. Plasma's GTK
+ * bridge writes Selection DecorationHover as GTK's hovered-selected
+ * background, and GTK paints a hovered selected row in it with the
+ * selection's text on top; a hover moved towards the ink would leave that
+ * text near 1.5:1. Moving it away from the ink only raises the contrast.
+ *
+ * THE WINDOW GROUND IS `deep` WALKED TOWARDS GREY until the five shades
+ * KColorScheme derives from it (shade.c) are no more than KTH_SHADE_SLACK
+ * more colourful than the ground, under the scheme's own [KDE] contrast,
+ * which every kdeglobals KDOS writes carries too. From a ground with a
+ * channel at zero, as most `deep` rows have, KColorScheme makes Mid and its
+ * kin the most saturated colour of the hue at a mid-grey luma, and
+ * LibreOffice paints its workspace in Mid. The walk keeps the ground's
+ * lightness and moves it a distance the eye barely reads at that depth.
  *
  * [General] AccentColor is never written. Plasma's colour applicator
  * recolours Selection, Link and Decoration whenever an accent is set, and
@@ -99,10 +121,14 @@ const char *const kth_wm_key[KTH_NWM] = {
 /* How far towards deep the hover decoration starts. */
 #define HOVER_MIX	35
 
-/* The Selection's alternate background starts this far from the accent
+/* The Selection's alternate background starts this far from the selection
  * towards deep: far enough to tell two selected rows apart, and walked back
- * whenever deep on it would fall under the text floor. */
+ * whenever the selection's ink on it would fall under the text floor. */
 #define SELALT_MIX	10
+
+/* How much of the Selection a translucent selection lays over a view:
+ * Dolphin's selected and hovered item, measured on screen. */
+#define SEL_BLEND	64
 
 int kth_role_floor(int role)
 {
@@ -188,11 +214,10 @@ static int holds(uint32_t c, uint32_t bg, uint32_t alt, int floor)
 	return kcol_contrast(c, bg) >= floor && kcol_contrast(c, alt) >= floor;
 }
 
-/* `c` as it is when it holds, else walked towards `ink` until it does. The
- * ink always holds — the text pair is the first thing checked — so the walk
- * ends on the ink at worst. */
-static uint32_t legible(uint32_t c, uint32_t ink, uint32_t bg, uint32_t alt,
-			int floor)
+/* The ink always holds — the text pair is the first thing checked — so the
+ * walk ends on the ink at worst. */
+uint32_t kth_legible(uint32_t c, uint32_t ink, uint32_t bg, uint32_t alt,
+		     int floor)
 {
 	for (int pct = 0; pct <= 100; pct++) {
 		uint32_t m = pct ? kcol_mix(c, ink, pct) : c;
@@ -241,60 +266,123 @@ static void fill(uint32_t *r, const KcolScheme *sc, const SetDef *d)
 {
 	r[KTH_BG] = d->bg;
 	r[KTH_BG_ALT] = d->alt;
-	r[KTH_FG] = legible(d->ink, d->ink, d->bg, d->alt, FLOOR_TEXT);
+	r[KTH_FG] = kth_legible(d->ink, d->ink, d->bg, d->alt, FLOOR_TEXT);
 	r[KTH_FG_INACTIVE] = muted(d->bg, d->ink, d->bg, d->alt);
-	r[KTH_FG_ACTIVE] = legible(d->accent, d->ink, d->bg, d->alt,
+	r[KTH_FG_ACTIVE] = kth_legible(d->accent, d->ink, d->bg, d->alt,
 				   FLOOR_TEXT);
 	r[KTH_FG_LINK] = r[KTH_FG_ACTIVE];
 	r[KTH_FG_POSITIVE] = r[KTH_FG_ACTIVE];
-	r[KTH_FG_VISITED] = legible(d->visited, d->ink, d->bg, d->alt,
+	r[KTH_FG_VISITED] = kth_legible(d->visited, d->ink, d->bg, d->alt,
 				    FLOOR_TEXT);
-	r[KTH_FG_NEGATIVE] = legible(sc->urgent, d->ink, d->bg, d->alt,
+	r[KTH_FG_NEGATIVE] = kth_legible(sc->urgent, d->ink, d->bg, d->alt,
 				     FLOOR_TEXT);
-	r[KTH_FG_NEUTRAL] = legible(sc->secondary, d->ink, d->bg, d->alt,
+	r[KTH_FG_NEUTRAL] = kth_legible(sc->secondary, d->ink, d->bg, d->alt,
 				    FLOOR_TEXT);
-	r[KTH_DECO_FOCUS] = legible(d->accent, d->ink, d->bg, d->alt,
+	r[KTH_DECO_FOCUS] = kth_legible(d->accent, d->ink, d->bg, d->alt,
 				    FLOOR_DECO);
 	r[KTH_DECO_HOVER] = hover(r[KTH_DECO_FOCUS], d->toward, d->bg,
 				  d->alt);
 }
 
+static int shades_hold(uint32_t ground, int contrast)
+{
+	int bound = kth_chroma(ground) + KTH_SHADE_SLACK;
+
+	for (int r = 0; r < KTH_NSHADE; r++)
+		if (kth_chroma(kth_shade(ground, r, contrast)) > bound)
+			return 0;
+	return 1;
+}
+
+/* `deep` walked towards the grey of its brightest channel; the grey itself
+ * makes grey shades, so the walk always ends. */
+static uint32_t window_ground(const KcolScheme *sc)
+{
+	KcolRgb v = kcol_rgb(sc->deep);
+	unsigned m = v.r > v.g ? v.r : v.g;
+
+	m = m > v.b ? m : v.b;
+	for (int pct = 0; pct <= 100; pct++) {
+		uint32_t g = kcol_mix(sc->deep, m * 0x010101u, pct);
+
+		if (shades_hold(g, KTH_CONTRAST))
+			return g;
+	}
+	return m * 0x010101u;
+}
+
+static int blend_holds(uint32_t text, uint32_t sel, uint32_t view,
+		       uint32_t view_alt)
+{
+	return kcol_contrast(text, kcol_mix(view, sel, SEL_BLEND)) >= FLOOR_TEXT &&
+	       kcol_contrast(text, kcol_mix(view_alt, sel, SEL_BLEND)) >= FLOOR_TEXT;
+}
+
+static uint32_t selection(const KcolScheme *sc, uint32_t view,
+			  uint32_t view_alt)
+{
+	if (kth_is_light(sc))
+		return sc->primary;
+	for (int pct = 0; pct <= 100; pct++) {
+		uint32_t s = pct ? kcol_mix(sc->primary, sc->deep, pct)
+				 : sc->primary;
+
+		if (kcol_contrast(sc->text, s) >= FLOOR_TEXT &&
+		    blend_holds(sc->text, s, view, view_alt))
+			return s;
+	}
+	return sc->deep;
+}
+
 void kth_palette(const KcolScheme *sc, KthPalette *p)
 {
+	kth_palette_titled(sc, KTH_HEADER_MIX, 0, p);
+}
+
+void kth_palette_titled(const KcolScheme *sc, int header_pct, int inactive_pct,
+			KthPalette *p)
+{
 	uint32_t view_alt = kcol_mix(sc->variant, sc->text, 5);
+	uint32_t ground = window_ground(sc);
 	uint32_t button = kcol_mix(sc->deep, sc->text, 9);
 	uint32_t button_alt = kcol_mix(sc->deep, sc->text, 11);
 	uint32_t tooltip = kcol_mix(sc->deep, sc->text, 13);
-	uint32_t header = kcol_mix(sc->deep, sc->text, 7);
+	uint32_t comp = kcol_mix(sc->deep, sc->text, KTH_HEADER_MIX);
+	uint32_t header = kcol_mix(sc->deep, sc->text, header_pct);
+	uint32_t header_off = inactive_pct ?
+		kcol_mix(sc->deep, sc->text, inactive_pct) : sc->deep;
 
+	uint32_t sel = selection(sc, sc->variant, view_alt);
+	uint32_t ink = kth_is_light(sc) ? sc->deep : sc->text;
 	int pct = SELALT_MIX;
-	uint32_t sel_alt = kcol_mix(sc->primary, sc->deep, pct);
+	uint32_t sel_alt = kcol_mix(sel, sc->deep, pct);
 
-	while (pct > 0 && kcol_contrast(sc->deep, sel_alt) < FLOOR_TEXT)
-		sel_alt = kcol_mix(sc->primary, sc->deep, --pct);
+	while (pct > 0 && kcol_contrast(ink, sel_alt) < FLOOR_TEXT)
+		sel_alt = kcol_mix(sel, sc->deep, --pct);
 
 	const SetDef def[KTH_NSET] = {
 		[KTH_VIEW] = { sc->variant, view_alt, sc->text, sc->primary,
 			       sc->pdark, sc->deep },
-		[KTH_WINDOW] = { sc->deep, sc->variant, sc->text, sc->primary,
+		[KTH_WINDOW] = { ground, sc->variant, sc->text, sc->primary,
 				 sc->pdark, sc->deep },
 		[KTH_BUTTON] = { button, button_alt, sc->text, sc->primary,
 				 sc->pdark, sc->deep },
-		[KTH_SELECTION] = { sc->primary, sel_alt, sc->deep, sc->deep,
-				    kcol_mix(sc->deep, sc->primary, 30),
-				    sc->primary },
+		[KTH_SELECTION] = { sel, sel_alt, ink, ink,
+				    kcol_mix(ink, sel, 30), sel },
 		[KTH_TOOLTIP] = { tooltip, tooltip, sc->text, sc->primary,
 				  sc->pdark, sc->deep },
-		[KTH_COMPLEMENTARY] = { header, header, sc->text, sc->primary,
+		[KTH_COMPLEMENTARY] = { comp, comp, sc->text, sc->primary,
 					sc->pdark, sc->deep },
 		[KTH_HEADER] = { header, header, sc->text, sc->primary,
 				 sc->pdark, sc->deep },
-		[KTH_HEADER_INACTIVE] = { sc->deep, header, sc->text,
+		[KTH_HEADER_INACTIVE] = { header_off, header, sc->text,
 					  sc->primary, sc->pdark, sc->deep },
 	};
 
 	for (int s = 0; s < KTH_NSET; s++)
 		fill(p->set[s], sc, &def[s]);
+	p->set[KTH_SELECTION][KTH_DECO_HOVER] =
+		kcol_mix(sel, kth_is_light(sc) ? sc->text : sc->deep, HOVER_MIX);
 
 	/* The title bar is the Header set: Breeze draws it from Header, and
 	 * [WM] is what every other decoration and the window switcher read. */
@@ -314,6 +402,7 @@ void kth_palette(const KcolScheme *sc, KthPalette *p)
 	 * this scheme and not into Breeze's grey. */
 	p->disabled = sc->deep;
 	p->inactive = sc->variant;
+	p->contrast = KTH_CONTRAST;
 }
 
 /* ── the floors ───────────────────────────────────────────────────────── */
@@ -322,14 +411,14 @@ static int one(KthRow row, void *ctx, const char *group, const char *role,
 	       uint32_t c, uint32_t bg, uint32_t alt, int floor)
 {
 	if ((c | bg | alt) & KTH_MISSING) {
-		row(ctx, group, role, -1, -1, floor, 0);
+		row(ctx, group, role, KTH_ROW_CONTRAST, -1, -1, floor, 0);
 		return 1;
 	}
 
 	int a = kcol_contrast(c, bg), b = kcol_contrast(c, alt);
 	int ok = a >= floor && b >= floor;
 
-	row(ctx, group, role, a, b, floor, ok);
+	row(ctx, group, role, KTH_ROW_CONTRAST, a, b, floor, ok);
 	return !ok;
 }
 
@@ -346,14 +435,52 @@ int kth_check(const KthPalette *p, KthRow row, void *ctx)
 			if (!floor) {
 				if (r[k] & KTH_MISSING) {
 					row(ctx, kth_set_group[s],
-					    kth_role_key[k], -1, -1, 0, 0);
+					    kth_role_key[k], KTH_ROW_CONTRAST,
+					    -1, -1, 0, 0);
 					bad++;
 				}
 				continue;
 			}
-			bad += one(row, ctx, kth_set_group[s], kth_role_key[k],
-				   r[k], r[KTH_BG], r[KTH_BG_ALT], floor);
+			if (s == KTH_SELECTION && k == KTH_DECO_HOVER)
+				bad += one(row, ctx, kth_set_group[s],
+					   kth_role_key[k], r[KTH_FG], r[k],
+					   r[k], FLOOR_TEXT);
+			else
+				bad += one(row, ctx, kth_set_group[s],
+					   kth_role_key[k], r[k], r[KTH_BG],
+					   r[KTH_BG_ALT], floor);
 		}
+	}
+
+	/* The view's text over the Selection laid over the view. */
+	const uint32_t *v = p->set[KTH_VIEW];
+	uint32_t sel = p->set[KTH_SELECTION][KTH_BG];
+
+	if ((v[KTH_BG] | v[KTH_BG_ALT] | sel) & KTH_MISSING)
+		bad += one(row, ctx, "Colors:View", "SelectionBlend", v[KTH_FG],
+			   KTH_MISSING, KTH_MISSING, FLOOR_TEXT);
+	else
+		bad += one(row, ctx, "Colors:View", "SelectionBlend", v[KTH_FG],
+			   kcol_mix(v[KTH_BG], sel, SEL_BLEND),
+			   kcol_mix(v[KTH_BG_ALT], sel, SEL_BLEND), FLOOR_TEXT);
+
+	/* The shades Qt derives from the Window ground. */
+	uint32_t ground = p->set[KTH_WINDOW][KTH_BG];
+
+	for (int k = 0; k < KTH_NSHADE; k++) {
+		if (ground & KTH_MISSING) {
+			row(ctx, "Colors:Window", kth_shade_key[k],
+			    KTH_ROW_CHROMA, -1, -1, 0, 0);
+			bad++;
+			continue;
+		}
+		int floor = kth_chroma(ground) + KTH_SHADE_SLACK;
+		int c = kth_chroma(kth_shade(ground, k, p->contrast));
+		int ok = c <= floor;
+
+		row(ctx, "Colors:Window", kth_shade_key[k], KTH_ROW_CHROMA, c,
+		    c, floor, ok);
+		bad += !ok;
 	}
 
 	bad += one(row, ctx, "WM", kth_wm_key[KTH_WM_ACTIVE_FG],

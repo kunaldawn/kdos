@@ -10,6 +10,7 @@
 # ---------------------------------
 
 patch -p1 -i "$PORT_SRC/abs.patch"
+patch -p1 -i "$PORT_SRC/app-id.patch"
 
 ./configure --prefix=/usr --sysconfdir=/etc --libdir=/usr/lib \
 	--infodir=/usr/share/info --mandir=/usr/share/man \

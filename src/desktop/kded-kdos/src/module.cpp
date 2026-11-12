@@ -11,7 +11,8 @@
 
 #include "module.h"
 #include "accentsync.h"
-#include "sharewatch.h"
+#include "sharestart.h"
+#include "shellwatch.h"
 #include "stickoffer.h"
 
 #include <KPluginFactory>
@@ -23,7 +24,8 @@ Module::Module(QObject *parent, const QVariantList &)
     : KDEDModule(parent)
     , m_sync(new AccentSync(this))
     , m_stick(new StickOffer(this))
-    , m_share(new ShareWatch(this))
+    , m_share(new ShareStart(this))
+    , m_shell(new ShellWatch(this))
 {
     connect(m_sync, &AccentSync::synced, this, &Module::accentSynced);
     connect(m_sync, &AccentSync::failed, this, &Module::accentSyncFailed);

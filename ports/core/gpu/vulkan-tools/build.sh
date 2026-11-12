@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/app-id.patch"
+
 cmake -GNinja -B build \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DCMAKE_INSTALL_PREFIX=/usr \
@@ -38,6 +40,7 @@ Comment=Spinning textured cube on the Vulkan driver this machine picked
 Exec=vkcube
 Icon=video-display
 Terminal=false
+StartupWMClass=vkcube
 Categories=Development;Graphics;
 Keywords=vulkan;gpu;driver;3d;benchmark;vkcube;
 KDOS_EOF

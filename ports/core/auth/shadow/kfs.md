@@ -69,6 +69,13 @@ directory` for every account it makes, and `userdel -r` prints `mail spool
 system's `/etc/default/useradd` sets the key to `no`, so `useradd -D` reports what `useradd`
 does.
 
+`private-homes.patch` sets `HOME_MODE 0700` in the same file, so every home `useradd -m` and
+`newusers` create is readable by its owner alone, the mode the installer gives its own account.
+An account made by System Settings, AccountsService or Plasma Setup goes through `useradd -m` and
+gets it too. Without the key the two take the mode from `UMASK 022` and every other account can
+read the new home. `UMASK` is left at `022`: `pam_umask` applies the same key to every login,
+and `077` there would make every file a user writes unreadable to the groups they share.
+
 The same file sets `GROUPS=audio`, which `useradd` adds to every account it makes without `-r`, so
 an account made by System Settings, AccountsService or Plasma Setup gets PipeWire's real-time
 limits like the installer's. `useradd -G` replaces that list instead of adding to it, which is why

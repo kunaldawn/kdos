@@ -1,0 +1,6 @@
+# tzdb timezone descriptions, for testing
+#codes	coordinates	TZ	comments
+IN	+2232+08822	Asia/Kolkata
+ER,ET,KE	-0117+03649	Africa/Nairobi
+US	+404251-0740023	America/New_York	Eastern (most areas)
+DE,DK	+5230+01322	Europe/Berlin	most of Germany

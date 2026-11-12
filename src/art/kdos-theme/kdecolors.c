@@ -145,8 +145,8 @@ typedef struct {
 	int bad;
 } Gate;
 
-static void gate_row(void *ctx, const char *group, const char *role, int a,
-		     int b, int floor, int ok)
+static void gate_row(void *ctx, const char *group, const char *role, int kind,
+		     int a, int b, int floor, int ok)
 {
 	Gate *gt = ctx;
 
@@ -155,6 +155,10 @@ static void gate_row(void *ctx, const char *group, const char *role, int a,
 	gt->bad++;
 	if (a < 0)
 		kb_warn("%s [%s] %s is missing", gt->scheme, group, role);
+	else if (kind == KTH_ROW_CHROMA)
+		kb_warn("%s [%s] %s: chroma %d.%02d against a ceiling of "
+			"%d.%02d", gt->scheme, group, role, a / 100, a % 100,
+			floor / 100, floor % 100);
 	else
 		kb_warn("%s [%s] %s: %d.%02d and %d.%02d against a floor of "
 			"%d.%02d", gt->scheme, group, role, a / 100, a % 100,
@@ -173,15 +177,20 @@ static void assert_palette(const KcolScheme *sc, const KthPalette *p)
 		       gt.bad, gt.bad == 1 ? "" : "s");
 }
 
+static void groups(const KcolScheme *sc, const KthPalette *p, KthIni *ini)
+{
+	assert_palette(sc, p);
+	effects(ini, p);
+	sets(ini, p);
+	wm(ini, p);
+}
+
 void kth_colour_groups(const KcolScheme *sc, KthIni *ini)
 {
 	KthPalette p;
 
 	kth_palette(sc, &p);
-	assert_palette(sc, &p);
-	effects(ini, &p);
-	sets(ini, &p);
-	wm(ini, &p);
+	groups(sc, &p, ini);
 }
 
 /* ── the neutral box ──────────────────────────────────────────────────── */
@@ -210,9 +219,14 @@ static uint32_t grey_of(uint32_t c)
  * `decocolor=KDOSBox` into the box's KWin rule, and KWin ignores a decocolor
  * naming a scheme that is not installed, so without this file such a box
  * has no tint at all and reads as host software. It is the default accent
- * with every colour taken to its grey of equal luminance: neutral, never
- * mistaken for an accent a person picked, and holding the default's floors.
- * The urgent colour keeps its hue, because an error is still an error.
+ * with every colour taken to its grey of equal luminance — neutral, never
+ * mistaken for an accent a person picked, and holding the default's floors —
+ * and its title bars sit at KTH_BOX_HEADER_MIX and KTH_BOX_INACTIVE_MIX
+ * instead of an accent's 7% and `deep`: the default accent is itself nearly
+ * grey, so at an accent's own mix the box's title bar measures 1.0:1 against
+ * the host's. box_apart() holds both of its title bars at BOX_APART against
+ * both of every accent's. The urgent colour keeps its hue, because an error
+ * is still an error.
  */
 static void box_scheme(KcolScheme *out)
 {
@@ -232,28 +246,70 @@ static void box_scheme(KcolScheme *out)
 	out->backdrop = grey_of(d->backdrop);
 }
 
+/* How far KDOSBox's title bars stand from every accent's, as kcol_contrast
+ * measures: the least that reads as a different window at a glance. */
+#define BOX_APART	150
+
+static void box_apart(const KthPalette *box)
+{
+	static const int BG[] = { KTH_WM_ACTIVE_BG, KTH_WM_INACTIVE_BG };
+	int bad = 0;
+
+	for (int i = 0; i < kcol_nscheme; i++) {
+		KthPalette p;
+
+		kth_palette(&kcol_schemes[i], &p);
+		for (int a = 0; a < 2; a++)
+			for (int b = 0; b < 2; b++) {
+				int r = kcol_contrast(box->wm[BG[a]], p.wm[BG[b]]);
+
+				if (r >= BOX_APART)
+					continue;
+				kb_warn("KDOSBox [WM] %s measures %d.%02d against "
+					"KDOS%s's %s, under %d.%02d",
+					kth_wm_key[BG[a]], r / 100, r % 100,
+					kth_title(&kcol_schemes[i]),
+					kth_wm_key[BG[b]], BOX_APART / 100,
+					BOX_APART % 100);
+				bad++;
+			}
+	}
+	if (bad)
+		kb_die("KDOSBox's title bar reads as an accent's; nothing was "
+		       "written");
+}
+
 /* ── kde-colors ───────────────────────────────────────────────────────── */
 
 int kth_kde_colors(const char *outdir, const char *accent)
 {
 	const KcolScheme *pick[33];
 	KcolScheme box;
-	int n = kth_pick(accent, pick, 32);
+	int n = kth_pick(accent, pick, 32), nbox = 0;
 
 	if (!accent) {
 		box_scheme(&box);
 		pick[n++] = &box;
+		nbox = 1;
 	}
 
 	for (int i = 0; i < n; i++) {
 		const KcolScheme *sc = pick[i];
-		char id[64], file[80];
+		char id[64], file[80], contrast[8];
 		KthIni ini;
+		KthPalette p;
 		KbBuf name = {0}, out = {0};
 
 		memset(&ini, 0, sizeof(ini));
 		scheme_id(sc, id, sizeof(id));
-		kth_colour_groups(sc, &ini);
+		if (nbox && i == n - 1) {
+			kth_palette_titled(sc, KTH_BOX_HEADER_MIX,
+					   KTH_BOX_INACTIVE_MIX, &p);
+			box_apart(&p);
+		} else {
+			kth_palette(sc, &p);
+		}
+		groups(sc, &p, &ini);
 
 		KthGroup *g = kth_ini_group(&ini, "General", 1);
 
@@ -263,7 +319,8 @@ int kth_kde_colors(const char *outdir, const char *accent)
 		kth_ini_set(g, "shadeSortColumn", "true");
 
 		g = kth_ini_group(&ini, "KDE", 1);
-		kth_ini_set(g, "contrast", "4");
+		snprintf(contrast, sizeof(contrast), "%d", p.contrast);
+		kth_ini_set(g, "contrast", contrast);
 		move_last(&ini, "WM");
 
 		kth_ini_write(&ini, &out);
@@ -280,7 +337,7 @@ int kth_kde_colors(const char *outdir, const char *accent)
 /* ── greeter-globals ──────────────────────────────────────────────────── */
 
 /* What the merge owns: every [Colors:*] and [ColorEffects:*] group whole, the
- * six colour keys of [WM], and [General] ColorScheme. Owning a group means
+ * six colour keys of [WM], [General] ColorScheme and [KDE] contrast. Owning a group means
  * replacing it, so a key an older scheme had and this one has not cannot
  * survive the switch. [WM] is shared — it carries the title-bar font too —
  * so there only the colours are KDOS's. */
@@ -324,6 +381,13 @@ static void merge(KthIni *dst, const KcolScheme *sc)
 	KthGroup *gen = kth_ini_group(dst, "General", 1);
 
 	kth_ini_set(gen, "ColorScheme", id);
+	/* KColorScheme derives the Window shades at [KDE] contrast and reads
+	 * KDE's default when the key is absent, which is not the contrast the
+	 * shades were held at. [KDE] is shared, so only this key is KDOS's. */
+	char contrast[8];
+
+	snprintf(contrast, sizeof(contrast), "%d", KTH_CONTRAST);
+	kth_ini_set(kth_ini_group(dst, "KDE", 1), "contrast", contrast);
 	/* The hash startplasma compares against the installed scheme file; a
 	 * stale one makes a session re-apply a scheme it did not choose. This
 	 * block is not that file, so it carries no hash at all. */

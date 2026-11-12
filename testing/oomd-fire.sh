@@ -26,6 +26,14 @@
 # THE MEMORY IS TOUCHED AND NOT MERELY RESERVED. An untouched mapping costs
 # no page, raises no pressure and would have the script sit at zero until it
 # gave up.
+#
+# THE SECOND ROUND STALLS BEFORE IT RUNS SHORT. A hog held under a cgroup's
+# memory.high reclaims into swap and stalls the whole machine's PSI while
+# MemAvailable is still high, so the trigger fires with memory not short; a
+# second hog then exhausts memory inside the daemon's ten-second cool-down.
+# The daemon must still kill it, and the kernel's OOM count must not move: a
+# firing that finds memory plentiful is the one that must not start the
+# cool-down.
 # ---------------------------------
 echo "### kernel"
 uname -r
@@ -50,8 +58,10 @@ except Exception as e:
     print("socket error:", e)
 PY
 }
+oomcount() { dmesg 2>/dev/null | grep -c 'Out of memory'; }
 echo "### status before"
 ask status
+echo "kernel oom kills $(oomcount)"
 
 # THE VICTIM. A clearly-largest RSS, touched rather than merely reserved: an
 # untouched mapping costs no page and generates no pressure at all.
@@ -89,4 +99,47 @@ echo "### status after"
 ask status
 echo "### hog stderr"
 tail -3 /tmp/hog.err
+
+echo "### stall first"
+# The first round's kill started a cool-down of its own; a round inside it
+# would measure that one, not the firing with memory plentiful.
+sleep 11
+CG=/sys/fs/cgroup/kdos-oomd-fire
+if mkdir "$CG" 2>/dev/null && echo 64M > "$CG/memory.high"; then
+    sh -c "echo \$\$ > $CG/cgroup.procs; exec python3 -c '
+import time
+b = bytearray(400 * 1024 * 1024)
+t = time.time()
+while time.time() - t < 6:
+    for i in range(0, len(b), 4096):
+        b[i] = (b[i] + 1) & 255
+'" &
+    STALL=$!
+    sleep 2
+    sed -n 2p /proc/pressure/memory
+    awk '/MemAvailable/ { print "available", int($2 / 1024), "MB" }' /proc/meminfo
+    python3 -c '
+b = []
+while True:
+    c = bytearray(128 * 1024 * 1024)
+    for i in range(0, len(c), 4096):
+        c[i] = 1
+    b.append(c)
+' 2>/dev/null &
+    HOG=$!
+    i=0
+    while kill -0 "$HOG" 2>/dev/null && [ $i -lt 60 ]; do
+        i=$((i + 1))
+        sleep 1
+    done
+    kill -9 "$STALL" "$HOG" 2>/dev/null
+    wait 2>/dev/null
+    sleep 1
+    rmdir "$CG"
+    echo "### status after stall first"
+    ask status
+    echo "kernel oom kills $(oomcount)"
+else
+    echo "no cgroup v2 memory controller; skipped"
+fi
 echo "### done"

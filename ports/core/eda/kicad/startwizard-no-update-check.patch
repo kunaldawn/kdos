@@ -1,0 +1,22 @@
+Subject: startwizard: hide the KiCad update checkbox when KICAD_UPDATE_CHECK is off
+
+Preferences hides its KiCad update checkbox in a build without the update
+check; the start wizard's Updates & Privacy page does not, and its ticked box
+does nothing. Hide it there too and word the intro for package updates only.
+
+--- a/common/startwizard/startwizard_provider_privacy.cpp	2026-08-28 23:31:37.000000000 +0530
++++ b/common/startwizard/startwizard_provider_privacy.cpp	2026-11-09 14:25:13.229172134 +0530
+@@ -36,6 +36,13 @@
+             PANEL_STARTWIZARD_PRIVACY_BASE( aParent ),
+             m_model( aModel )
+     {
++#ifndef KICAD_UPDATE_CHECK
++        m_stIntro->SetLabel( _( "Allow connections to the Internet to check for updated versions of "
++                                "packages installed through the Plugin and Content Manager?" ) );
++        m_stIntro->Wrap( 550 );
++        m_cbAutoUpdateKiCad->Show( false );
++#endif
++
+ #ifndef KICAD_USE_SENTRY
+         m_sizerDataCollection->Show( false );
+ #endif

@@ -3,7 +3,8 @@
 [numbat]{.idx} is a calculator whose type system knows physical units: it adds a length to a length,
 converts metres per second to kilometres per hour, and refuses to add a voltage to a resistance,
 which `bc` does without complaint. It is an interactive shell and a one-shot command (`numbat -e
-'...'`). The recipe writes a terminal desktop entry for it, named Calculator.
+'...'`). The recipe writes a terminal desktop entry for it, named Numbat; the plain
+name Calculator would put it ahead of KCalc and Kalk for anyone typing "calc".
 
 ## Flags
 

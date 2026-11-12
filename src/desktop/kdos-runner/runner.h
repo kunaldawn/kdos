@@ -54,7 +54,8 @@ enum {
 	RN_RUN_DETACH,		/* in the background; a failure is a toast   */
 	RN_RUN_TERM,		/* in Konsole, held open after it exits      */
 	RN_RUN_COPY,		/* argv[0] onto the clipboard, through Klipper */
-	RN_RUN_REQUERY,		/* KRunner opened again on argv[0], this runner */
+	RN_RUN_REQUERY,		/* KRunner opened again on argv[1], with the
+				 * runner whose id is argv[0] alone       */
 };
 
 typedef struct {
@@ -165,9 +166,6 @@ int rn_chords(const RnChord **out);
 int rn_desktop_entry(const char *id, char *name, size_t nn, char *icon,
 		     size_t in);
 
-/* Is a System Settings module of that id installed? */
-int rn_kcm_installed(const char *id);
-
 /* Drop every cache, so the next read re-parses: the tests change fixture
  * files faster than a filesystem's timestamp resolution. */
 void rn_sources_reset(void);
@@ -183,11 +181,11 @@ void rn_palette_match(const char *query, RnList *out);
 /* ── the library (library.c) ───────────────────────────────────────────── */
 
 /* The local half: books, manual pages, docsets, places. */
-void rn_library_match(const RnQuery *q, int only, RnList *out);
+void rn_library_match(const RnQuery *q, RnList *out);
 
-/* The query the library answers, or NULL when the text is not one: a
- * leading `?` asks for the library alone (`*only` set) and is stripped. */
-const char *rn_library_query(const char *text, int *only);
+/* The query the library answers, leading blanks dropped, or NULL when the
+ * text is blank. */
+const char *rn_library_query(const char *text);
 
 /* One loopback HTTP question the library asks a local server. */
 typedef struct RnAsk RnAsk;
@@ -195,7 +193,7 @@ typedef struct RnAsk RnAsk;
 /* The servers to ask about `q`: kiwix-serve once per book, Kolibri once. */
 int rn_library_asks(const RnQuery *q, RnAsk **out);
 /* Turn an answered ask into rows. */
-void rn_library_answer(RnAsk *a, const RnQuery *q, int only, RnList *out);
+void rn_library_answer(RnAsk *a, const RnQuery *q, RnList *out);
 void rn_library_reset(void);
 /* Build a missing book index in a child instead of in place: what the
  * server does, since it answers the palette from the same loop. */
@@ -205,7 +203,7 @@ void rn_library_async(int on);
 void rn_library_collect(const char *text, int deadline, RnList *out);
 
 /* The Zeal half of the local library (zeal.c). */
-void rn_zeal_match(const RnQuery *q, int only, RnList *out);
+void rn_zeal_match(const RnQuery *q, RnList *out);
 void rn_zeal_reset(void);
 /* 0 when this build has no SQLite and searches no docset. */
 int rn_zeal_built(void);

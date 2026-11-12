@@ -40,6 +40,13 @@ the `kde.org` domain, so the Wayland app ids are `org.kde.kleopatra` and `org.kd
 not the program names, and the replacement entries name those ids. They also add search keywords
 and the `Security` category. Upstream's main entry claims no MIME type; opening key and
 certificate files is left to upstream's `kleopatra_import.desktop`, which is installed unchanged.
+Upstream's decrypt-and-verify is only a KIO service menu, `kleopatra_decryptverifyfiles.desktop`
+under `/usr/share/kio/servicemenus`, and a service menu cannot be a default application: the MIME
+lookup reads `/usr/share/applications` alone and would pass an encrypted file to KGpg. `build.sh`
+therefore also writes `org.kde.kleopatra.decryptverify.desktop`, a hidden application entry that
+runs `kleopatra --decrypt-verify -- %F` for `application/pgp-encrypted` and
+`application/pgp-signature`; KDOS's default-applications list names it for both. It carries no
+`StartupWMClass`, so the panel keeps tying Kleopatra's window to the main entry.
 
 "Publish at Mail Provider" queues the request through Akonadi's outbox, on the mail identity and
 transport KMail sets up, so it sends only once a KMail account exists and the Akonadi server runs.

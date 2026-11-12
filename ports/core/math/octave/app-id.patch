@@ -1,0 +1,19 @@
+Subject: Set the desktop file name before the welcome wizard is shown
+
+main_window sets org.octave.Octave in its constructor, after the first-run
+welcome wizard has taken the executable's name, octave-gui, as its Wayland app
+id. Set it when the application object is made.
+
+--- a/libgui/src/octave-qobject.cc
++++ b/libgui/src/octave-qobject.cc
+@@ -229,6 +229,10 @@
+   // Force left-to-right alignment (see bug #46204)
+   m_qapplication->setLayoutDirection (Qt::LeftToRight);
+ 
++  // The Wayland app id of every window, the welcome wizard included: set
++  // before the first one is created.
++  QGuiApplication::setDesktopFileName ("org.octave.Octave");
++
+   // Make sure Qt picks a full OpenGL context (including deprecated
+   // functions, see bug #67974)
+ #if QT_VERSION >= QT_VERSION_CHECK(5, 4, 0)

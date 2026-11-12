@@ -45,6 +45,34 @@ static unsigned long long disk_mb(const Disk *d)
 
 /* ── probe ─────────────────────────────────────────────────────────────── */
 
+/*
+ * WHETHER TWO SLOTS FIT ON A DISK, asked of ki_ab() itself with that disk
+ * erased on LVM, so the Disk page can say it beside the disk rather than the
+ * Summary saying it last. The swap and the box store are the answers'.
+ */
+static int disk_ab_fits(const Disk *d)
+{
+	char disk[sizeof(cfg.disk)];
+	int plan = cfg.plan, lvm = cfg.lvm, fits;
+
+	kb_strlcpy(disk, cfg.disk, sizeof(disk));
+	kb_strlcpy(cfg.disk, d->path, sizeof(cfg.disk));
+	cfg.plan = PLAN_WIPE;
+	cfg.lvm = 1;
+	fits = ki_ab();
+	kb_strlcpy(cfg.disk, disk, sizeof(cfg.disk));
+	cfg.plan = plan;
+	cfg.lvm = lvm;
+	return fits;
+}
+
+/* The bytes an erased disk needs for two slots: the group's own need, and
+ * the ESP and BIOS boot partition in front of it. */
+static unsigned long long ab_need_bytes(void)
+{
+	return (ki_ab_need_mb() + KI_ESP_MB + KI_BIOS_BOOT_MB) << 20;
+}
+
 static void probe_text(void)
 {
 	printf("firmware      %s%s%s\n", ki_sys.uefi ? "UEFI" : "BIOS",
@@ -57,14 +85,23 @@ static void probe_text(void)
 	       ki_sys.payload_kb / 1024, ki_sys.appbox_kb / 1024);
 	printf("disks         %d\n", ki_ndisk);
 
+	printf("install needs %llu MB on a disk, %llu MB for two slots\n",
+	       (ki_need_bytes() + KI_DISK_MARGIN) >> 20, ab_need_bytes() >> 20);
+
 	for (int i = 0; i < ki_ndisk; i++) {
 		const Disk *d = &ki_disk[i];
+		char why[256];
+
 		printf("\n  %-10s %8llu MB  %-6s %-4s %s%s%s%s\n", d->path,
 		       disk_mb(d), d->tran, d->table,
 		       d->model[0] ? d->model : "-",
 		       d->removable ? "  removable" : "",
 		       d->readonly ? "  read-only" : "",
 		       d->is_boot_media ? "  BOOT MEDIA" : "");
+		if (ki_disk_check(d, why, sizeof(why)))
+			printf("    refused: %s\n", why);
+		else if (!disk_ab_fits(d))
+			printf("    one slot: too small for two\n");
 		for (int k = 0; k < d->nparts; k++) {
 			const Part *p = &d->part[k];
 			printf("    %-12s %8llu MB  %-8s %-16s%s%s%s\n", p->path,
@@ -103,10 +140,20 @@ static void probe_json(void)
 		      "\"appbox_kb\": %llu,\n",
 		      ki_sys.live ? "true" : "false", ki_sys.payload_kb,
 		      ki_sys.appbox_kb);
+	/* What the copy takes (a reused root's least size), what a disk must
+	 * hold by ki_disk_check()'s rule, and what two slots need: a front end
+	 * shows the backend's figures and keeps none of its own. */
+	kb_buf_printf(&b, "  \"install_bytes\": %llu, \"need_bytes\": %llu, "
+		      "\"ab_need_bytes\": %llu,\n",
+		      ki_need_bytes(), ki_need_bytes() + KI_DISK_MARGIN,
+		      ab_need_bytes());
 	kb_buf_str(&b, "  \"disks\": [");
 
 	for (int i = 0; i < ki_ndisk; i++) {
 		const Disk *d = &ki_disk[i];
+		char why[256];
+		int bad = ki_disk_check(d, why, sizeof(why));
+
 		kb_buf_printf(&b, "%s\n    {\"path\": ", i ? "," : "");
 		kb_json_str(&b, d->path);
 		kb_buf_str(&b, ", \"model\": ");
@@ -124,7 +171,17 @@ static void probe_json(void)
 			      d->removable ? "true" : "false",
 			      d->readonly ? "true" : "false",
 			      d->is_boot_media ? "true" : "false");
-		kb_buf_str(&b, "     \"partitions\": [");
+		/* `fits`: the install can go on this disk; `problem` says why
+		 * not. `ab_fits`: erased on LVM, it holds two slots. */
+		kb_buf_printf(&b, "     \"bytes\": %llu, \"fits\": %s, "
+			      "\"ab_fits\": %s, \"problem\": ",
+			      ki_disk_bytes(d), bad ? "false" : "true",
+			      disk_ab_fits(d) ? "true" : "false");
+		if (bad)
+			kb_json_str(&b, why);
+		else
+			kb_buf_str(&b, "null");
+		kb_buf_str(&b, ",\n     \"partitions\": [");
 		for (int k = 0; k < d->nparts; k++) {
 			const Part *p = &d->part[k];
 			kb_buf_printf(&b, "%s\n       {\"path\": ",
@@ -190,9 +247,18 @@ static const char *plan_name(void)
 	return "?";
 }
 
+/* The swap these answers make. A swap partition is carved only by the erase
+ * plan, so on the reuse plan that answer makes none, and the plan says so
+ * rather than promise one. */
+static int swap_kind(void)
+{
+	return cfg.swap == SWAP_PART && cfg.plan != PLAN_WIPE ? SWAP_NONE
+							      : cfg.swap;
+}
+
 static const char *swap_name(void)
 {
-	switch (cfg.swap) {
+	switch (swap_kind()) {
 	case SWAP_NONE: return "none";
 	case SWAP_FILE: return "file";
 	case SWAP_PART: return "partition";
@@ -227,18 +293,20 @@ static void plan_dump(int json)
 	/*
 	 * THE MACHINE IS PROBED AS THE INSTALL PROBES IT, or the plan answers
 	 * about a disk it never looked at: the firmware decides the BIOS
-	 * boot code, the disk's size and the payload decide how much of the
-	 * volume group slot A takes, and a reused disk's partitions decide
-	 * whether it can start on legacy BIOS. The payload is the slow probe —
-	 * a walk of the whole root filesystem — and it is asked for only by
-	 * the plan whose answer depends on it.
+	 * boot code, the disk's size and the payload decide whether the disk
+	 * and a reused root are large enough and how much of the volume group
+	 * slot A takes, and a reused disk's partitions decide whether it can
+	 * start on legacy BIOS. The payload is the slow probe — a walk of the
+	 * whole root filesystem — and is skipped only when the answers name
+	 * no disk the probe found, which the refusal already covers.
 	 */
 	probe_system();
 	probe_disks();
-	if (cfg.plan == PLAN_WIPE && cfg.lvm && disk_by_path(cfg.disk))
+	if (disk_by_path(cfg.disk))
 		probe_payload();
 	char problem[256] = "";
-	int bad = ki_answers_check(problem, sizeof(problem));
+	int bad = ki_answers_check(problem, sizeof(problem)) ||
+		  ki_target_check(problem, sizeof(problem));
 
 	/* The scan FIRST: whether the Packs step runs at all is a question
 	 * about the medium, and install_plan() answers it. Planning before
@@ -314,7 +382,7 @@ static void plan_dump(int json)
 			printf("root          %s%s\n", root,
 			       cfg.luks ? ", inside LUKS2" : "");
 		printf("swap          %s", swap_name());
-		if (cfg.swap != SWAP_NONE)
+		if (swap_kind() != SWAP_NONE)
 			printf(" %ld MB", cfg.swap_mb);
 		printf("\n");
 		printf("hostname      %s\n", cfg.hostname);
@@ -339,23 +407,17 @@ static void plan_dump(int json)
 		printf("services off  %s\n", svc.n ? svc.p : "-");
 		/* THE APPLICATIONS, WHAT THEY COST AND HOW THEY WILL ARRIVE.
 		 * `plan` is what somebody pastes into a bug report, and the
-		 * ROUTE is the part that decides whether anything is installed
-		 * at all — a reader who saw only the selection could not tell
-		 * an install that built them from one that recorded them. */
+		 * ROUTE says that the install records the selection and builds
+		 * nothing. */
 		if (ki_apps_present) {
 			static const char *const ROUTE[] = {
 				"nothing chosen",
-				"import, from the archive below",
-				"built during the install, over the network",
 				"recorded; the first session offers them",
 			};
-			int r = ki_apps_route();
 
 			printf("apps          %s\n",
 			       cfg.apps[0] ? cfg.apps : "(none chosen)");
-			printf("apps route    %s\n", ROUTE[r]);
-			if (r == APPS_IMPORT)
-				printf("apps archive  %s\n", ki_apps_archive);
+			printf("apps route    %s\n", ROUTE[ki_apps_route()]);
 			/* AN ESTIMATE, and it says so: what apt resolves on the
 			 * day depends on the snapshot, and shared runtime
 			 * layers are stored once however many applications
@@ -422,7 +484,7 @@ static void plan_dump(int json)
 		kb_buf_str(&b, ", \"lvm\": null");
 	kb_buf_printf(&b, ", \"ab\": %s", ki_ab() ? "true" : "false");
 	kb_buf_printf(&b, ",\n  \"swap\": \"%s\", \"swap_mb\": %ld",
-		      swap_name(), cfg.swap_mb);
+		      swap_name(), swap_kind() != SWAP_NONE ? cfg.swap_mb : 0);
 	kb_buf_str(&b, ",\n  \"hostname\": ");
 	kb_json_str(&b, cfg.hostname);
 	kb_buf_printf(&b, ", \"oem\": %s", cfg.oem ? "true" : "false");
@@ -452,8 +514,7 @@ static void plan_dump(int json)
 		      cfg.dry_run ? "true" : "false");
 	kb_buf_str(&b, ",\n  \"apps\": [");
 	{
-		static const char *const ROUTE[] = { "none", "import",
-						     "network", "pending" };
+		static const char *const ROUTE[] = { "none", "pending" };
 		int first = 1;
 
 		for (int i = 0; i < ki_ngroup; i++) {
@@ -505,8 +566,7 @@ static void plan_dump(int json)
  * them, and the route the ticked ones would take. */
 static void apps_dump(int json)
 {
-	static const char *const ROUTE[] = { "none", "import", "network",
-					     "pending" };
+	static const char *const ROUTE[] = { "none", "pending" };
 	KbBuf b = {0};
 
 	ki_apps_enter();
@@ -519,15 +579,11 @@ static void apps_dump(int json)
 			       kb_human_size(ki_group[i].bytes),
 			       ki_group[i].desc);
 		printf("route         %s\n", ROUTE[ki_apps_route()]);
-		if (ki_apps_archive[0])
-			printf("archive       %s\n", ki_apps_archive);
 		return;
 	}
 	kb_buf_printf(&b, "{\n  \"present\": %s, \"route\": \"%s\", "
-		      "\"archive\": ",
+		      "\"groups\": [",
 		      ki_apps_present ? "true" : "false", ROUTE[ki_apps_route()]);
-	kb_json_str(&b, ki_apps_archive);
-	kb_buf_str(&b, ",\n  \"groups\": [");
 	for (int i = 0; i < ki_ngroup; i++) {
 		kb_buf_printf(&b, "%s\n    {\"id\": ", i ? "," : "");
 		kb_json_str(&b, ki_group[i].id);
@@ -546,8 +602,8 @@ static void apps_dump(int json)
 /* ── look ──────────────────────────────────────────────────────────────── */
 
 /* The accents libkcolor knows, which are the names `theme =` accepts and the
- * global themes org.kdos.<name>.desktop that kdos-plasma-look installs, and
- * the desks `desk =` accepts. */
+ * global themes org.kdos.<name>.desktop that kdos-plasma-look installs, the
+ * desks `desk =` accepts, and the user names the answers check refuses. */
 static void look_dump(int json)
 {
 	KbBuf b = {0};
@@ -562,6 +618,10 @@ static void look_dump(int json)
 		for (int i = 0; i < ki_ndesks; i++)
 			printf("desk          %s%s\n", ki_desks[i],
 			       i ? "" : "  (default)");
+		printf("reserved      ");
+		for (int i = 0; ki_reserved_names[i]; i++)
+			printf("%s%s", i ? " " : "", ki_reserved_names[i]);
+		printf("\n");
 		return;
 	}
 	kb_buf_str(&b, "{\n  \"accents\": [");
@@ -587,6 +647,11 @@ static void look_dump(int json)
 	for (int i = 0; i < ki_ndesks; i++) {
 		kb_buf_str(&b, i ? ", " : "");
 		kb_json_str(&b, ki_desks[i]);
+	}
+	kb_buf_str(&b, "],\n  \"reserved_names\": [");
+	for (int i = 0; ki_reserved_names[i]; i++) {
+		kb_buf_str(&b, i ? ", " : "");
+		kb_json_str(&b, ki_reserved_names[i]);
 	}
 	kb_buf_str(&b, "]\n}\n");
 	fwrite(b.p, 1, b.n, stdout);

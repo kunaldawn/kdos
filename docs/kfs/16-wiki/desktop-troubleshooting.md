@@ -12,7 +12,7 @@ Nothing is installed for this page. The tools it uses are on every image:
 
 | Tool | From | Used for |
 |---|---|---|
-| `kdos doctor` | [kdos-tools](#port-kdos-tools) | One report on the whole machine; its Session section checks the session bus, elogind and, inside a session, KWin, plasmashell and the KDE portal; its Desktop section the lock screen's PAM stack and setuid helpers, Xwayland and fcitx5 |
+| `kdos doctor` | [kdos-tools](#port-kdos-tools) | One report on the whole machine; its Session section checks the session bus, elogind and, inside a session, KWin, plasmashell, the KDE portal, the session manager and the secret service; its Desktop section the lock screen's PAM stack and setuid helpers, Xwayland and its socket directory, and fcitx5 |
 | `loginctl` | [elogind](#port-elogind) | Which sessions exist, which is active, and unlocking or ending one |
 | `qdbus6` | [qt6-qttools](#port-qt6-qttools) | Asking KWin, plasmashell and the other session programs over the bus |
 | `service --user` | [kdos-tools](#port-kdos-tools) | The user's own services: the session bus, PipeWire, the timers |
@@ -23,7 +23,7 @@ Nothing is installed for this page. The tools it uses are on every image:
 
 | Stage | Log |
 |---|---|
-| `kdos-dm`, which starts SDDM or falls back to a text prompt | syslog, `grep kdos-dm /var/log/messages` |
+| `kdos-dm`, which starts SDDM or falls back to a text prompt | syslog, `sudo grep kdos-dm /var/log/messages` |
 | SDDM and the greeter, the greeter's KWin included | `/var/log/sddm.log`, the previous boot's in `/var/log/sddm.log.old` |
 | The session wrapper, startplasma, KWin, plasmashell and everything they print | `~/.local/share/sddm/wayland-session.log` |
 | The user's services, and every program the session bus starts | `$XDG_RUNTIME_DIR/ksvc/kdos-svc.<name>.log` |
@@ -90,7 +90,7 @@ starts the account as new.
   slowly, and Phosphor mode is not available. `qdbus6 org.kde.KWin /KWin supportInformation |
   grep -i renderer` says which renderer is in use.
 - A desktop that freezes while the pointer still moves is plasmashell, not KWin:
-  `plasmashell --replace &` from KRunner (`Alt+Space`) or Konsole.
+  `kquitapp6 plasmashell; kstart plasmashell` from KRunner (`Alt+Space`) or Konsole.
 - A desktop that freezes with the pointer is KWin; switch to `tty2` and back, which makes KWin
   take the display again, before anything else.
 
@@ -108,8 +108,10 @@ greeter that SDDM keeps restarting shows the restarts there.
 `~/.local/share/sddm/wayland-session.log` name why; a refusal from `kdos-session-wrapper` names the
 session bus or the runtime directory. See [Session and environment](session-and-environment.md#troubleshooting).
 
-**The session starts with no panel.** plasmashell failed: `plasmashell --replace &` and read what
-it prints. A broken layout is fixed with `kdos desk kdos`.
+**The session starts with no panel.** plasmashell failed. Run `plasmashell` in Konsole and read
+what it prints. The KDOS kded module starts a shell that stopped again, but gives up after five
+starts in a minute and says so in a notification ("Desktop shell keeps stopping"). A broken layout
+is fixed with `kdos desk kdos`.
 
 **Everything is very slow and Phosphor mode refuses.** KWin is on software rendering. Check the
 renderer as in [Tips](#tips) and see [Graphics drivers](graphics-drivers.md).

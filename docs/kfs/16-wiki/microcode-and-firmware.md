@@ -41,7 +41,7 @@ runs past the end of the file:
 The image build turns both vendors' files into the uncompressed archive the early loader scans
 (`script/phases/70_image/090_initramfs.sh`):
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1314-1378 pin=b6eaf412d8f2 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1384-1448 pin=b6eaf412d8f2 -->
 
 ### Device firmware
 
@@ -67,10 +67,10 @@ which serves `org.freedesktop.timedate1`, writes it whenever the time zone is se
 Settings' Date & Time page or `timedatectl`-style clients, as a two-letter code taken from
 `zone.tab`, from `src/daemons/kdos-settingsd/store.c`:
 
-<!-- kfs:include src/daemons/kdos-settingsd/store.c lines=995-1007 pin=6f7d102e34f9 -->
+<!-- kfs:include src/daemons/kdos-settingsd/store.c lines=1001-1013 pin=6f7d102e34f9 -->
 
-A zone with no country, such as `UTC`, removes the file, and the radio stays on the world domain,
-`00`. On a machine installed with the zone `Europe/Berlin`, the file reads:
+A zone with no country, such as `UTC`, removes the file and returns the running radio to the world
+domain, `00`. On a machine installed with the zone `Europe/Berlin`, the file reads:
 
 ```text
 # Written by the KDOS installer from the timezone (Europe/Berlin):

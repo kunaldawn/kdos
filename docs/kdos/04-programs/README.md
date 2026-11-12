@@ -77,7 +77,7 @@ signed filesystem image. A *box* is the rootless podman container an application
 | `plasmoid-kdos-checklist` | The Getting Started checklist that ticks itself | [The Plasma shell](plasma-shell.md#getting-started) |
 | `kdos-runner` | The KDOS command palette and the offline library in KRunner. `/usr/libexec/kdos/kdos-runner`, started by the session bus | [The Plasma shell](plasma-shell.md#krunner-and-the-kdos-runner) |
 | `kdos-notice` | Notices of restarts, vulnerabilities, trials, rollbacks and memory kills, and the session's half of a confirmed boot. `/usr/bin/kdos-notice` | [The Plasma shell](plasma-shell.md#kdos-notice) |
-| `kded-kdos` | The kded6 module that keeps the accent in step with Plasma, offers the sets on a stick and starts Samba for the first shared folder | [The Plasma shell](plasma-shell.md#kded-kdos) |
+| `kded-kdos` | The kded6 module that keeps the accent in step with Plasma, offers the sets on a stick and starts Samba for a login that can share folders | [The Plasma shell](plasma-shell.md#kded-kdos) |
 | `kdos-welcome` | The KDOS pages of the Welcome Center | [The Plasma shell](plasma-shell.md#the-welcome-tour) |
 | `ksystemstats-kdos` | Sensors for boxes, energy, the slots and Phosphor mode; the KDOS Meters face and System Monitor's KDOS page | [The Plasma shell](plasma-shell.md#system-monitor) |
 | `kio-library` | `library:/`, the offline library as a folder, its Places entry and the menu's Library category | [The Plasma shell](plasma-shell.md#the-library-as-a-folder) |
@@ -166,7 +166,7 @@ fixed, checked set of words. The image's setuid inventory, all of it upstream's,
 | `kdos-sfx` | Plays the machine's sounds, and renders them into the `kdos` sound theme at build time | [The kdos command](kdos-command.md#kdos-sfx) |
 | `kdos-fetch-app`, `kdos-fetch-static` | Install an [alien application](../06-reference/glossary.md#alien-app) (one not compiled by this repository) into a distrobox container from its distribution's packages, and export it to your desktop; fetch one upstream binary, checked against a SHA-256 you give it, into `/usr/local/bin` | [The kdos command](kdos-command.md#kdos-fetch-app-and-kdos-fetch-static) |
 | `kdos-bb` | A hard fork of bb 1.3rc1, the AAlib ASCII-art demo | [kdos-bb](kdos-bb.md) |
-| `kdos-openarchive` | Extracts an archive with `ouch` into the directory the archive is in: the default handler for 7z and rar. A shell script | [Applications](../02-user-guide/applications.md) |
+| `kdos-openarchive` | Extracts an archive with `ouch` into the directory the archive is in: the default handler for comic books packed as 7z or rar. A shell script | [Applications](../02-user-guide/applications.md) |
 | `kdos-updatedb` | Rebuilds your own `plocate` index, scoped to your home directory. A shell script | [Administration](../02-user-guide/administration.md#finding-a-file-by-name) |
 | `xdg-terminal-exec` | The first terminal name GLib looks for when it wraps a `Terminal=true` entry. It drops a leading `-e` or `--` and runs `konsole -e` with the rest. A shell script | [kdos-appbox](kdos-appbox.md#terminal-entries) |
 

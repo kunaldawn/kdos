@@ -11,6 +11,8 @@
 
 _home=/usr/lib/sideband
 
+patch -p1 -i "$PORT_SRC/setup-kv-glob.patch"
+
 mkdir -p vendor
 tar -xf $PORT_SRC/$name-vendor-$version.tar.xz --strip-components=1 -C vendor
 
@@ -31,6 +33,7 @@ pip3 install --no-deps --no-index --no-build-isolation \
 install -Dm644 sbapp/assets/io.unsigned.sideband.png \
 	"$PKG/usr/share/icons/hicolor/512x512/apps/io.unsigned.sideband.png"
 rm -rf "$PKG$_home/share"
+test -f "$_site/sbapp/kivymd/uix/label/label.kv"
 
 install -d "$PKG/usr/bin"
 cat > "$PKG/usr/bin/sideband" <<'KDOS_SH'

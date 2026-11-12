@@ -22,7 +22,10 @@ a shell, `darktable-chart` for building colour lookup tables from a chart, and
 - `-D USE_CAMERA_SUPPORT=ON` — Tethered shooting and import straight from a camera through
   [libgphoto2](#port-libgphoto2).
 - `-D USE_COLORD=OFF` — No display profile from colord, which is not a port.
-- `-D USE_MAP=OFF` — No map view: it draws online tiles through osm-gps-map, which is not a port.
+- `-D USE_MAP=ON`, `-D CMAKE_REQUIRE_FIND_PACKAGE_OSMGpsMap=ON` — The map view, which places
+  geotagged images on OpenStreetMap tiles drawn and cached by [osm-gps-map](#port-osm-gps-map)
+  and fetched online when the view opens. The second switch makes the library required:
+  darktable otherwise drops the view, with only a status message, when it is not found.
 - `-D USE_AI=OFF` — No AI modules, which run on [onnxruntime](#port-onnxruntime) and download
   their models from a repository at run time; upstream's default, named.
 - `-D USE_KWALLET=OFF`, `-D USE_LIBSECRET=OFF` — No password-store back end. darktable keeps only

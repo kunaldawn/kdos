@@ -24,7 +24,12 @@
  * reader runs or the screen is magnified (the accessibility page comes
  * first, and a flashing, curved pass is the wrong thing to offer someone
  * listening to the screen or reading it through a zoom), and when the
- * session renders in software the switch says why it cannot turn on.
+ * session renders in software the switch says why it cannot turn on, in
+ * this page's words for the reasons `kdos phosphor status` knows.
+ *
+ * Everything is read again whenever the page is shown and whenever the
+ * Welcome Center window comes back to the front, so an accent or a setting
+ * changed elsewhere while the tour is open is shown as it is.
  * Whether a zoom is in force is KWin's list of active effects: zoom and the
  * magnifier are active exactly while they magnify.
  * ---------------------------------
@@ -46,14 +51,10 @@ Welcome.ScrollablePage {
     id: page
 
     heading: i18ndc("kdos-welcome", "@title:window", "Look")
-    description: i18ndc("kdos-welcome", "@info:usagetip", "KDOS comes in eight accents. Picking one repaints everything at once: the desktop, every open terminal, the lock and login screens, and the boot menu on the next start.")
+    description: i18ndc("kdos-welcome", "@info:usagetip", "KDOS comes in eight accents. Picking one repaints everything at once: the desktop, every open terminal and the lock and login screens, and on an installed system the boot menu from the next start.")
 
     Kdos.Run {
         id: run
-    }
-
-    Kdos.Accents {
-        id: accents
     }
 
     property bool automatic: false      // kdeglobals [KDE] AutomaticLookAndFeel
@@ -65,18 +66,31 @@ Welcome.ScrollablePage {
     property string failure: ""
 
     readonly property bool currentLight: {
-        const a = accents.byName(accents.current);
+        const a = Kdos.Accents.byName(Kdos.Accents.current);
         return a !== null && a.light;
     }
     // dark, light or auto
-    readonly property string mode: !accents.ready ? "" : (automatic ? "auto" : (currentLight ? "light" : "dark"))
+    readonly property string mode: !Kdos.Accents.ready ? "" : (automatic ? "auto" : (currentLight ? "light" : "dark"))
 
-    // `kdos phosphor status --json`: {"on", "supported", "reason", "preset",
-    // "terminus", "previous_accent"}. A field of another type is read as
+    // `kdos phosphor status --json`: {"on", "supported", "reason", "refusal",
+    // "preset", "terminus", "previous_accent"}. A field of another type is read as
     // absent, so a reply this page does not understand offers nothing.
     readonly property bool phosphorOn: phosphor !== null && phosphor.on === true
     readonly property bool phosphorSupported: phosphor !== null && phosphor.supported === true
     readonly property string phosphorReason: phosphor !== null && typeof phosphor.reason === "string" ? phosphor.reason : ""
+    readonly property string phosphorRefusal: phosphor !== null && typeof phosphor.refusal === "string" ? phosphor.refusal : ""
+    // The page's own words for the two refusals `kdos phosphor` names
+    // ("session" and "gpu"), the same two sentences kcm-kdos-look shows; the
+    // reason of a refusal it does not name is shown as the command gave it.
+    readonly property string phosphorWhy: {
+        if (phosphorRefusal === "session") {
+            return i18ndc("kdos-welcome", "@info", "Phosphor mode needs a running Plasma session.");
+        }
+        if (phosphorRefusal === "gpu" || phosphorReason.length === 0) {
+            return i18ndc("kdos-welcome", "@info", "Phosphor mode needs GPU rendering, and this session renders in software.");
+        }
+        return phosphorReason;
+    }
     // "custom" is a tuning made on the effect's own page: neither radio is
     // checked for it, and picking one replaces the tuning.
     readonly property string phosphorPreset: phosphor !== null && (phosphor.preset === "retro" || phosphor.preset === "custom") ? phosphor.preset : "subtle"
@@ -97,11 +111,11 @@ Welcome.ScrollablePage {
     }
 
     function readPhosphor(): void {
-        run.json(["kdos", "phosphor", "status", "--json"], (code, value) => page.phosphor = value);
+        run.readJson(["kdos", "phosphor", "status", "--json"], (code, value) => page.phosphor = value);
     }
 
     function refresh(): void {
-        accents.refreshCurrent();
+        Kdos.Accents.refreshCurrent();
         readMode();
         readPhosphor();
         run.dbusBool("org.kde.kded6", "/modules/screenreader", "org.kde.screenreader.enabled", [], on => page.screenReader = on);
@@ -135,7 +149,7 @@ Welcome.ScrollablePage {
                 return;
             }
             if (want === "light") {
-                const light = accents.firstOf(true);
+                const light = Kdos.Accents.firstOf(true);
                 if (light.length > 0) {
                     applyAccent(light);
                 }
@@ -143,8 +157,8 @@ Welcome.ScrollablePage {
             }
             run.config("kdeglobals", "KDE", "DefaultDarkLookAndFeel", "", value => {
                 const m = /^org\.kdos\.([a-z][a-z0-9]*)\.desktop$/.exec(value);
-                const kept = m !== null ? accents.byName(m[1]) : null;
-                const dark = (kept !== null && !kept.light) ? kept.name : accents.firstOf(false);
+                const kept = m !== null ? Kdos.Accents.byName(m[1]) : null;
+                const dark = (kept !== null && !kept.light) ? kept.name : Kdos.Accents.firstOf(false);
                 if (dark.length > 0) {
                     applyAccent(dark);
                 }
@@ -156,9 +170,12 @@ Welcome.ScrollablePage {
         run.run(["kdos", "phosphor"].concat(argv), (code, text) => {
             report(code, text);
             readPhosphor();
-            accents.refreshCurrent();
+            Kdos.Accents.refreshCurrent();
         });
     }
+
+    readonly property bool shown: page.isCurrentPage && Window.active
+    onShownChanged: if (shown) refresh()
 
     Component.onCompleted: refresh()
 
@@ -190,11 +207,11 @@ Welcome.ScrollablePage {
             Accessible.name: i18ndc("kdos-welcome", "@title:group", "Accent")
 
             Repeater {
-                model: accents.model
+                model: Kdos.Accents.model
 
                 delegate: Kdos.AccentSwatch {
                     Layout.fillWidth: true
-                    current: name === accents.current
+                    current: name === Kdos.Accents.current
                     onClicked: page.applyAccent(name)
                 }
             }
@@ -259,9 +276,7 @@ Welcome.ScrollablePage {
                 Layout.fillWidth: true
                 visible: page.offerPhosphor && page.phosphor !== null && !page.phosphorSupported
                 type: Kirigami.MessageType.Information
-                text: page.phosphorReason.length > 0
-                    ? page.phosphorReason
-                    : i18ndc("kdos-welcome", "@info", "Phosphor mode needs GPU rendering, and this session renders in software.")
+                text: page.phosphorWhy
             }
 
             Kirigami.InlineMessage {

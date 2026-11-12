@@ -58,7 +58,7 @@ public:
             return {};
         }
 
-        auto *action = new QAction(QIcon::fromTheme(QStringLiteral("text-x-generic-symbolic")),
+        auto *action = new QAction(QIcon::fromTheme(QStringLiteral("media-view-subtitles-symbolic")),
                                    i18ndcp("kdos-transcribe", "@action:inmenu", "Transcribe", "Transcribe %1 Files", int(files.size())),
                                    parentWidget);
         action->setToolTip(i18ndc("kdos-transcribe", "@info:tooltip", "Write what is said into a text file beside it, on this machine"));

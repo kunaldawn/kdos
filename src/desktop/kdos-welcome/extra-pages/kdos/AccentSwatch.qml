@@ -8,8 +8,10 @@
  * ---------------------------------
  *   AccentSwatch.qml — one accent, painted in its own scheme
  *
- * The plate is the accent's ground, the name its ink and the bar its
- * selection, all three read from the accent's colour scheme by Accents.qml.
+ * The plate is the accent's ground, the name its ink and the bar the accent
+ * itself, the view's focus decoration, all three read from the accent's
+ * colour scheme by Accents.qml. The bar is not the scheme's selection: a dark
+ * accent's selection is the accent darkened until text reads on it.
  * The frame is drawn in the RUNNING scheme's roles, so the one in force and
  * the one with focus are marked in the colours around the swatch, not in
  * the swatch's own. Square, as every KDOS plate is.
@@ -29,7 +31,7 @@ QQC2.AbstractButton {
     required property string title
     required property string ground
     required property string ink
-    required property string selection
+    required property string accent
     required property bool light
     required property bool known
     property bool current: false
@@ -70,7 +72,7 @@ QQC2.AbstractButton {
                 margins: parent.border.width
             }
             height: Kirigami.Units.smallSpacing * 2
-            color: swatch.known ? swatch.selection : Kirigami.Theme.disabledTextColor
+            color: swatch.known ? swatch.accent : Kirigami.Theme.disabledTextColor
         }
     }
 

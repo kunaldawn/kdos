@@ -954,12 +954,18 @@ static void fsync_dir(const char *dir)
 /*
  * BOTH HALVES ARE WRITTEN OR THE CALL FAILS. `/etc/localtime` is what a
  * program reading the zoneinfo tree follows; `TZ` in the profile is what musl
- * reads when it is set, and every KDOS login sets it — so writing only the
- * link leaves every new login with the TZ an installer answer file or an
- * older zone wrote, and `date` reporting that zone, which reads as the
- * setting having done nothing. The colon form points musl at the link
- * itself, the one value that cannot drift from it, and it is the form Qt
- * reads as "follow /etc/localtime" rather than as a zone of that name.
+ * reads where it is set, and every login sets it once an installer or this
+ * daemon has chosen a zone — so writing only the link leaves every new login
+ * with the TZ an installer answer file or an older zone wrote, and `date`
+ * reporting that zone, which reads as the setting having done nothing.
+ *
+ * THE COLON FORM POINTS MUSL AT THE LINK ITSELF, the one value that cannot
+ * drift from it, and it is the form Qt reads as "follow /etc/localtime"
+ * rather than as a zone of that name. It is also what lets a running program
+ * follow the change: KDOS's musl re-reads the file a path-form TZ names on
+ * the next tzset() once the link is replaced, which a zone name such as
+ * Europe/Berlin never does. The link is swapped by rename(), so tzset()
+ * never finds it missing.
  */
 int ks_set_timezone(const char *zone, char cc[3])
 {
@@ -985,10 +991,10 @@ int ks_set_timezone(const char *zone, char cc[3])
 	kb_mkdir_p(dir);
 	if (kb_write_file_atomic(prof,
 		"# Written by kdos-settingsd (org.freedesktop.timedate1).\n"
-		"# `/etc/localtime` is what a program reading the zoneinfo\n"
-		"# tree follows; this is what musl reads, and it wins where it\n"
-		"# is set. Both say the same zone or `date` and the desktop\n"
-		"# disagree.\n"
+		"# musl reads TZ before /etc/localtime; the colon form names\n"
+		"# the link, so both say the same zone, and a running program\n"
+		"# follows the link when it is replaced. A zone name here\n"
+		"# would hold every program on that zone.\n"
 		"export TZ=':/etc/localtime'\n") != 0)
 		return -1;
 

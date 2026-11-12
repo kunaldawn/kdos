@@ -223,7 +223,8 @@ audio/x-mpegurl=org.kde.elisa.desktop
 audio/x-scpls=org.kde.elisa.desktop
 audio/vnd.rn-realaudio=org.kde.elisa.desktop
 
-# Archives Ark writes as well as reads: zip, the tar family and 7z.
+# Archives: Ark, which writes zip, the tar family and 7z as well as reading
+# them, and reads rar through libarchive.
 application/zip=org.kde.ark.desktop
 application/x-tar=org.kde.ark.desktop
 application/x-compressed-tar=org.kde.ark.desktop
@@ -231,6 +232,7 @@ application/x-bzip2-compressed-tar=org.kde.ark.desktop
 application/x-xz-compressed-tar=org.kde.ark.desktop
 application/x-zstd-compressed-tar=org.kde.ark.desktop
 application/x-7z-compressed=org.kde.ark.desktop
+application/vnd.rar=org.kde.ark.desktop
 
 # Disk images: ISO Image Writer, which writes an ISO or a raw image to a
 # stick. Ark claims the ISO type too, and opens it as an archive from Open
@@ -305,6 +307,10 @@ x-scheme-handler/magnet=org.qbittorrent.qBittorrent.desktop
 # Places: Organic Maps, which works from the offline world map. Marble is
 # installed and is plasma-desktop's choice.
 x-scheme-handler/geo=app.organicmaps.desktop.desktop
+# An Organic Maps map file. The type is the port's own MIME package; opening
+# one starts Organic Maps, which reads every map in its data directories and
+# has no way to be handed one.
+application/x-organicmaps-mwm=app.organicmaps.desktop.desktop
 
 # Password databases: KeePassXC. Its own MIME file defines the type.
 application/x-keepass2=org.keepassxc.KeePassXC.desktop
@@ -313,8 +319,8 @@ application/x-keepass2=org.keepassxc.KeePassXC.desktop
 # key or decrypts and verifies a file. KGpg is installed and claims all
 # three.
 application/pgp-keys=kleopatra_import.desktop
-application/pgp-encrypted=kleopatra_decryptverifyfiles.desktop
-application/pgp-signature=kleopatra_decryptverifyfiles.desktop
+application/pgp-encrypted=org.kde.kleopatra.decryptverify.desktop
+application/pgp-signature=org.kde.kleopatra.decryptverify.desktop
 
 # Phone numbers: KDE Connect dials them on the paired phone.
 x-scheme-handler/tel=org.kde.kdeconnect.handler.desktop

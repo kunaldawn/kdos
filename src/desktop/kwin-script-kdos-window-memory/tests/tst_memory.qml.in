@@ -25,6 +25,7 @@ TestCase {
             specialWindow: false,
             skipTaskbar: false,
             moveable: true,
+            resizeable: true,
             maximizeMode: 0,
             fullScreen: false,
             tile: null,
@@ -54,6 +55,7 @@ TestCase {
             { tag: "special", w: win({ specialWindow: true }), r: false },
             { tag: "skips the taskbar", w: win({ skipTaskbar: true }), r: false },
             { tag: "fixed in place", w: win({ moveable: false }), r: false },
+            { tag: "fixed size", w: win({ resizeable: false }), r: false },
             { tag: "unmanaged", w: win({ managed: false }), r: false },
             { tag: "excluded", w: win({ desktopFileName: "org.kde.spectacle" }), r: false },
             { tag: "no name", w: win({ desktopFileName: "", resourceClass: "" }), r: false },
@@ -81,10 +83,63 @@ TestCase {
             { app: "space here", x: 0, y: 0, width: 10, height: 10 },
             record("a", 99, 99),
             { app: "b", x: 1.4, y: 2.6, width: 300, height: 200 },
+            { app: "c", x: 0, y: 0, width: 10, height: 10, scale: 2 },
+            { app: "d", x: 0, y: 0, width: 10, height: 10, scale: "big" },
+            { app: "e", x: 0, y: 0, width: 10, height: 10, lead: 1 },
+            { app: "f", x: 0, y: 0, width: 10, height: 10, lead: "yes" },
         ]));
-        compare(list.length, 2, "a bad record and the older duplicate are dropped");
+        compare(list.length, 4, "a bad record and the older duplicate are dropped");
         compare(list[0].x, 10, "the first of two records for one program is the newer");
-        compare(list[1], { app: "b", x: 1, y: 3, width: 300, height: 200, max: 0, desk: "" });
+        compare(list[1], { app: "b", x: 1, y: 3, width: 300, height: 200, max: 0, desk: "", scale: 0, lead: 0 }, "a record without a scale or a lead loads");
+        compare(list[2].scale, 2);
+        compare(list[3].lead, 1);
+    }
+
+    function test_lead() {
+        const r = record("a", 0, 0);
+        const led = Memory.withLead(r);
+        compare(led.lead, 1);
+        compare(r.lead, undefined, "the record it was made from is unchanged");
+        verify(!Memory.same(r, led), "a lead is a change worth a write");
+        verify(Memory.same(Memory.withLead(r), led));
+    }
+
+    function test_openAction_data() {
+        const plain = record("a", 0, 0);
+        const led = Memory.withLead(plain);
+        return [
+            { tag: "no record", rec: null, floating: true, alone: true, successor: false, r: "settle" },
+            { tag: "no record, maximized", rec: null, floating: false, alone: true, successor: false, r: "none" },
+            { tag: "record", rec: plain, floating: true, alone: true, successor: false, r: "restore" },
+            { tag: "record, maximized", rec: plain, floating: false, alone: true, successor: false, r: "pending" },
+            { tag: "lead: the launch's first window", rec: led, floating: true, alone: true, successor: false, r: "lead" },
+            { tag: "lead, maximized", rec: led, floating: false, alone: true, successor: false, r: "lead" },
+            { tag: "lead: the window after the splash", rec: led, floating: true, alone: true, successor: true, r: "restore" },
+            { tag: "lead: a window beside the splash", rec: led, floating: true, alone: false, successor: false, r: "restore" },
+            { tag: "lead: beside it, maximized", rec: led, floating: false, alone: false, successor: false, r: "pending" },
+        ];
+    }
+
+    function test_openAction(data) {
+        compare(Memory.openAction(data.rec, data.floating, data.alone, data.successor), data.r);
+    }
+
+    function test_overlapPrelude_data() {
+        return [
+            { tag: "no window beside it", followedAt: 0, now: 5000, r: false },
+            { tag: "closed soon after the next opened", followedAt: 5000, now: 6500, r: true },
+            { tag: "at the limit", followedAt: 5000, now: 5000 + Memory.preludeInterval, r: true },
+            { tag: "a second window, long open", followedAt: 5000, now: 5001 + Memory.preludeInterval, r: false },
+        ];
+    }
+
+    function test_overlapPrelude(data) {
+        compare(Memory.overlapPrelude(data.followedAt, data.now), data.r);
+    }
+
+    function test_leadEnds() {
+        verify(!Memory.leadEnds(1000, 1000 + Memory.preludeInterval), "as short as a prelude");
+        verify(Memory.leadEnds(1000, 1001 + Memory.preludeInterval));
     }
 
     function test_parseCap() {
@@ -116,6 +171,81 @@ TestCase {
         compare(r.records.length, Memory.cap);
         compare(r.records[0].app, "new");
         compare(r.records[Memory.cap - 1].app, "app" + (Memory.cap - 2), "the oldest goes");
+    }
+
+    function test_forget() {
+        const list = [record("a", 0, 0), record("b", 0, 0)];
+        let r = Memory.forget(list, "a");
+        verify(r.changed);
+        compare(r.records.map(x => x.app), ["b"]);
+        r = Memory.forget(list, "z");
+        verify(!r.changed);
+    }
+
+    function test_prelude_data() {
+        const last = { app: "org.freecad.FreeCAD", pid: 400, time: 10000 };
+        return [
+            { tag: "same process, soon after", last: last, app: "org.freecad.FreeCAD", pid: 400, now: 11000, r: true },
+            { tag: "at the limit", last: last, app: "org.freecad.FreeCAD", pid: 400, now: 10000 + Memory.preludeInterval, r: true },
+            { tag: "too late", last: last, app: "org.freecad.FreeCAD", pid: 400, now: 10001 + Memory.preludeInterval, r: false },
+            { tag: "another process", last: last, app: "org.freecad.FreeCAD", pid: 401, now: 11000, r: false },
+            { tag: "another program", last: last, app: "org.kde.kate", pid: 400, now: 11000, r: false },
+            { tag: "no pid", last: { app: "a", pid: 0, time: 0 }, app: "a", pid: 0, now: 10, r: false },
+            { tag: "nothing closed", last: null, app: "a", pid: 1, now: 10, r: false },
+        ];
+    }
+
+    function test_prelude(data) {
+        compare(Memory.prelude(data.last, data.app, data.pid, data.now), data.r);
+    }
+
+    function test_restoreTarget() {
+        const area = { x: 0, y: 0, width: 960, height: 500 };
+        const big = { app: "a", x: 100, y: 100, width: 1400, height: 900, max: 0, desk: "", scale: 1 };
+        let t = Memory.restoreTarget(big, { width: 640, height: 400 }, 1, area);
+        compare(t.set, { x: 0, y: 0, width: 960, height: 500 }, "shrunk into the smaller area");
+        compare(t.wanted, { x: 100, y: 100, width: 1400, height: 900 }, "the remembered size is what stays wanted");
+        t = Memory.restoreTarget(big, { width: 640, height: 400 }, 2, area);
+        compare(t.set, { x: 100, y: 100, width: 640, height: 400 }, "another ratio: the place, at the program's size");
+        compare(t.wanted, { x: 100, y: 100, width: 640, height: 400 });
+        const old = { app: "a", x: 10, y: 10, width: 300, height: 200, max: 0, desk: "", scale: 0 };
+        t = Memory.restoreTarget(old, { width: 640, height: 400 }, 2, area);
+        compare(t.set, { x: 10, y: 10, width: 300, height: 200 }, "a record with no ratio keeps its size");
+    }
+
+    function test_keepWanted() {
+        const set = { x: 0, y: 0, width: 960, height: 500 };
+        const wanted = { x: 100, y: 100, width: 1400, height: 900 };
+        const restored = { set: set, wanted: wanted, reached: false };
+        let k = Memory.keepWanted({ x: 0, y: 0, width: 640, height: 400 }, restored);
+        compare(k.rect, wanted, "on its way to the set rectangle");
+        verify(k.restored);
+        k = Memory.keepWanted({ x: 0, y: 0, width: 960, height: 500 }, k.restored);
+        compare(k.rect, wanted, "holding the clamped rectangle");
+        verify(k.restored.reached);
+        k = Memory.keepWanted({ x: 0, y: 0, width: 900, height: 480 }, k.restored);
+        compare(k.rect, { x: 0, y: 0, width: 900, height: 480 }, "resized: its own size");
+        compare(k.restored, null);
+        k = Memory.keepWanted({ x: 5, y: 5, width: 50, height: 50 }, null);
+        compare(k.rect, { x: 5, y: 5, width: 50, height: 50 });
+    }
+
+    function test_recentre() {
+        const area = { x: 0, y: 0, width: 1920, height: 1034 };
+        compare(Memory.recentre({ x: 959, y: 502, width: 1, height: 29 }, area), null, "still a placeholder");
+        compare(Memory.recentre({ x: 959, y: 502, width: 789, height: 604 }, area), { x: 566, y: 215, width: 789, height: 604 });
+        compare(Memory.recentre({ x: 960, y: 540, width: 800, height: 628 }, area), { x: 560, y: 203, width: 800, height: 628 });
+        compare(Memory.recentre({ x: 449, y: 199, width: 1022, height: 636 }, area), null, "placed at its real size");
+        compare(Memory.recentre({ x: 300, y: 500, width: 789, height: 604 }, area), null, "moved");
+        compare(Memory.recentre({ x: 960, y: 517, width: 2400, height: 1200 }, area), { x: 0, y: 0, width: 1920, height: 1034 }, "larger than the area");
+    }
+
+    function test_fit() {
+        const area = { x: 0, y: 0, width: 1920, height: 1034 };
+        compare(Memory.fit({ x: 487, y: 0, width: 945, height: 1088 }, area), { x: 487, y: 0, width: 945, height: 1034 }, "taller than the area");
+        compare(Memory.fit({ x: 1500, y: 600, width: 800, height: 600 }, area), { x: 1120, y: 434, width: 800, height: 600 }, "past the corner");
+        compare(Memory.fit({ x: 300, y: 200, width: 800, height: 600 }, area), null, "inside");
+        compare(Memory.fit({ x: 0, y: 0, width: 1920, height: 1034 }, area), null, "exactly the area");
     }
 
     function test_nearestScreen() {

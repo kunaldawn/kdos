@@ -1,0 +1,43 @@
+Subject: Name each window's Wayland app id after the installed desktop entry
+
+Qt: set the desktop file name space.celestiaproject.celestia_qt6 before the
+splash screen, in place of celestia-qt6 after it. SDL: set SDL_APP_ID to
+space.celestiaproject.celestia_sdl before SDL_Init. Both names are the entries
+and metainfo launchables Celestia installs.
+
+--- a/src/celestia/qt/qtappwin.cpp
++++ b/src/celestia/qt/qtappwin.cpp
+@@ -305,7 +305,7 @@
+ 
+     setWindowIcon(QIcon(":/icons/celestia.png"));
+ #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0) && QT_VERSION < QT_VERSION_CHECK(7, 0, 0)
+-    QGuiApplication::setDesktopFileName("celestia-qt6");
++    QGuiApplication::setDesktopFileName("space.celestiaproject.celestia_qt6");
+ #else
+     #error "Qt version is not supported"
+ #endif
+--- a/src/celestia/qt/qtmain.cpp
++++ b/src/celestia/qt/qtmain.cpp
+@@ -92,6 +92,9 @@
+     QCoreApplication::setOrganizationDomain("celestiaproject.space");
+     QCoreApplication::setApplicationName("Celestia QT");
+     QCoreApplication::setApplicationVersion(VERSION);
++    // The Wayland app id of every window, the splash screen included, and so the
++    // desktop entry the compositor finds the icon in.
++    QGuiApplication::setDesktopFileName("space.celestiaproject.celestia_qt6");
+ 
+     CelestiaCommandLineOptions options = ParseCommandLine(app);
+ 
+--- a/src/celestia/sdl/environment.cpp
++++ b/src/celestia/sdl/environment.cpp
+@@ -52,6 +52,10 @@
+     if (auto environment = g_environment.lock(); environment != nullptr)
+         return environment;
+ 
++    // The Wayland app id, which names the desktop entry the compositor finds
++    // the icon in; without it SDL uses the executable's name.
++    SDL_SetHint("SDL_APP_ID", "space.celestiaproject.celestia_sdl");
++
+     if (SDL_Init(SDL_INIT_VIDEO) != 0)
+     {
+         fatalError("Failed to initialize SDL: {}", SDL_GetError());

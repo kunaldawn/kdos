@@ -10,9 +10,8 @@
 # On mains power the screen dims at 5 minutes and turns off at 15; the lock at
 # 10 is kscreenlockerrc's. The battery profiles keep PowerDevil's own shorter
 # timers, because there the screen is most of what the battery feeds. Suspend
-# on idle and the lid action stay PowerDevil's, which already never suspends
-# a virtual machine; /usr/share/kdos/xdg-vm turns the screen timers off there
-# as well.
+# on idle and the lid action stay PowerDevil's; in a virtual machine
+# /usr/share/kdos/xdg-vm turns them off, with the screen timers.
 # ---------------------------------
 
 [AC][Display]

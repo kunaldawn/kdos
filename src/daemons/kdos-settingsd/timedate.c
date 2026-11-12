@@ -185,9 +185,11 @@ static int apply_timezone(KsAuth *a, sd_bus_error *err)
 		return sd_bus_error_setf(err, SD_BUS_ERROR_FAILED,
 					 "cannot write /etc/localtime: %s",
 					 strerror(errno));
-	/* Now as well as at the next boot, which reads modprobe.d. */
-	if (cc[0])
-		ks_run("iw", "reg", "set", cc);
+	/* Now as well as at the next boot, which reads modprobe.d. A zone
+	 * with no country returns the radio to the world domain, as the
+	 * removed modprobe.d file does at the next boot; skipping it would
+	 * leave the previous country's channels and power in force. */
+	ks_run("iw", "reg", "set", cc[0] ? cc : "00");
 	sd_bus_emit_properties_changed(ks_bus(), KS_TIMEDATE_PATH,
 				       KS_TIMEDATE_IF, "Timezone", NULL);
 	return 0;

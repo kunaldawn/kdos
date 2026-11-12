@@ -42,9 +42,9 @@ console() {
 	printf 'kdos-dm: %s — a password prompt on %s instead\n' "$1" "$TTY" >&2
 	if [ -x /usr/local/sbin/kdos-getty ]; then
 		exec /usr/local/sbin/kdos-getty "$TTY" /sbin/agetty --noclear \
-			"$TTY" 38400 linux
+			--issue-file /etc/issue "$TTY" 38400 linux
 	fi
-	exec /sbin/agetty --noclear "$TTY" 38400 linux
+	exec /sbin/agetty --noclear --issue-file /etc/issue "$TTY" 38400 linux
 }
 
 # SECONDS SINCE BOOT, NOT THE WALL CLOCK: chrony may step the clock between
@@ -78,14 +78,15 @@ printf '%s%s\n' "$kept" "$now" > "$STARTS"
 
 # THE GREETER RUNS AS `sddm`, and SDDM keeps that account's home as its state
 # directory: the last user and session, the greeter's own settings and its
-# output configuration. No tmpfiles service exists to make it, and a home
-# shipped in the image is root's, so it is made and handed to the account
-# here, at every start. The directory alone is chowned, never what is inside
-# it: a recursive chown run as root in a directory another account writes
-# follows whatever links that account leaves there. Only a home under /var/lib
-# is touched, and never a link or a path that climbs out of it: a home
-# anywhere else is the administrator's to prepare, and a home of / would hand
-# the root directory to the account.
+# output configuration. No tmpfiles service exists to make it. The image
+# ships it, seeded with the default accent's login screen, but a home that was
+# removed or made by anything else is missing or root's, so it is made and
+# handed to the account here, at every start. The directory alone is chowned,
+# never what is inside it: a recursive chown run as root in a directory
+# another account writes follows whatever links that account leaves there.
+# Only a home under /var/lib is touched, and never a link or a path that
+# climbs out of it: a home anywhere else is the administrator's to prepare,
+# and a home of / would hand the root directory to the account.
 _home=""
 while IFS=: read -r _n _ _ _ _ _h _; do
 	[ "$_n" = sddm ] || continue
@@ -107,7 +108,7 @@ esac
 # greeter, and init gives it none. /etc/locale.conf is the machine's choice
 # (locale1 writes it); a value is taken only when it is a locale name, because
 # this file is read by a root shell and a value is never evaluated.
-LANG=C.UTF-8
+LANG=en_US.UTF-8
 if [ -r /etc/locale.conf ]; then
 	while IFS='=' read -r _k _v; do
 		_v=${_v#\"}

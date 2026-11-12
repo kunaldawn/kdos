@@ -37,7 +37,7 @@ is mounted:
 [`/boot/efi`]{.idx} is where the installer mounts the ESP of an installed system, in the `fstab` it writes
 (`src/system/kinstall-core/install.c`):
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=1820-1825 pin=d44ca257584d -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=1832-1837 pin=d44ca257584d -->
 
 fwupd asks udisks for the ESP. When udisks names none, the recipe's patch describes the FAT
 filesystem mounted at `EspLocation` itself, from sysfs and the udev database; a path that is not a
@@ -85,7 +85,7 @@ A capsule update is armed through a UEFI variable, and fwupd reads the firmware'
 (the ESRT) through [`/sys/firmware/efi`]{.idx}. `rcS` mounts `efivarfs` on every UEFI boot
 (`fs/etc/init.d/rcS`):
 
-<!-- kfs:include fs/etc/init.d/rcS lines=81-89 pin=66ff50c97107 -->
+<!-- kfs:include fs/etc/init.d/rcS lines=86-94 pin=66ff50c97107 -->
 
 ## Usage
 

@@ -108,11 +108,15 @@ void BoxTool::run(const QString &program, const QStringList &args, Callback done
     proc->setArguments(args);
 
     auto buffer = std::make_shared<QString>();
-    connect(proc, &QProcess::readyRead, this, [this, proc, buffer] {
+    /* Only an act reports progress: a query that runs beside it (the
+     * listing on its timer) would otherwise put its JSON in the act's
+     * progress line. */
+    const bool act = kind == Kind::Act;
+    connect(proc, &QProcess::readyRead, this, [this, proc, buffer, act] {
         const QString chunk = QString::fromUtf8(proc->readAll());
         buffer->append(chunk);
         const auto lines = chunk.split(u'\n', Qt::SkipEmptyParts);
-        if (!lines.isEmpty()) {
+        if (act && !lines.isEmpty()) {
             Q_EMIT progress(lines.last().trimmed());
         }
     });

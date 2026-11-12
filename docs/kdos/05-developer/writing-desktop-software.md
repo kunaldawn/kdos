@@ -41,9 +41,9 @@ Plasma over D-Bus and link no Qt at all.
 | `ksystemstats-kdos` | ksystemstats plugin, sensor face and page | System Monitor's KDOS sensors: boxes, energy by application, the A/B slots |
 | `plasmoid-kdos-privacy` | Plasma widget | Microphone, camera and screen lamps in the tray, naming the program and its box |
 | `plasmoid-kdos-checklist` | Plasma widget and QML module | The first-run checklist, ticking itself as each step is done |
-| `kdos-runner` | KRunner D-Bus runner, in C | The `kdos` verbs, favourites, routes, settings pages, shortcuts and the offline library in KRunner |
+| `kdos-runner` | KRunner D-Bus runner, in C | The `kdos` verbs, favourites, routes, packs on the boot medium, shortcuts and the offline library in KRunner |
 | `kdos-notice` | Session program, in C | The system's notices: restarts after an update, CVEs, the trial slot, a rollback, memory kills; confirms a booted slot |
-| `kded-kdos` | kded6 module | Keeps the accent in step with Plasma, offers the sets it finds on a stick, and starts Samba for the first shared folder |
+| `kded-kdos` | kded6 module | Keeps the accent in step with Plasma, offers the sets it finds on a stick, and starts Samba for a login that can share folders |
 | `kdos-discover` | Discover backend and notifier plugin | Packs, boxes and ports in Discover, and the A/B update notifier |
 | `kio-library` | KIO worker | `library:/`, the offline library as a folder in Dolphin and the file dialogs |
 | `kdos-transcribe` | KIO file-item action plugin | Transcribe in Dolphin's menu for audio and video, offline |
@@ -250,6 +250,15 @@ generated from `libkcolor`'s palette, so a role follows the accent, the light an
 Phosphor mode, while a literal follows none of them and is unreadable on at least one of the eight
 schemes. A swatch that shows another scheme reads that scheme's roles through `KColorScheme` too,
 as `kcm-kdos-look`'s accent picker does.
+
+`highlightColor` is the selection, not the accent: on a dark accent it is the accent darkened until
+the view's text reads on it. A mark drawn to show the accent itself (a rule, an outline, a
+sparkline, a swatch's stripe) reads `focusColor`, or `KColorScheme::FocusColor` in C++, which is
+the accent held to 3:1 in every set but the Selection. Text in the accent (a heading, a readout)
+reads `linkColor` or `activeTextColor`, `KColorScheme::LinkText` or `KColorScheme::ActiveText` in
+C++, which hold it to the 4.5:1 text floor; `focusColor` on text fails that floor on any accent
+that clears only 3:1. See
+[the role mapping](../03-architecture/design-language.md#the-role-mapping).
 
 `testing/preflight.sh` reads every `.qml`, `.js`, `.cpp` and `.h` under `src/desktop` (and the
 QML and JavaScript under `src/art`) with comments removed, and fails a quoted `#rgb`, `#rrggbb` or

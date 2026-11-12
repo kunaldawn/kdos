@@ -363,9 +363,14 @@ class Bindings:
 
     def __init__(self):
         self.rows = {}
+        self.package = {}
 
-    def put(self, comp, action, chords, source, kdos, active=True):
+    def put(self, comp, action, chords, source, kdos, active=True, package=None):
         self.rows[(comp, action)] = (list(chords), source, kdos, active)
+        if package:
+            self.package[(comp, action)] = package
+        else:
+            self.package.pop((comp, action), None)
 
     def collisions(self):
         owners = {}
@@ -377,13 +382,54 @@ class Bindings:
 
 # ── reading the files ────────────────────────────────────────────────────
 
+ROOT = None
+
+
+def in_root(path):
+    """A path under --root with every symbolic link along it followed inside
+    the tree: the image links usr/share/kglobalaccel/*.desktop to
+    /usr/share/applications, an absolute target the host would resolve
+    against its own /. None for a link that loops or leaves nothing behind;
+    outside a --root run the path is the host's and is returned as it is."""
+    if not ROOT:
+        return path
+    root = os.path.abspath(ROOT)
+    full = os.path.abspath(path)
+    if full != root and not full.startswith(root + os.sep):
+        return path
+    parts = [p for p in os.path.relpath(full, root).split(os.sep) if p not in ("", ".")]
+    cur, hops = root, 0
+    while parts:
+        p = parts.pop(0)
+        if p == "..":
+            cur = root if cur == root else os.path.dirname(cur)
+            continue
+        nxt = os.path.join(cur, p)
+        if os.path.islink(nxt):
+            hops += 1
+            if hops > 40:
+                return None
+            t = os.readlink(nxt)
+            if os.path.isabs(t):
+                cur = root
+            parts = [q for q in t.split("/") if q not in ("", ".")] + parts
+            continue
+        cur = nxt
+    return cur if os.path.lexists(cur) else None
+
+
+def note_dangling(path):
+    print("chordcheck: note: %s is a link to nothing in the tree; skipped" % path,
+          file=sys.stderr)
+
+
 def kconfig_groups(path):
     """A KConfig file as [(group, [(key, value, lineno)])]. A group header is
     one or more [..] parts; "[services][x.desktop]" is the group
     "services/x.desktop". Raises ValueError on a line that is neither."""
     groups = []
     cur = None
-    with open(path, encoding="utf-8") as f:
+    with open(in_root(path) or path, encoding="utf-8") as f:
         for n, raw in enumerate(f, 1):
             line = raw.rstrip("\n")
             s = line.strip()
@@ -460,7 +506,7 @@ def read_kglobalshortcutsrc(path, b, kdos=True):
 
 def desktop_groups(path):
     groups, cur = {}, None
-    with open(path, encoding="utf-8", errors="replace") as f:
+    with open(in_root(path), encoding="utf-8", errors="replace") as f:
         for raw in f:
             s = raw.strip()
             if s.startswith("[") and s.endswith("]"):
@@ -484,6 +530,9 @@ def read_desktop(path, b, kdos):
     """X-KDE-Shortcuts of an entry and each of its actions. kglobalacceld
     reads the value with every comma turned into a tab."""
     errors = []
+    if not in_root(path) or not os.path.isfile(in_root(path)):
+        note_dangling(path)
+        return errors
     g = desktop_groups(path)
     did = desktop_id(path)
     comp = "services/" + did
@@ -543,7 +592,11 @@ def read_kwin_script(pkgdir, b, kdos):
     """registerShortcut(id, text, keys, fn) in a KWin script package, and
     ShortcutHandler blocks in a declarative script's or effect's QML."""
     errors = []
-    meta = os.path.join(pkgdir, "metadata.json")
+    real = in_root(pkgdir)
+    if not real:
+        note_dangling(pkgdir)
+        return errors
+    meta = os.path.join(real, "metadata.json")
     enabled, sid = False, os.path.basename(pkgdir)
     if os.path.isfile(meta):
         try:
@@ -553,8 +606,8 @@ def read_kwin_script(pkgdir, b, kdos):
             sid = kp.get("Id", sid) or sid
         except (OSError, ValueError) as e:
             errors.append("%s: %s" % (meta, e))
-    for js in sorted(glob.glob(os.path.join(pkgdir, "contents", "code", "*.js"))):
-        with open(js, encoding="utf-8", errors="replace") as f:
+    for js in sorted(glob.glob(os.path.join(real, "contents", "code", "*.js"))):
+        with open(in_root(js) or js, encoding="utf-8", errors="replace") as f:
             text = f.read()
         for m in SCRIPT_SHORTCUT.finditer(text):
             try:
@@ -563,9 +616,10 @@ def read_kwin_script(pkgdir, b, kdos):
                 errors.append("%s: %s" % (js, e))
                 continue
             b.put("kwin", m.group(2), chords, "%s (script %s%s)" %
-                  (js, sid, "" if enabled else ", disabled"), kdos, active=enabled)
-    for qml in sorted(glob.glob(os.path.join(pkgdir, "contents", "ui", "*.qml"))):
-        with open(qml, encoding="utf-8", errors="replace") as f:
+                  (js, sid, "" if enabled else ", disabled"), kdos, active=enabled,
+                  package=sid)
+    for qml in sorted(glob.glob(os.path.join(real, "contents", "ui", "*.qml"))):
+        with open(in_root(qml) or qml, encoding="utf-8", errors="replace") as f:
             text = f.read()
         for name, seq in qml_handlers(text):
             try:
@@ -574,8 +628,23 @@ def read_kwin_script(pkgdir, b, kdos):
                 errors.append("%s: %s" % (qml, e))
                 continue
             b.put("kwin", name, chords, "%s (package %s%s)" %
-                  (qml, sid, "" if enabled else ", disabled"), kdos, active=enabled)
+                  (qml, sid, "" if enabled else ", disabled"), kdos, active=enabled,
+                  package=sid)
     return errors
+
+
+def kdos_switched(xdg):
+    """The disabled packages a KDOS kwinrc names under [Plugins]: KDOS ships
+    the switch that turns each on, so its chords are KDOS's to settle."""
+    out = set()
+    for d in xdg:
+        p = os.path.join(d, "kwinrc")
+        if not os.path.isfile(in_root(p) or p):
+            continue
+        for group, entries in kconfig_groups(p):
+            if group == "Plugins":
+                out |= {k[:-len("Enabled")] for k, _, _ in entries if k.endswith("Enabled")}
+    return out
 
 
 def read_fcitx5(path, b, kdos):
@@ -679,7 +748,8 @@ def tree_script_dirs(root):
     if root:
         return [(d, kdos_owned(d, root)) for d in
                 sorted(glob.glob(os.path.join(root, "usr/share/kwin/scripts/*")) +
-                       glob.glob(os.path.join(root, "usr/share/kwin/effects/*"))) if os.path.isdir(d)]
+                       glob.glob(os.path.join(root, "usr/share/kwin/effects/*")))
+                if os.path.isdir(in_root(d) or d)]
     dirs = {os.path.dirname(os.path.dirname(os.path.dirname(p))) for p in
             glob.glob("src/*/*/**/contents/code/*.js", recursive=True) +
             glob.glob("src/*/*/**/contents/ui/*.qml", recursive=True)}
@@ -774,6 +844,8 @@ def main():
         print("chordcheck: --live needs gdbus and a session bus", file=sys.stderr)
         return 2
     if a.root:
+        global ROOT
+        ROOT = a.root
         load_kdos_paths(a.root)
 
     b = Bindings()
@@ -811,14 +883,14 @@ def main():
         # replaces it, which is KConfig's order for XDG_CONFIG_DIRS.
         for d in reversed(xdg):
             p = os.path.join(d, "kglobalshortcutsrc")
-            if os.path.isfile(p):
+            if os.path.isfile(in_root(p) or p):
                 try:
                     errors += read_kglobalshortcutsrc(p, b, kdos=True)
                 except ValueError as e:
                     errors.append(str(e))
 
     fc = next((os.path.join(d, "fcitx5", "config") for d in xdg
-               if os.path.isfile(os.path.join(d, "fcitx5", "config"))), None)
+               if os.path.isfile(in_root(os.path.join(d, "fcitx5", "config")) or "")), None)
     try:
         errors += read_fcitx5(fc, b, kdos=True)
     except ValueError as e:
@@ -835,12 +907,22 @@ def main():
                 print("%-28s %-40s %-30s %s%s" % (comp[:28], action[:40], ", ".join(chords)[:30],
                                                   "kdos " if kdos else "", src))
 
+    try:
+        switched = set() if live else kdos_switched(xdg)
+    except ValueError as e:
+        print("chordcheck: %s" % e, file=sys.stderr)
+        return 2
     fails = warns = notes = 0
     for chord, owners in sorted(b.collisions().items()):
         active = [o for o in owners if o[4]]
         who = "; ".join("%s %s (%s)" % (o[0], o[1], o[2]) for o in owners)
         if len(active) < 2:
-            if any(o[3] for o in owners):
+            ours = sorted({b.package.get((o[0], o[1])) for o in owners if not o[4]} & switched)
+            if active and ours:
+                fails += 1
+                print("  FAIL  %s is bound twice once %s is switched on: %s" %
+                      (chord, ", ".join(ours), who))
+            elif any(o[3] for o in owners):
                 warns += 1
                 if not a.quiet:
                     print("  warn  %s would be bound twice once a disabled script is on: %s" % (chord, who))

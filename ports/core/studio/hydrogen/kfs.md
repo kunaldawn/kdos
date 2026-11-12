@@ -10,6 +10,11 @@ and tutorial come from a separate documentation repository, the second source of
 - `-D CMAKE_DISABLE_FIND_PACKAGE_Doxygen=ON` — when configure finds Doxygen it adds a `doc` target
   for the API documentation and two directory-making targets to every build; disabled, the build is
   the same whether or not Doxygen is installed.
+- `-D DISPLAY_VERSION_PIPELINE` — set to the release, the version the About dialog shows and the
+  songs and drum kits Hydrogen writes record. Without it, configure composes the version from git, and a
+  tarball has no git history, so it appends a `-` and an empty revision (`1.2.6-`). Upstream's
+  cache entry for the variable is misspelled, `DISLPAY_VERSION_PIPELINE`, but the test reads the
+  correct name, which `-D` sets.
 - `-D WANT_QT6=ON` — build against Qt 6; upstream's default is Qt 5. Configure falls back to Qt 5
   if Qt 6 is not found.
 - `-D WANT_SHARED=ON` — build the core library, `hydrogen-core`, as a shared library, as

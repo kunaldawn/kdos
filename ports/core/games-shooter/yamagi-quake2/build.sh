@@ -42,6 +42,7 @@ Comment=Play Quake II; needs the game data in /usr/share/games/quake2/baseq2
 Exec=quake2
 Icon=yamagi-quake2
 Terminal=false
+NoDisplay=true
 StartupWMClass=quake2
 Categories=Game;ActionGame;
 Keywords=first;person;shooter;quake;quake2;

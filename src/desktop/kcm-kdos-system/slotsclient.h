@@ -59,6 +59,8 @@ public:
     bool isAvailable() const;
     bool isLoaded() const;
     bool isConfigured() const;
+    /* The live medium: no boot state, and nothing an update would keep. */
+    bool isLive() const;
     QString runningSlot() const;
     QString activeSlot() const;
     QString trySlot() const;

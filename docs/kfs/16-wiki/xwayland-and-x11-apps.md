@@ -82,7 +82,7 @@ catalogue entry or runtime forces an X11 backend, and to a box distrobox made fr
 image; `yes` and `no` decide outright. [`kdos-appbox`]{.idx} then sets `DISPLAY` and the cookie
 itself (`src/system/kdos-appbox/main.c`):
 
-<!-- kfs:include src/system/kdos-appbox/main.c lines=503-511 pin=72bbf4f777a6 -->
+<!-- kfs:include src/system/kdos-appbox/main.c lines=552-560 pin=72bbf4f777a6 -->
 
 Every other box is told there is no display.
 
@@ -90,7 +90,7 @@ When `kdos-appbox` writes launchers for a boxed application, it removes from the
 line the assignments that would force X11, so an application whose distribution entry asks for
 X11 runs on Wayland:
 
-<!-- kfs:include src/system/kdos-appbox/launchers.c lines=281-285 pin=9b7f3a80babb -->
+<!-- kfs:include src/system/kdos-appbox/launchers.c lines=282-286 pin=9b7f3a80babb -->
 
 ## Usage
 
@@ -115,7 +115,9 @@ X11 runs on Wayland:
    `Xwayland :0 -rootless -core -terminate 10 -listenfd 20 -listenfd 21 -displayfd 76 -wm 67`.
    Ten seconds after the last client leaves, the process is gone and `X0` is still there.
 
-3. `kdos doctor` checks for the socket in its Desktop section.
+3. `kdos doctor`'s Desktop section checks the socket `DISPLAY` names when it is set. With no
+   `DISPLAY` it checks that Xwayland is installed and that `/tmp/.X11-unix` exists, root-owned
+   and mode 1777: KWin does not create that directory, and without it no X11 program opens.
 
 ### Running a program on X11
 
@@ -232,7 +234,7 @@ grep -l 'GDK_BACKEND=x11\|QT_QPA_PLATFORM=xcb' /usr/share/applications/*.desktop
 
 ## Known gaps
 
-- [The native applications have not been run](../../kdos/06-reference/known-gaps.md#the-native-applications-have-not-been-run)
+- [The native applications have been opened, not used](../../kdos/06-reference/known-gaps.md#the-native-applications-have-been-opened-not-used)
 
 ## See also
 

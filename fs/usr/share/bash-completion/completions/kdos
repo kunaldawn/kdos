@@ -64,7 +64,8 @@ _kdos() {
         backup)   COMPREPLY=($(compgen -W "run" -- "$cur")) ;;
         speech)
             case "$prev" in
-                speech) COMPREPLY=($(compgen -W "transcribe say sync list get where remove" -- "$cur")) ;;
+                speech) COMPREPLY=($(compgen -W "transcribe say sync list get where remove voice" -- "$cur")) ;;
+                voice) COMPREPLY=($(compgen -W "list get remove" -- "$cur")) ;;
                 transcribe) COMPREPLY=($(compgen -W "--notify" -- "$cur") $(compgen -f -- "$cur")) ;;
                 say) COMPREPLY=($(compgen -W "--voice" -- "$cur")) ;;
                 *) COMPREPLY=($(compgen -f -- "$cur")) ;;
@@ -77,7 +78,7 @@ _kdos() {
         places)   COMPREPLY=($(compgen -W "add" -- "$cur")) ;;
         status)   COMPREPLY=($(compgen -W "--bar" -- "$cur")) ;;
         doctor)   COMPREPLY=($(compgen -W "--json --cve" -- "$cur")) ;;
-        persist)  COMPREPLY=($(compgen -W "--json create --yes" -- "$cur")) ;;
+        persist)  COMPREPLY=($(compgen -W "--json create reset --home --system --yes" -- "$cur")) ;;
         help)     COMPREPLY=($(compgen -W "--keys --pager" -- "$cur")) ;;
         remind)   COMPREPLY=($(compgen -W "in at tomorrow ls clear --ask" -- "$cur")) ;;
         notify)   COMPREPLY=($(compgen -W "--time --battery --dnd" -- "$cur")) ;;

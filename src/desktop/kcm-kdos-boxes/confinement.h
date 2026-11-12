@@ -18,8 +18,8 @@
  * three words mean:
  *
  *   confined    its Wayland socket is tagged, its private runtime folder has
- *               no `wayland-0` and no `bus`, its bus goes through
- *               xdg-dbus-proxy, and no X11 display is within its reach
+ *               neither the session's Wayland socket nor `bus`, its bus
+ *               goes through xdg-dbus-proxy, and no X11 display is within its reach
  *   tagged      KWin's denylist applies to the tagged socket, but the box can
  *               reach past it: through a runtime folder shared with the
  *               session, an unfiltered bus or an X11 display

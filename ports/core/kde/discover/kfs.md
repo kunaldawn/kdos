@@ -1,7 +1,7 @@
 ## About
 
 Discover is Plasma's software centre. On KDOS it is the graphical face of two update paths and
-nothing else: operating-system updates over the A/B slots, through the stock
+nothing else: operating-system updates over the A/B slots, through
 `SystemdSysupdateBackend` talking to `org.freedesktop.sysupdate1` on the system bus, and firmware
 updates through [fwupd](#port-fwupd). It also carries the Software Update page of System Settings
 and the tray notifier that announces pending updates. There is no third-party store: no Flatpak, no
@@ -56,6 +56,37 @@ odrs.gnome.org at each start whose cached copy is a day old, for the Home page's
 list. `/usr/share/kdos/xdg/discoverrc` sets it false. The key defaults to true, so the patch changes
 nothing where it is unset, and it is proposed upstream in that form.
 
+`sysupdate-errors.patch` makes the system-update backend read the error replies of
+`org.freedesktop.sysupdate1`. Upstream reads `GetVersion` and `CheckNew` straight into a string,
+and an error reply converts to its own message, so a refused check (kdos-sysupdated's
+`Interactive authentication required`) is listed as an update to a version of that name. With
+the patch an error reply is a passive message and the target gets no resource, and a failed
+`ListTargets` ends the fetch it began. The patch also sets "restart to finish" only when the
+Install job ends with status 0, so a refused or failed Acquire leaves nothing pending; and it asks
+the size service upstream expects at `http://localhost:3129` once per update, leaving the size
+empty when nothing answers there, which on KDOS is always, so an update with no size of its own
+shows no size row instead of a busy indicator that never stops. It is to be offered upstream.
+
+`sysupdate-size.patch` makes the system-update backend take an update's size from the AppStream
+file the target names: the download size of an artifact of the release whose version is the one
+offered. sysupdate1 has no size query, so upstream asks only the size service above;
+[kdos-sysupdated](#port-kdos-sysupdated) writes that artifact from the update document, and the
+Updates list shows the size and its total instead of "Unknown". It applies after
+`sysupdate-errors.patch` and is to be offered upstream.
+
+`update-failed-stays-listed.patch` reports a transaction that ended with an error to the Updates
+page as not started, as a cancelled one is, instead of done. The page hides rows whose state is
+done, and keeps its rows when the list of offered updates is unchanged, which it is after a
+refused or failed update; without the patch the page lists nothing, with Update All still
+enabled, until Refresh. It is to be offered upstream.
+
+`ratings-need-reviews.patch` shows the application page's rating row and its Reviews section,
+with "Write a Review", only when the resource's backend has a reviews backend, and leaves the Home
+page's "Highest-Rated Games" and "Highest-Rated Developer Tools" rows empty when the current
+application backend has none. Neither KDOS backend has one, so on KDOS no page offers a rating or
+a review it has nowhere to send, and no row is ranked by ratings nobody gave. It is to be offered
+upstream.
+
 ## Notes
 
 The last line of `build.sh` fails the build unless `/usr/lib/qt6/plugins/discover/` holds exactly
@@ -90,7 +121,7 @@ rebuilds kdos-discover and changes its `KDOS_DISCOVER_VERSION`. Upstream keeps l
 on purpose, so the header installation stays KDOS's.
 
 The system-update backend only pings `org.freedesktop.sysupdate1` to decide whether it is usable,
-so it needs no patch: KDOS's own `kdos-sysupdated` owns that name on the system bus. Discover's
+so it finds KDOS's own `kdos-sysupdated`, which owns that name on the system bus, with no patch. Discover's
 packaging-library plugins are versioned by the exact Plasma release (`DISCOVER_PLUGIN_IID`), so a
 backend built against another Discover release is not loaded.
 

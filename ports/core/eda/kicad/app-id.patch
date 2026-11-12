@@ -1,0 +1,102 @@
+Subject: Set the Wayland app id to the desktop entry's name with wxWidgets before 3.3.1
+
+PGM_BASE::InitPgm names each program's desktop entry as its Wayland app id
+only when wxWidgets is 3.3.1 or later, through SetClassName. With an older
+wxGTK, set GTK's program name to the same id through a new
+KIPLATFORM::UI::SetDesktopId, so the windows of kicad, eeschema, pcbnew,
+gerbview, pcb_calculator and bitmap2component take org.kicad.<name> rather
+than the executable's name.
+
+--- a/common/pgm_base.cpp
++++ b/common/pgm_base.cpp
+@@ -54,6 +54,7 @@
+ #include <id.h>
+ #include <kicad_curl/kicad_curl.h>
+ #include <kiplatform/policy.h>
++#include <kiplatform/ui.h>
+ #include <libraries/library_manager.h>
+ #include <macros.h>
+ #include <notifications_manager.h>
+@@ -406,8 +407,9 @@
+     App().SetVendorName(  wxT( "KiCad" ) );
+     App().SetAppName( pgm_name );
+ 
+-#if wxCHECK_VERSION( 3, 3, 1 ) && defined( __WXGTK__ ) && defined( KICAD_DESKTOP_APP_NAME )
+-    // wxGTK feeds the class name to gdk_wayland_window_set_application_id(), so setting it
++#if defined( __WXGTK__ ) && defined( KICAD_DESKTOP_APP_NAME )
++    // wxGTK 3.3.1 and later feed the class name to gdk_wayland_window_set_application_id();
++    // older wxGTK leaves the app id to GTK, which takes the program name. Setting either
+     // to the installed desktop file basename lets Wayland compositors resolve the correct
+     // window icon and launch feedback. The prefix varies by build (regular, Flatpak, Nightly)
+     // and is supplied by CMake. The main manager keeps the bare app name; the other GUI apps
+@@ -428,7 +430,13 @@
+     }
+ 
+     if( !desktopId.IsEmpty() )
++    {
++#if wxCHECK_VERSION( 3, 3, 1 )
+         App().SetClassName( desktopId );
++#else
++        KIPLATFORM::UI::SetDesktopId( desktopId );
++#endif
++    }
+ #endif
+ 
+     // Analyze the command line & initialize the binary path
+--- a/libs/kiplatform/include/kiplatform/ui.h
++++ b/libs/kiplatform/include/kiplatform/ui.h
+@@ -243,6 +243,14 @@
+          * controls do not exhibit this race.
+          */
+         void CancelPendingScroll( wxDataViewCtrl* aCtrl );
++
++        /**
++         * Set the application id a Wayland compositor matches against the installed desktop
++         * entries, for the windows created after the call.  On GTK this is the program name,
++         * which wxWidgets before 3.3.1 leaves at the executable's name.  No-op on MSW and
++         * macOS.
++         */
++        void SetDesktopId( const wxString& aId );
+     }
+ }
+ 
+--- a/libs/kiplatform/port/wxgtk/ui.cpp
++++ b/libs/kiplatform/port/wxgtk/ui.cpp
+@@ -442,6 +442,13 @@
+ }
+ 
+ 
++void KIPLATFORM::UI::SetDesktopId( const wxString& aId )
++{
++    // GTK takes a window's Wayland app id from the program name when the window is mapped.
++    g_set_prgname( aId.utf8_str() );
++}
++
++
+ void KIPLATFORM::UI::CancelPendingScroll( wxDataViewCtrl* aCtrl )
+ {
+     if( !aCtrl )
+--- a/libs/kiplatform/port/wxmsw/ui.cpp
++++ b/libs/kiplatform/port/wxmsw/ui.cpp
+@@ -223,3 +223,9 @@
+ {
+     // Not needed on this platform; the native control does not race on model resets.
+ }
++
++
++void KIPLATFORM::UI::SetDesktopId( const wxString& aId )
++{
++    // Not needed on Windows
++}
+--- a/libs/kiplatform/port/wxosx/ui.mm
++++ b/libs/kiplatform/port/wxosx/ui.mm
+@@ -266,3 +266,9 @@
+ {
+     // Not needed on this platform; the native control does not race on model resets.
+ }
++
++
++void KIPLATFORM::UI::SetDesktopId( const wxString& aId )
++{
++    // Not needed on macOS
++}

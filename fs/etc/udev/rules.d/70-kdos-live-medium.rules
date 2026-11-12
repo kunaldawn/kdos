@@ -1,0 +1,21 @@
+# KDOS — the medium the live session runs from, kept out of the desktop.
+#
+# The initramfs mounts the medium read-only at /mnt/iso and the live root is
+# built from it, so it cannot be ejected or safely removed while the session
+# runs. UDISKS_IGNORE takes it out of udisks, and with it out of Dolphin's
+# Places, the file dialogs and the Device Notifier; /mnt/iso stays reachable
+# by its path.
+#
+# ONLY THE MEDIUM THIS BOOT IS USING. The match is the mount at /mnt/iso, not
+# the KDOS_LIVE label, so a KDOS stick plugged into an installed machine, or
+# a second one beside the live medium, is listed like any other stick. The
+# initramfs mounts the medium as the whole disk, where ISO 9660 starts, so
+# the partitions of the disk mounted there (the EFI partition, and a
+# persistence store on the stick) are matched through their parent.
+#
+# findmnt is util-linux's, at /usr/bin; the rules run after
+# 60-persistent-storage.rules, which sets ID_FS_LABEL. At coldplug the mount
+# the initramfs moved to /mnt/iso is already in place.
+
+SUBSYSTEM=="block", ACTION!="remove", ENV{ID_FS_LABEL}=="KDOS_LIVE", PROGRAM="/usr/bin/findmnt -rn -S $devnode -M /mnt/iso", ENV{UDISKS_IGNORE}="1"
+SUBSYSTEM=="block", ACTION!="remove", ENV{DEVTYPE}=="partition", PROGRAM="/usr/bin/findmnt -rn -S /dev/$parent -M /mnt/iso", ENV{UDISKS_IGNORE}="1"

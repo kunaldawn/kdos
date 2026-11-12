@@ -38,6 +38,12 @@ class KdosResource : public AbstractResource
     Q_PROPERTY(QString boxState READ boxState NOTIFY entryChanged)
     Q_PROPERTY(QString boxAccent READ boxAccent NOTIFY entryChanged)
     Q_PROPERTY(QString boxPersistence READ boxPersistence NOTIFY entryChanged)
+    // The same four as a person reads them, for the page; the raw values
+    // above are what `kdos-box list` printed.
+    Q_PROPERTY(QString boxBaseText READ boxBaseText NOTIFY entryChanged)
+    Q_PROPERTY(QString boxStateText READ boxStateText NOTIFY entryChanged)
+    Q_PROPERTY(QString boxAccentText READ boxAccentText NOTIFY entryChanged)
+    Q_PROPERTY(QString boxPersistenceText READ boxPersistenceText NOTIFY entryChanged)
     Q_PROPERTY(QStringList memberNames READ memberNames NOTIFY entryChanged)
     // What the box is allowed, read by fetchBoxGrants(): a list of
     // {label, value} maps, and what kdos-box says it cannot deliver.
@@ -116,6 +122,10 @@ public:
     {
         return m_entry.boxPersistence;
     }
+    QString boxBaseText() const;
+    QString boxStateText() const;
+    QString boxAccentText() const;
+    QString boxPersistenceText() const;
     QStringList memberNames() const;
     QVariantList boxGrants() const
     {

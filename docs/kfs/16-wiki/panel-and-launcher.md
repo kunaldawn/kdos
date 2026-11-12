@@ -22,7 +22,10 @@ runner's commands. How the shell is set up on KDOS is in
 | [kdos-welcome](#port-kdos-welcome) | The KDOS pages of the Welcome Center, among them the desk picker |
 | [kdos-tools](#port-kdos-tools) | `kdos desk` and `kdos tiling` |
 
-plasmashell is started by the session and is not a service.
+plasmashell is started by the session and is not a service. When it stops, as it does whenever
+KWin crashes or is replaced, the KDOS kded module starts it again a few seconds later, at most five
+times a minute (see
+[How plasmashell is kept running](../../kdos/04-programs/plasma-shell.md#how-plasmashell-is-kept-running)).
 
 ## Configuration
 
@@ -83,10 +86,12 @@ preview.
 - `Alt+Space`, `Alt+F2` or `Meta+Space` open KRunner on its own.
 
 KRunner's KDOS command palette understands the `kdos` verbs with their arguments filled in, for
-example `accent amber`, `tiling off`, `desk dock`, `update check` or `why /etc/fstab`; the two
-letters of a favourite's `code=`; KDOS's own System Settings pages by what they are for; and
-`keys <words>`, which lists the chords that match. A query beginning with `?` asks only the
-offline library: the KDOS books, the manual pages, Zeal's docsets and the Kiwix archives.
+example `accent amber`, `accent next`, `tiling off`, `desk dock`, `update check` or
+`why /etc/fstab`; the two letters of a favourite's `code=`; the routes of `/etc/kdos/menu.conf`
+(`setup network`); and `keys <words>`, which lists the chords that match. Its rows rank above
+Applications and System Settings. KDOS's own System Settings pages are found by System Settings'
+runner, by what they are for as well as their names. `lib <words>` opens KRunner again with only
+the offline library: the KDOS books, the manual pages, Zeal's docsets and the Kiwix archives.
 
 ### Adding an application to the menus
 
@@ -127,8 +132,10 @@ result.
 
 ## Troubleshooting
 
-**The panel is gone or broken.** Restart the shell: `plasmashell --replace &` from Konsole or
-KRunner. If it comes back broken, lay a desk out again with `kdos desk kdos`.
+**The panel is gone or broken.** A shell that stopped comes back by itself within a few seconds.
+One that is still running but frozen is restarted with `kquitapp6 plasmashell; kstart plasmashell`
+from Konsole or KRunner; `kstart` detaches it, so closing the Konsole leaves it running. If it comes
+back broken, lay a desk out again with `kdos desk kdos`.
 
 **A new application is not in the menu.** Check the entry: `desktop-file-validate
 ~/.local/share/applications/mytool.desktop`, and that its `Exec` program is on `PATH`. Then run

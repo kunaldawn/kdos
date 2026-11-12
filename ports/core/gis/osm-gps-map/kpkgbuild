@@ -1,0 +1,20 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+
+name        = osm-gps-map
+version     = 1.2.2
+release     = 1
+source      = https://github.com/nzjrs/osm-gps-map/releases/download/$version/$name-$version.tar.gz
+sha256      = 051383588f0fdb60f59047c6559110c35025ea72b6eca700af532c020a6b55ec  osm-gps-map-1.2.2.tar.gz
+description = GTK 3 widget that shows and caches OpenStreetMap tiles, with tracks, images and markers
+homepage    = https://nzjrs.github.io/osm-gps-map/
+license     = GPL-2.0-or-later
+depends     = glib gtk3 cairo libsoup3 gobject-introspection pkgconf

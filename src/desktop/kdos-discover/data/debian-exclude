@@ -1,0 +1,58 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   Debian applications Discover never offers to build in a box.
+#
+# One Debian package name a line. Each is a desktop application of Debian's
+# DEP-11 catalogue that cannot do its job from a box on KWin's Wayland
+# session, so a build of it would install something that does not work.
+# The Debian lane leaves each out of every search, category and appstream://
+# link; a box already made for one is still listed, so it can be removed.
+# A catalogue row naming one of these packages is not affected. The image
+# build turns this list into /usr/share/swcatalog/xml/kdos-debian-exclude.xml,
+# which takes each application out of every AppStream pool on the machine,
+# so KRunner's software results do not offer one either; an application
+# whose id a host port also has keeps its component there.
+# ---------------------------------
+
+# Work only on an X server's own screen: a box reaches the session through
+# Xwayland, where a magnifier sees no Wayland window, a pointer tool moves
+# no pointer and an on-screen keyboard types into no other application.
+eviacam
+gxneur
+kmag
+kmousetool
+onboard
+spotlighter
+
+# Plug-ins and settings of other compositors and shells.
+compiz-core
+compizconfig-settings-manager
+gnome-shell-extension-manager
+gnome-shell-extension-prefs
+gnome-tweaks
+wstroke
+
+# Read the systemd journal, which KDOS does not have.
+gnome-logs
+
+# Manage a Debian system's own packages, which a box is not.
+gnome-software
+plasma-discover
+synaptic
+
+# Configure a firewall daemon the host does not run (firewalld, ufw,
+# opensnitchd); the host's packet filter is kdos-powerd's nftables ruleset,
+# set from System Settings' Firewall page.
+firewall-config
+gufw
+python3-opensnitch-ui
+
+# Need the host's disks.
+gnome-disk-utility
+gparted
+timeshift

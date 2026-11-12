@@ -12,6 +12,7 @@ Clipper2Z	A Polygon Clipping and Offsetting library in C++	clipper2
 Coin	A high-level 3D graphics toolkit, fully compatible with SGI Open Inventor 2.1	coin
 Fcitx5Config	Fcitx Config Library	fcitx5
 Fcitx5Core	Fcitx Core Library	fcitx5
+Fcitx5GClient	Fcitx GLib Client Library	fcitx5-gtk
 Fcitx5Module	Fcitx Public Module Library	fcitx5
 Fcitx5Utils	Fcitx Utils Library	fcitx5
 GraphicsMagick	GraphicsMagick image processing library	graphicsmagick
@@ -29,6 +30,7 @@ KF6CalendarCore	The KDE calendar access library	kcalendarcore
 KF6CoreAddons	Addons to QtCore	kcoreaddons
 KF6GuiAddons	Addons to QtGui	kguiaddons
 KF6PulseAudioQt	libpulse bindings for Qt	pulseaudio-qt
+KF6Screen	Qt Based library to manage screens with backends (xrandr, whatevercomesnext)	libkscreen
 KF6WindowSystem	Access to the windowing system	kwindowsystem
 KLU	Routines for solving sparse linear systems of equations in SuiteSparse	suitesparse
 KLU_CHOLMOD	Routines for sample ordering for KLU in SuiteSparse	suitesparse
@@ -52,6 +54,8 @@ OpenColorIO	OpenColorIO (OCIO) is a complete color management solution	opencolor
 OpenEXR	OpenEXR image library	openexr
 OpenImageIO	OpenImageIO is a library for reading and writing images.	openimageio
 ParU	Routines for solving sparse linear system via parallel multifrontal LU factorization algorithms in SuiteSparse	suitesparse
+PlasmaActivities	Plasma Activities is a C++ library for using Plasma's activities	plasma-activities
+PlasmaActivitiesStats	libPlasmaActivitiesStats is a C++ library for using Plasma activities	plasma-activities-stats
 Qt5Concurrent	Qt Concurrent module	qt5-qtbase
 Qt5Core	Qt Core module	qt5-qtbase
 Qt5DBus	Qt DBus module	qt5-qtbase
@@ -112,6 +116,8 @@ Qt6Graphs2DImpl	Qt Graphs2DImpl module	qt6-qtgraphs
 Qt6GraphsWidgets	Qt GraphsWidgets module	qt6-qtgraphs
 Qt6Gui	Qt Gui module	qt6-qtbase
 Qt6Help	Qt Help module	qt6-qttools
+Qt6HttpServer	Qt HttpServer module	qt6-qthttpserver
+Qt6HunspellInputMethod	Qt HunspellInputMethod module	qt6-qtvirtualkeyboard
 Qt6LabsAnimation	Qt LabsAnimation module	qt6-qtdeclarative
 Qt6LabsFolderListModel	Qt LabsFolderListModel module	qt6-qtdeclarative
 Qt6LabsPlatform	Qt LabsPlatform module	qt6-qtdeclarative
@@ -212,6 +218,9 @@ Qt6Test	Qt Test module	qt6-qtbase
 Qt6TextToSpeech	Qt TextToSpeech module	qt6-qtspeech
 Qt6UiPlugin	Qt UiPlugin module	qt6-qttools
 Qt6UiTools	Qt UiTools module	qt6-qttools
+Qt6VirtualKeyboard	Qt VirtualKeyboard module	qt6-qtvirtualkeyboard
+Qt6VirtualKeyboardQml	Qt VirtualKeyboardQml module	qt6-qtvirtualkeyboard
+Qt6VirtualKeyboardSettings	Qt VirtualKeyboardSettings module	qt6-qtvirtualkeyboard
 Qt6WaylandClient	Qt WaylandClient module	qt6-qtbase
 Qt6WaylandCompositor	Qt WaylandCompositor module	qt6-qtwayland
 Qt6WaylandCompositorIviapplication	Qt WaylandCompositorIviapplication module	qt6-qtwayland
@@ -225,9 +234,12 @@ Qt6WebEngineQuick	Qt WebEngineQuick module	qt6-qtwebengine
 Qt6WebEngineQuickDelegatesQml	Qt WebEngineQuickDelegatesQml module	qt6-qtwebengine
 Qt6WebEngineWidgets	Qt WebEngineWidgets module	qt6-qtwebengine
 Qt6WebSockets	Qt WebSockets module	qt6-qtwebsockets
+Qt6WebView	Qt WebView module	qt6-qtwebview
+Qt6WebViewQuick	Qt WebViewQuick module	qt6-qtwebview
 Qt6Widgets	Qt Widgets module	qt6-qtbase
 Qt6Xml	Qt Xml module	qt6-qtbase
 QtSpell-qt6	Spell checking for Qt text widgets.	qtspell
+QuotientQt6	A Qt library to write cross-platfrom clients for Matrix	libquotient
 RBio	MATLAB Toolbox for reading/writing sparse matrices in Rutherford/Boeing format in SuiteSparse	suitesparse
 RapidJSON	A fast JSON parser/generator for C++ with both SAX/DOM style API	rapidjson
 SDL2_Pango	SDL2 library for internationalized text rendering	sdl2-pango
@@ -241,6 +253,7 @@ SPIRV-Headers	Header files from the SPIR-V registry	spirv-headers
 SPIRV-Tools	Tools for SPIR-V	spirv-tools
 SPIRV-Tools-shared	Tools for SPIR-V	spirv-tools
 SPQR	Multithreaded, multifrontal, rank-revealing sparse QR factorization method in SuiteSparse	suitesparse
+SignOnExtension	SignOn extension development	signond
 SoQt	A Qt Gui-toolkit binding for Coin	soqt
 SoapySDR	Vendor and platform neutral SDR interface library.	soapysdr
 SuiteSparse_Mongoose	Graph partitioning library in SuiteSparse	suitesparse
@@ -465,6 +478,8 @@ absl_variant	Abseil variant library	abseil-cpp
 absl_vlog_config_internal	Abseil vlog_config_internal library	abseil-cpp
 absl_vlog_is_on	Abseil vlog_is_on library	abseil-cpp
 absl_weakly_mixed_integer	Abseil weakly_mixed_integer library	abseil-cpp
+accounts-qt6	Accounts Library	libaccounts-qt
+accountsservice	Client Library for communicating with accounts service	accountsservice
 adplug	A free AdLib sound player library	adplug
 adwaita-icon-theme	A collection of icons used as the basis for GNOME themes	adwaita-icon-theme
 adwaita-icon-theme-legacy	Icon theme that provides fallback icons for old apps relying on global icon themes	adwaita-icon-theme-legacy
@@ -477,6 +492,7 @@ anthy-unicode	Japanese conversion engine	anthy-unicode
 ao	ao is a cross-platform audio output library	libao
 applewmproto	AppleWM extension headers	xorgproto
 appstream	Library to work with AppStream metadata.	appstream
+appstream-compose	Helper functions to generate AppStream metadata and auxiliary data.	appstream
 arpack	Collection of Fortran77 subroutines designed to solve large scale eigenvalue problems	arpack-ng
 asio	A cross-platform C++ library for network and low-level I/O programming that provides developers with a consistent asynchronous model using a modern C++ approach.	asio
 assimp	Import various well-known 3D model formats in an uniform manner.	assimp
@@ -600,7 +616,6 @@ exo-2	Extension library for Xfce	exo
 expat	expat XML parser	expat
 ext2fs	Ext2fs library	e2fsprogs
 faad2	Freeware Advanced Audio (AAC) Decoder	faad2
-fcft	Simple font loading and glyph rasterization library	fcft
 fdisk	fdisk library	util-linux
 fdk-aac	AAC codec library	fdk-aac
 fftw3	fast Fourier transform library	fftw
@@ -619,6 +634,7 @@ fontsproto	Fonts extension headers	xorgproto
 fontutil	Font utilities dirs	font-util
 formw	ncurses 6.6 add-on library	ncurses
 freerdp-client3	FreeRDP: A Remote Desktop Protocol Implementation	freerdp
+freerdp-server3	FreeRDP: A Remote Desktop Protocol Implementation	freerdp
 freerdp3	FreeRDP: A Remote Desktop Protocol Implementation	freerdp
 freetype2	A free, high-quality, and portable font engine.	freetype2
 freexl	a simple library extracting data from .xls (Excel BIFF) files	freexl
@@ -777,6 +793,7 @@ gts	GNU Triangulated Surface Library	gts
 gudev-1.0	GObject bindings for libudev	libgudev
 guile-3.0	GNU's Ubiquitous Intelligent Language for Extension	guile
 gumbo	HTML parser library implemented in C99	gumbo-parser
+gusb	GUsb is a GLib binding for libusb1	libgusb
 gutenprint	Gutenprint Top Quality Printer Drivers	gutenprint
 gvnc-1.0	GObject for VNC client connections	gtk-vnc
 gvncpulse-1.0	Pulse audio bridge for VNC client connections	gtk-vnc
@@ -855,6 +872,7 @@ lib3mf	An implementation of the 3D Manufacturing Format file standard	lib3mf
 libR	R as a library	R
 libRmath	The Rmath function library	R
 liba52	A decoding library for ATSC A/52 streams.	a52dec
+libaccounts-glib	A low-level library for managing accounts settings.	libaccounts-glib
 libacl	A library for POSIX Access Control Lists	acl
 libad9361	Device specific library for AD936X transceivers	libad9361
 libadmesh	Library for woring with admesh	admesh
@@ -953,7 +971,9 @@ libedit	command line editor library provides generic line editing, history, and 
 libei-1.0	Emulated Input client library	libei
 libeis-1.0	Emulated Input server library	libei
 libelf	elfutils libelf library to read and write ELF files	elfutils
+libelogind	elogind Library	elogind
 libenet	Low-latency UDP networking library supporting optional reliability	enet
+libetonyek-0.1	Library for parsing Apple Keynote file format structure	libetonyek
 libetpan	Libetpan C library.	libetpan
 libevdev	Handler library for evdev events	libevdev
 libevent	libevent is an asynchronous notification event loop library	libevent
@@ -967,7 +987,6 @@ libexif	Library for easy access to EXIF data	libexif
 libexslt	EXSLT Extension library	libxslt
 libfdt	Flat Device Tree manipulation	dtc
 libffi	Library supporting Foreign Function Interfaces	libffi
-libffmpegthumbnailer	Generates thumbnails for movie files	ffmpegthumbnailer
 libfido2	A FIDO2 library	libfido2
 libfilezilla		libfilezilla
 libfobos	C Utility Library	libfobos
@@ -1037,6 +1056,8 @@ libjxl_threads	JPEG XL multi-thread runner using std::threads.	libjxl
 libkeyutils	keyutils library	keyutils
 libkiwix	A library that contains useful primitives that Kiwix readers have in common	libkiwix
 libkmod	Library to deal with kernel modules	kmod
+liblangtag	Interface to access tags for identifying languages	liblangtag
+liblangtag-gobject	GObject based interface to access tags for identifying languages	liblangtag
 liblhasa	LHA (de)compression library	lhasa
 liblo	A lightweight OSC server/client library	liblo
 liblouis	a braille translator and back-translator	liblouis
@@ -1102,6 +1123,7 @@ libnvme-mi	Manage "libnvme" subsystem devices (Non-volatile Memory Express) over
 libnvme3	Manage "libnvme" subsystem devices (Non-volatile Memory Express)	nvme-cli
 liboath	Library for Open AuTHentication (OATH) HOTP etc support.	oath-toolkit
 libobs	OBS Studio core compositor library	obs-studio
+libodfgen-0.1	Library to generate ODF documents from librevenge's api calls	libodfgen
 liboeffis-1.0	RemoteDesktop portal DBus helper library	libei
 libofx	libofx is a library for processing Open Financial eXchange (OFX) data	libofx
 libomemo-c	OMEMO C Library	libomemo-c
@@ -1146,6 +1168,7 @@ libppd	Library for handling PPD files and PostScript output	libppd
 libpq	PostgreSQL libpq library	postgresql
 libproc2	Library to control and query process state	procps-ng
 libprotobuf-c	Protocol Buffers implementation in C	protobuf-c
+libproxy-1.0	libproxy	libproxy
 libpsl	Public Suffix List C library.	libpsl
 libpst	A library for reading PST files	libpst
 libpsx	libpsx - linux posix syscall API for threads	libcap
@@ -1170,13 +1193,14 @@ librtlsdr	C Utility Library	rtl-sdr
 libs6	The s6 library.	s6
 libs6auto	The s6auto library (C helpers to create service directories)	s6
 libsasl2	Cyrus SASL implementation	cyrus-sasl
-libseat	Seat management library	seatd
+libsass	A C implementation of a Sass compiler	libsass
 libseccomp	The enhanced seccomp library	libseccomp
 libsecret-1	GObject bindings for Secret Service API	libsecret
 libsecret-unstable	GObject bindings for Secret Service API (Unstable)	libsecret
 libserialport	Cross-platform serial port access library.	libserialport
 libsharpyuv	Library for sharp RGB to YUV conversion	libwebp
 libsidplayfp	C64 cycle exact stereo sidplayer library.	libsidplayfp
+libsignon-qt6	Client library for the Single Sign On daemon, Qt6 bindings.	signond
 libsigrok	Backend library for the sigrok signal analysis software suite	libsigrok
 libsigrokdecode	Protocol decoder library of the sigrok logic analyzer software	libsigrokdecode
 libsixel	A lightweight, fast C implementation of DEC SIXEL graphics codec	libsixel
@@ -1278,6 +1302,7 @@ libwoff2dec	WOFF2 decoder library	woff2
 libwoff2enc	WOFF2 encoder library	woff2
 libwpd-0.10	A library for reading and writing Corel WordPerfect(tm) documents	libwpd
 libwpg-0.3	Library for importing and converting Corel WordPerfect(tm) Graphics images	libwpg
+libwps-0.4	A library for reading Microsoft Works word processor documents	libwps
 libxcvt	A Library to generate VESA CVT standard timing modelines.	libxcvt
 libxdg-basedir	An implementation of the XDG Base Directory specification	libxdg-basedir
 libxdot	Library for parsing graphs in xdot format	graphviz
@@ -1342,7 +1367,6 @@ ndr	Network Data Representation Core Library	samba
 ndr_krb5pac	NDR marshallers for the KRB5 PAC formats	samba
 ndr_nbt	NDR marshallers for nbt formats	samba
 ndr_standard	NDR marshallers for the standard set of DCE/RPC interfaces	samba
-neatvnc	A Neat VNC server library	neatvnc
 neon	HTTP/WebDAV client library	neon
 netapi	A library to control CIFS servers	samba
 netcdf	NetCDF Client Library for C	netcdf-c
@@ -1387,6 +1411,7 @@ opusfile	High-level Opus decoding library	opusfile
 opusurl	High-level Opus decoding library, URL support	opusfile
 orc-0.4	Library of Optimized Inner Loops Runtime Compiler	orc
 orc-test-0.4	Test Library of Optimized Inner Loops Runtime Compiler	orc
+osmgpsmap-1.0	Moving map widget using openstreet map data	osm-gps-map
 p11-kit-1	Library and proxy module for properly loading and sharing PKCS#11 modules.	p11-kit
 pam	The primary Linux-PAM library. It is used by PAM modules and PAM-aware applications.	pam
 pam_misc	Miscellaneous functions that make the job of writing PAM-aware applications easier.	pam
@@ -1517,6 +1542,10 @@ shared-mime-info	Freedesktop common MIME database	shared-mime-info
 shiboken6	Support library for Python bindings created with the Shiboken6 generator.	python3-pyside6
 sigc++-2.0	Typesafe signal and callback system for C++	libsigc++2
 sigc++-3.0	Typesafe signal and callback system for C++	libsigc++3
+signon-oauth2plugin	Signon OAuth 2.0 plugin	signon-plugin-oauth2
+signon-plugins	SignonPlugins	signond
+signon-plugins-common	SignonPluginsCommon	signond
+signond	SignOn Framework client library development package	signond
 simde	Portable SIMD wrapper library	simde
 slang	S-Lang programming library and interpreter	slang
 slirp	User-space network stack	libslirp
@@ -1549,7 +1578,9 @@ stfl	Structured Terminal Forms Language/Library	stfl
 suil-0	Library for loading and wrapping LV2 plugin UIs	suil
 synctex	SyncTeX parser library	texlive
 syncthingconnector	Connection backend of Syncthing Tray	syncthingtray
+syncthingfileitemaction	KIO file item action for Syncthing	syncthingtray
 syncthingmodel	Data models of Syncthing Tray	syncthingtray
+syncthingplasmoid	Plasmoid to interact with Syncthing	syncthingtray
 syncthingwidgets	Tray application for Syncthing	syncthingtray
 taglib	Audio meta-data library	taglib
 taglib_c	Audio meta-data library (C bindings)	taglib
@@ -1570,7 +1601,6 @@ thrift-z	Thrift Zlib API	thrift
 tinyxml	Small C++ XML parser	tinyxml
 tinyxml2	simple, small, C++ XML parser	tinyxml2
 tk	Tk is a cross-platform graphical user interface toolkit, the standard GUI not only for Tcl, but for many other dynamic languages as well.	tk
-tllist	A C header file only implementation of a typed linked list	tllist
 tomlplusplus	TOML config file parser and serializer for C++	tomlplusplus
 totem-plparser	Totem Playlist Parser library	totem-pl-parser
 totem-plparser-mini	Totem Playlist Parser library, mini version	totem-pl-parser
@@ -1658,7 +1688,6 @@ wimlib	Library to extract, create, modify, and mount Windows Imaging (WIM) files
 winpr-tools3	WinPR: Windows Portable Runtime	freerdp
 winpr3	WinPR: Windows Portable Runtime	freerdp
 wireplumber-0.5	wireplumber: wireplumber-0.5	wireplumber
-wlroots-0.20	Wayland compositor library	wlroots
 wv-1.0	Word Document Filter library and utilities	wv
 x11	X Library	libX11
 x11-xcb	X Library XCB interface	libX11

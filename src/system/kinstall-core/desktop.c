@@ -451,14 +451,20 @@ static int copy_owned(const char *src, const char *dst, uid_t uid, gid_t gid)
  * a file leaves the greeter in the image's accent rather than half in two. A
  * machine with no such account or no sets has no KDOS login screen to paint,
  * which is not a failure of the install.
+ *
+ * A DRY RUN ASKS THE LIVE ROOT. Its target was never copied into, so the sets
+ * and the account are looked up in the live root, what the copy would have
+ * carried; asked of the empty target, every dry run would report a login
+ * screen the real install paints as missing.
  */
 static void greeter_set(const char *root, const KcolScheme *sc)
 {
 	char set[1024], home[256], src[1280], dst[1280], dir[1024];
+	const char *facts = cfg.dry_run ? "" : root;
 	uid_t uid = 0;
 	gid_t gid = 0;
 
-	if (under(set, sizeof(set), root, GREETER_SETS) < 0)
+	if (under(set, sizeof(set), facts, GREETER_SETS) < 0)
 		return;
 	kb_strlcpy(set + strlen(set), "/", sizeof(set) - strlen(set));
 	kb_strlcpy(set + strlen(set), sc->name, sizeof(set) - strlen(set));
@@ -477,7 +483,7 @@ static void greeter_set(const char *root, const KcolScheme *sc)
 		    "keeps the image's accent", sc->name);
 		return;
 	}
-	if (target_account(root, GREETER_USER, &uid, &gid, home,
+	if (target_account(facts, GREETER_USER, &uid, &gid, home,
 			   sizeof(home)) < 0 ||
 	    !uid || !greeter_home_ok(home)) {
 		say("no %s account with a home under /var/lib; the login "

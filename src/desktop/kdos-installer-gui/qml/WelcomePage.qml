@@ -10,7 +10,8 @@
  * The language is English: the image carries no other (the English-only
  * ruling), and the formats for dates, numbers and money are a person's own
  * choice in System Settings afterwards. The time zone is asked here because
- * it is the machine's, not a person's.
+ * it is the machine's, not a person's: tzdata's zone1970.tab, which a typed
+ * filter narrows, with the zone's local time beside it.
  */
 
 import QtQuick
@@ -24,6 +25,30 @@ WizardPage {
 
     heading: i18nc("@title", "Welcome to KDOS")
     readonly property var disks: Backend.probe.disks || []
+    /* The disks kinstall says can take the install. */
+    readonly property int usableDisks: {
+        let n = 0;
+        for (let i = 0; i < disks.length; i++) {
+            if (disks[i].fits === true) {
+                n++;
+            }
+        }
+        return n;
+    }
+    readonly property var zones: {
+        const f = zoneFilter.text.trim().toLowerCase();
+        if (f.length === 0) {
+            return Backend.timeZones;
+        }
+        return Backend.timeZones.filter(z => z.toLowerCase().indexOf(f) >= 0);
+    }
+    /* One match is the answer: typing "Kolk" chooses Asia/Kolkata. */
+    onZonesChanged: {
+        if (zoneFilter.text.length > 0 && zones.length === 1) {
+            Backend.answers.timezone = zones[0];
+        }
+    }
+    property string clock: Backend.localTime(Backend.answers.timezone)
     complete: disks.length > 0 && Backend.answers.timezone.length > 0
     problem: Backend.busy && disks.length === 0
         ? i18n("Looking at this computer's disks…")
@@ -51,14 +76,43 @@ WizardPage {
             Accessible.name: i18nc("@info:whatsthis", "Language: English")
         }
 
+        Kirigami.SearchField {
+            id: zoneFilter
+            Kirigami.FormData.label: i18nc("@label:textbox", "Time zone:")
+            Layout.fillWidth: true
+            placeholderText: i18nc("@info:placeholder", "Filter zones…")
+            Accessible.name: i18nc("@label:textbox", "Filter time zones")
+        }
         QQC2.ComboBox {
             id: zone
-            Kirigami.FormData.label: i18nc("@label:listbox", "Time zone:")
             Layout.fillWidth: true
-            model: Backend.timeZones
-            currentIndex: Math.max(0, Backend.timeZones.indexOf(Backend.answers.timezone))
+            model: page.zones
+            currentIndex: page.zones.indexOf(Backend.answers.timezone)
+            displayText: currentIndex >= 0 ? currentText
+                       : page.zones.length === 0 ? i18nc("@item:inlistbox", "No zone matches")
+                       : i18nc("@item:inlistbox %1 the chosen zone, not among the matches", "%1 (choose a match)", Backend.answers.timezone)
+            enabled: page.zones.length > 0
+            popup.width: width
             Accessible.name: i18nc("@label:listbox", "Time zone")
-            onActivated: index => Backend.answers.timezone = Backend.timeZones[index]
+            onActivated: index => Backend.answers.timezone = page.zones[index]
+        }
+        QQC2.Label {
+            Kirigami.FormData.label: i18nc("@label", "Local time:")
+            text: page.clock || "—"
+            Accessible.name: i18nc("@info:whatsthis", "Local time in %1: %2", Backend.answers.timezone, text)
+            Timer {
+                interval: 15000
+                running: page.visible
+                repeat: true
+                triggeredOnStart: true
+                onTriggered: page.clock = Backend.localTime(Backend.answers.timezone)
+            }
+            Connections {
+                target: Backend.answers
+                function onChanged() {
+                    page.clock = Backend.localTime(Backend.answers.timezone);
+                }
+            }
         }
 
         Kirigami.Separator {
@@ -73,6 +127,7 @@ WizardPage {
                 : "—"
             wrapMode: Text.Wrap
             Layout.fillWidth: true
+            Layout.maximumWidth: Kirigami.Units.gridUnit * 24
             Accessible.name: i18nc("@info:whatsthis", "Processor: %1", text)
         }
         QQC2.Label {
@@ -89,7 +144,9 @@ WizardPage {
         }
         QQC2.Label {
             Kirigami.FormData.label: i18nc("@label", "Disks:")
-            text: i18np("%1 disk", "%1 disks", page.disks.length)
+            text: Backend.busy && page.disks.length === 0 ? i18nc("@info probing the disks", "Looking…")
+                : i18ncp("@info %2 every disk found", "%1 of %2 can take the install", "%1 of %2 can take the install",
+                         page.usableDisks, page.disks.length)
             Accessible.name: i18nc("@info:whatsthis", "Disks: %1", text)
         }
         QQC2.Label {

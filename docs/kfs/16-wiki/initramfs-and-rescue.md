@@ -53,11 +53,11 @@ escaping: the init is written by a heredoc, and the generated script has a plain
 path checks for `nopersist` separately, to skip the persistence store. Every word is explained in
 [Command-line parameters KDOS reads](../../kdos/03-architecture/boot-and-init.md#command-line-parameters-kdos-reads):
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=631-655 pin=0cddbb0c0606 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=645-675 pin=2d484d0f7c3e -->
 
 The rescue helper, which every failure ends in:
 
-<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=555-577 pin=17c2e4e0f539 -->
+<!-- kfs:include script/phases/70_image/090_initramfs.sh lines=569-591 pin=17c2e4e0f539 -->
 
 The new kernel's initramfs and its deploy, in the `linux` postinstall:
 

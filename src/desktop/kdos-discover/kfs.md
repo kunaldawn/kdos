@@ -3,8 +3,9 @@
 four things:
 
 - **`kdos-backend.so`**, a Discover backend in `/usr/lib/qt6/plugins/discover/`. It lists the
-  catalogue's applications and sets and the packs in the pack store as `kdos-packs`, the packs and
-  `.ktar` sets on the boot medium as `medium`, Debian desktop applications the catalogue does
+  catalogue's sets, the packs in the pack store and the catalogue rows whose pack is there as
+  `kdos-packs`, the packs and `.ktar` sets on the boot medium and the rows whose pack is only there
+  as `medium`, the rows with no pack anywhere and the Debian desktop applications the catalogue does
   not name as `kdos-store`, boxes nothing else accounts for as `kdos-boxes`, and host software as
   `kdos-ports`, and it opens a `.ktar` or `.kpack` handed to Discover from a file manager. Every
   answer comes from the tool that owns it: `kdos-appbox catalogue` says what is installed,
@@ -21,12 +22,15 @@ four things:
   known vulnerabilities an update closes, and, when kdos-sysupdated does not answer,
   `/var/lib/kdos/update.json` and `kdos-bootctl status --json` in its place; it fetches nothing.
 - **`kdos-discover-catalog`**, which writes `/usr/share/swcatalog/xml/kdos-ports.xml`, the
-  AppStream catalogue of the host's ports, from kpkg's manifests.
+  AppStream catalogue of the host's ports, from kpkg's manifests, and, with `--debian-exclude`,
+  `kdos-debian-exclude.xml`, the `remove-component` merges that take the applications
+  `debian-exclude` names out of every AppStream pool.
 - **`kdos-ports-helper`**, the root step behind installing host software from the signed binhost,
   run through `pkexec` under the polkit action `io.kdos.ports.install`.
 
-It also points Discover's featured list at `/usr/share/kdos/discover/featured.json`, and defines
-the MIME types `application/vnd.kdos.ktar` and `application/vnd.kdos.kpack` with a hidden
+It also points Discover's featured list at `/usr/share/kdos/discover/featured.json`, ships
+`/usr/share/kdos/discover/debian-exclude`, the Debian packages the backend never offers to build in
+a box, and defines the MIME types `application/vnd.kdos.ktar` and `application/vnd.kdos.kpack` with a hidden
 desktop entry that opens both in Discover. How Discover, the backend and the system update fit
 together is in [Discover](../../../docs/kdos/04-programs/discover.md).
 
@@ -56,6 +60,13 @@ together is in [Discover](../../../docs/kdos/04-programs/discover.md).
   machine. The Debian lane's metadata is the DEP-11 catalogue
   [debian-dep11](#port-debian-dep11) installs under `/usr/share/swcatalog`, read lazily: a resource is made for a Debian application only when a
   search or a category asks for it, or when its box exists.
+- **A link waits for the machine to be read.** Discover asks for the featured list's
+  `kdos-backend://` links and for KRunner's `appstream://` links as soon as the backend loads,
+  before its first refresh lands; the backend answers each once that refresh has, and an
+  `appstream://` link once the AppStream pool has loaded too, so neither is answered "no entry".
+- **Every resource has an `appstreamId`.** Discover's lists drop every resource whose
+  `appstreamId` an earlier one in the list has, so a resource with no AppStream component gets
+  `io.kdos.<lane>.<id>`; its link stays `kdos-backend://<lane>/<id>`.
 - **Debian applications need kdos-appbox's `deb:` form.** `install deb:<package>` and
   `uninstall deb:<package>` build and remove a box named `deb.<package>`, with each `+` in the
   package name spelled `_`; the backend reads that name back to tell a Debian application
@@ -77,6 +88,15 @@ together is in [Discover](../../../docs/kdos/04-programs/discover.md).
   `kdos-binhost.xml` directly at every refresh, keeps the pool for the Debian lane's search and
   categories, and never offers in a box a Debian application whose component id a host port
   already has.
+- **The exclusion list reaches KRunner only through the pool.** KRunner's software results search
+  the AppStream pool themselves, so the backend's own filter does not reach them; the image step
+  `086_swcatalog.sh` runs `kdos-discover-catalog --debian-exclude` to write the
+  `remove-component` merges that take each listed application out of the pool. A merge removes
+  every lower-priority component of its id, a host port's in `kdos-ports.xml` included, which
+  costs nothing: the backend reads `kdos-ports.xml` itself, and KRunner offers no installed
+  application. It is written at the image step and not in `build.sh`, because the DEP-11
+  catalogue it reads is in the build tree but not in the development container that builds this
+  port for `plasmatest`.
 - **The catalogue is written wherever packages change.** `kdos-discover-catalog` rewrites the
   whole of `kdos-ports.xml` from kpkg's manifests: a port's own metainfo is its component, given
   the package name, and a desktop entry no metainfo launches is read by libappstream's

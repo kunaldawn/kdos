@@ -2,7 +2,8 @@
 [Deluge]{.idx} is a BitTorrent client split into a daemon, `deluged`, and the interfaces that
 drive it: the GTK 3 window `deluge-gtk`, the web interface `deluge-web` and the console
 `deluge-console`. It is written in Python on Twisted, and does its torrent work through the
-Python binding of [libtorrent-rasterbar](#port-libtorrent-rasterbar). The port installs the daemon,
+Python binding of [libtorrent-rasterbar](#port-libtorrent-rasterbar), which must be of the 2.0
+series: the 2.1 binding lacks settings and names the daemon uses, and `deluged` stops at start. The port installs the daemon,
 the three interfaces, the `deluge` command that starts whichever interface is set as the
 default, and the menu entry for the GTK window.
 

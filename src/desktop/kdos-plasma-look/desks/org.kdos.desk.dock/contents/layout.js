@@ -37,26 +37,30 @@ function fixedFamily() {
 }
 
 // The tray's own settings, in its applet's [General] group (plasma-workspace
-// systemtraysettings.cpp). plasma-pa's microphone item is hidden, and
-// Plasma's camera indicator is kept off: KDOS's privacy lamps
-// (org.kdos.privacy) show the microphone, the camera and the screen together,
-// naming the box that holds each. The tray enables a default-on item it has
-// not seen yet, so the indicator is taken out of extraItems if the new tray
-// already enabled it and written into knownItems so it is never enabled
-// later.
+// systemtraysettings.cpp). plasma-pa's microphone item is hidden, and two
+// default-on tray applets are kept off. Plasma's camera indicator: KDOS's
+// privacy lamps (org.kdos.privacy) show the microphone, the camera and the
+// screen together, naming the box that holds each. Merkuro's contacts widget:
+// loading it starts Akonadi and its agents, so it would run the whole PIM
+// stack at every login of an account that uses no KDE PIM program; enabled
+// from the tray's settings it works as upstream ships it. The tray matches a
+// status item by its StatusNotifierItem id, and plasma-pa publishes the
+// microphone as plasmashell_microphone; a bare "microphone" hides nothing. The
+// tray enables a default-on applet it has not seen yet, so each kept-off
+// applet is taken out of extraItems if the new tray already enabled it and
+// written into knownItems so it is never enabled later. readConfig needs the
+// [] default to return a list: without one it returns the entry as one
+// comma-joined string, no id is ever found in it, and writing it back escapes
+// every comma into one item.
 function addTray(panel) {
-    var camera = "org.kde.plasma.cameraindicator";
+    var off = ["org.kde.plasma.cameraindicator", "org.kde.merkuro.contact.applet"];
     var tray = panel.addWidget("org.kde.plasma.systemtray");
     tray.currentConfigGroup = ["General"];
-    tray.writeConfig("hiddenItems", ["microphone"]);
-    var extra = [].concat(tray.readConfig("extraItems") || []);
-    if (extra.indexOf(camera) != -1) {
-        tray.writeConfig("extraItems", extra.filter(function (id) { return id != camera; }));
-    }
-    var known = [].concat(tray.readConfig("knownItems") || []);
-    if (known.indexOf(camera) == -1) {
-        tray.writeConfig("knownItems", known.concat([camera]));
-    }
+    tray.writeConfig("hiddenItems", ["plasmashell_microphone"]);
+    var extra = [].concat(tray.readConfig("extraItems", []));
+    tray.writeConfig("extraItems", extra.filter(function (id) { return off.indexOf(id) == -1; }));
+    var known = [].concat(tray.readConfig("knownItems", []));
+    tray.writeConfig("knownItems", known.concat(off.filter(function (id) { return known.indexOf(id) == -1; })));
     return tray;
 }
 

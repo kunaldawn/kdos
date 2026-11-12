@@ -12,12 +12,20 @@
 #     testing/vnc-shot.py --disk build/kdos-target.qcow2 --no-session \
 #                         --root-script testing/install-to-disk.sh
 #
-# WHY. Half of what the pack lane does cannot happen on a live session at all:
-# $HOME is on overlayfs, an overlay upper cannot sit there, and so no box can
-# ever START. `kdos doctor` says so and it is right. Everything gated behind
-# "needs an installed system" — a box that runs, `kdos-box freeze`, telemetry
-# naming a running box, the installer's own Applications page — needs a machine
+# WHY. A live session keeps $HOME on overlayfs, where an overlay upper cannot
+# sit, so its boxes run on a tmpfs layer under /run/user/<uid>/kdos/boxes that
+# ends with the session (see known-gaps.md, "A live session cannot create a
+# persistent box"). A box that persists, `kdos-box freeze`, telemetry naming a
+# box across a reboot and the installer's own Applications page need a machine
 # that was installed, and this is the cheapest way to get one.
+#
+# THE TARGET MUST HOLD THE PAYLOAD. The copy writes about as much as the
+# `payload` line of `kinstall --dump probe` into the disk, so a qcow2 grows
+# on the host by that much. kinstall's Prepare step refuses a disk smaller
+# than the payload and 768 MiB. This script's gate runs before the installer
+# starts, sets a higher bar (the payload, the 512 MB ESP and 2 GiB), and prints
+# both numbers, so a refused run says how far short the disk is. vnc-shot.py
+# refuses an install run whose qcow2 could outgrow the host's free space.
 #
 # THE ANSWER FILE IS WRITTEN HERE RATHER THAN CARRIED, because kinstall's own
 # `--save` is the authority on the format and a stale copy in the repo would
@@ -28,7 +36,7 @@ set -u
 
 DISK=${INSTALL_DISK:-/dev/vda}
 ANSWERS=/tmp/kdos-answers
-APPS=${INSTALL_APPS:-essential}
+APPS=${INSTALL_APPS:-none}
 CAP=${INSTALL_CAP:-5400}   # kinstall in a VM is slow and can run past 40 minutes; a tighter cap kills a healthy install
 # AN ENCRYPTED INSTALL IS THE SAME RUN WITH ONE KEY CHANGED, which is the
 # whole reason it is a knob here rather than a second script: what an
@@ -47,11 +55,14 @@ say "the target"
 ls -l "$DISK" 2>&1 || { echo "no $DISK — was --disk passed?"; exit 2; }
 cat /proc/partitions
 
-# alien_apps = 0 is deliberate: this run exercises packs, and the live
-# account's container storage stays out of the copy. `apps` takes catalogue
-# GROUP ids — an application id matches no group, and a line on which nothing
-# matches falls back to `essential`. reboot = 0 because the rig decides when
-# the machine goes down, not the installer.
+# alien_apps = 0 keeps the live account's container storage out of the copy.
+# `apps` takes catalogue GROUP ids. A chosen group is written to the target's
+# /var/lib/kdos/apps-pending and built at the first login, not during the
+# install. `none` is the default because this run exercises the install, not
+# the application lane, and an empty line would read back as `essential`. An
+# application id matches no group, and a line on which nothing matches falls
+# back to `essential`. reboot = 0 because the rig decides when the machine
+# goes down, not the installer.
 say "the answer file"
 cat > "$ANSWERS" <<EOF
 # written by testing/install-to-disk.sh
@@ -88,6 +99,26 @@ cat "$ANSWERS"
 say "the plan"
 kinstall --config "$ANSWERS" --dump plan 2>&1 | head -40
 
+# THE SIZE GATE, in MB as both numbers print. A payload or a disk size that
+# cannot be read refuses too, since the gate cannot then say the disk is big
+# enough.
+say "the room"
+payload=$(kinstall --config "$ANSWERS" --dump probe 2>/dev/null |
+	awk '$1 == "payload" { print $2; exit }')
+bytes=$(blockdev --getsize64 "$DISK" 2>/dev/null)
+case "$payload$bytes" in
+''|*[!0-9]*)
+	echo "cannot size the run: payload '${payload}' MB, $DISK '${bytes}' bytes"
+	exit 2 ;;
+esac
+disk=$((bytes / 1048576))
+need=$((payload + 512 + 2048))
+echo "payload ${payload} MB, $DISK ${disk} MB, needs ${need} MB"
+[ "$disk" -ge "$need" ] || {
+	echo "refusing: $DISK is ${disk} MB, the payload needs ${need} MB with the ESP and 2 GiB"
+	exit 2
+}
+
 say "installing"
 # THE INSTALLER GETS ITS OWN VT AND THIS SHELL KEEPS THE CONSOLE. kinstall
 # owns a terminal — palette, cell buffer, evdev pointer — and pointing it at
@@ -98,27 +129,22 @@ say "installing"
 # it with Alt+F3.
 #
 # THE HEARTBEAT IS THE POINT. An install is minutes of one CPU-bound step after
-# another; a run that prints nothing until it finishes cannot be told from a
-# run that never will, which is exactly how the first attempt was killed while
-# it was still working.
+# another, and a run that prints nothing until it finishes cannot be told from
+# a run that never will, so a cap or a person watching would kill a healthy one.
 kinstall --config "$ANSWERS" --unattended < /dev/tty3 > /dev/tty3 2>&1 &
 kpid=$!
 beat=0
 while kill -0 "$kpid" 2>/dev/null; do
 	sleep 15
 	beat=$((beat + 15))
-	# WHAT IS USED ON THE TARGET, not what the partition table says. The
-	# first version printed partition SIZES, which are decided in the first
-	# thirty seconds and never move again — so a run that was copying
-	# steadily and a run that was wedged printed the same line, which is
-	# the failure the heartbeat exists to prevent. kinstall mounts at
-	# /mnt/kinstall; `df` on it is the one number that tracks the work.
-	# AND THE INSTALLER'S OWN LAST LINE. `df` says whether anything is being
-	# written; it cannot say which STEP is running, and a plateau is
-	# ambiguous between "finished this step" and "stopped". kinstall writes
-	# every command it runs to /var/log/kinstall.log through `logf_`, and
-	# that file dies with the live session's tmpfs — so it is read here,
-	# while it exists, and copied out at the end.
+	# WHAT IS USED ON THE TARGET, not partition sizes: sizes are fixed in
+	# the first seconds and cannot tell a steady copy from a wedged one.
+	# kinstall mounts at /mnt/kinstall; `df` on it is the one number that
+	# tracks the work. AND THE INSTALLER'S OWN LAST LINE: `df` cannot say
+	# which STEP is running, and a plateau is ambiguous between "finished
+	# this step" and "stopped". kinstall writes every command it runs to
+	# /var/log/kinstall.log, which dies with the live session's tmpfs, so
+	# it is read here while it exists and printed at the end.
 	printf '  %4ds  %s | %s\n' "$beat" \
 	       "$(df -h /mnt/kinstall 2>/dev/null | awk 'NR==2 {printf "used %s of %s (%s)", $3, $2, $5}')" \
 	       "$(tail -n 1 /var/log/kinstall.log 2>/dev/null | cut -c1-90)"

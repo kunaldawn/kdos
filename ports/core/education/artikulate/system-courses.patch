@@ -1,0 +1,57 @@
+Subject: Load courses from the system data directories as well as the user's
+
+The trainer read courses only from the first AppLocalDataLocation, the
+user's ~/.local/share/artikulate/courses, where KNewStuff installs them.
+It now also scans <datadir>/artikulate/courses below every system data
+directory, so a distribution can ship courses and the trainer has one to
+offer where KNewStuff is unavailable or disabled by kiosk.
+
+--- a/src/core/resourcerepository.cpp
++++ b/src/core/resourcerepository.cpp
+@@ -15,6 +15,12 @@
+     : ResourceRepository(
+           QUrl::fromLocalFile(QStandardPaths::standardLocations(QStandardPaths::AppLocalDataLocation).constFirst() + QStringLiteral("/courses/")))
+ {
++    // The first location is the user's own, where KNewStuff installs; the
++    // others are the system data directories, where packaged courses live.
++    const QStringList locations = QStandardPaths::standardLocations(QStandardPaths::AppLocalDataLocation);
++    for (qsizetype i = 1; i < locations.size(); ++i) {
++        m_systemCourseDirectories.append(locations.at(i) + QStringLiteral("/courses/"));
++    }
+ }
+ 
+ ResourceRepository::ResourceRepository(const QUrl &storageLocation)
+@@ -98,12 +104,18 @@
+         }
+     };
+ 
+-    QDir rootDirectory = QDir(m_storageLocation.toLocalFile());
+-    QDirIterator it(rootDirectory, QDirIterator::Subdirectories);
+-    qCInfo(ARTIKULATE_CORE()) << "Loading courses from" << rootDirectory.absolutePath();
++    const QStringList roots = QStringList{m_storageLocation.toLocalFile()} + m_systemCourseDirectories;
++    for (const QString &root : roots) {
++        QDir rootDirectory = QDir(root);
++        if (!rootDirectory.exists()) {
++            continue;
++        }
++        QDirIterator it(rootDirectory, QDirIterator::Subdirectories);
++        qCInfo(ARTIKULATE_CORE()) << "Loading courses from" << rootDirectory.absolutePath();
+ 
+-    while (it.hasNext()) {
+-        scanDirectoryForXmlCourseFiles(it.next());
++        while (it.hasNext()) {
++            scanDirectoryForXmlCourseFiles(it.next());
++        }
+     }
+ }
+ 
+--- a/src/core/resourcerepository.h
++++ b/src/core/resourcerepository.h
+@@ -76,6 +76,7 @@
+     QHash<QString, std::shared_ptr<ILanguage>> m_languages; ///>! (language-identifier, language resource)
+     QStringList m_loadedCourses;
+     const QUrl m_storageLocation;
++    QStringList m_systemCourseDirectories; ///>! read-only course directories below the system data directories
+ };
+ 
+ #endif // RESOURCEREPOSITORY_H

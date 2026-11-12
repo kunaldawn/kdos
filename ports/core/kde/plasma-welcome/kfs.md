@@ -34,6 +34,12 @@ puts it, before the last page. KDOS's Accessibility page is `00-Accessibility.qm
 are offered before anything else is asked; upstream shows distribution pages only after its own
 five. The patch documents the rule in the README's distribution-page section.
 
+`shortcut-texts.patch` adds `Utils.globalShortcutTexts(component, action)`, which returns every
+chord bound to a global action, where upstream's `globalShortcutText` returns only the first with a
+modifier. kglobalaccel hands an action's chords back in no stable order, so "the first" names a
+different chord from one session to the next; the KDOS Keys page reads them all and shows the one
+it teaches while that one is bound. It is to be offered upstream.
+
 The post-update page offers to download a preview of the Plasma release announcement from
 kde.org. It does so only when the person asks, because `AutomaticUpdatePreview` defaults to
 false; every other link on the pages opens in the web browser.

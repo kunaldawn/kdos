@@ -16,6 +16,7 @@
 #include <QDBusObjectPath>
 #include <QDBusVariant>
 #include <QMap>
+#include <QTimer>
 
 using Kdos::FirewallKnock;
 using Kdos::FirewallKnockList;
@@ -31,11 +32,11 @@ const QString ActivePath = QStringLiteral("/org/freedesktop/NetworkManager/Activ
 Kdos::FirewallServiceList standardServices()
 {
     return {
-        {QStringLiteral("ssh"), false, QStringLiteral("incoming SSH (70_sshd.sh)")},
-        {QStringLiteral("http"), false, QStringLiteral("a web server on this machine")},
-        {QStringLiteral("kdeconnect"), false, QStringLiteral("KDE Connect with a phone on the LAN")},
-        {QStringLiteral("vnc"), false, QStringLiteral("this desktop over VNC (krfb)")},
-        {QStringLiteral("rdp"), false, QStringLiteral("this desktop over RDP (krdp)")},
+        {QStringLiteral("ssh"), false, QStringLiteral("Logging in to this computer over SSH")},
+        {QStringLiteral("http"), false, QStringLiteral("A web server on this computer")},
+        {QStringLiteral("kdeconnect"), false, QStringLiteral("KDE Connect with a phone on the network")},
+        {QStringLiteral("vnc"), false, QStringLiteral("Sharing this desktop over VNC (Krfb)")},
+        {QStringLiteral("rdp"), false, QStringLiteral("Sharing this desktop over RDP (KRdp)")},
     };
 }
 
@@ -234,6 +235,12 @@ bool FakeNotifications::handleMessage(const QDBusMessage &message, const QDBusCo
             connection.send(message.createErrorReply(QDBusError::InvalidArgs, message.signature()));
             return true;
         }
+        calls++;
+        if (failNext > 0) {
+            failNext--;
+            connection.send(message.createErrorReply(QDBusError::NoReply, QStringLiteral("no notification server")));
+            return true;
+        }
         const QList<QVariant> a = message.arguments();
         Notification n;
         n.id = m_next++;
@@ -243,7 +250,15 @@ bool FakeNotifications::handleMessage(const QDBusMessage &message, const QDBusCo
         n.hints = qdbus_cast<QVariantMap>(a.at(6).value<QDBusArgument>());
         n.timeout = a.at(7).toInt();
         shown.append(n);
-        connection.send(message.createReply(QVariant::fromValue(n.id)));
+        const QDBusMessage reply = message.createReply(QVariant::fromValue(n.id));
+        if (holdMs > 0) {
+            QDBusConnection c = connection;
+            QTimer::singleShot(holdMs, this, [c, reply]() mutable {
+                c.send(reply);
+            });
+        } else {
+            connection.send(reply);
+        }
         return true;
     }
     if (message.member() == QLatin1String("CloseNotification")) {

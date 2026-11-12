@@ -282,7 +282,7 @@ void state_reload_boot(void)
 	const char *argv[] = { "kdos-bootctl", "status", "--json", NULL };
 	KbBuf out = {0};
 
-	su.configured = 0;
+	su.configured = su.live = 0;
 	su.active[0] = su.running[0] = su.trying[0] = su.failed[0] = 0;
 	su.attempts = 0;
 	su.bootnext = 0;
@@ -294,6 +294,8 @@ void state_reload_boot(void)
 	if (out.p && json_ws(out.p)[0] == '{') {
 		const char *v = json_get(out.p, "configured");
 		su.configured = v && json_true(v);
+		v = json_get(out.p, "live");
+		su.live = !su.configured && v && json_true(v);
 		slot_field(out.p, "active", su.active);
 		slot_field(out.p, "running", su.running);
 		slot_field(out.p, "trying", su.trying);
@@ -333,6 +335,15 @@ void state_reload_boot(void)
 int state_slots_ok(void)
 {
 	return su.configured && su.uuid[0][0] && su.uuid[1][0];
+}
+
+/* The live medium, as `kdos-bootctl status --json` says (`"live": true`
+ * beside `"configured": false`): no slots either, and nothing an update
+ * installed into its RAM overlay would survive the restart, so it is told to
+ * install KDOS rather than to update in place. */
+int state_live(void)
+{
+	return su.live;
 }
 
 /*
@@ -563,13 +574,13 @@ int state_append_state(sd_bus_message *m)
 /* What a Slots1 reader last saw, so a change is announced once and an
  * unchanged reload announces nothing. */
 static struct {
-	int configured, bootnext;
+	int configured, live, bootnext;
 	unsigned attempts;
 	char running[2], active[2], trying[2];
 	char channel[520];
 	char state[2048];
 	char *slots;
-} seen = { .configured = -1 };
+} seen = { .configured = -1, .live = -1 };
 
 /* Every State value, as one string, for the comparison. */
 static void state_print(char *out, size_t cap)
@@ -599,6 +610,10 @@ void state_emit(void)
 	if (seen.configured != su.configured) {
 		seen.configured = su.configured;
 		ch[n++] = "Configured";
+	}
+	if (seen.live != su.live) {
+		seen.live = su.live;
+		ch[n++] = "Live";
 	}
 #define CHANGED_S(f, val, name)                                     \
 	do {                                                        \

@@ -25,3 +25,4 @@ cmake -S . -B build -G Ninja \
 	-Wno-dev
 cmake --build build
 DESTDIR=$PKG cmake --install build
+rm "$PKG/usr/share/kconf_update/webenginepart.upd"

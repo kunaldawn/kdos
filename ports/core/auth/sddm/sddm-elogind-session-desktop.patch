@@ -1,0 +1,16 @@
+Subject: Hand the session desktop to an elogind login as well as a systemd one
+
+pam_elogind records XDG_SESSION_DESKTOP as the session's Desktop property, as
+pam_systemd does; the guard set it only for a systemd build.
+
+--- a/src/daemon/Display.cpp	2026-11-09 10:36:46.529346069 +0530
++++ b/src/daemon/Display.cpp	2026-11-09 10:36:46.542632301 +0530
+@@ -440,7 +440,7 @@
+         env.insert(QStringLiteral("XDG_SESSION_TYPE"), session.xdgSessionType());
+         env.insert(QStringLiteral("XDG_SEAT"), seat()->name());
+         env.insert(QStringLiteral("XDG_VTNR"), QString::number(m_sessionTerminalId));
+-#ifdef HAVE_SYSTEMD
++#if defined(HAVE_SYSTEMD) || defined(HAVE_ELOGIND)
+         env.insert(QStringLiteral("XDG_SESSION_DESKTOP"), session.desktopNames());
+ #endif
+ 

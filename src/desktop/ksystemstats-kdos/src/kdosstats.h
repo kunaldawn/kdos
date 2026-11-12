@@ -70,6 +70,20 @@ CgroupCounters kdosReadCgroup(const QString &dir);
 /* Two scopes of one box as one: each field the sum of those that are known. */
 CgroupCounters kdosAddCounters(const CgroupCounters &a, const CgroupCounters &b);
 
+/* The boxes with no scope of their own, by their processes: every process
+ * under PROCROOT (normally /proc) that UID owns, that is in a mount
+ * namespace other than SELFPID's and whose environment carries
+ * KDOS_BOX=<box> — the variable kdos-appbox sets in every box's container,
+ * which podman passes to every exec. The namespace test keeps a host
+ * process that only inherited the variable out. The box's figures are its
+ * processes' sums: cpuUsec is utime, stime and the reaped children's cutime
+ * and cstime, memoryBytes the proportional set size (smaps_rollup's Pss, the
+ * resident set where that file cannot be read), readBytes and writeBytes
+ * /proc/<pid>/io's read_bytes and write_bytes, and processes the count. Such
+ * a box has no cgroup limit, so memoryMaxBytes is 0. A box named in SKIP is
+ * counted by its scope and not here. */
+QHash<QString, CgroupCounters> kdosBoxesByProcess(const QString &procRoot, const QString &selfPid, uid_t uid, const QStringList &skip = {});
+
 /* What a box is called and drawn as in the menu: the launcher kdos-appbox
  * wrote for it, `X-KDOS-Box=<box>` in a .desktop file under one of DIRS.
  * The first launcher found wins, DIRS in order; a box with no launcher has

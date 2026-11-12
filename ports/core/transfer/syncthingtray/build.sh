@@ -9,6 +9,8 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 
+patch -p1 -i "$PORT_SRC/plasmoid-no-quick-gui.patch"
+
 cmake -S . -B build -G Ninja \
 	-D CMAKE_INSTALL_PREFIX=/usr \
 	-D CMAKE_INSTALL_LIBDIR=lib \
@@ -22,8 +24,8 @@ cmake -S . -B build -G Ninja \
 	-D WIDGETS_GUI=ON \
 	-D QUICK_GUI=OFF \
 	-D NO_LIBSYNCTHING=ON \
-	-D NO_PLASMOID=ON \
-	-D NO_FILE_ITEM_ACTION_PLUGIN=ON \
+	-D NO_PLASMOID=OFF \
+	-D NO_FILE_ITEM_ACTION_PLUGIN=OFF \
 	-D SETUP_TOOLS=OFF \
 	-D SYSTEMD_SUPPORT=OFF \
 	-D USE_BOOST_PROCESS=OFF \

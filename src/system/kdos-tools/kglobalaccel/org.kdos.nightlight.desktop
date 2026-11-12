@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Toggle Night Light
+Comment=Turn Night Light on, warm all day, or off
+Exec=kdos toggle night-light
+Icon=redshift-status-on
+X-KDE-Shortcuts=Meta+Ctrl+Shift+N

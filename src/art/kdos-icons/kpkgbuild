@@ -13,4 +13,4 @@ version     = 20261028
 release     = 1
 description = KDOS icon themes — the KDOS marks over Breeze, following the accent
 homepage    = https://github.com/kunaldawn/kdos
-license     = MIT
+license     = MIT AND LGPL-3.0-or-later

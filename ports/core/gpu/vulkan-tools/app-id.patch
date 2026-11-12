@@ -1,0 +1,26 @@
+Subject: Set the Wayland app id of the cube's window to the program name
+
+vkcube and vkcubepp set a title on their xdg_toplevel and no app id, so a
+compositor can match the window to no desktop entry. Set the app id to
+APP_SHORT_NAME, the program's name, beside the title.
+
+--- a/cube/cube.c
++++ b/cube/cube.c
+@@ -3126,6 +3126,7 @@
+     xdg_surface_add_listener(demo->xdg_surface, &xdg_surface_listener, demo);
+     xdg_toplevel_add_listener(demo->xdg_toplevel, &xdg_toplevel_listener, demo);
+     xdg_toplevel_set_title(demo->xdg_toplevel, APP_SHORT_NAME);
++    xdg_toplevel_set_app_id(demo->xdg_toplevel, APP_SHORT_NAME);
+     if (demo->xdg_decoration_mgr) {
+         // if supported, let the compositor render titlebars for us
+         demo->toplevel_decoration =
+--- a/cube/cube.cpp
++++ b/cube/cube.cpp
+@@ -3498,6 +3498,7 @@
+     xdg_surface_add_listener(window_surface, &surface_listener, this);
+     xdg_toplevel_add_listener(window_toplevel, &toplevel_listener, this);
+     xdg_toplevel_set_title(window_toplevel, APP_SHORT_NAME);
++    xdg_toplevel_set_app_id(window_toplevel, APP_SHORT_NAME);
+     if (xdg_decoration_mgr) {
+         // if supported, let the compositor render titlebars for us
+         toplevel_decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(xdg_decoration_mgr, window_toplevel);

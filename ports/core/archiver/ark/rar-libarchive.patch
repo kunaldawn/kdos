@@ -1,0 +1,22 @@
+Subject: Open RAR archives read-only through libarchive
+
+libarchive reads RAR 4 and RAR 5 archives natively, with no external
+program, but Ark offers RAR only to its unrar and unarchiver plugins,
+which need the unrar or lsar executables. Without them Ark lists RAR as
+supported and then fails with "No suitable plugin found". Listing
+application/vnd.rar in the read-only libarchive plugin lets Ark open,
+browse and extract RAR archives wherever libarchive is built; the unrar
+plugin's higher priority keeps it the choice when unrar is installed.
+
+--- a/plugins/libarchive/kerfuffle_libarchive_readonly.json.cmake
++++ b/plugins/libarchive/kerfuffle_libarchive_readonly.json.cmake
+@@ -77,7 +77,8 @@
+             "application/x-xar",
+             "application/x-iso9660-appimage",
+             "application/x-archive",
+-            "application/x-msdownload"
++            "application/x-msdownload",
++            "application/vnd.rar"
+         ],
+         "Name": "Libarchive plugin (read-only formats)",
+         "Name[ar]": "ملحق Libarchive (تنسيقات قراءة فقط)",

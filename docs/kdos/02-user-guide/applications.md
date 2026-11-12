@@ -80,18 +80,23 @@ Motif have no Wayland backend, so their programs always run on Xwayland, describ
 | Java (AWT and Swing) | Runs on Xwayland; `_JAVA_AWT_WM_NONREPARENTING=1` tells it there is no reparenting window manager |
 
 A program with no Wayland path at all, such as Xastir (a Motif program) or a Tk or Swing program,
-runs on *Xwayland*, the X server KWin starts for the session and runs as one of its clients. So does
+runs on *Xwayland*, the X server KWin starts for the session and runs as one of its clients, on the
+sockets in `/tmp/.X11-unix` that the boot creates. So does
 VLC 3: its Qt interface starts on X11 whatever `QT_QPA_PLATFORM` says, and only `cvlc`, run with
-`DISPLAY` unset, opens a Wayland video window. Xwayland is the only X server on the system: it
+`DISPLAY` unset, opens a Wayland video window. Lokalize, KTouch and LabPlot set the X11
+platform for themselves at start-up, over `QT_QPA_PLATFORM`, to step around Wayland bugs of their
+own, and run on Xwayland too. Xwayland is the only X server on the system: it
 serves native and boxed X11 programs alike, it is built with GLX so an X11 program that draws
 through OpenGL works, and the system carries the X core fonts (`misc-fixed`, Adobe's 75 dpi set and
 the cursor font) that Motif and Xt programs ask it for. There is no Xorg server, and the login
 screen is SDDM's Wayland greeter, on KWin, with no X server behind it.
 
-Open and Save dialogs are KDE's in every application. Qt applications draw them through KDE's
-platform theme. Native GTK applications ask the desktop's file-chooser portal for theirs, because
-the login profile sets `GTK_USE_PORTAL=1`, and Firefox ESR does the same through its shipped
-preferences; the portal is `xdg-desktop-portal-kde`, so they get KDE's dialog too. A boxed
+Open and Save dialogs are KDE's in nearly every application. Qt applications draw them through
+KDE's platform theme. GTK 4 applications ask the desktop's file-chooser portal for theirs, GTK 3
+applications that use GTK's native chooser do too, because the login profile sets
+`GTK_USE_PORTAL=1`, and Firefox ESR does the same through its shipped preferences; the portal is
+`xdg-desktop-portal-kde`, so they get KDE's dialog. A GTK 3 application that builds GTK's own
+dialog, such as AbiWord, keeps GTK's. A boxed
 application reaches the same portal. Qt applications read the palette, fonts and icons of the global
 theme in force (`QT_QPA_PLATFORMTHEME=kde`), and GTK applications take the same colours through
 Breeze's GTK theme; how each toolkit takes the accent is in [Theming](theming.md).
@@ -100,16 +105,20 @@ Breeze's GTK theme; how each toolkit takes the accent is in [Theming](theming.md
 
 Each table names the applications ported for one kind of work. The names are the applications'
 own, and the command that starts each is its upstream name. Those with a window of their own have a
-row in Kickoff; the rest, such as llama.cpp, Waypipe or ClamAV, run from a prompt.
+row in Kickoff; the rest, such as llama.cpp, Waypipe or ClamAV, run from a prompt. So does a
+program that would exit at once from a Start row, with no argument and no setup, and its desktop
+entry is hidden: `tig` outside a repository, `ledger` without a journal, `presenterm` without a file,
+`taskwarrior-tui` before `task` has written `~/.taskrc`, `rmpc` while no mpd is running, `newsboat`
+before `~/.config/newsboat/urls` lists a feed, `iamb` and `toot` before an account is set up,
+`zbarcam` with no camera, `dust`, and the sound-card modems `direwolf` and `ardopcf`. The viewers
+`timg`, `fx`, Frotz and Inlyne have no row either and open a file from the file manager's Open
+With, and Yamagi Quake II is started as `quake2` once its data is in place.
 
-Every application of KDE Gear is installed, apart from four that cannot work here (KJournald, which
-reads systemd's journal; KMag and KMouseTool, which need X11; and Plasma Mobile's settings shell)
-and seven whose third-party stacks are not yet ported (the online-accounts integration and its
-providers, colord-kde, AudioTube, Kajongg and Kigo). The tables name the Gear applications beside
-the rest; the [ports catalogue](../06-reference/ports-catalogue.md) lists every one. So does
-a terminal program that would exit at once from a Start row, with no argument and no setup: `tig`
-outside a repository, `ledger` without a journal, `presenterm` without a file, `taskwarrior-tui`
-before `task` has written `~/.taskrc`, and `rmpc` while no mpd is running.
+Every application of KDE Gear is installed, apart from five that cannot work here (KJournald, which
+reads systemd's journal; KMag and KMouseTool, which need X11; Plasma Mobile's settings shell; and
+colord-kde, whose Colour Management page would list only the devices colord knows, which under
+Wayland are never the displays). A display's ICC profile is chosen in System Settings → Display Configuration,
+and KWin applies it. The tables name the Gear applications beside the rest; the [ports catalogue](../06-reference/ports-catalogue.md) lists every one.
 
 ### Browsing the web and the small internet
 
@@ -131,7 +140,7 @@ before `task` has written `~/.taskrc`, and `rmpc` while no mpd is running.
 | Application | What it is for |
 |---|---|
 | Thunderbird | Mail, calendar, contacts and feeds; the default handler for `mailto:` links, invitations and contact cards. Its telemetry and update checks are off, as Firefox's are |
-| KMail, Kontact, KOrganizer, KAddressBook, Merkuro | KDE's mail, calendar and contacts, over Akonadi with its SQLite store. Akonadi starts only when one of them is opened, so a session that uses Thunderbird runs none of it |
+| KMail, Kontact, KOrganizer, KAddressBook, Merkuro | KDE's mail, calendar and contacts, over Akonadi with its SQLite store. Akonadi starts the first time one of them is opened, so an account that uses Thunderbird runs none of it; after that, KDE's calendar reminder daemon starts it at each login so that reminders fire. Merkuro's contacts widget is left out of the system tray, because loading it starts Akonadi |
 | Dino | XMPP chat with OMEMO encryption, file transfer, and voice and video calls (GTK 4) |
 | Nheko, NeoChat | Matrix chat with end-to-end encryption |
 | Tokodon | Mastodon and the fediverse |
@@ -140,7 +149,7 @@ before `task` has written `~/.taskrc`, and `rmpc` while no mpd is running.
 | KDE Connect | Files, clipboard, notifications and media control between this machine and a phone, and the handler for `tel:` links |
 
 In a terminal, `aerc` reads mail over a local `notmuch` index, `profanity` is an XMPP client and
-`newsboat` reads feeds; [Administration](administration.md#mail) sets mail up.
+`newsboat` reads feeds once `~/.config/newsboat/urls` lists them; [Administration](administration.md#mail) sets mail up.
 
 ### Sharing files and reaching other machines
 
@@ -150,10 +159,10 @@ In a terminal, `aerc` reads mail over a local `notmuch` index, `profanity` is an
 | KTorrent, Transmission, Deluge | Other BitTorrent clients |
 | KGet | Queued, resumable downloads |
 | FileZilla | FTP, FTPS and SFTP with a two-pane site manager |
-| Syncthing Tray | Status and control of a local Syncthing |
+| Syncthing Tray | Status and control of a local Syncthing, in the system tray or as a Plasma panel widget, with Syncthing actions in Dolphin's context menu |
 | Remmina | The default remote-desktop client, over RDP, VNC, SPICE and SSH |
 | KRDC | KDE's VNC and RDP client |
-| krfb, krdp | Share this desktop with another machine, over VNC or RDP; open the `vnc` or `rdp` name in [the firewall](administration.md#opening-a-service) first |
+| krfb, krdp | Share this desktop with another machine, over VNC or RDP. krdp is System Settings → Remote Desktop: its switch starts and stops the server, and its start-at-login option adds an autostart entry. Open the `vnc` or `rdp` name in [the firewall](administration.md#opening-a-service) first |
 | FreeRDP | The RDP engine under Remmina, with its own SDL client, `sdl-freerdp` |
 | wlvncc | A Wayland-native VNC client |
 | Waypipe | Runs a Wayland program on another machine and shows its window here |
@@ -186,6 +195,12 @@ network once the `kdeconnect` firewall name is on ([Administration](administrati
 | Skanpage | Scan a document's pages, recognise the text and save a searchable PDF |
 
 `typst` and `ledger` run from a prompt; `ocrmypdf` adds a searchable text layer to a scanned PDF.
+
+GoldenDict-ng ships with no dictionary and with its online sources turned off. Dictionary files
+copied into `/usr/share/stardict/dic` are found at its next rescan; a folder elsewhere is added
+under *Edit > Dictionaries > Sources > Files*, and dict.org, Wikipedia and Wiktionary are ticked in
+the same dialog (see
+[GoldenDict-ng ships with no dictionary](../06-reference/known-gaps.md#goldendict-ng-ships-with-no-dictionary)).
 
 ### Writing text, notes and typesetting
 
@@ -294,16 +309,16 @@ are simpler burners, on GTK. From a prompt, `cdrdao` writes audio CDs disc-at-on
 | Application | What it is for |
 |---|---|
 | Dolphin | The file manager a double-clicked folder opens in |
-| Ark | The default archive manager for zip, tar and 7z; rar and comic books packed as 7z or rar open in `kdos-openarchive`, which extracts them |
+| Ark | The default archive manager for zip, tar, 7z and rar, which it opens read-only; comic books packed as 7z or rar open in `kdos-openarchive`, which extracts them |
 | Filelight, QDirStat, KDiskFree | What is using the disk |
 | KFind | Search for files by name, type, date, size and contents |
 | Partition Manager, GParted | Create, resize, move and check partitions; the filesystem tools they drive are ported with them |
 | GNOME Disks | Partition, format, encrypt, image and benchmark disks |
 | ISO Image Writer | The default for disk images: writes one to a USB stick, checking a known distribution's signature |
 | Impression | Write a disk image to a USB stick or memory card, or a Windows installer ISO to a bootable stick |
-| Kup, Déjà Dup, KBackup | Scheduled backups; Kup is the one on System Settings' Backups page (see [Backups](administration.md#backups)) |
+| Kup, Déjà Dup, KBackup | Scheduled backups; Kup is the one on System Settings' Backups page (see [Backups](administration.md#backups)). Déjà Dup's scheduler is not started at login, so its "Back up automatically" runs only once its monitor is added to the Autostart page |
 | KeePassXC | The default password manager for KeePass databases, with one-time codes. Its own Secret Service is off, because KWallet serves that name (see [Passwords and one-time codes](administration.md#passwords-and-one-time-codes)) |
-| KWallet Manager, KeepSecret | Browse the passwords the session's secret store keeps |
+| KWallet Manager, KeepSecret | Browse the passwords the session's secret store keeps. The live medium has no secret store, so on it both report the service missing (see [Known gaps](../06-reference/known-gaps.md#a-login-that-typed-no-password-leaves-the-wallet-locked)) |
 | Keysmith | One-time codes for two-factor sign-in |
 | VeraCrypt, Plasma Vaults | Encrypted volumes and folders |
 | Kleopatra, KGpg | OpenPGP and S/MIME certificates, over GnuPG; Kleopatra is the default for OpenPGP keys, encrypted files and signatures |
@@ -311,7 +326,7 @@ are simpler burners, on GTK. From a prompt, `cdrdao` writes audio CDs disc-at-on
 | ClamAV | Virus scanning. It ships no signature database: run `sudo freshclam` once, with a network, before the first scan |
 | ImHex | A hex editor for reverse engineering |
 | System Monitor, Resources | System monitors for processors, memory, GPUs, disks and network; System Monitor has the KDOS page of boxes, energy and slots |
-| KSystemLog | The system log, the kernel's and the authentication log in tabs, with filters |
+| KSystemLog | The system, kernel, authentication and cron logs in tabs, with filters. It runs as you, and the system, kernel and authentication logs are root's, so it shows only the cron log; read the others with `sudo less /var/log/messages` (see [Known gaps](../06-reference/known-gaps.md#ksystemlog-shows-only-the-cron-log)) |
 
 In a terminal, `mc` and `btop` do the same jobs; see [The desktop](desktop.md#files).
 
@@ -425,11 +440,11 @@ The Meshtastic and RNode firmware images are ported as well, to flash a LoRa rad
 | GNU Octave | MATLAB-compatible numerical computing |
 | R, RKWard | Statistics, and a KDE front end to R |
 | LabPlot, Veusz | Plots and data analysis |
-| Cantor | Worksheets over Python, R, Octave, Maxima and others |
+| Cantor | Worksheets over Python, R, Octave, Lua, Qalculate and KAlgebra |
 | QGIS | Desktop GIS |
 | JupyterLab | Notebooks served on this machine |
 | Spyder | A scientific Python IDE |
-| Qt Creator, KDevelop | IDEs for C, C++ and Qt; KDevelop with PHP and Python support |
+| Qt Creator, KDevelop | IDEs for C, C++ and Qt; KDevelop with PHP and Python support. No Qt API documentation is installed for their Help ([Known gaps](../06-reference/known-gaps.md#qt-creator-and-kdevelop-show-no-qt-documentation)) |
 | KDiff3, Kompare, Git Cola | Compare and merge files; view a patch; a Git GUI |
 | Umbrello | UML diagrams, with code import and generation |
 | KCachegrind, Massif-Visualizer | Valgrind's profiles and heap snapshots |
@@ -487,9 +502,10 @@ simulation traces). mpv and `swayimg`, listed above, need no toolkit either.
 
 Which application opens a kind of file or link is decided by one list,
 `/usr/share/kdos/xdg/kde-mimeapps.list`: the KDE application by default, unless an application
-already on the image is clearly better at the job. Your own choice, made with **Open With** and
-*Remember application association* in Dolphin or on System Settings' Default Applications page,
-lands in `~/.config/mimeapps.list` and outranks it.
+already on the image is clearly better at the job. Your own choice, made in Dolphin with **Open
+With**, *Other Application…* and *Set as default app to open … files*, or on System Settings'
+Default Applications page (a role) and File Associations page (one type), lands in
+`~/.config/mimeapps.list` and outranks it.
 
 | Role | Default | Also installed |
 |---|---|---|
@@ -497,7 +513,7 @@ lands in `~/.config/mimeapps.list` and outranks it.
 | Mail (`mailto:`), invitations and contact cards | Thunderbird | KMail, Kontact, KOrganizer, KAddressBook, Merkuro |
 | Office documents, spreadsheets, presentations, drawings | LibreOffice | Calligra |
 | Folders | Dolphin | |
-| Archives | Ark; rar, and comic books packed as 7z or rar, in `kdos-openarchive` | |
+| Archives | Ark, which reads rar through libarchive; comic books packed as 7z or rar in `kdos-openarchive` | |
 | Text and source code | Kate | |
 | Pictures, camera RAW | Gwenview; Canon CR3 and Nikon NRW in darktable; JPEG 2000, DDS, OpenEXR and HDR in Okular; Windows metafiles in Inkscape; GIMP's own `.xcf` in GIMP | KolourPaint, GIMP, Krita, Inkscape, darktable |
 | PDF, PostScript, DjVu, XPS, comics | Okular | PDF4QT |
@@ -512,10 +528,15 @@ lands in `~/.config/mimeapps.list` and outranks it.
 | Torrents, `magnet:` links | qBittorrent | KTorrent |
 | Disk images | ISO Image Writer | Impression |
 | Offline library, `.zim` | Kiwix | |
-| Map locations, `geo:` links | Organic Maps | Marble |
+| Map locations, `geo:` links, Organic Maps maps (`.mwm`) | Organic Maps | Marble |
 | Password databases, `.kdbx` | KeePassXC | KeepSecret |
 | OpenPGP keys, encrypted files and signatures | Kleopatra | KGpg |
 | Phone numbers, `tel:` links | KDE Connect | |
+
+When Ark is chosen on the Archive manager row of System Settings' Default Applications page, the
+page notes that Ark may not open every file type; its details name one, ISO images, which Ark
+reads and which stay with ISO Image Writer. *Open All in Ark* there would make Ark the default for
+disk images as well.
 
 A row whose application is removed falls through to the next application that claims the type, and
 `testing/mimecheck.py` holds the list against the image so that every row names an application
@@ -530,9 +551,9 @@ network only when you press a button that says it will.
 
 | Origin | Lists | Installing |
 |---|---|---|
-| `kdos-packs` | The catalogue's applications and groups, and every pack in the pack store | A catalogue row whose pack is already in the store or on the medium becomes a box over that pack, offline. A row with no pack anywhere is built from Debian packages in a box, over the network, and says so before it starts |
-| `medium` | The packs and application sets on the boot medium | Offline, verified as each pack mounts |
-| `kdos-store` | Debian's desktop applications that the catalogue does not name, from the Debian catalogue shipped on the image | Built in a box of its own, `deb.<package>`, over the network |
+| `kdos-packs` | The catalogue's groups, every pack in the pack store, and the catalogue's applications whose pack is there | A box over that pack, offline |
+| `medium` | The packs and application sets on the boot medium, and the catalogue's applications whose pack is only there | Offline, verified as each pack mounts |
+| `kdos-store` | The catalogue's applications with no pack anywhere, and Debian's desktop applications that the catalogue does not name, from the Debian catalogue shipped on the image, less those that cannot work in a box | Built from Debian packages in a box of its own, over the network, and each says so before it starts; a Debian application's box is `deb.<package>` |
 | `kdos-boxes` | Boxes that no application above accounts for, such as one you made with `kdos-box create` | Removal only |
 | `kdos-ports` | The host's own software, every installed port | Ports arrive and leave with the system version. Once `kdos update fetch` has fetched a release's signed binary index, a port it lists can be installed from it, with what it lacks, as an administrator |
 | The system update | The next KDOS release, as an A/B update (see [Keeping it current](administration.md#keeping-it-current)) | Written into the other slot; **Restart** starts it |
@@ -546,8 +567,8 @@ hour; nothing else in Discover touches the network until an install says so.
 
 The update tray in the panel is Discover's: it says when a system update is ready, when one is
 installed and waiting for a restart, and how many known vulnerabilities the update closes, and it
-never installs anything by itself. On the live medium it shows the state and raises no
-notification.
+never installs anything by itself. On the live medium the tray says nothing about an available
+update, which could not be kept there; it still shows a running update job or a pending restart.
 
 `kdos app` is the same catalogue from a prompt; see [Finding and installing](#finding-and-installing).
 
@@ -588,7 +609,7 @@ Counted in the shipped file:
 
 | Row kind | Count |
 |---|---|
-| Applications (`app`) | 73 |
+| Applications (`app`) | 70 |
 | Shared runtimes (`runtime`) | 7 |
 | Bases (`base`) | 2 |
 | Data sets (`data`) | 2 |
@@ -613,7 +634,9 @@ resolves its dependencies normally. How the Debian packages are pinned is descri
 
 ### What the rows cover
 
-The rows are applications KDOS does not build natively, and a few alternatives to ones it does:
+The rows are applications KDOS does not build natively, and a few alternatives to ones it does
+(never a KDE application, since KDE Gear is built natively and a boxed copy would be a second
+Start-menu entry of the same name):
 document readers and note-taking, page layout and panorama stitching, mail and chat, 3D viewing and
 reconstruction, electronics viewers and logic analysis, audio routing and effects, development
 tools, and a wide range of science (chemistry and materials codes, astronomy, GIS, statistics,
@@ -639,7 +662,7 @@ they are never chosen on their own.
 `kdos app` is the catalogue at a prompt:
 
 ```sh
-kdos app list                        # what is installed here
+kdos app list                        # what is installed here, Debian boxes from Discover too
 kdos app list --all                  # every application and data set, with its state
 kdos app groups                      # the seven groups and what is in each
 kdos app search image                # match id, name, category and summary
@@ -697,13 +720,19 @@ Two limits apply before you start:
   session is that overlay, held in memory and lost at power-off unless the session has a
   persistence store (`kdos persist`; see
   [Boot and init](../03-architecture/boot-and-init.md#the-live-medium-and-persistence)). Install
-  KDOS to disk to keep them. `kdos doctor` reports a `$HOME` on an overlay.
+  KDOS to disk to keep them. `kdos doctor` reports a `$HOME` on an overlay, and `kdos-box profile`
+  prints a `!` line under such a box's `persistence`. The overlay is memory, which the session
+  shares with everything else it writes, so an install first compares its estimate with the free
+  space there and refuses, naming both, when the build would not fit.
 
 ### In Discover
 
-Discover's `kdos-packs` origin is the same catalogue with a window: each application with its
+Discover shows the same catalogue with a window, each row under `kdos-packs`, `medium` or
+`kdos-store` by where its pack is: each application with its
 summary, the runtime it is built on and an estimate of its size, its groups as categories, and a
-page per application with **Install** and **Remove** (see [Discover](#discover)). Discover builds
+page per application with **Install** and **Remove** (see [Discover](#discover)). The estimate
+counts the base and runtime the application is built on when this computer has not built them yet,
+which on a first install is several hundred megabytes. Discover builds
 nothing itself: an install, an import or a removal runs `kdos-appbox` and `kdos-packd` with the
 same arguments `kdos app` uses, one at a time, so the command line and Discover cannot disagree
 about what installing means. An install that has to build from Debian packages says so, and that
@@ -734,8 +763,9 @@ corruption, not tampering, and a daemon started with `KDOS_REQUIRE_SIG` set refu
 such a set. What each lane does and does not prove is in
 [How an application is verified](../03-architecture/security-model.md#how-an-application-is-verified).
 No network is needed at any point. Importing needs `kdos-packd` running and an account in `wheel`, because the daemon's socket
-accepts only root and `wheel`. A pack the daemon refuses is named and skipped; the rest of the set
-still imports, and the command ends with a count of what imported and what failed.
+accepts only root and `wheel`. A pack the daemon refuses is named with its reason and skipped; the
+rest of the set still imports, and the command ends with a count of what imported, what was already
+installed and what failed.
 
 The archive holds a `SELECTION` file, plain text with one id per line, so a set can be read,
 compared and edited by hand. A group named on the export command line is written as a `group` line
@@ -913,12 +943,13 @@ imported, so an update can be undone. That is `retain` in
 [`/etc/kdos/packd.conf`](../06-reference/configuration.md#etckdospackdconf), which ships set to `1`;
 `retain = 0` keeps none.
 
-Importing a newer set installs the new pack even for an application whose box already exists, but
-the step that creates the box then fails, and the import reports `<name>: the pack installed and the
-box did not` and counts the application as failed. To move such a box onto the new pack, remove the
-box first with `kdos-box remove <name>` (stopping it first if it is running) and then import; the
-box's writable layer and settings stay, and the new box is composed on the newest version of each
-pack.
+Importing a set skips an application whose box already exists, installing nothing for it: the
+import prints `<name>: already installed` and counts it apart from what imported and what failed.
+To move such a box onto the new pack, remove the box first with `kdos-box remove <name>` (stopping
+it first if it is running) and then import; the box's writable layer and settings stay, and the new
+box is composed on the newest version of each pack. A box that cannot be created takes its pack back
+out: the import prints `<name>: the pack installed and the box did not: <reason>`, has `kdos-packd`
+remove the pack it has just installed, and counts the application as failed.
 
 ### The Debian snapshot
 
@@ -944,9 +975,11 @@ kdos app remove creative      # a whole group
 
 Removing an application:
 
-- removes its box; the box's settings in `~/.config/kdos/boxes/<name>.conf` stay, so installing it
-  again picks them up. A running box is not removed, and the removal then stops before any image is
-  deleted, so stop it first with `kdos-box stop <name>`;
+- stops its box if it is still running (a box stays up for a while after its application's last
+  window closes), then removes it; the box's settings in `~/.config/kdos/boxes/<name>.conf` stay,
+  so installing it again picks them up. A box that was installed and never started has only those
+  settings, and they are removed with it. A box that will not stop is not removed, and the removal
+  then stops before any image is deleted;
 - deletes the application's image, and any runtime image no other installed application uses;
 - never deletes the base image, which every application sits on;
 - regenerates the launchers, shims and file-type associations from what remains.
@@ -1006,13 +1039,17 @@ with `kdos-box profile <name>` and pass it to `kdos-box create`.
 A box's settings live in `~/.config/kdos/boxes/<name>.conf`, its *profile*. `kdos-box profile
 <name>` shows it, and `kdos-box profile <name> key=value` changes it. The Boxes page of System
 Settings, under Security & Privacy → Application Permissions, edits the same file through the same
-command, and shows beside each control what enforces it and why a value cannot be delivered. Most keys map onto a container flag or a namespace, and the
-printed profile shows each of them beside the flag that enforces it. A few enforce nothing:
-`persistence` and `export` are only recorded, and `wayland = no` cannot take the display away,
-because the box shares the session's runtime directory; the printed profile adds a `!` line under
-each of these when it is set away from its default. `audio` is never enforced and `display` is kept
-in the file unread; the printed profile has no line for either, apart from a `!` line when `devices`
-is shared and `audio` or `gpu` is `no`, since both then follow `devices`. See
+command, and shows beside each control what enforces it and why a value cannot be delivered. Most
+keys map onto a container flag or a namespace, and the printed profile shows each of them beside
+the flag that enforces it. An application's box, a store box or a pack box, sees a private runtime
+directory of its own as `/run/user/<uid>`, holding only its tagged Wayland socket, its filtered bus
+and its audio sockets, so `wayland = no` and `audio = no` are enforced there: nothing of the kind is
+put in it. Only a development box made from somebody else's image with `kdos-box create
+base=image:<ref>` shares the session's runtime directory, and there the printed profile adds a `!`
+line under each of the two. `persistence` is enforced on a pack box; on a store box `frozen` is
+only recorded, on a development box every value but `persistent` is, and each of those gets a `!`
+line. `export` is only recorded, `display` is kept in the file unread, and a `!` line appears when
+`devices` is shared and `audio` or `gpu` is `no`, since the device nodes then follow `devices`. See
 [kdos-appbox](../04-programs/kdos-appbox.md#box-profiles) for every key and what enforces it.
 
 ### Profile changes and re-creating a box
