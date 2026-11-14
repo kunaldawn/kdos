@@ -82,7 +82,7 @@ ChecklistText kdosChecklistText(const QString &id)
         t.explanation = i18ndc(Domain, "@info", "With the disk encrypted, nobody who takes the machine can read your files without the passphrase.");
         t.actionText = i18ndc(Domain, "@action:button", "Read About Encryption…");
         t.icon = QStringLiteral("security-high-symbolic");
-        t.command = {QStringLiteral("khelpcenter"), QStringLiteral("file:///usr/share/doc/kdos/03-architecture/security-model.html")};
+        t.command = {QStringLiteral("xdg-open"), QStringLiteral("file:///usr/share/doc/kdos/03-architecture/security-model.html")};
     }
     return t;
 }

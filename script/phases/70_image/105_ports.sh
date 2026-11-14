@@ -14,7 +14,8 @@
 # /usr/share/kdos/SOURCES.
 #
 # /ports IS RECIPES AND NOTHING ELSE: each port's kpkgbuild, build.sh, patches
-# and other recipe files, ports/shelves, ports/sources.idx, and src/, the two
+# and other recipe files, ports/shelves, ports/sources.idx, ports/groups (the
+# groups `kdos update install` and the installer offer), and src/, the two
 # books under docs/ and script/book for the programs of our own, whose sources
 # no archive holds. A shipped machine updates
 # by building from this tree, and kpkg fetches each source over the network
@@ -57,7 +58,7 @@ echo "Staging the recipe tree for /ports..."
 rm -rf "$STAGE"
 mkdir -p "$TREE/core"
 
-for f in shelves sources.idx; do
+for f in shelves sources.idx groups; do
     [ -f "/ports/$f" ] || { echo "FATAL: /ports/$f is missing" >&2; exit 1; }
     cp "/ports/$f" "$TREE/$f"
 done

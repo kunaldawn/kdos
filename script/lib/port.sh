@@ -46,7 +46,7 @@ read_recipe() {
                 # Repeating the key appends; the extractor splits on space.
                 eval "source=\"\${source:+\$source }$val\"" ;;
             sha256|description|homepage|depends|pypackages|license|group|\
-            secdb|replaces|bench|bench_setup|pyrequirements|pyruntime|watch)
+            secdb|replaces|facet_dev|runtime|bench|bench_setup|pyrequirements|pyruntime|watch)
                 # FREE TEXT. Evaluating it would run whatever a backtick
                 # names — imagemagick's description names `convert`.
                 # Nothing here needs these keys, so nothing here evaluates

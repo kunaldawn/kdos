@@ -53,4 +53,4 @@ root.
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 365.* Previous: [364. The binary host](010-binhost.md) · [Contents](../README.md) · Next: [366. Cleaning up the root](020-cleanup.md)
+*Part XV. The image, chapter 365.* Previous: [364. The binary host](010-binhost.md) · [Contents](../README.md) · Next: [366. The image stage](017-stage.md)

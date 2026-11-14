@@ -5,8 +5,9 @@
 <h1 align="center">KDOS</h1>
 
 <p align="center">
+<b>Kool Desktop Operating System</b><br>
 A Linux distribution compiled from source, one <code>kpkgbuild</code> at a time,<br>
-with KDE Plasma as its desktop, made KDOS from the boot menu to the lock screen.
+that boots into its own KDE Plasma desktop, made KDOS from the boot menu to the lock screen.
 </p>
 
 <p align="center">
@@ -14,138 +15,252 @@ with KDE Plasma as its desktop, made KDOS from the boot menu to the lock screen.
 </p>
 
 <p align="center">
-<sub>about 2,400 upstream ports · 43 of its own · all of KDE Gear · Linux 7.2.11 · 73 containerised applications · builds with the network off</sub>
+<sub>a live ISO to download · about 2,400 native ports, every one prebuilt for the release · all of KDE Gear · 70 boxed applications · Linux 7.2.11</sub>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/boot-splash.png" alt="The KDOS boot splash" width="100%"/>
+  <img src="docs/screenshots/konsole.png" alt="The KDOS Plasma desktop with Konsole showing the system summary" width="100%"/>
 </p>
 
 <p align="center">
-<sub>The boot splash, captured on a QEMU guest.</sub>
+<sub>The live ISO's Plasma session in the Bone accent, Konsole running <code>fastfetch</code>.</sub>
 </p>
 
 ---
 
-This page is for anyone meeting KDOS for the first time: what it is, how it differs from other
-distributions, what it can do, how to try and build it, and where to read next. The full
-documentation is a book under [`docs/kdos/`](docs/kdos/README.md).
+KDOS stands for *Kool Desktop Operating System*. To the person who builds it, it is also *KD's
+homebrew OS*: one person's distribution, compiled from upstream source in this repository.
 
-## What KDOS is
+This page is for anyone meeting KDOS for the first time: how to get it, try it and install it, how
+to add software and keep it up to date, and, further down, how it is built. The full documentation
+is a book under [`docs/kdos/`](docs/kdos/README.md).
 
-KDOS is a complete operating system built in this repository from upstream source archives: a
-cross toolchain, a musl userland, a self-hosting bootstrap, about 2,400 upstream ports with KDE
-Plasma, KDE Frameworks and all of KDE Gear among them, KDOS's own settings pages, widgets, KWin
-effects, Discover backend and look for that desktop, an installer, signed A/B system updates and a
-package manager. There is no base image and no binary archive to fall back on.
+## What you get
+
+KDOS is a complete desktop operating system: a musl and GNU userland, the KDE Plasma desktop with
+KDOS's own settings pages, widgets, KWin effects and look, signed A/B system updates, a package
+manager, and an installer. It is released as a **live ISO**. Boot it from a USB stick or a virtual
+machine, use it as it is, and install it to a disk when you want to keep it.
+
+The ISO carries the **base system**: the Plasma session, the core KDE applications (Dolphin,
+Konsole, Kate, Okular, Gwenview, Ark, Spectacle, KDE Connect and their companions), Firefox ESR,
+Discover, networking, printing, the box stack, a compiler toolchain and the KDOS tools. Everything
+else is one download away, three ways:
+
+| Way | What it is | Use it for |
+|---|---|---|
+| **Native, prebuilt** | Any of KDOS's about 2,400 ports, compiled for this release and downloaded from its signed package host. Discover lists it under **KDOS system** | Almost everything: LibreOffice, GIMP, Krita, Inkscape, Blender, Kdenlive, digiKam, KMail, Thunderbird, Chromium, OBS Studio, QGIS, FreeCAD, KiCad, Wine, TeX Live and the rest of KDE Gear |
+| **Native, built on this computer** | The same port compiled on your machine from its recipe, with what it needs downloaded prebuilt or built too, as you choose. Discover lists it under **KDOS, built on this computer** | Building it yourself, or a port with no prebuilt package |
+| **Boxed** | A Debian application built on demand from KDOS's catalogue of 70, each in a rootless container of its own (a *box*) | Software KDOS does not port, a newer version than the native port, or anything you want kept apart from the system |
+
+Native ports come in **groups** too, so a whole set installs in one step: KDE's games, education,
+mail and calendar, multimedia, graphics, utilities and development tools, and KDOS's own office,
+graphics, internet, multimedia, games, science, development and Windows groups. Choose groups in
+the installer, or install one later from a terminal.
+
+## Get KDOS
+
+### Download
+
+The current release is on the [releases page](https://github.com/kunaldawn/kdos/releases/latest),
+marked **Latest**. Each release carries:
+
+| File | What it is |
+|---|---|
+| `kdos-<version>.iso`, or `kdos-<version>.iso.part01`, `.part02`, … | The live ISO. GitHub holds no file over 2 GiB, so a larger ISO is cut into parts |
+| `SHA256SUMS`, `SHA256SUMS.sig` | The checksum of the whole ISO and of every other file, and its signature |
+| `kdos-release.pub` | The public half of the release key, key id `ccb53bac7fdba3cd` |
+| `kfs.pdf`, `kfs-html.tar.zst` | *KDOS from Scratch*, the book of how every part is built |
+
+The prebuilt packages and the update images sit in pre-releases beside it (`binhost-<version>-NN`,
+`image-<version>`). You never download those by hand: a KDOS machine finds them through the
+release's signed index.
+
+Join the parts, if there are any, and check the result:
+
+```sh
+cat kdos-<version>.iso.part* > kdos-<version>.iso
+sha256sum -c SHA256SUMS --ignore-missing
+```
+
+The last command must print `kdos-<version>.iso: OK`. A checksum list downloaded beside the file
+proves only that the two agree; on a KDOS machine, `kdos verify kdos-<version>.iso` also checks the
+list's signature against the release key the system already trusts.
+
+### Try it in a virtual machine
+
+Any x86-64 virtual machine with UEFI firmware and 4 GB of memory boots the ISO. With QEMU and the
+OVMF firmware:
+
+```sh
+qemu-img create -f qcow2 kdos.qcow2 192G     # sparse: it uses only what is written
+qemu-system-x86_64 -enable-kvm -cpu host -smp 4 -m 4G \
+    -bios /usr/share/ovmf/OVMF.fd -cdrom kdos-<version>.iso \
+    -drive file=kdos.qcow2,format=qcow2 -device virtio-vga -device virtio-net-pci,netdev=n \
+    -netdev user,id=n -usb -device usb-tablet
+```
+
+Plain virtual graphics run KWin in software. Everything works except Phosphor mode and the CRT
+motion, which need the guest to have hardware OpenGL (virgl).
+
+### Write it to a USB stick
+
+Use a stick at least as large as the ISO; this erases all of it. On Linux, with `/dev/sdX` the
+stick:
+
+```sh
+sudo dd if=kdos-<version>.iso of=/dev/sdX bs=4M status=progress conv=fsync
+```
+
+On Windows or macOS, use any tool that writes a raw disk image (Rufus in DD mode, balenaEtcher).
+The ISO boots from UEFI and from legacy BIOS. **Turn Secure Boot off** in the firmware first:
+KDOS's boot loader is not signed for it.
+
+### The live session
+
+The ISO starts straight into Plasma as the user `kdos` (password `kdos`). Nothing you do there
+touches your disks, and nothing you install there survives a restart: the live system lives in
+memory. The Welcome Center opens first; close it, or pick one of the three desks it offers.
+
+### Install
+
+Open **Install KDOS** on the desktop, or run `sudo kinstall` in a terminal for the text-mode
+installer. Both ask the same questions: keyboard and time zone, the disk (the whole disk, its existing
+partitions, or ones you lay out; optionally encrypted), your account, the look, and the applications.
+The installer writes nothing until you confirm its summary page.
+
+On the **Applications** page you can tick:
+
+- **KDOS applications**: native groups, downloaded prebuilt into the new system while it
+  installs. This needs a network. Without one the choice is kept, and `sudo kdos update install
+  --pending` installs it once the machine is online.
+- **Boxed applications**: catalogue groups, recorded on the new disk and offered at your first
+  login, where Discover builds them.
+
+The disk must hold two system slots and your home; the installer's first page says how much that
+is and offers only disks that are large enough. [Installation](docs/kdos/02-user-guide/installation.md)
+walks through the installer page by page.
+
+## Adding software
+
+**In Discover**, search for a program and press Install. When a program can come from more than
+one place, Discover's source picker lists each: *KDOS system* (prebuilt), *KDOS, built on this
+computer*, and the boxed origins (*KDOS packs*, *Debian, built in a box*). Installing host
+software asks for an administrator's password; building on this computer asks every time, since a
+build runs for minutes to hours.
+
+**In a terminal**, `kdos update install` does the same:
+
+```sh
+kdos update groups                          # every group, whether it is installed, and its download
+sudo kdos update install office             # a group: LibreOffice, Calibre and TeXstudio
+sudo kdos update install gimp               # one program, prebuilt
+sudo kdos update install --source bat       # built here; what it lacks downloaded prebuilt
+sudo kdos update install --source --build-deps=source bat    # built here, and what it lacks built too
+kdos update install --dry-run kdenlive      # what would be downloaded or built, changing nothing
+kdos app install app.scribus                # a boxed application from the catalogue
+```
+
+On the live ISO, `sudo kdos update fetch --binhost-only` first takes the release's package index;
+what you install then lasts until the restart.
+
+Which way a terminal install goes by default, and whether a build also builds what it lacks, are
+set in **System Settings › System Versions › Installing software**. Every program keeps the way
+it came: a program built here is built again at each update, a prebuilt one is downloaded again.
+[Applications](docs/kdos/02-user-guide/applications.md) covers native programs, boxes and the
+catalogue in full.
+
+## Staying up to date
+
+When a new release is out, Discover's **Updates** page offers it (or run
+`sudo kdos update apply`). An update is written into the system slot you are not running, as a
+signed whole-system image or, between releases, as prebuilt packages, and every program you
+installed follows it into that slot. The next restart starts the new slot on trial; once it has
+reached a working desktop it becomes the system, and if it does not, the computer goes back to the
+old slot by itself. Nothing is downloaded until you ask: the nightly check reads only what is
+already on the machine.
+
+## What it looks like
+
+Every picture is the live ISO, booted under QEMU with UEFI and software rendering at 1920×1080, in
+the default Bone accent.
+
+| | |
+|---|---|
+| ![The desktop: the KDOS wallpaper, the Install KDOS icon and the panel with its system meters](docs/screenshots/desktop.png) | ![The application launcher, its favourites and categories](docs/screenshots/launcher.png) |
+| The desktop and its panel, with CPU, memory and network meters | The launcher |
+| ![Dolphin in the home folder](docs/screenshots/dolphin.png) | ![Discover's home page with the editor's choice](docs/screenshots/discover.png) |
+| Dolphin, from KDE Gear, built as a native port | Discover over native ports, packs and boxed applications |
+| ![System Settings on the KDOS Look page: eight accents and Phosphor mode](docs/screenshots/settings-look.png) | ![The boot splash](docs/screenshots/boot-splash.png) |
+| KDOS Look in System Settings: one click repaints Plasma, the terminals, the splash and the login screen | The boot splash |
+
+## What is in it
+
+| Area | What is there |
+|---|---|
+| The desktop | KDE Plasma 6.8 on KWin, with three desks to choose from at first login, eight accents applied everywhere at once from the boot menu to the lock screen, an optional Phosphor mode with a CRT pass over the whole screen, KDOS pages in System Settings (boxes, the firewall, health, the look, the system's versions), a KRunner runner for the `kdos` verbs and an offline library, privacy lamps that name the box holding the camera, and Discover over native ports, packs, boxes, firmware and system updates |
+| On the ISO | The Plasma session; Konsole, Dolphin, Kate, Okular, Gwenview, Ark, Spectacle, KCalc, Elisa, KDE Connect, Partition Manager and Yakuake, with the KIO workers and thumbnailers they use; Firefox ESR, NetworkManager, PipeWire, CUPS and scanning, podman and the box stack, Python and Perl, and every KDOS tool and daemon |
+| One download away | The rest of about 2,400 native ports, every one prebuilt for the release: all of KDE Gear (Kdenlive, digiKam, KMail, Krita and the rest), LibreOffice, GIMP, Inkscape, Blender, Thunderbird, Chromium, LibreWolf, OBS Studio, VLC, mpv, QGIS, FreeCAD, KiCad, TeX Live, Wine, Rust, Go, Node.js, Zig, Haskell, cross toolchains for ARM, RISC-V and AVR, and SDR and FPGA tooling, one at a time or in groups, among them `build-tools` (GCC's assembler and linker, make, CMake, Meson and the rest), `lang-zh`, `lang-ja` and `lang-ko` (input methods and CJK fonts) |
+| Boxed | 70 catalogue applications, among them Zathura, Scribus, ParaView, Maxima, Scilab, VSCodium, Meld, Claws Mail and Hugin, each built on demand into its own box and [exportable as one file](docs/kdos/02-user-guide/applications.md#carrying-a-set-to-another-machine) that installs on another machine offline |
+| Boot and install | A boot splash that hands over to the login screen, an optionally encrypted root, A/B root slots filled by signed whole-slot images with deltas, and an installer with a graphical front end and a text-mode one over one backend, which also runs unattended from an answer file |
+| Its own software | 9 C libraries written for this system, the package manager and the installer, and 43 recipes of its own: 21 parts of the Plasma desktop, six root daemons, the box tools, the `kdos` command and its subcommands, and the artwork |
+
+## How it differs
+
+Most distributions ship glibc, GNU coreutils, systemd, an Xorg server beside Wayland, and binary
+packages built elsewhere from sources you never see together. KDOS keeps the GNU core userland and
+makes a different choice at each of the other points: musl for the C library; sysvinit's `init`
+with runlevels, numbered shell scripts and the `ksvc` supervisor in place of systemd, with elogind
+alone for logins and seats; Wayland only, SDDM's greeter included, with rootless Xwayland for X11
+clients; KDE Plasma built unforked and made KDOS through settings, artwork and plugins rather than
+patches. Every binary of a release, the ISO and every prebuilt package, is compiled from the about
+2,400 recipes in this repository, with every source named by its SHA-256 and archived, so the
+release can be rebuilt from the repository alone. Updates go into the machine's inactive root
+slot and are kept only once the new slot boots to a working desktop.
+[How KDOS differs](docs/kdos/01-philosophy/how-kdos-differs.md) compares each choice with the
+usual alternatives, says why KDOS chose differently, and lists what is given up.
 
 Four properties shape the rest of the tree.
 
 **It is built from source, and the exceptions are listed.** Firmware, microcode, radio images and
 emulator ROMs ship as upstream built them, most of it because no source is published. The Rust,
 Go, Zig, Haskell, Java and OCaml compilers each need a working compiler of their own kind, so each
-starts from a pinned upstream bootstrap. The Noto and Nerd Fonts symbol fonts and the fonts some
-applications bundle install upstream's built font files, some ports install data that has no
-other source form (models, maps, game content), and a few web front ends ship the JavaScript
-upstream built. The application catalogue is Debian binaries by
-design, and runs only in boxes. The complete list is in
+starts from a pinned upstream bootstrap. Some fonts, data with no other source form (models, maps,
+game content) and a few web front ends ship as upstream built them. The boxed catalogue is Debian
+binaries by design, and runs only in boxes. The complete list is in
 [Why KDOS](docs/kdos/01-philosophy/why-kdos.md#what-is-not-built-from-source).
 
-**KDOS can build KDOS.** The build's self-hosting phase, `20_selfhost`, rebuilds the fortify
-headers, tar, musl, zlib, binutils, diffutils, m4, gawk and gcc inside the new system, with
-itself. The shipped system carries gcc, clang, binutils, rust, go, cmake, meson, ninja, python3,
-make and the package manager, so a running installation can rebuild any single port, the compiler
-and the kernel included, once its source is present. A full rebuild of the system needs a build
-machine.
+**KDOS can build KDOS.** The build's self-hosting phase, `20_selfhost`, rebuilds the C library and
+the compilers inside the new system, with itself. The installed system carries GCC, Clang,
+binutils, CMake, Meson, Ninja, Python, make and the package manager, so it can rebuild any port
+of its own; Rust, Go and the other compilers arrive prebuilt the first time a build needs them.
 
 **The build runs offline.** Every source file a recipe uses is named by a `sha256 =` line in that
-recipe. `make fetch` is the one step that downloads sources. After it, `make build` compiles in a
-container started with `--network none`; only building that container's image needs the network.
+recipe. `make fetch` is the one step that downloads sources; `make build` compiles in a container
+started with `--network none`.
 
-**Applications are native ports, with boxes beside them.** Graphical applications are ported
-natively, each with the toolkit it is written in: every KDE Gear application, web browsers, an
-office suite, graphics and video editors, CAD, software radio and an offline reference library
-among them. Their recipes sit
-in `ports/core/` beside every other port, each on one of 102 subject shelves: GIMP is
-`ports/core/graphics/gimp/`, Firefox ESR `ports/core/browsers/firefox-esr/`.
-Beside them, a catalogue of 73 applications, each declared as a set of Debian packages over one of
-seven shared runtimes or directly on the Debian base, is built by podman on the machine that
-installs it, over the network. Each runs rootless in its own container, called a *box*.
-
-## How it differs
-
-Most distributions ship glibc, GNU coreutils, systemd, an Xorg server beside Wayland, and prebuilt
-binary packages from an archive. KDOS keeps the GNU core userland and makes a different choice at
-each of the other points: musl for the C library; sysvinit's `init` with runlevels, numbered shell
-scripts and the `ksvc` supervisor in place of systemd, with elogind alone for logins and seats;
-Wayland only, SDDM's greeter included, with rootless Xwayland for X11 clients; KDE Plasma built
-unforked and made KDOS through settings, artwork and plugins rather than patches; and packages
-compiled from about 2,400 recipes on a build host, with updates written into the machine's
-inactive root slot and kept only once the new slot boots to a working desktop.
-[How KDOS differs](docs/kdos/01-philosophy/how-kdos-differs.md) compares each choice with the
-usual alternatives, says why KDOS chose differently, and lists what is given up.
-
-## What it can do today
-
-| Area | What is there |
-|---|---|
-| The desktop | KDE Plasma 6.8 on KWin, with three desks to choose from at first login, eight accents applied everywhere at once from the boot menu to the lock screen, an optional Phosphor mode with a CRT pass over the whole screen, KDOS pages in System Settings (boxes, the firewall, health, the look, the system's versions), a KRunner runner for the `kdos` verbs and an offline library, privacy lamps that name the box holding the camera, and Discover over ports, packs, boxes, firmware and system updates, which downloads nothing until you ask |
-| Applications | Native ports compiled with the rest of the host, among them every KDE Gear application (Dolphin, Konsole, Kate, Okular, Kdenlive, digiKam, KMail and the rest), Firefox ESR, LibreWolf, Chromium, Thunderbird, LibreOffice, GIMP, Krita, Inkscape, Blender, FreeCAD, KiCad, OBS Studio, QGIS, Kodi, TeX Live and Wine, built Wayland-first with their X11 backends compiled in; and 73 catalogue applications, among them Zathura, Scribus, ParaView, Maxima, Scilab, VSCodium, Meld, Claws Mail and Hugin, each built on demand into its own box and [exportable as one file](docs/kdos/02-user-guide/applications.md#carrying-a-set-to-another-machine) that installs on another machine offline |
-| The host | About 2,400 upstream ports built on musl: elogind, SDDM, PipeWire audio, NetworkManager, Xwayland for X11-only programs, Qt 5 and 6, QtWebEngine, KDE Frameworks 6, GTK 3 and 4, libadwaita and WebKitGTK, podman and QEMU, GCC and Clang/LLVM, Rust, Go, Zig, Haskell, Node.js and Python, cross toolchains for ARM, RISC-V and AVR, SDR and FPGA tooling, and CUPS printing |
-| Boot and install | A boot splash that hands over to the login screen, an optionally encrypted root, A/B root slots filled by signed whole-slot images with deltas, and an installer with a graphical front end and a text-mode one over one backend, which also runs unattended from an answer file |
-| Its own software | 9 C libraries written for this system, the package manager and the installer (both compiled in the bootstrap phase directly from `src/system/`), and 43 recipes of its own: 21 parts of the Plasma desktop, six root daemons, the box tools, the `kdos` command and its 42 subcommands, `help` included, and the artwork |
+**Native first, boxes beside.** Graphical applications are ported natively, each with the
+toolkit it is written in, and their recipes sit in `ports/core/` beside every other port, each on
+one of 102 subject shelves: GIMP is `ports/core/graphics/gimp/`, Firefox ESR
+`ports/core/browsers/firefox-esr/`. The boxed catalogue covers what is not ported, or ported at an
+older version, and keeps each application in a rootless container of its own.
 
 ## Status and limits
 
-This is the v0.2 line. Its interfaces are stable enough to document. It is not a release with a
-support commitment or a tested hardware matrix: whoever runs it is the integrator.
+This is the v0.2 line. Its interfaces are stable enough to document. It comes with no support
+commitment and no tested hardware matrix: it is developed and tested in QEMU, and whoever runs it on
+real hardware is the integrator.
 
-The Plasma desktop, the KDE applications and KDOS's own parts of the desktop are recipes written,
-wired into the build and tested in a development container; no image carrying this desktop has
-been booted yet, and none of the natively ported applications has been started on a KDOS image.
+Some things you may expect are not there. Secure Boot must be off. The login screen runs on a
+Wayland greeter its upstream calls experimental. Phosphor mode needs hardware OpenGL. The system
+speaks English only. Every such gap is listed in [Known gaps](docs/kdos/06-reference/known-gaps.md),
+and the maturity of each subsystem, with the evidence behind each verdict, is in
+[Status](docs/kdos/06-reference/status.md).
 
-Some things you may expect are not there. The login screen runs on a Wayland greeter its upstream
-calls experimental; Phosphor mode needs hardware OpenGL; no release carries a system update or
-prebuilt packages yet; the system speaks English only. Every such gap is listed in
-[Known gaps](docs/kdos/06-reference/known-gaps.md), and the maturity of each subsystem, with the
-evidence behind each verdict, is in [Status](docs/kdos/06-reference/status.md).
-
-KDOS suits someone comfortable with a build log, a package recipe and the C behind its daemons.
-It ships one user account, no telemetry, and no configuration layer between you and the file that
-takes effect. Look elsewhere if you need broad hardware enablement, a large binary archive or
-commercial support.
-
-## Trying it
-
-No v0.2 image is published. The [releases](https://github.com/kunaldawn/kdos/releases) on this
-repository are `v0.1`, whose ISO belongs to an earlier line that the book does not describe, and
-the numbered `sources-<N>` pre-releases, which hold the source archive and no image. To run v0.2, build it
-(next section), then boot the result in a virtual machine:
-
-```sh
-make run          # QEMU with KVM and UEFI, 4 GB of memory, software rendering
-make run-hw       # accelerated graphics, where Phosphor mode can run; needs Docker and the NVIDIA container toolkit
-```
-
-`make run` needs QEMU, `/dev/kvm` and the OVMF firmware at `/usr/share/ovmf/OVMF.fd`. The first run
-creates a sparse 192 GB disk image, `build/kdos.qcow2`, for the installer to write to, large
-enough for the two A/B system slots. The live image logs in to Plasma as `kdos` (password `kdos`)
-by itself, and its Welcome Center offers the installer.
-
-To try it on real hardware, write the image to a USB stick at least as large as the ISO
-(`ls -l build/iso-build/kdos.iso`); every package is on the medium, so it does not fit a DVD, and
-the installer offers only a disk at least as large as the installed system, whose size its first
-page shows. This overwrites the whole of `/dev/sdX`:
-
-```sh
-sudo dd if=build/iso-build/kdos.iso of=/dev/sdX bs=4M status=progress conv=fsync
-```
-
-Boot the stick and install with *Install KDOS* on the desktop, or `sudo kinstall` in a terminal.
-The installer writes nothing to disk until you confirm its summary page.
-
-[Getting started](docs/kdos/02-user-guide/getting-started.md) walks through all of this, and
-[Installation](docs/kdos/02-user-guide/installation.md) covers the installer page by page.
+KDOS suits someone comfortable with a terminal, who wants a desktop whose every part they can read
+and rebuild. It ships one user account, no telemetry, and no configuration layer between you and
+the file that takes effect. Look elsewhere if you need broad hardware enablement or commercial
+support.
 
 ## Building from source
 
@@ -166,7 +281,7 @@ cd kdos
 git config core.hooksPath script/hooks   # once per clone: the pre-push checks (see Contributing)
 make fetch                               # every upstream source, verified by sha256
 make fetch-check                         # optional, offline: anything missing or wrong
-make build                               # the result is build/iso-build/kdos.iso
+make build                               # the result is build/iso-build/kdos.iso, the base image
 make run
 ```
 
@@ -177,6 +292,11 @@ first copy whose hash matches. Run it again after a pull or a branch switch; it 
 is new. On a terminal, `make build` first opens a
 [picker](docs/kdos/05-developer/build-system.md#the-startup-picker) that asks whether to start
 fresh or restore a snapshot, and whether to write snapshots during the run.
+
+The build compiles every port, and the ISO it writes carries the base: the closure of
+[`ports/base`](ports/base). `make build KDOS_IMAGE=full` writes an ISO that carries every package
+the build made, for a machine that installs offline; `make build KDOS_MAKE_BINHOST=1` also writes
+the signed package host, `build/binhost`, that a release publishes for every machine running it.
 
 [How KDOS is built](docs/kdos/05-developer/how-kdos-is-built.md) follows the build from
 `git clone` to a bootable ISO, phase by phase. [Developing](docs/kdos/05-developer/developing.md)
@@ -209,7 +329,8 @@ and as an HTML tarball.
 ports/core/       about 2,400 upstream ports on 102 shelves, ports/core/<shelf>/<name>/: a kpkgbuild
                   and a build.sh each, patches where needed
 ports/            the shelf list (shelves), the fetch, update and publish tools, sources.idx,
-                  and unbuilt (the recipes no phase builds)
+                  unbuilt (the recipes no phase builds), base and buildonly (what the ISO
+                  carries), and groups (the native groups)
 src/libs/         9 C libraries written for this system
 src/desktop/      KDOS's parts of the Plasma desktop: settings pages, widgets, KWin effects and
                   scripts, the Discover backend, the runner, the graphical installer

@@ -28,6 +28,7 @@ Every resource in Discover carries an origin, which names the source it comes fr
 | `kdos-store` | Catalogue applications with no pack anywhere, and Debian desktop applications no catalogue row names; each is built into a box on request | KDOS |
 | `kdos-boxes` | Boxes that none of the above accounts for | KDOS |
 | `kdos-ports` | Host software: the ports installed, and those the release's signed binary host holds | KDOS |
+| `kdos-ports-source` | Each port the binary host holds and the machine has not installed, built on this computer instead | KDOS |
 | `local` | A `.ktar` or `.kpack` opened from a file manager | KDOS |
 | the system | The next KDOS release, for the two root slots | sysupdate1 |
 | firmware | Firmware updates for this machine's devices | fwupd |
@@ -51,14 +52,15 @@ backend that appears or goes missing stops the build instead of changing what Di
 
 ## The KDOS backend
 
-`kdos-discover` installs four things:
+`kdos-discover` installs five things:
 
 | File | Is |
 |---|---|
 | `/usr/lib/qt6/plugins/discover/kdos-backend.so` | The backend: the origins above |
 | `/usr/lib/qt6/plugins/discover-notifier/KdosNotifier.so` | The tray notifier for system updates ([below](#the-update-notifier)) |
 | `/usr/bin/kdos-discover-catalog` | Writes `/usr/share/swcatalog/xml/kdos-ports.xml`, the AppStream catalogue of the installed ports, from kpkg's manifests; and, at the image build, `kdos-debian-exclude.xml`, which takes the Debian applications `debian-exclude` names out of the AppStream pool |
-| `/usr/libexec/kdos-discover/kdos-ports-helper` | The root step of installing host software ([below](#host-software)) |
+| `/usr/libexec/kdos-discover/kdos-ports-helper` | The root step of installing host software prebuilt ([below](#host-software)) |
+| `/usr/libexec/kdos-discover/kdos-ports-builder` | The root step of building host software on this computer and installing it |
 
 It also points Discover's featured list at `/usr/share/kdos/discover/featured.json`, ships the
 Debian lane's exclusion list `/usr/share/kdos/discover/debian-exclude` ([below](#debian-applications)), defines the
@@ -165,16 +167,50 @@ Host software arrives and leaves with the system version, so the `kdos-ports` or
 installed and offers no removal. Once `kdos update fetch` has put the release's signed binary-host
 index and its catalogue in `/var/lib/kdos/binhost`, each taken where the release's signed
 [release index](../03-architecture/packaging.md#the-release-index) says and kept only with the
-hash it gives, a port that catalogue lists can be installed.
-Install runs `/usr/libexec/kdos-discover/kdos-ports-helper` through `pkexec` under the polkit action
-`io.kdos.ports.install` (an administrator's password, kept for a while), which checks the port's
-name, replaces the environment with a fixed `PATH` and the C locale, and runs `kdos update install
-<port>`. That command downloads the port and every package it lacks from the binary host, checks
-each against the signed index, installs them, and adds the port to `/var/lib/kdos/world` so the
-next update keeps it; then the helper writes `kdos-ports.xml` again. The image's own copy is
-written by the build, over the finished tree. The helper is a program of its
-own because pkexec's grant names a program and never its arguments, and granting `/usr/bin/kdos`
-would grant every subcommand. This is the one KDOS lane that downloads, and the resource says so.
+hash it gives, a port that catalogue lists can be installed, by either of two origins:
+
+| Origin | Shown as | Install runs, through `pkexec` | polkit action |
+|---|---|---|---|
+| `kdos-ports` | KDOS system | `kdos-ports-helper install <port>`, which runs `kdos update install --prebuilt <port>` | `io.kdos.ports.install`: an administrator's password, kept for a while |
+| `kdos-ports-source` | KDOS, built on this computer | `kdos-ports-builder install <port>`, which runs `kdos update install --source <port>` | `io.kdos.ports.build`: an administrator's password, asked every time |
+
+Each port the binary host holds and the machine has not installed is two resources with one
+AppStream id, `kdos-backend://port/<id>` and `kdos-backend://port-source/<id>`, so Discover lists
+one application and offers both origins in its source picker; an installed port is one resource,
+"KDOS system". **The origin Discover opens follows `install =`** in `/etc/kdos/update.conf`, the
+route System Settings › System Versions sets and `kdos update install` takes at a terminal: under
+`install = source` the built-here resource, otherwise the prebuilt one. Discover keeps one resource
+per AppStream id in a list, and which of two that sort equal survives is not a backend's to decide,
+so a search or a category lists only the preferred one; the application's link answers both,
+preferred first, and Discover opens the first resource a link answers and fills the source picker
+from the same link. A list browsed by origin lists every resource of that origin. The file is read
+at every search, so a change on the settings page is what the next list shows. The prebuilt route downloads the port and every package it lacks from the binary
+host and checks each against the signed index. The built route fetches the port's sources and
+builds it from its recipe, which can take minutes or hours, and each dependency the machine lacks
+is downloaded prebuilt or built too as `build-deps =` in `/etc/kdos/update.conf` says; the builder
+passes `--build-deps=` to `kdos update install` only when it is given one. Either route records
+each package's route in `/var/lib/kdos/origin`, so the next update takes it the same way, and adds
+the port to `/var/lib/kdos/world` so the next update keeps it; then the helper writes
+`kdos-ports.xml` again. The routes are in
+[The kdos command](kdos-command.md#install-routes-and-groups).
+
+Both helpers check the port's name and replace the environment with a fixed `PATH` and the C
+locale before they run anything. They are programs of their own because pkexec's grant names a
+program and never its arguments, and granting `/usr/bin/kdos` would grant every subcommand; they
+are two programs, one source compiled twice, because pkexec picks the action by the program's path,
+and a password kept from a prebuilt install must not cover a build that runs a recipe's `build.sh`
+as root. The image's own copy of `kdos-ports.xml` is written by the build, over the finished tree.
+Both routes download, and each resource says so.
+
+**Discover says what an install will do before it asks for the password.** Install first runs
+`kdos update install --dry-run --prebuilt <port>` (or `--source`) as the user, which needs no
+root, and its `total` line becomes the question of Discover's confirmation dialog, "Install
+<name>?": "Downloads N packages (size)." for the prebuilt route, and for the built one "Builds N
+packages here, downloads M (size); building can take hours.", with the packages built here named.
+Proceed runs the helper through `pkexec`, which asks for the password; Cancel, or closing the
+dialog, ends the install with nothing run. A dry run that refuses, such as a prebuilt install the
+binary host does not cover, ends it there with the dry run's reason, before any password. The
+reader is the model library's `parseInstallPreview`, tested over fixture outputs.
 
 The backend reads `kdos-ports.xml` and `kdos-binhost.xml` itself at every refresh rather than
 through the AppStream pool, because the pool keys every component of the system catalogue by an
@@ -205,7 +241,7 @@ Opening Discover reaches no server. Each of Discover's own paths to the network 
 | KNewStuff add-ons from `store.kde.org` | The KNewStuff backend is not built, and `ghns=false` in `kdeglobals` turns off every Get New download: the settings pages show no Get New button, the wallpaper dialog's Get New Plugins is greyed, and Add Widgets' Get New menu holds only Install Widget From Local File |
 
 What does reach the network is what a person starts: a store-lane box, a host port from the binary
-host, a firmware install, a system update, and a system update check made with Check for Updates
+host or the sources of one built here, a firmware install, a system update, and a system update check made with Check for Updates
 ([below](#checking-for-an-update)). [Principles](../01-philosophy/principles.md#offline-by-construction)
 states the rule.
 
@@ -234,8 +270,8 @@ the part of systemd's `sysupdate1` interface that Discover 6.8.2 calls:
 | Job | `Id`, `Type`, `Offline`, `Progress`, `Cancel` |
 
 Discover decides the backend is usable by pinging the name, so it needs no patch. The daemon also
-serves `io.kdos.Slots1`, the slots, the armed trial, the update channel, the job in progress,
-`Try`, `CancelTry`, `SetChannel` and `Bless`, for the
+serves `io.kdos.Slots1`, the slots, the armed trial, the update channel, the install route, the job
+in progress, `Try`, `CancelTry`, `SetChannel`, `SetInstallRoute` and `Bless`, for the
 [System Versions](kdos-settings.md#system-versions) page and the notifier. It does no update work
 itself: every check, download and install is a `kdos update` run, and every boot decision a
 `kdos-bootctl` run, each started with an argument vector and read through a progress pipe while the
@@ -288,7 +324,11 @@ live session, and installing KDOS gives a system that is.
 
 What `kdos update check` offers is exactly what `apply` will take: a newer signed slot image when
 the release publishes one, or else the release's packages, only when the signed binary host holds
-every one of them, matched to this machine's build. Either is offered only beside the cached
+every one of them that is not built here, matched to this machine's build; a package whose origin is
+`source` is built again in the slot and counts as covered. A slot image carries the base alone, so
+the packages installed on purpose follow it into the slot from the same release's binary host, and
+an image is refused before the slot is written when that binary host does not cover one of them
+that came prebuilt. Either is offered only beside the cached
 release index that names it, which is where `apply` downloads every file from. A machine with a package the binary host does
 not match is told so before any slot is touched.
 

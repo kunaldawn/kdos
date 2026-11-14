@@ -1,0 +1,4 @@
+libgit2 prebuilt libgit2-1.9.1-1.tar.xz 2097152
+oniguruma prebuilt oniguruma-6.9.10-1.tar.xz 1048576
+kate prebuilt kate-26.08.2-1.tar.xz 49283072
+total 3 52428800 0

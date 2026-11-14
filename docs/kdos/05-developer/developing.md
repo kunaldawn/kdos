@@ -92,7 +92,8 @@ writable and `src/`, `fs/`, `script/`, `ports/`, `docs/`, `testing/`, the `Makef
 `Dockerfile` read-only; nothing else in the checkout reaches the build. The current commit and whether the
 working tree is dirty are passed in and recorded with each snapshot. Your user and group ids are
 passed in as well, and when the orchestrator exits it hands everything under `build/` back to you,
-except `build/fs`; see [Where the build puts things](#where-the-build-puts-things).
+except `build/fs` and the image stage's `build/image-upper`, `build/image-work` and
+`build/image-root`; see [Where the build puts things](#where-the-build-puts-things).
 
 The orchestrator is `kdosbuild`, compiled from `src/devtools/kdosbuild/` by `script/kdosbuild.sh` at
 the start of a build when its sources, flags or compiler changed. On a terminal it first opens a picker that asks whether to start fresh or
@@ -123,15 +124,19 @@ about what it produces:
 | `KDOS_PKG_STORE=1` | Turns on the package store, default `0`: a port whose recipe, environment and dependencies' exact bytes match a package built before is installed from `build/pkgstore` instead of being built, and every package built is stored. `check` builds every hit anyway and logs any difference to `build/logs/pkgstore-check.log`. Use `0` or `check` for a release. See [The package store](../03-architecture/packaging.md#the-package-store) |
 | `KDOS_PKG_STORE_MAX=SIZE` | The size `70_image` evicts the store down to, least recently used first, default `60G` |
 
-Four opt-in variables change what the build produces. Each is passed by the `Makefile` and
+Eight variables change what the build produces. Each is passed by the `Makefile` and
 forwarded into the chroot by `script/chroot/exec.sh`:
 
 | Variable | Effect |
 |---|---|
+| `KDOS_IMAGE=full` | Makes the ISO carry every package `build/fs` holds instead of the [base](../03-architecture/packaging.md#the-base-image), the default `KDOS_IMAGE=base`: the medium for a machine that installs with no network, and for the rig when it needs an application the base leaves out. Under `base` the `70_image` steps from `017_stage.sh` on run in an overlay over `build/fs` that `017_stage.sh` trims to the closure of `ports/base` (see [The image stage](build-system.md#the-image-stage)). Any value but `base` or `full` stops `make build` |
 | `KDOS_ISO_SOURCES=1` | Copies the tree onto the ISO under `/sources`, beside `system.sfs` rather than inside it: `src/`, `script/`, `fs/`, the `Makefile`, the `Dockerfile`, and `ports/` with every recipe and fetched source but without its dot-directories (the source cache and the compiled helpers), with a `SOURCES` stamp giving the port count, the size and the build time. A binhost this build wrote with `KDOS_MAKE_BINHOST=1` goes beside them as `/sources/binhost`. It roughly doubles the size of the image |
 | `KDOS_PACK_KDOS=1` | Also packs the root filesystem as the base pack `kdos`, in `build/kdos-base/kdos.kpack`, and puts it on the ISO under `/packs`. `kdos-box create ports base=pack:kdos` then gives a running KDOS a clean KDOS to build ports in. `build/kdos-base` is deleted at the start of every `100_packs.sh` run, so the only pack there is one this run made. With the flag set and `mkfs.erofs` or `kdos-pack` missing, the step prints a note and makes no pack |
-| `KDOS_ISO_COMP=zstd:3` | Compresses `system.sfs` with zstd at level 3 instead of the default level 15: a faster `70_image` and an image about 10% larger, for the rig, never a release. `xz` and `zstd:1` to `zstd:22` are accepted; any other value stops `110_iso.sh` |
-| `KDOS_MAKE_BINHOST=1` | Keeps every package the build makes and writes them into a signed binhost in `build/binhost/`, which `kpkg binhost` can install from. Each run adds what it built, so a complete binhost needs one `--fresh` build with the flag set |
+| `KDOS_ISO_COMP=zstd:3` | Compresses `system.sfs` with zstd at level 3 instead of the default level 19: a faster `70_image` and a larger image, for the rig, never a release. `xz`, `xz-bcj` (xz with the x86 branch filter) and `zstd:1` to `zstd:22` are accepted; any other value stops `110_iso.sh`. The measured sizes and read speeds are in [The codec](build-system.md#the-codec) |
+| `KDOS_ISO_BLOCK=128K` | The squashfs block size of `system.sfs`, `4K` to `1M` in powers of two; empty is `1M`. Any other value stops `110_iso.sh` |
+| `KDOS_ISO_GATE=0` | Lets a base ISO larger than `KDOS_ISO_MAX` through, as a developer image; the default `1` fails `110_iso.sh` on it and prints the [image ledger](build-system.md#the-image-ledger-and-the-size-gate)'s top twenty. A `KDOS_IMAGE=full` ISO is never gated. Any value but `0` or `1` stops `make build` |
+| `KDOS_ISO_MAX=BYTES` | The release limit the gate enforces, default `1992294400` (1,900 MiB, one GitHub release asset). Anything but a positive number stops `make build` |
+| `KDOS_MAKE_BINHOST=1` | Keeps every package the build makes and writes them into a signed binhost in `build/binhost/`, which `kpkg binhost` and `kdos update install` install from. It is the release's package repository: every package the base ISO leaves out is installed from it. Each run adds what it built, so a complete binhost needs one `--fresh` build with the flag set |
 
 For example, `make build KDOS_ISO_SOURCES=1`.
 
@@ -380,6 +385,10 @@ no firmware.
 | `build/binhost/` | The signed binhost, with `KDOS_MAKE_BINHOST=1` | Each run adds what it built and keeps what earlier runs added |
 | `build/binhost-key/` | `kdos-binhost.key`, which signs the binhost's index, made on the first `KDOS_MAKE_BINHOST=1` run, and its `.pub` | Kept by both cleans, so every later binhost is signed with the same key |
 | `build/image-ports/` | The recipe-only ports tree `70_image/105_ports.sh` stages, which `110_iso.sh` appends to `system.sfs` as `/ports` | Rewritten by every image build |
+| `build/image-upper/` | The image stage's upper layer over `build/fs`: every change the `70_image` steps from `017_stage.sh` on made, the whiteouts of the packages the base leaves out among them | Emptied each time `017_stage.sh` starts. Root's, like `build/fs`, and never handed back. See [The image stage](build-system.md#the-image-stage) |
+| `build/image-work/` | The overlay's work directory | Emptied with `build/image-upper` |
+| `build/image-root/` | The mount point of the stage, the root each step from `017_stage.sh` on is chrooted in and `110_iso.sh` squashes | Mounted only inside a build's own chroot entries; empty from your machine |
+| `build/image-stage.ok` | Written when `017_stage.sh` has trimmed the stage | Deleted when `017_stage.sh` starts; a later `70_image` step refuses to run without it |
 | `build/fetch-home` | The fetch container's home and toolchain caches | Written as your user |
 | `build/freeze/` | `sources-<tag>.sha256`, written by `ports/publish --freeze` | |
 | `build/release/<tag>/` | What `ports/publish --release` uploads besides the ISO: `SHA256SUMS`, `SHA256SUMS.sig`, `kdos-release.pub`, `sources.sha256`, `kdos-ports.tar.xz`, `kdos-update.idx` and their signatures, and the notes; and `image/`, the slot image `script/release-image.sh` writes | The ISO's parts are cut here and deleted when the run ends; each run clears the files and keeps `image/` |
@@ -411,7 +420,8 @@ any Alpine-based development container. Delete `ports/.portup`, `ports/.portup-t
 leaves those paths owned by root, so remove them from a container rather than with `sudo`. The
 source cache, `ports/.srccache`, is plain data and does not need clearing.
 
-`build/fs` is deliberately not handed back to your user. Changing ownership across that tree would
+`build/fs` is deliberately not handed back to your user, and neither are the image stage's
+layers, which hold the same files. Changing ownership across that tree would
 clear every setuid bit (pam_unix's password checker `unix_chkpwd`, without which the lock screen and
 the login refuse every password, and the two user-namespace mapping helpers without which no
 container can start), and would leave the account and privilege files owned by an ordinary user. Reading it from your machine needs a container or root.
@@ -849,7 +859,7 @@ terminal.
 ## Cutting a release
 
 A KDOS release is a git tag and the GitHub release of that tag on `kunaldawn/kdos`, which carries
-the ISO, a list of every source hash the tag's recipes name, the tag's recipe tree signed for
+the base ISO, the binhost every other package is installed from, a list of every source hash the tag's recipes name, the tag's recipe tree signed for
 `kdos update fetch`, and a signed checksum list over all of them. The source list says what the
 release needs to build; the hashes themselves are pinned by the tag, whose recipes git cannot
 change without changing the tag.
@@ -862,8 +872,9 @@ with no key takes no tree.
 kpkg keygen build/keys/kdos-release          # once; build/keys survives both cleans
 git tag <tag> && git push origin <tag>
 git switch --detach <tag>                     # build from the tag, not the working tree
-make fetch && make build KDOS_MAKE_BINHOST=1   # the binhost in build/binhost, with its index
-script/release-image.sh --root build/fs --out build/release/<tag>/image \
+make fetch && make build KDOS_MAKE_BINHOST=1   # the base ISO, and the binhost in build/binhost with its index;
+                                               # fails when the ISO passes 1,900 MiB
+script/release-image.sh --root build/fs --upper build/image-upper --out build/release/<tag>/image \
     --key build/keys/kdos-release.key --version <tag> --prev <an earlier image directory>   # as root
 make release TAG=<tag> PUBLISH_ARGS=--dry-run   # the plan: no network, no token
 make release TAG=<tag>                          # a DRAFT release with every asset
@@ -871,6 +882,23 @@ make release-publish TAG=<tag>                  # make it public and Latest
 ```
 
 The three are `ports/publish --release <tag>` with `--dry-run`, with nothing, and with `--publish`.
+
+**A release ISO is one asset.** The build itself fails a base ISO larger than 1,900 MiB
+(`KDOS_ISO_MAX`): `110_iso.sh` stops after writing it and prints the size, the limit and the top
+twenty of `build/image-ledger`, every package on the image with its bytes and the dependency path
+that put it there (see [The image ledger and the size gate](build-system.md#the-image-ledger-and-the-size-gate)).
+The cure is a cut to `ports/base`, which the ledger names, not `KDOS_ISO_GATE=0`, which makes a
+developer image. `script/lib/imageset.py --why <port>` answers why one port is on the medium.
+
+**The ISO and the binhost of one tag are one unit.** The default `KDOS_IMAGE=base` makes the ISO
+carry the [base](../03-architecture/packaging.md#the-base-image) alone, and a machine installed
+from it takes everything else from the binhost of the release its `/ports/TREE` names, built
+against exactly that base. So a release is the base ISO and the `KDOS_MAKE_BINHOST=1` binhost of
+the same build; an ISO without its binhost leaves every package outside the base uninstallable
+prebuilt. The slot image is made from the root the ISO was squashed from, which under
+`KDOS_IMAGE=base` is the image stage, `build/image-upper` over `build/fs`; the build mounts it only
+inside its own chroot entries, so it is mounted again read-only for `script/release-image.sh`, as
+above. Under `KDOS_IMAGE=full` that root is `build/fs`.
 
 `ports/publish --release <tag>`:
 
@@ -882,7 +910,8 @@ The three are `ports/publish --release <tag>` with `--dry-run`, with nothing, an
    `kdos-<tag>.iso.part01`, `.part02`, … under `build/release/<tag>/`, since GitHub refuses an
    asset of 2 GiB. The parts are deleted when the run ends and cut again on the next.
 4. Makes `build/release/<tag>/kdos-ports.tar.xz`, the tag's recipe tree as an image's `/ports`
-   holds it, from `git archive`: `ports/core`, `ports/shelves`, `ports/sources.idx`, `src/`,
+   holds it, from `git archive`: `ports/core`, `ports/shelves`, `ports/sources.idx`,
+   `ports/groups`, `src/`,
    `docs/` and `script/book`, placed at `script/book` so that `kdos-kfs`'s `book` link resolves, and
    a `TREE` stamp naming the commit, its time and `version <tag>`, as a reproducible tar compressed
    with `xz -9 -T1`. It signs the tree with the release key as `kdos-ports.tar.xz.sig` and checks
@@ -929,10 +958,14 @@ system release.
 **The slot image.** A release can also carry the signed whole-slot image an installed machine
 writes into its inactive A/B slot, with a delta from each earlier release it may still run.
 `script/release-image.sh` makes it from the root the ISO's `system.sfs` is made from, as root,
-because that root holds files only root can read:
+because that root holds files only root can read. For a `KDOS_IMAGE=base` build that root is the
+image stage: `--upper build/image-upper` has the script mount that layer read-only over `--root
+build/fs` in a mount namespace of its own run, so the image holds the base and nothing else.
+Without `--upper` the root is `build/fs` itself, which is right for a `KDOS_IMAGE=full` build and
+makes an image of every package for a base one.
 
 ```sh
-script/release-image.sh --root build/fs --out build/release/<tag>/image \
+script/release-image.sh --root build/fs --upper build/image-upper --out build/release/<tag>/image \
     --key build/keys/kdos-release.key --prev <an earlier release's image directory> [--prev-root <its root>]
 ```
 

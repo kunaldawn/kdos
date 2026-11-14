@@ -1,0 +1,91 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   ports/groups — sets of native applications installed in one step
+# ---------------------------------
+#
+#   group <id> <title>
+#   <port>...
+#
+# A group is its `group` line and the ports named after it, any number to a
+# line, up to the next group. `kdos update install <id>` installs each member
+# as the port it is, prebuilt from the release's binhost unless --source
+# says otherwise, and the installer offers every group by its title. A member
+# may be a meta port (kde-gear-games), which installs what it names. The
+# image stages this file at /ports/groups, which is where a machine reads it.
+#
+# An id is a port-name word that is no port's name; a member must be a port.
+# script/lib/imageset.py --check, which preflight runs, refuses either. A
+# line starting with '#' and a blank line are skipped.
+
+group kde-games KDE games
+kde-gear-games
+
+group kde-education KDE education
+kde-gear-education
+
+group kde-pim KDE mail, calendar and contacts
+kde-gear-pim
+
+group kde-multimedia KDE audio and video
+kde-gear-multimedia
+
+group kde-graphics KDE graphics
+kde-gear-graphics
+
+group kde-utilities KDE utilities
+kde-gear-utilities
+
+group kde-devtools KDE development tools
+kde-gear-devtools
+
+group kde-network KDE torrents, remote desktop, file sharing and online accounts
+ktorrent krdc krfb kio-gdrive kaccounts-providers kdenetwork-filesharing
+
+group kde-system KDE disk usage, search, logs, wallets, characters and handbooks
+filelight sweeper kfind ksystemlog kwalletmanager kcharselect isoimagewriter
+khelpcenter
+
+group kde-artwork KDE wallpapers and the Oxygen theme
+plasma-workspace-wallpapers oxygen
+
+group office Office and documents
+libreoffice calibre texstudio
+
+group graphics Graphics, photos and 3D
+gimp krita inkscape darktable blender
+
+group internet Mail and more browsers
+thunderbird chromium librewolf
+
+group multimedia Players, recording and video editing
+vlc mpv obs-studio audacity shotcut handbrake kodi
+
+group games Games
+supertuxkart wesnoth xonotic luanti scummvm retroarch
+
+group science Science, maps and engineering
+octave qgis stellarium freecad kicad openscad
+
+group development Programming languages and debuggers
+rust go nodejs zig gdb valgrind strace lldb
+
+group windows Windows programs
+wine
+
+group build-tools Compilers and build tools
+gcc binutils make cmake meson ninja pkgconf autoconf automake libtool bison
+flex
+
+group lang-zh Chinese input and fonts
+fcitx5-chinese-addons fcitx5-gtk noto-cjk
+
+group lang-ja Japanese input and fonts
+fcitx5-anthy fcitx5-gtk noto-cjk
+
+group lang-ko Korean input and fonts
+fcitx5-hangul fcitx5-gtk noto-cjk

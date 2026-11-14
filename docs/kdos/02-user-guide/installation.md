@@ -38,21 +38,28 @@ You need:
 - administrator rights: the live account is an administrator, and the window asks nothing more on
   the live medium; `kinstall` runs with `sudo`;
 - a target disk that is not the medium you booted from;
-- a disk large enough. The Welcome page reports the *install size*, how much the install copies;
-  every package is on the medium and every one is copied. A disk smaller than the install plus
-  768 MiB is refused. The default layout keeps two copies of the system, each 1.5 times the install
-  rounded up to a whole GiB, beside the swap and a home of at least 4 GiB; for an install of 46.5 GiB
-  that is about 149 GiB. A disk that holds only one copy is installed with one, and loses the
-  ability to undo an update (see [A/B root slots](#ab-root-slots)); a 128 GB disk is one of those.
-  The window's Disk page says which beside the disk, and `kinstall --dump probe` prints the
-  figures for this medium.
+- a disk large enough. The Welcome page reports the *install size*, how much the install copies:
+  the base the medium carries. A disk smaller than the install plus 768 MiB is refused. The default
+  layout keeps two copies of the system, each 1.5 times the install rounded up to a whole GiB,
+  beside the swap and a home of at least 4 GiB. Native groups chosen on the Applications page, and
+  every program installed later, are written into the system slot and use its room to grow, so a
+  machine meant to carry much of the native catalogue wants a larger disk than the minimum. A disk
+  that holds only one copy is installed with one, and loses the ability to undo an update (see
+  [A/B root slots](#ab-root-slots)). The window's Disk page says which beside the disk, and
+  `kinstall --dump probe` prints the figures for this medium;
+- Secure Boot off in the firmware. The installer reports it on its first page, and an installed
+  machine with Secure Boot on does not start (see [1. Welcome](#1-welcome));
+- a network, if you choose native groups, and for any firmware this machine needs that the medium
+  does not carry. Without one the install completes, records the groups, and says to run
+  `sudo kdos firmware sync` after the first boot.
 
 The installer checks each of these and names the one that failed.
 
-The natively built applications are part of the system and are always copied. Applications from
-the catalogue are optional, and the installer builds none of them: it records the groups you chose
-on the new disk, and your first login there offers to build them (see
-[8. Applications](#8-applications)).
+The base, with the core KDE applications and Firefox ESR, is always copied. Everything else is
+optional, chosen as groups on the Applications page (see [8. Applications](#8-applications)):
+native groups are downloaded prebuilt from the release's binhost into the new system while it
+installs, and the catalogue's boxed groups are recorded on the new disk for your first login to
+build.
 
 ## Installing from the desktop
 
@@ -77,7 +84,7 @@ clicking it:
 | Encryption | Whether to encrypt, and the passphrase twice, with a strength hint. On an erased disk everything KDOS writes is inside the container; on partitions you made, the root is |
 | Account | Either your full name, user name and password (twice, with a strength hint), whether you are an administrator, and, on an encrypted machine, whether to log in automatically after the disk passphrase; or **let the first person to start it set it up**, which makes no account (see [Preparing a machine for someone else](#preparing-a-machine-for-someone-else)). Then the computer's name, and whether root is locked or has a password of its own. A user name the system already uses, such as `root`, is refused here |
 | Look | The accent and the desk, each shown as it will look |
-| Applications | The catalogue's groups, recorded for the first login (see [8. Applications](#8-applications)), and whether to keep the live session's box images |
+| Applications | Two lists of groups (see [8. Applications](#8-applications)): **KDOS applications**, the native groups, downloaded prebuilt into the new system during the install; and **Boxed applications**, the catalogue's groups, recorded for the first login. Then whether to keep the live session's box images |
 | Summary | Everything above as the installer plans to carry it out, with what is erased in the warning colour, and the button that starts the install. Answers the installer would refuse, a reused root too small for the install among them, are refused here with the reason |
 
 Alt+Left and Alt+Right move back and on, as **Back** and **Next** do; neither starts the install,
@@ -458,9 +465,56 @@ machine, and the boot scripts skip it. Any of them can be changed later with `se
 
 ### 8. Applications
 
-This page is about boxed applications only. The applications KDOS compiles natively are part of
-the system the installer copies, so they are on the new disk whatever you choose here; see
-[Applications](applications.md#native-applications).
+One list of groups of two kinds: the native groups first, marked `native`, then the boxed groups of
+the catalogue. The base the installer copies, with the core KDE applications and Firefox ESR, is on
+the new disk whatever you choose here; see
+[Applications](applications.md#where-applications-come-from).
+
+#### Native groups
+
+Sets of native ports that the release's binhost holds prebuilt, read from `/ports/groups`. None is
+ticked by default, since each one downloads, except the language group your keyboard or time zone
+points at: a Chinese (`cn`, `tw`), Japanese (`jp`) or Korean (`kr`) keyboard layout, the Japanese
+console keymap, or a time zone such as `Asia/Shanghai`, `Asia/Taipei`, `Asia/Tokyo` or
+`Asia/Seoul` ticks `lang-zh`, `lang-ja` or `lang-ko`, and the page says why ("Ticked for the
+Japanese keyboard"; the terminal wizard's `language` line). Untick it if you do not want it; an
+answer file with a `groups` line gets only what it names. Each row shows the group's title and how
+many ports it names; `kdos update groups` on a running KDOS shows the same groups with their
+download sizes.
+
+| Group | Ports |
+|---|---|
+| `kde-games`, `kde-education`, `kde-pim`, `kde-multimedia`, `kde-graphics`, `kde-utilities`, `kde-devtools` | KDE Gear's games, education, mail and calendar, multimedia, graphics, utilities and development tools, each the Gear set of that name |
+| `kde-network` | KTorrent, KRDC, Krfb, Google Drive in Dolphin, the online-account providers, Samba sharing |
+| `kde-system` | Filelight, Sweeper, KFind, KSystemLog, KWalletManager, KCharSelect, ISO Image Writer, the Help Center |
+| `kde-artwork` | The KDE wallpaper collection and the Oxygen theme |
+| `office` | LibreOffice, Calibre, TeXstudio |
+| `graphics` | GIMP, Krita, Inkscape, darktable, Blender |
+| `internet` | Thunderbird, Chromium, LibreWolf |
+| `multimedia` | VLC, mpv, OBS Studio, Audacity, Shotcut, HandBrake, Kodi |
+| `games` | SuperTuxKart, Wesnoth, Xonotic, Luanti, ScummVM, RetroArch |
+| `science` | Octave, QGIS, Stellarium, FreeCAD, KiCad, OpenSCAD |
+| `development` | Rust, Go, Node.js, Zig, gdb, Valgrind, strace, LLDB |
+| `windows` | Wine |
+| `build-tools` | GCC with binutils, make, CMake, Meson, Ninja, pkgconf, autotools, bison, flex |
+| `lang-zh`, `lang-ja`, `lang-ko` | Chinese, Japanese or Korean input for fcitx5, its GTK modules and Noto CJK fonts |
+
+The Packs step installs the ticked ones. It takes the release index and binhost index of the
+release the medium belongs to (`kdos update fetch --binhost-only`), with the download cache on the
+new disk rather than in the live system's memory, then runs
+`kdos update install --prebuilt --root /mnt/kinstall <id>` for each group. Each port joins the new
+system's world set, so the installed machine updates it like anything else installed on purpose.
+When the binhost cannot be reached, or a group does not install, the ids are written to
+`/var/lib/kdos/groups-pending` on the new disk with a warning, and the install goes on: the system
+boots without them. Once the machine is online,
+
+```sh
+sudo kdos update install --pending
+```
+
+installs every recorded group, and each one that installs leaves the file.
+
+#### Boxed groups
 
 The application groups this medium's catalogue can build, with `essential` already ticked. The
 catalogue is `/usr/share/kdos/appstore/catalogue`, or the boot medium's
@@ -497,20 +551,21 @@ Building takes minutes per application, which is why this waits for you rather t
 build unannounced at first boot. An exported set (a `.ktar` file) is imported on the installed
 machine with `kdos-appbox import`; see [Applications](applications.md#carrying-a-set-to-another-machine).
 
-On a medium with no catalogue the page says so and there is nothing to choose; install applications
-later from Discover.
+On a medium with no groups file and no catalogue the page says so and there is nothing to choose;
+install applications later from Discover.
 
 ### 9. Summary
 
-Your answers on one screen: keymap, time zone, hostname, the user or the OEM choice, the login,
-root account, accent, desk, whether the alien app library is copied, the application groups and
-their route, the enabled services, the target disk, the plan, the root and ESP on the reuse plan,
-the slot layout when there is one (`slots A and B of N each, /home shared`, or `one slot` in the
-warning colour), which firmwares the disk will start on (`UEFI and legacy BIOS`, or `UEFI only` for
-a reused GPT disk with no BIOS boot partition), and swap. Encryption is part of the LVM line when
-there is one; otherwise, whenever encryption is on, on either plan, an `encryption` line reads
-`root inside LUKS2`. The destructive parts are in the error colour, and a rule across the page reads
-`EVERYTHING ABOVE THIS LINE IS STILL REVERSIBLE`. Two buttons sit under it:
+Your answers on one screen: keymap, time zone, hostname, the user or the OEM choice, the login, root
+account, accent, desk, whether the alien app library is copied, the native groups, the boxed
+application groups and their route, the enabled services, the target disk, the plan, the root and
+ESP on the reuse plan, the slot layout when there is one (`slots A and B of N each, /home shared`,
+or `one slot` in the warning colour), which firmwares the disk will start on (`UEFI and legacy
+BIOS`, or `UEFI only` for a reused GPT disk with no BIOS boot partition), and swap. Encryption is
+part of the LVM line when there is one; otherwise, whenever encryption is on, on either plan, an
+`encryption` line reads `root inside LUKS2`. The destructive parts are in the error colour, and a
+rule across the page reads `EVERYTHING ABOVE THIS LINE IS STILL REVERSIBLE`. Two buttons sit under
+it:
 
 - `BEGIN INSTALL`: starts writing to the disk. Under `--dry-run` it reads `REHEARSE INSTALL`.
 - `Save answer file`: writes your answers to `/tmp/kinstall.conf` and installs nothing.
@@ -538,7 +593,8 @@ full log, where `PgUp` and `PgDn` scroll. The window's install page shows the sa
 | Format | Encrypts and creates the volume group and its volumes if asked, then makes the root filesystem, slot B's and the home's, the ESP (when it is to be formatted) and the swap | |
 | Mount | Mounts the root at `/mnt/kinstall`, the home at `/mnt/kinstall/home` with the pack store bound under it, and the ESP at `/mnt/kinstall/boot/efi`; the boot medium at `/mnt/iso` and any stick under `/mnt` stay reachable beside it | |
 | Copy system | Copies the live system with `rsync`, leaving out the live session (see [What is not copied](#what-is-not-copied)). The installer and everything it starts run at `oom_score_adj` -900, so the memory guard, `kdos-oomd`, passes over the copy however long it stalls memory | |
-| Packs | Records the applications you chose for the first login | Nothing was chosen, or the medium has no catalogue |
+| Packs | Installs the native groups you chose from the release's binhost, or records them for `kdos update install --pending`, and records the boxed applications you chose for the first login | No native group was chosen, and no boxed group (or the medium has no catalogue) |
+| Firmware | Installs the firmware packages this machine's devices need and the medium does not carry, with `kdos firmware sync --root /mnt/kinstall`, from the same release's binhost; the log lists what it installed | |
 | Configure | `fstab`, hostname, `/etc/hosts`, time zone, Wi-Fi country, keymap and keyboard layout, the login screen's automatic login, the serial console's login, DNS resolver, services and the swap file | |
 | Accounts | Users, passwords, the administrator choice, and the new home filled from `/etc/skel`; on an OEM install, the live account removed instead | |
 | Theme | The accent and the desk the first login takes, the accent of the splash and the consoles, and the login screen's look | |
@@ -553,11 +609,13 @@ the installer. When every step has finished, `Continue` appears and leads to the
 unattended run instead ends by itself after five seconds.
 
 A warning is something the installed system will lack while the install carries on: no
-`BOOTIA32.EFI` for 32-bit UEFI, no BIOS boot code (on a UEFI machine: a reused GPT disk with no
-BIOS boot partition, no `limine` program, or a failed `limine bios-install`), no partition number
-for the firmware boot entry, an ESP too small for a second slot's kernel, or a choice of
-applications that could not be recorded. Each is listed under `WARNINGS` as it arrives and written to the
-log with a `warning:` prefix.
+`BOOTIA32.EFI` for 32-bit UEFI, no BIOS boot code (on a UEFI machine: a reused GPT disk with no BIOS
+boot partition, no `limine` program, or a failed `limine bios-install`), no partition number for the
+firmware boot entry, an ESP too small for a second slot's kernel, a binhost that could not be
+reached or a native group that did not install (each recorded for `kdos update install --pending`),
+firmware that could not be looked for or installed (run `sudo kdos firmware sync` after the first
+boot), or a choice of applications that could not be recorded. Each is listed under `WARNINGS` as it
+arrives and written to the log with a `warning:` prefix.
 
 ### 11. Done
 
@@ -740,7 +798,8 @@ that setting's default.
 | `theme` | An accent name, such as `bone` | `bone` |
 | `desk` | `kdos`, `dock` or `tiling` | `kdos` |
 | `alien_apps` | `1` to copy the live container store, `0` to leave it out | `1` |
-| `apps` | Space-separated group ids, such as `essential office`, or `none` | `essential` |
+| `groups` | Space-separated native group ids from `/ports/groups`, such as `office kde-pim`, or `none`; empty reads as `none` | `none` |
+| `apps` | Space-separated boxed group ids from the catalogue, such as `essential office`, or `none` | `essential` |
 | `services` | Space-separated names from `networkmanager bluetooth alsa cups sshd`; a service not named does not start | `networkmanager bluetooth alsa` |
 | `reboot` | `1` to reboot when an unattended run finishes, `0` to exit | `1` |
 
@@ -749,6 +808,8 @@ Things to watch for:
 - Automatic login is off unless you ask for it, and an answer file that asks for it without an
   encrypted root is refused. The live medium logs in automatically; an installed machine shows the
   login screen.
+- `groups` and `apps` are separate keys because ids such as `office`, `games` and `science` name a
+  native group and a boxed one. An id `groups` does not know is ignored.
 - `apps` takes groups, not applications. An application id such as `app.scribus` matches no group
   and is dropped. If none of the names is a known group, the selection falls back to `essential`
   rather than failing the install over a spelling mistake.
@@ -816,17 +877,17 @@ it gets only one slot. Run as root, it first activates every LVM volume group, s
 volumes appear. Run without root, it reads what it may not open from udev's database, so the
 filesystem types, labels and the ESP and BIOS boot marks are still shown.
 
-`--dump plan` probes the machine as the install does (the firmware, the disks and the install
-size) and uses the same planner as the wizard, so
-its step list and skips are the real ones: choosing `reuse` skips the Partition and Slot B steps, a
-disk too small for two slots skips Slot B, and a medium with no catalogue skips the Packs step. It
+`--dump plan` probes the machine as the install does (the firmware, the disks and the install size)
+and uses the same planner as the wizard, so its step list and skips are the real ones: choosing
+`reuse` skips the Partition and Slot B steps, a disk too small for two slots skips Slot B, and no
+native group and no boxed group chosen (or no catalogue on the medium) skips the Packs step. It
 names the ESP, the root and the BIOS boot partition the install will use, or says the disk will
 start on UEFI only, and on LVM whether there are two slots and how large each is. It also prints the
 `mkfs` command and the root's `fstab` line the filesystem choice turns into, and the application
-groups, their route and their estimated size. Its `refused` line is the first refusal of the
-answers check or the target check, so it says whether the disk is large enough, is the boot medium
-or is read-only, and whether a reused ESP and root are acceptable. No password appears in either
-dump; the plan says only whether the root account is locked.
+groups, their route and their estimated size, and the native groups chosen. Its `refused` line is
+the first refusal of the answers check or the target check, so it says whether the disk is large
+enough, is the boot medium or is read-only, and whether a reused ESP and root are acceptable. No
+password appears in either dump; the plan says only whether the root account is locked.
 
 `--dry-run` runs the whole wizard and the whole install, logging every install command and
 executing none; the log is still written. What only a real run learns, such as the new root's UUID,
@@ -866,7 +927,10 @@ machine when the rehearsal finishes.
 | `/etc/resolv.conf` | Copied from the live system, so the installed machine resolves names on first boot |
 | `/swapfile` | The swap file, when you chose one on a one-slot layout |
 | `/var/lib/kdos/packs` | The pack store, with the `staging` directory an import goes through and the `mnt` directory packs are mounted under; on the two-slot layout it is `/home/.kdos/packs`, bound there |
-| `/var/lib/kdos/apps-pending` | The application groups you chose, which your first login offers to build |
+| `/var/lib/kdos/apps-pending` | The boxed application groups you chose, which your first login offers to build |
+| `/var/lib/kdos/groups-pending` | The native groups that could not be installed during the install, for `kdos update install --pending` |
+| `/var/lib/kdos/world`, `/var/lib/kdos/origin` | The ports of the native groups installed, as installed on purpose, and the way each package the install added came (`prebuilt`) |
+| `/var/lib/kdos/binhost` | The release's binhost index, fetched for the native groups and the firmware |
 
 ### What is not copied
 

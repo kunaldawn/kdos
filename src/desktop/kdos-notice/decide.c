@@ -23,6 +23,8 @@
  *   oom        "Firefox was closed to free memory"    timed, per kill
  *   pending    "3 applications chosen during install  persistent: install
  *              are not installed yet"
+ *   firmware   "This computer's hardware needs        persistent: install
+ *              firmware-nvidia"
  *
  * Only a notice that waits for a person to act stays until dismissed; the
  * rest expire, and Plasma keeps them in its history.
@@ -40,7 +42,7 @@
 #include "notice.h"
 
 static const char *const kind_names[KN_COUNT] = {
-	"restarts", "cve", "trial", "rollback", "oom", "pending",
+	"restarts", "cve", "trial", "rollback", "oom", "pending", "firmware",
 };
 
 const char *kn_kind_name(int kind)
@@ -500,6 +502,62 @@ int kn_decide_pending(const KnPending *pd, const KnState *s, KnPost *out)
 	return 1;
 }
 
+/* ── firmware the hardware asks for ───────────────────────────────────── */
+
+/*
+ * A VENDOR FIRMWARE PORT THIS MACHINE NEEDS AND HAS NOT GOT. The medium
+ * carries the common vendors' firmware; a device whose driver wants another
+ * vendor's, or a firmware load the kernel logged as failed, names the port
+ * that ships it. Said once per set of ports, withdrawn when `kdos firmware
+ * sync` (or anything else) has installed them all.
+ */
+int kn_decide_firmware(const KnFirmware *f, const KnState *s, KnPost *out)
+{
+	char names[KN_FW_PORTS][128], set[KN_FW_PORTS * 65 + 1], key[32];
+	char list[200];
+	size_t o = 0;
+
+	if (!f->ok)
+		return 0;
+	if (!f->n) {
+		if (!s->key[KN_FIRMWARE][0])
+			return 0;
+		post_close(KN_FIRMWARE, out);
+		return 1;
+	}
+	set[0] = '\0';
+	for (int i = 0; i < f->n; i++) {
+		int r = snprintf(set + o, sizeof(set) - o, "%s\n", f->port[i]);
+
+		if (r > 0 && (size_t)r < sizeof(set) - o)
+			o += (size_t)r;
+		kb_strlcpy(names[i], f->port[i], sizeof(names[i]));
+	}
+	hash_hex(set, key, sizeof(key));
+	if (!strcmp(key, s->key[KN_FIRMWARE]))
+		return 0;
+	memset(out, 0, sizeof(*out));
+	out->kind = KN_FIRMWARE;
+	kb_strlcpy(out->key, key, sizeof(out->key));
+	out->icon = "hwinfo";
+	out->urgency = 1;
+	out->persistent = 1;
+	join_names(names, f->n, "more", list, sizeof(list));
+	snprintf(out->summary, sizeof(out->summary),
+		 "This computer's hardware needs %s", list);
+	if (f->n == 1)
+		snprintf(out->body, sizeof(out->body),
+			 "Its firmware is not installed (%s). Install it with: "
+			 "sudo kdos firmware sync", f->reason[0]);
+	else
+		kb_strlcpy(out->body, "Their firmware is not installed. "
+			   "Install it with: sudo kdos firmware sync",
+			   sizeof(out->body));
+	out->actions[0] = KN_ACT_DETAILS;
+	out->actions[1] = "Install";
+	return 1;
+}
+
 /* ── what the actions run ──────────────────────────────────────────────── */
 
 int kn_action_argv(int kind, const char *action, KbArgv *a)
@@ -522,6 +580,15 @@ int kn_action_argv(int kind, const char *action, KbArgv *a)
 	case KN_ROLLBACK:
 		kb_argv_add(a, "systemsettings");
 		kb_argv_add(a, "kcm_kdos_system");
+		break;
+	case KN_FIRMWARE:
+		kb_argv_add(a, "konsole");
+		kb_argv_add(a, "--hold");
+		kb_argv_add(a, "-e");
+		kb_argv_add(a, "sudo");
+		kb_argv_add(a, "kdos");
+		kb_argv_add(a, "firmware");
+		kb_argv_add(a, "sync");
 		break;
 	case KN_PENDING:
 		kb_argv_add(a, "plasma-discover");

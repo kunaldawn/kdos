@@ -780,7 +780,8 @@ sets for the programs it starts itself, so every variable below is set explicitl
 | `QT_IM_MODULE` | `wayland`: input methods reach a box through KWin, which relays to the input method it started. `GTK_IM_MODULE` is left unset, because GTK on Wayland chooses correctly without it |
 | Qt theming and anything else a runtime needs | From the pack's metadata (below) |
 | `LIBGL_ALWAYS_SOFTWARE` | `1` only when the profile's `render` key resolves to software. See [render](#render) |
-| `DISPLAY`, `XAUTHORITY` | Only for a box handed the X11 display: yours, or `:<n>` from the first `/tmp/.X11-unix/X<n>` socket, and the cookie in the box's own runtime directory. Every other box gets an empty `DISPLAY`, so a toolkit with an X11 fallback does not reach for a display it would be refused |
+| `QT_QPA_PLATFORM`, `SDL_VIDEODRIVER` | `wayland;xcb` and `wayland,x11`: Wayland first and X11 as the fallback, since Qt 5 and SDL 2 would otherwise take `DISPLAY` over `WAYLAND_DISPLAY`. Set before the catalogue's and the pack's `env` rows, so a row that forces X11 wins |
+| `DISPLAY`, `XAUTHORITY` | Unless the profile says `x11 = no`: yours, or `:<n>` from the first `/tmp/.X11-unix/X<n>` socket, and the cookie in the box's own runtime directory. A box with `x11 = no` gets an empty `DISPLAY`, so a toolkit with an X11 fallback does not reach for a display it would be refused |
 
 Accessibility is a default, not a policy. The accessibility bus is not linked into a box unless you
 ask, so by default every boxed GTK application is told not to look for one, which is a probe that
@@ -959,7 +960,7 @@ These live in `launchers.c`.
 | `SKIP_HOST_ONLY` | `org.kde.spectacle`. Spectacle captures through KWin's screenshot interface on the session bus, which a box's bus filter hides, so a boxed copy opens on an error; the host's Spectacle is the screenshot tool |
 | `SKIP_ROOTLESS_INERT` | GParted, GSmartControl, GNOME Disks, TestDisk, Baobab-as-root and Timeshift: they need raw block devices, which a rootless container cannot give. Use the native recovery tools instead |
 | `SKIP_PREFIXES`, `SKIP_BASENAMES` | Entries that are not applications: settings panels, helpers, URL handlers, secondary tools of a suite, and KDE's own daemons' entries |
-| `X11_FORCING` | `GDK_BACKEND=x11`, `CLUTTER_BACKEND=x11`, `QT_QPA_PLATFORM=xcb`, `SDL_VIDEODRIVER=x11`, `MOZ_ENABLE_WAYLAND=0`, `ELECTRON_OZONE_PLATFORM_HINT=x11`, stripped from an `env` prefix on an `Exec` line. The catalogue's `env` rows are where an application records that it needs X11 (`app.surf` sets `GDK_BACKEND=x11`), and such a row is also what makes a box's `x11 = auto` resolve to yes; see [Box profiles](#box-profiles) |
+| `X11_FORCING` | `GDK_BACKEND=x11`, `CLUTTER_BACKEND=x11`, `QT_QPA_PLATFORM=xcb`, `SDL_VIDEODRIVER=x11`, `MOZ_ENABLE_WAYLAND=0`, `ELECTRON_OZONE_PLATFORM_HINT=x11`, stripped from an `env` prefix on an `Exec` line. The catalogue's `env` rows are where an application that has a Wayland backend but must not use it records so (`app.surf` sets `GDK_BACKEND=x11`); see [Box profiles](#box-profiles) |
 
 Both `COMMANDS` and `ENTRIES` need the binary in the tree being read, as an installed pack has it.
 A store install copies only `usr/share/applications` out of the image, so a store
@@ -1104,7 +1105,7 @@ lets one manager serve both.
 | `init` | `yes`, `no` | `no` | `--init` on a development box. A pack box and a store box always run `kdos-boxinit` as their init |
 | `wayland` | `yes`, `no` | `yes` | No tagged socket in the box's private runtime directory, and an empty `WAYLAND_DISPLAY`. Not enforced on a development box, which shares the session's runtime directory |
 | `audio` | `yes`, `no` | `yes` | No PipeWire or PulseAudio socket linked into the private runtime directory. Not enforced on a development box |
-| `x11` | `auto`, `yes`, `no` | `auto` | Whether the box is handed the X11 display and the session's cookie. `auto` gives it to an application whose catalogue or pack `env` rows force an X11 backend, and to every development box. A box handed X11 is at most `tagged`. See below |
+| `x11` | `yes`, `no` | `yes` | Whether the box is handed the X11 display and the session's cookie. `yes` lets a program written for X11 alone (Tk, Java's AWT and Swing, Motif, FLTK, GTK 2, Xt) open its window; `no` withholds the display, and such a program finds none and exits while the box stays running. Any word other than a refusal reads as `yes`. A box handed X11 is at most `tagged`. See below |
 | `gpu` | `yes`, `no` | `yes` | With private devices, binds `/dev/dri` back into the box |
 | `render` | `auto`, `gpu`, `software` | `auto` | Which renderer the box's applications use. See [render](#render) |
 | `memory` | a size, such as `4G` | unlimited | `--memory` on both lanes; a cgroup limit for a pack box created in a login with a delegated cgroup subtree, and a victim preference for `kdos-oomd` everywhere. See [Memory and grants](#memory-and-grants) |

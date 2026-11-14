@@ -154,6 +154,14 @@ WizardPage {
             Accessible.name: i18nc("@info:whatsthis", "Applications: %1", text)
         }
         QQC2.Label {
+            Kirigami.FormData.label: i18nc("@label", "KDOS applications:")
+            Layout.fillWidth: true
+            wrapMode: Text.Wrap
+            text: !page.plan.groups || page.plan.groups.length === 0 ? i18n("None")
+                : page.plan.groups.join(", ") + " — " + i18n("downloaded during the install")
+            Accessible.name: i18nc("@info:whatsthis", "KDOS applications: %1", text)
+        }
+        QQC2.Label {
             Kirigami.FormData.label: i18nc("@label", "Box images:")
             text: page.plan.appbox ? i18n("Kept from this live session") : i18n("Not copied")
             Accessible.name: i18nc("@info:whatsthis", "Box images: %1", text)

@@ -1,26 +1,32 @@
 ## About
 
 `kdos-welcome` is the KDOS tour inside Plasma's Welcome Center: QML pages only, in the
-distribution-page folder `/usr/share/plasma/plasma-welcome/extra-pages`, and the
+distribution-page folder `/usr/share/plasma/plasma-welcome/extra-pages`, installed by a CMake
+project that installs files and builds nothing, and the
 `intro-customization.desktop` that puts the KDOS mark, one sentence and the "Plasma by KDE" credit
 on the first page. The pages are Accessibility (switches for the screen reader, reduced motion,
 sticky, slow, bounce and mouse keys and dwell click, the Fonts page for text size, the two
 high-contrast accents, and the zoom chords named), Look (the accents, light and dark, Phosphor mode,
 Night Light, reduced motion), Desk (the three desks, with undo), Your System, Software and Boxes,
-the Offline Library, Keys, Privacy and Network, and Help. Two more are not part of every tour: on
+the Offline Library, Keys, Privacy and Network, Help, Getting Started, and last Make It Yours,
+which installs groups of programs prebuilt. Two more are not part of every tour: on
 the live medium a page that keeps the session's changes on the stick, and a What's New page opened
 after an update.
 
 ## Flags
 
-- `"$PORT_SRC"/extra-pages/kdos/*.qml` — The pages' shared parts (the command runner, the accent
-  list, the swatches, the desk pictures). They go in a subfolder because Welcome Center loads every
-  file in `extra-pages` as a page and skips folders.
-- `"$PORT_SRC/extra-pages/kdos/qmldir"` — Makes the accent list a singleton, one object for every
-  page that shows swatches. A folder with a `qmldir` exposes only the types it names, so it lists
-  every file in the folder; a part added without a line there cannot be used by any page.
+- `-D BUILD_TESTING=OFF` — Build no tests. The test is QML (`tests/tst_groups.qml.in`, the Make
+  It Yours page's rules in `extra-pages/kdos/groups.js`), run by `qmltestrunner`;
+  `testing/plasmatest.sh` builds it in the development container, where Qt's test runner is.
 
 ## Notes
+
+**Layout.** The pages' shared parts (the command runner, the accent list, the swatches, the desk
+pictures, the groups page's rules) are in `extra-pages/kdos/`, because Welcome Center loads every
+file in `extra-pages` as a page and skips folders. Its `qmldir` makes the accent list a singleton,
+one object for every page that shows swatches. A folder with a `qmldir` exposes only the types it
+names, so it lists every QML file in the folder; a part added without a line there cannot be used
+by any page. `groups.js` is imported by its path and needs no line.
 
 **Commands.** A page may only run programs through Welcome Center's `Utils.runCommand`, which
 splits one string on spaces and starts the program directly, with no shell. `kdos/Run.qml` takes
@@ -31,7 +37,7 @@ otherwise arrive as different arguments. Every switch runs the command that owns
 Plasma watches, and `dbus-send` for the screen reader and KWin's effects, as KDE's own desktop
 files call them. A command that changes a setting is counted until it exits, and the page greys its
 controls meanwhile; a read is not counted, and a program that stays open (a settings page,
-Discover, the Help Center) is started with `launch`, which is not counted either, so the page stays
+Discover, the browser) is started with `launch`, which is not counted either, so the page stays
 usable while it is open and reports only a failure. A command that fails shows Welcome Center's
 own failure sentence in a message at the top of the page, cut by `Run.qml` to the sentence and the
 command's last line of output: Welcome Center's ends with all of the command's error output, which
@@ -57,11 +63,21 @@ own sentence for each of the two refusals `kdos phosphor status --json` names in
 (`session`, `gpu`), the same two the Look settings page shows, and shows the `reason` of any other
 refusal as the command words it.
 
+**Make It Yours.** `95-MakeItYours.qml` lists `kdos update groups --json` and installs the ticked
+groups one at a time through `pkexec /usr/libexec/kdos-discover/kdos-ports-helper install <id>`,
+the prebuilt helper of [kdos-discover](#port-kdos-discover), whose `kdos update install --prebuilt`
+takes a group id as well as a port name; its polkit grant, `io.kdos.ports.install`, is kept, so one
+password covers the queue. A group whose size the command gives as null is not offered: the size is
+null when the signed binhost index is not on the machine, or when a package of the group is not
+prebuilt, and a prebuilt install refuses both. The page has no root path to fetch the index, so
+with none it sends the person to Discover's Check for Updates and offers to look again.
+
 **Order.** Welcome Center puts distribution pages after its own. The Accessibility page is `00-`
 so that the [plasma-welcome](#port-plasma-welcome) patch that shows `00-` to `09-` pages straight
 after the welcome page puts it before anything else is asked: the second page at an installed
 first login, and the third on the live medium, where the live page comes before the welcome page.
-Without the patch it is the first KDOS page. No other page is numbered below `10-`.
+Without the patch it is the first KDOS page. No other page is numbered below `10-`. Make It Yours
+is `95-`, the last page of the tour.
 
 **Keys.** The Keys page shows, for each action, the chord KDOS teaches while it is bound and the
 first bound chord with a modifier otherwise, read with the `globalShortcutTexts` call that

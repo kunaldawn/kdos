@@ -36,8 +36,9 @@ nothing after [`switch_root`]{.idx} touches the container again; there is no `/e
 reads one. The live medium has no [encrypted root]{.idx} and never shows the prompt.
 
 Two other ports encrypt at a different level. [gocryptfs](#port-gocryptfs) encrypts a directory
-file by file, in user space through FUSE. [tpm2-tools](#port-tpm2-tools) and
-[tpm2-tss](#port-tpm2-tss) are installed, but nothing in the boot path uses them; see
+file by file, in user space through FUSE. [tpm2-tss](#port-tpm2-tss) is installed, and
+[tpm2-tools](#port-tpm2-tools) is not in the base (`sudo kdos update install tpm2-tools`; see
+[Installing software](updating.md#installing-software)); nothing in the boot path uses either; see
 [Known gaps](#known-gaps).
 
 ## Configuration
@@ -49,7 +50,7 @@ the EFI system [partition]{.idx}, and the initramfs reads both.
 `cryptdevice=` option naming the container beside the `root=` option naming the filesystem inside
 it, from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=2417-2435 pin=e0a09f9a5198 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=2537-2555 pin=e0a09f9a5198 -->
 
 The two UUIDs are different. `cryptdevice=UUID=<container>:kdosroot` is the LUKS container on the
 partition, and `root=UUID=<filesystem>` is the filesystem that appears only once the container is
@@ -61,7 +62,7 @@ and how to change a kernel option is on
 **The boot state**, `/boot/efi/EFI/kdos/bootstate`, records the container again as `crypt_a`, beside
 slot A's filesystem, from the same file:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=2693-2705 pin=d5c38affc180 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=2813-2825 pin=d5c38affc180 -->
 
 On the A/B layout both root slots are volumes of one LVM group inside the one container, so
 `crypt_b` names the same container as `crypt_a`, and one passphrase opens either slot. The
@@ -325,4 +326,4 @@ running `e2fsck -f` before you mount.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 400.* Previous: [399. Storage and removable media](storage-and-removable-media.md) · [Contents](../README.md) · Next: [401. LVM and RAID](lvm-and-raid.md)
+*Part XVI. System administration, chapter 402.* Previous: [401. Storage and removable media](storage-and-removable-media.md) · [Contents](../README.md) · Next: [403. LVM and RAID](lvm-and-raid.md)

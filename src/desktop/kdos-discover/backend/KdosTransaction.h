@@ -17,6 +17,10 @@
  * is not harmed by a later box create failing, and the next refresh shows the
  * machine as it is.
  *
+ * A PREVIEW STEP WAITS FOR AN ANSWER. Its dry run's output becomes the
+ * question Discover's proceed dialog asks; Proceed runs the next step and
+ * Cancel, or the dialog closed, ends the transaction with nothing run.
+ *
  * CANCEL ENDS THE RUNNING STEP'S WHOLE PROCESS GROUP. kdos-appbox runs podman
  * and podman runs apt; a signal to kdos-appbox alone would leave the build
  * going with nobody reading its output.
@@ -52,6 +56,7 @@ public:
     // when it was cancelled while it waited, and the queue moves on.
     bool start();
     void cancel() override;
+    void proceed() override;
 
 private:
     void runStep();
@@ -61,6 +66,7 @@ private:
     void readOutput();
     void readErrors();
     void updateProgress();
+    void ask();
 
     KdosBackend *m_backend;
     Plan m_plan;
@@ -70,6 +76,8 @@ private:
     QProcess *m_process = nullptr;
     QByteArray m_stdout;
     QStringList m_stderrTail;
+    QByteArray m_previewOut; // a Preview step's whole output
+    bool m_asking = false; // a Preview step's question is open
     bool m_cancelled = false;
     bool m_finished = false;
 };

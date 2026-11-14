@@ -25,7 +25,8 @@ build/
 ```
 
 Later phases and opt-in settings add more: `iso-build/` with the finished `kdos.iso`, `keys/`,
-`pkgstore/`, `image-ports/`, `kdos-base/`, `binhost/` and `binhost-key/`, and the `jobserver` FIFO
+`pkgstore/`, `image-ports/`, `kdos-base/`, `binhost/` and `binhost-key/`, the image stage's
+`image-upper/`, `image-work/`, `image-root/` and `image-stage.ok`, and the `jobserver` FIFO
 of a run given `--port-jobs` above 1. Other targets add their own: `kdos.qcow2` from `make run`,
 `fetch-home/` from `make fetch`, and `kfs/`, where `make book` renders this book. The full table,
 with every file and who writes it, is in
@@ -34,12 +35,15 @@ with every file and who writes it, is in
 ### fs: the root being built
 
 `build/fs` is the target tree, the root filesystem of the system being built. `10_bootstrap`
-creates it, every later phase installs into it, and the image phase turns it into the ISO's
-`system.sfs`. It is also the chroot every phase from `20_selfhost` on runs inside.
+creates it, every later phase installs into it, and the image phase makes the binhost from it and
+the ISO's `system.sfs` from a stage over it, trimmed to the base (see
+[The image stage](../15-image/017-stage.md)); under `KDOS_IMAGE=full` the ISO is made from
+`build/fs` itself. It is also the chroot every phase from `20_selfhost` on runs inside.
 
 It belongs to root on your machine and stays that way. When a build ends, `script/kdosbuild.sh`
-hands every other entry of `build/` back to your user, but not this one: changing the owner of a
-file clears its setuid bit and rewrites its owner, and the root's setuid programs and its
+hands every other entry of `build/` back to your user, but not this one, nor the image stage's
+`image-upper`, `image-work` and `image-root`, which are layers of the same root: changing the owner
+of a file clears its setuid bit and rewrites its owner, and the root's setuid programs and its
 `/etc/shadow` must ship exactly as the packages installed them. Reading or removing `build/fs`
 therefore needs root, or a container such as the one in
 [A shell in the container](host-container.md#a-shell-in-the-container).
@@ -160,7 +164,7 @@ a killed run.
 
 Two targets empty `build/`, and they differ in what they keep:
 
-<!-- kfs:include Makefile lines=247-271 pin=88231f703ea7 -->
+<!-- kfs:include Makefile lines=272-296 pin=88231f703ea7 -->
 
 `make cleanbuild` keeps the snapshots, the compiler cache and the package store, which stay valid
 for the next build. `make clean` removes those too. Both keep `build/keys` and
@@ -170,10 +174,10 @@ holds the old `kdos-binhost.pub`.
 
 Both run on your machine as your user, and `build/fs` belongs to root, so neither can remove it:
 the `find` fails on it, the target ignores the failure, and the old root is still there for the
-next build to run on. Remove it from a container:
+next build to run on. The image stage's directories are root's too. Remove them from a container:
 
 ```bash
-docker run --rm -v "$PWD/build:/b" os-dev rm -rf /b/fs
+docker run --rm -v "$PWD/build:/b" os-dev rm -rf /b/fs /b/image-upper /b/image-work /b/image-root
 ```
 
 ## Starting from nothing

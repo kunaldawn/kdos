@@ -723,6 +723,25 @@ drivers request: `aic100` and `aic200` (`qaic`), and `qdu100`, the `sdx*` modems
 Spectrum revision than the recipe keeps finds no file and leaves the switch on the firmware in its
 flash.
 
+### The installation medium carries four vendors' firmware
+
+The medium has Intel's, AMD's, MediaTek's and Realtek's firmware and SOF; NVIDIA's, Qualcomm's and
+Atheros', Broadcom's and the rest (`firmware-misc`, which holds the Cirrus Logic and TI amplifiers
+of many laptops' speakers) are prebuilt packages in the release's binary host. A live session on
+such hardware has, until `sudo kdos firmware sync` has run, no Wi-Fi on a Qualcomm or Broadcom
+card, software rendering on a Turing or later NVIDIA GPU, and silent speakers behind those
+amplifiers, and the command needs a network to fetch the packages: Ethernet, a USB-tethered phone,
+or a supported Wi-Fi card. The live session's notice names the port; the installer runs the
+command into the new disk when it has a network.
+
+`kdos firmware sync` decides from each device's driver's `firmware:` list, so a driver stands for
+its whole vendor port, and from the kernel log, which `kernel.dmesg_restrict` keeps from a user:
+the session's notice, which runs the dry run as the person logged in, sees only the drivers'
+lists. A chip whose driver declares no firmware and whose load failure only the kernel log records
+(a Bluetooth adapter behind `btusb`) is found by `sudo kdos firmware sync --dry-run` and not by the
+notice. Neither has been run on hardware; the fixture under `testing/fixtures/firmware` and one
+x86 desktop are what it has been measured on.
+
 ### `btop`'s GPU panel is empty on Intel graphics unless btop runs as root
 
 It reads the i915 performance counters with `perf_event_open`, a system-wide event that the
@@ -861,6 +880,13 @@ root, with its compiler, headers and libraries. When one run upgrades a library 
 links it, the package is compiled against the running root's older copy, not the one just
 installed into `DIR`. An A/B apply does not have this problem, because it builds inside a chroot
 of the slot. See [Updating a machine](../03-architecture/packaging.md#updating-a-machine).
+
+### A source install from Discover shows only `kpkg`'s lines as progress
+
+A port built on the machine, with every dependency `build-deps = source` builds alongside it, can
+compile for hours. Discover's progress for it is the lines `kpkg` prints, with no estimate of the
+time left and no count of the packages still to build, so a long build and a stuck one look the
+same until it ends.
 
 ### The update path has not been run against a published tree
 
@@ -1202,6 +1228,55 @@ see [Testing](../05-developer/testing.md).
 | `zint` | The GS1 Syntax Engine | libgs1encoders | one feature; zint checks GS1 data with its own rules |
 
 ## Building
+
+### The base's run-time needs are proved only for packages installed since they were recorded
+
+`kpkgadd` records what each package's files need at run time (sonames, `#!` interpreters, QML and
+Python imports, the recipe's `runtime =`), and `087_gates.sh` runs `imageset.py --verify`, which
+fails the image when a kept package's edge is met only by a package the trim dropped (see
+[Run-time needs](../03-architecture/packaging.md#run-time-needs)). A package installed before the
+records existed has none and is counted as unmeasured, not failed, so the gate proves nothing about
+a tree until its packages are installed again; every package of the current build tree is
+unmeasured. Measured with `kpkg needs --scan` over that tree, the base's QML and Python imports are
+all met inside it, and four edges are not: `libisoburn`'s `xorriso-tcltk` runs `#!/usr/bin/wish`
+and Tk is not in the base (linkcheck fails the same script), and Mesa's `libclang-cpp` and
+`kdeplasma-addons`' two Qt WebEngine libraries are linked by packages built from older recipes,
+which the current recipes do not link. What the records cannot see: QML compiled into a program's resources, which
+is most of an application's; a library opened with `dlopen()` or a plugin found by directory that
+no recipe names in `runtime =`; a Python import inside a submodule, behind `try:` or of a module
+installed after the importer; and a module a host program registers in-process, such as KWin's
+`org.kde.kwin`, which the gate counts as met by nothing rather than failing.
+
+### The base ISO fits one release asset by about 30 MiB, and no boot is timed per codec
+
+`110_iso.sh` fails a base ISO over 1,900 MiB. The base's run-time files squash to 1,781 MiB with
+the default zstd:19, an ISO of about 1,870 MiB (see
+[The codec](../05-developer/build-system.md#the-codec)); that is measured on a copy of the files,
+not on a built ISO, and a recipe that grows by 30 MiB of compressed files stops a release build
+at the gate. The ledger `088_ledger.sh` writes names the largest packages and why each is there,
+`KDOS_ISO_COMP=xz-bcj` is about 100 MiB smaller, and `KDOS_ISO_GATE=0` builds the same image as
+a developer one. The codec was chosen from decompression measured on one core, not from a boot
+to Plasma timed under QEMU, so whether xz-bcj boots within 10% of zstd is not known.
+
+### A KDOS settings page's Help button needs the Help Center
+
+The Help button of a KDOS page in System Settings opens `help:/kdos/...`, the address its
+`X-DocPath` names, and the desktop hands a `help:` address to the Help Center, which the
+installation medium does not carry because it pulls in Qt WebEngine. Until
+`kdos update install khelpcenter` (or the `kde-system` group) adds it, `kdos-doc <page>` opens the
+same page in the browser. See [Help](../04-programs/kdos-settings.md#help).
+
+### The image's run-time facets have not been through a built ISO
+
+`017_stage.sh` strips every package of the base to its run-time
+[facet](../03-architecture/packaging.md#facets), and the rules are measured on a full build tree
+(949 MB of the base's 5.46 GB), but no ISO has yet been built and booted with them: `kpkg facets
+--strip` and an install under `FACETS=run` have run against the self-test's fixtures only. Two
+things the gates cannot see would show there. A program that `dlopen()`s an unversioned
+`lib<x>.so` finds nothing once the development link is gone; no program in the base links one by
+`DT_NEEDED`. And what an image update does with a package the machine keeps whole, installing it
+whole again in the slot after the world step, has been planned by the self-test's dry run only:
+no image update has yet run it into a slot.
 
 ### Build times and snapshot sizes are measured for part of the build only
 

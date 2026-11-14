@@ -249,13 +249,41 @@ static int va_to_off(int fd, uint64_t phoff, int phnum, uint64_t va,
 	return -1;
 }
 
-char **kp_store_needed(const char *path)
+/* Every string a dynamic tag of kind `tag` names, in tag order. */
+static char **dyn_strings(const unsigned char *dyn, uint64_t dynsz,
+			  const char *str, uint64_t strsz, uint64_t want)
 {
+	int n = 0;
+	for (uint64_t o = 0; o + 16 <= dynsz; o += 16) {
+		uint64_t tag = u64(dyn + o);
+		if (tag == 0)
+			break;
+		if (tag == want)
+			n++;
+	}
+	char **v = kb_calloc((size_t)n + 1, sizeof(*v));
+	int k = 0;
+	for (uint64_t o = 0; o + 16 <= dynsz && k < n; o += 16) {
+		uint64_t tag = u64(dyn + o), val = u64(dyn + o + 8);
+		if (tag == 0)
+			break;
+		if (tag == want && val < strsz)
+			v[k++] = kb_strdup(str + val);
+	}
+	v[k] = NULL;
+	return v;
+}
+
+int kp_elf_dynamic(const char *path, char ***needed, char ***search)
+{
+	*needed = NULL;
+	if (search)
+		*search = NULL;
 	int fd = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
 	if (fd < 0)
-		return NULL;
+		return -1;
 	unsigned char eh[64];
-	char **v = NULL;
+	int rc = -1;
 	/* ELF, 64-bit, little-endian; anything else links nothing we key. */
 	if (rd(fd, eh, sizeof(eh), 0) != 0 || memcmp(eh, "\177ELF", 4) ||
 	    eh[4] != 2 || eh[5] != 1 || u16(eh + 54) != 56)
@@ -283,7 +311,6 @@ char **kp_store_needed(const char *path)
 		goto out;
 	}
 	uint64_t strtab = 0, strsz = 0;
-	int nneed = 0;
 	for (uint64_t o = 0; o + 16 <= dynsz; o += 16) {
 		uint64_t tag = u64(dyn + o), val = u64(dyn + o + 8);
 		if (tag == 0)
@@ -292,11 +319,9 @@ char **kp_store_needed(const char *path)
 			strtab = val;
 		else if (tag == 10)
 			strsz = val;
-		else if (tag == 1)
-			nneed++;
 	}
 	uint64_t stroff;
-	if (!nneed || !strtab || !strsz || strsz > (16u << 20) ||
+	if (!strtab || !strsz || strsz > (16u << 20) ||
 	    va_to_off(fd, phoff, phnum, strtab, &stroff) != 0) {
 		free(dyn);
 		goto out;
@@ -308,20 +333,35 @@ char **kp_store_needed(const char *path)
 		goto out;
 	}
 	str[strsz] = 0;
-	v = kb_calloc((size_t)nneed + 1, sizeof(*v));
-	int k = 0;
-	for (uint64_t o = 0; o + 16 <= dynsz && k < nneed; o += 16) {
-		uint64_t tag = u64(dyn + o), val = u64(dyn + o + 8);
-		if (tag == 0)
-			break;
-		if (tag == 1 && val < strsz)
-			v[k++] = kb_strdup(str + val);
+	*needed = dyn_strings(dyn, dynsz, str, strsz, 1);	/* DT_NEEDED */
+	if (search) {
+		/* DT_RUNPATH (29) when there is one, else DT_RPATH (15): a
+		 * RUNPATH makes musl's loader ignore the RPATH. Each entry is
+		 * one colon-separated list. */
+		char **rp = dyn_strings(dyn, dynsz, str, strsz, 29);
+		if (!rp[0]) {
+			kb_strv_free(rp);
+			rp = dyn_strings(dyn, dynsz, str, strsz, 15);
+		}
+		*search = rp;
 	}
-	v[k] = NULL;
+	rc = 0;
 	free(str);
 	free(dyn);
 out:
 	close(fd);
+	return rc;
+}
+
+char **kp_store_needed(const char *path)
+{
+	char **v = NULL;
+	if (kp_elf_dynamic(path, &v, NULL) != 0)
+		return NULL;
+	if (!v[0]) {
+		kb_strv_free(v);
+		return NULL;
+	}
 	return v;
 }
 

@@ -117,7 +117,8 @@ recipe's helpers (any key that is not on kpkg's list) are evaluated, by bash's o
 expansion, which is the subset of shell the recipes are written in, so `$name`, `${version%.*}`
 and a helper declared above `source` all expand. A repeated `source` line adds to the list. Every
 other key — `sha256`, `description`, `homepage`, `depends`, `pypackages`, `license`, `group`,
-`secdb`, `replaces`, `bench`, `bench_setup`, `pyrequirements`, `pyruntime` and `watch` — is free
+`secdb`, `replaces`, `facet_dev`, `runtime`, `bench`, `bench_setup`, `pyrequirements`, `pyruntime` and
+`watch` — is free
 text and is skipped, never evaluated. A helper is still evaluated, so a backtick or `$(` in one
 runs as a command when the recipe is read.
 
@@ -157,7 +158,7 @@ and the readline and bash steps delete their HTML manuals. The image phase remov
 manual that is still unowned (see
 [Unowned documentation and catalogues](../15-image/020-cleanup.md#unowned-documentation-and-catalogues)),
 and stops on any unowned file left under `/usr/share/locale`, `man`, `doc` or `info` (see
-[The three checks](../15-image/087-gates.md#the-three-checks)).
+[The four checks](../15-image/087-gates.md#the-four-checks)).
 
 ## See also
 

@@ -3,6 +3,11 @@
 `kde-plasma` is a meta port: no source, a `build.sh` that installs nothing, and a `depends` line
 that is the Plasma session. `kpkg install kde-plasma` on an installed machine brings the session in
 from the medium's package store; on the image every port it names is already built by its phase.
+The installation medium carries the session without this meta: `ports/base` names its list port by
+port, leaving out `plasma-workspace-wallpapers`, `oxygen`, the Chinese, Japanese and Korean input
+engines and `fcitx5-gtk`, which are groups (see
+[The base image](../../../../docs/kdos/03-architecture/packaging.md#the-base-image)), so
+`kpkg install kde-plasma` on an installed machine adds those.
 
 ## Notes
 

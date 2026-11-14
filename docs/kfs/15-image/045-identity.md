@@ -11,7 +11,7 @@ Settings → **About this System** shows the build beside the version, from
 
 The `Makefile` works them out from your clone when it starts the build container:
 
-<!-- kfs:include Makefile lines=181-184 pin=91e0519d3113 -->
+<!-- kfs:include Makefile lines=202-205 pin=91e0519d3113 -->
 
 `KDOS_GIT_COMMIT` is the short hash of `HEAD`, `KDOS_GIT_DIRTY` is `1` when `git status` shows any
 change, `KDOS_GIT_DATE` is the commit date as `YYYY-MM-DD`, and `KDOS_GIT_TIME` the commit time in
@@ -66,4 +66,4 @@ installed system carries the stamp of the medium it was installed from.
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 369.* Previous: [368. Sweeping orphaned packages](040-orphans.md) · [Contents](../README.md) · Next: [370. Seeding the theme](050-theme.md)
+*Part XV. The image, chapter 370.* Previous: [369. Sweeping orphaned packages](040-orphans.md) · [Contents](../README.md) · Next: [371. Seeding the theme](050-theme.md)

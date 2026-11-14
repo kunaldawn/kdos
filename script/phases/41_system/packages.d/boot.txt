@@ -30,10 +30,22 @@ limine
 # i915 refuse to load without GuC. You fall through to simpledrm on the EFI
 # framebuffer: a picture, no EGL, no compositor.
 #
-# Upstream's whole tree, installed by its own copy-firmware.sh.
+# Upstream's whole tree, installed by its own copy-firmware.sh and split by
+# vendor: each firmware-* port builds the same tarball and keeps its share,
+# firmware-map records which port ships each file for `kdos firmware sync`,
+# and the linux-firmware meta is all of them.
+firmware-intel
+firmware-amd
+firmware-nvidia
+firmware-realtek
+firmware-mediatek
+firmware-broadcom
+firmware-qualcomm
+firmware-misc
+firmware-map
 linux-firmware
 
-# CPU microcode. AMD's blobs come with linux-firmware; Intel ships its own tree
+# CPU microcode. AMD's blobs come with firmware-amd; Intel ships its own tree
 # and this is the whole of it, no per-family curation —
 # script/phases/70_image/090_initramfs.sh turns both into the uncompressed cpio
 # the early loader scans for.

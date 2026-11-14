@@ -1512,14 +1512,45 @@ static Page page_system = {
  * AND THE PAGE SAYS HOW THEY WILL ARRIVE: recorded, and offered by the first
  * login. Nothing is built during the install (kinstall-core.h says why). A
  * person must not discover at first boot that nothing was installed.
+ *
+ * THE NATIVE GROUPS COME FIRST, in the same list: sets of ports the
+ * release's binhost holds prebuilt (/ports/groups), downloaded into the new
+ * system during the install when the network answers, recorded for `kdos
+ * update install --pending` when it does not. None is ticked by default
+ * but the language group the keyboard or the time zone points at, and the
+ * page says which choice ticked it.
  * ════════════════════════════════════════════════════════════════════════ */
 
 static KtuiList applist;
+
+static void native_row(int idx, int x, int y, int w, int selected, int focus)
+{
+	const KiNative *g = &ki_native[idx];
+	int fg, bg;
+
+	ktui_sel_slots(selected, focus, KT_BG, &fg, &bg);
+	char n[24];
+	int szw = 10, nw = 7;
+	int descw = w - 4 - szw - nw;
+
+	snprintf(n, sizeof(n), "%d", g->nports);
+	ktui_draw_text(x + 1, y, 2, g->chosen ? ktui_glyph[KT_G_FULL] : " ",
+		       selected ? fg : KT_ACCENT, bg, 0);
+	ktui_draw_text(x + 4, y, descw, g->title, fg, bg, 0);
+	ktui_draw_text(x + 4 + descw, y, nw, n, ktui_sel_dim(selected, focus), bg, 0);
+	ktui_draw_text(x + 4 + descw + nw, y, szw, "native",
+		       ktui_sel_dim(selected, focus), bg, 0);
+}
 
 static void app_row(int idx, int x, int y, int w, int selected, int focus,
 		    void *u)
 {
 	(void)u;
+	if (idx < ki_nnative) {
+		native_row(idx, x, y, w, selected, focus);
+		return;
+	}
+	idx -= ki_nnative;
 	const KiGroup *g = &ki_group[idx];
 	int fg, bg;
 
@@ -1554,26 +1585,23 @@ static void apps_draw(KRect b)
 	ktui_section(b.x, y, b.w, "APPLICATIONS");
 	y++;
 
-	if (!ki_apps_present) {
+	int nboxed = ki_apps_present ? ki_ngroup : 0;
+	if (!ki_nnative && !nboxed) {
 		y += ktui_para(b.x, y, b.w,
-			  "This medium carries no application catalogue, so "
+			  "This medium names no application groups, so "
 			  "nothing can be chosen here. Applications are "
-			  "installed later with the store.", KT_MID);
-		return;
-	}
-	if (!ki_ngroup) {
-		y += ktui_para(b.x, y, b.w,
-			  "The catalogue has no groups in it.", KT_WARN);
+			  "installed later from Discover.", KT_MID);
 		return;
 	}
 
 	y += ktui_para(b.x, y, b.w,
-		  "An application is built here by podman, out of the "
-		  "catalogue. Space toggles a group; the runtimes under them "
-		  "come with whatever needs one.", KT_MID);
+		  "A native group is downloaded prebuilt into the new system "
+		  "during the install, when the network answers. A boxed "
+		  "group is built by podman from the catalogue after the "
+		  "first login. Space toggles a group.", KT_MID);
 	y++;
 
-	int lh = b.y + b.h - y - 4;
+	int lh = b.y + b.h - y - 5;
 	if (lh < 3)
 		lh = 3;
 	/*
@@ -1581,11 +1609,15 @@ static void apps_draw(KRect b)
 	 * Space and a CLICK all come back through it, so the row answers the
 	 * pointer — which a `case ' '` in the page's event hook would not.
 	 */
-	if (ktui_list(krect(b.x, y, b.w, lh), &applist, ki_ngroup, app_row,
-		      NULL, ktui_id())) {
+	if (ktui_list(krect(b.x, y, b.w, lh), &applist, ki_nnative + nboxed,
+		      app_row, NULL, ktui_id())) {
 		int i = applist.sel;
 
-		if (i >= 0 && i < ki_ngroup) {
+		if (i >= 0 && i < ki_nnative) {
+			ki_native[i].chosen = !ki_native[i].chosen;
+			ki_groups_collect();
+		} else if (i >= ki_nnative && i < ki_nnative + nboxed) {
+			i -= ki_nnative;
 			ki_group[i].chosen = !ki_group[i].chosen;
 			ki_apps_collect();
 		}
@@ -1606,14 +1638,45 @@ static void apps_draw(KRect b)
 	snprintf(v, sizeof(v), "%s in %d group%s (an estimate)",
 		 kb_human_size(ki_apps_bytes()),
 		 nchosen, nchosen == 1 ? "" : "s");
-	ktui_kv(b.x, y + 1, b.w, "selected", v, KT_TEXT);
+	ktui_kv(b.x, y + 1, b.w, "boxed", v, KT_TEXT);
 	ktui_kv(b.x, y + 2, b.w, "how", ROUTE[ki_apps_route()],
 		ki_apps_route() == APPS_PENDING ? KT_WARN : KT_TEXT);
+	int nn = ki_groups_chosen();
+	if (nn)
+		snprintf(v, sizeof(v), "%d group%s, downloaded during the install",
+			 nn, nn == 1 ? "" : "s");
+	else
+		kb_strlcpy(v, "none", sizeof(v));
+	ktui_kv(b.x, y + 3, b.w, "native", v, KT_TEXT);
+
+	/* WHY A LANGUAGE GROUP IS TICKED, since nobody ticked it: the
+	 * keyboard or the time zone chosen earlier points at it. */
+	v[0] = 0;
+	for (int i = 0; i < ki_nnative; i++) {
+		const char *part[] = {
+			v[0] ? "; " : "", ki_native[i].id,
+			ki_native[i].chosen ? " ticked for " : " suggested for ",
+			ki_native[i].why,
+		};
+
+		if (!ki_native[i].why[0])
+			continue;
+		for (size_t k = 0; k < sizeof(part) / sizeof(part[0]); k++)
+			strncat(v, part[k], sizeof(v) - strlen(v) - 1);
+	}
+	if (v[0])
+		ktui_kv(b.x, y + 4, b.w, "language", v, KT_TEXT);
+}
+
+static void apps_enter(void)
+{
+	ki_apps_enter();
+	ki_groups_enter();
 }
 
 static Page page_apps = {
-	"apps", "Applications", "which applications this machine builds",
-	ki_apps_enter, apps_draw, NULL, NULL, 0
+	"apps", "Applications", "native groups and boxed applications",
+	apps_enter, apps_draw, NULL, NULL, 0
 };
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -1672,6 +1735,8 @@ static void summary_draw(KRect b)
 		ktui_kv(b.x, y++, b.w, "applications", v,
 			ki_apps_route() == APPS_PENDING ? KT_WARN : KT_TEXT);
 	}
+	if (ki_groups_chosen())
+		ktui_kv(b.x, y++, b.w, "native groups", cfg.groups, KT_TEXT);
 
 	char svc[160] = "";
 	for (int i = 0; i < ki_nservices; i++) {

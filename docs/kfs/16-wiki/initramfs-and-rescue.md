@@ -27,7 +27,7 @@ What it carries comes from these ports:
 | [mdadm](#port-mdadm), [cryptsetup](#port-cryptsetup), [lvm2](#port-lvm2), [thin-provisioning-tools](#port-thin-provisioning-tools) | RAID assembly, the LUKS unlock and volume-group activation, each when installed |
 | [kdos-tools](#port-kdos-tools) | `kdos-bootctl`, for [A/B slot]{.idx term="A/B slots"} selection |
 | [kdos-splash](#port-kdos-splash) | The boot splash |
-| [intel-ucode](#port-intel-ucode), [linux-firmware](#port-linux-firmware) | The [microcode]{.idx}, in a separate archive in front; see [Microcode and firmware](microcode-and-firmware.md) |
+| [intel-ucode](#port-intel-ucode), [firmware-amd](#port-firmware-amd) | The [microcode]{.idx}, in a separate archive in front; see [Microcode and firmware](microcode-and-firmware.md) |
 
 On an installed machine, the [linux](#port-linux) package's postinstall builds a second file for
 every kernel it installs, [`/boot/initramfs-kdos.cpio.gz`]{.idx}: the image's initramfs with one more
@@ -195,4 +195,4 @@ The stage the splash stopped on narrows it down; see
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 394.* Previous: [393. Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md) · [Contents](../README.md) · Next: [395. Microcode and firmware](microcode-and-firmware.md)
+*Part XVI. System administration, chapter 396.* Previous: [395. Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md) · [Contents](../README.md) · Next: [397. Microcode and firmware](microcode-and-firmware.md)

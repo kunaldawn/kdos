@@ -35,6 +35,9 @@ Other ports that copy data:
   [ddrescue](#port-ddrescue) images a failing disk; see [Disk health](disk-health.md).
 - [deja-dup](#port-deja-dup), Déjà Dup, is GNOME's graphical backup program over restic.
 
+Of these, only rsync is in the base the ISO carries; `sudo kdos update install <port>` adds the
+others (see [Installing software](updating.md#installing-software)).
+
 ## Configuration
 
 **`~/.config/kdos/backup.conf`**, copied into each new home from
@@ -280,4 +283,4 @@ See [Timers](timers.md).
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 403.* Previous: [402. Disk health](disk-health.md) · [Contents](../README.md) · Next: [404. sudo, PAM and polkit](sudo-pam-polkit.md)
+*Part XVI. System administration, chapter 405.* Previous: [404. Disk health](disk-health.md) · [Contents](../README.md) · Next: [406. sudo, PAM and polkit](sudo-pam-polkit.md)

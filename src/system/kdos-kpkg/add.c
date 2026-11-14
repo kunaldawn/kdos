@@ -43,6 +43,14 @@
  *    Two installs deciding conflicts against one table while the other is
  *    rewriting it each place a file the other then claims. A postinstall hook
  *    runs inside the lock, so a hook that calls kpkg never returns.
+ *  - The run-time needs (`<db>/.needs/<name>`, kpkg.h) are measured from the
+ *    installed files after the hook, like the file record, and every
+ *    install replaces them: a record left from the previous version names
+ *    what that version's files needed.
+ *  - Under FACETS=run the development and documentation files are taken
+ *    out of the stage and the manifest before the conflict scan (facets.c),
+ *    so a file left out is never placed, scanned, recorded or swept; what
+ *    was left out goes to `<db>/.facets/<name>`.
  *  - Nothing cosmetic may abort the install. A path canonicalisation done only
  *    to pretty-print a destination in a log line fails on a symlink loop, and
  *    an install that dies there dies for a reason that never mattered.
@@ -570,6 +578,38 @@ int add_main(int argc, char **argv)
 	}
 	free(hook);
 
+	/* THE FACETS (facets.c), before anything is scanned or placed. Under
+	 * FACETS=run a first install, and an upgrade of a package that has a
+	 * facet record, leave the development and documentation files out of
+	 * the stage and the manifest; an upgrade of a package installed whole
+	 * stays whole, which is what keeps a `kdos update install --dev`
+	 * restore across updates. Every whole install drops the record. */
+	int strip = 0;
+	if (c.facets_run) {
+		char *was = upgrade ? kp_installed_facets(&c, name, NULL) : NULL;
+		strip = !upgrade || was;
+		free(was);
+	}
+	KbBuf left = {0};
+	kb_buf_str(&left, "");
+	if (strip) {
+		char extra[1024];
+		kp_facets_extra(&c, name, extra, sizeof(extra));
+		KpFacetSplit fs;
+		kp_facets_split(tmpl, m, extra, &fs);
+		if (fs.nfiles)
+			kp_msg("Leaving out %d development and documentation "
+			       "file%s (FACETS=run)", fs.nfiles,
+			       fs.nfiles == 1 ? "" : "s");
+		kp_facets_remove(tmpl, fs.gone.p, NULL);
+		free(m);
+		m = fs.keep.p;
+		mn = fs.keep.n;
+		fs.keep.p = NULL;
+		kb_buf_add(&left, fs.left.p, fs.left.n);
+		kp_facets_split_free(&fs);
+	}
+
 	KbBuf dirs = {0}, files = {0};
 	walk(tmpl, "", &dirs, &files);
 
@@ -767,6 +807,12 @@ int add_main(int argc, char **argv)
 	char pkgsha[65];
 	if (wrote == 0 && kb_sha256_file(pkgfile, pkgsha) == 0)
 		kp_record_pkg_sha(&c, name, pkgsha);
+	if (wrote == 0 && !strip)
+		kp_forget_facets(&c, name);
+	else if (wrote == 0 && kp_record_facets(&c, name, left.p, left.n) != 0)
+		kp_msg("Warning: no facet record written for %s; it upgrades "
+		       "whole", name);
+	kb_buf_free(&left);
 
 	/* The new owner's entry is written FIRST and the old owners are edited
 	 * after: an interruption in between leaves a path claimed twice, which
@@ -826,6 +872,9 @@ int add_main(int argc, char **argv)
 			       "`kpkg check` can test only that its files "
 			       "exist", name);
 		kb_buf_free(&rec);
+		/* The run-time needs, read from the files as the hook left
+		 * them, beside the file record and replaced with it. */
+		kp_needs_note(&c, name);
 	}
 
 	kp_triggers_run(&trig, root);

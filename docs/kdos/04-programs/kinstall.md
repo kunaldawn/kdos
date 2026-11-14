@@ -38,7 +38,7 @@ whatever partition table is saved in it; a dry run does not open it. Everything 
 Summary page's install button, the point of no return; see [Nothing is written before the
 summary](#nothing-is-written-before-the-summary).
 
-The install itself is twelve steps run in a forked child process. The child reports over a pipe,
+The install itself is thirteen steps run in a forked child process. The child reports over a pipe,
 one line per event, each line starting with a letter that says what it is: a step started or
 skipped, progress, a note, a log line, a warning, a failure, or done. The terminal wizard draws the
 screen from those lines, `--events json` turns each into one JSON line on standard output, and both
@@ -101,7 +101,7 @@ kinstall [options]
 | `--dry-run` | Log every install command and execute none. The header shows **DRY RUN**, and the Layout page's **Open cfdisk** is disabled: see [Trying it without installing](#trying-it-without-installing) |
 | `--dump probe` | Print what the installer sees on this machine, and exit |
 | `--dump plan` | Print the steps these answers would run, and exit |
-| `--dump apps` | Print the application groups, ticked as the answers tick them, and the route they would take, and exit |
+| `--dump apps` | Print the boxed application groups and the native groups, ticked as the answers tick them, and the route the boxed ones would take, and exit |
 | `--dump look` | Print the accents and desks the answers may name, and exit |
 | `--json` | Print `--dump` as JSON instead of text |
 | `--theme NAME` | The accent: `phosphor`, `amber`, `ice`, `bone`, `norton`, `borland`, `perfect` or `paper`. The default is `bone`. The wizard draws itself in it, and the install gives it to the installed machine; see the `theme` key under [Answer files](#answer-files) |
@@ -180,7 +180,7 @@ are in [The graphical installer](#the-graphical-installer).
 | 5 | `layout` | Layout | The plan, then the partitions, filesystem, swap, LVM and LUKS2 encryption |
 | 6 | `accounts` | Accounts | Hostname; then your account now, or an OEM install that leaves it to the first person to start the machine; the login |
 | 7 | `system` | System | Accent, desk, the boxed-application container library, services |
-| 8 | `apps` | Applications | Which application groups this machine builds |
+| 8 | `apps` | Applications | Which native groups the install downloads, and which boxed application groups this machine builds |
 | 9 | `summary` | Summary | Nothing; the point of no return |
 | 10 | `install` | Install | Nothing; shows progress |
 | 11 | `done` | Done | Reboot |
@@ -223,8 +223,9 @@ the install size plus 768 MiB, by `ki_disk_check()`, the rule the window and eve
 (see [Fallbacks, and how an unattended run ends](#fallbacks-and-how-an-unattended-run-ends)); a disk
 it would refuse is drawn in the warning colour in the list. Its **install needs** line is drawn in the error colour exactly when the
 selected disk is that small, so a disk drawn in the plain colour passes this check. The install size is what the live root holds, since
-every package is on the medium, less the container library when **Install the alien app library**
-is unticked. That box is on the System page, after this one, so unticking it lowers the requirement
+the copy carries the live system whole, less the container library when **Install the alien app library**
+is unticked; a native group the Applications page ticks is downloaded into the target and is not
+counted. That box is on the System page, after this one, so unticking it lowers the requirement
 only when the Disk page is passed again.
 
 **Layout.** Offers the three plans:
@@ -298,7 +299,12 @@ installer in it. The desk, the panel layout the first login lays out: `kdos` (th
 container storage, with its size) is ticked by default. Then the five services of [the service
 table](#answer-files), each a checkbox.
 
-**Applications.** The application groups; see [The applications step](#the-applications-step).
+**Applications.** One list: the native groups first, each marked `native` with its number of
+ports, then the catalogue's boxed groups. Under it, `boxed` is the boxed selection and its
+estimated size, `how` the route the boxed groups take, `native` how many native groups are
+ticked, downloaded during the install, and `language`, when the keyboard or the time zone points at
+a language group, which one and why (`lang-ja ticked for the Japanese keyboard`). See [The
+applications step](#the-applications-step) and [Native groups](#native-groups).
 
 **Summary.** Every answer on one screen, above a line reading "EVERYTHING ABOVE THIS LINE IS STILL
 REVERSIBLE". **Next** is refused here ("press BEGIN INSTALL to start — Next does not"): the install
@@ -326,7 +332,7 @@ ends](#fallbacks-and-how-an-unattended-run-ends)).
 
 ## The install steps
 
-The install is twelve steps, run in order in a child process (see [The install runs in a child
+The install is thirteen steps, run in order in a child process (see [The install runs in a child
 process](#the-install-runs-in-a-child-process)). A step that does not apply is marked skipped
 rather than run.
 
@@ -337,13 +343,14 @@ rather than run.
 | 3 | Format | Encrypts and creates the volume group and its volumes if asked, then makes the filesystems | — |
 | 4 | Mount | Mounts the root at `/mnt/kinstall`, the ESP at `/mnt/kinstall/boot/efi`, and on the A/B layout the shared home and the pack store | — |
 | 5 | Copy system | Copies the live tree with `rsync`, without the live session | — |
-| 6 | Packs | Records the chosen applications for the first login | No application catalogue, or nothing chosen |
-| 7 | Configure | `fstab`, hostname, time zone, keyboard, login screen, services, serial console, swap file | — |
-| 8 | Accounts | Users, passwords, groups, the new account's home | — |
-| 9 | Theme | Writes the accent and the desk the first login takes, the splash's and console's accent, and the login screen's look | — |
-| 10 | Slot B | Copies slot A, as it now stands, into the second root | The machine has one root |
-| 11 | Bootloader | Limine on the ESP, kernel and initramfs for each slot, the menu, the BIOS boot code ([Both firmwares](#both-firmwares)), the NVRAM entry | — |
-| 12 | Finish | Flushes and unmounts | — |
+| 6 | Packs | Installs the chosen native groups into the target, and records the chosen boxed applications for the first login | No native group chosen, and no application catalogue or no boxed group chosen |
+| 7 | Firmware | Installs the firmware this machine's devices need and the medium does not carry, with `kdos firmware sync --root /mnt/kinstall` ([The firmware step](#the-firmware-step)) | — |
+| 8 | Configure | `fstab`, hostname, time zone, keyboard, login screen, services, serial console, swap file | — |
+| 9 | Accounts | Users, passwords, groups, the new account's home | — |
+| 10 | Theme | Writes the accent and the desk the first login takes, the splash's and console's accent, and the login screen's look | — |
+| 11 | Slot B | Copies slot A, as it now stands, into the second root | The machine has one root |
+| 12 | Bootloader | Limine on the ESP, kernel and initramfs for each slot, the menu, the BIOS boot code ([Both firmwares](#both-firmwares)), the NVRAM entry | — |
+| 13 | Finish | Flushes and unmounts | — |
 
 **Prepare** fails when no disk is chosen, the answers check refuses the answers, the disk has gone,
 the installer is not root, the target check refuses the target (both checks are in [Fallbacks, and
@@ -530,7 +537,8 @@ number (`format_esp`, `luks`, `lvm`, `root_locked`, `alien_apps`, `reboot`), whe
 | `theme` | An accent name | `bone` | One of the eight `libkcolor` schemes. The answers check refuses any other name; the terminal wizard given one draws itself in `bone` |
 | `desk` | `kdos`, `dock` or `tiling` | `kdos` | The panel layout the first login lays out. The answers check refuses any other name |
 | `alien_apps` | `1` or `0` | `1` | Copy the boxed-application container library |
-| `apps` | Space-separated group ids, or `none` | `essential` | Empty or absent means `essential`. See [The applications step](#the-applications-step) |
+| `apps` | Space-separated group ids, or `none` | `essential` | The catalogue's boxed groups. Empty or absent means `essential`. See [The applications step](#the-applications-step) |
+| `groups` | Space-separated native group ids, or `none` | `none` | The groups of `/ports/groups`, installed during the install. Empty means `none`, and an id no group has is ignored. See [Native groups](#native-groups) |
 | `reboot` | `1` or `0` | `1` | Reboot when an unattended terminal install ends |
 | `services` | Space-separated service names | `networkmanager bluetooth alsa` | A listed service is on when its name appears anywhere in the value; every other listed service is disabled |
 
@@ -651,7 +659,8 @@ Three kinds of mistake fall back rather than fail, because each is read before t
 return, and refusing there would leave nothing installed over a spelling mistake:
 
 - an unknown filesystem becomes `ext4`;
-- an `apps` line that matches no group becomes `essential`;
+- an `apps` line that matches no group becomes `essential`, and a `groups` id that names no group
+  is dropped;
 - an unknown `plan` becomes `wipe`, and an unknown `swap` becomes `none`. Check these two with
   `--dump plan` before running unattended.
 
@@ -701,7 +710,8 @@ graphical installer reads all four, with `--config -` for the answers so far.
   ones, and the verdict of the answers check and then the target check (see [Fallbacks, and how
   an unattended run ends](#fallbacks-and-how-an-unattended-run-ends)) as `refused`. It also prints the `mkfs` command and the
   root's `fstab` line that the filesystem choice becomes, the services turned off, and for the
-  applications the selection, the route and an estimated size. It probes the firmware and the disks
+  boxed applications the selection, the route and an estimated size, and the native groups chosen
+  (`groups` in the text form, a `"groups"` array of ids in the JSON). It probes the firmware and the disks
   as the wizard does, so it names the partitions the install will use: the erase plan's ESP, BIOS
   boot partition and root by their device names, and on the reuse plan the disk's own BIOS boot
   partition, the MBR gap, or `none: the disk starts on UEFI only`. Whenever the answers name a
@@ -710,7 +720,11 @@ graphical installer reads all four, with `--config -` for the answers so far.
   reuse plan a `swap = partition` answer makes none, and the plan says `none`.
 - **`apps`** lists the catalogue's groups, each with its number of applications, its size and
   whether the answers tick it, then the route the ticked ones take: `pending` when any is ticked,
-  `none` otherwise.
+  `none` otherwise. Then the native groups: in the text form a `native groups <n>` line and a row
+  for each, ticked or not, with its id, its number of ports and its title, and `(for the Japanese
+  keyboard)` after a language group the answers point at; in the JSON a `"native"` array of
+  `{"id", "title", "ports", "chosen", "why"}`, `why` being that reason (`the Japanese keyboard`,
+  `the time zone Asia/Tokyo`) or empty.
 - **`look`** lists the accents, each with its label and its global theme `org.kdos.<name>.desktop`,
   the desks, the default of each marked, and the user names the answers check refuses
   (`reserved_names`).
@@ -737,7 +751,7 @@ no file on any disk; `/var/log/kinstall.log` is still appended to. What a real i
 learn from the copied system it reads from the live root instead, so the login screen's set for
 the accent is found as the copy would carry it; a fact only a real run produces is logged as such
 ("root UUID: read back from … after mkfs, which a dry run does not run"), and the Packs step says
-`would record`. The Layout page's **Open
+`would record` and `would install group <id>`. The Layout page's **Open
 cfdisk** button is disabled, because `cfdisk` writes its table itself, outside every command the
 rehearsal holds back; the reuse plan rehearses with the disk's table as it is.
 
@@ -884,9 +898,12 @@ is asked for at every boot; there is no recovery key.
 
 ## The applications step
 
-Applications are not on the installation medium. Each one is built by the container engine on the
-installed machine from the shipped catalogue. The Applications page therefore chooses what to
-build, not what to copy.
+The installation medium carries the base system, and applications beyond it come one of two ways.
+A **native group** is a set of ports the release's binary host holds prebuilt, downloaded into the
+target during the install ([Native groups](#native-groups)). A **boxed group** is a group of the
+shipped catalogue, whose applications the container engine builds on the installed machine after
+the first login. The Applications page lists both, native groups first, and so chooses what to
+download and what to build, not what to copy.
 
 The installer reads the catalogue from the first of these that exists:
 
@@ -894,7 +911,8 @@ The installer reads the catalogue from the first of these that exists:
 2. `/usr/share/kdos/appstore/catalogue`, the live system's own copy;
 3. `/mnt/iso/appstore/catalogue`, on the boot medium.
 
-With no catalogue, the page says that nothing can be chosen and the Packs step is skipped.
+With no catalogue the page lists the native groups alone, and with no groups of either kind it says
+that nothing can be chosen; the Packs step is skipped when nothing of either kind is chosen.
 
 **It lists groups, not applications.** Seven named bundles is something to read during an
 install; the shipped catalogue's 70 applications is not. The catalogue
@@ -920,8 +938,7 @@ The base system and the runtimes are not choices, and the page says so in one li
 offering them as rows. Each application pulls in the runtime it needs, so leaving a runtime out
 could only produce applications that cannot start.
 
-In an answer file, `apps` names group ids, or `none` for no applications at all, which skips the
-Packs step. An application id such as `app.scribus` matches no group and is ignored, and if nothing
+In an answer file, `apps` names group ids, or `none` for no boxed applications at all. An application id such as `app.scribus` matches no group and is ignored, and if nothing
 on the line matches, the selection is `essential`. With no `apps` key, or an empty one, the
 selection is `essential`. The page's selection logic runs before planning
 on every path that plans without walking the wizard (`--dump plan` and `--unattended`), because the selection is
@@ -931,10 +948,62 @@ The catalogue is read by compiling `kdos-appbox`'s `catalogue.c` into the instal
 running `kdos-appbox`. That file uses only `libkbase`, so it costs no extra library, and a live
 installer cannot assume anything is on the target's `$PATH`.
 
+### Native groups
+
+The native groups are read from `/ports/groups` on the live system, the file
+[`kdos update groups`](kdos-command.md#install-routes-and-groups) reads (`$KDOS_GROUPS` names
+another, for a test): a `group <id> <title>` line, then its member ports. Each row shows the title
+and the number of ports; none is ticked by default, because each one downloads, except the
+language group the answers point at. In an answer file `groups` names their ids, or `none`; it is
+a key of its own beside `apps` because ids such as `office`, `games` and `science` are both a
+native group and a boxed one. `--save` writes it.
+
+**The language group starts ticked.** The base image carries no Chinese, Japanese or Korean input
+method or fonts; the groups `lang-zh`, `lang-ja` and `lang-ko` do. One table in
+`kinstall-core/probe.c` maps a choice to its group: the XKB layout `cn` or `tw`, or the time zones
+`Asia/Shanghai`, `Asia/Urumqi`, `Asia/Hong_Kong`, `Asia/Macau` and `Asia/Taipei`, to `lang-zh`;
+the layout `jp`, the console keymap `jp106` or `Asia/Tokyo` to `lang-ja`; the layout `kr`,
+`Asia/Seoul` or `Asia/Pyongyang` to `lang-ko`. Each layout of a list such as `us,jp` counts. The
+installer asks for no locale, so the keyboard and the time zone are what it has; the keyboard is
+checked first, so its reason is the one shown. The group is ticked only when the answers have no
+`groups` line (an answer file that names `groups`, even `groups = none`, gets what it names, and
+`--save` always writes one), and the person can untick it. Each front end says why: the terminal
+wizard's `language` line, the graphical Applications page's "Ticked for the Japanese keyboard"
+beside the row. Going back to the Keyboard or Time zone page and changing the choice applies only
+what changed: a group the new choice points at is ticked, one the old choice ticked and the new one
+does not is unticked, and an untick of a group still pointed at stays.
+
+The Packs step installs them. With `KDOS_UPDATE_CACHE` set to the target's
+`/var/lib/kdos/binhost`, because the live system's cache is in RAM and a group of a few gigabytes
+would fill it, it runs `kdos update fetch --binhost-only`, which takes the medium's own release's
+binary-host index and not a newer release's, whose packages are built against a newer base; then
+`kdos update install --prebuilt --root /mnt/kinstall <id>` for each chosen group, which puts its
+packages into the target with the target's own world set and origin file, so the installed machine
+updates them like anything else installed on purpose, and starts with its release's index in
+place. When the fetch fails, every chosen group, and otherwise each group that did not install,
+is written to the target's `/var/lib/kdos/groups-pending` with a warning, never a failure: the
+system is installed and boots without them, and
+[`kdos update install --pending`](kdos-command.md#install-routes-and-groups) installs them later.
+
+### The firmware step
+
+The base image carries the firmware of the common graphics, Wi-Fi and sound devices; the rest of
+`linux-firmware` is packages in the release's binary host. The Firmware step runs
+`kdos firmware sync --root /mnt/kinstall`, which reads this machine's devices (the live system runs
+on the hardware being installed) and installs the firmware packages they name into the target,
+prebuilt, with `KDOS_UPDATE_CACHE` at the target's `/var/lib/kdos/binhost`. It uses the index the
+Packs step fetched, or fetches it with `kdos update fetch --binhost-only` when no native group was
+chosen, so it runs only after the index arrived. Every line the command prints goes into the
+install log, which is how the log says what went in, followed by `installed the firmware this
+machine's devices name`. When the index cannot be had, when the command fails, or when the medium's
+`kdos` has no `firmware` command, the step ends with a warning saying to run `sudo kdos firmware
+sync` after the first boot, listed on the Install and Done pages; it never fails the install,
+because the machine boots on the medium's firmware.
+
 ### How the applications arrive
 
-The installer builds nothing. The ticked group ids are written to `/var/lib/kdos/apps-pending` on
-the installed system; the first session offers them ([Applications chosen during
+The installer builds no boxed application. The ticked boxed group ids are written to
+`/var/lib/kdos/apps-pending` on the installed system; the first session offers them ([Applications chosen during
 installation](../03-architecture/session.md#applications-chosen-during-installation)), and
 [`kdos app install --pending`](kdos-command.md#kdos-app) builds them. The Applications page, the
 Summary and `--dump plan` all say so before anything is written, so nobody discovers at first boot
@@ -947,7 +1016,8 @@ built would go into the live system's pack store and container storage and end w
 medium. An exported set (a `.ktar` file, see [export and import](kdos-appbox.md#export-and-import))
 is imported on the installed machine instead, with `kdos-appbox import`.
 
-The Packs step logs `recorded <n> group(s) for the first login: <ids>`. A list it cannot write is a
+The Packs step logs `recorded <n> group(s) for the first login: <ids>` for the boxed groups and
+`installing group <id> (<title>)` for each native one. A list it cannot write is a
 warning, not a failure, listed on the Install and Done pages: by then the system is installed and
 bootable.
 
@@ -1178,8 +1248,8 @@ already answered can be returned to by clicking it, and a step ahead cannot:
 | Encryption | LUKS2 under the system and its passphrase twice, with a strength hint. With the two system slots the whole volume group is inside the one container, so one passphrase at every boot opens all of it; the page says there is no recovery key before anyone types one |
 | Account | Your account (full name, user name, password twice with a strength hint, administrator), or an OEM install; automatic login on an encrypted root; the hostname, and whether root is locked or its password. A user name of the image's own accounts is refused on the page |
 | Look | The accent and the desk |
-| Applications | The application groups, from `kinstall --dump apps`, recorded for the first login, and whether the live session's box images are kept |
-| Summary | `kinstall --dump plan` for these answers, so what it shows is what runs, and answers the core would refuse (the answers check, then the target check) are refused here |
+| Applications | From `kinstall --dump apps`, read once without the answers for the boxed preselection and then with them: under **KDOS applications**, the native groups as checkboxes, downloaded during the install, the language group the keyboard or time zone points at ticked and labelled "Ticked for the Japanese keyboard" (the page applies only what changed in that answer since its last dump, as the terminal wizard does); under **Boxed applications**, the catalogue's groups, recorded for the first login; and whether the live session's box images are kept |
+| Summary | `kinstall --dump plan` for these answers, so what it shows is what runs (the native groups as **KDOS applications**), and answers the core would refuse (the answers check, then the target check) are refused here |
 | Install | The steps and their progress, from the event stream |
 | Done | How it ended, the warnings and **Restart Now**; on a failure `kinstall`'s reason, the end of the log when `kinstall` sent any, and **Back to the Summary**; **Open the Log** whenever `kinstall` ran and the session may read the log |
 
@@ -1265,7 +1335,7 @@ edit of the same sources passes it.
 
 | File | Owns |
 |---|---|
-| `kinstall-core/probe.c` | The `/sys` and superblock reader, the partition-table reader, volume-group activation and the logical-volume list, the catalogue and group reader, the search for an exported application set, and the route decision |
+| `kinstall-core/probe.c` | The `/sys` and superblock reader, the partition-table reader, volume-group activation and the logical-volume list, the catalogue and group reader, the native groups reader, the search for an exported application set, and the route decision |
 | `kinstall-core/install.c` | The install steps, run in a child process, and the line protocol it reports on |
 | `kinstall-core/desktop.c` | The files that make the machine a KDOS Plasma desktop: SDDM's autologin, the look in `/etc/xdg`, the login screen's set, and the keyboard |
 | `kinstall-core/conf.c` | The defaults, the answer file, the answers check, the service list, the filesystem table and the slot sizing |

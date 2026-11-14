@@ -82,7 +82,7 @@ void profile_defaults(Profile *p, const char *box)
 	 * means software — and the two literal values are what overrule it.
 	 */
 	kb_strlcpy(p->render, "auto", sizeof(p->render));
-	kb_strlcpy(p->x11, "auto", sizeof(p->x11));
+	kb_strlcpy(p->x11, "yes", sizeof(p->x11));
 }
 
 /*
@@ -151,48 +151,24 @@ int box_lane(const Profile *p)
 }
 
 /*
- * WHETHER A BOX IS HANDED THE X11 DISPLAY. Xwayland is one client to KWin, so
- * an X11 window in a box is drawn untagged: nothing it binds is filtered, and
- * the box's tag means nothing for it. A box that is not given the session's
- * cookie cannot connect — KWin's Xwayland requires one, and the cookie lives
- * in the session's runtime directory, which a private-layout box does not see.
+ * WHETHER A BOX IS HANDED THE X11 DISPLAY. Every box is, unless its profile
+ * says `x11 = no`. Tk, Java's AWT and Swing, Motif, FLTK, GTK 2 and Xt have no
+ * Wayland backend, and nothing in a package says which toolkit a program
+ * draws with: a box withheld the display by default starts such a program,
+ * which finds no display and exits, while the box itself stays running.
  *
- * `auto` gives the display only to an application that says it needs one: a
- * runtime or an application whose `env` rows force an X11 backend
- * (GDK_BACKEND=x11, QT_QPA_PLATFORM=xcb, …), which is how the catalogue
- * records an X11-only program. A box distrobox made from somebody else's image
- * shares the session's runtime directory, cookie included, so `auto` is `yes`
- * for one: a display it can reach anyway is better handed over than left for
- * every X11 program in it to fail on.
+ * What it costs: Xwayland is one client to KWin, so an X11 window in a box is
+ * drawn untagged and nothing it binds is filtered, and an X11 program can read
+ * every other X11 program's windows and keys. A box handed the display is
+ * therefore `tagged`, never `confined`; `x11 = no` is what confines one,
+ * leaving it the tagged Wayland socket alone. A box that is not given the
+ * session's cookie cannot connect — KWin's Xwayland requires one, and the
+ * cookie lives in the session's runtime directory, which a private-layout box
+ * does not see.
  */
-int profile_x11(const Profile *p, const char *pack)
+int profile_x11(const Profile *p)
 {
-	char env[PACK_ENV_MAX][256];
-	char err[256];
-	int n = 0, want = 0;
-
-	if (!strcmp(p->x11, "yes"))
-		return 1;
-	if (!strcmp(p->x11, "no"))
-		return 0;
-	if (box_lane(p) == BOX_LANE_DISTROBOX)
-		return 1;
-	if (pack && *pack) {
-		n = pack_env(pack, env, PACK_ENV_MAX);
-	} else if (box_lane(p) == BOX_LANE_STORE) {
-		/* The catalogue is loaded only for this question when nobody
-		 * has it loaded, and freed again, so a caller's own load is
-		 * neither replaced nor leaked. */
-		int mine = !cat_count() && cat_load(NULL, err, sizeof(err)) == 0;
-
-		if (cat_find(p->name))
-			n = cat_env(p->name, env, PACK_ENV_MAX);
-		if (mine)
-			cat_free();
-	}
-	for (int i = 0; i < n && !want; i++)
-		want = env_forces_x11(env[i]);
-	return want;
+	return strcmp(p->x11, "no") != 0;
 }
 
 /*
@@ -373,16 +349,14 @@ int profile_set(Profile *p, const char *kv)
 	else if (!strcmp(key, "gpu"))
 		p->gpu = truthy(eq) || !strcmp(eq, "shared");
 	else if (!strcmp(key, "x11")) {
-		/* yes | no | auto. Anything that reads as a yes is a yes, a
-		 * plain refusal is a no, and every other word is the default,
-		 * so a value nobody wrote on purpose asks the application. */
-		if (truthy(eq))
-			kb_strlcpy(p->x11, "yes", sizeof(p->x11));
-		else if (!strcmp(eq, "no") || !strcmp(eq, "off") ||
-			 !strcmp(eq, "0") || !strcmp(eq, "false"))
+		/* yes | no. Only a plain refusal is a no: every other word is
+		 * the default, so a value nobody wrote on purpose leaves an
+		 * X11-only application its display. */
+		if (!strcmp(eq, "no") || !strcmp(eq, "off") ||
+		    !strcmp(eq, "0") || !strcmp(eq, "false"))
 			kb_strlcpy(p->x11, "no", sizeof(p->x11));
 		else
-			kb_strlcpy(p->x11, "auto", sizeof(p->x11));
+			kb_strlcpy(p->x11, "yes", sizeof(p->x11));
 	}
 	else if (!strcmp(key, "export"))
 		p->autoexport = !strcmp(eq, "auto");
@@ -711,7 +685,7 @@ int profile_save(const Profile *p)
 		 p->wayland ? "yes" : "no",
 		 p->audio ? "yes" : "no",
 		 p->gpu ? "yes" : "no",
-		 p->x11[0] ? p->x11 : "auto",
+		 p->x11[0] ? p->x11 : "yes",
 		 p->display[0] ? p->display : "window",
 		 p->render[0] ? p->render : "auto",
 		 p->autoexport ? "auto" : "manual",
@@ -869,8 +843,7 @@ void profile_print(const Profile *p)
 	 */
 	{
 		int priv = box_lane(p) != BOX_LANE_DISTROBOX;
-		int x11 = profile_x11(p, !strncmp(p->base, "pack:", 5)
-				      ? p->base + 5 : "");
+		int x11 = profile_x11(p);
 
 		printf("wayland     = %-11s %s\n", p->wayland ? "yes" : "no",
 		       p->wayland ? "a tagged socket from kdos-boxsock in its runtime directory"
@@ -888,7 +861,7 @@ void profile_print(const Profile *p)
 			printf("            ! audio=no cannot be enforced — this box"
 			       " shares the session's runtime directory, PipeWire's"
 			       " socket included\n");
-		printf("x11         = %-11s %s\n", p->x11[0] ? p->x11 : "auto",
+		printf("x11         = %-11s %s\n", p->x11[0] ? p->x11 : "yes",
 		       x11 ? "DISPLAY and the session's cookie: its X11 windows reach KWin untagged"
 		       : "no X11 cookie: Xwayland refuses it");
 		if (!x11 && !priv)

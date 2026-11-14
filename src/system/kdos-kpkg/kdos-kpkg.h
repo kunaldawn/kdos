@@ -141,6 +141,45 @@ void kp_pkg_symtab(const char *pkg);
  * changed file under etc/ is reported as configuration and does not fail. */
 int kp_cmd_check(KpConf *c, int argc, char **argv);
 
+/* Package facets (facets.c). kp_facets_split divides a manifest body (the
+ * lines after the version) by kp_facet_of and the recipe's `facet_dev =`
+ * globs (`extra`, may be NULL), reading each symlink under `root`: `keep` is the manifest without what is left out, `left` the
+ * `<facet> <path>` record lines, `gone` every line left out, files and
+ * directories, and `nfiles` how many files. kp_facets_remove deletes the
+ * `gone` lines under `root`, files first and each directory only once empty,
+ * adding the bytes of the regular files to `*bytes` (may be NULL).
+ * kp_facets_guard is 0 when `port` can be built here, -1, with the command
+ * that restores them on stderr, when a package it compiles against has its
+ * development facet left out (kp_facet_wanted). */
+typedef struct {
+	KbBuf keep, left, gone;
+	int nfiles;
+} KpFacetSplit;
+
+void kp_facets_split(const char *root, const char *body, const char *extra,
+		     KpFacetSplit *s);
+/* The `facet_dev =` line of the recipe named `name`, "" when it has none. */
+void kp_facets_extra(const KpConf *c, const char *name, char *out,
+		     size_t cap);
+void kp_facets_split_free(KpFacetSplit *s);
+void kp_facets_remove(const char *root, const char *gone,
+		      unsigned long long *bytes);
+int kp_facets_guard(const KpConf *c, const char *port);
+int kp_cmd_facets(KpConf *c, int argc, char **argv);
+
+/* Run-time needs (needs.c; the record is libkpkg's, kpkg.h).
+ * kp_needs_measure scans installed package `name` under the root with its
+ * recipe's `facet_dev =` and `runtime =` lines and returns the record it
+ * would write (free it), NULL when it is not installed. kp_needs_note
+ * writes it; kpkgadd calls it once the package's files and file record are
+ * in place. kp_needs_runtime is the `runtime =` line of the recipe named
+ * `name`, "" when it has none. */
+char *kp_needs_measure(const KpConf *c, const char *name);
+void kp_needs_note(const KpConf *c, const char *name);
+void kp_needs_runtime(const KpConf *c, const char *name, char *out,
+		      size_t cap);
+int kp_cmd_needs(KpConf *c, int argc, char **argv);
+
 /* The filename a `source =` entry is cached under (build.c): `file::url`
  * names it, a bare URL is its basename, and the first entry is
  * `<name>-<version>.<ext>`. ports/fetch keeps the same rule in shell. */

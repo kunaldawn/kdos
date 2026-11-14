@@ -146,6 +146,22 @@ QString SlotsClient::channel() const
     return m_props.value(u"Channel"_s).toString();
 }
 
+/* A server too old to have the property reads as the default route. */
+static QString routeOf(const QVariant &v)
+{
+    return v.toString() == "source"_L1 ? u"source"_s : u"prebuilt"_s;
+}
+
+QString SlotsClient::installRoute() const
+{
+    return routeOf(m_props.value(u"InstallRoute"_s));
+}
+
+QString SlotsClient::buildDeps() const
+{
+    return routeOf(m_props.value(u"BuildDeps"_s));
+}
+
 QVariantMap SlotsClient::state() const
 {
     return m_props.value(u"State"_s).toMap();
@@ -282,6 +298,11 @@ void SlotsClient::requestCancelTry()
 void SlotsClient::requestSetChannel(const QString &channel)
 {
     call(Request::SetChannel, u"SetChannel"_s, {channel});
+}
+
+void SlotsClient::requestSetInstallRoute(const QString &install, const QString &deps)
+{
+    call(Request::SetInstallRoute, u"SetInstallRoute"_s, {install, deps});
 }
 
 void SlotsClient::onPropertiesChanged(const QString &interface, const QVariantMap &changed, const QStringList &invalidated)

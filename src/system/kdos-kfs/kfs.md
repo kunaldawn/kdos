@@ -38,7 +38,13 @@ against the PDF's own directory. The headings match because `kdos-doc` gives eve
 heading GitHub's id. A link to a recipe, a patch, a phase list or anything else of the tree stays
 on GitHub: the image carries no copy of them.
 
-KHelpCenter shows the installed book too, and adds KDE's handbook stylesheet to every page it
+The package installs the menu's Library launcher for the book, `kdos-library-kfs-book.desktop`,
+which opens it in the browser through `xdg-open`, and KHelpCenter's entry for it,
+`/usr/share/khelpcenter/plugins/kfs.desktop`, at an `X-DOC-Weight` of -99, second after the KDOS
+book (see [kdos-doc](#port-kdos-doc)). The installation medium does not carry this port; it is
+installed by name.
+
+KHelpCenter, where it is installed, shows the book too, and adds KDE's handbook stylesheet to every page it
 shows, as a `<style id="default">` appended to the page's head after `kfs.css`, so its element
 rules would put white paper, black text and blue links under the dark palette's code blocks.
 `kfs.css` ends with rules under `html:has(> head > style#default)`, which match only a page

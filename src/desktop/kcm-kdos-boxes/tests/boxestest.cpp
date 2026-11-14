@@ -698,11 +698,11 @@ private Q_SLOTS:
         QTest::newRow("memory GiB") << u"memory"_s << u"2 GiB"_s << QVariant(2048) << u"2G"_s;
         QTest::newRow("memory bytes") << u"memory"_s << u"1073741824"_s << QVariant(1024) << u"1G"_s;
         QTest::newRow("memory none") << u"memory"_s << QString() << QVariant(0) << QString();
-        QTest::newRow("x11 default") << u"x11"_s << QString() << QVariant(u"auto"_s) << u"auto"_s;
+        QTest::newRow("x11 default") << u"x11"_s << QString() << QVariant(u"yes"_s) << u"yes"_s;
         QTest::newRow("x11 yes") << u"x11"_s << u"on"_s << QVariant(u"yes"_s) << u"yes"_s;
         QTest::newRow("x11 off") << u"x11"_s << u"off"_s << QVariant(u"no"_s) << u"no"_s;
-        QTest::newRow("x11 never") << u"x11"_s << u"never"_s << QVariant(u"auto"_s) << u"auto"_s;
-        QTest::newRow("x11 typo") << u"x11"_s << u"nope"_s << QVariant(u"auto"_s) << u"auto"_s;
+        QTest::newRow("x11 never") << u"x11"_s << u"never"_s << QVariant(u"yes"_s) << u"yes"_s;
+        QTest::newRow("x11 typo") << u"x11"_s << u"nope"_s << QVariant(u"yes"_s) << u"yes"_s;
         QTest::newRow("grant order") << u"grant"_s << u"secrets layer-shell,odd"_s << QVariant(QStringList{u"secrets"_s, u"layer-shell"_s, u"odd"_s})
                                      << u"layer-shell,secrets,odd"_s;
         QTest::newRow("cpus") << u"cpus"_s << u"2"_s << QVariant(20) << u"2"_s;

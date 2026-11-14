@@ -15,11 +15,21 @@ One of the four directories under `src/` that hold ports of KDOS's own: `src/sys
 [*shelf*](#shelf), and its pages are in the chapter named `src-<area>` of the part for its phase.
 See [area in the KDOS glossary](../../kdos/06-reference/glossary.md#area).
 
+### base
+
+The subset of the built packages the ISO carries: the ports `ports/base` names and their closure
+over `depends =`, not followed into the ports `ports/buildonly` lists. `70_image`'s `017_stage.sh`
+trims an overlay over `build/fs` to it; every other package is installed on a machine from the
+release's [*binhost*](#binhost). See [The image stage](../15-image/017-stage.md) and
+[The base image](../../kdos/03-architecture/packaging.md#the-base-image).
+
 ### binhost
 
-A directory of prebuilt packages with a signed index, which `kpkg binhost` installs from when a
-package's hashes match the machine's. The build in this book makes one only when asked, with
-`KDOS_MAKE_BINHOST=1`. See [binhost in the KDOS glossary](../../kdos/06-reference/glossary.md#binhost).
+A directory of prebuilt packages with a signed index, which `kdos update install` and
+`kpkg binhost` install from when a package's hashes match the machine's. A release's binhost holds
+every port it built and is that release's package repository. The build in this book makes one
+only when asked, with `KDOS_MAKE_BINHOST=1`. See
+[binhost in the KDOS glossary](../../kdos/06-reference/glossary.md#binhost).
 
 ### box
 
@@ -51,6 +61,13 @@ The compiler and linker `00_cross` builds into `build/cross`, which run in the c
 produce programs for KDOS, before KDOS exists to run a compiler of its own. See
 [cross toolchain in the KDOS glossary](../../kdos/06-reference/glossary.md#cross-toolchain) and
 [Part II](../02-cross/intro.md).
+
+### group
+
+A named set of ports in `ports/groups`, staged into every image as `/ports/groups`, which
+`kdos update install <group>` and the installer install in one step, each member as the port it
+is. Separate from the catalogue's groups of boxed applications, though some ids are the same. See
+[Installing software](../16-wiki/updating.md#installing-software).
 
 ### kpkg
 
@@ -230,4 +247,4 @@ Haskell packages or npm packages, made in advance so that the build needs no net
 <!-- book-nav -->
 ---
 
-*Part XVII. Appendices, chapter 450.* Previous: [449. Licences](licences.md) · [Contents](../README.md)
+*Part XVII. Appendices, chapter 452.* Previous: [451. Licences](licences.md) · [Contents](../README.md)

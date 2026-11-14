@@ -32,6 +32,9 @@ Each filesystem's own tools come from its port:
 | EROFS | [erofs-utils](#port-erofs-utils) | module |
 | HFS+, JFS, NILFS2 | [hfsprogs](#port-hfsprogs), [jfsutils](#port-jfsutils), [nilfs-utils](#port-nilfs-utils) | modules |
 
+Every port in the table is in the base the ISO carries except hfsprogs, which
+`sudo kdos update install hfsprogs` adds (see [Installing software](updating.md#installing-software)).
+
 The kernel column is read from `ports/core/boot/linux/kdos.config`, where each driver is `=y`
 (built in) or `=m` (a module). [fuse](#port-fuse) provides `fusermount3`, setuid root, which the
 FUSE filesystems mount through: e2fsprogs' `fuse2fs`, [sshfs](#port-sshfs) and
@@ -60,7 +63,7 @@ line of the table names. Every key and line is described in
 **The installer's lines.** On an installed system the installer puts its own lines in front of the
 image's, keeping every shipped one, from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=1825-1858 pin=b7e79086c91c -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=1945-1978 pin=b7e79086c91c -->
 
 So an installed `fstab` begins with the root by its filesystem UUID and the EFI system partition
 at `/boot/efi` with `umask=0077` and pass 2. On the A/B layout, which an erased disk under LVM gets
@@ -298,4 +301,4 @@ the running kernel are not installed.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 398.* Previous: [397. Live persistence](live-persistence.md) · [Contents](../README.md) · Next: [399. Storage and removable media](storage-and-removable-media.md)
+*Part XVI. System administration, chapter 400.* Previous: [399. Live persistence](live-persistence.md) · [Contents](../README.md) · Next: [401. Storage and removable media](storage-and-removable-media.md)

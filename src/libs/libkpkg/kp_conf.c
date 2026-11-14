@@ -150,7 +150,7 @@ void kp_conf_load(KpConf *c)
 		c->strict_recipe = (v && *v == '1');
 	}
 
-	char repos[2048];
+	char repos[2048], facets[32] = "all";
 	kb_strlcpy(repos, "/ports/core", sizeof(repos));
 	kb_strlcpy(c->source_dir, "/var/cache/kpkg/sources", sizeof(c->source_dir));
 	kb_strlcpy(c->package_dir, "/var/cache/kpkg/packages",
@@ -188,6 +188,8 @@ void kp_conf_load(KpConf *c)
 				kb_strlcpy(c->work_dir, val, sizeof(c->work_dir));
 			else if (!strcmp(line, "PKGDB_DIR"))
 				kb_strlcpy(c->pkgdb_dir, val, sizeof(c->pkgdb_dir));
+			else if (!strcmp(line, "FACETS"))
+				kb_strlcpy(facets, val, sizeof(facets));
 		}
 		free(data);
 	}
@@ -198,6 +200,14 @@ void kp_conf_load(KpConf *c)
 	set_from_env(c->package_dir, sizeof(c->package_dir), "PACKAGE_DIR");
 	set_from_env(c->work_dir, sizeof(c->work_dir), "WORK_DIR");
 	set_from_env(c->pkgdb_dir, sizeof(c->pkgdb_dir), "PKGDB_DIR");
+	/* KPKG_FACETS, not FACETS: the file's line is
+	 * `FACETS="${KPKG_FACETS:-...}"`, and a variable named FACETS in a
+	 * build's environment is nobody's statement about kpkg. */
+	set_from_env(facets, sizeof(facets), "KPKG_FACETS");
+	c->facets_run = !strcmp(facets, "run");
+	if (!c->facets_run && strcmp(facets, "all"))
+		kb_warn("FACETS=%s is neither all nor run; installing every "
+			"facet", facets);
 
 	kp_conf_set_repos(c, repos);
 }
@@ -552,8 +562,8 @@ char *kp_canon_path(const KpCanon *k, const char *rel)
  * The database is one file per package: line 1 is `<version> <release>` and
  * the rest is the literal `tar -tf` listing, `./`-prefixed, with directories
  * carrying a trailing slash. A dot-name in the directory is not a package —
- * `.recipe/`, `.pkgsha/` and `.files/` hold sidecars and `.lock` is the writer
- * lock — and is never read as one.
+ * `.recipe/`, `.pkgsha/`, `.files/`, `.facets/` and `.needs/` hold sidecars
+ * and `.lock` is the writer lock — and is never read as one.
  * Loading once and asking N questions of the result is the difference between
  * an install being instant and being quadratic.
  *

@@ -19,6 +19,10 @@
  *                              it is the installer's record and Discover
  *                              reads the same one ($KDOS_APPS_PENDING
  *                              moves it for both)
+ *   kdos firmware sync --dry-run --json
+ *                              the vendor firmware ports this machine's
+ *                              devices and kernel log ask for and it has
+ *                              not got
  *
  * THE COMMANDS ARE THE INTERFACE. Each of them already answers in JSON for
  * the System Versions page, Discover's backend and `kdos doctor`; reading
@@ -165,6 +169,27 @@ int kn_parse_oom(const char *line, KnOom *out)
 	return 1;
 }
 
+int kn_parse_firmware(const char *json, KnFirmware *out)
+{
+	const char *ports;
+
+	memset(out, 0, sizeof(*out));
+	ports = json_get(json, "ports");
+	if (!ports || *json_ws(ports) != '[')
+		return 0;
+	for (const char *e = json_first(ports); e && out->n < KN_FW_PORTS;
+	     e = json_next(e)) {
+		json_str(json_get(e, "port"), out->port[out->n],
+			 sizeof(out->port[0]));
+		json_str(json_get(e, "reason"), out->reason[out->n],
+			 sizeof(out->reason[0]));
+		if (out->port[out->n][0])
+			out->n++;
+	}
+	out->ok = 1;
+	return 1;
+}
+
 /* ── asking ────────────────────────────────────────────────────────────── */
 
 /* The command's standard output, whatever its exit status: `kdos restarts`
@@ -215,6 +240,19 @@ void kn_read_boot(KnBoot *out)
 	char *j = capture(argv);
 
 	if (!j || !kn_parse_boot(j, out))
+		memset(out, 0, sizeof(*out));
+	free(j);
+}
+
+/* `kdos firmware sync --dry-run` exits 1 when it names a port, which is
+ * the answer; capture() takes any status a program can return. */
+void kn_read_firmware(KnFirmware *out)
+{
+	static const char *const argv[] = { "kdos", "firmware", "sync",
+					    "--dry-run", "--json", NULL };
+	char *j = capture(argv);
+
+	if (!j || !kn_parse_firmware(j, out))
 		memset(out, 0, sizeof(*out));
 	free(j);
 }

@@ -97,6 +97,28 @@ private Q_SLOTS:
         a.setAppChosen(QStringLiteral("dev"), true);
         a.setAppChosen(QStringLiteral("office"), false);
         QCOMPARE(parse(a.toText()).value(QStringLiteral("apps")), QStringLiteral("dev"));
+
+        /* Native groups are their own key: an id the catalogue shares
+         * (office) names the native group there, never a boxed one. */
+        QCOMPARE(parse(a.toText()).value(QStringLiteral("groups")), QStringLiteral("none"));
+        a.setGroupChosen(QStringLiteral("office"), true);
+        a.setGroupChosen(QStringLiteral("games"), true);
+        a.setGroupChosen(QStringLiteral("games"), false);
+        QCOMPARE(parse(a.toText()).value(QStringLiteral("groups")), QStringLiteral("office"));
+        QCOMPARE(parse(a.toText()).value(QStringLiteral("apps")), QStringLiteral("dev"));
+
+        /* The language group a keyboard points at is ticked once; an
+         * untick of it survives the next dump, a different keyboard moves
+         * the tick, and a manual tick nobody suggested is left alone. */
+        a.suggestGroups({QStringLiteral("lang-ja")});
+        QCOMPARE(parse(a.toText()).value(QStringLiteral("groups")), QStringLiteral("office lang-ja"));
+        a.setGroupChosen(QStringLiteral("lang-ja"), false);
+        a.suggestGroups({QStringLiteral("lang-ja")});
+        QCOMPARE(parse(a.toText()).value(QStringLiteral("groups")), QStringLiteral("office"));
+        a.suggestGroups({QStringLiteral("lang-ko")});
+        QCOMPARE(parse(a.toText()).value(QStringLiteral("groups")), QStringLiteral("office lang-ko"));
+        a.suggestGroups({});
+        QCOMPARE(parse(a.toText()).value(QStringLiteral("groups")), QStringLiteral("office"));
     }
 
     void names()

@@ -48,6 +48,46 @@ log_mount() {
     printf '%(%Y-%m-%d %H:%M:%S)T %s\n' -1 "$*" >> "$MOUNT_LOG" 2>/dev/null || true
 }
 
+# THE BASE IMAGE IS MADE FROM A STAGE, NEVER FROM build/fs ITSELF. build/fs
+# keeps every package the build installed: the next build continues from it
+# and the binhost is made from it. Under KDOS_IMAGE=base (the default) every
+# 70_image step from $STAGE_FIRST on runs in an overlay over it: the lower
+# layer build/fs, read and never written; the upper build/image-upper, which
+# receives every change those steps make, the packages 017_stage.sh removes
+# included; the merged view build/image-root, which becomes this entry's
+# root and which 110_iso.sh squashes. The overlay is mounted in this entry's
+# own namespace like every other mount here, so each step mounts it again
+# over the same upper and sees what the steps before it left.
+# $STAGE_FIRST starts from an empty upper; a later step whose stage was never
+# made (build/image-stage.ok absent: 017 did not finish since its last start)
+# is refused, since it would squash a tree nobody trimmed. KDOS_IMAGE=full
+# runs every step on build/fs, as a build of every package's medium.
+STAGE_FIRST=017_stage.sh
+STAGE_OK="$REPO_ROOT/build/image-stage.ok"
+case "${KDOS_IMAGE:=base}" in
+    base|full) ;;
+    *) echo "Error: KDOS_IMAGE must be base or full, got '$KDOS_IMAGE'" >&2; exit 1 ;;
+esac
+if [ "$KDOS_IMAGE" = base ] && [ "${1:-}" = bash ] &&
+   [[ "${2:-}" == script/phases/70_image/* ]] && [[ ! "${2##*/}" < "$STAGE_FIRST" ]]; then
+    UPPER="$REPO_ROOT/build/image-upper"
+    WORK="$REPO_ROOT/build/image-work"
+    MERGED="$REPO_ROOT/build/image-root"
+    if [ "${2##*/}" = "$STAGE_FIRST" ]; then
+        rm -f "$STAGE_OK"
+        rm -rf "$UPPER" "$WORK"
+    elif [ ! -f "$STAGE_OK" ]; then
+        echo "Error: ${2##*/} runs in the image stage, and $STAGE_FIRST has not made it;" >&2
+        echo "       run 70_image from $STAGE_FIRST, or build with KDOS_IMAGE=full" >&2
+        exit 1
+    fi
+    mkdir -p "$UPPER" "$WORK" "$MERGED"
+    mount -t overlay overlay \
+        -o "lowerdir=$CHROOT_DIR,upperdir=$UPPER,workdir=$WORK" "$MERGED"
+    log_mount "image stage: ${2##*/} in $MERGED over $CHROOT_DIR"
+    CHROOT_DIR=$MERGED
+fi
+
 mkdir -p "$CHROOT_DIR"/{dev,proc,sys,tmp,run,ports,kdos}
 
 # The build's HOME, a scratch directory and not /root: every tool's dotfiles,
@@ -158,8 +198,15 @@ esac
 #   KDOS_ISO_SOURCES,  opt-in packaging, read by 70_image
 #   KDOS_PACK_KDOS,
 #   KDOS_MAKE_BINHOST
-#   KDOS_ISO_COMP      system.sfs codec, read by 70_image/110_iso.sh; empty
-#                      is the release default there
+#   KDOS_ISO_COMP,     system.sfs codec and block size, read by
+#   KDOS_ISO_BLOCK     70_image/110_iso.sh; empty is the release default there
+#   KDOS_ISO_MAX,      the release size gate in 70_image/110_iso.sh: the
+#   KDOS_ISO_GATE      largest ISO in bytes, and 1 to enforce it on a base
+#                      image or 0 for a developer one; unset, the limit is
+#                      1,900 MiB and the gate is on
+#   KDOS_IMAGE         base or full: read here first, to choose the stage
+#                      above, and by 70_image/017_stage.sh, which does
+#                      nothing under full
 #   KDOS_CCACHE        1 (the default) caches CMake compiles in build/ccache;
 #                      0 turns the cache off, read by script/env/chroot.env
 #   KPKG_KEEP_CACHE    KDOS_MAKE_BINHOST again, so every chroot `kpkg install`
@@ -198,6 +245,10 @@ exec chroot "$CHROOT_DIR" /usr/bin/env -i \
     KDOS_PACK_KDOS="${KDOS_PACK_KDOS:-0}" \
     KDOS_MAKE_BINHOST="${KDOS_MAKE_BINHOST:-0}" \
     KDOS_ISO_COMP="${KDOS_ISO_COMP:-}" \
+    KDOS_ISO_BLOCK="${KDOS_ISO_BLOCK:-}" \
+    KDOS_ISO_MAX="${KDOS_ISO_MAX:-}" \
+    KDOS_ISO_GATE="${KDOS_ISO_GATE:-1}" \
+    KDOS_IMAGE="$KDOS_IMAGE" \
     KDOS_CCACHE="${KDOS_CCACHE:-1}" \
     KPKG_KEEP_CACHE="${KDOS_MAKE_BINHOST:-0}" \
     KDOS_PKG_STORE="${KDOS_PKG_STORE:-0}" \

@@ -511,7 +511,6 @@ KCM.SimpleKCM {
                 textRole: "text"
                 valueRole: "value"
                 model: [
-                    { value: "auto", text: i18nc("@item:inlistbox box x11", "When its application needs it") },
                     { value: "yes", text: i18nc("@item:inlistbox box x11", "Always") },
                     { value: "no", text: i18nc("@item:inlistbox box x11", "Never") }
                 ]
@@ -521,7 +520,7 @@ KCM.SimpleKCM {
             QQC2.Label {
                 Layout.fillWidth: true
                 Layout.maximumWidth: Kirigami.Units.gridUnit * 24
-                text: i18nc("@info", "An X11 program can read every other X11 program's windows and keys, so a box that can reach the X11 display is tagged, never confined.")
+                text: i18nc("@info", "Programs written for X11 alone, such as Tk, Java and Motif ones, open no window without it. An X11 program can read every other X11 program's windows and keys, so a box that can reach the X11 display is tagged, never confined.")
                 wrapMode: Text.Wrap
                 font: Kirigami.Theme.smallFont
                 color: Kirigami.Theme.disabledTextColor

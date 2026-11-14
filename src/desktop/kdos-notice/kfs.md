@@ -12,6 +12,7 @@ started by the session's autostart (`/usr/share/kdos/xdg/autostart/kdos-notice.d
 | "Running KDOS 0.2.14 on trial" | `kdos-bootctl status --json` | no |
 | "Your last update didn't start" | `kdos-bootctl status --json` | no |
 | "firefox-esr in the box www was closed to free memory" | `status` on `/run/kdos-oomd.sock` | no |
+| "This computer's hardware needs firmware-nvidia", with Install | `kdos firmware sync --dry-run --json` | yes |
 
 The same binary run as `kdos-notice --bless`, from `/etc/xdg/autostart/kdos-session-good.desktop`,
 is the second mark of a confirmed boot: once `org.kde.plasmashell` has answered on the session bus
@@ -31,7 +32,8 @@ at the next login.
 
 Nothing polls a command. An inotify watch on `/var/lib/kpkg/db` and on
 `/var/lib/kdos/update.json` asks `kdos restarts` and `kdos cve` ten seconds after the last change,
-so an update of hundreds of packages is one look; one on `/run/kdos/bootstate.json`, the copy of
+so an update of hundreds of packages is one look, and asks `kdos firmware sync --dry-run` then too,
+which withdraws the firmware notice once the ports it named are installed; one on `/run/kdos/bootstate.json`, the copy of
 the boot state `kdos-bootctl` publishes for users, asks `kdos-bootctl`. The one thing read on a
 timer is kdos-oomd's kill count, a single line over its socket every ten seconds; the count when
 the session first asks is the baseline, so a kill before the login is not this session's news.
@@ -47,7 +49,7 @@ then posted again to the
 new server, since a restarted plasmashell lost it.
 
 The actions are fixed argument vectors: Details opens Konsole on `kdos cve`, or System Settings at
-System Versions for the trial and rollback notices; Show Programs opens Konsole on `kdos restarts`;
+System Versions for the trial and rollback notices; Show Programs opens Konsole on `kdos restarts`; Install opens Konsole on `sudo kdos firmware sync`;
 Open Discover opens Discover at "Selected during install"; and Log Out asks Plasma's logout prompt
 over D-Bus. A signal
 that claims to be the notification server's is acted on only when its sender owns

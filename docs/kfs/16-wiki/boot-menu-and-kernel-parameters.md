@@ -35,13 +35,13 @@ the firmware boot entry labelled `KDOS` is written by the installer with
 The medium's menu is a heredoc in the ISO step, written into the ISO tree and never into the root
 filesystem:
 
-<!-- kfs:include script/phases/70_image/110_iso.sh lines=324-352 pin=27763b733baa -->
+<!-- kfs:include script/phases/70_image/110_iso.sh lines=336-364 pin=27763b733baa -->
 
 `$BOOT_THEME` is the output of `kdos-bootctl theme --print` for the [accent]{.idx} the image is built in;
 `$WALLPAPER` and `$FONT_LINES` name the backdrop and the converted Terminus face, when the build
 found them. The memory test entry is appended after it:
 
-<!-- kfs:include script/phases/70_image/110_iso.sh lines=366-380 pin=0c1a7fc58339 -->
+<!-- kfs:include script/phases/70_image/110_iso.sh lines=378-392 pin=0c1a7fc58339 -->
 
 The medium is ISO9660 and read-only, so this file cannot be edited on a written stick. A change
 for one boot is made in Limine's editor (see [Usage](#usage)); a lasting change is a change to
@@ -53,7 +53,7 @@ for one boot is made in Limine's editor (see [Usage](#usage)); a lasting change 
 between `kdos_slot=a` and `root=` become `bootstate=UUID=<esp>` and, on an encrypted install,
 `cryptdevice=UUID=<luks>:kdosroot`, from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=2635-2667 pin=a862490fe7d7 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=2755-2787 pin=a862490fe7d7 -->
 
 `KI_QUIET` is `quiet loglevel=3 vt.global_cursor_default=0`: no kernel message below an error and
 no text cursor is drawn between the splash and the login screen.
@@ -277,4 +277,4 @@ medium and on a machine whose ESP is not mounted. Check `findmnt /boot/efi`.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 393.* Previous: [392. Users and groups](users-and-groups.md) · [Contents](../README.md) · Next: [394. The initramfs and the rescue shell](initramfs-and-rescue.md)
+*Part XVI. System administration, chapter 395.* Previous: [394. Users and groups](users-and-groups.md) · [Contents](../README.md) · Next: [396. The initramfs and the rescue shell](initramfs-and-rescue.md)

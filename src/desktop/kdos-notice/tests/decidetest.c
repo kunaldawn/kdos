@@ -13,6 +13,7 @@
  *                                 rollback and the trial
  *   decidetest oom LINE PREV      a kdos-oomd status line, PREV kills seen
  *   decidetest pending FILE       the installer's apps-pending file
+ *   decidetest firmware FILE      `kdos firmware sync --dry-run --json`
  *   decidetest action KIND ACTION the vector an action runs
  *
  * Each prints what kdos-notice would do — `post KIND`, `close KIND` or
@@ -77,7 +78,7 @@ int main(int argc, char **argv)
 
 	kb_set_progname("decidetest");
 	if (argc < 3) {
-		fprintf(stderr, "usage: decidetest restarts|cve|boot|oom|pending|action ...\n");
+		fprintf(stderr, "usage: decidetest restarts|cve|boot|oom|pending|firmware|action ...\n");
 		return 2;
 	}
 	kn_state_load(&st);
@@ -128,6 +129,14 @@ int main(int argc, char **argv)
 		printf("pending %d\n", pd.n);
 		apply(kn_decide_pending(&pd, &st, &p), KN_PENDING, &p);
 		free(t);
+	} else if (!strcmp(argv[1], "firmware")) {
+		KnFirmware f;
+		char *j = slurp(argv[2]);
+
+		kn_parse_firmware(j, &f);
+		printf("firmware ok=%d ports=%d\n", f.ok, f.n);
+		apply(kn_decide_firmware(&f, &st, &p), KN_FIRMWARE, &p);
+		free(j);
 	} else if (!strcmp(argv[1], "action") && argc > 3) {
 		KbArgv a;
 		int k = kn_kind_of(argv[2]);

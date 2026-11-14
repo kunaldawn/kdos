@@ -9,8 +9,9 @@
  *   80-Help.qml — where answers are, on this machine
  *
  * The KDOS book and KDOS from Scratch are HTML under /usr/share/doc, opened
- * in the Help Center, which lists both first; `kdos help` and the manual
- * pages are the terminal's way in. Nothing here needs the network.
+ * in the browser; KDOS from Scratch is there once kdos-kfs is installed.
+ * `kdos help` and the manual pages are the terminal's way in. Nothing here
+ * needs the network.
  * ---------------------------------
  */
 
@@ -57,16 +58,16 @@ Welcome.ScrollablePage {
             text: i18ndc("kdos-welcome", "@info", "How KDOS works and why, from the first boot to every command. The Help button on a KDOS settings page opens its chapter.")
             action: i18ndc("kdos-welcome", "@action:button", "Open the Book")
             actionIcon: "help-contents"
-            onTriggered: page.open(["khelpcenter", "file:///usr/share/doc/kdos/index.html"])
+            onTriggered: page.open(["xdg-open", "file:///usr/share/doc/kdos/index.html"])
         }
 
         Kdos.Point {
             icon: "run-build"
             title: i18ndc("kdos-welcome", "@title", "KDOS from Scratch")
-            text: i18ndc("kdos-welcome", "@info", "The second book: how this image was built, phase by phase and port by port.")
+            text: i18ndc("kdos-welcome", "@info", "The second book: how this image was built, phase by phase and port by port. Install it with <b>kdos update install kdos-kfs</b>.")
             action: i18ndc("kdos-welcome", "@action:button", "Open KDOS from Scratch")
             actionIcon: "run-build"
-            onTriggered: page.open(["khelpcenter", "file:///usr/share/doc/kfs/index.html"])
+            onTriggered: page.open(["xdg-open", "file:///usr/share/doc/kfs/index.html"])
         }
 
         Kdos.Point {

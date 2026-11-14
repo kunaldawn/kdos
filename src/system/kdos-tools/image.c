@@ -2240,7 +2240,8 @@ static const char *const CARRY_ACCOUNTS[] = {
 };
 
 static const char *const CARRY_STATE[] = {
-	"var/lib/kdos/world", "var/lib/kdos/apps-pending", "var/lib/dbus/machine-id",
+	"var/lib/kdos/world", "var/lib/kdos/origin", "var/lib/kdos/apps-pending",
+	"var/lib/kdos/groups-pending", "var/lib/dbus/machine-id",
 	"var/lib/bluetooth", "var/lib/AccountsService", "var/lib/sddm",
 	"var/lib/alsa", "var/lib/NetworkManager", "var/spool/cron", "root",
 	NULL

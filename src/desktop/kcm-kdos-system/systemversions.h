@@ -63,6 +63,8 @@ class SystemVersionsModule : public KQuickConfigModule
     Q_PROPERTY(QString channelLocation READ channelLocation WRITE setChannelLocation NOTIFY channelChanged)
     Q_PROPERTY(QString channelError READ channelError NOTIFY channelChanged)
     Q_PROPERTY(QString savedChannelText READ savedChannelText NOTIFY statusChanged)
+    Q_PROPERTY(QString installRoute READ installRoute WRITE setInstallRoute NOTIFY routeChanged)
+    Q_PROPERTY(QString buildDeps READ buildDeps WRITE setBuildDeps NOTIFY routeChanged)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(int messageType READ messageType NOTIFY messageChanged)
 
@@ -110,6 +112,13 @@ public:
     QString channelError() const;
     QString savedChannelText() const;
 
+    /* How software is installed when nothing names a route, and how a
+     * source install gets what it lacks: "prebuilt" or "source" each. */
+    QString installRoute() const;
+    void setInstallRoute(const QString &route);
+    QString buildDeps() const;
+    void setBuildDeps(const QString &route);
+
     QString message() const;
     int messageType() const;
 
@@ -137,12 +146,14 @@ Q_SIGNALS:
     void statusChanged();
     void busyChanged();
     void channelChanged();
+    void routeChanged();
     void messageChanged();
 
 private:
     SlotInfo *slotById(const QString &id) const;
     void syncSlots();
     void syncChannelFromServer();
+    void syncRouteFromServer();
     void updateSaveState();
     void setMessage(const QString &text, MessageType type);
     void onRequestFinished(SlotsClient::Request request, const QString &errorName, const QString &errorMessage);
@@ -154,6 +165,10 @@ private:
     bool m_channelEdited = false;
     bool m_awaitingChannel = false;
     QString m_pendingChannel;
+    QString m_installRoute = QStringLiteral("prebuilt");
+    QString m_buildDeps = QStringLiteral("prebuilt");
+    bool m_routeEdited = false;
+    bool m_awaitingRoute = false;
     QString m_message;
     MessageType m_messageType = NoMessage;
 };

@@ -55,6 +55,8 @@ static QString laneName(Lane lane)
         return u"box"_s;
     case Lane::Port:
         return u"port"_s;
+    case Lane::PortSource:
+        return u"port-source"_s;
     case Lane::Archive:
         return u"archive"_s;
     case Lane::PackFile:
@@ -164,6 +166,7 @@ AbstractResource::Type KdosResource::type() const
     case Lane::Debian:
     case Lane::Box:
     case Lane::Port:
+    case Lane::PortSource:
     case Lane::Archive:
     case Lane::PackFile:
         return Application;
@@ -283,6 +286,8 @@ QString KdosResource::sourceIcon() const
         return u"utilities-terminal"_s;
     if (o == "kdos-ports"_L1)
         return u"start-here-kdos"_s;
+    if (o == "kdos-ports-source"_L1)
+        return u"run-build"_s;
     if (o == "medium"_L1)
         return u"media-optical"_s;
     if (o == "local"_L1)
@@ -299,6 +304,7 @@ bool KdosResource::isRemovable() const
 {
     switch (m_entry.lane) {
     case Lane::Port:
+    case Lane::PortSource:
     case Lane::Archive:
     case Lane::PackFile:
         return false;
@@ -332,7 +338,7 @@ bool KdosResource::canExecute() const
         return false;
     if (m_entry.lane == Lane::Box)
         return !QStandardPaths::findExecutable(u"konsole"_s).isEmpty();
-    if (m_entry.lane == Lane::Port)
+    if (m_entry.lane == Lane::Port || m_entry.lane == Lane::PortSource)
         return !m_entry.desktopId.isEmpty();
     return !m_entry.box.isEmpty() && m_entry.kind != "data"_L1;
 }
@@ -353,7 +359,7 @@ void KdosResource::invokeApplication() const
     }
 
     KService::Ptr service;
-    if (m_entry.lane == Lane::Port) {
+    if (m_entry.lane == Lane::Port || m_entry.lane == Lane::PortSource) {
         QString id = m_entry.desktopId;
         if (id.endsWith(".desktop"_L1))
             id.chop(8);
@@ -436,8 +442,10 @@ QString KdosResource::kdosNotice() const
         return i18n("Removing a box keeps its profile and the files it wrote under ~/.local/share/kdos/boxes/%1.", e.id);
     case Lane::Port:
         if (e.state == EntryState::None)
-            return i18n("Downloads the prebuilt package from the signed KDOS binary host into this version of the system, and the next system update keeps it. This needs a network connection; nothing is built.");
+            return i18n("Downloads the prebuilt package from the signed KDOS binary host into this version of the system, and the next system update keeps it. This needs a network connection; nothing is built. Before it asks for the administrator password it says how many packages it downloads, and how much.");
         return i18n("Part of the KDOS system: it is updated with the system and is not removed on its own.");
+    case Lane::PortSource:
+        return i18n("Builds %1 on this computer from its recipe and installs it into this version of the system; the next system update builds it again. Its sources are downloaded, and so is each dependency this system lacks unless the setting says to build those too. A build can take minutes or hours. Before it asks for the administrator password, which it does each time, it says how many packages it builds and how many it downloads.", e.name);
     case Lane::Archive:
         if (e.signature == "refused"_L1)
             return i18n("This file holds no list of applications to import: it is not a set made by “kdos-appbox export”, and there is nothing in it to install.");

@@ -1628,8 +1628,9 @@ if [ -n "$FREEZE" ]; then
 fi
 
 # release_tree <commit> <out> <tag> — the recipe-only ports tree at <commit>,
-# laid out as an image's /ports: ports/core, ports/shelves and
-# ports/sources.idx at the top, src/, docs/ and script/book beside them, and a
+# laid out as an image's /ports: ports/core, ports/shelves, ports/sources.idx
+# and ports/groups at the top (a fetched tree without groups would leave
+# `kdos update groups` and the installer naming none), src/, docs/ and script/book beside them, and a
 # TREE stamp naming the commit and its time, which `kdos update fetch` orders
 # two trees by, and the release <tag>, under which a machine holding the tree
 # finds the release index of its binhost.
@@ -1643,9 +1644,9 @@ fi
 release_tree() {
     local c=$1 out=$2 tag=$3 d=$TMP/tree t
     rm -rf "$d"; mkdir -p "$d/raw" "$d/ports/script"
-    git -C "$REPO_ROOT" archive --format=tar "$c" ports/core ports/shelves ports/sources.idx src docs script/book |
+    git -C "$REPO_ROOT" archive --format=tar "$c" ports/core ports/shelves ports/sources.idx ports/groups src docs script/book |
         tar -x -C "$d/raw" || return 1
-    mv "$d/raw/ports/core" "$d/raw/ports/shelves" "$d/raw/ports/sources.idx" "$d/ports/" || return 1
+    mv "$d/raw/ports/core" "$d/raw/ports/shelves" "$d/raw/ports/sources.idx" "$d/raw/ports/groups" "$d/ports/" || return 1
     mv "$d/raw/src" "$d/ports/src" || return 1
     mv "$d/raw/docs" "$d/ports/docs" || return 1
     mv "$d/raw/script/book" "$d/ports/script/book" || return 1

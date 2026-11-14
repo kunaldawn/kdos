@@ -1,34 +1,45 @@
 # Applications
 
 This chapter is for anyone who wants graphical software on a KDOS machine: a browser, an office
-suite, an image editor, a CAD package. It describes the applications KDOS compiles natively,
-arranged by what you want to do, which application opens which kind of file, and Discover, where
-software is found, installed and updated. Then it covers the software KDOS does not compile: how to
-find, install, launch, update and remove it, how to carry a set of it to another machine without a
-network, how files and links reach it, and how to manage the *boxes* it runs in. Read
-[The desktop](desktop.md) first if you have not used Kickoff, the Start menu; for the file format and the
-machinery underneath boxed software, see [Packs and boxes](../03-architecture/packs-and-boxes.md)
-and [kdos-appbox](../04-programs/kdos-appbox.md).
+suite, an image editor, a CAD package. It describes the three ways software arrives, how a native
+port is installed prebuilt or built on the machine, one at a time or as a group, the applications
+KDOS compiles natively, arranged by what you want to do, which application opens which kind of file,
+and Discover, where software is found, installed and updated. Then it covers the software KDOS does
+not compile: how to find, install, launch, update and remove it, how to carry a set of it to another
+machine without a network, how files and links reach it, and how to manage the *boxes* it runs in.
+Read [The desktop](desktop.md) first if you have not used Kickoff, the Start menu; for the file
+format and the machinery underneath boxed software, see [Packs and
+boxes](../03-architecture/packs-and-boxes.md) and [kdos-appbox](../04-programs/kdos-appbox.md).
 
 ## Where applications come from
 
-Applications reach a KDOS machine by two routes.
+Software reaches a KDOS machine three ways. Two are native: the program is a port, compiled from a
+recipe in this repository and installed on the host like every other program. The third is boxed.
 
-**Native applications** are compiled from source by the KDOS build, from recipes in the ports tree,
-and installed into the system image like every other program. They are on the medium you boot
-from, they are copied to the disk by the installer, and they need no network at any point. This is
-where the everyday software lives: every application of KDE Gear, Firefox ESR, Thunderbird,
-LibreOffice, GIMP, Krita, Inkscape, KiCad, FreeCAD, Blender, QGIS, GNU Radio and many more.
+| Way | Where it comes from | Discover's origin | At a prompt | Choose it when |
+|---|---|---|---|---|
+| **Native, prebuilt** | The release's signed package host, the *binhost*, which holds every port the release built | *KDOS system* | `sudo kdos update install <port>` | Almost always: it is one download, checked against the release's signature |
+| **Native, built on this computer** | The port's recipe and its sources, compiled on the machine | *KDOS, built on this computer* | `sudo kdos update install --source <port>` | You want the binary built here, or a port has no prebuilt package |
+| **Boxed** | A catalogue row naming Debian packages, built by podman into a rootless container of its own | *KDOS packs*, *Debian, built in a box* and the boot medium | `kdos app install <id>` | KDOS does not port the program, ports an older version than you need, or you want it kept apart from the system |
+
+The live ISO already carries the *base*: the Plasma session, the core KDE applications (Konsole,
+Dolphin, Kate, Okular, Gwenview, Ark, Spectacle, KCalc, Elisa, KDE Connect, Partition Manager and
+Yakuake, with the KIO workers and thumbnailers they use), Firefox ESR, Discover, networking,
+printing and the box stack. It carries no compiler: a build on the machine starts by installing
+the `build-tools` group. The rest of the about
+2,400 native ports, from LibreOffice, GIMP, Krita, Blender and the rest of KDE Gear to Thunderbird,
+Chromium, KiCad, FreeCAD, QGIS, Wine and TeX Live, is one download away, one port at a time or as
+a [group](#native-groups). Both native routes need a network, the built one for the port's sources
+and for every dependency it downloads.
 
 **Boxed applications**, also called *alien apps*, are software KDOS does not compile. A *catalogue*
 shipped on the medium describes each one, and your machine builds it on demand, in containers, from
 Debian packages, which needs a network. The catalogue carries what is not ported natively and some
 alternatives to what is.
 
-The line between the two follows one question: does a machine with no network need it? What it
-needs is ported natively, and the catalogue carries the rest. Discover shows both, side by side
-(see [Discover](#discover)). See
-[Decisions](../01-philosophy/decisions.md#native-applications-on-the-medium-a-store-that-builds-the-rest)
+Discover shows all three side by side, and a program available more than one way lists each in its
+source picker (see [Discover](#discover)). See
+[Decisions](../01-philosophy/decisions.md#a-base-on-the-medium-every-port-prebuilt-beside-it)
 for the reasoning, and [How KDOS differs](../01-philosophy/how-kdos-differs.md#applications) for how
 other distributions deliver the same software. How far along each part is, is recorded in
 [Status](../06-reference/status.md#applications-and-boxes).
@@ -51,12 +62,91 @@ Kickoff, it answers KRunner, it can be pinned, and it opens the file types it cl
 on your `PATH`. It starts at once, with no container to bring up. It is updated with the rest of the
 system (see [Keeping it current](administration.md#keeping-it-current)), not with `kdos app`.
 
-Data an application needs is ported too, so it is on the medium rather than fetched on first use:
-KiCad's symbol, footprint and template libraries, the GIMP manual, Celestia's star catalogues and
-textures, the Whisper `base.en` speech model, and the free data sets of the games (OpenTTD's
+### Installing a native port
+
+Discover installs a port from its page; at a prompt, `kdos update install` does the same. A prebuilt
+install first needs the release's package index on the machine, which `sudo kdos update fetch`
+takes (on the live ISO, `sudo kdos update fetch --binhost-only`):
+
+```sh
+sudo kdos update install gimp                     # one port, prebuilt, with what it lacks
+sudo kdos update install --source bat             # built here; what it lacks downloaded prebuilt
+sudo kdos update install --source --build-deps=source bat   # built here, and what it lacks built too
+kdos update install --dry-run kdenlive            # what would be downloaded or built, changing nothing
+```
+
+A dry run needs no root and prints one line per package, `<pkg> prebuilt <file> <bytes>` or
+`<pkg> source <version>-<release>`, then a `total` line. A prebuilt install fetches every package
+file and checks each against the signed index before it installs any; when the index does not
+cover one of them, the whole install refuses and names `kdos update install --source <port>`. A
+build takes minutes for a small program and hours for a large one. An install never rebuilds a
+package that is already installed, and refuses when an installed dependency is older than its
+recipe: run the system update first. The port joins `/var/lib/kdos/world`, the set of what was
+installed on purpose, so updates keep it. The routes and every flag are in
+[The kdos command](../04-programs/kdos-command.md#install-routes-and-groups).
+
+**Every program keeps the way it came.** Each package an install adds records its route in
+`/var/lib/kdos/origin`, `prebuilt` or `source`, and everything the image brought is prebuilt. At an
+update, a package built here is built again from the new recipe, and a prebuilt one is downloaded
+from the new release's binhost. Installing a port again by the other route replaces it, alone, and
+records the new route.
+
+**The default route** of a terminal install, and whether a build also builds what the program needs,
+are set in **System Settings › System Versions › Installing software**:
+
+| Choice | Options | `/etc/kdos/update.conf` |
+|---|---|---|
+| Install programs: | Download them prebuilt (the default); Build them on this computer | `install = prebuilt\|source` |
+| When building, what a program needs: | Download it prebuilt (the default); Build it too | `build-deps = prebuilt\|source` |
+
+A flag on the command line overrides either. Discover follows the first choice: it offers both
+origins for every port the binhost holds and opens the one `install =` names, and its source
+picker offers the other. Before it asks for a password it says how many packages the install
+downloads, and how many it builds here. Building on this computer asks for an administrator's
+password every time; a prebuilt install's password is kept for a while. The live session has no Installing software section, since it keeps no versions; see
+[KDOS settings pages](../04-programs/kdos-settings.md#system-versions).
+
+### Native groups
+
+A group installs a whole set of ports in one step. The groups are named in `/ports/groups`, and
+the installer offers the same ones (see [Installation](installation.md#8-applications)):
+
+| Group | What it installs |
+|---|---|
+| `kde-games`, `kde-education`, `kde-pim`, `kde-multimedia`, `kde-graphics`, `kde-utilities`, `kde-devtools` | KDE Gear's games, education, mail, calendar and contacts (KMail, Kontact, KOrganizer), audio and video (Kdenlive, K3b, JuK), graphics (KolourPaint, Skanpage), utilities and development tools: each group is the Gear meta port of its name, such as `kde-gear-pim` |
+| `kde-network` | KTorrent, KRDC, Krfb, Google Drive in Dolphin, the online-account providers, Samba sharing from Dolphin's properties |
+| `kde-system` | Filelight, Sweeper, KFind, KSystemLog, KWalletManager, KCharSelect, ISO Image Writer, the Help Center |
+| `kde-artwork` | The KDE wallpaper collection and the Oxygen theme |
+| `office` | LibreOffice, Calibre, TeXstudio |
+| `graphics` | GIMP, Krita, Inkscape, darktable, Blender |
+| `internet` | Thunderbird, Chromium, LibreWolf |
+| `multimedia` | VLC, mpv, OBS Studio, Audacity, Shotcut, HandBrake, Kodi |
+| `games` | SuperTuxKart, Wesnoth, Xonotic, Luanti, ScummVM, RetroArch |
+| `science` | Octave, QGIS, Stellarium, FreeCAD, KiCad, OpenSCAD |
+| `development` | Rust, Go, Node.js, Zig, gdb, Valgrind, strace, LLDB |
+| `windows` | Wine |
+| `build-tools` | GCC with binutils' assembler and linker, make, CMake, Meson, Ninja, pkgconf, autotools, bison, flex |
+| `lang-zh`, `lang-ja`, `lang-ko` | Chinese, Japanese or Korean input for fcitx5 (the Chinese addons, Anthy, Hangul), its GTK modules and Noto CJK fonts |
+
+```sh
+kdos update groups                     # every group: installed or not, members missing, download size
+sudo kdos update install office        # each member, as the port it is
+sudo kdos update install --pending     # the groups the installer recorded because it was offline
+```
+
+Each member joins the world set by its own name, so removing a port from a group later leaves it
+installed. The download size is shown once the binhost index is on the machine, and only for a
+group whose every member installs prebuilt. On the live ISO a group goes into the live session's
+memory, like anything else installed there.
+
+### The data a port carries
+
+Data an application needs is ported too, so it is in the port's package rather than fetched on first
+use: KiCad's symbol, footprint and template libraries, the GIMP manual, Celestia's star catalogues
+and textures, the Whisper `base.en` speech model, and the free data sets of the games (OpenTTD's
 graphics, sounds and music, Freedoom, Xonotic's and SuperTuxKart's data). The manuals of the TeX
-packages are not among them; see
-[Known gaps](../06-reference/known-gaps.md#texdoc-finds-no-manuals-and-html-and-pdf-manuals-are-not-installed).
+packages are not among them; see [Known
+gaps](../06-reference/known-gaps.md#texdoc-finds-no-manuals-and-html-and-pdf-manuals-are-not-installed).
 
 ### Toolkits, Wayland and X11
 
@@ -114,7 +204,8 @@ before `~/.config/newsboat/urls` lists a feed, `iamb` and `toot` before an accou
 `timg`, `fx`, Frotz and Inlyne have no row either and open a file from the file manager's Open
 With, and Yamagi Quake II is started as `quake2` once its data is in place.
 
-Every application of KDE Gear is installed, apart from five that cannot work here (KJournald, which
+Every application of KDE Gear is ported, the core ones in the base and the rest in the binhost,
+apart from five that cannot work here (KJournald, which
 reads systemd's journal; KMag and KMouseTool, which need X11; Plasma Mobile's settings shell; and
 colord-kde, whose Colour Management page would list only the devices colord knows, which under
 Wayland are never the displays). A display's ICC profile is chosen in System Settings → Display Configuration,
@@ -124,7 +215,7 @@ and KWin applies it. The tables name the Gear applications beside the rest; the 
 
 | Application | What it is for |
 |---|---|
-| Firefox ESR | The default web browser, on GTK 3. Its shipped policies file turns off telemetry and update checks, and the Plasma Browser Integration extension is installed from the medium, so its media and downloads reach Plasma's applets |
+| Firefox ESR | The default web browser, on GTK 3. Its shipped policies file turns off telemetry and update checks, and the Plasma Browser Integration extension is installed beside it, so its media and downloads reach Plasma's applets |
 | Chromium | Chromium's browser, on GTK 3 |
 | LibreWolf | A Firefox derivative with privacy defaults |
 | Falkon | KDE's browser, on QtWebEngine |
@@ -370,8 +461,10 @@ services these need, `62_virtlogd` and `63_libvirtd`, are listed in
 | Kalm | Breathing exercises |
 | GCompris, Tux Paint | Activities and drawing for young children |
 
-The KDOS and *KDOS from Scratch* books open in the Help Center, KHelpCenter, beside every KDE
-application's handbook; `kdos-doc` opens them from a prompt.
+The KDOS and *KDOS from Scratch* books open in the browser from the menu's Library, and in the
+Help Center, KHelpCenter, beside every KDE application's handbook once it is installed
+(`kdos update install khelpcenter`); `kdos-doc` opens the KDOS book from a prompt. *KDOS from
+Scratch* is `kdos update install kdos-kfs`.
 
 ### Local AI, speech and translation
 
@@ -502,12 +595,12 @@ simulation traces). mpv and `swayimg`, listed above, need no toolkit either.
 
 Which application opens a kind of file or link is decided by one list,
 `/usr/share/kdos/xdg/kde-mimeapps.list`: the KDE application by default, unless an application
-already on the image is clearly better at the job. Your own choice, made in Dolphin with **Open
+KDOS ports is clearly better at the job. Your own choice, made in Dolphin with **Open
 With**, *Other Application…* and *Set as default app to open … files*, or on System Settings'
 Default Applications page (a role) and File Associations page (one type), lands in
 `~/.config/mimeapps.list` and outranks it.
 
-| Role | Default | Also installed |
+| Role | Default | Also ported |
 |---|---|---|
 | Web, `http:` and `https:` links | Firefox ESR | Falkon, Konqueror, Chromium, LibreWolf |
 | Mail (`mailto:`), invitations and contact cards | Thunderbird | KMail, Kontact, KOrganizer, KAddressBook, Merkuro |
@@ -538,9 +631,10 @@ page notes that Ark may not open every file type; its details name one, ISO imag
 reads and which stay with ISO Image Writer. *Open All in Ark* there would make Ark the default for
 disk images as well.
 
-A row whose application is removed falls through to the next application that claims the type, and
-`testing/mimecheck.py` holds the list against the image so that every row names an application
-that is installed.
+A default outside the base, such as Thunderbird or LibreOffice, takes effect once its port is
+installed. Until then, and after its application is removed, a row falls through to the next
+installed application that claims the type. `testing/mimecheck.py` holds the list against the
+build tree, so that every row names an application a port installs.
 
 ## Discover
 
@@ -555,7 +649,8 @@ network only when you press a button that says it will.
 | `medium` | The packs and application sets on the boot medium, and the catalogue's applications whose pack is only there | Offline, verified as each pack mounts |
 | `kdos-store` | The catalogue's applications with no pack anywhere, and Debian's desktop applications that the catalogue does not name, from the Debian catalogue shipped on the image, less those that cannot work in a box | Built from Debian packages in a box of its own, over the network, and each says so before it starts; a Debian application's box is `deb.<package>` |
 | `kdos-boxes` | Boxes that no application above accounts for, such as one you made with `kdos-box create` | Removal only |
-| `kdos-ports` | The host's own software, every installed port | Ports arrive and leave with the system version. Once `kdos update fetch` has fetched a release's signed binary index, a port it lists can be installed from it, with what it lacks, as an administrator |
+| `kdos-ports`, shown as *KDOS system* | The host's own software: every installed port, and every port the release's binhost holds | Prebuilt from the binhost, with what it lacks, as an administrator, once `kdos update fetch` has fetched the release's signed index. Installed ports leave with the system version; Discover offers no removal |
+| `kdos-ports-source`, shown as *KDOS, built on this computer* | Each port the binhost holds that is not installed, as a second origin of the same application | Built on the machine from its recipe, by `kdos update install --source`, with an administrator's password every time; what it lacks comes prebuilt or is built too, as System Settings › System Versions › Installing software says |
 | The system update | The next KDOS release, as an A/B update (see [Keeping it current](administration.md#keeping-it-current)) | Written into the other slot; **Restart** starts it |
 | Firmware | Firmware updates fwupd knows for this machine's devices, from the metadata snapshot each release carries | Applied by fwupd; system firmware at the next restart |
 
@@ -917,7 +1012,8 @@ directories on `PATH` and the shim would take the name over from the host progra
 
 ## Updating
 
-Native applications are updated with the system; see
+Native applications are updated with the system, each by the way it came: one built here is built
+again, a prebuilt one is downloaded again; see
 [Keeping it current](administration.md#keeping-it-current). This section is about boxed
 applications.
 

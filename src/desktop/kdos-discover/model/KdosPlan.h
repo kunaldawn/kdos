@@ -12,6 +12,13 @@
  * over, so each is checked against the id rule before it is placed in a step,
  * and a step is run with a program and its arguments, no shell between.
  *
+ * A HOST PORT IS SHOWN BEFORE IT IS INSTALLED. Its plan opens with the dry
+ * run of the same install, which needs no root: what it prints becomes the
+ * question Discover asks (Transaction::proceedRequest), and only a yes
+ * reaches pkexec and the password. A dry run that refuses ends the plan
+ * there, with its reason, and nobody is asked for a password for an install
+ * that would refuse.
+ *
  * THE PLAN PREFERS A PACK TO A BUILD. A catalogue row whose pack is already in
  * the pack store, or on the medium, becomes a box over that pack in seconds
  * and with no network; only a row with no pack anywhere is built by the store
@@ -44,6 +51,7 @@ struct Step {
     enum class Kind {
         Run, // program + arguments
         Packd, // one request line to kdos-packd
+        Preview, // program + arguments printing a dry run, asked about before the next step
     };
     Kind kind = Kind::Run;
     QString program;
@@ -61,6 +69,7 @@ struct PlanContext {
     QHash<QString, BoxRow> boxes; // kdos-box list, by name
     QString mediumPacks = QStringLiteral("/mnt/iso/packs");
     QString portsHelper = QStringLiteral("/usr/libexec/kdos-discover/kdos-ports-helper");
+    QString portsBuilder = QStringLiteral("/usr/libexec/kdos-discover/kdos-ports-builder");
 };
 
 struct Plan {
@@ -82,5 +91,11 @@ Plan removePlan(const Entry &entry, const PlanContext &ctx);
 // The packd request that a kdos-box or kdos-appbox step would otherwise need
 // a wrapper for, as the daemon spells it.
 QString packdRequest(const QString &verb, const QString &id);
+
+// The question a Preview step's dry run becomes: what is downloaded and how
+// much, and what is built here with the warning that building takes long,
+// then the packages built here by name. Rich text (Discover's dialog shows
+// StyledText); every name in it is escaped.
+QString installPreviewText(const InstallPreview &preview);
 
 }

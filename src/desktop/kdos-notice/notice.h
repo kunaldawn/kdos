@@ -9,7 +9,8 @@
  *
  *   facts.c    what the system says: `kdos restarts --json`, `kdos cve
  *              --json`, `kdos-bootctl status --json`, kdos-oomd's status,
- *              the installer's /var/lib/kdos/apps-pending
+ *              the installer's /var/lib/kdos/apps-pending,
+ *              `kdos firmware sync --dry-run --json`
  *   decide.c   facts plus what was already said -> what to post or close
  *   state.c    what was already said, kept across logins
  *   main.c     the session bus, the watches, the timers, the actions
@@ -35,6 +36,7 @@ enum {
 	KN_ROLLBACK,		/* the last trial did not start       */
 	KN_OOM,			/* kdos-oomd closed something         */
 	KN_PENDING,		/* applications chosen at install wait */
+	KN_FIRMWARE,		/* a firmware port the hardware needs  */
 	KN_COUNT
 };
 
@@ -95,11 +97,21 @@ typedef struct {
 	char key[32];		/* its content, hashed                */
 } KnPending;
 
+#define KN_FW_PORTS 16
+
+typedef struct {
+	int ok;			/* the command answered               */
+	int n;
+	char port[KN_FW_PORTS][64];
+	char reason[KN_FW_PORTS][192];
+} KnFirmware;
+
 /* Parse the commands' JSON; 0 when the document is not theirs. */
 int kn_parse_restarts(const char *json, KnRestarts *out);
 int kn_parse_cve(const char *json, KnCve *out);
 int kn_parse_boot(const char *json, KnBoot *out);
 int kn_parse_oom(const char *line, KnOom *out);
+int kn_parse_firmware(const char *json, KnFirmware *out);
 /* The installer's selection file, as Discover reads it: one id a line,
  * `group <id>` lines and `#` comments named but not counted. */
 void kn_parse_pending(const char *text, KnPending *out);
@@ -110,6 +122,7 @@ void kn_read_cve(KnCve *out);
 void kn_read_boot(KnBoot *out);
 void kn_read_oom(KnOom *out);
 void kn_read_pending(KnPending *out);
+void kn_read_firmware(KnFirmware *out);
 
 /* Name each process by its application's desktop entry, and mark the
  * session's own programs. */
@@ -158,6 +171,7 @@ int kn_decide_rollback(const KnBoot *b, const KnState *s, KnPost *out);
 /* `prev` is the count the session started with or last saw. */
 int kn_decide_oom(const KnOom *o, int prev, KnPost *out);
 int kn_decide_pending(const KnPending *pd, const KnState *s, KnPost *out);
+int kn_decide_firmware(const KnFirmware *f, const KnState *s, KnPost *out);
 
 /* What each action of a kind runs, as an argument vector; NULL-ended in
  * `a`. 0 when the action is not one that kind offers. */

@@ -8,10 +8,12 @@ lists every installed package older than its recipe there and says what an updat
 system. `kdos update apply` then writes the newer release into the inactive A/B slot, by one of
 three lanes: the release's **slot image**, whole and checked file by file; the **binhost**'s
 prebuilt packages; or, with `--source`, a **build** on this machine. Discover shows the same
-update beside the applications' and installs it through `kdos-sysupdated`. This page covers
-checking, fetching and applying an update, taking a tree from a stick, what to do after an update,
-the nightly check, and the vulnerability report. Boxed applications are updated differently, at
-the end of [Usage](#usage).
+update beside the applications' and installs it through `kdos-sysupdated`. The ISO carries only
+the base, so the same commands also add software: `kdos update install` puts a port or a named
+group of them into the running root, prebuilt from the release's binhost or built here. This page
+covers checking, fetching and applying an update, installing software, taking a tree from a stick,
+what to do after an update, the nightly check, and the vulnerability report. Boxed applications
+are updated differently, at the end of [Usage](#usage).
 
 ## Installation
 
@@ -32,8 +34,11 @@ the end of [Usage](#usage).
   release index, the binhost index and the slot image manifest are checked against,
   `/etc/kdos/keys/`.
 - The image step [105_ports](../15-image/105-ports.md) stages the recipe tree that every image
-  carries at `/ports`, stamps it with the commit it was made from, and puts the release key's
-  public half into the ring.
+  carries at `/ports`, with the [groups]{.idx} file `/ports/groups`, stamps it with the commit it
+  was made from, and puts the release key's public half into the ring.
+- The image step [017_stage](../15-image/017-stage.md) decides what the medium carries: the base
+  of `ports/base`. Every other port is in the release's binhost, which
+  [010_binhost](../15-image/010-binhost.md) writes.
 
 The timer is enabled on the live medium and on an installed system alike.
 
@@ -41,9 +46,10 @@ The timer is enabled on the live medium and on an installed system alike.
 
 ### /etc/kdos/update.conf
 
-Not shipped. Each key is a URL, or a directory such as a mounted USB stick or an NFS share. The
-`binhost` and `image` places hold a `kdos-update.idx` with its `.sig`, and every file is fetched
-from where that index says, never by its name:
+Not shipped. The first four keys name places, each a URL or a directory such as a mounted USB
+stick or an NFS share; the last two name how `kdos update install` installs. The `binhost` and
+`image` places hold a `kdos-update.idx` with its `.sig`, and every file is fetched from where that
+index says, never by its name:
 
 | Key | Where `kdos update fetch` takes it from | With no key |
 |---|---|---|
@@ -51,8 +57,12 @@ from where that index says, never by its name:
 | `binhost` | the release index through which the binhost index, `PACKAGES` and `PACKAGES.sig`, and the packages it names are found | the release `<version>` of a tree whose stamp names its release, whose index points into the releases `binhost-<version>-01`, `-02`, … |
 | `image` | the release index through which the slot image manifest, `kdos-image.manifest` and its `.sig`, and its bundles are found | the latest KDOS release, whose index points into the release `image-<version>` |
 | `carry` | a path, under `/etc` or `/var`, carried into a slot when an update arms it (see [A/B slots and rollback](ab-slots-and-rollback.md#updating-through-the-inactive-slot)); one line per path | nothing beyond the built-in list |
+| `install` | `prebuilt` or `source`: the route `kdos update install` takes when no flag names one | `prebuilt` |
+| `build-deps` | `prebuilt` or `source`: for a source install, whether each dependency the machine lacks is downloaded or built too | `prebuilt` |
 
-The System Versions page's update-source setting writes `tree` through kdos-sysupdated. A file
+Any other value of `install` or `build-deps` makes `kdos update install` exit 2. The System
+Versions page's update-source setting writes `tree`, and its **Installing software** section
+writes `install` and `build-deps`, both through kdos-sysupdated. A file
 pointing every download at a stick:
 
 ```text
@@ -77,7 +87,7 @@ Its description, from `fs/etc/kdos/keys/tree/README`:
 The image step that fills it. An image built without the release key ships the ring empty, and
 then refuses every fetched tree:
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=133-142 pin=68e72034c604 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=134-143 pin=68e72034c604 -->
 
 ### /etc/kdos/keys/
 
@@ -96,7 +106,7 @@ The stamp naming the commit `/ports` was made from and when. `kdos update fetch`
 fetched tree's own stamp and refuses an older tree; a `/ports` with no stamp, from an image built
 without a commit, accepts any signed tree. The same step writes it:
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=123-132 pin=91e34053e828 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=124-133 pin=91e34053e828 -->
 
 On a booted image it reads, with the image's own commit and time:
 
@@ -129,6 +139,9 @@ directory above the first repository it names. See [kpkg](kpkg.md#etckpkgconf).
 | `/var/lib/kdos/binhost/` | `fetch`, `apply` | The verified binhost index, the release index it was fetched by (`INDEX`, `INDEX.sig`, `ORIGIN`), and the packages it names, kept until a newer index names others |
 | `/var/lib/kdos/image/offer/` | `fetch` | The verified manifest of the newest slot image and the release index that names its bundles |
 | `/var/lib/kdos/image/MANIFEST` | `apply` by the image lane | The manifest of the image the root was written from, which the next image lane reads to pick its delta |
+| [`/var/lib/kdos/world`]{.idx} | `install` | The world set: each port installed on purpose, one name per line, which every update keeps installed |
+| [`/var/lib/kdos/origin`]{.idx} | `install`, `apply` | One `<package> prebuilt\|source` line for each package an install or an update added; a package with no line came prebuilt, as everything the image brought did. Carried into a slot beside the world set |
+| [`/var/lib/kdos/groups-pending`]{.idx} | the installer | The groups chosen at install time that could not be installed then, one id per line, for `install --pending` |
 
 A freshly booted image has none of them. The first `fetch` or `apply` writes `update.state` and its
 lock, and `update.json` appears at the nightly check's first run, or sooner when a `fetch` or an
@@ -179,8 +192,10 @@ did.
    ```
 
    The document's `offer` is the version an update would make this system and `lane` is where it
-   comes from: `image`, or `binhost` when every package behind is covered by a verified index.
-   With neither, nothing is offered to Discover, and `apply --source` is the way.
+   comes from: `image`, or `binhost` when every package behind is covered by a verified index or
+   was built here. `builds` counts the packages behind that the update builds here, because their
+   origin is `source`; they count as covered. With neither lane, nothing is offered to Discover,
+   and `apply --source` is the way.
 
 ### Fetching a newer tree
 
@@ -262,11 +277,18 @@ archive is, `<tag>/<asset>`, in its place, and like any variable it has to be se
      synchronised, not formatted: files the slot or the running root already hold are copied and
      checked, the delta from the version this root was written from is streamed, and the full image
      fills only what is still missing. Every file is checked against the signed manifest, so a
-     damaged delta falls back to the full image.
-   - **The binhost**, when the verified index covers every package behind. kpkg installs each
-     prebuilt package after its three equality tests (architecture, build configuration, recipe);
-     one package that fails them refuses the whole lane before the slot is written, with
-     `N packages need a source build`.
+     damaged delta falls back to the full image. A slot image is the base alone, so `apply` then
+     installs the world set, and whatever it lacks, into the slot: prebuilt from the same
+     release's binhost, or built here for a package whose origin is `source`. It decides that
+     before writing anything: when a prebuilt package of the world set, or a dependency of one, is
+     not in that binhost, the lane refuses with `needs-source` and writes nothing. With no world
+     set there is no such step.
+   - **The binhost**, when the verified index covers every package behind that came prebuilt.
+     kpkg installs each prebuilt package after its three equality tests (architecture, build
+     configuration, recipe); one package that fails them refuses the whole lane before the slot is
+     written, with `N packages need a source build`. A package whose line in
+     `/var/lib/kdos/origin` says `source` was built here and is built here again, in a chroot of
+     the slot, so it needs no index.
    - **`--source`**, a build on this machine: every source of every package behind is downloaded
      before anything compiles, then each package is built and installed with `kpkg install -f`,
      dependencies first, in a chroot of the inactive slot against that slot's libraries.
@@ -292,16 +314,119 @@ confirmed way back until this one is confirmed or rolled back.
 `DIR` is the inactive slot: no `kpkg check`, no carry, no copy of `/ports`, no
 `kdos-bootctl deploy` and no `try`, so a slot updated this way is never booted as a candidate.
 
-### Installing one port from the binhost
+### Installing software
+
+The base the ISO carries is Plasma, the core KDE applications, Firefox, the toolchain and the
+system's own tools; everything else the release built is in its binhost. A port reaches this
+machine by one of three routes:
+
+| Route | How | What it takes |
+|---|---|---|
+| Prebuilt | `kdos update install --prebuilt <port>`, or Discover's **KDOS system** origin | The port and every dependency it lacks from the release's binhost, each checked against the signed index |
+| Built here | `kdos update install --source <port>`, or Discover's **KDOS, built on this computer** origin | Every source downloaded, then the port built and installed on this machine |
+| Boxed | `kdos app install <id>`, or Discover's boxed applications | A container image built on this machine from the catalogue; see [Boxes](boxes.md) |
+
+`/etc/kdos/update.conf`'s `install =` names the route `kdos update install` takes with no flag,
+and `build-deps =` whether a source install downloads or builds what the port lacks (see
+[/etc/kdos/update.conf](#etckdosupdateconf)); System Settings → **System Versions** →
+**Installing software** writes both. Discover does not read `install =`: it lists one
+application with both origins in its source picker, and asks for the administrator password every
+time it builds.
+
+1. Have the release's binhost index. A machine that has fetched an update has it; on one that
+   has not, take only the index of the tree in place, not a newer tree:
+
+   ```bash
+   sudo kdos update fetch --binhost-only
+   ```
+
+2. See what an install would do. This needs no root:
+
+   ```bash
+   kdos update install --dry-run <port>
+   ```
+
+   One line per package, `<pkg> prebuilt <file> <bytes>` or `<pkg> source <version>-<release>`,
+   then `total <prebuilt-count> <bytes> <source-count>`.
+
+3. Install:
+
+   ```bash
+   sudo kdos update install <port>
+   sudo kdos update install --source <port>
+   sudo kdos update install --source --build-deps=source <port>
+   ```
+
+   Each package prints `==> installing <pkg> (prebuilt)` or `==> installing <pkg> (built here)`.
+   A source install runs `kpkg fetch` for every source first, then builds under
+   `/etc/kdos/chroot.env`, so what it builds has the build configuration the binhost's packages
+   have; under `build-deps = prebuilt` a dependency the binhost does not hold is built too. The
+   port joins `/var/lib/kdos/world`, and each package it added gets its route in
+   `/var/lib/kdos/origin`, which later updates keep: a package built here is built here again.
+
+An install never rebuilds a package that is installed. Asking for an installed port by the other
+route installs that port again, alone, by the route asked for.
+
+A source install readies the machine first, because the image carries each package without its
+headers and static libraries ([Development files](kpkg.md#development-files)) and carries no
+build tools. It installs each member of the `build-tools` group the machine lacks prebuilt, `==> installing <pkg>
+(prebuilt, for building)` per package; then it installs again whole, from the binhost, every
+installed package the build compiles against that lacks its development files, `==> restoring the
+development files of <pkg> (prebuilt)`. The dry run lists both first, as `<pkg> prebuilt …` and
+`<pkg> dev <file> <bytes>` lines. To bring a package's development files back without building
+anything:
 
 ```bash
-kdos update install --dry-run <port>
-sudo kdos update install <port>
+sudo kdos update install --dev zlib
+sudo kdos update install --dev kde-devtools
 ```
 
-installs one port and every dependency it lacks into the running root from the verified binhost
-index, with no build; `--dry-run` names the packages and files and touches nothing. Discover's
-host-software installs go the same way.
+#### Groups
+
+`/ports/groups` names sets of ports a machine installs by one name: the KDE Gear sets
+(`kde-games`, `kde-education`, `kde-pim`, `kde-multimedia`, `kde-graphics`, `kde-utilities`,
+`kde-devtools`), `office`, `graphics`, `internet`, `multimedia`, `games`, `science`,
+`development` and `windows`. List them, with what each would add:
+
+```bash
+kdos update groups
+kdos update groups --json
+```
+
+Each line names the group, its title, and either `installed` or how many of its members are
+missing, how many packages that is, and the download size from the cached index (`not all
+prebuilt` when the binhost does not hold every one; no size at all without an index). Install one
+as you would a port:
+
+```bash
+sudo kdos update install office
+```
+
+Each member is installed as the port it is and joins the world set by its own name, so a member a
+later tree drops from the group stays installed.
+
+#### At install time and on the live medium
+
+The installer's **Applications** page lists the groups as **KDOS applications**, none chosen by
+default, above the boxed applications; an answer file names them with `groups =`, separately from
+the boxed groups of `apps =` (see [kinstall](../../kdos/04-programs/kinstall.md#the-applications-step)).
+Its **Packs** step runs `kdos update fetch --binhost-only` with the cache on the target and then
+`kdos update install --prebuilt --root <target> <id>` for each group. When the fetch or a group
+fails, for instance with no network, the ids go to `/var/lib/kdos/groups-pending` on the target
+with a warning, and the install still succeeds. Install them once the machine is online:
+
+```bash
+sudo kdos update install --pending
+```
+
+Each group that installs leaves the file; with nothing recorded it prints `nothing is pending`.
+
+On the live medium, `kdos update install` works the same way, into the overlay in RAM: what it
+installs is gone at the next restart, unless the medium has a persistence store (see
+[Live persistence](live-persistence.md)).
+
+`--root DIR` installs into a root that is not running, `DIR` absolute, by the prebuilt route only:
+a build compiles against the root it runs in, so `--source` with `--root` exits 2.
 
 ### After an update
 
@@ -377,7 +502,9 @@ builds the images and then creates the box on them; see
 `fetch` removes the old entries and moves the new ones in one at a time. Everything `fetch` and
 `apply` write goes into the overlay in RAM and is gone at power-off unless the medium has a
 persistence store ([kdos persist](../../kdos/04-programs/kdos-command.md#kdos-persist)). The
-live medium has no slot state, so `apply` updates the running root.
+live medium has no slot state, so `apply` updates the running root. The software the base leaves
+out is installed there as on an installed machine, into the same overlay; see
+[Installing software](#installing-software).
 
 ## Tips
 
@@ -439,6 +566,21 @@ Discover offers no system update, or `kdos update check` reports a problem
 `N packages need a source build`
 : The binhost does not cover every package behind (another architecture, another build
   configuration, or a recipe the index predates). The binhost lane refuses whole; use `--source`.
+  From `kdos update install`, the same line ends with `` `kdos update install --source <port>`
+  builds it here ``: the prebuilt route refuses the whole install when the index does not hold
+  every package it needs.
+
+`<pkg> is older than its recipe; apply the system update first`
+: `kdos update install` refuses when a dependency the port needs is installed and behind its
+  recipe in `/ports`, because the new port was built against the newer one. Apply the update, then
+  install.
+
+`needs-source` from the image lane
+: `N package(s) of what was installed on purpose is not in release X's binhost (...)`: a port in
+  the world set, or a dependency of one, came prebuilt and the new release's binhost does not hold
+  it, so the slot image would boot without it. Nothing was written. Install each package the
+  message names with `kdos update install --source`, so its origin is `source` and every update
+  builds it here, or update with `--source`.
 
 `fetch` exits 2
 : It needs root (`kdos update fetch replaces the ports tree and needs root`), another `fetch` or
@@ -470,13 +612,16 @@ Discover offers no system update, or `kdos update check` reports a problem
 ## See also
 
 - [kdos update](../../kdos/04-programs/kdos-command.md#kdos-update): every verb, option and exit status
+- [Install routes and groups](../../kdos/04-programs/kdos-command.md#install-routes-and-groups): `install`, `groups` and the origin file
+- [The base image](../../kdos/03-architecture/packaging.md#the-base-image): what the ISO carries and why a base ISO and its binhost are one unit
 - [Updating a machine](../../kdos/03-architecture/packaging.md#updating-a-machine): how a tree, `kpkg` and the slots fit together
 - [Keeping it current](../../kdos/02-user-guide/administration.md#keeping-it-current): the user guide's own section
 - [A/B slot selection](../../kdos/03-architecture/boot-and-init.md#ab-slot-selection): how a tried slot is confirmed or rolled back
-- [Discover](../../kdos/04-programs/discover.md): the system update and the KDOS backend in Discover
+- [Discover](../../kdos/04-programs/discover.md): the system update, the KDOS backend and its two origins
+- [kinstall](../../kdos/04-programs/kinstall.md#the-applications-step): the groups an install adds
 - [kpkg](kpkg.md), [A/B slots and rollback](ab-slots-and-rollback.md), [Timers](timers.md), [Boxes](boxes.md)
 
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 429.* Previous: [428. kpkg](kpkg.md) · [Contents](../README.md) · Next: [430. Local rebuilds and kdos march](local-rebuilds-and-march.md)
+*Part XVI. System administration, chapter 431.* Previous: [430. kpkg](kpkg.md) · [Contents](../README.md) · Next: [432. Local rebuilds and kdos march](local-rebuilds-and-march.md)

@@ -1,0 +1,62 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   ports/buildonly — ports a build needs and a running system does not
+# ---------------------------------
+#
+#   <port>...
+#
+# `depends =` names a port's build and run-time needs alike. The image's
+# closure (ports/base, script/lib/imageset.py) does not follow a dependency
+# into a port listed here, so a compiler a recipe builds with stays off the
+# medium. A listed port is still built, still in the binhost and still
+# installed by `kdos update install` or a source build that needs it, and
+# ports/base naming one puts it back on the medium.
+#
+# A PORT HERE MUST BE NOTHING A PROGRAM ON THE IMAGE RUNS OR LOADS. 087_gates
+# proves it: linkcheck fails the image when a DT_NEEDED or a #! resolves to
+# nothing left in it, and `imageset.py --verify` when a kept package's
+# recorded run-time needs (`kpkg needs`: its sonames, interpreters, QML and
+# Python imports and `runtime =` words) are met only by a port the image
+# drops. A package installed before needs were recorded is not measured by
+# the second, so `kpkg needs --scan` over the build tree is what a new entry
+# is checked with.
+# llvm is not listed: Mesa loads libLLVM. gcc is not: its package carries
+# libstdc++ and libgcc_s. libtool is not: it carries libltdl. A port that
+# does not exist fails preflight. A line starting with '#' and a blank line
+# are skipped.
+
+# Compilers and their bootstraps. Mesa builds its own OpenCL C kernels for
+# the Intel and NVIDIA drivers with clang, libclc and the SPIR-V translator
+# and loads none of them; mesa-opencl, which loads them, is not in the base.
+lldb rust go ghc ocaml zig nodejs clang libclc spirv-llvm-translator
+binutils
+
+# Build systems, generators and the helpers over them.
+cmake meson muon ninja make bmake scons pkgconf autoconf automake
+m4 bison flex gperf extra-cmake-modules gn cbindgen corrosion nasm yasm swig
+vala intltool itstool help2man texinfo go-md2man dwarves cargo-c bindgen lld
+gnu-efi libsass sassc qt5-qttools qt6-qtlanguageserver
+
+# Headers, protocol descriptions and shader compilers a build reads. glslang
+# is not listed: libplacebo links libglslang.
+vulkan-headers spirv-headers spirv-tools shaderc opencl-headers
+xorgproto xcb-proto wayland-protocols nlohmann-json boost protobuf
+
+# Python build backends.
+python3-pip python3-cython python3-hatchling python3-hatch-vcs
+python3-poetry-core python3-pathspec python3-vcs-versioning python3-tomlkit
+python3-scikit-build-core python3-pybind11 python3-glad2 python3-mako
+python3-pefile python3-flit-core python3-calver python3-trove-classifiers
+python3-meson-python python3-pyproject-metadata python3-setuptools-scm
+
+# Font builders.
+fonttools fontforge perl-font-ttf zopfli
+
+# Documentation generators.
+pandoc typst doxygen python3-sphinx docbook-xsl docbook-xml asciidoc
+asciidoctor ruby lowdown xmlto scdoc

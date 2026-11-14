@@ -19,7 +19,7 @@ price it charges.
 | [No Xorg server](#no-xorg-server-and-one-carve-out) | A second display stack on the login path | X-only applications run through Xwayland, and there is no X11 session |
 | [The desktop is KDE Plasma](#the-desktop-is-kde-plasma) | A desktop KDOS maintains alone, and a GUI stack under KDOS's code that runs as root or before the login | Qt and KDE Frameworks under the desktop; KDOS's Plasma plugins rebuilt with every Plasma release |
 | [Built from source](#everything-that-runs-on-the-host-is-built-from-source) | Binaries nobody can read or rebuild | Features that exist only as upstream binaries are absent |
-| [Offline by construction](#offline-by-construction) | Builds that work once and fail a year later, and a machine that needs the network to stay complete | Every dependency a build would download is bundled in advance; there is no Flathub and no "Get New…" |
+| [Offline by construction](#offline-by-construction) | Builds that work once and fail a year later, and a machine that reaches the network unasked | Every dependency a build would download is bundled in advance; there is no Flathub and no "Get New…" |
 | [Reproducible by construction](#reproducible-by-construction) | Signatures and deltas over packages nobody can re-derive | A recipe never rolls its own archive |
 | [One implementation of an idea](#one-implementation-of-an-idea) | Two answers to one question that drift apart | Indirection |
 | [Absent, never partial](#a-thing-that-does-not-parse-whole-is-absent-never-partial) | Confident action on half-read data | No salvage of a damaged file |
@@ -224,10 +224,12 @@ applications are filed the same way: `browsers` (Firefox ESR, Chromium), `mail` 
 `office` (LibreOffice), `documents` (Okular), `editors` (Kate), `graphics` (GIMP, Inkscape, Krita,
 darktable), and on through `studio`, `video-tools`, `cad`, `eda`, `education` and the `games-*`
 shelves. The phase's list is split by the same shelves, one `packages.d/<shelf>.txt` each, and [The
-ports catalogue](../06-reference/ports-catalogue.md) lists every port by shelf. They are ported because a
-box is built from Debian packages over the network, and a machine that never sees a network has only
-what its medium carries. The [boxes](../03-architecture/packs-and-boxes.md) remain for software KDOS
-does not carry, and an application in a box draws whatever its toolkit draws.
+ports catalogue](../06-reference/ports-catalogue.md) lists every port by shelf. They are ported so
+that an application on the host is built from source this tree pins, signed with the release and
+drawn with the desktop's own toolkit setup: a release carries every one prebuilt in its binhost, and
+a machine can build any of them itself. The [boxes](../03-architecture/packs-and-boxes.md) remain
+for software KDOS does not port, or ports at an older version, and an application in a box draws
+whatever its toolkit draws.
 
 A library's toolkit front end is built where a ported application uses it and switched off where
 none does, so what a library installs does not depend on what happened to be built before it.
@@ -247,12 +249,14 @@ the first source fetch to a bootable ISO. The application catalogue is outside t
 Debian's packaging, built by podman into a box on the machine that asks for it, and it is never part
 of the host.
 
-The binaries a machine installs after that are the ones this build produced. A KDOS release builds
-every package from these recipes and publishes the result, as packages on a signed binhost and as
-whole-slot images, signed with the release key. A machine installs a package or an image only once
-its signature verifies against the release key its own image carries, and nothing in a release is
-built anywhere else.
-`kdos update apply --source` builds the same recipes on the machine instead of installing them, and
+The binaries a machine installs are the ones this build produced. A KDOS release builds every
+package from these recipes and publishes the result: its base as the live ISO and as whole-slot
+images, and every package, base and the rest of the about 2,400 ports alike, on a signed binhost,
+all signed with the release key. A machine installs a package or an image only once its signature
+verifies against the release key its own image carries, and nothing in a release is built anywhere
+else.
+`kdos update install --source` builds one port on the machine instead of downloading it,
+`kdos update apply --source` does the same for every package an update brings, and
 [`kdos rebuild`](../04-programs/kdos-command.md#kdos-rebuild) builds the whole system.
 
 A binary taken on trust cannot be read, cannot be rebuilt from the source tree, and carries
@@ -261,9 +265,9 @@ inspection impossible.
 
 Five classes are exempt, and nothing outside them is:
 
-- **Firmware and code for another processor.** `linux-firmware`, `intel-ucode`, `sof-firmware`,
-  the GPU kernels in `intel-media-driver` and `libva-intel-driver`, the SOF coefficient files in
-  `alsa-ucm-conf`, the device stubs uploaded by `espflash`, `probe-rs`, `python3-esptool` and
+- **Firmware and code for another processor.** `linux-firmware`'s vendor ports, `intel-ucode`,
+  `sof-firmware`, the GPU kernels in `intel-media-driver` and `libva-intel-driver`, the SOF
+  coefficient files in `alsa-ucm-conf`, the device stubs uploaded by `espflash`, `probe-rs`, `python3-esptool` and
   `openfpgaloader`, the riscv64 EDK2 image that `qemu` installs from its tarball, the radio
   firmware in `meshtastic-firmware`, `rnode-firmware` and `libperseus-sdr`, the guest ROMs and
   replacement BIOSes the emulators carry, and `wine-mono` and `wine-gecko`. This code runs on a
@@ -342,14 +346,15 @@ The running machine keeps the same rule. Nothing KDOS ships downloads anything o
 - **No "Get New…".** KNewStuff, KDE's service for fetching themes, wallpapers and scripts from
   store.kde.org, is switched off for every program by `ghns=false` under `[KDE Action
   Restrictions]` in the distribution's `kdeglobals`, and Discover is built without its KNewStuff
-  backend. What KDOS offers instead is a curated add-on pack on the medium: wallpapers, colour and
+  backend. What KDOS offers instead is a curated add-on pack in the base: wallpapers, colour and
   Konsole schemes, KWin scripts and a few plasmoids.
 - **No Flatpak.** There is no Flathub remote and no Flatpak backend in Discover, which lists the
   ports, packs and boxes this repository describes, and firmware. Discover fetches no ratings or
   reviews (`FetchOdrsRatings=false` in its shipped `discoverrc`), and its featured list is a file on
   the machine.
 - **No browser extension store.** Plasma Browser Integration's extension for Firefox ESR and
-  LibreWolf is installed from the medium with the browsers.
+  LibreWolf is installed into each browser's distribution directory by the
+  `plasma-browser-integration` port, and comes from no add-on site.
 - **No telemetry.** KUserFeedback is not ported, and every KDE module that can use it is built
   without it.
 - **No shipped timer touches the network.** The nightly update check compares what is installed
@@ -357,7 +362,8 @@ The running machine keeps the same rule. Nothing KDOS ships downloads anything o
   metadata snapshot each release carries.
 
 The network is used when the person at the machine asks for it: Discover's "Check for updates",
-`kdos update fetch`, `kdos update apply`, `fwupdmgr refresh`, and installing a catalogue
+`kdos update fetch`, `kdos update apply`, `fwupdmgr refresh`, installing a native port, which
+downloads it from the release's binhost or, built here, its sources, and installing a catalogue
 application, which builds its box from Debian's archive. The cost is freshness: firmware metadata is
 as new as the last release or the last refresh somebody ran, and what "Get New…" would have offered
 is whatever the add-on pack carries.

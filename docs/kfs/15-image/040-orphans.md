@@ -57,8 +57,11 @@ and before [087_gates.sh](087-gates.md) checks the tree. Files under `fs/` need 
 
 ## What it leaves
 
-Every package removed is gone from `build/fs` and from its package database,
-`/var/lib/kpkg/db`, and so from the image. The log names each one; on a tree that matches the
+Every package removed is gone from the root the step runs in and from its package database,
+`/var/lib/kpkg/db`, and so from the image. Under `KDOS_IMAGE=base` that root is the
+[image stage](017-stage.md): an orphan stays installed in `build/fs`, and a package with no
+recipe is outside the base, so `017_stage.sh` has usually removed it from the stage before the
+sweep runs. Under `KDOS_IMAGE=full` the root is `build/fs`, and the orphan is gone for good. The log names each one; on a tree that matches the
 recipes, it prints `no orphaned packages`.
 
 ## See also
@@ -70,4 +73,4 @@ recipes, it prints `no orphaned packages`.
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 368.* Previous: [367. The application launchers](030-launchers.md) · [Contents](../README.md) · Next: [369. Stamping the build identity](045-identity.md)
+*Part XV. The image, chapter 369.* Previous: [368. The application launchers](030-launchers.md) · [Contents](../README.md) · Next: [370. Stamping the build identity](045-identity.md)

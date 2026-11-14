@@ -23,8 +23,9 @@ report; and System Monitor. Where each kind of log is written, and how to read i
 `kpkg check` is part of `kpkg` itself, which is not a port: the bootstrap step that builds it is
 described in [kpkg](../03-bootstrap/120-kpkg.md), and the command in [kpkg](kpkg.md).
 
-Every port above is named in a phase list, so all are on the image. No service runs for any of
-them. `kdos` is installed as
+Every port above is in the base the ISO carries except btop, bottom, procs, iotop, nvtop and
+strace, which `sudo kdos update install <port>` adds (see [Installing software](updating.md#installing-software)); the `development` group
+installs strace with the debuggers. No service runs for any of them. `kdos` is installed as
 `/usr/local/bin/kdos`, one of the names of `/usr/sbin/ksvc`.
 
 ## Configuration
@@ -278,4 +279,4 @@ Those columns are filled for root only; run `sudo lsblk -f`.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 443.* Previous: [442. Portals and screen sharing](portals-and-screen-sharing.md) · [Contents](../README.md) · Next: [444. Desktop troubleshooting](desktop-troubleshooting.md)
+*Part XVI. System administration, chapter 445.* Previous: [444. Portals and screen sharing](portals-and-screen-sharing.md) · [Contents](../README.md) · Next: [446. Desktop troubleshooting](desktop-troubleshooting.md)
