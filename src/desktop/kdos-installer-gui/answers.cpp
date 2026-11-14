@@ -12,6 +12,8 @@
 
 #include <QRegularExpression>
 
+#include <utility>
+
 namespace Kdos
 {
 
@@ -90,6 +92,7 @@ QString Answers::toText() const
     t += line("desk", m_desk);
     t += line("alien_apps", flag(m_alienApps));
     t += line("apps", m_apps.isEmpty() ? QStringLiteral("none") : m_apps.join(QLatin1Char(' ')));
+    t += line("groups", m_groups.isEmpty() ? QStringLiteral("none") : m_groups.join(QLatin1Char(' ')));
     t += line("reboot", QStringLiteral("0"));
     return t;
 }
@@ -158,6 +161,34 @@ QString Answers::suggestUsername(const QString &fullname)
     }
     out.truncate(32);
     return out;
+}
+
+void Answers::setGroupChosen(const QString &group, bool chosen)
+{
+    if (chosen == m_groups.contains(group)) {
+        return;
+    }
+    if (chosen) {
+        m_groups.append(group);
+    } else {
+        m_groups.removeAll(group);
+    }
+    Q_EMIT changed();
+}
+
+void Answers::suggestGroups(const QStringList &groups)
+{
+    for (const QString &g : groups) {
+        if (!m_suggested.contains(g)) {
+            setGroupChosen(g, true);
+        }
+    }
+    for (const QString &g : std::as_const(m_suggested)) {
+        if (!groups.contains(g)) {
+            setGroupChosen(g, false);
+        }
+    }
+    m_suggested = groups;
 }
 
 void Answers::setAppChosen(const QString &group, bool chosen)

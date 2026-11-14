@@ -165,6 +165,7 @@ int ki_events_run(void)
 	if (disk_by_path(cfg.disk))
 		probe_payload();
 	ki_apps_enter();
+	ki_groups_enter();
 	install_plan();
 	plan_line();
 

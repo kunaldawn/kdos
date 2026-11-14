@@ -1,179 +1,111 @@
 # Getting started
 
-This chapter takes a newcomer from a clone of the KDOS repository to a running KDOS desktop. It
-covers building the image, booting it in a virtual machine or from a USB stick, logging in, keeping
-a live session's changes, and moving on to an installed system. It assumes a Linux machine with
-Docker and some familiarity with a shell; nothing about KDOS itself is assumed. If you want to know
-what KDOS is before you build it, read [Why KDOS](../01-philosophy/why-kdos.md) and
+This chapter takes a newcomer from a download to a running KDOS desktop. It covers getting the
+live ISO from the releases page and checking it, booting it in a virtual machine or from a USB
+stick, the live session, keeping a live session's changes, installing to a disk and the first
+commands to try. Its last section is the developer's path: building the ISO from this repository.
+It assumes some familiarity with a shell; nothing about KDOS itself is assumed. If you want to know
+what KDOS is before you try it, read [Why KDOS](../01-philosophy/why-kdos.md) and
 [How KDOS differs](../01-philosophy/how-kdos-differs.md) first. The installer has a chapter of its
 own, [Installation](installation.md).
 
-The desktop you arrive at is KDE Plasma 6.8 with the whole of KDE Gear, compiled by the same build
-as everything else on the medium and dressed in the KDOS look. [The desktop](desktop.md) describes
-it as KDOS ships it.
+The desktop you arrive at is KDE Plasma 6.8 with the core KDE applications, compiled from this
+repository like everything else on the medium and dressed in the KDOS look. [The
+desktop](desktop.md) describes it as KDOS ships it.
 
 The chapter follows these steps in order:
 
-1. Fetch the upstream sources and build an ISO image on your own machine.
-2. Boot the image in a virtual machine to see that it works.
-3. Write the image to a USB stick.
+1. Download the ISO and check it.
+2. Boot it in a virtual machine to see that it works.
+3. Write it to a USB stick.
 4. Boot the stick and arrive at the desktop.
 5. Optionally, create a persistence store so that a live session keeps its changes.
 6. Install to a disk.
 7. Try the first commands on the running desktop.
 
-## Before you build
+## What the ISO carries
 
-The project does not publish an image built from this tree. The releases page of
-[github.com/kunaldawn/kdos](https://github.com/kunaldawn/kdos/releases) carries the source archive
-(the numbered pre-releases `sources-1`, `sources-2` and on, described below) and one ISO from an
-earlier line of KDOS that this book does not describe. The system this book describes is one you
-compile from the repository. That follows from what KDOS is: a distribution built from source,
-where every program on the image was compiled by the build you ran, apart from a short, named list
-of exceptions: firmware, bootstrap seeds, compiled font files, data with no other source form and
-built JavaScript (see
-[What is not built from source](../01-philosophy/why-kdos.md#what-is-not-built-from-source)).
-[How KDOS is built](../05-developer/how-kdos-is-built.md) follows the build from `git clone` to the
-finished ISO, and [The build system](../05-developer/build-system.md) describes its orchestrator in
-depth.
+A release is a live ISO. It carries the *base*: the Plasma session, the core KDE applications
+(Konsole, Dolphin, Kate, Okular, Gwenview, Ark, Spectacle, KCalc, Elisa, KDE Connect, Partition
+Manager and Yakuake, with the KIO workers and thumbnailers they use), Firefox ESR, Discover,
+networking, printing and scanning, the box stack, Python and Perl, and every KDOS tool. It
+carries no compiler: the toolchain is the `build-tools` group, and the Chinese, Japanese and
+Korean input methods are the `lang-zh`, `lang-ja` and `lang-ko` groups. Everything else is one
+download away, three ways, described in full in
+[Applications](applications.md#where-applications-come-from):
 
-Plan for the cost before you start:
-
-| | |
+| Way | What it is |
 |---|---|
-| Wall time, first build | Many hours; budget a day or more. Every package is compiled, including GCC several times over, the kernel, Qt, KDE Frameworks, Plasma and every Gear application. The build container uses every thread the host leaves idle; `make build KDOS_JOBS=N` caps it |
-| Disk | Tens of gigabytes of upstream source archives, fetched by `make fetch`; `make fetch-check` reports what is still missing. The build tree under `build/` needs room of its own, and a complete set of phase snapshots more again, the tree compressed once plus a layer per phase. Snapshots are optional |
-| Network | Needed to clone, to run `make fetch`, and for the first `make build` on a machine, which builds its container image from Alpine Linux packages. The compile itself runs with networking switched off |
-| Software on your machine | Docker, plus a few small tools listed in the next section. Every compiler runs inside a container |
+| Native, prebuilt | Any other of the about 2,400 ports, compiled for the release and downloaded from its signed package host, the *binhost*: all of KDE Gear, LibreOffice, GIMP, Blender, Thunderbird, Wine and the rest, one at a time or in groups |
+| Native, built on this computer | The same port compiled on the machine from its recipe |
+| Boxed | A Debian application from KDOS's catalogue, built on demand into a rootless container of its own (a *box*) |
 
-Later builds are much shorter. The build runs in *phases*, stages that each run in order (see
-[The build system](../05-developer/build-system.md#phases)); after each one it can save a
-*snapshot* of the tree, when asked to, so a later build can resume from that point. Most changes
-need only a narrow rebuild of one port or one phase. [Developing](../05-developer/developing.md)
-describes those targeted loops.
+Every program on the ISO and in the binhost was compiled from this repository's recipes, apart
+from a short, named list of exceptions: firmware, bootstrap seeds, compiled font files, data with
+no other source form and built JavaScript (see
+[What is not built from source](../01-philosophy/why-kdos.md#what-is-not-built-from-source)).
 
-## What you need
+## Download
 
-| Need | Used by | Notes |
-|---|---|---|
-| A Linux machine with Docker | `make build` | `make build` runs `docker` directly, in privileged mode. The build image carries the whole toolchain |
-| `git`, `curl`, `sha256sum` | Cloning, `make fetch` | Ordinary downloading happens on your machine |
-| A C compiler (`$CC`, default `cc`) | `make fetch`, `make fetch-check` | Optional for `make fetch`, which compiles a small recipe reader on the host. Without a compiler, `make fetch` hands the whole fetch to a container of its own (Docker or Podman, whichever is on your `PATH`). `make fetch-check` has no container fallback |
-| `fuser` (from psmisc) | `make build` | Guards the finished ISO against being rewritten while a virtual machine has it open; without `fuser` the guard is skipped |
-| `qemu-system-x86_64`, OVMF firmware at `/usr/share/ovmf/OVMF.fd`, `/dev/kvm` | `make run`, `make rundisk` | Only to boot the result in a virtual machine |
-| A USB stick at least as large as the ISO, or a BD-R | Booting the image on a machine | Every package is on the medium, so the ISO is tens of gigabytes; `ls -l build/iso-build/kdos.iso` gives the figure for your build. It does not fit a DVD, so optical boot means a BD-R. A published release splits the image into parts of under 2 GiB, joined with `cat` before writing |
-| A target disk for an installed system | [Installing](installation.md) | The installer's Welcome page reports the *install size*, the amount it copies. The default layout keeps two copies of the system plus room for each to grow, so the disk needs several times that; the Disk page says what a chosen disk holds and what the install needs |
+The current release is on the [releases page](https://github.com/kunaldawn/kdos/releases/latest)
+of `kunaldawn/kdos`, marked **Latest**. It carries:
 
-The full list, with the tools that only development work needs, is in
-[What a development machine needs](../05-developer/developing.md#what-a-development-machine-needs).
+| File | What it is |
+|---|---|
+| `kdos-<version>.iso`, or `kdos-<version>.iso.part01`, `.part02`, … | The live ISO. GitHub holds no file of 2 GiB or more, so a larger ISO is cut into parts |
+| `SHA256SUMS`, `SHA256SUMS.sig` | The checksum of the whole ISO and of every other file, and its signature by the release key |
+| `kdos-release.pub` | The public half of the release key, key id `ccb53bac7fdba3cd` |
+| `kfs.pdf`, `kfs-html.tar.zst` | *KDOS from Scratch*, the book of how every part is built |
 
-## Build an image
+The release's prebuilt packages and its update image sit in pre-releases beside it
+(`binhost-<tag>-NN` and `image-<tag>`). They are not downloaded by hand: a KDOS machine finds them
+through the release's signed index. The `sources-<N>` pre-releases are the archive of upstream
+sources the build uses.
+
+Join the parts, if there are any, and check the result:
 
 ```sh
-git clone https://github.com/kunaldawn/kdos.git kdos
-cd kdos
-make fetch
-make build
+cat kdos-<version>.iso.part* > kdos-<version>.iso
+sha256sum -c SHA256SUMS --ignore-missing
 ```
 
-`make fetch` is the only step that downloads source code. The first `make build` on a machine also
-needs the network, to build its container image from Alpine Linux packages; after that, `make build`
-reads nothing but what the fetch left in the port directories and runs offline.
+The last command must print `kdos-<version>.iso: OK`. A checksum list downloaded beside the file
+proves only that the two agree. On a machine already running KDOS,
+[`kdos verify`](../04-programs/kdos-command.md#kdos-verify) `kdos-<version>.iso` also checks the
+list's signature, `SHA256SUMS.sig`, against the release key the system trusts.
 
-### Fetching the sources
+What you need to use it:
 
-A clone carries the recipes, not the upstream source archives. Each recipe (also called a *port*: a
-directory holding a declarative `kpkgbuild` file and a `build.sh`; about 2,400 live under
-`ports/core/`, each on one of about a hundred subject shelves as `ports/core/<shelf>/<name>/`, and
-about forty under `src/`; see the [glossary](../06-reference/glossary.md#port)) names its source
-files with a `sha256 =` line, and `make fetch` downloads every such file that git does not carry.
-A few named files, such as bash's upstream patches, are committed beside their recipes instead.
-Several ports share one archive (the LLVM tarball alone serves eight), so the distinct files are
-fewer than the names. [The ports catalogue](../06-reference/ports-catalogue.md) lists every port by
-shelf, with the phase that builds it.
-
-For each file, `make fetch` takes the first copy it finds whose hash matches the recipe: the
-download cache under `ports/.srccache/`, then the KDOS source archive (the `sources-<N>` pre-releases),
-then the upstream URL in the recipe. A verified file is entered in the cache and hard-linked into
-each port directory that names it, so switching branches fetches nothing twice. The full lookup
-order, the variables that change it and the container that regenerates a vendored dependency
-bundle are described in
-[Where sources come from](../05-developer/developing.md#where-sources-come-from).
-
-`make fetch` is safe to re-run: a file already present and verified is not downloaded again.
-`make fetch-check` lists, without using the network, every archived source that is missing or
-corrupt, and exits 1 if it finds any. A build started without the fetch fails at the first port
-whose archive is absent.
-
-### Building
-
-`make build` builds the container image `os-dev` from the repository's `Dockerfile` (Alpine Linux
-with a compiler and build tools), then runs the build orchestrator, `kdosbuild`, inside it with
-`--network none`. Only the first `make build` on a machine needs the network, to pull Alpine and
-its packages; after that Docker reuses the image and the whole build runs offline.
-
-When `make build` runs in a terminal, the orchestrator opens a *startup picker* before it does
-anything. Choose *start fresh* and press `Enter` to run every phase; the picker also asks whether
-to write phase snapshots, which is off until `S` turns it on. `make build BUILD_ARGS=--fresh` skips
-the picker, and `--snapshot` writes snapshots without it.
-[The startup picker](../05-developer/build-system.md#the-startup-picker) describes both questions.
-
-The result is one file:
-
-```
-build/iso-build/kdos.iso
-```
-
-`make build` refuses to start while that ISO is open in another program, for example a virtual
-machine started by `make run`, because the last step rewrites it and a guest reading the old image
-would see I/O errors. Stop the virtual machine first, or set `ALLOW_ISO_IN_USE=1` to override.
-
-A few variables change what the build produces:
-
-| Variable | Effect |
+| Need | Notes |
 |---|---|
-| `BUILD_ARGS="…"` | Flags for the orchestrator, such as `--fresh`, `--snapshot`, `--continue-from <phase>` or `--rebuild <port>`. See [The build system](../05-developer/build-system.md) |
-| `KDOS_ISO_SOURCES=1` | Copies the ports tree with its fetched sources, `src/`, `script/`, `fs/`, the `Makefile` and the `Dockerfile` onto the ISO under `sources/`, together with a `SOURCES` stamp that `kdos rebuild` prints. No rebuild from such a medium has been run through every phase; see [KDOS can build KDOS](../01-philosophy/why-kdos.md#kdos-can-build-kdos) |
-| `KDOS_PACK_KDOS=1` | Also packs the finished system as a base pack named `kdos`, written to `build/kdos-base/kdos.kpack` and carried on the medium under `packs/` |
-
-The graphical applications KDOS ports natively, from Firefox ESR, LibreOffice and every KDE Gear
-application to KiCad and GNU Radio, are compiled by the same build and installed into the image
-like any other port. For software that is not ported, the ISO ships the *catalogue*, which
-describes each application as a stack of container image layers built from Debian packages; the
-machine that wants one builds it in a rootless Podman container. Discover offers both. See
-[Applications](applications.md), and [Packs and boxes](../03-architecture/packs-and-boxes.md) for
-the container format.
-
-When a build fails, read the failing step's log under `build/logs/` and check
-[Build troubleshooting](../05-developer/build-troubleshooting.md), which lists the recurring
-failures by symptom.
+| An x86-64 machine with UEFI or BIOS firmware | Secure Boot must be off: KDOS's boot loader is unsigned and KDOS enrols no keys (see [Known gaps](../06-reference/known-gaps.md#secure-boot-is-not-supported)) |
+| 4 GB of memory | The live system runs from memory, so what you install on it takes memory too |
+| A USB stick at least as large as the ISO | Writing it erases the whole stick. The release page gives the ISO's size |
+| A network, for anything outside the base | Native ports and boxed applications are downloaded when you install them |
+| A target disk for an installed system | It holds two copies of the system and your home; the installer's Welcome page reports the *install size*, and the Disk page offers only disks large enough (see [Installation](installation.md#before-you-start)) |
 
 ## Try it in a virtual machine first
 
+Any x86-64 virtual machine with UEFI firmware and 4 GB of memory boots the ISO. With QEMU and the
+OVMF firmware:
+
 ```sh
-make run        # boot the ISO; creates build/kdos.qcow2 as a blank sparse 192 GB disk if missing
-make rundisk    # boot that disk instead, once you have installed to it
+qemu-img create -f qcow2 kdos.qcow2 192G     # sparse: it uses only what is written
+qemu-system-x86_64 -enable-kvm -cpu host -smp 4 -m 4G \
+    -bios /usr/share/ovmf/OVMF.fd -cdrom kdos-<version>.iso \
+    -drive file=kdos.qcow2,format=qcow2 -device virtio-vga -device virtio-net-pci,netdev=n \
+    -netdev user,id=n -usb -device usb-tablet
 ```
 
-Both targets give the guest 4 GB of memory, one virtual CPU per host thread, UEFI firmware (OVMF),
-an Intel HDA sound card when the host has an audio backend QEMU can use, and a user-mode network.
-`make run` also attaches the ISO as a CD-ROM and a USB tablet, so the pointer follows the host's.
-The guest's serial console is connected to the terminal you ran `make` from.
+The disk is only needed to try the installer. From a clone of the repository, `make run` boots
+the ISO the build wrote in the same way, and `make rundisk` the disk once you have installed to it
+(see [Running the result](../05-developer/developing.md#running-the-result)).
 
-The targets pass `-enable-kvm -cpu host` to QEMU. The `Makefile` only warns when `/dev/kvm` is
-missing, but QEMU cannot start with those options and no KVM, so treat `/dev/kvm` as required.
-
-The screen comes up at 1920x1080. Set `KDOS_RES` to change it, for example
-`make run KDOS_RES=2560x1440`.
-
-`make run` attaches a plain `virtio-vga` adapter, on which KWin, the compositor, draws through
-Mesa's software renderer. The desktop works, but *Phosphor mode*, KDOS's optional CRT look, cannot
-be turned on there: its full-screen effect refuses software rendering, because a pass over every
-pixel of every frame would take the whole processor. `make run-hw` boots the ISO, and
-`make rundisk-hw` the disk, through a containerised QEMU with virgl on your GPU, where KWin renders
-on the GPU and Phosphor mode works. It needs Docker with the NVIDIA Container Toolkit and
-`/dev/udmabuf`. See [Phosphor mode](theming.md#phosphor-mode) and
-[Running the result](../05-developer/developing.md#running-the-result).
+A plain `virtio-vga` adapter puts KWin, the compositor, on Mesa's software renderer. The desktop
+works, but *Phosphor mode*, KDOS's optional CRT look, cannot be turned on there: its full-screen
+effect refuses software rendering, because a pass over every pixel of every frame would take the
+whole processor. A guest with hardware OpenGL through virgl runs it; `make run-hw` boots the ISO
+that way from a clone. See [Phosphor mode](theming.md#phosphor-mode).
 
 In a virtual machine the screen never dims, blanks or locks by itself, and the guest never goes to
 sleep: KDOS puts a set of virtual-machine defaults in front of its usual ones when the session finds
@@ -186,11 +118,14 @@ The ISO is a hybrid image. Write it to a USB stick as a raw byte stream, replaci
 your stick. Everything on that device is lost:
 
 ```sh
-sudo dd if=build/iso-build/kdos.iso of=/dev/sdX bs=4M status=progress conv=fsync
+sudo dd if=kdos-<version>.iso of=/dev/sdX bs=4M status=progress conv=fsync
 ```
 
+On Windows or macOS, any tool that writes a raw disk image does the same (Rufus in DD mode,
+balenaEtcher). Turn Secure Boot off in the firmware before booting the stick.
+
 The stick must be at least as large as the ISO. The same image boots four ways: BIOS and UEFI, from
-an optical drive (a BD-R; the image does not fit a DVD) and from a stick. It carries two El Torito
+an optical drive and from a stick. It carries two El Torito
 boot records for optical drives, one for each firmware, and for a stick a partition table with an
 EFI System Partition plus BIOS boot code in its first sector, so the `dd` above is the whole job and
 there is no separate step to make the stick bootable. ISO Image Writer, on any KDOS machine, does
@@ -325,10 +260,34 @@ machine's accent (see [The boot menu, the splash and the text consoles](theming.
 The first login of an account opens the Welcome Center on the KDOS tour: pages for accessibility,
 the look (the accent, light or dark, Phosphor mode, Night Light and reduced motion), the *desk*
 (how the panels are laid out; see [The desks](desktop.md#the-desks)), the system, software and
-boxes, the offline library, the keys, privacy and the network, and help. Every choice there takes
-effect at once and can be changed later. On the live medium the tour opens at every login, on a
+boxes, the offline library, the keys, privacy and the network, help, the first-run checklist, and
+last **Make It Yours**: the groups of programs KDOS offers (games, office, graphics, the KDE
+collections, Chinese, Japanese and Korean input, and more), each with what it downloads. Tick some
+and press **Install**; each is downloaded ready-made, one at a time, after your password, and the
+page ends with a button to Discover for everything else. Until the computer has the release's
+package list the page has no sizes and offers nothing: connect, open Discover and press **Check
+for Updates**, then **Look Again**. Every choice there takes effect at once and can be changed
+later. On the live medium the tour opens at every login, on a
 page with a large **Install KDOS** button, and a second page offers to keep the session's changes
 on the stick.
+
+## Adding software to the live session
+
+The live session installs software the way an installed machine does, into its writable layer,
+which is memory unless the session has a persistence store (see
+[Keep what you change](#keep-what-you-change)). A native port comes from the release's binhost,
+whose index the live session takes first:
+
+```sh
+sudo kdos update fetch --binhost-only    # the release's signed package index, nothing else
+kdos update groups                       # every group, whether it is installed, and its download
+sudo kdos update install gimp            # one port, prebuilt
+sudo kdos update install office          # a group: LibreOffice, Calibre and TeXstudio
+```
+
+Discover does the same from a window, and lists the catalogue's boxed applications beside the
+native ports. What a live session installs takes memory, and without a persistence store it is gone
+at the restart. [Applications](applications.md) describes the three ways to get software.
 
 ## Keep what you change
 
@@ -395,10 +354,17 @@ sudo kinstall
 ```
 
 The installer partitions a disk, copies the system, writes the bootloader, creates your account and
-offers groups of applications. It builds none of them: it records the groups you chose on the new
-disk, and your first login there offers to build them, or you install them from Discover (see
-[Installation, 8. Applications](installation.md#8-applications)). The installer is described in
-full in [Installation](installation.md), and the program itself in
+offers groups of applications of two kinds (see
+[Installation, 8. Applications](installation.md#8-applications)):
+
+- **KDOS applications**, the native groups, are downloaded prebuilt from the release's binhost into
+  the new system while it installs. That needs a network. Without one, or when a download fails,
+  the choice is recorded on the new disk and the install goes on; once the machine is online,
+  `sudo kdos update install --pending` installs it.
+- **Boxed applications**, the catalogue's groups, are recorded on the new disk, and your first login
+  there offers to build them, or you install them from Discover.
+
+The installer is described in full in [Installation](installation.md), and the program itself in
 [kinstall](../04-programs/kinstall.md).
 
 ## First things to try
@@ -426,10 +392,140 @@ amber`, `desk tiling`, `doctor`, `previous version` or `keys tile` and press `En
 opens the key card, every global shortcut the session holds, read from the live bindings each
 time, so it matches what you have rebound. [The desktop](desktop.md) describes both.
 
-When you chose applications in the installer, which records them on the new disk, your first
-session shows a notification saying they are ready to install rather than starting a long build
-unannounced. Run `kdos app install --pending` when you are ready, or open Discover (see
-[Applications](applications.md#discover)).
+When you chose boxed applications in the installer, which records them on the new disk, your
+first session shows a notification saying they are ready to install rather than starting a long
+build unannounced. Run `kdos app install --pending` when you are ready, or open Discover (see
+[Applications](applications.md#discover)). Native groups the installer could not download wait
+for `sudo kdos update install --pending`; `kdos update groups` shows what is installed.
+
+Everything else is installed from Discover or `kdos update install`, prebuilt or built on the
+machine; [Applications](applications.md#where-applications-come-from) says which to choose.
+
+## Building the ISO yourself
+
+The release ISO is built by the same `make build` anyone can run from a clone, and a developer
+works from an image of their own. The build compiles every port, writes the base ISO, and can also
+write the binhost a release publishes. [How KDOS is built](../05-developer/how-kdos-is-built.md)
+follows the build from `git clone` to the finished ISO,
+[The build system](../05-developer/build-system.md) describes its orchestrator in depth, and
+[Developing](../05-developer/developing.md) lists every target and the narrow rebuilds that avoid
+a full one.
+
+Plan for the cost before you start:
+
+| | |
+|---|---|
+| Wall time, first build | Many hours; budget a day or more. Every port is compiled, whatever the ISO carries, including GCC several times over, the kernel, Qt, KDE Frameworks, Plasma and every Gear application. The build container uses every thread the host leaves idle; `make build KDOS_JOBS=N` caps it |
+| Disk | Tens of gigabytes of upstream source archives, fetched by `make fetch`; `make fetch-check` reports what is still missing. The build tree under `build/` needs room of its own, and a complete set of phase snapshots more again, the tree compressed once plus a layer per phase. Snapshots are optional |
+| Network | Needed to clone, to run `make fetch`, and for the first `make build` on a machine, which builds its container image from Alpine Linux packages. The compile itself runs with networking switched off |
+| Software on your machine | Docker, plus a few small tools listed in the next section. Every compiler runs inside a container |
+
+Later builds are much shorter. The build runs in *phases*, stages that each run in order (see
+[The build system](../05-developer/build-system.md#phases)); after each one it can save a
+*snapshot* of the tree, when asked to, so a later build can resume from that point. Most changes
+need only a narrow rebuild of one port or one phase. [Developing](../05-developer/developing.md)
+describes those targeted loops.
+
+### What you need
+
+| Need | Used by | Notes |
+|---|---|---|
+| A Linux machine with Docker | `make build` | `make build` runs `docker` directly, in privileged mode. The build image carries the whole toolchain |
+| `git`, `curl`, `sha256sum` | Cloning, `make fetch` | Ordinary downloading happens on your machine |
+| A C compiler (`$CC`, default `cc`) | `make fetch`, `make fetch-check` | Optional for `make fetch`, which compiles a small recipe reader on the host. Without a compiler, `make fetch` hands the whole fetch to a container of its own (Docker or Podman, whichever is on your `PATH`). `make fetch-check` has no container fallback |
+| `fuser` (from psmisc) | `make build` | Guards the finished ISO against being rewritten while a virtual machine has it open; without `fuser` the guard is skipped |
+| `qemu-system-x86_64`, OVMF firmware at `/usr/share/ovmf/OVMF.fd`, `/dev/kvm` | `make run`, `make rundisk` | Only to boot the result in a virtual machine |
+| A USB stick at least as large as the ISO | Booting the image on a machine | `ls -l build/iso-build/kdos.iso` gives the figure for your build. An image built with `KDOS_IMAGE=full` carries every package and is about 20 GB; it does not fit a DVD, so optical boot of it means a BD-R |
+| A target disk for an installed system | [Installing](installation.md) | The installer's Welcome page reports the *install size*, the amount it copies. The default layout keeps two copies of the system plus room for each to grow, so the disk needs several times that; the Disk page says what a chosen disk holds and what the install needs |
+
+The full list, with the tools that only development work needs, is in
+[What a development machine needs](../05-developer/developing.md#what-a-development-machine-needs).
+
+### Build an image
+
+```sh
+git clone https://github.com/kunaldawn/kdos.git kdos
+cd kdos
+make fetch
+make build
+```
+
+`make fetch` is the only step that downloads source code. The first `make build` on a machine also
+needs the network, to build its container image from Alpine Linux packages; after that, `make build`
+reads nothing but what the fetch left in the port directories and runs offline.
+
+#### Fetching the sources
+
+A clone carries the recipes, not the upstream source archives. Each recipe (also called a *port*: a
+directory holding a declarative `kpkgbuild` file and a `build.sh`; about 2,400 live under
+`ports/core/`, each on one of about a hundred subject shelves as `ports/core/<shelf>/<name>/`, and
+about forty under `src/`; see the [glossary](../06-reference/glossary.md#port)) names its source
+files with a `sha256 =` line, and `make fetch` downloads every such file that git does not carry.
+A few named files, such as bash's upstream patches, are committed beside their recipes instead.
+Several ports share one archive (the LLVM tarball alone serves eight), so the distinct files are
+fewer than the names. [The ports catalogue](../06-reference/ports-catalogue.md) lists every port by
+shelf, with the phase that builds it.
+
+For each file, `make fetch` takes the first copy it finds whose hash matches the recipe: the
+download cache under `ports/.srccache/`, then the KDOS source archive (the `sources-<N>` pre-releases),
+then the upstream URL in the recipe. A verified file is entered in the cache and hard-linked into
+each port directory that names it, so switching branches fetches nothing twice. The full lookup
+order, the variables that change it and the container that regenerates a vendored dependency
+bundle are described in
+[Where sources come from](../05-developer/developing.md#where-sources-come-from).
+
+`make fetch` is safe to re-run: a file already present and verified is not downloaded again.
+`make fetch-check` lists, without using the network, every archived source that is missing or
+corrupt, and exits 1 if it finds any. A build started without the fetch fails at the first port
+whose archive is absent.
+
+#### Building
+
+`make build` builds the container image `os-dev` from the repository's `Dockerfile` (Alpine Linux
+with a compiler and build tools), then runs the build orchestrator, `kdosbuild`, inside it with
+`--network none`. Only the first `make build` on a machine needs the network, to pull Alpine and
+its packages; after that Docker reuses the image and the whole build runs offline.
+
+When `make build` runs in a terminal, the orchestrator opens a *startup picker* before it does
+anything. Choose *start fresh* and press `Enter` to run every phase; the picker also asks whether
+to write phase snapshots, which is off until `S` turns it on. `make build BUILD_ARGS=--fresh` skips
+the picker, and `--snapshot` writes snapshots without it.
+[The startup picker](../05-developer/build-system.md#the-startup-picker) describes both questions.
+
+The result is one file, the base ISO, which carries the closure of `ports/base` (see
+[The base image](../03-architecture/packaging.md#the-base-image)):
+
+```
+build/iso-build/kdos.iso
+```
+
+Every package the build made stays in the build tree, `build/fs`, whatever the ISO carries.
+
+`make build` refuses to start while that ISO is open in another program, for example a virtual
+machine started by `make run`, because the last step rewrites it and a guest reading the old image
+would see I/O errors. Stop the virtual machine first, or set `ALLOW_ISO_IN_USE=1` to override.
+
+A few variables change what the build produces:
+
+| Variable | Effect |
+|---|---|
+| `BUILD_ARGS="…"` | Flags for the orchestrator, such as `--fresh`, `--snapshot`, `--continue-from <phase>` or `--rebuild <port>`. See [The build system](../05-developer/build-system.md) |
+| `KDOS_ISO_SOURCES=1` | Copies the ports tree with its fetched sources, `src/`, `script/`, `fs/`, the `Makefile` and the `Dockerfile` onto the ISO under `sources/`, together with a `SOURCES` stamp that `kdos rebuild` prints. No rebuild from such a medium has been run through every phase; see [KDOS can build KDOS](../01-philosophy/why-kdos.md#kdos-can-build-kdos) |
+| `KDOS_IMAGE=full` | The ISO carries every package the build made rather than the base: a medium for a machine that installs offline, and for the test rig |
+| `KDOS_MAKE_BINHOST=1` | Also writes the signed binhost, `build/binhost`, with the release index a release publishes |
+| `KDOS_PACK_KDOS=1` | Also packs the finished system as a base pack named `kdos`, written to `build/kdos-base/kdos.kpack` and carried on the medium under `packs/` |
+
+The graphical applications KDOS ports natively, from Firefox ESR, LibreOffice and every KDE Gear
+application to KiCad and GNU Radio, are compiled by the same build like any other port; the base
+ones go on the ISO and the rest into the build tree and the binhost. For software that is not
+ported, the ISO ships the *catalogue*, which describes each application as a stack of container
+image layers built from Debian packages; the machine that wants one builds it in a rootless Podman
+container. See [Applications](applications.md), and
+[Packs and boxes](../03-architecture/packs-and-boxes.md) for the container format.
+
+When a build fails, read the failing step's log under `build/logs/` and check
+[Build troubleshooting](../05-developer/build-troubleshooting.md), which lists the recurring
+failures by symptom.
 
 ## See also
 

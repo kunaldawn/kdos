@@ -316,7 +316,9 @@ typedef struct {
  *                              name the settings portal hands a box
  *   LIBGL_ALWAYS_SOFTWARE      only where the box's graphics are the CPU's,
  *                              see the `render` block below
- *   DISPLAY / XAUTHORITY       only for a box handed the X11 display
+ *   QT_QPA_PLATFORM,           Wayland first and X11 second, before the
+ *   SDL_VIDEODRIVER            `env` rows, which may force X11 instead
+ *   DISPLAY / XAUTHORITY       unless the profile says `x11 = no`
  */
 /*
  * THE GTK THEME, NAMED OUTRIGHT. Plasma's GTK bridge writes the session's
@@ -412,6 +414,13 @@ static void box_env(KbArgv *a, const Profile *prof, const char *pack,
 	 * no message. */
 	kb_argv_addf(a, "DBUS_SESSION_BUS_ADDRESS=unix:path=%s", l->bus);
 	kb_argv_add(a, "XDG_SESSION_TYPE=wayland");
+	/* Wayland first, X11 as the fallback, for the toolkits that would
+	 * otherwise take DISPLAY over WAYLAND_DISPLAY: Qt 5 defaults to xcb
+	 * and SDL 2 to x11 whenever DISPLAY is set, and every box is handed
+	 * one unless it says `x11 = no`. Exported before the catalogue's and
+	 * the pack's own `env` rows, so a row that forces X11 wins. */
+	kb_argv_add(a, "QT_QPA_PLATFORM=wayland;xcb");
+	kb_argv_add(a, "SDL_VIDEODRIVER=wayland,x11");
 	kb_argv_addf(a, "HOME=%s", kb_home_dir());
 	{
 		struct passwd *me = getpwuid(getuid());
@@ -549,14 +558,14 @@ static void box_env(KbArgv *a, const Profile *prof, const char *pack,
 		kb_argv_add(a, "LIBGL_ALWAYS_SOFTWARE=1");
 
 	/*
-	 * DISPLAY, for a box that is handed X11 (profile_x11): an application
-	 * whose own entry or runtime forces an X11 backend, or one the profile
-	 * says yes for. The socket is the authority — KWin exports DISPLAY only
-	 * into what the session started, and a launch from a prompt may not
-	 * have it — and the cookie is the box's copy in its own runtime
-	 * directory, or the session's own where the box shares that directory.
-	 * Every other box is told there is no display, so a toolkit with an X11
-	 * fallback does not reach for one it would be refused.
+	 * DISPLAY, for a box that is handed X11 (profile_x11): every box
+	 * whose profile does not say `x11 = no`. The socket is the authority
+	 * — KWin exports DISPLAY only into what the session started, and a
+	 * launch from a prompt may not have it — and the cookie is the box's
+	 * copy in its own runtime directory, or the session's own where the
+	 * box shares that directory. A box that says `x11 = no` is told there
+	 * is no display, so a toolkit with an X11 fallback does not reach for
+	 * one it would be refused.
 	 */
 	if (l->x11) {
 		const char *display = getenv("DISPLAY");
@@ -663,8 +672,8 @@ static void tune_storage(void)
  * box's state, so the Boxes page and the badge say what happened rather than
  * what was meant to.
  */
-static void launch_prepare(const Profile *p, const char *pack,
-			   const char *launcher, Launch *l)
+static void launch_prepare(const Profile *p, const char *launcher,
+			   Launch *l)
 {
 	BoxBoundary b;
 	char why[256] = "", host[512];
@@ -676,13 +685,13 @@ static void launch_prepare(const Profile *p, const char *pack,
 	l->private_layout = b.private_rundir = layout == 1;
 	l->a11y = box_a11y_wanted();
 
-	if (rundir_prepare(p, pack) != 0)
+	if (rundir_prepare(p) != 0)
 		kb_die("%s: its private runtime directory could not be made", p->name);
 
 	/* The X11 display is in reach when it is handed over, when the box
 	 * shares the session's runtime directory and so the cookie in it, and
 	 * when the cookie sits where the box can read it anyway. */
-	l->x11 = profile_x11(p, pack);
+	l->x11 = profile_x11(p);
 	b.x11 = l->x11 || !l->private_layout || x11_cookie_exposed(p);
 
 	if (keeper_ensure(p->name, why, sizeof(why)) != 0) {
@@ -794,7 +803,7 @@ static int run_pack(int argc, char **argv, int wait)
 	if (!box_setup_done(g_box) && box_wait_ready(g_box, 30) != 0)
 		tracef("wait_ready timed out");
 
-	launch_prepare(&p, id, launcher, &l);
+	launch_prepare(&p, launcher, &l);
 
 	tracef("entering");
 	kb_argv_add(&a, "podman");

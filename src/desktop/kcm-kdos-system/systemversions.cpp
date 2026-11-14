@@ -41,9 +41,11 @@ QString describeError(SlotsClient::Request request, const QString &name, const Q
 {
     if (name == "org.freedesktop.DBus.Error.AccessDenied"_L1 || name == "org.freedesktop.PolicyKit1.Error.NotAuthorized"_L1
         || name == "org.freedesktop.DBus.Error.InteractiveAuthorizationRequired"_L1) {
-        return request == SlotsClient::Request::SetChannel
-            ? i18nc("@info", "Changing where updates come from needs an administrator's password, and none was given.")
-            : i18nc("@info", "Changing the version this computer starts needs an administrator's password, and none was given.");
+        if (request == SlotsClient::Request::SetChannel)
+            return i18nc("@info", "Changing where updates come from needs an administrator's password, and none was given.");
+        if (request == SlotsClient::Request::SetInstallRoute)
+            return i18nc("@info", "Changing how software is installed needs an administrator's password, and none was given.");
+        return i18nc("@info", "Changing the version this computer starts needs an administrator's password, and none was given.");
     }
     if (name == "org.freedesktop.DBus.Error.ServiceUnknown"_L1 || name == "org.freedesktop.DBus.Error.NameHasNoOwner"_L1
         || name == "org.freedesktop.DBus.Error.NoReply"_L1 || name == "org.freedesktop.DBus.Error.Disconnected"_L1) {
@@ -88,6 +90,11 @@ SystemVersionsModule::SystemVersionsModule(QObject *parent, const KPluginMetaDat
             m_awaitingChannel = false;
             m_channelEdited = false;
         }
+        if (m_awaitingRoute) {
+            m_awaitingRoute = false;
+            m_routeEdited = false;
+        }
+        syncRouteFromServer();
         syncChannelFromServer();
         Q_EMIT statusChanged();
     });
@@ -374,10 +381,56 @@ void SystemVersionsModule::syncChannelFromServer()
     updateSaveState();
 }
 
+QString SystemVersionsModule::installRoute() const
+{
+    return m_installRoute;
+}
+
+void SystemVersionsModule::setInstallRoute(const QString &route)
+{
+    if (route == m_installRoute || (route != "prebuilt"_L1 && route != "source"_L1)) {
+        return;
+    }
+    m_installRoute = route;
+    m_routeEdited = true;
+    Q_EMIT routeChanged();
+    updateSaveState();
+}
+
+QString SystemVersionsModule::buildDeps() const
+{
+    return m_buildDeps;
+}
+
+void SystemVersionsModule::setBuildDeps(const QString &route)
+{
+    if (route == m_buildDeps || (route != "prebuilt"_L1 && route != "source"_L1)) {
+        return;
+    }
+    m_buildDeps = route;
+    m_routeEdited = true;
+    Q_EMIT routeChanged();
+    updateSaveState();
+}
+
+void SystemVersionsModule::syncRouteFromServer()
+{
+    if (m_routeEdited) {
+        return;
+    }
+    const QString install = m_client->installRoute();
+    const QString deps = m_client->buildDeps();
+    if (install != m_installRoute || deps != m_buildDeps) {
+        m_installRoute = install;
+        m_buildDeps = deps;
+        Q_EMIT routeChanged();
+    }
+}
+
 void SystemVersionsModule::updateSaveState()
 {
-    setRepresentsDefaults(m_channelKind == KindRelease);
-    if (m_awaitingChannel) {
+    setRepresentsDefaults(m_channelKind == KindRelease && m_installRoute == "prebuilt"_L1 && m_buildDeps == "prebuilt"_L1);
+    if (m_awaitingChannel || m_awaitingRoute) {
         setNeedsSave(false);
         return;
     }
@@ -386,6 +439,7 @@ void SystemVersionsModule::updateSaveState()
     if (!differs && m_channelKind != KindRelease) {
         differs = m_channelLocation.trimmed() != saved;
     }
+    differs = differs || m_installRoute != m_client->installRoute() || m_buildDeps != m_client->buildDeps();
     setNeedsSave(m_client->isAvailable() && differs);
 }
 
@@ -417,8 +471,11 @@ void SystemVersionsModule::load()
 {
     m_channelEdited = false;
     m_awaitingChannel = false;
+    m_routeEdited = false;
+    m_awaitingRoute = false;
     dismissMessage();
     m_client->refresh();
+    syncRouteFromServer();
     syncChannelFromServer();
 }
 
@@ -430,6 +487,11 @@ void SystemVersionsModule::save()
         setMessage(err, Error);
         setNeedsSave(true);
         return;
+    }
+    if (m_installRoute != m_client->installRoute() || m_buildDeps != m_client->buildDeps()) {
+        m_client->requestSetInstallRoute(m_installRoute, m_buildDeps);
+    } else {
+        m_routeEdited = false;
     }
     if (channel == m_client->channel()) {
         m_channelEdited = false;
@@ -443,6 +505,8 @@ void SystemVersionsModule::save()
 void SystemVersionsModule::defaults()
 {
     setChannelKind(KindRelease);
+    setInstallRoute(u"prebuilt"_s);
+    setBuildDeps(u"prebuilt"_s);
 }
 
 void SystemVersionsModule::startNextTime(const QString &slotId)
@@ -499,6 +563,10 @@ void SystemVersionsModule::onRequestFinished(SlotsClient::Request request, const
             m_awaitingChannel = false;
             updateSaveState();
         }
+        if (request == SlotsClient::Request::SetInstallRoute) {
+            m_awaitingRoute = false;
+            updateSaveState();
+        }
         return;
     }
     switch (request) {
@@ -514,6 +582,13 @@ void SystemVersionsModule::onRequestFinished(SlotsClient::Request request, const
         setMessage(i18nc("@info %1 update location", "Updates now come from %1.", shown), Positive);
         break;
     }
+    case SlotsClient::Request::SetInstallRoute:
+        m_awaitingRoute = true;
+        updateSaveState();
+        setMessage(m_installRoute == "source"_L1 ? i18nc("@info", "Software is now built on this computer when installed from a terminal.")
+                                                 : i18nc("@info", "Software is now downloaded prebuilt when installed from a terminal."),
+                   Positive);
+        break;
     }
 }
 

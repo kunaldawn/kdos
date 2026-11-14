@@ -90,7 +90,7 @@ because it needs the development image. The full list of targets is under
 
 ## preflight.sh
 
-Preflight checks the tree's wiring without building anything. It runs 74 checks:
+Preflight checks the tree's wiring without building anything. It runs 75 checks:
 
 ```sh
 testing/preflight.sh
@@ -114,7 +114,7 @@ directory there reports what is missing from it.
 | Group | Checks |
 |---|---|
 | Layout | Every recipe under `ports/core` sits exactly at `ports/core/<shelf>/<name>/kpkgbuild`, and `ports/core` holds nothing but shelves; `ports/shelves` lists every shelf once, each with a volume that is a positive integer and a description, an id of lowercase letters, digits and `-`, not `libs` or `core` and not a port's name, and each a non-empty directory; `src/` holds only its six areas and every port of KDOS's own sits at `src/<area>/<name>/`; the orphan sweep searches every `src/` area that holds a recipe; every bare name is one port across the shelves and the `src/` areas; every `name =` is its directory's name; every `group =` family sits on one shelf; every file of a `packages.d/` is `00-order.txt`, a listed shelf's `<shelf>.txt` or a `src-<area>.txt`, and names only ports filed there, and no phase has both `packages.txt` and `packages.d/` |
-| Packages | Each package phase from `30_foundation` on installs exactly the ports its list names, and each port of `41_system` to `44_apps` is in the phase the phase table gives its closure, computed by `testing/phaseclosure.py` (see [Every phase installs exactly its list](build-system.md#every-phase-installs-exactly-its-list)); every package named in a phase list has a port; ports built from one tarball agree on its version and hash (`linux` and `perf`, `python3` and `python3-tkinter`, `gettext` and `libintl`, `glib` and `glib-introspection`, `llvm` with each of its subprojects, and the other pairs the check lists); each KDE family, KDE Frameworks, Plasma and KDE Gear, is at one release (see below); every Gear application nothing else depends on is named by exactly one `kde-gear-*` meta port; every list resolves to a dependency order with clean output and valid tokens; every `depends` entry names a port that exists, and names no more than the 128 `kpkg` reads; every port of KDOS's own is built by something; the build tree carries no package whose port is gone or listed in `ports/unbuilt` |
+| Packages | Each package phase from `30_foundation` on installs exactly the ports its list names, and each port of `41_system` to `44_apps` is in the phase the phase table gives its closure, computed by `testing/phaseclosure.py` (see [Every phase installs exactly its list](build-system.md#every-phase-installs-exactly-its-list)); every package named in a phase list has a port; ports built from one tarball agree on its version and hash (`linux` and `perf`, `python3` and `python3-tkinter`, `gettext` and `libintl`, `glib` and `glib-introspection`, `llvm` with each of its subprojects, and the other pairs the check lists); each KDE family, KDE Frameworks, Plasma and KDE Gear, is at one release (see below); every Gear application nothing else depends on is named by exactly one `kde-gear-*` meta port; every list resolves to a dependency order with clean output and valid tokens; every `depends` entry names a port that exists, and names no more than the 128 `kpkg` reads; every port of KDOS's own is built by something; the build tree carries no package whose port is gone or listed in `ports/unbuilt`; `ports/base`, `ports/buildonly` and `ports/groups` name only ports, phases and `src/` areas that exist, and no group id is a port's name (`script/lib/imageset.py --check`, under "the installation medium's base names ports that exist") |
 | Recipes | Every port has a build script and it parses; every recipe parses as metadata; every one declares a name, version and release; every recipe and build script carries the KDOS banner; every source a port declares is named by a checksum and is non-empty where it is on disk (one not yet fetched is reported as a `make fetch` note, not a failure); every recipe carries a `description`, a `homepage` and a `license` that is an SPDX expression, its first source spells the version as `$version` (`docbook-xml` excepted), and its `description` is exactly the one its row in the [ports catalogue](../06-reference/ports-catalogue.md) gives, every port having one row there (all read by `testing/recipemeta.py`); the switches that turn off a feature whose library is a port are counted by `testing/optdeps.py`, a report that never fails; every `.patch` or `.diff` under `ports/` or `src/` that is new or changed (on no remote yet) has a `Subject:` line in its mail header, by `testing/kfscheck.py --only patches`, with `KDOS_CHECK_BASE=<ref>` measuring against a ref instead (see [kfscheck.py](#kfscheckpy)) |
 | Build options | Every meson option a recipe passes is one that port defines, checked against the tarball's own option file, with the two closed-value option types validated; every recipe that runs `meson setup` names its buildtype; every `go build` and `go install` passes `-s` and `-w` in its `-ldflags`, read with its backslash continuations joined; every `pip install` into a package root (`--root`) passes `--ignore-installed`, or pip removes the build root's own copy of what it installs; `script/bin/ninja`, run against a stand-in ninja, adds `-j$KDOS_JOBS` only to a call that gives no job count, passes `-t`, `--version` and a given `-j` through unchanged, and runs `/usr/bin/ninja` by absolute path; `script/bin/meson` adds `--wrap-mode=nodownload` to an explicit or implicit `setup` that names no wrap mode and hands `compile`, `install`, `configure`, `subprojects` and `--version` on unchanged; every recipe that runs cargo builds against a shared C library |
 | Sources | Every source file in a port of KDOS's own is compiled by its recipe, unless that recipe globs its own `$PORT_SRC` directory (a glob of the shared `libk*` trees does not exempt it) or runs CMake on it, in which case the files its `CMakeLists.txt` names count as compiled; a first source whose members are `./`-prefixed is accounted for; a flat first source is unpacked by its own recipe |
@@ -252,9 +252,18 @@ blocks fall into these groups, in roughly this order:
    from each allowlist, with the Python bytecode compiled into the package and `direct_url.json`
    left out; `kpkg` copying licences and pruning manuals and translations, and compressing cheaply
    only a package it deletes after installing; the shared indexes, file ownership, `kpkg check`
-   finding missing, changed and unowned files while passing an edited `/etc`, skip-if-installed,
+   finding missing, changed and unowned files while passing an edited `/etc`; the run-time needs
+   `kpkgadd` records (a soname of an ELF linked in the test, a `#!` script, a `.qml` file's
+   imports, a package `__init__.py`'s imports and a `runtime =` line), `kpkg needs --resolve`
+   naming each provider, and `imageset.py --verify` failing a base without the QML module's
+   provider, in the tree and in a stage trimmed from it; skip-if-installed,
    the package store, `kpkg install --build-only` and `--commit`, the binary host's signed index
-   and `kdos update` offering only what it covers, `kpkg fetch` taking a source from a local archive
+   and `kdos update` offering only what it covers; `kdos update install`'s routes (`--source`
+   planning a build here and building a dependency the binhost lacks, an unknown `--build-deps`
+   and `--source` or a relative path with `--root` refused as usage), a group listed with its size
+   and installed by id, `--pending` taking what the installer recorded, a package of origin
+   `source` counted in `builds` and planned as a build, and a world package the binhost does not
+   hold refusing the image lane unless it is built here; `kpkg fetch` taking a source from a local archive
    and telling an offline network from a missing file, and delta packages.
 5. **The system programs.** Thumbnails landing in the shared cache; a terminal view noticing its
    host terminal hang up; timers and reminders; service supervision (a crash-looping service shown
@@ -275,13 +284,16 @@ blocks fall into these groups, in roughly this order:
    layers that each restore exactly, running no step for a port installed and current, and building
    a phase by level under `--port-jobs`.
 7. **The installer and the daemons.** `kinstall --dry-run` saying what it would do; `kinstall-core`'s
-   JSON event stream, the answers every front end shares and the ones it refuses, the files it writes
+   JSON event stream, the answers every front end shares and the ones it refuses, the native
+   groups read from `ports/groups` (none chosen by default, ticked by `groups =`, an unknown id
+   ignored, named in the plan), the files it writes
    for a Plasma machine (SDDM's autologin, starting locked where asked, the global theme, the desk)
    and its A/B layout; the shipped polkit rules answering as the
    security model says; `kdos-powerd` letting the wheel group change the firewall, the accent and the
    splash and asking polkit for anyone else; `kdos-settingsd` keeping `hostname1`, `timedate1` and
    `locale1` in the files KDOS reads; `kdos-energyd` attributing energy to applications; the ports
-   helper; `kdos-oomd` choosing the victim the desktop can afford to lose and never the Plasma
+   helper and the ports builder refusing bad usage, unsafe names and an unprivileged caller, the
+   builder taking `--build-deps` only before the name; `kdos-oomd` choosing the victim the desktop can afford to lose and never the Plasma
    session.
 8. **Boxes in the session.** `kdos clone`; `genlaunchers` turning an image's entries into host
    commands and naming each launcher with the app id KWin gives its windows; a launch handing the

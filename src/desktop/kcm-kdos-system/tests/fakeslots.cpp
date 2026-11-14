@@ -177,6 +177,8 @@ void FakeSlots::announce()
     all.insert(u"TryAttempts"_s, tryAttempts());
     all.insert(u"TryBootNext"_s, tryBootNext());
     all.insert(u"Channel"_s, channel());
+    all.insert(u"InstallRoute"_s, installRoute());
+    all.insert(u"BuildDeps"_s, buildDeps());
     all.insert(u"State"_s, state());
     QDBusMessage sig = QDBusMessage::createSignal(Path, u"org.freedesktop.DBus.Properties"_s, u"PropertiesChanged"_s);
     sig << Iface << all << QStringList();
@@ -228,6 +230,23 @@ bool FakeSlots::tryBootNext() const
 QString FakeSlots::channel() const
 {
     return keyValues(readFile(u"update.conf"_s), u'=').value(u"tree"_s);
+}
+
+/* kdos-sysupdated's state_route(): "source" when update.conf says so, else
+ * "prebuilt". */
+static QString route(const QString &conf, const QString &key)
+{
+    return keyValues(conf, u'=').value(key) == "source"_L1 ? u"source"_s : u"prebuilt"_s;
+}
+
+QString FakeSlots::installRoute() const
+{
+    return route(readFile(u"update.conf"_s), u"install"_s);
+}
+
+QString FakeSlots::buildDeps() const
+{
+    return route(readFile(u"update.conf"_s), u"build-deps"_s);
 }
 
 QVariantMap FakeSlots::state() const
@@ -446,6 +465,40 @@ void FakeSlots::SetChannel(const QString &channel)
     f.write((kept.join(u'\n') + (kept.isEmpty() ? QString() : u"\n"_s)).toUtf8());
     f.commit();
     log(u"SetChannel "_s + channel);
+    announce();
+}
+
+void FakeSlots::SetInstallRoute(const QString &install, const QString &deps)
+{
+    if (denied(u"SetInstallRoute"_s)) {
+        return;
+    }
+    for (const QString &v : {install, deps}) {
+        if (v != "prebuilt"_L1 && v != "source"_L1) {
+            sendErrorReply(u"org.freedesktop.DBus.Error.InvalidArgs"_s, u"a route is prebuilt or source"_s);
+            return;
+        }
+    }
+    QStringList kept;
+    const auto lines = readFile(u"update.conf"_s).split(u'\n');
+    for (const QString &l : lines) {
+        const QString k = l.section(u'=', 0, 0).trimmed();
+        if (l.contains(u'=') && (k == "install"_L1 || k == "build-deps"_L1)) {
+            continue;
+        }
+        if (!l.isEmpty()) {
+            kept << l;
+        }
+    }
+    kept << u"install = "_s + install << u"build-deps = "_s + deps;
+    QSaveFile f(m_dir + u"/update.conf"_s);
+    if (!f.open(QIODevice::WriteOnly)) {
+        sendErrorReply(Refused, u"cannot write update.conf"_s);
+        return;
+    }
+    f.write((kept.join(u'\n') + u"\n"_s).toUtf8());
+    f.commit();
+    log(u"SetInstallRoute "_s + install + u' ' + deps);
     announce();
 }
 

@@ -30,6 +30,7 @@ enum class Lane {
     Pack, // a pack in the pack store or on the medium that no catalogue row names
     Box, // a box no other resource accounts for
     Port, // a host port: it arrives and leaves with the slot
+    PortSource, // a host port the binhost offers, built on this computer instead
     Archive, // a .ktar opened from a file manager or found on the medium
     PackFile, // a .kpack opened from a file manager
 };
@@ -79,7 +80,8 @@ struct Entry {
 // catalogue row whose pack is there are kdos-packs; a pack, or a catalogue
 // row whose pack, is seen only on the boot medium is medium; a catalogue
 // row with no pack anywhere, which the store lane builds, and the Debian
-// archive outside the catalogue are kdos-store.
+// archive outside the catalogue are kdos-store. A host port is kdos-ports,
+// and the same port built on this computer is kdos-ports-source.
 QString originOf(Lane lane, const QString &packOrigin = {});
 
 }

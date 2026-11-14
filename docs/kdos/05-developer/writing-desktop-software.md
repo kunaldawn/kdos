@@ -97,7 +97,8 @@ Plasma looks for them; the flags are explained in
 [Writing ports](writing-ports.md#kde-frameworks-plasma-and-gear). `BUILD_TESTING=OFF` keeps the
 tests out of the package, and the test runner turns it on (see [Testing a piece](#testing-a-piece)).
 A piece with a C helper compiles it after the CMake build with `gcc`, against `src/libs`, as any C
-program of KDOS's own does: `kdos-discover` builds `kdos-ports-helper` that way (see
+program of KDOS's own does: `kdos-discover` builds `kdos-ports-helper`, and from the same source
+with `-DKPH_BUILD` `kdos-ports-builder`, that way (see
 [The C libraries](c-libraries.md#how-the-libraries-are-built)).
 
 ### The CMakeLists.txt
@@ -135,7 +136,7 @@ KDE's or with an application's:
 |---|---|---|
 | C++ namespace | `Kdos` | `Kdos::KdosCommand`, `Kdos::LibraryShelf` |
 | D-Bus service and interface | `io.kdos.*` | `io.kdos.Runner`, `io.kdos.Kded1`, `io.kdos.Slots1`, `io.kdos.Power1` |
-| polkit action | `io.kdos.*` | `io.kdos.firewall.set`, `io.kdos.slots.bless`, `io.kdos.ports.install`, `io.kdos.installer.run` |
+| polkit action | `io.kdos.*` | `io.kdos.firewall.set`, `io.kdos.slots.bless`, `io.kdos.slots.install-route`, `io.kdos.ports.install`, `io.kdos.ports.build`, `io.kdos.installer.run` |
 | System Settings module | `kcm_kdos_*` | `kcm_kdos_look`, `kcm_kdos_system` |
 | Plasma package and plugin id | `org.kdos.*` | `org.kdos.privacy`, `org.kdos.meters`, `org.kdos.desk.tiling` |
 | KWin effect and script id | `kdos_*` | `kdos_unfold`, `kdos_keys`, `kdos_runraise` |
@@ -313,11 +314,14 @@ A piece never runs as root. It reaches what needs root one of two ways:
   Each asks polkit about the caller for each method that changes something, so the piece calls the
   method and the polkit agent prompts when an administrator must approve. A module that shows a control as available or
   not asks polkit first without a prompt, as the firewall module does.
-- **pkexec on one program.** Where a whole operation runs as root (installing a port, installing
-  the system), the piece runs `pkexec` on one helper whose path a polkit policy names in
-  `org.freedesktop.policykit.exec.path`: `kdos-ports-helper` under `io.kdos.ports.install`, and
-  `kinstall` under `io.kdos.installer.run`. pkexec takes the action whose path matches the program
-  it is asked to run, so the policy and the program's installed path must agree.
+- **pkexec on one program.** Where a whole operation runs as root (installing a port, building
+  one, installing the system), the piece runs `pkexec` on one helper whose path a polkit policy
+  names in `org.freedesktop.policykit.exec.path`: `kdos-ports-helper` under
+  `io.kdos.ports.install`, `kdos-ports-builder` under `io.kdos.ports.build`, and `kinstall` under
+  `io.kdos.installer.run`. pkexec takes the action whose path matches the program it is asked to
+  run, so the policy and the program's installed path must agree, and two operations that must not
+  share a grant are two programs, one per action: the builder is a separate binary so that a
+  password kept from a prebuilt install never covers a build.
 
 The daemons, their interfaces and their grants are in [The daemons](../04-programs/daemons.md) and
 [the security model](../03-architecture/security-model.md).

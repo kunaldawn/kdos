@@ -59,6 +59,7 @@ rules, and the settings page that shows the value would show something else.
 | [`desk`](#kdos-desk) | Lay the panels out as one of the three desks, or put them back |
 | [`doctor`](#kdos-doctor) | Check the machine for the faults KDOS is known to have |
 | [`explain`](#kdos-why-and-kdos-explain) | Browse the recorded reasons behind the system's design |
+| [`firmware`](#kdos-firmware) | Install the vendor firmware this machine's hardware asks for |
 | [`help`](#kdos-help) | The command list and the global shortcuts |
 | [`hey`](#kdos-hey) | Ask KWin about windows, screens and boxes |
 | [`hostname`](#kdos-timezone-hostname-locale-keymap-and-in-vm) | Print or set the machine's name |
@@ -101,8 +102,8 @@ Tab completion in bash comes from `/usr/share/bash-completion/completions/kdos`.
 it offers `help`, `theme`, `phosphor`, `desk`, `tiling`, `status`, `doctor`, `version`, `app`,
 `share`, `remind`, `notify`, `toggle`, `settings`, `menu`, `panel`, `places`, `trash`, `thumb`,
 `verify`, `hey`, `appid`, `privacy`, `checklist`, `backup`, `speech`, `timezone`, `hostname`, `locale`,
-`keymap`, `in-vm`, `update`, `cve`, `why`, `explain`, `persist` and `restarts`, and after the first
-word it completes each one's verbs and options: the accents after `theme`, the presets after
+`keymap`, `in-vm`, `update`, `firmware`, `cve`, `why`, `explain`, `persist` and `restarts`, and
+after the first word it completes each one's verbs and options: the accents after `theme`, the presets after
 `phosphor preset`, the desks after `desk`, the toggles, the window actions after `hey run`, the
 checklist items after `checklist dismiss`, the zone names under `/usr/share/zoneinfo` after
 `timezone`, and the page words after `settings`. The same file completes the first word of
@@ -171,8 +172,8 @@ kdos-doc 04-programs/kdos-command#kdos-theme
 ```
 
 A page is named as the book's own links name it, with or without `.md` or `.html`. `kdos-doc`
-hands KHelpCenter that page's file URL; on a machine without KHelpCenter it opens the desktop's
-browser through `xdg-open`, and on a console with neither it prints the file's path, which `lynx`
+hands KHelpCenter that page's file URL where it is installed; without it, as on the installation
+medium, it opens the desktop's browser through `xdg-open`, and on a console with neither it prints the file's path, which `lynx`
 or `w3m` can open. The name is checked before it is used, letters, digits and `._-/` for the page
 and the anchor and no `..`, so it can only name a page under the book's directory. It exits 1 when
 the page is not in the book, 2 on bad usage, and otherwise with the viewer's status.
@@ -224,7 +225,7 @@ kdos -V
 ```
 
 ```
-KDOS — KD's Homebrew Linux Distro
+KDOS — Kool Desktop Operating System
   release  0.2.14
   kernel   7.2.11
   libc     musl
@@ -258,7 +259,7 @@ Each check reports one of three levels:
 | Section | Checks |
 |---|---|
 | Kernel | The Landlock ABI level (and whether Landlock is compiled out or merely disabled), and whether the initramfs carries microcode for this processor's vendor |
-| Hardware | The wireless regulatory database, its signature and the regulatory domain; SOF audio firmware and topologies; NVIDIA GSP firmware when `nouveau` is bound; whether the calling user can open each attached serial, camera and instrument device (`/dev/ttyUSB*`, `/dev/ttyACM*`, `/dev/video*`, `/dev/usbtmc*`), naming the owning group of any it cannot; and, on a live session, whether the boot medium is reachable at `/mnt/iso` |
+| Hardware | The wireless regulatory database, its signature and the regulatory domain; SOF audio firmware and topologies; NVIDIA GSP firmware when `nouveau` is bound, naming `sudo kdos firmware sync` when it is absent; whether the calling user can open each attached serial, camera and instrument device (`/dev/ttyUSB*`, `/dev/ttyACM*`, `/dev/video*`, `/dev/usbtmc*`), naming the owning group of any it cannot; and, on a live session, whether the boot medium is reachable at `/mnt/iso` |
 | Boxes | Whether erofs is available to the kernel, whether `kdos-packd` answers and by which mount route, whether the user is uid 1000 (packs are built for it), whether the home directory's filesystem can hold a container's writable layer, whether every mounted pack still has a file behind it; then the box plumbing (`kdos-boxsock`, `kdos-boxinit`, `xdg-dbus-proxy`) and each box's confinement as its last launch recorded it |
 | Boot | Whether `rcS` finished, whether this boot is confirmed or still a trial nobody blessed, and whether SDDM has been restarting (three restarts after the first start and `kdos-dm` gives tty1 to a console login instead) |
 | Session | Whether the Wayland socket exists (not only whether `WAYLAND_DISPLAY` is set), `XDG_RUNTIME_DIR`, turnstile and the supervised session bus, elogind and whether this session is the active one on its seat, and whether `kwin_wayland`, `plasmashell` and the polkit agent are running and the KDE portal, the session manager (`ksmserver`) and the secret service own their bus names; a wallet switched off (`kwalletrc` `[Wallet] Enabled=false`, as the live medium ships it) makes the secret-service line a skip |
@@ -1206,10 +1207,14 @@ version behind a recorded fix is a finding named `<port>/<component>`, and every
 
 ```sh
 kdos update [check [--json] [--out PATH] [--fetch]]
-kdos update fetch [--from URL|DIR]
+kdos update fetch [--from URL|DIR] [--binhost-only]
 kdos update apply [--image | --binhost | --source] [--acquire | --arm] [--mount]
                   [--dry-run] [--root DIR] [--in-place] [--progress FD]
-kdos update install [--dry-run] <port>
+kdos update install [--dry-run] [--prebuilt | --source] [--build-deps=prebuilt|source]
+                    [--root DIR] <port|group>
+kdos update install [--dry-run] [--prebuilt | --source] --pending
+kdos update install [--dry-run] --dev [--root DIR] <port|group>...
+kdos update groups [--json]
 kdos update notes [--json]
 kdos update theme
 ```
@@ -1247,9 +1252,10 @@ counts.
 | Verb | Does |
 |---|---|
 | `check` (the default when no argument is given; name it to pass an option) | Lists each installed package whose version, then release, is older than its recipe's and whether the binary host covers it, counts packages with no recipe here, names the tree's commit, says what is offered and from which lane, and reports the recorded problem. A package newer than its recipe, such as a local rebuild with a higher release, is not listed. `--json` prints the same as one document; `--out PATH` writes that document atomically to `PATH` and implies `--json`; `--fetch` runs `fetch` first. Exit 0 up to date, 1 something behind or an image offered, 2 nothing could be surveyed |
-| `fetch` | Downloads the newest published tree, checks its signature, installs it as `/ports`, and fetches the release index and, through it, the binary-host index and the slot image manifest. Each part checks its key before the network: with no key in `/etc/kdos/keys/tree` the tree is not downloaded and `fetch` records `no-key`, and with none in `/etc/kdos/keys` neither the binary-host index nor the image manifest is, and each records `no-key` on its own line. Exit 0 installed or already current, 1 refused or failed, 2 not attempted (not root, another update running, or `/ports` inside a git checkout) |
+| `fetch` | Downloads the newest published tree, checks its signature, installs it as `/ports`, and fetches the release index and, through it, the binary-host index and the slot image manifest. `--binhost-only` fetches only the release index and binary-host index of the tree in place, neither a newer tree nor the image manifest, because a newer tree's packages are built against a newer base than this one runs; the live medium and the installer fetch this way. Each part checks its key before the network: with no key in `/etc/kdos/keys/tree` the tree is not downloaded and `fetch` records `no-key`, and with none in `/etc/kdos/keys` neither the binary-host index nor the image manifest is, and each records `no-key` on its own line. Exit 0 installed or already current, 1 refused or failed, 2 not attempted (not root, another update running, or `/ports` inside a git checkout) |
 | `apply` | Fills the inactive slot (the acquire) and makes it the next boot's candidate (the arm). See below |
-| `install <port>` | One port and every package it lacks into the running root, from the release binary host `fetch` keeps. Nothing is ever built: a package the signed index does not cover is refused, and so is a dependency already installed and older than its recipe, because the new package was built against the newer one and the system update comes first. Each package is fetched and checked against the index before any is installed, under `KPKG_REQUIRE_SIG`. The port joins the world set only after everything installed. It prints one `==> installing <pkg>` line per package; `--dry-run` prints `<pkg> <file>` for each and touches nothing, and needs no root. Discover's ports helper runs it through `pkexec`. Exit 0 installed or already was, 1 refused or failed, 2 usage |
+| `install <port\|group>` | One port and every package it lacks into the running root, by one of two routes. `--prebuilt` takes them from the release binary host `fetch` keeps, and a package the signed index does not cover refuses the whole install, naming `kdos update install --source <port>`. `--source` builds the port here (below). An install never rebuilds an installed package, and a port installed by the other route is installed again, alone, by the one asked for. A dependency already installed and older than its recipe refuses the install, because the new package is built against the newer one and the system update comes first. A group name installs each of its members in turn as the port it is ([below](#install-routes-and-groups)). `--root DIR` installs into a root that is not running, prebuilt only. `--pending` installs what the installer recorded and could not install. `--dev` installs installed ports again whole, bringing back the development and documentation files the image's `FACETS=run` left out ([below](#development-files)). Discover's ports helpers run it through `pkexec`. Exit 0 installed or already was, 1 refused or failed, 2 usage |
+| `groups` | Every group of the tree's `groups` file: whether all of it is installed, how many of its members are not, how many packages installing it would add, and, with the signed binary-host index in place and every one of those packages prebuilt, their download size. `--json` prints an array of `{"id", "title", "ports", "installed", "missing", "packages", "size"}`, `size` `null` when no size can be given. Exit 0 |
 | `notes` | The release notes of the slot this boot runs. `--json` prints `{"version", "previous", "notes"}`: the version running, the version the other slot holds (`""` when none is recorded), and the `RELEASE` file of the tree this slot carries, as Markdown. Exit 1 with no document when the slot carries no notes. The welcome tour's What's New page reads it |
 | `theme` | Applies the accent in force again, exactly as `kdos theme <accent>` does, so the copies under `$HOME` are regenerated from artwork an update replaced |
 
@@ -1280,7 +1286,8 @@ reads.
 | `behind`, `orphans`, `packages` | What is older than its recipe, each with `binary`, whether the binary host covers it; installed packages with no recipe |
 | `tree`, `version`, `date` | The tree in place, the version it is, and the day (UTC) its commit was made, or the offered image's when the lane is `image`; Discover shows it as the release date |
 | `installed` | The version this system says it is |
-| `covered`, `uncovered`, `size` | How much of `behind` the binary host covers, and the bytes still to download |
+| `covered`, `uncovered`, `size` | How much of `behind` the binary host covers, and the bytes still to download; a package whose origin is `source` counts as covered, since the update builds it here |
+| `builds` | How many of `behind` the update builds here rather than downloads |
 | `offer`, `lane` | The version an update would make this system, and from where: `image` or `binhost` |
 | `signed_by`, `verified`, `binhost`, `image` | The key that signed what is offered, when it was verified, and where the index and the image come from |
 | `channel`, `notes`, `checked` | The tree source in effect, the tree's release notes, and the time of this check |
@@ -1329,8 +1336,8 @@ session anyway.
 
 | Lane | What `apply` does |
 |---|---|
-| Image | Writes the signed slot image into the slot with [`kdos image unpack`](#kdos-image)'s synchroniser, seeded from the running root, so only what changed is downloaded |
-| Binhost | Fetches every package's file and delta, checks each against the signed index, and installs them inside a chroot of the slot, dependencies first, under `KPKG_REQUIRE_SIG` |
+| Image | Writes the signed slot image into the slot with [`kdos image unpack`](#kdos-image)'s synchroniser, seeded from the running root, so only what changed is downloaded. A slot image is the base alone, so the world set follows it: every world package and each dependency it lacks goes into the slot from the same release's binary host, or is built there when its origin is `source`. Before the slot is written every world package and its dependencies are walked, and one by the prebuilt route that the binary host does not cover refuses the image lane with `N package(s) of what was installed on purpose is/are not in release X's binhost (…)`, nothing written. What the running root keeps whole follows too: under `FACETS=run`, a package with development or documentation files and no [facet record](#development-files), as `install --dev` or a build here leaves one, is installed whole in the slot, by the world step when it installs the package and again whole after it when the image brought the package stripped, prebuilt or built here again by its origin. One by the prebuilt route the binary host does not cover refuses the lane before the slot is written, with `N package(s) this system keeps whole is/are not in release X's binhost (…)`, and `--dry-run` lists each as `<pkg> kept whole: <file>` or `built here again`. A machine with neither a world set nor a package kept whole has no such step |
+| Binhost | Takes each package by the route its [origin](#install-routes-and-groups) records: a prebuilt one has its file and delta fetched and checked against the signed index and is installed under `KPKG_REQUIRE_SIG`, and a `source` one has its sources fetched and is built with `kpkg install`. Every file and source is fetched before the first install, and all of it is installed inside a chroot of the slot, dependencies first. Into a slot, what the running root keeps whole is installed whole there, as in the image lane. Only the prebuilt packages need the index; one it does not cover refuses the lane |
 | Source | Fetches every source with [`kpkg fetch`](../03-architecture/packaging.md#fetching-sources-on-a-machine), from the `sources-<N>` archive first, then upstream, before it builds anything, then builds and installs each package with `kpkg install -f` in a chroot of the slot (`/proc`, `/sys`, `/dev`, the ports tree, the source cache and `/etc/resolv.conf` bound in), so every package compiles against the slot's own libraries. Hours on a large set |
 
 | Option | Does |
@@ -1366,6 +1373,115 @@ ones that installed in place. See
 | 0 | Done, or nothing was behind |
 | 1 | A download, a verification, an install or build, the slot's check, the carry, the deploy or `try` failed |
 | 2 | Not attempted: no tree, no package database, not root (without `--dry-run`), another update holds the lock, a bad option, a trial boot, or the inactive slot is not mounted and neither `--mount` nor `--in-place` was given |
+
+#### Install routes and groups
+
+`install` puts software into the running root by a route, and `/etc/kdos/update.conf` names the
+one it takes when no flag does:
+
+| Key | Values | Decides |
+|---|---|---|
+| `install =` | `prebuilt` (the default), `source` | The route of the port asked for: `--prebuilt` or `--source` |
+| `build-deps =` | `prebuilt` (the default), `source` | For a source install, whether each dependency the machine lacks is downloaded or built too: `--build-deps=` |
+
+Any other value is a usage error, exit 2. A **prebuilt** install takes the port and everything it
+lacks from the release's binary host: every package file is fetched and checked against the signed
+index before any is installed, and each goes in through `kpkg binhost` under `KPKG_REQUIRE_SIG`.
+A **source** install fetches every source with `kpkg fetch` first, then builds with `kpkg install`
+under the build environment of `/etc/kdos/chroot.env`, so what it builds carries the build
+configuration the binary host's packages carry. Its missing dependencies come prebuilt or are
+built per `build-deps`; under `build-deps = prebuilt` a dependency the binary host does not cover
+is built instead. A package built here carries no signature. `--root DIR` installs into a root
+that is not running (`DIR` absolute) by the prebuilt route only, because a build compiles against
+the root it runs in; `--source` with `--root` exits 2. That root's package database, world set and
+origin file are the ones written.
+
+Each package an install or an update adds records its route in `/var/lib/kdos/origin`, one
+`<package> prebuilt|source` line; a package with no line is prebuilt, which is how everything the
+image brought arrived. The file is carried into a slot at the arm beside the world set, and an
+update keeps each route: a package built here is built here again, one taken from the binary host
+is taken from the next release's. The port joins `/var/lib/kdos/world` only after everything
+installed, so an install stopped half way keeps the packages that finished and their origins.
+
+Each package installed prints `==> installing <pkg> (prebuilt)` or `==> installing <pkg> (built
+here)`. `--dry-run` decides everything and touches nothing, so it needs no root, and prints one
+line per package and a total:
+
+```text
+<pkg> prebuilt <file> <bytes>
+<pkg> source <version>-<release>
+total <prebuilt-count> <bytes> <source-count>
+```
+
+A source install first readies the machine to build, as the next section says; those packages
+are listed before the rest, as `<pkg> prebuilt <file> <bytes>` or `<pkg> dev <file> <bytes>`, and
+counted in the total. A group prints a total per member. Discover runs this dry run before it asks
+for the password and shows its counts ([Discover](discover.md#host-software)).
+
+A **group** is a named set of ports in the tree's `groups` file (`/ports/groups`): a `group <id>
+<title>` line, then its member ports, any number to a line, until the next group. A member may be
+a meta port, such as `kde-gear-games`, which installs what it names. `install <group>` installs
+each member as the port it is, by the same flags, with a `==> <group>: <port> (N of M)` line
+before each; each member joins the world set by its own name, so a member a later tree drops from
+the group stays installed. A group install works on an installed machine and on the live medium,
+where it goes into the RAM overlay and is gone at the next restart. The groups the tree names are:
+
+| Group | Members |
+|---|---|
+| `kde-games`, `kde-education`, `kde-pim`, `kde-multimedia`, `kde-graphics`, `kde-utilities`, `kde-devtools` | The KDE Gear meta port of each |
+| `kde-network` | KTorrent, KRDC, Krfb, kio-gdrive, the online-account providers, Samba sharing |
+| `kde-system` | Filelight, Sweeper, KFind, KSystemLog, KWalletManager, KCharSelect, ISO Image Writer, KHelpCenter |
+| `kde-artwork` | The KDE wallpaper collection, Oxygen |
+| `office` | LibreOffice, calibre, TeXstudio |
+| `graphics` | GIMP, Krita, Inkscape, darktable, Blender |
+| `internet` | Thunderbird, Chromium, LibreWolf |
+| `multimedia` | VLC, mpv, OBS Studio, Audacity, Shotcut, HandBrake, Kodi |
+| `games` | SuperTuxKart, Wesnoth, Xonotic, Luanti, ScummVM, RetroArch |
+| `science` | Octave, QGIS, Stellarium, FreeCAD, KiCad, OpenSCAD |
+| `development` | Rust, Go, Node.js, Zig, GDB, Valgrind, strace, LLDB |
+| `windows` | Wine |
+| `build-tools` | GCC, binutils, make, CMake, Meson, Ninja, pkgconf, autoconf, automake, libtool, bison, flex |
+| `lang-zh`, `lang-ja`, `lang-ko` | fcitx5's Chinese addons, Anthy or Hangul, with fcitx5-gtk and Noto CJK |
+
+`install --pending` installs every id in `/var/lib/kdos/groups-pending`, the groups the
+[installer](kinstall.md) chose and could not install, by the route the flags or `update.conf`
+name; each one that installs leaves the file at once, and the file goes with the last, so a run
+stopped half way picks up where it stopped. With nothing recorded it prints `nothing is pending`.
+
+#### Development files
+
+The image carries the run-time [facet](../03-architecture/packaging.md#facets) of each package:
+its `/etc/kpkg.conf` says `FACETS=run`, so headers, static libraries, CMake, pkg-config and
+introspection files, man sections 0, 2 and 3 and the manuals under `/usr/share/doc`, `info` and
+`gtk-doc` are left out of every install, and each package's left-out files are listed in
+`/var/lib/kpkg/db/.facets/<name>`. Nothing is lost: each is one command away.
+
+`install --dev <port|group>...` installs each named port that is installed again whole
+(`KPKG_FACETS=all`), prebuilt from the binary host, or built here again when its origin is
+`source`; a group restores every member that is installed. The package then stays whole across
+updates, and across a [slot image](#applying): an image's base is stripped, so after writing
+the slot the image lane installs again whole every package the running root keeps whole. A port
+that is not installed is named with the command that installs it and skipped,
+one installed whole prints `every file of <port> is installed`, and one older than its recipe
+refuses until the system update. Each prints `==> restoring the development files of <pkg>
+(prebuilt)`; `--dry-run` prints `<pkg> dev <file> <bytes>` (or `<pkg> dev-source
+<version>-<release>`) and the `total` line.
+
+A **source install readies the machine first**, before anything is built and printing each step:
+
+1. It installs every member of the `build-tools` group that is not installed, and everything
+   they lack, prebuilt whatever `--build-deps` says (`==> installing <pkg> (prebuilt, for
+   building)`); each member joins the world set. A tree with no `build-tools` group stands for it
+   with `gcc`, `binutils`, `make`, `cmake`, `meson`, `ninja` and `pkgconf`.
+2. It restores the development facet of every installed package the build compiles against —
+   the declared closure of each port it builds, `musl`, `linux` and the build tools — as `--dev`
+   would. A package the binary host does not cover, or one older than its recipe, refuses the
+   install before anything is fetched.
+
+Every package such a run installs goes in whole, so what a later build in the run compiles
+against is complete. The same two steps run before the source items of `apply`, in the slot.
+`kpkg install` run by hand refuses to build against a package without its development files and
+names the `sudo kdos update install --dev <pkg>` that restores it.
 
 ### kdos image
 
@@ -1404,6 +1520,57 @@ and never a file.
 | 1 | A write, a copy or a carry failed |
 | 2 | Bad usage |
 | 3 | The release index or the manifest did not verify, the manifest is not the file or the version the index names, or the image is for another architecture |
+
+### kdos firmware
+
+```sh
+kdos firmware sync [--root DIR] [--dry-run [--json]] [--all]
+```
+
+The vendor firmware this machine's hardware asks for and has not got, installed prebuilt.
+Upstream's `linux-firmware` is split into eight packages, and the installation medium carries
+Intel's, AMD's, MediaTek's and Realtek's (see
+[The base image](../03-architecture/packaging.md#the-base-image)); this is how the rest reach a
+machine that needs them.
+
+It looks in two places. Every device under `/sys/bus/<bus>/devices/` by its `modalias`: the
+module bound to it, and every module `modules.alias` (or, for a driver built into the kernel,
+`modules.builtin.modinfo`) says would bind it, each module's `firmware:` lines read with
+`modinfo -F firmware`. And the kernel log, `/dev/kmsg`: each `Direct firmware load for <path>
+failed` and `firmware: failed to load <path>` line. A file present under `<root>/lib/firmware`, as
+itself, `.zst` or `.xz`, or under `lib/firmware/updates`, is satisfied; any other is looked up in
+`/usr/share/kdos/firmware-map`, which the `firmware-map` port builds from the same tarball and the
+same rule as the vendor ports, one `<port> <path>` line per file and link. A mapped file whose
+port is not installed names that port. A driver's list covers every chip it supports, so a driver
+names its vendor's whole port; module dependencies are not followed, so `btusb` does not name the
+four vendors whose Bluetooth helpers it loads, and the adapter's own failed request in the kernel
+log names its port instead. A path the kernel asked for that no port ships is reported on standard
+error and never guessed at, and so is a path that climbs out of `/lib/firmware`.
+
+| Option | Does |
+|---|---|
+| `--dry-run` | Prints one `<port> <reason>` line per port, sorted, and installs nothing; needs no root. The reason is the first evidence found, the kernel log first: `the kernel could not load ath11k/WCN6855/hw2.0/amss.bin` or `module nouveau, pci 0000:01:00.0` |
+| `--json` | With `--dry-run`: `{"ports":[{"port","reason"}],"unshipped":[paths],"kernel_log":bool,"modules":bool}`, which `kdos-notice` reads; `kernel_log` is false where the log could not be read |
+| `--all` | Every vendor port the map names that `DIR` has not got, whatever the hardware |
+| `--root DIR` | Checks and installs into the root at `DIR`, which must be absolute: its `/lib/firmware`, its package database, and its firmware map, or this system's when `DIR` has none. The devices and the kernel modules are this machine's. What the installer runs into the new disk |
+
+Without `--dry-run` it runs `kdos update fetch --binhost-only`, and then
+`kdos update install --prebuilt [--root DIR] <port>` once per port, each as an argument vector,
+so every port takes the signed prebuilt route, the origin record and the world set any other
+install does (see [Install routes and groups](#install-routes-and-groups)). A failed fetch is
+reported and the installs go ahead from the index cached here. `kernel.dmesg_restrict` keeps the
+kernel log from a user, so a dry run without root decides from the devices alone and says so on
+standard error.
+
+| Exit | Means |
+|---|---|
+| 0 | Nothing to install, or every install succeeded |
+| 1 | A dry run that names a port; an install that failed (the port is named); a sync without root |
+| 2 | Bad usage: an unknown option, `--json` without `--dry-run`, a relative `--root` |
+| 3 | No firmware map in `DIR` or on this system, so nothing could be decided |
+
+`$KDOS_FIRMWARE_SYSROOT` moves `/sys`, `/lib/modules` and `/dev/kmsg` and `$KDOS_FIRMWARE_KVER`
+names the kernel release, for the self-test's fixture; `modinfo` is found on `$PATH`.
 
 ### kdos timezone, hostname, locale, keymap and in-vm
 

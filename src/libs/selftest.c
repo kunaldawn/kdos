@@ -1345,6 +1345,233 @@ static void walk_all(const KpConf *c)
 }
 
 /*
+ * The facet rules, one path per rule and one per exception: each exception is
+ * a file a machine running FACETS=run needs and would otherwise lose (cmake's
+ * own modules, the handbooks help:/ opens, a plugin named lib<x>.so, libclc's
+ * bitcode, the man pages a terminal user reads).
+ */
+static void test_facets(void)
+{
+	printf("libkpkg facets\n");
+	static const struct {
+		const char *path, *link;
+		int want;
+	} t[] = {
+		{ "./usr/include/zlib.h", NULL, KP_FACET_DEV },
+		{ "./usr/lib/libz.a", NULL, KP_FACET_DEV },
+		{ "./lib/libz.a", NULL, KP_FACET_DEV },
+		{ "./usr/lib/gcc/x86_64-kdos-linux-musl/15/libgcc.a", NULL,
+		  KP_FACET_DEV },
+		{ "./usr/share/clc/spirv64--/libclc.a", NULL, KP_FACET_RUN },
+		{ "./usr/lib/cmake/ZLIB/ZLIBConfig.cmake", NULL, KP_FACET_DEV },
+		{ "./usr/share/cmake/Modules/FindZLIB.cmake", NULL,
+		  KP_FACET_RUN },
+		{ "./usr/share/cmake/VulkanHeaders/x-config.cmake", NULL,
+		  KP_FACET_DEV },
+		{ "./usr/lib/pkgconfig/zlib.pc", NULL, KP_FACET_DEV },
+		{ "./usr/share/pkgconfig/x.pc", NULL, KP_FACET_DEV },
+		{ "./usr/share/aclocal/x.m4", NULL, KP_FACET_DEV },
+		{ "./usr/share/gir-1.0/Gtk-3.0.gir", NULL, KP_FACET_DEV },
+		{ "./usr/share/vala-0.56/vapi/x.vapi", NULL, KP_FACET_DEV },
+		{ "./usr/share/man/man3/zlib.3", NULL, KP_FACET_DEV },
+		{ "./usr/share/man/man2/open.2", NULL, KP_FACET_DEV },
+		{ "./usr/share/man/man0p/stdio.h.0p", NULL, KP_FACET_DEV },
+		{ "./usr/share/man/man1/ls.1", NULL, KP_FACET_RUN },
+		{ "./usr/share/man/man8/mount.8", NULL, KP_FACET_RUN },
+		{ "./usr/lib/libz.so", "libz.so.1.3.1", KP_FACET_DEV },
+		{ "./usr/lib/libz.so", "../../lib/libz.so.1", KP_FACET_DEV },
+		{ "./usr/lib/libplug.so", NULL, KP_FACET_RUN },
+		{ "./usr/lib/libz.so", "libother.so.1", KP_FACET_RUN },
+		{ "./usr/lib/qt6/plugins/libx.so", "libx.so.1", KP_FACET_RUN },
+		{ "./usr/share/doc/zlib/README", NULL, KP_FACET_DOC },
+		{ "./usr/share/doc/HTML/en/dolphin/index.docbook", NULL,
+		  KP_FACET_RUN },
+		{ "./usr/share/doc/kdos/index.html", NULL, KP_FACET_RUN },
+		{ "./usr/share/info/gcc.info", NULL, KP_FACET_DOC },
+		{ "./usr/share/gtk-doc/html/glib/index.html", NULL,
+		  KP_FACET_DOC },
+		{ "./usr/share/help/C/gedit/index.page", NULL, KP_FACET_RUN },
+		{ "./usr/include/", NULL, KP_FACET_RUN },
+		{ "./usr/bin/zcat", NULL, KP_FACET_RUN },
+	};
+	for (size_t i = 0; i < sizeof(t) / sizeof(*t); i++) {
+		char what[256];
+		snprintf(what, sizeof(what), "%s%s%s is %s", t[i].path,
+			 t[i].link ? " -> " : "", t[i].link ? t[i].link : "",
+			 kp_facet_name(t[i].want));
+		ok(kp_facet_of(t[i].path, t[i].link) == t[i].want, what);
+	}
+	const char *gcc = "usr/bin/* usr/lib/gcc/* usr/lib/*.o";
+	ok(kp_facet_glob("./usr/lib/gcc/x86_64-pc-linux-musl/16.2.0/cc1", gcc),
+	   "a facet_dev glob's * crosses /");
+	ok(kp_facet_glob("./usr/bin/gcc", gcc), "a facet_dev glob matches");
+	ok(!kp_facet_glob("./usr/lib/libstdc++.so.6", gcc),
+	   "a facet_dev glob leaves what it does not name");
+	ok(!kp_facet_glob("./usr/bin/", gcc), "a facet_dev glob takes no directory");
+	ok(!kp_facet_glob("./usr/bin/gcc", NULL), "no facet_dev line takes nothing");
+}
+
+/* Run-time needs: each kind of edge found in installed files, and each
+ * thing the scan must NOT take for one — an indented or docstring import,
+ * a submodule's or a test module's, a documentation file, a quoted QML
+ * import, a module the package carries itself (vendored too), a script with
+ * no execute bit. */
+static void needs_put(const char *root, const char *rel, const char *data,
+		      mode_t mode)
+{
+	char *p = kb_path_join(root, rel);
+	char *d = kb_strdup(p);
+	*strrchr(d, '/') = 0;
+	kb_mkdir_p(d);
+	kb_write_file(p, data);
+	chmod(p, mode);
+	free(d);
+	free(p);
+}
+
+static void test_needs(void)
+{
+	printf("libkpkg run-time needs\n");
+	char dir[] = "/tmp/kdos-selftest-needs.XXXXXX";
+	ok(mkdtemp(dir) != NULL, "scratch directory");
+
+	char *tool = kb_path_join(dir, "usr/bin/tool");
+	needs_put(dir, "usr/bin/tool", "", 0755);
+	ok(kb_copy_file("/proc/self/exe", tool) == 0, "an ELF file to scan");
+	free(tool);
+	char **need = NULL, **search = NULL;
+	char *self = kb_path_join(dir, "usr/bin/tool");
+	ok(kp_elf_dynamic(self, &need, &search) == 0 && need && need[0],
+	   "kp_elf_dynamic reads a DT_NEEDED");
+	char soline[512] = "";
+	if (need && need[0])
+		snprintf(soline, sizeof(soline), "so %s\n", need[0]);
+	kb_strv_free(need);
+	kb_strv_free(search);
+	free(self);
+	ok(kp_elf_dynamic("/nonexistent", &need, &search) == -1 && !need &&
+	   !search, "kp_elf_dynamic of nothing is -1");
+
+	needs_put(dir, "usr/bin/script", "#!/usr/bin/env -S python3 -u\n", 0755);
+	needs_put(dir, "usr/bin/python3", "", 0755);
+	needs_put(dir, "usr/bin/plain", "#!/bin/sh\n", 0644);
+	needs_put(dir, "usr/share/app/main.qml",
+		  "import QtQuick 2.15\n"
+		  "import org.kde.kirigami 2.20 as Kirigami\n"
+		  "import \"code/x.js\" as X\n"
+		  "import \"../dir\"\n"
+		  "  import org.self.mod\n"
+		  "Item {}\n", 0644);
+	needs_put(dir, "usr/lib/qt6/qml/org/self/mod/qmldir", "module x\n", 0644);
+	needs_put(dir, "usr/lib/qt6/qml/org/kde/kirigami/qmldir", "", 0644);
+	const char *sp = "usr/lib/python3.14/site-packages";
+	char rel[256];
+#define SP(x) (snprintf(rel, sizeof(rel), "%s/%s", sp, x), rel)
+	needs_put(dir, SP("dep/__init__.py"), "", 0644);
+	needs_put(dir, SP("fakedoc.py"), "", 0644);
+	needs_put(dir, SP("optional.py"), "", 0644);
+	needs_put(dir, SP("dep2.py"), "", 0644);
+	needs_put(dir, SP("ext.cpython-314-x86_64-linux-musl.so"), "", 0644);
+	needs_put(dir, SP("nsp/part.py"), "", 0644);
+	needs_put(dir, SP("mine/__init__.py"),
+		  "\"\"\"An example:\n"
+		  "import fakedoc\n"
+		  "\"\"\"\n"
+		  "import os, dep.sub as d, vend\n"
+		  "from mine import x\n"
+		  "from . import y\n"
+		  "try:\n"
+		  "    import optional\n"
+		  "except ImportError:\n"
+		  "    pass\n"
+		  "import nothere\n", 0644);
+	needs_put(dir, SP("mine/tests/test_a.py"), "import dep2\n", 0644);
+	needs_put(dir, SP("mine/sub.py"), "import optional\n", 0644);
+	needs_put(dir, SP("mine/_vendor/vend/__init__.py"), "", 0644);
+	needs_put(dir, SP("vend/__init__.py"), "", 0644);
+	needs_put(dir, "usr/bin/pyprog", "#!/usr/bin/python3\nimport ext\n",
+		  0755);
+	needs_put(dir, "usr/share/doc/mine/ex.py", "import optional\n", 0644);
+
+	KbBuf body = {0};
+	kb_buf_printf(&body,
+		      "./\n./usr/\n./usr/bin/\n./usr/bin/tool\n./usr/bin/script\n"
+		      "./usr/bin/plain\n./usr/share/app/main.qml\n"
+		      "./usr/lib/qt6/qml/org/self/mod/qmldir\n"
+		      "./%s/mine/\n./%s/mine/__init__.py\n"
+		      "./%s/mine/tests/test_a.py\n./usr/share/doc/mine/ex.py\n"
+		      "./%s/mine/sub.py\n./%s/mine/_vendor/vend/__init__.py\n"
+		      "./usr/bin/pyprog\n",
+		      sp, sp, sp, sp, sp);
+	KpConf c;
+	memset(&c, 0, sizeof(c));
+	kb_strlcpy(c.root, dir, sizeof(c.root));
+	char *rec = kp_needs_scan(&c, "mine", body.p, NULL, "plugin-a mine");
+	KbBuf want = {0};
+	kb_buf_printf(&want,
+		      "exe /usr/bin/env\nexe /usr/bin/python3\nneed plugin-a\n"
+		      "py dep\npy ext\nqml QtQuick\nqml org.kde.kirigami\n");
+	/* The ELF's own sonames sort among the rest; take them out. */
+	KbBuf got = {0};
+	kb_buf_str(&got, "");
+	for (char *l = rec, *nl; l && *l; l = nl) {
+		nl = strchr(l, '\n');
+		nl = nl ? nl + 1 : l + strlen(l);
+		if (strncmp(l, "so ", 3))
+			kb_buf_add(&got, l, (size_t)(nl - l));
+	}
+	eq_str(got.p, want.p, "the record of every kind of edge, and nothing else");
+	ok(soline[0] && strstr(rec, soline) != NULL,
+	   "an ELF file's DT_NEEDED is recorded");
+	kb_buf_free(&got);
+	free(rec);
+
+	rec = kp_needs_scan(&c, "mine", body.p, "usr/bin/* usr/share/app/*",
+			    NULL);
+	ok(!strstr(rec, "exe ") && !strstr(rec, "qml ") && !strstr(rec, "so "),
+	   "a facet_dev glob takes its files out of the scan");
+	free(rec);
+
+	const char *pkg = NULL;
+	char **w = kp_needs_where(&c, "qml org.kde.kirigami", &pkg);
+	eq_str(w[0], "usr/lib/qt6/qml/org/kde/kirigami/qmldir",
+	       "a QML module is its qmldir");
+	ok(!pkg, "a qmldir is a path, not a package");
+	kb_strv_free(w);
+	w = kp_needs_where(&c, "qml QtQuick.Controls", &pkg);
+	ok(!w[0] && pkg && !strcmp(pkg, "qt6-qtdeclarative"),
+	   "a QtQuick module without a qmldir is qt6-qtdeclarative's");
+	kb_strv_free(w);
+	w = kp_needs_where(&c, "qml org.none", &pkg);
+	ok(!w[0] && !pkg, "a module nothing installs has no provider");
+	kb_strv_free(w);
+	w = kp_needs_where(&c, "py dep", &pkg);
+	snprintf(rel, sizeof(rel), "%s/dep/__init__.py", sp);
+	eq_str(w[0], rel, "a Python package is its __init__.py");
+	kb_strv_free(w);
+	w = kp_needs_where(&c, "py nsp", &pkg);
+	snprintf(rel, sizeof(rel), "%s/nsp/part.py", sp);
+	eq_str(w[0], rel, "a namespace package is a file in it");
+	kb_strv_free(w);
+	needs_put(dir, "usr/lib/libz.so.1", "", 0644);
+	w = kp_needs_where(&c, "so libz.so.1", &pkg);
+	eq_str(w[0], "usr/lib/libz.so.1",
+	       "a soname is found on musl's default path without a path file");
+	kb_strv_free(w);
+	needs_put(dir, "etc/ld-musl-x86_64.path", "/opt/lib\n", 0644);
+	w = kp_needs_where(&c, "so libz.so.1", &pkg);
+	ok(!w[0], "the path file replaces the default path");
+	kb_strv_free(w);
+	w = kp_needs_where(&c, "need plugin-a", &pkg);
+	ok(!w[0] && pkg && !strcmp(pkg, "plugin-a"), "a runtime = word is a package");
+	kb_strv_free(w);
+#undef SP
+	kb_buf_free(&want);
+	kb_buf_free(&body);
+	kb_rmtree(dir);
+}
+
+/*
  * The shelved ports tree. `ports/core/<shelf>/<name>/` holds the upstream
  * ports and every `src/<area>/<name>/` holds its ports flat, and one resolver
  * reads both. Each fixture here is a failure that is SILENT without the rule
@@ -6225,6 +6452,8 @@ int main(void)
 	test_trash();
 	test_colour();
 	test_pkg();
+	test_facets();
+	test_needs();
 	test_shelves();
 	test_build();
 	test_snap_layers();

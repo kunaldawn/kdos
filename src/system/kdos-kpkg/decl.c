@@ -77,6 +77,11 @@ struct KpDecl {
 	 * recipe. A key rather than a helper so it never reaches the build
 	 * environment. */
 	char replaces[512];
+	char facet_dev[1024];
+	/* What the package loads by name at run time, which no file of it
+	 * shows (needs.c reads it from the recipe). A key so it never reaches
+	 * the build environment as $runtime. */
+	char runtime[1024];
 	/* How `kdos march` measures this port: a setup line that is run once and
 	 * not timed, and the line that IS timed. Keys rather than helpers so
 	 * they are not expanded: kp_decl_prelude() hands them to build.sh as
@@ -386,6 +391,8 @@ static void set_key(KpDecl *d, const char *key, const char *val)
 		{ "pypackages", d->pypackages, sizeof(d->pypackages), 1 },
 		{ "secdb", d->secdb, sizeof(d->secdb), 0 },
 		{ "replaces", d->replaces, sizeof(d->replaces), 0 },
+		{ "facet_dev", d->facet_dev, sizeof(d->facet_dev), 0 },
+		{ "runtime", d->runtime, sizeof(d->runtime), 0 },
 		{ "bench", d->bench, sizeof(d->bench), 0 },
 		{ "bench_setup", d->bench_setup, sizeof(d->bench_setup), 0 },
 		{ "license", d->license, sizeof(d->license), 0 },

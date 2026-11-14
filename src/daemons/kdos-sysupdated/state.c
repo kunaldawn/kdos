@@ -418,12 +418,12 @@ void state_recompute(void)
 
 /* ── the update channel ────────────────────────────────────────────────── */
 
-/* The `tree =` of /etc/kdos/update.conf: where `kdos update` takes a newer
- * tree from. "" is the KDOS releases. */
-void state_channel(char *out, size_t cap)
+/* One `key = value` line of /etc/kdos/update.conf, "" when absent. */
+static void conf_get(const char *key, char *out, size_t cap)
 {
 	char p[1024];
 	char *data;
+	size_t kl = strlen(key);
 
 	out[0] = 0;
 	su_path("/etc/kdos/update.conf", p, sizeof(p));
@@ -435,9 +435,9 @@ void state_channel(char *out, size_t cap)
 			*nl = 0;
 		while (*l == ' ' || *l == '\t')
 			l++;
-		if (!strncmp(l, "tree", 4) &&
-		    (l[4] == ' ' || l[4] == '\t' || l[4] == '=')) {
-			char *v = l + 4;
+		if (!strncmp(l, key, kl) &&
+		    (l[kl] == ' ' || l[kl] == '\t' || l[kl] == '=')) {
+			char *v = l + kl;
 			while (*v == ' ' || *v == '\t' || *v == '=')
 				v++;
 			v[strcspn(v, " \t\r")] = 0;
@@ -446,6 +446,24 @@ void state_channel(char *out, size_t cap)
 		l = nl ? nl + 1 : NULL;
 	}
 	free(data);
+}
+
+/* The `tree =` of /etc/kdos/update.conf: where `kdos update` takes a newer
+ * tree from. "" is the KDOS releases. */
+void state_channel(char *out, size_t cap)
+{
+	conf_get("tree", out, cap);
+}
+
+/* `install =` and `build-deps =`: the route `kdos update install` takes with
+ * no flag, and the one a source install takes for what it lacks. Each is
+ * "prebuilt" or "source"; absent, or anything else, reads as "prebuilt",
+ * which is what `kdos update` does with it. */
+void state_route(const char *key, char *out, size_t cap)
+{
+	conf_get(key, out, cap);
+	if (strcmp(out, "source"))
+		kb_strlcpy(out, "prebuilt", cap);
 }
 
 /*
@@ -477,16 +495,15 @@ static int channel_ok(const char *c)
 	return 0;
 }
 
-/* update.conf with its `tree =` line replaced, or removed for "", every other
- * line kept as it was. 0, -1 for a channel that is not one, -2 when the file
- * could not be written. */
-int state_set_channel(const char *channel)
+/* update.conf with its `key =` line replaced by `key = value`, or removed for
+ * "", every other line kept as it was. 0, or -2 when the file could not be
+ * written. */
+static int conf_set(const char *key, const char *value)
 {
 	char p[1024], d[1024];
 	KbBuf b = {0};
+	size_t kl = strlen(key);
 
-	if (!channel_ok(channel))
-		return -1;
 	su_path("/etc/kdos/update.conf", p, sizeof(p));
 	char *data = kb_read_all(p, NULL);
 	for (char *l = data; l && *l;) {
@@ -496,21 +513,45 @@ int state_set_channel(const char *channel)
 		const char *k = l;
 		while (*k == ' ' || *k == '\t')
 			k++;
-		int tree = !strncmp(k, "tree", 4) &&
-			   (k[4] == ' ' || k[4] == '\t' || k[4] == '=');
-		if (!tree)
+		int same = !strncmp(k, key, kl) &&
+			   (k[kl] == ' ' || k[kl] == '\t' || k[kl] == '=');
+		if (!same)
 			kb_buf_printf(&b, "%s\n", l);
 		l = nl ? nl + 1 : NULL;
 	}
 	free(data);
-	if (channel[0])
-		kb_buf_printf(&b, "tree = %s\n", channel);
+	if (value[0])
+		kb_buf_printf(&b, "%s = %s\n", key, value);
 	kb_buf_str(&b, "");
 	su_path("/etc/kdos", d, sizeof(d));
 	kb_mkdir_p(d);
 	int rc = kb_write_file_atomic(p, b.p) == 0 ? 0 : -2;
 	kb_buf_free(&b);
 	return rc;
+}
+
+/* update.conf's `tree =` line set to `channel`, or removed for "". 0, -1 for
+ * a channel that is not one, -2 when the file could not be written. */
+int state_set_channel(const char *channel)
+{
+	if (!channel_ok(channel))
+		return -1;
+	return conf_set("tree", channel);
+}
+
+/* update.conf's `install =` and `build-deps =` lines, each "prebuilt" or
+ * "source"; -1 for any other word, -2 when the file could not be written. */
+int state_set_route(const char *install, const char *deps)
+{
+	int ok = 1;
+	for (int i = 0; i < 2; i++) {
+		const char *v = i ? deps : install;
+		ok &= !strcmp(v, "prebuilt") || !strcmp(v, "source");
+	}
+	if (!ok)
+		return -1;
+	int rc = conf_set("install", install);
+	return rc ? rc : conf_set("build-deps", deps);
 }
 
 /* ── telling the bus ───────────────────────────────────────────────────── */
@@ -578,6 +619,8 @@ static struct {
 	unsigned attempts;
 	char running[2], active[2], trying[2];
 	char channel[520];
+	char install[16];
+	char deps[16];
 	char state[2048];
 	char *slots;
 } seen = { .configured = -1, .live = -1 };
@@ -599,13 +642,15 @@ static void state_print(char *out, size_t cap)
 
 void state_emit(void)
 {
-	const char *ch[10];
+	const char *ch[12];
 	int n = 0;
-	char chan[520], st[2048];
+	char chan[520], st[2048], inst[16], deps[16];
 
 	if (!su.bus)
 		return;
 	state_channel(chan, sizeof(chan));
+	state_route("install", inst, sizeof(inst));
+	state_route("build-deps", deps, sizeof(deps));
 	state_print(st, sizeof(st));
 	if (seen.configured != su.configured) {
 		seen.configured = su.configured;
@@ -626,6 +671,8 @@ void state_emit(void)
 	CHANGED_S(active, su.active, "ActiveSlot");
 	CHANGED_S(trying, su.trying, "TrySlot");
 	CHANGED_S(channel, chan, "Channel");
+	CHANGED_S(install, inst, "InstallRoute");
+	CHANGED_S(deps, deps, "BuildDeps");
 	CHANGED_S(state, st, "State");
 #undef CHANGED_S
 	if (seen.attempts != su.attempts) {

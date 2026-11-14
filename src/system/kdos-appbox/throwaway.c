@@ -338,9 +338,10 @@ int cmd_throwaway(int argc, char **argv)
 
 	/*
 	 * ITS OWN PROFILE, MADE FROM THE APPLICATION'S BOX. The base, the
-	 * accent and the renderer are the source box's; the network, the home,
-	 * the persistence, the grants and the X11 display are this command's
-	 * and not the source's to widen.
+	 * accent, the renderer and the X11 display are the source box's, so an
+	 * X11-only viewer opens its window here too; the network, the home,
+	 * the persistence and the grants are this command's and not the
+	 * source's to widen.
 	 */
 	/*
 	 * A STORE BOX'S THROWAWAY IS MADE FROM ITS IMAGE. `base=image:kdos/<id>`
@@ -387,7 +388,7 @@ int cmd_throwaway(int argc, char **argv)
 		const char *extra[2];
 		int nextra = 0, created;
 
-		if (rundir_prepare(&p, image ? "" : box) != 0) {
+		if (rundir_prepare(&p) != 0) {
 			throwaway_clear(tw);
 			tw_fail("its runtime directory could not be made");
 		}

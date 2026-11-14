@@ -40,9 +40,9 @@ where that line is drawn.
 | Display | Wayland and Xorg, a display manager | Wayland only, KWin; rootless Xwayland for X11 clients; SDDM with a Wayland greeter |
 | Toolkits | GTK and Qt under the desktop and its applications | Qt 6 and KDE Frameworks under the desktop, and none under anything that runs as root or before the login; any toolkit for applications |
 | Desktop | GNOME, KDE Plasma, Xfce and others | KDE Plasma and all of KDE Gear, in KDOS's own look, with an opt-in CRT mode |
-| Packages | Prebuilt binaries from an archive | Compiled from about 2,400 recipes on the release's build host; the machine can rebuild any of them |
+| Packages | Prebuilt binaries from an archive | Compiled from about 2,400 recipes on the release's build host and published prebuilt in its signed binhost; the machine can build any of them itself |
 | Sources | Fetched from the archive's mirrors | Pinned by sha256, held in a release archive checked by hash, built offline |
-| Graphical applications | Distribution packages, Flatpak or Snap | Native ports carried on the medium, plus Debian packages in rootless podman containers, built on demand; Discover shows both |
+| Graphical applications | Distribution packages, Flatpak or Snap | Native ports, a base on the medium and the rest prebuilt in the release's binhost or built on the machine, plus Debian packages in rootless podman containers, built on demand; Discover shows both |
 | Updates | A package manager against a remote archive | The release's signed slot image, or its signed packages, written into the inactive root slot and kept after a healthy boot; a source build on request |
 | Architectures | Several | x86-64 only |
 | Support | Vendor or community, with a hardware matrix | None; whoever runs it is the integrator |
@@ -317,10 +317,12 @@ image. The first phase, `00_cross`, uses them to build a cross compiler, and `10
 that to build a musl userland with a native compiler. `20_selfhost` then rebuilds the compiler, the
 C library and the tools they need inside a chroot, a directory tree the build enters as its root,
 using what `10_bootstrap` made, so everything from `30_foundation` onwards is built by a compiler
-KDOS produced. The finished image keeps gcc, clang, Rust, Go, the build tools and `kpkg`, so any
-single port, the kernel included, can be rebuilt on the machine itself, offline once its sources are
-on disk; `kdos update apply --source` does that for every package that is behind, downloading the
-sources first, in place of the release's signed binaries an update installs by default. [`kdos
+KDOS produced. The finished image keeps gcc, clang, the build tools and `kpkg`, and takes Rust,
+Go and the other compilers prebuilt from the release's binhost when a build needs them, so any
+single port, the kernel included, can be rebuilt on the machine itself, offline once its sources
+and build dependencies are on disk. `kdos update install --source` does that for one port, and
+`kdos update apply --source` for every package that is behind, downloading the sources first, in
+place of the release's signed binaries an install or an update takes by default. [`kdos
 rebuild`](../04-programs/kdos-command.md#kdos-rebuild) runs the whole build on a booted machine; no
 run of it from the install medium has been taken through every phase (see [Known
 gaps](../06-reference/known-gaps.md#an-offline-kdos-rebuild-from-the-medium-has-not-been-run-to-the-end)).
@@ -379,24 +381,28 @@ behalf); Snap as compressed images from Canonical's store, confined with AppArmo
 installs graphical applications as Flatpaks and uses Toolbx containers for command-line work.
 Gentoo and Arch users build or install applications into the base system like everything else.
 
-KDOS ports graphical applications natively, so that a machine installed from its media has a
-browser, an office suite, media and graphics tools, maps and an offline library with no network.
-They are ordinary recipes in the ports tree, filed on shelves named for what they are for and built
-mostly in the `43_toolkits` and `44_apps` phases, with those that need no toolkit, such as mpv, in
-`42_graphics`; [The ports catalogue](../06-reference/ports-catalogue.md) lists them. Beside them,
-the catalogue of boxed applications lists 70 applications, each declared as a few Debian trixie
-packages over a shared Debian base and, for most of them, one of seven shared runtimes (GTK, Qt,
-KDE, media, science, Electron and Wine). Installing one makes podman build a container image on the
-machine that asked, layer by layer over the shared runtime, pinned to a snapshot of the Debian
-archive, and creates a rootless container, a *box*, over the top image. The application then behaves
-like native software: it has a launcher entry, a command on your `PATH`, file-type associations and
-the desktop's theme, and it reaches the host through portals. A set of built applications can be
-exported as packs, read-only images in EROFS, a compressed read-only filesystem format, that another
-machine imports without a network. The pack daemon checks each pack's hash when it installs it, and
-its signature when it carries one; an unsigned pack is accepted unless the daemon is told to require
-signatures. Discover is the front door to all of it: it lists the native ports, the catalogue and
-the installed boxes, and installs and removes them, beside updates of the system and firmware. There
-is no Flathub, no Snap and no "Get New…".
+KDOS ports graphical applications natively: a browser, an office suite, media and graphics tools,
+maps, CAD and an offline library. The live ISO carries Firefox ESR and the core KDE applications in
+its base; every other port is prebuilt in the release's signed binhost, installed one at a time or
+in groups by Discover or `kdos update install`, or built on the machine from its recipe. That is the
+mainstream binary distribution's model with a source distribution's second route beside it, the same
+signed recipe tree under both. They are ordinary recipes in the ports tree, filed on shelves named
+for what they are for and built mostly in the `43_toolkits` and `44_apps` phases, with those that
+need no toolkit, such as mpv, in `42_graphics`; [The ports
+catalogue](../06-reference/ports-catalogue.md) lists them. Beside them, the catalogue of boxed
+applications lists 70 applications, each declared as a few Debian trixie packages over a shared
+Debian base and, for most of them, one of seven shared runtimes (GTK, Qt, KDE, media, science,
+Electron and Wine). Installing one makes podman build a container image on the machine that asked,
+layer by layer over the shared runtime, pinned to a snapshot of the Debian archive, and creates a
+rootless container, a *box*, over the top image. The application then behaves like native software:
+it has a launcher entry, a command on your `PATH`, file-type associations and the desktop's theme,
+and it reaches the host through portals. A set of built applications can be exported as packs,
+read-only images in EROFS, a compressed read-only filesystem format, that another machine imports
+without a network. The pack daemon checks each pack's hash when it installs it, and its signature
+when it carries one; an unsigned pack is accepted unless the daemon is told to require signatures.
+Discover is the front door to all of it: it lists the native ports, prebuilt or built on this
+computer, the catalogue and the installed boxes, and installs and removes them, beside updates of
+the system and firmware. There is no Flathub, no Snap and no "Get New…".
 
 Compared with Flatpak, the model is similar in shape (shared runtimes, per-application artefacts,
 portals) and different in three ways. The packages come from Debian's archive rather than from a
@@ -409,14 +415,15 @@ through a socket tagged with the box's name, and what it cannot do, unless its b
 it, is bind KWin's window-list, fake-input, screen-cast or clipboard-control interfaces, so by
 default it has to ask a portal on the host.
 
-The costs follow from the same choices. A store install needs a network and minutes of apt, is built
-from unsigned registry content, and is larger than the same program would be on Alpine. On a session
-booted from the install medium, a store install works, because the container store runs through
-fuse-overlayfs, but it is held in memory and lost at power-off unless the session has a persistence
-store; an imported pack box's writable layer is always held in memory there. And the box is a
-packaging and desktop boundary, not a jail for a malicious application. See [Packs and
+The costs follow from the same choices. A native port outside the base needs a network to install,
+and a release must publish its binhost with the ISO. A store install needs a network and minutes of
+apt, is built from unsigned registry content, and is larger than the same program would be on
+Alpine. On a session booted from the install medium, a store install works, because the container
+store runs through fuse-overlayfs, but it is held in memory and lost at power-off unless the session
+has a persistence store; an imported pack box's writable layer is always held in memory there. And
+the box is a packaging and desktop boundary, not a jail for a malicious application. See [Packs and
 boxes](../03-architecture/packs-and-boxes.md) and
-[Decisions](decisions.md#native-applications-on-the-medium-a-store-that-builds-the-rest).
+[Decisions](decisions.md#a-base-on-the-medium-every-port-prebuilt-beside-it).
 
 ## Updates
 
@@ -430,10 +437,12 @@ and switch between them.
 In KDOS a new version arrives as a release, because each recipe pins its version and a release pins
 the whole tree. KDOS is therefore released rather than rolling: a machine moves when it takes a
 release. Each release publishes, signed with the release key, the packages its build produced (a
-binhost, with deltas against the release before) and whole-slot images of the root, with deltas from
-the two releases before it. An update is written into the root slot that is not running, from the
-image where the release carries one and from the binhost otherwise, while the running system is
-untouched; then it asks for a restart. Discover offers it ("Restart to update"), through
+binhost, with deltas against the release before) and whole-slot images of the base, with deltas
+from the two releases before it. An update is written into the root slot that is not running, from
+the image where the release carries one and from the binhost otherwise, while the running system is
+untouched; after an image, what the machine installed on purpose follows it into the slot from the
+same release's binhost, and a package built on the machine is built there again. Then it asks for a
+restart. Discover offers it ("Restart to update"), through
 `kdos-sysupdated`, which answers Discover's `sysupdate1` calls, and `kdos update apply` does the
 same from a shell. This is KDE Linux's model of an operating system that is an image, applied to a
 root built from packages; the reasons are in
@@ -500,8 +509,9 @@ Arch have community support and broad hardware coverage from the same upstream k
 
 KDOS builds for x86-64 alone. Its kernel is built from source with one configuration, and the
 `linux-firmware` tree ships everything an x86 driver can load, which covers a great deal of
-hardware, but nothing is tested against a wide range of devices and broad hardware enablement is
-not a goal. The boot
+hardware, split by vendor so that the installation medium carries the common four and
+`kdos firmware sync` installs the rest a machine asks for, but nothing is tested against a wide
+range of devices and broad hardware enablement is not a goal. The boot
 loader is Limine, which is unsigned, so Secure Boot has to be turned off in the firmware. There is
 no vendor, no support commitment, no migration guarantee between release lines and no tested
 hardware matrix. See [Known gaps](../06-reference/known-gaps.md#hardware-and-platform) and

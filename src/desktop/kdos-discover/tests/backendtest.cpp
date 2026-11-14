@@ -37,6 +37,7 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimer>
 
 using namespace Qt::StringLiterals;
 using namespace Kdos;
@@ -76,6 +77,8 @@ private:
     QString m_fixtures;
     QLocalServer m_packd;
     QStringList m_packdRequests;
+    QStringList m_asked; // the last transaction's proceed question: title, text
+    bool m_answer = true;
     KdosBackend *m_backend = nullptr;
 };
 
@@ -148,6 +151,17 @@ Transaction::Status BackendTest::runToEnd(Transaction *t, QList<int> *progress)
             progress->append(t->progress());
         });
     }
+    // The question a host port's dry run becomes, answered as m_answer says.
+    m_asked.clear();
+    connect(t, &Transaction::proceedRequest, this, [this, t](const QString &title, const QString &description) {
+        m_asked << title << description;
+        QTimer::singleShot(0, t, [this, t] {
+            if (m_answer)
+                t->proceed();
+            else
+                t->cancel();
+        });
+    });
     QPointer<Transaction> guard(t);
     for (int i = 0; guard && i < 1000; i++)
         QTest::qWait(20);
@@ -198,6 +212,11 @@ verify)
 	echo "app.notes: signed by ab12cd34ef567890" ;;
 esac)");
     writeTool(u"pkexec"_s, "");
+    writeTool(u"kdos"_s, R"sh(if [ -n "$KDOS_TEST_REFUSE" ]; then echo "kdos update: 1 package needs a source build (kdos-addons)" >&2; exit 1; fi
+case "$*" in
+"update install --dry-run --prebuilt "*) cat "$KDOS_TEST_FIXTURES/install-prebuilt.txt" ;;
+"update install --dry-run --source "*) cat "$KDOS_TEST_FIXTURES/install-source.txt" ;;
+esac)sh");
 
     QFile::copy(m_fixtures + u"/apps-pending"_s, m_dir.filePath(u"apps-pending"_s));
 
@@ -291,13 +310,18 @@ void BackendTest::catalogueRows()
     QCOMPARE(kate->size(), quint64(0));
     QVERIFY(kate->sizeDescription().isEmpty());
 
-    // Discover's lists keep one resource per appstreamId: every resource has
-    // its own, and a host port keeps its component's.
+    // Discover's lists keep one resource per appstreamId and offer the rest
+    // of an id's resources as its sources: every resource has its own id but
+    // a port built here, which shares the binhost port's so that the two are
+    // one application with two origins, and a list names only the one
+    // `install =` prefers (hostPorts).
     QSet<QString> ids;
     Filters every;
     const QList<KdosResource *> listed = find(every);
-    for (KdosResource *r : listed)
+    for (KdosResource *r : listed) {
+        QVERIFY(r->entry().lane != Lane::PortSource);
         ids.insert(r->appstreamId());
+    }
     QCOMPARE(ids.size(), listed.size());
     QCOMPARE(kate->appstreamId(), u"org.kde.kate"_s);
     QVERIFY(scribus->appstreamId().startsWith(u"io.kdos."_s));
@@ -456,6 +480,56 @@ void BackendTest::hostPorts()
     QCOMPARE(addons->state(), AbstractResource::None);
     QCOMPARE(addons->availableVersion(), u"1.0.0-1"_s);
     QVERIFY(addons->kdosNotice().contains(u"binary host"_s));
+    // Beside it, the same port built on this computer: a second origin for
+    // what is not installed, and none for kate, which is.
+    KdosResource *addonsBuilt = resource(u"port-source"_s, u"kdos-addons"_s);
+    QVERIFY(addonsBuilt);
+    QCOMPARE(addonsBuilt->state(), AbstractResource::None);
+    QCOMPARE(addonsBuilt->origin(), u"kdos-ports-source"_s);
+    QCOMPARE(addonsBuilt->appstreamId(), addons->appstreamId());
+    QVERIFY(addonsBuilt->kdosNotice().contains(u"on this computer"_s));
+    QVERIFY(!addonsBuilt->isRemovable());
+    QVERIFY(!resource(u"port-source"_s, u"kate"_s));
+
+    // Which twin Discover opens follows `install =`: a list names that one
+    // alone, and the application's link answers both, that one first, which
+    // is the resource Discover opens and the source picker's other entry.
+    auto listedLanes = [this](const QString &id) {
+        QList<Lane> lanes;
+        Filters all;
+        for (KdosResource *r : find(all))
+            if (r->entry().id == id)
+                lanes << r->entry().lane;
+        return lanes;
+    };
+    auto linkLanes = [this, addons] {
+        QList<Lane> lanes;
+        Filters byUrl;
+        byUrl.resourceUrl = QUrl(u"appstream://"_s + addons->appstreamId());
+        for (KdosResource *r : find(byUrl))
+            lanes << r->entry().lane;
+        return lanes;
+    };
+    QCOMPARE(listedLanes(u"kdos-addons"_s), QList<Lane>{Lane::Port});
+    QCOMPARE(linkLanes(), (QList<Lane>{Lane::Port, Lane::PortSource}));
+    const QString conf = m_dir.filePath(u"update.conf"_s);
+    QFile cf(conf);
+    QVERIFY(cf.open(QIODevice::WriteOnly));
+    cf.write("# what Discover and the terminal install by\ninstall = source\n");
+    cf.close();
+    qputenv("KDOS_UPDATE_CONF", conf.toUtf8());
+    QCOMPARE(listedLanes(u"kdos-addons"_s), QList<Lane>{Lane::PortSource});
+    QCOMPARE(linkLanes(), (QList<Lane>{Lane::PortSource, Lane::Port}));
+    // An installed port is one resource, whatever the route.
+    QCOMPARE(listedLanes(u"kate"_s), QList<Lane>{Lane::Port});
+    // Browsing an origin lists each of its resources.
+    Filters byOrigin;
+    byOrigin.origin = u"kdos-ports"_s;
+    bool binhostTwin = false;
+    for (KdosResource *r : find(byOrigin))
+        binhostTwin |= r->entry().id == "kdos-addons"_L1;
+    QVERIFY(binhostTwin);
+    qunsetenv("KDOS_UPDATE_CONF");
     // Debian's DEP-11 has a Kate too, under the same component id: the host
     // has it natively, so the Debian lane never offers it in a box.
     Filters f;
@@ -661,10 +735,46 @@ void BackendTest::removeRuns()
     QCOMPARE(runToEnd(m_backend->removeApplication(gimp)), Transaction::DoneStatus);
     QVERIFY(toolLog().contains(u"kdos-appbox uninstall deb:gimp"_s));
 
-    // A host port the binhost holds goes through pkexec and the helper.
+    // A host port the binhost holds goes through pkexec and the helper,
+    // after its dry run was asked about.
     clearLog();
     QCOMPARE(runToEnd(m_backend->installApplication(addons)), Transaction::DoneStatus);
-    QVERIFY(toolLog().contains(u"pkexec /usr/libexec/kdos-discover/kdos-ports-helper install kdos-addons"_s));
+    QStringList log = toolLog();
+    QVERIFY(log.contains(u"kdos update install --dry-run --prebuilt kdos-addons"_s));
+    QVERIFY(log.indexOf(u"kdos update install --dry-run --prebuilt kdos-addons"_s)
+            < log.indexOf(u"pkexec /usr/libexec/kdos-discover/kdos-ports-helper install kdos-addons"_s));
+    QCOMPARE(m_asked.size(), 2);
+    QVERIFY(m_asked[0].contains(addons->name()));
+    QVERIFY(m_asked[1].startsWith(u"Downloads 3 packages"_s));
+
+    // Built here, the question counts the builds and warns of their length.
+    KdosResource *addonsBuilt = resource(u"port-source"_s, u"kdos-addons"_s);
+    QVERIFY(addonsBuilt);
+    clearLog();
+    QCOMPARE(runToEnd(m_backend->installApplication(addonsBuilt)), Transaction::DoneStatus);
+    log = toolLog();
+    QVERIFY(log.contains(u"kdos update install --dry-run --source kdos-addons"_s));
+    QVERIFY(log.indexOf(u"kdos update install --dry-run --source kdos-addons"_s)
+            < log.indexOf(u"pkexec /usr/libexec/kdos-discover/kdos-ports-builder install kdos-addons"_s));
+    QVERIFY(m_asked.value(1).contains(u"building can take hours"_s));
+
+    // Cancel, and a dry run that refuses: nothing reaches pkexec, and the
+    // refusal is the message.
+    clearLog();
+    m_answer = false;
+    QCOMPARE(runToEnd(m_backend->installApplication(addons)), Transaction::CancelledStatus);
+    m_answer = true;
+    QVERIFY(toolLog().filter(u"pkexec"_s).isEmpty());
+    clearLog();
+    qputenv("KDOS_TEST_REFUSE", "1");
+    Transaction *t = m_backend->installApplication(addons);
+    QSignalSpy txSaid(t, &Transaction::passiveMessage);
+    QCOMPARE(runToEnd(t), Transaction::DoneWithErrorStatus);
+    qunsetenv("KDOS_TEST_REFUSE");
+    QVERIFY(m_asked.isEmpty());
+    QVERIFY(toolLog().filter(u"pkexec"_s).isEmpty());
+    QCOMPARE(txSaid.count(), 1);
+    QVERIFY(txSaid.first().first().toString().contains(u"needs a source build"_s));
 }
 
 void BackendTest::refusals()

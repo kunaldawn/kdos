@@ -14,6 +14,12 @@ KWin effects, Discover backend, look and updates. The graphical applications peo
 ported natively, each with the toolkit it is written in (Qt, KDE Frameworks, GTK, wxWidgets, FLTK
 or Tk), or run beside them in containers called *boxes*.
 
+A release is a live ISO carrying the base system (Plasma, the core KDE applications, Firefox ESR,
+networking, printing, the box stack and the KDOS tools, with no compiler) and a signed package
+host holding every other one of its about 2,400 native ports, prebuilt. A machine installs any of
+them from Discover or `kdos update install`, builds any of them on itself from its recipe, and
+takes what KDOS does not port from a catalogue of boxed Debian applications.
+
 The book is written for people: anyone deciding whether to try KDOS, installing it, looking after a
 machine that runs it, or building and changing it. It assumes a working knowledge of Linux (a
 shell, files and permissions, what a kernel, a boot loader and a package manager are) and nothing
@@ -61,12 +67,12 @@ front to back. The shortest route that still covers the whole system is:
 For someone who wants an image on hardware and a working desktop:
 
 1. Ch 1, [Why KDOS](01-philosophy/why-kdos.md): what the system is and what it deliberately lacks
-2. Ch 5, [Getting started](02-user-guide/getting-started.md): build an image, write a medium, boot it
+2. Ch 5, [Getting started](02-user-guide/getting-started.md): download the ISO, write a medium, boot it
 3. Ch 6, [Installation](02-user-guide/installation.md): the installer, page by page
 4. Ch 7, [The desktop](02-user-guide/desktop.md): the desks, the panel, KRunner, windows and
    keyboard shortcuts
-5. Ch 8, [Applications](02-user-guide/applications.md): which applications are native, and the
-   catalogue and boxes for the rest
+5. Ch 8, [Applications](02-user-guide/applications.md): the three ways to get software: prebuilt,
+   built on the machine, and boxed
 6. Ch 9, [Theming](02-user-guide/theming.md), and ch 11, [Accessibility](02-user-guide/accessibility.md)
 7. Ch 43, [Known gaps](06-reference/known-gaps.md): what does not exist, before you depend on it
 
@@ -117,26 +123,26 @@ chapters stay at the level of ideas and link to the chapters that describe each 
 3. [Principles](01-philosophy/principles.md): the rules that constrain every change, each with the
    failure it prevents and the price it charges
 4. [Decisions](01-philosophy/decisions.md): the choices where an alternative was reasonable
-   (Plasma as the desktop, elogind, SDDM, slot-image updates, native applications beside the
-   catalogue, packs, musl, the source archive, `-march` and more), and why the alternative lost
+   (Plasma as the desktop, elogind, SDDM, slot-image updates, a base image with every port
+   prebuilt beside it, packs, musl, the source archive, `-march` and more), and why the alternative lost
 
 ### Part II — Using KDOS
 
-Getting a machine running and living on it: building and booting an image, installing it, the
+Getting a machine running and living on it: downloading and booting the ISO, installing it, the
 desktop, applications, the look of the system, administration and accessibility. These chapters
 are written for the person at the keyboard and name the file behind each behaviour.
 
-5. [Getting started](02-user-guide/getting-started.md): from a clone to a running desktop:
-   building an image, trying it in a virtual machine, writing a medium, booting, logging in,
-   keeping a live session's changes, and installing
+5. [Getting started](02-user-guide/getting-started.md): from a download to a running desktop:
+   checking the ISO, trying it in a virtual machine, writing a medium, booting, the live session,
+   installing, and building an image from source
 6. [Installation](02-user-guide/installation.md): the installer page by page, the root filesystem,
    encryption, A/B root slots, unattended installs and every file the installer writes
 7. [The desktop](02-user-guide/desktop.md): the Plasma desktop as KDOS ships it: the desks, the
    panel, the Start menu, KRunner, windows and workspaces, keyboard shortcuts, notifications, files,
    the clipboard, locking, displays, removable media and the privacy lamps
-8. [Applications](02-user-guide/applications.md): which applications are ported natively, then
-   finding, installing, launching, updating and removing boxed applications, carrying a set to
-   another machine, and managing boxes
+8. [Applications](02-user-guide/applications.md): installing native ports prebuilt or built on the
+   machine, one at a time or as a group, then finding, installing, launching, updating and
+   removing boxed applications, carrying a set to another machine, and managing boxes
 9. [Theming](02-user-guide/theming.md): the eight accents and what switching one changes,
    Konsole, the boot menu and consoles, Phosphor mode, wallpaper, sounds, fonts, and theming native
    applications and applications inside a box

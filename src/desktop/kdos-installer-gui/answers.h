@@ -61,6 +61,7 @@ class Answers : public QObject
     Q_PROPERTY(QString desk MEMBER m_desk NOTIFY changed)
     Q_PROPERTY(bool alienApps MEMBER m_alienApps NOTIFY changed)
     Q_PROPERTY(QStringList apps MEMBER m_apps NOTIFY changed)
+    Q_PROPERTY(QStringList groups MEMBER m_groups NOTIFY changed)
 
 public:
     explicit Answers(QObject *parent = nullptr);
@@ -87,6 +88,13 @@ public:
     void setReservedNames(const QStringList &names);
 
     Q_INVOKABLE void setAppChosen(const QString &group, bool chosen);
+    /* A native group, from /ports/groups: `groups =` in the answer file. */
+    Q_INVOKABLE void setGroupChosen(const QString &group, bool chosen);
+    /* The language groups the keyboard or the time zone points at (the
+     * apps dump's `why`). Only what changed since the last call is
+     * applied: a group newly pointed at is ticked, one no longer pointed
+     * at is unticked, and an untick of a group still pointed at stays. */
+    void suggestGroups(const QStringList &groups);
 
     QString disk() const { return m_disk; }
     bool oem() const { return m_oem; }
@@ -126,6 +134,8 @@ private:
     QString m_desk = QStringLiteral("kdos");
     bool m_alienApps = true;
     QStringList m_apps;
+    QStringList m_groups;
+    QStringList m_suggested;
     QStringList m_reserved;
 };
 

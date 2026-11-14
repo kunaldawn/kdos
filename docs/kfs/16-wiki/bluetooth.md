@@ -20,7 +20,9 @@ The desktop's side is [bluedevil](#port-bluedevil): the Bluetooth applet in the 
 **Bluetooth** page of System Settings with its pairing wizard, file sending and receiving, and the
 pairing agent the session registers with the daemon. The audio side, the Bluetooth plugin and its codecs, is
 [pipewire](#port-pipewire)'s, with [wireplumber](#port-wireplumber) choosing the profile. Adapter
-firmware comes from [linux-firmware](#port-linux-firmware).
+firmware comes from the vendor's port of [linux-firmware](#port-linux-firmware): Intel's, Realtek's
+and MediaTek's are on the installation medium, and `sudo kdos firmware sync` installs any other the
+adapter asks for.
 
 The service script is part of the base filesystem, `fs/etc/init.d/60_bluetooth.sh`. The service is
 named `bluetooth`, and its supervised process `bluetoothd`. It is on by default on both the live
@@ -187,7 +189,8 @@ the installer has already done this if Bluetooth was turned off there.
 
    The `Bluetooth: Core ver …`, `HCI` and `BNEP` lines are the protocol stack loading and appear
    with no adapter too; an adapter adds lines naming `hci0`. A line naming a firmware file that
-   could not be loaded points at [linux-firmware](#port-linux-firmware).
+   could not be loaded is the adapter's firmware: `kdos firmware sync --dry-run` names the port
+   that ships it, and `sudo kdos firmware sync` installs it.
 
 **The daemon keeps restarting.** `service status bluetooth` then reports a
 `[FAIL] bluetoothd` line with the daemon's last exit code. The daemon's own messages are in the
@@ -248,4 +251,4 @@ The line must carry `-E` and `--kernel=6fbaf188-05e0-496a-9885-d6ddfdb4e03e`.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 420.* Previous: [419. udev and device groups](udev-and-device-groups.md) · [Contents](../README.md) · Next: [421. Printing and scanning](printing-and-scanning.md)
+*Part XVI. System administration, chapter 422.* Previous: [421. udev and device groups](udev-and-device-groups.md) · [Contents](../README.md) · Next: [423. Printing and scanning](printing-and-scanning.md)

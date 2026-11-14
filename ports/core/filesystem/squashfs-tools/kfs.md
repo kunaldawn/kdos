@@ -4,7 +4,7 @@ squashfs-tools makes and unpacks [squashfs]{.idx} images, the compressed read-on
 KDOS live medium boots from: `mksquashfs` builds one, `unsquashfs` lists and extracts one, and
 `sqfstar` and `sqfscat` build one from a tar archive and print files from one.
 `script/phases/70_image/110_iso.sh` writes the ISO's `system.sfs` with `mksquashfs`, zstd at
-level 15 and 1 MiB blocks unless `KDOS_ISO_COMP` names another codec or level, then appends the recipe
+level 19 and 1 MiB blocks unless `KDOS_ISO_COMP` names another codec or level or `KDOS_ISO_BLOCK` another block size, then appends the recipe
 tree as `/ports` and checks the result with `unsquashfs -l`. `kdos rebuild` needs `mksquashfs` to
 make a new medium from a source tree on a running system. How the live root is mounted is in
 [The live medium and persistence](../../../../docs/kdos/03-architecture/boot-and-init.md#the-live-medium-and-persistence).

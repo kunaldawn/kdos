@@ -13,11 +13,16 @@ the commands of [`kpkg`]{.idx} itself are on [kpkg](kpkg.md).
   `kdos` command.
 - `kpkg`, [`kpkgbuild`]{.idx} and `kpkgdepends` are installed by the bootstrap; see
   [kpkg](../03-bootstrap/120-kpkg.md).
-- A port builds with the compilers and tools the image carries. `kdos rebuild` refuses to start
+- A port builds with the compilers and tools the machine has. `kdos rebuild` refuses to start
   without `cc`, `make`, `bash`, `tar` and `xz`, and names the first of `mksquashfs`
   ([squashfs-tools](#port-squashfs-tools)), `xorriso` ([libisoburn](#port-libisoburn)) and
   `mkfs.fat` ([dosfstools](#port-dosfstools)) that is missing, because without all three no ISO
-  comes out. The image carries all eight.
+  comes out. The base the ISO carries has those three and no toolchain: `sudo kdos update install
+  build-tools` adds the assembler, the linker, `make` and the build systems.
+  A port whose recipe needs a compiler the base leaves out, such as `rust`, `go` or `nodejs`,
+  brings it in as a dependency: `kpkg install` builds it first, and `kdos update install --source`
+  takes it prebuilt under `build-deps = prebuilt` (see
+  [Installing software](updating.md#installing-software)).
 - `kdos rebuild` needs a medium built with `make build KDOS_ISO_SOURCES=1`, which carries the
   source tree under `/mnt/iso/sources`, or a checkout of the repository on the machine. The
   ordinary image carries neither: its medium holds only `EFI`, `boot`, `boot.catalog` and
@@ -77,7 +82,7 @@ per build, default 5), `KDOS_MARCH_LEVEL` (the level to measure against) and `KD
 `KDOS_ISO_SOURCES=1` makes the image's last step copy the tree onto the medium beside the system
 image, and write a stamp `kdos rebuild` prints before it starts:
 
-<!-- kfs:include script/phases/70_image/110_iso.sh lines=195-218 pin=0b3f5e742938 -->
+<!-- kfs:include script/phases/70_image/110_iso.sh lines=207-230 pin=0b3f5e742938 -->
 
 ## Usage
 
@@ -365,4 +370,4 @@ Every verdict is `reverted`, and the output warns about the noise floor
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 430.* Previous: [429. Updating](updating.md) · [Contents](../README.md) · Next: [431. Packs](packs.md)
+*Part XVI. System administration, chapter 432.* Previous: [431. Updating](updating.md) · [Contents](../README.md) · Next: [433. Packs](packs.md)

@@ -6,7 +6,10 @@ Discover lists the ports a machine has installed from an AppStream catalogue,
 [`kdos-discover-catalog`]{.idx}, from the [kdos-discover](#port-kdos-discover) port. On a running
 system the same program rewrites the file after every install Discover makes; the build installs
 with `kpkg` directly and never runs it, so without this step the image would carry no catalogue and
-Discover would list no installed port.
+Discover would list no installed port. Under `KDOS_IMAGE=base` the finished tree is the
+[image stage](017-stage.md), so the catalogue names what the base installed; the ports a machine
+can add are in the binhost's own catalogue, which [010_binhost.sh](010-binhost.md#the-catalogue)
+writes.
 
 ## Writing the catalogue
 
@@ -57,4 +60,4 @@ package owns, which the unowned report subtracts as generated.
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 375.* Previous: [374. The font cache](085-fontcache.md) · [Contents](../README.md) · Next: [376. The image gates](087-gates.md)
+*Part XV. The image, chapter 376.* Previous: [375. The font cache](085-fontcache.md) · [Contents](../README.md) · Next: [377. The image gates](087-gates.md)

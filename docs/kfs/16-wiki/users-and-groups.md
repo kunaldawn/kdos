@@ -280,4 +280,4 @@ the automatic login if the machine should log in by itself.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 392.* Previous: [391. Locale and console](locale-and-console.md) · [Contents](../README.md) · Next: [393. Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md)
+*Part XVI. System administration, chapter 394.* Previous: [393. Locale and console](locale-and-console.md) · [Contents](../README.md) · Next: [395. Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md)

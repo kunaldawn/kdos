@@ -1,8 +1,8 @@
 ## About
 
-kdeplasma-addons is the second half of Plasma's widget set: the dictionary, weather, timer,
-notes, colour picker, quick launch, Konsole and Kate profile, web browser, user switcher and
-fifteen-puzzle widgets among others, the unit converter, character, colour, date, dictionary and
+kdeplasma-addons is the second half of Plasma's widget set: the weather, timer, notes, colour
+picker, quick launch, Konsole and Kate profile, user switcher and fifteen-puzzle widgets among
+others, the unit converter, character, colour, date, dictionary and
 spell-check runners for KRunner, the picture-of-the-day and other wallpapers, the cover, flip and
 big-icons window switchers, the desktop cube effect, and the alternate and astronomical calendar
 plugins. It also carries `kameleon`, the kded module that colours a keyboard's LEDs with the
@@ -16,10 +16,12 @@ accent colour.
 - `-D CMAKE_REQUIRE_FIND_PACKAGE_ICU=ON` — Make [icu](#port-icu) a requirement. Upstream builds the
   alternate calendar plugin's Chinese, Indian, Hebrew, Islamic and Persian calendars from ICU only
   when it is found, and leaves only the systems `QCalendar` knows otherwise.
-- `-D CMAKE_REQUIRE_FIND_PACKAGE_Qt6WebEngineQuick=ON` — Make Qt WebEngine's Quick module a
-  requirement. Upstream builds the dictionary and web browser widgets only when it is found, and
-  drops both with a line in the feature summary otherwise. It comes from
-  [qt6-qtwebengine](#port-qt6-qtwebengine).
+- `-D CMAKE_DISABLE_FIND_PACKAGE_Qt6WebEngineQuick=ON` — Leave out the dictionary and web
+  browser widgets, the two Qt WebEngine pages, which upstream builds whenever Qt WebEngine's Quick
+  module is found. The installation medium carries this package with the session, and linking
+  either widget would put [qt6-qtwebengine](#port-qt6-qtwebengine), a quarter of a gigabyte, on it
+  (see [The base image](../../../../docs/kdos/03-architecture/packaging.md#the-base-image)). The
+  dictionary runner in KRunner is not a WebEngine page and is built.
 - `-D CMAKE_REQUIRE_FIND_PACKAGE_Qt6Quick3D=ON` — Make [qt6-qtquick3d](#port-qt6-qtquick3d) a
   requirement. The desktop cube effect is QML that imports Qt Quick 3D at run time; upstream
   looks for it only to report it.
@@ -90,11 +92,5 @@ configure does not look for; without it those three fail to load.
 The configure looks for Purpose quietly, but nothing this package builds links or imports it, so
 it is not in `depends`.
 
-Three of the widgets reach the network, and only once somebody adds one: the weather widget asks
-its forecast providers, the picture-of-the-day wallpaper downloads an image a day, and the
-dictionary widget looks words up on `dict.org`.
-
-The dictionary and web browser widgets are Qt WebEngine pages, so a plasmashell holding either hosts
-Chromium's browser half and runs its user-namespace probe; see
-[qt6-qtwebengine](#port-qt6-qtwebengine)'s `userns-probe-no-malloc.patch`, without which that probe
-can hang plasmashell at start on musl.
+Two of the widgets reach the network, and only once somebody adds one: the weather widget asks
+its forecast providers, and the picture-of-the-day wallpaper downloads an image a day.

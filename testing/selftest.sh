@@ -146,6 +146,38 @@ if KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
     exit 1
 fi
 echo "  kinstall answer file"
+# Native groups come from the live system's /ports/groups (the repository's
+# file here): none chosen by default, the answer file's `groups =` ticks
+# them, an unknown id is ignored, and the plan names what it ticked.
+KDOS_GROUPS=ports/groups KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
+    --dump apps --json | python3 -c 'import json,sys; d=json.load(sys.stdin);
+n=d["native"]; assert n, "no native groups";
+assert not any(g["chosen"] for g in n), "a native group is chosen by default";
+assert all(g["ports"] > 0 and g["title"] for g in n), n'
+printf 'groups = office games nosuch\n' > "$OUT/answers-groups"
+KDOS_GROUPS=ports/groups KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
+    --config "$OUT/answers-groups" --dump plan --json | python3 -c 'import json,sys; d=json.load(sys.stdin);
+assert d["groups"] == ["office", "games"], d["groups"]'
+# A Chinese, Japanese or Korean keyboard or time zone ticks that language's
+# group, and says why; an answer file that names `groups =` ticks only what
+# it names, so `groups = none` keeps it off.
+printf 'xkb_layout = jp\n' > "$OUT/answers-lang"
+KDOS_GROUPS=ports/groups KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
+    --config "$OUT/answers-lang" --dump plan --json | python3 -c 'import json,sys; d=json.load(sys.stdin);
+assert d["groups"] == ["lang-ja"], d["groups"]'
+KDOS_GROUPS=ports/groups KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
+    --config "$OUT/answers-lang" --dump apps --json | python3 -c 'import json,sys; d=json.load(sys.stdin);
+w={g["id"]: g["why"] for g in d["native"]};
+assert w["lang-ja"] == "the Japanese keyboard" and not w["lang-zh"], w'
+printf 'xkb_layout = jp\ngroups = none\n' > "$OUT/answers-lang"
+KDOS_GROUPS=ports/groups KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
+    --config "$OUT/answers-lang" --dump plan --json | python3 -c 'import json,sys; d=json.load(sys.stdin);
+assert d["groups"] == [], d["groups"]'
+printf 'xkb_layout = us\ntimezone_label = Asia/Seoul\n' > "$OUT/answers-lang"
+KDOS_GROUPS=ports/groups KDOS_CATALOGUE=src/system/kdos-appbox/catalogue "$OUT/kinstall" \
+    --config "$OUT/answers-lang" --dump apps | grep -qx '  \[x\] lang-ko .*(for the time zone Asia/Seoul)' \
+    || { echo "kinstall did not tick lang-ko for a Korean time zone" >&2; exit 1; }
+echo "  kinstall native groups, and the language group the keyboard ticks"
 $CC $STD $WARN $INC -Isrc/system/kdos-appbox -o "$OUT/kdos-appbox" \
     src/system/kdos-appbox/*.c src/libs/libkbase/*.c src/libs/libktui/*.c \
     src/libs/libkcolor/*.c src/libs/libkxdg/*.c
@@ -1959,6 +1991,230 @@ kmu "$OUT/kpkgdel" --root "$MU/root" checked >/dev/null
     && { echo "  kpkgdel left the file record of the package it removed"; exit 1; }
 echo "  sha256 and mode recorded per file; missing, changed, mode and unowned reported; edited /etc reported and passed"
 
+echo "==> FACETS=run leaves the development and documentation files out, and says what it left"
+# One package carrying one file per rule and per exception: a header, a static
+# library, a manual, a man3 page beside a man1 page, a versioned library with
+# its -l link, and a plugin named lib<x>.so that is a real file. Installed with
+# FACETS=run the left-out files are on neither the disk, the manifest nor the
+# file record, each is a line of .facets, and kpkg check passes; --strip does
+# the same to a package installed whole; an upgrade keeps whichever way the
+# package is installed; and a build against it refuses, naming the restore.
+mkport facety 1.0 'install -Dm644 /dev/null "$PKG/usr/include/facety.h"
+printf x > "$PKG/usr/include/facety.h"
+install -Dm644 "$PKG/usr/include/facety.h" "$PKG/usr/lib/libfacety.a"
+install -Dm644 "$PKG/usr/include/facety.h" "$PKG/usr/share/doc/facety/README"
+install -Dm644 "$PKG/usr/include/facety.h" "$PKG/usr/share/man/man3/facety.3"
+install -Dm644 "$PKG/usr/include/facety.h" "$PKG/usr/share/man/man1/facety.1"
+install -Dm755 /dev/null "$PKG/usr/lib/libfacety.so.1.0"
+ln -s libfacety.so.1.0 "$PKG/usr/lib/libfacety.so.1"
+ln -s libfacety.so.1 "$PKG/usr/lib/libfacety.so"
+install -Dm755 /dev/null "$PKG/usr/lib/libplug.so"
+install -Dm755 /dev/null "$PKG/usr/bin/facety"'
+FP="$MU/pkgs/facety-1.0-1.tar.xz"
+fleft() {  # the record FACETS=run writes for facety
+    for f in usr/include/facety.h usr/lib/libfacety.a usr/share/man/man3/facety.3 usr/lib/libfacety.so; do
+        printf 'dev ./%s\n' "$f"
+    done
+    printf 'doc ./usr/share/doc/facety/README\n'
+}
+fcheck() {  # <what>
+    for f in usr/include/facety.h usr/lib/libfacety.a usr/share/doc/facety/README usr/share/man/man3/facety.3 usr/lib/libfacety.so; do
+        [ -e "$MU/root/$f" ] || [ -L "$MU/root/$f" ] \
+            && { echo "  $1: $f is on the disk"; exit 1; }
+        { grep -qxF "./$f" "$MU/root/db/facety" || grep -q " \./$f\$" "$MU/root/db/.files/facety"; } \
+            && { echo "  $1: $f is in the manifest or the file record"; exit 1; }
+    done
+    for f in usr/share/man/man1/facety.1 usr/lib/libfacety.so.1.0 usr/lib/libfacety.so.1 usr/lib/libplug.so usr/bin/facety; do
+        [ -e "$MU/root/$f" ] && grep -qxF "./$f" "$MU/root/db/facety" \
+            || { echo "  $1: $f is not installed"; exit 1; }
+    done
+    for d in ./usr/include/ ./usr/share/doc/ ./usr/share/doc/facety/ ./usr/share/man/man3/; do
+        grep -qxF "$d" "$MU/root/db/facety" && { echo "  $1: $d is still in the manifest"; exit 1; }
+    done
+    grep -qxF ./usr/lib/ "$MU/root/db/facety" \
+        || { echo "  $1: a directory that still holds files left the manifest"; exit 1; }
+    sort "$MU/root/db/.facets/facety" | cmp -s - <(fleft | sort) \
+        || { echo "  $1: the facet record is:"; cat "$MU/root/db/.facets/facety"; exit 1; }
+    kmu "$OUT/kpkg" check --root "$MU/root" facety >/dev/null \
+        || { echo "  $1: kpkg check failed a package installed without its facets"; exit 1; }
+}
+kmu env KPKG_FACETS=run "$OUT/kpkgadd" --root "$MU/root" "$FP" | grep -q "Leaving out 5 development and documentation files" \
+    || { echo "  a FACETS=run install did not say it left five files out"; exit 1; }
+fcheck "FACETS=run"
+kmu "$OUT/kpkg" facets --list --root "$MU/root" facety | sort | cmp -s - <(fleft | sort) \
+    || { echo "  kpkg facets --list does not print the record"; exit 1; }
+kmu env KPKG_FACETS=run "$OUT/kpkgadd" --root "$MU/root" "$FP" >/dev/null
+fcheck "an upgrade of a package installed without its facets"
+kmu "$OUT/kpkgdel" --root "$MU/root" facety >/dev/null
+[ -e "$MU/root/db/.facets/facety" ] && { echo "  kpkgdel left the facet record"; exit 1; }
+[ -e "$MU/root/usr/lib/libfacety.so.1.0" ] && { echo "  kpkgdel left a file of the stripped package"; exit 1; }
+kmu "$OUT/kpkgadd" --root "$MU/root" "$FP" >/dev/null
+[ -e "$MU/root/usr/include/facety.h" ] && [ ! -e "$MU/root/db/.facets/facety" ] \
+    || { echo "  FACETS=all did not install the package whole"; exit 1; }
+kmu "$OUT/kpkg" facets --list --root "$MU/root" facety | grep -qxF 'facety: every facet installed' \
+    || { echo "  --list of a whole package does not say so"; exit 1; }
+kmu "$OUT/kpkg" facets --strip --root "$MU/root" facety > "$MU/strip.log" \
+    || { echo "  kpkg facets --strip failed:"; cat "$MU/strip.log"; exit 1; }
+grep -q 'facety: 5 files left out' "$MU/strip.log" && grep -q 'facets: 1 package stripped, 4 bytes' "$MU/strip.log" \
+    || { echo "  --strip reported:"; cat "$MU/strip.log"; exit 1; }
+fcheck "kpkg facets --strip"
+kmu "$OUT/kpkg" facets --strip --root "$MU/root" facety | grep -q 'facets: 0 packages stripped' \
+    || { echo "  a second --strip found something to strip"; exit 1; }
+fcheck "a second --strip"
+# A build against it refuses before it starts, naming the restore.
+mkdir -p "$MU/ports/facetuser"
+printf 'name        = facetuser\nversion     = 1.0\nrelease     = 1\ndescription = synthetic\ndepends     = facety\n' \
+    > "$MU/ports/facetuser/kpkgbuild"
+printf 'install -Dm755 /dev/null "$PKG/usr/bin/facetuser"\n' > "$MU/ports/facetuser/build.sh"
+rc=0; kmu "$OUT/kpkg" install --root "$MU/root" facetuser > "$MU/guard.log" || rc=$?
+[ "$rc" = 1 ] && grep -qF 'facetuser builds against facety, installed without its development files; `sudo kdos update install --dev facety` restores them' "$MU/guard.log" \
+    || { echo "  a build against a stripped package was not refused:"; cat "$MU/guard.log"; exit 1; }
+# FACETS=all puts it back whole, and an upgrade of a whole package stays whole.
+kmu env KPKG_FACETS=all "$OUT/kpkgadd" --root "$MU/root" "$FP" >/dev/null
+[ -e "$MU/root/usr/include/facety.h" ] && [ -L "$MU/root/usr/lib/libfacety.so" ] && [ ! -e "$MU/root/db/.facets/facety" ] \
+    || { echo "  KPKG_FACETS=all did not restore the package whole"; exit 1; }
+kmu "$OUT/kpkg" check --root "$MU/root" facety >/dev/null \
+    || { echo "  kpkg check failed a restored package"; exit 1; }
+kmu env KPKG_FACETS=run "$OUT/kpkgadd" --root "$MU/root" "$FP" >/dev/null
+[ -e "$MU/root/usr/include/facety.h" ] \
+    || { echo "  an upgrade under FACETS=run stripped a package installed whole"; exit 1; }
+kmu "$OUT/kpkg" install --root "$MU/root" facetuser >/dev/null \
+    || { echo "  a build against a restored package was refused"; exit 1; }
+kmu "$OUT/kpkgdel" --root "$MU/root" facety facetuser >/dev/null
+# A header two packages claim stays while either keeps it, and goes when one
+# run strips both.
+mkport sharea 1.0 'install -Dm644 /dev/null "$PKG/usr/include/shared.h"'
+mkport shareb 1.0 'install -Dm644 /dev/null "$PKG/usr/include/shared.h"'
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/sharea-1.0-1.tar.xz" >/dev/null
+kmu "$OUT/kpkgadd" --force --root "$MU/root" "$MU/pkgs/shareb-1.0-1.tar.xz" >/dev/null
+kmu "$OUT/kpkg" facets --strip --root "$MU/root" sharea | grep -qF 'Keeping ./usr/include/shared.h: shareb claims it' \
+    && [ -e "$MU/root/usr/include/shared.h" ] \
+    || { echo "  --strip removed a header another package still claims"; exit 1; }
+kmu "$OUT/kpkgadd" --force --root "$MU/root" "$MU/pkgs/sharea-1.0-1.tar.xz" >/dev/null
+kmu "$OUT/kpkg" facets --strip --root "$MU/root" sharea shareb >/dev/null
+[ -e "$MU/root/usr/include/shared.h" ] \
+    && { echo "  one --strip of both claimants left their shared header"; exit 1; }
+kmu "$OUT/kpkgdel" --root "$MU/root" sharea shareb >/dev/null
+# A recipe's facet_dev = moves its own run-time files into dev, and only those.
+mkport bystander 1.0 'install -Dm755 /dev/null "$PKG/usr/bin/bystander"'
+kmu env KPKG_FACETS=run "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/bystander-1.0-1.tar.xz" >/dev/null
+mkport globby 1.0 'install -Dm755 /dev/null "$PKG/usr/bin/globby"
+install -Dm755 /dev/null "$PKG/usr/lib/libglobby.so.1"'
+printf 'facet_dev   = usr/bin/*\n' >> "$MU/ports/globby/kpkgbuild"
+kmu env KPKG_FACETS=run "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/globby-1.0-1.tar.xz" >/dev/null
+grep -qxF 'dev ./usr/bin/globby' "$MU/root/db/.facets/globby" && [ ! -e "$MU/root/usr/bin/globby" ] \
+    && [ -e "$MU/root/usr/lib/libglobby.so.1" ] \
+    || { echo "  facet_dev = did not move the recipe's file into dev, or moved more"; exit 1; }
+[ -e "$MU/root/usr/bin/bystander" ] \
+    || { echo "  facet_dev = reached another package's file"; exit 1; }
+kmu "$OUT/kpkgdel" --root "$MU/root" globby bystander >/dev/null
+echo "  left out at install and by --strip, recorded, checked clean, kept across upgrades, removed with the package; a shared file kept while claimed; a build against it refuses"
+
+echo
+
+# ── Run-time needs are measured at install, resolved, and gate the base ───
+#
+# `depends =` cannot see a QML import, a Python import or a plugin loaded by
+# name; the record kpkgadd writes can. Each kind of edge is found in a real
+# file (an ELF linked here, a #! script, a .qml, a package __init__.py, a
+# recipe's runtime = line), resolved to the package that provides it, and
+# imageset.py --verify fails a base that keeps the consumer and drops the
+# provider — in the tree itself, and in a stage trimmed from it (--full).
+echo "==> kpkg records what a package needs at run time; imageset --verify gates the base on it"
+NE="$OUT/needs"
+rm -rf "$NE"; mkdir -p "$NE/work" "$NE/pkgs" "$NE/root/usr/bin" "$NE/elf" "$NE/tree/ports/core/t"
+ln -s usr/bin "$NE/root/bin"
+printf 'int needy_lib(void) { return 0; }\n' > "$NE/elf/lib.c"
+printf 'int needy_lib(void);\nint main(void) { return needy_lib(); }\n' > "$NE/elf/main.c"
+$CC -shared -fPIC -Wl,-soname,libneedy.so.1 -o "$NE/elf/libneedy.so.1" "$NE/elf/lib.c"
+$CC -o "$NE/elf/needy" "$NE/elf/main.c" "$NE/elf/libneedy.so.1"
+SP=usr/lib/python3.99/site-packages
+nport() {  # <name> <build.sh> [<extra kpkgbuild line>]
+    mkdir -p "$NE/tree/ports/core/t/$1"
+    printf 'name        = %s\nversion     = 1.0\nrelease     = 1\ndescription = synthetic\n%s' \
+        "$1" "${3:+$3
+}" > "$NE/tree/ports/core/t/$1/kpkgbuild"
+    printf '%s\n' "$2" > "$NE/tree/ports/core/t/$1/build.sh"
+    ( cd "$NE/tree/ports/core/t/$1" && kne "$OUT/kpkgbuild" >/dev/null ) \
+        || { echo "  the synthetic port $1 did not build"; exit 1; }
+    kne "$OUT/kpkgadd" --root "$NE/root" "$NE/pkgs/$1-1.0-1.tar.xz" >/dev/null \
+        || { echo "  the synthetic package $1 did not install"; exit 1; }
+}
+kne() {
+    env PORT_REPO="$NE/tree/ports/core" WORK_DIR="$NE/work" PACKAGE_DIR="$NE/pkgs" \
+        PKGDB_DIR=/var/lib/kpkg/db KPKG_CONF=/nonexistent \
+        SOURCE_DATE_EPOCH=1735689600 TZ=UTC "$@" 2>&1
+}
+nport needylib "install -Dm755 '$NE/elf/libneedy.so.1' \"\$PKG/usr/lib/libneedy.so.1\""
+nport qmlmod 'install -Dm644 /dev/null "$PKG/usr/lib/qt6/qml/org/kde/fixture/qmldir"'
+nport pymod "install -Dm644 /dev/null \"\$PKG/$SP/pymod/__init__.py\""
+nport pyhost 'install -Dm755 /dev/null "$PKG/usr/bin/python3"'
+nport needyplug 'install -Dm644 /dev/null "$PKG/usr/lib/needy/plug.so"'
+nport needy "install -Dm755 '$NE/elf/needy' \"\$PKG/usr/bin/needy\"
+printf '#!/usr/bin/env python3\n' > \"\$PKG/needy-script\"
+install -Dm755 \"\$PKG/needy-script\" \"\$PKG/usr/bin/needy-script\"
+rm \"\$PKG/needy-script\"
+mkdir -p \"\$PKG/usr/share/needy\" \"\$PKG/$SP/needy\"
+printf 'import QtQuick 2.15\nimport org.kde.fixture 1.0 as F\nimport \"code.js\" as Code\nItem {}\n' > \"\$PKG/usr/share/needy/main.qml\"
+printf 'import os\nimport pymod\ntry:\n    import needylib\nexcept ImportError:\n    pass\n' > \"\$PKG/$SP/needy/__init__.py\"" \
+    'runtime     = needyplug'
+R="$NE/root/var/lib/kpkg/db/.needs/needy"
+[ -f "$R" ] || { echo "  kpkgadd wrote no .needs record"; exit 1; }
+for want in 'so libneedy.so.1' 'exe /usr/bin/env' 'exe /usr/bin/python3' 'qml QtQuick' \
+            'qml org.kde.fixture' 'py pymod' 'need needyplug'; do
+    grep -qxF "$want" "$R" || { echo "  the record lacks '$want':"; cat "$R"; exit 1; }
+done
+grep -qE '^(py os|py needylib|qml code)' "$R" \
+    && { echo "  the record names the standard library, an optional import or a quoted import:"; cat "$R"; exit 1; }
+LC_ALL=C sort -c "$R" 2>/dev/null || { echo "  the record is not sorted"; exit 1; }
+kne "$OUT/kpkg" needs --root "$NE/root" needy | cmp -s - "$R" \
+    || { echo "  kpkg needs does not print the record"; exit 1; }
+kne "$OUT/kpkg" needs --scan --root "$NE/root" needy | cmp -s - "$R" \
+    || { echo "  kpkg needs --scan does not measure what kpkgadd recorded"; exit 1; }
+rc=0; kne "$OUT/kpkg" needs --resolve --root "$NE/root" needy > "$NE/resolve.log" || rc=$?
+for want in 'so libneedy.so.1 needylib' 'qml org.kde.fixture qmlmod' 'py pymod pymod' \
+            'exe /usr/bin/python3 pyhost' 'need needyplug needyplug' 'qml QtQuick (nothing)'; do
+    grep -qxF "$want" "$NE/resolve.log" || { echo "  --resolve lacks '$want':"; cat "$NE/resolve.log"; exit 1; }
+done
+[ "$rc" = 1 ] && grep -q 'nothing installed provides' "$NE/resolve.log" \
+    || { echo "  --resolve with an edge nothing provides exited $rc"; exit 1; }
+kne "$OUT/kpkg" check --root "$NE/root" needy >/dev/null \
+    || { echo "  kpkg check fails a package with a needs record"; exit 1; }
+kne "$OUT/kpkg" facets --strip --root "$NE/root" needy >/dev/null \
+    && [ -f "$R" ] && kne "$OUT/kpkg" check --root "$NE/root" needy >/dev/null \
+    || { echo "  kpkg facets --strip lost the record or broke kpkg check"; exit 1; }
+# The base: the QML module's provider left out fails; put in, it passes.
+: > "$NE/tree/ports/buildonly"
+printf 'needy needylib pyhost\n' > "$NE/tree/ports/base"
+iv() { python3 script/lib/imageset.py --tree "$NE/tree" "$@"; }
+rc=0; iv --root "$NE/root" --verify > "$NE/verify.log" || rc=$?
+[ "$rc" = 1 ] && grep -qxF 'FAIL needy: qml org.kde.fixture: only qmlmod provides it, outside the base' "$NE/verify.log" \
+    && grep -qxF 'FAIL needy: py pymod: only pymod provides it, outside the base' "$NE/verify.log" \
+    && grep -qxF 'FAIL needy: need needyplug: only needyplug provides it, outside the base' "$NE/verify.log" \
+    && ! grep -q 'needylib' "$NE/verify.log" \
+    || { echo "  --verify did not fail a base without the QML, Python and runtime = providers:"; cat "$NE/verify.log"; exit 1; }
+printf 'needy needylib pyhost qmlmod pymod needyplug\n' > "$NE/tree/ports/base"
+iv --root "$NE/root" --verify > "$NE/verify.log" \
+    || { echo "  --verify failed a base that holds every provider:"; cat "$NE/verify.log"; exit 1; }
+# A stage trimmed from the tree: the provider is gone from it, and --full
+# names the tree it was dropped from.
+cp -a "$NE/root" "$NE/stage"
+kne "$OUT/kpkgdel" --root "$NE/stage" qmlmod >/dev/null
+[ -e "$NE/stage/var/lib/kpkg/db/.needs/qmlmod" ] && { echo "  kpkgdel left the .needs record"; exit 1; }
+printf 'needy needylib pyhost pymod needyplug\n' > "$NE/tree/ports/base"
+rc=0; iv --root "$NE/stage" --full "$NE/root" --verify > "$NE/verify.log" || rc=$?
+[ "$rc" = 1 ] && grep -qxF 'FAIL needy: qml org.kde.fixture: only qmlmod provides it, and the image drops it' "$NE/verify.log" \
+    || { echo "  --verify --full did not fail a stage that dropped the QML module:"; cat "$NE/verify.log"; exit 1; }
+rc=0; iv --root "$NE/stage" --verify --all > "$NE/verify.log" || rc=$?
+[ "$rc" = 0 ] && grep -qxF 'nothing provides needy: qml org.kde.fixture' "$NE/verify.log" \
+    || { echo "  without --full, an edge nothing provides is not listed, or fails:"; cat "$NE/verify.log"; exit 1; }
+# A package with no record is unmeasured, never failed.
+rm "$NE/stage/var/lib/kpkg/db/.needs/needy"
+iv --root "$NE/stage" --full "$NE/root" --verify --all > "$NE/verify.log" \
+    && grep -qxF 'unmeasured needy' "$NE/verify.log" \
+    || { echo "  a package without a record failed, or was not reported unmeasured:"; cat "$NE/verify.log"; exit 1; }
+echo "  sonames, interpreters, QML and Python imports and runtime = recorded at install, printed, measured again, resolved; check and --strip unaffected; removed with the package; a base missing a provider fails, in the tree and in a stage"
+
 echo
 
 # ── Skip-if-installed compares the RECIPE, not just the entry ──────────────
@@ -2582,16 +2838,98 @@ grep -q "tiny .* 0.9 .* → 1.0-1: tiny-1.0-1.tar.xz" "$UC/plan" \
 # `install` is the ports lane's: a port this slot lacks, every package of it
 # covered by the signed index, nothing built. Asked of a database without
 # tiny, so it is a port to add; asked again with tiny installed, nothing.
+# --source plans the port as a build here; a route that is neither word is
+# a usage error.
 mv "$UC/db/tiny" "$UC/tiny.db"
 upd install --dry-run tiny > "$UC/inst" 2>&1 \
     || { echo "  a covered install dry run failed:"; cat "$UC/inst"; exit 1; }
-grep -qxF 'tiny tiny-1.0-1.tar.xz' "$UC/inst" \
+grep -qE '^tiny prebuilt tiny-1\.0-1\.tar\.xz [0-9]+$' "$UC/inst" && grep -qE '^total 1 [0-9]+ 0$' "$UC/inst" \
     || { echo "  the install dry run is:"; cat "$UC/inst"; exit 1; }
+upd install --dry-run --source tiny > "$UC/inst" 2>&1 \
+    || { echo "  a source install dry run failed:"; cat "$UC/inst"; exit 1; }
+grep -qxF 'tiny source 1.0-1' "$UC/inst" && grep -qxF 'total 0 0 1' "$UC/inst" \
+    || { echo "  the source install dry run is:"; cat "$UC/inst"; exit 1; }
+rc=0; upd install --dry-run --build-deps=maybe tiny >/dev/null 2>&1 || rc=$?
+test "$rc" = 2 || { echo "  an unknown --build-deps exited $rc, not 2"; exit 1; }
 mv "$UC/tiny.db" "$UC/db/tiny"
 upd install --dry-run tiny 2>&1 | grep -qxF 'tiny is already installed' \
     || { echo "  an installed port was planned again"; exit 1; }
 rc=0; upd install --dry-run nosuchport >/dev/null 2>&1 || rc=$?
 test "$rc" = 1 || { echo "  installing a port the tree lacks exited $rc, not 1"; exit 1; }
+# A group is its members, each installed as the port it is: listed with
+# whether it is installed and what it would download, and installed by id.
+# Another root takes prebuilt packages only, and names itself absolutely.
+printf 'group smalls Small things\ntiny\n' > "$RP/groups"
+upd groups --json > "$UC/groups" \
+    || { echo "  groups --json failed"; exit 1; }
+grep -qF '[{"id":"smalls","title":"Small things","ports":["tiny"],"installed":true,"missing":0,' "$UC/groups" \
+    || { echo "  the groups document is:"; cat "$UC/groups"; exit 1; }
+mv "$UC/db/tiny" "$UC/tiny.db"
+upd groups --json | grep -qE '"installed":false,"missing":1,"packages":1,"size":[0-9]+\}' \
+    || { echo "  a group to install has no size:"; upd groups --json; exit 1; }
+upd groups 2>&1 | grep -q '^  smalls  *Small things — 1 of 1 to install, 1 package, ' \
+    || { echo "  the human groups list is:"; upd groups; exit 1; }
+upd install --dry-run smalls > "$UC/inst" 2>&1 \
+    || { echo "  a group dry run failed:"; cat "$UC/inst"; exit 1; }
+grep -qxF '==> smalls: tiny (1 of 1)' "$UC/inst" && grep -qE '^tiny prebuilt tiny-1\.0-1\.tar\.xz [0-9]+$' "$UC/inst" \
+    || { echo "  the group dry run is:"; cat "$UC/inst"; exit 1; }
+# What the installer recorded because the binhost did not answer: --pending
+# takes it, and a dry run leaves the record where it is.
+upd install --dry-run --pending 2>&1 | grep -qxF 'nothing is pending' \
+    || { echo "  an absent pending list was not said to be empty"; exit 1; }
+printf '# recorded\nsmalls\n' > "$UC/sys/var/lib/kdos/groups-pending"
+upd install --dry-run --pending > "$UC/inst" 2>&1 \
+    || { echo "  a pending dry run failed:"; cat "$UC/inst"; exit 1; }
+grep -qxF '==> smalls: tiny (1 of 1)' "$UC/inst" && test -f "$UC/sys/var/lib/kdos/groups-pending" \
+    || { echo "  the pending dry run is:"; cat "$UC/inst"; exit 1; }
+rm "$UC/sys/var/lib/kdos/groups-pending"
+mv "$UC/tiny.db" "$UC/db/tiny"
+rc=0; upd install --dry-run --source --root "$UC/elsewhere" tiny >/dev/null 2>&1 || rc=$?
+test "$rc" = 2 || { echo "  --source into another root exited $rc, not 2"; exit 1; }
+rc=0; upd install --dry-run --root elsewhere tiny >/dev/null 2>&1 || rc=$?
+test "$rc" = 2 || { echo "  a relative --root exited $rc, not 2"; exit 1; }
+# Facets: --dev installs a package again whole from the binhost when its
+# development files were left out; a build here first restores those of what
+# it compiles against and takes each missing member of build-tools prebuilt,
+# under --build-deps=source too. A package whose facets were left
+# out is current, not behind.
+printf '1.0 1\n' > "$UC/db/tiny"
+mkdir -p "$UC/db/.facets"
+printf 'dev ./usr/include/tiny.h\n' > "$UC/db/.facets/tiny"
+for what in tiny smalls; do
+    upd install --dry-run --dev "$what" > "$UC/inst" 2>&1 \
+        || { echo "  a --dev dry run of $what failed:"; cat "$UC/inst"; exit 1; }
+    grep -qE '^tiny dev tiny-1\.0-1\.tar\.xz [0-9]+$' "$UC/inst" && grep -qE '^total 1 [0-9]+ 0$' "$UC/inst" \
+        || { echo "  the --dev dry run of $what is:"; cat "$UC/inst"; exit 1; }
+done
+upd check --json > "$UC/doc" 2>/dev/null \
+    && grep -qF '"behind":0' "$UC/doc" \
+    || { echo "  a package installed without its facets is behind:"; cat "$UC/doc"; exit 1; }
+mkdir -p "$RP/ports/tinyapp"
+printf 'name        = tinyapp\nversion     = 1.0\nrelease     = 1\ndescription = synthetic\ndepends     = tiny\n' \
+    > "$RP/ports/tinyapp/kpkgbuild"
+upd install --dry-run --source tinyapp > "$UC/inst" 2>&1 \
+    || { echo "  a source dry run over a stripped dependency failed:"; cat "$UC/inst"; exit 1; }
+grep -qE '^tiny dev tiny-1\.0-1\.tar\.xz [0-9]+$' "$UC/inst" && grep -qxF 'tinyapp source 1.0-1' "$UC/inst" \
+    && grep -qE '^total 1 [0-9]+ 1$' "$UC/inst" \
+    || { echo "  the source dry run does not restore its dependency:"; cat "$UC/inst"; exit 1; }
+printf '0.9 1\n' > "$UC/db/tiny"
+rc=0; upd install --dry-run --dev tiny >/dev/null 2>"$UC/err" || rc=$?
+test "$rc" = 1 && grep -qF 'tiny is older than its recipe' "$UC/err" \
+    || { echo "  --dev of a package behind its recipe exited $rc:"; cat "$UC/err"; exit 1; }
+rm -r "$UC/db/.facets"
+upd install --dry-run --dev tiny 2>&1 | grep -qxF 'every file of tiny is installed' \
+    || { echo "  --dev of a whole package does not say so"; exit 1; }
+mv "$UC/db/tiny" "$UC/tiny.db"
+printf 'group build-tools Build tools\ntiny\n' >> "$RP/groups"
+upd install --dry-run --source --build-deps=source tinyapp > "$UC/inst" 2>&1 \
+    || { echo "  a source dry run with a build tool missing failed:"; cat "$UC/inst"; exit 1; }
+grep -qE '^tiny prebuilt tiny-1\.0-1\.tar\.xz [0-9]+$' "$UC/inst" && grep -qxF 'tinyapp source 1.0-1' "$UC/inst" \
+    && grep -qE '^total 1 [0-9]+ 1$' "$UC/inst" && ! grep -q '^tiny source' "$UC/inst" \
+    || { echo "  the source dry run does not take a missing build tool prebuilt:"; cat "$UC/inst"; exit 1; }
+mv "$UC/tiny.db" "$UC/db/tiny"
+rm -r "$RP/ports/tinyapp"
+rm "$RP/groups"
 rc=0; upd install --dry-run -x >/dev/null 2>&1 || rc=$?
 test "$rc" = 2 || { echo "  an option as the port name exited $rc, not 2"; exit 1; }
 # `notes --json` is the What's New page's document: the running version, the
@@ -2616,7 +2954,20 @@ mv "$UC/db/tiny" "$UC/tiny.db"
 rc=0; upd install --dry-run tiny >/dev/null 2>"$UC/err" || rc=$?
 test "$rc" = 1 && grep -q '1 package needs a source build (tiny)' "$UC/err" \
     || { echo "  an uncovered install exited $rc:"; cat "$UC/err"; exit 1; }
+upd install --dry-run --source tiny 2>/dev/null | grep -qxF 'tiny source 1.0-1' \
+    || { echo "  --source did not build what the binhost does not cover"; exit 1; }
 mv "$UC/tiny.db" "$UC/db/tiny"
+# A package this machine built itself is built again rather than looked for
+# in the binhost: under the same foreign environment, tiny with the origin
+# `source` is covered, counted in `builds`, offered, and planned as built here.
+printf 'tiny source\n' > "$UC/sys/var/lib/kdos/origin"
+upd check --json > "$UC/doc" 2>/dev/null || test $? = 1
+grep -qF '"covered":1,"uncovered":0' "$UC/doc" && grep -qF '"builds":1' "$UC/doc" \
+    && grep -qF '"lane":"binhost"' "$UC/doc" \
+    || { echo "  a source-origin package was not offered as a build:"; cat "$UC/doc"; exit 1; }
+upd apply --dry-run --in-place 2>&1 | grep -q "tiny .* → 1.0-1: built here" \
+    || { echo "  the dry run does not build the source-origin package"; exit 1; }
+rm "$UC/sys/var/lib/kdos/origin"
 rm "$UC/sys/etc/kdos/chroot.env"
 # A key nobody trusts, an edited index, no index: never offered.
 mv "$UC/keys/builder.pub" "$UC/builder.pub"
@@ -4736,6 +5087,7 @@ chmod 600 "$CY/run/etc/ssh/ssh_host_ed25519_key"
 printf 'VERSION="0.3.0"\n' > "$CY/run/etc/kdos-release"
 printf 'VERSION="0.3.1"\n' > "$CY/slot/etc/kdos-release"
 printf 'zlib\n' > "$CY/run/var/lib/kdos/world"
+printf 'zlib source\n' > "$CY/run/var/lib/kdos/origin"
 printf 'paired\n' > "$CY/run/var/lib/bluetooth/aa/info"
 printf '%s 0644 ./etc/untouched.conf\n%s 0644 ./etc/edited.conf\n' \
     "$(sha256sum < "$CY/run/etc/untouched.conf" | cut -d' ' -f1)" \
@@ -4758,6 +5110,7 @@ printf 'UUID=BBBB-2222\t/\text4\tdefaults\t0 1\nUUID=HHHH\t/home\text4\tdefaults
 grep -qx 'VERSION="0.3.1"' "$CY/slot/etc/kdos-release" \
     || { echo "  the slot's release record was overwritten"; exit 1; }
 test "$(cat "$CY/slot/var/lib/kdos/world")" = zlib && \
+    test "$(cat "$CY/slot/var/lib/kdos/origin")" = "zlib source" && \
     test "$(cat "$CY/slot/var/lib/bluetooth/aa/info")" = paired \
     || { echo "  machine state under /var was not carried"; exit 1; }
 echo "  untouched takes the new default, edited keeps its own, accounts merge, fstab keeps the slot's root, state follows"
@@ -4808,6 +5161,46 @@ uim "$OUT/kdos" update apply --dry-run > "$UI/plan" 2>&1 \
     || { echo "  the image dry run failed:"; cat "$UI/plan"; exit 1; }
 grep -q "installing into slot b at $UI/slot" "$UI/plan" && grep -q 'the delta from 0.3.0' "$UI/plan" \
     || { echo "  slot a running did not put the image into slot b by its delta:"; cat "$UI/plan"; exit 1; }
+# A slot image carries the base only. A port installed on purpose that the
+# release's binhost does not hold (here there is no binhost index at all)
+# refuses the image lane before the slot is written; built here, it does not.
+mkdir -p "$UI/run/ports/core/misc/wanted"
+printf 'name = wanted\nversion = 1.0\nrelease = 1\n' > "$UI/run/ports/core/misc/wanted/kpkgbuild"
+: > "$UI/run/ports/core/misc/wanted/build.sh"
+printf 'wanted\n' > "$UI/run/var/lib/kdos/world"
+rc=0; uim "$OUT/kdos" update apply --dry-run --progress 3 3>"$UI/prog" >/dev/null 2>&1 || rc=$?
+test "$rc" = 3 && grep -q '^refused 1 package of what was installed on purpose is not in release 0.3.1.s binhost (wanted)' "$UI/prog" \
+    || { echo "  an uncovered world package did not refuse the image (exit $rc):"; cat "$UI/prog"; exit 1; }
+printf 'wanted source\n' > "$UI/run/var/lib/kdos/origin"
+uim "$OUT/kdos" update apply --dry-run >/dev/null 2>&1 \
+    || { echo "  a world package built here still refused the image"; exit 1; }
+rm -rf "$UI/run/ports/core/misc/wanted" "$UI/run/var/lib/kdos/world" "$UI/run/var/lib/kdos/origin"
+# What this machine keeps whole, a package under FACETS=run with development
+# files and no facet record as `--dev` or a build here leaves one, is brought
+# back whole in the slot: refused before the slot is written when the
+# release's binhost does not hold it, planned as a build here for one built
+# here. A package with a record, one whose files are all run time, and a
+# running root under FACETS=all keep nothing whole.
+WDB="$UI/run/var/lib/kpkg/db"
+test ! -e "$UI/run/var/lib/kpkg" || { echo "  the running fixture has a package database already"; exit 1; }
+mkdir -p "$WDB/.facets" "$UI/run/ports/core/misc/wholey"
+printf 'name = wholey\nversion = 1.0\nrelease = 1\n' > "$UI/run/ports/core/misc/wholey/kpkgbuild"
+: > "$UI/run/ports/core/misc/wholey/build.sh"
+printf '1.0 1\n./\n./usr/\n./usr/include/\n./usr/include/wholey.h\n' > "$WDB/wholey"
+printf '1.0 1\n./usr/include/stripped.h\n' > "$WDB/stripped"
+: > "$WDB/.facets/stripped"
+printf '1.0 1\n./usr/bin/runonly\n' > "$WDB/runonly"
+rc=0; uim env KPKG_FACETS=run "$OUT/kdos" update apply --dry-run --progress 3 3>"$UI/prog" >/dev/null 2>&1 || rc=$?
+test "$rc" = 3 && grep -q '^refused 1 package this system keeps whole is not in release 0.3.1.s binhost (wholey)' "$UI/prog" \
+    || { echo "  a package kept whole the binhost lacks did not refuse the image (exit $rc):"; cat "$UI/prog"; exit 1; }
+printf 'wholey source\n' > "$UI/run/var/lib/kdos/origin"
+uim env KPKG_FACETS=run "$OUT/kdos" update apply --dry-run > "$UI/plan" 2>&1 \
+    || { echo "  a package kept whole and built here refused the image:"; cat "$UI/plan"; exit 1; }
+grep -qE '^  wholey +kept whole: built here again$' "$UI/plan" && ! grep -qE '^  (stripped|runonly) ' "$UI/plan" \
+    || { echo "  the image dry run does not plan what is kept whole:"; cat "$UI/plan"; exit 1; }
+uim "$OUT/kdos" update apply --dry-run 2>&1 | grep -q 'kept whole' \
+    && { echo "  a running root under FACETS=all listed a package kept whole"; exit 1; }
+rm -rf "$UI/run/var/lib/kpkg" "$UI/run/ports/core/misc/wholey" "$UI/run/var/lib/kdos/origin"
 sed -i 's/^active   = a$/active   = b/' "$UI/esp/EFI/kdos/bootstate"
 printf 'kdos_slot=b root=UUID=BBBB-2222 rw\n' > "$UI/cmdline"
 uim "$OUT/kdos" update apply --dry-run 2>&1 | grep -q "installing into slot a at $UI/slot" \
@@ -5986,6 +6379,10 @@ grep -qE "^ +[0-9]+ +Theme +pending" "$OUT/plan.txt" \
 # running and copying nothing.
 grep -qE "^ +[0-9]+ +Packs +skipped" "$OUT/plan.txt" \
     || { echo "  the packs step ran with no medium"; exit 1; }
+# The firmware this machine's devices need is looked for on every install,
+# whatever was chosen.
+grep -qE "^ +[0-9]+ +Firmware +pending" "$OUT/plan.txt" \
+    || { echo "  the firmware step is not planned"; exit 1; }
 grep -q '"title": "Partition".*"state": "skipped"' "$OUT/plan.json" \
     || { echo "  text and json disagree about Partition"; exit 1; }
 # The erase plan's layout, by the names the install gives it: the ESP first,
@@ -6073,6 +6470,7 @@ assert lines[-1]["status"] == rc, (lines[-1], rc)
 titles = [s["title"] for s in lines[0]["steps"]]
 assert titles[0] == "Prepare" and titles[-1] == "Finish", titles
 assert "Slot B" in titles and titles.index("Slot B") < titles.index("Bootloader")
+assert titles.index("Firmware") == titles.index("Packs") + 1, titles
 kinds = {l["t"] for l in lines}
 assert kinds <= {"plan", "S", "K", "P", "N", "L", "W", "F", "D", "exit"}, kinds
 for l in lines:
@@ -6852,6 +7250,7 @@ PBBUS
         || pb_fail "StartFileSharing did not ask io.kdos.filesharing.start about the caller" "$PB/pk.log"
     [ "$(cat "$PB/samba.args" 2>/dev/null)" = start ] \
         || pb_fail "StartFileSharing did not run the samba script with start"
+    _n=$(grep -c CHECK "$PB/pk.log" || true)
     # The knocks: the closed names the kernel counts, asking nobody. mosh is
     # open by now, so its counter is not one of them.
     _r=$(pbcall call io.kdos.Power1 /io/kdos/Power1 io.kdos.Power1 \
@@ -7077,7 +7476,24 @@ if [ "$(id -u)" != 0 ]; then
     "$OUT/kdos-ports-helper" install kate 2>&1 | grep -q 'run through pkexec' \
         || { echo "  kdos-ports-helper ran for an unprivileged caller"; exit 1; }
 fi
-echo "  usage, unsafe names and an unprivileged caller are refused"
+# The builder is the same door under its own grant, with one more word it
+# takes: --build-deps with one of its two values, and only before the name.
+$CC $STD $WARN $INC -DKPH_BUILD -o "$OUT/kdos-ports-builder" \
+    src/desktop/kdos-discover/helper/kdos-ports-helper.c src/libs/libkbase/*.c
+echo "  kdos-ports-builder"
+for bad in "" "remove kate" "install" "install kate --build-deps=source" \
+           "install --build-deps=maybe kate" "install --source kate"; do
+    # shellcheck disable=SC2086
+    "$OUT/kdos-ports-builder" $bad 2>&1 | grep -q '^usage: kdos-ports-builder install' \
+        || { echo "  kdos-ports-builder did not refuse '$bad' as usage"; exit 1; }
+done
+"$OUT/kdos-ports-builder" install --build-deps=source -rf 2>&1 | grep -q 'is not a port name' \
+    || { echo "  kdos-ports-builder took -rf for a port name"; exit 1; }
+if [ "$(id -u)" != 0 ]; then
+    "$OUT/kdos-ports-builder" install --build-deps=prebuilt kate 2>&1 | grep -q 'run through pkexec' \
+        || { echo "  kdos-ports-builder ran for an unprivileged caller"; exit 1; }
+fi
+echo "  usage, unsafe names and an unprivileged caller are refused, by both"
 
 echo
 echo "==> kdos-oomd picks the victim the desktop can afford to lose"
@@ -7455,13 +7871,15 @@ echo "==> a launch hands the box only its own sockets, or does not start"
 # are stand-ins that record what they were asked, so what is checked is what
 # kdos-appbox decided — the state file the Boxes page and the badge read, the
 # engine string KWin is handed, and the sockets the application is pointed at.
-# The three paths of plan 7.3.3: a confined launch, a box whose container was
-# made over the session's runtime directory (tagged), and a tagged socket that
-# cannot be had (the launch is refused, never started untagged).
+# The paths of plan 7.3.3: a confined launch (a box that says `x11 = no`), a
+# box handed the X11 display (tagged, which is every box by default), a box
+# whose container was made over the session's runtime directory (tagged), and
+# a tagged socket that cannot be had (the launch is refused, never started
+# untagged).
 LX="$OUT/launch"
 rm -rf "$LX"; mkdir -p "$LX/bin" "$LX/home/.config/kdos/boxes" "$LX/log"
 mkdir -m 0700 "$LX/run"
-printf 'base=pack:app.one\nwayland=yes\naudio=yes\n' > "$LX/home/.config/kdos/boxes/app.one.conf"
+printf 'base=pack:app.one\nwayland=yes\naudio=yes\nx11=no\n' > "$LX/home/.config/kdos/boxes/app.one.conf"
 cat > "$LX/bin/podman" <<'FAKE'
 #!/bin/bash
 echo "$*" >> "$FAKE_LOG/podman.calls"
@@ -7547,6 +7965,15 @@ grep -qx -- '--filter' "$LX/log/proxy.args" \
 grep -q " run app.one	one$" "$LX/log/ledger" \
     || { echo "  FAIL  the launch is in the box's ledger"; kill $FAKE_CONMON; exit 1; }
 echo "  ok    confined: its own runtime directory, a filtered bus, the private engine"
+printf 'base=pack:app.one\nwayland=yes\naudio=yes\n' > "$LX/home/.config/kdos/boxes/app.one.conf"
+: > "$LX/log/boxsock.calls"
+lrun ok "$LPV" || { echo "  FAIL  a default launch ran"; kill $FAKE_CONMON; exit 1; }
+grep -qx 'confinement = tagged' "$LST" && grep -qx 'x11         = reachable' "$LST" \
+    && grep -qx -- '-s tagged app.one app.one' "$LX/log/boxsock.calls" \
+    && ! grep -qx 'DISPLAY=' "$LX/log/exec.argv" \
+    && grep -qx 'QT_QPA_PLATFORM=wayland;xcb' "$LX/log/exec.argv" \
+    || { echo "  FAIL  a default box is handed the X11 display and is tagged"; cat "$LST"; kill $FAKE_CONMON; exit 1; }
+echo "  ok    a default box is handed the X11 display, prefers Wayland, and is tagged"
 : > "$LX/log/boxsock.calls"
 lrun ok "$LX/run" || { echo "  FAIL  a tagged launch ran"; kill $FAKE_CONMON; exit 1; }
 grep -qx 'confinement = tagged' "$LST" && grep -qx -- '-s tagged app.one app.one' "$LX/log/boxsock.calls" \
@@ -7663,7 +8090,7 @@ grep -qx "$TW/home/.local/share/kdos/boxes/$TWB/home:$TW/home:rslave" "$CA" \
 tail -1 "$TW/log/exec.argv" | grep -qx "$TW/docs/report.pdf" \
     && grep -qx "$TWB" "$TW/log/exec.argv" \
     || twfail "the application is handed the file"
-grep -qx -- "-s confined $TWB app.viewer" "$TW/log/boxsock.calls" \
+grep -qx -- "-s tagged $TWB app.viewer" "$TW/log/boxsock.calls" \
     || twfail "its windows take the application's launcher id"
 grep -q "^rm -f -t 2 $TWB\$" "$TW/log/podman.calls" \
     && grep -qx "decompose $TWB" "$TW/log/packd.calls" \
@@ -8650,6 +9077,88 @@ if [ -n "$TRAY_SDBUS" ] && command -v dbus-run-session >/dev/null 2>&1 &&
 else
     echo "  the bus half is skipped (no sd-bus, dbus-run-session, dbus-send or dbus-monitor on this host)"
 fi
+
+echo
+echo "==> kdos firmware sync names the vendor ports the hardware asks for"
+# testing/fixtures/firmware is a machine: /sys/bus devices by modalias, a
+# modules.alias, each module's `firmware:` lines (a modinfo stand-in on
+# $PATH answers from modinfo/<module>), a /dev/kmsg, and a root with the
+# firmware map, two vendor ports installed and their files. The plan names
+# the port a missing file belongs to, once, with the first reason found:
+# the kernel log's failed load (qualcomm), a module alias matched (nouveau
+# for nvidia) and a built-in driver's alias (amdgpu, through its wildcard
+# firmware name). Satisfied files (i915, r8169 bound by its driver link,
+# iwlwifi in the log), a dependency-free btusb, a path no port ships and
+# one that climbs out of /lib/firmware all name nothing.
+FW="$OUT/firmware"
+rm -rf "$FW"
+cp -r testing/fixtures/firmware "$FW"
+mkdir -p "$FW/sys/bus/pci/drivers/r8169" "$FW/sys/module/r8169" "$FW/bin"
+ln -s ../../../../module/r8169 "$FW/sys/bus/pci/drivers/r8169/module"
+ln -s ../../drivers/r8169 "$FW/sys/bus/pci/devices/0000:03:00.0/driver"
+printf 'amdgpu.alias=pci:v00001002d*sv*sd*bc03sc*i*\0amdgpu.license=GPL\0' \
+    > "$FW/lib/modules/9.9.9-fixture/modules.builtin.modinfo"
+printf '#!/bin/sh\nfor m; do :; done\n[ -f "%s/modinfo/$m" ] || exit 1\ncat "%s/modinfo/$m"\n' \
+    "$FW" "$FW" > "$FW/bin/modinfo"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s/ran"\ncase "$*" in *firmware-nvidia*) exit 1 ;; esac\n' \
+    "$FW" > "$FW/bin/kdos"
+chmod +x "$FW/bin/modinfo" "$FW/bin/kdos"
+fw() {
+    env PATH="$FW/bin:$PATH" KDOS_FIRMWARE_SYSROOT="$FW" \
+        KDOS_FIRMWARE_KVER=9.9.9-fixture "$OUT/kdos-tools" kdos firmware "$@"
+}
+rc=0; fw sync --dry-run --root "$FW/root" > "$FW/plan" 2> "$FW/err" || rc=$?
+test "$rc" = 1 || { echo "  a dry run that names ports exited $rc, not 1"; cat "$FW/err"; exit 1; }
+printf '%s\n' "firmware-amd module amdgpu, pci 0000:04:00.0" \
+    "firmware-nvidia module nouveau, pci 0000:01:00.0" \
+    "firmware-qualcomm the kernel could not load ath11k/WCN6855/hw2.0/amss.bin" |
+    diff - "$FW/plan" > /dev/null || { echo "  the plan is not the fixture's:"; cat "$FW/plan"; exit 1; }
+grep -qF 'nope/unknown.bin, which no port ships' "$FW/err" ||
+    { echo "  a failed load no port ships was not reported"; cat "$FW/err"; exit 1; }
+grep -q 'shadow' "$FW/plan" "$FW/err" && { echo "  a path out of /lib/firmware was taken"; exit 1; }
+rc=0; fw sync --dry-run --json --root "$FW/root" > "$FW/doc" || rc=$?
+test "$rc" = 1 || { echo "  the JSON dry run exited $rc, not 1"; exit 1; }
+python3 -I -c '
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert [p["port"] for p in d["ports"]] == ["firmware-amd", "firmware-nvidia", "firmware-qualcomm"], d
+assert d["unshipped"] == ["nope/unknown.bin"] and d["kernel_log"] and d["modules"], d
+' "$FW/doc" || { echo "  the JSON plan is wrong:"; cat "$FW/doc"; exit 1; }
+fw sync --dry-run --all --root "$FW/root" | cut -d' ' -f1 | tr '\n' ' ' > "$FW/all" || :
+test "$(cat "$FW/all")" = "firmware-amd firmware-misc firmware-nvidia firmware-qualcomm " ||
+    { echo "  --all is not every uninstalled port of the map: $(cat "$FW/all")"; exit 1; }
+printf '20260916 1\n' > "$FW/root/var/lib/kpkg/db/firmware-nvidia"
+if fw sync --dry-run --root "$FW/root" 2>/dev/null | grep -q firmware-nvidia; then
+    echo "  an installed port is still named"; exit 1
+fi
+rm "$FW/root/var/lib/kpkg/db/firmware-nvidia"
+rc=0; env KDOS_FIRMWARE_SYSROOT="$FW/none" "$OUT/kdos-tools" kdos firmware sync --dry-run \
+    --root "$FW/root" > "$FW/plan" 2> "$FW/err" || rc=$?
+test "$rc" = 0 && ! test -s "$FW/plan" && grep -q 'kernel log was not readable' "$FW/err" ||
+    { echo "  a machine with nothing to read named something (exit $rc)"; cat "$FW/plan" "$FW/err"; exit 1; }
+rc=0; fw sync --dry-run --root "$FW/nomap" 2>/dev/null || rc=$?
+test "$rc" = 3 || { echo "  no firmware map exited $rc, not 3"; exit 1; }
+for bad in "sync --json" "sync --root relative" "sync --bogus" "install"; do
+    rc=0; fw $bad 2>/dev/null || rc=$?
+    test "$rc" = 2 || { echo "  'kdos firmware $bad' exited $rc, not 2"; exit 1; }
+done
+if [ "$(id -u)" = 0 ]; then
+    rc=0; fw sync --root "$FW/root" > "$FW/out" 2>&1 || rc=$?
+    test "$rc" = 1 || { echo "  a failed install exited $rc, not 1"; cat "$FW/out"; exit 1; }
+    printf '%s\n' "update fetch --binhost-only" \
+        "update install --prebuilt --root $FW/root firmware-amd" \
+        "update install --prebuilt --root $FW/root firmware-nvidia" \
+        "update install --prebuilt --root $FW/root firmware-qualcomm" |
+        diff - "$FW/ran" > /dev/null || { echo "  the installs run are not the plan's:"; cat "$FW/ran"; exit 1; }
+    grep -q 'firmware-nvidia was not installed' "$FW/out" ||
+        { echo "  the failed install was not named"; cat "$FW/out"; exit 1; }
+    echo "  as root: one prebuilt install per port, after the release index; a failure is exit 1"
+else
+    rc=0; fw sync --root "$FW/root" 2>/dev/null || rc=$?
+    test "$rc" = 1 && ! test -e "$FW/ran" || { echo "  a sync without root exited $rc or ran something"; exit 1; }
+    echo "  without root: refused before anything runs"
+fi
+echo "  devices, modules and the kernel log map to vendor ports; nothing unshipped is guessed"
 
 echo
 echo "==> kdos-notice says each change once, and blesses only a desktop that stays up"

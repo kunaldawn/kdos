@@ -154,4 +154,4 @@ of screens. Arrange it once and **Apply**; it is kept for that set.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 423.* Previous: [422. Audio](audio.md) · [Contents](../README.md) · Next: [424. Graphics drivers](graphics-drivers.md)
+*Part XVI. System administration, chapter 425.* Previous: [424. Audio](audio.md) · [Contents](../README.md) · Next: [426. Graphics drivers](graphics-drivers.md)

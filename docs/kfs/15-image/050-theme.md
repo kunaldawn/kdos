@@ -104,4 +104,4 @@ rewritten.
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 370.* Previous: [369. Stamping the build identity](045-identity.md) · [Contents](../README.md) · Next: [371. The udev hardware database](060-udev-hwdb.md)
+*Part XV. The image, chapter 371.* Previous: [370. Stamping the build identity](045-identity.md) · [Contents](../README.md) · Next: [372. The udev hardware database](060-udev-hwdb.md)

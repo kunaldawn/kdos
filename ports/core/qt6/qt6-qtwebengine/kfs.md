@@ -98,8 +98,8 @@ this port follows Qt WebEngine's own release schedule and is built against which
 
 `userns-probe-no-malloc.patch` is KDOS's own and is to be offered to Chromium, and to Alpine,
 whose musl build carries the same probe. The probe runs in the process that hosts Qt WebEngine,
-such as plasmashell holding a Dictionary or Web Browser widget from
-[kdeplasma-addons](#port-kdeplasma-addons), so without the patch that process can hang at start.
+such as a KDE application with an embedded web page, so without the patch that process can hang
+at start.
 
 ## Notes
 After the Chromium build, `build.sh` checks that no object was compiled under

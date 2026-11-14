@@ -1,13 +1,13 @@
 ## About
 `kdos-discover` is what makes [Discover](#port-discover) KDOS's software centre. It installs
-four things:
+five things:
 
 - **`kdos-backend.so`**, a Discover backend in `/usr/lib/qt6/plugins/discover/`. It lists the
   catalogue's sets, the packs in the pack store and the catalogue rows whose pack is there as
   `kdos-packs`, the packs and `.ktar` sets on the boot medium and the rows whose pack is only there
   as `medium`, the rows with no pack anywhere and the Debian desktop applications the catalogue does
   not name as `kdos-store`, boxes nothing else accounts for as `kdos-boxes`, and host software as
-  `kdos-ports`, and it opens a `.ktar` or `.kpack` handed to Discover from a file manager. Every
+  `kdos-ports`, with each binhost port not installed offered built here as `kdos-ports-source`, and it opens a `.ktar` or `.kpack` handed to Discover from a file manager. Every
   answer comes from the tool that owns it: `kdos-appbox catalogue` says what is installed,
   `kdos-box list` what each box is made of, [kdos-packd](#port-kdos-packd)'s socket what the pack
   store and the medium hold, `kpkg list` which ports are installed, `kdos-box profile` what a box
@@ -25,8 +25,10 @@ four things:
   AppStream catalogue of the host's ports, from kpkg's manifests, and, with `--debian-exclude`,
   `kdos-debian-exclude.xml`, the `remove-component` merges that take the applications
   `debian-exclude` names out of every AppStream pool.
-- **`kdos-ports-helper`**, the root step behind installing host software from the signed binhost,
-  run through `pkexec` under the polkit action `io.kdos.ports.install`.
+- **`kdos-ports-helper`**, the root step behind installing host software prebuilt from the signed
+  binhost, run through `pkexec` under the polkit action `io.kdos.ports.install`.
+- **`kdos-ports-builder`**, the root step behind building host software on this computer, the
+  `kdos-ports-source` origin, run through `pkexec` under `io.kdos.ports.build`.
 
 It also points Discover's featured list at `/usr/share/kdos/discover/featured.json`, ships
 `/usr/share/kdos/discover/debian-exclude`, the Debian packages the backend never offers to build in
@@ -43,8 +45,13 @@ together is in [Discover](../../../docs/kdos/04-programs/discover.md).
 - `-D KDE_INSTALL_USE_QT_SYS_PATHS=ON` — Install the two plugins under Qt's own plugin
   directory, `/usr/lib/qt6/plugins`, where Discover's loaders look for `discover/` and
   `discover-notifier/`.
-- `-I"$LIBS/libkbase"`, `"$LIBS"/libkbase/*.c` — `kdos-ports-helper` is C, compiled with
-  libkbase for its argument-vector runner, and links no Qt. `$LIBS` is `src/libs`.
+- `-I"$LIBS/libkbase"`, `"$LIBS"/libkbase/*.c` — `kdos-ports-helper` and `kdos-ports-builder` are
+  C, compiled with libkbase for its argument-vector runner, and link no Qt. `$LIBS` is `src/libs`.
+- `-DKPH_BUILD` — Compiles `helper/kdos-ports-helper.c` a second time as `kdos-ports-builder`,
+  which runs `kdos update install --source` where the helper runs `--prebuilt`. pkexec picks the
+  polkit action by the program's path, so the two routes are two programs, each under its own
+  action: `io.kdos.ports.build` asks for the password every time, because the build runs a
+  recipe's `build.sh` as root, and a grant kept from a prebuilt install must not cover it.
 
 ## Notes
 - **It is locked to one discover release.** libdiscover is private: Discover installs no header
@@ -74,13 +81,20 @@ together is in [Discover](../../../docs/kdos/04-programs/discover.md).
 - **Host software is read-only here until a binhost is fetched.** A port arrives and leaves with
   the system version, so the `kdos-ports` lane lists what is installed and offers no removal. Once
   `kdos update fetch` has put the release's signed binhost index and its catalogue in
-  `/var/lib/kdos/binhost`, a port that catalogue lists can be installed. `kdos-ports-helper`
-  checks the name, clears the environment pkexec handed it and runs `kdos update install
-  <port>`, which downloads the port and every package it lacks from that binhost, installs them
-  matched under `/etc/kdos/chroot.env`'s build environment, and adds the port to
-  `/var/lib/kdos/world` so the next update keeps it; then the helper writes the catalogue again.
-  The helper is a separate program because pkexec's grant names a program and not its
-  arguments: granting `/usr/bin/kdos` would grant every subcommand.
+  `/var/lib/kdos/binhost`, a port that catalogue lists can be installed, prebuilt or built here.
+  A port not installed is two resources with one AppStream id, `kdos-ports` and
+  `kdos-ports-source`, so Discover lists one application with two origins in its source picker.
+  Which of two resources with one id a Discover list keeps is its sort's, not the backend's, so a
+  list carries only the one `install =` in `/etc/kdos/update.conf` prefers and a link answers both,
+  that one first. Before `pkexec`, the plan runs the install's `--dry-run` as the user and asks
+  through `Transaction::proceedRequest`, so the counts come before the password.
+  `kdos-ports-helper` checks the name, clears the environment pkexec handed it and runs `kdos
+  update install --prebuilt <port>`; `kdos-ports-builder` does the same with `--source`, passing
+  `--build-deps=` only when given one, so `build-deps =` in `/etc/kdos/update.conf` decides
+  otherwise. `kdos update install` owns the route: the binhost download and its checks, the
+  build under `/etc/kdos/chroot.env`'s environment, the origin file and the world set. Then the
+  helper writes the catalogue again. The helpers are separate programs because pkexec's grant
+  names a program and not its arguments: granting `/usr/bin/kdos` would grant every subcommand.
 - **Host software is read from its two catalogue files, not from the AppStream pool.** The pool
   keys every component of the OS catalogue by a data id with the origin `os`, so `org.kde.kate`
   from `kdos-ports.xml` and `org.kde.kate` from Debian's DEP-11 file would be one component,

@@ -271,6 +271,47 @@ KCM.SimpleKCM {
                 Accessible.name: kcm.offerVersion !== "" ? i18nc("@action:button", "Update in Discover") : i18nc("@action:button", "Check for updates in Discover")
                 onClicked: kcm.openUpdates()
             }
+
+            Kirigami.Separator {
+                Kirigami.FormData.isSection: true
+                Kirigami.FormData.label: i18nc("@title:group", "Installing software")
+            }
+
+            QQC2.ComboBox {
+                id: installRouteBox
+                Kirigami.FormData.label: i18nc("@label:listbox", "Install programs:")
+                Accessible.name: i18nc("@label:listbox", "How programs are installed")
+                textRole: "text"
+                valueRole: "route"
+                model: [
+                    { route: "prebuilt", text: i18nc("@item:inlistbox install route", "Download them prebuilt") },
+                    { route: "source", text: i18nc("@item:inlistbox install route", "Build them on this computer") }
+                ]
+                currentIndex: count > 0 ? indexOfValue(kcm.installRoute) : -1
+                onActivated: kcm.installRoute = currentValue
+            }
+
+            QQC2.ComboBox {
+                id: buildDepsBox
+                Kirigami.FormData.label: i18nc("@label:listbox", "When building, what a program needs:")
+                Accessible.name: i18nc("@label:listbox", "How a build gets what it needs")
+                textRole: "text"
+                valueRole: "route"
+                model: [
+                    { route: "prebuilt", text: i18nc("@item:inlistbox build dependencies", "Download it prebuilt") },
+                    { route: "source", text: i18nc("@item:inlistbox build dependencies", "Build it too") }
+                ]
+                currentIndex: count > 0 ? indexOfValue(kcm.buildDeps) : -1
+                onActivated: kcm.buildDeps = currentValue
+            }
+
+            QQC2.Label {
+                Layout.fillWidth: true
+                Layout.maximumWidth: Kirigami.Units.gridUnit * 24
+                text: i18nc("@info", "Discover offers both for every program: “KDOS system” downloads it, “KDOS, built on this computer” builds it. These choices are what “kdos update install” does from a terminal, and what a build gets for anything it needs. Building takes minutes to hours; a program keeps the way it came at every update.")
+                wrapMode: Text.Wrap
+                font: Kirigami.Theme.smallFont
+            }
         }
     }
 

@@ -174,8 +174,11 @@ void Backend::refreshLook()
     });
 }
 
-/* The first answer seeds the ticks from the backend's own preselection, so the
- * page starts with what an unattended install would carry. */
+/* The first answer, read without the answers, seeds the boxed ticks from the
+ * backend's own preselection, so the page starts with what an unattended
+ * install would carry. Every later one is read with the answers, whose
+ * keyboard and time zone name the language groups to tick (`why`); the
+ * first is followed by one of those at once. */
 void Backend::refreshApps()
 {
     runDump(QStringLiteral("apps"), !m_apps.isEmpty(), [this](const QVariantMap &m) {
@@ -187,8 +190,21 @@ void Backend::refreshApps()
                 const QVariantMap gm = g.toMap();
                 m_answers->setAppChosen(gm.value(QStringLiteral("id")).toString(), gm.value(QStringLiteral("chosen")).toBool());
             }
+        } else {
+            QStringList suggested;
+            const QVariantList native = m.value(QStringLiteral("native")).toList();
+            for (const QVariant &g : native) {
+                const QVariantMap gm = g.toMap();
+                if (!gm.value(QStringLiteral("why")).toString().isEmpty()) {
+                    suggested << gm.value(QStringLiteral("id")).toString();
+                }
+            }
+            m_answers->suggestGroups(suggested);
         }
         Q_EMIT appsChanged();
+        if (first) {
+            refreshApps();
+        }
     });
 }
 

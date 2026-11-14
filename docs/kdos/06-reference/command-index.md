@@ -39,7 +39,7 @@ that only another program starts go in `/usr/libexec`.
 | `/usr/local/bin` | `kdos` and the other session-side names of the `ksvc` binary, `kdos-appbox` with `kdos-box`, `xdg-open` and one shim per boxed application, and the session scripts from `fs/` |
 | `/usr/local/sbin` | `kdos-dm`, which `/etc/inittab` runs on `tty1` and which runs SDDM, and `kdos-getty`, which `/etc/inittab` runs on `tty2` |
 | `/usr/libexec/kdos` | `kdos-boxinit`, which runs inside a box; `kdos-runner`, started by D-Bus for KRunner; `kdos-fwask` and `kdos-library-place`, started by the session's autostart; and the `about-*` scripts the Health page and About this System run |
-| `/usr/libexec/kdos-discover` | `kdos-ports-helper`, which Discover runs through polkit to install a port |
+| `/usr/libexec/kdos-discover` | `kdos-ports-helper` and `kdos-ports-builder`, which Discover runs through polkit to install a port prebuilt or build it here |
 | `/usr/lib/turnstile` | `ksvc`, the per-user service backend `turnstiled` runs at a user's first login |
 
 ## Binaries with several names
@@ -120,7 +120,8 @@ links to its section of [The kdos command](../04-programs/kdos-command.md).
 | [`kdos restarts`](../04-programs/kdos-command.md#kdos-restarts) | Which running processes still use code an upgrade replaced or removed |
 | [`kdos march`](../04-programs/kdos-command.md#kdos-march) | Measure per-machine optimisation (`probe`, `run PORT…`) and read the recorded verdicts (`report`) |
 | [`kdos cve`](../04-programs/kdos-command.md#kdos-cve) | Which pinned versions carry known vulnerabilities, from an offline database |
-| [`kdos update`](../04-programs/kdos-command.md#kdos-update) | `check` (what is behind the signed tree, what the binhost holds and whether a newer slot image exists; `--json`), `fetch` (the newest signed ports tree, and the release index through which the binhost index and slot image manifest are taken), `install PORT` (one port from the signed binhost), `apply` (the newer slot image, or the binhost's packages, into the inactive slot; `--source` builds them here instead), `notes` and `theme` |
+| [`kdos update`](../04-programs/kdos-command.md#kdos-update) | `check` (what is behind the signed tree, what the binhost holds and whether a newer slot image exists; `--json`), `fetch` (the newest signed ports tree, and the release index through which the binhost index and slot image manifest are taken; `--binhost-only` the binhost index of the tree in place alone), `install PORT\|GROUP` (one port or group and what it lacks, `--prebuilt` from the signed binhost or `--source` built here, `--build-deps=prebuilt\|source`, `--root DIR`; `--pending` what the installer recorded; `--dev PORT\|GROUP…` installed ports again whole, with the development files the image left out), `groups` (every group, installed or not, and its download size; `--json`), `apply` (the newer slot image and then the world set, or the binhost's packages, into the inactive slot, each package by its origin's route; `--source` builds them here instead), `notes` and `theme` |
+| [`kdos firmware sync`](../04-programs/kdos-command.md#kdos-firmware) | Install the vendor firmware ports this machine's devices and kernel log ask for, prebuilt; `--dry-run` (`--json`) names each and why, `--all` every vendor port, `--root DIR` into another root |
 | [`kdos image`](../04-programs/kdos-command.md#kdos-image) | Signed whole-slot images: `make`, `verify`, `unpack` into a root, and `carry` what a slot keeps from the running one |
 | [`kdos rebuild WORKDIR`](../04-programs/kdos-command.md#kdos-rebuild) | Rebuild the image from the sources on the medium; `--dry-run`, `--iso-only` |
 | [`kdos clone [DEV]`](../04-programs/kdos-command.md#kdos-clone) | Copy this medium to another device, verified by read-back; with no device, list the devices it may write to |
@@ -212,7 +213,8 @@ A **box** is the container an application runs in; see the [glossary](glossary.m
 | `kdos-openarchive` | `/usr/local/bin` | Extract, with `ouch`, an archive beside itself; the default handler for comic books packed as 7z or rar | [Applications](../02-user-guide/applications.md) |
 | `kdos-pack` | `/usr/bin` | Build, sign, re-stamp, index and diff packs | [Packs and boxes](../03-architecture/packs-and-boxes.md#building-a-pack) |
 | `kdos-podman-api` | `/usr/bin` | Run a container client against this account's Podman API socket, starting `podman system service` when nothing answers on it | [Configuration](configuration.md#containers) |
-| `kdos-ports-helper` | `/usr/libexec/kdos-discover` | Install one port and what it lacks from the signed binary host, as root through polkit, for Discover: `kdos-ports-helper install PORT` | [Discover](../04-programs/discover.md) |
+| `kdos-ports-helper` | `/usr/libexec/kdos-discover` | Install one port and what it lacks prebuilt from the signed binary host, as root through polkit (`io.kdos.ports.install`), for Discover: `kdos-ports-helper install PORT` | [Discover](../04-programs/discover.md#host-software) |
+| `kdos-ports-builder` | `/usr/libexec/kdos-discover` | Build one port on this computer and install it, as root through polkit (`io.kdos.ports.build`), for Discover: `kdos-ports-builder install [--build-deps=prebuilt\|source] PORT` | [Discover](../04-programs/discover.md#host-software) |
 
 `kdos-appbox` takes `run`, `open`, `throwaway`, `catalogue`, `install`, `uninstall`, `store`,
 `import`, `export`, `warmup`, `status`, `session save` and `session restore`, `list`, `apps`,
@@ -237,7 +239,14 @@ All five names are one binary in `/usr/bin`.
 | `kpkgdepends` | Print the resolved install order | [Packaging](../03-architecture/packaging.md#kpkg) |
 
 `kpkg` takes `install` (also `i`), `remove` (also `r`), `list` (also `l`, with `--json`), `info`
-(with `--json`), `check` (packages by name, or `--all`), `meta`, `fetch` (the sources a port lacks, from the archive and then upstream), `verify` (and `verify --repro`), `keygen`, `sign FILE KEY`, `index` (with `--sign KEY`),
+(with `--json`), `check` (packages by name, or `--all`), `facets` (`--strip [PACKAGE…]` removes
+installed packages' development and documentation files as `FACETS=run` leaves them out, `--list
+PACKAGE` prints what one was installed without; see
+[Facets](../03-architecture/packaging.md#facets)), `needs` (`PACKAGE` prints what the package
+needs at run time as its install recorded it, `--resolve PACKAGE` names the installed package
+providing each edge and exits 1 when nothing provides one, `--scan PACKAGE` measures it from the
+installed files without writing; see
+[Run-time needs](../03-architecture/packaging.md#run-time-needs)), `meta`, `fetch` (the sources a port lacks, from the archive and then upstream), `verify` (and `verify --repro`), `keygen`, `sign FILE KEY`, `index` (with `--sign KEY`),
 `verify-index`, `verify-pkg`, `delta`, `apply-delta` (with `--expect SHA256`, which deletes the
 reconstructed package unless its checksum matches; see [Deltas](../03-architecture/packaging.md#deltas)),
 `binhost`, `store gc DIR MAX-SIZE` and `help`, and the options

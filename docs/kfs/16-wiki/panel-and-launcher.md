@@ -159,4 +159,4 @@ log, `$XDG_RUNTIME_DIR/ksvc/kdos-svc.dbus.log`.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 437.* Previous: [436. Shortcuts and window rules](shortcuts-and-window-rules.md) · [Contents](../README.md) · Next: [438. Xwayland and X11 applications](xwayland-and-x11-apps.md)
+*Part XVI. System administration, chapter 439.* Previous: [438. Shortcuts and window rules](shortcuts-and-window-rules.md) · [Contents](../README.md) · Next: [440. Xwayland and X11 applications](xwayland-and-x11-apps.md)

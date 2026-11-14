@@ -17,8 +17,10 @@ uplink, configured by hand.
 | [iw](#port-iw) | `iw`, which shows what a card can do |
 | [plasma-nm](#port-plasma-nm) | The network applet's **Hotspot** button, and the hotspot's name and passphrase in System Settings → **Wi-Fi & Networking** |
 
-All are on every image. `hostapd` has a service script, [`/etc/init.d/46_hostapd.sh`]{.idx}, which is
-enabled but starts nothing until [`/etc/hostapd/hostapd.conf`]{.idx} exists: at boot it writes
+All but hostapd are in the base the ISO carries; `sudo kdos update install hostapd` adds it (see
+[Installing software](updating.md#installing-software)). Its service script, [`/etc/init.d/46_hostapd.sh`]{.idx}, is part of the base
+filesystem and enabled, and starts nothing while the program is missing
+(`[SKIP] hostapd: /usr/sbin/hostapd not found`) or until [`/etc/hostapd/hostapd.conf`]{.idx} exists: at boot it then writes
 `[SKIP] hostapd: no /etc/hostapd/hostapd.conf` to `/run/kdos-init.hostapd.log`, and
 `service status hostapd` reports `[DOWN] hostapd`. The hotspot needs no service of its own beyond
 NetworkManager.
@@ -237,4 +239,4 @@ in a virtual machine there is no wireless device to check.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 415.* Previous: [414. Mobile broadband](mobile-broadband.md) · [Contents](../README.md) · Next: [416. Wireless regulatory domain](wireless-regulatory-domain.md)
+*Part XVI. System administration, chapter 417.* Previous: [416. Mobile broadband](mobile-broadband.md) · [Contents](../README.md) · Next: [418. Wireless regulatory domain](wireless-regulatory-domain.md)

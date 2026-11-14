@@ -61,6 +61,8 @@ class FakeSlots : public QObject, protected QDBusContext
     Q_PROPERTY(uint TryAttempts READ tryAttempts)
     Q_PROPERTY(bool TryBootNext READ tryBootNext)
     Q_PROPERTY(QString Channel READ channel)
+    Q_PROPERTY(QString InstallRoute READ installRoute)
+    Q_PROPERTY(QString BuildDeps READ buildDeps)
     Q_PROPERTY(QVariantMap State READ state)
 
 public:
@@ -74,6 +76,8 @@ public:
     uint tryAttempts() const;
     bool tryBootNext() const;
     QString channel() const;
+    QString installRoute() const;
+    QString buildDeps() const;
     QVariantMap state() const;
 
 public Q_SLOTS:
@@ -81,6 +85,7 @@ public Q_SLOTS:
     void Try(const QString &slot);
     void CancelTry();
     void SetChannel(const QString &channel);
+    void SetInstallRoute(const QString &install, const QString &deps);
     void Bless();
 
 Q_SIGNALS:

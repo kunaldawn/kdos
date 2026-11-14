@@ -1118,7 +1118,7 @@ the installed path does not, and `01_udev` starts a `udevd` from the real root e
 
 On the live medium the init mounts `system.sfs` read-only through a loop device and puts an
 overlay on top of it as the new root. `system.sfs` is the whole root filesystem, compressed by
-`mksquashfs` in the image phase (`110_iso.sh`) with zstd at level 15 unless `KDOS_ISO_COMP` names
+`mksquashfs` in the image phase (`110_iso.sh`) with zstd at level 19 unless `KDOS_ISO_COMP` names
 another codec, with the pseudo-filesystem mount points recreated empty. The
 contents of `/var/cache` and `/var/log` are left out, and both are recreated holding only the
 directories installed packages claim under them, empty and with the build tree's mode and owner: a

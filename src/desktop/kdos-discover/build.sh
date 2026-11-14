@@ -25,5 +25,9 @@ DESTDIR=$PKG cmake --install build
 gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra \
 	-I"$LIBS/libkbase" \
 	-o kdos-ports-helper "$PORT_SRC"/helper/kdos-ports-helper.c "$LIBS"/libkbase/*.c $LDFLAGS
+gcc $CFLAGS -O2 -std=gnu11 -D_GNU_SOURCE -Wall -Wextra -DKPH_BUILD \
+	-I"$LIBS/libkbase" \
+	-o kdos-ports-builder "$PORT_SRC"/helper/kdos-ports-helper.c "$LIBS"/libkbase/*.c $LDFLAGS
 install -Dm755 kdos-ports-helper "$PKG/usr/libexec/kdos-discover/kdos-ports-helper"
+install -Dm755 kdos-ports-builder "$PKG/usr/libexec/kdos-discover/kdos-ports-builder"
 install -Dm644 "$PORT_SRC"/helper/io.kdos.ports.policy "$PKG/usr/share/polkit-1/actions/io.kdos.ports.policy"

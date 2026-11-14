@@ -15,6 +15,7 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QLocale>
 
 using namespace Qt::StringLiterals;
 
@@ -43,6 +44,49 @@ static Step run(const QString &program, const QStringList &arguments, Meter mete
     s.units = units;
     s.downloads = downloads;
     return s;
+}
+
+static Step preview(const QStringList &arguments)
+{
+    Step s;
+    s.kind = Step::Kind::Preview;
+    s.program = u"kdos"_s;
+    s.arguments = arguments;
+    return s;
+}
+
+// The names after this many are counted, not listed.
+static constexpr int PreviewNames = 12;
+
+QString installPreviewText(const InstallPreview &p)
+{
+    const QString size = QLocale().formattedDataSize(qint64(p.bytes));
+    QString said;
+    if (p.builds == 0 && p.downloads == 0) {
+        said = i18n("Everything it needs is installed already.");
+    } else if (p.builds == 0) {
+        said = i18np("Downloads %1 package (%2).", "Downloads %1 packages (%2).", p.downloads, size);
+    } else {
+        const QString builds = i18np("Builds %1 package here", "Builds %1 packages here", p.builds);
+        said = p.downloads == 0 ? i18nc("@info %1 says how many packages are built", "%1; building can take hours.", builds)
+                                : i18ncp("@info %2 says how many packages are built, %3 is a size",
+                                         "%2, downloads %1 (%3); building can take hours.",
+                                         "%2, downloads %1 (%3); building can take hours.",
+                                         p.downloads,
+                                         builds,
+                                         size);
+    }
+    said = said.toHtmlEscaped();
+    if (!p.built.isEmpty()) {
+        QStringList names;
+        for (const QString &n : p.built.mid(0, PreviewNames))
+            names << n.toHtmlEscaped();
+        QString list = names.join(u", "_s);
+        if (p.built.size() > PreviewNames)
+            list = i18nc("@info %1 is a list of names", "%1 and %2 more", list, p.built.size() - PreviewNames);
+        said += u"<br/>"_s + i18nc("@info %1 is a list of package names", "Built here: %1", list);
+    }
+    return said;
 }
 
 static Step packd(const QString &verb, const QString &id)
@@ -174,7 +218,18 @@ Plan installPlan(const Entry &e, const PlanContext &ctx)
     case Lane::Port:
         if (!isSafeId(e.id))
             return refuse(i18n("“%1” is not a port name.", e.id));
+        plan.steps << preview({u"update"_s, u"install"_s, u"--dry-run"_s, u"--prebuilt"_s, e.id});
         plan.steps << run(u"pkexec"_s, {ctx.portsHelper, u"install"_s, e.id}, Meter::None, 1, true);
+        return plan;
+
+    case Lane::PortSource:
+        // The builder and its dry run take the dependency route from
+        // `build-deps =` in /etc/kdos/update.conf; the sources are fetched,
+        // so it downloads.
+        if (!isSafeId(e.id))
+            return refuse(i18n("“%1” is not a port name.", e.id));
+        plan.steps << preview({u"update"_s, u"install"_s, u"--dry-run"_s, u"--source"_s, e.id});
+        plan.steps << run(u"pkexec"_s, {ctx.portsBuilder, u"install"_s, e.id}, Meter::None, 1, true);
         return plan;
 
     case Lane::Archive:
@@ -270,6 +325,7 @@ Plan removePlan(const Entry &e, const PlanContext &ctx)
         return plan;
 
     case Lane::Port:
+    case Lane::PortSource:
         return refuse(i18n("Host software arrives and leaves with the system version; it is not removed one program at a time."));
 
     case Lane::Archive:

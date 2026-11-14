@@ -52,7 +52,7 @@ own tools.
                                       ├─ 44_apps        chroot     graphical applications, KDE Gear
                                       ├─ 50_desktop     chroot     KDE Plasma, SDDM, KDOS integration, daemons
                                       ├─ 60_kernel      chroot     the kernel
-                                      └─ 70_image       chroot     initramfs, squashfs, ISO
+                                      └─ 70_image       chroot     binhost, the base stage, initramfs, ISO
                                                                    → build/iso-build/kdos.iso
 ```
 
@@ -675,13 +675,17 @@ The rest of `build.sh` holds four constraints:
 
 ## Packaging: `70_image`
 
-At this point `build/fs` holds the complete system. `70_image` turns it into a bootable medium.
-Its sixteen scripts run inside the chroot in the order their numbers give:
+At this point `build/fs` holds every package the build made. `70_image` turns it into a bootable
+medium that carries the [base](../03-architecture/packaging.md#the-base-image), the closure of
+`ports/base`, and leaves every other package to the binhost. Its nineteen scripts run inside the
+chroot in the order their numbers give; from `017_stage.sh` on, the chroot is the image stage, an
+overlay over `build/fs` (below):
 
 | Step | Does |
 |---|---|
 | `010_binhost.sh` | With `KDOS_MAKE_BINHOST=1`, copies the packages this build made into a signed binhost under `build/binhost/`, every name flat, with its AppStream catalogue and its signed release index `kdos-update.idx`; otherwise does nothing |
 | `015_pkgstore.sh` | With the package store on, evicts `build/pkgstore` down to `KDOS_PKG_STORE_MAX`, least recently used first; otherwise does nothing |
+| `017_stage.sh` | Trims the image stage to the base: `kpkg remove`s every installed package outside the closure of `ports/base` (`script/lib/imageset.py`), refusing to run unless `/` is the stage's overlay, then writes `build/image-stage.ok`; under `KDOS_IMAGE=full` does nothing |
 | `020_cleanup.sh` | Removes build-only files: the build user's caches, the kpkg work and package caches, podman's stores, and Python bytecode no package owns, then fails if a packaged Python module has no bytecode (each package carries its own, compiled by `kpkg` as hash-checked bytecode); removes the translations and HTML manuals no package owns, which the packages themselves never carry; resets `/root` to what `fs/root` holds, mode 0700 |
 | `030_launchers.sh` | Reconciles the generated application launchers in `/etc/skel` with the packs the image carries; with none, it removes every one |
 | `040_orphans.sh` | Removes every installed package that has no recipe in the tree, or whose port `ports/unbuilt` lists |
@@ -692,20 +696,33 @@ Its sixteen scripts run inside the chroot in the order their numbers give:
 | `080_whatis.sh` | Builds the manual-page index `apropos` and `whatis` search |
 | `085_fontcache.sh` | Writes the fontconfig cache into `/usr/lib/fontconfig/cache` and checks that fontconfig accepts it |
 | `086_swcatalog.sh` | Writes `/usr/share/swcatalog/xml/kdos-ports.xml`, the AppStream catalogue of the installed ports that Discover lists, with `kdos-discover-catalog`, and stops the image when it lists no application; then `kdos-debian-exclude.xml`, which takes the Debian applications `debian-exclude` names out of the AppStream pool |
-| `087_gates.sh` | Checks the finished tree: reports the files no package owns (`testing/unowned.py`) and stops the build on one under `/usr/share/locale`, `man`, `doc` or `info`, and on an undeclared library owner, an interpreter that does not resolve or OpenSSL 3 and 4 in one process (`testing/linkcheck.py`), or on a dangling link, a dead `Exec=`, a missing icon or udev program (`testing/entrycheck.py`) |
+| `087_gates.sh` | Checks the finished tree: reports the files no package owns (`testing/unowned.py`) and stops the build on one under `/usr/share/locale`, `man`, `doc` or `info`, and on an undeclared library owner, an interpreter that does not resolve or OpenSSL 3 and 4 in one process (`testing/linkcheck.py`), or on a dangling link, a dead `Exec=`, a missing icon or udev program (`testing/entrycheck.py`), or, on the base image, on a kept package whose recorded [run-time needs](../03-architecture/packaging.md#run-time-needs), a QML or Python import among them, only a dropped package provides (`script/lib/imageset.py --verify`) |
+| `088_ledger.sh` | Writes the image ledger, `build/image-ledger`: every package the finished tree holds, largest first, with its bytes and the dependency path from a `ports/base` seed that put it there (`script/lib/imageset.py --ledger`), and prints its top twenty and total |
 | `090_initramfs.sh` | Builds the initramfs, `build/initramfs.cpio.gz` |
 | `100_packs.sh` | Creates the pack store's directories; with `KDOS_PACK_KDOS=1`, also packs the system as the base pack `kdos` |
 | `105_ports.sh` | Stages the recipe-only ports tree for `/ports` in `build/image-ports` with its `TREE` stamp, puts the release key's public half in `/etc/kdos/keys/tree`, and writes the source offer `/usr/share/kdos/SOURCES` |
-| `110_iso.sh` | Assembles the ISO tree, appending the staged ports tree to `system.sfs`, and writes `build/iso-build/kdos.iso` |
+| `110_iso.sh` | Assembles the ISO tree, appending the staged ports tree to `system.sfs`, writes `build/iso-build/kdos.iso`, and fails a base ISO larger than 1,900 MiB (`KDOS_ISO_MAX`), printing the ledger's top twenty, unless `KDOS_ISO_GATE=0` |
 
-The order carries dependencies: the binhost is written before the cleanup empties the package
-cache, the launchers and theme are written into `/etc/skel` before `070_user.sh` copies it into
+The order carries dependencies: the binhost and the package store run on `build/fs` before the
+stage exists, so the binhost holds every package; the binhost is written before the cleanup empties
+the package cache, the launchers and theme are written into `/etc/skel` before `070_user.sh` copies it into
 homes, and the orphan sweep runs before the indexes are built so a removed package's rules,
-manual pages, fonts and applications are not indexed. `087_gates.sh` runs after the sweep and every index, so it
-checks what the image carries; the files later steps write (the initramfs and its module list, the
+manual pages, fonts and applications are not indexed. `087_gates.sh` runs after the trim, the sweep and every index, so it
+checks what the image carries, and its linkcheck and entrycheck are the proof that the base is
+whole: a `DT_NEEDED` or a `#!` that resolves to a package the trim removed fails the image; the files later steps write (the initramfs and its module list, the
 source offer) are generated ones the unowned report subtracts. It runs every check before it
 decides, so one failed build prints every finding; re-running `70_image` alone is enough once the
 recipes are fixed.
+
+**The image stage.** Under `KDOS_IMAGE=base`, the default, `script/chroot/exec.sh` roots every
+`70_image` step from `017_stage.sh` on in an overlay: `build/fs` the lower layer, read and never
+written, `build/image-upper` the upper layer that receives every change, and `build/image-root`
+the merged view the step is chrooted in and `110_iso.sh` squashes. `017_stage.sh` starts from an
+empty upper layer, and a later step run when `build/image-stage.ok` is absent is refused, since it
+would squash a tree nobody trimmed. `build/fs` keeps every package, so the next build continues
+from it and the binhost is made from it. `make build KDOS_IMAGE=full` runs every step on
+`build/fs` itself and the ISO carries every package; the mechanics are in
+[The image stage](build-system.md#the-image-stage).
 
 **The font cache.** `085_fontcache.sh` sets the modification time of every directory under
 `/usr/share/fonts` to `SOURCE_DATE_EPOCH`, runs `fc-cache -sf`, and fails unless a cache file was
@@ -718,7 +735,8 @@ stamps every inode with the epoch, so the clamp is also what the medium shows.
 **The recipe tree and the source offer.** Every image carries the ports tree at `/ports`, recipes
 only, so a shipped machine can update by building from source. `105_ports.sh` stages it: every
 file in each port directory except the sources its recipe hashes (`sha256 =`) and any archive,
-`ports/shelves`, `ports/sources.idx`, `src/` at `/ports/src` for the programs of our own, whose
+`ports/shelves`, `ports/sources.idx`, `ports/groups` (the native groups), `src/` at `/ports/src`
+for the programs of our own, whose
 sources no archive holds, `docs/kdos`, `docs/screenshots` and `docs/kfs` under `/ports/docs`, and
 `script/book` at `/ports/script/book`. Those last are the sources of `kdos-doc` and `kdos-kfs`,
 which reach them through links in their port directories; a link left dangling would drop out of
@@ -752,14 +770,14 @@ for it. What the initramfs does at boot is in
 
 1. The kernel and initramfs are copied to `boot/`, outside the EFI system partition, because the
    bootloader reads the ISO filesystem directly.
-2. The whole root filesystem is compressed into `system.sfs` with `mksquashfs`, in zstd at level
-   15 by default (`KDOS_ISO_COMP` picks another; see
-   [The packaging steps](build-system.md#the-packaging-steps)), in 1 MiB blocks, leaving
+2. The image root, the stage or under `KDOS_IMAGE=full` `build/fs`, is compressed into `system.sfs` with `mksquashfs`, in zstd at level
+   19 by default (`KDOS_ISO_COMP` picks another; see
+   [The codec](build-system.md#the-codec)), in 1 MiB blocks (`KDOS_ISO_BLOCK`), leaving
    out the pseudo-filesystems, caches, logs, the build's `HOME` and the repository bind mounts,
    and recreating their mount points as empty directories. The recipe tree `105_ports.sh` staged
    is then appended as `/ports`, and the script checks that it landed there. The block size cuts
-   both ways: 1 MiB blocks make the image 3–8 % smaller than the 128 KiB default (about 0.75–1.7
-   GB), and make a cold random read slower, because reading one small file decompresses up to a
+   both ways: 1 MiB blocks make the base 7 % smaller than 128 KiB blocks (about 225 MB with
+   zstd:19), and make a cold random read slower, because reading one small file decompresses up to a
    whole MiB, which a USB stick delivers more slowly than a disk.
 3. The Limine bootloader is copied in for both BIOS and UEFI, with a `limine.conf` that offers
    three live entries (normal, a clean session that ignores the persistence store, and verbose),
@@ -770,17 +788,23 @@ for it. What the initramfs does at boot is in
 5. The script checks the result: an EFI system partition is present, the MBR carries its boot
    signature, and its boot code area is not empty. Any failure fails the build.
 
-The medium carries every natively built application, KDE Gear among them, and no boxed one: podman builds each catalogue application on the machine that
+The medium carries the base: Plasma, the applications every desk pins (Konsole, Dolphin, Kate,
+Okular, Gwenview, Ark, Spectacle, KCalc, Elisa, KDE Connect, Partition Manager and Yakuake, named
+one by one in `ports/base`) and Firefox ESR, no compiler, and none of the other native
+applications, which a machine installs from its
+release's binhost one by one or as groups (see
+[Installing more software](../03-architecture/packaging.md#installing-more-software)). It carries
+no boxed application either: podman builds each catalogue application on the machine that
 wants it, and a set exported elsewhere can be imported as packs; see
 [Two lanes, one box](../03-architecture/packs-and-boxes.md#two-lanes-one-box). Two opt-in
 switches change what it carries, `KDOS_ISO_SOURCES=1` (the tree's sources under `/sources`) and
 `KDOS_PACK_KDOS=1` (the base pack); see [The first build](developing.md#the-first-build). How the
 medium boots is in [Boot and init](../03-architecture/boot-and-init.md).
 
-**What the medium needs.** Every package is in `system.sfs`, KDE Plasma and all of KDE Gear
-included, and there is no smaller image. The ISO is over 23 GB and an install over 53 GB; the exact
-sizes of an image with the whole KDE set are not measured. That sets four requirements, stated
-wherever a reader meets them ([Getting started](../02-user-guide/getting-started.md#what-you-need),
+**What the medium needs.** Measured on a full build tree, the base is 1,003 of 2,430 packages
+and 9.5 GB of their 49.8 GB of files; the base ISO itself is not measured yet. An image built with
+`KDOS_IMAGE=full` carries every package and its ISO is 20.4 GB. The full image sets four
+requirements, stated wherever a reader meets them ([Getting started](../02-user-guide/getting-started.md#what-you-need),
 [Installation](../02-user-guide/installation.md), [kinstall](../04-programs/kinstall.md) and the
 release notes `ports/publish --release` writes): a USB stick of 32 GB or more; a Blu-ray disc for
 optical boot, since the image does not fit a DVD; a disk larger than the install, because

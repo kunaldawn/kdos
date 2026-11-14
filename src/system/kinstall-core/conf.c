@@ -442,6 +442,12 @@ static int set_kv(const char *k, const char *v)
 	 * misspelling. */
 	else if (!strcmp(k, "apps"))
 		kb_strlcpy(cfg.apps, v, sizeof(cfg.apps));
+	/* Native group ids, or `none`; an id no group has is ignored, since
+	 * a group is something extra and the system installs without it. */
+	else if (!strcmp(k, "groups")) {
+		kb_strlcpy(cfg.groups, v, sizeof(cfg.groups));
+		cfg.groups_set = 1;
+	}
 	else if (!strcmp(k, "reboot"))
 		cfg.reboot_after = atoi(v);
 	else if (!strcmp(k, "services")) {
@@ -574,6 +580,7 @@ int conf_save(const char *path)
 		 "desk           = %s\n"
 		 "alien_apps     = %d\n"
 		 "apps           = %s\n"
+		 "groups         = %s\n"
 		 "services       = %s\n"
 		 "reboot         = %d\n",
 		 cfg.keymap, cfg.xkb_layout, cfg.xkb_variant, cfg.tz,
@@ -588,7 +595,8 @@ int conf_save(const char *path)
 		 cfg.hostname, cfg.oem, cfg.username, cfg.fullname,
 		 cfg.user_wheel, cfg.root_locked,
 		 cfg.autologin ? "yes" : "no", cfg.autologin_lock,
-		 cfg.theme, cfg.desk, cfg.with_appbox, cfg.apps, svc,
+		 cfg.theme, cfg.desk, cfg.with_appbox, cfg.apps,
+		 cfg.groups[0] ? cfg.groups : "none", svc,
 		 cfg.reboot_after);
 
 	return kb_write_file(path, buf);

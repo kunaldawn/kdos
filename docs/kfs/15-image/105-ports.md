@@ -9,16 +9,19 @@ image's [source offer]{.idx}: where the source of everything on the image can be
 
 ## Staging the tree
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=49-63 pin=6a0ab4689b2b -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=50-64 pin=4ea46f88efe5 -->
 
 In the chroot, `/ports` is a bind mount of the repository's `ports/` directory, which holds every
 fetched tarball beside its recipe and which the first squash of the root leaves out. It cannot be
 filtered where it is, so the tree is staged as a copy in `build/image-ports/ports`, and
 `110_iso.sh` appends that to `system.sfs` as `/ports`. The staging directory is emptied first, and
 `umask 022` keeps the group and other write bits off everything the step creates. `ports/shelves`, the
-list of shelves, and `ports/sources.idx`, the index of the source archive, are required.
+list of shelves, `ports/sources.idx`, the index of the source archive, and `ports/groups`, the
+[groups]{.idx} of applications that `kdos update install <group>` and the installer offer, are
+required. The groups are what a machine reads to install a set of ports by one name; see
+[Installing software](../16-wiki/updating.md#installing-software).
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=65-88 pin=19db40289f52 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=66-89 pin=19db40289f52 -->
 
 For each port under `/ports/core/<shelf>/<name>`, every file is copied except two kinds of source:
 
@@ -32,7 +35,7 @@ Files and directories whose names begin with a dot are skipped. What is left is 
 `build.sh`, patches, `postinstall.sh`, the port's `kfs.md` note and any other file the recipe
 ships. No recipe at all under `/ports/core` stops the phase.
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=90-98 pin=ffe47f64821a -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=91-99 pin=ffe47f64821a -->
 
 `src/` is copied whole to `/ports/src`, because the programs of KDOS's own are built from it and no
 archive holds their sources. Its areas stay side by side, since a desktop program's `build.sh`
@@ -53,7 +56,7 @@ its renderer also reads `ports/core` and `script/phases`.
 Dot-files and `__pycache__` directories are removed from the copies, and every mode is made
 readable by all.
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=100-108 pin=2ae9719ff407 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=101-109 pin=2ae9719ff407 -->
 
 A file over 16 MB under the copied `core/` is a source the filters above missed, and stops the
 phase, naming up to five of them. The staging then logs the number of ports, files and programs of
@@ -61,7 +64,7 @@ our own, and the size of the staged tree.
 
 ## The stamp and the key
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=123-142 pin=f377f0227aab -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=124-143 pin=f377f0227aab -->
 
 `/ports/TREE` names the commit the tree is and that commit's time, in the format
 `ports/publish --release` writes into a published tree, which adds `version <tag>`: the release
@@ -78,14 +81,14 @@ tree rather than trusting an unsigned one.
 
 ## The source offer
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=152-172 pin=959efcc4c4c7 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=153-173 pin=959efcc4c4c7 -->
 
 The step reads every installed package's recipe, under `/ports/core` or `/kdos/src`, and collects
 the hash of every source it names. `ports/sources.idx` says which `sources-<N>` release of the
 archive holds each hash, so the releases the image's sources are in are those the index gives for
 any of the collected hashes. The hashes the index does not hold are counted.
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=174-200 pin=2ea75f8df3d3 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=175-201 pin=2ea75f8df3d3 -->
 
 `SOURCES` names the repository, the commit (with `-dirty` when the tree had unrecorded changes,
 `unrecorded` without a commit), its date, and a `release` line for each archive release that
@@ -104,6 +107,7 @@ the image when `110_iso.sh` appends it to `system.sfs`:
 /ports/core/<shelf>/<name>/   each port's recipe files
 /ports/shelves
 /ports/sources.idx
+/ports/groups
 /ports/TREE                   with a commit only
 /ports/src/                   the programs of KDOS's own
 /ports/docs/kdos/  /ports/docs/screenshots/  /ports/docs/kfs/
@@ -121,4 +125,4 @@ the image when `110_iso.sh` appends it to `system.sfs`:
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 380.* Previous: [379. The pack store and the base pack](100-packs.md) · [Contents](../README.md) · Next: [381. The ISO](110-iso.md)
+*Part XV. The image, chapter 382.* Previous: [381. The pack store and the base pack](100-packs.md) · [Contents](../README.md) · Next: [383. The ISO](110-iso.md)

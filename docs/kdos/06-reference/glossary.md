@@ -225,6 +225,13 @@ init](../03-architecture/boot-and-init.md#one-kernel-per-slot).
 The strip of an output that a *layer surface* reserves, so that windows are laid out clear of it.
 A Plasma panel that is always shown has one. See [KWin](../04-programs/kwin.md).
 
+### facet
+
+A class of a package's files decided by the path: run time, development (headers, static
+libraries, CMake and pkg-config files, man sections 0, 2 and 3) or documentation. The image
+installs the run-time facet only, `FACETS=run`, and `kdos update install --dev` brings the rest
+back; one package file serves both. See [Packaging](../03-architecture/packaging.md#facets).
+
 ### fixture
 
 Recorded system state that a program can be pointed at instead of the live machine, which is what
@@ -462,7 +469,7 @@ wxWidgets, FLTK, Tk or SDL), which are ports too. Each toolkit that has a Waylan
 with it as the run-time default and its X11 backend compiled in beside it; Tk has only X11, so a Tk
 window is an *Xwayland* client. It runs with no *box*. The opposite is an *alien app*. Most are
 built in the `43_toolkits` and `44_apps` phases; see [The ports catalogue](ports-catalogue.md) and
-[Decisions](../01-philosophy/decisions.md#native-applications-on-the-medium-a-store-that-builds-the-rest).
+[Decisions](../01-philosophy/decisions.md#a-base-on-the-medium-every-port-prebuilt-beside-it).
 
 ### overlay
 

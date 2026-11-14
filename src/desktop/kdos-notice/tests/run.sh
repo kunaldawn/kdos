@@ -8,8 +8,9 @@
 # ---------------------------------
 #   run.sh DIR DECIDETEST — kdos-notice's decisions on fixture JSON, no bus
 #
-# The fixtures are shaped as `kdos restarts --json`, `kdos cve --json` and
-# `kdos-bootctl status --json` print them. Each step is one look at the
+# The fixtures are shaped as `kdos restarts --json`, `kdos cve --json`,
+# `kdos-bootctl status --json` and `kdos firmware sync --dry-run --json`
+# print them. Each step is one look at the
 # facts, and the state file carries what was posted from one step to the
 # next, so "exactly one notification per change of state" is checked as a
 # sequence: the same facts twice post once, changed facts replace, facts
@@ -141,6 +142,31 @@ step action pending details
 [ "$(tr '\n' ' ' < "$D/out")" = "[plasma-discover] [--category] [Selected during install] " ] \
 	|| fail "pending details"
 ok "pending: said once per selection, withdrawn when Discover has installed it"
+
+# ── firmware the hardware asks for ────────────────────────────────────
+step firmware "$F/firmware-nvidia.json"
+has "firmware ok=1 ports=1" "one port parsed"
+has "post firmware replaces=0 persistent=1" "the first look posts, persistently"
+has "summary This computer's hardware needs firmware-nvidia" "the port named"
+has "(module nouveau, pci 0000:01:00.0)" "the reason is in the body"
+has "sudo kdos firmware sync" "the command to run"
+has "action details Install" "Install"
+step firmware "$F/firmware-nvidia.json"
+has "none firmware" "the same port at the next look"
+step firmware "$F/firmware-two.json"
+has "post firmware replaces=" "a second port posts again"
+hasnt "post firmware replaces=0" "a second port replaces the first notification"
+has "summary This computer's hardware needs firmware-nvidia and firmware-qualcomm" "both named"
+step firmware "$D/missing"
+has "none firmware" "a command that did not answer changes nothing"
+step firmware "$F/firmware-none.json"
+has "close firmware" "nothing missing withdraws it"
+step firmware "$F/firmware-none.json"
+has "none firmware" "and withdraws it once"
+step action firmware details
+[ "$(tr '\n' ' ' < "$D/out")" = "[konsole] [--hold] [-e] [sudo] [kdos] [firmware] [sync] " ] \
+	|| fail "firmware details"
+ok "firmware: said once per set of ports, withdrawn when they are installed"
 
 # ── actions ────────────────────────────────────────────────────────────
 step action cve details

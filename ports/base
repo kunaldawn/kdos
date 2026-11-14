@@ -1,0 +1,116 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   ports/base — what the installation medium carries
+# ---------------------------------
+#
+#   <port>...        ports, any number to a line
+#   phase <dir>      every port script/phases/<dir>'s list names
+#   src <area>       every recipe under src/<area>
+#
+# The image holds these and their dependency closure over `depends =`, the
+# closure not followed into a port ports/buildonly lists unless this file
+# names that port itself. Every other port is built, kept in the release's
+# binhost and installed from there (`kdos update install`). The closure is
+# script/lib/imageset.py's; 70_image/017_stage.sh removes every installed
+# package outside it from the staged root the ISO is made of, and
+# 087_gates.sh's linkcheck and entrycheck then fail the image when something
+# left in it needs a package that went.
+#
+# A port named here that does not exist fails preflight. A line starting
+# with '#' and a blank line are skipped.
+
+# The run time the system and its scripts need. Every C++ program loads
+# libstdc++ and libgcc_s, which gcc's package carries, so gcc stays; the
+# assembler, the linker and the build tools around them are ports/buildonly's
+# and the build-tools group's (ports/groups).
+musl zlib gcc python3 perl ncurses readline
+
+# Everything of KDOS's own, but the KDOS from Scratch book, which is
+# installed by name.
+kdos-appbox kdos-boxinit kdos-boxsock kdos-doc kdos-installer kdos-pack
+kdos-tools
+src art
+src desktop
+src daemons
+
+# The Plasma session: kde-plasma's list without the KDE wallpaper and
+# Oxygen collections, the Chinese, Japanese and Korean input engines and
+# fcitx5-gtk (GTK on Wayland types through KWin's text-input), which are
+# groups (ports/groups).
+breeze-gtk breeze-icons ocean-sound-theme oxygen-sounds sddm kwallet-pam
+ksystemstats plasma-systemmonitor kinfocenter plasma-thunderbolt fcitx5
+fcitx5-qt fcitx5-configtool plasma-keyboard plasma-disks plasma-vault
+ksshaskpass kup xdg-desktop-portal-kde kwin kglobalacceld
+kscreenlocker aurorae knighttime kscreen milou plasma-workspace
+plasma-desktop systemsettings kde-cli-tools kmenuedit kactivitymanagerd
+kwrited polkit-kde-agent-1 powerdevil plasma-nm plasma-pa bluedevil
+kde-gtk-config kdeplasma-addons plasma-browser-integration discover
+sddm-kcm plasma-setup plasma-welcome krohnkite print-manager krdp
+iio-sensor-proxy fwupd-snapshot
+
+# The applications every desk pins, the KIO workers, Dolphin's plugins and
+# the thumbnailers they use, and the browser the desks' launchers and
+# `preferred://browser` open. The rest of Gear is in the kde-* groups.
+konsole dolphin kate okular gwenview ark spectacle kcalc elisa kdeconnect
+partitionmanager yakuake kdialog kio-admin kio-zeroconf dolphin-plugins
+kde-inotify-survey kdesdk-thumbnailers ffmpegthumbs kdegraphics-thumbnailers
+kdegraphics-mobipocket markdownpart svgpart
+firefox-esr
+
+# Boot, firmware and the kernel. The firmware is the common hardware's: Intel
+# and AMD graphics, Wi-Fi and Bluetooth, MediaTek's (most AMD laptops' Wi-Fi),
+# Realtek's and SOF audio. The other vendor ports are one `kdos firmware sync`
+# away, and firmware-map is how that command knows which.
+linux firmware-intel firmware-amd firmware-realtek firmware-mediatek firmware-map
+sof-firmware intel-ucode wireless-regdb limine
+efibootmgr efivar fwupd memtest86plus
+
+# The system's own services and commands.
+bash bc ca-certificates coreutils cronie dbus diffutils eudev execline file
+findutils gawk grep gzip iana-etc kbd kmod less lsof musl-utils patch
+procps-ng psmisc s6 sed snooze sysklogd sysvinit tar tzdata util-linux
+util-linux-login which mandoc man-pages nano htop fastfetch git gnupg
+pinentry
+
+# Accounts and the login.
+accountsservice elogind pam polkit sddm shadow sudo turnstile utmps fprintd
+
+# Networking.
+chrony dhcpcd dnsmasq ethtool iproute2 iptables iw nftables networkmanager
+networkmanager-openvpn openvpn openconnect openresolv ppp wireguard-tools
+wpa_supplicant modemmanager mobile-broadband-provider-info iputils openssh
+curl rsync
+
+# Disks and filesystems: what the installer and Partition Manager write with.
+cryptsetup gptfdisk lvm2 thin-provisioning-tools mdadm parted smartmontools udisks2 nvme-cli hdparm
+btrfs-progs dosfstools e2fsprogs exfatprogs f2fs-tools fuse ntfs-3g
+squashfs-tools xfsprogs mtools cifs-utils nfs-utils sshfs
+
+# Boxes: the container stack every boxed application runs on.
+podman buildah skopeo crun conmon catatonit netavark aardvark-dns passt
+slirp4netns fuse-overlayfs containers-common bubblewrap xdg-dbus-proxy
+
+# Hardware, sound and the desktop's plumbing.
+bluez bolt hwdata iio-sensor-proxy lm-sensors pciutils usbutils upower
+switcheroo-control dmidecode pipewire wireplumber xdg-utils xdg-user-dirs
+shared-mime-info desktop-file-utils hicolor-icon-theme
+
+# Printing and scanning.
+cups cups-filters cups-browsed ipp-usb ghostscript sane-backends sane-airscan
+
+# Archives Ark and the installer open.
+7zip bzip2 cpio unzip zip xz zstd lz4
+
+# What 70_image runs on the staged root it makes the ISO from: the
+# squashfs, the packs' EROFS images and the ISO volume, and Tk, whose
+# `wish` runs libisoburn's xorriso-tcltk.
+squashfs-tools erofs-utils libisoburn tk
+
+# Fonts the look, Konsole and Phosphor mode name.
+fontconfig noto-fonts noto-emoji ttf-dejavu terminus-font terminus-ttf
+nerd-fonts-symbols ttf-jetbrains-mono font-liberation

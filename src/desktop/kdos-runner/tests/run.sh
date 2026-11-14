@@ -140,7 +140,8 @@ ok "every vector arrives element by element; nothing reaches a shell"
 
 # ── the library ────────────────────────────────────────────────────────
 lib "kdos-box"
-has "kdos-box(1)" "a manual page"; has "  [man:/kdos-box(1)]" "a man: URL"
+has "kdos-box(1)" "a manual page"; has "  [man]" "man(1) for a manual page"
+has "  [kdos-box]" "the page's name as man's argument"
 has "  sub KDOS from Scratch" "a KFS heading"; hasnt "ls(1)" "only kdos manual pages"
 lib "photosynthesis"
 has "3.1 Photosynthesis of slots & trees" "an h3 with its entities"

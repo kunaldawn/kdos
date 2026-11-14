@@ -139,7 +139,7 @@ without opening a `/dev/video*` node is not seen.
 ### Getting Started
 
 `plasmoid-kdos-checklist` is the first-run checklist, a tray entry and the QML module
-`org.kdos.checklist` that the welcome tour's last page also shows. Its items are: set up a backup,
+`org.kdos.checklist` that the welcome tour's Getting Started page also shows. Its items are: set up a backup,
 pair your phone (optional), add a language, create your first box, check firmware, and confirm
 disk encryption. Which of them apply to this machine, and whether each is done or dismissed, comes
 from `kdos checklist --json`, which leaves out an item whose part of the system is not installed or
@@ -155,7 +155,7 @@ title; the applet draws its own heading only on a panel or the desktop.
 Each item's words and the program its button opens are in the module, keyed by the item's id, and
 never in the probe's output, so nothing the probe prints is ever run. The buttons open System
 Settings' Backups, Region & Language and [Boxes](kdos-settings.md#boxes) pages, KDE Connect,
-Discover's updates and the security chapter of this book in the Help Center.
+Discover's updates and the security chapter of this book in the browser.
 
 ### Updates
 
@@ -199,13 +199,14 @@ A verb that prints its answer (`update check`, `doctor`, `why`) opens in Konsole
 profile. A verb run in the background is watched
 by a detached process, which posts the verb's error output as a notification when it fails, so a
 refused `kdos theme` is never silent. The programs a row may start are `kdos`, `kdos-box`,
-`kstart`, `systemsettings`, `plasma-discover`, `konsole`, `khelpcenter`, `zeal` and `xdg-open`;
+`kstart`, `systemsettings`, `plasma-discover`, `konsole`, `man`, `zeal` and `xdg-open`;
 none is a dependency, and a missing one fails only its row.
 
 ### The library
 
 The runner `kdos-library` (object `/library`) searches the offline library: headings of this book
-and *KDOS from Scratch* under `/usr/share/doc`, the `kdos*` manual pages, the entries of every Zeal
+and *KDOS from Scratch* under `/usr/share/doc`, each opened in the browser at its heading, the
+`kdos*` manual pages, each opened by `man` in Konsole, the entries of every Zeal
 docset, a typed coordinate as a `geo:` link, title suggestions from every ZIM file `kiwix-serve`
 serves on `127.0.0.1:8080`, and resources from Kolibri on `127.0.0.1:8081`. Its rows rank below
 everything else, and `kdos-library` is not among krunnerrc's favourites. The palette's
@@ -272,19 +273,22 @@ own C, a client of `org.freedesktop.Notifications` linked to basu, started by
 | "Your last update didn't start" | `kdos-bootctl status --json` | no |
 | "firefox-esr in the box www was closed to free memory" | `status` on `/run/kdos-oomd.sock` | no |
 | "3 applications chosen during install are not installed yet" | `/var/lib/kdos/apps-pending`, which the installer writes | yes |
+| "This computer's hardware needs firmware-nvidia", with the device in the body and Install | `kdos firmware sync --dry-run --json` | yes |
 
 A notice is posted once per change of what it is about. Each kind reduces its facts to a key (the
 set of processes running replaced code, the set of findings, the boot and its slot, the failed
-slot, the pending applications) and posts only when the key differs from the last one posted, which
+slot, the pending applications, the firmware ports named) and posts only when the key differs from the last one posted, which
 `$XDG_STATE_HOME/kdos/notice` keeps across logins: the same vulnerability list is not announced at
 every login, and a changed one replaces the old notification. A notice whose state ends is
 withdrawn. A command that does not answer changes nothing. The file is read when kdos-notice
 starts, so deleting it announces everything once more at the next login.
 
 Nothing polls a command. An inotify watch on `/var/lib/kpkg/db`, which sees a package entry
-written, created, moved in or deleted, and on `/var/lib/kdos/update.json` asks `kdos restarts` and `kdos cve` ten seconds after the last change, and one on
+written, created, moved in or deleted, and on `/var/lib/kdos/update.json` asks `kdos restarts`, `kdos cve` and `kdos firmware sync
+--dry-run` ten seconds after the last change, so the firmware notice is withdrawn once its ports
+are installed, and one on
 `/run/kdos/bootstate.json` asks `kdos-bootctl`. Only kdos-oomd's kill count is read on a timer,
-one line every ten seconds. Everything, the installer's pending list included, is looked at
+one line every ten seconds. Everything, the installer's pending list and the firmware included, is looked at
 twenty seconds after login, every six hours,
 and two seconds after a new owner takes `org.freedesktop.Notifications`, when the notices still
 waiting for a person are posted again, because a restarted plasmashell lost them.
@@ -292,7 +296,11 @@ waiting for a person are posted again, because a restarted plasmashell lost them
 The actions are fixed argument vectors. Details on the vulnerability notice opens Konsole on
 `kdos cve`, and on the trial and rollback notices opens System Settings at System Versions. Show
 Programs on an updated-programs notice opens Konsole on `kdos restarts`. Open Discover on the
-pending-applications notice opens Discover at "Selected during install". Log Out asks Plasma's
+pending-applications notice opens Discover at "Selected during install". Install on the firmware
+notice opens Konsole on `sudo kdos firmware sync`. The dry run behind the notice runs as the
+person logged in, who cannot read the kernel log, so it names what the devices' drivers declare;
+a failed load only the log records is found by `sudo kdos firmware sync --dry-run` (see
+[kdos firmware](kdos-command.md#kdos-firmware)). Log Out asks Plasma's
 logout prompt over D-Bus. A signal
 that claims to come from the notification server is acted on only when its sender owns
 `org.freedesktop.Notifications` at that moment.
@@ -389,8 +397,9 @@ which puts the KDOS mark and the "Plasma by KDE" credit on its first page.
 | Offline Library | What the library holds, and searching it |
 | Keys | The KDOS chords and the key card: for each action the chord KDOS teaches while it is bound, otherwise the first bound chord with a modifier |
 | Privacy and Network | The privacy lamps, the firewall and what reaches the network |
-| Help | This book and *KDOS from Scratch* in the Help Center |
+| Help | This book and *KDOS from Scratch* in the browser |
 | Getting Started | The [checklist](#getting-started) |
+| Make It Yours | The groups of programs of `/ports/groups`, from `kdos update groups --json`: each one installed or not, and what installing it downloads; ticked ones are installed prebuilt, one at a time, with a line saying which and how far; then Discover for everything else. The tour's last page; see [Make It Yours](#make-it-yours) |
 | What's New | Never part of the tour; opened after an update as `plasma-welcome --pages 90-WhatsNew.qml` |
 
 The Accessibility page is numbered `00-`, and a patch to plasma-welcome shows pages numbered `00-`
@@ -400,7 +409,7 @@ persist`, `kwriteconfig6 --notify` for KDE keys Plasma watches, `dbus-send` for 
 and KWin's effects) through one shared runner, `kdos/Run.qml`, which refuses an empty argument or
 one holding a space, because Welcome Center splits a command on spaces. A command that changes a
 setting greys the page's controls until it exits; a program that stays open, such as a settings
-page, Discover or the Help Center, is started without that, so the page stays usable while it is
+page, Discover or the browser, is started without that, so the page stays usable while it is
 open. A command that fails shows Welcome Center's failure sentence, cut to the sentence and the
 command's last line of output. The Accessibility, Look and Keys pages read their settings again
 whenever they are shown and whenever the window comes back to the front. Phosphor mode is offered
@@ -410,6 +419,30 @@ sentence for the reason under software rendering.
 On the live medium `/usr/share/kdos/xdg-live/plasma-welcomerc` sets `LiveEnvironment=true` and
 `LiveInstaller=kdos-installer`, so the tour opens at every login on its live page, whose big icon
 starts the installer ([kinstall](kinstall.md)).
+
+### Make It Yours
+
+`95-MakeItYours.qml` reads `kdos update groups --json` when it is made and after every install,
+and shows one row a group: its title and, under it, "Installed", or how many packages installing it
+adds and their download size. A group is offered only when it is not installed and has a size: the
+command gives a null size when the release's signed binhost index is not in `/var/lib/kdos/binhost`
+or when some package of the group is not prebuilt, and a prebuilt install refuses both. When no
+group has a size the page says the package list is not on the computer yet, and asks for a
+connection and **Check for Updates** in Discover, which fetches it, with **Open Discover** and
+**Look Again** buttons; it has no way to fetch the index itself, which needs root. With the index
+in place, a group with no size has a package that is not prebuilt, and is left to Discover, which
+can build it here.
+
+The install button names the number of ticked groups and their total size. Each group is installed
+by `pkexec /usr/libexec/kdos-discover/kdos-ports-helper install <id>`, Discover's prebuilt helper
+(`kdos update install --prebuilt <id>`, which installs each member of a group as the port it is;
+see [Install routes and groups](kdos-command.md#install-routes-and-groups)), under the polkit action
+`io.kdos.ports.install`, whose grant is kept, so one password covers the queue. The groups go one
+at a time, with "Installing *title* (*n* of *m*)…" and a progress bar; at the end the page lists
+what went in and, for each group that did not, the helper's last line. The rules (which rows are
+offered, the size, the queue) are `kdos/groups.js`, tested by `tests/tst_groups.qml.in` under
+`qmltestrunner`. On the live medium the page adds that an install runs from memory and is gone at
+the next start.
 
 ## System Monitor
 

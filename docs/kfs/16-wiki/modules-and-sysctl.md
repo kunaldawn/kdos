@@ -64,7 +64,7 @@ their own:
 
 The installer's file is written from the time zone's country:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=1959-1967 pin=5a0dbdc98892 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=2079-2087 pin=5a0dbdc98892 -->
 
 kdos-settingsd writes the same `options cfg80211` line when the zone changes, and removes
 the file for a zone with no country, such as `UTC`. What the country changes is on
@@ -276,4 +276,4 @@ A key the running kernel lacks is reported there. A setting a later script or pr
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 387.* Previous: [386. Logs](logs.md) · [Contents](../README.md) · Next: [388. zram and swap](zram-and-swap.md)
+*Part XVI. System administration, chapter 389.* Previous: [388. Logs](logs.md) · [Contents](../README.md) · Next: [390. zram and swap](zram-and-swap.md)

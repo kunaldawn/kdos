@@ -50,21 +50,33 @@ fi
 
 # 2. Create System SquashFS
 #
-# zstd BY DEFAULT, because the medium is read far more often than it is
-# written: a zstd image decompresses about 2.6x cheaper than an xz one, on
-# every boot and every first launch. Level 15, because 19 and 22 cost more CPU
-# than xz does for about 0.6% more space. KDOS_ISO_COMP=zstd:3 is a developer
-# image — about 10% larger, for the rig — and never a release; xz remains
-# selectable. ANY OTHER VALUE IS FATAL, so a typo cannot quietly ship a medium
-# in a codec nobody chose.
-ISO_COMP="${KDOS_ISO_COMP:-zstd:15}"
+# zstd AT LEVEL 19 BY DEFAULT: the smallest image whose reads stay cheap,
+# because the medium is read far more often than it is written. Measured on
+# the base, 9.5 GB of package files in 1 MiB blocks: zstd:19 is 5% smaller than
+# zstd:15 and decompresses at 1.1 GB/s on one core against zstd:15's 1.3;
+# zstd:22 is the same size, since a 1 MiB block caps zstd's window. xz is 4%
+# smaller than zstd:19 and xz-bcj (xz with the x86 branch filter, tried on
+# every block) 6%, but both decompress at about 160 MB/s, seven times slower,
+# on every boot and every first launch. KDOS_ISO_COMP=zstd:3 is a developer
+# image, larger and quicker to write, for the rig, and never a release. ANY
+# OTHER VALUE IS FATAL, so a typo cannot quietly ship a medium in a codec
+# nobody chose.
+ISO_COMP="${KDOS_ISO_COMP:-zstd:19}"
 case "$ISO_COMP" in
     xz) SFS_COMP=(-comp xz) ;;
+    xz-bcj) SFS_COMP=(-comp xz -Xbcj x86) ;;
     zstd:[1-9]|zstd:1[0-9]|zstd:2[0-2])
         SFS_COMP=(-comp zstd -Xcompression-level "${ISO_COMP#zstd:}") ;;
-    *) echo "FATAL: KDOS_ISO_COMP=$ISO_COMP is not xz or zstd:<1-22>" >&2; exit 1 ;;
+    *) echo "FATAL: KDOS_ISO_COMP=$ISO_COMP is not xz, xz-bcj or zstd:<1-22>" >&2; exit 1 ;;
 esac
-echo "Squashing Root Filesystem ($ISO_COMP)..."
+# The block size, KDOS_ISO_BLOCK, 1M unless set: see the squash below. The
+# same rule as the codec, a value squashfs does not take is fatal.
+ISO_BLOCK="${KDOS_ISO_BLOCK:-1M}"
+case "$ISO_BLOCK" in
+    4K|8K|16K|32K|64K|128K|256K|512K|1M) ;;
+    *) echo "FATAL: KDOS_ISO_BLOCK=$ISO_BLOCK is not a power of two from 4K to 1M" >&2; exit 1 ;;
+esac
+echo "Squashing Root Filesystem ($ISO_COMP, $ISO_BLOCK blocks)..."
 # The pseudo filesystems, build artifacts and caches are excluded, and the
 # mountpoints they need are recreated as empty directories — an excluded /proc
 # is a root that cannot mount one. /var/cache and /var/log come back holding
@@ -84,10 +96,10 @@ echo "Squashing Root Filesystem ($ISO_COMP)..."
 # pseudo-directory, and appends to an existing system.sfs instead of replacing
 # it.
 #
-# 1 MiB BLOCKS, the largest squashfs has. A block is the unit compressed and
-# the unit read: the image is 3-8 % smaller than at the 128 KiB default, and a
-# cold random read of a small file pulls up to a whole MiB off the medium and
-# decompresses it, which a USB stick serves more slowly.
+# 1 MiB BLOCKS BY DEFAULT, the largest squashfs has. A block is the unit
+# compressed and the unit read: the base is 7% smaller than at 128 KiB,
+# and a cold random read of a small file pulls up to a whole MiB off the medium
+# and decompresses it, which a USB stick serves more slowly.
 #
 # /ports is the repository's bind mount and is excluded here; the recipe tree
 # 105_ports.sh staged is appended below in its place. var/tmp/kdos-home is the
@@ -117,7 +129,7 @@ VAR_PSEUDO=/kdos/build/sfs-var.pseudo
         done
 } > $VAR_PSEUDO
 mksquashfs / $ISO_ROOT/system.sfs \
-    -noappend "${SFS_COMP[@]}" -b 1M \
+    -noappend "${SFS_COMP[@]}" -b "$ISO_BLOCK" \
     -p "proc d 555 0 0" \
     -p "sys d 555 0 0" \
     -p "dev d 755 0 0" \
@@ -465,5 +477,41 @@ if [ -z "$(dd if=$ISO_BUILD/kdos.iso bs=440 count=1 2>/dev/null \
     iso_fail=1
 fi
 [ "$iso_fail" = 0 ] || exit 1
+
+# 5. The release size gate
+#
+# A RELEASE ISO IS ONE RELEASE ASSET, and GitHub refuses an asset past 2 GiB;
+# 1,900 MiB is the limit ports/srclib.sh's SRC_PART_SIZE names for every
+# other asset, so nobody downloading a release joins parts. A base image
+# (KDOS_IMAGE=base) larger than KDOS_ISO_MAX bytes fails here, and the failure
+# prints the image ledger's top twenty (088_ledger.sh), so the build that
+# stops names what the image spends its bytes on. KDOS_ISO_GATE=0 is a
+# developer image and passes; a KDOS_IMAGE=full image carries every package
+# and is never a release, so it is never gated. The ISO stays on disk either
+# way, for the rig.
+ISO_MAX="${KDOS_ISO_MAX:-1992294400}"
+ISO_GATE="${KDOS_ISO_GATE:-1}"
+case "$ISO_MAX" in
+    ''|*[!0-9]*|0*) echo "FATAL: KDOS_ISO_MAX=$ISO_MAX is not a positive number of bytes" >&2; exit 1 ;;
+esac
+case "$ISO_GATE" in
+    0|1) ;;
+    *) echo "FATAL: KDOS_ISO_GATE=$ISO_GATE is not 0 or 1" >&2; exit 1 ;;
+esac
+iso_size=$(stat -c %s $ISO_BUILD/kdos.iso)
+echo "ISO size: $iso_size bytes ($((iso_size / 1048576)) MiB); limit $ISO_MAX bytes ($((ISO_MAX / 1048576)) MiB)"
+if [ "${KDOS_IMAGE:-base}" = base ] && [ "$ISO_GATE" = 1 ] && [ "$iso_size" -gt "$ISO_MAX" ]; then
+    echo "FATAL: $ISO_BUILD/kdos.iso is $iso_size bytes, over the release limit of $ISO_MAX" >&2
+    echo "       (KDOS_ISO_MAX); KDOS_ISO_GATE=0 builds it as a developer image" >&2
+    LEDGER=/kdos/build/image-ledger
+    if [ -f $LEDGER ]; then
+        echo "The twenty largest packages on the image ($LEDGER):" >&2
+        head -n 21 $LEDGER >&2
+        tail -n 1 $LEDGER >&2
+    else
+        echo "No ledger at $LEDGER: 088_ledger.sh did not run" >&2
+    fi
+    exit 1
+fi
 
 echo "ISO Construction Complete: $ISO_BUILD/kdos.iso"

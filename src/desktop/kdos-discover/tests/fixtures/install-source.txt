@@ -1,0 +1,5 @@
+zlib dev zlib-1.3.1-1.tar.xz 524288
+gcc prebuilt gcc-15.2.0-1.tar.xz 524288
+libfoo source 2.0-1
+bat source 0.25.0-1
+total 2 1048576 2

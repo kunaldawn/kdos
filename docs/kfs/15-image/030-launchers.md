@@ -14,7 +14,8 @@ carries no application packs, so on a standard build this step removes every gen
 `--packs-dir` reads one extracted pack per subdirectory, named after the pack, and takes each
 pack's `usr/share/applications`. The other form, `--packs`, asks `kdos-packd` for the installed
 packs and mounts them, and there is no daemon and no mount in a build chroot. The last argument,
-`/`, is the root to write into, which in the chroot is `build/fs`.
+`/`, is the root to write into, which in the chroot is the [image stage](017-stage.md), or
+`build/fs` under `KDOS_IMAGE=full`.
 
 The extraction directory is `/var/tmp/kdos-pack-extract` unless `KDOS_PACK_EXTRACT` names another.
 `script/chroot/exec.sh` does not pass that variable into the chroot, so under `make build` it is
@@ -81,4 +82,4 @@ On a standard build the first and last hold no generated launcher.
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 367.* Previous: [366. Cleaning up the root](020-cleanup.md) · [Contents](../README.md) · Next: [368. Sweeping orphaned packages](040-orphans.md)
+*Part XV. The image, chapter 368.* Previous: [367. Cleaning up the root](020-cleanup.md) · [Contents](../README.md) · Next: [369. Sweeping orphaned packages](040-orphans.md)

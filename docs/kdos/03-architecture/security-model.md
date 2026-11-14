@@ -327,7 +327,7 @@ session's agent.
 | `kdos-energyd` | Root and `wheel` |
 | `kdos-packd` | Root and `wheel` |
 | `kdos-settingsd` | polkit, under systemd's own action ids: setting the time zone and switching network time are yes at the machine (System Settings' Date & Time page authorises setting the clock before any change, so it asks for the password even for those); the hostname, the locale, the keyboard and setting the clock are an administrator's password, kept for a few minutes, everywhere |
-| `kdos-sysupdated` | polkit: checking for an update is yes at the machine; installing one, trying the other slot and changing the update channel are an administrator's password, kept for a few minutes; installing a version picked by hand asks every time; the boot confirmation (`io.kdos.slots.bless`) is yes for the active local session and no for anything else |
+| `kdos-sysupdated` | polkit: checking for an update is yes at the machine; installing one, trying the other slot, changing the update channel and changing how software is installed (`io.kdos.slots.install-route`, prebuilt or built here) are an administrator's password, kept for a few minutes; installing a version picked by hand asks every time; the boot confirmation (`io.kdos.slots.bless`) is yes for the active local session and no for anything else |
 
 The socket test lives in one function, `kb_uid_allowed()` in `libkbase`, and no daemon keeps a
 copy of it. It admits uid 0, refuses a uid with no passwd entry, and otherwise checks the account's
@@ -485,7 +485,7 @@ polkit is installed and `polkitd` is started by the init system. elogind (suspen
 reboot), NetworkManager, ModemManager, `udisksd`, `accounts-daemon`, `kdos-settingsd`,
 `kdos-sysupdated`, `kdos-powerd`'s bus face, `bolt`, `fwupd`, `upower`, `fprintd`, `pcscd`,
 `libvirtd` and brltty's braille server ask it, and GeoClue asks it on ModemManager's
-behalf. `pkexec` runs GParted, the installer and Discover's ports helper as root through it, and
+behalf. `pkexec` runs GParted, the installer and Discover's ports helper and ports builder as root through it, and
 the KAuth helpers of Plasma and KDE applications (Kate's save as root, K3b, kio-admin, KDE
 Partition Manager, the process list's kill of another user's process, PowerDevil's charge limits
 and the rest) are checked through KAuth's polkit backend.
@@ -624,7 +624,7 @@ enforces nothing for this box.
 | `processes` | the host's pid namespace | A private pid namespace |
 | `devices` | `/dev` and `/sys` bind-mounted from the host | No host `/dev`; `gpu = yes` binds `/dev/dri` back alone |
 | `gpu` | `yes` | With `devices = private`, `yes` binds `/dev/dri` back and `no` leaves the box without it; with `devices` shared it follows `devices` |
-| `wayland`, `audio`, `x11` | `yes`, `yes`, `auto` | Which sockets the box's private runtime directory holds: the tagged Wayland socket, links to the PipeWire and PulseAudio sockets, the X11 cookie |
+| `wayland`, `audio`, `x11` | `yes`, `yes`, `yes` | Which sockets the box's private runtime directory holds: the tagged Wayland socket, links to the PipeWire and PulseAudio sockets, the X11 cookie |
 | `memory`, `cpus`, `pids` | unlimited | `--memory`, `--cpus`, `--pids-limit` |
 | `grant` | none | Named sets of KWin's refused protocols, and the password store on the bus (see [Sandboxed clients](#sandboxed-clients)) |
 
@@ -632,7 +632,7 @@ enforces nothing for this box.
 `$XDG_RUNTIME_DIR/kdos/box/<box>` as its `/run/user/<uid>`, and what a launch puts there is all of
 the session it can reach: its own tagged Wayland sockets, its bus proxy, links to the audio sockets
 when `audio` allows them, the accessibility bus only while assistive technology is in use, and
-the X11 cookie only for a box handed X11. The session's own
+the X11 cookie unless the box says `x11 = no`. The session's own
 Wayland socket (`wayland-1`) and `bus` are never in it, and nothing in `kdos-appbox` falls back to
 them. A box `distrobox` made from somebody else's image shares the session's runtime directory
 instead, and every socket in it is reachable whatever `wayland`, `audio` and `x11` say.
@@ -930,6 +930,30 @@ no slot image until a key is put there; until then `kdos update` can only build 
 the tree checked against the release key. A machine that should take a release's prebuilt packages
 or images needs that release's `.pub` copied into `/etc/kdos/keys`.
 
+### Software a person installs
+
+`kdos update install` adds a port to the running root by one of two routes (see
+[Packaging](packaging.md#installing-more-software)), and they carry different trust:
+
+| Route | What runs as root | What it rests on |
+|---|---|---|
+| Prebuilt | `kpkg binhost`, unpacking a package | The signed binhost index: every package goes in under `KPKG_REQUIRE_SIG`, with the host keyring copied into the cache, by the hash the index records |
+| Built here | The port's own `build.sh`, and every dependency's that the install builds, for as long as the build takes | The signed ports tree and the `sha256 =` lines of its recipes; the build is root on the running system, and a recipe can do anything root can |
+
+So a source install is as trusted as the tree it builds from, and runs that tree's code as root.
+Discover keeps the two routes under two programs and two polkit actions, each program the one
+`org.freedesktop.policykit.exec.path` of its action, so neither grant reaches the other:
+
+| Program | Action | Answer |
+|---|---|---|
+| `/usr/libexec/kdos-discover/kdos-ports-helper` | `io.kdos.ports.install` | An administrator's password, kept for a few minutes at the machine |
+| `/usr/libexec/kdos-discover/kdos-ports-builder` | `io.kdos.ports.build` | An administrator's password every time, everywhere: a password kept from a prebuilt install must not cover running a recipe as root |
+
+Each runs `kdos update install` with its own route flag (`--prebuilt` or `--source`, the builder
+also taking `--build-deps=prebuilt|source`) and the port, and nothing else. Which
+route the terminal takes by default is `install =` in `/etc/kdos/update.conf`, which System
+Settings writes through `kdos-sysupdated` under `io.kdos.slots.install-route`.
+
 ### TLS trust anchors
 
 The certificate authorities used for TLS are a separate trust root, kept apart from all three
@@ -1144,7 +1168,9 @@ not there is worse off than one who knows it is missing.
   no signature block at all.
 - **Ports built from source are not signed**, and need not be: a port's integrity is the checksum
   in its recipe. That makes the recipe, and so this repository, the trust root for everything on
-  the host.
+  the host. A port installed by building it here runs its recipe's `build.sh` as root on the
+  running system (see [Software a person installs](#software-a-person-installs)), so a recipe in a
+  tree you trust is code you run as root.
 - **Updates are never installed automatically, and there is no security-advisory service.** A
   system timer (`/etc/kdos/timers.d/10-update-check.timer`) runs `kdos update check` once a day
   against what was last fetched, and `kdos-sysupdated` fetches the signed tree and release index,

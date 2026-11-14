@@ -17,3 +17,4 @@ description = The GNU compiler collection
 homepage    = https://gcc.gnu.org/
 license     = GPL-3.0-or-later AND GPL-3.0-or-later WITH GCC-exception-3.1 AND LGPL-2.1-or-later
 depends     = mpc mpfr gmp zlib
+facet_dev   = usr/bin/* usr/lib/gcc/* usr/lib/*.o usr/lib/*.spec usr/lib/libcc1.so* usr/lib/lib*san.so* usr/share/gcc-* usr/share/man/man1/*
