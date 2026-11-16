@@ -435,8 +435,10 @@ and whole system images as well. The keyring loader reads `*.pub` in one directo
 descend into subdirectories, so `/etc/kdos/keys/packs` and `/etc/kdos/keys/tree` are separate
 policies. The image ships one key in `packs/`, which vouches only that the packs on a medium came
 from the same build, and the build's release key in `tree/` when the build was given one, which
-`kdos update` checks a fetched recipe tree against. It ships no key in the host keyring: a machine
-takes prebuilt packages or a slot image only from a publisher whose key an administrator put there.
+`kdos update` checks a fetched recipe tree against. The host keyring gets the same build's
+binhost key and release key, so a machine installed from the image takes its own release's
+prebuilt packages and slot image and no other builder's until an administrator adds a key; a
+build with neither ships the host keyring empty.
 
 See [Packaging](packaging.md) and [Packs and boxes](packs-and-boxes.md).
 

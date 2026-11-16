@@ -490,8 +490,12 @@ unsigned long long ki_wipe_root_bytes(void);
  * LVM, on a disk that holds two slots, the swap and a home of its own. */
 int ki_ab(void);
 /* One root slot on the A/B layout, in MiB: the install, half as much again
- * for an update to grow into, never under KI_SLOT_MIN_MB. */
+ * for an update to grow into, never under KI_SLOT_SHARE percent of the room
+ * past the swap, nor under KI_SLOT_MIN_MB. */
 #define KI_SLOT_MIN_MB 8192
+/* Each slot's least share of the room, in percent: two slots take 60, the
+ * home the rest. */
+#define KI_SLOT_SHARE 30
 /* The least a shared home is made at. Below it two slots do not fit. */
 #define KI_HOME_MIN_MB 4096
 unsigned long long ki_slot_mb(void);

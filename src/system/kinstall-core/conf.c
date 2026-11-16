@@ -151,13 +151,19 @@ unsigned long long ki_wipe_root_bytes(void)
 }
 
 /*
- * A SLOT IS THE SYSTEM AND ROOM FOR ITS NEXT VERSION. An update is written
- * whole into the slot that is not running, so a slot made exactly the size
- * of today's install refuses the first update that grows. Half as much again
- * is the room; KI_SLOT_MIN_MB is the floor, for a payload that was not
- * measured or is small. The box store and every other file under /home live
- * on the shared home, not in a slot, so they are not counted here. Rounded up
- * to a whole GiB, which is how lvcreate's sizes read back.
+ * A SLOT IS THE SYSTEM, WHAT IS INSTALLED ON IT AND ROOM FOR ITS NEXT
+ * VERSION. An update is written whole into the slot that is not running, so
+ * a slot made exactly the size of today's install refuses the first update
+ * that grows: half as much again as the payload is the least. The medium
+ * carries the base alone and every native program a person installs, a
+ * group at a time, goes into the slot with the binhost's cached package
+ * beside it, so a slot is also never less than KI_SLOT_SHARE percent of the
+ * room left after the swap and the volume metadata, the share that leaves
+ * the home the rest. KI_SLOT_MIN_MB is the
+ * floor, for a payload that was not measured or is small. The box store and
+ * every other file under /home live on the shared home, not in a slot, so
+ * they are not counted here. Rounded up to a whole GiB, which is how
+ * lvcreate's sizes read back.
  */
 unsigned long long ki_slot_mb(void)
 {
@@ -165,7 +171,13 @@ unsigned long long ki_slot_mb(void)
 					? ki_sys.payload_kb - ki_sys.appbox_kb
 					: 0;
 	unsigned long long mb = (kb + kb / 2) / 1024;
+	unsigned long long room = wipe_rest_bytes() >> 20;
+	unsigned long long taken = 32 + ki_swap_lv_mb();
+	unsigned long long share =
+		room > taken ? (room - taken) * KI_SLOT_SHARE / 100 : 0;
 
+	if (mb < share)
+		mb = share;
 	if (mb < KI_SLOT_MIN_MB)
 		mb = KI_SLOT_MIN_MB;
 	return (mb + 1023) / 1024 * 1024;

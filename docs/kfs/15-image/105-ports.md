@@ -9,7 +9,7 @@ image's [source offer]{.idx}: where the source of everything on the image can be
 
 ## Staging the tree
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=50-64 pin=4ea46f88efe5 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=54-68 pin=4ea46f88efe5 -->
 
 In the chroot, `/ports` is a bind mount of the repository's `ports/` directory, which holds every
 fetched tarball beside its recipe and which the first squash of the root leaves out. It cannot be
@@ -21,7 +21,7 @@ list of shelves, `ports/sources.idx`, the index of the source archive, and `port
 required. The groups are what a machine reads to install a set of ports by one name; see
 [Installing software](../16-wiki/updating.md#installing-software).
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=66-89 pin=19db40289f52 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=70-96 pin=005ab5a0ade2 -->
 
 For each port under `/ports/core/<shelf>/<name>`, every file is copied except two kinds of source:
 
@@ -31,11 +31,17 @@ For each port under `/ports/core/<shelf>/<name>`, every file is copied except tw
   earlier version of the recipe named and the present one does not, which would otherwise ride
   along.
 
+A recipe file is never left out, even when a `sha256 =` line names it: `kpkgbuild`, `build.sh`,
+`postinstall.sh` and every `.patch` are in the
+[recipe hash](../../kdos/03-architecture/packaging.md#e--the-recipe-hash) whatever names them.
+Without `libgd`'s `heif-stride.patch`, which its recipe also checksums, a machine would compute a
+recipe hash that no binhost package carries and have no patch to build with.
+
 Files and directories whose names begin with a dot are skipped. What is left is the recipe,
 `build.sh`, patches, `postinstall.sh`, the port's `kfs.md` note and any other file the recipe
 ships. No recipe at all under `/ports/core` stops the phase.
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=91-99 pin=ffe47f64821a -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=98-106 pin=ffe47f64821a -->
 
 `src/` is copied whole to `/ports/src`, because the programs of KDOS's own are built from it and no
 archive holds their sources. Its areas stay side by side, since a desktop program's `build.sh`
@@ -56,7 +62,7 @@ its renderer also reads `ports/core` and `script/phases`.
 Dot-files and `__pycache__` directories are removed from the copies, and every mode is made
 readable by all.
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=101-109 pin=2ae9719ff407 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=108-116 pin=2ae9719ff407 -->
 
 A file over 16 MB under the copied `core/` is a source the filters above missed, and stops the
 phase, naming up to five of them. The staging then logs the number of ports, files and programs of
@@ -64,7 +70,7 @@ our own, and the size of the staged tree.
 
 ## The stamp and the key
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=124-143 pin=f377f0227aab -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=141-160 pin=f377f0227aab -->
 
 `/ports/TREE` names the commit the tree is and that commit's time, in the format
 `ports/publish --release` writes into a published tree, which adds `version <tag>`: the release
@@ -79,16 +85,24 @@ the key `ports/publish --release` signs with. The key lives in `build/keys/` on 
 builds, never in git. A build without it ships an empty ring, and that image refuses every fetched
 tree rather than trusting an unsigned one.
 
+[`/etc/kdos/keys`]{.idx} itself, the host ring, is emptied of keys and gets the same build's two:
+the binhost key's public half, `build/binhost-key/kdos-binhost.pub`, which
+[010_binhost.sh](010-binhost.md) signs the binhost with, and the release key's, which signs the
+slot image and the release index. The release index, the binhost index, every prebuilt package
+and the slot image's manifest are verified against this ring, so the image takes its own
+release's updates and no other builder's. A build with neither key ships the ring empty, and
+that image's `kdos update install --prebuilt` and image lane refuse with `no-key`.
+
 ## The source offer
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=153-173 pin=959efcc4c4c7 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=179-199 pin=959efcc4c4c7 -->
 
 The step reads every installed package's recipe, under `/ports/core` or `/kdos/src`, and collects
 the hash of every source it names. `ports/sources.idx` says which `sources-<N>` release of the
 archive holds each hash, so the releases the image's sources are in are those the index gives for
 any of the collected hashes. The hashes the index does not hold are counted.
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=175-201 pin=2ea75f8df3d3 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=201-227 pin=2ea75f8df3d3 -->
 
 `SOURCES` names the repository, the commit (with `-dirty` when the tree had unrecorded changes,
 `unrecorded` without a commit), its date, and a `release` line for each archive release that
@@ -99,7 +113,7 @@ recipe names. If no installed package's source is in the index at all, the phase
 
 ## What it leaves
 
-On the image, `/etc/kdos/keys/tree/` with the release key or empty, and
+On the image, `/etc/kdos/keys/tree/` with the release key or empty, `/etc/kdos/keys/` with the release and binhost keys the build has, and
 `/usr/share/kdos/SOURCES`. On your machine, `build/image-ports/ports/`, which becomes `/ports` on
 the image when `110_iso.sh` appends it to `system.sfs`:
 

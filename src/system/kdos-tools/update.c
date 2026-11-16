@@ -132,6 +132,7 @@
  * from; a root's own image record is IMAGE_RECORD. */
 #define IMAGE_CACHE  "/var/lib/kdos/image/offer"
 #define IMAGE_RECORD "/var/lib/kdos/image/MANIFEST"
+#define PACK_STORE   "/var/lib/kdos/packs"
 /* Where `--mount` puts an inactive slot nobody mounted. */
 #define SLOT_MNT     "/run/kdos/slot-"
 
@@ -832,15 +833,50 @@ static int origin_set(const char *pkg, int route)
  * build-config hash is taken from CC, CFLAGS, CXXFLAGS, LDFLAGS, KDOS_TARGET
  * and the compiler's version, so a client with an ordinary shell's
  * environment reports `different build config` for every package. The image
- * records the build's values in /etc/kdos/chroot.env, one `KEY=value` line
- * each, the value as it was after every expansion; this sets exactly those
- * six (unsetting any the file leaves out) in this process, which every kpkg it
- * runs inherits. -1 when the file is absent, and the environment is left as it
- * was.
+ * records the build's values in /etc/kdos/chroot.env (70_image/017_stage.sh),
+ * one `KEY=value` line each, the value as it was after every expansion, with
+ * KPKG_CC_ID, the compiler's identity, which kp_hash.c reads in place of
+ * asking a compiler a machine without its development facet does not have.
+ * Those seven decide the hash: each is set, and each the file leaves out is
+ * unset. Every other line is the rest of what the build's recipes ran
+ * under (the -sys crate switches, CMAKE_BUILD_TYPE, the Cargo and Go
+ * settings, SOURCE_DATE_EPOCH, CONFIG_SITE) and is set as it stands, so a
+ * port built here is built as the binhost's was; KDOS_BUILD_PATH, the
+ * build's ninja and meson wrappers, goes first on PATH. All of it is set in
+ * this process, which every kpkg it runs inherits. -1 when the file is
+ * absent, and the environment is left as it was.
  */
 static const char *const BUILD_KEYS[] = {
-	"CC", "CXX", "CFLAGS", "CXXFLAGS", "LDFLAGS", "KDOS_TARGET", NULL
+	"CC", "CXX", "CFLAGS", "CXXFLAGS", "LDFLAGS", "KDOS_TARGET",
+	"KPKG_CC_ID", NULL
 };
+
+/* A shell variable's name: a letter or `_`, then letters, digits and `_`. */
+static int env_name_ok(const char *s)
+{
+	if (!((*s >= 'A' && *s <= 'Z') || (*s >= 'a' && *s <= 'z') || *s == '_'))
+		return 0;
+	for (s++; *s; s++)
+		if (!((*s >= 'A' && *s <= 'Z') || (*s >= 'a' && *s <= 'z') ||
+		      (*s >= '0' && *s <= '9') || *s == '_'))
+			return 0;
+	return 1;
+}
+
+/* `dir` first on PATH, once: the record is loaded again for each slot. */
+static void path_first(const char *dir)
+{
+	const char *old = getenv("PATH");
+	size_t dl = strlen(dir);
+	if (!*dir || (old && !strncmp(old, dir, dl) &&
+		      (old[dl] == ':' || !old[dl])))
+		return;
+	KbBuf b = {0};
+	kb_buf_printf(&b, "%s%s%s", dir, old && *old ? ":" : "",
+		      old ? old : "");
+	setenv("PATH", b.p, 1);
+	kb_buf_free(&b);
+}
 
 static int build_env_load(const char *path)
 {
@@ -866,11 +902,17 @@ static int build_env_load(const char *path)
 				v[vl - 1] = 0;
 				v++;
 			}
+			int hashed = 0;
 			for (int k = 0; BUILD_KEYS[k]; k++)
 				if (!strcmp(l, BUILD_KEYS[k])) {
 					setenv(BUILD_KEYS[k], v, 1);
 					seen[k] = 1;
+					hashed = 1;
 				}
+			if (!hashed && !strcmp(l, "KDOS_BUILD_PATH"))
+				path_first(v);
+			else if (!hashed && env_name_ok(l))
+				setenv(l, v, 1);
 		}
 		l = nl ? nl + 1 : NULL;
 	}
@@ -3590,13 +3632,24 @@ static int dev_restore(const KpConf *c, const BhIndex *ix, int have_ix,
 	return 0;
 }
 
+static int conf_route(const char *key);
+
 /*
  * The plan for building `src[0..n)` here: every member of the build tools
- * that is not installed, and what it lacks, prebuilt; then every
- * restore the build and the toolchain need. 0, or -1 with `p->bad` set.
+ * that is not installed, and what it lacks, prebuilt; with `deps`, every
+ * package of the ports' own closure that is not installed and the binhost
+ * covers, prebuilt as well; then every restore the build and the toolchain
+ * need. 0, or -1 with `p->bad` set.
+ *
+ * `deps` is for a caller that installs nothing of the closure itself: the
+ * world step after a slot image hands each port to `kpkg install`, which
+ * builds from source every dependency it finds missing, and the base leaves
+ * out ports/buildonly (doxygen, which libxml2 names, under llvm under rust
+ * under bat). `kdos update install` resolves the closure itself and routes
+ * each member by `build-deps =`, so it passes 0.
  */
 static int dev_prepare(const KpConf *c, const BhIndex *ix, int have_ix,
-		       char *const *src, int n, DevPlan *p)
+		       char *const *src, int n, int deps, DevPlan *p)
 {
 	memset(p, 0, sizeof(*p));
 	char **tools = build_tools(c);
@@ -3637,6 +3690,27 @@ static int dev_prepare(const KpConf *c, const BhIndex *ix, int have_ix,
 		}
 		free(ord);
 		free(want);
+	}
+	if (deps && have_ix && !p->bad[0]) {
+		KpOrder *ord = kb_calloc(1, sizeof(*ord));
+		kp_resolve(c, (char **)src, n, ord);
+		for (int i = 0; i < ord->n; i++) {
+			int own = 0;
+			for (int k = 0; k < n; k++)
+				own |= !strcmp(src[k], ord->order[i]);
+			char *pd = kp_port_dir(c, ord->order[i]);
+			if (own || !pd || kp_installed(c, ord->order[i]) ||
+			    dev_has(p, ord->order[i])) {
+				free(pd);
+				continue;
+			}
+			free(pd);
+			char w[96];
+			int st = bh_match(c, ix, ord->order[i], w, sizeof(w));
+			if (st >= 0)
+				dev_push(p, ord->order[i], DEV_TOOL, st, 0, ix);
+		}
+		free(ord);
 	}
 	for (int i = 0; i < ntools && !p->bad[0]; i++)
 		dev_restore(c, ix, have_ix, tools[i], p);
@@ -3848,7 +3922,9 @@ static int bh_fill(Apply *ap, int after_image)
 		for (int i = 0; i < n; i++)
 			if (route[i] == ROUTE_SOURCE)
 				src[ns++] = v[i].name;
-		int pr = dev_prepare(&ap->tconf, &ix, have_ix, src, ns, &dp);
+		int pr = dev_prepare(&ap->tconf, &ix, have_ix, src, ns,
+				     conf_route("build-deps") == ROUTE_PREBUILT,
+				     &dp);
 		free(src);
 		if (pr != 0) {
 			free(bad);
@@ -4141,7 +4217,7 @@ static int fill_source(Apply *ap)
 		char **src = kb_calloc((size_t)n + 1, sizeof(*src));
 		for (int i = 0; i < n; i++)
 			src[i] = v[i].name;
-		int pr = dev_prepare(&ap->tconf, &ix, have_ix, src, n, &dp);
+		int pr = dev_prepare(&ap->tconf, &ix, have_ix, src, n, 0, &dp);
 		free(src);
 		if (pr != 0) {
 			free(v);
@@ -4342,9 +4418,22 @@ static int fill_source(Apply *ap)
  * missing file, or a changed one outside etc/, is not a candidate, whatever
  * every install reported. Edited configuration under etc/ is listed and
  * passes: failing on it would refuse every configured machine.
+ *
+ * THE PACK STORE IS BOUND IN FOR THE CHECK, as the slot's fstab binds
+ * /home/.kdos/packs over /var/lib/kdos/packs at every boot: a slot image
+ * leaves the store's contents out, so the unbooted slot holds an empty
+ * directory where kdos-packd's mnt/ and staging/ are, and without the bind
+ * every slot would fail on them.
  */
 static int check_slot(Apply *ap)
 {
+	char store[1100];
+	int bound = 0;
+	snprintf(store, sizeof(store), "%s" PACK_STORE, ap->root);
+	if (strcmp(ap->root, "/") && kb_is_dir(PACK_STORE) &&
+	    kb_is_dir(store) &&
+	    mount(PACK_STORE, store, NULL, MS_BIND, NULL) == 0)
+		bound = 1;
 	KbArgv k = {0};
 	kb_argv_add(&k, "kpkg");
 	kb_argv_add(&k, "check");
@@ -4352,7 +4441,10 @@ static int check_slot(Apply *ap)
 	kb_argv_add(&k, "--root");
 	kb_argv_add(&k, ap->root);
 	kb_argv_end(&k);
-	if (kb_run_tty(&k) != 0) {
+	int rc = kb_run_tty(&k);
+	if (bound && umount2(store, 0) != 0)
+		umount2(store, MNT_DETACH);
+	if (rc != 0) {
 		char why[128];
 		snprintf(why, sizeof(why), "slot %s failed `kpkg check`",
 			 ap->L.slot);
@@ -5322,9 +5414,21 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 	char (*seen)[128] = NULL;
 	int *st = NULL, *route = NULL;
 	int have_ix = bh_load(&ix, why, sizeof(why)) == 0;
+	/* A MACHINE WITH NO INDEX YET TAKES ITS RELEASE'S NOW: a fresh install
+	 * or a live session has never fetched one, and an install is what a
+	 * person asked for, so it does what `kdos update fetch --binhost-only`
+	 * does first. A cached index that fails its signature is not replaced
+	 * here, and a dry run changes nothing, so both still stop. */
+	if (!have_ix && !dry) {
+		char ip[1024];
+		snprintf(ip, sizeof(ip), "%s/" BINHOST_INDEX, cache_dir());
+		if (access(ip, F_OK) != 0 && binhost_fetch(c, 0) == 0)
+			have_ix = bh_load(&ix, why, sizeof(why)) == 0;
+	}
 	if (!have_ix && deps == ROUTE_PREBUILT) {
-		fprintf(stderr, "kdos update: %s; `kdos update fetch` fetches "
-				"the release's signed index\n", why);
+		fprintf(stderr, "kdos update: %s; `sudo kdos update fetch "
+				"--binhost-only` fetches the release's signed "
+				"index\n", why);
 		if (lock >= 0)
 			close(lock);
 		return 1;
@@ -5423,7 +5527,7 @@ static int cmd_install(const KpConf *c, int argc, char **argv)
 		for (int i = 0; i < ord->n; i++)
 			if (route[i] == ROUTE_SOURCE)
 				src[ns++] = ord->order[i];
-		int pr = dev_prepare(c, &ix, have_ix, src, ns, &dp);
+		int pr = dev_prepare(c, &ix, have_ix, src, ns, 0, &dp);
 		free(src);
 		if (pr != 0) {
 			fprintf(stderr, "kdos update: %s\n", dp.bad);

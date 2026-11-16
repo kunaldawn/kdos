@@ -601,7 +601,7 @@ int add_main(int argc, char **argv)
 			kp_msg("Leaving out %d development and documentation "
 			       "file%s (FACETS=run)", fs.nfiles,
 			       fs.nfiles == 1 ? "" : "s");
-		kp_facets_remove(tmpl, fs.gone.p, NULL);
+		kp_facets_remove(tmpl, fs.gone.p, NULL, NULL);
 		free(m);
 		m = fs.keep.p;
 		mn = fs.keep.n;

@@ -21,6 +21,10 @@
  * (kpkg.h), so `kpkg check`, a removal and an upgrade's orphan sweep never
  * ask about it.
  *
+ * A LINK GOES WITH ITS TARGET: a symlink kp_facet_of calls run time whose
+ * target is a left-out path of the same package is left out with it, so the
+ * stripped tree holds no link to nothing.
+ *
  * A DIRECTORY leaves the manifest when it held a file that was left out and
  * holds no file that was kept, or when the directory above it left: kept, it
  * would be listed and not on disk, and `kpkg check` would call it missing.
@@ -108,6 +112,49 @@ static int vec_has(const Vec *x, const char *s)
 }
 
 /* The parent directory line of a directory line, or "" for `./`. */
+/* The manifest line a symlink at `line` points to: its target read from the
+ * link's directory (or from the root when absolute), `.` and `..` folded,
+ * spelled `./<path>` as a manifest spells it. 0 when it leaves the root. */
+static int link_line(const char *line, const char *target, char *out,
+		     size_t cap)
+{
+	char buf[8192];
+	if (target[0] == '/')
+		snprintf(buf, sizeof(buf), "%s", target + 1);
+	else {
+		const char *l = !strncmp(line, "./", 2) ? line + 2 : line;
+		const char *sl = strrchr(l, '/');
+		snprintf(buf, sizeof(buf), "%.*s%s%s", sl ? (int)(sl - l) : 0,
+			 l, sl ? "/" : "", target);
+	}
+	char *seg[512];
+	int n = 0;
+	for (char *t = strtok(buf, "/"); t; t = strtok(NULL, "/")) {
+		if (!strcmp(t, "."))
+			continue;
+		if (!strcmp(t, "..")) {
+			if (!n)
+				return 0;
+			n--;
+			continue;
+		}
+		if (n == (int)(sizeof(seg) / sizeof(*seg)))
+			return 0;
+		seg[n++] = t;
+	}
+	size_t o = (size_t)snprintf(out, cap, ".");
+	for (int i = 0; i < n && o < cap; i++)
+		o += (size_t)snprintf(out + o, cap - o, "/%s", seg[i]);
+	return n > 0 && o < cap;
+}
+
+static const char *const *sort_base;
+
+static int cmp_idx(const void *a, const void *b)
+{
+	return strcmp(sort_base[*(const int *)a], sort_base[*(const int *)b]);
+}
+
 static void parent_of(const char *dir, char *out, size_t cap)
 {
 	kb_strlcpy(out, dir, cap);
@@ -148,6 +195,7 @@ void kp_facets_split(const char *root, const char *body, const char *extra,
 			vec_add(&lines, kb_strdup(l));
 	}
 	facet = kb_calloc((size_t)(lines.n ? lines.n : 1), 1);
+	char **tgt = kb_calloc((size_t)(lines.n ? lines.n : 1), sizeof(*tgt));
 	for (int i = 0; i < lines.n; i++) {
 		const char *l = lines.v[i];
 		size_t ll = strlen(l);
@@ -168,8 +216,54 @@ void kp_facets_split(const char *root, const char *body, const char *extra,
 		facet[i] = (char)kp_facet_of(l, link);
 		if (facet[i] == KP_FACET_RUN && extra && kp_facet_glob(l, extra))
 			facet[i] = KP_FACET_DEV;
-		ancestors(l, facet[i] == KP_FACET_RUN ? &kept_up : &left_up);
+		char to[4096];
+		if (link && link_line(l, link, to, sizeof(to)))
+			tgt[i] = kb_strdup(to);
 	}
+
+	/* A LINK GOES WITH ITS TARGET. A run-time symlink to a path of this
+	 * package that is left out would dangle (`libcurses.so ->
+	 * libncurses.so -> libncursesw.so`, or a `.so.0` alias of a `-l`
+	 * link), so it takes that path's facet, repeated until a chain of
+	 * links has settled. */
+	int *idx = kb_calloc((size_t)(lines.n ? lines.n : 1), sizeof(*idx));
+	for (int i = 0; i < lines.n; i++)
+		idx[i] = i;
+	sort_base = (const char *const *)lines.v;
+	qsort(idx, (size_t)lines.n, sizeof(*idx), cmp_idx);
+	for (int moved = 1; moved;) {
+		moved = 0;
+		for (int i = 0; i < lines.n; i++) {
+			if (!tgt[i] || facet[i] != KP_FACET_RUN)
+				continue;
+			int lo = 0, hi = lines.n - 1, j = -1;
+			while (lo <= hi) {
+				int mid = (lo + hi) / 2;
+				int r = strcmp(tgt[i], lines.v[idx[mid]]);
+				if (!r) {
+					j = idx[mid];
+					break;
+				}
+				if (r < 0)
+					hi = mid - 1;
+				else
+					lo = mid + 1;
+			}
+			if (j >= 0 && facet[j] != KP_FACET_RUN) {
+				facet[i] = facet[j];
+				moved = 1;
+			}
+		}
+	}
+	free(idx);
+	for (int i = 0; i < lines.n; i++) {
+		free(tgt[i]);
+		size_t ll = strlen(lines.v[i]);
+		if (lines.v[i][ll - 1] != '/')
+			ancestors(lines.v[i], facet[i] == KP_FACET_RUN
+						      ? &kept_up : &left_up);
+	}
+	free(tgt);
 	vec_sort(&kept_up);
 	vec_sort(&left_up);
 
@@ -242,7 +336,7 @@ void kp_facets_split_free(KpFacetSplit *s)
 }
 
 void kp_facets_remove(const char *root, const char *gone,
-		      unsigned long long *bytes)
+		      unsigned long long *bytes, KpDirClaims *claims)
 {
 	Vec dirs = {0};
 	char *copy = kb_strdup(gone);
@@ -255,7 +349,10 @@ void kp_facets_remove(const char *root, const char *gone,
 			continue;
 		char *full = kb_path_join(root, l);
 		if (l[ll - 1] == '/') {
-			vec_add(&dirs, full);
+			if (claims && kp_dirclaims_drop(claims, l))
+				free(full);
+			else
+				vec_add(&dirs, full);
 			continue;
 		}
 		struct stat st;
@@ -301,7 +398,8 @@ static char *drop_lines(const char *blob, const Vec *gone, int skip)
 
 static int strip_one(const KpConf *c, const char *root, const char *name,
 		     const KpOwned *table, Vec *kept, KpTriggers *trig,
-		     unsigned long long *bytes, int *stripped)
+		     unsigned long long *bytes, int *stripped,
+		     KpDirClaims *claims)
 {
 	char *db = kp_db_dir(c);
 	char *dbfile = kb_path_join(db, name);
@@ -412,7 +510,7 @@ static int strip_one(const KpConf *c, const char *root, const char *name,
 	}
 	kp_owned_free(mine);
 	unsigned long long freed = 0;
-	kp_facets_remove(root, rm.p, &freed);
+	kp_facets_remove(root, rm.p, &freed, claims);
 	kp_triggers_gone(trig, rm.p);
 	*bytes += freed;
 	(*stripped)++;
@@ -483,12 +581,17 @@ int kp_cmd_facets(KpConf *c, int argc, char **argv)
 		free(names);
 		return 1;
 	}
+	/* With no name, every installed package: the table is regrown to
+	 * the database's size, since the command line's count holds only
+	 * the names it gave. */
 	char **all = NULL;
 	if (!n) {
 		char *db = kp_db_dir(c);
 		int nd = 0;
 		all = kb_listdir(db, &nd);
 		free(db);
+		free(names);
+		names = kb_calloc((size_t)nd + 1, sizeof(*names));
 		for (int i = 0; all && i < nd; i++)
 			if (all[i][0] != '.')
 				names[n++] = all[i];
@@ -506,9 +609,11 @@ int kp_cmd_facets(KpConf *c, int argc, char **argv)
 	KpTriggers trig = {0};
 	KpOwned *table = n > 1 ? kp_owned_load(c) : NULL;
 	Vec kept = {0};
+	KpDirClaims claims;
+	kp_dirclaims_load(c, &claims);
 	for (int i = 0; i < n; i++)
 		if (strip_one(c, root, names[i], table, &kept, &trig, &bytes,
-			      &stripped))
+			      &stripped, &claims))
 			rc = 1;
 	kp_owned_free(table);
 	/* A shared file whose every claimant was stripped is nobody's now. */
@@ -528,12 +633,13 @@ int kp_cmd_facets(KpConf *c, int argc, char **argv)
 				kb_buf_printf(&rm, "%s\n", kept.v[i]);
 		}
 		kp_owned_free(now);
-		kp_facets_remove(root, rm.p, &bytes);
+		kp_facets_remove(root, rm.p, &bytes, &claims);
 		kp_triggers_gone(&trig, rm.p);
 		kb_buf_free(&rm);
 		vec_free(&ask);
 	}
 	vec_free(&kept);
+	kp_dirclaims_free(&claims);
 	kp_triggers_run(&trig, root);
 	close(lock);
 	kp_msg("facets: %d package%s stripped, %llu bytes (%s) freed",

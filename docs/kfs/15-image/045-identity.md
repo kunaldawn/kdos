@@ -15,12 +15,12 @@ The `Makefile` works them out from your clone when it starts the build container
 
 `KDOS_GIT_COMMIT` is the short hash of `HEAD`, `KDOS_GIT_DIRTY` is `1` when `git status` shows any
 change, `KDOS_GIT_DATE` is the commit date as `YYYY-MM-DD`, and `KDOS_GIT_TIME` the commit time in
-Unix seconds, which [105_ports.sh](105-ports.md) uses. `script/chroot/exec.sh` passes all four into
+Unix seconds, which this step and [105_ports.sh](105-ports.md) use. `script/chroot/exec.sh` passes all four into
 the chroot.
 
 ## The step
 
-<!-- kfs:include script/phases/70_image/045_identity.sh lines=32-48 pin=cdcec53c046e -->
+<!-- kfs:include script/phases/70_image/045_identity.sh lines=38-58 pin=4836df44bbf9 -->
 
 The phase runs on the tree it finds, so the file may already carry a stamp from an earlier run. The
 `grep` drops any `BUILD_ID` and `KDOS_BUILD_DATE` line, and `cat` writes what is left back into
@@ -39,6 +39,17 @@ The date is the commit's, not the clock's. Two builds of the same commit write t
 the rest of the image is meant to be the same for the same tree; a clock date would make them
 differ in this one file.
 
+Then the step writes [`/etc/kdos-release`]{.idx}, the record of which release this root holds:
+
+<!-- kfs:include script/phases/70_image/045_identity.sh lines=60-73 pin=3a11b05089f7 -->
+
+`VERSION` is `os-release`'s `VERSION_ID` with `+` and the build id, the same name `kdos-bootctl`
+and `kdos-sysupdated` give a root without a record; `TREE` and `TREE_TIME` are the commit and its
+time; `INSTALLED_BY` says the root came from the medium. `kdos update` offers a slot image only
+when the image's time is later than `TREE_TIME`, so a root without the record is never offered
+one, and `kdos-bootctl` copies the record to the ESP for the boot menu. `kdos update` rewrites it
+in each slot it fills. Without `KDOS_GIT_COMMIT` the step removes the file instead.
+
 The end of the file then reads, with the commit's own values in place of the placeholders:
 
 ```text
@@ -54,7 +65,7 @@ root into `system.sfs`.
 
 ## What it leaves
 
-`/etc/os-release` on the image, with the two lines at its end. The installer copies the root, so an
+`/etc/os-release` on the image, with the two lines at its end, and `/etc/kdos-release`. The installer copies the root, so an
 installed system carries the stamp of the medium it was installed from.
 
 ## See also

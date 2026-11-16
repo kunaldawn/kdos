@@ -1867,6 +1867,39 @@ kmu "$OUT/kpkgdel" --root "$MU/root" fonta fontb >/dev/null
     && { echo "  removing the last face left misc/ and its fonts.dir behind"; exit 1; }
 echo "  one owner under either spelling; fonts.dir written from the directory and removed with it"
 
+# An empty directory two packages list stays while either is installed.
+mkport dirkeep 1.0 'install -d "$PKG/usr/share/emptyshared"; install -Dm644 /dev/null "$PKG/usr/share/dirkeep/a"'
+mkport dirgo 1.0 'install -d "$PKG/usr/share/emptyshared"; install -Dm644 /dev/null "$PKG/usr/share/dirgo/a"'
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/dirkeep-1.0-1.tar.xz" >/dev/null
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/dirgo-1.0-1.tar.xz" >/dev/null
+kmu "$OUT/kpkgdel" --root "$MU/root" dirgo >/dev/null
+[ -d "$MU/root/usr/share/emptyshared" ] \
+    || { echo "  removing one of two packages listing an empty directory removed it"; exit 1; }
+kmu "$OUT/kpkgdel" --root "$MU/root" dirkeep >/dev/null
+[ -d "$MU/root/usr/share/emptyshared" ] \
+    && { echo "  removing the last package listing an empty directory kept it"; exit 1; }
+echo "  an empty directory stays until the last package listing it goes"
+
+# One removal takes every name it is given: the image stage removes over a
+# thousand packages in one run.
+mkdir -p "$MU/root/usr/share/many"
+many=""
+for i in $(seq 1 300); do
+    : > "$MU/root/usr/share/many/f$i"
+    printf '1.0-1\n./usr/share/many/f%s\n' "$i" > "$MU/root/db/many$i"
+    many="$many many$i"
+done
+kmu "$OUT/kpkgdel" --root "$MU/root" $many >/dev/null
+[ -n "$(ls "$MU/root/db" | grep '^many')" ] \
+    && { echo "  kpkgdel left $(ls "$MU/root/db" | grep -c '^many') of 300 named packages installed"; exit 1; }
+mkdir -p "$MU/root/usr/share/big"
+( cd "$MU/root/usr/share/big" && seq 1 20000 | sed 's/^/f/' | xargs touch )
+{ echo 1.0-1; seq 1 20000 | sed 's|^|./usr/share/big/f|'; } > "$MU/root/db/big"
+kmu "$OUT/kpkgdel" --root "$MU/root" big >/dev/null
+[ -n "$(ls "$MU/root/usr/share/big")" ] \
+    && { echo "  kpkgdel left $(ls "$MU/root/usr/share/big" | wc -l) of a package's 20000 files"; exit 1; }
+echo "  one removal takes all 300 names it is given, and every file of a 20000-file package"
+
 # One extraction is both the install and the manifest; ownership is read only
 # for staged paths already on disk; the writer lock serialises two installers.
 echo "==> kpkgadd lists what it extracted, and two installers share one database"
@@ -2095,6 +2128,49 @@ kmu "$OUT/kpkg" facets --strip --root "$MU/root" sharea shareb >/dev/null
 [ -e "$MU/root/usr/include/shared.h" ] \
     && { echo "  one --strip of both claimants left their shared header"; exit 1; }
 kmu "$OUT/kpkgdel" --root "$MU/root" sharea shareb >/dev/null
+# --strip with no name strips every installed package, however many there are
+# beside the few words of its own command line.
+for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    mkport "every$i" 1.0 "install -Dm644 /dev/null \"\$PKG/usr/include/every$i.h\""
+    kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/every$i-1.0-1.tar.xz" >/dev/null
+done
+kmu "$OUT/kpkg" facets --strip --root "$MU/root" > "$MU/strip-all.log" \
+    || { echo "  kpkg facets --strip with no name failed:"; tail -5 "$MU/strip-all.log"; exit 1; }
+ls "$MU/root/usr/include/" 2>/dev/null | grep -q '^every' \
+    && { echo "  kpkg facets --strip with no name left a header of an installed package"; exit 1; }
+for i in 1 2 3 4 5 6 7 8 9 10 11 12; do kmu "$OUT/kpkgdel" --root "$MU/root" "every$i" >/dev/null; done
+echo "  --strip with no name strips every installed package"
+# A directory another package still lists stays when a strip empties it.
+mkport inclister 1.0 'install -d "$PKG/usr/share/inclister/plugins"; install -Dm644 /dev/null "$PKG/usr/share/inclister/a"
+install -d "$PKG/usr/lib/sharedplug"'
+mkport incfiller 1.0 'install -Dm644 /dev/null "$PKG/usr/lib/sharedplug/libx.a"; install -Dm644 /dev/null "$PKG/usr/share/incfiller/a"'
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/inclister-1.0-1.tar.xz" >/dev/null
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/incfiller-1.0-1.tar.xz" >/dev/null
+kmu "$OUT/kpkg" facets --strip --root "$MU/root" incfiller >/dev/null
+[ -d "$MU/root/usr/lib/sharedplug" ] \
+    || { echo "  --strip removed a directory another installed package lists"; exit 1; }
+kmu "$OUT/kpkgdel" --root "$MU/root" incfiller inclister >/dev/null
+echo "  a strip keeps a directory another installed package lists"
+# A link goes with its target: an alias of a -l link, and a .so.0 name of one,
+# leave with it instead of dangling.
+mkport chainy 1.0 'install -Dm755 /dev/null "$PKG/usr/lib/libchainw.so.6"
+ln -s libchainw.so.6 "$PKG/usr/lib/libchainw.so"
+ln -s libchainw.so "$PKG/usr/lib/libchain.so"
+ln -s libchain.so "$PKG/usr/lib/libcurs.so"
+ln -s libchainw.so "$PKG/usr/lib/libchainw.so.0"
+ln -s /usr/lib/libchainw.so.6 "$PKG/usr/lib/libabs.so"'
+kmu "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/chainy-1.0-1.tar.xz" >/dev/null
+kmu "$OUT/kpkg" facets --strip --root "$MU/root" chainy >/dev/null
+for l in libchainw.so libchain.so libcurs.so libchainw.so.0; do
+    [ -e "$MU/root/usr/lib/$l" ] || [ -L "$MU/root/usr/lib/$l" ] \
+        && { echo "  --strip kept $l, a link to the dev facet"; exit 1; }
+done
+[ -e "$MU/root/usr/lib/libchainw.so.6" ] && [ -L "$MU/root/usr/lib/libabs.so" ] \
+    || { echo "  --strip removed the library or a link to it"; exit 1; }
+grep -qxF 'dev ./usr/lib/libcurs.so' "$MU/root/db/.facets/chainy" \
+    || { echo "  a link that left with its target is not in the facet record"; exit 1; }
+kmu "$OUT/kpkgdel" --root "$MU/root" chainy >/dev/null
+echo "  a link leaves with its target, through a chain of aliases"
 # A recipe's facet_dev = moves its own run-time files into dev, and only those.
 mkport bystander 1.0 'install -Dm755 /dev/null "$PKG/usr/bin/bystander"'
 kmu env KPKG_FACETS=run "$OUT/kpkgadd" --root "$MU/root" "$MU/pkgs/bystander-1.0-1.tar.xz" >/dev/null
@@ -3003,6 +3079,8 @@ test "$rc" = 3 && grep -q -- "--source" "$UC/err" \
     || { echo "  an apply with no index did not point at --source"; exit 1; }
 rc=0; upd install --dry-run tiny >/dev/null 2>&1 || rc=$?
 test "$rc" = 1 || { echo "  an install with no index exited $rc, not 1"; exit 1; }
+upd install --dry-run tiny 2>&1 | grep -qF '`sudo kdos update fetch --binhost-only`' \
+    || { echo "  a dry run with no index does not name the fetch"; exit 1; }
 rm -f "$RP/RELEASE"
 rc=0; upd notes --json >/dev/null 2>&1 || rc=$?
 test "$rc" = 1 || { echo "  notes with no RELEASE exited $rc, not 1"; exit 1; }
@@ -6536,14 +6614,17 @@ echo "  answers on stdin, the look the backend takes, the rules every front end 
 
 # THE A/B LAYOUT. Two slots, the swap and a home of their own fit, or slot A
 # takes the whole disk and the swap stays where the person asked for it. The
-# slot is the system and half again, never under 8 GiB, a whole GiB; the box
-# store lives in the home, so it is not counted into a slot.
-"$KC" ab 256 12000000 2000000 4096 | grep -qx 'ab=1 slot=15360 swap=4096 part_swap=0 part_root=3' \
-    || { echo "  a 256 GiB disk is not laid out for A/B"; "$KC" ab 256 12000000 2000000 4096; exit 1; }
+# slot is the system and half again, or 30% of the room past the swap,
+# whichever is larger, never under 8 GiB, a whole GiB; the box store lives in
+# the home, so it is not counted into a slot.
+"$KC" ab 256 12000000 2000000 4096 | grep -qx 'ab=1 slot=77824 swap=4096 part_swap=0 part_root=3' \
+    || { echo "  a 256 GiB disk's slots are not 30% of the room each"; "$KC" ab 256 12000000 2000000 4096; exit 1; }
+"$KC" ab 40 4200000 0 0 | grep -qx 'ab=1 slot=12288 swap=0 part_swap=0 part_root=3' \
+    || { echo "  a 40 GiB disk does not give a 4 GB base 12 GiB slots"; "$KC" ab 40 4200000 0 0; exit 1; }
 "$KC" ab 40 12000000 0 4096 | grep -qx 'ab=0 slot=18432 swap=4096 part_swap=3 part_root=4' \
     || { echo "  a disk too small for two slots was laid out for them"; exit 1; }
-"$KC" ab 64 1000000 0 0 | grep -qx 'ab=1 slot=8192 swap=0 part_swap=0 part_root=3' \
-    || { echo "  a small payload's slot is not the 8 GiB floor"; exit 1; }
+"$KC" ab 24 1000000 0 0 | grep -qx 'ab=1 slot=8192 swap=0 part_swap=0 part_root=3' \
+    || { echo "  a small disk's slot is not the 8 GiB floor"; exit 1; }
 "$KC" ab 256 12000000 0 4096 0 | grep -q '^ab=0 ' \
     || { echo "  A/B was laid out without LVM"; exit 1; }
 echo "  A/B: two slots, the swap and /home where they fit, one root where not"

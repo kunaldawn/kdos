@@ -37,6 +37,7 @@ set -u
 DISK=${INSTALL_DISK:-/dev/vda}
 ANSWERS=/tmp/kdos-answers
 APPS=${INSTALL_APPS:-none}
+NATIVE=${INSTALL_GROUPS:-none}   # not GROUPS: bash's own GROUPS ignores an assignment
 CAP=${INSTALL_CAP:-5400}   # kinstall in a VM is slow and can run past 40 minutes; a tighter cap kills a healthy install
 # AN ENCRYPTED INSTALL IS THE SAME RUN WITH ONE KEY CHANGED, which is the
 # whole reason it is a knob here rather than a second script: what an
@@ -61,8 +62,11 @@ cat /proc/partitions
 # install. `none` is the default because this run exercises the install, not
 # the application lane, and an empty line would read back as `essential`. An
 # application id matches no group, and a line on which nothing matches falls
-# back to `essential`. reboot = 0 because the rig decides when the machine
-# goes down, not the installer.
+# back to `essential`. `groups` takes native group ids (ports/groups),
+# installed prebuilt into the target during the install from the binhost the
+# live system's update.conf names, or recorded in groups-pending when that
+# fails. reboot = 0 because the rig decides when the machine goes down, not
+# the installer.
 say "the answer file"
 cat > "$ANSWERS" <<EOF
 # written by testing/install-to-disk.sh
@@ -89,6 +93,7 @@ root_locked    = 0
 theme          = phosphor
 alien_apps     = 0
 apps           = $APPS
+groups         = $NATIVE
 reboot         = 0
 EOF
 cat "$ANSWERS"
@@ -204,6 +209,10 @@ mount "$root" /mnt/target 2>&1 && {
 	grep -q '/home/.kdos/packs[[:space:]]*/var/lib/kdos/packs[[:space:]]*none[[:space:]]*bind' \
 		/mnt/target/etc/fstab 2>/dev/null \
 		&& echo "packs bind: present" || echo "packs bind: MISSING"
+	echo "--- native groups: the world set and what is pending ---"
+	echo "world: $(cat /mnt/target/var/lib/kdos/world 2>/dev/null | tr '\n' ' ')"
+	echo "packages: $(ls /mnt/target/var/lib/kpkg/db | wc -l)"
+	echo "pending: $(cat /mnt/target/var/lib/kdos/groups-pending 2>/dev/null | tr '\n' ' ')"
 	echo "--- the user ---"; grep '^kdos' /mnt/target/etc/passwd 2>&1
 	echo "--- SDDM autologin ---"
 	cat /mnt/target/etc/sddm.conf.d/kde_settings.conf 2>&1

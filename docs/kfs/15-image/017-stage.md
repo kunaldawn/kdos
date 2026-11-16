@@ -34,10 +34,11 @@ no finished `017_stage.sh` behind it stops instead of imaging an untrimmed tree.
 
 ## KDOS_IMAGE=full
 
-<!-- kfs:include script/phases/70_image/017_stage.sh lines=47-53 pin=0d7403f37e84 -->
+<!-- kfs:include script/phases/70_image/017_stage.sh lines=89-93 pin=6bf98dc88195 -->
 
 With `make build KDOS_IMAGE=full`, `exec.sh` mounts no overlay, every step runs on `build/fs` as
-the other phases do, and this step prints the line above and exits. The ISO then carries every
+the other phases do, and this step records the build's environment
+([below](#the-facets)), prints the line above and exits. The ISO then carries every
 installed package. It is the medium for a machine that installs with no network, and for the
 rig. The `Makefile` and `exec.sh` both
 refuse any value but `base` and `full`. On your machine:
@@ -48,7 +49,7 @@ make build KDOS_IMAGE=full BUILD_ARGS="--phases 70_image"
 
 ## The refusal
 
-<!-- kfs:include script/phases/70_image/017_stage.sh lines=55-59 pin=c952a50d4071 -->
+<!-- kfs:include script/phases/70_image/017_stage.sh lines=95-99 pin=c952a50d4071 -->
 
 The step removes packages, and the same `kpkg remove` run over `build/fs` would delete most of the
 build. It reads the type of the filesystem mounted at `/` from `/proc/mounts` and stops unless it
@@ -56,7 +57,7 @@ is `overlay`, which it is only when `exec.sh` made the stage.
 
 ## The removal
 
-<!-- kfs:include script/phases/70_image/017_stage.sh lines=61-75 pin=1a05632a151c -->
+<!-- kfs:include script/phases/70_image/017_stage.sh lines=101-120 pin=126982674695 -->
 
 [`script/lib/imageset.py`]{.idx} computes the set. `--check` reads `ports/base`, `ports/buildonly`
 and `ports/groups` against the tree and stops the step on a name that is not a port, a phase or
@@ -88,20 +89,36 @@ none of it, OpenCL being [mesa-opencl](#port-mesa-opencl)'s.
 
 Every dropped name goes to one `kpkg remove`, so no removal is refused for a reverse dependency
 that is going too, and kpkg's index triggers rebuild the font, icon, MIME, desktop-entry and
-linker caches once, for the trimmed tree. A package still installed afterwards stops the phase.
-`--sizes` logs the kept and dropped package counts and the bytes their files take; on a full
-build tree it reads about 1,000 packages and 9.5 GB kept of about 2,400 and 50 GB, of which
-`clang` is 2 GB.
+linker caches once, for the trimmed tree. Its output, a line per package, goes to
+`build/logs/70_image/stage-remove.log`; a failed run prints the lines that are not progress and
+stops the phase, and so does a package still installed afterwards. `--sizes` then logs the kept
+package count and the bytes their files take; on a full build tree of 2,440 packages the base
+is 860 packages and 5.13 GB.
 
 ## The facets
 
-<!-- kfs:include script/phases/70_image/017_stage.sh lines=77-83 pin=aa724d68569a -->
+<!-- kfs:include script/phases/70_image/017_stage.sh lines=122-129 pin=7880d690e92d -->
+
+<!-- kfs:include script/phases/70_image/017_stage.sh lines=66-87 pin=296ce3b64089 -->
+
+First the step writes [`/etc/kdos/chroot.env`]{.idx}: the compilers, every flag set and
+`KDOS_TARGET` as this phase has them; `KPKG_CC_ID`, the compiler's name and version, asked now
+because the strip takes gcc's driver; and what else a recipe's result depends on, the Rust `-sys`
+switches, `CMAKE_BUILD_TYPE`, the Cargo and Go settings and `SOURCE_DATE_EPOCH`. It copies the
+autoconf site file and the `ninja` and `meson` wrappers to `/usr/share/kdos/build` and names them
+as `CONFIG_SITE` and `KDOS_BUILD_PATH`. `kdos update` loads the file before each `kpkg` it runs,
+and `kpkg` reads `KPKG_CC_ID` in place of a compiler, so a machine installed from the image
+computes the binhost's
+[build-config hash](../../kdos/03-architecture/packaging.md#b--the-build-config-hash) and takes
+its packages, and a port built there is built as the binhost's was: without the `-sys` switches
+`bat` would link the oniguruma its crate carries, and without the site file an autoconf port would
+put its configuration under `/usr/etc`.
 
 What is left is the base, every package of it whole. [`kpkg facets --strip`]{.idx term="facets"}
 then removes from each package the files only a compiler or a reader of manuals uses: everything
 under `usr/include/`, the `.a` archives under `usr/lib/`, CMake's package files, pkg-config and
 aclocal files, the GObject introspection XML and Vala's API files, the `-l` links
-(`libz.so -> libz.so.1.3.1`), man sections 0, 2 and 3, and `usr/share/doc/` (less KDE's handbooks
+(`libz.so -> libz.so.1.3.1`) and every link of the same package that points to one, man sections 0, 2 and 3, and `usr/share/doc/` (less KDE's handbooks
 and the two books), `info` and `gtk-doc`. The rules, and the exceptions that keep a running
 program whole, are in [Facets](../../kdos/03-architecture/packaging.md#facets). Each package's
 manifest and file record are rewritten without those files, and each file is listed in

@@ -863,9 +863,9 @@ when a firmware update changes the measurements, none of which is decided.
 
 The installer lays a disk out for A/B updates when it erases the disk onto LVM and the disk holds
 two slots, the swap and a home of their own: it makes `root_a` and `root_b`, copies the finished
-system into slot B, and records both. Two slots need each slot's 1.5 times the install, the swap
-and a 4 GiB home, about 149 GiB for an install of 46.5 GiB, so a 128 GB disk gets one. A disk too
-small for two slots, and every manual layout, get slot A only, and a second slot there is made,
+system into slot B, and records both. Two slots need each slot's 1.5 times the install or 30% of the room
+past the swap, at least 8 GiB, the swap and a 4 GiB home, about 21 GiB for the 4 GB base. A disk
+too small for two slots, and every manual layout, get slot A only, and a second slot there is made,
 filled and recorded with
 `kdos-bootctl set-slot b <uuid> [<luks-uuid>]` by hand; the steps are in
 [Installation](../02-user-guide/installation.md#ab-root-slots). A second *encrypted* slot has never

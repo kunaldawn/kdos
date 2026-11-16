@@ -611,6 +611,7 @@ Options and environment:
 | `KPKG_REQUIRE_SIG=1` | Refuse any package without a valid signature |
 | `KPKG_SKIP_INDEX` | Space-separated [shared indexes](../05-developer/writing-ports.md#shared-indexes) not to rebuild after an install or removal (`man`, `schemas`, `gio`, `pixbuf`, `mime`, `fonts`, `info`, `hwdb`, `xfonts`, `texmf`, `desktop`, `icons`, `vlc`). The build's chroot phases set `man`; nothing sets it on a running system |
 | `KPKG_FACETS` | `all` or `run`, over `kpkg.conf`'s `FACETS`: which [facets](#facets) of a package an install places. `kdos update install` sets `all` for a restore and for every install of a run that builds |
+| `KPKG_CC_ID=<cc> <version>` | The compiler field of the [build-config hash](#b--the-build-config-hash), used instead of asking `$CC -dumpversion`; `/etc/kdos/chroot.env` sets it on an installed machine |
 | `KPKG_STRICT_RECIPE=1` | Rebuild an installed package whose recipe hash differs; without it, every installed package is skipped. See [Deciding what to rebuild](#deciding-what-to-rebuild) |
 | `KPKG_STORE=<dir>` | Install a port from the [package store](#the-package-store) in `<dir>` when its key is there, and store every package it builds; empty or unset, the store is off |
 | `KPKG_STORE_CHECK=1` | Build every store hit anyway and log a difference; see [Check mode](#check-mode) |
@@ -835,8 +836,12 @@ directory`. Left in place, every path beneath it fails with `Not a directory` an
 aborts half-written.
 
 A removal walks the manifest in reverse, so a directory is reached only after everything inside it;
-a directory that still holds another package's files survives. A file another installed package
-claims is left in place. `kpkgdel` does not check reverse dependencies: `kpkgdel bash` removes
+a directory that still holds another package's files survives, and so does an empty one another
+installed package still lists, because a package may ship an empty directory something else fills
+or reads (`hicolor-icon-theme`'s icon sizes, a plugin directory). A run counts each directory's
+claims once and takes each removed package's off as it goes, so a directory goes when the last
+package listing it does. A file another installed package claims is left in place. One run takes
+any number of names. `kpkgdel` does not check reverse dependencies: `kpkgdel bash` removes
 bash. The entry's sidecars in `.recipe/`, `.pkgsha/`, `.files/`, `.facets/` and `.needs/` go with it. A name that is not installed
 is reported and skipped, and the rest of the command line is still processed.
 
@@ -920,7 +925,7 @@ and the binhost index are the same either way.
 | `dev` | `usr/lib/pkgconfig/`, `usr/share/pkgconfig/` and `usr/share/aclocal/` | 1 MB |
 | `dev` | `usr/share/gir-1.0/` (GObject introspection's XML; the compiled typelibs under `usr/lib` are run time) and `usr/share/vala*/vapi/` | 73 MB |
 | `dev` | man sections 0, 2 and 3: the POSIX headers, the system calls and the library functions | 42 MB |
-| `dev` | a symbolic link `usr/lib/lib<x>.so` whose target is that name plus a version (`libz.so -> libz.so.1.3.1`), the link `-lz` resolves through. A real file named `lib<x>.so` is run time, since most plugins and every library built without a version are one, and so is a link to anything else | 0 |
+| `dev` | a symbolic link `usr/lib/lib<x>.so` whose target is that name plus a version (`libz.so -> libz.so.1.3.1`), the link `-lz` resolves through. A real file named `lib<x>.so` is run time, since most plugins and every library built without a version are one, and so is a link to anything else, unless it points into its own package's `dev` facet (below) | 0 |
 | `doc` | `usr/share/doc/` except `HTML/` (KDE's handbooks, which `help:/` and every Help menu open) and `kdos/` and `kfs/` (the two books, which the desktop links into) | 20 MB |
 | `doc` | `usr/share/info/` and `usr/share/gtk-doc/` | 35 MB |
 | `run` | everything else, man sections 1 and 4 to 8 among it | |
@@ -928,6 +933,13 @@ and the binhost index are the same either way.
 The figures are measured over the 853 packages of the [base](#the-base-image) on a full build
 tree, hard links counted once: 679 MB of its 5.46 GB by these rules, and 949 MB with gcc's
 `facet_dev =` line below.
+
+**A link goes with its target.** A symbolic link the rules call run time whose target is a path of
+the same package in `dev` or `doc` takes that facet: once the target is left out it would point at
+nothing. Chains settle, so `libcurses.so -> libncurses.so -> libncursesw.so -> libncursesw.so.6`
+leaves with its `-l` link and only `libncursesw.so.6` stays, and a compatibility name such as
+glslang's `libglslang.so.0 -> libglslang.so` leaves with the link it names. A link into another
+package keeps its own facet.
 
 **A recipe may only add to the `dev` facet.** Its `facet_dev =` line, whitespace-separated globs
 matched against each of its own package's paths without the `./` (`*` crosses `/`), moves a file
@@ -948,7 +960,8 @@ Under `run`, `kpkgadd` takes the left-out files out of the staged tree before th
 so they are never placed, scanned for conflicts, put in the manifest or the file record, or swept
 as an upgrade's orphans, and lists each as `dev <path>` or `doc <path>` in `.facets/<name>`. A
 directory leaves the manifest with them when it held a file that was left out and holds none that
-was kept. `kpkg check` therefore passes such a package, a removal never asks about the files, and
+was kept; `kpkg facets --strip` deletes such a directory from the tree only when it is empty and no
+other installed package lists it. `kpkg check` therefore passes such a package, a removal never asks about the files, and
 `kdos update check` counts it current: what it was installed without is neither behind nor damage.
 
 The record says how the package is installed, and **an upgrade keeps it that way**: under `run`,
@@ -1262,6 +1275,18 @@ running `kpkg`, not from any file. The build's chroot phases set `CC`, `CFLAGS`,
 `-ffile-prefix-map` and `-Wl,--build-id=sha1`) and leave `KDOS_TARGET` unset; a shell on an
 installed machine sets none of them. The same compiler therefore hashes to a different `B:` at a
 login prompt than inside the build.
+
+`KPKG_CC_ID`, when set, is the compiler field itself, and no compiler is run. The image's stage step
+writes the build's `CC`, `CXX`, flags and `KDOS_TARGET` into `/etc/kdos/chroot.env` with
+`KPKG_CC_ID=<CC> <version>`, asked of the compiler before the strip leaves gcc's driver out, and
+`kdos update` loads that file before every `kpkg` it runs. A machine installed from the image has
+no compiler to ask, and without the record it would hash `cc=unknown` and match no prebuilt
+package. The same file carries what else a recipe's result depends on and the hash does not name:
+the Rust `-sys` crate switches that link the system library instead of a crate's own copy,
+`CMAKE_BUILD_TYPE`, the Cargo and Go settings and `SOURCE_DATE_EPOCH`, with `CONFIG_SITE` and
+`KDOS_BUILD_PATH` naming the build's autoconf site file and its `ninja` and `meson` wrappers,
+copied to `/usr/share/kdos/build`. `kdos update` sets every line, and puts `KDOS_BUILD_PATH` first
+on `PATH`, so a port built on the machine is built as the binhost's was.
 
 Both hashes include their field names, because a hash over values alone collides the moment
 two fields swap.
@@ -1669,7 +1694,11 @@ as the index says and names the index's version, and read each bundle from the U
 
 `script/release-image.sh` is the release step that runs `kdos image make` over the root the ISO is
 squashed from, with this checkout's own `kdos-tools`, and verifies the result against the key's
-public half before it ends. `ports/publish --release` publishes the directory it wrote; see
+public half before it ends. With `--upper` that root is a read-only overlay of the recipe tree
+`105_ports.sh` staged (`build/image-ports`, or `--ports`), the image stage's upper layer and
+`build/fs`, which is what the ISO carries: its `/ports` is appended to the squashfs after the
+stage, so an image of the stage alone would boot a slot with no recipes, and would carry no
+`TREE` time for a machine to judge it newer by. `ports/publish --release` publishes the directory it wrote; see
 [Publishing a release](#publishing-a-release).
 
 ## The release index
@@ -1805,7 +1834,12 @@ here as `builds`.
 **A slot image is the base alone**, so the image lane carries the world set over itself. After it
 writes the slot, `apply` installs every package of `/var/lib/kdos/world` the image lacks, with
 every dependency it needs, from the same release's binhost, building the ones whose origin is
-`source`. Whether it can is decided before the slot is written: the world set and every
+`source`. A port built here gets what it compiles against first: the build tools, the development
+files of what it builds with, and, under `build-deps = prebuilt` (the default), every package of
+its own dependency closure the slot lacks and the binhost covers, prebuilt. The base leaves
+`ports/buildonly` out, so without that last part `kpkg install` would build such a package from
+source in the slot (`doxygen`, which `libxml2` names, under `llvm`, under `rust`, under `bat`).
+Whether it can is decided before the slot is written: the world set and every
 dependency of it, walked through the tree's recipes, must be built here or covered by the signed
 index, or the image lane is refused with `N package(s) of what was installed on purpose is/are not
 in release X's binhost`, naming the first few, and nothing is written. A machine with no world set

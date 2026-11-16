@@ -12,14 +12,16 @@ A key id (16 hex characters, printed by kpkg) identifies a key. It is NOT a
 credential: a signature file names the id so a person can be told which key
 signed, and verification always uses the key from THIS directory.
 
-KDOS ships no key HERE, and that is deliberate: a distro that shipped its own
-trusted key for the host's packages would be asking you to trust whoever built
-the image, which is exactly the question signing exists to let you answer for
-yourself. The image's own packages carry no signature either — a port is
-built from source and its integrity comes from the `sha256 =` in its recipe,
-so there is no third party to attest to. This ring is for a binhost you
-choose to trust, a build's own included: `make build KDOS_MAKE_BINHOST=1`
-signs one with a key kept under build/ and puts its .pub beside the index.
+THE IMAGE SHIPS ITS OWN BUILD'S TWO KEYS HERE: kdos-binhost.pub, which signs
+its release's binhost, and kdos-release.pub, which signs the release index
+and the slot image. Both come from the same build that made this image, so
+trusting them is trusting whoever built the image, which booting the image
+already is. They verify the release index, the binhost index (PACKAGES.sig),
+each prebuilt package's .sig and the slot image's manifest, and nothing from
+another builder. Delete them and this machine takes no prebuilt package and
+no slot image; it still builds every port from source, whose integrity comes
+from the `sha256 =` lines of its recipe. Add another builder's .pub to trust
+that binhost too.
 
 `packs/` IS SHIPPED WITH A KEY, and it is a different question. kdos-packd
 checks an application pack's own signature, or a signed pack index (PACKAGES)

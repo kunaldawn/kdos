@@ -309,8 +309,11 @@ single physical volume of a volume group named `kdos` and lays it out for A/B up
 | `kdos/swap` | The swap, used by both slots |
 | `kdos/home` | Everything left: `/home` for both slots, with the pack store beside the homes |
 
-Each slot is half as large again as the install, rounded up to a whole GiB and never under 8 GiB,
-so a release that grows still fits. On a disk where two slots, the swap and a 4 GiB home (plus the
+Each slot is half as large again as the install or 30% of the disk the swap leaves, whichever is
+larger, rounded up to a whole GiB and never under 8 GiB, so a release that grows still fits, and so
+do the programs you install: every native group goes into the slot, with its downloaded packages
+kept beside it for the next update's deltas. On a 40 GB disk that is two 12 GiB slots and a
+15 GiB home; on a 256 GB disk, two 76 GiB slots and a 99 GiB home. On a disk where two slots, the swap and a 4 GiB home (plus the
 live container store, when it is copied) do not fit, `root_a` takes the whole group with the home
 on it, there is no second slot, and the page and the Summary say so in the warning colour. See
 [A/B root slots](#ab-root-slots) for what the layout does.
@@ -729,9 +732,9 @@ its kernel put in that slot's ESP directory, and the slot marked to be tried; se
 System Settings' System Versions page lists both slots and starts the other one on the next boot,
 which is how you go back to the previous version by hand.
 
-Two slots need a disk of two slots (each 1.5 times the install, rounded up to a whole GiB, at least
-8 GiB), the swap, a 4 GiB home, the ESP and the BIOS boot partition: about 149 GiB for an install of
-46.5 GiB. `kinstall --dump probe` prints the figure for the medium in hand (`ab_need_bytes`), and the
+Two slots need a disk of two slots (each 1.5 times the install or 30% of the room past the swap,
+rounded up to a whole GiB, at least 8 GiB), the swap, a 4 GiB home, the ESP and the BIOS boot
+partition: about 21 GiB for the 4 GB base the medium installs. `kinstall --dump probe` prints the figure for the medium in hand (`ab_need_bytes`), and the
 window's Disk page says beside the disk whether it holds two. A disk too small for two slots, the
 reuse plan, and an install with the slots unticked all get one slot. Such a machine has nowhere to write an update but over itself: `kdos update apply --in-place`
 does that, and gives up the rollback. A second slot can be made by hand later: make a filesystem

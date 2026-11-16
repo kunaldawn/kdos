@@ -824,9 +824,13 @@ to write it. When the group has room, the Format step makes four volumes:
 | `swap` | `swap_mb`, when swap was asked for (a file or a partition both become this volume) | — |
 | `home` | The rest of the group (`-l 100%FREE`) | `/home`, by both slots |
 
-A slot is the system and room for its next version: the live system less the container library,
-plus half as much again for an update to grow into, never less than 8 GiB, rounded up to a whole
-GiB (`ki_slot_mb()`). The group has room when, after 32 MiB for the LUKS header and LVM metadata,
+A slot is the system, what is installed on it and room for its next version: the live system less
+the container library plus half as much again for an update to grow into, or 30%
+(`KI_SLOT_SHARE`) of the group's room after the metadata and the swap, whichever is larger, never
+less than 8 GiB, rounded up to a whole GiB (`ki_slot_mb()`). The share is there because the medium
+carries the base alone: every native group a person installs, at the install or later, goes into
+the slot, and its downloaded packages stay in the slot's binhost cache for the next update's
+deltas. The group has room when, after 32 MiB for the LUKS header and LVM metadata,
 it holds two slots, the swap and a home of at least 4 GiB plus the container library the copy
 carries into it (`ki_ab()`). The Layout page, the Summary, `--dump plan` and the Format step all
 ask the same two functions, so the layout shown is the layout created.

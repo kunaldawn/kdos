@@ -188,7 +188,7 @@ any. What each phase contains, and how one runs, is in [The build system](build-
 | `release` | Create or update `TAG`'s system release as a draft: the ISO, `SHA256SUMS`, its signature and `sources.sha256` | Network, the archive token, a finished build |
 | `release-publish` | Make `TAG`'s release public and Latest | Network, the archive token |
 | `snapshots` | List the phase snapshots, compiling `build/.kdosbuild` with your machine's compiler when your compiler did not build it | A C compiler |
-| `run` | Boot the ISO in a virtual machine, with `build/kdos.qcow2` attached as a disk (created if missing as a sparse qcow2 of `KDOS_DISK`, 192 GB by default: above the install `kinstall` checks the disk against, and above the roughly 149 GiB the two A/B slots need, so an install to it gets both) | QEMU, OVMF |
+| `run` | Boot the ISO in a virtual machine, with `build/kdos.qcow2` attached as a disk (created if missing as a sparse qcow2 of `KDOS_DISK`, 192 GB by default: above the install `kinstall` checks the disk against and the roughly 21 GiB the two A/B slots need at the least, so an install to it gets both, with room in each slot for native groups) | QEMU, OVMF |
 | `rundisk` | Boot `build/kdos.qcow2` instead of the ISO | QEMU, OVMF, an existing disk image |
 | `run-hw` | Boot the ISO with hardware-accelerated graphics | Docker, the NVIDIA Container Toolkit |
 | `rundisk-hw` | The same, from the disk image | Docker, the NVIDIA Container Toolkit |
@@ -384,7 +384,7 @@ no firmware.
 | `build/kdos-base/` | The base pack, with `KDOS_PACK_KDOS=1` | |
 | `build/binhost/` | The signed binhost, with `KDOS_MAKE_BINHOST=1` | Each run adds what it built and keeps what earlier runs added |
 | `build/binhost-key/` | `kdos-binhost.key`, which signs the binhost's index, made on the first `KDOS_MAKE_BINHOST=1` run, and its `.pub` | Kept by both cleans, so every later binhost is signed with the same key |
-| `build/image-ports/` | The recipe-only ports tree `70_image/105_ports.sh` stages, which `110_iso.sh` appends to `system.sfs` as `/ports` | Rewritten by every image build |
+| `build/image-ports/` | The recipe-only ports tree `70_image/105_ports.sh` stages, which `110_iso.sh` appends to `system.sfs` as `/ports` and `script/release-image.sh --upper` lays over the stage | Rewritten by every image build |
 | `build/image-upper/` | The image stage's upper layer over `build/fs`: every change the `70_image` steps from `017_stage.sh` on made, the whiteouts of the packages the base leaves out among them | Emptied each time `017_stage.sh` starts. Root's, like `build/fs`, and never handed back. See [The image stage](build-system.md#the-image-stage) |
 | `build/image-work/` | The overlay's work directory | Emptied with `build/image-upper` |
 | `build/image-root/` | The mount point of the stage, the root each step from `017_stage.sh` on is chrooted in and `110_iso.sh` squashes | Mounted only inside a build's own chroot entries; empty from your machine |

@@ -42,12 +42,52 @@
 # linkcheck runs after, so a program that links through a removed -l link
 # fails the image.
 #
-# Under KDOS_IMAGE=full this step does nothing and the image is build/fs.
+# THE BUILD'S ENVIRONMENT IS RECORDED in /etc/kdos/chroot.env before the
+# facets go: the compilers, every flag set and KDOS_TARGET as this phase has
+# them, KPKG_CC_ID, the compiler's `<CC> <version>`, asked now because the
+# strip takes gcc's driver, and what else a recipe's result depends on (the
+# Rust -sys switches, CMake's build type, the Cargo and Go settings,
+# SOURCE_DATE_EPOCH), with CONFIG_SITE and KDOS_BUILD_PATH naming the
+# autoconf site file and the ninja and meson wrappers, copied to
+# /usr/share/kdos/build. `kdos update` loads the file before every kpkg it
+# runs: kpkg's build-config hash reads KPKG_CC_ID instead of a compiler, so a
+# machine installed from the image computes the binhost's B: and takes its
+# packages, and a port built there is built as the binhost's was. Without
+# the file nothing prebuilt matches; without the rest a Rust port links the
+# copy its crate carries and an autoconf port puts its configuration under
+# /usr/etc.
+#
+# Under KDOS_IMAGE=full this step records the environment and does nothing
+# else, and the image is build/fs.
 
 set -e
 source script/phases/70_image/phase.env
 
+BUILD_SHARE=/usr/share/kdos/build
+record_build_env() {
+    local k
+    install -Dm644 /kdos/script/env/config.site "$BUILD_SHARE/config.site"
+    install -Dm755 /kdos/script/bin/ninja "$BUILD_SHARE/bin/ninja"
+    install -Dm755 /kdos/script/bin/meson "$BUILD_SHARE/bin/meson"
+    {
+        for k in CC CXX CFLAGS CXXFLAGS FFLAGS FCFLAGS LDFLAGS KDOS_TARGET \
+                 CMAKE_BUILD_TYPE CARGO_PROFILE_RELEASE_DEBUG GOFLAGS \
+                 CGO_CFLAGS CGO_CXXFLAGS CGO_LDFLAGS \
+                 LIBGIT2_NO_VENDOR RUSTONIG_SYSTEM_LIBONIG \
+                 LIBSQLITE3_SYS_USE_PKG_CONFIG ZSTD_SYS_USE_PKG_CONFIG \
+                 SOURCE_DATE_EPOCH PIP_ROOT_USER_ACTION; do
+            if [ -n "${!k+x}" ]; then printf '%s=%s\n' "$k" "${!k}"; fi
+        done
+        printf 'CONFIG_SITE=%s\n' "$BUILD_SHARE/config.site"
+        printf 'KDOS_BUILD_PATH=%s\n' "$BUILD_SHARE/bin"
+        printf 'KPKG_CC_ID=%s %s\n' "${CC:-cc}" "$("${CC:-cc}" -dumpversion)"
+    } > /etc/kdos/chroot.env
+    chmod 0644 /etc/kdos/chroot.env
+    echo "[stage] /etc/kdos/chroot.env: $(grep '^KPKG_CC_ID=' /etc/kdos/chroot.env)"
+}
+
 if [ "${KDOS_IMAGE:-base}" = full ]; then
+    record_build_env
     echo "[stage] KDOS_IMAGE=full — the image carries every installed package"
     exit 0
 fi
@@ -63,10 +103,15 @@ drop=$(python3 /kdos/script/lib/imageset.py --tree /kdos --root / --drop)
 n=$(printf '%s\n' "$drop" | grep -c . || true)
 echo "[stage] removing $n package(s) outside the base"
 if [ "$n" -gt 0 ]; then
-    printf '%s\n' "$drop" | xargs kpkg remove >/dev/null
+    log=/kdos/build/logs/70_image/stage-remove.log
+    if ! printf '%s\n' "$drop" | xargs kpkg remove > "$log" 2>&1; then
+        grep -v '^==> \(Removing\|Package .* removed\|Keeping\)' "$log" | tail -40 >&2
+        echo "FATAL: kpkg remove failed; its whole output is $log" >&2
+        exit 1
+    fi
 fi
 left=$(printf '%s\n' "$drop" | while IFS= read -r p; do
-    [ -n "$p" ] && [ -f "/var/lib/kpkg/db/$p" ] && printf '%s ' "$p"
+    if [ -n "$p" ] && [ -f "/var/lib/kpkg/db/$p" ]; then printf '%s ' "$p"; fi
 done)
 if [ -n "$left" ]; then
     echo "FATAL: still installed after the removal: $left" >&2
@@ -74,6 +119,7 @@ if [ -n "$left" ]; then
 fi
 python3 /kdos/script/lib/imageset.py --tree /kdos --root / --sizes
 
+record_build_env
 echo "[stage] removing the development and documentation facets"
 strip=$(kpkg facets --strip)
 printf '%s\n' "$strip" | sed 's/^==> /[stage] /'

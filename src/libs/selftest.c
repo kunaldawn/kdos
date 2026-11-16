@@ -1409,6 +1409,27 @@ static void test_facets(void)
 	   "a facet_dev glob leaves what it does not name");
 	ok(!kp_facet_glob("./usr/bin/", gcc), "a facet_dev glob takes no directory");
 	ok(!kp_facet_glob("./usr/bin/gcc", NULL), "no facet_dev line takes nothing");
+
+	/* A machine without a compiler matches the binhost's build-config
+	 * hash through the recorded KPKG_CC_ID, never through "unknown". */
+	char h1[65], h2[65], human[1024];
+	const char *oldcc = getenv("CC");
+	char *keepcc = oldcc ? strdup(oldcc) : NULL;
+	setenv("CC", "/nonexistent/kdos-cc", 1);
+	unsetenv("KPKG_CC_ID");
+	kp_buildconfig_hash(h1, human, sizeof(human));
+	ok(strstr(human, "cc=unknown\n") != NULL,
+	   "a compiler that cannot be run hashes as unknown");
+	setenv("KPKG_CC_ID", "gcc 16.2.0", 1);
+	kp_buildconfig_hash(h2, human, sizeof(human));
+	ok(strstr(human, "cc=gcc 16.2.0\n") != NULL && strcmp(h1, h2) != 0,
+	   "KPKG_CC_ID is the compiler's identity in the build-config hash");
+	unsetenv("KPKG_CC_ID");
+	if (keepcc)
+		setenv("CC", keepcc, 1);
+	else
+		unsetenv("CC");
+	free(keepcc);
 }
 
 /* Run-time needs: each kind of edge found in installed files, and each

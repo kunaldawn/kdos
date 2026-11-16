@@ -1367,7 +1367,10 @@ stock ISO:
 
 Run them against a medium or a store you have put those packs into. `install-to-disk.sh` chooses
 no applications unless `INSTALL_APPS` names catalogue group ids, and a group it names is recorded
-in the target's `/var/lib/kdos/apps-pending` for the first login, not built.
+in the target's `/var/lib/kdos/apps-pending` for the first login, not built. `INSTALL_GROUPS`
+names native groups the install takes prebuilt from the binhost the live system's `update.conf`
+names, and the script reports the target's world set, its package count and its
+`groups-pending`.
 
 | Harness | Runs | Does |
 |---|---|---|

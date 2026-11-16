@@ -161,8 +161,8 @@ kdos update install --dry-run kdenlive      # what would be downloaded or built,
 kdos app install app.scribus                # a boxed application from the catalogue
 ```
 
-On the live ISO, `sudo kdos update fetch --binhost-only` first takes the release's package index;
-what you install then lasts until the restart.
+The first install takes the release's signed package index itself. On the live ISO what you
+install lasts until the restart.
 
 Which way a terminal install goes by default, and whether a build also builds what it lacks, are
 set in **System Settings › System Versions › Installing software**. Every program keeps the way

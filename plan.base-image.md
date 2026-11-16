@@ -111,11 +111,10 @@ whole-tree ratio (0.41). The target is about **4.8 GB of files**.
 | `kdos-kfs` (121 MB), the Qt 5 IM stack, Samba file sharing | 0.25 GB | T3.3 |
 | **Total** | **≈ 4.7 GB** | ≈ 1.9 GB at 0.40; less with the measured codec (T3.4) |
 
-With the firmware split (T4.1) the base keeps 262 MB of firmware instead of 596 MB. The current
-estimate: 855 packages of today's tree are 4.91 GB of files without any firmware, plus 0.26 GB
-of the four vendors' firmware, less about 0.95 GB of facets: **about 4.2 GB of files, an ISO of
-about 1,750 MiB at zstd:19**, 150 MiB under the gate. It is an estimate until T6.3's build runs the
-ledger and the gate.
+With the firmware split (T4.1) the base keeps 262 MB of firmware instead of 596 MB. **Measured
+on the T6.3 build: 860 packages, 3,977 MiB of files after the facets (5.13 GB before them), an
+ISO of 1,573 MiB at zstd:19**, 327 MiB under the gate. The ledger's largest are firefox-esr
+(271 MiB), llvm (238), linux (198), firmware-intel (159) and mesa (150).
 
 ### Measured codecs
 
@@ -229,12 +228,12 @@ passes.
 
 | Task | Status |
 |---|---|
-| T6.1 Free disk: a `KDOS_MAKE_BINHOST=1` build keeps every package (tens of GB) beside the snapshots; today 24 GB are free | **blocked** — the user's disk |
-| T6.2 Release key: `kpkg keygen build/keys/kdos-release`, backed up offline; its key id published in the README | todo |
-| T6.3 Rebuild what the recipes changed (mesa, mesa-opencl, kdos-tools, kdos-kpkg, kdos-discover, kcm-kdos-system, kdos-sysupdated, kinstall, kdos-installer-gui), then `make build KDOS_MAKE_BINHOST=1` (base image) | blocked on T6.1 |
-| T6.4 The ISO is ≤ 1,900 MiB (the gate); the ledger reviewed | blocked on T6.3 |
-| T6.5 Rig proof (§5) | blocked on T6.3 |
-| T6.6 Tag `v0.2`, build from the tag, `release-image.sh --root build/fs --upper build/image-upper`, `make release` (draft), check the draft from another machine, `make release-publish` | blocked on T6.5 |
+| T6.1 Free disk: a `KDOS_MAKE_BINHOST=1` build keeps every package (tens of GB) beside the snapshots | done |
+| T6.2 Release key: `kpkg keygen build/keys/kdos-release`, backed up offline; its key id published in the README | done: key id `ccb53bac7fdba3cd`, in the README; the offline backup is the user's |
+| T6.3 A full `make build KDOS_MAKE_BINHOST=1` from an empty tree (52.5 h, 2,440 packages) | done |
+| T6.4 The ISO is ≤ 1,900 MiB (the gate); the ledger reviewed | done: 1,573 MiB |
+| T6.5 Rig proof (§5) | 1–6 proven on the built ISO: UEFI and BIOS boot; live groups; install with `games` and its pending path; Kdenlive prebuilt, `--dev zlib`, `--source bat` with what it lacks prebuilt; a signed mock next release taken through the image lane, slot B booted and confirmed, both programs carried, `kpkg check --all` clean. A slot left on trial past its attempts rolled back to A, as it must. Open: the world step after an image still compiled doxygen from source once for `bat`; the slot was complete and checked clean |
+| T6.6 Tag `v0.2`, build from the tag, `release-image.sh --root build/fs --upper build/image-upper`, `make release` (draft), check the draft from another machine, `make release-publish` | waits on the user's commit and tag: the build must come from the tag |
 
 ## 5. Verification
 
@@ -265,9 +264,8 @@ from a second drive:
 
 ## 6. Risks
 
-- **The budget is estimated**, from file sizes and the whole tree's ratio; static libraries
-  compress better than what stays. The gate and the measured codecs (T3.4) settle it; the
-  firmware split (T4.1) is the next lever, then Mesa's LLVM.
+- **The budget is measured** at 1,573 MiB; a release that grows past the gate fails the build.
+  The next levers are Mesa's LLVM and the firmware vendors kept on the medium.
 - **Closure by `depends =`** cannot see QML and Python imports; T3.3 simulates them on the
   current tree, T4.2 makes it a gate.
 - **Facets and source builds:** a build that reads a file the rules call documentation (a

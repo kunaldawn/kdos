@@ -868,11 +868,13 @@ The directory is the policy:
   nothing outside it, so a tool reports the key that actually verified, not the id the signature
   claimed.
 
-No key ships for host packages, deliberately: a distribution that shipped its own trusted key
-would be asking you to trust whoever built the image. Ports are built from source and their
-integrity is the `sha256` in each recipe, checked when the build fetches it (see
+The host ring ships with two keys, both the image's own build's: `kdos-binhost.pub`, which signs
+that build's binhost, and `kdos-release.pub`, which signs its release index and slot image. They
+ask you to trust no one beyond whoever built the image, which booting it already does, and they
+vouch for nothing another builder made. A port built here needs neither: its integrity is the
+`sha256` in its recipe, checked when the source is fetched (see
 [How KDOS is built](../05-developer/how-kdos-is-built.md#fetching-the-only-step-that-uses-the-network)).
-To trust a binhost of your choosing:
+To trust another binhost as well:
 
 ```sh
 kpkg keygen builder                    # on the machine that builds
@@ -925,10 +927,12 @@ access-control list, which a manifest cannot represent, rather than dropping it 
 formats and the update path are in
 [Packaging](packaging.md#updating-a-machine).
 
-The image ships with no key in `/etc/kdos/keys`, so a fresh machine verifies no binhost index and
-no slot image until a key is put there; until then `kdos update` can only build from source, with
-the tree checked against the release key. A machine that should take a release's prebuilt packages
-or images needs that release's `.pub` copied into `/etc/kdos/keys`.
+The image's build copies its release key and binhost key into `/etc/kdos/keys`
+(`70_image/105_ports.sh`), so a machine installed from it verifies its own release's binhost index,
+packages and slot images and nothing signed by anyone else. Deleting both leaves it building from
+source alone, with the tree checked against the release key in `tree/`. A build that had neither
+key ships the ring empty, and its image takes no prebuilt package and no slot image until a
+`.pub` is copied in.
 
 ### Software a person installs
 

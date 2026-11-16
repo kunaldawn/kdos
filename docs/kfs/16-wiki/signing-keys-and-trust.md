@@ -68,7 +68,7 @@ The ring `kdos update fetch` checks a published ports tree's `kdos-ports.tar.xz.
 
 The image step that fills it, from `script/phases/70_image/105_ports.sh`:
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=134-143 pin=68e72034c604 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=151-160 pin=68e72034c604 -->
 
 Where `fetch` looks for the tree is [`/etc/kdos/update.conf`]{.idx}, which is not shipped; see
 [/etc/kdos/update.conf](../../kdos/06-reference/configuration.md#etckdosupdateconf).

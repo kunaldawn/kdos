@@ -11,8 +11,10 @@
  *
  * The manifest is walked in REVERSE, so a directory is only reached after
  * everything inside it: an entry ending in `/` is a directory and gets rmdir
- * (which fails harmlessly while it still holds files another package owns),
- * anything else gets unlink — unless another installed package claims the
+ * (which fails harmlessly while it still holds files another package owns)
+ * unless another installed package lists the directory too, which keeps an
+ * empty directory a package ships (hicolor's icon sizes, a plugin directory)
+ * when a package that also listed it goes; anything else gets unlink — unless another installed package claims the
  * same file, under either spelling of a merged-/usr path, in which case the
  * file is that package's and stays.
  *
@@ -43,7 +45,89 @@
 
 #include "kdos-kpkg.h"
 
-static int remove_one(const KpConf *c, const char *name, KpTriggers *trig)
+static int cmp_str(const void *a, const void *b)
+{
+	return strcmp(*(char *const *)a, *(char *const *)b);
+}
+
+void kp_dirclaims_load(const KpConf *c, KpDirClaims *d)
+{
+	memset(d, 0, sizeof(*d));
+	kp_canon_load(c, &d->canon);
+	char *db = kp_db_dir(c);
+	char **names = kb_listdir(db, NULL);
+	int cap = 4096, n = 0;
+	char **all = malloc((size_t)cap * sizeof(*all));
+	for (char **p = names; p && *p && all; p++) {
+		if ((*p)[0] == '.')
+			continue;
+		char *f = kb_path_join(db, *p);
+		char *data = kb_read_all(f, NULL);
+		free(f);
+		char *body = data ? strchr(data, '\n') : NULL;
+		for (char *l = body ? body + 1 : NULL, *nl; l && *l; l = nl) {
+			nl = strchr(l, '\n');
+			if (nl)
+				*nl++ = 0;
+			size_t ll = strlen(l);
+			if (!ll || l[ll - 1] != '/')
+				continue;
+			if (n == cap) {
+				cap *= 2;
+				char **nv = realloc(all, (size_t)cap * sizeof(*all));
+				if (!nv)
+					break;
+				all = nv;
+			}
+			all[n++] = kp_canon_path(&d->canon, l);
+		}
+		free(data);
+	}
+	kb_strv_free(names);
+	free(db);
+	if (!all)
+		return;
+	qsort(all, (size_t)n, sizeof(*all), cmp_str);
+	d->dir = malloc((size_t)(n ? n : 1) * sizeof(*d->dir));
+	d->count = calloc((size_t)(n ? n : 1), sizeof(*d->count));
+	for (int i = 0; i < n && d->dir && d->count; i++) {
+		if (d->n && !strcmp(d->dir[d->n - 1], all[i])) {
+			d->count[d->n - 1]++;
+			free(all[i]);
+			continue;
+		}
+		d->dir[d->n] = all[i];
+		d->count[d->n++] = 1;
+	}
+	free(all);
+}
+
+int kp_dirclaims_drop(KpDirClaims *d, const char *line)
+{
+	if (!d->dir)
+		return 0;
+	char *k = kp_canon_path(&d->canon, line);
+	char **hit = bsearch(&k, d->dir, (size_t)d->n, sizeof(*d->dir),
+			     cmp_str);
+	free(k);
+	if (!hit)
+		return 0;
+	int *cnt = &d->count[hit - d->dir];
+	if (*cnt > 0)
+		(*cnt)--;
+	return *cnt > 0;
+}
+
+void kp_dirclaims_free(KpDirClaims *d)
+{
+	for (int i = 0; i < d->n; i++)
+		free(d->dir[i]);
+	free(d->dir);
+	free(d->count);
+}
+
+static int remove_one(const KpConf *c, const char *name, KpTriggers *trig,
+		      KpDirClaims *claims)
 {
 	char *db = kp_db_dir(c);
 	char *dbfile = kb_path_join(db, name);
@@ -62,11 +146,23 @@ static int remove_one(const KpConf *c, const char *name, KpTriggers *trig)
 
 	const char *root = c->root[0] ? c->root : "/";
 
-	/* Skip line 1 — that is the version, not a path. */
+	/* Skip line 1 — that is the version, not a path. Every line is
+	 * kept: a path left out of the table stays on disk after its
+	 * package's entry is gone, owned by nothing. */
 	char *body = strchr(data, '\n');
-	char *paths[16384];
+	size_t cap = 1;
+	for (const char *q = data; *q; q++)
+		cap += *q == '\n';
+	char **paths = malloc(cap * sizeof(*paths));
+	if (!paths) {
+		kp_err("out of memory removing %s", name);
+		free(data);
+		free(dbfile);
+		free(db);
+		return 1;
+	}
 	int n = 0;
-	for (char *l = body ? body + 1 : data; l && *l && n < 16384;) {
+	for (char *l = body ? body + 1 : data; l && *l;) {
 		char *nl = strchr(l, '\n');
 		if (nl)
 			*nl = 0;
@@ -87,15 +183,17 @@ static int remove_one(const KpConf *c, const char *name, KpTriggers *trig)
 		if (!strncmp(rel, "./", 2))
 			rel += 2;
 		const char *other = NULL;
-		if (pl && paths[i][pl - 1] == '/')
-			rmdir(full);	/* only when it is already empty */
-		else if ((other = kp_owned_other(owned, rel, name)))
+		if (pl && paths[i][pl - 1] == '/') {
+			if (!kp_dirclaims_drop(claims, paths[i]))
+				rmdir(full);	/* only when already empty */
+		} else if ((other = kp_owned_other(owned, rel, name)))
 			kp_msg("Keeping %s: %s claims it", paths[i], other);
 		else
 			unlink(full);
 		free(full);
 	}
 	kp_owned_free(owned);
+	free(paths);
 
 	free(data);
 	unlink(dbfile);
@@ -120,10 +218,17 @@ int del_main(int argc, char **argv)
 	KpConf c;
 	kp_conf_load(&c);
 
-	const char *names[256];
+	/* As many names as the command line holds: a fixed table would
+	 * drop every name past it, and the run would report success with
+	 * those packages still installed. */
+	const char **names = calloc((size_t)argc, sizeof(*names));
+	if (!names) {
+		kp_err("out of memory");
+		return 1;
+	}
 	int n = 0;
 
-	for (int i = 1; i < argc && n < 256; i++) {
+	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--root") && i + 1 < argc)
 			kb_strlcpy(c.root, argv[++i], sizeof(c.root));
 		else if (argv[i][0] == '-' && argv[i][1]) {
@@ -131,6 +236,7 @@ int del_main(int argc, char **argv)
 			 * through to the package list: taken as a name, a
 			 * stray flag reads as "Package 'x' not installed". */
 			kp_err("unknown option: %s", argv[i]);
+			free(names);
 			return 1;
 		} else
 			names[n++] = argv[i];
@@ -138,6 +244,7 @@ int del_main(int argc, char **argv)
 
 	if (!n) {
 		printf("Usage: kpkgdel [--root <path>] <package>...\n");
+		free(names);
 		return 1;
 	}
 
@@ -158,10 +265,14 @@ int del_main(int argc, char **argv)
 	/* Every named package is attempted; the worst status is the exit code. */
 	int rc = 0;
 	KpTriggers trig = {0};
+	KpDirClaims claims;
+	kp_dirclaims_load(&c, &claims);
 	for (int i = 0; i < n; i++)
-		if (remove_one(&c, names[i], &trig))
+		if (remove_one(&c, names[i], &trig, &claims))
 			rc = 1;
+	kp_dirclaims_free(&claims);
 	kp_triggers_run(&trig, root);
 	close(lock);
+	free(names);
 	return rc;
 }

@@ -276,10 +276,9 @@ on the stick.
 The live session installs software the way an installed machine does, into its writable layer,
 which is memory unless the session has a persistence store (see
 [Keep what you change](#keep-what-you-change)). A native port comes from the release's binhost,
-whose index the live session takes first:
+whose signed index the first install takes:
 
 ```sh
-sudo kdos update fetch --binhost-only    # the release's signed package index, nothing else
 kdos update groups                       # every group, whether it is installed, and its download
 sudo kdos update install gimp            # one port, prebuilt
 sudo kdos update install office          # a group: LibreOffice, Calibre and TeXstudio

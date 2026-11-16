@@ -141,12 +141,32 @@ void kp_pkg_symtab(const char *pkg);
  * changed file under etc/ is reported as configuration and does not fail. */
 int kp_cmd_check(KpConf *c, int argc, char **argv);
 
+/* Directory claims (del.c): how many installed packages list each directory,
+ * by its canonical merged-/usr spelling, read once with kp_dirclaims_load.
+ * kp_dirclaims_drop takes one package's claim on manifest line `line` off and
+ * is 1 while another package still lists the directory, so a removal or a
+ * facet strip deletes a directory only when the last package listing it lets
+ * go, never because it is empty for a moment: a package may ship an empty
+ * directory another program fills or reads (hicolor's icon sizes, a plugin
+ * directory). */
+typedef struct {
+	char **dir;
+	int *count;
+	int n;
+	KpCanon canon;
+} KpDirClaims;
+
+void kp_dirclaims_load(const KpConf *c, KpDirClaims *d);
+int kp_dirclaims_drop(KpDirClaims *d, const char *line);
+void kp_dirclaims_free(KpDirClaims *d);
+
 /* Package facets (facets.c). kp_facets_split divides a manifest body (the
  * lines after the version) by kp_facet_of and the recipe's `facet_dev =`
  * globs (`extra`, may be NULL), reading each symlink under `root`: `keep` is the manifest without what is left out, `left` the
  * `<facet> <path>` record lines, `gone` every line left out, files and
  * directories, and `nfiles` how many files. kp_facets_remove deletes the
- * `gone` lines under `root`, files first and each directory only once empty,
+ * `gone` lines under `root`, files first and each directory only once empty
+ * and, given `claims`, only when no other installed package lists it,
  * adding the bytes of the regular files to `*bytes` (may be NULL).
  * kp_facets_guard is 0 when `port` can be built here, -1, with the command
  * that restores them on stderr, when a package it compiles against has its
@@ -163,7 +183,7 @@ void kp_facets_extra(const KpConf *c, const char *name, char *out,
 		     size_t cap);
 void kp_facets_split_free(KpFacetSplit *s);
 void kp_facets_remove(const char *root, const char *gone,
-		      unsigned long long *bytes);
+		      unsigned long long *bytes, KpDirClaims *claims);
 int kp_facets_guard(const KpConf *c, const char *port);
 int kp_cmd_facets(KpConf *c, int argc, char **argv);
 

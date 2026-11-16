@@ -30,7 +30,10 @@
  *        target is that name plus a version (`libz.so -> libz.so.1.3.1`):
  *        the link `-lz` resolves through. A real file named lib<x>.so is run
  *        time — most plugins and every library built without a version are
- *        one — and so is a link to anything else.
+ *        one — and so is a link to anything else. kp_facets_split (kpkg's
+ *        facets.c) then moves a run-time link whose target is a dev or doc
+ *        path of its own package into that facet, which this per-path rule
+ *        cannot see.
  *   doc  everything under usr/share/doc/ except HTML/ (KDE's handbooks,
  *        which help:/ and the applications' Help menus open) and kdos/ and
  *        kfs/ (the two books, which the desktop links into); everything

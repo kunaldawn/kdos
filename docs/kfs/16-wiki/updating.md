@@ -87,7 +87,7 @@ Its description, from `fs/etc/kdos/keys/tree/README`:
 The image step that fills it. An image built without the release key ships the ring empty, and
 then refuses every fetched tree:
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=134-143 pin=68e72034c604 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=151-160 pin=68e72034c604 -->
 
 ### /etc/kdos/keys/
 
@@ -106,7 +106,7 @@ The stamp naming the commit `/ports` was made from and when. `kdos update fetch`
 fetched tree's own stamp and refuses an older tree; a `/ports` with no stamp, from an image built
 without a commit, accepts any signed tree. The same step writes it:
 
-<!-- kfs:include script/phases/70_image/105_ports.sh lines=124-133 pin=91e34053e828 -->
+<!-- kfs:include script/phases/70_image/105_ports.sh lines=141-150 pin=91e34053e828 -->
 
 On a booted image it reads, with the image's own commit and time:
 
@@ -333,8 +333,9 @@ and `build-deps =` whether a source install downloads or builds what the port la
 application with both origins in its source picker, and asks for the administrator password every
 time it builds.
 
-1. Have the release's binhost index. A machine that has fetched an update has it; on one that
-   has not, take only the index of the tree in place, not a newer tree:
+1. Have the release's binhost index. A machine that has fetched an update has it, and the first
+   install takes it on one that has not; a dry run needs it in place first, the index of the tree
+   in place and not a newer tree's:
 
    ```bash
    sudo kdos update fetch --binhost-only

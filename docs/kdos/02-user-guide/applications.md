@@ -65,8 +65,8 @@ system (see [Keeping it current](administration.md#keeping-it-current)), not wit
 ### Installing a native port
 
 Discover installs a port from its page; at a prompt, `kdos update install` does the same. A prebuilt
-install first needs the release's package index on the machine, which `sudo kdos update fetch`
-takes (on the live ISO, `sudo kdos update fetch --binhost-only`):
+install needs the release's signed package index on the machine; the first install takes it, as
+`sudo kdos update fetch --binhost-only` does:
 
 ```sh
 sudo kdos update install gimp                     # one port, prebuilt, with what it lacks
