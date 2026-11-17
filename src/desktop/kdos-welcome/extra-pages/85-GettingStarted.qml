@@ -6,7 +6,7 @@
  * ██║  ██╗██████╔╝╚██████╔╝███████║
  * ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
  * ---------------------------------
- *   85-GettingStarted.qml — the first-run checklist, the tour's last page
+ *   85-GettingStarted.qml — the first-run checklist
  *
  * The same list as the Getting Started tray entry: ChecklistView from
  * plasmoid-kdos-checklist's org.kdos.checklist module, which makes its own

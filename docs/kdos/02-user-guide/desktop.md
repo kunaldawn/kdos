@@ -22,8 +22,8 @@ and patched in [KWin](../04-programs/kwin.md) and [The Plasma shell](../04-progr
 
 After the login screen and the splash, the desktop shows the wallpaper of the accent in force and,
 on the default KDOS desk, one opaque panel along the bottom of each screen. On the first login the
-Welcome Center opens over it with the KDOS tour; close it, or walk through it to choose the look and
-the desk.
+Welcome Center opens over it with the KDOS tour; close it, or walk through it to choose the look,
+the desk and groups of programs to install.
 
 | Where | What |
 |---|---|

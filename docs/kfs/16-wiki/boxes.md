@@ -108,6 +108,10 @@ kdos app groups                # the named groups install takes in place of an i
 kdos app list                  # what is installed
 ```
 
+`kdos app groups` names the catalogue's groups of boxed applications. The groups of ports KDOS
+compiles, some with the same ids, are a separate list, `kdos update groups`; see
+[Installing software](updating.md#installing-software).
+
 `kdos app list --all` prints a table of id, category, state, estimated size and tagline, one row
 per application and data pack. `kdos app info app.hugin` names the runtime row the application is
 `built on` (`rt-gtk`). On a fresh machine `kdos app list` answers
@@ -455,4 +459,4 @@ A profile change has no effect
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 432.* Previous: [431. Packs](packs.md) · [Contents](../README.md) · Next: [433. Containers](containers.md)
+*Part XVI. System administration, chapter 434.* Previous: [433. Packs](packs.md) · [Contents](../README.md) · Next: [435. Containers](containers.md)

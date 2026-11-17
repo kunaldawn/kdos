@@ -1239,3 +1239,220 @@ void ki_apps_enter(void)
 	}
 	ki_apps_collect();
 }
+
+/* ── native groups ─────────────────────────────────────────────────────── */
+
+KiNative ki_native[MAX_NATIVE];
+int ki_nnative;
+
+static const char *groups_path(void)
+{
+	const char *env = getenv("KDOS_GROUPS");
+	return env && *env ? env : "/ports/groups";
+}
+
+/* The format is ports/groups': a `group <id> <title>` line, then member
+ * ports up to the next group line; `#` starts a comment. */
+void probe_groups(void)
+{
+	char *data = kb_read_all(groups_path(), NULL);
+
+	ki_nnative = 0;
+	for (char *l = data; l && *l;) {
+		char *nl = strchr(l, '\n');
+		if (nl)
+			*nl = 0;
+		char *h = strchr(l, '#');
+		if (h)
+			*h = 0;
+		while (*l == ' ' || *l == '\t')
+			l++;
+		if (!strncmp(l, "group", 5) && (l[5] == ' ' || l[5] == '\t')) {
+			if (ki_nnative == MAX_NATIVE)
+				break;
+			char *id = l + 6;
+			while (*id == ' ' || *id == '\t')
+				id++;
+			size_t il = strcspn(id, " \t\r");
+			char *t = id + il;
+			while (*t == ' ' || *t == '\t')
+				t++;
+			id[il] = 0;
+			if (*id && ki_name_ok(id)) {
+				KiNative *g = &ki_native[ki_nnative++];
+				kb_strlcpy(g->id, id, sizeof(g->id));
+				kb_strlcpy(g->title, *t ? t : id, sizeof(g->title));
+				g->title[strcspn(g->title, "\r")] = 0;
+				g->nports = 0;
+				g->chosen = 0;
+			}
+		} else if (ki_nnative > 0) {
+			for (char *w = strtok(l, " \t\r"); w; w = strtok(NULL, " \t\r"))
+				ki_native[ki_nnative - 1].nports++;
+		}
+		l = nl ? nl + 1 : NULL;
+	}
+	free(data);
+}
+
+int ki_groups_chosen(void)
+{
+	int n = 0;
+
+	for (int i = 0; i < ki_nnative; i++)
+		n += ki_native[i].chosen;
+	return n;
+}
+
+void ki_groups_collect(void)
+{
+	cfg.groups[0] = '\0';
+	for (int i = 0; i < ki_nnative; i++) {
+		size_t l = strlen(cfg.groups), il = strlen(ki_native[i].id);
+
+		if (!ki_native[i].chosen || l + (l ? 1 : 0) + il + 1 >
+						     sizeof(cfg.groups))
+			continue;
+		if (l)
+			cfg.groups[l++] = ' ';
+		memcpy(cfg.groups + l, ki_native[i].id, il + 1);
+	}
+	if (!cfg.groups[0])
+		kb_strlcpy(cfg.groups, "none", sizeof(cfg.groups));
+}
+
+/*
+ * THE LANGUAGE A CHOICE POINTS AT, one table: an XKB layout, a console keymap
+ * or a time zone that is Chinese, Japanese or Korean names that language's
+ * group of /ports/groups, which carries the input method and the fonts the
+ * base image leaves out. Without it the person who typed in Japanese at the
+ * keyboard page logs in to a desktop with no way to type it. The installer
+ * asks for no locale (the first login's language is plasma-setup's or the
+ * live session's), so the keyboard and the zone are what it has. The
+ * keyboard is checked first, so its reason is the one a group reports.
+ */
+enum { LANG_XKB, LANG_KEYMAP, LANG_ZONE };
+
+static const struct {
+	int kind;
+	const char *word;	/* a layout, a keymap, or a zone name     */
+	const char *group;
+	const char *language;
+} lang_map[] = {
+	{ LANG_XKB,    "cn",             "lang-zh", "Chinese"  },
+	{ LANG_XKB,    "tw",             "lang-zh", "Chinese"  },
+	{ LANG_XKB,    "jp",             "lang-ja", "Japanese" },
+	{ LANG_XKB,    "kr",             "lang-ko", "Korean"   },
+	{ LANG_KEYMAP, "jp106",          "lang-ja", "Japanese" },
+	{ LANG_ZONE,   "Asia/Shanghai",  "lang-zh", "Chinese"  },
+	{ LANG_ZONE,   "Asia/Urumqi",    "lang-zh", "Chinese"  },
+	{ LANG_ZONE,   "Asia/Hong_Kong", "lang-zh", "Chinese"  },
+	{ LANG_ZONE,   "Asia/Macau",     "lang-zh", "Chinese"  },
+	{ LANG_ZONE,   "Asia/Taipei",    "lang-zh", "Chinese"  },
+	{ LANG_ZONE,   "Asia/Tokyo",     "lang-ja", "Japanese" },
+	{ LANG_ZONE,   "Asia/Seoul",     "lang-ko", "Korean"   },
+	{ LANG_ZONE,   "Asia/Pyongyang", "lang-ko", "Korean"   },
+};
+
+/* Whether `word` is one of the comma-separated layouts of `list`: an XKB
+ * answer of `us,jp` switches between both, and the second is still typed. */
+static int in_list(const char *list, const char *word)
+{
+	size_t wl = strlen(word);
+
+	for (const char *p = list; *p;) {
+		size_t l = strcspn(p, ",");
+		if (l == wl && !strncmp(p, word, wl))
+			return 1;
+		p += l;
+		if (*p)
+			p++;
+	}
+	return 0;
+}
+
+void ki_lang_why(const char *group, char *out, size_t n)
+{
+	out[0] = 0;
+	for (int k = LANG_XKB; k <= LANG_ZONE && !out[0]; k++)
+		for (size_t i = 0; i < sizeof(lang_map) / sizeof(lang_map[0]);
+		     i++) {
+			if (lang_map[i].kind != k ||
+			    strcmp(lang_map[i].group, group))
+				continue;
+			if (k == LANG_XKB &&
+			    in_list(cfg.xkb_layout, lang_map[i].word))
+				snprintf(out, n, "the %s keyboard",
+					 lang_map[i].language);
+			else if (k == LANG_KEYMAP &&
+				 !strcmp(cfg.keymap, lang_map[i].word))
+				snprintf(out, n, "the %s keyboard",
+					 lang_map[i].language);
+			else if (k == LANG_ZONE &&
+				 !strcmp(cfg.tz_label, lang_map[i].word))
+				snprintf(out, n, "the time zone %s",
+					 lang_map[i].word);
+			if (out[0])
+				break;
+		}
+}
+
+/* Whether `id` is one of the space-separated words of `list`. */
+static int in_words(const char *list, const char *id)
+{
+	size_t il = strlen(id);
+
+	for (const char *p = list; *p;) {
+		while (*p == ' ')
+			p++;
+		size_t l = strcspn(p, " ");
+		if (l == il && l && !strncmp(p, id, il))
+			return 1;
+		p += l;
+	}
+	return 0;
+}
+
+void ki_groups_enter(void)
+{
+	/* What the language rule ticked at the last call. The wizard enters
+	 * the page again after a trip back to the keyboard, with cfg.groups
+	 * already the person's ticks: only what the rule's answer CHANGED is
+	 * applied over them, so an untick survives and a new keyboard still
+	 * ticks its language. */
+	static char suggested[1024];
+	char want[1024], now[1024] = "";
+	char *tok, *save;
+	int fresh = !cfg.groups[0];
+
+	probe_groups();
+	for (int i = 0; i < ki_nnative; i++) {
+		ki_native[i].chosen = 0;
+		ki_lang_why(ki_native[i].id, ki_native[i].why,
+			    sizeof(ki_native[i].why));
+	}
+	kb_strlcpy(want, cfg.groups, sizeof(want));
+	for (tok = strtok_r(want, " ", &save); tok;
+	     tok = strtok_r(NULL, " ", &save))
+		for (int i = 0; i < ki_nnative; i++)
+			if (!strcmp(ki_native[i].id, tok))
+				ki_native[i].chosen = 1;
+	if (!cfg.groups_set) {
+		for (int i = 0; i < ki_nnative; i++) {
+			KiNative *g = &ki_native[i];
+			int was = in_words(suggested, g->id);
+
+			if (g->why[0] && (fresh || !was))
+				g->chosen = 1;
+			else if (!g->why[0] && was && !fresh)
+				g->chosen = 0;
+			if (g->why[0] && strlen(now) + strlen(g->id) + 2 <
+						 sizeof(now)) {
+				strcat(now, " ");
+				strcat(now, g->id);
+			}
+		}
+		kb_strlcpy(suggested, now, sizeof(suggested));
+	}
+	ki_groups_collect();
+}

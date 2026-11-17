@@ -53,6 +53,8 @@ private Q_SLOTS:
     void cve();
     void trayRules();
     void smallRules();
+    void installPreview();
+    void installRoute();
     void plansInstall();
     void plansRemove();
     void plansRefuseUnsafeNames();
@@ -208,7 +210,7 @@ void ModelTest::boxProfile()
     QCOMPARE(g.values.value(u"network"_s), u"private"_s);
     QCOMPARE(g.values.value(u"home"_s), u"shared"_s);
     QCOMPARE(g.values.value(u"wayland"_s), u"yes"_s);
-    QCOMPARE(g.values.value(u"x11"_s), u"auto"_s);
+    QCOMPARE(g.values.value(u"x11"_s), u"yes"_s);
     QCOMPARE(g.values.value(u"memory"_s), u"unlimited"_s);
     QCOMPARE(g.values.value(u"grant"_s), u"screencast, mystery"_s);
     // A grant's explanation line is not a key of its own.
@@ -313,6 +315,61 @@ void ModelTest::trayRules()
     QCOMPARE(securityFixes("", fixture("cve.json")), -1);
     const QByteArray noFixVersion = R"({"findings": [{"port": "zlib", "version": "1.3", "fixed_in": "", "cves": "CVE-2026-0003"}]})";
     QCOMPARE(securityFixes(fixture("update-offer.json"), noFixVersion), 1);
+}
+
+void ModelTest::installPreview()
+{
+    // Prebuilt: every package downloaded, nothing built.
+    InstallPreview p = parseInstallPreview(fixture("install-prebuilt.txt"));
+    QVERIFY(p.valid);
+    QCOMPARE(p.downloads, 3);
+    QCOMPARE(p.bytes, quint64(52428800));
+    QCOMPARE(p.builds, 0);
+    QVERIFY(p.built.isEmpty());
+    QString said = installPreviewText(p);
+    QVERIFY(said.startsWith(u"Downloads 3 packages ("_s));
+    QVERIFY(!said.contains(u"hours"_s));
+
+    // Built here: the builds and the restores counted, the builds named,
+    // and the warning.
+    p = parseInstallPreview(fixture("install-source.txt"));
+    QVERIFY(p.valid);
+    QCOMPARE(p.downloads, 2);
+    QCOMPARE(p.bytes, quint64(1048576));
+    QCOMPARE(p.builds, 2);
+    QCOMPARE(p.built, (QStringList{u"libfoo"_s, u"bat"_s}));
+    said = installPreviewText(p);
+    QVERIFY(said.startsWith(u"Builds 2 packages here, downloads 2 ("_s));
+    QVERIFY(said.contains(u"building can take hours"_s));
+    QVERIFY(said.contains(u"Built here: libfoo, bat"_s));
+
+    // One per member of a group adds up; a name is escaped.
+    p = parseInstallPreview("==> g: a (1 of 2)\na<b source 1.0-1\ntotal 0 0 1\n==> g: c (2 of 2)\ntotal 1 10 0\n");
+    QVERIFY(p.valid);
+    QCOMPARE(p.downloads, 1);
+    QCOMPARE(p.builds, 1);
+    QVERIFY(installPreviewText(p).contains(u"a&lt;b"_s));
+    QVERIFY(!installPreviewText(p).contains(u"a<b"_s));
+
+    // Nothing to do, and no dry run at all.
+    p = parseInstallPreview("total 0 0 0\nkate is already installed\n");
+    QVERIFY(p.valid);
+    QVERIFY(installPreviewText(p).contains(u"installed already"_s));
+    QVERIFY(!parseInstallPreview("kdos update: no port or group named x in the tree\n").valid);
+    QVERIFY(!parseInstallPreview("total x 0 0\n").valid);
+}
+
+void ModelTest::installRoute()
+{
+    QVERIFY(!installsFromSource(""));
+    QVERIFY(!installsFromSource("install = prebuilt\n"));
+    QVERIFY(installsFromSource("# install = prebuilt\nbuild-deps = source\ninstall = source\n"));
+    QVERIFY(installsFromSource("  install=source   # here\n"));
+    QVERIFY(!installsFromSource("installer = source\n"));
+    QVERIFY(!installsFromSource("install = maybe\n"));
+    // The first line that names a value decides, as for kdos update.
+    QVERIFY(!installsFromSource("install = prebuilt\ninstall = source\n"));
+    QVERIFY(installsFromSource("install =\ninstall = source\n"));
 }
 
 void ModelTest::smallRules()
@@ -454,9 +511,26 @@ void ModelTest::plansInstall()
     Entry port;
     port.lane = Lane::Port;
     port.id = u"kate"_s;
+    // The dry run of the same install comes first, with no root, and only
+    // what it prints asked about reaches pkexec.
     p = installPlan(port, ctx);
-    QCOMPARE(argvOf(p.steps[0]), (QStringList{u"pkexec"_s, u"/usr/libexec/kdos-discover/kdos-ports-helper"_s, u"install"_s, u"kate"_s}));
-    QVERIFY(p.steps[0].downloads); // the binhost's packages are fetched for it
+    QCOMPARE(p.steps.size(), 2);
+    QCOMPARE(p.steps[0].kind, Step::Kind::Preview);
+    QCOMPARE(argvOf(p.steps[0]), (QStringList{u"kdos"_s, u"update"_s, u"install"_s, u"--dry-run"_s, u"--prebuilt"_s, u"kate"_s}));
+    QVERIFY(!p.steps[0].downloads);
+    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"pkexec"_s, u"/usr/libexec/kdos-discover/kdos-ports-helper"_s, u"install"_s, u"kate"_s}));
+    QVERIFY(p.steps[1].downloads); // the binhost's packages are fetched for it
+
+    // The same port built here goes through the builder, its own program
+    // under its own polkit action, and downloads its sources.
+    Entry built = port;
+    built.lane = Lane::PortSource;
+    QCOMPARE(originOf(Lane::PortSource), u"kdos-ports-source"_s);
+    p = installPlan(built, ctx);
+    QCOMPARE(p.steps[0].kind, Step::Kind::Preview);
+    QCOMPARE(argvOf(p.steps[0]), (QStringList{u"kdos"_s, u"update"_s, u"install"_s, u"--dry-run"_s, u"--source"_s, u"kate"_s}));
+    QCOMPARE(argvOf(p.steps[1]), (QStringList{u"pkexec"_s, u"/usr/libexec/kdos-discover/kdos-ports-builder"_s, u"install"_s, u"kate"_s}));
+    QVERIFY(p.steps[1].downloads);
 
     QTemporaryDir dir;
     const QString ktar = dir.filePath(u"set.ktar"_s);
@@ -540,6 +614,8 @@ void ModelTest::plansRemove()
     port.lane = Lane::Port;
     port.id = u"kate"_s;
     QVERIFY(!removePlan(port, ctx).isValid());
+    port.lane = Lane::PortSource;
+    QVERIFY(!removePlan(port, ctx).isValid());
 
     Entry deb;
     deb.lane = Lane::Debian;
@@ -556,7 +632,7 @@ void ModelTest::plansRefuseUnsafeNames()
 {
     const Catalogue cat = parseCatalogue(fixture("catalogue"));
     const PlanContext ctx = context(&cat);
-    for (const Lane lane : {Lane::Catalogue, Lane::Set, Lane::Pack, Lane::Port, Lane::Box}) {
+    for (const Lane lane : {Lane::Catalogue, Lane::Set, Lane::Pack, Lane::Port, Lane::PortSource, Lane::Box}) {
         Entry e;
         e.lane = lane;
         e.id = u"--all"_s;

@@ -1,7 +1,8 @@
 ## About
 Mesa is the graphics driver stack: the OpenGL, OpenGL ES, EGL, GBM and Vulkan drivers for every
-GPU family the image supports, the software renderers that stand in when there is none, a VA-API
-video driver and an OpenCL implementation. On KDOS the port that leans on it hardest is
+GPU family the image supports, the software renderers that stand in when there is none and a VA-API
+video driver. Mesa's OpenCL implementation, rusticl, is the separate port
+[mesa-opencl](#port-mesa-opencl), built from the same source. On KDOS the port that leans on it hardest is
 [KWin](#port-kwin): the compositor draws through EGL and OpenGL ES from here, and on a machine
 with only software rendering, such as a virtual machine with plain graphics, Phosphor mode's
 effect stays off.
@@ -28,14 +29,14 @@ are in `depends`. Without `libelf` the build stops, because radeonsi and NVK req
   present and fetches nothing. The crates are for the Rust parts of Mesa, NVK's compiler among
   them.
 - `LIBCLANG_PATH=/usr/lib/`, `LIBCLANG_STATIC_PATH=/usr/lib/` — Where `bindgen`, which generates
-  rusticl's Rust bindings to the OpenCL and Mesa headers, finds libclang.
+  NVK's Rust bindings to the Mesa headers, finds libclang.
 - `RUST_BACKTRACE=1` — Print a backtrace when a Rust build step panics, so a failure in the log
   says where.
 - `RUSTC="rustc -C target-feature=-crt-static"` — Link Mesa's Rust code against the shared C
   library. The musl target defaults to `crt-static`, and NVK's compiler and rusticl are Rust
-  static libraries linked into `libvulkan_nouveau.so` and `libRusticlOpenCL.so`: with the default,
-  each carries a private copy of musl, uninitialised, and every Vulkan, zink or OpenCL client
-  that loads the driver faults in it, on a machine with no NVIDIA GPU as well. The flag goes in
+  static libraries linked into `libvulkan_nouveau.so` (and, in mesa-opencl, `libRusticlOpenCL.so`):
+  with the default, each carries a private copy of musl, uninitialised, and every Vulkan, zink or
+  OpenCL client that loads the driver faults in it, on a machine with no NVIDIA GPU as well. The flag goes in
   `RUSTC` and not in `RUSTFLAGS` because meson reads only the compiler command when it asks
   `rustc` whether the target is `crt-static` and which native libraries a static library needs;
   given the flag in `RUSTFLAGS` alone, it still puts Rust's `self-contained` directory, which
@@ -82,10 +83,10 @@ are in `depends`. Without `libelf` the build stops, because radeonsi and NVK req
 - `-D xmlconfig=enabled`, `-D expat=enabled` — Read driconf files (`/usr/share/drirc.d`,
   `/etc/drirc`, `~/.drirc`) with [expat](#port-expat), so options such as `vblank_mode` can be
   set per application. Disabled, Mesa compiles its default driconf in.
-- `-D gallium-rusticl=true` — rusticl, Mesa's OpenCL implementation. It installs
-  `/etc/OpenCL/vendors/rusticl.icd`, which only [ocl-icd](#port-ocl-icd)'s loader reads, and its
-  OpenCL C compiler needs [libclc](#port-libclc), [spirv-llvm-translator](#port-spirv-llvm-translator)
-  and [clang](#port-clang).
+- `-D gallium-rusticl=false` — No OpenCL. rusticl links `libclang-cpp` and reads
+  [libclc](#port-libclc)'s kernels at run time, which would put more than a gigabyte of
+  [clang](#port-clang) on the installation medium beside Mesa; [mesa-opencl](#port-mesa-opencl)
+  builds it instead.
 - `-D spirv-tools=enabled` — Link [spirv-tools](#port-spirv-tools), which the OpenCL C path
   requires and which also dumps SPIR-V for debugging.
 - `-D video-codecs=all` — Build hardware video decoding and encoding for every codec Mesa knows,
@@ -111,3 +112,10 @@ The crate blocks have to match the wrap files of the Mesa version being built. A
 moves a crate's version changes the wrap's `directory`, and a block left at the old name leaves
 meson wanting a download the build cannot make; the crate's `source` and `sha256` lines in the
 recipe move with it.
+
+The Intel drivers (`iris`, `crocus`, ANV, `intel_hasvk`) and NVK carry compute kernels written in
+OpenCL C, which Mesa compiles at build time with its own `mesa_clc` through
+[clang](#port-clang), [spirv-llvm-translator](#port-spirv-llvm-translator) and
+[spirv-tools](#port-spirv-tools); the drivers link none of them, so they are build dependencies
+only and `ports/buildonly` keeps clang and the translator off the installation medium. The
+kernels need no [libclc](#port-libclc): only rusticl reads it.

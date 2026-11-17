@@ -1,7 +1,7 @@
 # Which GPUs Mesa's OpenCL driver offers.
 #
-# RUSTICL IS THE ONLY OPENCL DRIVER ON THIS IMAGE, AND IT OFFERS NOTHING UNTIL
-# TOLD WHICH GALLIUM DRIVERS TO EXPOSE. ocl-icd finds its ICD in
+# RUSTICL, FROM mesa-opencl, IS THE ONE OPENCL DRIVER, AND IT OFFERS NOTHING
+# UNTIL TOLD WHICH GALLIUM DRIVERS TO EXPOSE. ocl-icd finds its ICD in
 # /etc/OpenCL/vendors either way; without this list clGetDeviceIDs answers "no
 # devices" on Intel and AMD hardware, and every OpenCL program on the host
 # (john's *-opencl formats, ffmpeg's *_opencl filters) finds no device.

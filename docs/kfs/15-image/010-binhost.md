@@ -1,15 +1,19 @@
 # The binary host
 
 The first step of the image phase does nothing on an ordinary build. With
-`make build KDOS_MAKE_BINHOST=1`, `script/phases/70_image/010_binhost.sh` copies every package the
+`make build KDOS_MAKE_BINHOST=1`, `script/phases/70_image/010_binhost.sh` moves every package the
 build kept into `build/binhost/` and signs an index over them. That directory is then a
 [binary host]{.idx}: a directory of prebuilt packages that another KDOS machine trusting its key
-can install from with `kpkg binhost`, instead of compiling. This page shows the step, the key it
-signs with, and which packages end up in the directory.
+installs from, with `kdos update install` or `kpkg binhost`, instead of compiling. Published, it
+is the package repository of a release: it holds every port the release built, the ISO carries
+only the [base](017-stage.md), and a machine installs everything else from the binhost of the
+release its `/ports/TREE` names. The step runs on `build/fs`, before the stage, so it sees every
+package. This page shows the step, the key it signs with, and which packages end up in the
+directory.
 
 ## Switching it on
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=57-60 pin=73a5f902efa6 -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=59-62 pin=73a5f902efa6 -->
 
 `KDOS_MAKE_BINHOST` comes from the `make build` command line, through the `Makefile` and
 `script/chroot/exec.sh`. Set to anything but `1`, the step prints the line above and exits.
@@ -28,7 +32,7 @@ make build KDOS_MAKE_BINHOST=1
 
 ## The signing key
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=62-72 pin=79afd37a89a5 -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=64-74 pin=79afd37a89a5 -->
 
 The key pair is made once, by `kpkg keygen`, in `build/binhost-key/`, and every later run signs
 with the same key. kpkg writes the private half with mode 0600 and never replaces an existing
@@ -39,13 +43,14 @@ every machine holding the old public half then refuses the index. `make clean` a
 `make cleanbuild` keep it, as they keep `build/keys/` with the kernel's module-signing key and the
 release-signing key, so only removing the directory by hand makes a new key.
 
-## Copying the packages
+## Moving the packages
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=74-86 pin=740567ff5314 -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=76-88 pin=19babb00269e -->
 
-Every package in the cache is copied into `build/binhost/`, over a file of the same name. Nothing
-is removed from the directory, so it accumulates from run to run: `020_cleanup.sh` empties the
-cache on every image run, and an incremental build keeps only the packages it installed. A run in
+Every package in the cache is moved into `build/binhost/`, over a file of the same name, which
+leaves `build/fs`'s cache empty for the next build in either image mode: under `KDOS_IMAGE=base`,
+`020_cleanup.sh` empties only the stage's cache. Nothing is removed from `build/binhost/`, so it
+accumulates from run to run, and an incremental build keeps only the packages it installed. A run in
 which nothing was built adds nothing, and the step stops only when the whole directory holds no
 package.
 
@@ -53,7 +58,8 @@ An older package left by an earlier run is indexed beside its successor, but wit
 The index takes each package's recipe hash from the ports tree at the moment the index is written,
 by package name (see [The index](#the-index)), and gives it only to the file whose version and
 release are the ones the recipe declares. A superseded version or release is listed and no client
-installs it, so old files need no clearing for the binhost to serve the current recipes.
+installs it, and the release index leaves it out (see [The release index](#the-release-index)),
+so old files need no clearing for the binhost to serve the current recipes.
 
 The one file the hash cannot tell apart is a package of the current version and release that was
 built from an earlier state of the recipe, by a run without the flag set after the run that kept
@@ -70,7 +76,7 @@ make build KDOS_MAKE_BINHOST=1 BUILD_ARGS=--fresh
 
 ## The index
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=88-92 pin=b247da9e28f1 -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=90-100 pin=f9126924ee3d -->
 
 `kpkg index --sign` writes the index, `PACKAGES`, its signature `PACKAGES.sig`, and a signature
 beside each package, over every package in the directory. `kpkg verify-index` then reads the
@@ -81,10 +87,11 @@ verification stops the phase.
 Two fields of the index limit who can use it. The build-config hash, `B:`, is taken from the
 environment the index is written in, which is the chroot's, so a client has to run `kpkg binhost`
 with the same compiler and the same `CC`, `CFLAGS`, `CXXFLAGS`, `LDFLAGS` and `KDOS_TARGET`, or
-every package reads as a different build config. The recipe hash, `E:`, is looked up with kpkg's
-default `PORT_REPO`, and in the build chroot only `/ports/core` of that list exists: a package
-built from `src/`, which is every program of KDOS's own, gets an empty `E:`, matches no client,
-and is always built from source.
+every package reads as a different build config; `kdos update install --source` builds under
+`/etc/kdos/chroot.env` for that reason. The recipe hash, `E:`, is looked up in the `PORT_REPO` the
+step sets: `/ports/core` and the four areas of `src/` at `/kdos/src`. A machine finds the same
+recipes under `/ports/src/<area>`, the copies [105_ports.sh](105-ports.md) stages, and computes
+the same hash, so a program of KDOS's own is taken prebuilt like any other port.
 
 The index format and the rules a client applies are in
 [The binary host](../../kdos/03-architecture/packaging.md#the-binary-host) and
@@ -92,7 +99,7 @@ The index format and the rules a client applies are in
 
 ## The catalogue
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=94-115 pin=3b85a50dfbf5 -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=102-123 pin=3b85a50dfbf5 -->
 
 Discover lists what a binhost can add from an AppStream catalogue beside its index, which a client
 asks for as `binhost/swcatalog/xml/kdos-binhost.xml` and keeps at that path under
@@ -107,12 +114,22 @@ binhost. How each component is read is on [The software catalogue](086-swcatalog
 
 ## The release index
 
-<!-- kfs:include script/phases/70_image/010_binhost.sh lines=117-136 pin=3bb5c61c415b -->
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=125-159 pin=260e907312f3 -->
+
+The release index carries this tree's packages and no others. The step reads `PACKAGES` and marks
+every [superseded]{.idx} package: a package stanza, one with no `O:` (which marks a delta), whose
+`E:` is empty. Those files stay in `build/binhost` and in `PACKAGES`, and are never published. A
+current package larger than one GitHub release asset, `SRC_PART_SIZE` from `ports/srclib.sh`
+(1,900 MiB unless `KDOS_PART_SIZE` names another), stops the phase, naming the file: a machine
+takes a package whole, and the release could not carry it.
+
+<!-- kfs:include script/phases/70_image/010_binhost.sh lines=160-174 pin=44ef9b003423 -->
 
 `kdos update` never asks for a binhost file by its name alone: it asks the [release index]{.idx},
 `kdos-update.idx`, where the file is, and keeps it only with the size and SHA-256 the index gives.
-The step writes the directory's own index last, over every file in it but the index and the public
-key: each package, sidecar and delta at `binhost/<name>`, the index and its signature at
+The step writes the directory's own index last, over every file in it but the index, the public
+key and the superseded packages with their signatures: each package, sidecar and delta at
+`binhost/<name>`, the index and its signature at
 `binhost/PACKAGES` and `binhost/PACKAGES.sig`, and the catalogue at its path above, every one with
 the release `-`, which means beside the index. `ports/releaselib.sh` is the writer, the same one
 `ports/publish --release` uses for a release. The `version` is the short commit hash the build

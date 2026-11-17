@@ -288,6 +288,42 @@ private Q_SLOTS:
         QTRY_VERIFY(!m_kcm->needsSave());
     }
 
+    void installRouteIsASettingAppliedBySave()
+    {
+        begin();
+        QTRY_VERIFY(m_kcm->isConfigured());
+        QCOMPARE(m_kcm->installRoute(), u"prebuilt"_s);
+        QCOMPARE(m_kcm->buildDeps(), u"prebuilt"_s);
+        QVERIFY(m_kcm->representsDefaults());
+
+        m_kcm->setInstallRoute(u"source"_s);
+        m_kcm->setBuildDeps(u"source"_s);
+        m_kcm->setInstallRoute(u"maybe"_s); // neither word: ignored
+        QCOMPARE(m_kcm->installRoute(), u"source"_s);
+        QVERIFY(m_kcm->needsSave());
+        QVERIFY(!m_kcm->representsDefaults());
+
+        m_kcm->save();
+        QTRY_VERIFY(read(u"update.conf"_s).contains(u"install = source\n"_s));
+        QVERIFY(read(u"update.conf"_s).contains(u"build-deps = source\n"_s));
+        QTRY_VERIFY(!m_kcm->needsSave());
+        QVERIFY(!read(u"calls.log"_s).contains(u"SetChannel"_s));
+
+        /* A second module reads both back. */
+        Kdos::SystemVersionsModule again(nullptr, KPluginMetaData());
+        again.load();
+        QTRY_COMPARE(again.installRoute(), u"source"_s);
+        QCOMPARE(again.buildDeps(), u"source"_s);
+        QVERIFY(!again.needsSave());
+
+        /* Defaults download everything prebuilt. */
+        m_kcm->defaults();
+        QVERIFY(m_kcm->needsSave());
+        m_kcm->save();
+        QTRY_VERIFY(read(u"update.conf"_s).contains(u"install = prebuilt\n"_s));
+        QTRY_VERIFY(!m_kcm->needsSave());
+    }
+
     void invalidChannelIsNotWritten()
     {
         begin();

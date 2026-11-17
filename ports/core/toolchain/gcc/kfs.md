@@ -77,6 +77,18 @@ build directory outside the tree and says a subdirectory of it, as here, should 
 
 ## Notes
 
+The recipe's `facet_dev =` line moves the compiler into the package's development
+[facet](../../../../docs/kdos/03-architecture/packaging.md#facets): the drivers under `/usr/bin`,
+everything under `/usr/lib/gcc/` (`cc1`, `cc1plus`, `f951`, `lto1`, the `crt` files, `libgcc.a`
+and the plugin headers), the `.o` and `.spec` files in `/usr/lib`, `libcc1`, the sanitizer
+runtimes, `/usr/share/gcc-<version>` and the manual pages. What is left is the run-time
+libraries, `libstdc++`, `libgcc_s`, `libgfortran`, `libgomp`, `libquadmath`, `libatomic` and
+`libitm`, which most of the base links, so gcc stays in the base and a machine with `FACETS=run`
+carries about 10 MB of it instead of 339 MB. A build here restores the facet first
+(`kdos update install --dev gcc`, which a source install runs itself). The line is part of the
+recipe hash, so a change to it rebuilds gcc and every port keyed on it.
+
+
 After `make install`, `build.sh` does four more things:
 
 - It copies the manual pages of `gcc`, `g++` and `gfortran` and the info manuals of `gcc`,

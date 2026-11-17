@@ -1,14 +1,16 @@
 # The image
 
 <!-- kfs:phase 70_image -->
-<!-- kfs:order 010-binhost 015-pkgstore 020-cleanup 030-launchers 040-orphans 045-identity 050-theme 060-udev-hwdb 070-user 080-whatis 085-fontcache 086-swcatalog 087-gates 090-initramfs 091-initramfs-init 100-packs 105-ports 110-iso -->
+<!-- kfs:order 010-binhost 015-pkgstore 017-stage 020-cleanup 030-launchers 040-orphans 045-identity 050-theme 060-udev-hwdb 070-user 080-whatis 085-fontcache 086-swcatalog 087-gates 088-ledger 090-initramfs 091-initramfs-init 100-packs 105-ports 110-iso -->
 
 The last phase, `70_image`, makes no packages. It takes the root the package phases built in
-`build/fs`, trims what only the build needed, writes the launchers, identity, theme, homes and
-indexes the shipped system expects, checks the result, and then builds the initramfs, the packs,
-the recipe tree and the ISO. Each of its step scripts has a chapter here, in the order the phase
-runs them. This page covers what every step has in common: where it runs, the environment it
-gets, why the phase keeps no snapshot, and the order the steps depend on.
+`build/fs`, makes the binhost from it, trims a stage over it to the [base]{.idx term="base image"}
+the ISO carries, removes what only the build needed, writes the launchers, identity, theme, homes
+and indexes the shipped system expects, checks the result, writes the ledger of what the image
+spends its bytes on, and then builds the initramfs, the
+packs, the recipe tree and the ISO. Each of its step scripts has a chapter here, in the order the
+phase runs them. This page covers what every step has in common: where it runs, the environment
+it gets, why the phase keeps no snapshot, and the order the steps depend on.
 
 ## Where the steps run
 
@@ -19,12 +21,24 @@ every package phase. kdosbuild runs each script in sorted order, in the containe
 script/chroot/exec.sh bash script/phases/70_image/<step>.sh
 ```
 
-so the step itself runs in the chroot, as root, in `/kdos`, with `build/fs` as `/` (see
-[Where a command runs](../00-front/conventions.md#where-a-command-runs)). A path such as
-[`/etc/skel`]{.idx} on these pages is therefore `build/fs/etc/skel` on your machine. The steps that write
-outside the root write under `/kdos/build`, which is `build/` on your machine.
+so the step itself runs in the chroot, as root, in `/kdos` (see
+[Where a command runs](../00-front/conventions.md#where-a-command-runs)). Which tree is `/`
+depends on the step and on `KDOS_IMAGE`:
 
-No step of this phase has a mark. Each runs in full every time the phase runs, so a step that
+| Steps | `KDOS_IMAGE=base`, the default | `KDOS_IMAGE=full` |
+|:--|:--|:--|
+| `010_binhost.sh`, `015_pkgstore.sh` | `build/fs` | `build/fs` |
+| `017_stage.sh` to `110_iso.sh` | the [image stage]{.idx}, `build/image-root`: an overlay whose lower layer is `build/fs` and whose upper layer, `build/image-upper`, takes every write | `build/fs` |
+
+Under `base`, `017_stage.sh` removes every package outside the base from the stage, and every
+later step works on what is left, so the ISO carries the base and `build/fs` keeps every package
+for the next build and the binhost; [The image stage](017-stage.md) is the step. A path such as
+[`/etc/skel`]{.idx} on these pages is therefore the stage's `/etc/skel` under `base`, and
+`build/fs/etc/skel` on your machine under `full`. The steps that write outside the root write
+under `/kdos/build`, which is `build/` on your machine.
+
+No step of this phase has a mark. Each runs in full every time the phase runs, and
+`017_stage.sh` starts the stage from an empty upper layer, so a step that
 writes a file first removes the copy an earlier run wrote: the stamp in [`/etc/os-release`]{.idx}, the
 hardware database, the manual index, the font cache, the software catalogue, the staged recipe tree and the base pack are
 each made from nothing rather than updated.
@@ -36,10 +50,11 @@ each made from nothing rather than updated.
 `KDOS_SNAPSHOT_PATHS` is empty, so kdosbuild archives nothing when this phase ends, and there is
 no `70_image` restore point to pick. The phase is re-run on the tree it finds. Two things follow.
 
-The phase changes `build/fs` itself, not a copy of it. The cleanup deletes the build's caches, the
-orphan sweep uninstalls packages, and the homes are written from `/etc/skel`. A later
-`--continue-from` or a port rebuild carries on from that tree, not from the one the package
-phases left.
+Under `KDOS_IMAGE=base` the steps that change `/` change the stage: the trim and the orphan sweep
+uninstall packages there, and the homes are written there. `build/fs` keeps every package, so a
+later `--continue-from` or a port rebuild carries on from the whole tree; `020_cleanup.sh` cleans
+the stage's copy of the build's caches and `/root`, not `build/fs`'s. Under `KDOS_IMAGE=full` every step changes `build/fs`
+itself, and a later build carries on from the swept, cleaned tree.
 
 Running only this phase makes a new image from the tree as it stands, which is all a change to
 packaging alone needs. On your machine:
@@ -79,10 +94,12 @@ ones this phase reads:
 | Variable | Read by | Effect |
 |:--|:--|:--|
 | `KDOS_MAKE_BINHOST=1` | `010_binhost.sh` | Writes a signed [binary host]{.idx} to `build/binhost/` |
+| `KDOS_IMAGE` | `script/chroot/exec.sh`, `017_stage.sh` | `base`, the default, makes the ISO from the stage trimmed to the base; `full` makes it from `build/fs`, every package |
 | `KDOS_PKG_STORE`, `KDOS_PKG_STORE_MAX` | `015_pkgstore.sh` | Evicts the package store down to the size given |
 | `KDOS_GIT_COMMIT`, `KDOS_GIT_DIRTY`, `KDOS_GIT_DATE`, `KDOS_GIT_TIME` | `045_identity.sh`, `105_ports.sh` | Stamp the commit into `/etc/os-release`, `/ports/TREE` and `/usr/share/kdos/SOURCES` |
 | `KDOS_PACK_KDOS=1` | `100_packs.sh`, `110_iso.sh` | Packs the root as the base pack `kdos` and puts it on the medium |
-| `KDOS_ISO_SOURCES=1`, `KDOS_ISO_COMP` | `110_iso.sh` | Copy the tree onto the medium; choose the codec of `system.sfs` |
+| `KDOS_ISO_SOURCES=1`, `KDOS_ISO_COMP`, `KDOS_ISO_BLOCK` | `110_iso.sh` | Copy the tree onto the medium; choose the codec and block size of `system.sfs` |
+| `KDOS_ISO_MAX`, `KDOS_ISO_GATE` | `110_iso.sh` | The release size gate: a base ISO larger than `KDOS_ISO_MAX` bytes (1,900 MiB) fails the step unless `KDOS_ISO_GATE=0` |
 
 The `Makefile` works out the `KDOS_GIT_*` values from your clone. A build started any other way
 has none of them, and the steps that read them leave their stamps out, or write `unrecorded`,
@@ -95,8 +112,11 @@ only what `exec.sh` passes; see [The pack store and the base pack](100-packs.md)
 
 The step numbers are the only sequencing, and these orderings matter:
 
-- `010_binhost.sh` runs before `020_cleanup.sh`, which empties the package cache the binhost is
-  copied from.
+- `010_binhost.sh` and `015_pkgstore.sh` run before `017_stage.sh`, so the binhost and the
+  package store are made on `build/fs`, from every package; the binhost moves the kept packages
+  out of `build/fs`'s cache, which `020_cleanup.sh` then never touches under `KDOS_IMAGE=base`.
+- `017_stage.sh` runs before every step that reads or writes the root, so each of them, and the
+  ISO, sees only the base.
 - `030_launchers.sh` and `050_theme.sh` write into `/etc/skel`, and run before `070_user.sh`, which
   copies `/etc/skel` into every home. A skel changed after that step reaches no home on this image.
 - `040_orphans.sh` runs before the indexes, `060_udev_hwdb.sh`, `080_whatis.sh`,
@@ -104,9 +124,11 @@ The step numbers are the only sequencing, and these orderings matter:
   applications are not indexed.
 - `045_identity.sh` runs before `100_packs.sh`, so the base pack carries the stamped
   `/etc/os-release`.
-- `087_gates.sh` runs after the sweep and every index, so it checks the tree the image carries, and
-  before `090_initramfs.sh` and `110_iso.sh`, so a tree that fails it is never written into an
-  image.
+- `087_gates.sh` runs after the trim, the sweep and every index, so it checks the tree the image
+  carries, and proves the base closure whole, and before `090_initramfs.sh` and `110_iso.sh`, so a
+  tree that fails it is never written into an image.
+- `088_ledger.sh` runs after `087_gates.sh`, so the ledger measures the tree the gates passed,
+  and before `110_iso.sh`, whose size gate prints it.
 - `105_ports.sh` stages the recipe tree that `110_iso.sh` appends to `system.sfs` as `/ports`.
 
 ## The gates
@@ -117,7 +139,8 @@ whole tree; the others are local to their step:
 
 | Step | Stops the phase when |
 |:--|:--|
-| `010_binhost.sh` | The flag is on and no package was kept, or the index does not verify |
+| `010_binhost.sh` | The flag is on and no package was kept, the index does not verify, or a current package is larger than one release asset |
+| `017_stage.sh` | `/` is not the stage's overlay, `imageset.py --check` finds a name in `ports/base`, `ports/buildonly` or `ports/groups` that does not exist, or a package to remove is still installed after the removal |
 | `020_cleanup.sh` | A Python module a package owns has no bytecode |
 | `030_launchers.sh` | No launcher table was written, or launchers survive a reconcile that found no packs |
 | `040_orphans.sh` | No recipe is found under `/ports/core`, or more than half the installed packages would be removed |
@@ -126,23 +149,26 @@ whole tree; the others are local to their step:
 | `080_whatis.sh` | No manual root exists, or no `mandoc.db` was written |
 | `085_fontcache.sh` | `/usr/share/fonts` is missing, no cache file was written, or fontconfig rejects it |
 | `086_swcatalog.sh` | The catalogue it wrote lists no application |
-| `087_gates.sh` | `testing/linkcheck.py` or `testing/entrycheck.py` reports a finding, or `testing/unowned.py` finds a file no package owns under `/usr/share/locale`, `man`, `doc` or `info` |
+| `087_gates.sh` | `testing/linkcheck.py` or `testing/entrycheck.py` reports a finding, `script/lib/imageset.py --verify` finds a kept package's run-time need only a dropped package provides, or `testing/unowned.py` finds a file no package owns under `/usr/share/locale`, `man`, `doc` or `info` |
 | `090_initramfs.sh` | No `readelf` reads a program's libraries; a program the initramfs carries, or a library one of them links, is installed nowhere or missing from the archive; a program that must be util-linux's or GNU's is another userland's; lvm2 is installed without `lvm`, `dmsetup`, `thin_check` or `cache_check`, or its udev rules run them from outside `/usr/sbin`; a udev rule a root needs is left out or runs a program the initramfs lacks; installed microcode left an empty or missing bundle; or `/lib/modules` is empty |
 | `100_packs.sh` | With `KDOS_PACK_KDOS=1`: `mkfs.erofs` does not honour the excludes |
-| `105_ports.sh` | `ports/shelves`, `ports/sources.idx`, a recipe under `/ports/core` or one of the book directories is missing, a file over 16 MB is in the recipe tree, or no installed package's source is in `sources.idx` |
-| `110_iso.sh` | `KDOS_ISO_COMP` names no known codec, the kernel, the initramfs, the staged recipe tree or Limine is missing, `/ports` is not at its path in `system.sfs` after the append, or the finished image has no EFI partition, no MBR signature or no BIOS boot code |
+| `105_ports.sh` | `ports/shelves`, `ports/sources.idx`, `ports/groups`, a recipe under `/ports/core` or one of the book directories is missing, a file over 16 MB is in the recipe tree, or no installed package's source is in `sources.idx` |
+| `110_iso.sh` | `KDOS_ISO_COMP` names no known codec or `KDOS_ISO_BLOCK` no block size, `KDOS_ISO_MAX` or `KDOS_ISO_GATE` is malformed, the kernel, the initramfs, the staged recipe tree or Limine is missing, `/ports` is not at its path in `system.sfs` after the append, or the finished image has no EFI partition, no MBR signature or no BIOS boot code, or a base ISO is larger than `KDOS_ISO_MAX` with `KDOS_ISO_GATE=1` |
 
 A step whose tool is not installed at all (`kdos-appbox`, `udevadm`, `makewhatis`, `fc-cache`)
 prints a line saying so and exits 0, so a tree built without that package still makes an image.
 
 ## What the phase leaves
 
-Most steps change `build/fs`, which `110_iso.sh` squashes into `system.sfs`; each chapter says
-where its step's output lands. Outside the root, under `build/`:
+Most steps change the root they run on, the stage or under `KDOS_IMAGE=full` `build/fs`, which
+`110_iso.sh` squashes into `system.sfs`; each chapter says where its step's output lands. Outside
+the root, under `build/`:
 
 | Path | Written by |
 |:--|:--|
 | `build/binhost/`, `build/binhost-key/` | `010_binhost.sh`, with `KDOS_MAKE_BINHOST=1` |
+| `build/image-upper/`, `build/image-work/`, `build/image-root/`, `build/image-stage.ok` | `script/chroot/exec.sh` and `017_stage.sh`, under `KDOS_IMAGE=base` |
+| `build/image-ledger` | `088_ledger.sh` |
 | `build/initramfs/`, `build/initramfs.cpio.gz`, `build/ucode/`, `build/ucode.cpio` | `090_initramfs.sh` |
 | `build/kdos-base/kdos.kpack` | `100_packs.sh`, with `KDOS_PACK_KDOS=1` |
 | `build/image-ports/` | `105_ports.sh` |
@@ -155,6 +181,7 @@ where its step's output lands. Outside the root, under `build/`:
 - [Databases stamped into the image](../../kdos/05-developer/build-system.md#databases-stamped-into-the-image): the three indexes
 - [Boot and init](../../kdos/03-architecture/boot-and-init.md): the initramfs and the A/B slots this phase writes
 - [Packs and boxes](../../kdos/03-architecture/packs-and-boxes.md): the pack store and the base pack
+- [The base image](../../kdos/03-architecture/packaging.md#the-base-image): what the ISO carries and why
 
 <!-- book-nav -->
 ---

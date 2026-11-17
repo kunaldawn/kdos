@@ -115,7 +115,7 @@ static void help_body(FILE *o)
 	      "██╔═██╗ ██║  ██║██║   ██║╚════██║\n"
 	      "██║  ██╗██████╔╝╚██████╔╝███████║\n"
 	      "╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝\n", o);
-	fprintf(o, "%s   KD's Homebrew Linux Distro%s\n\n", C_D, C_0);
+	fprintf(o, "%s   Kool Desktop Operating System%s\n\n", C_D, C_0);
 
 	/*
 	 * THE THREE LANES, first, because the most common question on this
@@ -154,8 +154,9 @@ static void help_body(FILE *o)
 		{ "kdos restarts", "what is running code an upgrade replaced" },
 		{ "kdos update check", "what is behind the signed tree; --json for a UI" },
 		{ "kdos update fetch", "the newest signed ports tree, binhost, slot image" },
-		{ "kdos update install <port>", "one port and what it lacks, from the signed binhost" },
+		{ "kdos update install <port>", "one port and what it lacks: prebuilt, or --source" },
 		{ "kdos update notes", "the release notes of the version running" },
+		{ "kdos firmware sync", "the firmware this machine's hardware asks for" },
 		{ "kdos image unpack", "a signed slot image into a root — also make, verify" },
 		{ "kdos backup run", "one restic snapshot from ~/.config/kdos/backup.conf" },
 		{ "kdos privacy", "who has the microphone, the camera, the screen" },
@@ -910,7 +911,8 @@ static void check_gpu_firmware(void)
 		warn_("nouveau is bound and /lib/firmware/nvidia is absent — "
 		      "Turing and later need GSP firmware to initialise at "
 		      "all, so this falls back to efifb, then to the pixman "
-		      "renderer, and the CRT pass declines");
+		      "renderer, and the CRT pass declines (sudo kdos "
+		      "firmware sync installs firmware-nvidia)");
 	else if (nouveau)
 		ok("nouveau bound with NVIDIA firmware present");
 	else if (have_gsp)
@@ -2118,7 +2120,7 @@ static int cmd_version(void)
 		l = nl ? nl + 1 : NULL;
 	}
 	free(os);
-	printf("%sKDOS%s — KD's Homebrew Linux Distro\n", C_A, C_0);
+	printf("%sKDOS%s — Kool Desktop Operating System\n", C_A, C_0);
 	if (*rel)
 		printf("  release  %s\n", rel);
 	printf("  kernel   %s\n", u.release);
@@ -2485,6 +2487,8 @@ int kdos_main(int argc, char **argv)
 		return kdt_update(rest, restv, kdt_theme_main);
 	if (!strcmp(cmd, "image"))
 		return kdt_image_main(rest, restv);
+	if (!strcmp(cmd, "firmware"))
+		return kdt_firmware_main(rest, restv);
 	if (!strcmp(cmd, "version") || !strcmp(cmd, "-V"))
 		return cmd_version();
 	if (!strcmp(cmd, "app"))

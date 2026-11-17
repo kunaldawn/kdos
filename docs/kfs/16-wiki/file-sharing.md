@@ -9,8 +9,8 @@ needs are explained in the KDOS book's
 
 ## Installation
 
-Every port on this page is in an image phase's list, so the image carries all of them; none
-needs installing.
+Every port on this page is in the base the ISO carries except syncthing and gvfs, which
+`sudo kdos update install <port>` adds (see [Installing software](updating.md#installing-software)).
 
 | Task | Ports | What starts it |
 |:--|:--|:--|
@@ -376,4 +376,4 @@ both must be on the same network: global discovery and relays are off in the con
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 417.* Previous: [416. Wireless regulatory domain](wireless-regulatory-domain.md) · [Contents](../README.md) · Next: [418. Avahi and mDNS](avahi-and-mdns.md)
+*Part XVI. System administration, chapter 419.* Previous: [418. Wireless regulatory domain](wireless-regulatory-domain.md) · [Contents](../README.md) · Next: [420. Avahi and mDNS](avahi-and-mdns.md)

@@ -46,8 +46,9 @@ The home is made again from nothing on every run. In the build tree it is an art
 template plus the directories below, and `cp -r` overwrites but never deletes: a home kept from
 an earlier build would ship every file and directory the template or the list has since dropped,
 such as a boxed-application launcher [030_launchers.sh](030-launchers.md) renamed in
-`/etc/skel`, which the menu would then list twice. Anything edited by hand in
-`build/fs/home/kdos` is gone at the next image build. A home that is not one directory directly under `/home` stops the
+`/etc/skel`, which the menu would then list twice. The home is written into the root the step
+runs in, the [image stage](017-stage.md) or under `KDOS_IMAGE=full` `build/fs`, and anything
+edited by hand in it is gone at the next image build. A home that is not one directory directly under `/home` stops the
 build before anything is removed.
 
 <!-- kfs:include script/phases/70_image/070_user.sh lines=98-103 pin=fd6cfeb3e20e -->
@@ -87,4 +88,4 @@ On the image, `/home/kdos`, owned by `kdos` (1000:1000) and mode 0700, holding a
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 372.* Previous: [371. The udev hardware database](060-udev-hwdb.md) · [Contents](../README.md) · Next: [373. The manual index](080-whatis.md)
+*Part XV. The image, chapter 373.* Previous: [372. The udev hardware database](060-udev-hwdb.md) · [Contents](../README.md) · Next: [374. The manual index](080-whatis.md)

@@ -33,8 +33,10 @@
 # twelve characters, which is what a machine whose /ports carries no release
 # name calls its tree.
 #
-# THE DIRECTORY ACCUMULATES. 020_cleanup.sh empties the package cache on every
-# 70_image run, and an incremental build makes only the packages it rebuilt,
+# THE DIRECTORY ACCUMULATES. Each package is MOVED out of build/fs's package
+# cache, so the cache holds only what the next build makes: under
+# KDOS_IMAGE=base, 020_cleanup.sh empties the cache of the image stage and
+# never build/fs's. An incremental build makes only the packages it rebuilt,
 # so each run adds what it built and keeps what earlier runs added. A package
 # older runs left is indexed beside its successor, and only the file of the
 # version and release the ports tree's recipe makes gets that recipe's hash as
@@ -48,8 +50,8 @@
 # machine trusts the binhost by holding kdos-binhost.pub, which is copied
 # beside the index, in /etc/kdos/keys.
 #
-# RUNS BEFORE 020_cleanup.sh, which deletes the package cache. The step
-# number does the sequencing.
+# RUNS BEFORE 017_stage.sh, on build/fs, whose cache holds every package the
+# build kept. The step number does the sequencing.
 
 set -e
 source script/phases/70_image/phase.env
@@ -74,7 +76,7 @@ cp -f "$KEYDIR/$KEY.pub" "$OUT/$KEY.pub"
 added=0
 for p in "$CACHE"/*.tar.xz; do
     [ -f "$p" ] || continue
-    cp -f "$p" "$OUT/"
+    mv -f "$p" "$OUT/"
     added=$(( added + 1 ))
 done
 
@@ -86,7 +88,13 @@ if [ "$total" -eq 0 ]; then
 fi
 
 echo "[binhost] $added package(s) from this build, $total in $OUT"
-kpkg index "$OUT" --sign "$KEYDIR/$KEY.key"
+# EVERY REPOSITORY THE BUILD INSTALLS FROM, so a package of KDOS's own gets
+# its recipe's hash as its E: like any other. A machine looks its recipes up
+# under /ports/src/<area>, the same files 105_ports.sh copies there, and
+# computes the same hash; with /ports/core alone every src/ package would be
+# indexed with an empty E:, which no machine takes.
+PORT_REPO="/ports/core /kdos/src/system /kdos/src/art /kdos/src/desktop /kdos/src/daemons" \
+    kpkg index "$OUT" --sign "$KEYDIR/$KEY.key"
 # Verified against the one key it was signed with, the way a client that
 # trusts it will read it.
 KPKG_KEYRING="$KEYDIR" kpkg verify-index "$OUT"
@@ -114,15 +122,45 @@ else
     fi
 fi
 
-# THE RELEASE INDEX, over every file here but itself and the public key.
+# THE RELEASE INDEX, over every file here but itself, the public key and
+# every superseded package. A package stanza (one with no O:, which marks a
+# delta) whose E: is empty is a file an earlier run left that matches no
+# client: it stays in build/binhost and in PACKAGES, and is never published,
+# so a release carries exactly its own tree's packages. A current package
+# larger than one GitHub asset stops the build: `kdos update install` takes a
+# package whole, and the release could not carry it.
 source ports/releaselib.sh
+source ports/srclib.sh
 IDX=$OUT/$REL_INDEX_FILE
 rm -f "$IDX" "$IDX.sig"
 version=${KDOS_GIT_COMMIT:-local}
 version=${version:0:12}
+declare -A stale=()
+while IFS= read -r f; do
+    stale[$f]=1
+done < <(awk -v RS= -F'\n' '{
+    file = ""; e = "-"; delta = 0
+    for (i = 1; i <= NF; i++) {
+        if ($i ~ /^F:/) file = substr($i, 3)
+        else if ($i ~ /^E:/) e = substr($i, 3)
+        else if ($i ~ /^O:/) delta = 1
+    }
+    if (file != "" && !delta && e == "") print file
+}' "$OUT/PACKAGES")
+too_big=0
+for f in "$OUT"/*.tar.xz; do
+    [ -f "$f" ] && [ -z "${stale[${f##*/}]:-}" ] || continue
+    if [ "$(stat -c %s "$f")" -gt "$SRC_PART_SIZE" ]; then
+        echo "FATAL: ${f##*/} is larger than one release asset ($SRC_PART_SIZE bytes)" >&2
+        too_big=1
+    fi
+done
+[ "$too_big" = 0 ] || exit 1
+echo "[binhost] ${#stale[@]} superseded package(s) kept here and left out of the release"
 for f in "$OUT"/*; do
     [ -f "$f" ] || continue
     n=${f##*/}
+    [ -z "${stale[$n]:-}" ] && [ -z "${stale[${n%.sig}]:-}" ] || continue
     case $n in
         "$REL_INDEX_FILE"|"$REL_INDEX_FILE".*|*.pub|*.tmp) continue ;;
         swcatalog--xml--kdos-binhost.xml)     path=binhost/swcatalog/xml/kdos-binhost.xml ;;

@@ -80,8 +80,11 @@ void KdosTransaction::runStep()
     m_meter = std::make_unique<StepMeter>(step.meter, step.units);
     m_stdout.clear();
     m_stderrTail.clear();
+    m_previewOut.clear();
 
-    if (step.downloads) {
+    if (step.kind == Step::Kind::Preview) {
+        setStatus(SetupStatus);
+    } else if (step.downloads) {
         // QNetworkInformation answers only when a backend for it runs; with
         // none, the step is tried and its own error is the message.
         const QNetworkInformation *net = QNetworkInformation::instance();
@@ -147,6 +150,10 @@ void KdosTransaction::runStep()
             fail(detail);
             return;
         }
+        if (m_plan.steps.at(m_step).kind == Step::Kind::Preview) {
+            ask();
+            return;
+        }
         stepSucceeded();
     });
     m_process->start();
@@ -162,6 +169,8 @@ void KdosTransaction::readOutput()
     qsizetype nl;
     while ((nl = m_stdout.indexOf('\n')) >= 0) {
         const QString line = QString::fromUtf8(m_stdout.left(nl));
+        if (m_plan.steps.at(m_step).kind == Step::Kind::Preview)
+            m_previewOut += m_stdout.left(nl + 1);
         m_stdout.remove(0, nl + 1);
         if (m_meter && m_meter->feed(line))
             updateProgress();
@@ -193,6 +202,25 @@ void KdosTransaction::stepSucceeded()
     m_meter.reset();
     updateProgress();
     runStep();
+}
+
+void KdosTransaction::ask()
+{
+    const InstallPreview p = parseInstallPreview(m_previewOut + m_stdout);
+    if (!p.valid) {
+        fail(i18n("what the install would do could not be read"));
+        return;
+    }
+    m_asking = true;
+    Q_EMIT proceedRequest(i18nc("@title:window", "Install %1?", resource()->name()), installPreviewText(p));
+}
+
+void KdosTransaction::proceed()
+{
+    if (!m_asking || m_cancelled || m_finished)
+        return;
+    m_asking = false;
+    stepSucceeded();
 }
 
 void KdosTransaction::fail(const QString &why)

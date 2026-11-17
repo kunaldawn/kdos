@@ -24,7 +24,8 @@ a console login elogind acts on the lid and the power key alone.
 | [bolt](#port-bolt), [plasma-thunderbolt](#port-plasma-thunderbolt) | [`boltd`]{.idx} and [`boltctl`]{.idx}, which authorise Thunderbolt docks, and the **Thunderbolt** page |
 | [fprintd](#port-fprintd) | Fingerprint readers, for the lock screen and `sudo` |
 
-All of them are on the image. The service scripts specific to laptops are `43_boltd`, which the
+All of them are in the base the ISO carries except thermald, which
+`sudo kdos update install thermald` adds (see [Installing software](updating.md#installing-software)). The service scripts specific to laptops are `43_boltd`, which the
 `bolt` recipe writes, and `48_iio-sensor-proxy`. `43_boltd` wakes `boltd` through the system bus
 at boot when the machine has a Thunderbolt controller, and a udev rule from the same recipe wakes
 it when a Thunderbolt device appears later:
@@ -192,4 +193,4 @@ libfprint drives no reader on this machine; `lsusb` shows whether one is plugged
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 426.* Previous: [425. Power management](power-management.md) · [Contents](../README.md) · Next: [427. Firmware updates](firmware-updates.md)
+*Part XVI. System administration, chapter 428.* Previous: [427. Power management](power-management.md) · [Contents](../README.md) · Next: [429. Firmware updates](firmware-updates.md)

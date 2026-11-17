@@ -729,7 +729,7 @@ opens nothing, and a file that comes back returns to the list.
 ## libkpkg
 
 `libkpkg` holds the package manager's configuration, the package database, the ports tree, the
-solver, version comparison, the two package hashes and the content-keyed package store
+solver, version comparison, the facet rules, the two package hashes and the content-keyed package store
 (`kp_store.c`), which installs a port from a package built earlier from exactly the same inputs
 instead of building it again (see
 [Packaging](../03-architecture/packaging.md#the-package-store)).
@@ -751,6 +751,13 @@ shelf down at `<repo>/<shelf>/<name>/`; `ports/core` is shelved and each `src/` 
 | `kp_depends(portdir, out, max)` | `kp_depends_scan` that dies with that message, because every caller reads its return as the whole closure, and a short one builds without the rest |
 | `kp_owned_load(c)` | Every path an installed package claims, sorted, keyed on its canonical merged-`/usr` spelling, for `kp_owned_owner` and `kp_owned_other` to ask. A path several packages claim is sorted by package name, and `kp_owned_owner` names the first, so the owner does not depend on the C library's `qsort` |
 | `kp_owned_load_some(c, rel, n)` | The same table holding only the claims on the `n` given paths, canonicalised the way a question is. Those two functions answer exactly as from the full table for those paths, and NULL for any other. It streams every manifest but keeps a handful of pairs, which is what an install, an upgrade's orphan sweep and a removal need |
+| `kp_facet_of(path, link)` | The [facet](../03-architecture/packaging.md#facets) of a manifest path, `KP_FACET_RUN`, `KP_FACET_DEV` or `KP_FACET_DOC`; `link` is a symlink's target, NULL for anything else, and decides whether `lib<x>.so` is a development link. A directory is always run time. The one statement of the rules: `kpkgadd`, `kpkg facets --strip` and the self-test's table all go through it |
+| `kp_facet_wanted(c, port)` | The installed packages a build of `port` compiles against whose `dev` facet is left out: its declared closure, `musl`, `linux` and `gcc`. `kpkg install` refuses a build while it names any, and `kdos update install --source` restores them. A database with no `.facets/` directory answers empty without walking the closure |
+| `kp_record_facets`, `kp_installed_facets`, `kp_forget_facets`, `kp_facets_left` | Write, read, remove and count the facet record, `<db>/.facets/<name>` |
+| `kp_needs_scan(c, name, body, extra, runtime)` | The [run-time needs](../03-architecture/packaging.md#run-time-needs) record of installed package `name` from its run-time files under the root: `body` its manifest, `extra` its recipe's `facet_dev =` line, `runtime` its `runtime =` line; sorted `<kind> <value>` lines |
+| `kp_needs_where(c, edge, &pkg)` | The paths under the root, each present, that would provide one edge (`so libz.so.1`, `qml org.kde.kirigami`), and `pkg` set when a package name provides it instead (a `need` edge, a QML built-in) |
+| `kp_record_needs`, `kp_installed_needs`, `kp_forget_needs` | Write, read and remove the needs record, `<db>/.needs/<name>` |
+| `kp_elf_dynamic(path, &needed, &search)` | An ELF64 file's `DT_NEEDED` names and its `DT_RUNPATH` (else `DT_RPATH`) entries, read from its dynamic section with no process; -1 for anything that is not such a file |
 | `kp_db_lock(c)` | Takes the database's writer lock, an exclusive `flock` on `<db>/.lock`, blocking, and returns the descriptor; closing it releases the lock. -1 when the database directory cannot hold the file |
 
 A recipe's `depends` line is bounded by `KP_MAX_DEPS` (128), and a line naming more is refused,

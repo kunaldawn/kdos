@@ -288,7 +288,8 @@ kpkg hands the package to kpkgadd, the part of kpkg that installs a built packag
 5. Places every file, printing one `Installing <path> -> <destination>` line each, and on an upgrade
    removes the files the old version had and the new one does not.
 6. Writes the database entry, the package file's hash, and after any `.POSTINSTALL` hook has run,
-   the record of each placed file's hash and mode.
+   the record of each placed file's hash and mode and the record of what the files need at run
+   time.
 7. Rebuilds the shared indexes the package's paths feed, such as the GSettings schemas, the MIME
    database, the font cache or the manual index. `pv` installs a manual page, so the manual index
    is due; the build sets `KPKG_SKIP_INDEX=man`, because `70_image` writes that index from scratch,
@@ -301,7 +302,7 @@ on, and the package file is deleted: `Removing cached package`.
 
 ## The database entry
 
-What is left of the whole operation, besides the files in the root, is four small files under
+What is left of the whole operation, besides the files in the root, is five small files under
 `/var/lib/kpkg/db/`. In the chroot:
 
 ```bash
@@ -332,6 +333,11 @@ The first line is the installed version and release; every line after it is a pa
 contains, directories with a trailing `/`. This is the file kpkg reads to know that `pv` is
 installed and what it owns, and `kpkg info pv` counts its sixteen paths as `Files: 16`.
 
+The chroot's `kpkg.conf` says `FACETS=all`, so the manifest lists every file the package holds,
+the manual under `usr/share/doc/pv/` among them, and there is no `.facets/pv`. The image's says
+`run`, and there an install leaves the development and documentation files out and lists them in
+`.facets/<name>` ([The image stage](../15-image/017-stage.md#the-facets)).
+
 `/var/lib/kpkg/db/.files/pv` holds, for each file placed, its SHA-256, its mode and its path, which
 `kpkg check pv` compares against the disk:
 
@@ -348,8 +354,19 @@ built from, the value the next build compares the port against:
 621123df9c942d44aa50a89dc543033a5d8f4aa21d023f5fc035d69e299eb903
 ```
 
-and `/var/lib/kpkg/db/.pkgsha/pv` the SHA-256 of the package file itself, which the package store
-keys every port that depends on `pv` with. These values are those of one build of the tree. A
+`/var/lib/kpkg/db/.pkgsha/pv` the SHA-256 of the package file itself, which the package store
+keys every port that depends on `pv` with, and `/var/lib/kpkg/db/.needs/pv` what the package's
+files need at run time, found in them rather than declared: `pv` is one program, and it links
+the C library and ncurses:
+
+```text
+so libc.so
+so libncursesw.so.6
+```
+
+`kpkg needs --resolve pv` names the package providing each line, `musl` and `ncurses`; the image
+uses the records to prove its base
+([Run-time needs](../../kdos/03-architecture/packaging.md#run-time-needs)). These values are those of one build of the tree. A
 package rebuilt from the same recipe, on the same tree and with the same compressor settings, is
 meant to reproduce every one of them, which is what makes them worth recording. The layout of
 every file kpkg keeps is in

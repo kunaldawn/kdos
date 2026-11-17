@@ -28,7 +28,8 @@ at boot:
 The live column is what a booted live medium shows. The installed column is what the installer's
 Configure step writes; an installed disk has not been booted to check it.
 
-[mosh](#port-mosh) is installed beside it, and works over an SSH login.
+[mosh](#port-mosh) works over an SSH login. It is not in the base the ISO carries;
+`sudo kdos update install mosh` adds it (see [Installing software](updating.md#installing-software)).
 
 ## Configuration
 
@@ -279,4 +280,4 @@ The account has a finger enrolled, and `pam_fprintd` waits on the machine's read
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 409.* Previous: [408. Firewall](firewall.md) · [Contents](../README.md) · Next: [410. Signing keys and trust](signing-keys-and-trust.md)
+*Part XVI. System administration, chapter 411.* Previous: [410. Firewall](firewall.md) · [Contents](../README.md) · Next: [412. Signing keys and trust](signing-keys-and-trust.md)

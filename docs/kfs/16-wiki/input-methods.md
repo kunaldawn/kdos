@@ -22,7 +22,8 @@ application are wired together is in
 | [kwin](#port-kwin) | Starts fcitx5 for the session and relays it to applications over `text-input` |
 | [plasma-keyboard](#port-plasma-keyboard) | The on-screen keyboard, the other input method KWin can start |
 
-All of them are installed by `50_desktop`, so every image has them, live and installed. There is
+All of them are installed by `50_desktop` and are in the base the ISO carries, so every image has
+them, live and installed. There is
 no service script and no autostart entry: KWin starts fcitx5 as the session's input method and
 restarts it if it dies, from `fs/usr/share/kdos/xdg/kwinrc`:
 
@@ -83,7 +84,7 @@ service:
 A boxed application reaches fcitx5 through KWin, never directly. `kdos-appbox` sets one variable
 for it (`src/system/kdos-appbox/main.c`):
 
-<!-- kfs:include src/system/kdos-appbox/main.c lines=472-484 pin=afbe7df0b3c1 -->
+<!-- kfs:include src/system/kdos-appbox/main.c lines=481-493 pin=afbe7df0b3c1 -->
 
 ## Usage
 
@@ -185,4 +186,4 @@ of the environment. KWin restarts fcitx5 when it exits; its messages go to the s
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 439.* Previous: [438. Xwayland and X11 applications](xwayland-and-x11-apps.md) · [Contents](../README.md) · Next: [440. Fonts and theming](fonts-and-theming.md)
+*Part XVI. System administration, chapter 441.* Previous: [440. Xwayland and X11 applications](xwayland-and-x11-apps.md) · [Contents](../README.md) · Next: [442. Fonts and theming](fonts-and-theming.md)

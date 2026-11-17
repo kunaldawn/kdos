@@ -10,18 +10,22 @@
 #   KD's Homebrew Linux Distro
 # ---------------------------------
 #
-# Trim build/fs before the image is assembled. Removes build-time-only artifacts that
-# have no purpose in a runtime/live system, and slims the resulting ISO.
+# Trim the image's root before it is assembled. Removes build-time-only
+# artifacts that have no purpose in a runtime/live system, and slims the ISO.
 #
-# Runs inside the chroot — operates on /kdos/build/fs (= chroot root via
-# bind-mount).
+# Runs inside the chroot and operates on its root, `/`: the image stage under
+# KDOS_IMAGE=base (an overlay whose writes land in build/image-upper), build/fs
+# itself under full. Never /kdos/build/fs: in the stage that path is the
+# overlay's lower layer, and a removal there would reach build/fs, which the
+# next build and the binhost are made from, while the passes below read the
+# whole build's package database instead of the image's.
 #
 # Each phase is gated by a flag below. Set to 0 to skip.
 
 set -e
 source script/phases/70_image/phase.env
 
-FS=/kdos/build/fs
+FS=/
 
 # ── Phase gates ─────────────────────────────────────────────────────────
 CLEAN_BUILD_CACHE=1     # /tmp, /var/tmp (holds the build's HOME), /root's caches, kpkg work dir
@@ -41,7 +45,10 @@ report() {
 
 [ -d "$FS" ] || { echo "[CLEANUP] No $FS — nothing to do."; exit 0; }
 
-INITIAL=$(du -sh "$FS" 2>/dev/null | cut -f1)
+# The root's own directories: `/` also holds /kdos, the repository bound in,
+# and the kernel's filesystems.
+tree_size() { du -sch /usr /etc /var /opt /srv /root /tmp 2>/dev/null | tail -n1 | cut -f1; }
+INITIAL=$(tree_size)
 echo "[KDOS] Cleanup pass over $FS (initial size: $INITIAL)"
 
 # ── Build cache ─────────────────────────────────────────────────────────
@@ -333,6 +340,6 @@ chmod 0700 "$FS/root"
 report "root (reset to fs/root)" "$before" "$(size_of "$FS/root")"
 
 # ── Done ────────────────────────────────────────────────────────────────
-FINAL=$(du -sh "$FS" 2>/dev/null | cut -f1)
+FINAL=$(tree_size)
 echo
 echo "[KDOS] Cleanup done. $INITIAL → $FINAL"

@@ -22,7 +22,9 @@ this page does not repeat it.
 | [f3](#port-f3) | `f3probe`, `f3write` and `f3read`, which find a stick that reports a false size |
 | [libatasmart](#port-libatasmart) | The SMART library udisks2 reads for the native disk applications |
 
-All are on the live medium and on an installed system. Two boot scripts come from the tree's `fs/`
+All are on the live medium and on an installed system except ddrescue, partclone and f3, which
+are not in the base the ISO carries; `sudo kdos update install <port>` adds each (see
+[Installing software](updating.md#installing-software)). Two boot scripts come from the tree's `fs/`
 overlay, and both are enabled on the image (`/etc/service.disabled/` holds no marker for either):
 
 | Script | Service name | Starts | Skips or stops |
@@ -297,4 +299,4 @@ follows when nothing was left.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 402.* Previous: [401. LVM and RAID](lvm-and-raid.md) · [Contents](../README.md) · Next: [403. Backups](backups.md)
+*Part XVI. System administration, chapter 404.* Previous: [403. LVM and RAID](lvm-and-raid.md) · [Contents](../README.md) · Next: [405. Backups](backups.md)

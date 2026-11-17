@@ -163,7 +163,7 @@ d.execute("INSERT INTO ZTOKEN VALUES (1, 'os.pathology', 1)")
 d.commit()
 EOF
 
-for p in kdos kdos-box kstart systemsettings plasma-discover konsole khelpcenter xdg-open zeal pavucontrol-qt; do
+for p in kdos kdos-box kstart systemsettings plasma-discover konsole man xdg-open zeal pavucontrol-qt; do
 	cat > "$D/bin/$p" <<EOF
 #!/bin/sh
 : > "$D/ran/$p.tmp"

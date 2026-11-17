@@ -14,9 +14,10 @@ the video-decoding drivers per GPU are tabled in
 | Port | Provides |
 |:--|:--|
 | [linux](#port-linux) | The kernel's DRM drivers, most of them as modules loaded when udev finds the device |
-| [linux-firmware](#port-linux-firmware) | The firmware the AMD, Intel and NVIDIA kernel drivers load at start; see [Microcode and firmware](microcode-and-firmware.md) |
+| [firmware-intel](#port-firmware-intel), [firmware-amd](#port-firmware-amd), [firmware-nvidia](#port-firmware-nvidia) | The firmware the Intel, AMD and NVIDIA kernel drivers load at start. The installation medium carries Intel's and AMD's; NVIDIA's is one `sudo kdos firmware sync` away. See [Microcode and firmware](microcode-and-firmware.md) |
 | [libdrm](#port-libdrm) | The user-space side of the kernel's DRM interface |
-| [mesa](#port-mesa) | The OpenGL, OpenGL ES, EGL, GBM and Vulkan drivers, the software renderers, a [VA-API]{.idx} driver and OpenCL (rusticl) |
+| [mesa](#port-mesa) | The OpenGL, OpenGL ES, EGL, GBM and Vulkan drivers, the software renderers and a [VA-API]{.idx} driver |
+| [mesa-opencl](#port-mesa-opencl) | OpenCL (rusticl), not on the installation medium: `kdos update install mesa-opencl` |
 | [libglvnd](#port-libglvnd) | `libGL`, `libEGL` and `libGLX`, which dispatch to Mesa |
 | [vulkan-loader](#port-vulkan-loader) | `libvulkan.so.1`, which finds Mesa's Vulkan drivers |
 | [libva](#port-libva), [intel-media-driver](#port-intel-media-driver), [intel-gmmlib](#port-intel-gmmlib), [libva-intel-driver](#port-libva-intel-driver) | VA-API, and the two Intel video drivers (`iHD` and `i965`) |
@@ -24,7 +25,10 @@ the video-decoding drivers per GPU are tabled in
 | [switcheroo-control](#port-switcheroo-control) | Which GPU is discrete, on a machine with two |
 | [mesa-demos](#port-mesa-demos), [vulkan-tools](#port-vulkan-tools), [libva-utils](#port-libva-utils), [glmark2](#port-glmark2), [nvtop](#port-nvtop) | `eglinfo`, `vulkaninfo`, `vkcube`, `vainfo`, a GL benchmark (`glmark2-wayland`, `glmark2-es2-wayland` and their `-drm` and `-gbm` builds) and a GPU monitor |
 
-All of these are on the image. No port provides NVIDIA's proprietary driver: an NVIDIA GPU is
+All of these are in the base the ISO carries except the two Intel video drivers with
+intel-gmmlib, glmark2 and nvtop; `sudo kdos update install intel-media-driver` (or
+`libva-intel-driver` for an older GPU) adds hardware video decoding on Intel, and
+`sudo kdos update install <port>` the others (see [Installing software](updating.md#installing-software)). No port provides NVIDIA's proprietary driver: an NVIDIA GPU is
 driven by `nouveau`, with Mesa's `nouveau` OpenGL driver and NVK for Vulkan.
 
 The only service is `44_switcheroo-control`, which the [`switcheroo-control`]{.idx} recipe writes and
@@ -86,7 +90,7 @@ loads, shows in `lsmod`, and binds nothing.
 The build names every Gallium and Vulkan driver it compiles; each flag is explained on its
 [package page](#port-mesa):
 
-<!-- kfs:include ports/core/gpu/mesa/build.sh lines=35-65 pin=f0a32cb6518d -->
+<!-- kfs:include ports/core/gpu/mesa/build.sh lines=35-65 pin=9c2975fea499 -->
 
 Per-application driver options (the `xmlconfig` build option) come from Mesa's own files under
 `/usr/share/drirc.d/`, then from [`/etc/drirc`]{.idx} and `~/.drirc` when they exist. KDOS ships neither
@@ -103,8 +107,9 @@ Which driver it loads depends on the kernel driver: for `i915` it tries `iHD` an
 
 ### OpenCL
 
-Mesa's rusticl is the one OpenCL driver, and it offers a GPU only when told which drivers to
-expose. Every login shell gets this from `fs/etc/profile.d/50-opencl.sh`:
+Mesa's rusticl, the [mesa-opencl](#port-mesa-opencl) port, is the one OpenCL driver. The
+installation medium does not carry it, because it brings clang; `kdos update install
+mesa-opencl` adds it. It offers a GPU only when told which drivers to expose. Every login shell gets this from `fs/etc/profile.d/50-opencl.sh`:
 
 <!-- kfs:include fs/etc/profile.d/50-opencl.sh lines=16-16 pin=6fbcb30bc062 -->
 
@@ -204,10 +209,15 @@ fault from a fault in the program.
    it requires does not start, and the screen stays on the firmware's framebuffer.
 3. Run `kdos doctor`. With `nouveau` bound and no [`/lib/firmware/nvidia`]{.idx}, it warns that the GPU
    cannot initialise.
+4. Run `kdos firmware sync --dry-run`. It names the firmware port each GPU's driver needs and
+   this machine has not got, as `firmware-nvidia module nouveau, pci 0000:01:00.0`;
+   `sudo kdos firmware sync` installs it.
 
 **`kdos doctor` warns that nouveau is bound and `/lib/firmware/nvidia` is absent.** `nouveau`
-needs NVIDIA's GSP firmware to initialise a Turing or later GPU, and that firmware comes in
-`linux-firmware`. Check that the package is installed: `ls /var/lib/kpkg/db/linux-firmware`.
+needs NVIDIA's GSP firmware to initialise a Turing or later GPU, and that firmware is the
+`firmware-nvidia` package, which the installation medium does not carry. Install it with
+`sudo kdos firmware sync`, which finds it from the GPU, or `sudo kdos update install
+firmware-nvidia`, then restart.
 
 **`vainfo` fails or a video plays on the CPU.**
 
@@ -253,4 +263,4 @@ GPU is `[SKIP] switcheroo-control: fewer than two GPUs`.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 424.* Previous: [423. Displays and scaling](displays-and-scaling.md) · [Contents](../README.md) · Next: [425. Power management](power-management.md)
+*Part XVI. System administration, chapter 426.* Previous: [425. Displays and scaling](displays-and-scaling.md) · [Contents](../README.md) · Next: [427. Power management](power-management.md)

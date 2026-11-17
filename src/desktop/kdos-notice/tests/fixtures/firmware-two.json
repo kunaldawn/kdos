@@ -1,0 +1,1 @@
+{"ports":[{"port":"firmware-nvidia","reason":"module nouveau, pci 0000:01:00.0"},{"port":"firmware-qualcomm","reason":"the kernel could not load ath11k/WCN6855/hw2.0/amss.bin"}],"unshipped":[],"kernel_log":true,"modules":true}

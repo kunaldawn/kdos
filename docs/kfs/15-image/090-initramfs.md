@@ -2,7 +2,8 @@
 
 The [initramfs]{.idx} is the small root the kernel unpacks into memory and runs first. Its one job
 is to find the real root, on a disk or on the boot medium, and hand over to it.
-`script/phases/70_image/090_initramfs.sh` builds it from the finished root in `build/fs`: it lays
+`script/phases/70_image/090_initramfs.sh` builds it from the finished root, the [image stage](017-stage.md) or under `KDOS_IMAGE=full`
+`build/fs`: it lays
 out a directory tree, copies into it the programs early boot runs with every library they need,
 picks the [kernel modules]{.idx term="kernel module"}, writes the [`init`]{.idx} script, puts the processor [microcode]{.idx} in front, and packs
 the lot into one file. This chapter goes through the script in that order. The `init` it writes is
@@ -13,7 +14,7 @@ What the initramfs does at boot, and why each part is there, is described in
 it. This chapter is about how the file is made.
 
 **Runs in:** the chroot, as a script step of `70_image`\
-**Reads:** the programs, libraries, [udev]{.idx} rules and kernel modules installed in `build/fs`\
+**Reads:** the programs, libraries, [udev]{.idx} rules and kernel modules installed in the root\
 **Writes:** the tree `build/initramfs/`, the microcode tree `build/ucode/` and its archive
 `build/ucode.cpio`, the finished `build/initramfs.cpio.gz`, and [`/boot/initramfs.modules`]{.idx} in the
 root
@@ -287,7 +288,7 @@ their firmware loaded, and the step says so.
 
 <!-- kfs:include script/phases/70_image/090_initramfs.sh lines=1422-1448 pin=1677e9d765a0 -->
 
-The AMD containers come from [linux-firmware](#port-linux-firmware), one per processor family, and
+The AMD containers come from [firmware-amd](#port-firmware-amd), one per processor family, and
 are concatenated into one file in the order the shell's glob sorts them. A `.bin.zst` is expanded
 first, because the early loader cannot decompress. A directory that yields an empty file stops the
 step. The microcode tree is then packed as a cpio archive of its own, uncompressed, and only when at
@@ -369,4 +370,4 @@ helpers that passed the udev check; `lib/modules/<version>/` with the modules an
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 377.* Previous: [376. The image gates](087-gates.md) · [Contents](../README.md) · Next: [378. The initramfs init](091-initramfs-init.md)
+*Part XV. The image, chapter 379.* Previous: [378. The image ledger](088-ledger.md) · [Contents](../README.md) · Next: [380. The initramfs init](091-initramfs-init.md)

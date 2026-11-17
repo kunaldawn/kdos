@@ -1,0 +1,21 @@
+# ██╗  ██╗██████╗  ██████╗ ███████╗
+# ██║ ██╔╝██╔══██╗██╔═══██╗██╔════╝
+# █████╔╝ ██║  ██║██║   ██║███████╗
+# ██╔═██╗ ██║  ██║██║   ██║╚════██║
+# ██║  ██╗██████╔╝╚██████╔╝███████║
+# ╚═╝  ╚═╝╚═════╝  ╚═════╝ ╚══════╝
+# ---------------------------------
+#   KD's Homebrew Linux Distro
+# ---------------------------------
+
+name        = firmware-intel
+version     = 20260916
+release     = 1
+source      = linux-firmware-$version.tar.xz::https://cdn.kernel.org/pub/linux/kernel/firmware/linux-firmware-$version.tar.xz
+sha256      = f80dcb757a623deda62200c08e0e1a88c76fb6b54964f31b35fa74da1c90ccc5  linux-firmware-20260916.tar.xz
+description = Intel device firmware from linux-firmware — i915 and Xe graphics, iwlwifi Wi-Fi, Bluetooth, IPU cameras, the NPU, the ISH sensor hub
+homepage    = https://gitlab.com/kernel-firmware/linux-firmware
+license     = LicenseRef-linux-firmware
+group       = linux-firmware
+depends     = zstd
+replaces    = linux-firmware

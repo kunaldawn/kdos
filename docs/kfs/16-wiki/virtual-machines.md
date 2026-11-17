@@ -33,18 +33,29 @@ The emulator and the management stack are ports:
 | [spice-gtk](#port-spice-gtk), [gtk-vnc](#port-gtk-vnc) | The SPICE and VNC console widgets Virtual Machine Manager draws a guest's screen with |
 | [libosinfo](#port-libosinfo), [osinfo-db](#port-osinfo-db) | The operating-system facts `virt-install` and Virtual Machine Manager choose defaults from |
 
+None of the ports in the table but passt is in the base the ISO carries. Install the ones you
+need, on an installed machine or on the live medium (where they go into the overlay in RAM), with
+`kdos update install`; see [Installing software](updating.md#installing-software):
+
+```bash
+sudo kdos update install qemu
+sudo kdos update install libvirt
+sudo kdos update install virt-manager
+```
+
 The libvirt package brings its two service scripts with it, and the image ships no
 `/etc/service.disabled` marker for either, so `virtlogd` and `libvirtd` start at every boot while
 the package is installed. Removing the package removes the scripts. `kpkg info libvirt` says
-whether it is installed. On a booted live medium `service status` shows both `[ OK ]`.
+whether it is installed; with it installed, `service status` shows both `[ OK ]`.
 
-The command-line procedures on this page have been run on the live medium, inside a KVM guest
+The command-line procedures on this page have been run on a live medium that carries every
+package (`KDOS_IMAGE=full`), inside a KVM guest
 with nested virtualisation: the KVM checks, a UEFI guest started with `qemu-system-x86_64`, passt,
 `virsh` against `qemu:///system` as a member of `wheel`, the `default` network and its firewall
 fragment. The Virtual Machine Manager window opens from its Start row on the live medium; using it
 to create or run a guest, an emulated TPM and a virtio-fs share are written from the recipes and
 from upstream's documentation, and have not been done on a KDOS image (see
-[Known gaps](#known-gaps)). The live medium and an installed system carry the same packages; a
+[Known gaps](#known-gaps)). A
 guest's disk image written on a live session is on the boot overlay and is gone at power-off
 unless it is written to a mounted disk.
 
@@ -297,7 +308,7 @@ certificates.
 A KDOS image runs under QEMU on any host with [KVM]{.idx}. The build tree's `make run` target is the
 command line KDOS is developed against; it is in the repository's `Makefile`:
 
-<!-- kfs:include Makefile lines=206-211 pin=f6593b8c0706 lang=make -->
+<!-- kfs:include Makefile lines=231-236 pin=f6593b8c0706 lang=make -->
 
 That target runs on the build machine and expects its OVMF at `/usr/share/ovmf/OVMF.fd`; on a KDOS
 host, use the firmware paths from [Running a guest with QEMU directly](#running-a-guest-with-qemu-directly).
@@ -428,4 +439,4 @@ helper serves only root. That is a known gap; use user-mode networking, or a lib
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 434.* Previous: [433. Containers](containers.md) · [Contents](../README.md) · Next: [435. Session and environment](session-and-environment.md)
+*Part XVI. System administration, chapter 436.* Previous: [435. Containers](containers.md) · [Contents](../README.md) · Next: [437. Session and environment](session-and-environment.md)

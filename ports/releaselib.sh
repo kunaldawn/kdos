@@ -45,11 +45,15 @@ rel_asset() {
 }
 
 # rel_gh_name <asset> — the name GitHub will store it as: every character
-# outside [A-Za-z0-9._-] becomes `.`. ports/publish records the name GitHub
-# returned and only predicts with this.
+# outside [A-Za-z0-9._-] becomes `.` and a run of dots becomes one
+# (`libsigc++2` is stored as `libsigc.2`). ports/publish records the name
+# GitHub returned and only predicts with this; a release it resumes is
+# matched by the prediction, so a wrong one counts that release's own
+# assets as foreign and stops the run.
 rel_gh_name() {
-    local a=$1
-    printf '%s\n' "${a//[!A-Za-z0-9._-]/.}"
+    local a=${1//[!A-Za-z0-9._-]/.}
+    while [[ $a == *..* ]]; do a=${a//../.}; done
+    printf '%s\n' "$a"
 }
 
 # rel_entry <dir> <asset> <path> — one index line for <dir>/<asset> beside

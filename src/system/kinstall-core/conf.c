@@ -151,13 +151,19 @@ unsigned long long ki_wipe_root_bytes(void)
 }
 
 /*
- * A SLOT IS THE SYSTEM AND ROOM FOR ITS NEXT VERSION. An update is written
- * whole into the slot that is not running, so a slot made exactly the size
- * of today's install refuses the first update that grows. Half as much again
- * is the room; KI_SLOT_MIN_MB is the floor, for a payload that was not
- * measured or is small. The box store and every other file under /home live
- * on the shared home, not in a slot, so they are not counted here. Rounded up
- * to a whole GiB, which is how lvcreate's sizes read back.
+ * A SLOT IS THE SYSTEM, WHAT IS INSTALLED ON IT AND ROOM FOR ITS NEXT
+ * VERSION. An update is written whole into the slot that is not running, so
+ * a slot made exactly the size of today's install refuses the first update
+ * that grows: half as much again as the payload is the least. The medium
+ * carries the base alone and every native program a person installs, a
+ * group at a time, goes into the slot with the binhost's cached package
+ * beside it, so a slot is also never less than KI_SLOT_SHARE percent of the
+ * room left after the swap and the volume metadata, the share that leaves
+ * the home the rest. KI_SLOT_MIN_MB is the
+ * floor, for a payload that was not measured or is small. The box store and
+ * every other file under /home live on the shared home, not in a slot, so
+ * they are not counted here. Rounded up to a whole GiB, which is how
+ * lvcreate's sizes read back.
  */
 unsigned long long ki_slot_mb(void)
 {
@@ -165,7 +171,13 @@ unsigned long long ki_slot_mb(void)
 					? ki_sys.payload_kb - ki_sys.appbox_kb
 					: 0;
 	unsigned long long mb = (kb + kb / 2) / 1024;
+	unsigned long long room = wipe_rest_bytes() >> 20;
+	unsigned long long taken = 32 + ki_swap_lv_mb();
+	unsigned long long share =
+		room > taken ? (room - taken) * KI_SLOT_SHARE / 100 : 0;
 
+	if (mb < share)
+		mb = share;
 	if (mb < KI_SLOT_MIN_MB)
 		mb = KI_SLOT_MIN_MB;
 	return (mb + 1023) / 1024 * 1024;
@@ -442,6 +454,12 @@ static int set_kv(const char *k, const char *v)
 	 * misspelling. */
 	else if (!strcmp(k, "apps"))
 		kb_strlcpy(cfg.apps, v, sizeof(cfg.apps));
+	/* Native group ids, or `none`; an id no group has is ignored, since
+	 * a group is something extra and the system installs without it. */
+	else if (!strcmp(k, "groups")) {
+		kb_strlcpy(cfg.groups, v, sizeof(cfg.groups));
+		cfg.groups_set = 1;
+	}
 	else if (!strcmp(k, "reboot"))
 		cfg.reboot_after = atoi(v);
 	else if (!strcmp(k, "services")) {
@@ -574,6 +592,7 @@ int conf_save(const char *path)
 		 "desk           = %s\n"
 		 "alien_apps     = %d\n"
 		 "apps           = %s\n"
+		 "groups         = %s\n"
 		 "services       = %s\n"
 		 "reboot         = %d\n",
 		 cfg.keymap, cfg.xkb_layout, cfg.xkb_variant, cfg.tz,
@@ -588,7 +607,8 @@ int conf_save(const char *path)
 		 cfg.hostname, cfg.oem, cfg.username, cfg.fullname,
 		 cfg.user_wheel, cfg.root_locked,
 		 cfg.autologin ? "yes" : "no", cfg.autologin_lock,
-		 cfg.theme, cfg.desk, cfg.with_appbox, cfg.apps, svc,
+		 cfg.theme, cfg.desk, cfg.with_appbox, cfg.apps,
+		 cfg.groups[0] ? cfg.groups : "none", svc,
 		 cfg.reboot_after);
 
 	return kb_write_file(path, buf);

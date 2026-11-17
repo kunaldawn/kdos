@@ -57,7 +57,7 @@ device when the store is on the boot disk:
 
 The menu entry that skips the store:
 
-<!-- kfs:include script/phases/70_image/110_iso.sh lines=339-344 pin=00a38d5e1ac3 -->
+<!-- kfs:include script/phases/70_image/110_iso.sh lines=351-356 pin=00a38d5e1ac3 -->
 
 ## Usage
 
@@ -253,4 +253,4 @@ space; reset it or make a larger one on another device.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 397.* Previous: [396. A/B slots and rollback](ab-slots-and-rollback.md) · [Contents](../README.md) · Next: [398. Filesystems and fstab](filesystems-and-fstab.md)
+*Part XVI. System administration, chapter 399.* Previous: [398. A/B slots and rollback](ab-slots-and-rollback.md) · [Contents](../README.md) · Next: [400. Filesystems and fstab](filesystems-and-fstab.md)

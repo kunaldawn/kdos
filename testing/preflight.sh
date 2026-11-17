@@ -336,6 +336,20 @@ else
 fi
 
 echo
+echo "==> the installation medium's base names ports that exist"
+# ports/base seeds the image 70_image/017_stage.sh trims the stage to, and
+# ports/buildonly names the build tools that closure does not follow.
+# script/lib/imageset.py --check refuses a name in either that is no port,
+# and a phase or src area in ports/base that does not exist: a misspelt seed
+# leaves its program off the medium with nothing to say so until a desktop
+# opens without it.
+if python3 script/lib/imageset.py --check > "$SP/imageset" 2>&1; then
+    note "image base" "$(sed 's/^imageset: //' "$SP/imageset")"
+else
+    bad "image base" "$(head -3 "$SP/imageset" | tr '\n' ' ')"
+fi
+
+echo
 echo "==> every package named in a phase list has a port"
 for f in $PHASE_LISTS; do
     missing=""
@@ -385,6 +399,44 @@ for pair in "linux perf" "python3 python3-tkinter" "gettext libintl" \
     shared=$((shared + 1))
 done
 [ "$shared" = 0 ] && note "shared-tarball ports" "none declared"
+
+echo
+echo "==> the firmware vendor ports split one build, and the meta names them all"
+# Every firmware-* port builds linux-firmware's tarball with one build.sh and
+# keeps the files its fw_vendor rule gives it; firmware-map records the same
+# rule's answer for every file. A build.sh edited in one port and not the
+# others splits the tree two ways: a file in two packages, or in none, and a
+# map naming a port that does not ship the file. The linux-firmware meta
+# depends on every vendor port, so installing it is the whole tree.
+if has_port linux-firmware && has_port firmware-map; then
+    _fwv=$(sed -n 's/^version[[:blank:]]*=[[:blank:]]*//p' "${PDIR[linux-firmware]}/kpkgbuild" | head -1)
+    _fwm=$(sed -n 's/^sha256[[:blank:]]*=[[:blank:]]*\([0-9a-f]*\).*/\1/p' "${PDIR[firmware-map]}/kpkgbuild" | head -1)
+    _fwd=" $(sed -n 's/^depends[[:blank:]]*=[[:blank:]]*//p' "${PDIR[linux-firmware]}/kpkgbuild" | head -1) "
+    _fwbad=0
+    _fwn=0
+    for _v in $(sed -n 's/.*) vendor=\([a-z]*\) ;;.*/\1/p' "${PDIR[firmware-map]}/build.sh"); do
+        _p=firmware-$_v
+        _fwn=$((_fwn + 1))
+        if ! has_port "$_p"; then
+            bad "$_p" "firmware-map's build.sh gives files to $_p, which is not a port"; _fwbad=1; continue
+        fi
+        case "$_fwd" in *" $_p "*) ;; *) bad "$_p" "linux-firmware's depends does not name it"; _fwbad=1 ;; esac
+    done
+    for _d in "${PORTS_ALL[@]}"; do
+        _p=${_d##*/}
+        case "$_p" in firmware-*) ;; *) continue ;; esac
+        grep -q '^source[[:blank:]]*=.*linux-firmware-' "$_d/kpkgbuild" || continue
+        _v=$(sed -n 's/^version[[:blank:]]*=[[:blank:]]*//p' "$_d/kpkgbuild" | head -1)
+        _h=$(sed -n 's/^sha256[[:blank:]]*=[[:blank:]]*\([0-9a-f]*\).*/\1/p' "$_d/kpkgbuild" | head -1)
+        [ "$_v" = "$_fwv" ] || { bad "$_p" "version $_v, linux-firmware's is $_fwv"; _fwbad=1; }
+        [ "$_h" = "$_fwm" ] || { bad "$_p" "its sha256 is not firmware-map's: not the same tarball"; _fwbad=1; }
+        cmp -s "$_d/build.sh" "${PDIR[firmware-map]}/build.sh" ||
+            { bad "$_p" "its build.sh differs from firmware-map's"; _fwbad=1; }
+    done
+    [ "$_fwbad" = 0 ] && note "firmware split" "$_fwn vendor ports, one build.sh, linux-firmware $_fwv names them all"
+else
+    note "firmware split" "skipped — no linux-firmware or firmware-map port"
+fi
 echo
 echo "==> the KDE release set is one version"
 # KDE releases Plasma, Frameworks and Gear each as one set built and tested
@@ -799,8 +851,10 @@ for d in "${PORTS_ALL[@]}"; do
     t="$d/$(first_source_file "$d")"
     case "$t" in *.tar.*|*.tgz|*.tbz2|*.txz) ;; *) continue ;; esac
     [ -f "$t" ] || continue
-    # The dot of a lone `./` entry is not a top-level entry of its own.
-    tops=$(tar tf "$t" 2>/dev/null | head -300 | awk -F/ '(NF>1 || $1!="") && $1!="." {print $1}' | sort -u | wc -l)
+    # The dot of a lone `./` entry is not a top-level entry of its own, and
+    # neither is a macOS `._<name>` AppleDouble file: stripping a component
+    # drops it and loses nothing of the source.
+    tops=$(tar tf "$t" 2>/dev/null | head -300 | awk -F/ '(NF>1 || $1!="") && $1!="." && $1 !~ /^\._/ {print $1}' | sort -u | wc -l)
     [ "$tops" -le 1 ] && continue
     flatp=$((flatp + 1))
     grep -qE '^[[:space:]]*tar x[a-z]* +"?\$(PORT_SRC|\{PORT_SRC\})' "$d/build.sh" \

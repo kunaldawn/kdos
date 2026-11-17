@@ -41,6 +41,8 @@ QString originOf(Lane lane, const QString &packOrigin)
         return u"kdos-boxes"_s;
     case Lane::Port:
         return u"kdos-ports"_s;
+    case Lane::PortSource:
+        return u"kdos-ports-source"_s;
     case Lane::Archive:
         return packOrigin == "medium"_L1 ? u"medium"_s : u"local"_s;
     case Lane::PackFile:
@@ -459,6 +461,57 @@ int countCveFindings(const QByteArray &out)
     if (!doc.isObject())
         return -1;
     return int(doc.object().value("findings"_L1).toArray().size());
+}
+
+// ── kdos update install --dry-run ───────────────────────────────────────
+
+InstallPreview parseInstallPreview(const QByteArray &out)
+{
+    InstallPreview p;
+    const QList<QByteArray> lines = out.split('\n');
+    for (const QByteArray &raw : lines) {
+        const QList<QByteArray> w = raw.simplified().split(' ');
+        if (w.size() == 4 && w[0] == "total") {
+            bool a = false, b = false, c = false;
+            const int downloads = w[1].toInt(&a);
+            const quint64 bytes = w[2].toULongLong(&b);
+            const int builds = w[3].toInt(&c);
+            if (!a || !b || !c)
+                continue;
+            p.valid = true;
+            p.downloads += downloads;
+            p.bytes += bytes;
+            p.builds += builds;
+        } else if (w.size() == 3 && (w[1] == "source" || w[1] == "dev-source")) {
+            const QString name = QString::fromUtf8(w[0]);
+            if (!p.built.contains(name))
+                p.built << name;
+        }
+    }
+    return p;
+}
+
+// ── /etc/kdos/update.conf ───────────────────────────────────────────────
+
+bool installsFromSource(const QByteArray &updateConf)
+{
+    const QList<QByteArray> lines = updateConf.split('\n');
+    for (const QByteArray &raw : lines) {
+        const QByteArray l = raw.trimmed();
+        if (!l.startsWith("install") || l.startsWith('#'))
+            continue;
+        const QByteArray rest = l.mid(7);
+        if (!rest.isEmpty() && rest[0] != ' ' && rest[0] != '\t' && rest[0] != '=')
+            continue;
+        qsizetype i = 0;
+        while (i < rest.size() && (rest[i] == ' ' || rest[i] == '\t' || rest[i] == '='))
+            i++;
+        const QByteArray value = rest.mid(i).split(' ').value(0).split('\t').value(0).trimmed();
+        if (value.isEmpty())
+            continue;
+        return value == "source";
+    }
+    return false;
 }
 
 // ── the update tray's two rules ─────────────────────────────────────────

@@ -374,7 +374,7 @@ def expand(text, lookup):
 
 KEYS = ("name", "version", "release", "source", "sha256", "description",
         "homepage", "depends", "vendoring", "pypackages", "secdb", "replaces",
-        "bench", "bench_setup", "license")
+        "facet_dev", "runtime", "bench", "bench_setup", "license")
 APPEND = {"source", "sha256", "depends", "pypackages"}
 
 

@@ -233,4 +233,4 @@ and in again.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 390.* Previous: [389. Out of memory](out-of-memory.md) · [Contents](../README.md) · Next: [391. Locale and console](locale-and-console.md)
+*Part XVI. System administration, chapter 392.* Previous: [391. Out of memory](out-of-memory.md) · [Contents](../README.md) · Next: [393. Locale and console](locale-and-console.md)

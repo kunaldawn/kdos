@@ -7,7 +7,10 @@ own, [Avahi and mDNS](avahi-and-mdns.md).
 
 ## Installation
 
-Every port below is in a phase list, so the image carries all of them.
+The base the ISO carries holds the print service, the network and IPP-over-USB support, the
+**Printers** page and scanning through SANE. The printer drivers (gutenprint, hplip, brlaser,
+splix, foomatic-db), skanlite and ptouch-print are not in it; `sudo kdos update install <port>`
+adds each (see [Installing software](updating.md#installing-software)).
 
 | Part | Ports |
 |:--|:--|
@@ -316,4 +319,4 @@ the backend may not support the model; `lsusb` shows its USB ID.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 421.* Previous: [420. Bluetooth](bluetooth.md) · [Contents](../README.md) · Next: [422. Audio](audio.md)
+*Part XVI. System administration, chapter 423.* Previous: [422. Bluetooth](bluetooth.md) · [Contents](../README.md) · Next: [424. Audio](audio.md)

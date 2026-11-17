@@ -43,7 +43,7 @@ that sizes the device, makes it swap at priority 100 and then changes the two ke
 installer writes its own lines, swap among them, ahead of the image's, in one of these two forms,
 from `src/system/kinstall-core/install.c`:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=1847-1855 pin=ce989ec84df4 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=1967-1975 pin=ce989ec84df4 -->
 
 The first is a swap partition, or on the A/B layout the `swap` volume beside the two root slots.
 The second, a swap file, is written only on a single-root layout: a file inside one slot's root
@@ -286,4 +286,4 @@ says why.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 388.* Previous: [387. Modules and sysctl](modules-and-sysctl.md) · [Contents](../README.md) · Next: [389. Out of memory](out-of-memory.md)
+*Part XVI. System administration, chapter 390.* Previous: [389. Modules and sysctl](modules-and-sysctl.md) · [Contents](../README.md) · Next: [391. Out of memory](out-of-memory.md)

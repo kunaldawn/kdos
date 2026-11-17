@@ -88,7 +88,7 @@ packages.
 
 This is the whole of the `make build` target:
 
-<!-- kfs:include Makefile lines=173-201 pin=55a5d1802c0e -->
+<!-- kfs:include Makefile lines=191-226 pin=abbc60f9118e -->
 
 ### The meaning of the switches
 
@@ -98,9 +98,11 @@ This is the whole of the `make build` target:
     running guest gives that guest I/O errors. It asks `fuser`, so on a machine without `fuser` it
     checks nothing. `make build ALLOW_ISO_IN_USE=1` overrides it.
 
-The `case` line
-:   Refuses a `KDOS_JOBS` that is not a positive whole number, before anything else runs. An empty
-    one, the default, passes.
+The four `case` lines
+:   Refuse a `KDOS_IMAGE` that is not `base` or `full`, a `KDOS_JOBS` that is not a positive
+    whole number, a `KDOS_ISO_GATE` that is not `0` or `1` and a `KDOS_ISO_MAX` that is not a
+    positive number of bytes, before anything else runs. An empty `KDOS_JOBS`, the default,
+    passes.
 
 `--network none`
 :   The container has no network interface but loopback. The build is a function of the sources
@@ -129,7 +131,9 @@ The `case` line
 `-e HOST_UID`, `-e HOST_GID`
 :   Your user and group. The build runs as the container's root, and when it ends,
     `script/kdosbuild.sh` gives every entry of `build/` back to you, except `build/fs`, which must
-    stay root's because it is the root filesystem of the system being built. See
+    stay root's because it is the root filesystem of the system being built, and the image stage's
+    `build/image-upper`, `build/image-work` and `build/image-root`, which are layers of that root.
+    See
     [kdosbuild](kdosbuild.md).
 
 `-e KDOS_JOBS`
@@ -141,9 +145,11 @@ The `case` line
     time. The container cannot ask git, so they are passed in; kdosbuild records them in each
     snapshot, and the image phase stamps them into `/etc/os-release` and `/ports/TREE`.
 
-`-e KDOS_ISO_SOURCES`, `KDOS_PACK_KDOS`, `KDOS_MAKE_BINHOST`, `KDOS_ISO_COMP`
+`-e KDOS_ISO_SOURCES`, `KDOS_PACK_KDOS`, `KDOS_MAKE_BINHOST`, `KDOS_ISO_COMP`, `KDOS_ISO_BLOCK`, `KDOS_ISO_MAX`, `KDOS_ISO_GATE`, `KDOS_IMAGE`
 :   Switches that change what the image phase produces. All are off or at their defaults unless you
-    set them on the `make` command line; the table in
+    set them on the `make` command line: `KDOS_IMAGE` is `base`, an ISO of the base alone (see
+    [The image stage](../15-image/017-stage.md)), and `KDOS_ISO_GATE` is `1`, which fails a base
+    ISO larger than `KDOS_ISO_MAX`, 1,900 MiB (see [The ISO](../15-image/110-iso.md#the-size-gate)). The table in
     [The first build](../../kdos/05-developer/developing.md#the-first-build) gives each.
 
 `-e KDOS_CCACHE`, `KDOS_PKG_STORE`, `KDOS_PKG_STORE_MAX`

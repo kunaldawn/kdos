@@ -44,7 +44,7 @@ tzdata's `zone.tab`, which gives each zone one country.
 
 The installer writes it from the zone chosen on its *Time* page:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=1959-1967 pin=5a0dbdc98892 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=2079-2087 pin=5a0dbdc98892 -->
 
 kdos-settingsd writes it whenever the time zone is changed later, and runs `iw reg set` so the
 running radio follows at once; for a zone with no country, such as `UTC`, it runs `iw reg set 00`,
@@ -167,4 +167,4 @@ database and accepted its signature (the kernel log is root's alone). Its first 
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 416.* Previous: [415. Access point](access-point.md) · [Contents](../README.md) · Next: [417. File sharing](file-sharing.md)
+*Part XVI. System administration, chapter 418.* Previous: [417. Access point](access-point.md) · [Contents](../README.md) · Next: [419. File sharing](file-sharing.md)

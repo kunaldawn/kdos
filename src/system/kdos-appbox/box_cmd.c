@@ -356,7 +356,7 @@ static int cmd_box_create(int argc, char **argv)
 	/* The box's private runtime directory is a volume source of every
 	 * create below but distrobox's, and podman refuses a missing one. */
 	if (box_lane(&p) != BOX_LANE_DISTROBOX &&
-	    rundir_prepare(&p, !strncmp(p.base, "pack:", 5) ? p.base + 5 : "")
+	    rundir_prepare(&p)
 	    != 0)
 		return 1;
 	if (!strncmp(p.base, "pack:", 5)) {

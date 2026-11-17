@@ -54,6 +54,10 @@ kdos/
 │   │   └── <name>-<ver>.tar.* the upstream archive or vendor bundle — fetched, not tracked
 │   ├── shelves                the closed list of shelves, one `<id> <volume> <description>` per line
 │   ├── unbuilt                the recipes no phase builds on purpose, one name per line
+│   ├── base                   the seeds of what the installation medium carries
+│   ├── buildonly              ports the medium's closure does not follow a dependency into
+│   ├── groups                 the native application groups `kdos update install` and the
+│   │                          installer offer; staged into the image as /ports/groups
 │   ├── Containerfile.fetch    the image that generates vendor bundles, pinning this tree's toolchains
 │   ├── hackage-vendor         the Hackage downloader behind `vendoring = haskell`
 │   ├── .srccache/             the local source cache, one file per hash — ignored
@@ -157,6 +161,9 @@ kdos/
 │   ├── bin/                 ninja and meson wrappers chroot.env puts first on PATH; never
 │   │                        installed
 │   ├── lib/port.sh          the recipe reader the two host phases source
+│   ├── lib/imageset.py      the base image's closure over ports/base, which 017_stage.sh
+│   │                        trims the image stage to and preflight checks; --why and
+│   │                        the image ledger 088_ledger.sh writes
 │   ├── chroot/              exec.sh runs a step in the chroot; enter.sh opens a shell there
 │   ├── book/                the renderer of KDOS from Scratch (`make book`); kdos-kfs links it
 │   ├── kdosbuild.sh         compiles and runs the orchestrator
@@ -361,7 +368,7 @@ name or by the part after the number (`--phases 41_system` or `--phases system`)
 | `44_apps` | Applications | in the chroot | `packages.d/` |
 | `50_desktop` | Desktop | in the chroot | `packages.txt` |
 | `60_kernel` | Kernel | in the chroot | `packages.txt` |
-| `70_image` | Image | in the chroot | step scripts `010_binhost.sh` to `110_iso.sh`, and `psf2limine.py`, which `110_iso.sh` runs |
+| `70_image` | Image | in the chroot; from `017_stage.sh` on, in the image stage over it | step scripts `010_binhost.sh` to `110_iso.sh`, `017_stage.sh` among them, which trims the stage to the base, and `088_ledger.sh`, which writes the image ledger, and `psf2limine.py`, which `110_iso.sh` runs |
 
 A package phase keeps its list as one `packages.txt`, or as `packages.d/`, whose `*.txt` files are
 read in byte order as one list: one file per shelf, `src-system.txt` and `src-art.txt` for ports of
@@ -382,7 +389,15 @@ those keys are written in every `phase.env`. Everything shared is sourced from `
 `script/lib/port.sh` is sourced by the step scripts of `00_cross` and `10_bootstrap`, which run
 before `kpkg` exists; it reads a recipe and unpacks its source, and finds a port by name one shelf
 down, at `ports/core/<shelf>/<name>/`, failing when the name is on two shelves.
-`script/chroot/exec.sh` enters the chroot for a step or a package phase, and
+`script/lib/imageset.py` computes the [base image](../03-architecture/packaging.md#the-base-image)
+from `ports/base` and `ports/buildonly` and checks those files and `ports/groups` against the tree;
+`--why <port>` prints the dependency path from a seed to a port, and `--ledger` every installed
+package of a root with its bytes and that path, which `70_image/088_ledger.sh` writes to
+`build/image-ledger`; `--verify` fails a kept package whose recorded
+[run-time needs](../03-architecture/packaging.md#run-time-needs) only a package outside the base
+provides, which `70_image/087_gates.sh` runs on the stage.
+`script/chroot/exec.sh` enters the chroot for a step or a package phase, roots the `70_image`
+steps from `017_stage.sh` on in the image stage under `KDOS_IMAGE=base`, and
 `script/chroot/enter.sh` opens an interactive shell in it. How a phase runs is in
 [The build system](../05-developer/build-system.md).
 
@@ -503,7 +518,7 @@ included, stops running in that clone. Each check's exact rules are in
 
 | Path | Ignored by git | Notes |
 |---|---|---|
-| `build/` | entirely | The root filesystem, logs, snapshots, the compiler cache `build/ccache`, the package store `build/pkgstore` (`<key[0:2]>/<key>/`, one package and its `META` each, written only with `KDOS_PKG_STORE` on), the ISO, signing keys, frozen source lists, and `build/podman/`, the pack bake's podman container store. After a build `script/kdosbuild.sh` hands everything back to your user except `build/fs/`, whose ownership is the shipped system's, and `build/podman/`, which podman requires to stay root's; reading either from the host needs a container or `sudo`. See [Where the build puts things](../05-developer/developing.md#where-the-build-puts-things) |
+| `build/` | entirely | The root filesystem, logs, snapshots, the compiler cache `build/ccache`, the package store `build/pkgstore` (`<key[0:2]>/<key>/`, one package and its `META` each, written only with `KDOS_PKG_STORE` on), the ISO, signing keys, frozen source lists, and `build/podman/`, the pack bake's podman container store. After a build `script/kdosbuild.sh` hands everything back to your user except `build/fs/`, whose ownership is the shipped system's, the image stage's `build/image-upper/`, `build/image-work/` and `build/image-root/`, which hold the same files, and `build/podman/`, which podman requires to stay root's; reading either from the host needs a container or `sudo`. See [Where the build puts things](../05-developer/developing.md#where-the-build-puts-things) |
 | `build_test/` | entirely | Where `testing/prepare_base.py` builds the minimal root filesystem that `testing/test_runner.py` builds ports against |
 | `ports/core/*/*/*.tar`, `*.tar.*`, `*.tgz`, `*.tbz2`, `*.txz`, `*.zip`, `*.7z`, `*.part`, and a few more suffixes | yes | Upstream archives, vendor bundles and partial downloads, put there by `make fetch`, matched in a port directory one shelf down. A pattern for one port's odd suffix names its shelf, and must be edited when the port changes shelf. A patch or configuration file a recipe hashes is tracked and unaffected, and the archive fixtures under `testing/fixtures/` stay tracked |
 | `ports/.srccache/` | yes | The source cache, `sha256-XX/<hash>`. Plain data: it survives `make clean` and `make cleanbuild` |

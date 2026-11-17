@@ -20,7 +20,7 @@ library, so the program needs nothing but the C library to run. `libkpkg` is amo
 kdosbuild uses kpkg's own code, on the host side, to find ports by name and to ask whether a port is
 installed and current.
 
-<!-- kfs:include script/kdosbuild.sh lines=71-91 pin=5d7f28d44218 -->
+<!-- kfs:include script/kdosbuild.sh lines=74-94 pin=5d7f28d44218 -->
 
 The hash in `SUM` covers the compiler's name, the flags, the compiler's target and version, and every
 `.c` and `.h` file of the program and its libraries. The program is compiled again only when that
@@ -30,9 +30,10 @@ compiler, such as one built on your machine against glibc, is replaced rather th
 line starts it with `--script-dir script` and every argument you gave in `BUILD_ARGS`.
 
 Before that, the script sets a trap that runs when it exits, whether the build succeeded or not,
-and gives every entry of `build/` except `build/fs` back to the user and group `make build` passed
-in as `HOST_UID` and `HOST_GID`; [The build tree](build-tree.md#fs-the-root-being-built) says why
-`build/fs` stays root's.
+and gives every entry of `build/` except `build/fs` and the image stage's `build/image-upper`,
+`build/image-work` and `build/image-root` back to the user and group `make build` passed in as
+`HOST_UID` and `HOST_GID`; [The build tree](build-tree.md#fs-the-root-being-built) says why those
+stay root's.
 
 ## Phases
 

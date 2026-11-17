@@ -19,7 +19,8 @@
  * WHEN IT LOOKS. Nothing here polls a command:
  *
  *   /var/lib/kpkg/db changes       a package was installed or removed: ask
- *   /var/lib/kdos/update.json      `kdos restarts` and `kdos cve`, once the
+ *   /var/lib/kdos/update.json      `kdos restarts`, `kdos cve` and `kdos
+ *                                  firmware sync --dry-run`, once the
  *                                  database has been quiet for ten seconds,
  *                                  so an update of three hundred packages is
  *                                  one question and not three hundred
@@ -32,13 +33,15 @@
  *                                  restarted plasmashell lost the notices
  *                                  that were waiting for a person
  *   every six hours                everything, for a secdb or a trial that
- *                                  changed under a watch that missed it, and
- *                                  for the installer's apps-pending file,
- *                                  which Discover empties
+ *                                  changed under a watch that missed it, for
+ *                                  the installer's apps-pending file, which
+ *                                  Discover empties, and for a firmware load
+ *                                  the kernel logged since
  *
  * WHAT IT RUNS. The facts' commands, and the action a person clicked —
- * Konsole on `kdos cve` or `kdos restarts`, System Settings at System
- * Versions, Discover at "Selected during install" — each an argument vector; logging out is a D-Bus call to
+ * Konsole on `kdos cve` or `kdos restarts`, Konsole on `sudo kdos firmware
+ * sync`, System Settings at System Versions, Discover at "Selected during
+ * install" — each an argument vector; logging out is a D-Bus call to
  * Plasma's logout prompt. No shell, and no input from a notification ever
  * becomes an argument: an action is one of the fixed ids decide.c offered.
  *
@@ -242,9 +245,20 @@ static void look_pending(void)
 		post(&p);
 }
 
+static void look_firmware(void)
+{
+	KnFirmware f;
+	KnPost p;
+
+	kn_read_firmware(&f);
+	if (kn_decide_firmware(&f, &g_state, &p))
+		post(&p);
+}
+
 static void look_all(void)
 {
 	look_packages();
+	look_firmware();
 	look_boot();
 	look_oom();
 	look_pending();
@@ -356,7 +370,7 @@ static int on_server_owner(sd_bus_message *m, void *ud, sd_bus_error *err)
 		return 0;
 	for (int k = 0; k < KN_COUNT; k++) {
 		if (g_state.id[k] && (k == KN_RESTARTS || k == KN_CVE ||
-				      k == KN_PENDING))
+				      k == KN_PENDING || k == KN_FIRMWARE))
 			g_state.key[k][0] = '\0';
 		g_state.id[k] = 0;
 		g_token[k][0] = '\0';
@@ -512,6 +526,7 @@ static int serve(int once)
 		}
 		if (t_pkgs >= 0 && now >= t_pkgs) {
 			look_packages();
+			look_firmware();
 			t_pkgs = -1;
 		}
 		if (now >= t_oom) {

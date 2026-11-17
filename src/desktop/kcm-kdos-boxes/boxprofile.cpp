@@ -125,7 +125,7 @@ QVariantMap BoxProfile::defaultValues()
         {u"wayland"_s, u"yes"_s},
         {u"audio"_s, u"yes"_s},
         {u"gpu"_s, u"yes"_s},
-        {u"x11"_s, u"auto"_s},
+        {u"x11"_s, u"yes"_s},
         {u"render"_s, u"auto"_s},
         {u"memory"_s, 0},
         {u"cpus"_s, 0},
@@ -258,14 +258,10 @@ QVariant BoxProfile::normalize(const QString &key, const QString &raw)
         return (truthy(v) || v == "shared"_L1) ? u"yes"_s : u"no"_s;
     }
     if (key == "x11"_L1) {
-        /* `auto` is the default and anything unrecognised, so a typo
-         * leaves the decision to the box's application rather than
-         * handing it the display. */
+        /* Only a plain refusal is `no`, as kdos-appbox reads it; every
+         * other word is the default, `yes`. */
         static const QStringList refused{u"no"_s, u"off"_s, u"0"_s, u"false"_s};
-        if (refused.contains(v)) {
-            return u"no"_s;
-        }
-        return truthy(v) ? u"yes"_s : u"auto"_s;
+        return refused.contains(v) ? u"no"_s : u"yes"_s;
     }
     if (key == "render"_L1) {
         static const QStringList software{u"software"_s, u"pixman"_s, u"no"_s, u"off"_s, u"0"_s, u"false"_s};

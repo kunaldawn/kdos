@@ -48,7 +48,7 @@ meson setup build \
 	-D gles2=enabled \
 	-D glx=dri \
 	-D gallium-drivers=zink,crocus,iris,nouveau,r300,r600,radeonsi,svga,llvmpipe,softpipe,virgl,i915 \
-	-D gallium-rusticl=true \
+	-D gallium-rusticl=false \
 	-D platforms=wayland,x11 \
 	-D xlib-lease=enabled \
 	-D vulkan-drivers=amd,intel,intel_hasvk,nouveau,swrast,virtio \

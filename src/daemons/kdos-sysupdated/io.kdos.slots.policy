@@ -39,6 +39,16 @@
 		</defaults>
 	</action>
 
+	<action id="io.kdos.slots.install-route">
+		<description>Change how software is installed</description>
+		<message>Authentication is required to change whether software is downloaded prebuilt or built on this computer.</message>
+		<defaults>
+			<allow_any>auth_admin</allow_any>
+			<allow_inactive>auth_admin</allow_inactive>
+			<allow_active>auth_admin_keep</allow_active>
+		</defaults>
+	</action>
+
 	<action id="io.kdos.slots.bless">
 		<description>Confirm that this system version starts</description>
 		<message>Only the session at the computer can confirm the system version.</message>

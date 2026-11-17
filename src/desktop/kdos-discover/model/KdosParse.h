@@ -180,6 +180,33 @@ QList<IndexRow> parsePackIndex(const QByteArray &text);
 // The findings in `kdos cve --json`; -1 when the output is not its document.
 int countCveFindings(const QByteArray &out);
 
+// ── kdos update install --dry-run ───────────────────────────────────────
+
+// What an install of one port will do, read from its dry run before the
+// password is asked for: one `<pkg> prebuilt <file> <bytes>` or `<pkg> dev
+// <file> <bytes>` line per package downloaded, one `<pkg> source
+// <version>-<release>` or `<pkg> dev-source <version>-<release>` line per
+// package built here, and `total <downloads> <bytes> <builds>`, which is
+// what the counts are taken from. A group's dry run has a total per member,
+// and they add up. `valid` is false when no total line came: the output is
+// not a dry run's.
+struct InstallPreview {
+    bool valid = false;
+    int downloads = 0;
+    quint64 bytes = 0;
+    int builds = 0;
+    QStringList built; // the packages built here, in the order printed
+};
+InstallPreview parseInstallPreview(const QByteArray &out);
+
+// ── /etc/kdos/update.conf ───────────────────────────────────────────────
+
+// The route `install =` names, as `kdos update install` reads it: the
+// first `install` line that is not a comment, its first word. True for
+// `source`; absent, `prebuilt` and anything else are false, the route
+// Discover prefers when the file says nothing it can use.
+bool installsFromSource(const QByteArray &updateConf);
+
 // ── the update tray's rules ─────────────────────────────────────────────
 
 // /var/lib/kdos/update.json offers an update when its `offer` is a version:

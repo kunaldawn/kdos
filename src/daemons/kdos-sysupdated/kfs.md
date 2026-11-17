@@ -13,7 +13,8 @@ exec'd with an argument vector and read through a progress pipe while the bus ke
 
 It also serves `io.kdos.Slots1`, whose contract is the System Versions page's
 [`io.kdos.Slots1.xml`](../../desktop/kcm-kdos-system/io.kdos.Slots1.xml): the slots, the armed
-trial, the update channel, `Try`, `CancelTry`, `SetChannel` and `Bless`. And it is the root half of
+trial, the update channel, the install route (`install =` and `build-deps =` of
+`/etc/kdos/update.conf`), `Try`, `CancelTry`, `SetChannel`, `SetInstallRoute` and `Bless`. And it is the root half of
 the session-confirmed boot: it runs `kdos-bootctl mark-good` once `/run/kdos/bless/` holds both the
 mark the end of `rcS` writes and the one a Plasma session (through `Bless`) or a login greeter that
 stayed up for a minute earns.

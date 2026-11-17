@@ -724,6 +724,12 @@ static int sl_get(sd_bus *bus, const char *path, const char *iface,
 		state_channel(chan, sizeof(chan));
 		return sd_bus_message_append(reply, "s", chan);
 	}
+	if (!strcmp(prop, "InstallRoute") || !strcmp(prop, "BuildDeps")) {
+		state_route(!strcmp(prop, "InstallRoute") ? "install"
+							  : "build-deps",
+			    chan, sizeof(chan));
+		return sd_bus_message_append(reply, "s", chan);
+	}
 	return state_append_state(reply);
 }
 
@@ -932,6 +938,51 @@ static int sl_set_channel(sd_bus_message *m, void *ud, sd_bus_error *err)
 	return auth_check(m, PK_CHANNEL, 1, cont_channel, kb_strdup(channel));
 }
 
+/* SetInstallRoute's two words, carried to the polkit answer. */
+typedef struct {
+	char install[16], deps[16];
+} RouteArgs;
+
+static void cont_route(sd_bus_message *m, void *ud, int allowed,
+		       const char *en, const char *em)
+{
+	RouteArgs *a = ud;
+	if (!allowed) {
+		auth_denied(m, en, em);
+	} else {
+		int rc = state_set_route(a->install, a->deps);
+		if (rc == -1)
+			reply_error(m, SD_BUS_ERROR_INVALID_ARGS, "a route is "
+				    "prebuilt or source");
+		else if (rc != 0)
+			reply_error(m, SL_REFUSED, "cannot write "
+				    "/etc/kdos/update.conf");
+		else {
+			su_log("install route: %s, dependencies %s",
+			       a->install, a->deps);
+			sd_bus_reply_method_return(m, "");
+			state_emit();
+		}
+	}
+	free(a);
+}
+
+static int sl_set_route(sd_bus_message *m, void *ud, sd_bus_error *err)
+{
+	const char *install, *deps;
+	(void)ud;
+	(void)err;
+	if (sd_bus_message_read(m, "ss", &install, &deps) < 0)
+		return reply_error(m, SD_BUS_ERROR_INVALID_ARGS, "expected ss");
+	if (strlen(install) >= 16 || strlen(deps) >= 16)
+		return reply_error(m, SD_BUS_ERROR_INVALID_ARGS, "a route is "
+				   "prebuilt or source");
+	RouteArgs *a = kb_calloc(1, sizeof(*a));
+	kb_strlcpy(a->install, install, sizeof(a->install));
+	kb_strlcpy(a->deps, deps, sizeof(a->deps));
+	return auth_check(m, PK_ROUTE, 1, cont_route, a);
+}
+
 static void cont_bless(sd_bus_message *m, void *ud, int allowed,
 		       const char *en, const char *em)
 {
@@ -969,6 +1020,8 @@ static const sd_bus_vtable slots_vtable[] = {
 	SL_PROP("TryAttempts", "u"),
 	SL_PROP("TryBootNext", "b"),
 	SL_PROP("Channel", "s"),
+	SL_PROP("InstallRoute", "s"),
+	SL_PROP("BuildDeps", "s"),
 	SL_PROP("State", "a{sv}"),
 	SD_BUS_METHOD("ListSlots", "", "aa{sv}", sl_list_slots,
 		      SD_BUS_VTABLE_UNPRIVILEGED),
@@ -976,6 +1029,8 @@ static const sd_bus_vtable slots_vtable[] = {
 	SD_BUS_METHOD("CancelTry", "", "", sl_cancel_try,
 		      SD_BUS_VTABLE_UNPRIVILEGED),
 	SD_BUS_METHOD("SetChannel", "s", "", sl_set_channel,
+		      SD_BUS_VTABLE_UNPRIVILEGED),
+	SD_BUS_METHOD("SetInstallRoute", "ss", "", sl_set_route,
 		      SD_BUS_VTABLE_UNPRIVILEGED),
 	SD_BUS_METHOD("Bless", "", "", sl_bless, SD_BUS_VTABLE_UNPRIVILEGED),
 	SD_BUS_SIGNAL("SlotsChanged", "", 0),

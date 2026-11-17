@@ -232,7 +232,13 @@ and the battery applet lists it as blocking.
 
 ### Applications chosen during installation
 
-Applications ticked in the installer are *offered* in the first session, never built in the
+The installer offers two kinds of application. The native groups (see
+[Packaging](packaging.md#groups)) are installed during the install, prebuilt from the release's
+binhost; a group that cannot be, because the network or the binhost did not answer, is written to
+the new disk's `/var/lib/kdos/groups-pending`, and `kdos update install --pending` installs it
+later. Nothing in the session reads that file.
+
+Boxed applications ticked in the installer are *offered* in the first session, never built in the
 background. `kinstall` builds none of them: it writes the chosen ids to the new disk's
 `/var/lib/kdos/apps-pending`. Discover's KDOS backend lists them under
 "Selected during install", and `kdos-notice` says once per content of the file that they are
@@ -718,7 +724,8 @@ environment and not the caller's. So `kdos-appbox` states every variable a launc
 | `QT_QPA_PLATFORMTHEME` | `kde` when the box's runtime has the KDE platform theme, which reads the `kdeglobals` Plasma writes into the shared home; `gtk3` otherwise. A pack box takes it, and any other per-runtime variable, from the `env =` lines of its packs' metadata (see [Packs and boxes](packs-and-boxes.md)) |
 | `CUPS_SERVER` | `/run/cups/cups.sock`, when that socket exists on the host |
 | `NO_AT_BRIDGE=1`, `GTK_A11Y=none` | Unless assistive technology is in use; see below |
-| `DISPLAY`, `XAUTHORITY` | Only for a box handed the X11 display: the display, and the box's copy of the cookie in its runtime directory. Every other box gets an empty `DISPLAY`, so a toolkit with an X11 fallback does not reach for one it would be refused |
+| `QT_QPA_PLATFORM`, `SDL_VIDEODRIVER` | Wayland first and X11 as the fallback, so Qt 5 and SDL 2 do not take `DISPLAY` over the tagged Wayland socket; a catalogue or pack `env` row that forces X11 overrides them |
+| `DISPLAY`, `XAUTHORITY` | Unless the profile says `x11 = no`: the display, and the box's copy of the cookie in its runtime directory. A box with `x11 = no` gets an empty `DISPLAY`, so a toolkit with an X11 fallback does not reach for one it would be refused |
 | `LIBGL_ALWAYS_SOFTWARE` | `1` only when the profile's `render` key resolves to software. Nothing is exported for hardware rendering, because Mesa already picks the right driver |
 
 **Accessibility follows the person, not a setting.** The accessibility bus is unfiltered: a client

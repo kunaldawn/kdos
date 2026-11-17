@@ -320,4 +320,4 @@ graphical session. Use `sudo poweroff`.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 445.* Previous: [444. Desktop troubleshooting](desktop-troubleshooting.md) · [Contents](../README.md) · Next: [Part XVII. Appendices](../17-appendices/intro.md)
+*Part XVI. System administration, chapter 447.* Previous: [446. Desktop troubleshooting](desktop-troubleshooting.md) · [Contents](../README.md) · Next: [Part XVII. Appendices](../17-appendices/intro.md)

@@ -28,4 +28,5 @@ sha256      = 3354b9ac3fae1ff6755cb6db53683adb661634f67557942dea4facebec0fee4b  
 description = OpenGL compatible 3D graphics library: EGL and Vulkan for Wayland, GLX for X11 clients under Xwayland
 homepage    = https://mesa3d.org/
 license     = MIT
-depends     = llvm python3-mako elfutils bison flex libdrm libglvnd glslang expat rust bindgen libclc python3-yaml spirv-llvm-translator cbindgen wayland wayland-protocols zlib zstd spirv-tools clang libva libdisplay-info lm-sensors eudev ocl-icd libX11 libxcb libXext libXxf86vm libXrandr libxshmfence xorgproto xcb-util-keysyms
+group       = mesa
+depends     = llvm python3-mako elfutils bison flex libdrm libglvnd glslang expat rust bindgen python3-yaml spirv-llvm-translator cbindgen wayland wayland-protocols zlib zstd spirv-tools clang libva libdisplay-info lm-sensors eudev libX11 libxcb libXext libXxf86vm libXrandr libxshmfence xorgproto xcb-util-keysyms

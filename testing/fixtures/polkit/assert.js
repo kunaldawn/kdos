@@ -141,16 +141,21 @@ var EXPECT = [
     ["org.freedesktop.locale1.set-locale",                      "KKKKKK"],
     ["org.freedesktop.locale1.set-keyboard",                    "KKKKKK"],
     /* kdos-sysupdated: anyone at the machine checks; installing an update
-     * or a chosen version, trying the other slot and changing channel are
-     * an administrator's; the session that came up blesses its own boot. */
+     * or a chosen version, trying the other slot, changing channel and the
+     * install route are an administrator's; the session that came up
+     * blesses its own boot. */
     ["org.freedesktop.sysupdate1.check",                        "yAAyAA"],
     ["org.freedesktop.sysupdate1.update",                       "KAAKAA"],
     ["org.freedesktop.sysupdate1.update-to-version",            "AAAAAA"],
     ["io.kdos.slots.try",                                       "KAAKAA"],
     ["io.kdos.slots.channel",                                   "KAAKAA"],
+    ["io.kdos.slots.install-route",                             "KAAKAA"],
     ["io.kdos.slots.bless",                                     "ynnynn"],
-    /* Discover's KDOS backend: a port built and installed from the tree. */
+    /* Discover's KDOS backend: a port installed prebuilt from the binhost
+     * keeps the grant a while; a port built here asks every time, since it
+     * runs a recipe's build.sh as root. */
     ["io.kdos.ports.install",                                   "KAAKAA"],
+    ["io.kdos.ports.build",                                     "AAAAAA"],
     /* The graphical installer erases a disk: an administrator's password
      * every time, at the machine only. The live medium's own rule
      * (49-kdos-installer-live.rules) grants it there and is not shipped on

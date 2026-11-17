@@ -313,6 +313,7 @@ static void plan_dump(int json)
 	 * scanning reports the step skipped on a machine that would carry
 	 * three gigabytes of applications. */
 	ki_apps_enter();
+	ki_groups_enter();
 	/* The same call the wizard makes on its way to the install page, so
 	 * the steps listed here are the steps that would run — including which
 	 * ones these answers skip. */
@@ -425,6 +426,10 @@ static void plan_dump(int json)
 			printf("apps cost     %s (an estimate)\n",
 			       kb_human_size(ki_apps_bytes()));
 		}
+		/* Native groups are downloaded during the install, or recorded
+		 * when the network does not answer. */
+		printf("groups        %s\n",
+		       ki_groups_chosen() ? cfg.groups : "(none chosen)");
 		printf("dry run       %s\n", cfg.dry_run ? "yes" : "no");
 		if (bad)
 			printf("refused       %s\n", problem);
@@ -534,6 +539,19 @@ static void plan_dump(int json)
 		kb_buf_str(&b, ", \"apps_route\": ");
 		kb_json_str(&b, ROUTE[ki_apps_route()]);
 	}
+	kb_buf_str(&b, ",\n  \"groups\": [");
+	{
+		int first = 1;
+
+		for (int i = 0; i < ki_nnative; i++) {
+			if (!ki_native[i].chosen)
+				continue;
+			kb_buf_str(&b, first ? "" : ", ");
+			first = 0;
+			kb_json_str(&b, ki_native[i].id);
+		}
+	}
+	kb_buf_str(&b, "]");
 	kb_buf_str(&b, ",\n  \"services_off\": [");
 	if (svc.n)
 		kb_buf_str(&b, svc.p);
@@ -570,6 +588,7 @@ static void apps_dump(int json)
 	KbBuf b = {0};
 
 	ki_apps_enter();
+	ki_groups_enter();
 	if (!json) {
 		printf("catalogue     %s\n", ki_apps_present ? "present" : "none");
 		for (int i = 0; i < ki_ngroup; i++)
@@ -579,6 +598,16 @@ static void apps_dump(int json)
 			       kb_human_size(ki_group[i].bytes),
 			       ki_group[i].desc);
 		printf("route         %s\n", ROUTE[ki_apps_route()]);
+		printf("native groups %d\n", ki_nnative);
+		for (int i = 0; i < ki_nnative; i++)
+			printf("  [%c] %-16s %3d port%s  %s%s%s%s\n",
+			       ki_native[i].chosen ? 'x' : ' ', ki_native[i].id,
+			       ki_native[i].nports,
+			       ki_native[i].nports == 1 ? " " : "s",
+			       ki_native[i].title,
+			       ki_native[i].why[0] ? " (for " : "",
+			       ki_native[i].why,
+			       ki_native[i].why[0] ? ")" : "");
 		return;
 	}
 	kb_buf_printf(&b, "{\n  \"present\": %s, \"route\": \"%s\", "
@@ -594,7 +623,22 @@ static void apps_dump(int json)
 			      ki_group[i].napp, ki_group[i].bytes,
 			      ki_group[i].chosen ? "true" : "false");
 	}
-	kb_buf_printf(&b, "%s]\n}\n", ki_ngroup ? "\n  " : "");
+	/* The native groups, beside the catalogue's: installed during the
+	 * install from the release's binhost, never pending unless offline. */
+	kb_buf_printf(&b, "%s],\n  \"native\": [", ki_ngroup ? "\n  " : "");
+	for (int i = 0; i < ki_nnative; i++) {
+		kb_buf_printf(&b, "%s\n    {\"id\": ", i ? "," : "");
+		kb_json_str(&b, ki_native[i].id);
+		kb_buf_str(&b, ", \"title\": ");
+		kb_json_str(&b, ki_native[i].title);
+		kb_buf_printf(&b, ", \"ports\": %d, \"chosen\": %s, "
+			      "\"why\": ",
+			      ki_native[i].nports,
+			      ki_native[i].chosen ? "true" : "false");
+		kb_json_str(&b, ki_native[i].why);
+		kb_buf_str(&b, "}");
+	}
+	kb_buf_printf(&b, "%s]\n}\n", ki_nnative ? "\n  " : "");
 	fwrite(b.p, 1, b.n, stdout);
 	kb_buf_free(&b);
 }

@@ -22,7 +22,9 @@ phone.
 | [kio-extras](#port-kio-extras), [kdeconnect](#port-kdeconnect), [android-file-transfer](#port-android-file-transfer) | A phone over MTP in Dolphin, over KDE Connect, and a window of its own |
 | [kdos-tools](#port-kdos-tools) | `kdos clone`, which copies the KDOS medium itself onto another stick |
 
-Every one is on the image, the live medium included.
+Every one is in the base the ISO carries, the live medium included, except gnome-disk-utility,
+caligula, f3 and android-file-transfer, which `sudo kdos update install <port>` adds (see
+[Installing software](updating.md#installing-software)).
 
 ## Configuration
 
@@ -217,4 +219,4 @@ and NTFS none is kept. Run a script through its interpreter instead,
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 399.* Previous: [398. Filesystems and fstab](filesystems-and-fstab.md) · [Contents](../README.md) · Next: [400. Encrypted root](encrypted-root.md)
+*Part XVI. System administration, chapter 401.* Previous: [400. Filesystems and fstab](filesystems-and-fstab.md) · [Contents](../README.md) · Next: [402. Encrypted root](encrypted-root.md)

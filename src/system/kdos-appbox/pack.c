@@ -460,7 +460,7 @@ int pack_box_create(const Profile *p, const char *merged,
 		kb_argv_add(&a, "--mount");
 		kb_argv_add(&a, "type=tmpfs,destination=/tmp,tmpfs-mode=1777");
 		if (kb_is_dir("/tmp/.X11-unix") &&
-		    profile_x11(p, !strncmp(p->base, "pack:", 5) ? p->base + 5 : "")) {
+		    profile_x11(p)) {
 			kb_argv_add(&a, "--volume");
 			kb_argv_add(&a, "/tmp/.X11-unix:/tmp/.X11-unix:ro");
 		}
@@ -675,7 +675,7 @@ int pack_box_ensure(const char *box, const char *id)
 	}
 	/* The private runtime directory is the source of a volume, and podman
 	 * refuses to create a container over a source that is not there. */
-	if (rundir_prepare(&p, id) != 0) {
+	if (rundir_prepare(&p) != 0) {
 		pack_box_set_error("its private runtime directory could not be "
 				   "made");
 		if (fd >= 0)
@@ -813,7 +813,7 @@ int pack_box_start(const char *box)
 	 * gone, and podman refuses to start a container over a bind source
 	 * that is not there.
 	 */
-	if (rundir_prepare(&p, !strncmp(p.base, "pack:", 5) ? p.base + 5 : "")
+	if (rundir_prepare(&p)
 	    != 0) {
 		pack_box_set_error("its private runtime directory could not be "
 				   "made");

@@ -195,8 +195,9 @@ The page never writes `kwinrc`, `kdeglobals` or a Konsole profile itself.
 System Versions shows KDOS's two root slots, A and B, with the version, build date, tree commit and
 kernel each holds and the state each is in: running, confirmed, on trial or failed. Its one button,
 Start This Version Next Time, arms a one-boot trial of the other slot: the previous version after
-an update, or the new one again after a rollback. Its one setting is where `kdos update` takes a
-newer release from: the KDOS releases, a folder or removable medium, or another address. Beside it
+an update, or the new one again after a rollback. Its settings are where `kdos update` takes a
+newer release from (the KDOS releases, a folder or removable medium, or another address) and how
+software is installed (below). Beside it
 the page shows what the update service reports (an update available, one already prepared in the
 other slot and waiting to be installed from Discover, and why the last one stopped) and opens
 Discover to act on it.
@@ -204,8 +205,24 @@ Discover to act on it.
 A machine with no boot state shows no slot forms. One installed with a single root is told it has
 one version of KDOS and nothing to go back to. The live medium (`Live` on `io.kdos.Slots1`) is
 named as the live session: it runs from the installation medium, keeps no versions and is not
-updated, so the page shows neither the update source nor the Discover button, and its one button,
+updated, so the page shows neither the update source, the Installing software section nor the
+Discover button, and its one button,
 Install KDOS, starts `kdos-installer-gui`.
+
+**Installing software.** The section's two choices are the `install =` and `build-deps =` lines of
+`/etc/kdos/update.conf`, read from `io.kdos.Slots1`'s `InstallRoute` and `BuildDeps`:
+
+| Choice | Options | Line |
+|---|---|---|
+| Install programs: | Download them prebuilt; Build them on this computer | `install = prebuilt\|source` |
+| When building, what a program needs: | Download it prebuilt; Build it too | `build-deps = prebuilt\|source` |
+
+They are what [`kdos update install`](kdos-command.md#install-routes-and-groups) does from a
+terminal when no flag names a route, and what a build gets for each dependency the machine lacks;
+Discover offers both routes for every program the binary host holds through its two origins, "KDOS system" and "KDOS,
+built on this computer", and opens the one the first choice names
+([Discover](discover.md#host-software)). A program keeps the route it came by at
+every update. Apply sends both with `SetInstallRoute`, and Defaults sets both to prebuilt.
 
 The page holds no privilege and touches no file of the boot state. Every change is a call to
 `io.kdos.Slots1` on the system bus, served by `kdos-sysupdated`, which asks polkit before it acts:
@@ -214,6 +231,7 @@ The page holds no privilege and touches no file of the boot state. Every change 
 |---|---|---|
 | `Try`, `CancelTry` | `io.kdos.slots.try` | an administrator's password, kept for a while |
 | `SetChannel` | `io.kdos.slots.channel` | an administrator's password, kept for a while |
+| `SetInstallRoute` | `io.kdos.slots.install-route` | an administrator's password, kept for a while |
 
 `Try` runs `kdos-bootctl try <slot> 1`, and a refusal from kdos-bootctl is shown in its own words. A
 location is written whole into the `tree =` line of `/etc/kdos/update.conf`, so a path or address
@@ -293,7 +311,9 @@ link to the book in `/usr/share/doc/kdos`, so the worker serves the chapter's ow
 Center scrolls to the section. Every page of the book carries its stylesheet inside it, because the
 Help Center hands each part of a `help:` page over as HTML and would refuse a linked stylesheet.
 The same address opens from a terminal as `khelpcenter help:/kdos/04-programs/kdos-settings.html`,
-and `kdos-doc 04-programs/kdos-settings` opens the page by its file. `testing/anchorcheck.py` fails
+and `kdos-doc 04-programs/kdos-settings` opens the page by its file. The Help Center is not on the
+installation medium, because it pulls in Qt WebEngine; `kdos update install khelpcenter` adds it,
+and without it `kdos-doc` opens the page in the browser. `testing/anchorcheck.py` fails
 when an `X-DocPath` names a section this chapter does not have.
 
 ## See also

@@ -48,9 +48,23 @@ The repository root is found from the script's own path, two directories up, and
 `kpkgdepends` run through this script as a list of package names, and a stray line there would be
 taken for one.
 
+### The image stage
+
+<!-- kfs:include script/chroot/exec.sh lines=51-89 pin=14d57a3b40cb -->
+
+Only a step of `70_image` numbered `017_stage.sh` or later, run under `KDOS_IMAGE=base`, the
+default, takes this branch; every other command, and every step under `KDOS_IMAGE=full`, runs on
+`build/fs` itself. The branch mounts an [overlay]{.idx} with `build/fs` as its read-only lower
+layer, `build/image-upper` as the layer that receives every write, and `build/image-root` as the
+merged view, and makes that view the root the rest of the script enters. `017_stage.sh` starts
+from an empty upper layer and removes the stage mark `build/image-stage.ok`, which it writes again
+when it has trimmed the stage; every later step mounts the overlay again over the same upper
+layer, and is refused while the mark is missing, because it would otherwise image a tree nobody
+trimmed. [The image stage](../15-image/017-stage.md) is the step.
+
 ### The home directory
 
-<!-- kfs:include script/chroot/exec.sh lines=51-59 pin=dd60329fe977 -->
+<!-- kfs:include script/chroot/exec.sh lines=91-99 pin=dd60329fe977 -->
 
 The mount points are created when missing. The build's `HOME` is `/var/tmp/kdos-home` rather than
 `/root`, so that every tool's dotfiles, caches and package registries land under `/var/tmp`, which
@@ -59,7 +73,7 @@ no snapshot archives and the image does not ship. It is on disk rather than in t
 
 ### Virtual filesystems
 
-<!-- kfs:include script/chroot/exec.sh lines=61-79 pin=0abb9df868ed -->
+<!-- kfs:include script/chroot/exec.sh lines=101-119 pin=0abb9df868ed -->
 
 `/dev` is the container's, bound in. `/proc` and `/sys` are mounted fresh, so that inside the chroot
 they describe the processes of this namespace. The container's cgroup tree is bound read-only over
@@ -70,7 +84,7 @@ the next.
 
 ### The repository
 
-<!-- kfs:include script/chroot/exec.sh lines=81-124 pin=badafa5a1317 -->
+<!-- kfs:include script/chroot/exec.sh lines=121-164 pin=badafa5a1317 -->
 
 The repository is bound at `/kdos` and `build/` at `/kdos/build`, writable, and `ports/` at
 `/ports`, the path every phase's `PORT_REPO` and kpkg's own configuration name. A bind mount of a
@@ -86,7 +100,7 @@ sources onto a developer medium.
 
 ### The open-files limit
 
-<!-- kfs:include script/chroot/exec.sh lines=126-137 pin=5442fd7ffe9b -->
+<!-- kfs:include script/chroot/exec.sh lines=166-177 pin=5442fd7ffe9b -->
 
 Both the hard and the soft limit on open files are raised to at least 4096. QtWebEngine's link runs
 `ulimit -n 4096` itself and fails when the hard limit is lower. A limit already that high is left
@@ -94,7 +108,7 @@ alone, and one that cannot be raised is noted in `build/logs/chroot.log`.
 
 ### The package store
 
-<!-- kfs:include script/chroot/exec.sh lines=139-143 pin=899f3439074f -->
+<!-- kfs:include script/chroot/exec.sh lines=179-183 pin=899f3439074f -->
 
 `make build KDOS_PKG_STORE=1` or `=check` turns on the [package store]{.idx}, and the script turns that into
 the two variables kpkg itself reads: the store's directory as the chroot sees it, and whether to
@@ -102,7 +116,7 @@ build every hit anyway and compare.
 
 ### The command, in an empty environment
 
-<!-- kfs:include script/chroot/exec.sh lines=192-213 pin=1e0107faac8d -->
+<!-- kfs:include script/chroot/exec.sh lines=239-264 pin=7ebdcf3cf3da -->
 
 `chroot` makes `build/fs` the root and runs the tree's own `/usr/bin/env -i`, which clears the
 environment completely and sets only the variables listed. Then the tree's bash changes to `/kdos`,
@@ -130,10 +144,19 @@ The variables that cross into the chroot:
 :   The job count from `make build`, or empty, in which case the phase environment computes it
     inside the chroot.
 
-`KDOS_ISO_SOURCES`, `KDOS_PACK_KDOS`, `KDOS_MAKE_BINHOST`, `KDOS_ISO_COMP`, `KPKG_KEEP_CACHE`
-:   The opt-in switches of the image phase, the compression of the image's `system.sfs`, and
+`KDOS_ISO_SOURCES`, `KDOS_PACK_KDOS`, `KDOS_MAKE_BINHOST`, `KDOS_ISO_COMP`, `KDOS_ISO_BLOCK`, `KPKG_KEEP_CACHE`
+:   The opt-in switches of the image phase, the codec and block size of the image's `system.sfs`, and
     `KDOS_MAKE_BINHOST` again under the name kpkg reads, so that every package is kept for the
     binhost.
+
+`KDOS_IMAGE`
+:   `base` or `full`, defaulted to `base` by the stage block above, which has already read it;
+    `017_stage.sh` reads it again and does nothing under `full`, and `110_iso.sh` gates only a
+    `base` ISO.
+
+`KDOS_ISO_MAX`, `KDOS_ISO_GATE`
+:   The release size gate of `110_iso.sh`: the largest base ISO in bytes, empty for 1,900 MiB, and
+    `1`, the default, to enforce it, or `0` for a developer image.
 
 `KDOS_CCACHE`
 :   Whether CMake ports compile through the cache in `build/ccache`.

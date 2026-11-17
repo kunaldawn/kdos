@@ -197,4 +197,4 @@ generates the box's launchers.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 436.* Previous: [435. Session and environment](session-and-environment.md) · [Contents](../README.md) · Next: [437. The panel and the launcher](panel-and-launcher.md)
+*Part XVI. System administration, chapter 438.* Previous: [437. Session and environment](session-and-environment.md) · [Contents](../README.md) · Next: [439. The panel and the launcher](panel-and-launcher.md)

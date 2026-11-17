@@ -323,7 +323,7 @@ static void x11_cookie(const char *pdir, int want)
 		tracef("rundir: cannot copy the X11 cookie: %s", strerror(errno));
 }
 
-int rundir_prepare(const Profile *p, const char *pack)
+int rundir_prepare(const Profile *p)
 {
 	char pdir[MAX_LINE], sd[MAX_LINE], kd[MAX_LINE];
 
@@ -341,7 +341,7 @@ int rundir_prepare(const Profile *p, const char *pack)
 		return -1;
 	}
 	rundir_link_sockets(p->name, p->audio, box_a11y_wanted());
-	x11_cookie(pdir, profile_x11(p, pack));
+	x11_cookie(pdir, profile_x11(p));
 	return 0;
 }
 

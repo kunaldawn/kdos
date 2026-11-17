@@ -1,0 +1,12 @@
+firmware-amd amdgpu/psp_13_0_0_sos.bin
+firmware-amd amdgpu/gc_11_0_0_mes_2.bin
+firmware-intel i915/tgl_dmc.bin
+firmware-intel i915/tgl_guc_70.bin
+firmware-intel intel/iwlwifi/iwlwifi-so-a0-gf-a0-89.ucode
+firmware-intel iwlwifi-so-a0-gf-a0-89.ucode
+firmware-nvidia nvidia/tu102/gsp/booter_load-535.113.01.bin
+firmware-nvidia nvidia/tu102/gsp/gsp-535.113.01.bin
+firmware-qualcomm ath11k/WCN6855/hw2.0/amss.bin
+firmware-realtek rtl_nic/rtl8168g-2.fw
+firmware-realtek rtl_nic/rtl8168h-2.fw
+firmware-misc brcm/brcmfmac43430-sdio.Raspberry Pi Foundation-Raspberry Pi 3 Model B.txt

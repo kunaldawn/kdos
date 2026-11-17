@@ -1,7 +1,7 @@
 # The ports catalogue
 
-This chapter lists every port KDOS can build: each of the 2,389 recipes under `ports/core` and the
-43 recipes KDOS writes itself under `src/`, 2,432 in all, each exactly once. It is a reference for
+This chapter lists every port KDOS can build: each of the 2,399 recipes under `ports/core` and the
+43 recipes KDOS writes itself under `src/`, 2,442 in all, each exactly once. It is a reference for
 anyone who needs to know whether a piece of software is in the tree, which version it is at, where
 its recipe lives, and which phase of the build installs it. Read
 [Packaging](../03-architecture/packaging.md) first for what a port and a package are, and
@@ -109,17 +109,17 @@ leaving out any an earlier phase installed.
 | `30_foundation` | Build Foundation | `packages.txt` | 138 | 127 |
 | `31_compilers` | Compilers | `packages.txt` | 22 | 22 |
 | `40_lang` | Languages | `packages.d/`, 13 files | 185 | 185 |
-| `41_system` | System | `packages.d/`, 98 files | 1,035 | 1,035 |
-| `42_graphics` | Graphics Stack | `packages.d/`, 53 files | 187 | 187 |
+| `41_system` | System | `packages.d/`, 98 files | 1,044 | 1,044 |
+| `42_graphics` | Graphics Stack | `packages.d/`, 53 files | 188 | 188 |
 | `43_toolkits` | Toolkits | `packages.d/`, 56 files | 344 | 344 |
 | `44_apps` | Applications | `packages.d/`, 61 files | 422 | 422 |
 | `50_desktop` | Desktop | `packages.txt` | 91 | 91 |
 | `60_kernel` | Kernel | `packages.txt` | 2 | 2 |
 | `70_image` | Image | none: steps | — | — |
-| Total | | | 2,435 | 2,430 |
+| Total | | | 2,445 | 2,440 |
 
-The lists hold 2,435 lines naming 2,426 distinct ports; 9 of those ports are named by more than one
-phase. Following `depends =` from the lists reaches 2,430 ports. With `kdos-installer`, which
+The lists hold 2,445 lines naming 2,436 distinct ports; 9 of those ports are named by more than one
+phase. Following `depends =` from the lists reaches 2,440 ports. With `kdos-installer`, which
 `10_bootstrap` builds by script, that is every recipe but 1, listed in `ports/unbuilt`: `texlive-doc`,
 a recipe kept for `kpkg install` that no phase builds, marked `not built` in its table.
 `testing/bookcounts.py` fails on any other recipe no phase builds.
@@ -170,7 +170,7 @@ Every recipe, counted by where it lives.
 | [`base`](#base) | 33 |
 | [`base-libs`](#base-libs) | 17 |
 | [`auth`](#auth) | 28 |
-| [`boot`](#boot) | 15 |
+| [`boot`](#boot) | 24 |
 | [`toolchain`](#toolchain) | 39 |
 | [`buildtools`](#buildtools) | 22 |
 | [`lang`](#lang) | 27 |
@@ -207,7 +207,7 @@ Every recipe, counted by where it lives.
 | [`web-engines`](#web-engines) | 14 |
 | [`x11`](#x11) | 45 |
 | [`wl`](#wl) | 9 |
-| [`gpu`](#gpu) | 27 |
+| [`gpu`](#gpu) | 28 |
 | [`graphics-libs`](#graphics-libs) | 27 |
 | [`image-libs`](#image-libs) | 48 |
 | [`graphics`](#graphics) | 29 |
@@ -273,7 +273,7 @@ Every recipe, counted by where it lives.
 | [`src/art`](#srcart) | 8 |
 | [`src/desktop`](#srcdesktop) | 21 |
 | [`src/daemons`](#srcdaemons) | 6 |
-| Total | 2,432 |
+| Total | 2,442 |
 
 ## The shelves
 
@@ -425,7 +425,7 @@ Notes:
 ### boot
 
 Everything before userspace: the kernel, microcode, firmware for the host, bootloader and EFI
-tooling. 15 ports, under `ports/core/boot/`.
+tooling. 24 ports, under `ports/core/boot/`.
 
 | Port | Version | Description | Phase |
 |---|---|---|---|
@@ -433,6 +433,15 @@ tooling. 15 ports, under `ports/core/boot/`.
 | `dtc` | 1.8.1 | The device tree compiler, and libfdt — what qemu needs for arm and riscv | `41_system` |
 | `efibootmgr` | 18 | Lists, adds and reorders EFI boot entries | `41_system` |
 | `efivar` | 39 | Read and write EFI variables — the library efibootmgr needs | `41_system` |
+| `firmware-amd` | 20260916 | AMD device firmware from linux-firmware — amdgpu and radeon graphics, the NPU, the security processor, and AMD CPU microcode | `41_system` |
+| `firmware-broadcom` | 20260916 | Broadcom and Cypress device firmware from linux-firmware — brcmfmac Wi-Fi, Bluetooth, and NetXtreme Ethernet | `41_system` |
+| `firmware-intel` | 20260916 | Intel device firmware from linux-firmware — i915 and Xe graphics, iwlwifi Wi-Fi, Bluetooth, IPU cameras, the NPU, the ISH sensor hub | `41_system` |
+| `firmware-map` | 20260916 | Which firmware port ships each file of linux-firmware — what kdos firmware sync reads | `41_system` |
+| `firmware-mediatek` | 20260916 | MediaTek and Ralink device firmware from linux-firmware — mt76 Wi-Fi and Bluetooth, the Wi-Fi of most AMD laptops | `41_system` |
+| `firmware-misc` | 20260916 | Device firmware from linux-firmware no vendor port takes — sound amplifiers, server networking, TV tuners, older Wi-Fi | `41_system` |
+| `firmware-nvidia` | 20260916 | NVIDIA GPU firmware from linux-firmware — the GSP and signed blobs nouveau needs on Turing and later | `41_system` |
+| `firmware-qualcomm` | 20260916 | Qualcomm and Atheros device firmware from linux-firmware — ath9k to ath12k Wi-Fi, Bluetooth, and the Qualcomm accelerators | `41_system` |
+| `firmware-realtek` | 20260916 | Realtek device firmware from linux-firmware — rtw88 and rtw89 Wi-Fi, Bluetooth, and r8169 Ethernet | `41_system` |
 | `fwupd` | 2.1.7 | Daemon and client for updating device firmware | `42_graphics` |
 | `fwupd-efi` | 1.8 | The EFI program fwupd boots into to hand a firmware capsule to the machine's firmware | `41_system` |
 | `fwupd-snapshot` | 20261028 | The LVFS firmware metadata as of a KDOS release, for fwupd's offline kdos-snapshot remote | `42_graphics` |
@@ -440,7 +449,7 @@ tooling. 15 ports, under `ports/core/boot/`.
 | `intel-ucode` | 20260812 | Intel processor microcode, bundled for early loading | `41_system` |
 | `limine` | 12.9.0 | BIOS and UEFI bootloader and boot manager | `41_system` |
 | `linux` | 7.2.11 | Linux kernel | `60_kernel` |
-| `linux-firmware` | 20260916 | Device firmware blobs — upstream's tree, less the firmware no x86 kernel loads | `41_system` |
+| `linux-firmware` | 20260916 | All of linux-firmware, as the vendor ports that split it: Intel, AMD, NVIDIA, Realtek, MediaTek, Broadcom, Qualcomm and the rest | `41_system` |
 | `memtest86plus` | 8.10 | Standalone memory tester that runs outside the operating system | `41_system` |
 | `sof-firmware` | 2026.09.1 | Intel Sound Open Firmware DSP firmware and topologies | `41_system` |
 | `wireless-regdb` | 2026.09.03 | Signed wireless regulatory database — without it the kernel applies the restrictive world domain | `41_system` |
@@ -2396,7 +2405,7 @@ Wayland libraries and protocols, and Wayland-only desktop utilities. 9 ports, un
 
 ### gpu
 
-The GPU stack: Mesa, DRM, GL and Vulkan loaders and headers, shader compilers, VA-API, OpenCL. 27
+The GPU stack: Mesa, DRM, GL and Vulkan loaders and headers, shader compilers, VA-API, OpenCL. 28
 ports, under `ports/core/gpu/`.
 
 | Port | Version | Description | Phase |
@@ -2418,6 +2427,7 @@ ports, under `ports/core/gpu/`.
 | `libva-intel-driver` | 2.4.1 | Intel i965 VA-API driver for GMA 4500 through Coffee Lake — the one Sandy Bridge, Ivy Bridge and Haswell decode with | `42_graphics` |
 | `libva-utils` | 2.24.0 | VA-API utilities — vainfo and the conformance test programs | `42_graphics` |
 | `mesa` | 26.2.3 | OpenGL compatible 3D graphics library: EGL and Vulkan for Wayland, GLX for X11 clients under Xwayland | `42_graphics` |
+| `mesa-opencl` | 26.2.3 | Mesa's OpenCL implementation, rusticl: the OpenCL ICD for the GPUs Mesa drives and for llvmpipe on the processor | `42_graphics` |
 | `mesa-demos` | 9.0.0 | Mesa EGL, GLES2 and Vulkan demos for Wayland — es2gears_wayland, eglinfo, vkgears | `42_graphics` |
 | `ocl-icd` | 2.3.5 | OpenCL ICD loader — libOpenCL.so dispatching to the drivers listed in /etc/OpenCL/vendors | `41_system` |
 | `opencl-clhpp` | 2026.05.29 | Khronos OpenCL C++ bindings, the opencl.hpp header | `41_system` |
@@ -5675,11 +5685,11 @@ installs. 21 ports.
 | `kdos-discover` | 0.1.0 | Discover backend for packs, boxes and ports, and the A/B update tray notifier | `50_desktop` |
 | `kdos-installer-gui` | 1.0.0 | Install KDOS — the graphical installer, a Kirigami front end over kinstall | `50_desktop` |
 | `kdos-kwin-motion` | 1.0.0 | KDOS CRT motion for KWin — windows unfold and fold, the splash powers on, logout powers down | `50_desktop` |
-| `kdos-notice` | 0.1.0 | The system's notices in Plasma: restarts after an update, CVEs, the trial slot, a rollback, memory kills; confirms a booted slot | `50_desktop` |
+| `kdos-notice` | 0.1.0 | The system's notices in Plasma: restarts after an update, CVEs, the trial slot, a rollback, memory kills, missing firmware; confirms a booted slot | `50_desktop` |
 | `kdos-plasma-look` | 1.0.0 | KDOS Modern for Plasma — eight global themes, the kdos Plasma style, the desks, KSplash | `50_desktop` |
 | `kdos-runner` | 0.1.0 | KDOS in KRunner: kdos verbs, favourites, routes, packs on the boot medium, shortcuts, the offline library and the local model | `50_desktop` |
 | `kdos-transcribe` | 1.0.0 | Transcribe in the file manager's menu for audio and video, offline, while a speech model is installed | `50_desktop` |
-| `kdos-welcome` | 1.0.0 | The KDOS tour in Welcome Center — accessibility, accent, Phosphor mode, desk, system and help pages | `50_desktop` |
+| `kdos-welcome` | 1.0.0 | The KDOS tour in Welcome Center — accessibility, accent, Phosphor mode, desk, system, help and program-group pages | `50_desktop` |
 | `kio-library` | 1.0.0 | library:/, the offline library as a folder, its Places entry and the menu's Library category | `50_desktop` |
 | `ksystemstats-kdos` | 1.0.0 | KDOS sensors for System Monitor: boxes, energy by application, the A/B slots; the KDOS Meters face and page | `50_desktop` |
 | `kwin-effect-kdos-keys` | 1.0.0 | KDOS key card for KWin — every global shortcut on one searchable card, on Meta+F1 and Meta+/ | `50_desktop` |

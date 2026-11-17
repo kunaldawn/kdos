@@ -98,9 +98,9 @@ typedef struct {
 	int  wayland;
 	int  audio;
 	int  gpu;
-	/* `auto` (the default), `yes` or `no`: whether the box is handed the
-	 * session's X11 display and its cookie. profile_x11() is the resolved
-	 * form; see the comment there for what `auto` asks. */
+	/* `yes` (the default) or `no`: whether the box is handed the
+	 * session's X11 display and its cookie. profile_x11() reads it; see
+	 * the comment there for what each costs. */
 	char x11[8];
 	/* Recorded and printed, never acted on: `kdos-appbox genlaunchers`
 	 * writes launchers for every installed pack and every store box at
@@ -169,9 +169,8 @@ int  box_lane(const Profile *p);
 /* Whether `grant` names `name`, by the separators KWin's grant check splits
  * on: spaces, commas and tabs. */
 int  profile_granted(const Profile *p, const char *name);
-/* The `x11` key resolved: 1 when the box is handed the session's display.
- * `pack` is the box's pack id, "" for a store box. */
-int  profile_x11(const Profile *p, const char *pack);
+/* The `x11` key resolved: 1 when the box is handed the session's display. */
+int  profile_x11(const Profile *p);
 /* 1 when the profile is valid for a container name, a profile file name and
  * a socket path component. */
 int  box_name_ok(const char *s);
@@ -204,7 +203,7 @@ int  box_private_dir(const char *box, char *out, size_t n);
 int  box_state_dir(char *out, size_t n);
 /* Make the private directory and refresh what it links. Returns 0, or -1
  * with the reason printed. */
-int  rundir_prepare(const Profile *p, const char *pack);
+int  rundir_prepare(const Profile *p);
 /* The audio and accessibility sockets, linked into the private directory.
  * Idempotent; the keeper runs it again whenever one of them is replaced. */
 void rundir_link_sockets(const char *box, int audio, int a11y);
@@ -387,11 +386,6 @@ int  app_list(void);
 /* Regenerate the launchers, their icons, the mime cache, the alien-apps
  * table, the /usr/local/bin shims and the boxes' window rules. */
 int cmd_genlaunchers(const char *srcdir, const char *fsroot, int user, int packsdir);
-
-/* 1 when an `env` assignment (`NAME=value`) forces an X11 backend — the
- * one list both genlaunchers' Exec cleaning and the `x11 = auto` answer
- * read. */
-int env_forces_x11(const char *assignment);
 
 /* A generated launcher of a box, read back: its launcher id, the in-box
  * command after `run`, and its MimeType. */

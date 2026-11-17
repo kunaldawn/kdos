@@ -217,6 +217,51 @@ void ki_apps_enter(void);
  * answer file records, or `none`. */
 void ki_apps_collect(void);
 
+/* ────────────────────────────────────────────────────────────────────────
+ * The native groups: sets of ports the release's binhost holds prebuilt.
+ *
+ * READ FROM THE LIVE SYSTEM'S /ports/groups ($KDOS_GROUPS for a test), the
+ * file `kdos update groups` reads. Unlike the catalogue's groups these are
+ * INSTALLED DURING THE INSTALL when the network answers: `kdos update fetch
+ * --binhost-only` takes the medium's own release's binhost index, and
+ * `kdos update install --root <target> <id>` puts each group's packages into
+ * the new system. Offline, the ids are written to the target's
+ * /var/lib/kdos/groups-pending, and `kdos update install --pending` installs
+ * them later. None is chosen by default, each one being a download, but for
+ * the language group a Chinese, Japanese or Korean keyboard or time zone
+ * points at (ki_lang_why()), which starts ticked unless the answer file
+ * named `groups =`.
+ * ──────────────────────────────────────────────────────────────────────── */
+#define MAX_NATIVE 64
+
+typedef struct {
+	char id[64];
+	char title[128];
+	int  nports;	/* members, as the groups file names them        */
+	int  chosen;
+	/* What in the answers points at this group, "the Japanese
+	 * keyboard", or "" for nothing. */
+	char why[64];
+} KiNative;
+
+extern KiNative ki_native[MAX_NATIVE];
+extern int ki_nnative;
+
+void probe_groups(void);
+/* Read the groups file and apply an answer file's `groups =`: the ids it
+ * names, nothing for `none` or an empty line, an unknown id ignored. With no
+ * `groups =` line, the language groups the answers point at are ticked, and
+ * a later call applies only what changed in that answer since the last. */
+void ki_groups_enter(void);
+/* Why the keyboard (cfg.xkb_layout, cfg.keymap) or the time zone
+ * (cfg.tz_label) points at language group `group`, as "the Japanese
+ * keyboard" or "the time zone Asia/Tokyo"; "" when nothing does. */
+void ki_lang_why(const char *group, char *out, size_t n);
+/* cfg.groups rebuilt from the ticks, or `none`. */
+void ki_groups_collect(void);
+/* How many native groups are ticked. */
+int  ki_groups_chosen(void);
+
 void probe_part(const char *path, Part *p);
 Disk *disk_by_path(const char *path);
 /* A disk's size in bytes. /sys/block reports `size` in 512-byte units
@@ -303,6 +348,12 @@ typedef struct {
 	 * no group. Only group ids match; a line naming no group falls back to
 	 * `essential`. */
 	char apps[1024];
+	/* Native group ids from /ports/groups, space-separated, or `none`;
+	 * empty is none. See ki_groups_enter(). */
+	char groups[1024];
+	/* The answer file had a `groups =` line, so no language group is
+	 * ticked for the person. */
+	int groups_set;
 	unsigned svc_off;	/* bitmask over ki_services                */
 
 	int reboot_after;
@@ -439,8 +490,12 @@ unsigned long long ki_wipe_root_bytes(void);
  * LVM, on a disk that holds two slots, the swap and a home of its own. */
 int ki_ab(void);
 /* One root slot on the A/B layout, in MiB: the install, half as much again
- * for an update to grow into, never under KI_SLOT_MIN_MB. */
+ * for an update to grow into, never under KI_SLOT_SHARE percent of the room
+ * past the swap, nor under KI_SLOT_MIN_MB. */
 #define KI_SLOT_MIN_MB 8192
+/* Each slot's least share of the room, in percent: two slots take 60, the
+ * home the rest. */
+#define KI_SLOT_SHARE 30
 /* The least a shared home is made at. Below it two slots do not fit. */
 #define KI_HOME_MIN_MB 4096
 unsigned long long ki_slot_mb(void);

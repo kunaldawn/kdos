@@ -62,6 +62,7 @@
 #define PK_UPDATE_VER "org.freedesktop.sysupdate1.update-to-version"
 #define PK_TRY        "io.kdos.slots.try"
 #define PK_CHANNEL    "io.kdos.slots.channel"
+#define PK_ROUTE      "io.kdos.slots.install-route"
 #define PK_BLESS      "io.kdos.slots.bless"
 
 /* What the job running now is doing. */
@@ -181,6 +182,8 @@ const char *state_current_offer(void);
 void state_emit(void);
 void state_channel(char *out, size_t cap);
 int state_set_channel(const char *channel);
+void state_route(const char *key, char *out, size_t cap);
+int state_set_route(const char *install, const char *deps);
 int state_append_state(sd_bus_message *m);
 
 /* appstream.c */

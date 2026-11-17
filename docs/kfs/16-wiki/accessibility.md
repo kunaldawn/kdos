@@ -25,7 +25,10 @@ aid in full; this page gives the files and the procedures.
 | [dasher](#port-dasher) | Text entry by steering the pointer through a language model |
 | [kdos-appbox](#port-kdos-appbox) | Gives a boxed application the accessibility bus whenever assistive technology is in use |
 
-`65_brltty.sh` is the only service. It ships enabled, and it does nothing at boot until
+The screen reader orca, brltty, liblouis, dasher and piper are not in the base the ISO carries;
+`sudo kdos update install <port>` adds each (see [Installing software](updating.md#installing-software)). The rest is.
+
+`65_brltty.sh` is the only service, installed with brltty. It ships enabled, and it does nothing at boot until
 [`/etc/brltty.conf`]{.idx} exists and is not empty, printing `[SKIP] brltty: no /etc/brltty.conf`.
 Everything else runs inside the desktop session.
 
@@ -270,4 +273,4 @@ on. Stop the box (`kdos-box stop <box>`) and open the application again.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 441.* Previous: [440. Fonts and theming](fonts-and-theming.md) · [Contents](../README.md) · Next: [442. Portals and screen sharing](portals-and-screen-sharing.md)
+*Part XVI. System administration, chapter 443.* Previous: [442. Fonts and theming](fonts-and-theming.md) · [Contents](../README.md) · Next: [444. Portals and screen sharing](portals-and-screen-sharing.md)

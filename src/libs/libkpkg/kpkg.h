@@ -79,6 +79,15 @@ typedef struct {
 	int strict_recipe;
 
 	/*
+	 * `FACETS` in the file, $KPKG_FACETS over it: `all` (0, the default)
+	 * installs every file of a package, `run` (1) leaves the development
+	 * and documentation facets out (kp_facet_of). Any other value warns
+	 * and reads as `all`. The build chroot keeps `all`; the image's
+	 * /etc/kpkg.conf says `run`.
+	 */
+	int facets_run;
+
+	/*
 	 * Each repository's shelves, sorted, listed once when the repositories
 	 * are set, so a lookup stats one path per shelf instead of listing the
 	 * repository again. shelf_cached[i] is 0 for a KpConf whose repos were
@@ -355,6 +364,122 @@ int kp_installed_version(const KpConf *c, const char *name, char *ver,
 			 size_t vcap, char *rel, size_t rcap);
 
 /* ────────────────────────────────────────────────────────────────────────
+ * Package facets (kp_facet.c)
+ *
+ * A facet is a class of a package's files decided by the path: run time,
+ * development, documentation. The rules, and what each one costs a machine
+ * that leaves it out, are at the top of kp_facet.c.
+ *
+ * THE RECORD: `<db>/.facets/<name>`, one `<facet> <path>` line per file a
+ * `FACETS=run` install or `kpkg facets --strip` left out, the path spelt as
+ * the manifest spells it (`dev ./usr/include/zlib.h`). Those files are in
+ * neither the manifest nor the `.files` record, so `kpkg check` and a
+ * removal never ask about them. PRESENT, EVEN EMPTY, means "installed with
+ * its run-time facet only", and an upgrade under `FACETS=run` keeps it so;
+ * ABSENT means "installed whole", and an upgrade keeps that too, which is
+ * how a package `kdos update install --dev` restored stays whole across
+ * updates. kpkgadd under `FACETS=all` and kpkgdel remove it.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+enum { KP_FACET_RUN = 0, KP_FACET_DEV = 1, KP_FACET_DOC = 2 };
+
+/* The facet of a manifest path (`./usr/include/z.h` or `usr/include/z.h`).
+ * `link` is the symlink's target when the path is a symlink, NULL
+ * otherwise. A directory is always KP_FACET_RUN. */
+int kp_facet_of(const char *path, const char *link);
+/* 1 when `path` (a file, not a directory) matches one of the
+ * whitespace-separated fnmatch globs of a recipe's `facet_dev =` line, taken
+ * against the path without `./`; `*` crosses `/`. */
+int kp_facet_glob(const char *path, const char *globs);
+/* "run", "dev" or "doc". */
+const char *kp_facet_name(int facet);
+
+/* The record, replaced whole (0, or -1 with the old one left); read back
+ * with kb_read_all (free it), NULL when there is none; and removed. */
+int kp_record_facets(const KpConf *c, const char *name, const char *data,
+		     size_t len);
+char *kp_installed_facets(const KpConf *c, const char *name, size_t *len);
+void kp_forget_facets(const KpConf *c, const char *name);
+/* How many files of `facet` the record of `name` holds; -1 with no record. */
+int kp_facets_left(const KpConf *c, const char *name, int facet);
+
+/* The installed packages a build of `port` compiles against whose
+ * development facet is left out: its declared closure (kp_store_closure)
+ * and musl, linux and gcc, whose headers and libgcc.a every compile reads,
+ * minus `port`
+ * itself. NULL-terminated, never NULL; kb_strv_free it. */
+char **kp_facet_wanted(const KpConf *c, const char *port);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Run-time needs (kp_needs.c)
+ *
+ * What a package needs at run time, FOUND in its installed files rather than
+ * declared. THE RECORD: `<db>/.needs/<name>`, one `<kind> <value>` line per
+ * edge, sorted and unique, written by kpkgadd once the package's files are
+ * in place and removed with it:
+ *
+ *   so <soname>     a DT_NEEDED of one of its ELF files; `so /<path>` when
+ *                   the library is found only on the file's own RUNPATH
+ *   exe /<path>     a `#!` interpreter of one of its executable scripts;
+ *                   `#!/usr/bin/env X` records the env and X as the first
+ *                   PATH directory of the root holding it, /usr/bin/X when
+ *                   none does
+ *   qml <module>    a module URI an installed `.qml` file imports
+ *   py <name>       the top-level name a column-0 `import x` or `from x
+ *                   import` names in a Python script, a top-level package's
+ *                   `__init__.py` or a top-level module of site-packages,
+ *                   recorded only when a site-packages directory of the
+ *                   root holds it
+ *   need <port>     a word of the recipe's `runtime =` line: what is loaded
+ *                   by name, which no file shows
+ *
+ * Only run-time files are read (kp_facet_of and the recipe's `facet_dev =`
+ * globs). An edge the package provides itself is not recorded: a soname
+ * that is the name of one of its own files, an interpreter, a qmldir or a
+ * Python module (any `.py` or package directory) in its own manifest. PRESENT, EVEN EMPTY, means "measured";
+ * ABSENT means "installed before needs were recorded", which every reader
+ * reports as unmeasured, never as needing nothing.
+ *
+ * WHAT PROVIDES AN EDGE (kp_needs_where), relative to the root:
+ *
+ *   so      <dir>/<soname> for each directory of etc/ld-musl-x86_64.path
+ *           (lib, usr/local/lib, usr/lib without one); a path as itself
+ *   exe     the path
+ *   qml     usr/lib/qt6/qml/<a/b/c>/qmldir, then usr/lib/qt5/qml/...; a
+ *           module under QtQml, QtQuick or QML with neither is
+ *           qt6-qtdeclarative's (its built-in types)
+ *   py      usr/lib/python3.<minor>/site-packages/<name>/__init__.py, <name>.py,
+ *           <name>.so or <name>.*.so, or for a namespace package a file
+ *           directly in <name>/
+ *   need    the installed package of that name
+ *
+ * script/lib/imageset.py reads the record and resolves it the same way; a
+ * change to either side changes the image's QML and Python gate.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* The record of `name` from its installed files under the root: `body` is
+ * the manifest without its version line, `extra` the recipe's `facet_dev =`
+ * line and `runtime` its `runtime =` line (either may be NULL or ""). The
+ * lines, malloc'd, "" when it needs nothing. */
+char *kp_needs_scan(const KpConf *c, const char *name, const char *body,
+		    const char *extra, const char *runtime);
+
+/* The paths under the root (relative, as found) that would provide `edge`
+ * (`so libz.so.1`), each one present on the disk, in the order above;
+ * NULL-terminated, never NULL (kb_strv_free). `*pkg` is set when the edge
+ * is provided by a package NAME rather than a path — a `need` edge (it then
+ * points into `edge`) or a QML built-in (a constant) — and NULL otherwise;
+ * either way the paths are still the ones on the disk. */
+char **kp_needs_where(const KpConf *c, const char *edge, const char **pkg);
+
+/* The record, replaced whole (0, or -1 with none left); read back (free it),
+ * NULL when there is none; and removed. */
+int kp_record_needs(const KpConf *c, const char *name, const char *data,
+		    size_t len);
+char *kp_installed_needs(const KpConf *c, const char *name, size_t *len);
+void kp_forget_needs(const KpConf *c, const char *name);
+
+/* ────────────────────────────────────────────────────────────────────────
  * The package store (kp_store.c)
  *
  * `$KPKG_STORE/<key[0:2]>/<key>/` holds one built package and its META, and a
@@ -401,6 +526,14 @@ int kp_store_key(const KpConf *c, const char *name, const char *portdir,
  * sonames, NULL-terminated (kb_strv_free), or NULL for anything that is not
  * such a file or has no dynamic section. */
 char **kp_store_needed(const char *path);
+
+/* The dynamic section of an ELF64 little-endian file, read with no process:
+ * `*needed` its DT_NEEDED names and, when `search` is not NULL, `*search`
+ * its DT_RUNPATH entries (its DT_RPATH ones when it has no RUNPATH), each a
+ * colon-separated list as the file spells it, `$ORIGIN` unexpanded. Both
+ * NULL-terminated, possibly empty (kb_strv_free). 0, or -1 with both NULL
+ * for anything that is not such a file or has no dynamic section. */
+int kp_elf_dynamic(const char *path, char ***needed, char ***search);
 
 /* The `X:<owner> <pkgsha>\n` lines of installed package `name`: the owner of
  * every library its ELF files need, resolved in usr/lib, lib and

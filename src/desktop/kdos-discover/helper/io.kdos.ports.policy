@@ -2,10 +2,13 @@
 <!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
 <!--
-  The one root step behind Discover's Install button for host software:
-  kdos-ports-helper installs a port from the signed binhost into the running
-  slot and adds it to the world set. pkexec runs that program and no other
-  under this action, so the grant reaches nothing beyond `install <port>`.
+  The two root steps behind Discover's Install button for host software.
+  kdos-ports-helper installs a port prebuilt from the signed binhost into the
+  running slot; kdos-ports-builder builds it there from its recipe. Each adds
+  the port to the world set. pkexec runs each program under its own action
+  and no other, so each grant reaches nothing beyond `install <port>`. The
+  build is asked for every time: it runs a recipe's build.sh as root for a
+  long while, and a grant kept from a prebuilt install must not cover it.
 -->
 <policyconfig>
   <vendor>KDOS</vendor>
@@ -21,5 +24,17 @@
       <allow_active>auth_admin_keep</allow_active>
     </defaults>
     <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/kdos-discover/kdos-ports-helper</annotate>
+  </action>
+
+  <action id="io.kdos.ports.build">
+    <description>Build host software on this computer</description>
+    <message>Authentication is required to build software from source and install it into this version of the system.</message>
+    <icon_name>run-build</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/kdos-discover/kdos-ports-builder</annotate>
   </action>
 </policyconfig>

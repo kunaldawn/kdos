@@ -511,6 +511,7 @@ int main(int argc, char **argv)
 		 * an unattended install does not, and would carry no packs at
 		 * all with an answer file that named some. */
 		ki_apps_enter();
+		ki_groups_enter();
 		install_plan();
 		install_start(0);
 		ki_page = page_index("install");

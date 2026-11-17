@@ -420,5 +420,10 @@ int kdt_backup_main(int argc, char **argv);
 int kdt_privacy_main(int argc, char **argv);
 /* `kdos checklist` (checklist.c): the first-run checklist's items. */
 int kdt_checklist_main(int argc, char **argv);
+/* `kdos firmware sync` (firmware.c): the vendor firmware ports this
+ * machine's devices and kernel log ask for, installed prebuilt. 0 nothing
+ * missing or all installed, 1 a dry run naming a port or an install that
+ * failed, 2 usage, 3 no firmware map. */
+int kdt_firmware_main(int argc, char **argv);
 
 #endif /* KDOS_TOOLS_H */

@@ -21,7 +21,9 @@ schedule, adding and removing a job, running one now, and finding out why one di
   job; and the user table's skeleton, `/etc/skel/.config/kdos/timers.d/`, copied into each new
   home directory. `/usr/local/lib/kdos/timers.sh` is the one parser all three share.
 - [cronie](#port-cronie) installs `crond` and the setuid `crontab`, started by
-  `/etc/init.d/85_crond.sh`, for users' crontabs; [kcron](#port-kcron) is the Task Scheduler page.
+  `/etc/init.d/85_crond.sh`, for users' crontabs; [kcron](#port-kcron) is the Task Scheduler page,
+  which is not in the base the ISO carries (`sudo kdos update install kcron`; see
+  [Installing software](updating.md#installing-software)).
 - `kdos remind`, from [kdos-tools](#port-kdos-tools), writes reminders into the user table.
 
 The services `timers` and `crond` are enabled on the live medium and on an installed system alike.
@@ -278,4 +280,4 @@ writes it to standard error.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 385.* Previous: [384. Writing a service](writing-a-service.md) · [Contents](../README.md) · Next: [386. Logs](logs.md)
+*Part XVI. System administration, chapter 387.* Previous: [386. Writing a service](writing-a-service.md) · [Contents](../README.md) · Next: [388. Logs](logs.md)

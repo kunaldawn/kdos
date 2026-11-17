@@ -282,4 +282,4 @@ mode 0600, since the programs that open them (`bluetoothd`, an input remapper) r
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 419.* Previous: [418. Avahi and mDNS](avahi-and-mdns.md) · [Contents](../README.md) · Next: [420. Bluetooth](bluetooth.md)
+*Part XVI. System administration, chapter 421.* Previous: [420. Avahi and mDNS](avahi-and-mdns.md) · [Contents](../README.md) · Next: [422. Bluetooth](bluetooth.md)

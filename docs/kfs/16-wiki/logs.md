@@ -268,4 +268,4 @@ See [Desktop troubleshooting](desktop-troubleshooting.md).
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 386.* Previous: [385. Timers](timers.md) · [Contents](../README.md) · Next: [387. Modules and sysctl](modules-and-sysctl.md)
+*Part XVI. System administration, chapter 388.* Previous: [387. Timers](timers.md) · [Contents](../README.md) · Next: [389. Modules and sysctl](modules-and-sysctl.md)

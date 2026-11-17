@@ -22,7 +22,9 @@ Xwayland is part of every image that has the desktop, and it is not a service:
   [xkeyboard-config](#port-xkeyboard-config)'s data.
 - [font-misc-misc](#port-font-misc-misc), [font-cursor-misc](#port-font-cursor-misc) and
   [font-adobe-75dpi](#port-font-adobe-75dpi) are the core X fonts, the ones a Motif or Xt program
-  asks the server for by name.
+  asks the server for by name. They are not in the base the ISO carries:
+  `sudo kdos update install <port>` adds each (see
+  [Installing software](updating.md#installing-software)).
 - The X client libraries, `libX11`, `libxcb` and the rest, are ports on the `x11` shelf and are
   linked by any application that needs them.
 
@@ -76,15 +78,17 @@ recipe does:
 ### Boxed applications
 
 A box receives no profile environment. Xwayland is one client to KWin, so an X11 window in a box
-is drawn untagged and nothing it binds is filtered; a box is therefore handed the X11 display only
-when its profile's `x11` key says so. `x11 = auto`, the default, hands it to an application whose
-catalogue entry or runtime forces an X11 backend, and to a box distrobox made from somebody else's
-image; `yes` and `no` decide outright. [`kdos-appbox`]{.idx} then sets `DISPLAY` and the cookie
-itself (`src/system/kdos-appbox/main.c`):
+is drawn untagged and nothing it binds is filtered. A box is handed the X11 display anyway unless
+its profile's `x11` key says `no`: Tk, Java, Motif, FLTK, GTK 2 and Xt programs have no other way
+to open a window, and nothing in a package says which toolkit a program draws with. A box handed it
+is at most `tagged`, and `x11 = no` is what confines one. [`kdos-appbox`]{.idx} sets `DISPLAY` and
+the cookie itself (`src/system/kdos-appbox/main.c`):
 
-<!-- kfs:include src/system/kdos-appbox/main.c lines=552-560 pin=72bbf4f777a6 -->
+<!-- kfs:include src/system/kdos-appbox/main.c lines=560-569 pin=bd6bddc350ab -->
 
-Every other box is told there is no display.
+It also exports `QT_QPA_PLATFORM=wayland;xcb` and `SDL_VIDEODRIVER=wayland,x11` into every box,
+because Qt 5 and SDL 2 would otherwise take `DISPLAY` over the tagged Wayland socket; a catalogue
+or pack `env` row that forces X11 is exported after them and wins.
 
 When `kdos-appbox` writes launchers for a boxed application, it removes from the entry's `Exec`
 line the assignments that would force X11, so an application whose distribution entry asks for
@@ -191,8 +195,8 @@ the box's own Mesa: an X11 client in a box draws with its box's libraries. Compa
 **An X11 program exits saying it cannot open or connect to the display.** Its shell has no
 `DISPLAY` or no cookie. Inside the session, start it from Konsole, or set both as in
 [Running an X11 program from tty2 or SSH](#running-an-x11-program-from-tty2-or-ssh). In a box,
-the profile's `x11` key decides: `kdos-box profile <box>` shows it, and `x11 = yes` hands the
-display over at the box's next start.
+the profile's `x11` key decides: `kdos-box profile <box>` shows it, and a box with `x11 = no` is
+handed no display; remove the line, or set `x11 = yes`, and start the box again.
 
 **There is no socket in `/tmp/.X11-unix/`.** KWin could not create the X display. Read the session
 log for KWin's Xwayland lines:
@@ -249,4 +253,4 @@ grep -l 'GDK_BACKEND=x11\|QT_QPA_PLATFORM=xcb' /usr/share/applications/*.desktop
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 438.* Previous: [437. The panel and the launcher](panel-and-launcher.md) · [Contents](../README.md) · Next: [439. Input methods](input-methods.md)
+*Part XVI. System administration, chapter 440.* Previous: [439. The panel and the launcher](panel-and-launcher.md) · [Contents](../README.md) · Next: [441. Input methods](input-methods.md)

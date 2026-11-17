@@ -170,8 +170,29 @@ KDOS_CCACHE ?= 1
 KDOS_PKG_STORE ?= 0
 KDOS_PKG_STORE_MAX ?= 60G
 
+# What the ISO carries: base (the default) is ports/base and its closure, made
+# from an overlay over build/fs that 70_image/017_stage.sh trims, every other
+# package left to the binhost; full is every package build/fs holds, the
+# medium for an offline machine or the rig.
+KDOS_IMAGE ?= base
+
+# The release size gate: 70_image/110_iso.sh fails a base image whose ISO is
+# larger than KDOS_ISO_MAX bytes (1,900 MiB, one GitHub release asset) and
+# prints the image ledger's top twenty. KDOS_ISO_GATE=0 is a developer image
+# that may pass it; a KDOS_IMAGE=full image is never gated.
+KDOS_ISO_MAX ?= 1992294400
+KDOS_ISO_GATE ?= 1
+
+# The squashfs block size of system.sfs, 4K to 1M; empty is 110_iso.sh's 1M.
+# KDOS_ISO_COMP, the codec, is passed through the same way and its default is
+# 110_iso.sh's.
+KDOS_ISO_BLOCK ?=
+
 build: check-iso-free ## build everything in the container (BUILD_ARGS narrows it)
+	@case "$(KDOS_IMAGE)" in base|full) ;; *) echo "KDOS_IMAGE must be base or full, got '$(KDOS_IMAGE)'" >&2; exit 1;; esac
 	@case "$(KDOS_JOBS)" in *[!0-9]*|0*) echo "KDOS_JOBS must be a positive integer, got '$(KDOS_JOBS)'" >&2; exit 1;; esac
+	@case "$(KDOS_ISO_GATE)" in 0|1) ;; *) echo "KDOS_ISO_GATE must be 0 or 1, got '$(KDOS_ISO_GATE)'" >&2; exit 1;; esac
+	@case "$(KDOS_ISO_MAX)" in ''|*[!0-9]*|0*) echo "KDOS_ISO_MAX must be a positive number of bytes, got '$(KDOS_ISO_MAX)'" >&2; exit 1;; esac
 	mkdir -p build
 	docker build -t os-dev .
 	docker run --network none --cpu-shares=$(KDOS_CPU_SHARES) \
@@ -186,6 +207,10 @@ build: check-iso-free ## build everything in the container (BUILD_ARGS narrows i
 		-e KDOS_PACK_KDOS="$(KDOS_PACK_KDOS)" \
 		-e KDOS_MAKE_BINHOST="$(KDOS_MAKE_BINHOST)" \
 		-e KDOS_ISO_COMP="$(KDOS_ISO_COMP)" \
+		-e KDOS_ISO_BLOCK="$(KDOS_ISO_BLOCK)" \
+		-e KDOS_ISO_MAX="$(KDOS_ISO_MAX)" \
+		-e KDOS_ISO_GATE="$(KDOS_ISO_GATE)" \
+		-e KDOS_IMAGE="$(KDOS_IMAGE)" \
 		-e KDOS_CCACHE="$(KDOS_CCACHE)" \
 		-e KDOS_PKG_STORE="$(KDOS_PKG_STORE)" \
 		-e KDOS_PKG_STORE_MAX="$(KDOS_PKG_STORE_MAX)" \

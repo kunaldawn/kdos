@@ -4,14 +4,18 @@ System Versions is the System Settings page for KDOS's two root slots, under Sys
 and slot B with the version, build date, tree commit and kernel each holds and the state each is
 in (running, confirmed, on trial, failed), and its one button, "Start This Version Next Time",
 arms a one-boot trial of the other slot: the previous version after an update, or the new one
-again after a rollback. Its one setting is where `kdos update` takes a newer tree from: the KDOS
-releases, a folder or removable medium, or another address. Beside the setting it shows what the
+again after a rollback. Its settings are where `kdos update` takes a newer tree from (the KDOS
+releases, a folder or removable medium, or another address) and, under "Installing software",
+the route `kdos update install` takes with no flag and the route of what a build lacks: the
+`install =` and `build-deps =` lines of `/etc/kdos/update.conf`, each prebuilt or built on this
+computer, both prebuilt by default. Beside the settings it shows what the
 update service reports — an update that is available, one prepared in the other slot that Discover
 has not yet installed, and why the last one stopped — and opens Discover to act on it.
 
 The page holds no privilege and touches no file of the boot state. Every change is a call to
 `io.kdos.Slots1` on the system bus, which [kdos-sysupdated](#port-kdos-sysupdated) serves and
-authorises through polkit (`io.kdos.slots.try`, `io.kdos.slots.channel`) before it runs
+authorises through polkit (`io.kdos.slots.try`, `io.kdos.slots.channel`,
+`io.kdos.slots.install-route`) before it runs
 `kdos-bootctl try <slot> 1`; a refusal from kdos-bootctl is shown in its own words. The interface
 is `io.kdos.Slots1.xml` beside the recipe, and it is the contract both sides are held to: the
 page's test fixture generates its adaptor from it, and kdos-sysupdated serves the same members and
@@ -36,7 +40,7 @@ KIO's `help:` worker finds the page through `/usr/share/doc/HTML/en/kdos`, the l
 [kdos-doc](#port-kdos-doc) installs (see
 [Help](../../../docs/kdos/04-programs/kdos-settings.md#help)).
 
-Applying a different update location raises an administrator prompt, which needs the polkit
+Applying a different update location or install route raises an administrator prompt, which needs the polkit
 agent of the Plasma session; a page opened outside a session gets a refusal and says so. A
 location is written whole into one `tree =` line of `/etc/kdos/update.conf`, so a path or an
 address containing a space or a control character is refused before it is sent.

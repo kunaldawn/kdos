@@ -89,14 +89,13 @@ static void grants(void)
 	cat_chk(profile_granted(&p, "window-list"), "and comma-separated");
 	cat_chk(profile_granted(&p, "dpms"), "and tab-separated");
 	cat_chk(!profile_granted(&p, "window"), "a grant is matched whole");
-	cat_chk(!strcmp(p.x11, "auto"), "x11 is auto by default");
-	profile_set(&p, "x11 = on");
-	cat_chk(!strcmp(p.x11, "yes"), "x11 = on reads as yes");
+	cat_chk(!strcmp(p.x11, "yes"), "x11 is yes by default");
+	cat_chk(profile_x11(&p) == 1, "a default box is handed the display");
 	profile_set(&p, "x11 = false");
 	cat_chk(!strcmp(p.x11, "no"), "x11 = false reads as no");
-	cat_chk(profile_x11(&p, "") == 0, "x11 = no hands over no display");
+	cat_chk(profile_x11(&p) == 0, "x11 = no hands over no display");
 	profile_set(&p, "x11 = maybe");
-	cat_chk(!strcmp(p.x11, "auto"), "any other word is auto");
+	cat_chk(!strcmp(p.x11, "yes"), "any other word is yes");
 }
 
 static void lanes(void)
@@ -112,11 +111,7 @@ static void lanes(void)
 	profile_set(&p, "base=image:docker.io/library/debian:trixie");
 	cat_chk(box_lane(&p) == BOX_LANE_DISTROBOX,
 		"anybody else's image is distrobox's");
-	cat_chk(profile_x11(&p, "") == 1,
-		"a distrobox box reaches the cookie, so auto hands it over");
-	cat_chk(env_forces_x11("GDK_BACKEND=x11"), "GDK_BACKEND=x11 forces X11");
-	cat_chk(env_forces_x11("QT_QPA_PLATFORM=xcb"), "and QT_QPA_PLATFORM=xcb");
-	cat_chk(!env_forces_x11("QT_QPA_PLATFORM=wayland"), "wayland does not");
+	cat_chk(profile_x11(&p) == 1, "and is handed the display");
 }
 
 static void policy(void)

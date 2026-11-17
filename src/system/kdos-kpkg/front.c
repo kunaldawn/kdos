@@ -35,6 +35,13 @@
  * packages are compared, and a difference is logged to
  * `<store>/../logs/pkgstore-check.log` and the entry replaced. No store
  * failure fails an install; each is a warning.
+ *
+ * A PORT IS NOT BUILT AGAINST A PACKAGE WITHOUT ITS HEADERS. Before a build,
+ * kp_facets_guard asks whether anything the port compiles against (its
+ * declared closure, musl, linux and gcc) is installed with its development
+ * facet
+ * left out, and refuses naming `sudo kdos update install --dev <pkg>...`: a
+ * configure that cannot find a header fails far from the reason.
  * ---------------------------------
  */
 
@@ -73,6 +80,20 @@ static void usage(void)
 	       "                     was installed: missing, changed,\n"
 	       "                     edited /etc (not a failure) and\n"
 	       "                     (--all) unowned files\n"
+	       "  facets --strip [<pkg>...]  Remove the development and\n"
+	       "                     documentation files of installed packages\n"
+	       "                     (all when none is named), as FACETS=run\n"
+	       "                     leaves them out at install\n"
+	       "  facets --list <pkg>  What a package was installed without\n"
+	       "  needs <pkg>        What a package needs at run time, found in\n"
+	       "                     its files at install: sonames, #!\n"
+	       "                     interpreters, QML and Python imports, and\n"
+	       "                     its recipe's runtime = line\n"
+	       "  needs --resolve <pkg>  Each of those with the installed\n"
+	       "                     package providing it; exit 1 when nothing\n"
+	       "                     provides one\n"
+	       "  needs --scan <pkg>  Measure them from the installed files now,\n"
+	       "                     writing nothing\n"
 	       "  meta <pkg>         Print the recipe's metadata as shell\n"
 	       "                     assignments, for ports/fetch to eval\n"
 	       "  fetch <pkg>...     Download the sources the port directory\n"
@@ -415,6 +436,9 @@ static int build_only(KpConf *c, char **want, int nwant, int force,
 			kp_msg("Reusing %s from the store (%.12s)", pkg, key);
 			kp_store_touch(store_dir(), key);
 			free(dir);
+		} else if (kp_facets_guard(c, pkg) != 0) {
+			free(dir);
+			return 1;
 		} else {
 			kp_msg(force ? "Rebuilding %s (forced)..."
 				     : "Building %s...", pkg);
@@ -634,6 +658,10 @@ static int cmd_install(KpConf *c, int argc, char **argv)
 				kb_warn("%s: cannot copy %s into %s", pkg,
 					sfile, c->package_dir);
 			continue;
+		}
+		if (kp_facets_guard(c, pkg) != 0) {
+			free(dir);
+			return 1;
 		}
 		kp_msg(forced ? "Rebuilding %s (forced)..." : "Building %s...",
 		       pkg);
@@ -1243,6 +1271,10 @@ int front_main(int argc, char **argv)
 
 	if (!strcmp(cmd, "check"))
 		return kp_cmd_check(&c, rest, restv);
+	if (!strcmp(cmd, "facets"))
+		return kp_cmd_facets(&c, rest, restv);
+	if (!strcmp(cmd, "needs"))
+		return kp_cmd_needs(&c, rest, restv);
 
 	if (!strcmp(cmd, "meta")) {
 		if (!rest) {

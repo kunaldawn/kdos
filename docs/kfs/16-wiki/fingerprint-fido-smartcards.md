@@ -8,7 +8,8 @@ not reach is listed under [Known gaps](#known-gaps).
 
 ## Installation
 
-All of these are installed by `41_system` on every image, live and installed:
+All of these are in the base the ISO carries, live and installed, except the smart-card driver
+ccid and opensc, which `sudo kdos update install <port>` adds (see [Installing software](updating.md#installing-software)):
 
 | Hardware | Ports | Started by |
 |:--|:--|:--|
@@ -297,4 +298,4 @@ Run `service status pcscd`; start it with `sudo service start pcscd`. Check that
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 407.* Previous: [406. Screen lock](screen-lock.md) · [Contents](../README.md) · Next: [408. Firewall](firewall.md)
+*Part XVI. System administration, chapter 409.* Previous: [408. Screen lock](screen-lock.md) · [Contents](../README.md) · Next: [410. Firewall](firewall.md)

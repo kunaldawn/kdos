@@ -59,10 +59,13 @@ FLAGS+=(-Isrc/devtools/kdosbuild)
 # the chroot before this trap runs, so a single-pass build ships correct bits
 # and an incremental one squashes what the previous build's exit stripped.
 # Reading `build/fs` from the host needs a container or sudo, which is the
-# correct price for a rootfs.
+# correct price for a rootfs. build/image-upper is the base image's own layer
+# over it (script/chroot/exec.sh), and the overlay's work and merged
+# directories go with it: the same ownership, the same rule.
 hand_back() {
     [ -n "${HOST_UID:-}" ] || return 0
     find build -mindepth 1 -maxdepth 1 ! -name podman ! -name fs \
+        ! -name image-upper ! -name image-work ! -name image-root \
         -exec chown -R "$HOST_UID:${HOST_GID:-$HOST_UID}" {} + 2>/dev/null || true
     chown "$HOST_UID:${HOST_GID:-$HOST_UID}" "$OUT" "$OUT.sum" 2>/dev/null || true
 }

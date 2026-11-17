@@ -14,7 +14,8 @@
 # /usr/share/kdos/SOURCES.
 #
 # /ports IS RECIPES AND NOTHING ELSE: each port's kpkgbuild, build.sh, patches
-# and other recipe files, ports/shelves, ports/sources.idx, and src/, the two
+# and other recipe files, ports/shelves, ports/sources.idx, ports/groups (the
+# groups `kdos update install` and the installer offer), and src/, the two
 # books under docs/ and script/book for the programs of our own, whose sources
 # no archive holds. A shipped machine updates
 # by building from this tree, and kpkg fetches each source over the network
@@ -22,7 +23,11 @@
 # gigabytes and stay off the medium.
 #
 # A FILE IS A SOURCE WHEN ITS RECIPE HASHES IT (`sha256 = <hash>  <file>`) OR
-# WHEN IT IS AN ARCHIVE. The second rule catches a tarball an older version of
+# WHEN IT IS AN ARCHIVE, unless it is a recipe file: kpkgbuild, build.sh,
+# postinstall.sh and every .patch are in the recipe hash whether or not a
+# `sha256 =` line names them, so a patch left out of /ports would give every
+# machine a recipe hash the binhost's E: never matches, and a build there no
+# patch to apply. The second rule catches a tarball an older version of
 # the recipe named and no recipe names now; without it the tree carries every
 # stale download left in a port directory.
 #
@@ -57,7 +62,7 @@ echo "Staging the recipe tree for /ports..."
 rm -rf "$STAGE"
 mkdir -p "$TREE/core"
 
-for f in shelves sources.idx; do
+for f in shelves sources.idx groups; do
     [ -f "/ports/$f" ] || { echo "FATAL: /ports/$f is missing" >&2; exit 1; }
     cp "/ports/$f" "$TREE/$f"
 done
@@ -75,7 +80,10 @@ for k in /ports/core/*/*/kpkgbuild; do
     mkdir -p "$TREE/$rel"
     while IFS= read -r -d '' f; do
         f=${f#"$d"/}
-        [ -n "${hashed[$f]:-}" ] && continue
+        case "$f" in
+            kpkgbuild|build.sh|postinstall.sh|*.patch) ;;
+            *) [ -n "${hashed[$f]:-}" ] && continue ;;
+        esac
         case "$f" in
             *.tar|*.tar.*|*.tgz|*.tbz2|*.txz|*.zip|*.7z|*.part|*.jar) continue ;;
         esac
@@ -120,6 +128,16 @@ echo "  $nports ports ($nfiles files), $nsrc of our own under src/, $(du -sh "$S
 # `ports/publish --release` signs with, kept in build/keys/ and never in git.
 # A build without it ships an empty ring, and that image refuses every
 # fetched tree rather than trusting an unsigned one.
+#
+# THE SAME BUILD'S TWO KEYS GO INTO /etc/kdos/keys, the host ring the
+# release index, the binhost index, every prebuilt package and the slot
+# image's manifest are verified against: build/binhost-key/kdos-binhost.pub,
+# which 010_binhost.sh signs the binhost with, and the release key, which
+# signs the slot image (release-image.sh) and the release index beside the
+# binhost key (ports/publish). The image takes its own release's prebuilt
+# packages and slot images and no other builder's. With neither the ring
+# ships empty, and `kdos update install --prebuilt` and the image lane
+# refuse with no-key.
 if [ -n "${KDOS_GIT_COMMIT:-}" ]; then
     {
         echo "kdos-tree 1"
@@ -140,6 +158,15 @@ if [ -f "$RELEASE_PUB" ]; then
 else
     echo "  no build/keys/kdos-release.pub: $TREE_RING is empty and this image fetches no tree"
 fi
+rm -f /etc/kdos/keys/*.pub
+for pub in "$RELEASE_PUB" /kdos/build/binhost-key/kdos-binhost.pub; do
+    if [ -f "$pub" ]; then
+        install -m 0644 "$pub" "/etc/kdos/keys/${pub##*/}"
+        echo "  /etc/kdos/keys trusts ${pub#/kdos/}"
+    else
+        echo "  no ${pub#/kdos/}: /etc/kdos/keys does not trust it"
+    fi
+done
 
 # ── The source offer ────────────────────────────────────────────────────
 #

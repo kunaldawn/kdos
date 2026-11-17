@@ -11,8 +11,8 @@
  * network:
  *
  *   the KDOS and KFS books   headings of /usr/share/doc/{kdos,kfs}, opened
- *                            in KHelpCenter at that heading
- *   manual pages             `kdos*` pages, opened in KHelpCenter
+ *                            in the browser at that heading
+ *   manual pages             `kdos*` pages, opened by man(1) in Konsole
  *   Zeal docsets             entries whose name starts with the query, from
  *                            each docset's own SQLite index (zeal.c)
  *   places                   a typed coordinate, opened as a geo: link in
@@ -393,7 +393,7 @@ static void match_books(const RnQuery *q, RnList *out)
 		snprintf(url, sizeof(url), "file://%s%s%s", h->file,
 			 *h->id ? "#" : "", h->id);
 		kb_strlcpy(m->url, url, sizeof(m->url));
-		rn_arg(m, "khelpcenter");
+		rn_arg(m, "xdg-open");
 		rn_arg(m, url);
 	}
 }
@@ -438,8 +438,10 @@ static void match_man(const RnQuery *q, RnList *out)
 			m->catrel = RN_CAT_LOW;
 			m->rel = 0.3 + (s > 100 ? 100 : s) / 250.0;
 			snprintf(url, sizeof(url), "man:/%s(%s)", name, secs[si]);
-			rn_arg(m, "khelpcenter");
-			rn_arg(m, url);
+			m->how = RN_RUN_TERM;
+			rn_arg(m, "man");
+			rn_arg(m, secs[si]);
+			rn_arg(m, name);
 			shown++;
 		}
 		kb_strv_free(names);

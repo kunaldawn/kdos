@@ -36,6 +36,7 @@ libplacebo
 
 libglvnd
 mesa
+mesa-opencl
 libepoxy
 glu
 

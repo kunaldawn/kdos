@@ -1,0 +1,8 @@
+6,801,2915000,-;pci 0000:02:00.0: [17cb:1103] type 00 class 0x028000 PCIe Endpoint
+ SUBSYSTEM=pci
+ DEVICE=+pci:0000:02:00.0
+4,812,3021000,-;ath11k_pci 0000:02:00.0: Direct firmware load for ath11k/WCN6855/hw2.0/amss.bin failed with error -2
+3,813,3021100,-;ath11k_pci 0000:02:00.0: firmware: failed to load ath11k/WCN6855/hw2.0/amss.bin (-2)
+4,830,4100000,-;bluetooth hci0: Direct firmware load for nope/unknown.bin failed with error -2
+4,831,4100100,-;evil 0000:09:00.0: Direct firmware load for ../../etc/shadow failed with error -2
+[    5.100000] iwlwifi 0000:00:14.3: firmware: failed to load iwlwifi-so-a0-gf-a0-89.ucode (-2)

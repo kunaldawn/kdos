@@ -1104,9 +1104,18 @@ which the `discover` port's `sysupdate-size.patch` reads for the Updates list; t
 ### io.kdos.Slots1
 
 The System Versions page and `kdos-notice` read the slots through `io.kdos.Slots1`: the properties
-`Configured`, `Live` (the live medium, from `kdos-bootctl status --json`), `RunningSlot`, `ActiveSlot`, `TrySlot`, `TryAttempts`, `TryBootNext`, `Channel` and
-`State`, the methods `ListSlots`, `Try`, `CancelTry`, `SetChannel` and `Bless`, and the signal
-`SlotsChanged`. Its contract is the page's own `io.kdos.Slots1.xml`.
+`Configured`, `Live` (the live medium, from `kdos-bootctl status --json`), `RunningSlot`, `ActiveSlot`, `TrySlot`, `TryAttempts`, `TryBootNext`, `Channel`,
+`InstallRoute`, `BuildDeps` and `State`, the methods `ListSlots`, `Try`, `CancelTry`, `SetChannel`,
+`SetInstallRoute` and `Bless`, and the signal `SlotsChanged`. Its contract is the page's own
+`io.kdos.Slots1.xml`.
+
+`InstallRoute` and `BuildDeps` are the `install =` and `build-deps =` lines of
+`/etc/kdos/update.conf`, the route [`kdos update install`](kdos-command.md#install-routes-and-groups)
+takes when no flag names one and the route of what a source install lacks: each `prebuilt` or
+`source`, and `prebuilt` when the line is absent or holds anything else, which is what `kdos
+update` does with it. `SetInstallRoute(ss install, deps)` writes both lines, every other line of
+the file kept as it was, and answers `InvalidArgs` for any word but those two; `PropertiesChanged`
+announces both properties.
 
 ### Confirming a boot
 
@@ -1139,6 +1148,7 @@ Root is answered without asking polkit, and the bus policy lets only root own th
 | `org.freedesktop.sysupdate1.update-to-version` | `Acquire` and `Install` naming a version | `auth_admin` | `auth_admin` |
 | `io.kdos.slots.try` | `Try`, `CancelTry` | `auth_admin_keep` | `auth_admin` |
 | `io.kdos.slots.channel` | `SetChannel` | `auth_admin_keep` | `auth_admin` |
+| `io.kdos.slots.install-route` | `SetInstallRoute` | `auth_admin_keep` | `auth_admin` |
 | `io.kdos.slots.bless` | `Bless`, never interactive | `yes` | `no` |
 
 ### Running and testing it

@@ -28,7 +28,7 @@ The five names, each dispatching on the name it was run under:
 | `kpkgdepends` | Prints the resolved install order, and nothing else |
 
 Every image carries the recipe tree at `/ports`: each port's `kpkgbuild`, `build.sh` and patches,
-`ports/shelves`, `ports/sources.idx`, and KDOS's own programs under `/ports/src`, with no upstream
+`ports/shelves`, `ports/sources.idx`, `ports/groups`, and KDOS's own programs under `/ports/src`, with no upstream
 source archive in it ([105_ports](../15-image/105-ports.md) stages it). The trust ring for prebuilt packages,
 [`/etc/kdos/keys/`]{.idx term="/etc/kdos/keys"}, comes from the base filesystem, `fs/etc/kdos/keys/`.
 
@@ -47,9 +47,10 @@ The file is `src/system/kdos-kpkg/kpkg.conf`:
 
 <!-- kfs:include src/system/kdos-kpkg/kpkg.conf -->
 
-Every line is `NAME="${NAME:-default}"`. `kpkg` reads it as a key and a value without running a
-shell, and an environment variable of the same name wins over the file, so one command can point
-`kpkg` somewhere else without editing anything:
+Every line is `NAME="${VARIABLE:-default}"`, the variable named after the key but for `FACETS`,
+whose variable is `KPKG_FACETS`. `kpkg` reads it as a key and a value without running a shell,
+and the variable wins over the file, so one command can point `kpkg` somewhere else without
+editing anything:
 
 ```bash
 PORT_REPO="/home/kdos/ports /ports/core" kpkg info foo
@@ -59,12 +60,20 @@ Each directory `PORT_REPO` names is searched for a port at `<name>/` and one she
 `<shelf>/<name>/`, and the first directory holding the name wins. The keys and their limits are in
 [/etc/kpkg.conf](../../kdos/06-reference/configuration.md#etckpkgconf).
 
+The file above says `FACETS="${KPKG_FACETS:-all}"`, which is what the build uses. The image's copy
+says `run` ([The image stage](../15-image/017-stage.md#the-facets)): an install on the medium, or
+on a machine installed from it, leaves out each package's headers, static libraries, CMake and
+pkg-config files, man sections 0, 2 and 3 and its manuals under `/usr/share/doc`, `info` and
+`gtk-doc`. See [Development files](#development-files).
+
 ### The package database
 
 `/var/lib/kpkg/db/` is written only by `kpkg` itself, as it installs and removes packages. Do not
 edit it by hand. For each installed package it holds `<name>` (the version and release, then every path the
-package owns), and `.recipe/<name>`, `.pkgsha/<name>` and `.files/<name>` beside it;
-[The database entry](../04-chroot/kpkg-install.md#the-database-entry) shows the four files of one
+package owns), and `.recipe/<name>`, `.pkgsha/<name>`, `.files/<name>` and `.needs/<name>` (what
+its files need at run time) beside it, and `.facets/<name>` for a package installed without its
+development and documentation files;
+[The database entry](../04-chroot/kpkg-install.md#the-database-entry) shows the five files of one
 package, and [`/var/lib/kpkg/`](../../kdos/06-reference/filesystem-and-ipc.md#varlibkpkg--the-host-package-database)
 says what each file and the lock beside them hold.
 
@@ -177,14 +186,95 @@ the SHA-256 and mode of every regular file it placed.
    sudo kpkg check --all --root /mnt/slot-b
    ```
 
+### Development files
+
+The image installs each package without the files only a build or a reader of manuals uses, and
+lists what it left out of each one.
+
+1. See what a package was installed without:
+
+   ```bash
+   kpkg facets --list zlib
+   ```
+
+   ```text
+   dev ./usr/include/zconf.h
+   dev ./usr/include/zlib.h
+   dev ./usr/lib/libz.a
+   dev ./usr/lib/libz.so
+   dev ./usr/lib/pkgconfig/zlib.pc
+   dev ./usr/share/man/man3/zlib.3
+   ```
+
+   A package installed with every file prints `zlib: every facet installed`.
+
+2. Bring them back. `kdos update install --dev` installs the package again, whole, from the
+   release's binary host, and it stays whole across updates; a group name restores each member:
+
+   ```bash
+   sudo kdos update install --dev zlib
+   ```
+
+3. Strip them again, from one package or, with no name, from every package:
+
+   ```bash
+   sudo kpkg facets --strip zlib
+   ```
+
+   ```text
+   ==> zlib: 6 files left out, 261K
+   ==> facets: 1 package stripped, 267579 bytes (261K) freed
+   ```
+
+The rules, and the files each keeps a running program from losing, are in
+[Facets](../../kdos/03-architecture/packaging.md#facets).
+
+### What a package needs at run time
+
+Each install records what the package's files need at run time: the libraries its programs link,
+the interpreters its scripts name, the QML modules and Python packages they import, and what its
+recipe's `runtime =` line names.
+
+1. Print the record, and which installed package provides each line:
+
+   ```bash
+   kpkg needs --resolve kirigami
+   ```
+
+   ```text
+   qml QtQuick qt6-qtdeclarative
+   qml org.kde.kitemmodels kitemmodels
+   so libQt6Core.so.6 qt6-qtbase
+   so libc.so musl
+   ```
+
+   A line ending `(nothing)` is an edge nothing installed provides, and the command then exits 1;
+   `(unowned)` is a file no package claims.
+
+2. A package installed before records were kept prints `no run-time needs recorded`; measure it
+   from its installed files, writing nothing:
+
+   ```bash
+   kpkg needs --scan zlib
+   ```
+
+What each kind of line is found in, and how the image uses the records to prove its base, is in
+[Run-time needs](../../kdos/03-architecture/packaging.md#run-time-needs).
+
 ### Building and installing a port
 
 On a running machine a port is built from `/ports` with its sources fetched over the network,
-because `/ports` holds no [source archive]{.idx}. This needs the network, and it compiles on the machine.
+because `/ports` holds no [source archive]{.idx}. This needs the network, and it compiles on the
+machine against the headers and libraries of what it depends on, which the image left out
+([Development files](#development-files)): restore them first, as step 2 does.
 
-The image carries almost every port already installed, `pv` among them, so to follow these steps
-as written remove it first with `sudo kpkg remove pv`; for a port that is installed, step 1
-prints an empty line and step 3 prints `Nothing to do`.
+The image carries only the base, and `pv` is not in it, so these steps work as written. An image
+built with `KDOS_IMAGE=full` carries every port, `pv` among them: remove it first with
+`sudo kpkg remove pv`. For a port that is installed, step 1 prints an empty line and step 4 prints
+`Nothing to do`. These steps are kpkg alone; `kdos update install --source <port>` does the same
+build and also records the port in the world set and its route in `/var/lib/kdos/origin`, so
+updates keep it and build it here again (see
+[Installing software](updating.md#installing-software)).
 
 1. Look at what would be built. `kpkgdepends` prints the install order, leaving out every package
    that is already installed, so with `ncurses` present it prints `pv` alone:
@@ -193,7 +283,19 @@ prints an empty line and step 3 prints `Nothing to do`.
    kpkgdepends pv
    ```
 
-2. Fetch the sources of the port. `kpkg fetch` takes each file the recipe hashes and the machine
+2. Restore the development files of what `pv` compiles against: `ncurses`, which its recipe
+   names, and `musl`, `linux` and `gcc`, which every compile reads. `kpkg install` refuses until
+   they are back, and names them:
+
+   ```bash
+   sudo kdos update install --dev ncurses musl linux gcc
+   ```
+
+   `kpkg install` also needs the build tools the base does not carry, `binutils` and `make`
+   among them; `kdos update install --source pv` does this step itself and installs every member
+   of the `build-tools` group the machine lacks first.
+
+3. Fetch the sources of the port. `kpkg fetch` takes each file the recipe hashes and the machine
    lacks from the KDOS source archive first and from the recipe's own URL second, and keeps a copy
    in [`/var/cache/kpkg/sources`]{.idx} only when it matches the recipe's `sha256 =`:
 
@@ -209,7 +311,7 @@ prints an empty line and step 3 prints `Nothing to do`.
    be reached at all. See
    [Fetching sources on a machine](../../kdos/03-architecture/packaging.md#fetching-sources-on-a-machine).
 
-3. Build and install it. With `KPKG_FETCH=1` the port, and each dependency built on the way,
+4. Build and install it. With `KPKG_FETCH=1` the port, and each dependency built on the way,
    fetches whatever sources are still missing as `kpkg` reaches it:
 
    ```bash
@@ -221,7 +323,7 @@ prints an empty line and step 3 prints `Nothing to do`.
    `==> Package 'pv' installed successfully`. On an eight-thread virtual machine this takes about
    12 seconds. `--keep-cache` keeps the package file for a later `kpkgadd`.
 
-4. Confirm the result:
+5. Confirm the result:
 
    ```bash
    kpkg info pv
@@ -273,8 +375,11 @@ refused with `<file>: signature check FAILED — not installing`.
 
 ### Using a binary host
 
-A [binary host]{.idx} is a directory of prebuilt packages with a signed index, `PACKAGES`. KDOS
-publishes none; a build machine writes one to `build/binhost/` with
+A [binary host]{.idx} is a directory of prebuilt packages with a signed index, `PACKAGES`. A
+release's binhost is the package repository of that release, and `kdos update install` installs
+from it with every dependency, recording what it installed (see
+[Installing software](updating.md#installing-software)); this section uses a binary host by hand,
+with kpkg alone. A build machine writes one to `build/binhost/` with
 `make build KDOS_MAKE_BINHOST=1`, which [010_binhost](../15-image/010-binhost.md) indexes and
 signs, putting the public key beside the index as `kdos-binhost.pub`. A medium built with
 `KDOS_ISO_SOURCES=1` as well carries that directory at `/mnt/iso/sources/binhost`.
@@ -339,8 +444,8 @@ build on the live medium also compiles into RAM: `/var/cache/kpkg/work` is on th
 
 ## Tips
 
-- `kpkg help` prints the full command list. `kpkg` has no update command; the system is updated
-  with `kdos update` ([Updating](updating.md)).
+- `kpkg help` prints the full command list. `kpkg` has no update command; the system is updated,
+  and software the base leaves out installed, with `kdos update` ([Updating](updating.md)).
 - `kpkg install --root DIR <port>` installs into another root, such as a mounted target or a
   second slot, and `kpkg list --root DIR` lists one.
 - `kpkg check` reads the record taken after the package's install hook ran, so a mode a hook sets
@@ -390,6 +495,11 @@ build on the live medium also compiles into RAM: `/var/cache/kpkg/work` is on th
 `Nothing to do`
 : Every port named is installed, and on a running system that is enough. Add `-f` to rebuild it.
 
+`ERROR: <port> builds against <pkg>, installed without its development files`
+: The image left out the headers and libraries the build needs. Run the
+  `sudo kdos update install --dev <pkg>...` the message names, then the install again. See
+  [Development files](#development-files).
+
 `ERROR: Build failed`
 : Read the build's output above the line; the unpacked source is still in
   `/var/cache/kpkg/work/<name>/`. A build on a running machine does not get the compiler flags the
@@ -421,4 +531,4 @@ A `kpkg install` or `kpkg remove` waits and never finishes
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 428.* Previous: [427. Firmware updates](firmware-updates.md) · [Contents](../README.md) · Next: [429. Updating](updating.md)
+*Part XVI. System administration, chapter 430.* Previous: [429. Firmware updates](firmware-updates.md) · [Contents](../README.md) · Next: [431. Updating](updating.md)

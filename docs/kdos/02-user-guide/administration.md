@@ -791,10 +791,34 @@ table, which leaves the machine unfiltered until the next start.
 
 ### Firmware
 
-`linux-firmware` is installed with upstream's own script so that the alias links drivers ask for
-exist. It ships every blob an x86 kernel can request: only firmware for hardware this kernel cannot
-drive is left out (see the [ports catalogue](../06-reference/ports-catalogue.md#boot)). Trimming by
-guessing at your hardware would fail silently, so nothing an x86 driver names is removed.
+Upstream's `linux-firmware` tree is installed with its own script so that the alias links drivers
+ask for exist, and split by vendor into eight packages: `firmware-intel`, `firmware-amd`,
+`firmware-nvidia`, `firmware-realtek`, `firmware-mediatek`, `firmware-broadcom`,
+`firmware-qualcomm` and `firmware-misc`. Between them they ship every blob an x86 kernel can
+request; only firmware for hardware this kernel cannot drive is left out (see the
+[ports catalogue](../06-reference/ports-catalogue.md#boot)). The installation medium, and so a new
+installation, carries Intel's, AMD's, MediaTek's and Realtek's, which are the graphics, Wi-Fi and
+Bluetooth of most machines; the other four are prebuilt packages, and `linux-firmware` is the meta
+that installs all eight.
+
+`kdos firmware sync` installs what this machine's hardware asks for and has not got:
+
+```sh
+kdos firmware sync --dry-run   # which ports, and the device or failed load that asks for each
+sudo kdos firmware sync        # install them, prebuilt
+sudo kdos firmware sync --all  # every vendor port
+```
+
+It reads each device's modalias under `/sys`, the firmware files its driver declares, and the
+kernel log's failed firmware loads, and maps each missing file to the port that ships it through
+`/usr/share/kdos/firmware-map`. On the live medium, or on an installed machine after new
+hardware, the session raises a notice naming the port, with an **Install** button that opens
+`sudo kdos firmware sync` in Konsole. The installer runs it into the new disk when it has a
+network. A live session on hardware whose firmware is not on the medium (a Qualcomm or Broadcom
+Wi-Fi card, a Turing or later NVIDIA GPU, the Cirrus or TI amplifiers of some laptops' speakers)
+lacks that device until the command has run, and needs another way onto a network for it (see
+[Known gaps](../06-reference/known-gaps.md#the-installation-medium-carries-four-vendors-firmware)).
+The command is in [kdos firmware](../04-programs/kdos-command.md#kdos-firmware).
 
 `sof-firmware` is separate and is needed for audio on Intel Tiger Lake and newer. It carries both
 the DSP firmware and the topology files; firmware without its topology loads and produces no sound.
@@ -815,7 +839,7 @@ is still on the world domain, and `sudo iw reg set <CC>` changes it until the ne
 
 CPU microcode is applied by the kernel's early loader, which runs before any filesystem exists, so
 it is carried as an uncompressed archive in front of the initramfs: Intel's from the `intel-ucode`
-package and AMD's from `linux-firmware`. Late loading is off in the kernel, so this is the only way
+package and AMD's from `firmware-amd`. Late loading is off in the kernel, so this is the only way
 microcode is applied.
 
 ```sh
@@ -1039,8 +1063,10 @@ OpenCL filters (`tonemap_opencl`, `nlmeans_opencl`, `unsharp_opencl`, `overlay_o
 rest) and hardware acceleration through VA-API and Vulkan. There is one encoder per format. There
 is no `ffplay`, because it needs SDL, and SDL depends back on ffmpeg through PipeWire.
 
-The OpenCL filters run on Mesa's rusticl, which offers an Intel or AMD GPU because
-`/etc/profile.d/50-opencl.sh` sets `RUSTICL_ENABLE`; a machine with neither has no OpenCL device.
+The OpenCL filters run on Mesa's rusticl, the `mesa-opencl` port, which the installation medium
+does not carry (it brings clang): `kdos update install mesa-opencl` adds it. It offers an Intel or
+AMD GPU because `/etc/profile.d/50-opencl.sh` sets `RUSTICL_ENABLE`; a machine with neither, or
+without `mesa-opencl`, has no OpenCL device.
 
 The build passes `--enable-gpl` (which x264, x265 and rubberband require) together with
 `--enable-version3`, and ffmpeg's `configure` licenses that combination as GPL version 3 or later.
@@ -1135,8 +1161,11 @@ up, is rolled back by itself, and the previous version stays one restart away (s
 
 System Settings → System Versions lists both slots, with the version, build date, tree and kernel
 each holds, and its one button, **Start This Version Next Time**, boots the other slot once: the
-previous version after an update, or the new one again after a rollback. Its one setting is where
-updates come from: the KDOS releases, a folder or removable medium, or another address.
+previous version after an update, or the new one again after a rollback. It sets where updates
+come from: the KDOS releases, a folder or removable medium, or another address; and, under
+**Installing software**, whether a terminal install downloads a program prebuilt or builds it on
+this computer, and whether a build also builds what the program needs (see
+[Installing host software](#installing-host-software)).
 
 **From a prompt**, `kdos update` does the same steps:
 
@@ -1146,7 +1175,7 @@ kdos update check          # what is behind, what is offered, and the last probl
 sudo kdos update fetch     # the newest signed ports tree, then the release index and what it names
 sudo kdos update apply     # write the next release into the other slot and arm it
 kdos update notes          # the release notes of the version running
-sudo kdos update install <port>   # one more port, from the release's binaries
+sudo kdos update install <port>   # one more port, or a group; see Installing host software
 ```
 
 | Command | Does |
@@ -1154,7 +1183,8 @@ sudo kdos update install <port>   # one more port, from the release's binaries
 | `kdos update fetch` | Downloads the latest release's ports tree, checks its signature against `/etc/kdos/keys/tree` and installs it as `/ports`; beside it, the release's signed index of where every update file is, `kdos-update.idx`, and through it alone the signed binary-package index into `/var/lib/kdos/binhost` and the signed slot-image manifest into `/var/lib/kdos/image/offer`, each checked against `/etc/kdos/keys` and against the size and hash the index gives before it is kept. A tree older than the installed one is refused. `--from URL` or `--from DIR` (a stick holding the release's files) reads it from elsewhere |
 | `kdos update check` | Lists installed packages whose version and release are older than the ports tree's, which of them the signed binary index covers, whether a newer signed slot image exists, what is offered, and the last problem: no tree, no network, a fetch, a signature or an apply that failed. `--json` prints JSON and `--out PATH` writes it to a file, for Discover and the update tray. `--fetch` runs `fetch` first |
 | `kdos update apply` | Writes the next release into the inactive slot and arms it, by one of three lanes (below). `--acquire` and `--arm` run its two halves separately, as Discover does; `--dry-run` says what would happen; `--in-place` updates the running root of a machine with one slot, and gives up the rollback |
-| `kdos update install <port>` | Installs one port, and every package it lacks, into the running system from the release's signed binaries; nothing is ever compiled. Discover's host-software installs run it |
+| `kdos update install <port\|group>` | Installs one port, or every member of a group, and every package it lacks, into the running system: prebuilt from the release's signed binaries, or built here with `--source`. Discover's host-software installs run it |
+| `kdos update groups` | Lists every native group, whether it is installed, the members missing, and its download size from the cached index |
 | `kdos update theme` | Re-runs the theme generators for your home directory after an artwork upgrade |
 
 `fetch`, `apply` and `install` run as root. Every download is HTTPS, or a file on a local medium; a
@@ -1165,15 +1195,16 @@ or `--source` names one:
 
 | Lane | What arrives | Network |
 |---|---|---|
-| The slot image | The release's root filesystem as it was built and tested: a signed manifest of every file with its hash, and the bundles that carry the files. Files the slot or the running system already hold are copied and checked; then the delta from the version this machine runs, which holds only what changed, often as a patch against the same file; then the full image for whatever is still missing. Every file is checked against the signed manifest before it is kept, so a damaged or altered bundle is refused and the full image used instead | The delta, usually far smaller than the release |
-| The binary packages | When no newer image is published: each package behind its recipe, prebuilt, from the release's signed binary index, installed into the slot. Used only when the index covers every package that is behind, so a slot is never half prebuilt and half compiled | The packages that changed, as deltas where the previous package is still cached |
+| The slot image | The release's base as it was built and tested: a signed manifest of every file with its hash, and the bundles that carry the files. Files the slot or the running system already hold are copied and checked; then the delta from the version this machine runs, which holds only what changed, often as a patch against the same file; then the full image for whatever is still missing. Every file is checked against the signed manifest before it is kept, so a damaged or altered bundle is refused and the full image used instead. Then everything installed on purpose (the world set) and what it needs goes into the slot, prebuilt from the same release's binhost or, for a package that was built here, built in the slot. Before anything is written, a prebuilt package the binhost does not hold refuses this lane and names how many | The delta, usually far smaller than the release, and the packages of the world set |
+| The binary packages | When no newer image is published: each package behind its recipe, installed into the slot by the way it came, prebuilt from the release's signed binary index, or fetched and built in the slot when it was built here. Used only when the index covers every package behind it that came prebuilt; `kdos update check --json` counts the builds as `builds` | The packages that changed, as deltas where the previous package is still cached, and the sources of those built here |
 | `--source` | Every source the newer recipes name, then every package that is behind, compiled here | Every changed source; a large set takes hours to build |
 
 Whatever the lane, arming a slot carries this machine's own state into it: a configuration file you
 edited keeps your copy, with the release's new default beside it as `<file>.kdos-new`; one you did
 not edit takes the new default; the account databases are merged by name; and the machine's
 network connections, Bluetooth pairings, crontabs, the login screen's state, the packages you added
-with `kdos update install` and the paths named by `carry =` lines in `/etc/kdos/update.conf` follow.
+with `kdos update install` (the world set, `/var/lib/kdos/world`, and the way each package came,
+`/var/lib/kdos/origin`) and the paths named by `carry =` lines in `/etc/kdos/update.conf` follow.
 The new slot's own `fstab` keeps its own root. The pack store and every home are on the shared
 volume and are not in either slot, and so is the record of which data packs are grafted: the slot
 that boots grafts every one it names into its own `/usr/share`. `tree =`, `binhost =` and
@@ -1217,6 +1248,51 @@ images this machine built, so rebuilding it is the update: `kdos app remove <id>
 the rebuild reads the same Debian snapshot as before, because the pulled `debian:trixie-slim` is
 kept; its packages move to a newer snapshot only when the catalogue names a later date or this
 machine pulls a newer `debian:trixie-slim`. See [Applications](applications.md#updating).
+
+### Installing host software
+
+The live ISO and an installed machine carry the base. Every other native port is installed from
+Discover, or from a prompt with `kdos update install`, by one of two routes:
+
+```sh
+sudo kdos update fetch                        # the release's signed package index, among the rest
+sudo kdos update install gimp                 # prebuilt from the release's binhost
+sudo kdos update install --source bat         # built here; what it lacks downloaded prebuilt
+sudo kdos update install --source --build-deps=source bat   # built here, what it lacks built too
+sudo kdos update install office               # a group: each member as the port it is
+sudo kdos update install --pending            # the groups the installer recorded while offline
+kdos update install --dry-run kdenlive        # what would be downloaded or built, changing nothing
+sudo kdos update install --root /mnt/other gimp   # into a root that is not running, prebuilt only
+sudo kdos update install --dev zlib           # zlib again whole: its headers, libz.a and manuals
+```
+
+`/etc/kdos/update.conf` names the route a terminal install takes when no flag does:
+
+| Key | Values | Decides |
+|---|---|---|
+| `install =` | `prebuilt` (the default), `source` | Whether the port asked for is downloaded or built here |
+| `build-deps =` | `prebuilt` (the default), `source` | For a build, whether each dependency the machine lacks is downloaded or built too |
+
+Any other value makes `kdos update install` exit 2. System Settings › System Versions ›
+**Installing software** writes both lines through `kdos-sysupdated`, behind an administrator's
+password. Discover does not read `install =`: it offers *KDOS system* and *KDOS, built on this
+computer* for every port the binhost holds, and asks for the password every time it builds.
+
+A prebuilt install checks every package against the signed index before it installs any, and
+refuses as a whole, naming `kdos update install --source <port>`, when the index does not cover
+one. A build fetches every source first, then compiles under `/etc/kdos/chroot.env`, the build
+environment the binhost's packages were made in. An install never rebuilds a package already
+installed, and refuses when an installed dependency is older than its recipe; update the system
+first. Each package records its route in `/var/lib/kdos/origin`, and an update keeps it: a package
+built here is built here again.
+
+The image installs each package without its development and documentation files (headers, static
+libraries, man sections 2 and 3, `/usr/share/doc`); `kpkg facets --list <port>` says what one
+left out and `kdos update install --dev` brings them back. A build here first installs the
+members of the `build-tools` group it lacks, and brings back the development files of everything it
+compiles against. Groups, the routes and every output line are in
+[The kdos command](../04-programs/kdos-command.md#install-routes-and-groups), and the groups by name
+in [Applications](applications.md#native-groups).
 
 ## Diagnosing
 

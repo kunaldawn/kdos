@@ -92,8 +92,8 @@ to `/run/nftables-fallback.nft`. Either way the script reports `[FAIL]`. `stop` 
    kdos-power firewall list
    ```
 
-   `nft list ruleset` on a fresh boot shows `table inet filter` and libvirt's own
-   `ip libvirt_network` and `ip6 libvirt_network`; podman and a NetworkManager hotspot add theirs
+   `nft list ruleset` on a fresh boot shows `table inet filter` and, with libvirt installed,
+   libvirt's own `ip libvirt_network` and `ip6 libvirt_network`; podman and a NetworkManager hotspot add theirs
    while they run.
 
 ### Opening a named service
@@ -274,4 +274,4 @@ It was in `50-kdos-services.nft`, which `kdos-powerd` rewrites whole. Move it to
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 408.* Previous: [407. Fingerprints, FIDO keys and smart cards](fingerprint-fido-smartcards.md) · [Contents](../README.md) · Next: [409. SSH server](ssh-server.md)
+*Part XVI. System administration, chapter 410.* Previous: [409. Fingerprints, FIDO keys and smart cards](fingerprint-fido-smartcards.md) · [Contents](../README.md) · Next: [411. SSH server](ssh-server.md)

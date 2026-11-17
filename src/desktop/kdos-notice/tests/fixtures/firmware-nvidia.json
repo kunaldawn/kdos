@@ -1,0 +1,1 @@
+{"ports":[{"port":"firmware-nvidia","reason":"module nouveau, pci 0000:01:00.0"}],"unshipped":[],"kernel_log":false,"modules":true}

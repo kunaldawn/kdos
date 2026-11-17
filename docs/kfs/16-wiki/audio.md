@@ -255,4 +255,4 @@ SOF firmware and topology files. `kdos doctor` checks both in its Hardware secti
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 422.* Previous: [421. Printing and scanning](printing-and-scanning.md) · [Contents](../README.md) · Next: [423. Displays and scaling](displays-and-scaling.md)
+*Part XVI. System administration, chapter 424.* Previous: [423. Printing and scanning](printing-and-scanning.md) · [Contents](../README.md) · Next: [425. Displays and scaling](displays-and-scaling.md)

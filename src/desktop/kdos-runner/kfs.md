@@ -48,7 +48,7 @@ the box's accent profile, by itself only from a terminal, and started from the r
 would otherwise have none. A kdos verb run in the background is watched by a detached process, which posts the verb's
 error output as a notification when it fails, so a refused `kdos theme` is never silent. The
 programs a row may start are `kdos`, `kdos-box`, `kstart`, `systemsettings`, `plasma-discover`,
-`konsole`, `khelpcenter`, `zeal` and `xdg-open`; none is a dependency, and a missing one fails
+`konsole`, `man`, `zeal` and `xdg-open`; none is a dependency, and a missing one fails
 only its row.
 
 KRunner sends Match on every keystroke and the palette answers from memory: each file it reads is

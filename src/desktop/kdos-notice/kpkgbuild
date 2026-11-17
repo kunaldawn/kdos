@@ -11,7 +11,7 @@
 name        = kdos-notice
 version     = 0.1.0
 release     = 1
-description = The system's notices in Plasma: restarts after an update, CVEs, the trial slot, a rollback, memory kills; confirms a booted slot
+description = The system's notices in Plasma: restarts after an update, CVEs, the trial slot, a rollback, memory kills, missing firmware; confirms a booted slot
 homepage    = https://github.com/kunaldawn/kdos
 license     = MIT
 depends     = basu kdos-tools

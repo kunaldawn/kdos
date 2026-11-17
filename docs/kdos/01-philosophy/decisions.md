@@ -25,7 +25,7 @@ decisions that look like missing features.
 | [The login](#sddm-with-a-wayland-greeter) | SDDM, its greeter on `kwin_wayland`, and no X11 session |
 | [The look](#kdos-modern-with-phosphor-mode-on-request) | KDOS Modern in eight accents from one palette; Phosphor mode off until asked for |
 | [Windows](#floating-windows-with-smart-snap-tiling-on-request) | Floating windows with edge and quarter snap; an automatic tiler bundled and off |
-| [Application delivery](#native-applications-on-the-medium-a-store-that-builds-the-rest) | The medium carries native ports; podman builds catalogue applications on request |
+| [Application delivery](#a-base-on-the-medium-every-port-prebuilt-beside-it) | The medium carries the base; every native port is prebuilt in the release's binhost or built on the machine; podman builds catalogue applications on request |
 | [Finding software](#discover-with-kdos-backends-as-the-one-software-centre) | Discover, with KDOS backends for ports, packs, boxes and the root slots; no Flathub and no "Get New…" |
 | [Application packaging](#one-pack-per-application-not-one-image) | One artefact per application over shared runtimes, never one image |
 | [The base distribution in boxes](#debian-inside-boxes-not-alpine) | Debian trixie, with Alpine carried as a scratch base |
@@ -190,29 +190,59 @@ and it turns every application's first window into a layout decision. One tiler 
 two, so there is one behaviour to document and test. The cost is a third-party script tied to
 KWin's scripting interface, pinned to a release and tested again at every Plasma minor release.
 
-## Native applications on the medium, a store that builds the rest
+## A base on the medium, every port prebuilt beside it
 
-The installation medium carries native ports of the applications a machine needs with no network: a
-browser, an office suite, media and graphics tools, maps, an offline library, and specialist tools
-for CAD, electronics, software radio, science and amateur radio. A machine that never sees a network
-has only what its media carry, so these are compiled like every other port and ship in the root
-filesystem; [The ports catalogue](../06-reference/ports-catalogue.md) lists them by shelf. For
-everything else, the medium carries a catalogue, and podman builds what somebody asks for. A
-catalogue row is a parent chain of apt packages: installing a row builds a podman image per row in
-its chain, each `FROM` the one below, and creates a [box](../06-reference/glossary.md#box) (a rootless
-podman container one application runs in) over the top one. The catalogue file installs to
-`/usr/share/kdos/appstore/catalogue`, and it is what Discover's KDOS backend, kinstall (the
-installer) and `kdos app` all read, so adding an application to KDOS is one line in a text file.
-Discover lists the catalogue beside the native ports, and kinstall offers it by group — seven of
-them, from one application each in `essential`, `creative`, `make` and `games` to six in
-`science` — so choosing the six science applications is one choice rather than six.
+The installation medium carries the *base*: the ports [`ports/base`](../../../ports/base) names and
+their dependency closure, which `script/lib/imageset.py` computes over each recipe's `depends =`
+line without following it into a compiler `ports/buildonly` lists. That is the Plasma session, the
+core KDE applications, Firefox ESR, networking, printing and scanning, the box stack, the
+self-hosting toolchain and every program of KDOS's own, about 1,000 of the about 2,430 packages a
+build makes. The build compiles every port all the same, and the release publishes every package
+it made on its signed [binhost](../06-reference/glossary.md#binhost), so the rest of the native
+ports (all of KDE Gear, LibreOffice, GIMP, Blender, Wine and the other applications
+[The ports catalogue](../06-reference/ports-catalogue.md) lists by shelf) are one download away:
+`kdos update install` takes a port or one of the groups `ports/groups` names, and Discover
+offers each port under *KDOS system*. Any port can instead be built on the machine from its recipe
+(`kdos update install --source`, or Discover's *KDOS, built on this computer*), with what it lacks
+downloaded prebuilt or built too. `/var/lib/kdos/origin` records which way each package came, and
+an update keeps it that way.
+
+For everything KDOS does not port, the medium carries a catalogue, and podman builds what somebody
+asks for. A catalogue row is a parent chain of apt packages: installing a row builds a podman image
+per row in its chain, each `FROM` the one below, and creates a
+[box](../06-reference/glossary.md#box) (a rootless podman container one application runs in) over
+the top one. The catalogue file installs to `/usr/share/kdos/appstore/catalogue`, and it is what
+Discover's KDOS backend, kinstall (the installer) and `kdos app` all read, so adding an application
+to KDOS is one line in a text file. Discover lists the catalogue beside the native ports, and
+kinstall offers it by group — seven of them, from one application each in `essential`, `creative`,
+`make` and `games` to six in `science` — so choosing the six science applications is one choice
+rather than six. kinstall offers the native groups on the same page, and installs them into the new
+system from the binhost while it installs.
+
+Carrying every native port on the medium was rejected: a whole-tree ISO is about 20 GB, five times
+the base's, and most of it is software a given machine never runs. Building every port on the
+machine that wants it was rejected as the default for the reason [the updates
+decision](#updates-are-signed-slot-images-with-a-binhost-on-the-way) gives: a browser or an office
+suite takes hours to compile. `make build KDOS_IMAGE=full` still writes a medium that carries every
+package, for a machine that installs offline.
+
+The base and the binhost have three costs.
+
+1. Anything outside the base needs a network, or the binhost on a disk, to install.
+2. A release is not whole without its binhost. Every release has to build, sign and publish every
+   package beside the ISO, and a machine takes only the binhost of the release its recipe tree
+   names, so the packages are tied to the base of the same tag.
+3. The image lane of an update writes the base alone. It then installs the machine's world set (what
+   was installed on purpose) and its missing dependencies into the new slot from the same release's
+   binhost, or builds the ones that came from source; a prebuilt package the binhost does not cover
+   refuses the image lane before the slot is written.
 
 Carrying every catalogue application prebuilt on the ISO, as
 [packs](../06-reference/glossary.md#pack) (the application images described below), was rejected: it
 puts every application on every medium whether or not it is ever launched, costs an hour of building
 to add one row, and needs a release channel to push the whole set through.
 
-The choice has three costs.
+Building catalogue applications on request has three costs.
 
 1. A store install is unsigned. It pulls its base image from a public registry and its packages
    from Debian's archive, and nothing in `/etc/kdos/keys` vouches for either. `kdos-box create`
@@ -245,9 +275,10 @@ of its own for the native ports, the catalogue's packs and boxes, the boxes alre
 packs on an attached medium or opened from a file; with its `sysupdate1` backend, which
 `kdos-sysupdated` answers for the two root slots; and with its fwupd backend for firmware. The
 Flatpak, Snap, PackageKit and KNewStuff backends are not built, and there is no Flathub: every
-source Discover offers is described in this repository or carried on the medium
-([Principles](principles.md#offline-by-construction)), and the catalogue's boxes fill Flathub's
-role under KDOS's own confinement.
+source Discover offers is described in this repository, and every native one is built from it
+([Principles](principles.md#offline-by-construction)). A native port that is not installed is
+listed once with two origins, *KDOS system* (prebuilt) and *KDOS, built on this computer*, and the
+catalogue's boxes fill Flathub's role under KDOS's own confinement.
 
 A software centre of KDOS's own was the alternative, and it would understand packs and boxes with
 no translation. It was not taken because it would be a second place to look, beside the one every
@@ -855,8 +886,10 @@ from each of the two releases before it. `kdos update apply`, and Discover throu
 `kdos-sysupdated`, which answers Discover's `sysupdate1` calls, do all the downloading and writing
 in one step while the running system is untouched, then ask for a restart. Nothing is applied
 unasked, and the nightly check reads only what is already on the machine. A release that carries
-an image updates by image. Otherwise the inactive slot is filled from the binhost, and a machine
-with a package the binhost does not match is told so before the slot is touched.
+an image updates by image: the image is the base, and the world set follows it into the slot from
+the same release's binhost. Otherwise the inactive slot is filled from the binhost, and a machine
+with a package the binhost does not match is told so before the slot is touched. Either way a
+package that was built on the machine is built again in the slot, and the rest are downloaded.
 `kdos update apply --source` builds the release's signed recipe tree on the machine instead.
 
 The new slot is kept only once a boot of it has finished `rcS` and then had a Plasma session (or,
@@ -971,7 +1004,7 @@ Microsoft core fonts: a Windows program that wants a specific proprietary font g
 KDE's "Get New…" service, KNewStuff, is switched off for every program (`ghns=false` under
 `[KDE Action Restrictions]` in the distribution's `kdeglobals`), so no settings page offers to
 fetch a theme, a wallpaper or a script from store.kde.org; what KDOS offers instead is a curated
-add-on pack on the medium, which Discover lists. Once installed, nothing may depend on a download
+add-on pack in the base, which Discover lists. Once installed, nothing may depend on a download
 an offline machine cannot make.
 
 ### A library edit rebuilds every in-tree port

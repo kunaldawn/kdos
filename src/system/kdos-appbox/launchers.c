@@ -285,14 +285,6 @@ static const char *X11_FORCING[] = {
 	"ELECTRON_OZONE_PLATFORM_HINT=x11", NULL
 };
 
-int env_forces_x11(const char *assignment)
-{
-	for (int i = 0; X11_FORCING[i]; i++)
-		if (!strcmp(X11_FORCING[i], assignment))
-			return 1;
-	return 0;
-}
-
 static int in_list(const char *const *list, const char *s)
 {
 	for (int i = 0; list[i]; i++)

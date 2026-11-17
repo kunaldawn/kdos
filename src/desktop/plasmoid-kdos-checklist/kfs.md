@@ -33,7 +33,7 @@ probe prints is run. An id the module does not know is left out, so a newer prob
 item does not show a row with no words. Each button runs a program and its arguments, found on
 `PATH`: System Settings' `kcm_kup`, `kcm_regionandlang` and `kcm_kdos_boxes`, the KDE Connect
 application (KDE Connect 26.08 has no settings module of its own), Discover's update page, and
-the KDOS book's security chapter in the Help Center.
+the KDOS book's security chapter in the browser, through `xdg-open`.
 
 A probe that fails leaves the list as it was, with the probe's last line of error above it, since
 a failure says nothing about whether an item is done.

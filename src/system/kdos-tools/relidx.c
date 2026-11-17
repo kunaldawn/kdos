@@ -43,6 +43,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 
 #include "kdos-tools.h"
 #include "kbase.h"
@@ -456,6 +457,24 @@ int kdt_relidx_take(const KdtRelIdx *ix, const char *path, const char *out,
 	snprintf(part, sizeof(part), "%s.part", out);
 	int got = kdt_relidx_curl(url, part);
 	if (got != KDT_GOT_OK) {
+		/* A full disk fails curl the way a broken link does; the room
+		 * left beside `out` tells the two apart. */
+		struct statvfs vs;
+		char dir[1100];
+		kb_strlcpy(dir, out, sizeof(dir));
+		char *sl = strrchr(dir, '/');
+		if (sl)
+			*sl = 0;
+		unlink(part);
+		if (got != KDT_GOT_OFFLINE && sl &&
+		    statvfs(dir[0] ? dir : "/", &vs) == 0 &&
+		    (long long)(vs.f_bavail * vs.f_frsize) < size) {
+			snprintf(why, wcap, "no room for %s: it is %lld bytes "
+				 "and %s has %lld free", path, size,
+				 dir[0] ? dir : "/",
+				 (long long)(vs.f_bavail * vs.f_frsize));
+			return KDT_GOT_FAILED;
+		}
 		snprintf(why, wcap, got == KDT_GOT_OFFLINE
 			 ? "the network could not be reached for %s"
 			 : "%s could not be downloaded", path);

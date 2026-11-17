@@ -1,0 +1,6 @@
+# Aliases extracted from modules themselves.
+alias pci:v00008086d00009A49sv*sd*bc*sc*i* i915
+alias pci:v000010DEd*sv*sd*bc03sc*i* nouveau
+alias pci:v000010DEd*sv*sd*bc03sc*i* nvidiafb
+alias usb:v*p*d*dcE0dsc01dp01ic*isc*ip*in* btusb
+alias pci:v00008086d000024FDsv*sd*bc*sc*i* iwlwifi

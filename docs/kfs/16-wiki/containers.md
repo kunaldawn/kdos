@@ -31,6 +31,9 @@ The engine and its tools are ports on the `containers` shelf:
 come from [shadow](#port-shadow). The base filesystem supplies [`/etc/subuid`]{.idx} and [`/etc/subgid`]{.idx},
 and [elogind](#port-elogind) delegates a cgroup subtree to every login's session.
 
+Every port in the table is in the base the ISO carries except podman-tui and lazydocker, which
+`sudo kdos update install <port>` adds (see [Installing software](updating.md#installing-software)).
+
 Podman has no daemon, so there is no container service to enable. The API socket that Docker
 clients use is started on demand by `kdos-podman-api`.
 
@@ -285,4 +288,4 @@ An image pull refuses to start
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 433.* Previous: [432. Boxes](boxes.md) · [Contents](../README.md) · Next: [434. Virtual machines](virtual-machines.md)
+*Part XVI. System administration, chapter 435.* Previous: [434. Boxes](boxes.md) · [Contents](../README.md) · Next: [436. Virtual machines](virtual-machines.md)

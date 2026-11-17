@@ -50,7 +50,7 @@ The state is one file on the ESP, `EFI/kdos/bootstate`, which is
 `/boot/efi/EFI/kdos/bootstate` on the running system. No file in the tree ships it; the installer
 writes the first version:
 
-<!-- kfs:include src/system/kinstall-core/install.c lines=2693-2705 pin=d5c38affc180 -->
+<!-- kfs:include src/system/kinstall-core/install.c lines=2813-2825 pin=d5c38affc180 -->
 
 `slot_b` is empty unless the installer made the A/B layout. `kdos-bootctl` writes every later
 version, under a header of its own
@@ -235,7 +235,8 @@ carries the running root's configuration into it, file by file under `/etc`:
 | `fstab` | The running root's, with the slot's own root line |
 | `kdos-release`, `mtab`, `ld.so.cache`, `udev/hwdb.bin` | The slot's own, never carried |
 
-Machine state under `/var` follows as whole trees: the world set, D-Bus's machine ID, Bluetooth pairings, AccountsService, SDDM's state, the ALSA mixer, NetworkManager's
+Machine state under `/var` follows as whole trees: the world set, the origin of each package
+(`/var/lib/kdos/origin`), the installer's records of boxed applications still to build and groups still to install (`apps-pending`, `groups-pending`), D-Bus's machine ID, Bluetooth pairings, AccountsService, SDDM's state, the ALSA mixer, NetworkManager's
 leases, the users' crontabs and `/root`. A `carry = <path>` line in `/etc/kdos/update.conf` adds a
 path of your own. After the switch, `find /etc -name '*.kdos-new'` lists every file where the new
 version's default and this machine's copy differ. The record of grafted data packs is not carried:
@@ -396,4 +397,4 @@ or the live medium, and record it again with both UUIDs:
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 396.* Previous: [395. Microcode and firmware](microcode-and-firmware.md) · [Contents](../README.md) · Next: [397. Live persistence](live-persistence.md)
+*Part XVI. System administration, chapter 398.* Previous: [397. Microcode and firmware](microcode-and-firmware.md) · [Contents](../README.md) · Next: [399. Live persistence](live-persistence.md)

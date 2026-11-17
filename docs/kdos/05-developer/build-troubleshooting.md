@@ -625,7 +625,8 @@ chroot, which is every phase from `20_selfhost` on, packaging included.
 `script/chroot/exec.sh` enters the chroot with `env -i`, which clears the environment, and names
 on that line every variable that passes through: `TERM`; `KDOS_REPLAY` and `KDOS_JOBS`; the
 packaging knobs `KDOS_ISO_SOURCES`, `KDOS_PACK_KDOS`, `KDOS_MAKE_BINHOST` (also passed as
-`KPKG_KEEP_CACHE`) and `KDOS_ISO_COMP`; `KDOS_CCACHE`; the package store's `KDOS_PKG_STORE`,
+`KPKG_KEEP_CACHE`), `KDOS_ISO_COMP` and `KDOS_ISO_BLOCK`; the size gate's `KDOS_ISO_MAX` and
+`KDOS_ISO_GATE`; `KDOS_IMAGE`; `KDOS_CCACHE`; the package store's `KDOS_PKG_STORE`,
 `KDOS_PKG_STORE_MAX`, `KPKG_STORE`, `KPKG_STORE_CHECK` and `KPKG_STORE_SALT`; and
 `KDOS_GIT_COMMIT`, `KDOS_GIT_DIRTY`, `KDOS_GIT_DATE` and `KDOS_GIT_TIME`, which stamp the image
 with the commit it was built from. `HOME` and `PATH` are set there to fixed values rather than

@@ -386,4 +386,4 @@ splash survives it, as the comment says. The last line of the script is a `rescu
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 378.* Previous: [377. The initramfs](090-initramfs.md) · [Contents](../README.md) · Next: [379. The pack store and the base pack](100-packs.md)
+*Part XV. The image, chapter 380.* Previous: [379. The initramfs](090-initramfs.md) · [Contents](../README.md) · Next: [381. The pack store and the base pack](100-packs.md)

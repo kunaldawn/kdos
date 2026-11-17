@@ -54,6 +54,13 @@
          /etc/kdos/keys/tree, so the channel chooses a place, never a key. -->
     <property name="Channel" type="s" access="read"/>
 
+    <!-- How software is installed when nothing names a route, from
+         /etc/kdos/update.conf: InstallRoute is `install =`, BuildDeps is
+         `build-deps =`, each "prebuilt" (the default, also for an absent
+         or unknown value) or "source". -->
+    <property name="InstallRoute" type="s" access="read"/>
+    <property name="BuildDeps" type="s" access="read"/>
+
     <!-- What a notifier and the KCM show without asking twice. Keys:
            job            s  "", "acquire" or "install"
            jobDone        u  items finished in the running job
@@ -133,6 +140,17 @@
          absolute path or an http, https or file URL. -->
     <method name="SetChannel">
       <arg name="channel" type="s" direction="in"/>
+    </method>
+
+    <!-- Writes `install = <install>` and `build-deps = <deps>` into
+         /etc/kdos/update.conf: the route `kdos update install` takes when
+         nothing names one, and the route of what a source install lacks.
+         polkit io.kdos.slots.install-route, interactive.
+         org.freedesktop.DBus.Error.InvalidArgs for a word other than
+         "prebuilt" or "source". -->
+    <method name="SetInstallRoute">
+      <arg name="install" type="s" direction="in"/>
+      <arg name="deps" type="s" direction="in"/>
     </method>
 
     <!-- Marker 2 of the session-confirmed boot: called by kdos-notice's

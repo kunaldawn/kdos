@@ -584,7 +584,10 @@ stopping the service turns zswap back on and sets `vm.page-cluster` to the kerne
 
 ### `/etc/kdos/update.conf`
 
-Not shipped. Tells `kdos update` where a newer system comes from, and what an armed slot keeps.
+Not shipped. Tells `kdos update` where a newer system comes from, what an armed slot keeps, and
+how `kdos update install` installs software when its command line names no route. System Settings'
+System Versions page writes `install` and `build-deps` through `kdos-sysupdated`
+(`io.kdos.Slots1.SetInstallRoute`).
 
 | Key | Default | Means |
 |---|---|---|
@@ -592,10 +595,13 @@ Not shipped. Tells `kdos update` where a newer system comes from, and what an ar
 | `binhost` | the release `<version>` of a tree whose stamp names its release | Where the signed release index `kdos-update.idx` is through which the binary host is found, whose packages `kdos update apply` and `kdos update install` take: a URL, or a directory such as `build/binhost` copied to a stick |
 | `image` | the latest KDOS release | Where the signed release index is through which the slot image and its manifest are found, for `kdos update apply --image`: a URL, or a directory such as the one `script/release-image.sh` wrote |
 | `carry` | — | A path, relative to the root, that an armed slot keeps from the running one beyond what is always carried; repeatable. Never under `/etc`, which is carried file by file anyway |
+| `install` | `prebuilt` | The route `kdos update install` takes with neither `--prebuilt` nor `--source`: `prebuilt` from the release binhost, or `source`, built on this machine. Discover does not read it: each of its two origins names its route |
+| `build-deps` | `prebuilt` | For a source install, whether each dependency the machine lacks is downloaded prebuilt (one the binhost does not cover is built) or built too (`source`); `--build-deps=` overrides it. A prebuilt install takes its dependencies prebuilt whatever it says |
 
 Each of `tree`, `binhost` and `image` has an environment variable that overrides the file,
 `KDOS_UPDATE_TREE`, `KDOS_UPDATE_BINHOST` and `KDOS_UPDATE_IMAGE`, and `kdos update fetch --from`
-overrides both for the tree and the image. Whatever arrives is checked against
+overrides both for the tree and the image. A value of `install` or `build-deps` other than
+`prebuilt` or `source` makes `kdos update install` exit 2. Whatever arrives is checked against
 [`/etc/kdos/keys/`](#etckdoskeys) before it is used. Sources are not configured here: `kpkg`
 fetches them from the KDOS source archive and then upstream, and `KDOS_SOURCES_BASE` moves the
 archive as it does for `ports/fetch`. See [`kdos update`](../04-programs/kdos-command.md#kdos-update).
@@ -860,6 +866,7 @@ sets the store's from `make build KDOS_PKG_STORE=0|1|check` and `KDOS_PKG_STORE_
 | `PACKAGE_DIR` | `/var/cache/kpkg/packages` | Built packages |
 | `WORK_DIR` | `/var/cache/kpkg/work` | Where a port is unpacked and built |
 | `PKGDB_DIR` | `/var/lib/kpkg/db` | The installed-package database |
+| `FACETS` | `all`; `run` in the image's copy | Which [facets](../03-architecture/packaging.md#facets) of a package an install places: `all` every file, `run` the package without its development and documentation files, each left out listed in `$PKGDB_DIR/.facets/<name>`. Its line is `FACETS="${KPKG_FACETS:-all}"`, so the environment variable is `KPKG_FACETS`, not `FACETS`. Any other value warns and installs every facet. The build chroot keeps `all`; `70_image/017_stage.sh` writes `run` into the image's copy, so the medium and every machine installed from it have `run`, and `kdos update install --dev` installs a package whole there |
 
 See [Packaging](../03-architecture/packaging.md).
 
@@ -990,7 +997,7 @@ a login shell, so every desktop program inherits them. `/etc/profile` runs first
 | `/etc/profile.d/45-mpd.sh` | `MPD_HOST` to `$XDG_RUNTIME_DIR/mpd/socket`, the socket the mpd user service serves, so `mpc`, `rmpc` and `ncmpcpp` reach the same daemon `kdos-mpctl` does |
 | `/etc/profile.d/50-ssh-agent.sh` | `SSH_AUTH_SOCK` to `$XDG_RUNTIME_DIR/ssh-agent.socket`, once that socket exists; it starts nothing. The `ssh-agent` user service serves the socket from the account's first login to its last logout: one agent per account, shared by every login and everything the desktop starts, so `ssh-add` asks for a passphrase once. From `openssh` |
 | `/etc/profile.d/50-sfeed.sh` | `SFEED_YANKER` to `wl-copy -n`, so `sfeed_curses`'s yank reaches the clipboard. From `sfeed` |
-| `/etc/profile.d/50-opencl.sh` | `RUSTICL_ENABLE` to `iris,radeonsi`, the Intel and AMD drivers of Mesa's OpenCL implementation. Without it Rusticl offers no device and every OpenCL program finds none. `llvmpipe` is left out, so a machine with no supported GPU has no OpenCL device |
+| `/etc/profile.d/50-opencl.sh` | `RUSTICL_ENABLE` to `iris,radeonsi`, the Intel and AMD drivers of Mesa's OpenCL implementation, the `mesa-opencl` port. Without it Rusticl offers no device and every OpenCL program finds none. `llvmpipe` is left out, so a machine with no supported GPU has no OpenCL device |
 | `/etc/profile.d/bash_completion.sh` | No variables: in an interactive bash where bash-completion is not yet loaded, loads `~/.config/bash_completion` and then bash-completion. In a login bash `/etc/bash.bashrc` has already loaded it, so this file does nothing there. From `bash-completion` |
 | `/etc/profile.d/gawk.sh` | No variables: the `gawkpath_*` and `gawklibpath_*` functions, which edit `AWKPATH` and `AWKLIBPATH`. From `gawk` |
 | `/etc/profile.d/podman-docker.sh` | `DOCKER_HOST` to the rootless Podman API socket, `$XDG_RUNTIME_DIR/podman/podman.sock` (root's is `/run/podman/podman.sock`), so a Docker API client such as `lazydocker` finds `podman system service` while it runs — see [Containers](#containers) for what starts it. `/usr/bin/docker` is Podman's `docker` shim |

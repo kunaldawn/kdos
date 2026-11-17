@@ -1,0 +1,82 @@
+/*
+    SPDX-FileCopyrightText: 2026 Kunal Dawn <kunal.dawn@gmail.com>
+    SPDX-License-Identifier: MIT
+*/
+
+// The Make It Yours page's rules, against `kdos update groups --json`
+// shaped input. CMake writes the absolute path of groups.js in.
+
+import QtQuick
+import QtTest
+
+import "@GROUPS_JS@" as Groups
+
+TestCase {
+    name: "Groups"
+
+    readonly property var sample: [
+        { id: "games", title: "Games", ports: ["wesnoth"], installed: false, missing: 6, packages: 9, size: 1000 },
+        { id: "office", title: "Office and documents", ports: ["libreoffice"], installed: false, missing: 3, packages: 40, size: 5000 },
+        { id: "kde-pim", title: "KDE mail", ports: ["kde-gear-pim"], installed: true, missing: 0, packages: 0, size: 0 },
+        { id: "windows", title: "Windows programs", ports: ["wine"], installed: false, missing: 1, packages: 2, size: null },
+    ]
+
+    function test_rows() {
+        const r = Groups.rows(sample);
+        compare(r.length, 4);
+        compare(r[0].id, "games");
+        compare(r[2].installed, true);
+        compare(r[3].size, null);
+        compare(Groups.rows(null).length, 0);
+        compare(Groups.rows("text").length, 0);
+    }
+
+    // An id is an argument of a root command: anything that is not a port
+    // word is dropped, and a missing title falls back to the id.
+    function test_rows_refuse() {
+        const r = Groups.rows([{ id: "-x", size: 1 }, { id: "a b", size: 1 }, { id: 3 }, null, { id: "ok" }]);
+        compare(r.length, 1);
+        compare(r[0].id, "ok");
+        compare(r[0].title, "ok");
+        compare(r[0].size, null);
+    }
+
+    function test_installable() {
+        const r = Groups.rows(sample);
+        verify(Groups.installable(r[0]));
+        verify(!Groups.installable(r[2]));
+        verify(!Groups.installable(r[3]));
+    }
+
+    function test_noIndex() {
+        verify(!Groups.noIndex(Groups.rows(sample)));
+        verify(Groups.noIndex(Groups.rows([{ id: "a", size: null }, { id: "b", size: null }])));
+        verify(!Groups.noIndex([]));
+    }
+
+    function test_bytes() {
+        const r = Groups.rows(sample);
+        compare(Groups.bytes(r, ["games", "office"]), 6000);
+        compare(Groups.bytes(r, ["games", "windows", "kde-pim"]), 1000);
+        compare(Groups.bytes(r, []), 0);
+    }
+
+    function test_queue() {
+        let s = Groups.start(["games", "office", "science"]);
+        compare(s.current, "games");
+        compare(s.total, 3);
+        s = Groups.step(s, 0, "");
+        compare(s.current, "office");
+        compare(s.done, ["games"]);
+        s = Groups.step(s, 1, "not prebuilt");
+        compare(s.current, "science");
+        compare(s.failed.length, 1);
+        compare(s.failed[0].id, "office");
+        compare(s.failed[0].text, "not prebuilt");
+        s = Groups.step(s, 0, "");
+        compare(s.current, "");
+        compare(s.queue.length, 0);
+        compare(s.done, ["games", "science"]);
+        compare(Groups.start([]).current, "");
+    }
+}

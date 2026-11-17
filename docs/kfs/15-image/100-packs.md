@@ -114,8 +114,9 @@ honoured all three is a few kilobytes; one over 500,000 bytes, or none at all, s
 : podman's own store, which a clean tree to build ports in must not carry.
 
 `/`
-: The source tree, which in the chroot is `build/fs`. The excludes are written without a leading
-  slash because they are matched relative to it.
+: The source tree, the root the step runs in: the [image stage](017-stage.md), so the base pack
+  carries the base, or `build/fs` under `KDOS_IMAGE=full`. The excludes are written without a
+  leading slash because they are matched relative to it.
 
 <!-- kfs:include script/phases/70_image/100_packs.sh lines=173-175 pin=f1550f4c3c9e -->
 
@@ -147,4 +148,4 @@ empty. With `KDOS_PACK_KDOS=1` and both tools installed, `build/kdos-base/` hold
 <!-- book-nav -->
 ---
 
-*Part XV. The image, chapter 379.* Previous: [378. The initramfs init](091-initramfs-init.md) · [Contents](../README.md) · Next: [380. The recipe tree and the source offer](105-ports.md)
+*Part XV. The image, chapter 381.* Previous: [380. The initramfs init](091-initramfs-init.md) · [Contents](../README.md) · Next: [382. The recipe tree and the source offer](105-ports.md)

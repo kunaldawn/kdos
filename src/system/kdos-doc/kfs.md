@@ -18,20 +18,21 @@ console with neither. The page name is checked against letters, digits and `._-/
 before it is used, so it can only name a page under `/usr/share/doc/kdos`, and it reaches the
 viewer as one argument through `exec`.
 
-The book is read in the Help Center. The package installs KHelpCenter's two entries,
-`/usr/share/khelpcenter/plugins/kdos.desktop` and `kfs.desktop`, whose `X-DOC-Weight` of -100 and
--99 put the KDOS book first in the Help Center's tree and KDOS from Scratch second, above KDE's
-own handbooks, which stay under `help:/`. The book is under `help:/` as well: the package links
+The book is read in the browser, and in the Help Center where [khelpcenter](#port-khelpcenter)
+is installed; the installation medium does not carry it, since it pulls in Qt WebEngine. The
+package installs KHelpCenter's entry, `/usr/share/khelpcenter/plugins/kdos.desktop`, whose
+`X-DOC-Weight` of -100 puts the KDOS book first in the Help Center's tree, above KDE's own
+handbooks, which stay under `help:/`; [kdos-kfs](#port-kdos-kfs) installs the second entry,
+`kfs.desktop`, at -99. The book is under `help:/` as well: the package links
 `/usr/share/doc/HTML/en/kdos` to `../../kdos`, and KIO's `help:` worker, which looks a path up
 among the handbooks under `/usr/share/doc/HTML/<language>`, serves `help:/kdos/<page>.html` from
 the book's own files. That is the address a KDOS settings page's Help button opens, from its
 `X-DocPath` (see [Help](../../../docs/kdos/04-programs/kdos-settings.md#help)), and kpkg's manual
-prune names the link as one it keeps. KHelpCenter leaves out an entry whose `X-DocPath` file
-does not exist, so the KDOS from Scratch entry shows only where [kdos-kfs](#port-kdos-kfs) put the
-book. It also installs the menu's two Library launchers, `kdos-library-kdos-book.desktop` and
-`kdos-library-kfs-book.desktop`, which open each book in the Help Center and name it as an item
-of `library:/` (see [kio-library](#port-kio-library)); `TryExec=khelpcenter` keeps them out of a
-menu with no Help Center.
+prune names the link as one it keeps. It also installs the menu's Library launcher,
+`kdos-library-kdos-book.desktop`, which opens the book in the browser through `xdg-open` and names
+it as an item of `library:/` (see [kio-library](#port-kio-library)); kdos-kfs installs the
+second, `kdos-library-kfs-book.desktop`, beside its own book, so the menu offers KDOS from
+Scratch only where it is.
 
 `mkbook.py` takes three arguments: the directory that holds `kdos/` and `screenshots/` (the port
 directory itself), the package root, and the repository's `src/`, which it searches for manual

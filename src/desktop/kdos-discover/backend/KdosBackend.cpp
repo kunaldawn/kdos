@@ -36,6 +36,7 @@
 #include <QStandardPaths>
 #include <QXmlStreamReader>
 
+#include <algorithm>
 #include <memory>
 
 using namespace Qt::StringLiterals;
@@ -80,6 +81,16 @@ static QString binhostCatalogue()
 {
     const QString env = qEnvironmentVariable("KDOS_BINHOST_CACHE");
     return (env.isEmpty() ? u"/var/lib/kdos/binhost"_s : env) + u"/swcatalog/xml/kdos-binhost.xml"_s;
+}
+
+// The route `kdos update install` takes when nothing names one: `install =`,
+// which System Settings › System Versions writes. Read at every search, so a
+// change there is what the next list shows.
+static bool preferSource()
+{
+    const QString env = qEnvironmentVariable("KDOS_UPDATE_CONF");
+    QFile f(env.isEmpty() ? u"/etc/kdos/update.conf"_s : env);
+    return f.open(QIODevice::ReadOnly) && installsFromSource(f.readAll());
 }
 
 // Debian applications the Debian lane never offers: one package name a
@@ -340,6 +351,8 @@ QString KdosBackend::originName(const QString &origin)
         return i18nc("@info:source", "Boxes");
     if (origin == "kdos-ports"_L1)
         return i18nc("@info:source", "KDOS system");
+    if (origin == "kdos-ports-source"_L1)
+        return i18nc("@info:source", "KDOS, built on this computer");
     if (origin == "local"_L1)
         return i18nc("@info:source", "File");
     return origin;
@@ -1000,6 +1013,13 @@ void KdosBackend::apply(const Snapshot &snap)
                 e.installedVersion = version;
                 e.state = version.isEmpty() ? EntryState::None : EntryState::Installed;
                 upsert(e, &seen);
+                // The same port, built here: a second origin in Discover's
+                // source picker, offered only while it is not installed, so
+                // an installed port is one resource.
+                if (e.state == EntryState::None) {
+                    e.lane = Lane::PortSource;
+                    upsert(e, &seen);
+                }
             }
         }
     }
@@ -1085,6 +1105,7 @@ ResultsStream *KdosBackend::search(const AbstractResourcesBackend::Filters &filt
     auto answer = [this, stream, filter] {
         QVector<StreamResult> found;
         QSet<KdosResource *> have;
+        const bool source = preferSource();
         auto consider = [&](KdosResource *res) {
             if (have.contains(res))
                 return;
@@ -1099,6 +1120,9 @@ ResultsStream *KdosBackend::search(const AbstractResourcesBackend::Filters &filt
             // A file somebody opened shows up as that file's page, never in a
             // search; a set on the medium is part of what the machine offers.
             if ((e.lane == Lane::Archive && e.packOrigin != "medium"_L1) || e.lane == Lane::PackFile)
+                continue;
+            // A list browsed by origin names every resource of that origin.
+            if (filter.origin.isEmpty() && isSecondTwin(res, source))
                 continue;
             consider(res);
         }
@@ -1191,7 +1215,28 @@ QVector<StreamResult> KdosBackend::resourcesForUrl(const QUrl &url)
         if (auto *res = m_resources.value(key))
             found << StreamResult{res, 0};
     }
+    const bool source = preferSource();
+    std::stable_partition(found.begin(), found.end(), [this, source](const StreamResult &r) {
+        return !isSecondTwin(static_cast<KdosResource *>(r.resource), source);
+    });
     return found;
+}
+
+// A port not installed is two resources with one AppStream id, the binhost's
+// and the one built here. Discover's lists keep one resource per id, and
+// which of two equal rows survives its sort no backend decides; the
+// application page then offers the rest in its source picker, which it
+// fills by asking for the application's URL, and a link opens the first
+// resource that answers. So a list names only the twin `install =` prefers,
+// and a URL answers both, that one first: the other is the second twin.
+bool KdosBackend::isSecondTwin(const KdosResource *res, bool preferSource) const
+{
+    const Entry &e = res->entry();
+    if (e.lane == Lane::PortSource)
+        return !preferSource;
+    if (e.lane == Lane::Port && preferSource && e.state == EntryState::None)
+        return m_resources.contains(u"port-source/"_s + e.id);
+    return false;
 }
 
 ResultsStream *KdosBackend::resourceForFile(const QUrl &url)

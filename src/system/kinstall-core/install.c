@@ -72,6 +72,7 @@ enum {
 	S_MOUNT,
 	S_COPY,
 	S_APPS,
+	S_FIRMWARE,
 	S_CONFIG,
 	S_ACCOUNTS,
 	S_THEME,
@@ -90,7 +91,8 @@ static const struct {
 	{ "Format",      "encrypt and make the volume group if asked, then the filesystems" },
 	{ "Mount",       "attach the target at " TARGET },
 	{ "Copy system", "the live system, without the live session" },
-	{ "Packs",       "the chosen applications, recorded for the first login" },
+	{ "Packs",       "native groups installed, boxed applications recorded for the first login" },
+	{ "Firmware",    "what this machine's devices need beyond the medium's firmware" },
 	{ "Configure",   "fstab, hostname, keyboard, login screen, services" },
 	{ "Accounts",    "users, passwords, sudo, the home" },
 	{ "Theme",       "the accent and the desk the first login takes" },
@@ -112,7 +114,8 @@ static int step_skipped(int i)
 	/* Nothing chosen, or a medium with no catalogue on it — the step says
 	 * SKIPPED rather than running and doing nothing, because a step that
 	 * always succeeds having done nothing is a step nobody reads. */
-	if (i == S_APPS && (!ki_apps_present || ki_apps_route() == APPS_NONE))
+	if (i == S_APPS && (!ki_apps_present || ki_apps_route() == APPS_NONE) &&
+	    !ki_groups_chosen())
 		return 1;
 	return 0;
 }
@@ -1726,6 +1729,30 @@ static void do_copy(void)
 	emit('P', "1");
 }
 
+/* Whether the release's binhost index is in the target's cache: fetched once,
+ * by the first step that needs it, and read by the next. -1 is not yet asked. */
+static int index_state = -1;
+
+/* THE CACHE IS THE TARGET'S OWN: the live system's is in RAM, and a group of a
+ * few gigabytes downloaded there would fill it. The installed machine then
+ * starts with its release's index in place. KDOS_UPDATE_CACHE stays set until
+ * the Firmware step ends, so every `kdos` between reads and writes there. */
+static int fetch_index(void)
+{
+	char cache[512];
+
+	snprintf(cache, sizeof(cache), "%s/var/lib/kdos/binhost", TARGET);
+	setenv("KDOS_UPDATE_CACHE", cache, 1);
+	if (index_state < 0) {
+		char *fetch[] = { "kdos", "update", "fetch", "--binhost-only",
+				  NULL };
+
+		mkpath("%s", cache);
+		index_state = run(fetch) == 0;
+	}
+	return index_state;
+}
+
 /*
  * The chosen applications.
  *
@@ -1740,6 +1767,67 @@ static void do_copy(void)
  * mode at startup, but a first boot that inherited 0755 would refuse an import
  * until the daemon had run once — which reads as the feature not working.
  */
+/*
+ * THE NATIVE GROUPS GO IN NOW, when the network answers. The live system
+ * takes its own release's binhost index (`kdos update fetch --binhost-only`:
+ * a newer release's packages are built against a newer base than the one
+ * being installed), and `kdos update install --root <target> <id>` puts each
+ * chosen group's packages into the new system, prebuilt, with its world set
+ * and origin file under the target, so the installed machine updates them
+ * like anything else installed on purpose. A group that does not go in, and
+ * every group when the index cannot be had, is written to the target's
+ * /var/lib/kdos/groups-pending for `kdos update install --pending`: a warning,
+ * never a failure, since the system is installed and boots without it.
+ */
+static void do_native(void)
+{
+	KbBuf b = {0};
+	char path[512];
+	int n = ki_groups_chosen(), pend = 0, online;
+
+	if (!n) {
+		emit('L', "no native groups chosen");
+		return;
+	}
+	online = fetch_index();
+	if (!online)
+		emit('W', "the release's binary host could not be reached; the "
+			  "chosen groups are recorded and install later with "
+			  "`kdos update install --pending`");
+	kb_buf_printf(&b, "# Native groups chosen during the install and not "
+			  "yet installed.\n# `kdos update install --pending` "
+			  "installs them.\n");
+	for (int i = 0; i < ki_nnative; i++) {
+		if (!ki_native[i].chosen)
+			continue;
+		if (online) {
+			char *inst[] = { "kdos", "update", "install", "--prebuilt",
+					 "--root", TARGET, ki_native[i].id,
+					 NULL };
+			emit('L', "%s group %s (%s)",
+			     cfg.dry_run ? "would install" : "installing",
+			     ki_native[i].id, ki_native[i].title);
+			if (run(inst) == 0)
+				continue;
+			emit('W', "group %s did not install; it is recorded for "
+				  "`kdos update install --pending`",
+			     ki_native[i].id);
+		}
+		kb_buf_printf(&b, "%s\n", ki_native[i].id);
+		pend++;
+	}
+	if (pend) {
+		snprintf(path, sizeof(path), "%s/var/lib/kdos/groups-pending",
+			 TARGET);
+		mkpath("%s/var/lib/kdos", TARGET);
+		if (!cfg.dry_run && kb_write_all(path, b.p, b.n) < 0)
+			emit('W', "the pending groups could not be recorded in "
+				  "%s — install them from Discover after the "
+				  "first login", path);
+	}
+	kb_buf_free(&b);
+}
+
 static void do_apps(void)
 {
 	KbBuf b = {0};
@@ -1757,6 +1845,7 @@ static void do_apps(void)
 			n++;
 	if (ki_apps_route() == APPS_NONE || !n) {
 		emit('L', "no applications chosen");
+		do_native();
 		emit('P', "1");
 		return;
 	}
@@ -1777,6 +1866,37 @@ static void do_apps(void)
 		emit('L', "%s %d group(s) for the first login: %s",
 		     cfg.dry_run ? "would record" : "recorded", n, cfg.apps);
 	kb_buf_free(&b);
+	do_native();
+	emit('P', "1");
+}
+
+/*
+ * THE FIRMWARE THIS MACHINE NEEDS AND THE MEDIUM DOES NOT CARRY. The base
+ * image holds the common vendors' firmware; `kdos firmware sync --root
+ * <target>` reads this machine's devices (the live system runs on the same
+ * hardware) and installs the firmware packages they name into the target,
+ * prebuilt, from the index the Packs step fetched or this step fetches now.
+ * Each line it prints is logged, so the log says what went in. Offline, a
+ * failure, or a `kdos` without the command is a warning and never a failure:
+ * the system boots on the medium's firmware, and `sudo kdos firmware sync`
+ * after the first boot does the rest.
+ */
+static void do_firmware(void)
+{
+	char *sync[] = { "kdos", "firmware", "sync", "--root", TARGET, NULL };
+
+	if (!fetch_index()) {
+		emit('W', "the release's binary host could not be reached, so "
+			  "no firmware beyond the medium's was installed; run "
+			  "`sudo kdos firmware sync` after the first boot");
+	} else if (run(sync) != 0) {
+		emit('W', "`kdos firmware sync` did not finish; run `sudo kdos "
+			  "firmware sync` after the first boot");
+	} else {
+		emit('L', "%s the firmware this machine's devices name",
+		     cfg.dry_run ? "would install" : "installed");
+	}
+	unsetenv("KDOS_UPDATE_CACHE");
 	emit('P', "1");
 }
 
@@ -2831,7 +2951,7 @@ int install_child_main(int fd, int from_step)
 
 	static void (*const fns[S_COUNT])(void) = {
 		do_prepare, do_partition, do_format, do_mount, do_copy,
-		do_apps, do_config, do_accounts, do_theme, do_slotb, do_boot,
+		do_apps, do_firmware, do_config, do_accounts, do_theme, do_slotb, do_boot,
 		do_finish,
 	};
 

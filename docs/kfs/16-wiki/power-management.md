@@ -21,8 +21,10 @@ into it. Inside a Plasma session, PowerDevil sets the policy.
 | [powertop](#port-powertop) | An interactive report of wakeups and power use, with tunables | none |
 | [upower](#port-upower) | The `org.freedesktop.UPower` service PowerDevil reads batteries from | none; the system bus starts it when asked |
 
-All of them are on the image, and the service scripts in the table are enabled on the live medium
-and on an installed system alike. `54_thermald` and `56_energyd` skip themselves on a machine with
+All of them are in the base the ISO carries except thermald and powertop, which
+`sudo kdos update install <port>` adds (see [Installing software](updating.md#installing-software)). The service scripts in the table are enabled
+on the live medium and on an installed system alike; `54_thermald` is part of the base filesystem
+and skips itself while `thermald` is not installed. `54_thermald` and `56_energyd` skip themselves on a machine with
 nothing for them to do; see
 [Services that skip themselves](../../kdos/02-user-guide/administration.md#services-that-skip-themselves).
 
@@ -261,4 +263,4 @@ and what TLP set for the processor (`sudo tlp-stat -p`).
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 425.* Previous: [424. Graphics drivers](graphics-drivers.md) · [Contents](../README.md) · Next: [426. Laptops](laptops.md)
+*Part XVI. System administration, chapter 427.* Previous: [426. Graphics drivers](graphics-drivers.md) · [Contents](../README.md) · Next: [428. Laptops](laptops.md)

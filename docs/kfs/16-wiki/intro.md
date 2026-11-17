@@ -134,4 +134,4 @@ Finding out what is wrong, and getting a desktop or a whole system back.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration.* Previous: [381. The ISO](../15-image/110-iso.md) · [Contents](../README.md) · Next: [382. Init and runlevels](init-and-runlevels.md)
+*Part XVI. System administration.* Previous: [383. The ISO](../15-image/110-iso.md) · [Contents](../README.md) · Next: [384. Init and runlevels](init-and-runlevels.md)

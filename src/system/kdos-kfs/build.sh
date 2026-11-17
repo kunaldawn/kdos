@@ -23,3 +23,5 @@ python3 "$PORT_SRC/book/kfsrender.py" --pandoc pandoc --typst typst \
 install -d "$PKG/usr/share/doc"
 cp -R "$SRC/kfs/html" "$PKG/usr/share/doc/kfs"
 install -m644 "$SRC/kfs/kfs.pdf" "$PKG/usr/share/doc/kfs/kfs.pdf"
+install -Dm644 -t "$PKG/usr/share/khelpcenter/plugins" "$PORT_SRC"/khelpcenter/kfs.desktop
+install -Dm644 -t "$PKG/usr/share/applications" "$PORT_SRC"/applications/kdos-library-kfs-book.desktop

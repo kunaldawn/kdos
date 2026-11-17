@@ -28,8 +28,8 @@ to hold in your head. KDOS draws a line between the two instead of choosing one:
   from upstream source or from source written here, and it is meant to be read.
 - **Outside the line** is the application catalogue. It is other people's packaging, built on the
   machine that wants it and run in a container (a *box*), and it is meant to work. The graphical
-  applications KDOS ports natively, so that a machine with no network is complete, are inside the
-  line with everything else.
+  applications KDOS ports natively are inside the line with everything else: each is compiled
+  here, and a release carries it prebuilt in its signed package host.
 
 The host is also built so that the machine running it can rebuild it. Four properties define the
 system, each described in its own section below: the host is built from source, KDOS can build
@@ -91,23 +91,29 @@ applications (`40_lang` to `44_apps`), then the desktop (`50_desktop`), then the
 compiles `kinstall` from `src/system/kdos-installer`. `kpkg` is built this way because nothing can
 be installed as a package until it exists, and `kinstall` because it links nothing but the C
 library, so it can be cross-compiled that early and is on every tree from the first bootable one.
-The finished system has no base image beneath it and no binary archive to fall back on: the
-container the build runs in, an Alpine 3.23 image with a host compiler, supplies the tools that
-build the cross toolchain and the first userland, and nothing from it is installed. Every recipe
-that a phase list (`script/phases/*/packages.txt` or `packages.d/`) names is installed on the
-finished system, together with everything those recipes depend on. That reaches every upstream
-recipe but one: `texlive-doc`, the TeX Live manuals, is named in `ports/unbuilt`, keeps its recipe
-for a machine that wants to build it with `kpkg install`, and is left off the image. A *phase* is
+The finished system stands on no other distribution's packages: the container the build runs
+in, an Alpine 3.23 image with a host compiler, supplies the tools that build the cross toolchain
+and the first userland, and nothing from it is installed. Every recipe that a phase list
+(`script/phases/*/packages.txt` or `packages.d/`) names is built and installed into the build
+tree, together with everything those recipes depend on. That reaches every upstream recipe but
+one: `texlive-doc`, the TeX Live manuals, is named in `ports/unbuilt`, keeps its recipe for a
+machine that wants to build it with `kpkg install`, and is built by no phase. The ISO carries part
+of what the build made, the *base*: the ports [`ports/base`](../../../ports/base) names and their
+dependencies, about 850 of the build's about 2,430 packages, with the session, the core KDE
+applications, Firefox ESR, networking, printing and the box stack among them, and no compiler. Every
+package the build made, the base's included, goes into the release's signed package host, the
+*binhost*, from which a machine installs the rest. A *phase* is
 defined in the [Glossary](../06-reference/glossary.md#phase). [How KDOS is
 built](../05-developer/how-kdos-is-built.md) follows the build from `git clone` to a bootable ISO,
 [The build system](../05-developer/build-system.md) describes the orchestrator that runs the phases,
 and [The ports catalogue](../06-reference/ports-catalogue.md) lists every recipe by shelf, the
 subject directory it is filed under in `ports/core`, with its phase.
 
-A machine that updates installs what this build produced. A release publishes the packages it
-built from these recipes, on a signed binhost and as whole-slot images, signed with the release
-key, so nothing in it was built anywhere else; `kdos update apply --source` builds the same recipes
-on the machine instead of installing them.
+A machine installs and updates from what this build produced. A release publishes every package
+it built from these recipes on its signed binhost, and its base as whole-slot images, all signed
+with the release key, so nothing a machine installs was built anywhere else;
+`kdos update install --source` and `kdos update apply --source` build the same recipes on the
+machine instead of downloading them.
 
 The claim has exceptions, and they are [listed in full](#what-is-not-built-from-source) at the end
 of this chapter. Five classes are exempt from building from source: firmware and code for other
@@ -132,15 +138,18 @@ toolchain; the cross toolchain builds the native `gcc` and `binutils` of `10_boo
 `30_foundation` onwards is built by the `20_selfhost` compiler, which KDOS produced with a compiler
 of its own.
 
-The toolchains survive onto the shipped image, because the build installs them rather than
-removing them. A running KDOS carries `gcc`, `binutils`, `clang`, `rust`, `go`, `cmake`, `meson`,
-`ninja`, `python3`, `make` and `kpkg`, so any single recipe, the compiler and the kernel included,
-can be rebuilt on the machine itself and offline once its source is present, with `kpkg`.
-`kdos update fetch` brings the newest signed recipe tree over the network, and
-`kdos update apply --source` brings every package that is behind it up to date by downloading its
-source and compiling it on the machine, where an update otherwise installs the release's signed
-binaries. [How KDOS differs](how-kdos-differs.md#self-hosting) compares this with other
-distributions.
+The toolchains are one install away from the shipped image rather than on it. A running KDOS
+carries `python3`, `perl`, `kpkg` and `gcc`'s package, for the `libstdc++` every C++ program
+loads; the assembler and linker, `make`, `cmake`, `meson`, `ninja` and the other build tools are
+the `build-tools` group, and `clang`, `rust`, `go` and the other compilers a recipe builds with
+are kept off the medium by `ports/buildonly`. Each comes prebuilt from the binhost the first time
+a build on the machine needs it. Any single recipe, the compiler and the kernel included, can so be
+rebuilt on the machine itself, and offline once its source and its build dependencies are present.
+`kdos update install --source <port>` builds one port here, `kdos update fetch` brings the newest
+signed recipe tree over the network, and `kdos update apply --source` brings every package that is
+behind it up to date by downloading its source and compiling it on the machine, where an update
+otherwise installs the release's signed binaries. [How KDOS
+differs](how-kdos-differs.md#self-hosting) compares this with other distributions.
 
 A full rebuild, every phase from the cross toolchain to the ISO, is driven by [`kdos
 rebuild`](../04-programs/kdos-command.md#kdos-rebuild) from a booted medium, with no network at any
@@ -195,21 +204,25 @@ held this way, and what it costs, is in [Decisions](decisions.md#upstream-archiv
 
 ## Native applications, and boxes for the rest
 
-KDOS ports the applications a machine needs natively, with the toolkit each is written in, so that a
-machine installed from KDOS media has a browser, an office suite, graphics and media tools, maps and
-an offline library with no network at all. These are ordinary recipes under `ports/core`, filed on
-shelves named for what they are for, such as `browsers`, `mail`, `office`, `graphics`, `education`
-and `cad`, and built in the last two userland phases, `43_toolkits` and `44_apps`; all of KDE Gear
-is among them. GTK, Qt, KDE Frameworks, WebKitGTK, QtWebEngine, wxWidgets, FLTK and Tk are built
-for them, each with its Wayland backend as the default and its X11 backend for the applications
-that need Xwayland. Qt and KDE Frameworks carry the desktop as well; see
-[Principles](principles.md#the-desktop-is-kde-plasma). [The ports
+KDOS ports the applications a machine needs natively, with the toolkit each is written in: a
+browser, an office suite, graphics and media tools, maps, CAD and an offline library. The base on
+the ISO carries Firefox ESR and the core KDE applications; every other port is prebuilt in the
+release's binhost and installs with one download, one port at a time or as one of the groups in
+`ports/groups`, or is built on the machine from its recipe. These are ordinary recipes under
+`ports/core`, filed on shelves named for what they are for, such as `browsers`, `mail`, `office`,
+`graphics`, `education` and `cad`, and built in the last two userland phases, `43_toolkits` and
+`44_apps`; all of KDE Gear is among them. GTK, Qt, KDE Frameworks, WebKitGTK, QtWebEngine,
+wxWidgets, FLTK and Tk are built for them, each with its Wayland backend as the default and its X11
+backend for the applications that need Xwayland. Qt and KDE Frameworks carry the desktop as well;
+see [Principles](principles.md#the-desktop-is-kde-plasma). [The ports
 catalogue](../06-reference/ports-catalogue.md) lists every application by shelf.
 
 Discover is the one place to find all of it: the native ports, the catalogue's boxes and packs,
 updates of the system and firmware, through backends KDOS adds for its own kinds of software.
-There is no Flathub and no "Get New…": everything Discover offers is described in this repository
-or carried on the medium.
+A native port not yet installed appears under two origins, *KDOS system* (prebuilt) and *KDOS,
+built on this computer*. There is no Flathub and no "Get New…": everything Discover offers is
+described in this repository and built from it, or, for a boxed application, from Debian packages
+the catalogue names.
 
 The outer ring is a catalogue of 70 applications. Each is declared as a chain of packages rather
 than shipped as bytes: an application row sits on one of 7 shared runtimes (GTK, Qt, KDE, media,
@@ -226,10 +239,11 @@ Some catalogue entries are commands rather than windows. Twenty-five `cmd` rows 
 applications expose solvers, converters, emulators and toolchains to be run from a prompt. They
 get no launcher entry, because a program with no window has nothing for a launcher to open.
 
-The native ports and the boxes answer different needs. A native port is on the medium and works
-with no network, but each one is a recipe that has to be kept building. A catalogue row is one line
-naming Debian packages, but installing it needs a network and minutes of apt on the machine that
-asks.
+The native ports and the boxes answer different needs. A native port is compiled here, signed
+with the release and installed as one download, but each one is a recipe that has to be kept
+building. A catalogue row is one line naming Debian packages, but installing it needs minutes of
+apt on the machine that asks, and the application runs in a box rather than on the host. Both need
+a network, except for what the base already carries.
 [Packs and boxes](../03-architecture/packs-and-boxes.md) describes the mechanism, and
 [Applications](../02-user-guide/applications.md) describes installing and running them.
 
@@ -245,8 +259,8 @@ It suits you if:
 
 - you want to change the package manager, the installer or the way the desktop is put together
   rather than configure around them;
-- you want a workstation that carries its applications on its own medium and needs no network
-  to install them; or
+- you want every program on the machine built from source you can read, prebuilt by the release
+  or built on the machine itself, as you choose; or
 - you want to keep an offline, reproducible source for the exact system you are running.
 
 It is the wrong choice if you need broad hardware enablement, a large binary archive, commercial
@@ -275,9 +289,9 @@ Each of these is a decision with an argument behind it. The arguments are in
 | systemd's init, units and service manager | sysvinit's `init`, numbered scripts in `/etc/init.d/`, and `ksvc` to supervise services, a user's included; turnstile to start a user's services at login. Three pieces of systemd's tree run on their own: elogind (logins and seats), `basu` (the sd-bus library) and `eudev` (device events); `dbus` is the message bus and `dnsmasq` the local DNS cache |
 | An X server on the login path, and X11 sessions | Wayland only. SDDM's greeter runs on `kwin_wayland`, the only session is Plasma on Wayland, and Xwayland, the X server that runs as a Wayland client, is the single carve-out for X11 clients, boxed or native, started by KWin inside a session |
 | Flatpak and Flathub | Discover lists the ports, packs and boxes this repository describes, and firmware; there is no account and nothing to sign up to |
-| "Get New…" | KNewStuff is switched off system-wide; a curated add-on pack on the medium carries the wallpapers, colour schemes and KWin scripts KDOS offers |
+| "Get New…" | KNewStuff is switched off system-wide; a curated add-on pack in the base carries the wallpapers, colour schemes and KWin scripts KDOS offers |
 | Telemetry | No KDOS program sends usage data and KUserFeedback is not ported; boxed applications behave as their Debian packages do |
-| Binaries built elsewhere | Every package and slot image a release publishes is built from this tree's recipes and signed with the release key; `kdos update apply --source` builds them on the machine instead |
+| Binaries built elsewhere | Every package and slot image a release publishes is built from this tree's recipes and signed with the release key; `kdos update install --source` and `kdos update apply --source` build them on the machine instead |
 
 ## The system in numbers
 
@@ -315,11 +329,11 @@ classes.
 Code that runs on a DSP, a GPU, a microcontroller, a radio or a guest (a virtual or emulated
 machine, or a Windows program under Wine), rather than as a host program, is shipped as upstream
 built it. For most of it no source is published; the rest needs a cross toolchain this tree does
-not carry. Seven ports are nothing else:
+not carry. These ports are nothing else, `linux-firmware`'s eight vendor ports counted as one:
 
 | Port | Version | Download | What it is |
 |---|---|---|---|
-| `linux-firmware` | 20260916 | 632 MiB | Upstream's tree less the firmware no x86 kernel loads, installed with upstream's own `copy-firmware.sh --zstd`, which creates the alias symlinks a plain copy omits |
+| `firmware-intel`, `firmware-amd`, `firmware-nvidia`, `firmware-realtek`, `firmware-mediatek`, `firmware-broadcom`, `firmware-qualcomm`, `firmware-misc` | 20260916 | 632 MiB, one tarball for all eight | Upstream's `linux-firmware` tree less the firmware no x86 kernel loads, installed with upstream's own `copy-firmware.sh --zstd`, which creates the alias symlinks a plain copy omits, and split by vendor; `linux-firmware` is the meta that installs all eight |
 | `intel-ucode` | 20260812 | 17 MiB | Upstream's whole Intel microcode set, concatenated into one bundle that sits in front of the initramfs for the kernel's early loader |
 | `sof-firmware` | 2026.09.1 | 17 MiB | Intel SOF audio DSP firmware and topologies. They are not part of `linux-firmware`, and Tiger Lake and newer machines have no sound without them |
 | `meshtastic-firmware` | 2.7.26 | 260 MiB | Meshtastic's release images for ESP32, nRF52840, RP2040, RP2350 and STM32 boards, installed for flashing a radio, not for running here |
@@ -330,7 +344,10 @@ not carry. Seven ports are nothing else:
 The firmware tree is not curated by guessing at hardware. Pruning that way is a bet on which
 hardware the machine turns out to have, and losing that bet is silent: the kernel's
 `request_firmware()` finds nothing and the device does not work, which looks like broken hardware
-rather than a missing file. The recipe leaves out only an explicit list of firmware no x86 driver
+rather than a missing file. Every vendor's firmware is built and published; the installation
+medium carries the four most machines need, and `kdos firmware sync` asks the machine for the rest
+(its devices' drivers and the kernel's failed loads) rather than guessing, and the live session
+says so when it finds one. The recipes leave out only an explicit list of firmware no x86 driver
 requests: the arm64 Qualcomm SoC images, superseded Mellanox Spectrum images and Marvell Prestera
 v2.0 and v3.0, about 370 MiB installed (see
 [Known gaps](../06-reference/known-gaps.md#linux-firmware-leaves-out-what-an-x86-kernel-cannot-load)).
@@ -510,7 +527,7 @@ packages, built on `debian:trixie-slim`, with one exception: VSCodium comes from
 upstream publishes on GitHub, fetched by a `deb` row in the catalogue and handed to apt so that its
 dependencies resolve from Debian. The catalogue also carries a second, empty base on
 `alpine:3.24.1`, a scratch userland for trying something in a box. Nothing in the catalogue is
-compiled by this repository and none of it is carried on the installation medium: the catalogue
+compiled by this repository and none of it is in the base or the binhost: the catalogue
 records which packages an application is made of, and podman builds it on the machine that asks.
 See [Packs and boxes](../03-architecture/packs-and-boxes.md).
 
@@ -534,7 +551,7 @@ CSS-encrypted DVDs, is compiled here from its source like any other library.
   configuration, applications, updates, security, and hardware and support
 - [Principles](principles.md) — the rules these four properties produce
 - [Decisions](decisions.md) — the choices that were close, and what lost
-- [Getting started](../02-user-guide/getting-started.md) — building an image and booting it
+- [Getting started](../02-user-guide/getting-started.md) — downloading the ISO and booting it
 - [Architecture overview](../03-architecture/overview.md) — how the pieces of a running system fit
   together
 - [How KDOS is built](../05-developer/how-kdos-is-built.md) — the build described above, from

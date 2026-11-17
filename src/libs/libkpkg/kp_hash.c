@@ -289,14 +289,22 @@ int kp_recipe_hash(const char *portdir, char out[65])
 }
 
 /* The compiler's own version string, which is what actually differs between two
- * machines that both say "gcc". Asked once. */
+ * machines that both say "gcc". $KPKG_CC_ID, when set, IS that string: the
+ * image records the build's (`gcc 16.2.0`) in /etc/kdos/chroot.env, because a
+ * machine whose compiler is in the development facet it left out has no `cc`
+ * to ask, and would otherwise hash "unknown" and match no prebuilt package. */
 static void compiler_id(char *out, size_t cap)
 {
 	const char *cc = getenv("CC");
+	const char *id = getenv("KPKG_CC_ID");
 	char buf[256] = {0};
 	KbArgv a = {0};
 
 	out[0] = 0;
+	if (id && *id) {
+		snprintf(out, cap, "%.200s", id);
+		return;
+	}
 	kb_argv_add(&a, cc && *cc ? cc : "cc");
 	kb_argv_add(&a, "-dumpversion");
 	kb_argv_end(&a);

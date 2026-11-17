@@ -45,6 +45,7 @@ public:
         Try,
         CancelTry,
         SetChannel,
+        SetInstallRoute,
     };
     Q_ENUM(Request)
 
@@ -67,6 +68,9 @@ public:
     uint tryAttempts() const;
     bool tryBootNext() const;
     QString channel() const;
+    /* "prebuilt" or "source": update.conf's `install =` and `build-deps =`. */
+    QString installRoute() const;
+    QString buildDeps() const;
     QVariantMap state() const;
     QList<QVariantMap> slotMaps() const;
     bool isBusy() const;
@@ -77,6 +81,7 @@ public:
     void requestTry(const QString &slot);
     void requestCancelTry();
     void requestSetChannel(const QString &channel);
+    void requestSetInstallRoute(const QString &install, const QString &deps);
 
 Q_SIGNALS:
     void availableChanged();

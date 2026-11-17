@@ -13,14 +13,15 @@ the firmware choices are in [Hardware](../../kdos/02-user-guide/administration.m
 | Port | Provides | Where it lands |
 |---|---|---|
 | [intel-ucode](#port-intel-ucode) | Intel CPU microcode, as one bundle | `/usr/lib/firmware/intel-ucode.bin` |
-| [linux-firmware](#port-linux-firmware) | Upstream's firmware tree, zstd-compressed, less the families no x86 kernel loads; AMD CPU microcode is part of it | [`/usr/lib/firmware/`]{.idx term="/usr/lib/firmware"}, with AMD's under `amd-ucode/` |
+| [linux-firmware](#port-linux-firmware) | Upstream's firmware tree, zstd-compressed, less the families no x86 kernel loads, as eight vendor ports: [firmware-intel](#port-firmware-intel), [firmware-amd](#port-firmware-amd) (AMD CPU microcode is part of it), [firmware-mediatek](#port-firmware-mediatek) and [firmware-realtek](#port-firmware-realtek) on the image, [firmware-nvidia](#port-firmware-nvidia), [firmware-qualcomm](#port-firmware-qualcomm), [firmware-broadcom](#port-firmware-broadcom) and [firmware-misc](#port-firmware-misc) one `sudo kdos firmware sync` away | [`/usr/lib/firmware/`]{.idx term="/usr/lib/firmware"}, with AMD's microcode under `amd-ucode/` |
+| [firmware-map](#port-firmware-map) | Which vendor port ships each firmware file, for `kdos firmware sync` | `/usr/share/kdos/firmware-map` |
 | [sof-firmware](#port-sof-firmware) | Intel Sound Open Firmware: the audio DSP firmware and its topology files | `/usr/lib/firmware/intel/` |
 | [wireless-regdb](#port-wireless-regdb) | The signed table of radio channels and power levels per country | `/usr/lib/firmware/regulatory.db` and `regulatory.db.p7s` |
 | [fwupd](#port-fwupd) | `fwupdmgr` and the daemon that updates device firmware from the LVFS | `/usr/bin/fwupdmgr`, [`/etc/fwupd/`]{.idx term="/etc/fwupd"} |
 | [fwupd-efi](#port-fwupd-efi) | The EFI program that hands a UEFI capsule to the firmware at the next boot | Placed on the ESP by `fwupd` when it stages an update |
 
-`/lib` is a link to `/usr/lib` on KDOS, so the two spellings name the same files. All of these are
-installed on the image. None of them has a service script: the kernel reads firmware files when a
+`/lib` is a link to `/usr/lib` on KDOS, so the two spellings name the same files. All of these
+but the four vendor ports left off the image are installed on it. None of them has a service script: the kernel reads firmware files when a
 driver asks, the microcode is read before any filesystem exists, and `fwupd` is started by the
 system bus on first use.
 
@@ -46,9 +47,12 @@ The image build turns both vendors' files into the uncompressed archive the earl
 ### Device firmware
 
 [`linux-firmware`]{.idx} is installed with upstream's own script, so the alias links drivers ask for
-exist, and then the firmware for hardware an x86 kernel cannot drive is removed:
+exist, and then the firmware for hardware an x86 kernel cannot drive is removed. Every vendor port
+runs the same `build.sh`, which gives each file and link to one vendor by its path (a link by the
+file it resolves to) and keeps its own share; [firmware-map](#port-firmware-map) records the
+whole split instead:
 
-<!-- kfs:include ports/core/boot/linux-firmware/build.sh lines=12-28 pin=14e9ca89db09 -->
+<!-- kfs:include ports/core/boot/firmware-map/build.sh lines=12-51 pin=21c1587ddd08 -->
 
 The SOF firmware and topologies, without which an Intel DSP loads and makes no sound:
 
@@ -114,20 +118,26 @@ archive, see [Looking inside](initramfs-and-rescue.md#looking-inside).
 ### Getting newer microcode
 
 The microcode the machine loads is the copy in the initramfs, and only the image build writes the
-base initramfs. Installing a newer `intel-ucode` or `linux-firmware` package updates
+base initramfs. Installing a newer `intel-ucode` or `firmware-amd` package updates
 `/usr/lib/firmware` and changes nothing the early loader reads; a kernel update appends modules to
 the same base. Newer microcode reaches the processor only through an image built from a tree that
 carries it: the live medium of that image loads it, and so does a machine installed from it.
 
 ### A device that needs firmware
 
-1. Look for the driver's request: `dmesg | grep -i firmware`. A missing file is named there.
-2. Check that the file is installed: `ls /usr/lib/firmware/<path>*`. Most files carry a `.zst`
-   suffix; the kernel reads compressed firmware itself.
-3. Find the package that owns it: `kdos why /usr/lib/firmware/<path>.zst`. It prints the package
+1. Ask for the plan: `sudo kdos firmware sync --dry-run`. It prints one line per vendor port the
+   devices' drivers or the kernel's failed loads need, such as
+   `firmware-qualcomm the kernel could not load ath11k/WCN6855/hw2.0/amss.bin`, and
+   `sudo kdos firmware sync` installs them, prebuilt. Without `sudo` the kernel log is not
+   readable and only the drivers decide. The same plan is what the session's notice names.
+2. Look for the driver's request: `dmesg | grep -i firmware`. A missing file is named there.
+3. Check that the file is installed: `ls /usr/lib/firmware/<path>*`. Most files carry a `.zst`
+   suffix; the kernel reads compressed firmware itself. A file that is not: `grep ' <path>$'
+   /usr/share/kdos/firmware-map` names the port that ships it.
+4. Find the package that owns it: `kdos why /usr/lib/firmware/<path>.zst`. It prints the package
    and version, and the recipe path, for example `package  wireless-regdb 2026.09.03-1` and
    `recipe   /ports/core/boot/wireless-regdb/kpkgbuild` for `regulatory.db`.
-4. Run `kdos doctor` for the checks it makes of SOF audio firmware and of NVIDIA GSP firmware.
+5. Run `kdos doctor` for the checks it makes of SOF audio firmware and of NVIDIA GSP firmware.
 
 ### Setting the Wi-Fi country
 
@@ -203,15 +213,19 @@ reg get`; set the country as in [Setting the Wi-Fi country](#setting-the-wi-fi-c
 check that `/boot/efi` is mounted (`findmnt /boot/efi`) and that `rcS` mounted `efivarfs`
 (`findmnt /sys/firmware/efi/efivars`); without it no firmware variable is visible.
 
-**A GPU, Wi-Fi or Bluetooth adapter comes up without its firmware.** Read the file name from
-`dmesg` and check it as in [A device that needs firmware](#a-device-that-needs-firmware). A file
-that is absent although `linux-firmware` is installed is either one of the families the recipe
+**A GPU, Wi-Fi or Bluetooth adapter comes up without its firmware.** Run
+`sudo kdos firmware sync`, then read the file name from `dmesg` and check it as in
+[A device that needs firmware](#a-device-that-needs-firmware). On the live medium a Qualcomm or
+Broadcom Wi-Fi card has no firmware until then, so the command needs Ethernet or a USB-tethered
+phone. A file that is absent although its vendor port is installed, and that
+`kdos firmware sync --dry-run` reports as one no port ships, is either one of the families the recipe
 [leaves out](../../kdos/06-reference/known-gaps.md#linux-firmware-leaves-out-what-an-x86-kernel-cannot-load),
 or newer than the upstream release the recipe pins.
 
 ## Known gaps
 
 - [`linux-firmware` leaves out what an x86 kernel cannot load](../../kdos/06-reference/known-gaps.md#linux-firmware-leaves-out-what-an-x86-kernel-cannot-load)
+- [The installation medium carries four vendors' firmware](../../kdos/06-reference/known-gaps.md#the-installation-medium-carries-four-vendors-firmware)
 - [A UEFI firmware (capsule) update has not been applied](../../kdos/06-reference/known-gaps.md#a-uefi-firmware-capsule-update-has-not-been-applied)
 - [`kdos doctor` cannot check hardware a machine does not have](../../kdos/06-reference/known-gaps.md#kdos-doctor-cannot-check-hardware-a-machine-does-not-have)
 - [Broad hardware support is not a goal](../../kdos/06-reference/known-gaps.md#broad-hardware-support-is-not-a-goal)
@@ -225,7 +239,8 @@ or newer than the upstream release the recipe pins.
 - [Firmware](../../kdos/02-user-guide/administration.md#firmware),
   [Microcode](../../kdos/02-user-guide/administration.md#microcode) and
   [Thunderbolt, phones, smart cards and firmware updates](../../kdos/02-user-guide/administration.md#thunderbolt-phones-smart-cards-and-firmware-updates)
-- [kdos doctor](../../kdos/04-programs/kdos-command.md#kdos-doctor)
+- [kdos doctor](../../kdos/04-programs/kdos-command.md#kdos-doctor) and
+  [kdos firmware](../../kdos/04-programs/kdos-command.md#kdos-firmware)
 - [The initramfs and the rescue shell](initramfs-and-rescue.md): looking inside an initramfs with
   the microcode archive in front
 - [Boot menu and kernel parameters](boot-menu-and-kernel-parameters.md): adding a kernel parameter
@@ -236,4 +251,4 @@ or newer than the upstream release the recipe pins.
 <!-- book-nav -->
 ---
 
-*Part XVI. System administration, chapter 395.* Previous: [394. The initramfs and the rescue shell](initramfs-and-rescue.md) · [Contents](../README.md) · Next: [396. A/B slots and rollback](ab-slots-and-rollback.md)
+*Part XVI. System administration, chapter 397.* Previous: [396. The initramfs and the rescue shell](initramfs-and-rescue.md) · [Contents](../README.md) · Next: [398. A/B slots and rollback](ab-slots-and-rollback.md)
