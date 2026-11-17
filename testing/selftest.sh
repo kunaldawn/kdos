@@ -5090,7 +5090,8 @@ grep -q ' binhost-0.3.1-01 p01000.tar.xz binhost/p01000.tar.xz$' "$RI/bh.sharded
 test "$(head -n 7 "$RI/bh.entries" | rel_shard b 3 | rel_release_counts | tr '\n' ' ')" = "b-01 3 b-02 3 b-03 1 " \
     || { echo "  a cap of 3 did not split 7 files 3, 3, 1"; exit 1; }
 test "$(rel_asset swcatalog/xml/kdos-binhost.xml)" = swcatalog--xml--kdos-binhost.xml && \
-    test "$(rel_gh_name 'libsigc++-3.6.0-1.tar.xz')" = libsigc..-3.6.0-1.tar.xz \
+    test "$(rel_gh_name 'libsigc++3-3.6.0-1.tar.xz')" = libsigc.3-3.6.0-1.tar.xz && \
+    test "$(rel_gh_name 'libcdio-paranoia-10.2+2.0.2-1.tar.xz')" = libcdio-paranoia-10.2.2.0.2-1.tar.xz \
     || { echo "  a path is not made flat, or GitHub's renaming is not predicted"; exit 1; }
 rel_entries "$IM/r2/kdos-update.idx" | while read -r sha size rel asset path; do
     cp "$IM/r2/$asset" "$RI/rel/image-0.3.1/$asset"

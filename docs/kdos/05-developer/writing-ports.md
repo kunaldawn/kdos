@@ -3092,8 +3092,8 @@ there, and `--rehome` moves it home once its own volume has room. A file the ind
 volume but GitHub lacks goes back to the volume and the asset name its line records.
 
 **Which name.** A file is stored as `<shelf>--<file>`, as GitHub will store it: every character
-outside `[A-Za-z0-9._-]` becomes `.`, so `libsigc++2-2.12.1.tar.xz` on the `gtk` shelf is
-stored as `gtk--libsigc..2-2.12.1.tar.xz`. When that name is taken in the volume, by another
+outside `[A-Za-z0-9._-]` becomes `.` and a run of dots one, so `libsigc++2-2.12.1.tar.xz` on the `gtk` shelf is
+stored as `gtk--libsigc.2-2.12.1.tar.xz`. When that name is taken in the volume, by another
 hash's index line (compared ignoring case) or by an asset of other bytes, the next of
 `<shelf>--<port>--<file>` and `<shelf>--<port>--<first 12 hex digits of the hash>--<file>` is
 tried. The upload carries the label

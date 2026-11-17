@@ -476,7 +476,7 @@ name is already taken in the volume by other bytes it is `<shelf>--<port>--<file
 `<shelf>--<port>--<hash12>--<file>`. A file only old history names is `attic--<file>` in the highest
 volume. A volume holds at most 1,000 assets; a file whose volume is full goes to the lowest-numbered
 volume with room, or opens a new one, and the index records where. GitHub turns every character
-outside `[A-Za-z0-9._-]` into a dot, so `libsigc++` is stored as `libsigc..`, and the index records
+outside `[A-Za-z0-9._-]` into a dot and a run of dots into one, so `libsigc++2` is stored as `libsigc.2`, and the index records
 the name GitHub stored. A file larger than 1,900 MiB, near GitHub's 2 GiB limit per asset, is stored in parts
 `<asset>.part01` onwards; `ports/fetch` downloads each part, checks it against its own hash, joins
 them and checks the whole. For a moment the parts and the joined file are on disk together, so a

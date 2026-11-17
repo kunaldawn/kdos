@@ -123,7 +123,8 @@
 #               of what the tag needs; the tag's own recipes are what pin the
 #               hashes, since git cannot rewrite them without changing the tag.
 #   --release   put the system release <tag> on $KDOS_REPO: the tag must be on
-#               origin at the same commit and every source it names archived.
+#               origin at the same commit, no branch on origin may share its
+#               name, and every source it names must be archived.
 #               It uploads the ISO (--iso, default build/iso-build/kdos.iso) as
 #               kdos-<tag>.iso, or in parts kdos-<tag>.iso.partNN when it is
 #               larger than $SRC_PART_SIZE bytes; sources.sha256; the tag's
@@ -1782,6 +1783,12 @@ if [ -n "$RELEASE" ]; then
                      END { print ((t "^{}") in c) ? c[t "^{}"] : c[t] }' <<< "$refs")
         [ -n "$remote" ] || die "origin has no tag $tag; push it first"
         [ "$remote" = "$commit" ] || die "tag $tag is $commit here but $remote on origin"
+        # GitHub creates a draft for a tag that is also a branch name as
+        # `untagged-<hex>`: the lookup by tag then misses it, a rerun makes
+        # a second draft, and the release goes public with no tag.
+        heads=$(git -C "$REPO_ROOT" ls-remote --heads origin "refs/heads/$tag") ||
+            die "cannot ask origin for branch $tag"
+        [ -z "$heads" ] || die "origin has a branch named $tag as well as the tag; rename the branch, then release"
         echo "==> $tag is $commit, as on origin"
     fi
 
@@ -1974,7 +1981,13 @@ if [ -n "$RELEASE" ]; then
       echo
       echo "## What it needs"
       echo
-      echo "Every package is on the medium, so it is large: write it to a USB stick of 32 GB or more, or to a BD-R for optical boot (it does not fit a DVD). Installing needs a disk of about 56 GB or more; the installer refuses a smaller one. See \`docs/kdos/02-user-guide/getting-started.md\`."
+      # 4,700,372,992 bytes is a single-layer DVD.
+      if [ "$iso_size" -le 4700372992 ]; then
+          medium="a USB stick or a DVD of at least $(human "$iso_size")"
+      else
+          medium="a USB stick of at least $(human "$iso_size"), or a BD-R for optical boot (it does not fit a DVD)"
+      fi
+      echo "The image carries the base system; the desktop applications, games, language packs and the rest install prebuilt from this release's packages, by name or as a group, from the installer or later with \`kdos update install\`. Write it to $medium. Installing needs a disk of about 21 GiB or more for the two system slots that updates switch between; a smaller disk gets one slot, and one smaller than the install plus 768 MiB is refused. See \`docs/kdos/02-user-guide/getting-started.md\` and \`installation.md\`."
       echo
       echo "## Check"
       echo
@@ -2058,7 +2071,7 @@ if [ -n "$RELEASE" ]; then
     fi
     pace
     gh PATCH "$GH_API/repos/$KDOS_REPO/releases/$REL_ID" -H 'Content-Type: application/json' \
-        --data '{"draft":false,"prerelease":false,"make_latest":"true"}'
+        --data "{\"tag_name\":\"$tag\",\"draft\":false,\"prerelease\":false,\"make_latest\":\"true\"}"
     [ "$HTTP" = 200 ] || die "publishing $tag: HTTP $HTTP $(json_str message)"
     # Asked anonymously, as a visitor asks: the token sees drafts, and the
     # question is what everyone else is sent to.

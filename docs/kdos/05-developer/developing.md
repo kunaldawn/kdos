@@ -454,7 +454,7 @@ line whose tag is `src-<shelf>` names a file still in the older layout of one re
 fetches the same way until `ports/publish --rehome` moves it. The third field is the name GitHub
 stored, which is what the address uses; the fourth is the file's own name. The asset name is
 `<shelf>--<file>`, and differs further when GitHub rewrote a character outside `[A-Za-z0-9._-]`
-(`libsigc++` is stored as `libsigc..`), or when that name was already taken in the volume and the
+(each becomes `.` and a run of dots one, so `libsigc++2` is stored as `libsigc.2`), or when that name was already taken in the volume and the
 file was stored as `<shelf>--<port>--<file>` or `<shelf>--<port>--<hash12>--<file>`. A file larger than 1900 MiB is stored in
 parts, `<asset>.part01` … `<asset>.partNN`, each under GitHub's 2 GiB limit per asset, and its line
 ends in `parts=<N>:<h1>,…,<hN>`, the hash of each part in order.
@@ -881,7 +881,10 @@ make release TAG=<tag>                          # a DRAFT release with every ass
 make release-publish TAG=<tag>                  # make it public and Latest
 ```
 
-The three are `ports/publish --release <tag>` with `--dry-run`, with nothing, and with `--publish`.
+The three are `ports/publish --release <tag>` with `--dry-run`, with nothing, and with `--publish`. A
+tag that is also a branch name on `origin` is refused: GitHub creates its draft untagged, so a rerun
+cannot find it and the release would go public with no tag. Release from a tag no branch is named
+after.
 
 **A release ISO is one asset.** The build itself fails a base ISO larger than 1,900 MiB
 (`KDOS_ISO_MAX`): `110_iso.sh` stops after writing it and prints the size, the limit and the top

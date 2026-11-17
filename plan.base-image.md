@@ -233,7 +233,7 @@ passes.
 | T6.3 A full `make build KDOS_MAKE_BINHOST=1` from an empty tree (52.5 h, 2,440 packages) | done |
 | T6.4 The ISO is ≤ 1,900 MiB (the gate); the ledger reviewed | done: 1,573 MiB |
 | T6.5 Rig proof (§5) | 1–6 proven on the built ISO: UEFI and BIOS boot; live groups; install with `games` and its pending path; Kdenlive prebuilt, `--dev zlib`, `--source bat` with what it lacks prebuilt; a signed mock next release taken through the image lane, slot B booted and confirmed, both programs carried, `kpkg check --all` clean. A slot left on trial past its attempts rolled back to A, as it must. Open: the world step after an image still compiled doxygen from source once for `bat`; the slot was complete and checked clean |
-| T6.6 Tag `v0.2`, build from the tag, `release-image.sh --root build/fs --upper build/image-upper`, `make release` (draft), check the draft from another machine, `make release-publish` | waits on the user's commit and tag: the build must come from the tag |
+| T6.6 Tag `v0.2`, build from the tag, `release-image.sh --root build/fs --upper build/image-upper`, `make release` (draft), check the draft from another machine, `make release-publish` | done: tag `v0.2` at `21b67721d`, image phase rebuilt from it; `v0.2` public and Latest, with `binhost-v0.2-01`…`-05` (4,884 assets) and `image-v0.2` as public pre-releases |
 
 ## 5. Verification
 

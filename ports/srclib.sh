@@ -144,10 +144,12 @@ src_part_name() {
 }
 
 # src_asset_sanitize <name> — the asset name GitHub will store for <name>:
-# every character outside [A-Za-z0-9._-] becomes `.`, and leading and
-# trailing dots go. It predicts; ports/publish records what GitHub returns.
+# every character outside [A-Za-z0-9._-] becomes `.`, a run of dots becomes
+# one (`libsigc++2` is stored as `libsigc.2`), and leading and trailing dots
+# go. It predicts; ports/publish records what GitHub returns.
 src_asset_sanitize() {
     local s=${1//[^A-Za-z0-9._-]/.}
+    while [[ $s == *..* ]]; do s=${s//../.}; done
     while [[ $s == .* ]]; do s=${s#.}; done
     while [[ $s == *. ]]; do s=${s%.}; done
     printf '%s\n' "$s"
